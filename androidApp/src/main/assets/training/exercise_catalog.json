@@ -2264,6 +2264,93 @@
    }
   },
   {
+   "slug": "pull.table_row",
+   "category": "PULL",
+   "kind": "REPS",
+   "load": "BODYWEIGHT",
+   "unilateral": false,
+   "equipment": [
+    "NONE"
+   ],
+   "domains": [
+    "SHOULDER",
+    "ELBOW"
+   ],
+   "muscles": {
+    "primary": [
+     "upper_back",
+     "lats"
+    ],
+    "secondary": [
+     "biceps",
+     "rear_delts",
+     "abs"
+    ]
+   },
+   "difficulty": 1,
+   "defaults": {
+    "sets": 3,
+    "repsMin": 8,
+    "repsMax": 15,
+    "restS": 90
+   },
+   "contraindications": [
+    "shoulder",
+    "elbow"
+   ],
+   "tags": [
+    "strength",
+    "antagonist",
+    "no_climbing",
+    "home",
+    "finger_free",
+    "beginner_friendly"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Rudern unter dem Tisch",
+     "aliases": [
+      "Tischrudern",
+      "Table Row"
+     ],
+     "why": "Horizontaler Zug ganz ohne Geräte – kräftigt den Rücken und gleicht das Drücken aus, wenn keine Stange da ist.",
+     "steps": [
+      "Leg dich unter einen stabilen Tisch und greif die Tischkante schulterbreit – prüf vorher, dass er nicht kippen kann.",
+      "Fersen am Boden, Körper gestreckt wie ein Brett; mit gebeugten Knien wird es leichter.",
+      "Zieh die Brust zur Tischkante, Schulterblätter zusammen, dann kontrolliert ablassen."
+     ],
+     "cues": [
+      "Nur ein schwerer, fester Tisch – kein Klapptisch",
+      "Je gestreckter die Beine, desto schwerer"
+     ],
+     "mistakes": [
+      "Hüfte hängt durch",
+      "Ruckartig hochziehen"
+     ]
+    },
+    "en": {
+     "name": "Table Row",
+     "aliases": [
+      "Under-table row"
+     ],
+     "why": "A horizontal pull with no gear at all – strengthens the back and balances pushing when there is no bar.",
+     "steps": [
+      "Lie under a sturdy table and grip its edge shoulder-width apart – check first that it cannot tip.",
+      "Heels on the floor, body straight like a plank; bent knees make it easier.",
+      "Pull your chest to the edge, squeeze the shoulder blades, then lower with control."
+     ],
+     "cues": [
+      "Only a heavy, solid table – no folding table",
+      "The straighter your legs, the harder it gets"
+     ],
+     "mistakes": [
+      "Sagging hips",
+      "Jerking up"
+     ]
+    }
+   }
+  },
+  {
    "slug": "pull.lat_pulldown",
    "category": "PULL",
    "kind": "LOAD_REPS",

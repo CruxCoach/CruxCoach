@@ -169,7 +169,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Training beyond the board (FEAT-066). A "Today" hub and an "Exercises"
-  library inside the new training area. The library has 199 exercises written for
+  library inside the new training area. The library has 200 exercises written for
   climbers – fingers, pulling, pushing and antagonists, core, legs and hips,
   mobility, warm-up, power, endurance and technique – in German and English,
   with "why it matters", steps, cues, typical mistakes, progression chains
