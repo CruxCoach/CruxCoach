@@ -17,7 +17,7 @@
     <string name="tre_deload_started">Leichtere Woche gestartet.</string>
     <string name="tre_duration_apply">Übernehmen</string>
     <string name="tre_duration_hint">Deine Trainings dauern meist etwa %1$d min. Vorschläge darauf abstimmen?</string>
-    <string name="tre_ev_affinity">gern gemacht: %1$s</string>
+    <string name="tre_ev_affinity">öfter gewählt oder gemacht: %1$s</string>
     <string name="tre_ev_checkin">Check-in: %1$s</string>
     <string name="tre_ev_climb_days">Klettern vor %1$d Tagen: %2$s</string>
     <string name="tre_ev_climb_detail">%1$s, %2$d Versuche</string>
@@ -80,7 +80,7 @@
     <string name="tre_reason_guard_masters">Ab 40 bekommen die Finger einen Erholungstag mehr.</string>
     <string name="tre_reason_guard_novice">In den ersten Kletterjahren noch keine Max-Hangs, einarmige Übungen oder Campus – die Finger passen sich langsamer an als die Muskeln.</string>
     <string name="tre_reason_guard_youth">Im Wachstum keine Max-Hangs, einarmigen Übungen oder Campus – nur leichtes Fingertraining.</string>
-    <string name="tre_reason_learned">Übungen, die du gern machst, werden bevorzugt.</string>
+    <string name="tre_reason_learned">Übungen, die du oft wählst oder machst, kommen öfter dran.</string>
     <string name="tre_reason_level_easier">Dir war es zu schwer – heute eine Stufe leichter.</string>
     <string name="tre_reason_level_harder">Dir war es zu leicht – heute eine Stufe schwerer.</string>
     <string name="tre_reason_no_time">Heute weniger Zeit – die Einheit ist kürzer.</string>
