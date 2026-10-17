@@ -13,6 +13,8 @@ struct BrowserView: View {
     @State private var search = ""
     @State private var sheet: Sheet?
     @State private var path = NavigationPath()
+    /// The training area (Android's "Training & nutrition" menu entry) covers the browser while open.
+    @State private var trainingOpen = false
 
     enum Sheet: String, Identifiable { case board, ble, catalogue, filters, holds; var id: String { rawValue } }
 
@@ -108,6 +110,8 @@ struct BrowserView: View {
                                     Bundle.main.resourceURL?.appendingPathComponent("board_map").path ?? "")
                             })
                         }
+                        Button(L("tr_nav_training_nutrition"), systemImage: "figure.climbing") { trainingOpen = true }
+                            .accessibilityIdentifier("browser_training")
                         NavigationLink(L("board_logbook_title")) { LogbookView(core: core) }
                         NavigationLink(LI("stats_title")) { StatsView(core: core) }
                         NavigationLink(LI("history_title")) { HistoryView(core: core) }
@@ -137,6 +141,9 @@ struct BrowserView: View {
                 }
             }
             .onChange(of: sync.state.catalogueRevision) { _, _ in model.refresh() }
+            .fullScreenCover(isPresented: $trainingOpen) {
+                TrainingHomeView(core: core) { trainingOpen = false }
+            }
             .onOpenURL { url in
                 // Universal links need a paid team, so `cruxcoach://c/<uuid>`
                 // and a pasted CruxCoach URL go through the same parser.

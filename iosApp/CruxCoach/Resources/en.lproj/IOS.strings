@@ -343,3 +343,8 @@
 "kilter_upload_wall_hint" = "Log one climb in the Kilter app first — that tells this app which gym, wall and layout your account uses.";
 "kilter_conflict" = "Kilter already has an entry with this id but different content. Nothing was overwritten.";
 "kilter_push_manual_hint" = "Uploads your sends and attempts that Kilter does not have yet. On iPhone this starts only when you tap; an interrupted upload is retried by itself while the app stays open.";
+"training_unavailable_title" = "Training is not available";
+"training_unavailable_text" = "The encrypted training database could not be opened on this iPhone. Your board data is not affected.";
+"training_tab_not_on_iphone" = "This part of training & nutrition is not on iPhone yet. It is available in the Android app.";
+"training_not_on_iphone" = "This is not on iPhone yet. It is available in the Android app.";
+"training_weight_invalid" = "Please enter a plausible body weight.";

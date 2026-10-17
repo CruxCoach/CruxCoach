@@ -343,3 +343,8 @@
 "kilter_upload_wall_hint" = "Protokolliere zuerst eine Begehung in der Kilter-App — daraus erfährt diese App, welche Halle, Wand und welches Layout dein Konto nutzt.";
 "kilter_conflict" = "Kilter hat bereits einen Eintrag mit dieser ID, aber anderem Inhalt. Es wurde nichts überschrieben.";
 "kilter_push_manual_hint" = "Lädt deine Begehungen und Versuche hoch, die Kilter noch nicht hat. Auf dem iPhone startet das nur, wenn du tippst; ein unterbrochener Upload wird von selbst wiederholt, solange die App geöffnet bleibt.";
+"training_unavailable_title" = "Training nicht verfügbar";
+"training_unavailable_text" = "Die verschlüsselte Trainingsdatenbank ließ sich auf diesem iPhone nicht öffnen. Deine Board-Daten sind davon nicht betroffen.";
+"training_tab_not_on_iphone" = "Dieser Teil von Training & Ernährung ist auf dem iPhone noch nicht da. In der Android-App gibt es ihn schon.";
+"training_not_on_iphone" = "Das gibt es auf dem iPhone noch nicht. In der Android-App ist es schon da.";
+"training_weight_invalid" = "Bitte gib ein plausibles Körpergewicht ein.";
