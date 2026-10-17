@@ -73,6 +73,8 @@ data class RoutineEditorState(
     val saving: Boolean = false,
     val units: com.cruxcoach.athlete.model.UnitSystem = com.cruxcoach.athlete.model.UnitSystem.METRIC,
     val incrementKg: Double = 1.0,
+    /** This week's volume per area, for the hint what this workout adds (comparison review #13). */
+    val weekly: List<com.cruxcoach.athlete.logic.AreaProgress> = emptyList(),
 )
 
 @HiltViewModel
@@ -119,6 +121,7 @@ class RoutineEditorViewModel @Inject constructor(private val service: AthleteSer
                 favorites = repo.favorites(),
                 units = repo.profile().units,
                 incrementKg = repo.profile().smallestIncrementKg,
+                weekly = runCatching { service.weeklyProgress() }.getOrDefault(emptyList()),
             )
             repo.observeFavorites().collect { fav -> _state.update { it.copy(favorites = fav) } }
         }
@@ -269,6 +272,7 @@ fun RoutineEditorScreen(
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             return@TrainingScaffold
         }
+        val weekly = weeklyLines(state)
         LazyColumn(
             Modifier.fillMaxSize().padding(padding).testTag("routine_editor_list"),
             contentPadding = PaddingValues(16.dp),
@@ -295,6 +299,7 @@ fun RoutineEditorScreen(
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
             }
             if (state.items.isEmpty()) item { EmptyHint(stringResource(R.string.trwo_editor_empty)) }
+            if (weekly.isNotEmpty()) item(key = "weekly") { WeeklyHint(weekly) }
             items(state.items, key = { it.key }) { row ->
                 val index = state.items.indexOf(row)
                 val circuit = row.item.circuit
@@ -377,6 +382,28 @@ fun RoutineEditorScreen(
             },
             dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
         )
+    }
+}
+
+/**
+ * Per area this workout trains: where the week stands and what the workout adds ("Pulling this week: 4/6 sets ·
+ * this workout +6"), counted like the weekly targets – work sets per side, a finger session as one.
+ */
+@Composable
+private fun weeklyLines(state: RoutineEditorState): List<String> {
+    if (state.weekly.isEmpty()) return emptyList()
+    val adds = state.items.map { it.item }.filter { !it.warmup && !it.test }.mapNotNull { item ->
+        val def = state.catalog.fallbackFor(item.slug)
+        com.cruxcoach.athlete.logic.WeeklyVolume.areaOf(def)?.let { it to item.sets * (if (def.unilateral && item.sides == SideMode.BOTH) 2 else 1) }
+    }.groupBy({ it.first }, { it.second }).mapValues { (area, sets) -> if (area == com.cruxcoach.athlete.logic.VolumeArea.FINGER) 1 else sets.sum() }
+    return state.weekly.filter { p -> p.area in adds && !p.target.isOff && p.goal > 0 }.map { p -> weeklyHintText(p, adds[p.area]) }
+}
+
+@Composable
+private fun WeeklyHint(lines: List<String>) {
+    Column(Modifier.fillMaxWidth().testTag("routine_editor_weekly")) {
+        Text(stringResource(R.string.trv_hint_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 

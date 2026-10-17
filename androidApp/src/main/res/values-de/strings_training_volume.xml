@@ -30,4 +30,9 @@
     <string name="trv_ev_sets">Woche: %1$s %2$d/%3$d Sätze</string>
     <string name="trv_ev_sessions">Woche: %1$s %2$d/%3$d Einheiten</string>
     <string name="trv_paused">Pause aktiv – die Wochenziele ruhen, bis du zurück bist.</string>
+    <!-- Wochenvolumen als weicher Hinweis beim Weglassen, Entfernen und Bearbeiten (Vergleichsbericht #13) -->
+    <string name="trv_hint_title">Diese Woche</string>
+    <string name="trv_hint_sets">%1$s diese Woche: %2$s/%3$d Sätze</string>
+    <string name="trv_hint_sessions">%1$s diese Woche: %2$s/%3$d Einheiten</string>
+    <string name="trv_hint_plus">%1$s · dieses Workout +%2$d</string>
 </resources>

@@ -1737,6 +1737,12 @@ private fun SwapSheet(
                 )
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            // Where the week stands for this exercise's area, before it is left out (comparison review #13): a hint, no lock.
+            val area = com.cruxcoach.athlete.logic.WeeklyVolume.areaOf(state.catalog.fallbackFor(slug))
+            state.weekly.firstOrNull { it.area == area && !it.target.isOff && it.goal > 0 }?.let { p ->
+                Text(com.cruxcoach.android.ui.training.workouts.weeklyHintText(p), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp).testTag("today_swap_weekly"))
+            }
             TextButton(onClick = onDrop, modifier = Modifier.padding(horizontal = 8.dp).testTag("today_swap_drop")) {
                 Icon(Icons.Default.RemoveCircleOutline, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.trt_swap_drop))

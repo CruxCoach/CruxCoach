@@ -30,4 +30,9 @@
     <string name="trv_ev_sets">Week: %1$s %2$d/%3$d sets</string>
     <string name="trv_ev_sessions">Week: %1$s %2$d/%3$d sessions</string>
     <string name="trv_paused">Pause active – the weekly targets rest until you are back.</string>
+    <!-- Weekly volume as a soft hint where exercises are left out, removed or edited (comparison review #13) -->
+    <string name="trv_hint_title">This week</string>
+    <string name="trv_hint_sets">%1$s this week: %2$s/%3$d sets</string>
+    <string name="trv_hint_sessions">%1$s this week: %2$s/%3$d sessions</string>
+    <string name="trv_hint_plus">%1$s · this workout +%2$d</string>
 </resources>

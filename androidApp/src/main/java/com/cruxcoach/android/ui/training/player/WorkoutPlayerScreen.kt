@@ -141,6 +141,10 @@ fun WorkoutPlayerScreen(
             EndKind.SKIPPED -> resources.getString(R.string.trpg_skipped, names)
             EndKind.REMOVED -> resources.getString(R.string.trpg_removed, names)
             EndKind.ENDED -> if (e.circuit) resources.getString(R.string.trpg_circuit_ended) else resources.getString(R.string.trpg_ended, names)
+        }.let { base ->
+            // Left out or removed: where the week stands for it, as a hint (comparison review #13).
+            val weekly = if (e.kind == EndKind.ENDED) null else e.slugs.singleOrNull()?.let { viewModel.weeklyFor(it) }
+            if (weekly == null) base else base + " · " + com.cruxcoach.android.ui.training.workouts.weeklyHintText(resources, weekly)
         }
         snackScope.launch {
             val result = snackbar.showSnackbar(text, resources.getString(R.string.trpg_undo), duration = SnackbarDuration.Long)
@@ -197,6 +201,7 @@ fun WorkoutPlayerScreen(
             onAddWarmups = viewModel::addWarmups,
             onRemoveExercise = viewModel::removeExercise,
             onAsPlanned = viewModel::asPlanned,
+            weeklyFor = { slug -> viewModel.weeklyFor(slug) },
         )
     }
 
