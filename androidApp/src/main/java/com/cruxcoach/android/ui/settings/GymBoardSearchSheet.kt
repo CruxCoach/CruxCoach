@@ -167,7 +167,7 @@ internal fun GymBoardSearchSheet(
                         },
                     )
                     locateFailure?.let { failure ->
-                        LocateFailureNote(failure) { openLocateFix(context, failure) }
+                        LocateFailureNote(failure) { locateFailure = null; locateMe.openFix(failure) }
                     }
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
