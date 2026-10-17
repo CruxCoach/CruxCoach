@@ -1110,7 +1110,8 @@ private fun DailySuggestionCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp),
                 itemVerticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(pluralStringResource(R.plurals.trsg_meta_count, s.routine.items.size, s.routine.items.size),
+                // The count matches the list below: the warm-up is part of the time, not of the list.
+                Text(pluralStringResource(R.plurals.trsg_meta_count, main.size, main.size),
                     style = MaterialTheme.typography.bodyMedium)
                 if (s.timeAdjustable) DurationChip(s.totalMinutes, state.minutesToday, state.profile.sessionMinutes, onChooseMinutes)
                 else Text(stringResource(R.string.trt_duration_value, s.totalMinutes), style = MaterialTheme.typography.bodyMedium)
@@ -1450,7 +1451,11 @@ private fun evidenceText(e: com.cruxcoach.athlete.logic.Evidence, state: TodaySt
         com.cruxcoach.athlete.logic.GuardrailKind.NOVICE -> R.string.tre_ev_guard_novice
         com.cruxcoach.athlete.logic.GuardrailKind.MASTERS -> R.string.tre_ev_guard_masters
     })
-    is com.cruxcoach.athlete.logic.Evidence.History -> stringResource(R.string.tre_ev_history, e.weeks, e.logbookSends)
+    // "1 Woche Verlauf" – real plurals, and a part that is 0 is left out ("0 Sends" said nothing).
+    is com.cruxcoach.athlete.logic.Evidence.History -> listOfNotNull(
+        e.weeks.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.tre_ev_history_weeks, it, it) },
+        e.logbookSends.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.tre_ev_sends, it, it) },
+    ).joinToString(" · ")
     is com.cruxcoach.athlete.logic.Evidence.Return -> stringResource(R.string.tre_ev_return, e.state.daysOff, e.state.week, e.state.weeksTotal)
     is com.cruxcoach.athlete.logic.Evidence.WeeklyTarget -> stringResource(
         if (e.area == com.cruxcoach.athlete.logic.VolumeArea.FINGER) R.string.trv_ev_sessions else R.string.trv_ev_sets,

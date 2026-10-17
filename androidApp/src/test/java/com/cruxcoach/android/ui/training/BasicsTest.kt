@@ -1,7 +1,12 @@
 package com.cruxcoach.android.ui.training
 
 import android.app.Application
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import com.cruxcoach.android.ui.training.basics.BasicsGateViewModel
 import com.cruxcoach.android.ui.training.basics.BasicsScreen
@@ -61,6 +66,34 @@ class BasicsTest : AthleteScreenTest() {
         assertEquals(BasicsViewModel.ageBandFor(service.today().year - 1990), p.coach.ageBand)
         assertTrue(p.equipmentConfigured && EquipmentV2.HANGBOARD in p.equipment)
         assertTrue(p.basicsAsked)
+    }
+
+    @Test
+    fun `the grade list shows that it goes on and reaches the harder grades`() {
+        val vm = loaded(BasicsViewModel(service))
+        render { BasicsScreen(onDone = {}, viewModel = vm) }
+        waitForTag("basics_page_0")
+        click("basics_next")
+        waitForTag("basics_page_1")
+        click("basics_grade")
+        waitForTag("basics_grade_list")
+        // A list that ended on a full row looked complete on the device (7a was out of sight). Here the dialog
+        // leaves less than the list's maximum height, which is where the old list ended on a full row too.
+        val list = compose.onNodeWithTag("basics_grade_list").fetchSemanticsNode().boundsInRoot
+        val rows = compose.onAllNodes(SemanticsMatcher("grade row") {
+                it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("basics_grade_item_") == true
+            })
+            // Unclipped position and size: boundsInRoot would be cut at the list edge.
+            .fetchSemanticsNodes().map { it.positionInRoot.y to it.positionInRoot.y + it.size.height }
+        // About half of the last row shows, so its text is cut and reads as "more below".
+        val cut = rows.firstOrNull { (top, bottom) -> top < list.bottom && bottom > list.bottom }
+        assertTrue("$list $rows", cut != null && (list.bottom - cut.first) / (cut.second - cut.first) in 0.35f..0.65f)
+        compose.onNodeWithTag("basics_grade_list").performScrollToNode(hasTestTag("basics_grade_item_7a"))
+        click("basics_grade_item_7a")
+        click("basics_experience_y3_5")
+        click("preset_home")
+        click("basics_done")
+        compose.waitUntil(WAIT_MS) { repo.profile().coach.currentGrade == "7a" }
     }
 
     @Test

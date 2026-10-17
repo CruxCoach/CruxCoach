@@ -29,7 +29,14 @@
     <string name="tre_ev_guard_masters">40+: mehr Erholung</string>
     <string name="tre_ev_guard_novice">Schutzregel: erste Kletterjahre</string>
     <string name="tre_ev_guard_youth">Schutzregel: im Wachstum</string>
-    <string name="tre_ev_history">%1$d Wochen Verlauf · %2$d Sends</string>
+    <plurals name="tre_ev_history_weeks">
+        <item quantity="one">%d Woche Verlauf</item>
+        <item quantity="other">%d Wochen Verlauf</item>
+    </plurals>
+    <plurals name="tre_ev_sends">
+        <item quantity="one">%d Send</item>
+        <item quantity="other">%d Sends</item>
+    </plurals>
     <string name="tre_ev_injury">Verletzung: %1$s</string>
     <string name="tre_ev_trend">%1$slast %2$s</string>
     <string name="tre_ev_value">%1$s: %2$s</string>
