@@ -798,6 +798,12 @@ object SessionSuggester {
             var items = if (input.minutesToday == null) kept
                 else growToBudget(ctx, SuggestionFocus.PLANNED, kept, budget, listOf(Slot.ANTAGONIST, Slot.CORE, Slot.MOBILITY), sets = false)
             items = applyBlock(ctx, items)
+            // "Easier" / "harder" from the card works on the athlete's own plan too (audit W8): a set less or more
+            // of the main work, the exercises stay as they built them.
+            when (input.levelShift.coerceIn(-1, 1)) {
+                -1 -> items = items.map { if (it.warmup || it.test) it else it.copy(sets = max(1, it.sets - 1)) }
+                1 -> items = items.map { if (it.warmup || it.test) it else it.copy(sets = it.sets + 1) }
+            }
             if (lowEnergy || input.budgetFactor < 1.0 || input.minutesToday != null) {
                 val fitted = fitToBudget(items, budget, input.catalog)
                 if (fitted != items) reasons += SuggestionReason.SHORTENED_TO_TIME
@@ -857,8 +863,12 @@ object SessionSuggester {
     private fun boardPlan(input: SuggestionInput, fresh: Boolean, light: Boolean = false): BoardPlan {
         if (light) return BoardPlan(GeneratorType.VOLUME, 45)
         val phase = input.block?.phase
+        // "Easier" makes the board day volume, "harder" limit moves when fresh (audit W8).
+        val shift = input.levelShift.coerceIn(-1, 1)
         val coach = input.coach
         val type = when {
+            shift < 0 -> GeneratorType.VOLUME
+            shift > 0 && fresh && phase != BlockPhase.DELOAD -> GeneratorType.LIMIT
             phase == BlockPhase.DELOAD || phase == BlockPhase.INTRO -> GeneratorType.VOLUME
             phase == BlockPhase.TAPER -> GeneratorType.LIMIT
             FocusArea.POWER_ENDURANCE in coach.focus -> GeneratorType.POWER_ENDURANCE
