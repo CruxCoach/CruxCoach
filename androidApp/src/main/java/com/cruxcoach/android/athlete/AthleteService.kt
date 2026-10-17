@@ -463,8 +463,16 @@ class AthleteService @Inject constructor(
      * work sets back to full, the trimmed set back for exercises (one round for circuits) that still have
      * an open set – and nothing is trimmed for the rest of the day. Done sets stay as they are.
      */
-    suspend fun asPlanned(workoutId: String): Unit = withContext(Dispatchers.IO) {
-        val m = dayForm(workoutId) ?: return@withContext
+    /** What "Wie geplant" changed, so "Rückgängig" can put today's trim back. */
+    data class AsPlannedUndo(val changed: List<ExerciseSet>, val added: List<String>, val dayForm: String?, val loads: String?, val asPlannedDay: String?)
+
+    suspend fun asPlanned(workoutId: String): AsPlannedUndo? = withContext(Dispatchers.IO) {
+        val m = dayForm(workoutId) ?: return@withContext null
+        val changed = mutableListOf<ExerciseSet>()
+        val added = mutableListOf<String>()
+        val previousDayForm = repo.setting(ReadinessModifiers.settingKey(workoutId))
+        val previousLoads = repo.setting(ReadinessModifiers.settingKey(workoutId) + ".loads")
+        val previousAsPlanned = repo.setting(ReadinessModifiers.AS_PLANNED_KEY)
         synchronized(structureLock) {
             val bodyweight = currentBodyweight()
             val increment = repo.profile().smallestIncrementKg
@@ -487,7 +495,7 @@ class AthleteService @Inject constructor(
                     }
                     val p = planned[set.id]
                     val restored = set.copy(targetLoadKg = back(set.targetLoadKg, p?.get(0), p?.get(1)), loadKg = back(set.loadKg, p?.get(2), p?.get(3)))
-                    if (restored != set) repo.saveSet(restored)
+                    if (restored != set) { changed += set; repo.saveSet(restored) }
                 }
                 val open = work.filter { !it.isCompleted }
                 // Circuits: a round more when the rounds were trimmed.
@@ -498,7 +506,7 @@ class AthleteService @Inject constructor(
                         val round = (sets.filter { it.blockIndex in members && it.setType != SetType.WARMUP }.maxOfOrNull { it.setIndex } ?: -1) + 1
                         members.sorted().forEach { block ->
                             WorkoutPlanner.extraSet(sets.filter { it.blockIndex == block }, repo::newId)
-                                .forEach { repo.saveSet(it.copy(setIndex = round, circuit = circuit)) }
+                                .forEach { added += it.id; repo.saveSet(it.copy(setIndex = round, circuit = circuit)) }
                         }
                     }
                 }
@@ -507,12 +515,28 @@ class AthleteService @Inject constructor(
                     val def = catalog.fallbackFor(rows.first().exerciseSlug)
                     val workSets = rows.filter { it.setType == SetType.WORK }.map { it.setIndex }.distinct().size
                     repeat(ReadinessModifiers.setsToRestore(def, workSets, m)) {
-                        WorkoutPlanner.extraSet(repo.setsFor(workoutId).filter { it.blockIndex == block }, repo::newId).forEach(repo::saveSet)
+                        WorkoutPlanner.extraSet(repo.setsFor(workoutId).filter { it.blockIndex == block }, repo::newId)
+                            .forEach { added += it.id; repo.saveSet(it) }
                     }
                 }
                 repo.putSetting(ReadinessModifiers.settingKey(workoutId), "")
                 repo.putSetting(loadsKey, "")
                 repo.putSetting(ReadinessModifiers.AS_PLANNED_KEY, today().toString())
+            }
+        }
+        AsPlannedUndo(changed, added, previousDayForm, previousLoads, previousAsPlanned)
+    }
+
+    /** "Rückgängig" after "Wie geplant": the added sets go (unless done meanwhile), loads and today's trim come back. */
+    suspend fun undoAsPlanned(workoutId: String, undo: AsPlannedUndo): Unit = withContext(Dispatchers.IO) {
+        synchronized(structureLock) {
+            repo.transaction {
+                val now = repo.setsFor(workoutId).associateBy { it.id }
+                undo.added.forEach { id -> if (now[id]?.isCompleted == false) repo.deleteSet(id) }
+                undo.changed.forEach { old -> if (now[old.id]?.isCompleted == false) repo.saveSet(old) }
+                repo.putSetting(ReadinessModifiers.settingKey(workoutId), undo.dayForm.orEmpty())
+                repo.putSetting(ReadinessModifiers.settingKey(workoutId) + ".loads", undo.loads.orEmpty())
+                repo.putSetting(ReadinessModifiers.AS_PLANNED_KEY, undo.asPlannedDay.orEmpty())
             }
         }
     }

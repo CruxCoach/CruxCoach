@@ -124,6 +124,8 @@ data class PlayerState(
     val defs: Map<String, ExerciseDefinition> = emptyMap(),
     /** What today's form trimmed in this training (sets, load), until the athlete chooses "as planned". */
     val dayForm: com.cruxcoach.athlete.logic.ReadinessModifier? = null,
+    /** "Wie geplant" was just chosen: the snackbar offers to take it back. */
+    val asPlannedUndo: AthleteService.AsPlannedUndo? = null,
 ) {
     val page: PlayerPage? get() = pages.getOrNull(pageIndex)
     fun def(slug: String): ExerciseDefinition? = defs[slug]
@@ -661,8 +663,21 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     fun asPlanned() {
         val workoutId = _state.value.workout?.id ?: return
         _state.update { it.copy(dayForm = null) }
-        enqueue { service.asPlanned(workoutId) }
+        enqueue {
+            val undo = service.asPlanned(workoutId)
+            withContext(Dispatchers.Main) { _state.update { it.copy(asPlannedUndo = undo) } }
+        }
     }
+
+    /** "Rückgängig" after "Wie geplant": today's trim is back, the line too. */
+    fun undoAsPlanned() {
+        val workoutId = _state.value.workout?.id ?: return
+        val undo = _state.value.asPlannedUndo ?: return
+        _state.update { it.copy(asPlannedUndo = null) }
+        enqueue { service.undoAsPlanned(workoutId, undo) }
+    }
+
+    fun consumeAsPlannedUndo() = _state.update { it.copy(asPlannedUndo = null) }
 
     /** "+ set" (or "+ round" for a circuit): one more like the last, with its plan, not with a missed result. */
     fun addSet() {

@@ -197,6 +197,12 @@ class ExercisePageTest : AthleteScreenTest() {
         assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasTestTag("player_dayform")).fetchSemanticsNodes().isEmpty())
         // The rest of the day stays as planned: a new exercise is not trimmed either.
         assertTrue(service.todaysModifier().isNeutral)
+        // "Rückgängig": today's trim and its line are back.
+        until { vm.state.value.asPlannedUndo != null }
+        vm.undoAsPlanned()
+        until { work(id).size == 3 && vm.state.value.dayForm != null }
+        assertEquals(trimmed, work(id).first().targetLoadKg)
+        assertTrue(!service.todaysModifier().isNeutral)
     }
 
     @Test

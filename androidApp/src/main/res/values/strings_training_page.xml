@@ -52,4 +52,5 @@
     <string name="trpg_dayform_as_planned">As planned</string>
     <string name="trpg_skipped">“%1$s” skipped</string>
     <string name="trpg_removed">“%1$s” removed</string>
+    <string name="trpg_dayform_back">As planned: sets and loads are back</string>
 </resources>

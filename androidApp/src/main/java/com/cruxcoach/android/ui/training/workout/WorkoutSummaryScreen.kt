@@ -190,13 +190,21 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
     }
 
     /** Replaces [from] with [to] in every own workout that contains it, keeping sets, rest and sides. */
+    /** What the last summary action changed, for "Rückgängig" (audit P2-14): routines before a swap, or the block start. */
+    private var undoRoutines: List<com.cruxcoach.athlete.model.Routine> = emptyList()
+    private var undoSwapEvent: String? = null
+    private var undoBlockStart: String? = null
+    private var undoDeload = false
+
     fun swapInRoutines(from: String, to: String) {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
             val target = service.catalog[to] ?: return@launch
             var count = 0
-            repo.routines().filter { r -> r.items.any { it.slug == from } }.forEach { r ->
+            val before = repo.routines().filter { r -> r.items.any { it.slug == from } }
+            undoRoutines = before; undoDeload = false
+            before.forEach { r ->
                 // The replacement keeps its place in a circuit (rounds, rests); normalize drops it if it cannot be in one.
                 val items = com.cruxcoach.athlete.logic.Circuits.normalize(r.items.map { item ->
                     if (item.slug != from) item
@@ -206,7 +214,7 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                 repo.saveRoutine(r.copy(items = items, updatedAt = System.currentTimeMillis()))
                 count++
             }
-            service.logSuggestion(SuggestionEventKind.SWAPPED, null, listOf(from, to))
+            undoSwapEvent = service.logSuggestion(SuggestionEventKind.SWAPPED, null, listOf(from, to))
             _state.update { s -> s.copy(message = count, routineCounts = s.routineCounts - from) }
         }
     }
@@ -216,8 +224,30 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val start = service.today().minus(kotlinx.datetime.DatePeriod(days = 7 * (TrainingBlocks.INTRO_WEEKS + TrainingBlocks.BUILD_WEEKS)))
+            undoBlockStart = service.repo.profile().coach.blockStartDay; undoDeload = true
             service.repo.updateProfile { p -> p.copy(coach = p.coach.copy(blockStartDay = start.toString())) }
             _state.update { it.copy(message = -1) }
+        }
+    }
+
+    /** "Rückgängig" for the last swap in the workouts or the lighter week. */
+    fun undoLastAction() {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            if (undoDeload) {
+                val previous = undoBlockStart
+                repo.updateProfile { p -> p.copy(coach = p.coach.copy(blockStartDay = previous)) }
+                undoDeload = false
+            } else if (undoRoutines.isNotEmpty()) {
+                val restored = undoRoutines
+                restored.forEach { repo.saveRoutine(it.copy(updatedAt = System.currentTimeMillis())) }
+                undoSwapEvent?.let(service::forgetSuggestion)
+                undoRoutines = emptyList(); undoSwapEvent = null
+                val routines = repo.routines()
+                _state.update { s -> s.copy(routineCounts = s.routineCounts.keys.associateWith { slug ->
+                    routines.count { r -> r.items.any { it.slug == slug } } }) }
+            }
         }
     }
 
@@ -260,12 +290,17 @@ fun WorkoutSummaryScreen(
     LaunchedEffect(state.routineSaved) { if (state.routineSaved) snackbar.showSnackbar(savedText) }
     val swapText = stringResource(R.string.tre_swap_done, state.message ?: 0)
     val deloadText = stringResource(R.string.tre_deload_started)
+    val undoLabel = stringResource(R.string.trpg_undo)
     val snackScope = rememberCoroutineScope()
     LaunchedEffect(state.message) {
         val m = state.message ?: return@LaunchedEffect
         viewModel.consumeMessage()
         // Shown outside the effect so consuming the message does not cancel it.
-        snackScope.launch { snackbar.showSnackbar(if (m < 0) deloadText else swapText) }
+        snackScope.launch {
+            // One tap takes it back (audit P2-14).
+            if (snackbar.showSnackbar(if (m < 0) deloadText else swapText, undoLabel, duration = SnackbarDuration.Long) ==
+                SnackbarResult.ActionPerformed) viewModel.undoLastAction()
+        }
     }
     var confirmSwap by remember { mutableStateOf<Pair<String, String>?>(null) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }

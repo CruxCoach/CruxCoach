@@ -121,6 +121,16 @@ fun WorkoutPlayerScreen(
                 SnackbarResult.ActionPerformed) viewModel.forgetInjury(injuryId)
         }
     }
+    // "Wie geplant" with Undo: today's trim comes back in one tap.
+    val asPlannedUndo = state.asPlannedUndo
+    LaunchedEffect(asPlannedUndo) {
+        if (asPlannedUndo == null) return@LaunchedEffect
+        val text = resources.getString(R.string.trpg_dayform_back)
+        snackScope.launch {
+            val result = snackbar.showSnackbar(text, resources.getString(R.string.trpg_undo), duration = SnackbarDuration.Long)
+            if (result == SnackbarResult.ActionPerformed) viewModel.undoAsPlanned() else viewModel.consumeAsPlannedUndo()
+        }
+    }
     // "Exercise ended" with Undo: one tap to end, one to take it back.
     val ended = state.endedUndo
     LaunchedEffect(ended) {
