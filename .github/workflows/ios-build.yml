@@ -10,6 +10,7 @@ on:
   push:
     branches:
       - 'feat/0.2.3-ios-parity'
+      - 'feat/0.2.4-ios-parity'
   workflow_dispatch:
 
 permissions:
@@ -20,9 +21,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # :shared gained iOS targets and portability fixes, so Android must be re-proven.
-  # Same commands as pr-ci.yml, plus the new module's JVM tests.
-  android-compat:
+  # The Android side (shared + androidApp unit tests) is proven by the
+  # "Feature APK request" run on every feat/** push; this job adds what only the
+  # iOS branch has: the :appcore JVM tests and the generated-strings gate.
+  appcore-jvm:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -36,13 +38,11 @@ jobs:
           cache: gradle
       - name: Generated iOS strings are current
         run: python3 scripts/android_strings_to_ios.py --check
-      - name: Unit tests
-        run: ./gradlew :shared:testDebugUnitTest :appcore:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
+      - name: appcore unit tests
+        run: ./gradlew :appcore:testDebugUnitTest --console=plain
       - name: Report failing tests
         if: failure()
         run: python3 scripts/ci_test_failures.py
-      - name: Compile debug APK
-        run: ./gradlew :androidApp:assembleDebug --console=plain
 
   ios:
     runs-on: macos-15
@@ -99,7 +99,9 @@ jobs:
           APP="build/device/Build/Products/Release-iphoneos/CruxCoach.app"
           test -d "$APP"
           rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/
-          NAME="CruxCoach-0.2.3-${GITHUB_SHA:0:12}-UNSIGNED.ipa"
+          VERSION="$(sed -n 's/^ *MARKETING_VERSION: *"\(.*\)"/\1/p' project.yml | head -1)"
+          test -n "$VERSION"
+          NAME="CruxCoach-${VERSION}-${GITHUB_SHA:0:12}-UNSIGNED.ipa"
           zip -qry "$NAME" Payload
           shasum -a 256 "$NAME" | tee "$NAME.sha256"
           lipo -info "Payload/CruxCoach.app/CruxCoach"

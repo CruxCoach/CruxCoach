@@ -56,7 +56,8 @@ def render(values_dir: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-SPEC = re.compile(r"%(\d+\$)?[-0-9.]*[@ld%]+")
+# One conversion each: %@, %ld, %f or %%. Letters after it are text ("%1$@last" is a German compound).
+SPEC = re.compile(r"%(\d+\$)?[-0-9.]*(?:@|ld|f|%)")
 
 
 def specifiers(text: str) -> list:
