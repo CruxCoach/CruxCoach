@@ -70,8 +70,10 @@ data class PlayerPage(
     val sets: List<ExerciseSet>,
 ) {
     val key: List<Int> get() = blockIndexes
-    val done: Int get() = sets.count { it.isCompleted && it.setType != SetType.WARMUP }
-    val total: Int get() = sets.count { it.setType != SetType.WARMUP }
+    /** Work sets; a warm-up exercise (only warm-up rows) counts those instead ("0 of 0 sets" on the strip). */
+    private val counted: List<ExerciseSet> get() = sets.filter { it.setType != SetType.WARMUP }.ifEmpty { sets }
+    val done: Int get() = counted.count { it.isCompleted }
+    val total: Int get() = counted.size
     val open: Boolean get() = sets.any { !it.isCompleted }
 }
 

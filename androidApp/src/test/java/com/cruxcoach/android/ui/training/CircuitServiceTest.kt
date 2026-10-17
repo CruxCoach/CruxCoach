@@ -75,6 +75,11 @@ class CircuitServiceTest : AthleteScreenTest() {
     @Test
     fun `warm-ups of circuit members come before the first round`() {
         val id = start(listOf(RoutineItem("warmup.arm_circles", sets = 1, repsMin = 10, repsMax = 10, restS = 15, warmup = true)) + circuit)
+        // No automatic ramp inside a circuit: its first round warms up (device test 2026-10-17: four ramp sets
+        // with rests of their own stood before the first round).
+        assertTrue(repo.setsFor(id).none { it.setType == SetType.WARMUP && it.exerciseSlug != "warmup.arm_circles" })
+        // One added by hand still carries the circuit and is played before the first round.
+        service.addWarmupRamp(repo.setsFor(id).first { it.exerciseSlug == "pull.pull_up" && it.setType == SetType.WORK && it.setIndex == 0 })
         val sets = repo.setsFor(id)
         val ramps = sets.filter { it.setType == SetType.WARMUP && it.exerciseSlug != "warmup.arm_circles" }
         assertTrue("$sets", ramps.any { it.exerciseSlug == "pull.pull_up" })

@@ -427,6 +427,121 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         }
     }
 
+    // ── 2026-10-17: one page per exercise, circuits ──
+
+    private fun page(name: String, vm: com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel, ready: () -> Unit) =
+        shoot(name, { ready(); Thread.sleep(400) }) {
+            com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> })
+        }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun pageActive() {
+        val vm = pullPlayer()
+        page("page-active", vm) { waitForTag("player_row_active") }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun pageRestAfterMissedReps() {
+        val vm = pullPlayer()
+        vm.completeAs(3.0)
+        page("page-rest", vm) { compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.restArmed && vm.state.value.adjustment != null } }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h640dp-xhdpi")
+    fun pageRestSmallPhone() {
+        val vm = pullPlayer()
+        vm.completeCurrent()
+        page("page-rest-640", vm) { compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.restArmed } }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun pageEditDoneSet() {
+        val vm = pullPlayer()
+        vm.completeCurrent()
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.restArmed }
+        val done = vm.state.value.sets.first { it.isCompleted }
+        vm.edit(done.id)
+        page("page-edit", vm) { compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.editingId == done.id } }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun pageCircuit() {
+        seedActive()
+        val items = com.cruxcoach.athlete.logic.Circuits.link(com.cruxcoach.athlete.logic.Circuits.link(listOf(
+            com.cruxcoach.athlete.model.RoutineItem("pull.pull_up", sets = 3, repsMin = 6, repsMax = 6),
+            com.cruxcoach.athlete.model.RoutineItem("push.push_up", sets = 3, repsMin = 12, repsMax = 12),
+            com.cruxcoach.athlete.model.RoutineItem("core.dead_bug", sets = 3, repsMin = 10, repsMax = 10)), 0, service.catalog), 1, service.catalog)
+        service.startWorkout(com.cruxcoach.athlete.model.Routine("c", "Zirkel", items = items), null)
+        val vm = com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service).tracked()
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.phase == com.cruxcoach.android.ui.training.player.PlayerPhase.SET }
+        vm.completeCurrent()
+        page("page-circuit", vm) { compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.sets.count { it.isCompleted } == 1 } }
+    }
+
+    private fun oneSetDone(): com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel {
+        seedActive()
+        service.startWorkout(com.cruxcoach.athlete.model.Routine("o", "Kurz", items = listOf(
+            com.cruxcoach.athlete.model.RoutineItem("push.push_up", sets = 1, repsMin = 12, repsMax = 12))), null)
+        val vm = com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service).tracked()
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.phase == com.cruxcoach.android.ui.training.player.PlayerPhase.SET }
+        vm.completeCurrent()
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.phase == com.cruxcoach.android.ui.training.player.PlayerPhase.COMPLETE }
+        return vm
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun pageLastSet() {
+        val vm = oneSetDone()
+        page("page-last-set", vm) { waitForTag("player_all_done") }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun pageComplete() {
+        val vm = oneSetDone()
+        vm.backToActive()
+        page("page-complete", vm) { waitForTag("player_complete") }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun todayCircuit() {
+        seedActive()
+        repo.updateProfile { it.copy(equipment = setOf(com.cruxcoach.athlete.catalog.EquipmentV2.NONE, com.cruxcoach.athlete.catalog.EquipmentV2.MAT,
+            com.cruxcoach.athlete.catalog.EquipmentV2.PULL_UP_BAR, com.cruxcoach.athlete.catalog.EquipmentV2.DUMBBELL)) }
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.suggestion != null }
+        vm.chooseFocus(com.cruxcoach.athlete.logic.SuggestionFocus.PULL_PUSH)
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.circuitPossible }
+        vm.chooseCircuit(true)
+        shoot("today-circuit", { compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.circuitToday }; Thread.sleep(400) }) {
+            TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm)
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun editorCircuit() {
+        seedActive()
+        val vm = com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel(service).tracked()
+        shoot("editor-circuit", {
+            compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.catalog.all.isNotEmpty() }
+            vm.addSlugs(listOf("pull.pull_up", "push.push_up", "core.dead_bug"))
+            compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.items.size == 3 }
+            vm.link(vm.state.value.items[0].key)
+            vm.link(vm.state.value.items[1].key)
+            compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.items.all { it.item.circuit != null } }
+            Thread.sleep(300)
+        }) { com.cruxcoach.android.ui.training.workouts.RoutineEditorScreen(null, null, {}, {}, viewModel = vm) }
+    }
+
     @Test
     @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
     fun editorTyped() {

@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,6 +79,7 @@ class PageActions(
  * target, the active row is open (load, result chips), planned rows can be tapped to do them next.
  * A circuit shows its rounds with every member's set. The rest is a bar below, not a screen.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ExercisePage(
     page: PlayerPage,
@@ -103,11 +105,16 @@ fun ExercisePage(
         if (!shown) listState.animateScrollToItem(index - 1)
     }
     LazyColumn(modifier.fillMaxSize().testTag("player_set_view"), state = listState,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)) {
-        item(key = "header") {
-            if (page.circuit != null) CircuitHeader(page, state, language, actions)
-            else ExerciseHeader(page, state, active, language, actions, canSwap, warmupAvailable, learningBadge)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+        // The exercise (or circuit round) stays on top while the sets scroll: after the rest scrolled the
+        // next set into view, the name had gone (render review 2026-10-17).
+        stickyHeader(key = "header") {
+            Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
+                if (page.circuit != null) CircuitHeader(page, state, actions)
+                else ExerciseHeader(page, state, active, language, actions, canSwap, warmupAvailable)
+            }
         }
+        item(key = "intro") { PageIntro(page, state, active, language, learningBadge) }
         if (page.circuit != null) {
             val rounds = page.sets.filter { it.setType != SetType.WARMUP }.map { it.setIndex }.distinct().sorted()
             val warmups = page.sets.filter { it.setType == SetType.WARMUP }
@@ -134,13 +141,13 @@ fun ExercisePage(
     }
 }
 
-/** Row position of a set in the lazy list (header first), for scrolling it into view. */
+/** Row position of a set in the lazy list (header and intro first), for scrolling it into view. */
 private fun rowIndexOf(page: PlayerPage, setId: String?): Int {
     if (setId == null) return 0
     val warmups = page.sets.filter { it.setType == SetType.WARMUP }
     val work = page.sets.filter { it.setType != SetType.WARMUP }
-    if (warmups.any { it.id == setId }) return 1
-    val offset = 1 + (if (warmups.isNotEmpty()) 1 else 0)
+    if (warmups.any { it.id == setId }) return 2
+    val offset = 2 + (if (warmups.isNotEmpty()) 1 else 0)
     if (page.circuit == null) return offset + work.indexOfFirst { it.id == setId }.coerceAtLeast(0)
     // Circuits: one label row per round before its sets.
     val rounds = work.map { it.setIndex }.distinct().sorted()
@@ -154,6 +161,18 @@ private fun rowIndexOf(page: PlayerPage, setId: String?): Int {
 
 // ── Header ───────────────────────────────────────────────────────────
 
+/** "It hurts" in the header, compact so the name keeps its room. */
+@Composable
+private fun PainChip(actions: PageActions) {
+    AssistChip(
+        onClick = actions.onPain,
+        label = { Text(stringResource(R.string.trp2_pain_button), maxLines = 1) },
+        leadingIcon = { Icon(Icons.Default.Healing, null, Modifier.size(18.dp)) },
+        modifier = Modifier.testTag("player_pain"),
+    )
+}
+
+/** Sticky: thumbnail, name, "Pull · set 2 of 4", side; "it hurts" and the exercise menu. */
 @Composable
 private fun ExerciseHeader(
     page: PlayerPage,
@@ -163,116 +182,112 @@ private fun ExerciseHeader(
     actions: PageActions,
     canSwap: Boolean,
     warmupAvailable: Boolean,
-    learningBadge: @Composable (slug: String, modifier: Modifier) -> Unit,
 ) {
     val first = page.sets.firstOrNull() ?: return
     val def = state.def(first.exerciseSlug) ?: return
-    val units = state.profile.units
-    Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(categoryLabel(def.category), style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(def, Modifier.size(40.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(def.name(language), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).clickable(role = Role.Button) { actions.onOpenExercise(def.slug) }
+                    .testTag("player_exercise_name"))
+            ExerciseMenu(def, page, state, language, actions, canSwap, warmupAvailable)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Set x of y counts work sets only (warm-ups have their own row).
+            val position = active?.let { set ->
+                if (set.setType == SetType.WARMUP) stringResource(R.string.trpg_warmup_row,
+                    page.sets.filter { it.setType == SetType.WARMUP }.indexOfFirst { it.id == set.id } + 1,
+                    page.sets.count { it.setType == SetType.WARMUP })
+                else stringResource(R.string.trp_set_of, workNumberOf(page, set) ?: 1,
+                    page.sets.filter { it.setType != SetType.WARMUP && it.blockIndex == set.blockIndex }.map { it.setIndex }.distinct().size)
+            }
+            Text(listOfNotNull(categoryLabel(def.category), position).joinToString(" · "), style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).testTag("player_set_of"))
+            active?.side?.let { side ->
+                Surface(color = CruxCoachDesign.colors.brandAccent, shape = MaterialTheme.shapes.small) {
+                    Text(sideLabel(side).uppercase(), color = CruxCoachDesign.colors.onBrandAccent,
+                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp).testTag("player_side"))
+                }
+                Spacer(Modifier.width(8.dp))
+            }
             if (active != null && active.setType != SetType.WORK &&
                 !(active.setType == SetType.WARMUP && def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.WARMUP)) {
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.small) {
                     Text(setTypeLabel(active.setType), style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp).testTag("player_badge"))
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).testTag("player_badge"))
                 }
                 Spacer(Modifier.width(8.dp))
             }
-            if (page.open) {
-                AssistChip(
-                    onClick = actions.onPain,
-                    label = { Text(stringResource(R.string.trp2_pain_button)) },
-                    leadingIcon = { Icon(Icons.Default.Healing, null, Modifier.size(18.dp)) },
-                    modifier = Modifier.testTag("player_pain"),
-                )
-            }
-            ExerciseMenu(def, page, state, language, actions, canSwap, warmupAvailable)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(def, Modifier.size(48.dp))
-            Spacer(Modifier.width(12.dp))
-            Text(def.name(language), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f).clickable(role = Role.Button) { actions.onOpenExercise(def.slug) }
-                    .testTag("player_exercise_name"))
-        }
-        // Set x of y counts work sets only (warm-ups have their own row); the side of the active set.
-        active?.let { set ->
-            val position = state.current?.position
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                val workNumber = workNumberOf(page, set)
-                val workTotal = page.sets.filter { it.setType != SetType.WARMUP && it.blockIndex == set.blockIndex }
-                    .map { it.setIndex }.distinct().size
-                Text(
-                    if (set.setType == SetType.WARMUP) stringResource(R.string.trpg_warmup_row,
-                        page.sets.filter { it.setType == SetType.WARMUP }.indexOfFirst { it.id == set.id } + 1,
-                        page.sets.count { it.setType == SetType.WARMUP })
-                    else stringResource(R.string.trp_set_of, workNumber ?: position?.setNumber ?: 1, workTotal),
-                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).testTag("player_set_of"))
-                set.side?.let { side ->
-                    Surface(color = CruxCoachDesign.colors.brandAccent, shape = MaterialTheme.shapes.small) {
-                        Text(sideLabel(side).uppercase(), color = CruxCoachDesign.colors.onBrandAccent,
-                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).testTag("player_side"))
-                    }
-                }
-            }
-            if (set.setType == SetType.WORK) learningBadge(def.slug, Modifier.padding(top = 6.dp))
-        }
-        // What the rows do not show: per block, interval rhythm.
-        val details = listOfNotNull(
-            first.let { perBlockText(active ?: it, def, units) },
-            if (def.kind == ExerciseKind.INTERVAL) stringResource(R.string.trw_interval_format,
-                ((active ?: first).workS ?: def.defaults.workS?.toDouble() ?: 7.0).roundToInt(),
-                ((active ?: first).restBetweenS ?: def.defaults.restBetweenS?.toDouble() ?: 3.0).roundToInt(),
-                (active ?: first).repsPerSet ?: def.defaults.repsPerSet ?: 6) else null,
-        )
-        if (details.isNotEmpty()) {
-            Text(details.joinToString(" · "), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp).testTag("player_target_detail"))
+            if (page.open) PainChip(actions)
         }
     }
 }
 
+/** Below the header, scrolling away: the learning line, per-block load, interval rhythm, circuit members. */
 @Composable
-private fun CircuitHeader(page: PlayerPage, state: PlayerState, language: String, actions: PageActions) {
+private fun PageIntro(
+    page: PlayerPage,
+    state: PlayerState,
+    active: ExerciseSet?,
+    language: String,
+    learningBadge: @Composable (slug: String, modifier: Modifier) -> Unit,
+) {
+    val first = page.sets.firstOrNull() ?: return
+    val units = state.profile.units
+    Column(Modifier.fillMaxWidth()) {
+        if (page.circuit != null) {
+            Text(page.blockIndexes.mapNotNull { b -> page.sets.firstOrNull { it.blockIndex == b } }
+                .joinToString(" → ") { state.def(it.exerciseSlug)?.name(language) ?: it.exerciseSlug },
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 2.dp))
+        }
+        val set = active ?: first
+        val def = state.def(set.exerciseSlug) ?: return
+        if (active?.setType == SetType.WORK) learningBadge(def.slug, Modifier.padding(bottom = 4.dp))
+        val details = listOfNotNull(
+            perBlockText(set, def, units),
+            if (def.kind == ExerciseKind.INTERVAL) stringResource(R.string.trw_interval_format,
+                (set.workS ?: def.defaults.workS?.toDouble() ?: 7.0).roundToInt(),
+                (set.restBetweenS ?: def.defaults.restBetweenS?.toDouble() ?: 3.0).roundToInt(),
+                set.repsPerSet ?: def.defaults.repsPerSet ?: 6) else null,
+        )
+        if (details.isNotEmpty()) {
+            Text(details.joinToString(" · "), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp).testTag("player_target_detail"))
+        }
+    }
+}
+
+/** Sticky for circuits: the round, the rests, "it hurts". */
+@Composable
+private fun CircuitHeader(page: PlayerPage, state: PlayerState, actions: PageActions) {
     val work = page.sets.filter { it.setType != SetType.WARMUP }
     val rounds = work.map { it.setIndex }.distinct().sorted()
     val active = state.current?.set?.takeIf { c -> !c.isCompleted && c.blockIndex in page.blockIndexes }
     val round = (active?.let { a -> rounds.indexOf(a.setIndex) } ?: rounds.indexOfLast { r -> work.any { it.setIndex == r && it.isCompleted } })
         .coerceAtLeast(0) + 1
     val firstWork = work.firstOrNull()
-    Column(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
+        Text(stringResource(R.string.trpg_round_header, round, rounds.size.coerceAtLeast(1)),
+            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+            modifier = Modifier.testTag("player_round_header"))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.trpg_round_header, round, rounds.size.coerceAtLeast(1)),
-                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f).testTag("player_round_header"))
-            if (page.open) {
-                AssistChip(
-                    onClick = actions.onPain,
-                    label = { Text(stringResource(R.string.trp2_pain_button)) },
-                    leadingIcon = { Icon(Icons.Default.Healing, null, Modifier.size(18.dp)) },
-                    modifier = Modifier.testTag("player_pain"),
-                )
-            }
-        }
-        if (firstWork != null) {
-            Text(stringResource(R.string.trpg_circuit_rests, restText(firstWork.restS ?: 0), restText(firstWork.roundRestS ?: 0)),
+            Text(firstWork?.let { stringResource(R.string.trpg_circuit_rests, restText(it.restS ?: 0), restText(it.roundRestS ?: 0)) } ?: "",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("player_circuit_rests"))
+                modifier = Modifier.weight(1f).testTag("player_circuit_rests"))
+            if (page.open) PainChip(actions)
         }
-        // The members in order, each tappable for its exercise page in the catalogue.
-        Text(page.blockIndexes.mapNotNull { b -> page.sets.firstOrNull { it.blockIndex == b } }
-            .joinToString(" → ") { state.def(it.exerciseSlug)?.name(language) ?: it.exerciseSlug },
-            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 2.dp))
     }
 }
 
 @Composable
 private fun restText(seconds: Int): String =
-    if (seconds >= 60 && seconds % 60 == 0) formatClock(seconds) else stringResource(R.string.tr_format_seconds, seconds)
+    if (seconds >= 60) formatClock(seconds) else stringResource(R.string.tr_format_seconds, seconds)
 
 @Composable
 private fun ExerciseMenu(
@@ -345,8 +360,11 @@ private fun ExerciseMenu(
 @Composable
 private fun rowLabel(page: PlayerPage, set: ExerciseSet): String {
     val side = set.side?.let { stringResource(if (it == Side.LEFT) R.string.trw_side_short_left else R.string.trw_side_short_right) }
-    val base = if (set.setType == SetType.WARMUP) stringResource(R.string.trw_warmup_short)
-        else (workNumberOf(page, set) ?: 1).toString()
+    val base = when {
+        set.setType == SetType.WARMUP -> stringResource(R.string.trw_warmup_short)
+        page.circuit != null -> null  // the round label above says which round
+        else -> (workNumberOf(page, set) ?: 1).toString()
+    }
     return listOfNotNull(base, side).joinToString(" ")
 }
 
@@ -442,7 +460,7 @@ private fun resultText(set: ExerciseSet, def: ExerciseDefinition): String? = whe
 private fun RowLabel(text: String, emphasis: Boolean = false) {
     Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = if (emphasis) FontWeight.Bold else FontWeight.Normal,
         color = if (emphasis) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1, modifier = Modifier.width(44.dp))
+        maxLines = 1, modifier = Modifier.width(if (text.isEmpty()) 8.dp else 44.dp))
 }
 
 @Composable
@@ -496,22 +514,7 @@ private fun LatestDoneExtras(set: ExerciseSet, def: ExerciseDefinition, state: P
     val units = state.profile.units
     val asks = set.setType == SetType.WORK && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG)
     Column(Modifier.padding(start = 48.dp, bottom = 4.dp)) {
-        if (asks) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.trpg_reserve_question), style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(end = 8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf(0, 1, 2, 3).forEach { value ->
-                        FilterChip(
-                            selected = set.rir == value,
-                            onClick = { actions.onReserve(set.id, if (set.rir == value) null else value) },
-                            label = { Text(if (value == 3) stringResource(R.string.trw_rir_3plus) else value.toString()) },
-                            modifier = Modifier.heightIn(min = 48.dp).testTag("player_rir_$value"),
-                        )
-                    }
-                }
-            }
-        }
+        if (asks) ReserveChoice(set, actions, "player_rir_", Modifier.padding(bottom = 4.dp))
         state.feedback?.takeIf { it.def.slug == def.slug }?.let { fb ->
             val resources = LocalResources.current
             Column(Modifier.testTag("player_feedback")) {
@@ -554,18 +557,7 @@ private fun EditingRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPa
             }
             SetSteppers(set, def, units, state.profile.smallestIncrementKg, actions.onUpdate, Modifier.padding(top = 8.dp))
             if (set.setType != SetType.WARMUP && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG)) {
-                Text(stringResource(R.string.trpg_reserve_question), style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(0, 1, 2, 3).forEach { value ->
-                        FilterChip(
-                            selected = set.rir == value,
-                            onClick = { actions.onReserve(set.id, if (set.rir == value) null else value) },
-                            label = { Text(if (value == 3) stringResource(R.string.trw_rir_3plus) else value.toString()) },
-                            modifier = Modifier.heightIn(min = 48.dp).testTag("player_review_rir_$value"),
-                        )
-                    }
-                }
+                ReserveChoice(set, actions, "player_review_rir_", Modifier.padding(top = 12.dp))
             }
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 TextButton(onClick = { actions.onReopen(set.id) }, modifier = Modifier.heightIn(min = 48.dp).testTag("player_reopen")) {
@@ -616,19 +608,12 @@ private fun ActiveRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPag
                     Text(stringResource(R.string.trpg_other_result), style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
                     var typing by remember { mutableStateOf(false) }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Equal widths in one row: buttons kept a minimum width and pushed "…" into a second line.
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         chips.forEach { value ->
-                            OutlinedButton(
-                                onClick = { actions.onCompleteAs(value.toDouble()) },
-                                contentPadding = PaddingValues(horizontal = 12.dp),
-                                modifier = Modifier.heightIn(min = 48.dp).testTag("player_result_$value"),
-                            ) { Text(value.toString(), style = MaterialTheme.typography.titleMedium) }
+                            NumberChip(value.toString(), "player_result_$value", Modifier.weight(1f)) { actions.onCompleteAs(value.toDouble()) }
                         }
-                        OutlinedButton(
-                            onClick = { typing = true },
-                            contentPadding = PaddingValues(horizontal = 12.dp),
-                            modifier = Modifier.heightIn(min = 48.dp).testTag("player_result_more"),
-                        ) { Text("…", style = MaterialTheme.typography.titleMedium) }
+                        NumberChip("…", "player_result_more", Modifier.weight(1f), description = stringResource(R.string.trpg_other_number)) { typing = true }
                     }
                     if (typing) {
                         NumberEntryDialog(
@@ -645,11 +630,56 @@ private fun ActiveRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPag
     }
 }
 
+/** A big, equal-width choice: result numbers, reserve answers. */
+@Composable
+private fun NumberChip(
+    text: String,
+    tag: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    description: String? = null,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent,
+        border = androidx.compose.foundation.BorderStroke(1.dp,
+            if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline),
+        modifier = modifier.height(48.dp).semantics {
+            this.selected = selected
+            description?.let { contentDescription = it }
+        }.testTag(tag),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(text, style = MaterialTheme.typography.titleMedium, maxLines = 1,
+                color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+/** "How many more?" with 0, 1, 2, 3+ in one row; a second tap takes the answer back. */
+@Composable
+private fun ReserveChoice(set: ExerciseSet, actions: PageActions, tagPrefix: String, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.trpg_reserve_question), style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(bottom = 4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            listOf(0, 1, 2, 3).forEach { value ->
+                NumberChip(if (value == 3) stringResource(R.string.trw_rir_3plus) else value.toString(), "$tagPrefix$value",
+                    Modifier.weight(1f), selected = set.rir == value) {
+                    actions.onReserve(set.id, if (set.rir == value) null else value)
+                }
+            }
+        }
+    }
+}
+
 /** "Target 8 reps", "Target 10 s", or the climbing rounds. */
 @Composable
 private fun targetLine(set: ExerciseSet, def: ExerciseDefinition): String? = when (def.kind) {
     ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> if (set.setType == SetType.TEST) null
-        else (set.targetReps ?: set.reps)?.let { stringResource(R.string.trw_target_reps, it) }
+        else (set.targetReps ?: set.reps)?.let { stringResource(R.string.trpg_target, pluralStringResource(R.plurals.trp_reps_big, it, it)) }
     ExerciseKind.TIME, ExerciseKind.HANG -> if (set.setType == SetType.TEST) null
         else (set.targetDurationS ?: set.durationS ?: def.defaults.durationS?.toDouble())?.roundToInt()?.let { stringResource(R.string.trw_target_seconds, it) }
     ExerciseKind.CLIMB, ExerciseKind.INTERVAL -> null

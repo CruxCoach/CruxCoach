@@ -327,7 +327,9 @@ class AthleteService @Inject constructor(
                 com.cruxcoach.athlete.catalog.LoadDomain.FINGER in d.domains && d.load != com.cruxcoach.athlete.catalog.LoadMode.NONE
             }
         }
-        sets.filter { it.setType == SetType.WORK }
+        // Not inside a circuit: its first round warms up (device test 2026-10-17: three ramp sets of a light
+        // dumbbell press and a pull-up warm-up stood before the first round).
+        sets.filter { it.setType == SetType.WORK && it.circuit == null }
             .sortedWith(compareBy({ it.blockIndex }, { it.setIndex }))
             .groupBy { catalog.fallbackFor(it.exerciseSlug).category }
             .filterKeys { it in ramped && !(it == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.FINGER && fingerCovered) }

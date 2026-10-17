@@ -37,5 +37,8 @@
         <item quantity="other">%d exercises</item>
     </plurals>
     <string name="trpg_minutes">%1$d min</string>
+    <string name="trpg_target">Target %1$s</string>
+    <string name="trpg_next_member">Next: %1$s</string>
+    <string name="trpg_round_rest">Rest after round %1$d</string>
     <string name="trpg_seconds_of">%1$d/%2$d s</string>
 </resources>
