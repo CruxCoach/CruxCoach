@@ -111,9 +111,15 @@ fun WorkoutPlayerScreen(
     }
     LaunchedEffect(painResult) {
         val text = painText ?: return@LaunchedEffect
+        val injuryId = painResult?.injuryId
         viewModel.consumePainResult()
         // Shown outside the effect: consuming the result restarts the effect and would cancel it.
-        snackScope.launch { snackbar.showSnackbar(text) }
+        snackScope.launch {
+            if (injuryId == null) { snackbar.showSnackbar(text); return@launch }
+            // A saved injury shapes every later suggestion: one tap takes it back (audit W9).
+            if (snackbar.showSnackbar(text, resources.getString(R.string.trpg_undo), duration = SnackbarDuration.Long) ==
+                SnackbarResult.ActionPerformed) viewModel.forgetInjury(injuryId)
+        }
     }
     // "Exercise ended" with Undo: one tap to end, one to take it back.
     val ended = state.endedUndo

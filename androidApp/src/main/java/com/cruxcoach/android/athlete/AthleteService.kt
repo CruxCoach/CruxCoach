@@ -876,7 +876,8 @@ class AthleteService @Inject constructor(
             if (remember) repo.saveInjury(injury)
             when (action) {
                 PainAction.SWAP -> {
-                    val alternative = painAlternative(def, repo.activeInjuries() + (if (remember) emptyList<Injury>() else listOf(injury)))
+                    // What today's check-in says hurts counts too, as on the card and in the player's swap (audit W9).
+                    val alternative = painAlternative(def, injuriesToday() + (if (remember) emptyList<Injury>() else listOf(injury)))
                     if (alternative == null) {
                         lighten(def, open)
                         return@transaction PainOutcome(PainAction.LIGHTER, injuryId = injury.id.takeIf { remember })
