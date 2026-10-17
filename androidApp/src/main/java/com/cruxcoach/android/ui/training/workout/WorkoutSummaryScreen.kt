@@ -90,7 +90,15 @@ data class SummaryState(
     val fuelLeft: FuelLeft? = null,
     /** What today's form trimmed in this training, while it was not taken back. */
     val dayForm: com.cruxcoach.athlete.logic.ReadinessModifier? = null,
+    /** What the athlete changed in today's suggestion: asked once "suggest it like this from now on?" (comparison review #3). */
+    val keep: List<com.cruxcoach.athlete.logic.PreferenceLearning.Change> = emptyList(),
+    /** The answer just given, for the snackbar and "Rückgängig". */
+    val keepAnswer: KeepAnswer? = null,
 )
+
+/** "Ja" ([until] set) or "Nur heute" for [changes]; [eventIds] go again with "Rückgängig". */
+data class KeepAnswer(val changes: List<com.cruxcoach.athlete.logic.PreferenceLearning.Change>, val eventIds: List<String>,
+                      val until: kotlinx.datetime.LocalDate?)
 
 data class FuelLeft(val dayLoad: com.cruxcoach.athlete.logic.DayLoad, val carbsG: Int, val proteinG: Int)
 
@@ -164,11 +172,36 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                     routineCounts = slugs.associateWith { s -> routines.count { r -> r.items.any { i -> i.slug == s } } },
                     ownLoads = workout?.let { w -> runCatching { service.ownLoadsOf(w) }.getOrNull() }.orEmpty(),
                     fingersFreeOn = fingersFreeOn, fuelLeft = fuelLeft, dayForm = service.dayForm(workoutId),
+                    keep = workout?.let { service.keepQuestion(it) }.orEmpty(),
                 )
             }
             if (workout != null) logCompletion(workout, sets)
         }
     }
+
+    /**
+     * The answer to "suggest it like this from now on?": [keep] keeps the picks until the block ends (the chosen
+     * exercises lead their slots, the replaced ones rest); "only today" changes nothing beyond the light learning.
+     */
+    fun answerKeep(keep: Boolean) {
+        val workout = _state.value.workout ?: return
+        val changes = _state.value.keep.takeIf { it.isNotEmpty() } ?: return
+        _state.update { it.copy(keep = emptyList()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val answer = if (keep) service.keepChoices(workout, changes).let { (ids, until) -> KeepAnswer(changes, ids, until) }
+                else KeepAnswer(changes, listOfNotNull(service.keepTodayOnly(workout)), null)
+            _state.update { it.copy(keepAnswer = answer) }
+        }
+    }
+
+    /** "Rückgängig": the answer goes from the ledger and the question is back. */
+    fun undoKeep(answer: KeepAnswer) {
+        _state.update { it.copy(keepAnswer = null, keep = answer.changes) }
+        viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); answer.eventIds.forEach(service::forgetSuggestion) }
+    }
+
+    fun consumeKeepAnswer() = _state.update { it.copy(keepAnswer = null) }
 
     /**
      * A training started from today's suggestion tells the coach how much of
@@ -302,6 +335,17 @@ fun WorkoutSummaryScreen(
                 SnackbarResult.ActionPerformed) viewModel.undoLastAction()
         }
     }
+    // "Künftig so" answered: one line with "Rückgängig" (comparison review #3).
+    val keepUntilText = stringResource(R.string.trk_kept_until, state.keepAnswer?.until?.let { com.cruxcoach.android.ui.training.coach.formatIsoDay(it.toString()) } ?: "")
+    val keepTodayText = stringResource(R.string.trk_today_only_done)
+    LaunchedEffect(state.keepAnswer) {
+        val answer = state.keepAnswer ?: return@LaunchedEffect
+        viewModel.consumeKeepAnswer()
+        snackScope.launch {
+            if (snackbar.showSnackbar(if (answer.until != null) keepUntilText else keepTodayText, undoLabel, duration = SnackbarDuration.Long) ==
+                SnackbarResult.ActionPerformed) viewModel.undoKeep(answer)
+        }
+    }
     var confirmSwap by remember { mutableStateOf<Pair<String, String>?>(null) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.deleted) { if (state.deleted) onBack() }
@@ -334,6 +378,7 @@ fun WorkoutSummaryScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { RewardHeader(workout, summary, state) }
+            if (state.keep.isNotEmpty()) item(key = "keep") { KeepCard(state, language, onAnswer = viewModel::answerKeep) }
             if (state.fingersFreeOn != null || state.fuelLeft != null || state.dayForm != null) {
                 item(key = "after") { AfterTraining(state, onOpenFuel) }
             }
@@ -569,6 +614,35 @@ private fun TrendRow(
                     }
                 }
                 TrendKind.NONE, TrendKind.PROGRESSING -> Unit
+            }
+        }
+    }
+}
+
+/**
+ * "2 exercises swapped – suggest it like this from now on?" (comparison review #3): only after a training whose
+ * suggestion the athlete changed, once. "Yes" keeps the picks until the block ends, "only today" changes nothing.
+ */
+@Composable
+private fun KeepCard(state: SummaryState, language: String, onAnswer: (Boolean) -> Unit) {
+    val changes = state.keep
+    val swapped = changes.count { it.chosen != null }
+    val left = changes.size - swapped
+    val what = when {
+        swapped > 0 && left > 0 -> pluralStringResource(R.plurals.trk_swapped, swapped, swapped) + ", " +
+            pluralStringResource(R.plurals.trk_left_out_more, left, left)
+        swapped > 0 -> pluralStringResource(R.plurals.trk_swapped, swapped, swapped)
+        else -> pluralStringResource(R.plurals.trk_left_out, left, left)
+    }
+    val details = changes.map { c -> keptChangeText(c.replaced, c.chosen, state.catalog, language) }
+    OutlinedCard(Modifier.fillMaxWidth().testTag("summary_keep")) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp)) {
+            Text(stringResource(R.string.trk_question, what), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(end = 8.dp))
+            Text(details.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp, end = 8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { onAnswer(false) }, modifier = Modifier.testTag("summary_keep_today")) { Text(stringResource(R.string.trk_today_only)) }
+                TextButton(onClick = { onAnswer(true) }, modifier = Modifier.testTag("summary_keep_yes")) { Text(stringResource(R.string.trc_yes)) }
             }
         }
     }

@@ -414,3 +414,9 @@ fun EmptyHint(text: String, modifier: Modifier = Modifier) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
+
+/** "Ring rows instead of pull-ups" / "Without plank": one choice the athlete changed or kept (comparison review #3). */
+@Composable
+internal fun keptChangeText(replaced: String, chosen: String?, catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog, language: String): String =
+    if (chosen != null) stringResource(R.string.trk_instead, catalog.fallbackFor(chosen).name(language), catalog.fallbackFor(replaced).name(language))
+    else stringResource(R.string.trk_without, catalog.fallbackFor(replaced).name(language))

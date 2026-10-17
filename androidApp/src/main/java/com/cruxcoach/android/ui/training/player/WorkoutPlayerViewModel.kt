@@ -719,7 +719,10 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             WarmupRamp.build(def, first.loadKg, st.bodyweight ?: first.bodyweightKg, st.profile.smallestIncrementKg).isNotEmpty()
     }
 
-    /** The page's exercise leaves the training with all its sets (asked first on screen). */
+    /**
+     * The page's exercise leaves the training with all its sets (asked first on screen). The ledger notes it as
+     * removed – no dislike, but the summary asks whether the suggestion should go without it from now on.
+     */
     fun removeExercise() {
         val st = _state.value
         val page = st.page ?: return
@@ -729,7 +732,11 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         val slugs = page.blockIndexes.mapNotNull { b -> page.sets.firstOrNull { it.blockIndex == b }?.exerciseSlug }
         _state.update { s -> s.copy(sets = s.sets.filterNot { o -> page.sets.any { it.id == o.id } },
             endedUndo = EndedExercise(slugs, page.sets, circuit = page.circuit != null, kind = EndKind.REMOVED)) }
-        enqueue { page.blockIndexes.forEach { service.removeBlock(workoutId, it) } }
+        enqueue {
+            page.blockIndexes.forEach { service.removeBlock(workoutId, it) }
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, com.cruxcoach.athlete.logic.PreferenceLearning.REMOVED, slugs, workoutId = workoutId)
+                ?.let { id -> page.sets.firstOrNull()?.id?.let { undoEvents[it] = id } }
+        }
     }
 
     /** "Klimmzüge 5x5 +20 kg" typed into the open training (owner 2026-10-15). */

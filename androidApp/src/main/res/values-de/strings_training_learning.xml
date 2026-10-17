@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- „Künftig so?“ nach dem Training (Vergleichsbericht #3) -->
+    <plurals name="trk_swapped">
+        <item quantity="one">%1$d Übung getauscht</item>
+        <item quantity="other">%1$d Übungen getauscht</item>
+    </plurals>
+    <plurals name="trk_left_out">
+        <item quantity="one">%1$d Übung weggelassen</item>
+        <item quantity="other">%1$d Übungen weggelassen</item>
+    </plurals>
+    <plurals name="trk_left_out_more">
+        <item quantity="one">%1$d weggelassen</item>
+        <item quantity="other">%1$d weggelassen</item>
+    </plurals>
+    <string name="trk_question">%1$s – künftig so vorschlagen?</string>
+    <string name="trk_today_only">Nur heute</string>
+    <string name="trk_instead">%1$s statt %2$s</string>
+    <string name="trk_without">Ohne %1$s</string>
+    <string name="trk_kept_until">Bis %1$s so vorgeschlagen</string>
+    <string name="trk_today_only_done">Nur heute – spätere Vorschläge werden wie bisher gewählt</string>
+    <string name="trlr_kept">Nach dem Training übernommen</string>
+    <string name="trlr_kept_until">Bis %1$s</string>
+    <string name="tre_reason_kept">Übungen, die du nach einem Training übernommen hast, kommen bis zum Blockende zuerst.</string>
+</resources>

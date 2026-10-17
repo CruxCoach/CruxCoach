@@ -15,6 +15,7 @@ import kotlinx.datetime.plus
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 /**
  * What the athlete's behaviour says about their preferences, from the
@@ -233,6 +234,105 @@ object PreferenceLearning {
         // At most one rejection per exercise and day (the strongest): an older player logged a skip for
         // every set it moved past, which rested an exercise for three weeks after one session.
         return rejections.mapValues { (_, all) -> all.groupBy { it.first }.map { (day, rows) -> day to rows.maxOf { it.second } } }
+    }
+
+    // ── "From now on like this?" after a training (comparison review #3) ──
+
+    /**
+     * Ledger [SuggestionEventKind.FEEDBACK] focus for "künftig so" after a training: slugs = [replaced, chosen], or
+     * [left out] alone; value = the epoch day the choice holds until ([keepUntil]). The chosen exercise is then the
+     * preferred pick of its slot, the replaced one rests – both until that day.
+     */
+    const val KEEP_CHOICE = "keep_choice"
+    /** "Nur heute": the question of this training is answered; its swaps teach the coach as lightly as always. */
+    const val KEEP_TODAY_ONLY = "keep_today_only"
+    /** Ledger FEEDBACK focus for an exercise removed from a running training (slugs = it); teaches nothing by itself. */
+    const val REMOVED = "removed"
+    /** A kept choice holds at least this long (and to the end of the training block when that is later). */
+    const val KEEP_MIN_DAYS = 21
+
+    /** One exercise of a suggestion the athlete changed: swapped for [chosen], or left out ([chosen] null). */
+    data class Change(val replaced: String, val chosen: String?)
+
+    /**
+     * What the athlete changed in the suggestion training [workoutId] was started from, from that day's ledger:
+     * swaps and "leave out today" on the card before the start, swaps, skips and removals in the training. A swap back
+     * cancels out, a swap of a swap counts once from the suggested exercise. Card changes an earlier training of the
+     * day already asked about do not count again; only the suggestion's own exercises count.
+     */
+    fun changes(dayEvents: List<SuggestionEvent>, workoutId: String): List<Change> {
+        val sorted = dayEvents.sortedBy { it.createdAt }
+        val started = sorted.firstOrNull { it.kind == SuggestionEventKind.STARTED && it.workoutId == workoutId } ?: return emptyList()
+        val answeredAt = sorted.lastOrNull {
+            it.kind == SuggestionEventKind.FEEDBACK && (it.focus == KEEP_CHOICE || it.focus == KEEP_TODAY_ONLY) && it.createdAt < started.createdAt
+        }?.createdAt ?: Long.MIN_VALUE
+        val now = LinkedHashMap<String, String>()   // suggested slug → what took its place ("" = left out)
+        val changedAt = mutableMapOf<String, Long>()
+        val cardOriginals = mutableSetOf<String>()
+        fun original(shown: String) = now.entries.firstOrNull { it.value == shown }?.key ?: shown
+        for (e in sorted) {
+            // The card's own changes come before the start and belong to no training; the summary's swap in the
+            // workouts has no suggestion focus.
+            val card = e.workoutId == null && e.createdAt < started.createdAt && e.focus != null
+            val training = e.workoutId == workoutId && e.createdAt >= started.createdAt
+            if (!card && !training) continue
+            when {
+                e.kind == SuggestionEventKind.SWAPPED -> {
+                    val from = e.slugs.getOrNull(0) ?: continue
+                    val to = e.slugs.getOrNull(1) ?: continue
+                    val key = original(from)
+                    if (key == to) now.remove(key) else now[key] = to
+                    changedAt[key] = e.createdAt
+                    if (card) cardOriginals += key
+                }
+                card && e.kind == SuggestionEventKind.NEXT && e.feedback == SuggestionFeedback.DISLIKE_EXERCISE && e.value == LEFT_OUT ->
+                    e.slugs.forEach { val key = original(it); now[key] = ""; changedAt[key] = e.createdAt; cardOriginals += key }
+                training && (e.kind == SuggestionEventKind.SKIPPED_SET || (e.kind == SuggestionEventKind.FEEDBACK && e.focus == REMOVED)) ->
+                    e.slugs.forEach { val key = original(it); now[key] = ""; changedAt[key] = e.createdAt }
+            }
+        }
+        val suggested = started.slugs.toSet() + cardOriginals
+        return now.entries.filter { (key, _) -> key in suggested && (changedAt[key] ?: Long.MIN_VALUE) > answeredAt }
+            .map { (key, to) -> Change(key, to.ifEmpty { null }) }
+    }
+
+    /** A choice the athlete kept after a training, until [until] (exclusive: from that day the coach chooses again). */
+    data class Kept(val replaced: String, val chosen: String?, val until: LocalDate, val eventId: String, val at: Long)
+
+    /** Forgets one kept choice ("Vergessen" on the learned page). */
+    fun keptKey(eventId: String) = "keep:$eventId"
+
+    /** The choices kept and still holding today, newest first; forgetting either exercise, the choice or everything ends them. */
+    fun kept(events: List<SuggestionEvent>, today: LocalDate, resets: Map<String, Long> = emptyMap()): List<Kept> =
+        events.filter { it.kind == SuggestionEventKind.FEEDBACK && it.focus == KEEP_CHOICE }.mapNotNull { e ->
+            val replaced = e.slugs.getOrNull(0) ?: return@mapNotNull null
+            val chosen = e.slugs.getOrNull(1)
+            val until = e.value?.let { LocalDate.fromEpochDays(it.roundToLong()) } ?: return@mapNotNull null
+            if (until <= today || e.createdAt <= since(resets, exerciseKey(replaced)) || e.createdAt <= since(resets, keptKey(e.id)) ||
+                (chosen != null && e.createdAt <= since(resets, exerciseKey(chosen)))) return@mapNotNull null
+            Kept(replaced, chosen, until, e.id, e.createdAt)
+        }.sortedByDescending { it.at }
+
+    /** What the kept choices mean now: preferred picks (newest first) and exercises resting until a day. A newer choice about an exercise wins. */
+    data class KeptEffect(val preferred: List<String>, val resting: Map<String, LocalDate>)
+
+    fun keptEffect(kept: List<Kept>): KeptEffect {
+        val decided = mutableSetOf<String>()
+        val preferred = mutableListOf<String>()
+        val resting = mutableMapOf<String, LocalDate>()
+        for (k in kept) {   // newest first
+            if (k.replaced !in decided) resting[k.replaced] = k.until
+            if (k.chosen != null && k.chosen !in decided) preferred += k.chosen
+            decided += k.replaced
+            k.chosen?.let { decided += it }
+        }
+        return KeptEffect(preferred, resting)
+    }
+
+    /** Until when a choice kept today holds: the end of the training block, at least [KEEP_MIN_DAYS] days. */
+    fun keepUntil(today: LocalDate, blockEnd: LocalDate?): LocalDate {
+        val least = today.plus(DatePeriod(days = KEEP_MIN_DAYS))
+        return if (blockEnd != null && blockEnd > least) blockEnd else least
     }
 
     /**

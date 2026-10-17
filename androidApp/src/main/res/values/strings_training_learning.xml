@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- "From now on like this?" after a training (comparison review #3) -->
+    <plurals name="trk_swapped">
+        <item quantity="one">%1$d exercise swapped</item>
+        <item quantity="other">%1$d exercises swapped</item>
+    </plurals>
+    <plurals name="trk_left_out">
+        <item quantity="one">%1$d exercise left out</item>
+        <item quantity="other">%1$d exercises left out</item>
+    </plurals>
+    <plurals name="trk_left_out_more">
+        <item quantity="one">%1$d left out</item>
+        <item quantity="other">%1$d left out</item>
+    </plurals>
+    <string name="trk_question">%1$s – suggest it like this from now on?</string>
+    <string name="trk_today_only">Only today</string>
+    <string name="trk_instead">%1$s instead of %2$s</string>
+    <string name="trk_without">Without %1$s</string>
+    <string name="trk_kept_until">Suggested like this until %1$s</string>
+    <string name="trk_today_only_done">Only today – later suggestions are chosen as before</string>
+    <string name="trlr_kept">Kept after a training</string>
+    <string name="trlr_kept_until">Until %1$s</string>
+    <string name="tre_reason_kept">Exercises you kept after a training come first until the end of the block.</string>
+</resources>

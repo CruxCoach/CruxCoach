@@ -205,7 +205,7 @@
 
     <!-- What the coach learned (UX review 2026-10-16) -->
     <string name="trlr_title">Was der Coach gelernt hat</string>
-    <string name="trlr_info">Der Coach lernt aus dem, was du änderst: Eine Übung, die du wegtauschst, kommt seltener, eine, die du wählst oder immer wieder machst, öfter; eine Trainingsart oder Zeit, die du an zwei gleichen Wochentagen gewählt hast, wird an diesem Wochentag vorgeschlagen; eine Last, die du gesenkt hast, wird nächstes Mal geplant. Alte Signale verblassen nach sechs Wochen. Lieblingsübungen, „Nie vorschlagen“ und die Sicherheitsregeln (Krankheit, Verletzungen, Finger-Erholung, Leitplanken für Junge und Neulinge) gehen immer vor. „Vergessen“ löscht einen Punkt, „Alles vergessen“ alles.</string>
+    <string name="trlr_info">Der Coach lernt aus dem, was du änderst: Eine Übung, die du wegtauschst, kommt seltener, eine, die du wählst oder immer wieder machst, öfter; eine Trainingsart oder Zeit, die du an zwei gleichen Wochentagen gewählt hast, wird an diesem Wochentag vorgeschlagen; eine Last, die du gesenkt hast, wird nächstes Mal geplant; was du nach einem Training übernimmst („künftig so vorschlagen“), gilt bis zum Ende des Trainingsblocks, mindestens drei Wochen. Alte Signale verblassen nach sechs Wochen. Lieblingsübungen, „Nie vorschlagen“ und die Sicherheitsregeln (Krankheit, Verletzungen, Finger-Erholung, Leitplanken für Junge und Neulinge) gehen immer vor. „Vergessen“ löscht einen Punkt, „Alles vergessen“ alles.</string>
     <string name="trlr_empty">Noch nichts gelernt. Tausch Übungen, wähl eine Art oder Zeit, ändere Lasten – der Coach merkt es sich und zeigt es hier.</string>
     <string name="trlr_weekdays">Deine Wochentage</string>
     <string name="trlr_liked">Öfter vorgeschlagen</string>
@@ -213,7 +213,7 @@
     <string name="trlr_own_loads">Deine eigenen Lasten</string>
     <string name="trlr_forget">Vergessen</string>
     <string name="trlr_forget_all">Alles vergessen</string>
-    <string name="trlr_forget_all_text">Der Coach vergisst die bisher gelernten Übungen, Wochentage und Tausche. Lieblingsübungen, „Nie vorschlagen“, deine eigenen Lasten und Leistungswerte bleiben.</string>
+    <string name="trlr_forget_all_text">Der Coach vergisst die bisher gelernten Übungen, Wochentage und Tausche und was du nach einem Training übernommen hast. Lieblingsübungen, „Nie vorschlagen“, deine eigenen Lasten und Leistungswerte bleiben.</string>
     <string name="trlr_summary_nothing">Noch nichts</string>
     <plurals name="trlr_summary_learned">
         <item quantity="one">%1$d gelernt</item>

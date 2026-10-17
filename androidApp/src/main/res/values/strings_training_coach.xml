@@ -205,7 +205,7 @@
 
     <!-- What the coach learned (UX review 2026-10-16) -->
     <string name="trlr_title">What the coach learned</string>
-    <string name="trlr_info">The coach learns from what you change: an exercise you swap away comes less often, one you pick or keep doing comes more often; a kind of training or a time you chose on two days of the same weekday becomes that weekday’s suggestion; a load you lowered is planned next time. Old signals fade after six weeks. Favourites, “never suggest” and the safety rules (illness, injuries, finger recovery, guardrails for young climbers and beginners) always come first. “Forget” removes a single item, “Forget everything” all of it.</string>
+    <string name="trlr_info">The coach learns from what you change: an exercise you swap away comes less often, one you pick or keep doing comes more often; a kind of training or a time you chose on two days of the same weekday becomes that weekday’s suggestion; a load you lowered is planned next time; what you keep after a training (“suggest it like this from now on”) leads until the end of the training block, three weeks at least. Old signals fade after six weeks. Favourites, “never suggest” and the safety rules (illness, injuries, finger recovery, guardrails for young climbers and beginners) always come first. “Forget” removes a single item, “Forget everything” all of it.</string>
     <string name="trlr_empty">Nothing learned yet. Swap exercises, choose a kind or a time, change loads – the coach takes note and shows it here.</string>
     <string name="trlr_weekdays">Your weekdays</string>
     <string name="trlr_liked">Suggested more often</string>
@@ -213,7 +213,7 @@
     <string name="trlr_own_loads">Your own loads</string>
     <string name="trlr_forget">Forget</string>
     <string name="trlr_forget_all">Forget everything</string>
-    <string name="trlr_forget_all_text">The coach forgets the exercises, weekdays and swaps it learned so far. Favourites, “never suggest”, your own loads and performance values stay.</string>
+    <string name="trlr_forget_all_text">The coach forgets the exercises, weekdays and swaps it learned so far and what you kept after a training. Favourites, “never suggest”, your own loads and performance values stay.</string>
     <string name="trlr_summary_nothing">Nothing yet</string>
     <plurals name="trlr_summary_learned">
         <item quantity="one">%1$d learned</item>

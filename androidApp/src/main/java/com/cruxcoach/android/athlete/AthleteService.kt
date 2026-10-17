@@ -840,14 +840,48 @@ class AthleteService @Inject constructor(
         return SessionSuggester.alternatives(input, slugs.distinct().map { RoutineItem(it) }, focus, slug)
     }
 
-    /** Learned preference per exercise and the exercises resting after a rejection (today's included). */
+    /** Learned preference per exercise and the exercises resting after a rejection or a kept choice (today's included). */
     private fun learnedChoices(today: LocalDate, profile: AthleteProfile): Pair<Map<String, Double>, Set<String>> = runCatching {
         val sinceMs = System.currentTimeMillis() - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
         val resets = profile.learningResets
         val events = repo.suggestionEventsSince(sinceMs)
         PreferenceLearning.affinity(events, repo.completedSetsSince(sinceMs), today, resets) to
-            PreferenceLearning.resting(events, today, resets).keys
+            (PreferenceLearning.resting(events, today, resets).keys + PreferenceLearning.keptEffect(PreferenceLearning.kept(events, today, resets)).resting.keys)
     }.getOrDefault(emptyMap<String, Double>() to emptySet())
+
+    // ── "From now on like this?" after a training (comparison review #3) ──
+
+    /**
+     * What the athlete changed in the suggestion [workout] was started from (swapped or left out), asked once right
+     * after it: empty for another training, another day, no change or an answer already given.
+     */
+    fun keepQuestion(workout: Workout): List<PreferenceLearning.Change> = runCatching {
+        if (workout.routineId?.startsWith("suggestion") != true || workout.day != today().toString()) return emptyList()
+        val events = repo.suggestionEventsForDay(workout.day)
+        val answered = events.any { it.workoutId == workout.id && it.kind == SuggestionEventKind.FEEDBACK &&
+            (it.focus == PreferenceLearning.KEEP_CHOICE || it.focus == PreferenceLearning.KEEP_TODAY_ONLY) }
+        if (answered) emptyList() else PreferenceLearning.changes(events, workout.id)
+    }.getOrDefault(emptyList())
+
+    /**
+     * "Ja, künftig so": each chosen exercise leads its slot and each replaced or left-out one rests until the training
+     * block ends, three weeks at least. Returns the ledger entries (for "Rückgängig") and the day it holds until.
+     */
+    fun keepChoices(workout: Workout, changes: List<PreferenceLearning.Change>): Pair<List<String>, LocalDate> {
+        val today = today()
+        val coach = repo.profile().coach
+        fun day(iso: String?) = iso?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val until = PreferenceLearning.keepUntil(today, TrainingBlocks.blockEnd(day(coach.blockStartDay), day(coach.targetDate), today))
+        val ids = changes.mapNotNull { c ->
+            logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.KEEP_CHOICE, listOfNotNull(c.replaced, c.chosen),
+                workoutId = workout.id, value = until.toEpochDays().toDouble())
+        }
+        return ids to until
+    }
+
+    /** "Nur heute": the question is answered; the swaps teach as lightly as always. */
+    fun keepTodayOnly(workout: Workout): String? =
+        logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.KEEP_TODAY_ONLY, emptyList(), workoutId = workout.id)
 
     /** Swaps a whole block to another exercise (progression chain "easier/harder"). */
     fun swapBlock(workoutId: String, blockIndex: Int, newSlug: String) {
