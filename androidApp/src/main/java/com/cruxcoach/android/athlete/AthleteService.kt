@@ -1340,6 +1340,10 @@ class AthleteService @Inject constructor(
         PlannedTraining.planned(stored ?: PlannedTraining.fromWeekPlan(repo.profile(), today, repo.routines(), catalog))
     }.getOrNull()
 
+    /** Tomorrow is a planned board day or a usual climbing day (audit P1-5): today's carbohydrate info says so. */
+    fun tomorrowHard(profile: AthleteProfile): Boolean =
+        runCatching { PlannedTraining.tomorrowHard(profile, today(), repo.pauses()) }.getOrDefault(false)
+
     /** The plan today's targets follow while it is not done and weighs more than what is done ([real]); null otherwise. */
     fun plannedForTargets(real: DayActivity?): PlannedTraining.Planned? = PlannedTraining.forTargets(real, plannedActivityToday())
 

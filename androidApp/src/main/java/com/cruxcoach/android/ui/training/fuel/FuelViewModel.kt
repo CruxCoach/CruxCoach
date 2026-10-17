@@ -55,6 +55,8 @@ data class FuelState(
      * done. Null on earlier days and once it is done.
      */
     val planned: com.cruxcoach.athlete.logic.PlannedTraining.Planned? = null,
+    /** Today, before a planned board day or a usual climbing day: the carbohydrate info says so (audit P1-5). */
+    val tomorrowHard: Boolean = false,
     /** The last seven days' needs, today last: what a pace really adds up to in the goal sheet. */
     val weekNeeds: List<EnergyBalance.Need> = emptyList(),
     val heightCm: Double? = null,
@@ -143,6 +145,7 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                     else -> energy.plan
                 },
                 planned = planned,
+                tomorrowHard = s.day == today && service.tomorrowHard(s.profile),
                 weekNeeds = service.weekNeeds(s.profile, activities),
                 heightCm = service.heightCm(),
                 recentByMeal = Meal.entries.associateWith { com.cruxcoach.athlete.logic.RecentFoods.forMeal(log, it, s.entries) },
