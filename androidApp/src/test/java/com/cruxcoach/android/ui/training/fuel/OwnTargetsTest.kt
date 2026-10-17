@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.training.fuel
 
 import android.app.Application
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -19,6 +20,7 @@ import com.cruxcoach.android.foodvision.DeviceFactsReader
 import com.cruxcoach.android.foodvision.VisionModelStore
 import com.cruxcoach.athlete.model.BodyMeasurement
 import com.cruxcoach.athlete.model.BodyMetric
+import com.cruxcoach.athlete.model.AthleteGoal
 import com.cruxcoach.athlete.model.Sex
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -137,5 +139,25 @@ class OwnTargetsTest : AthleteScreenTest() {
         compose.onNodeWithTag("own_energy_reset").performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
         compose.waitUntil(WAIT_MS) { repo.profile().ownKcal == null }
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("own_energy_hidden").fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test
+    fun `while losing weight the protein choice names the higher recommendation and goes up to 2_4 g per kg`() {
+        body()
+        val vm = loaded(AthleteSettingsViewModel(service))
+        render { AthleteSettingsScreen({}, viewModel = vm, section = SettingsSection.NUTRITION) }
+        waitForTag("protein_per_kg")
+        val range = compose.onNodeWithTag("protein_per_kg").fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].range
+        assertEquals(1.4f, range.start, 1e-4f)
+        assertEquals(2.4f, range.endInclusive, 1e-4f)
+        // Without a weight-loss goal no deficit recommendation.
+        assertTrue(compose.onAllNodesWithTag("protein_losing_hint").fetchSemanticsNodes().isEmpty())
+        repo.updateProfile { it.copy(goal = AthleteGoal.LOSE_WEIGHT, targetWeightKg = 66.0, weeklyLossKg = 0.3) }
+        waitForTag("protein_losing_hint")
+        waitForText("While losing weight 1.8–2.2 g per kg is recommended")
+        // The athlete's choice above the usual range is kept and counts.
+        compose.onNodeWithTag("protein_per_kg").performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { it(2.3f) }
+        compose.waitUntil(WAIT_MS) { repo.profile().proteinPerKg == 2.3 }
+        assertEquals(161, service.fuelTargets(null, repo.profile())!!.proteinG)
     }
 }

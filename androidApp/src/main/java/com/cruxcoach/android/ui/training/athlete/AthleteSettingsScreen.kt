@@ -43,6 +43,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.datetime.minus
+import kotlin.math.roundToInt
 import javax.inject.Inject
 
 data class AthleteSettingsState(
@@ -386,8 +387,24 @@ fun AthleteSettingsScreen(
                                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp),
                             )
                             var ppk by remember(p.proteinPerKg) { mutableFloatStateOf(p.proteinPerKg.toFloat()) }
-                            Slider(value = ppk, onValueChange = { ppk = it }, valueRange = 1.4f..2.0f, steps = 5,
-                                onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
+                            // Up to 2.4 g/kg in 0.1 steps (holistic audit P2-18): the choice stays with the athlete.
+                            val choice = com.cruxcoach.athlete.logic.FuelTargets.PROTEIN_PER_KG_CHOICE
+                            Slider(value = ppk, onValueChange = { ppk = it }, valueRange = choice.start.toFloat()..choice.endInclusive.toFloat(),
+                                steps = ((choice.endInclusive - choice.start) * 10).roundToInt() - 1,
+                                onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).roundToInt() / 10.0) } },
+                                modifier = Modifier.testTag("protein_per_kg"))
+                            // While losing weight the recommendation is higher, and named with its numbers.
+                            if (p.goal == AthleteGoal.LOSE_WEIGHT) {
+                                val losing = com.cruxcoach.athlete.logic.FuelTargets.PROTEIN_PER_KG_LOSING
+                                Text(
+                                    if (p.units == UnitSystem.IMPERIAL) stringResource(R.string.tra_protein_losing_lb,
+                                        formatNumber(losing.start), formatNumber(losing.endInclusive),
+                                        formatNumber(losing.start / Units.LB_PER_KG, 2), formatNumber(losing.endInclusive / Units.LB_PER_KG, 2))
+                                    else stringResource(R.string.tra_protein_losing, formatNumber(losing.start), formatNumber(losing.endInclusive)),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.testTag("protein_losing_hint"),
+                                )
+                            }
                         }
                     }
                 }
