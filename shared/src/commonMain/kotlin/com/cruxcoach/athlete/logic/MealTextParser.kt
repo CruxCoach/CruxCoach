@@ -49,7 +49,7 @@ object MealTextParser {
     private class Parsed(val food: DetectedFood, val explicit: Boolean)
 
     private fun segment(raw: String): Parsed? {
-        val words = raw.replace(Regex("[^\\p{L}\\p{N}½¼¾.,]+"), " ").trim().split(' ').filter { it.isNotEmpty() }
+        val words = com.cruxcoach.util.replaceNonWordRuns(raw, "½¼¾.,", " ").trim().split(' ').filter { it.isNotEmpty() }
         var count: Double? = null
         var unitGrams: Double? = null
         var sizeFactor = 1.0
@@ -91,7 +91,7 @@ object MealTextParser {
 
     /** Grams of a segment that is only an amount ("about 6 oz", "200 g"), else null. */
     private fun amountOnly(raw: String): Double? {
-        val words = raw.replace(Regex("[^\\p{L}\\p{N}½¼¾.,]+"), " ").trim().split(' ').filter { it.isNotEmpty() }
+        val words = com.cruxcoach.util.replaceNonWordRuns(raw, "½¼¾.,", " ").trim().split(' ').filter { it.isNotEmpty() }
         var count: Double? = null
         var unit: Double? = null
         for (w in words) {

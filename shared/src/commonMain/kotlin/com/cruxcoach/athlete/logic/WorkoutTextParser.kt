@@ -307,7 +307,7 @@ object WorkoutTextParser {
                 val warmup = WARMUP_WORDS.containsMatchIn(t)
                 // A count left on its own: "Klimmzüge 8", "Plank 60".
                 take(BARE) { m -> if (reps == null && seconds == null) reps = m.groupValues[1].toInt(); true }
-                var rest = t.replace(Regex("[^\\p{L}\\p{N}'/&()-]+"), " ").replace(Regex("\\s+"), " ").trim()
+                var rest = com.cruxcoach.util.replaceNonWordRuns(t, "'/&()-", " ").replace(Regex("\\s+"), " ").trim()
                 // Words left over around the numbers: "à", "mit", "x", "je" …
                 var words = rest.split(' ').filter { it.isNotEmpty() }
                 // ... and cut-off units ("2 mi", "20 k") when the line had numbers.
