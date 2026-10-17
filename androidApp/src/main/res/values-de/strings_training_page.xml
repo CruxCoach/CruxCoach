@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Die Trainingsseite: ein Screen pro Übung (oder Zirkel) mit allen Sätzen (Owner 2026-10-17). -->
+<resources>
+    <string name="trpg_done_planned">%1$s geschafft</string>
+    <string name="trpg_other_result">Anders geschafft</string>
+    <string name="trpg_other_number">Andere Zahl</string>
+    <string name="trpg_add_round">+ Runde</string>
+    <string name="trpg_end_exercise">Übung beenden</string>
+    <string name="trpg_end_circuit">Zirkel beenden</string>
+    <string name="trpg_ended">%1$s beendet</string>
+    <string name="trpg_undo">Rückgängig</string>
+    <string name="trpg_warmup_row">Aufwärmen · %1$d von %2$d</string>
+    <string name="trpg_round_header">Zirkel · Runde %1$d von %2$d</string>
+    <string name="trpg_circuit_rests">%1$s zwischen den Übungen · %2$s nach jeder Runde</string>
+    <string name="trpg_round">Runde %1$d</string>
+    <string name="trpg_exercise_done">%1$s fertig · %2$d von %3$d im Ziel</string>
+    <string name="trpg_to_next">Zur nächsten Übung</string>
+    <string name="trpg_outcome_met">Ziel erreicht</string>
+    <string name="trpg_outcome_under">unter dem Ziel</string>
+    <string name="trpg_outcome_over">über dem Ziel</string>
+    <string name="trpg_row_cd">Satz %1$s: %2$s</string>
+    <string name="trpg_page_cd">Übung %1$d von %2$d: %3$s, %4$d von %5$d Sätzen</string>
+    <string name="trpg_page_progress">%1$d von %2$d Sätzen</string>
+    <string name="trpg_reserve_question">Wie viele noch?</string>
+    <string name="trpg_start_seconds">Start · %1$d s</string>
+    <string name="trpg_log_test">Eintragen</string>
+    <string name="trpg_empty_hint">Füg eine Übung hinzu – oder tipp mehrere ein, z. B. „Klimmzüge 5x5 +20 kg, Plank 3x60 s“.</string>
+    <string name="trpg_all_done">Alles erledigt – zum Abschluss</string>
+    <string name="trpg_rest_on">Weiter</string>
+    <string name="trpg_planned_cd">geplant</string>
+    <plurals name="trpg_sets_count">
+        <item quantity="one">%d Satz</item>
+        <item quantity="other">%d Sätze</item>
+    </plurals>
+    <plurals name="trpg_exercises_count">
+        <item quantity="one">%d Übung</item>
+        <item quantity="other">%d Übungen</item>
+    </plurals>
+    <string name="trpg_minutes">%1$d min</string>
+    <string name="trpg_seconds_of">%1$d/%2$d s</string>
+</resources>

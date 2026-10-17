@@ -420,8 +420,9 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.restArmed }
         vm.endRest()
         compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.phase == com.cruxcoach.android.ui.training.player.PlayerPhase.SET }
-        vm.back()
-        shoot("player-back-done-set", { compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.current?.set?.isCompleted == true } }) {
+        val done = vm.state.value.sets.first { it.isCompleted }
+        vm.edit(done.id)
+        shoot("player-back-done-set", { compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.editingId == done.id } }) {
             com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> })
         }
     }

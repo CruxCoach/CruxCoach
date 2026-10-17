@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The training page: one screen per exercise (or circuit) with all its sets (owner 2026-10-17). -->
+<resources>
+    <string name="trpg_done_planned">%1$s done</string>
+    <string name="trpg_other_result">Did something else</string>
+    <string name="trpg_other_number">Other number</string>
+    <string name="trpg_add_round">+ Round</string>
+    <string name="trpg_end_exercise">End exercise</string>
+    <string name="trpg_end_circuit">End circuit</string>
+    <string name="trpg_ended">%1$s ended</string>
+    <string name="trpg_undo">Undo</string>
+    <string name="trpg_warmup_row">Warm-up · %1$d of %2$d</string>
+    <string name="trpg_round_header">Circuit · round %1$d of %2$d</string>
+    <string name="trpg_circuit_rests">%1$s between exercises · %2$s after each round</string>
+    <string name="trpg_round">Round %1$d</string>
+    <string name="trpg_exercise_done">%1$s done · %2$d of %3$d on target</string>
+    <string name="trpg_to_next">Next exercise</string>
+    <string name="trpg_outcome_met">on target</string>
+    <string name="trpg_outcome_under">below target</string>
+    <string name="trpg_outcome_over">above target</string>
+    <string name="trpg_row_cd">Set %1$s: %2$s</string>
+    <string name="trpg_page_cd">Exercise %1$d of %2$d: %3$s, %4$d of %5$d sets</string>
+    <string name="trpg_page_progress">%1$d of %2$d sets</string>
+    <string name="trpg_reserve_question">How many more?</string>
+    <string name="trpg_start_seconds">Start · %1$d s</string>
+    <string name="trpg_log_test">Log it</string>
+    <string name="trpg_empty_hint">Add an exercise – or type several, e.g. “Pull-ups 5x5 +20 kg, plank 3x60 s”.</string>
+    <string name="trpg_all_done">All done – wrap up</string>
+    <string name="trpg_rest_on">On</string>
+    <string name="trpg_planned_cd">planned</string>
+    <plurals name="trpg_sets_count">
+        <item quantity="one">%d set</item>
+        <item quantity="other">%d sets</item>
+    </plurals>
+    <plurals name="trpg_exercises_count">
+        <item quantity="one">%d exercise</item>
+        <item quantity="other">%d exercises</item>
+    </plurals>
+    <string name="trpg_minutes">%1$d min</string>
+    <string name="trpg_seconds_of">%1$d/%2$d s</string>
+</resources>

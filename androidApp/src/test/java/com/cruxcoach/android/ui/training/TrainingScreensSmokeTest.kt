@@ -103,18 +103,19 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.INJURY_ONE_ARM), null)
         val pickupSides = repo.setsFor(id).filter { it.exerciseSlug == "finger.one_arm_pickup" }.map { it.side }.toSet()
         assert(pickupSides == setOf(Side.RIGHT)) { "sides were $pickupSides" }
-        val loadedVm3 = loaded(WorkoutViewModel(service))
-        render { WorkoutScreen({}, {}, {}, {}, viewModel = loadedVm3) }
-        scrollTo("workout_list", hasText("One-Arm Edge Pick-Up", substring = true))
+        val loadedVm3 = loaded(com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service))
+        render { com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = loadedVm3, learningBadge = { _, _ -> }) }
+        compose.onNodeWithTag("player_overview").performClick()
+        waitForText("One-Arm Edge Pick-Up")
     }
 
     @Test
     fun `ending a training without a done set asks once and discards it`() {
         service.startWorkout(null, null)
-        val vm = loaded(WorkoutViewModel(service))
-        render { WorkoutScreen({}, {}, {}, {}, viewModel = vm) }
-        waitForTag("workout_finish")
-        compose.onNodeWithTag("workout_finish").performClick()
+        val vm = loaded(com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service))
+        render { com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        waitForTag("player_finish")
+        compose.onNodeWithTag("player_finish").performClick()
         waitForTag("workout_nothing_done")
         compose.onNodeWithTag("nothing_done_discard").performClick()
         compose.waitUntil(WAIT_MS) { repo.openWorkout() == null }
