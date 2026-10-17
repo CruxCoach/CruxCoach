@@ -237,49 +237,111 @@ class KilterApiTest {
         }
     }
 
+    // ── Port of Android's KilterUploadHttpTest ──────────────────────────
+
     @Test
-    fun `an upload skips what the portal already has and posts the rest`() = runTest {
-        tokens.store(access = "a", refresh = "r", expiresAtEpochSeconds = clock.epochSeconds() + 3600)
-        var posted: String? = null
-        http.responder = { method, url, text ->
-            when {
-                method == "GET" && url.endsWith("/logs") ->
-                    ok("""[{"logUuid":"known","climbUuid":"c1","angle":40,"topped":true,"attempts":1}]""")
-                method == "POST" && url.endsWith("/logs/bulk") -> { posted = text; ok("{}") }
-                else -> HttpResult.Failed(HttpFailure.OTHER, "unexpected")
-            }
-        }
-        val outcome = api.uploadLogs(
-            listOf(
-                KilterLog(logUuid = "known", climbUuid = "c1", angle = 40, topped = true, attempts = 1),
-                KilterLog(logUuid = "fresh", climbUuid = "abcdef0123456789abcdef0123456789", angle = 40),
-            )
+    fun `posts exactly the given logs without rereading the logbook`() = runTest {
+        tokens.store(access = "synthetic-test-token", refresh = "r", expiresAtEpochSeconds = clock.epochSeconds() + 3600)
+        http.responder = { _, _, _ -> ok("") }
+        // Spelling is the caller's decision (KilterClimbWireIds): the client
+        // must not re-case either compact form nor touch a dashed id.
+        val ids = listOf(
+            "a046c7f911034fda84faa329380f6c98", "D0E5387D5B974D38B4E93FC4DFD61EF6",
+            "abcdef12-3456-4789-abcd-0123456789ab",
         )
-        assertEquals(KilterFailure.NONE, outcome.failure)
-        assertEquals(1, outcome.uploaded, "a bulk insert is not an upsert: a known id would 500")
-        val body = assertNotNull(posted)
-        assertTrue("fresh" in body)
-        assertFalse("known" in body)
-        // Compact catalogue ids are matched uppercase upstream.
-        assertTrue("ABCDEF0123456789ABCDEF0123456789" in body, body)
-        // And the wire shape is the portal's camelCase.
-        assertTrue("logUuid" in body, body)
+        val logs = ids.mapIndexed { index, id ->
+            KilterLog(logUuid = "stable-log-$index", climbUuid = id, topped = index != 1, attempts = index + 1, comment = "synthetic fixture")
+        }
+        val outcome = api.uploadLogs(logs)
+        assertTrue(outcome.accepted)
+        val request = http.requests.single()
+        assertEquals("POST", request.first)
+        assertTrue(request.second.endsWith("/api/logs/bulk"))
+        val sent = kotlinx.serialization.json.Json.parseToJsonElement(request.third) as kotlinx.serialization.json.JsonArray
+        assertEquals(3, sent.size)
+        sent.forEachIndexed { index, value ->
+            val row = value as kotlinx.serialization.json.JsonObject
+            fun field(name: String) = (row.getValue(name) as kotlinx.serialization.json.JsonPrimitive).content
+            assertEquals(ids[index], field("climbUuid"))
+            assertEquals(logs[index].logUuid, field("logUuid"))
+            assertEquals(logs[index].topped.toString(), field("topped"))
+            assertEquals(logs[index].attempts.toString(), field("attempts"))
+            assertEquals(logs[index].comment, field("comment"))
+        }
     }
 
     @Test
-    fun `a log the portal has with different content is a conflict, not a duplicate`() = runTest {
+    fun `rejection keeps status but discards echoed private body`() = runTest {
+        tokens.store(access = "synthetic-test-token", refresh = "r", expiresAtEpochSeconds = clock.epochSeconds() + 3600)
+        http.responder = { _, _, _ -> ok("private log comment, account and token", status = 422) }
+        val outcome = api.uploadLogs(listOf(KilterLog(logUuid = "test-log", climbUuid = "test-climb")))
+        assertFalse(outcome.accepted)
+        assertEquals(422, outcome.httpStatus)
+        assertEquals(1, http.requests.size)
+    }
+
+    @Test
+    fun `a connection lost mid request is sent once and counts as without answer`() = runTest {
+        tokens.store(access = "synthetic-test-token", refresh = "r", expiresAtEpochSeconds = clock.epochSeconds() + 3600)
+        // NSURLErrorNetworkConnectionLost: the transport files it under OFFLINE, but the rows may be on Kilter.
+        http.responder = { _, _, _ -> HttpResult.Failed(HttpFailure.OFFLINE, "NSURLErrorDomain:-1005") }
+        val lost = api.uploadLogs(listOf(KilterLog("stable-log", climbUuid = "native-id")))
+        assertEquals(0, lost.httpStatus)
+        assertTrue(lost.mayHaveReachedKilter)
+        assertEquals(1, http.requests.size, "the rows went out once")
+
+        http.responder = { _, _, _ -> HttpResult.Failed(HttpFailure.TIMEOUT, "NSURLErrorDomain:-1001") }
+        val slow = api.uploadLogs(listOf(KilterLog("stable-log", climbUuid = "native-id")))
+        assertEquals(KilterFailure.TIMEOUT, slow.failure)
+        assertTrue(slow.mayHaveReachedKilter)
+
+        http.responder = { _, _, _ -> HttpResult.Failed(HttpFailure.OFFLINE, "NSURLErrorDomain:-1009") }
+        val never = api.uploadLogs(listOf(KilterLog("stable-log", climbUuid = "native-id")))
+        assertEquals(KilterFailure.OFFLINE, never.failure)
+        assertFalse(never.mayHaveReachedKilter, "not connected: nothing can be on Kilter")
+    }
+
+    @Test
+    fun `offline with an expired token is a network failure not a lost session`() = runTest {
+        tokens.store(access = "expired-token", refresh = "refresh-token", expiresAtEpochSeconds = clock.epochSeconds() - 10)
+        http.responder = { _, _, _ -> HttpResult.Failed(HttpFailure.OFFLINE, "NSURLErrorDomain:-1009") }
+        val upload = api.uploadLogs(listOf(KilterLog("stable-log", climbUuid = "native-id")))
+        assertEquals(KilterFailure.OFFLINE, upload.failure)
+        assertFalse(upload.mayHaveReachedKilter, "the upload never went out")
+        assertTrue(http.requests.none { it.second.endsWith("/logs/bulk") })
+        assertEquals(KilterFailure.OFFLINE, api.fetchLogs().failure)
+        assertTrue(tokens.isSignedIn, "offline must not sign the account out")
+
+        // A refused refresh is a lost session.
+        http.responder = { _, _, _ -> ok("""{"error":"invalid_grant"}""", status = 400) }
+        assertEquals(KilterFailure.NOT_SIGNED_IN, api.uploadLogs(listOf(KilterLog("stable-log", climbUuid = "native-id"))).failure)
+    }
+
+    @Test
+    fun `delete tells whether kilter held the log`() = runTest {
+        tokens.store(access = "synthetic-test-token", refresh = "r", expiresAtEpochSeconds = clock.epochSeconds() + 3600)
+        val answers = ArrayDeque(listOf(200, 204, 503))
+        http.responder = { _, _, _ -> ok("", status = answers.removeFirst()) }
+        assertEquals(KilterDeleteOutcome.HELD, api.deleteLogIfHeld("held-log"))
+        assertEquals(KilterDeleteOutcome.NOT_HELD, api.deleteLogIfHeld("held-log"))
+        assertEquals(KilterDeleteOutcome.FAILED, api.deleteLogIfHeld("other-log"))
+        val request = http.requests.first()
+        assertEquals("DELETE", request.first)
+        assertTrue(request.second.endsWith("/api/logs/held-log"))
+        // A uuid that is no single path segment never reaches the network.
+        assertEquals(KilterDeleteOutcome.FAILED, api.deleteLogIfHeld("../climbs/x"))
+        assertEquals(3, http.requests.size)
+    }
+
+    @Test
+    fun `a failed logbook read carries the portal status`() = runTest {
         tokens.store(access = "a", refresh = "r", expiresAtEpochSeconds = clock.epochSeconds() + 3600)
-        http.responder = { method, url, _ ->
-            if (method == "GET" && url.endsWith("/logs")) {
-                ok("""[{"logUuid":"l1","climbUuid":"c1","angle":40,"topped":true,"attempts":5}]""")
-            } else ok("{}")
-        }
-        val outcome = api.uploadLogs(
-            listOf(KilterLog(logUuid = "l1", climbUuid = "c1", angle = 40, topped = true, attempts = 1))
-        )
-        assertEquals(KilterFailure.CONFLICT, outcome.failure)
-        assertEquals(0, outcome.uploaded)
-        assertTrue(http.requests.none { it.first == "POST" }, "nothing may be overwritten upstream")
+        http.responder = { _, _, _ -> ok("", status = 500) }
+        val down = api.fetchLogs()
+        assertEquals(KilterFailure.SERVER_ERROR, down.failure)
+        assertEquals(500, down.httpStatus)
+        http.responder = { _, _, _ -> ok("", status = 401) }
+        assertEquals(401, api.fetchLogs().httpStatus)
     }
 
     @Test

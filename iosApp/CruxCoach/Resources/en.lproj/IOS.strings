@@ -342,3 +342,4 @@
 "kilter_pushing" = "Uploading to Kilter…";
 "kilter_upload_wall_hint" = "Log one climb in the Kilter app first — that tells this app which gym, wall and layout your account uses.";
 "kilter_conflict" = "Kilter already has an entry with this id but different content. Nothing was overwritten.";
+"kilter_push_manual_hint" = "Uploads your sends and attempts that Kilter does not have yet. On iPhone this starts only when you tap; an interrupted upload is retried by itself while the app stays open.";

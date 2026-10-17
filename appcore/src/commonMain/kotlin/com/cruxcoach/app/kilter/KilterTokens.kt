@@ -18,7 +18,7 @@ class KilterTokens(
     private val secrets: SecretStore,
     private val keyValues: KeyValueStore,
     private val identityPrefix: String,
-) {
+) : KilterUploadSession {
     private fun secretKey(name: String) = "kilter_${identityPrefix}_$name"
     private fun prefKey(name: String) = "kilter_${identityPrefix}_$name"
 
@@ -28,9 +28,25 @@ class KilterTokens(
 
     fun expiresAtEpochSeconds(): Long = keyValues.getString(prefKey(EXPIRES_AT))?.toLongOrNull() ?: 0L
 
-    fun userUuid(): String = keyValues.getString(prefKey(USER_UUID)) ?: ""
+    override fun userUuid(): String = keyValues.getString(prefKey(USER_UUID)) ?: ""
 
     val isSignedIn: Boolean get() = refreshToken() != null || accessToken() != null
+
+    override fun hasCredentials(): Boolean = isSignedIn
+
+    /** The gym, wall and layout the uploads name, resolved once from the account's own logs. */
+    override fun wallContext(): KilterWallContext? {
+        val gym = keyValues.getString(prefKey(WALL_GYM))?.takeIf { it.isNotBlank() } ?: return null
+        val wall = keyValues.getString(prefKey(WALL_WALL))?.takeIf { it.isNotBlank() } ?: return null
+        val layout = keyValues.getString(prefKey(WALL_LAYOUT))?.takeIf { it.isNotBlank() } ?: return null
+        return KilterWallContext(gym, wall, layout)
+    }
+
+    override fun storeWallContext(context: KilterWallContext) {
+        keyValues.putString(prefKey(WALL_GYM), context.gymUuid)
+        keyValues.putString(prefKey(WALL_WALL), context.wallUuid)
+        keyValues.putString(prefKey(WALL_LAYOUT), context.productLayoutUuid)
+    }
 
     fun store(access: String, refresh: String, expiresAtEpochSeconds: Long) {
         secrets.write(secretKey(ACCESS), access.encodeToByteArray())
@@ -40,11 +56,16 @@ class KilterTokens(
 
     fun storeUserUuid(uuid: String) = keyValues.putString(prefKey(USER_UUID), uuid)
 
-    /** Forgets the session but keeps the user uuid, as Android's `clearTokensKeepIdentity` does. */
+    /**
+     * Forgets the session but keeps the user uuid, as Android's
+     * `clearTokensKeepIdentity` does. The wall context goes: another account
+     * signed in next must not file its logs against this one's board.
+     */
     fun clear() {
         secrets.delete(secretKey(ACCESS))
         secrets.delete(secretKey(REFRESH))
         keyValues.putString(prefKey(EXPIRES_AT), null)
+        for (key in listOf(WALL_GYM, WALL_WALL, WALL_LAYOUT)) keyValues.putString(prefKey(key), null)
     }
 
     /** Seconds the caller must wait before another sign-in attempt, or 0. */
@@ -84,6 +105,9 @@ class KilterTokens(
         const val REFRESH = "refresh_token"
         const val EXPIRES_AT = "access_token_expiry"
         const val USER_UUID = "user_uuid"
+        const val WALL_GYM = "gym_uuid"
+        const val WALL_WALL = "wall_uuid"
+        const val WALL_LAYOUT = "product_layout_uuid"
         const val FIRST_BACKOFF_SECONDS = 5L
         const val MAX_BACKOFF_SECONDS = 300L
     }

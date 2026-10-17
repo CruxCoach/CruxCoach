@@ -3,18 +3,48 @@ package com.cruxcoach.app.ui
 import com.cruxcoach.app.kilter.KilterApi
 import com.cruxcoach.app.kilter.KilterFailure
 import com.cruxcoach.app.kilter.KilterLogImporter
+import com.cruxcoach.app.kilter.KilterNotUploadedEntry
+import com.cruxcoach.app.kilter.KilterNotUploadedReason
 import com.cruxcoach.app.kilter.KilterTokens
+import com.cruxcoach.app.kilter.KilterUploadEngine
+import com.cruxcoach.app.kilter.KilterUploadReason
+import com.cruxcoach.app.kilter.KilterUploadStatus
+import com.cruxcoach.app.kilter.KilterUploadTrigger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * One line of the upload status: an Android string key, shown as a plural of
+ * [count] when [plural], from `IOS.strings` when [iosOnly].
+ */
+class KilterStatusLineUi(val key: String, val count: Int, val plural: Boolean, val iosOnly: Boolean)
+
+/** One entry Kilter did not take, for the list the user can open and report. */
+class KilterNotUploadedRowUi(
+    val logUuid: String,
+    /** Empty when the catalogue does not know the climb ("kilter_upload_unknown_climb"). */
+    val climbName: String,
+    val angle: Int,
+    /** dd.mm.yyyy, as Android's list shows it. */
+    val date: String,
+    val isAscent: Boolean,
+    /** notOnKilter | retryLater | conflict | invalidDate */
+    val reason: String,
+    /** The id Kilter refused, else the logbook's climb id: what the maintainer looks the climb up by. */
+    val reportId: String,
+)
 
 data class KilterScreenState(
     val signedIn: Boolean,
@@ -28,25 +58,46 @@ data class KilterScreenState(
     val imported: Int,
     val alreadyPresent: Int,
     val unknownClimb: Int,
-    /** Logs this device sent to the portal on the last push. */
-    val uploaded: Int = 0,
-    /** Own logs still waiting to go up. */
-    val pendingUpload: Int = 0,
-    /** True when no log upstream names a gym, wall and layout yet. */
-    val missingWallContext: Boolean = false,
+    /** A run (manual or automatic) holds the upload. */
+    val uploading: Boolean = false,
+    /** False until the first upload run of this identity: "kilter_upload_unchecked". */
+    val uploadChecked: Boolean = false,
+    /** What the last run did, as Android's status block words it. */
+    val uploadLines: List<KilterStatusLineUi> = emptyList(),
+    /** The last run failed or Kilter refused the session: shown as a problem, with a bug report action. */
+    val uploadProblem: Boolean = false,
+    /** Kilter refused the session: the action is a new sign-in rather than another upload. */
+    val uploadNeedsLogin: Boolean = false,
+    /** Entries Kilter did not take exist: "kilter_upload_show_entries". */
+    val uploadShowEntries: Boolean = false,
+    /** Aurora-imported entries wait for the opt-in: "kilter_upload_imported_action". */
+    val uploadShowImported: Boolean = false,
+    /** idle | loading | loaded | failed */
+    val notUploadedState: String = "idle",
+    val notUploaded: List<KilterNotUploadedRowUi> = emptyList(),
+    /** Secret-free upload history, frozen when the report form opens. */
+    val diagnostics: String = "",
+    /** "0.2.4 (code)", for the report header. */
+    val appVersion: String = "",
 )
 
 /**
  * Kilter account screen: sign in, pull the account's ascents into the logbook,
- * sign out. The password is passed straight to [KilterApi] and never stored or
- * held in this state.
+ * upload this device's entries, sign out. The password is passed straight to
+ * [KilterApi] and never stored or held in this state.
+ *
+ * Uploading stays an explicit tap on iOS (the app has no background trigger
+ * for it); the engine's own follow-up runs continue a started upload while the
+ * app is open. Runs go through [runScope], which outlives this model's scope:
+ * a run cut off mid-request would lose Kilter's answer.
  */
 class KilterScreenModel(
     private val api: KilterApi,
     private val tokens: KilterTokens,
     private val importer: KilterLogImporter,
-    /** Null leaves the screen import-only. */
-    private val uploader: com.cruxcoach.app.kilter.KilterUploader? = null,
+    private val engine: KilterUploadEngine,
+    private val runScope: CoroutineScope,
+    private val appVersion: String,
     main: CoroutineDispatcher = Dispatchers.Main,
     private val io: CoroutineDispatcher = Dispatchers.Default,
 ) {
@@ -64,11 +115,20 @@ class KilterScreenModel(
             imported = 0,
             alreadyPresent = 0,
             unknownClimb = 0,
+            appVersion = appVersion,
         )
     )
     val state = _state.asStateFlow()
 
     val currentState: KilterScreenState get() = _state.value
+
+    init {
+        // Automatic runs finish without this screen: their status still shows.
+        scope.launch {
+            combine(engine.uploadStatus, engine.sessionExpired) { status, expired -> status to expired }
+                .collect { (status, expired) -> _state.update { withUpload(it, status, expired) } }
+        }
+    }
 
     fun watch(onState: (KilterScreenState) -> Unit): Subscription {
         val collector = scope.launch { _state.collect { onState(it) } }
@@ -80,10 +140,11 @@ class KilterScreenModel(
         job = scope.launch {
             _state.update { it.copy(busy = true, phase = "signingIn", failure = "none") }
             val outcome = withContext(io) { api.signIn(email.trim(), password) }
+            if (outcome.failure == KilterFailure.NONE) engine.clearSessionExpired()
             _state.update {
                 it.copy(
                     busy = false,
-                    phase = if (outcome.failure == KilterFailure.NONE) "idle" else "idle",
+                    phase = "idle",
                     signedIn = tokens.isSignedIn,
                     userUuid = outcome.userUuid.ifEmpty { tokens.userUuid() },
                     failure = code(outcome.failure),
@@ -119,39 +180,101 @@ class KilterScreenModel(
     }
 
     /**
-     * Sends this device's own ascents and attempts to the portal.
-     *
-     * Separate from the import and never automatic: writing into someone's
-     * Kilter account is their decision, and Android gates it behind the same
-     * explicit switch.
+     * Sends this device's own ascents and attempts that Kilter does not have
+     * yet ("Sync now"). The outcome is the engine's status, shown by the
+     * status block; it is not repeated as a screen failure.
      */
-    fun pushLogs() {
-        val pusher = uploader ?: return
+    fun pushLogs() = startUpload(enableImported = false)
+
+    /** Opt in to uploading Aurora-imported entries (they are matched against Kilter first), then upload. */
+    fun uploadImported() = startUpload(enableImported = true)
+
+    private fun startUpload(enableImported: Boolean) {
         if (job?.isActive == true) return
         job = scope.launch {
-            _state.update {
-                it.copy(busy = true, phase = "pushing", failure = "none", missingWallContext = false)
-            }
-            val outcome = withContext(io) { pusher.push() }
-            _state.update {
-                it.copy(
-                    busy = false,
-                    phase = if (outcome.failure == KilterFailure.NONE) "pushed" else "idle",
-                    failure = code(outcome.failure),
-                    uploaded = outcome.uploaded,
-                    pendingUpload = outcome.pending,
-                    missingWallContext = outcome.missingWallContext,
-                    signedIn = tokens.isSignedIn,
-                )
+            updateUpload { it.copy(busy = true, phase = "pushing", failure = "none", uploading = true) }
+            try {
+                // The run outlives this screen; an opt-in reaches a run already
+                // in flight only through the next one, which waits for it.
+                runScope.async {
+                    if (enableImported) engine.setImportedUploadEnabled(true)
+                    engine.upload(KilterUploadTrigger.MANUAL)
+                }.await()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The engine reports its own failures as status; this is a programming error.
+            } finally {
+                updateUpload { it.copy(busy = false, phase = "pushed", uploading = false, signedIn = tokens.isSignedIn) }
             }
         }
     }
+
+    /** [change], then the status block recomputed for it (it depends on [KilterScreenState.uploading]). */
+    private fun updateUpload(change: (KilterScreenState) -> KilterScreenState) = _state.update {
+        withUpload(change(it), engine.uploadStatus.value, engine.sessionExpired.value)
+    }
+
+    /**
+     * Kilter refused the session: forget it here (Kilter already did) and
+     * show the sign-in form. Held-back entries and the history stay.
+     */
+    fun signInAgain() {
+        if (job?.isActive == true) return
+        tokens.clear()
+        _state.update { it.copy(signedIn = false, phase = "idle", failure = "none") }
+    }
+
+    /** Loads the entries Kilter did not take, for the list the user opened. */
+    fun loadNotUploaded() {
+        _state.update { it.copy(notUploadedState = "loading", notUploaded = emptyList()) }
+        scope.launch {
+            val rows = try {
+                withContext(io) { engine.notUploadedEntries() }.map(::row)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            _state.update {
+                if (rows == null) it.copy(notUploadedState = "failed")
+                else it.copy(notUploadedState = "loaded", notUploaded = rows)
+            }
+        }
+    }
+
+    /** Freezes the diagnostics preview when the report form opens; background runs cannot replace it. */
+    fun loadDiagnostics() {
+        scope.launch {
+            val text = try {
+                engine.diagnosticSnapshot()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ""
+            }
+            _state.update { it.copy(diagnostics = text) }
+        }
+    }
+
+    /**
+     * The bug report as Android sends it to the maintainer: title, [body],
+     * the generalized device line, the app version and, when chosen, the
+     * diagnostics frozen by [loadDiagnostics]. [deviceLine] comes from Swift
+     * (OS major version and language only).
+     */
+    fun bugReportText(title: String, body: String, deviceLine: String, attachDiagnostics: Boolean): String =
+        composeBugReport(title, body, deviceLine, appVersion, _state.value.diagnostics.takeIf { attachDiagnostics })
 
     fun signOut() {
         if (job?.isActive == true) return
         job = scope.launch {
             _state.update { it.copy(busy = true) }
-            withContext(io) { api.signOut() }
+            withContext(io) {
+                api.signOut()
+                engine.clearUploadLedger()
+            }
+            engine.clearSessionExpired()
             _state.update {
                 it.copy(busy = false, signedIn = false, phase = "idle", failure = "none", imported = 0, alreadyPresent = 0, unknownClimb = 0)
             }
@@ -172,5 +295,93 @@ class KilterScreenModel(
         KilterFailure.MALFORMED_RESPONSE -> "malformedResponse"
         KilterFailure.NOT_SIGNED_IN -> "notSignedIn"
         KilterFailure.CONFLICT -> "conflict"
+    }
+
+    companion object {
+        /** Port of Android's `KilterLogbookSyncStatus` decisions; the push switch is always on here. */
+        internal fun withUpload(state: KilterScreenState, status: KilterUploadStatus?, expired: Boolean): KilterScreenState {
+            val needsLogin = expired || status?.reason == KilterUploadReason.AUTHENTICATION
+            val active = !state.uploading
+            return state.copy(
+                uploadChecked = status != null,
+                uploadLines = when {
+                    needsLogin -> listOf(KilterStatusLineUi("kilter_upload_auth", 0, plural = false, iosOnly = false))
+                    status == null -> listOf(KilterStatusLineUi("kilter_upload_unchecked", 0, plural = false, iosOnly = false))
+                    else -> statusLines(status)
+                },
+                uploadProblem = active && (needsLogin || status?.failed == true),
+                uploadNeedsLogin = needsLogin,
+                uploadShowEntries = (status?.notUploaded ?: 0) > 0,
+                uploadShowImported = !needsLogin && (status?.heldImported ?: 0) > 0,
+            )
+        }
+
+        /** Port of Android's `KilterUploadStatus.localized`: one key per line. */
+        internal fun statusLines(s: KilterUploadStatus): List<KilterStatusLineUi> {
+            val kept = s.notUploaded + s.heldImported
+            val reasonKey = when (s.reason) {
+                KilterUploadReason.NONE -> when {
+                    s.pending > 0 -> "kilter_upload_pending"
+                    kept > 0 -> "kilter_upload_done_except"
+                    else -> "kilter_upload_done"
+                }
+                KilterUploadReason.DISABLED -> "kilter_upload_disabled"
+                KilterUploadReason.AUTHENTICATION -> "kilter_upload_auth"
+                KilterUploadReason.WALL_CONTEXT -> "kilter_upload_wall"
+                KilterUploadReason.NETWORK -> "kilter_upload_network"
+                KilterUploadReason.TIMEOUT -> "kilter_upload_timeout"
+                KilterUploadReason.HTTP -> "kilter_upload_http"
+                KilterUploadReason.CONFLICT -> "kilter_upload_conflict"
+                KilterUploadReason.INTERNAL -> "kilter_upload_internal"
+            }
+            return buildList {
+                add(KilterStatusLineUi(reasonKey, 0, plural = false, iosOnly = false))
+                // iOS cannot create a wall: say how the account gets one.
+                if (s.reason == KilterUploadReason.WALL_CONTEXT) add(KilterStatusLineUi("kilter_upload_wall_hint", 0, plural = false, iosOnly = true))
+                if (s.nextRetry > 0) add(KilterStatusLineUi("kilter_upload_auto_retry", 0, plural = false, iosOnly = false))
+                fun count(key: String, n: Int) { if (n > 0) add(KilterStatusLineUi(key, n, plural = true, iosOnly = false)) }
+                count("kilter_upload_rejected", s.rejectedByKilter)
+                count("kilter_upload_unconfirmed", s.unconfirmed)
+                count("kilter_upload_invalid", s.rejectedInvalid)
+                count("kilter_upload_conflicts", s.rejectedConflict)
+                count("kilter_upload_held_imported", s.heldImported)
+            }
+        }
+
+        internal fun row(entry: KilterNotUploadedEntry) = KilterNotUploadedRowUi(
+            logUuid = entry.logUuid,
+            climbName = entry.climbName?.takeIf { it.isNotBlank() } ?: "",
+            angle = entry.angle,
+            date = entry.climbedAt.take(10).split('-').takeIf { it.size == 3 }
+                ?.let { (y, m, d) -> "$d.$m.$y" } ?: entry.climbedAt.take(10),
+            isAscent = entry.isAscent,
+            reason = when (entry.reason) {
+                KilterNotUploadedReason.NOT_ON_KILTER -> "notOnKilter"
+                KilterNotUploadedReason.RETRY_LATER -> "retryLater"
+                KilterNotUploadedReason.CONFLICT -> "conflict"
+                KilterNotUploadedReason.INVALID_DATE -> "invalidDate"
+            },
+            reportId = entry.wireId ?: entry.climbUuid,
+        )
+
+        /** Android's `DevContactViewModel.sendBugReport` content; the labels are the maintainer's format. */
+        internal fun composeBugReport(
+            title: String,
+            description: String,
+            deviceLine: String,
+            appVersion: String,
+            diagnostics: String?,
+        ): String = buildString {
+            append(title.trim())
+            append("\n\nBeschreibung:\n")
+            append(description.trim())
+            append("\n\n---\n")
+            append(deviceLine)
+            append("\nApp ").append(appVersion)
+            if (!diagnostics.isNullOrBlank()) {
+                append("\n\nKilter upload diagnostics:\n")
+                append(diagnostics)
+            }
+        }
     }
 }

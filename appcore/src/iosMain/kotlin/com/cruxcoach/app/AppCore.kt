@@ -18,7 +18,14 @@ import com.cruxcoach.app.imports.MoonBoardCsvImporter
 import com.cruxcoach.app.nostr.RelayClient
 import com.cruxcoach.app.kilter.KilterApi
 import com.cruxcoach.app.kilter.KilterLogImporter
-import com.cruxcoach.app.kilter.KilterUploader
+import com.cruxcoach.app.kilter.BundledKilterClimbIdTables
+import com.cruxcoach.app.kilter.CoroutineKilterUploadRetryScheduler
+import com.cruxcoach.app.kilter.KeyValueKilterUploadLedger
+import com.cruxcoach.app.kilter.KilterUploadDiagnostics
+import com.cruxcoach.app.kilter.KilterUploadEngine
+import com.cruxcoach.app.kilter.KilterUploadTrigger
+import com.cruxcoach.app.kilter.RepositoryKilterUploadCatalogue
+import com.cruxcoach.app.kilter.RepositoryKilterUploadLogbook
 import com.cruxcoach.app.kilter.KilterTokens
 import com.cruxcoach.app.map.BundledPagesBoardMapSource
 import com.cruxcoach.app.map.MapPresenter
@@ -295,16 +302,7 @@ class AppCore private constructor(
      * Kilter account. Session tokens are scoped to this identity and live in
      * the Keychain; the password only ever passes through the sign-in call.
      */
-    val kilterScreen: KilterScreenModel by lazy {
-        val tokens = KilterTokens(platform.secrets, platform.keyValues, pubkeyHex.take(16))
-        val api = KilterApi(platform.http, platform.clock, tokens)
-        KilterScreenModel(
-            api,
-            tokens,
-            KilterLogImporter(boardRepository, personalRepository),
-            KilterUploader(api, tokens, personalRepository, boardRepository),
-        )
-    }
+    val kilterScreen: KilterScreenModel by lazy { createKilterScreen() }
 
     fun makeListsScreen(): ListsScreenModel =
         ListsScreenModel(ListsPresenter(personalRepository, climbLookup))
@@ -570,6 +568,62 @@ class AppCore private constructor(
         BoardBrand.fromWireOrNull(brandWire)?.let { BoardOptions.forBrand(it, boardRepository) } ?: emptyList()
     } catch (e: Exception) {
         emptyList()
+    }
+
+    // ── Board area: Kilter upload (0.2.4) ───────────────────────────────
+
+    /**
+     * The Kilter screen with the 0.2.4 upload engine. Upload runs and their
+     * follow-up timers live in [kilterRunScope] for the app's lifetime, so
+     * leaving the screen never cuts a request off mid-way.
+     */
+    private fun createKilterScreen(): KilterScreenModel {
+        val identity = pubkeyHex.take(16)
+        val tokens = KilterTokens(platform.secrets, platform.keyValues, identity)
+        val api = KilterApi(platform.http, platform.clock, tokens)
+        val bundle = NSBundle.mainBundle.resourcePath ?: ""
+        val versionName = bundleString("CFBundleShortVersionString")
+        val versionCode = kilterVersionCode(versionName, bundleString("CFBundleVersion"))
+        val engine = KilterUploadEngine(
+            api = api,
+            session = tokens,
+            logbook = RepositoryKilterUploadLogbook(personalRepository),
+            catalogue = RepositoryKilterUploadCatalogue(boardRepository),
+            ledger = KeyValueKilterUploadLedger(platform.keyValues, identity),
+            diagnostics = KilterUploadDiagnostics(platform.keyValues, identity) { platform.clock.epochMillis() },
+            idTables = BundledKilterClimbIdTables(platform.files, "$bundle/kilter"),
+            appVersionName = versionName,
+            appVersionCode = versionCode,
+            clock = { platform.clock.epochMillis() },
+        )
+        engine.retryScheduler = CoroutineKilterUploadRetryScheduler(kilterRunScope) { attempt ->
+            engine.upload(KilterUploadTrigger.RETRY, retryAttempt = attempt)
+        }
+        return KilterScreenModel(
+            api,
+            tokens,
+            KilterLogImporter(boardRepository, personalRepository),
+            engine,
+            kilterRunScope,
+            "$versionName ($versionCode)",
+        )
+    }
+
+    private val kilterRunScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+    )
+
+    private fun bundleString(key: String): String =
+        NSBundle.mainBundle.objectForInfoDictionaryKey(key) as? String ?: ""
+
+    /**
+     * Held-back upload decisions belong to one build (Android keys them by
+     * versionCode). iOS has a marketing version and a build number; both go in.
+     */
+    private fun kilterVersionCode(versionName: String, build: String): Int {
+        val parts = versionName.split('.').map { it.toIntOrNull() ?: 0 }
+        val version = parts.getOrElse(0) { 0 } * 10_000 + parts.getOrElse(1) { 0 } * 100 + parts.getOrElse(2) { 0 }
+        return version * 1_000 + (build.toIntOrNull() ?: 0).coerceIn(0, 999)
     }
 
     companion object {

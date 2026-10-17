@@ -342,3 +342,4 @@
 "kilter_pushing" = "Wird zu Kilter hochgeladen …";
 "kilter_upload_wall_hint" = "Protokolliere zuerst eine Begehung in der Kilter-App — daraus erfährt diese App, welche Halle, Wand und welches Layout dein Konto nutzt.";
 "kilter_conflict" = "Kilter hat bereits einen Eintrag mit dieser ID, aber anderem Inhalt. Es wurde nichts überschrieben.";
+"kilter_push_manual_hint" = "Lädt deine Begehungen und Versuche hoch, die Kilter noch nicht hat. Auf dem iPhone startet das nur, wenn du tippst; ein unterbrochener Upload wird von selbst wiederholt, solange die App geöffnet bleibt.";

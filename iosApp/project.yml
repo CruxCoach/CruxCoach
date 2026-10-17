@@ -42,6 +42,10 @@ targets:
       - path: ../androidApp/src/main/assets/training
         type: folder
         buildPhase: resources
+      # Kilter climb-id tables the upload resolves wire ids with (same files as Android).
+      - path: ../androidApp/src/main/assets/kilter
+        type: folder
+        buildPhase: resources
     dependencies:
       - framework: Frameworks/CruxCoachCore.xcframework
         embed: false

@@ -42,7 +42,21 @@ class KilterWallContext(
     val gymUuid: String,
     val wallUuid: String,
     val productLayoutUuid: String,
-)
+) {
+    companion object {
+        /**
+         * Gym, wall and layout taken from a log the user already has upstream.
+         * Null means "no log carries one yet", which is a different answer from
+         * a failed fetch: a transient error must never replace a real wall
+         * context with a guess.
+         */
+        fun fromLogs(logs: List<KilterLog>): KilterWallContext? = logs
+            .firstOrNull {
+                it.gymUuid.isNotEmpty() && it.wallUuid.isNotEmpty() && it.productLayoutUuid.isNotEmpty()
+            }
+            ?.let { KilterWallContext(it.gymUuid, it.wallUuid, it.productLayoutUuid) }
+    }
+}
 
 @Serializable
 private data class KilterLogsResponse(val logs: List<KilterLog> = emptyList())
@@ -69,12 +83,10 @@ enum class KilterFailure {
     CONFLICT,
 }
 
-/** How many logs the portal took, and why it stopped if it did. */
-class KilterUploadOutcome(val uploaded: Int, val failure: KilterFailure)
-
 class KilterAuthOutcome(val userUuid: String, val failure: KilterFailure, val retryAfterSeconds: Long = 0)
 
-class KilterLogsOutcome(val logs: List<KilterLog>, val failure: KilterFailure)
+/** [httpStatus] is the portal's status when it answered with an error, 0 otherwise. */
+class KilterLogsOutcome(val logs: List<KilterLog>, val failure: KilterFailure, val httpStatus: Int = 0)
 
 /**
  * Kilter portal client, ported from Android's `KilterApiClient`.
@@ -90,7 +102,7 @@ class KilterApi(
     private val tokenUrl: String = TOKEN_URL,
     private val logoutUrl: String = LOGOUT_URL,
     private val apiBase: String = API_BASE,
-) {
+) : KilterUploadApi {
     // encodeDefaults matches Android's client: the portal is sent every field
     // explicitly, so an attempt really says `topped: false` rather than
     // leaving the server to assume what a missing key meant.
@@ -163,22 +175,27 @@ class KilterApi(
     }
 
     /** Ascents for the signed-in account, refreshing the access token once if needed. */
-    suspend fun fetchLogs(): KilterLogsOutcome {
-        val token = validAccessToken() ?: return KilterLogsOutcome(emptyList(), KilterFailure.NOT_SIGNED_IN)
+    override suspend fun fetchLogs(): KilterLogsOutcome {
+        val access = accessToken()
+        if (access.offline) return KilterLogsOutcome(emptyList(), KilterFailure.OFFLINE)
+        val token = access.token ?: return KilterLogsOutcome(emptyList(), KilterFailure.NOT_SIGNED_IN)
         val result = http.request(
             method = "GET",
             url = "$apiBase/logs",
             headers = mapOf("Authorization" to "Bearer $token", "Accept" to "application/json"),
             body = null,
             maxResponseBytes = MAX_LOGS_BYTES,
-            timeoutSeconds = TIMEOUT_SECONDS,
+            // The upload reads the whole logbook first; under load Kilter answers slowly.
+            timeoutSeconds = UPLOAD_TIMEOUT_SECONDS,
         )
         val response = when (result) {
             is HttpResult.Failed -> return KilterLogsOutcome(emptyList(), result.reason.toFailure())
             is HttpResult.Ok -> result.response
         }
-        if (response.status == 401) return KilterLogsOutcome(emptyList(), KilterFailure.NOT_SIGNED_IN)
-        if (response.status !in 200..299) return KilterLogsOutcome(emptyList(), KilterFailure.SERVER_ERROR)
+        if (response.status == 401) return KilterLogsOutcome(emptyList(), KilterFailure.NOT_SIGNED_IN, 401)
+        if (response.status !in 200..299) {
+            return KilterLogsOutcome(emptyList(), KilterFailure.SERVER_ERROR, response.status)
+        }
 
         val text = response.body.decodeToString()
         // The portal has shipped both a bare array and an object with a `logs` key.
@@ -195,10 +212,12 @@ class KilterApi(
     }
 
     /** A confirmed deletion (including an already absent log) clears the retry queue. */
-    suspend fun deleteLog(logUuid: String): KilterFailure {
+    override suspend fun deleteLog(logUuid: String): KilterFailure {
         // IDs are one path segment; never let stored/imported text alter the endpoint.
-        if (!Regex("[A-Za-z0-9_-]+").matches(logUuid)) return KilterFailure.MALFORMED_RESPONSE
-        val token = validAccessToken() ?: return KilterFailure.NOT_SIGNED_IN
+        if (!SAFE_PATH_SEGMENT.matches(logUuid)) return KilterFailure.MALFORMED_RESPONSE
+        val access = accessToken()
+        if (access.offline) return KilterFailure.OFFLINE
+        val token = access.token ?: return KilterFailure.NOT_SIGNED_IN
         val result = http.request(
             method = "DELETE", url = "$apiBase/logs/$logUuid",
             headers = mapOf("Authorization" to "Bearer $token"), body = null,
@@ -217,47 +236,49 @@ class KilterApi(
     }
 
     /**
-     * Posts logs the portal does not have yet.
-     *
-     * Kilter's bulk insert is not an upsert — a log uuid it already knows
-     * returns 500 — so the remote logbook is read first and anything already
-     * there is dropped. A row that exists remotely with *different* content is
-     * a conflict rather than a duplicate: it is left alone and reported, since
-     * overwriting someone's portal data from here is not this app's call.
+     * `DELETE /api/logs/{uuid}` answered as whether Kilter held the log: 200
+     * when it did (it is gone now), 204 (or 404) when it did not (verified
+     * live 2026-10-07, attempts and ascents alike). Kilter takes the same uuid
+     * again afterwards. The upload uses it to find out whether a log it cannot
+     * see in the logbook is there, and to replace a copy Kilter keeps.
      */
-    suspend fun uploadLogs(
-        logs: List<KilterLog>,
-        /** Remote logs the caller has already fetched; null fetches them. */
-        remote: List<KilterLog>? = null,
-    ): KilterUploadOutcome {
-        if (logs.isEmpty()) return KilterUploadOutcome(0, KilterFailure.NONE)
-        val token = validAccessToken() ?: return KilterUploadOutcome(0, KilterFailure.NOT_SIGNED_IN)
-        // Legacy catalogue ids are case-sensitive upstream: compact ids go up
-        // uppercase. Hyphenated native ids and local identities stay as they are.
-        val wire = logs.map { log ->
-            if (COMPACT_CLIMB_UUID.matches(log.climbUuid)) {
-                log.copy(climbUuid = log.climbUuid.uppercase())
-            } else log
-        }
-        val known = if (remote != null) {
-            remote.associateBy { it.logUuid }
-        } else {
-            val existing = fetchLogs()
-            if (existing.failure != KilterFailure.NONE) return KilterUploadOutcome(0, existing.failure)
-            existing.logs.associateBy { it.logUuid }
-        }
-        var conflicts = 0
-        val missing = wire.filter { log ->
-            val remote = known[log.logUuid]
-            if (remote != null && !sameUploadedLog(log, remote)) conflicts++
-            remote == null
-        }
-        if (conflicts > 0) return KilterUploadOutcome(0, KilterFailure.CONFLICT)
-        if (missing.isEmpty()) return KilterUploadOutcome(0, KilterFailure.NONE)
-
-        val payload = json.encodeToString(
-            kotlinx.serialization.builtins.ListSerializer(KilterLog.serializer()), missing,
+    override suspend fun deleteLogIfHeld(logUuid: String): KilterDeleteOutcome {
+        if (!SAFE_PATH_SEGMENT.matches(logUuid)) return KilterDeleteOutcome.FAILED
+        val token = accessToken().token ?: return KilterDeleteOutcome.FAILED
+        val result = http.request(
+            method = "DELETE", url = "$apiBase/logs/$logUuid",
+            headers = mapOf("Authorization" to "Bearer $token"), body = null,
+            maxResponseBytes = MAX_TOKEN_BYTES, timeoutSeconds = TIMEOUT_SECONDS,
         )
+        val response = (result as? HttpResult.Ok)?.response ?: return KilterDeleteOutcome.FAILED
+        return when (response.status) {
+            200 -> KilterDeleteOutcome.HELD
+            204, 404 -> KilterDeleteOutcome.NOT_HELD
+            else -> KilterDeleteOutcome.FAILED
+        }
+    }
+
+    /**
+     * Posts [logs] to Kilter's bulk endpoint exactly as given.
+     *
+     * The caller ([KilterUploadEngine]) owns everything around it: climb ids
+     * already in the spelling Kilter stores ([KilterClimbWireIds]), and no log
+     * uuid Kilter already holds — bulk is an insert, not an upsert, and a
+     * known uuid fails the request. Kilter treats the request as a unit: one
+     * row it refuses fails all of them and writes nothing, so a failed
+     * request can be split and retried without duplicating anything.
+     *
+     * The response body is never kept: an error response can echo private log
+     * data. NSURLSession does not resend a POST on its own, so a request that
+     * broke off was sent at most once.
+     */
+    override suspend fun uploadLogs(logs: List<KilterLog>): KilterBulkOutcome {
+        if (logs.isEmpty()) return KilterBulkOutcome(200, KilterFailure.NONE, mayHaveReachedKilter = false)
+        val access = accessToken()
+        // The token endpoint was unreachable: the upload itself never went out.
+        if (access.offline) return KilterBulkOutcome(0, KilterFailure.OFFLINE, mayHaveReachedKilter = false)
+        val token = access.token ?: return KilterBulkOutcome(0, KilterFailure.NOT_SIGNED_IN, mayHaveReachedKilter = false)
+        val payload = json.encodeToString(kotlinx.serialization.builtins.ListSerializer(KilterLog.serializer()), logs)
         val result = http.request(
             method = "POST",
             url = "$apiBase/logs/bulk",
@@ -268,50 +289,58 @@ class KilterApi(
             ),
             body = payload.encodeToByteArray(),
             maxResponseBytes = MAX_TOKEN_BYTES,
-            timeoutSeconds = TIMEOUT_SECONDS,
+            timeoutSeconds = UPLOAD_TIMEOUT_SECONDS,
         )
-        val response = when (result) {
-            is HttpResult.Failed -> return KilterUploadOutcome(0, result.reason.toFailure())
-            is HttpResult.Ok -> result.response
+        return when (result) {
+            is HttpResult.Failed -> KilterBulkOutcome(
+                0, KilterUploadFailure.reasonFor(result.reason), KilterUploadFailure.mayHaveReachedKilter(result.detail),
+            )
+            is HttpResult.Ok -> KilterBulkOutcome(result.response.status, KilterFailure.NONE, mayHaveReachedKilter = true)
         }
-        // The body is never kept: an error response can echo private log data.
-        if (response.status == 401) return KilterUploadOutcome(0, KilterFailure.NOT_SIGNED_IN)
-        if (response.status !in 200..299) return KilterUploadOutcome(0, KilterFailure.SERVER_ERROR)
-        return KilterUploadOutcome(missing.size, KilterFailure.NONE)
     }
 
-    /**
-     * Gym, wall and layout taken from a log the user already has upstream.
-     *
-     * Null means "no log carries one yet", which is a different answer from a
-     * failed fetch: a transient error must never be allowed to replace a real
-     * wall context with a guess.
-     */
-    fun wallContextFromLogs(logs: List<KilterLog>): KilterWallContext? = logs
-        .firstOrNull {
-            it.gymUuid.isNotEmpty() && it.wallUuid.isNotEmpty() && it.productLayoutUuid.isNotEmpty()
-        }
-        ?.let { KilterWallContext(it.gymUuid, it.wallUuid, it.productLayoutUuid) }
+    /** See [KilterWallContext.fromLogs]. */
+    fun wallContextFromLogs(logs: List<KilterLog>): KilterWallContext? = KilterWallContext.fromLogs(logs)
 
-    private suspend fun validAccessToken(): String? {
+    /** An access token, or why there is none: [offline] when the token endpoint could not be reached. */
+    private class Access(val token: String?, val offline: Boolean)
+
+    /**
+     * The access token, refreshed once if it expires within a minute. Offline
+     * (the token endpoint unreachable) is no expired session: the upload must
+     * not ask for a new login then, so it is reported apart.
+     */
+    private suspend fun accessToken(): Access {
         val current = tokens.accessToken()
         if (current != null && clock.epochSeconds() < tokens.expiresAtEpochSeconds() - EXPIRY_MARGIN_SECONDS) {
-            return current
+            return Access(current, offline = false)
         }
-        val refresh = tokens.refreshToken() ?: return current
-        val result = http.request(
-            method = "POST",
-            url = tokenUrl,
-            headers = mapOf("Content-Type" to "application/x-www-form-urlencoded"),
-            body = buildForm(
-                "grant_type" to "refresh_token",
-                "client_id" to CLIENT_ID,
-                "refresh_token" to refresh,
-            ).encodeToByteArray(),
-            maxResponseBytes = MAX_TOKEN_BYTES,
-            timeoutSeconds = TIMEOUT_SECONDS,
-        )
-        val response = (result as? HttpResult.Ok)?.response ?: return null
+        val refresh = tokens.refreshToken() ?: return Access(current, offline = false)
+        return when (val refreshed = refreshAccessToken(refresh)) {
+            is HttpResult.Failed -> if (refreshed.reason == HttpFailure.OFFLINE || refreshed.reason == HttpFailure.TIMEOUT) {
+                Access(null, offline = true)
+            } else {
+                Access(null, offline = false)
+            }
+            is HttpResult.Ok -> Access(storeRefreshed(refreshed.response, refresh), offline = false)
+        }
+    }
+
+    private suspend fun refreshAccessToken(refresh: String): HttpResult = http.request(
+        method = "POST",
+        url = tokenUrl,
+        headers = mapOf("Content-Type" to "application/x-www-form-urlencoded"),
+        body = buildForm(
+            "grant_type" to "refresh_token",
+            "client_id" to CLIENT_ID,
+            "refresh_token" to refresh,
+        ).encodeToByteArray(),
+        maxResponseBytes = MAX_TOKEN_BYTES,
+        timeoutSeconds = TIMEOUT_SECONDS,
+    )
+
+    /** Stores a refreshed token; null when the portal refused the refresh. */
+    private fun storeRefreshed(response: com.cruxcoach.app.platform.HttpResponse, refresh: String): String? {
         if (response.status !in 200..299) return null
         val parsed = try {
             json.decodeFromString(TokenResponse.serializer(), response.body.decodeToString())
@@ -343,15 +372,15 @@ class KilterApi(
         const val MAX_LOGS_BYTES = 32L * 1024 * 1024
         const val EXPIRY_MARGIN_SECONDS = 60L
 
-        /** A catalogue id without hyphens; the portal matches those uppercase. */
-        val COMPACT_CLIMB_UUID = Regex("[0-9a-fA-F]{32}")
+        /**
+         * Idle timeout of the upload's calls (bulk upload, logbook read): under
+         * load Kilter took longer than 30 s for a 200-row request (field report,
+         * 2026-10-05), and a request it answers too late leaves its rows in doubt.
+         */
+        const val UPLOAD_TIMEOUT_SECONDS = 90
 
-        /** Two logs are the same upload when every field the portal stores matches. */
-        internal fun sameUploadedLog(local: KilterLog, remote: KilterLog): Boolean =
-            local.climbUuid.equals(remote.climbUuid, ignoreCase = true) &&
-                local.angle == remote.angle &&
-                local.topped == remote.topped &&
-                local.attempts == remote.attempts
+        /** IDs are one path segment; never let stored/imported text alter the endpoint. */
+        private val SAFE_PATH_SEGMENT = Regex("[A-Za-z0-9_-]+")
 
         /** `sub` claim of a JWT, without verifying it: the server is the authority, this is only a label. */
         fun subjectOf(accessToken: String): String {
