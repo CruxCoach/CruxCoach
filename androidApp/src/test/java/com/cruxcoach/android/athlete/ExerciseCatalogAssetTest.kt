@@ -27,6 +27,14 @@ class ExerciseCatalogAssetTest {
     }
 
     @Test
+    fun `search finds every exercise that has the word in its name`() {
+        // Device test 2026-10-17: "Handgelenk" listed five exercises, not "Handgelenkbeugen mit Kurzhantel".
+        val found = catalog.search("Handgelenk", "de").map { it.slug }
+        assertTrue("antagonist.wrist_curl" in found, "$found")
+        assertTrue("antagonist.reverse_wrist_curl" in found, "$found")
+    }
+
+    @Test
     fun `slugs are unique and prefixed by their category`() {
         val slugs = catalog.all.map { it.slug }
         assertEquals(slugs.size, slugs.toSet().size)

@@ -377,6 +377,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 ReturnToTraining.state(activities, repo.pauses(), repo.allInjuries(), today,
                     maxFingerBefore = ReturnToTraining.maxFingerBefore(sets120, service.catalog, today))
             }.getOrNull()
+            val logbook = runCatching { service.logbookSummary() }.getOrNull()
             val input = SuggestionInput(
                 catalog = service.catalog,
                 profile = i.profile,
@@ -399,7 +400,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 benchmarks = benchmarks,
                 levelShift = levelShift,
                 budgetFactor = budgetFactor,
-                logbookSends = runCatching { service.logbookSummary().sampleSize }.getOrDefault(0),
+                logbookSends = logbook?.sampleSize ?: 0,
+                logbookDifficulty = logbook?.takeIf { it.hasGrades }?.workingDifficulty,
                 historyWeeks = historyWeeks,
                 weekly = weekly,
                 weekStart = weekStart,

@@ -185,6 +185,8 @@ data class SuggestionInput(
     val budgetFactor: Double = 1.0,
     /** Sends behind the logbook anchors, for the confidence badge. */
     val logbookSends: Int = 0,
+    /** Working grade of a graded board logbook; sets the level while no grade is saved (owner question 2026-10-17). */
+    val logbookDifficulty: Double? = null,
     /** Weeks with any logged training or climbing. */
     val historyWeeks: Int = 0,
     /** This week's volume per area (see [WeeklyVolume]); empty keeps the day-by-day rules. */
@@ -1020,14 +1022,18 @@ object SessionSuggester {
         // What the athlete climbs, and for how long (quick start, coach setup): a 7a boulderer with years of
         // climbing got assisted hangs and negative pull-ups before the first performance value (device test
         // 2026-10-17). The grade sets the level, the years cap it; the novice and youth guardrails still apply.
-        climbingLevel(input.coach)?.let { level = max(level, it) }
+        climbingLevel(input.coach, input.logbookDifficulty)?.let { level = max(level, it) }
         if (input.coach.goal == CoachGoal.COMEBACK) level--
         return (level + input.levelShift.coerceIn(-1, 1)).coerceAtLeast(1)
     }
 
-    /** Exercise difficulty (1–5) the athlete's grade stands for, capped by their years of climbing; null without a grade. */
-    internal fun climbingLevel(coach: CoachProfile): Int? {
-        val grade = coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: return null
+    /**
+     * Exercise difficulty (1–5) the athlete's grade stands for, capped by their years of climbing; null without a grade.
+     * The saved grade wins (the athlete's word); without one the board logbook's working grade stands in, so skipping
+     * the quick start does not leave a logbook climber at the beginner level.
+     */
+    internal fun climbingLevel(coach: CoachProfile, logbookDifficulty: Double? = null): Int? {
+        val grade = coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: logbookDifficulty ?: return null
         val byGrade = when {
             grade < 16 -> 1      // up to 5c
             grade < 20 -> 2      // 6a – 6b+
@@ -1066,6 +1072,11 @@ object SessionSuggester {
         // The warm-up is chosen last, for what the session then holds (owner 2026-10-09), and goes first.
         for (slot in slots.filter { it != Slot.WARMUP } + slots.filter { it == Slot.WARMUP }) {
             val mains = if (slot == Slot.WARMUP) result.map { input.catalog.fallbackFor(it.slug) } else emptyList()
+            // One progression chain per session: a 7a boulderer with weighted pull-ups got negative pull-ups two
+            // steps down the same chain as the extra pull exercise at 90 min (device test 2026-10-17). Warm-ups
+            // keep the neighbour rule only, so an easy hang can still prepare a hard pull.
+            val takenChains = if (slot == Slot.WARMUP) emptySet()
+                else taken.flatMapTo(mutableSetOf()) { t -> input.catalog.chainOf(t).map { it.slug } }
             // "Lieber gar nicht": finger strength comes from the board, not from here.
             if (slot == Slot.FINGER_MAIN && input.coach.fingerPreference == FingerPreference.NONE) continue
             val base = input.catalog.all.filter { def ->
@@ -1076,8 +1087,8 @@ object SessionSuggester {
                 def.slug !in taken && def.slug !in input.excluded && fits(slot, def, fingerFocus) && filter.matches(def) && allowed &&
                     (slot != Slot.WARMUP || warmupFits(def, mains)) &&
                     !(guard.restrictFinger && slot != Slot.WARMUP && restrictedByGuard(def)) &&
-                    // One progression chain per session: no easier/harder neighbour of a pick.
-                    taken.none { t -> def.easier == t || def.harder == t }
+                    // No easier/harder neighbour of a pick, and for main work nothing else from its chain.
+                    taken.none { t -> def.easier == t || def.harder == t } && def.slug !in takenChains
             }
             // The preferred finger-training family, when the equipment allows it.
             val preferred = if (slot == Slot.FINGER_MAIN) base.filter { fitsPreference(it, input.coach.fingerPreference) }.ifEmpty { base } else base
