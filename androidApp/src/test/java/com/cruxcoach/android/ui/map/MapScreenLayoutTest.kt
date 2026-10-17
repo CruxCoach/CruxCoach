@@ -68,10 +68,12 @@ class MapScreenLayoutTest {
         onSelect: (MapVenue) -> Unit = {},
         onToggleBrand: (BoardBrand) -> Unit = {},
         onBrowse: (BoardBrand, Int, Int?) -> Unit = { _, _, _ -> },
+        user: UserPosition? = null,
+        onLocate: () -> Unit = {},
     ) {
         compose.setContent {
             CruxCoachTheme {
-                Layout(selected, mapState, onSelect, onToggleBrand, onBrowse)
+                Layout(selected, mapState, onSelect, onToggleBrand, onBrowse, user, onLocate)
             }
         }
     }
@@ -83,6 +85,8 @@ class MapScreenLayoutTest {
         onSelect: (MapVenue) -> Unit,
         onToggleBrand: (BoardBrand) -> Unit,
         onBrowse: (BoardBrand, Int, Int?) -> Unit,
+        user: UserPosition?,
+        onLocate: () -> Unit,
     ) {
         MapScreenLayout(
             state = mapState,
@@ -105,6 +109,8 @@ class MapScreenLayoutTest {
             onShowNearest = {},
             onOverlayHeight = {},
             onPeekHeight = { _, _ -> },
+            userPosition = user,
+            onLocateMe = onLocate,
         ) { Box(Modifier.fillMaxSize().background(Color.LightGray)) }
     }
 
@@ -141,6 +147,16 @@ class MapScreenLayoutTest {
         compose.onNodeWithText("10:00–23:00").assertExists()
         // Kilter and MoonBoard both have a catalogue: one button per board.
         compose.onAllNodesWithText("Climbs für dieses Board ansehen").assertCountEquals(2)
+    }
+
+    @Test
+    fun `my location sorts by distance and shows it`() {
+        var located = false
+        show(user = UserPosition(48.1300, 11.7010), onLocate = { located = true })
+        compose.onNodeWithText("Die nächsten zu dir zuerst").assertIsDisplayed()
+        compose.onNodeWithText("70 m", substring = true).assertExists()
+        compose.onNodeWithTag("map_locate_me").performSemanticsAction(SemanticsActions.OnClick)
+        assertEquals(true, located)
     }
 
     @Test

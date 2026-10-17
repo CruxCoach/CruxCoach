@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- „Mein Standort“ auf der Board-Karte und in der Hallensuche. Die Berechtigung wird erst beim Antippen abgefragt. -->
+    <string name="locate_me">Mein Standort</string>
+    <string name="locate_me_finding">Standort wird ermittelt …</string>
+    <string name="locate_me_denied">Ohne Standortfreigabe kann CruxCoach nicht zeigen, was in deiner Nähe ist.</string>
+    <string name="locate_me_denied_settings">Der Standortzugriff ist für CruxCoach ausgeschaltet. Du kannst ihn in den App-Einstellungen erlauben.</string>
+    <string name="locate_me_disabled">Der Standort ist auf diesem Telefon ausgeschaltet.</string>
+    <string name="locate_me_unavailable">Dein Standort ließ sich nicht ermitteln. Versuch es noch einmal oder such nach dem Namen.</string>
+    <string name="locate_me_open_settings">Einstellungen</string>
+    <string name="locate_me_turn_on">Einschalten</string>
+    <string name="locate_me_private">Dein Standort bleibt auf diesem Telefon.</string>
+    <string name="distance_m">%1$s m</string>
+    <string name="distance_km">%1$s km</string>
+
+    <!-- Board-Karte mit bekanntem Standort -->
+    <string name="map_in_view_nearest_you">Die nächsten zu dir zuerst</string>
+
+    <!-- Hallensuche -->
+    <string name="gym_nearby_button">Hallen in meiner Nähe</string>
+    <string name="gym_nearby_title">In deiner Nähe</string>
+    <string name="gym_nearby_none">Im Umkreis von 100 km gibt es keine Halle mit einem Board, das CruxCoach unterstützt. Such stattdessen nach dem Namen.</string>
+    <string name="board_find_nearby_gym">Halle in deiner Nähe finden</string>
+</resources>
