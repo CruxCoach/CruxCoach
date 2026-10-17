@@ -124,6 +124,29 @@ object MealTextParser {
         return digits.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
     }
 
+    /**
+     * Grams of one piece for a database food people count ("Banane roh" → 120, "Hühnerei roh" → 60), so its amount
+     * dialog can offer pieces (device test D43). Strict on purpose: the name's first word must be the counted food
+     * itself (or its plural), never a compound ("Eierteigwaren") or a processed form ("Apfel getrocknet").
+     */
+    fun pieceGramsOf(foodName: String): Double? {
+        val words = FoodMatcher.normalize(foodName)
+        val first = words.firstOrNull() ?: return null
+        if (words.any { w -> NOT_A_PIECE.any { w.startsWith(it) } }) return null
+        val key = DATABASE_PIECES[first] ?: PIECES.keys.firstOrNull { k ->
+            first == k || listOf("n", "en", "e", "s").any { first == k + it }
+        }?.let { PIECES[it] }
+        return key
+    }
+
+    /** Words that make a food not countable by the piece: dried, powdered, juiced, parts of it. */
+    private val NOT_A_PIECE = listOf("getrocknet", "dried", "pulver", "powder", "trocken", "chips", "saft", "juice",
+        "konserve", "canned", "eigelb", "eiklar", "yolk", "white", "mehl", "flour", "staerke", "starch", "pueree", "mus",
+        "frittiert", "fried", "kompott", "konfituere", "marmelade", "jam")
+
+    /** Database names for counted foods that the text tables spell differently. */
+    private val DATABASE_PIECES = mapOf("huehnerei" to 60.0, "huehnereier" to 60.0)
+
     /** Weight of one piece or slice for foods people count. */
     private fun pieceWeight(key: String, slice: Boolean): Double? = lookup(if (slice) SLICES else PIECES, key)
 

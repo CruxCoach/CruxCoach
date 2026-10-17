@@ -12,6 +12,24 @@ class MealTextParserTest {
     private fun items(text: String) = parse(text).foods.map { it.nameDe to it.grams.toInt() }
 
     @Test
+    fun databaseFoodsPeopleCountGetAPieceAndOnlyThose() {
+        // Device test D43: "Banane roh" offered only grams.
+        assertEquals(120.0, MealTextParser.pieceGramsOf("Banane roh"))
+        assertEquals(150.0, MealTextParser.pieceGramsOf("Apfel roh"))
+        assertEquals(60.0, MealTextParser.pieceGramsOf("Hühnerei roh"))
+        assertEquals(70.0, MealTextParser.pieceGramsOf("Karotte/Möhre, roh"))
+        assertEquals(100.0, MealTextParser.pieceGramsOf("Kartoffeln geschält, gegart"))
+        // Compounds, processed forms and parts are not pieces.
+        assertNull(MealTextParser.pieceGramsOf("Eierteigwaren gegart"))
+        assertNull(MealTextParser.pieceGramsOf("Apfel getrocknet"))
+        assertNull(MealTextParser.pieceGramsOf("Bananenchips frittiert, gesüßt"))
+        assertNull(MealTextParser.pieceGramsOf("Hühnerei Eigelb, roh"))
+        assertNull(MealTextParser.pieceGramsOf("Orangensaft"))
+        assertNull(MealTextParser.pieceGramsOf("Kartoffelstärke (Kartoffelmehl)"))
+        assertNull(MealTextParser.pieceGramsOf("Haferflocken"))
+    }
+
+    @Test
     fun gramsMillilitresAndPiecesWithMealHint() {
         val r = parse("Zum Frühstück 80 g Haferflocken mit 200 ml Milch und eine Banane")
         assertEquals(Meal.BREAKFAST, r.meal)

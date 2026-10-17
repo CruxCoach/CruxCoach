@@ -220,7 +220,12 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         val n = scale(item, portions, grams) ?: return@io
         val now = System.currentTimeMillis()
         // A food picked from the BLS or product search becomes one of "my foods" on first use.
-        if (item.source in setOf(SOURCE_BLS, SOURCE_OFF, SOURCE_USDA) && repo.foodItem(item.id) == null) repo.saveFoodItem(item.copy(updatedAt = now))
+        val database = item.source in setOf(SOURCE_BLS, SOURCE_OFF, SOURCE_USDA)
+        val saved = if (database) repo.foodItem(item.id) else null
+        if (database && saved == null) repo.saveFoodItem(item.copy(updatedAt = now))
+        // A database food saved before it knew its piece weight learns it now (device test D43).
+        else if (saved != null && saved.servingG == null && item.servingG != null)
+            repo.saveFoodItem(saved.copy(servingG = item.servingG, servingLabel = item.servingLabel, updatedAt = now))
         repo.saveFoodLog(
             FoodLogEntry(
                 id = repo.newId(), day = currentDay(), loggedAt = now, meal = meal, foodItemId = item.id, name = item.name,
