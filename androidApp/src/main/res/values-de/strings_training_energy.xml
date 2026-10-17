@@ -78,6 +78,7 @@
     <string name="trn_w_below_resting">Dein Kalorienziel von %1$d kcal liegt unter deinem Grundumsatz (%2$d kcal).</string>
     <string name="trn_w_low_target_bmi">Dein Zielgewicht entspricht einem BMI von %1$s – unter %2$s, ab dem Kletterverbände einen Gesundheitscheck empfehlen.</string>
     <string name="trn_w_low_target_bmi_plain">Dein Zielgewicht liegt unter dem Bereich, den Kletterverbände für Gesundheitschecks nutzen.</string>
+    <string name="trn_w_youth">Unter 18 wächst der Körper noch: Erwachsenen-BMI-Grenzen passen nicht; Abnehmen nur mit ärztlicher Begleitung.</string>
 
     <string name="trn_tile_kcal">%1$d von %2$d kcal</string>
     <string name="trn_review_energy">Energie an erfassten Tagen: %1$d kcal (geschätzter Bedarf etwa %2$d kcal)</string>

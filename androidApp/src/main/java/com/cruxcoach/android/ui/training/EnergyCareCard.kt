@@ -38,7 +38,12 @@ fun EnergyCareCard(
 ) {
     if (report.signals.isEmpty()) return
     // "Adjust weight-loss goal" only for what the goal causes; a low own calorie target is changed at the energy ring.
-    val adjust = onAdjustGoal?.takeIf { report.signals.any { it in PLAN_SIGNALS && !(it == RedsSignal.LARGE_DEFICIT && report.ownTarget != null) } }
+    // Under 18 the running goal itself is the reason to look at it again.
+    val adjust = onAdjustGoal?.takeIf {
+        report.signals.any { s ->
+            (s in PLAN_SIGNALS && !(s == RedsSignal.LARGE_DEFICIT && report.ownTarget != null)) || (s == RedsSignal.YOUTH && report.plan != null)
+        }
+    }
     Card(
         colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.cautionContainer,
             contentColor = CruxCoachDesign.colors.onCautionContainer),
@@ -113,6 +118,7 @@ fun energyWarningText(signal: RedsSignal, report: EnergyReport, profile: Athlete
                 stringResource(R.string.trn_w_below_resting, target, resting)
             else stringResource(R.string.trn_w_large_deficit, ((plan?.deficitShare ?: WeightPlan.LARGE_DEFICIT_SHARE) * 100).roundToInt())
         }
+        RedsSignal.YOUTH -> stringResource(R.string.trn_w_youth)
         RedsSignal.LOW_TARGET_BMI -> {
             val bmi = plan?.targetBmi
             if (hide || bmi == null) stringResource(R.string.trn_w_low_target_bmi_plain)

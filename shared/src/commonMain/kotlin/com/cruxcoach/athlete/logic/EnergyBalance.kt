@@ -24,6 +24,8 @@ object EnergyBalance {
     const val KCAL_PER_KG = 7700.0
     /** Age used without a birth year or an age band from the coach setup. */
     const val DEFAULT_AGE = 30
+    /** From this age adult BMI thresholds and weight-loss paces apply. */
+    const val ADULT_AGE = 18
 
     data class Need(
         val restingKcal: Int,
@@ -87,6 +89,9 @@ object EnergyBalance {
         AgeBand.Y55_PLUS -> 60
         null -> DEFAULT_AGE
     }
+
+    /** Under 18 by birth year, else by the coach's age band; unknown counts as adult. */
+    fun isMinor(profile: AthleteProfile, year: Int): Boolean = age(profile, year) < ADULT_AGE
 
     /** Null without weight or height: resting energy needs both. */
     fun need(profile: AthleteProfile, weightKg: Double?, heightCm: Double?, activity: DayActivity?, year: Int): Need? {

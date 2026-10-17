@@ -331,6 +331,34 @@ class AthleteLogicTest {
     }
 
     @Test
+    fun underEighteenHasItsOwnReasonWhileLosingWeightAndNothingIsLocked() {
+        // Holistic audit 2026-10-17: adult BMI thresholds and paces do not fit a growing body.
+        val trend = TrendWeight.compute(listOf(d("2026-10-01") to 50.0))
+        val teen = AthleteProfile(goal = AthleteGoal.LOSE_WEIGHT, sex = Sex.FEMALE, coach = CoachProfile(ageBand = AgeBand.UNDER_16))
+        val need = EnergyBalance.need(teen, 50.0, 160.0, null, 2026)!!
+        val plan = WeightPlan.plan(0.3, null, 50.0, 160.0, Sex.FEMALE, need)
+        // A gentle plan has no warning of its own; under 18 it still gets the reason, first on the card.
+        assertTrue(plan.warnings.isEmpty())
+        val report = RedsGuard.evaluate(teen, 160.0, trend, emptyList(), plan, year = 2026)
+        assertEquals(listOf(RedsSignal.YOUTH), report.signals)
+        // The plan stays as chosen: nothing is refused or capped for the age.
+        assertEquals(330, plan.dailyDeficitKcal)
+        // Other reasons come after it, e.g. a low BMI (48 kg at 170 cm is 16.6).
+        val low = RedsGuard.evaluate(teen, 170.0, TrendWeight.compute(listOf(d("2026-10-01") to 48.0)), emptyList(), null, year = 2026)
+        assertEquals(listOf(RedsSignal.YOUTH, RedsSignal.LOW_BMI), low.signals)
+        // Age alone puts no card up: without a goal or another reason nothing is said.
+        assertTrue(RedsGuard.evaluate(teen.copy(goal = AthleteGoal.PERFORM), 160.0, trend, emptyList(), null, year = 2026).signals.isEmpty())
+        // Adults, and an unknown age, get no such reason.
+        val adult = teen.copy(coach = CoachProfile(ageBand = AgeBand.Y18_39))
+        assertTrue(RedsSignal.YOUTH !in RedsGuard.evaluate(adult, 160.0, trend, emptyList(), plan, year = 2026).signals)
+        assertTrue(!EnergyBalance.isMinor(AthleteProfile(), 2026))
+        // The birth year decides when it is known: 17 this year is under 18, 18 is not – whatever the age band says.
+        assertTrue(EnergyBalance.isMinor(AthleteProfile(birthYear = 2009), 2026))
+        assertTrue(!EnergyBalance.isMinor(AthleteProfile(birthYear = 2008, coach = CoachProfile(ageBand = AgeBand.Y16_17)), 2026))
+        assertTrue(EnergyBalance.isMinor(AthleteProfile(coach = CoachProfile(ageBand = AgeBand.Y16_17)), 2026))
+    }
+
+    @Test
     fun femaleThresholdIsLower() {
         val trend = TrendWeight.compute(listOf(d("2026-10-01") to 54.0)) // BMI 18.0 at 173 cm
         assertTrue(RedsSignal.LOW_BMI in RedsGuard.evaluate(AthleteProfile(sex = Sex.MALE), 173.0, trend, emptyList()).signals)
