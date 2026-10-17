@@ -75,7 +75,7 @@ class PageActions(
     val onRemoveExercise: () -> Unit,
     val onAsPlanned: () -> Unit = {},
     /** Where the week stands for an exercise's area (comparison review #13); null without a target. */
-    val weeklyFor: suspend (String) -> com.cruxcoach.athlete.logic.AreaProgress? = { null },
+    val weeklyFor: (String) -> com.cruxcoach.athlete.logic.AreaProgress? = { null },
 )
 
 /**
@@ -399,9 +399,7 @@ private fun ExerciseMenu(
             onDismissRequest = { confirmRemove = false },
             title = { Text(stringResource(R.string.trw_remove_exercise)) },
             text = {
-                val weekly by androidx.compose.runtime.produceState<com.cruxcoach.athlete.logic.AreaProgress?>(null, def.slug) {
-                    value = actions.weeklyFor(def.slug)
-                }
+                val weekly = actions.weeklyFor(def.slug)
                 Column {
                     Text(stringResource(R.string.trw_remove_exercise_confirm, def.name(language)))
                     weekly?.let { p ->
