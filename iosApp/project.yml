@@ -91,10 +91,27 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/CruxCoach.app/CruxCoach"
         BUNDLE_LOADER: "$(TEST_HOST)"
         TEST_TARGET_NAME: CruxCoach
+  CruxCoachUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    # The app's English string tables come along, so the tests look labels up
+    # instead of repeating them.
+    sources:
+      - path: CruxCoachUITests
+      - path: CruxCoach/Resources/en.lproj
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: CruxCoach
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: org.cruxcoach.ios.uitests
+        TEST_TARGET_NAME: CruxCoach
 schemes:
   CruxCoach:
     build:
       targets:
         CruxCoach: all
     test:
-      targets: [CruxCoachTests]
+      targets: [CruxCoachTests, CruxCoachUITests]
