@@ -81,7 +81,7 @@ data class WeeklyReviewState(
 )
 
 /**
- * The weekly look back (MCI's weekly report, climber version): what happened,
+ * The weekly look back (a weekly report, climber version): what happened,
  * which structures carried the load, where strength went — kept separate from
  * the fast logging screens on purpose.
  */

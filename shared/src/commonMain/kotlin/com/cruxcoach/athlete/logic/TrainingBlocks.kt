@@ -2,7 +2,7 @@ package com.cruxcoach.athlete.logic
 
 import kotlinx.datetime.LocalDate
 
-/** Where the athlete stands in the training cycle (MCI's week types, climber version). */
+/** Where the athlete stands in the training cycle (week types, climber version). */
 enum class BlockPhase { INTRO, BUILD, DELOAD, TAPER, EVENT }
 
 data class BlockState(

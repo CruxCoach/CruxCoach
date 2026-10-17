@@ -80,8 +80,8 @@ data class AreaProgress(
 }
 
 /**
- * MCI plans volume per muscle group per week; climbers need it per climbing
- * structure, with the wall counted. Targets are hard sets per ISO week in a
+ * Volume per week, planned per climbing structure (not per muscle group),
+ * with the wall counted. Targets are hard sets per ISO week in a
  * build week at three training days, then scaled:
  *
  * | Area | Sets | Sessions | Why |

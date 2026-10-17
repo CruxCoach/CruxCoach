@@ -11,8 +11,8 @@ import kotlin.math.min
 
 /**
  * How today's form changes the prescription of a training the athlete starts
- * (MCI adjusts set counts by the wellness check-in; this is the climber
- * version). Applied once, when the planned sets are created.
+ * (set counts follow the check-in, climber version). Applied once, when the
+ * planned sets are created.
  */
 data class ReadinessModifier(
     /** Added to the set count of main (non-warm-up, non-test) work; never below one set. */

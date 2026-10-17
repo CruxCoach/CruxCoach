@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Daily training suggestion (MCI-style, climber version). -->
+<!-- Daily training suggestion (climber version). -->
 <resources>
     <string name="trsg_card_label">Suggestion for today</string>
     <string name="trsg_why_title">Why this suggestion?</string>

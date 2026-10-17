@@ -200,7 +200,7 @@ object WeekPlanSuggester {
 /** Where the coach stands with one exercise's starting value (the "wird gelernt" badge). */
 object LearningState {
 
-    /** Logged sessions after which a value counts as learnt (MCI: the first week). */
+    /** Logged sessions after which a value counts as learnt (about the first week). */
     const val SESSIONS_TO_LEARN = 2
 
     sealed interface State {

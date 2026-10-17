@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Guided player: set-to-set autoregulation, "it hurts", reward screen (MCI parity round). -->
+<!-- Guided player: set-to-set autoregulation, "it hurts", reward screen. -->
 <resources>
     <string name="trp2_adj_missed">Reps missed</string>
     <string name="trp2_adj_no_reserve">Nothing left in the tank</string>

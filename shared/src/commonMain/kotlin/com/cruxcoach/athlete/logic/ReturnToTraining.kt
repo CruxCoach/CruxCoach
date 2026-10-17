@@ -47,7 +47,7 @@ data class ReturnState(
 )
 
 /**
- * Coming back after a break, MCI-style but for climbers: whole-body ramps
+ * Coming back after a break, for climbers: whole-body ramps
  * after ten or 21 days off (or a longer illness), and a finger-specific
  * re-entry after a healed finger injury. Rest stays rest: an open pause or an
  * active injury is handled by the pause and injury modes, not here.

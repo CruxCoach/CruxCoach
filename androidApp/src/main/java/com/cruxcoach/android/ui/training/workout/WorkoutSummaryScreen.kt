@@ -553,7 +553,7 @@ internal fun formatDay(day: String): String = runCatching {
 }.getOrDefault(day)
 
 /**
- * The end of a training as a small celebration (MCI-style reward screen):
+ * The end of a training as a small celebration (a reward screen):
  * a check that pops in, "done", the key numbers, and where the week stands.
  */
 @Composable

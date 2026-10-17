@@ -92,7 +92,7 @@ object BuiltinRoutines {
             RoutineItem("mobility.shoulder_dislocate", sets = 1, repsMin = 8, repsMax = 12, restS = 15),
             RoutineItem("mobility.wrist_flexor_stretch", sets = 1, durationS = 30, restS = 15),
         ),
-        // Day-one baseline (MCI intro week, climber version): strength to
+        // Day-one baseline (intro week, climber version): strength to
         // weight on the board, pulling strength, trunk tension.
         routine(BASELINE_TESTS,
             RoutineItem("warmup.finger_ramp", sets = 5, durationS = 8, restS = 20, edgeMm = 30, warmup = true),

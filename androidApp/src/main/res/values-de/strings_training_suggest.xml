@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Tagesvorschlag fürs Training (wie bei MCI, für Kletterer). -->
+<!-- Tagesvorschlag fürs Training (für Kletterer). -->
 <resources>
     <string name="trsg_card_label">Vorschlag für heute</string>
     <string name="trsg_why_title">Warum dieser Vorschlag?</string>

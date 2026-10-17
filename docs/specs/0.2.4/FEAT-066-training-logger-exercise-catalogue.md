@@ -10,7 +10,7 @@ created: 2026-10-04
 # Feature Spec: Off-board training, exercise catalogue v2, injury mode (0.2.4)
 
 > Owner request 2026-10-03/04: "many basic exercises" for 0.2.4, everything
-> from MCI that is cool for CruxCoach — redesigned for climbers — and the case
+> from strength-training apps that is cool for CruxCoach — redesigned for climbers — and the case
 > of an injured climber who only does one-arm pick-ups and pull-ups, no
 > climbing. Research: `~/projects/research/cruxcoach-0.2.4-training-body-nutrition-2026-10-03/`.
 
@@ -45,9 +45,9 @@ kettlebell loads a block like plates), load domains (finger, wrist, elbow,
 shoulder, skin, legs, back, systemic), contraindications, progression chains.
 No third-party text or media; wger was used only as a reference for coverage.
 
-## 4. Behaviour (MCI ideas, climber version)
+## 4. Behaviour (climber version)
 
-| MCI idea | CruxCoach |
+| Idea | CruxCoach |
 |---|---|
 | target vs result sets, RIR | target_* columns, RIR chips, ghost values = last session |
 | progression chains, too easy/hard | chain stepper; double progression → "+step" or harder/easier variant |
@@ -62,7 +62,7 @@ No third-party text or media; wger was used only as a reference for coverage.
 | weekly report | weekly review: bests, load per structure, trends |
 
 Not taken: avatars/"trafo" forecast, social comparison, prize challenges,
-MCI texts/data/media.
+other apps' texts/data/media.
 
 ## 5. Safety
 

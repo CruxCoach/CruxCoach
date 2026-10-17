@@ -111,7 +111,7 @@ class ExerciseCatalogViewModel @Inject constructor(private val service: AthleteS
             ) { catalog, profile, injuries, favorites -> Quad(catalog, profile, injuries, favorites) }
                 .collect { (catalog, profile, injuries, favorites) ->
                     _state.update { s ->
-                        // An injury adapts the filters once (MCI-style), until the athlete changes them.
+                        // An injury adapts the filters once, until the athlete changes them.
                         val pauseClimbing = injuries.any { it.climbingPaused }
                         // Only a finger injury on both hands hides finger work: with one hand
                         // hurt, one-arm work on the healthy hand stays visible and the row

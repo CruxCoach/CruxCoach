@@ -29,7 +29,7 @@ import com.cruxcoach.athlete.model.Side
 import kotlin.math.roundToInt
 
 /**
- * "Tut weh" during a set (MCI's pain sheet, climber version): where, which
+ * "Tut weh" during a set (a pain sheet, climber version): where, which
  * side, how much, then swap the exercise, go lighter or end it — optionally
  * remembered as an injury. A filter, not a diagnosis: strong pain gets the
  * advice to stop and have it checked.

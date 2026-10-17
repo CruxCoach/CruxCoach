@@ -11,7 +11,7 @@ created: 2026-10-04
 
 > Owner request 2026-10-04: "Where do I see my stats? Charts per exercise and
 > for body weight, better organisation, favourites that are easy to plan into
-> workouts, own standard workouts, and suggestions like MCI."
+> workouts, own standard workouts, and suggestions."
 
 ## 1. Organisation
 

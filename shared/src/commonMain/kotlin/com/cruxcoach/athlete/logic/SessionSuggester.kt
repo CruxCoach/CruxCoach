@@ -237,7 +237,7 @@ data class SessionSuggestion(
 }
 
 /**
- * Today's training, MCI-style but for climbers: deterministic rules decide the
+ * Today's training, for climbers: deterministic rules decide the
  * focus (week plan, readiness, injuries, how hard and how recent the climbing
  * was, load trends, the training block), slot templates shaped by the coach
  * profile decide the structure, and a transparent score picks exercises
