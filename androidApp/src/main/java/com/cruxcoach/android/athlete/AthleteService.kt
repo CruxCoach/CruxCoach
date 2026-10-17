@@ -101,12 +101,13 @@ class ClimbingDaysReader @Inject constructor(private val secureDb: SecureDatabas
         // SQLite SUM() comes back as REAL for expressions; normalise to whole units.
         val minutes = q.boardSessionMinutesSince(fromDay).executeAsList()
             .associate { row -> row.day to ((row.active_seconds ?: 0.0) / 60.0).toInt() }
-        val sends = q.ascentCountsSince(fromDay).executeAsList()
-            .associate { row -> row.day to (row.sends + (row.tries ?: 0L)).toInt() }
+        // Tries per logged climb, at least one: a flash is one try, a send after three tries three – not four (audit W18).
+        val sent = q.ascentCountsSince(fromDay).executeAsList()
+            .associate { row -> row.day to (row.tries ?: 0.0).toInt() }
         val tries = q.bidCountsSince(fromDay).executeAsList()
             .associate { row -> row.day to (row.tries ?: 0.0).toInt() }
-        return (minutes.keys + sends.keys + tries.keys).filter { it.length == 10 }.associateWith { day ->
-            ClimbingDay(day, minutes[day] ?: 0, (sends[day] ?: 0) + (tries[day] ?: 0))
+        return (minutes.keys + sent.keys + tries.keys).filter { it.length == 10 }.associateWith { day ->
+            ClimbingDay(day, minutes[day] ?: 0, (sent[day] ?: 0) + (tries[day] ?: 0))
         }
     }
 

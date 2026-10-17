@@ -12,7 +12,7 @@ data class DayActivity(
     val day: String,
     /** Board/wall time from board sessions. */
     val climbingMinutes: Int = 0,
-    /** Logged sends + attempts; used to estimate time when no session was recorded. */
+    /** Logged tries (a send counts its tries, a flash one); used to estimate time when no session was recorded. */
     val climbingEfforts: Int = 0,
     val workoutMinutes: Int = 0,
     /** Session RPE × minutes of logged trainings (Foster's session load). */

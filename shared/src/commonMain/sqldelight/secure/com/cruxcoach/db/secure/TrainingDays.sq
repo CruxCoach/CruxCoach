@@ -9,8 +9,10 @@ FROM board_sessions
 WHERE started_at >= ? AND coalesce(ended_at, '') != ''
 GROUP BY day;
 
+-- A send's bid_count already includes the send (a flash is one try), so a send counts its tries, at least one,
+-- and nothing on top (holistic audit W18, P2-18).
 ascentCountsSince:
-SELECT substr(climbed_at, 1, 10) AS day, COUNT(*) AS sends, SUM(coalesce(bid_count, 0)) AS tries
+SELECT substr(climbed_at, 1, 10) AS day, SUM(max(coalesce(bid_count, 0), 1)) AS tries
 FROM ascents
 WHERE climbed_at >= ?
 GROUP BY day;
