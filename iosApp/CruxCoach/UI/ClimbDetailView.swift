@@ -12,6 +12,8 @@ struct ClimbDetailView: View {
     @State private var note = ""
     @State private var noteLoaded = false
     @State private var showBle = false
+    @State private var showLists = false
+    @State private var linkCopied = false
     @State private var loadedMoonPath = ""
 
     var body: some View {
@@ -62,12 +64,33 @@ struct ClimbDetailView: View {
                     Button(ui.isIgnored ? LI("detail_unignore") : LI("detail_ignore"), systemImage: "eye.slash") {
                         model.setIgnored(ignored: !ui.isIgnored)
                     }
+                    Button(L("board_addtolist_title"), systemImage: "text.badge.plus") { showLists = true }
+                    Button(L("board_detail_share_link"), systemImage: "square.and.arrow.up") {
+                        UIPasteboard.general.string = model.shareLink()
+                        linkCopied = true
+                        Task {
+                            try? await Task.sleep(nanoseconds: 2_000_000_000)
+                            linkCopied = false
+                        }
+                    }
                 } label: {
                     Label(LI("browser_more"), systemImage: "ellipsis.circle")
                 }
             }
         }
         .sheet(isPresented: $showBle) { NavigationStack { BleView(ble: ble) } }
+        .sheet(isPresented: $showLists) {
+            NavigationStack { AddToListSheet(core: core, climbUuid: ui.uuid, angle: ui.angle) }
+        }
+        .overlay(alignment: .bottom) {
+            if linkCopied {
+                Text(L("board_detail_link_copied"))
+                    .font(.footnote)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(.thinMaterial, in: Capsule())
+                    .padding(.bottom, 24)
+            }
+        }
         .sheet(isPresented: Binding(get: { ui.showLogDialog }, set: { if !$0 { model.dismissLogDialog() } })) {
             NavigationStack { LogSheet(model: model, ui: ui) }.presentationDetents([.medium, .large])
         }

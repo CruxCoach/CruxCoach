@@ -116,6 +116,16 @@ class DetailScreenModel(
     fun setIgnored(ignored: Boolean) = detail.setIgnored(ignored)
     fun saveNote(note: String) = detail.saveNote(note)
 
+    /**
+     * Android's "Copy share link": `https://<host>/c/<naddr>` for a community
+     * climb (the same link its creator's note carries), `/c/<uuid>` for a
+     * catalogue climb. Empty while no climb is loaded.
+     */
+    fun shareLink(): String {
+        val climb = lastDetail?.data?.climb ?: return ""
+        return com.cruxcoach.app.links.ClimbLinks.shareLink(climb.createdByPubkey, climb.uuid) ?: ""
+    }
+
     /** Explicit "light it up". The BLE outcome arrives on the connection screen. */
     fun sendToBoard() {
         val detail = lastDetail ?: return
