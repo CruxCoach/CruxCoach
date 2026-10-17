@@ -15,12 +15,16 @@ import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.CoachProfile
 import com.cruxcoach.athlete.model.PLAN_BOARD
 import com.cruxcoach.athlete.model.PLAN_REST
+import com.cruxcoach.athlete.model.PauseReason
+import com.cruxcoach.athlete.model.PausePeriod
 import com.cruxcoach.athlete.model.Routine
 import com.cruxcoach.domain.playlist.GeneratorType
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 /** Holistic audit W4 / P1-4: today's planned training feeds today's nutrition targets until it is done. */
@@ -99,6 +103,24 @@ class PlannedTrainingTest {
         assertNull(PlannedTraining.forTargets(DayActivity(day.toString(), workoutMinutes = 20, workoutLoad = 120), offWall))
         // Climbing that weighs more than the off-wall plan: the real day.
         assertNull(PlannedTraining.forTargets(DayActivity(day.toString(), climbingMinutes = 90, climbIntensity = ClimbIntensity.HARD), offWall))
+    }
+
+    @Test
+    fun tomorrowIsHardOnAPlannedBoardDayOrAUsualClimbingDay() {
+        val tomorrow = (weekday % 7) + 1
+        assertTrue(PlannedTraining.tomorrowHard(AthleteProfile(weekPlan = mapOf(tomorrow to PLAN_BOARD)), day))
+        assertTrue(PlannedTraining.tomorrowHard(AthleteProfile(coach = CoachProfile(climbingDays = setOf(tomorrow))), day))
+        // Today's board day, a planned rest tomorrow, a routine tomorrow or nothing: no evening hint.
+        assertFalse(PlannedTraining.tomorrowHard(AthleteProfile(weekPlan = mapOf(weekday to PLAN_BOARD)), day))
+        assertFalse(PlannedTraining.tomorrowHard(
+            AthleteProfile(weekPlan = mapOf(tomorrow to PLAN_REST), coach = CoachProfile(climbingDays = setOf(tomorrow))), day))
+        assertFalse(PlannedTraining.tomorrowHard(AthleteProfile(weekPlan = mapOf(tomorrow to "builtin:x")), day))
+        assertFalse(PlannedTraining.tomorrowHard(AthleteProfile(), day))
+        // On a pause nothing is hard tomorrow.
+        val pause = PausePeriod("p", PauseReason.ILLNESS, startDay = day.toString())
+        assertFalse(PlannedTraining.tomorrowHard(AthleteProfile(weekPlan = mapOf(tomorrow to PLAN_BOARD)), day, listOf(pause)))
+        val ended = pause.copy(endDay = day.toString())
+        assertTrue(PlannedTraining.tomorrowHard(AthleteProfile(weekPlan = mapOf(tomorrow to PLAN_BOARD)), day, listOf(ended)))
     }
 
     @Test

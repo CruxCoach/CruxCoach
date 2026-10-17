@@ -624,6 +624,8 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit, onUpdat
                 t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) },
                 // Before the training: the target already counts what is planned (audit W4), and says so.
                 state.planned?.let { stringResource(R.string.trf_carbs_planned, plannedTrainingText(it)) },
+                // The evening before a hard day: a hint only, the target stays (audit P1-5).
+                if (state.tomorrowHard) stringResource(R.string.trf_carbs_tomorrow_hard) else null,
                 // While losing weight: the day's deficit shrinks so these carbohydrates fit, named with both numbers.
                 state.plan.takeIf { state.profile.ownKcal == null && t != null }
                     ?.let { com.cruxcoach.android.ui.training.common.easedDeficitText(it, state.dayLoad, state.profile) },

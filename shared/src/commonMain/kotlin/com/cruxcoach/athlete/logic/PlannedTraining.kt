@@ -5,10 +5,13 @@ import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.PLAN_BOARD
 import com.cruxcoach.athlete.model.PLAN_REST
+import com.cruxcoach.athlete.model.PausePeriod
 import com.cruxcoach.athlete.model.Routine
 import com.cruxcoach.domain.playlist.GeneratorType
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.plus
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -115,6 +118,20 @@ object PlannedTraining {
     fun load(a: DayActivity?): Int {
         if (a == null || !a.trained) return 0
         return FuelTargets.climbingMinutes(a) * FuelTargets.climbRpe(a.climbIntensity) + a.workoutLoad
+    }
+
+    /**
+     * The day before a hard day (audit P1-5): tomorrow's week plan is a board day, or tomorrow is a usual
+     * climbing day without another plan. A pause over tomorrow (illness, injury, holiday) is no hard day.
+     * Nutrition only says so; no target changes.
+     */
+    fun tomorrowHard(profile: AthleteProfile, today: LocalDate, pauses: List<PausePeriod> = emptyList()): Boolean {
+        val tomorrow = today.plus(DatePeriod(days = 1))
+        val t = tomorrow.toString()
+        if (pauses.any { p -> p.startDay <= t && p.endDay.let { it == null || it >= t } }) return false
+        val weekday = tomorrow.dayOfWeek.isoDayNumber
+        val entry = profile.weekPlan[weekday]
+        return entry == PLAN_BOARD || (entry == null && weekday in profile.coach.climbingDays)
     }
 
     fun encode(s: Summary): String = json.encodeToString(Summary.serializer(), s)

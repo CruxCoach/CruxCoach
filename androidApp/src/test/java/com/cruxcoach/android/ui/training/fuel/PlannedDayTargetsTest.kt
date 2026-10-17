@@ -110,6 +110,26 @@ class PlannedDayTargetsTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `the day before a planned board day the carbohydrate info says so, the target stays`() {
+        val tomorrow = (today.dayOfWeek.isoDayNumber % 7) + 1
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, weekPlan = mapOf(tomorrow to PLAN_BOARD)) }
+        body()
+        val vm = loaded(FuelViewModel(service))
+        compose.waitUntil(WAIT_MS) { vm.state.value.tomorrowHard && vm.state.value.targets != null }
+        // Today is a rest day and keeps its target.
+        assertEquals(DayLoad.REST, vm.state.value.dayLoad)
+        assertEquals(210, vm.state.value.targets!!.carbsG)
+        fuelScreen(vm)
+        click("fuel_carbs")
+        waitForTag("fuel_explain_carbs")
+        waitForText("Hard day tomorrow: a carb-rich dinner tonight helps.")
+        // Only today looks at tomorrow.
+        vm.previousDay()
+        compose.waitUntil(WAIT_MS) { vm.state.value.day == today.minus(DatePeriod(days = 1)) }
+        assertEquals(false, vm.state.value.tomorrowHard)
+    }
+
+    @Test
     fun `a free day's offer leaves a rest day a rest day`() {
         repo.updateProfile { it.copy(fuelIntroAccepted = true) }
         body()

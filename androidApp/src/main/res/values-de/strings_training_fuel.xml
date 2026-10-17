@@ -24,6 +24,7 @@
     <string name="trf_day_planned">%1$s (geplant: %2$s)</string>
     <string name="trf_planned_board">Board %1$d min</string>
     <string name="trf_planned_training">Training %1$d min</string>
+    <string name="trf_carbs_tomorrow_hard">Morgen harter Tag: heute Abend kohlenhydratreich hilft.</string>
     <string name="trf_carbs_planned">Heute geplant: %1$s. Bis es erledigt ist, rechnen die heutigen Ziele schon damit – was du vor der Einheit isst, ist ihr Treibstoff. Frühere Tage und die Energiekarte zählen nur, was du eingetragen hast.</string>
     <string name="trf_water">Wasser</string>
     <string name="trf_hc_switch">Mahlzeiten und Wasser an Health Connect senden</string>
