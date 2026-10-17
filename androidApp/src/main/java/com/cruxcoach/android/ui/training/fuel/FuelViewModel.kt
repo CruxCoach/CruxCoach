@@ -50,6 +50,11 @@ data class FuelState(
     val need: EnergyBalance.Need? = null,
     /** The shown day's weight-loss plan while one is set: its deficit leaves room for the day's macro targets. */
     val plan: WeightPlan.Plan? = null,
+    /**
+     * Today's planned training while today's targets follow it (audit W4): not done yet and more than what is
+     * done. Null on earlier days and once it is done.
+     */
+    val planned: com.cruxcoach.athlete.logic.PlannedTraining.Planned? = null,
     /** The last seven days' needs, today last: what a pace really adds up to in the goal sheet. */
     val weekNeeds: List<EnergyBalance.Need> = emptyList(),
     val heightCm: Double? = null,
@@ -91,7 +96,9 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                         repo.observeSeries(com.cruxcoach.athlete.model.BodyMetric.HEIGHT.key),
                         repo.observeRecentWorkouts(10),
                         service.observeActivityChanges(LocalDate.parse(d).minus(kotlinx.datetime.DatePeriod(days = 7)).toString()),
-                    ) { w, h, _, _ -> w.size to h.lastOrNull()?.value },
+                        // Today's planned training as Today computed it (audit W4).
+                        repo.observeSetting(com.cruxcoach.athlete.logic.PlannedTraining.SETTING_KEY),
+                    ) { w, h, _, _, _ -> w.size to h.lastOrNull()?.value },
                 ) { profile, entries, water, foods, _ -> Snapshot(day ?: service.today(), profile, entries, water, foods) }
             }.collect { refresh(it) }
         }
@@ -106,7 +113,9 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         val today = service.today()
         val span = (today.toEpochDays() - s.day.toEpochDays()).toInt().coerceAtLeast(0) + 1
         val activities = service.activities(days = maxOf(span, 7))
-        val activity = activities[s.day.toString()]
+        // Today's planned training counts until it is done (audit W4); earlier days and the energy check stay real.
+        val planned = if (s.day == today) service.plannedForTargets(activities[s.day.toString()]) else null
+        val activity = planned?.activity ?: activities[s.day.toString()]
         val previous = service.repo.foodLog(s.day.minus(DatePeriod(days = 1)).toString()).size
         val energy = service.energyReport(s.profile, activities)
         val log = runCatching {
@@ -128,7 +137,12 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                 energy = energy,
                 need = service.energyNeed(s.profile, activity),
                 // Today's plan comes with the week's pace; an earlier day gets its own deficit.
-                plan = if (s.day == today) energy.plan else service.weightPlan(s.profile, activity),
+                plan = when {
+                    s.day != today -> service.weightPlan(s.profile, activity)
+                    planned != null -> service.todayWeightPlan(s.profile, activity, activities)
+                    else -> energy.plan
+                },
+                planned = planned,
                 weekNeeds = service.weekNeeds(s.profile, activities),
                 heightCm = service.heightCm(),
                 recentByMeal = Meal.entries.associateWith { com.cruxcoach.athlete.logic.RecentFoods.forMeal(log, it, s.entries) },

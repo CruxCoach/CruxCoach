@@ -213,10 +213,11 @@ fun FuelScreen(
     if (energyOpen) {
         com.cruxcoach.android.ui.training.common.EnergySheet(
             profile = state.profile, need = state.need, weightKg = state.bodyweightKg, heightCm = state.heightCm,
-            plan = state.energy.plan.takeIf { state.isToday }, eatenKcal = MacroTotals.of(state.entries).takeIf { it.entries > 0 }?.kcal,
+            plan = state.plan.takeIf { state.isToday }, eatenKcal = MacroTotals.of(state.entries).takeIf { it.entries > 0 }?.kcal,
             onDismiss = { energyOpen = false },
             onEditGoal = { energyOpen = false; goalOpen = true },
             onLogWeight = viewModel::logWeight, onLogHeight = viewModel::logHeight, onUpdateProfile = viewModel::updateProfile,
+            plannedTraining = state.planned?.takeIf { state.isToday }?.let { plannedTrainingText(it) },
         )
     }
     if (goalOpen) {
@@ -558,8 +559,10 @@ private fun DayHeader(state: FuelState, onPrevious: () -> Unit, onNext: () -> Un
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.testTag("fuel_day_label"),
             )
-            Text(dayLoadLabel(state.dayLoad), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val load = dayLoadLabel(state.dayLoad)
+            Text(state.planned?.let { stringResource(R.string.trf_day_planned, load, plannedTrainingText(it)) } ?: load,
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("fuel_day_load"))
         }
         if (!state.isToday) {
             TextButton(onClick = onToday) { Text(stringResource(R.string.trf_today)) }
@@ -619,6 +622,8 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit, onUpdat
         val text = when (which) {
             "carbs" -> listOfNotNull(
                 t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) },
+                // Before the training: the target already counts what is planned (audit W4), and says so.
+                state.planned?.let { stringResource(R.string.trf_carbs_planned, plannedTrainingText(it)) },
                 // While losing weight: the day's deficit shrinks so these carbohydrates fit, named with both numbers.
                 state.plan.takeIf { state.profile.ownKcal == null && t != null }
                     ?.let { com.cruxcoach.android.ui.training.common.easedDeficitText(it, state.dayLoad, state.profile) },
@@ -660,6 +665,13 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit, onUpdat
         )
     }
 }
+
+/** "board 60 min" / "training 45 min": today's planned training in the day's header and the carbohydrate info. */
+@Composable
+private fun plannedTrainingText(p: com.cruxcoach.athlete.logic.PlannedTraining.Planned): String = stringResource(
+    if (p.kind == com.cruxcoach.athlete.logic.PlannedTraining.Kind.BOARD) R.string.trf_planned_board else R.string.trf_planned_training,
+    p.minutes,
+)
 
 /** A ring's label: one line, shrinking a little for long words like "Kohlenhydrate" on narrow phones. */
 @Composable

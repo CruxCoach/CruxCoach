@@ -21,6 +21,10 @@
     <string name="trf_carbs_info_title">Warum mehr an Trainingstagen?</string>
     <string name="trf_carbs_info">Kohlenhydrate sind der Treibstoff für harte Züge und die Erholung. Für deinen Tag (%1$s) empfiehlt CruxCoach %2$s g pro kg. Für Kletternde nennt die Literatur je nach Belastung 3–7 g pro kg.</string>
     <string name="trf_carbs_per_kg">%1$s g/kg</string>
+    <string name="trf_day_planned">%1$s (geplant: %2$s)</string>
+    <string name="trf_planned_board">Board %1$d min</string>
+    <string name="trf_planned_training">Training %1$d min</string>
+    <string name="trf_carbs_planned">Heute geplant: %1$s. Bis es erledigt ist, rechnen die heutigen Ziele schon damit – was du vor der Einheit isst, ist ihr Treibstoff. Frühere Tage und die Energiekarte zählen nur, was du eingetragen hast.</string>
     <string name="trf_water">Wasser</string>
     <string name="trf_hc_switch">Mahlzeiten und Wasser an Health Connect senden</string>
     <string name="trf_hc_hint">Jedes eingetragene Lebensmittel und jedes Glas Wasser wird in Health Connect geschrieben; geänderte oder gelöschte Einträge werden dort angepasst, sobald du Ernährung öffnest.</string>

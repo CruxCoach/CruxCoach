@@ -15,6 +15,7 @@
     <string name="trn_everyday">Everyday life</string>
     <string name="trn_training">Training today</string>
     <string name="trn_no_training">no training yet</string>
+    <string name="trn_training_planned">Planned, not done yet: %1$s. It counts until it is done.</string>
     <string name="trn_need">Need</string>
     <string name="trn_deficit_line">Deficit for %1$s per week</string>
     <string name="trn_target">Calorie target</string>

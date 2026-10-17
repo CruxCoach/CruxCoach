@@ -64,6 +64,10 @@ class AthleteRepository(
 
     fun putSetting(key: String, value: String) = body.putSetting(key, value, clock())
 
+    /** One stored value as it changes (blank counts as none). */
+    fun observeSetting(key: String): Flow<String?> =
+        body.getSetting(key).asFlow().mapToOneOrNull(dispatcher).map { it?.takeIf { v -> v.isNotBlank() } }
+
     /** All stored values whose key starts with [prefix] (blank ones count as none), by key. */
     fun settingsWithPrefix(prefix: String): Map<String, String> {
         if (prefix.isEmpty()) return emptyMap()

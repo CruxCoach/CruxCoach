@@ -21,6 +21,10 @@
     <string name="trf_carbs_info_title">Why more on training days?</string>
     <string name="trf_carbs_info">Carbohydrates fuel hard moves and recovery. For your day (%1$s) CruxCoach suggests %2$s g per kg. For climbers the literature names 3–7 g per kg depending on load.</string>
     <string name="trf_carbs_per_kg">%1$s g/kg</string>
+    <string name="trf_day_planned">%1$s (planned: %2$s)</string>
+    <string name="trf_planned_board">board %1$d min</string>
+    <string name="trf_planned_training">training %1$d min</string>
+    <string name="trf_carbs_planned">Planned today: %1$s. Until it is done, today\'s targets already count it – what you eat before a session fuels it. Earlier days and the energy card count only what you logged.</string>
     <string name="trf_water">Water</string>
     <string name="trf_hc_switch">Send meals and water to Health Connect</string>
     <string name="trf_hc_hint">Each logged food and glass of water is written to Health Connect; changed or deleted entries are updated there when you open nutrition.</string>

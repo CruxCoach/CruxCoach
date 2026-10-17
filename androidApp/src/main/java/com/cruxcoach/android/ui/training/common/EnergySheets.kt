@@ -65,6 +65,8 @@ fun EnergySheet(
     onLogWeight: (Double) -> Unit,
     onLogHeight: (Double) -> Unit,
     onUpdateProfile: ((AthleteProfile) -> AthleteProfile) -> Unit,
+    /** Today's planned training the training line counts before it is done ("board 60 min", audit W4). */
+    plannedTraining: String? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag("energy_sheet")) {
@@ -97,6 +99,10 @@ fun EnergySheet(
                 }
                 KcalRow(stringResource(R.string.trn_training),
                     if (need.trainingKcal > 0) "+" + need.trainingKcal else stringResource(R.string.trn_no_training), "energy_training", unit = need.trainingKcal > 0)
+                plannedTraining?.let {
+                    Text(stringResource(R.string.trn_training_planned, it), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("energy_training_planned"))
+                }
                 HorizontalDivider(Modifier.padding(vertical = 6.dp))
                 KcalRow(stringResource(R.string.trn_need), need.totalKcal.toString(), "energy_need", bold = true)
                 if (plan != null && plan.targetKcal != null) {
