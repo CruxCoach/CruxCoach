@@ -66,16 +66,25 @@ jobs:
           ./gradlew :shared:iosSimulatorArm64Test :appcore:iosSimulatorArm64Test --console=plain 2>&1 | tee "$RUNNER_TEMP/ci-knative.log"
       # Debug link: the release link of the Kotlin framework takes ~25 min on a standard runner.
       - name: Link CruxCoachCore.xcframework
+        # Runs after an earlier failure too (the job still fails), so one CI round reports every
+        # broken stage at once.
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           iosApp/scripts/build-core.sh Debug 2>&1 | tee "$RUNNER_TEMP/ci-link.log"
       - name: Generate Xcode project
+        # Runs after an earlier failure too (the job still fails), so one CI round reports every
+        # broken stage at once.
+        if: ${{ !cancelled() }}
         run: |
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           cd iosApp && xcodegen generate
       # Simulator builds are signed ad hoc by Xcode ("sign to run locally", no identity, no secret);
       # without it the test host has no keychain entitlement and SecItem calls fail.
       - name: Build and test on the simulator
+        # Runs after an earlier failure too (the job still fails), so one CI round reports every
+        # broken stage at once.
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           DEVICE="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9]+[^(]*' | sed 's/ *$//')"
@@ -92,6 +101,9 @@ jobs:
           test -d "$RUNNER_TEMP/sim.xcresult" || exit 0
           python3 scripts/ci_xcresult_summary.py "$RUNNER_TEMP/sim.xcresult" "$RUNNER_TEMP/screenshots"
       - name: Build for device, unsigned
+        # Runs after an earlier failure too (the job still fails), so one CI round reports every
+        # broken stage at once.
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           cd iosApp && xcodebuild build -project CruxCoach.xcodeproj -scheme CruxCoach \
