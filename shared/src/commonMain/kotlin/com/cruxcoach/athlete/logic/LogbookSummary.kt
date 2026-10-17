@@ -107,6 +107,21 @@ object LogbookSummaries {
         )
     }
 
+    /**
+     * The board logbook's working grade when it is clearly above the grade the athlete saved – one Font sub-grade at
+     * least – and above the one they last declined: Today asks once whether to take it over. Null otherwise, also
+     * without a saved grade (the logbook then sets the level by itself) and never to lower a grade.
+     */
+    fun higherWorkingGrade(summary: LogbookSummary, savedGrade: String?, declinedGrade: String? = null): String? {
+        if (!summary.hasGrades || summary.gradesFromCoach) return null
+        val saved = savedGrade?.let(::difficultyOf) ?: return null
+        val grade = summary.workingDifficulty?.let(::fontOf) ?: return null
+        val logged = difficultyOf(grade) ?: return null
+        if (logged < saved + 1.0) return null
+        if (declinedGrade?.let(::difficultyOf)?.let { logged <= it } == true) return null
+        return grade
+    }
+
     /** Font grade of a difficulty value ("6c+"); null outside the scale. */
     fun fontOf(difficulty: Double): String? = KilterGradeMapper.difficultyToFont(difficulty).takeIf { it != "?" }
 

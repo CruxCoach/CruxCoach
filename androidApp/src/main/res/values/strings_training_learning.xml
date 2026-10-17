@@ -33,4 +33,7 @@
     <string name="trlr_levels">Your level</string>
     <string name="trlr_level_easier">One step easier</string>
     <string name="trlr_level_harder">One step more demanding</string>
+    <!-- The logbook shows a higher grade than the saved one -->
+    <string name="trt_grade_offer">Your logbook shows %1$s – take it over as your grade?</string>
+    <string name="trt_grade_taken">Your grade is now %1$s</string>
 </resources>

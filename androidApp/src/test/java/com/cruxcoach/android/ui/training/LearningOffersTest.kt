@@ -21,7 +21,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The coach asks before it keeps a change (comparison review #3, #10): "suggest it like this from now on?" after a
+ * The coach asks before it keeps a change (comparison review #3, #10) or takes over a logbook grade: "suggest it like this from now on?" after a
  * training whose suggestion was changed, with Undo and a place on "What the coach learned".
  */
 @RunWith(RobolectricTestRunner::class)
@@ -147,5 +147,37 @@ class LearningOffersTest : AthleteScreenTest() {
             section = com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED) }
         click("learned_level_PULL_PUSH_forget")
         until { repo.profile().keptLevels.isEmpty() && settings.state.value.learned.levels.isEmpty() }
+    }
+
+    @Test
+    fun `a clearly higher logbook grade is offered once, taken over with undo, and a no holds`() {
+        val board = com.cruxcoach.data.repository.PersonalBoardRepositoryImpl(com.cruxcoach.db.secure.SecureDatabase(secureDriver))
+        // Twelve 7a sends on the board over the last weeks; the saved grade is 6c.
+        (10 until 22).forEach { ago ->
+            val d = service.today().minus(kotlinx.datetime.DatePeriod(days = ago)).toString()
+            board.insertAscent(uuid = "a$ago", climbUuid = "c$ago", angle = 40L, isMirror = false, attemptId = 0L, bidCount = 1L,
+                quality = 3L, difficulty = 22L, isBenchmark = false, comment = null, climbedAt = "${d}T18:00:00", synced = false,
+                gymUuid = null, wallUuid = null, productLayoutUuid = null, climbName = "c$ago", difficultyAverage = 22.0,
+                climbFrames = "p100r12", framesCount = 1L, boardBrand = "kilter", layoutId = 1L, externalId = null)
+        }
+        service.invalidateLogbook()
+        repo.updateProfile { it.copy(coach = it.coach.copy(currentGrade = "6c")) }
+        assertEquals("7a", service.gradeOffer())
+        val vm = loaded(TodayViewModel(service))
+        until { vm.state.value.gradeOffer == "7a" }
+        render { com.cruxcoach.android.ui.training.today.TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", "today_grade_offer")
+        click("today_grade_offer_yes")
+        until { repo.profile().coach.currentGrade == "7a" && vm.state.value.gradeOffer == null }
+        // "Rückgängig": the grade before is back, and so is the question.
+        val undo = context.getString(com.cruxcoach.android.R.string.trpg_undo)
+        waitForText(undo)
+        compose.onNode(androidx.compose.ui.test.hasText(undo)).performClick()
+        until { repo.profile().coach.currentGrade == "6c" && vm.state.value.gradeOffer == "7a" }
+        // "Nein": not asked again for 7a.
+        vm.answerGradeOffer(false)
+        until { repo.setting(com.cruxcoach.android.athlete.AthleteService.GRADE_DECLINED_KEY) == "7a" && vm.state.value.gradeOffer == null }
+        assertEquals(null, service.gradeOffer())
+        assertEquals("6c", repo.profile().coach.currentGrade)
     }
 }

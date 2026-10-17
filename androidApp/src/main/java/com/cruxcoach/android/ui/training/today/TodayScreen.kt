@@ -212,6 +212,8 @@ fun TodayScreen(
                     item(key = "level_offer") { LevelOfferCard(offer, onAnswer = viewModel::answerLevelOffer) }
                 }
             }
+            // "Your logbook shows 7a – take it over?" once per grade.
+            state.gradeOffer?.let { grade -> item(key = "grade_offer") { GradeOfferCard(grade, onAnswer = viewModel::answerGradeOffer) } }
             if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "today_reds", onAdjustGoal = { showGoal = true }) }
             if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state) }
             item(key = "day") {
@@ -339,6 +341,17 @@ fun TodayScreen(
                 }
             },
         )
+    }
+    // A logbook grade taken over: one line with "Rückgängig".
+    state.gradeTaken?.let { taken ->
+        val text = stringResource(R.string.trt_grade_taken, com.cruxcoach.android.ui.training.coach.gradeWithV(taken.first))
+        LaunchedEffect(taken) {
+            viewModel.consumeGradeTaken()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoGradeTaken(taken)
+            }
+        }
     }
     // A level step kept for good: one line with "Rückgängig" (comparison review #10).
     state.levelKept?.let { kept ->
@@ -1590,6 +1603,21 @@ internal fun LevelOfferCard(offer: com.cruxcoach.athlete.logic.PreferenceLearnin
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { onAnswer(false) }, modifier = Modifier.testTag("today_level_offer_no")) { Text(stringResource(R.string.trc_no)) }
                 TextButton(onClick = { onAnswer(true) }, modifier = Modifier.testTag("today_level_offer_yes")) { Text(stringResource(R.string.trc_yes)) }
+            }
+        }
+    }
+}
+
+/** "Your logbook shows 7a (V6) – take it over as your grade?" with yes and no. */
+@Composable
+private fun GradeOfferCard(grade: String, onAnswer: (Boolean) -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth().testTag("today_grade_offer")) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp)) {
+            Text(stringResource(R.string.trt_grade_offer, com.cruxcoach.android.ui.training.coach.gradeWithV(grade)),
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { onAnswer(false) }, modifier = Modifier.testTag("today_grade_offer_no")) { Text(stringResource(R.string.trc_no)) }
+                TextButton(onClick = { onAnswer(true) }, modifier = Modifier.testTag("today_grade_offer_yes")) { Text(stringResource(R.string.trc_yes)) }
             }
         }
     }

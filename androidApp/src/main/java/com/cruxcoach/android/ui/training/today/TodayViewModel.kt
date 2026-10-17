@@ -114,6 +114,10 @@ data class TodayState(
     val levelOffer: PreferenceLearning.LevelOffer? = null,
     /** A level step just kept, for the snackbar and "Rückgängig". */
     val levelKept: LevelKept? = null,
+    /** The board logbook shows a clearly higher working grade than the saved one: "take it over?" once. */
+    val gradeOffer: String? = null,
+    /** A logbook grade just taken over (new, before), for the snackbar and "Rückgängig". */
+    val gradeTaken: Pair<String, String?>? = null,
 ) {
     /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
     val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
@@ -337,6 +341,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 favorites = runCatching { repo.favorites() }.getOrDefault(emptySet()),
                 levelShift = levelShift,
                 levelOffer = daily?.let { s -> lastLevelOffers.firstOrNull { it.focus == s.focus } },
+                gradeOffer = runCatching { service.gradeOffer(i.profile) }.getOrNull(),
                 usual = lastUsual,
                 climbingEntriesToday = runCatching { repo.climbingDaysSince(today.toString()) }.getOrDefault(emptyList())
                     .filter { e -> e.day == today.toString() }.map { e -> e.id },
@@ -709,6 +714,26 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     }
 
     fun consumeLevelKept() = _state.update { it.copy(levelKept = null) }
+
+    /** The answer to [TodayState.gradeOffer]: take the logbook's grade over, or not ask again for it. */
+    fun answerGradeOffer(take: Boolean) {
+        val grade = _state.value.gradeOffer ?: return
+        _state.update { it.copy(gradeOffer = null) }
+        io {
+            if (take) {
+                val before = service.takeOverGrade(grade)
+                _state.update { it.copy(gradeTaken = grade to before) }
+            } else service.declineGrade(grade)
+        }
+    }
+
+    /** "Rückgängig" after taking a logbook grade over: the grade before is back. */
+    fun undoGradeTaken(taken: Pair<String, String?>) {
+        _state.update { it.copy(gradeTaken = null) }
+        io { service.repo.updateProfile { p -> p.copy(coach = p.coach.copy(currentGrade = taken.second)) } }
+    }
+
+    fun consumeGradeTaken() = _state.update { it.copy(gradeTaken = null) }
 
     /**
      * What could replace [slug] on today's card (owner 2026-10-16: "jede Empfehlung mit wenig Aufwand
