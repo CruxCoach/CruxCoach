@@ -183,14 +183,16 @@ fun MapScreen(
             guessStartView(TimeZone.getDefault().id, Locale.getDefault().country, state.places, state.unfilteredVenues)
         }
         val margin = with(density) { 24.dp.roundToPx() }
-        when (guess) {
-            is MapStartView.Bounds -> map.moveCamera(
-                CameraUpdateFactory.newLatLngBounds(
-                    LatLngBounds.from(guess.north, guess.east, guess.south, guess.west),
-                    margin, overlayPx + margin, margin, peekPx + margin,
+        runCatching {
+            when (guess) {
+                is MapStartView.Bounds -> map.moveCamera(
+                    CameraUpdateFactory.newLatLngBounds(
+                        LatLngBounds.from(guess.north, guess.east, guess.south, guess.west),
+                        margin, overlayPx + margin, margin, peekPx + margin,
+                    )
                 )
-            )
-            is MapStartView.Camera -> map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(guess.lat, guess.lng), guess.zoom))
+                is MapStartView.Camera -> map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(guess.lat, guess.lng), guess.zoom))
+            }
         }
         startViewApplied = true
         refreshViewport(map)
@@ -356,6 +358,23 @@ fun MapScreen(
             onNavigateToBoardBrowser()
         },
         onResetFilters = viewModel::resetFilters,
+        onShowNearest = {
+            val (map, _) = mapHandle ?: return@MapScreenLayout
+            val view = viewport ?: return@MapScreenLayout
+            val bounds = nearestFrame(state.filteredVenues, view) ?: return@MapScreenLayout
+            val margin = with(density) { 48.dp.roundToPx() }
+            // A frame across the antimeridian is rejected by some MapLibre
+            // versions; then the map simply stays put.
+            runCatching {
+                map.easeCamera(
+                    CameraUpdateFactory.newLatLngBounds(
+                        LatLngBounds.from(bounds.north, bounds.east, bounds.south, bounds.west),
+                        margin, overlayPx + margin, margin, peekPx + margin,
+                    ),
+                    700,
+                )
+            }
+        },
         onOverlayHeight = { overlayPx = it },
         onPeekHeight = { px, venueId ->
             peekPx = px

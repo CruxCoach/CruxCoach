@@ -120,6 +120,7 @@ fun MapScreenLayout(
     onCloseVenue: () -> Unit,
     onBrowseClimbs: (brand: BoardBrand, layoutId: Int, productSizeId: Int?) -> Unit,
     onResetFilters: () -> Unit,
+    onShowNearest: () -> Unit,
     onOverlayHeight: (px: Int) -> Unit,
     onPeekHeight: (px: Int, venueId: String?) -> Unit,
     map: @Composable () -> Unit,
@@ -174,6 +175,7 @@ fun MapScreenLayout(
                     inView = inView,
                     onSelectVenue = onSelectVenue,
                     onResetFilters = onResetFilters,
+                    onShowNearest = onShowNearest,
                     onPeekContent = { px ->
                         peekContentPx = px
                         onPeekHeight(px + navBottom, null)
@@ -249,6 +251,7 @@ private fun VenueListSheet(
     inView: VenuesInView,
     onSelectVenue: (MapVenue) -> Unit,
     onResetFilters: () -> Unit,
+    onShowNearest: () -> Unit,
     onPeekContent: (px: Int) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -288,6 +291,13 @@ private fun VenueListSheet(
                 if (filteredEmpty) {
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(onClick = onResetFilters) { Text(stringResource(R.string.map_filter_reset)) }
+                } else if (inView.total == 0 && !state.isLoading && state.filteredVenues.isNotEmpty()) {
+                    // An empty stretch of map (open sea, a country without boards):
+                    // one tap brings the closest boards into view.
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onShowNearest, modifier = Modifier.testTag("map_show_nearest")) {
+                        Text(stringResource(R.string.map_in_view_show_nearest))
+                    }
                 }
             }
         }

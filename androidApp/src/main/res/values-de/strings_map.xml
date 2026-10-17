@@ -19,6 +19,7 @@
     <string name="map_in_view_more">%1$d weitere – zum Anzeigen hineinzoomen</string>
     <string name="map_in_view_empty_title">Keine Boards in diesem Kartenausschnitt</string>
     <string name="map_in_view_empty_hint">Zoome heraus oder suche nach einer Stadt.</string>
+    <string name="map_in_view_show_nearest">Nächste Boards zeigen</string>
     <string name="map_in_view_filtered_title">Keine Boards passen zu deinen Filtern</string>
 
     <!-- Board-Karte: ausgewählter Ort -->
