@@ -628,6 +628,49 @@ class AppCore private constructor(
         val parts = versionName.split('.').map { it.toIntOrNull() ?: 0 }
         val version = parts.getOrElse(0) { 0 } * 10_000 + parts.getOrElse(1) { 0 } * 100 + parts.getOrElse(2) { 0 }
         return version * 1_000 + (build.toIntOrNull() ?: 0).coerceIn(0, 999)
+    // ── Training: Today and player ────────────────────────────────────
+    //
+    // Each screen gets its own presenter with a main-thread scope; the work runs
+    // on the IO dispatcher. Null when the athlete database is unavailable (the
+    // training area then says so). [language] picks the exercise names ("de"/"en").
+
+    fun makeTodayScreen(language: String): com.cruxcoach.app.ui.TodayScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.TodayScreenModel(
+            com.cruxcoach.app.training.TodayPresenter(service, MainScope(), Dispatchers.IO), language,
+        )
+    }
+
+    /** The open training (guided or free); one presenter per presentation of the player. */
+    fun makeWorkoutPlayerScreen(language: String): com.cruxcoach.app.ui.WorkoutPlayerScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.WorkoutPlayerScreenModel(
+            com.cruxcoach.app.training.WorkoutPlayerPresenter(service, MainScope(), Dispatchers.IO), language,
+        )
+    }
+
+    /** The end of a training; Swift calls `load(workoutId:)`. */
+    fun makeWorkoutSummaryScreen(language: String): com.cruxcoach.app.ui.WorkoutSummaryScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.WorkoutSummaryScreenModel(
+            com.cruxcoach.app.training.WorkoutSummaryPresenter(service, MainScope(), Dispatchers.IO), language,
+        )
+    }
+
+    /** The quick start, and its gate on the first visit to the training area. */
+    fun makeBasicsScreen(): com.cruxcoach.app.ui.BasicsScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.BasicsScreenModel(
+            com.cruxcoach.app.training.BasicsPresenter(service, MainScope(), Dispatchers.IO),
+        )
+    }
+
+    /** "Log a climbing day" (new or edit) and the list of climbing days. */
+    fun makeClimbingDayScreen(): com.cruxcoach.app.ui.ClimbingDayScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.ClimbingDayScreenModel(
+            com.cruxcoach.app.training.ClimbingDayPresenter(service, MainScope(), Dispatchers.IO),
+        )
     }
 
     companion object {
