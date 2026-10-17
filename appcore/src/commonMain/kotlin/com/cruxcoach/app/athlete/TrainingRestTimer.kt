@@ -48,7 +48,11 @@ class TrainingRestTimer(
             secondsRemaining = durationSeconds,
             totalSeconds = durationSeconds,
         )
-        notifier()?.restChanged(endMs / 1000)
+        notifier()?.let { n ->
+            // Asked at the first rest, not at app start (iOS shows the prompt once).
+            if (!n.permitted) n.requestPermission { }
+            n.restChanged(endMs / 1000)
+        }
         ensureTicker()
     }
 

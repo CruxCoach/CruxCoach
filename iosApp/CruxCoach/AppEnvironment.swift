@@ -1,5 +1,6 @@
 import CruxCoachCore
 import Observation
+import UserNotifications
 
 /// Composition root: hands the four Swift-implemented platform services to the Kotlin core.
 @Observable
@@ -11,6 +12,7 @@ final class AppEnvironment {
     }
 
     private(set) var phase: Phase = .starting
+    @ObservationIgnored private let notificationPresenter = ForegroundNotificationPresenter()
 
     func start() {
         guard case .starting = phase else { return }
@@ -23,6 +25,8 @@ final class AppEnvironment {
         )
         if let core = result.core {
             core.startConnectivity()
+            UNUserNotificationCenter.current().delegate = notificationPresenter
+            _ = core.attachNotifications(scheduler: LocalNotificationScheduler())
             phase = .ready(core)
         } else {
             phase = .failed(code: result.failureCode, detail: result.detail)

@@ -39,7 +39,16 @@ class PlayerScreenState(
 )
 
 /** Playlist player. Local playback only: no session sharing, no participants. */
-class PlayerScreenModel(private val presenter: PlaylistPlayerPresenter) {
+class PlayerScreenModel(
+    private val presenter: PlaylistPlayerPresenter,
+    /**
+     * Mirrors each rest into a local notification, so a rest that ends on a
+     * locked phone is still heard (Android: exact alarm). Read on each use: the
+     * host attaches notifications after start-up; null = none attached.
+     */
+    private val restNotifier: () -> com.cruxcoach.app.notify.RestTimerNotifier? = { null },
+) {
+    private var restWatch: Subscription? = null
 
     val currentState: PlayerScreenState get() = map(presenter.state.value)
 
@@ -66,6 +75,11 @@ class PlayerScreenModel(private val presenter: PlaylistPlayerPresenter) {
             advance = ListCodes.advance(advanceCode) ?: com.cruxcoach.data.repository.ListPlaybackAdvance.MANUAL,
             defaultRestSeconds = defaultRestSeconds,
         )
+        restNotifier()?.let { notifier -> if (!notifier.permitted) notifier.requestPermission { } }
+        if (restWatch == null) {
+            val watch = presenter.watch { state -> restNotifier()?.restChanged(map(state).restEndsAtEpochSeconds) }
+            restWatch = Subscription { watch.cancel() }
+        }
     }
 
     fun next() = presenter.next()
@@ -82,8 +96,21 @@ class PlayerScreenModel(private val presenter: PlaylistPlayerPresenter) {
     /** Call after every log so a send can drop the remaining tries. */
     fun climbLogged(isSend: Boolean) = presenter.onClimbLogged(isSend)
 
-    fun stop() = presenter.stop()
-    fun close() = presenter.close()
+    fun stop() {
+        presenter.stop()
+        endRestNotifications()
+    }
+
+    fun close() {
+        presenter.close()
+        endRestNotifications()
+    }
+
+    private fun endRestNotifications() {
+        restWatch?.cancel()
+        restWatch = null
+        restNotifier()?.cancel()
+    }
 
     private fun map(state: PlaylistPlayerState): PlayerScreenState {
         val resting = state.phase as? PlaybackPhase.Resting

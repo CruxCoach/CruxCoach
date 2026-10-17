@@ -429,7 +429,8 @@ class AppCore private constructor(
                     }
                 },
                 gradeLabel = { grades.label(it) },
-            )
+            ),
+            restNotifier = { restTimer },
         )
     }
 
