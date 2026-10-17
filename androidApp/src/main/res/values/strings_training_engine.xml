@@ -29,7 +29,14 @@
     <string name="tre_ev_guard_masters">40+: more recovery</string>
     <string name="tre_ev_guard_novice">safety rule: first climbing years</string>
     <string name="tre_ev_guard_youth">safety rule: still growing</string>
-    <string name="tre_ev_history">%1$d weeks of history · %2$d sends</string>
+    <plurals name="tre_ev_history_weeks">
+        <item quantity="one">%d week of history</item>
+        <item quantity="other">%d weeks of history</item>
+    </plurals>
+    <plurals name="tre_ev_sends">
+        <item quantity="one">%d send</item>
+        <item quantity="other">%d sends</item>
+    </plurals>
     <string name="tre_ev_injury">injury: %1$s</string>
     <string name="tre_ev_trend">%1$s load %2$s</string>
     <string name="tre_ev_value">%1$s: %2$s</string>

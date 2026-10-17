@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -990,14 +991,15 @@ internal fun GradeStepper(value: String?, startFrom: Double?, tag: String, onCha
             onDismissRequest = { picking = false },
             title = { Text(stringResource(R.string.trc_grade_pick)) },
             text = {
-                androidx.compose.foundation.lazy.LazyColumn(state = listState, modifier = Modifier.heightIn(max = 360.dp).testTag("${tag}_list")) {
+                androidx.compose.foundation.lazy.LazyColumn(state = listState, modifier = Modifier.endsOnHalfRow(GRADE_ROW, maxRows = 7).testTag("${tag}_list")) {
                     items(scale.size) { i ->
                         val g = scale[i]
                         val selected = i == index
                         Text(gradeWithV(g), style = MaterialTheme.typography.titleMedium,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                             color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.fillMaxWidth().clickable { onChange(g); picking = false }.padding(vertical = 12.dp)
+                            modifier = Modifier.fillMaxWidth().clickable { onChange(g); picking = false }
+                                .heightIn(min = GRADE_ROW).wrapContentHeight(Alignment.CenterVertically)
                                 .testTag("${tag}_item_$g"))
                     }
                 }
@@ -1006,6 +1008,22 @@ internal fun GradeStepper(value: String?, startFrom: Double?, tag: String, onCha
         )
     }
 }
+
+private val GRADE_ROW = 48.dp
+
+/**
+ * Height of whole rows plus half a row, within the space the dialog leaves: the cut last row shows that the
+ * list goes on. A list that happened to end on a full row looked complete on the test phone (7a out of sight).
+ */
+private fun Modifier.endsOnHalfRow(row: androidx.compose.ui.unit.Dp, maxRows: Int): Modifier =
+    this.then(Modifier.layout { measurable, constraints ->
+        val rowPx = row.roundToPx()
+        val cap = rowPx * maxRows + rowPx / 2
+        val available = if (constraints.hasBoundedHeight) minOf(constraints.maxHeight, cap) else cap
+        val height = ((available - rowPx / 2) / rowPx).coerceAtLeast(1) * rowPx + rowPx / 2
+        val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = height))
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    })
 
 /** "6c+ (V5)" — Font with the V grade where one exists. */
 internal fun gradeWithV(font: String): String {
