@@ -12,6 +12,7 @@ import com.cruxcoach.data.repository.BoardLocationRepository
 import com.cruxcoach.data.repository.BoardWall
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumBoardModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -244,6 +245,18 @@ class GymBoardPickerViewModel internal constructor(
         }
     }
 
+    /**
+     * Opens one known gym straight away — the board map's "Choose this board"
+     * hands over the rows of the place the user tapped, so the sheet shows
+     * its boards without a search.
+     */
+    fun openGym(rows: List<BoardLocation>) {
+        val first = rows.firstOrNull() ?: return
+        rowsByGym = mapOf(gymKey(first) to rows)
+        _state.update { it.copy(query = "", nearby = false, distanceById = emptyMap(), results = emptyList(), searching = false) }
+        selectGym(first)
+    }
+
     fun selectGym(gym: BoardLocation) {
         // Gather options across EVERY board brand present at this physical gym
         // (the merged search entry can stand for a Kilter row + foreign rows for
@@ -264,6 +277,16 @@ class GymBoardPickerViewModel internal constructor(
                     when {
                         // MoonBoard gyms carry no walls — resolve to variants.
                         brand == BoardBrand.MOONBOARD -> opts += moonBoardOptions(row)
+                        // Quantum: the model is not in the location data, so
+                        // every model is an equal choice.
+                        brand == BoardBrand.QUANTUM -> opts += QuantumBoardModel.entries.map { model ->
+                            GymWallOption(
+                                layoutId = model.layoutId.toInt(),
+                                productSizeId = model.productSizeId.toInt(),
+                                label = "${BoardBrand.QUANTUM.displayName} ${model.displayName}",
+                                boardBrand = BoardBrand.QUANTUM,
+                            )
+                        }
                         // Foreign Aurora gyms are info-only — resolve from the
                         // static variant catalog (multi-layout boards offer one
                         // option per variant; single-layout boards offer one,

@@ -208,6 +208,8 @@ The map reopens where it was left; on the first visit it frames the boards of th
 
 The gym search behind the board picker ("Don't know?") has "Gyms near me": the ten closest gyms within 100 km that have a board CruxCoach supports, nearest first, each with its boards and distance; tapping one offers its boards as usual. The board dialog itself has "Find a gym near you", which opens the search straight in this mode. Both ask for the location permission only on that tap; once it is granted, the search shows the nearby gyms as soon as it opens (without overriding anything typed). Until the synced gym data is on the device (a first start in onboarding), search and "near me" use the board map's bundled snapshot, so they work offline from the start.
 
+On the map, a board with a known layout opens its climbs directly ("Browse climbs for this board"). A board CruxCoach can drive but whose layout or size the data does not name (Tension, Grasshopper, Decoy, So iLL, Touchstone, Quantum, a MoonBoard of unknown variant) offers "Choose this board" instead: the same gym search with that place already open, and the chosen board goes on to the board browser.
+
 ## Board map statistics
 
 Map statistics count all recorded boards in the loaded map dataset, independently of map filters. A venue may contain several boards. Brand and layout distributions include every board family; layout names are grouped within their brand, and missing layouts remain visible as unknown. Access, adjustability, country and known size aggregates use the same dataset.

@@ -257,6 +257,31 @@ class GymBoardPickerViewModelTest {
     }
 
     @Test
+    fun `a place from the map opens with its boards, Tension variants and Quantum models included`() = runTest {
+        val rows = listOf(
+            com.cruxcoach.android.ui.map.mapBoard("pages-t", 48.14, 11.58, name = "Mixed Gym", brand = com.cruxcoach.domain.board.BoardBrand.TENSION),
+            com.cruxcoach.android.ui.map.mapBoard("pages-q", 48.14, 11.58, name = "Mixed Gym", brand = com.cruxcoach.domain.board.BoardBrand.QUANTUM),
+        )
+        val vm = createViewModel()
+        vm.state.test(timeout = IO_WAIT) {
+            var seen = awaitItem()
+            vm.openGym(rows)
+            while (seen.wallOptions.isEmpty()) seen = awaitItem()
+            assertEquals("Mixed Gym", seen.selectedGym?.name)
+            val byBrand = seen.wallOptions.groupBy { it.boardBrand }
+            assertEquals(
+                com.cruxcoach.android.data.BoardConstants.auroraVariants(com.cruxcoach.domain.board.BoardBrand.TENSION).size,
+                byBrand.getValue(com.cruxcoach.domain.board.BoardBrand.TENSION).size,
+            )
+            assertEquals(
+                com.cruxcoach.domain.board.QuantumBoardModel.entries.map { it.layoutId.toInt() },
+                byBrand.getValue(com.cruxcoach.domain.board.BoardBrand.QUANTUM).map { it.layoutId },
+            )
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun `typing leaves near-me mode`() = runTest {
         bundled += com.cruxcoach.android.ui.map.mapBoard("pages-k0", 48.14, 11.58, name = "City Boulder")
         val vm = createViewModel()

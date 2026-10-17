@@ -30,6 +30,7 @@
     <string name="map_venue_instagram">Instagram</string>
     <string name="map_venue_near_city">near %1$s</string>
     <string name="map_venue_section_contact">Address and contact</string>
+    <string name="map_board_choose">Choose this board</string>
 
     <!-- Board map: opening hours, as published by the venue -->
     <string name="map_hours_title">Opening hours</string>
