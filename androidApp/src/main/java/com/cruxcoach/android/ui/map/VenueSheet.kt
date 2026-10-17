@@ -340,6 +340,9 @@ fun VenueDetails(
     boardInfo: Map<String, MapBoardInfo>,
     onBrowseClimbs: (brand: BoardBrand, layoutId: Int, productSizeId: Int?) -> Unit,
     modifier: Modifier = Modifier,
+    /** For a board the map cannot open directly (no layout in the data):
+     *  the gym search with this place already picked, to choose the exact board. */
+    onChooseBoard: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val contact = venue.contactBoard()
@@ -350,7 +353,7 @@ fun VenueDetails(
         HorizontalDivider()
         SectionTitle(stringResource(R.string.map_venue_section_boards))
         venue.boards.forEach { board ->
-            BoardCard(board, boardInfo[board.id], onBrowseClimbs)
+            BoardCard(board, boardInfo[board.id], onBrowseClimbs, onChooseBoard)
         }
 
         venue.info.hours?.let { hours ->
@@ -399,6 +402,7 @@ private fun BoardCard(
     board: BoardLocation,
     info: MapBoardInfo?,
     onBrowseClimbs: (brand: BoardBrand, layoutId: Int, productSizeId: Int?) -> Unit,
+    onChooseBoard: () -> Unit,
 ) {
     val title = board.boardTitle(stringResource(R.string.map_marker_moonboard_variant_unknown))
     val facts = boardFacts(board, info)
@@ -429,15 +433,25 @@ private fun BoardCard(
                 // "Browse climbs" only for families CruxCoach has a catalogue
                 // for. Foreign info-layer brands are map-only — no catalogue
                 // to deep-link into.
+                // Known layout → straight to its climbs. A board CruxCoach can
+                // drive but whose layout/size the data does not name (Tension,
+                // Grasshopper, Quantum, an unknown MoonBoard variant, …) →
+                // the gym search with this place picked, to choose the board.
                 val layoutId = board.layoutId
-                if (layoutId != null && board.boardBrand.isInteractive) {
+                val (label, action) = when {
+                    !board.boardBrand.isInteractive -> null to null
+                    layoutId != null -> stringResource(R.string.map_marker_browse_climbs) to
+                        { onBrowseClimbs(board.boardBrand, layoutId, board.productSizeId) }
+                    else -> stringResource(R.string.map_board_choose) to onChooseBoard
+                }
+                if (label != null && action != null) {
                     TextButton(
-                        onClick = { onBrowseClimbs(board.boardBrand, layoutId, board.productSizeId) },
+                        onClick = action,
                         // Flush with the card's text instead of the button's usual inset.
                         contentPadding = PaddingValues(start = 0.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                        modifier = Modifier.padding(top = 2.dp),
+                        modifier = Modifier.padding(top = 2.dp).testTag("map_board_action_${board.id}"),
                     ) {
-                        Text(stringResource(R.string.map_marker_browse_climbs))
+                        Text(label)
                         Spacer(Modifier.width(6.dp))
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowForward,

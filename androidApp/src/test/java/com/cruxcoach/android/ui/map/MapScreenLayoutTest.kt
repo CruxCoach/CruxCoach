@@ -70,10 +70,11 @@ class MapScreenLayoutTest {
         onBrowse: (BoardBrand, Int, Int?) -> Unit = { _, _, _ -> },
         user: UserPosition? = null,
         onLocate: () -> Unit = {},
+        onChoose: (MapVenue) -> Unit = {},
     ) {
         compose.setContent {
             CruxCoachTheme {
-                Layout(selected, mapState, onSelect, onToggleBrand, onBrowse, user, onLocate)
+                Layout(selected, mapState, onSelect, onToggleBrand, onBrowse, user, onLocate, onChoose)
             }
         }
     }
@@ -87,6 +88,7 @@ class MapScreenLayoutTest {
         onBrowse: (BoardBrand, Int, Int?) -> Unit,
         user: UserPosition?,
         onLocate: () -> Unit,
+        onChoose: (MapVenue) -> Unit,
     ) {
         MapScreenLayout(
             state = mapState,
@@ -111,6 +113,7 @@ class MapScreenLayoutTest {
             onPeekHeight = { _, _ -> },
             userPosition = user,
             onLocateMe = onLocate,
+            onChooseBoardAt = onChoose,
         ) { Box(Modifier.fillMaxSize().background(Color.LightGray)) }
     }
 
@@ -147,6 +150,15 @@ class MapScreenLayoutTest {
         compose.onNodeWithText("10:00–23:00").assertExists()
         // Kilter and MoonBoard both have a catalogue: one button per board.
         compose.onAllNodesWithText("Climbs für dieses Board ansehen").assertCountEquals(2)
+    }
+
+    @Test
+    fun `a board without a known layout leads to choosing it at this gym`() {
+        var chosenAt: MapVenue? = null
+        show(selected = venues.first { it.name == "Einstein" }, onChoose = { chosenAt = it })
+        compose.onNodeWithText("Dieses Board wählen").assertExists()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        assertEquals("Einstein", chosenAt?.name)
     }
 
     @Test

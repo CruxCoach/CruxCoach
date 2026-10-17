@@ -130,6 +130,8 @@ fun MapScreenLayout(
     userPosition: UserPosition? = null,
     locating: Boolean = false,
     onLocateMe: () -> Unit = {},
+    /** "Choose this board" on a place whose board the map cannot open directly. */
+    onChooseBoardAt: (MapVenue) -> Unit = {},
     map: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -189,7 +191,10 @@ fun MapScreenLayout(
                                     distanceMeters = userPosition?.distanceTo(selectedVenue),
                                 )
                             }
-                            VenueDetails(selectedVenue, state.boardInfo, onBrowseClimbs)
+                            VenueDetails(
+                                selectedVenue, state.boardInfo, onBrowseClimbs,
+                                onChooseBoard = { onChooseBoardAt(selectedVenue) },
+                            )
                         }
                     }
                 } else {

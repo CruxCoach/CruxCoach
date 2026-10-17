@@ -373,6 +373,43 @@ fun MapScreen(
         StatsSheet(state = state, onDismiss = { showStatsSheet = false })
     }
 
+    // "Choose this board": the gym search of the board picker with the tapped
+    // place already open, then on to the board browser with the chosen board.
+    var chooseAt by remember { mutableStateOf<MapVenue?>(null) }
+    var showDirectPicker by remember { mutableStateOf(false) }
+    var boardChosen by remember { mutableStateOf(false) }
+    fun openBrowserIfChosen() {
+        if (!boardChosen) return
+        boardChosen = false
+        viewModel.selectVenue(null)
+        onNavigateToBoardBrowser()
+    }
+    chooseAt?.let { venue ->
+        com.cruxcoach.android.ui.settings.GymBoardSearchSheet(
+            startGym = venue.boards,
+            onBoardChosen = { boardChosen = true },
+            onClose = {
+                chooseAt = null
+                openBrowserIfChosen()
+            },
+            onFallbackToDirect = {
+                chooseAt = null
+                showDirectPicker = true
+            },
+            onDismiss = { chooseAt = null },
+        )
+    }
+    if (showDirectPicker) {
+        com.cruxcoach.android.ui.settings.BoardPickerDialog(
+            onDismiss = { showDirectPicker = false },
+            onSelected = {
+                showDirectPicker = false
+                boardChosen = true
+                openBrowserIfChosen()
+            },
+        )
+    }
+
     MapScreenLayout(
         state = state,
         inView = remember(state.filteredVenues, viewport, userPosition) {
@@ -432,6 +469,7 @@ fun MapScreen(
         userPosition = userPosition,
         locating = locateMe.locating,
         onLocateMe = locateMe::locate,
+        onChooseBoardAt = { chooseAt = it },
     ) {
         MapView(
             styleUrl = styleUrl,
