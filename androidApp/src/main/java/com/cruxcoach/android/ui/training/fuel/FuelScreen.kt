@@ -871,8 +871,12 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
             }
             val addText = stringResource(R.string.trf_water_add, amountText(glass.toDouble(), volume))
             val removeText = stringResource(R.string.tru_water_remove)
-            // Ten glasses fit one row on a 360 dp phone; a bigger target wraps.
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(top = 8.dp)) {
+            // As many glasses per row as fit; a bigger target wraps into even rows (6 + 5, not 10 + 1 – device test D42).
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.padding(top = 8.dp)) {
+            val perRow = ((maxWidth + 2.dp) / 34.dp).toInt().coerceAtLeast(1)
+            val rows = (glasses + perRow - 1) / perRow
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp), maxItemsInEachRow = (glasses + rows - 1) / rows,
+                modifier = Modifier.testTag("fuel_glasses")) {
                 (0 until glasses).forEach { i ->
                     val filled = i < full
                     val isLast = filled && i == full - 1
@@ -893,6 +897,7 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
                         )
                     }
                 }
+            }
             }
         }
     }
