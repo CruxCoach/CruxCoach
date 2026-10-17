@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Zirkeltraining: je ein Satz jeder Übung, Runde für Runde (Owner 2026-10-17). -->
+<resources>
+    <string name="trcirc_title">Zirkel</string>
+    <string name="trcirc_link">Mit der nächsten Übung zum Zirkel verbinden</string>
+    <string name="trcirc_unlink">Zirkel hier trennen</string>
+    <string name="trcirc_explain">Je ein Satz jeder Übung, dann die nächste Runde.</string>
+    <string name="trcirc_rest_between">Pause zwischen den Übungen</string>
+    <string name="trcirc_rest_round">Pause nach jeder Runde</string>
+    <string name="trcirc_dissolve">Zirkel auflösen</string>
+    <string name="trcirc_today_chip">Zirkel</string>
+    <string name="trcirc_group">Zirkel · %1$s · %2$s / %3$s</string>
+    <string name="trcirc_sheet_title">Als Zirkel trainieren</string>
+    <plurals name="trcirc_rounds">
+        <item quantity="one">%d Runde</item>
+        <item quantity="other">%d Runden</item>
+    </plurals>
+</resources>

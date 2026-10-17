@@ -192,6 +192,8 @@ fun TodayScreen(
                         onMoreCheckin = { showCheckin = true },
                         onChooseMinutes = viewModel::chooseMinutes,
                         onExercise = { swapFor = it },
+                        onChooseCircuit = viewModel::chooseCircuit,
+                        onSetCircuit = viewModel::setCircuit,
                     )
                 }
                 state.durationHint?.let { minutes ->
@@ -1072,8 +1074,14 @@ private fun DailySuggestionCard(
     onChooseMinutes: (Int?) -> Unit = {},
     /** A tap on an exercise: swap it, leave it out today or never suggest it. */
     onExercise: (String) -> Unit = {},
+    /** "Als Zirkel" for today (owner 2026-10-17), and its rounds and rests. */
+    onChooseCircuit: (Boolean) -> Unit = {},
+    onSetCircuit: (Int?, Int?, Int?) -> Unit = { _, _, _ -> },
 ) {
     val s = state.suggestion ?: return
+    var circuitSheet by remember { mutableStateOf(false) }
+    if (circuitSheet) CircuitSheet(s.routine.items, onDismiss = { circuitSheet = false }, onSet = onSetCircuit,
+        onOff = { circuitSheet = false; onChooseCircuit(false) })
     val language = catalogLanguage()
     val title = suggestionTitle(state)
     val main = s.routine.items.filter { !it.warmup }
@@ -1121,13 +1129,28 @@ private fun DailySuggestionCard(
                     defaultId = TrainingPlaces.default(state.profile)?.id,
                     onPick = onPickPlace,
                 )
+                // One set of each in turn instead of all sets of one exercise first – one tap, today only.
+                if (state.circuitPossible) {
+                    FilterChip(
+                        selected = state.circuitToday,
+                        onClick = { onChooseCircuit(!state.circuitToday) },
+                        label = { Text(stringResource(R.string.trcirc_today_chip)) },
+                        leadingIcon = { Icon(Icons.Default.Repeat, null, Modifier.size(18.dp)) },
+                        modifier = Modifier.testTag("today_circuit"),
+                    )
+                }
             }
             if (main.isNotEmpty()) {
                 // Each exercise with its sets; a tap swaps it (owner 2026-10-16: overridable with little effort).
                 var expanded by rememberSaveable(s.routine.items.size) { mutableStateOf(false) }
                 val shown = if (expanded) main else main.take(4)
                 Column(Modifier.padding(top = 4.dp).testTag("today_suggestion_items")) {
-                    shown.forEach { item ->
+                    shown.forEachIndexed { index, item ->
+                        // A circuit's members under one header: rounds and rests, a tap changes them.
+                        val circuit = item.circuit
+                        if (circuit != null && shown.getOrNull(index - 1)?.circuit != circuit) {
+                            CircuitGroupHeader(s.routine.items, circuit, onClick = { circuitSheet = true })
+                        }
                         val def = state.catalog.fallbackFor(item.slug)
                         val name = def.name(language)
                         val swap = stringResource(R.string.trt_swap_action)
@@ -1143,6 +1166,7 @@ private fun DailySuggestionCard(
                                     .testTag("today_favorite_${item.slug}"), tint = CruxCoachDesign.colors.brandAccent)
                             } else {
                                 Text("•", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(16.dp),
+                                    color = if (item.circuit != null) CruxCoachDesign.colors.brandAccent else androidx.compose.ui.graphics.Color.Unspecified,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                             Spacer(Modifier.width(4.dp))
@@ -1604,6 +1628,66 @@ private fun SwapSheet(
             TextButton(onClick = onExclude, modifier = Modifier.padding(horizontal = 8.dp).testTag("today_swap_exclude")) {
                 Icon(Icons.Default.Block, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.trt_swap_exclude))
+            }
+        }
+    }
+}
+
+
+/** "Circuit · 3 rounds · 0:15 / 2:00" above today's circuit; a tap changes rounds and rests. */
+@Composable
+private fun CircuitGroupHeader(items: List<com.cruxcoach.athlete.model.RoutineItem>, circuit: Int, onClick: () -> Unit) {
+    val first = items.firstOrNull { it.circuit == circuit } ?: return
+    val rounds = com.cruxcoach.athlete.logic.Circuits.rounds(items, circuit)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(CruxCoachDesign.shapes.small).clickable(onClick = onClick)
+            .padding(horizontal = 4.dp).testTag("today_circuit_group"),
+    ) {
+        Icon(Icons.Default.Repeat, null, Modifier.size(16.dp), tint = CruxCoachDesign.colors.brandAccent)
+        Spacer(Modifier.width(4.dp))
+        Text(stringResource(R.string.trcirc_group, pluralStringResource(R.plurals.trcirc_rounds, rounds, rounds),
+            formatClock(first.circuitRestS ?: com.cruxcoach.athlete.logic.Circuits.DEFAULT_CIRCUIT_REST_S), formatClock(first.roundRestS ?: 120)),
+            style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = CruxCoachDesign.colors.brandAccent,
+            modifier = Modifier.weight(1f))
+        Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
+    }
+}
+
+/** Today's circuit: rounds, rest between the exercises and after each round – or no circuit after all. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CircuitSheet(
+    items: List<com.cruxcoach.athlete.model.RoutineItem>,
+    onDismiss: () -> Unit,
+    onSet: (Int?, Int?, Int?) -> Unit,
+    onOff: () -> Unit,
+) {
+    val key = items.firstOrNull { it.circuit != null }?.circuit ?: return onDismiss()
+    val first = items.first { it.circuit == key }
+    val rounds = com.cruxcoach.athlete.logic.Circuits.rounds(items, key)
+    val between = first.circuitRestS ?: com.cruxcoach.athlete.logic.Circuits.DEFAULT_CIRCUIT_REST_S
+    val after = first.roundRestS ?: 120
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("today_circuit_sheet")) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.trcirc_sheet_title), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.trcirc_explain), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            com.cruxcoach.android.ui.training.workouts.EditorStepper(stringResource(R.string.trwo_field_rounds), rounds, 1, 1, 10, "circuit_rounds") { v ->
+                onSet(v, between, after)
+            }
+            com.cruxcoach.android.ui.training.workouts.EditorStepper(stringResource(R.string.trcirc_rest_between), between, 5, 0, 120, "circuit_rest",
+                format = { formatClock(it) }) { v -> onSet(rounds, v, after) }
+            com.cruxcoach.android.ui.training.workouts.EditorStepper(stringResource(R.string.trcirc_rest_round), after, 15, 0, 600, "circuit_round_rest",
+                format = { formatClock(it) }) { v -> onSet(rounds, between, v) }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = onOff, modifier = Modifier.heightIn(min = 48.dp).testTag("today_circuit_off")) {
+                    Text(stringResource(R.string.trcirc_dissolve))
+                }
+                Button(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp).testTag("today_circuit_done")) {
+                    Text(stringResource(R.string.tr_action_done))
+                }
             }
         }
     }

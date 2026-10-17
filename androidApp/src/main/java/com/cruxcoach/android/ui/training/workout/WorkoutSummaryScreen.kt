@@ -171,10 +171,12 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
             val target = service.catalog[to] ?: return@launch
             var count = 0
             repo.routines().filter { r -> r.items.any { it.slug == from } }.forEach { r ->
-                val items = r.items.map { item ->
+                // The replacement keeps its place in a circuit (rounds, rests); normalize drops it if it cannot be in one.
+                val items = com.cruxcoach.athlete.logic.Circuits.normalize(r.items.map { item ->
                     if (item.slug != from) item
-                    else WorkoutPlanner.itemFor(target).copy(sets = item.sets, restS = item.restS, sides = item.sides, warmup = item.warmup)
-                }
+                    else WorkoutPlanner.itemFor(target).copy(sets = item.sets, restS = item.restS, sides = item.sides, warmup = item.warmup,
+                        circuit = item.circuit, circuitRestS = item.circuitRestS, roundRestS = item.roundRestS)
+                }, service.catalog)
                 repo.saveRoutine(r.copy(items = items, updatedAt = System.currentTimeMillis()))
                 count++
             }
