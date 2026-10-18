@@ -46,6 +46,10 @@ struct CoachSetupView: View {
     }
 }
 
+private struct CoachSummaryTarget: Identifiable {
+    let id: String
+}
+
 /// Which grade the picker sets: target | current | flash.
 private struct CoachGradeField: Identifiable {
     let id: String
@@ -178,7 +182,7 @@ private struct CoachSetupSheets: ViewModifier {
                 CoachEquipmentSheet(model: model, ui: ui) { equipmentOpen = false }
             }
             .sheet(isPresented: $favoritesOpen) {
-                CoachFavoritesSheet(model: model) { favoritesOpen = false }
+                CoachFavoritesSheet(model: model, favorites: favoriteSlugs) { favoritesOpen = false }
             }
     }
 
@@ -193,6 +197,11 @@ private struct CoachSetupSheets: ViewModifier {
             .sheet(item: $gradeField) { field in
                 CoachGradeSheet(model: model, field: field.id, current: currentGrade(field.id)) { gradeField = nil }
             }
+    }
+
+    private var favoriteSlugs: [String] {
+        let slugs: [String] = ui.favorites.map { $0.slug }
+        return slugs
     }
 
     private func currentGrade(_ field: String) -> String {
@@ -214,8 +223,11 @@ private struct CoachSetupFlow: ViewModifier {
     @Binding var benchmarksOpen: Bool
     @Binding var playerOpen: Bool
 
+    @State private var finishedId: String?
+    @State private var summary: CoachSummaryTarget?
+
     func body(content: Content) -> some View {
-        alerts(flow(content))
+        alerts(player(flow(content)))
     }
 
     private func flow(_ content: Content) -> some View {
@@ -232,11 +244,31 @@ private struct CoachSetupFlow: ViewModifier {
                     playerOpen = true
                 }
             }
-            // The setup is complete once the test started; closing the player closes the setup too.
-            .fullScreenCover(isPresented: $playerOpen, onDismiss: onDone) {
-                WorkoutPlayerView(core: core, onClose: { playerOpen = false }, onFinished: { _ in playerOpen = false },
-                                  onOpenNutrition: { playerOpen = false })
+    }
+
+    private func player<V: View>(_ view: V) -> some View {
+        view
+            // The setup is complete once the test started: closing the player (or the summary after it) closes it too.
+            .fullScreenCover(isPresented: $playerOpen, onDismiss: { playerDismissed() }) {
+                WorkoutPlayerView(core: core, onClose: { playerOpen = false }, onFinished: { id in
+                    finishedId = id
+                    playerOpen = false
+                }, onOpenNutrition: { playerOpen = false })
             }
+            .sheet(item: $summary, onDismiss: onDone) { target in
+                WorkoutSummaryView(core: core, workoutId: target.id, onClose: { summary = nil },
+                                   onOpenNutrition: { summary = nil })
+            }
+    }
+
+    /// The summary comes up once the player is gone: two presentations at once drop the second.
+    private func playerDismissed() {
+        if let id = finishedId {
+            finishedId = nil
+            summary = CoachSummaryTarget(id: id)
+        } else {
+            onDone()
+        }
     }
 
     private var pendingShown: Binding<Bool> {
@@ -925,6 +957,8 @@ private struct CoachEquipmentSheet: View {
 /// Pick favourites from the catalogue; a star marks and unmarks one at once.
 private struct CoachFavoritesSheet: View {
     let model: CoachSetupScreenModel
+    /// The stored favourites: the stars follow them once a tap is written.
+    let favorites: [String]
     let onDone: () -> Void
 
     @State private var query = ""
@@ -933,16 +967,8 @@ private struct CoachFavoritesSheet: View {
     var body: some View {
         NavigationStack {
             List(hits, id: \.slug) { hit in
-                Button {
+                CoachFavoriteHitRow(hit: hit, isFavorite: favorites.contains(hit.slug)) {
                     model.toggleFavorite(slug: hit.slug)
-                    refreshSoon()
-                } label: {
-                    HStack {
-                        Text(hit.name).foregroundStyle(Color.primary)
-                        Spacer()
-                        Image(systemName: hit.isFavorite ? "star.fill" : "star")
-                            .foregroundStyle(hit.isFavorite ? Color.accentColor : Color.secondary)
-                    }
                 }
             }
             .searchable(text: $query)
@@ -955,12 +981,22 @@ private struct CoachFavoritesSheet: View {
         .onAppear { hits = model.searchExercises(query: query) }
         .onChange(of: query) { _, now in hits = model.searchExercises(query: now) }
     }
+}
 
-    /// The favourite is written off the main thread; the star follows once it is stored.
-    private func refreshSoon() {
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            hits = model.searchExercises(query: query)
+private struct CoachFavoriteHitRow: View {
+    let hit: CoachExerciseUi
+    let isFavorite: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                Text(hit.name).foregroundStyle(Color.primary)
+                Spacer()
+                Image(systemName: isFavorite ? "star.fill" : "star")
+                    .foregroundStyle(isFavorite ? Color.accentColor : Color.secondary)
+            }
         }
+        .accessibilityAddTraits(isFavorite ? .isSelected : [])
     }
 }
