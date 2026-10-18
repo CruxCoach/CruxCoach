@@ -43,7 +43,9 @@ class ReceiveShareScreenModelTest {
     private val receiver = LocalShareReceiver(
         client, files, JvmHashing, JvmFileGunzip, { JdbcSqliteDriver("jdbc:sqlite:$it") }, LocalShareImporter(fx.handle), work.path,
     )
-    private val model = ReceiveShareScreenModel(client, receiver, sync, fx.handle, thread, thread, probeAttempts = 2, probeRetryMs = 1)
+    private val model = ReceiveShareScreenModel(
+        client, receiver, sync, fx.handle, thread, thread, probeAttempts = 2, probeRetryMs = 1,
+    )
 
     private val kilterUuid = "11111111-1111-4111-8111-111111111111"
     private val moonUuid = "22222222-2222-4222-8222-222222222222"
@@ -194,13 +196,31 @@ class ReceiveShareScreenModelTest {
     }
 
     @Test
-    fun `a Wi-Fi code asks to join the network first`() {
+    fun `a Wi-Fi code asks to join the network and then searches it`() {
+        serve(senderSnapshot())
+        sender.answeringHost = "192.168.49.1"
         model.submitLink("WIFI:T:WPA;S:DIRECT-ab-CruxCoach;P:12345678;;")
         assertEquals("joinWifi", model.currentState.phase)
         assertEquals("DIRECT-ab-CruxCoach", model.currentState.wifiSsid)
-        model.continueAfterWifi()
-        // Without an address the landing code is still needed.
-        assertEquals("enter", model.currentState.phase)
         assertTrue(sender.requests.isEmpty())
+
+        model.continueAfterWifi(listOf("172.20.10.1"))
+        awaitPhase("offer")
+
+        // Android's discovery order: the Wi-Fi gateway first, then the hotspot addresses, port 4949.
+        assertEquals(listOf("172.20.10.1:4949", "192.168.49.1:4949"), sender.requests.map { it.host }.distinct())
+        assertEquals("192.168.49.1", model.currentState.host)
+    }
+
+    @Test
+    fun `a Wi-Fi without a share says so`() {
+        sender.unreachable = true
+        model.searchWifi(listOf("172.20.10.1", "8.8.8.8"))
+        awaitPhase("failed")
+        assertEquals("notFound", model.currentState.errorCode)
+        assertEquals(
+            listOf("172.20.10.1:4949", "192.168.49.1:4949", "192.168.43.1:4949"),
+            sender.requests.map { it.host }.distinct(),
+        )
     }
 }

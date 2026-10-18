@@ -14,7 +14,7 @@ import java.util.zip.GZIPOutputStream
  * then append.
  */
 class FakeShareSender : LocalShareTransport {
-    class Request(val method: String, val path: String, val headers: Map<String, String>)
+    class Request(val method: String, val host: String, val path: String, val headers: Map<String, String>)
 
     val requests = ArrayList<Request>()
     val pages = HashMap<String, Pair<Int, ByteArray>>()
@@ -26,6 +26,9 @@ class FakeShareSender : LocalShareTransport {
     var wrongRangeStart: Long? = null
     var conflict = false
     var unreachable = false
+
+    /** When set, only this IP answers; any other address is unreachable. */
+    var answeringHost: String? = null
 
     fun json(path: String, body: String, status: Int = 200) {
         pages[path] = status to body.encodeToByteArray()
@@ -39,8 +42,10 @@ class FakeShareSender : LocalShareTransport {
         timeoutSeconds: Int,
     ): LocalHttpResponse {
         val path = pathOf(url)
-        requests += Request(method, path, headers)
-        if (unreachable) throw LocalShareIoException("connection refused")
+        requests += Request(method, hostOf(url), path, headers)
+        if (unreachable || answeringHost?.let { it != hostOf(url).substringBefore(':') } == true) {
+            throw LocalShareIoException("connection refused")
+        }
         if (conflict) return LocalHttpResponse(409, mapOf("content-length" to "0"), ByteArray(0))
         if (method == "HEAD" && artifacts.containsKey(path)) return LocalHttpResponse(200, emptyMap(), ByteArray(0))
         if (method == "POST" && path == LocalShareProtocol.COMPLETE_PATH) return LocalHttpResponse(204, emptyMap(), ByteArray(0))
@@ -59,7 +64,7 @@ class FakeShareSender : LocalShareTransport {
         onProgress: (fileLength: Long) -> Unit,
     ): Long {
         val artifactPath = pathOf(url)
-        requests += Request("GET", artifactPath, headers)
+        requests += Request("GET", hostOf(url), artifactPath, headers)
         if (unreachable) throw LocalShareIoException("connection refused")
         if (conflict) {
             onHead(409, mapOf("content-length" to "0"))
@@ -99,6 +104,8 @@ class FakeShareSender : LocalShareTransport {
     }
 
     private fun pathOf(url: String): String = "/" + url.removePrefix("http://").substringAfter('/')
+
+    private fun hostOf(url: String): String = url.removePrefix("http://").substringBefore('/')
 }
 
 /** The JVM stand-in for the iOS zlib inflater, with the same bound. */

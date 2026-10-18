@@ -56,7 +56,7 @@ class ReceiveShareState(
     val stepDone: Long,
     val stepTotal: Long,
     val result: List<ReceiveShareBrandRow>,
-    /** "none", "invalidLink", "unreachable", "busy", "sessionChanged", "noSnapshot", "noSpace", "tooLarge", "verifyFailed", "rejected", "failed". */
+    /** "none", "invalidLink", "notFound", "unreachable", "busy", "sessionChanged", "noSnapshot", "noSpace", "tooLarge", "verifyFailed", "rejected", "failed". */
     val errorCode: String,
 )
 
@@ -109,10 +109,51 @@ class ReceiveShareScreenModel internal constructor(
         }
     }
 
-    /** After joining the sender's Wi-Fi in Settings; without a known address the landing code is next. */
-    fun continueAfterWifi() {
+    /** After joining the sender's Wi-Fi in Settings; without a known address the Wi-Fi is searched. */
+    fun continueAfterWifi(gateways: List<String>) {
         if (state.value.phase != "joinWifi") return
-        if (baseUrl.isEmpty()) state.value = initial() else probe(baseUrl)
+        if (baseUrl.isEmpty()) searchWifi(gateways) else probe(baseUrl)
+    }
+
+    /**
+     * Android `LocalShareDiscovery.discover`: the sender listens on a fixed port, on the Wi-Fi's
+     * gateway or one of the two hotspot addresses Android uses. Only a valid manifest counts as
+     * found; nothing is transferred before the offer is accepted. [gateways]: the IPv4 gateways
+     * iOS reports for the current Wi-Fi path.
+     */
+    fun searchWifi(gateways: List<String>) {
+        val phase = state.value.phase
+        if (phase == "running" || phase == "probing") return
+        state.value = initial().copyWith(phase = "probing")
+        job = scope.launch {
+            val found = withContext(io) { discover(gateways) }
+            if (found == null) {
+                state.value = initial().copyWith(phase = "failed", errorCode = "notFound")
+                return@launch
+            }
+            baseUrl = found.first
+            showOffer(found.second)
+        }
+    }
+
+    private suspend fun discover(gateways: List<String>): Pair<String, LocalShareProtocol.Manifest>? {
+        repeat(probeAttempts) { attempt ->
+            val hosts = (gateways + GROUP_OWNER_IP + LOCAL_ONLY_HOTSPOT_LEGACY_IP)
+                .filter { LocalShareProtocol.isPrivateIpv4(it) }
+                .distinct()
+            for (host in hosts) {
+                val origin = "http://$host:$LOCAL_SHARE_PORT"
+                try {
+                    return origin to client.fetchManifest(origin, timeoutSeconds = PROBE_TIMEOUT_SECONDS)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Not this address; the next candidate.
+                }
+            }
+            if (attempt + 1 < probeAttempts) delay(probeRetryMs)
+        }
+        return null
     }
 
     fun toggle(brandWire: String) {
@@ -192,18 +233,20 @@ class ReceiveShareScreenModel internal constructor(
         state.value = initial().copyWith(phase = "probing", host = hostOf(origin))
         job = scope.launch {
             try {
-                val found = withContext(io) { fetchWithRetries(origin) }
-                manifest = found
-                val offered = LocalShareReceiver.offeredBrands(found)
-                chosen = offered.toSet()
-                chosenOthers = emptySet()
-                publishOffer(othersOpen = false)
+                showOffer(withContext(io) { fetchWithRetries(origin) })
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 state.value = initial().copyWith(phase = "failed", host = hostOf(origin), errorCode = errorCode(e))
             }
         }
+    }
+
+    private fun showOffer(found: LocalShareProtocol.Manifest) {
+        manifest = found
+        chosen = LocalShareReceiver.offeredBrands(found).toSet()
+        chosenOthers = emptySet()
+        publishOffer(othersOpen = false)
     }
 
     /**
@@ -304,6 +347,9 @@ class ReceiveShareScreenModel internal constructor(
         const val PROBE_ATTEMPTS = 6
         const val PROBE_RETRY_MS = 2_500L
         const val PROBE_TIMEOUT_SECONDS = 4
+        const val LOCAL_SHARE_PORT = 4949
+        const val GROUP_OWNER_IP = "192.168.49.1"
+        const val LOCAL_ONLY_HOTSPOT_LEGACY_IP = "192.168.43.1"
 
         /**
          * What the sender shows: a Wi-Fi code (`WIFI:T:WPA;S:…;P:…;;`), its landing address
