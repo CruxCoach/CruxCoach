@@ -444,6 +444,26 @@
     <string name="settings_led_reset_cruxcoach">CruxCoach Standard</string>
     <string name="settings_led_reset_kilter">Kilter Standard</string>
 
+    <!-- Settings: LED Animations -->
+    <string name="settings_led_anim_title">LED-Animationen</string>
+    <string name="settings_led_anim_change">Ändern</string>
+    <string name="settings_led_anim_none">Keine</string>
+    <string name="settings_led_anim_none_hint">Statische Farben wie in den LED-Farben eingestellt.</string>
+    <string name="settings_led_anim_pulse">Puls</string>
+    <string name="settings_led_anim_pulse_hint">Griffe atmen in ihrer eigenen Farbe heller und dunkler.</string>
+    <string name="settings_led_anim_two_phase">Zwei-Phasen-Stroboskop</string>
+    <string name="settings_led_anim_two_phase_hint">Wechselt zwischen dem CruxCoach- und dem Kilter-Farbschema.</string>
+    <string name="settings_led_anim_chaotic">Chaotisches Stroboskop</string>
+    <string name="settings_led_anim_chaotic_hint">Die Farben springen umher. Roll-Farben bleiben unterscheidbar.</string>
+    <string name="settings_led_anim_rainbow">Regenbogen-Welle</string>
+    <string name="settings_led_anim_rainbow_hint">Alle Farben wandern langsam um den Farbkreis.</string>
+    <string name="settings_led_anim_kilter_only">LED-Animationen funktionieren nur mit einem Kilter Board.</string>
+    <string name="led_anim_notification_channel">LED-Animationen</string>
+    <string name="led_anim_notification_channel_desc">Wird angezeigt, während ein beleuchteter Kletterzug in einer anderen App weiter animiert wird.</string>
+    <string name="led_anim_notification_title">LED-Animation läuft</string>
+    <string name="led_anim_notification_text">Der beleuchtete Kletterzug auf deinem Board wird animiert.</string>
+    <string name="led_anim_notification_stop">Stopp</string>
+
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Pausentimer</string>
     <string name="settings_timer_desc">Dauer deiner Pause zwischen Versuchen. Starte den Timer in der Boulderansicht der App selbst oder aktiviere unten den Start nach einem Logbucheintrag.</string>

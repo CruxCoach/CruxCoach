@@ -324,6 +324,11 @@ object PreferenceKeys {
     // exactly once — see migrateToManualSendDefaultIfNeeded).
     val MANUAL_SEND_DEFAULT_MIGRATED = booleanPreferencesKey("manual_send_default_migrated_v022")
 
+    /**
+     * Selected LED animation id — see `com.cruxcoach.android.led.LedAnimationRegistry`.
+     * Unknown or absent means "none": static colours, existing behaviour.
+     */
+    val LED_ANIMATION = stringPreferencesKey("led_animation")
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
     // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
     // by bleAutoDisconnectSeconds, which transparently migrates the
@@ -1073,6 +1078,29 @@ class UserPreferences(
                 HoldRole.FINISH -> prefs[PreferenceKeys.LED_COLOR_FINISH] = colorByte
                 HoldRole.FOOT -> prefs[PreferenceKeys.LED_COLOR_FOOT] = colorByte
             }
+        }
+    }
+
+    /**
+     * The selected LED animation id. Collected directly by `LedAnimationEngine`,
+     * so switching animations takes effect while a climb is lit — no restart.
+     *
+     * Deliberately a plain string rather than an enum: the animation list is a
+     * registry the settings screen renders, and a value from a newer (or older,
+     * after an animation was removed) build must degrade to static colours
+     * instead of failing to parse.
+     */
+    val ledAnimation: Flow<String> = dataStore.data.map { prefs ->
+        // "none" == static colours. The id belongs to
+        // com.cruxcoach.android.led.LedAnimationRegistry; anything unknown
+        // resolves to the same thing there, so a removed animation degrades
+        // quietly instead of lighting nothing.
+        prefs[PreferenceKeys.LED_ANIMATION] ?: "none"
+    }
+
+    suspend fun setLedAnimation(id: String) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.LED_ANIMATION] = id
         }
     }
 

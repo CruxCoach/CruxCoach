@@ -88,6 +88,7 @@ spec file so other branches see the reservation.
 | FEAT-063 | Nostr Background Privacy Control | v0.2.3 | planned | `0.2.3/FEAT-063-nostr-background-privacy-control.md` |
 | FEAT-064 | Quantum multi-layer Nearby banner | backlog | backlog | `backlog/FEAT-064-quantum-nearby-layer-banner.md` |
 | FEAT-065 | Database Process Performance | v0.2.4 | skeleton | `0.2.4/FEAT-065-database-process-performance.md` |
+| FEAT-067 | LED Animations on the Lit Climb (Kilter, FGS keep-alive) | v0.2.4 | implementation | `0.2.4/FEAT-067-led-animations.md` |
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
@@ -167,6 +168,11 @@ renumbering those is likely cheaper than renumbering the shipped side.
 the parallel `social-layer-specs` worktree; FEAT-062 is reserved by the
 personal-sharing worktrees. Verify against unmerged branches before allocating
 — a branch this worktree cannot see may still hold the next apparent gap.
+
+**FEAT-067** was allocated on 2026-10-18 to `feat/led-animations` (LED
+animations, `0.2.4/FEAT-067-led-animations.md`), so the next free ID above it is
+**FEAT-068**. FEAT-066 is still unallocated in this worktree and was not reused
+by that allocation — apply the same unmerged-branch check before taking it.
 
 ### Allocation of FEAT-058 (2026-08-09) — and why not FEAT-051
 
