@@ -129,6 +129,9 @@ class ReceiveShareScreenModelTest {
         assertEquals(listOf("kilter"), sync.state.value.installedBrands.map { it.wireValue })
         // Neither the download nor the inflated copy is kept.
         assertEquals(emptyList(), work.listFiles()!!.map { it.name })
+        // Reopening the screen starts over after a result.
+        model.reset()
+        assertEquals("enter", model.currentState.phase)
     }
 
     @Test
@@ -160,6 +163,9 @@ class ReceiveShareScreenModelTest {
 
         assertEquals("offer", model.currentState.phase)
         assertEquals("busy", model.currentState.errorCode)
+        // An open offer is not a result: reopening the screen keeps it.
+        model.reset()
+        assertEquals("offer", model.currentState.phase)
         assertEquals(listOf(LocalShareProtocol.V2_MANIFEST_PATH), sender.requests.map { it.path })
     }
 

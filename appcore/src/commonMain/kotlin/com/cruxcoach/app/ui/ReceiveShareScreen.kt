@@ -223,6 +223,15 @@ class ReceiveShareScreenModel internal constructor(
         state.value = initial()
     }
 
+    /** Opening the screen again starts over after a result; a transfer or search in progress stays. */
+    fun reset() {
+        val phase = state.value.phase
+        if (phase == "done" || phase == "failed") {
+            manifest = null
+            state.value = initial()
+        }
+    }
+
     fun close() {
         job?.cancel()
         scope.cancel()

@@ -2091,8 +2091,11 @@ class AppCore private constructor(
         com.cruxcoach.app.localshare.IosLocalShareTransport()
     }
 
-    /** "Receive from a nearby phone": scan or paste the sender's code, choose boards, import. */
-    fun makeReceiveShareScreen(): com.cruxcoach.app.ui.ReceiveShareScreenModel {
+    /**
+     * "Receive from a nearby phone". App-scoped like Android's sync manager: a transfer keeps
+     * running when its screen is left, and reopening the screen shows it. Never closed by Swift.
+     */
+    val receiveShareScreen: com.cruxcoach.app.ui.ReceiveShareScreenModel by lazy {
         val client = com.cruxcoach.app.localshare.LocalShareClient(localShareTransport, platform.files, platform.hashing)
         val receiver = com.cruxcoach.app.localshare.LocalShareReceiver(
             client = client,
@@ -2103,7 +2106,7 @@ class AppCore private constructor(
             importer = com.cruxcoach.app.localshare.LocalShareImporter(boardDb),
             workDirectory = platform.files.workDirectory(),
         )
-        return com.cruxcoach.app.ui.ReceiveShareScreenModel(client, receiver, catalogueSync, boardDb, Dispatchers.Main, Dispatchers.IO)
+        com.cruxcoach.app.ui.ReceiveShareScreenModel(client, receiver, catalogueSync, boardDb, Dispatchers.Main, Dispatchers.IO)
     }
 
     /** True for the sender landing page's "open in app" link (`cruxcoach://offline-share?…`). */

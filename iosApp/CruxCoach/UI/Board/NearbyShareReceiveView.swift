@@ -32,10 +32,11 @@ struct NearbyShareReceiveView: View {
         }
         .task {
             guard host == nil else { return }
-            let model = core.makeReceiveShareScreen()
+            // App-scoped (a transfer outlives this screen), so the host never closes the model.
+            let model = core.receiveShareScreen
+            model.reset()
             host = ScreenHost(model: model, initial: model.currentState,
-                              subscribe: { model, onState in model.watch(onState: onState) },
-                              onClose: { model in model.close() })
+                              subscribe: { model, onState in model.watch(onState: onState) })
             if !initialLink.isEmpty { model.submitLink(text: initialLink) }
         }
     }
@@ -285,6 +286,7 @@ private func nearbyClimbCount(_ count: Int64) -> String {
 private struct NearbyProgressSection: View {
     let model: ReceiveShareScreenModel
     let ui: ReceiveShareState
+    @State private var background = NearbyBackgroundTime()
 
     private var fraction: Double? {
         let done: Double = Double(ui.stepDone)
@@ -310,8 +312,33 @@ private struct NearbyProgressSection: View {
             Text(LI("nearby_receive_keep_open")).font(.footnote).foregroundStyle(.secondary)
             Button(L("action_cancel"), role: .cancel) { model.cancel() }
         }
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+            background.begin()
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            background.end()
+        }
+    }
+}
+
+/// The half minute iOS grants a task that is under way when the user switches apps; an
+/// interrupted transfer then resumes where it stopped.
+private final class NearbyBackgroundTime {
+    private var identifier: UIBackgroundTaskIdentifier = .invalid
+
+    func begin() {
+        guard identifier == .invalid else { return }
+        identifier = UIApplication.shared.beginBackgroundTask(withName: "nearby-share") { [weak self] in
+            self?.end()
+        }
+    }
+
+    func end() {
+        guard identifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(identifier)
+        identifier = .invalid
     }
 }
 
