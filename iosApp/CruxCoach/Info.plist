@@ -29,6 +29,8 @@
 	<string>CruxCoach reads last night's sleep to suggest it in the check-in, and climbing workouts to count them as climbing days for the coach. Nothing is uploaded.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>CruxCoach writes the meals and water you log to Apple Health, only when you switch this on. Nothing is uploaded.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>CruxCoach uses your location only when you tap “My location” or “Gyms near me”, to show the boards near you. It stays on this phone.</string>
 	<key>UIBackgroundModes</key><array><string>bluetooth-central</string></array>
 	<key>ITSAppUsesNonExemptEncryption</key><false/>
 	<key>CFBundleURLTypes</key>

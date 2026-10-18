@@ -903,4 +903,26 @@ class AppCore private constructor(
         val sync = healthSync ?: return null
         return com.cruxcoach.app.ui.HealthActions(sync, service, Dispatchers.IO)
     }
+    // ── Map, gyms and location (0.2.4) ──────────────────────────────────
+
+    /** The bundled cruxcoach-pages map snapshot that ships in the app bundle. */
+    private fun bundledBoardMap(): BundledPagesBoardMapSource =
+        BundledPagesBoardMapSource(platform.files, "${NSBundle.mainBundle.resourcePath ?: ""}/board_map")
+
+    /**
+     * "Find your gym" with "Gyms near me". Searches the synced locations and
+     * falls back to the bundled map snapshot while nothing is synced, as on
+     * Android. The position Swift passes in is used for one ranking only.
+     */
+    fun makeGymSearchScreen(): com.cruxcoach.app.ui.GymSearchScreenModel {
+        val snapshot = bundledBoardMap()
+        return com.cruxcoach.app.ui.GymSearchScreenModel(
+            com.cruxcoach.app.gym.GymBoardPickerPresenter(
+                BoardLocationRepositoryImpl(boardDb.database),
+                { snapshot.load().locations },
+                MainScope(),
+                Dispatchers.Default,
+            )
+        )
+    }
 }

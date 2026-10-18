@@ -11,6 +11,7 @@ struct OnboardingView: View {
 
     @State private var host: ScreenHost<OnboardingScreenModel, OnboardingScreenState>?
     @State private var showBoardPicker = false
+    @State private var showNearbyGyms = false
 
     var body: some View {
         Group {
@@ -50,6 +51,13 @@ struct OnboardingView: View {
                                     Text(ui.boardDetail).font(.footnote).foregroundStyle(.secondary)
                                 }
                             }
+                        }
+                        // Android onboarding's "Find a gym near you": the quickest way to
+                        // the right board when you stand in your gym.
+                        Button {
+                            showNearbyGyms = true
+                        } label: {
+                            Label(L("board_find_nearby_gym"), systemImage: "location")
                         }
                     }
                     Section {
@@ -99,6 +107,24 @@ struct OnboardingView: View {
                                           layoutId: option.layoutId,
                                           productSizeId: option.productSizeId)
                         showBoardPicker = false
+                    }
+                }
+            }
+            .sheet(isPresented: $showNearbyGyms) {
+                NavigationStack {
+                    GymSearchView(core: core, availableBrandWires: sync.state.rows.map { $0.brandWire },
+                                  startNearby: true,
+                                  onPick: { option in
+                                      model.chooseBoard(brandWire: option.brandWire,
+                                                        layoutId: option.layoutId,
+                                                        productSizeId: option.productSizeId)
+                                      showNearbyGyms = false
+                                  },
+                                  onPickDirectly: { showNearbyGyms = false })
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(L("action_close")) { showNearbyGyms = false }
+                        }
                     }
                 }
             }

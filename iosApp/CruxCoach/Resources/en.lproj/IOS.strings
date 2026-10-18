@@ -380,3 +380,4 @@
 "health_export_failed" = "Meals and water could not be sent to Apple Health.";
 "health_privacy" = "The link itself uploads nothing: what CruxCoach reads stays in its encrypted database on this iPhone (and is part of your encrypted backup only if you turned the backup on), and what it writes goes only to Apple Health on this iPhone.";
 "health_sleep_chip" = "From Apple Health: %1$@ h → %2$ld";
+"gym_board_not_installed" = "This board's data is not on this iPhone yet. Download it first under “Sync board data”.";

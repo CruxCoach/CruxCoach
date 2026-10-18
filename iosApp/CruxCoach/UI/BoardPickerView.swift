@@ -1,15 +1,34 @@
 import CruxCoachCore
 import SwiftUI
 
-/// Choose the physical board (brand → layout → size) from the installed catalogues.
+/// Choose the physical board (brand → layout → size) from the installed catalogues,
+/// or find it through the gym you climb at (Android `BoardSelectionDialog`:
+/// "Find a gym near you" and the gym search).
 struct BoardPickerView: View {
     let core: AppCore
     let brandWires: [String]
     let onPick: (BoardOption) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var showGymSearch = false
+    @State private var gymSearchNearby = false
 
     var body: some View {
         List {
+            Section {
+                Button {
+                    gymSearchNearby = true
+                    showGymSearch = true
+                } label: {
+                    Label(L("board_find_nearby_gym"), systemImage: "location")
+                }
+                .accessibilityIdentifier("board_find_nearby_gym")
+                Button {
+                    gymSearchNearby = false
+                    showGymSearch = true
+                } label: {
+                    Label(L("feat007_gym_search_title"), systemImage: "magnifyingglass")
+                }
+            }
             if brandWires.isEmpty {
                 Text(LI("browser_no_catalogue_hint"))
             }
@@ -32,6 +51,10 @@ struct BoardPickerView: View {
             }
         }
         .navigationTitle(LI("browser_board"))
+        .navigationDestination(isPresented: $showGymSearch) {
+            GymSearchView(core: core, availableBrandWires: brandWires, startNearby: gymSearchNearby,
+                          onPick: onPick, onPickDirectly: { showGymSearch = false })
+        }
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L("action_close")) { dismiss() } } }
     }
 }
