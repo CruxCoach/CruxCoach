@@ -2,7 +2,9 @@ import CruxCoachCore
 import SwiftUI
 
 /// Playlist player: walks a list climb by climb, lights each one on the board
-/// and counts down the rests. Local playback only — no shared sessions.
+/// and counts down the rests. Local playback only — no shared sessions. The
+/// playlist outlives this screen, as on Android ("Back = leave the screen; the
+/// playlist keeps running"); Stop ends it.
 struct PlayerView: View {
     let core: AppCore
     let listName: String
@@ -29,20 +31,21 @@ struct PlayerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard host == nil else { return }
-            // The board-session variant: same player, plus the end-of-session summary.
-            let model = core.makeBoardSessionPlayerScreen()
+            // Android's single playback coordinator: the app's one running playlist, with the
+            // end-of-session summary. Leaving this screen keeps it running (the board screens
+            // show its banner); opening the list that plays again resumes it. Never closed here.
+            let hub = core.boardSessionHub
+            let model = hub.player
             host = ScreenHost(model: model, initial: model.currentState,
-                              subscribe: { model, onState in model.watch(onState: onState) },
-                              onClose: { model in model.close() })
-            model.play(listName: listName,
-                       climbUuids: climbUuids,
-                       angles: angles.map { KotlinInt(int: $0) },
-                       restsAfter: restsAfter.map { KotlinInt(int: $0) },
-                       orderCode: orderCode,
-                       advanceCode: advanceCode,
-                       defaultRestSeconds: defaultRestSeconds)
+                              subscribe: { model, onState in model.watch(onState: onState) })
+            _ = hub.play(listName: listName,
+                         climbUuids: climbUuids,
+                         angles: angles.map { KotlinInt(int: $0) },
+                         restsAfter: restsAfter.map { KotlinInt(int: $0) },
+                         orderCode: orderCode,
+                         advanceCode: advanceCode,
+                         defaultRestSeconds: defaultRestSeconds)
         }
-        .onDisappear { host?.model.stop() }
         .alert(L("board_session_end_title"), isPresented: $confirmEnd) {
             Button(L("action_cancel"), role: .cancel) {}
             Button(L("board_session_end_confirm"), role: .destructive) { host?.model.endSession() }

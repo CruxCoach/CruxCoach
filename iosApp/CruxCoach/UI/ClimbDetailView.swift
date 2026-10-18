@@ -142,6 +142,9 @@ struct ClimbDetailView: View {
                 ProgressView()
             case "notFound", "failed":
                 ContentUnavailableView(LI("detail_unavailable"), systemImage: "questionmark.square.dashed")
+            case "logbookOnly":
+                // Android LogbookOnlyClimbContent: logged, but not in the catalogue.
+                LogbookOnlyClimbView(core: core, climbUuid: ui.uuid).id(ui.uuid)
             default:
                 content(model: model, ui: ui)
             }

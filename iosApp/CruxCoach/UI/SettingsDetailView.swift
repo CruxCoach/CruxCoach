@@ -84,6 +84,9 @@ struct SettingsDetailView: View {
                 Toggle(LI("settings_rest_auto"), isOn: Binding(get: { ui.restTimerAutoStart }, set: { model.setRestTimerAutoStart(enabled: $0) }))
             }
 
+            // Android's timers page: rest timer, then route playback.
+            RoutePlaybackSettingsSection(core: core)
+
             Section {
                 Picker(LI("settings_sync_interval"), selection: Binding(get: { ui.syncInterval }, set: { model.setSyncInterval(code: $0) })) {
                     Text(LI("settings_sync_manual")).tag("manual")
