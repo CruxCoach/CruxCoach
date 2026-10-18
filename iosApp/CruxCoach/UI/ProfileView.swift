@@ -46,6 +46,7 @@ struct ProfileView: View {
                           text: binding(ui.about) { model.setAbout(value: $0) }, axis: .vertical)
                     .lineLimit(2...6)
             }
+            notOnIPhoneSection()
             Section(header: Text(LI("profile_images"))) {
                 TextField(L("nostr_profile_picture_change"),
                           text: binding(ui.pictureUrl) { model.setPictureUrl(value: $0) })
@@ -112,6 +113,17 @@ struct ProfileView: View {
         .alert(LI(errorKey(ui.errorCode)),
                isPresented: Binding(get: { ui.errorCode != "none" }, set: { if !$0 { model.consumeError() } })) {
             Button(L("action_done")) { model.consumeError() }
+        }
+    }
+
+    /// Android's profile also offers "Use Kilter username" and, under Community, the
+    /// default for posting a short Nostr note with each new climb. Neither exists on
+    /// iPhone yet (no Kilter display name is fetched here, and the editor posts no
+    /// notes), so the screen says so instead of showing controls that do nothing.
+    @ViewBuilder
+    private func notOnIPhoneSection() -> some View {
+        Section(header: Text(L("profile_community_title"))) {
+            Text(LI("profile_extras_not_on_iphone")).font(.footnote).foregroundStyle(.secondary)
         }
     }
 
