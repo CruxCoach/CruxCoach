@@ -652,15 +652,17 @@ private struct NearbyPlaylistRow: View {
 }
 
 /// Android's successor question ("Continue with nearby group?"), asked from any screen once the
-/// joined host left and another session appeared. Hosted once at the root.
+/// joined host left and another session appeared. Hosted once at the root; the question itself
+/// lives in its own window ([SuccessorAlertWindow]) so that it also comes up over a sheet or
+/// the training cover, which a SwiftUI alert at the root cannot.
 struct SharedSuccessorPrompt: ViewModifier {
     let core: AppCore
     @State private var host: ScreenHost<SharedSessionsModel, SharedSessionsState>?
+    @State private var question = SuccessorAlertWindow()
 
     func body(content: Content) -> some View {
         // Read here, in the body, so the observation of the Kotlin state re-renders the prompt.
         let offered: Bool = host?.state.hasSuccessor ?? false
-        let name: String = successorName
         return content
             .task {
                 guard host == nil else { return }
@@ -669,14 +671,7 @@ struct SharedSuccessorPrompt: ViewModifier {
                 host = ScreenHost(model: model, initial: model.currentState,
                                   subscribe: { model, onState in model.watch(onState: onState) })
             }
-            .alert(L("ble_successor_join_title"), isPresented: presented(offered)) {
-                Button(L("ble_successor_join_confirm")) { host?.model.acceptSuccessor() }
-                    .accessibilityIdentifier("successor_join_confirm")
-                Button(LI("shared_successor_decline"), role: .cancel) { host?.model.declineSuccessor() }
-                    .accessibilityIdentifier("successor_join_keep_queue")
-            } message: {
-                Text(L("ble_successor_join_message", name))
-            }
+            .onChange(of: offered, initial: true) { _, now in update(offered: now) }
     }
 
     private var successorName: String {
@@ -684,13 +679,14 @@ struct SharedSuccessorPrompt: ViewModifier {
         return name.isEmpty ? L("ble_successor_join_unknown_name") : name
     }
 
-    /// Dismissing without a choice is Android's `onDismissRequest`: keep the queue, do not join.
-    private func presented(_ offered: Bool) -> Binding<Bool> {
-        Binding(
-            get: { offered },
-            set: { shown in
-                guard !shown, let host, host.state.hasSuccessor else { return }
-                host.model.declineSuccessor()
-            })
+    private func update(offered: Bool) {
+        guard offered, let model = host?.model else {
+            question.hide()
+            return
+        }
+        question.show(name: successorName,
+                      onJoin: { model.acceptSuccessor() },
+                      // Android's `onDismissRequest` and "keep": keep the queue, do not join.
+                      onKeep: { model.declineSuccessor() })
     }
 }
