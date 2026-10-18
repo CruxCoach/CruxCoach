@@ -17,6 +17,7 @@ import SwiftUI
 struct StatsView: View {
     let core: AppCore
     @State private var host: ScreenHost<LogbookScreenModel, LogbookScreenState>?
+    @State private var heat: ScreenHost<StatsHeatmapModel, StatsHeatmapScreenState>?
 
     var body: some View {
         Group {
@@ -34,6 +35,11 @@ struct StatsView: View {
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
             model.refresh()
+            let heatModel = core.makeStatsHeatmap()
+            heat = ScreenHost(model: heatModel, initial: heatModel.currentState,
+                              subscribe: { model, onState in model.watch(onState: onState) },
+                              onClose: { model in model.close() })
+            heatModel.load()
         }
     }
 
@@ -68,6 +74,7 @@ struct StatsView: View {
                     activitySection(stats: stats)
                     progressionSection(stats: stats)
                     comparisonSection(comparison: stats.periodComparison)
+                    heatmapSection()
                 }
             }
         }
@@ -439,6 +446,16 @@ struct StatsView: View {
         }
     }
 
+    // MARK: - Hold heatmap
+
+    /// Android's last stats section; hidden while no logged board can draw one.
+    @ViewBuilder
+    private func heatmapSection() -> some View {
+        if let heat, heat.state.status != "noBoards", heat.state.status != "loading" {
+            StatsHeatmapSection(model: heat.model, ui: heat.state)
+        }
+    }
+
     // MARK: - Small pieces
 
     private func tile(_ title: String, _ value: String) -> some View {
@@ -708,5 +725,140 @@ private struct ActivityCalendar: View {
             cursor = next
         }
         return columns
+    }
+}
+
+/// The hold heatmap of Android's board statistics: a board selector ("All" plus
+/// every board the user logged on), the mode chips and the heat over that grid.
+private struct StatsHeatmapSection: View {
+    let model: StatsHeatmapModel
+    let ui: StatsHeatmapScreenState
+
+    var body: some View {
+        Section(L("board_stats_heatmap_section", StatsHeatmapSection.modeTitle(ui.modeCode))) {
+            boardPicker
+            if ui.status == "pickBoard" {
+                hint(L("board_stats_heatmap_pick_board"))
+            } else if ui.status == "unsupported" {
+                hint(L("board_stats_heatmap_unsupported"))
+            } else if ui.status == "failed" {
+                hint(L("board_stats_heatmap_empty"))
+            } else {
+                modePicker
+                if ui.status == "ready" {
+                    HeatmapCanvas(ui: ui)
+                    if ui.isEmpty { hint(L("board_stats_heatmap_empty")) }
+                }
+            }
+        }
+    }
+
+    static func modeTitle(_ code: String) -> String {
+        switch code {
+        case "global": return L("board_heatmap_global")
+        case "start": return L("board_heatmap_start")
+        case "hand": return L("board_heatmap_hand")
+        case "foot": return L("board_heatmap_foot")
+        case "finish": return L("board_heatmap_finish")
+        default: return L("board_heatmap_personal")
+        }
+    }
+
+    private var boardPicker: some View {
+        let boards: [HeatmapBoardUi] = ui.boards
+        return Picker(L("board_stats_heatmap_board_label"),
+                      selection: Binding(get: { ui.selectedKey }, set: { model.selectBoard(key: $0) })) {
+            Text(L("map_filter_show_all")).tag("")
+            ForEach(boards, id: \.key) { board in
+                Text(board.name).tag(board.key)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+
+    private var modePicker: some View {
+        let codes: [String] = ui.modeCodes
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(codes, id: \.self) { code in
+                    modeChip(code)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func modeChip(_ code: String) -> some View {
+        if code == ui.modeCode {
+            Button(StatsHeatmapSection.modeTitle(code)) { model.setMode(code: code) }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        } else {
+            Button(StatsHeatmapSection.modeTitle(code)) { model.setMode(code: code) }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+    }
+
+    private func hint(_ text: String) -> some View {
+        Text(text).font(.footnote).foregroundStyle(.secondary)
+    }
+}
+
+/// Android `KilterBoardVisualization` with heat only: a soft halo and a small
+/// core dot per hot hold, coloured green → red; faint holds are not drawn.
+private struct HeatmapCanvas: View {
+    let ui: StatsHeatmapScreenState
+
+    private var image: UIImage? {
+        for path in ui.imagePaths {
+            if let url = Bundle.main.resourceURL?.appendingPathComponent(path),
+               let image = UIImage(contentsOfFile: url.path) {
+                return image
+            }
+        }
+        return nil
+    }
+
+    var body: some View {
+        let loaded: UIImage? = image
+        let holds: [HeatHoldUi] = ui.holds
+        let halo: CGFloat = CGFloat(ui.haloRadius)
+        let core: CGFloat = CGFloat(ui.coreRadius)
+        let aspect: CGFloat = ui.aspect > 0 ? CGFloat(ui.aspect) : 0.65
+        return Canvas { context, size in
+            if let loaded {
+                context.draw(Image(uiImage: loaded), in: CGRect(origin: .zero, size: size))
+            } else {
+                context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(.secondarySystemBackground)))
+            }
+            for hold in holds {
+                let center = CGPoint(x: CGFloat(hold.x) * size.width, y: CGFloat(hold.y) * size.height)
+                let color = HeatmapCanvas.color(argb: hold.argb)
+                HeatmapCanvas.dot(context: context, center: center, radius: halo * size.width,
+                                  color: color.opacity(Double(hold.haloAlpha)))
+                HeatmapCanvas.dot(context: context, center: center, radius: core * size.width,
+                                  color: color.opacity(Double(hold.coreAlpha)))
+            }
+        }
+        .aspectRatio(aspect, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            if ui.computing { ProgressView() }
+        }
+        .accessibilityIdentifier("stats_heatmap")
+    }
+
+    private static func dot(context: GraphicsContext, center: CGPoint, radius: CGFloat, color: Color) {
+        let rect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+        context.fill(Path(ellipseIn: rect), with: .color(color))
+    }
+
+    /// 0xAARRGGBB from Kotlin; the alpha comes from the halo/core rule instead.
+    private static func color(argb: Int64) -> Color {
+        let red = Double((argb >> 16) & 0xFF) / 255
+        let green = Double((argb >> 8) & 0xFF) / 255
+        let blue = Double(argb & 0xFF) / 255
+        return Color(red: red, green: green, blue: blue)
     }
 }

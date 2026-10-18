@@ -1303,6 +1303,7 @@ class AppCore private constructor(
     }
 
     // ── Board extras (wave 4, board-extras area): detail rest timer and paging ──
+    // ── Board extras (wave 4, board-extras area): detail rest timer and paging, stats heatmap ──
 
     /**
      * The climb detail's rest timer (Android's timer button and banner). It drives
@@ -1332,4 +1333,12 @@ class AppCore private constructor(
         sendFailureSink = { code -> model.reportSendFailure(code) }
         return model
     }
+
+    /** The statistics' hold heatmap (Android's stats sheet heatmap section). */
+    fun makeStatsHeatmap(): com.cruxcoach.app.ui.StatsHeatmapModel =
+        com.cruxcoach.app.ui.StatsHeatmapModel(
+            com.cruxcoach.app.browse.StatsHeatmapPresenter(
+                boardRepository, personalRepository, com.cruxcoach.app.browse.BrowsePreferences(platform.keyValues),
+            ),
+        )
 }
