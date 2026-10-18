@@ -22,6 +22,10 @@ struct BrowserView: View {
     @State private var trainingOpen = false
     /// The body page over the training area, opened by a body reminder's notification.
     @State private var bodyOpen = false
+    /// The developer contact page, opened by an announcement or reply notification: over the
+    /// browser, or over the training area while that is open.
+    @State private var contactOpen = false
+    @State private var trainingContactOpen = false
     /// The app's running playlist: a row's "+" queues the climb while it plays (Android).
     @State private var session: ScreenHost<BoardSessionHub, SessionBannerState>?
     /// A joined Android-hosted shared playlist (the participant side).
@@ -33,8 +37,9 @@ struct BrowserView: View {
         Group {
             if let host, let ble {
                 content(host: host, ble: ble)
-                    .modifier(NotificationRouting(router: environment.router, athleteAvailable: core.athleteAvailable,
+                    .modifier(NotificationRouting(core: core, router: environment.router, athleteAvailable: core.athleteAvailable,
                                                   trainingOpen: $trainingOpen, bodyOpen: $bodyOpen,
+                                                  contactOpen: $contactOpen, trainingContactOpen: $trainingContactOpen,
                                                   closeSheet: { closeSheet() }))
             } else {
                 ProgressView()
@@ -188,7 +193,7 @@ struct BrowserView: View {
         .task { model.start() }
         .modifier(BrowserTourLayer(anchors: anchors, tour: tour, step: tourStep, ui: ui,
                                    connected: ble.state.connected,
-                                   visible: rootVisible && sheet == nil && !trainingOpen,
+                                   visible: rootVisible && sheet == nil && !trainingOpen && !contactOpen,
                                    onMove: { refreshTour() }))
     }
 
@@ -226,12 +231,16 @@ struct BrowserView: View {
             .sheet(isPresented: $bodyOpen) {
                 NotificationBodySheet(core: core) { bodyOpen = false }
             }
+            .sheet(isPresented: $trainingContactOpen) {
+                NotificationContactSheet(core: core, focus: environment.router.contactFocus) { trainingContactOpen = false }
+            }
     }
 
     /// For a notification tap: a cover cannot come up over the browser's own sheet.
     private func closeSheet() -> Bool {
-        let wasOpen: Bool = sheet != nil
+        let wasOpen: Bool = sheet != nil || contactOpen
         sheet = nil
+        contactOpen = false
         return wasOpen
     }
 

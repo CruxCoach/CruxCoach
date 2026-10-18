@@ -6,7 +6,11 @@ import SwiftUI
 /// the background, and the screen should not pretend otherwise.
 struct DevContactView: View {
     let core: AppCore
+    /// Opened from a notification: "announcements" or "dev_chat" scrolls there once loaded.
+    var focus: String = ""
     @State private var host: ScreenHost<DevContactScreenModel, DevContactScreenState>?
+    /// The focus was scrolled to; later updates leave the position to the user.
+    @State private var focused = false
 
     var body: some View {
         Group {
@@ -30,6 +34,32 @@ struct DevContactView: View {
 
     @ViewBuilder
     private func screen(model: DevContactScreenModel, ui: DevContactScreenState) -> some View {
+        ScrollViewReader { proxy in
+            list(model: model, ui: ui)
+                .onAppear { scrollToFocus(proxy) }
+                .onChange(of: ui.announcements.count) { _, _ in scrollToFocus(proxy) }
+                .onChange(of: ui.messages.count) { _, _ in scrollToFocus(proxy) }
+        }
+    }
+
+    /// Android opens the announcements or the chat as pages of their own; here they are parts of
+    /// one page, so a notification's route scrolls to its part, once, when it has rows.
+    private func scrollToFocus(_ proxy: ScrollViewProxy) {
+        guard !focused, !focus.isEmpty, let ui = host?.state else { return }
+        var target = ""
+        if focus == "announcements" {
+            target = ui.announcements.first?.id ?? ""
+        } else if focus == "dev_chat" {
+            let reply: DevMessageRowUi? = ui.messages.first { !$0.outgoing }
+            target = reply?.id ?? ui.messages.first?.id ?? ""
+        }
+        guard !target.isEmpty else { return }
+        focused = true
+        withAnimation { proxy.scrollTo(target, anchor: .top) }
+    }
+
+    @ViewBuilder
+    private func list(model: DevContactScreenModel, ui: DevContactScreenState) -> some View {
         List {
             Section {
                 Picker(L("devcontact_message"), selection: Binding(

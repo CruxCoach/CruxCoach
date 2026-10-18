@@ -50,15 +50,18 @@ object NotificationRoutes {
     /** Weigh-in and measuring reminders (Android `TrainingRoutes.BODY`): the body page above Today. */
     const val BODY = "body"
     /**
-     * A maintainer announcement (Android `Routes.ANNOUNCEMENTS`). Carried in the notification, but
-     * not in [isKnown]: the iOS announcements live inside the settings' maintainer conversation,
-     * which no tap opens yet, so the tap just brings the app forward.
+     * A maintainer announcement (Android `Routes.ANNOUNCEMENTS`). iOS keeps the announcements in
+     * the maintainer conversation (settings → developer contact), so the tap opens that page at
+     * its announcements.
      */
     const val ANNOUNCEMENTS = "announcements"
-    /** A reply from the maintainer (Android `Routes.DEV_CHAT`); see [ANNOUNCEMENTS]. */
+    /** A reply from the maintainer (Android `Routes.DEV_CHAT`): the same page, at the messages. */
     const val DEV_CHAT = "dev_chat"
 
-    fun isKnown(route: String): Boolean = route == TODAY || route == BODY
+    fun isKnown(route: String): Boolean = route == TODAY || route == BODY || isDevContact(route)
+
+    /** The routes the developer-contact page answers ([ANNOUNCEMENTS], [DEV_CHAT]). */
+    fun isDevContact(route: String): Boolean = route == ANNOUNCEMENTS || route == DEV_CHAT
 }
 
 /** Used where no host scheduler exists (tests, hosts without local notifications). */

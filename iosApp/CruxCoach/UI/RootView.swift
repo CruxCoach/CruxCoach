@@ -192,11 +192,18 @@ private struct WhatsNewSheet: View {
 /// Follows a tapped notification's route (Android `navigate_to`) from the board browser, which
 /// presents the training area: "today" opens it (Today is its first tab), "body" opens the body
 /// page above it, so closing that page leads into the training area, as Android's Back does.
+/// "announcements" and "dev_chat" open the developer contact page above whatever is on screen:
+/// over the training area while it is open, otherwise over the browser.
 struct NotificationRouting: ViewModifier {
+    let core: AppCore
     let router: AppRouter
     let athleteAvailable: Bool
     @Binding var trainingOpen: Bool
     @Binding var bodyOpen: Bool
+    /// The developer contact page over the browser.
+    @Binding var contactOpen: Bool
+    /// The developer contact page over the training area.
+    @Binding var trainingContactOpen: Bool
     /// Closes a sheet of the browser; true when one was open (a cover cannot come up over it).
     let closeSheet: () -> Bool
 
@@ -211,17 +218,30 @@ struct NotificationRouting: ViewModifier {
             .onChange(of: router.held) { _, held in
                 if !held { follow(router.pending, settleFirst: true) }
             }
+            .sheet(isPresented: $contactOpen) {
+                NotificationContactSheet(core: core, focus: router.contactFocus) { contactOpen = false }
+            }
     }
 
     private func follow(_ route: String, settleFirst: Bool) {
         guard !route.isEmpty, !router.held else { return }
-        let hadSheet: Bool = closeSheet() || settleFirst
+        // The training area's own pages close first when the training area stays.
+        let coversTraining: Bool = trainingOpen && (bodyOpen || trainingContactOpen)
+        if coversTraining {
+            bodyOpen = false
+            trainingContactOpen = false
+        }
+        let hadSheet: Bool = closeSheet() || settleFirst || coversTraining
         Task {
             // A sheet still going down, or the training area still coming up, refuses the next presentation.
             if hadSheet { try? await Task.sleep(nanoseconds: Self.settle) }
             // Covered meanwhile: the route waits for `held` to clear; taken by another call: done.
             guard !router.held, !router.pending.isEmpty else { return }
             let taken: String = router.take()
+            if AppRouter.opensContact(taken) {
+                openContact()
+                return
+            }
             let wasOpen: Bool = trainingOpen
             trainingOpen = true
             guard taken == AppRouter.body, athleteAvailable else { return }
@@ -230,7 +250,36 @@ struct NotificationRouting: ViewModifier {
         }
     }
 
+    /// Android pushes the announcements or the chat onto whatever is open; here it comes up
+    /// over the training area when that is open, so a running training is not closed.
+    private func openContact() {
+        if trainingOpen {
+            trainingContactOpen = true
+        } else {
+            contactOpen = true
+        }
+    }
+
     private static let settle: UInt64 = 700_000_000
+}
+
+/// The developer contact page opened by an announcement or a maintainer reply notification.
+struct NotificationContactSheet: View {
+    let core: AppCore
+    /// "announcements" or "dev_chat": the part the page scrolls to.
+    let focus: String
+    let onClose: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            DevContactView(core: core, focus: focus)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(L("action_close"), action: onClose)
+                    }
+                }
+        }
+    }
 }
 
 /// The body page over the training area, opened by a weigh-in or measuring reminder.

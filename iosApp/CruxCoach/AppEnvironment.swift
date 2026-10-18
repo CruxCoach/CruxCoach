@@ -151,26 +151,37 @@ final class AppEnvironment {
 }
 
 /// The place a tapped notification opens, as Android's `navigate_to` extra. Like Android's
-/// `MainActivity.safeNavigateToRoute`, only the routes the app's own reminders carry are taken
-/// (Kotlin `NotificationRoutes`): "today" (training reminder) and "body" (weigh-in, measuring).
-/// A route waits here until the view that can open it is on screen (a cold start goes through
-/// the start-up and possibly the first-run setup first).
+/// `MainActivity.safeNavigateToRoute`, only the routes the app's own notifications carry are taken
+/// (Kotlin `NotificationRoutes`): "today" (training reminder), "body" (weigh-in, measuring),
+/// "announcements" (a maintainer announcement) and "dev_chat" (a maintainer reply); the last two
+/// open the developer contact page. A route waits here until the view that can open it is on
+/// screen (a cold start goes through the start-up and possibly the first-run setup first).
 @Observable
 final class AppRouter {
     static let today = "today"
     static let body = "body"
+    static let announcements = "announcements"
+    static let devChat = "dev_chat"
 
     /// The waiting route, "" when none.
     private(set) var pending = ""
     /// Counts the opened training-area routes, so an already open training area can go back to
     /// its Today tab (Android navigates to Today single-top).
     private(set) var todayRequests = 0
+    /// The developer-contact route taken last ("announcements" or "dev_chat"): where that page
+    /// scrolls to when it opens.
+    private(set) var contactFocus = ""
     /// True while a sheet covers the board browser from above (the release notes): no cover can
     /// come up over it, so a route waits until it is gone.
     var held = false
 
+    /// True for the routes the developer contact page answers.
+    static func opensContact(_ route: String) -> Bool {
+        route == announcements || route == devChat
+    }
+
     func open(_ route: String) {
-        guard route == Self.today || route == Self.body else { return }
+        guard route == Self.today || route == Self.body || Self.opensContact(route) else { return }
         pending = route
     }
 
@@ -178,7 +189,11 @@ final class AppRouter {
     func take() -> String {
         let route = pending
         pending = ""
-        if !route.isEmpty { todayRequests += 1 }
+        if Self.opensContact(route) {
+            contactFocus = route
+        } else if !route.isEmpty {
+            todayRequests += 1
+        }
         return route
     }
 }
