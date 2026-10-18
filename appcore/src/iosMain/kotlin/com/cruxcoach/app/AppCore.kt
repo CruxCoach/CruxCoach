@@ -2228,4 +2228,8 @@ class AppCore private constructor(
         io = Dispatchers.IO,
     )
 
+    /** The board picker's "Find via Bluetooth" (Android `onboardingBoardSuggestion`): the connected controller's family. */
+    fun bluetoothBoardSuggestion(): com.cruxcoach.app.ui.BluetoothBoardSuggestionUi =
+        com.cruxcoach.app.ui.BluetoothBoardSuggestion.of(boardConnection.state.value.connectedBoard)
+
 }

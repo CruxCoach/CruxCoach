@@ -175,10 +175,12 @@ struct BrowserView: View {
                 NavigationStack {
                     switch which {
                     case .board:
-                        BoardPickerView(core: core, brandWires: sync.state.rows.filter { $0.installed }.map { $0.brandWire }) { option in
-                            model.switchBoard(option: option)
-                            sheet = nil
-                        }
+                        BoardPickerView(core: core, brandWires: sync.state.rows.filter { $0.installed }.map { $0.brandWire },
+                                        onPick: { option in
+                                            model.switchBoard(option: option)
+                                            sheet = nil
+                                        },
+                                        offersBluetooth: true)
                     case .ble:
                         BleView(ble: ble, fix: BoardMismatchRoute(core: core, activeBrandWire: ui.brandWire, brandWires: sync.state.rows.filter { $0.installed }.map { $0.brandWire }, onPick: { option in model.switchBoard(option: option); sheet = nil }))
                     case .catalogue:

@@ -12,7 +12,13 @@ struct BoardPickerView: View {
     let onPick: (BoardOption) -> Void
     /// Android's guided fix: explain the mismatch and offer the board the evidence points at first.
     var mismatch: BoardMismatchUi? = nil
+    /// Android's board browser offers "Find via Bluetooth": connect, then the picker names the family.
+    var offersBluetooth: Bool = false
     @Environment(\.dismiss) private var dismiss
+    @State private var ble: ScreenHost<BleScreenModel, BleScreenState>?
+    @State private var showBle = false
+    /// Set when the connection page closes: the family the controller suggests ("" = none recognised).
+    @State private var suggestion: BluetoothBoardSuggestionUi?
     @State private var showGymSearch = false
     @State private var gymSearchNearby = false
     /// The pending choice; only "Confirm" hands it to [onPick].
@@ -39,6 +45,9 @@ struct BoardPickerView: View {
                     Label(L("feat007_gym_search_title"), systemImage: "magnifyingglass")
                 }
             }
+            if offersBluetooth {
+                bluetoothSection
+            }
             if brandWires.isEmpty {
                 Text(LI("browser_no_catalogue_hint"))
             }
@@ -51,8 +60,40 @@ struct BoardPickerView: View {
             GymSearchView(core: core, availableBrandWires: brandWires, startNearby: gymSearchNearby,
                           onPick: onPick, onPickDirectly: { showGymSearch = false })
         }
+        .navigationDestination(isPresented: $showBle) {
+            if let ble { BleView(ble: ble) }
+        }
+        .onChange(of: showBle) { _, open in
+            if !open && ble != nil { suggestion = core.bluetoothBoardSuggestion() }
+        }
         .toolbar { toolbarItems }
         .onAppear { seed() }
+    }
+
+    /// Android `BoardSelectionDialog`: the search only narrows the family; say so where the choice is made.
+    private var bluetoothSection: some View {
+        Section {
+            Button {
+                if ble == nil {
+                    let model = core.bleScreen
+                    ble = ScreenHost(model: model, initial: model.currentState) { model, onState in
+                        model.watch(onState: onState)
+                    }
+                }
+                showBle = true
+            } label: {
+                Label(L("setup_bluetooth_find"), systemImage: "dot.radiowaves.left.and.right")
+            }
+            .accessibilityIdentifier("setup_connect")
+            if let suggestion {
+                Text(suggestion.brandWire.isEmpty ? L("setup_bluetooth_result_none")
+                     : L("setup_bluetooth_result_detected", suggestion.brandTitle))
+                    .font(.callout)
+                    .accessibilityIdentifier("setup_bluetooth_result")
+            }
+        } footer: {
+            Text(L("setup_bluetooth_info")).font(.footnote)
+        }
     }
 
     @ToolbarContentBuilder
@@ -95,8 +136,11 @@ struct BoardPickerView: View {
 
     /// The guided fix lists the expected family on top; it is not repeated below.
     private var otherBrandWires: [String] {
-        guard let wire = mismatch?.prefillBrandWire else { return brandWires }
-        return brandWires.filter { $0 != wire }
+        let shown: [String] = mismatch.map { m in brandWires.filter { $0 != m.prefillBrandWire } } ?? brandWires
+        // The family Bluetooth recognised comes first (Android seeds the picker with it).
+        let suggested: String = suggestion?.brandWire ?? ""
+        guard !suggested.isEmpty, shown.contains(suggested) else { return shown }
+        return [suggested] + shown.filter { $0 != suggested }
     }
 
     @ViewBuilder
