@@ -4,7 +4,8 @@ import UIKit
 
 /// The review list both the typed meal and the meal photo end in (Android's
 /// `ReviewPane`): check or uncheck lines, change amounts, pick another food or
-/// none, add a food that was missed, choose the meal, log.
+/// none, add a food that was missed, choose the meal, log. Under a typed
+/// meal's rules list it may offer the model's second pass.
 struct MealReviewForm: View {
     let model: MealTextScreenModel
     let ui: MealTextUi
@@ -36,6 +37,13 @@ struct MealReviewForm: View {
                     .accessibilityLabel(L("fvp_photo_description"))
             }
             Text(hint).font(.footnote).foregroundStyle(.secondary)
+            if ui.canAskModel {
+                // Android's second opinion under a typed meal's rules list; the core offers it
+                // only with the installed, timed model on a phone that passed the device check.
+                Button { model.readWithModel() } label: {
+                    Label(L("fvp_text_model"), systemImage: "sparkles")
+                }
+            }
             if ui.rows.isEmpty {
                 Text(L("fvp_review_empty"))
             }
