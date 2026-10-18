@@ -6,6 +6,10 @@ import SwiftUI
 /// on every change, so this view only mirrors it.
 struct GeneratorView: View {
     let core: AppCore
+    /// The training coach's board day opens the same wizard with its type and length chosen
+    /// (Android `playlist_generator?type=&minutes=`); empty / 0 = the plain generator.
+    var presetType: String = ""
+    var presetMinutes: Int = 0
     /// Called with the new list id once a session was written.
     var onCreated: (Int64) -> Void = { _ in }
 
@@ -30,6 +34,8 @@ struct GeneratorView: View {
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
+            if !presetType.isEmpty { model.setTypeCode(code: presetType) }
+            if presetMinutes > 0 { model.setDuration(minutes: Int32(presetMinutes)) }
         }
     }
 

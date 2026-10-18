@@ -221,7 +221,7 @@ private struct TodayContent: View {
         }
         .sheet(isPresented: $boardGenerator) {
             NavigationStack {
-                GeneratorView(core: core) { _ in boardGenerator = false }
+                GeneratorView(core: core, presetType: ui.boardPlanCode, presetMinutes: Int(ui.boardPlanMinutes)) { _ in boardGenerator = false }
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) { Button(L("action_cancel")) { boardGenerator = false } }
                     }
