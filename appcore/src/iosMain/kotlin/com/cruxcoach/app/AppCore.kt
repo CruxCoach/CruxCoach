@@ -1136,6 +1136,8 @@ class AppCore private constructor(
             io = Dispatchers.IO,
         )
     }
+
+    /**
      * The training reminder in the training settings (Android `TrainingReminderSection`).
      * [notifications] schedules it (Swift passes its `LocalNotificationScheduler`).
      */
