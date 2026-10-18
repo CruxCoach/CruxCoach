@@ -11,6 +11,9 @@ struct CreatorView: View {
     @State private var host: ScreenHost<CreatorScreenModel, CreatorScreenState>?
     @State private var loadedMoonPath = ""
     @State private var showPublish = false
+    /// The shared board link, for the toolbar's board button and its connection sheet.
+    @State private var ble: ScreenHost<BleScreenModel, BleScreenState>?
+    @State private var showBle = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -25,7 +28,8 @@ struct CreatorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard host == nil else { return }
-            let model = core.makeCreatorScreenWithKilter()
+            // Kilter publishing, autosave, profile hint and the live LED mirror (Android's editor).
+            let model = core.makeCreatorScreenComplete()
             // The profile's note default switched the toggle on: seed Android's template.
             if model.currentState.alsoPostNote {
                 model.setAlsoPostNote(value: true, defaultTemplate: L("auto_note_default_template"))
@@ -33,6 +37,11 @@ struct CreatorView: View {
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
+            let bleModel = core.bleScreen
+            ble = ScreenHost(model: bleModel, initial: bleModel.currentState) { model, onState in
+                model.watch(onState: onState)
+            }
+            model.startBoardMirror()
             if !editUuid.isEmpty {
                 model.openForEdit(uuid: editUuid)
             } else if !forkUuid.isEmpty {
@@ -59,26 +68,42 @@ struct CreatorView: View {
         }
         .onChange(of: ui.moonLayoutPath) { _, path in loadMoonLayout(model: model, path: path) }
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-                    .disabled(!ui.canUndo)
-                Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
-                    .disabled(!ui.canRedo)
-                Button(LI("creator_drafts")) { model.openDrafts() }
-            }
+            ToolbarItemGroup(placement: .topBarTrailing) { toolbarButtons(model: model, ui: ui) }
         }
         .sheet(isPresented: Binding(get: { ui.draftsSheetOpen }, set: { if !$0 { model.closeDrafts() } })) {
             NavigationStack { draftsSheet(model: model, ui: ui) }
         }
-        .alert(LI("creator_duplicate_title"), isPresented: Binding(
-            get: { !ui.duplicateUuid.isEmpty },
-            set: { if !$0 { model.dismissDuplicate() } })) {
-            Button(L("action_cancel"), role: .cancel) { model.cancelPublish() }
-            if !ui.duplicateBlocksPublish {
-                Button(LI("creator_publish")) { model.confirmPublishWithDuplicate(autoNoteText: noteText(ui)) }
+        .modifier(CreatorPublishDialogs(core: core, model: model, ui: ui, noteText: noteText(ui)))
+        .modifier(CreatorBoardLink(core: core, model: model, ui: ui, ble: ble, showBle: $showBle,
+                                   onBoardChanged: { dismiss() }))
+    }
+
+    /// Android's editor toolbar: board connection, "Clear editor", undo/redo, and the
+    /// overflow menu with the drafts and the popular-holds heatmap.
+    @ViewBuilder
+    private func toolbarButtons(model: CreatorScreenModel, ui: CreatorScreenState) -> some View {
+        let connected: Bool = ble?.state.connected ?? false
+        Button { showBle = true } label: {
+            Image(systemName: connected ? "lightbulb.fill" : "lightbulb")
+        }
+        .foregroundStyle(connected ? Color.green : Color.accentColor)
+        .accessibilityLabel(connected ? L("cd_board_connected") : L("cd_board_connect"))
+        .accessibilityIdentifier("climb_creator_ble_connect_button")
+        Button { model.discard() } label: { Image(systemName: "trash") }
+            .accessibilityLabel(L("climb_creator_clear"))
+        Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+            .disabled(!ui.canUndo)
+        Button { model.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+            .disabled(!ui.canRedo)
+        Menu {
+            Button(LI("creator_drafts")) { model.openDrafts() }
+            if ui.heatmapAvailable {
+                Toggle(L("climb_creator_heatmap_toggle"), isOn: Binding(
+                    get: { ui.heatmapEnabled },
+                    set: { _ in model.toggleHeatmap() }))
             }
-        } message: {
-            Text(LI("creator_duplicate", ui.duplicateName))
+        } label: {
+            Image(systemName: "ellipsis.circle")
         }
     }
 
@@ -87,6 +112,7 @@ struct CreatorView: View {
         // a placement id with the same geometry the browser draws with.
         CreatorCanvas(imagePaths: ui.imagePaths,
                       holds: ui.holds,
+                      heat: ui.heat,
                       aspect: CGFloat(ui.boardAspect),
                       onTap: { x, y in model.tapBoard(x: Float(x), y: Float(y)) },
                       onLongPress: { x, y in model.longPressBoard(x: Float(x), y: Float(y)) })
@@ -170,7 +196,6 @@ struct CreatorView: View {
                 Text(LI("creator_draft_saved")).font(.footnote).foregroundStyle(.green)
                     .onAppear { model.consumeSavedDraft() }
             }
-            Button(LI("creator_discard"), role: .destructive) { model.discard() }.font(.footnote)
         }
     }
 
@@ -266,10 +291,11 @@ struct CreatorView: View {
 
     private func issueText(_ issue: CreatorIssueUi) -> String {
         switch issue.code {
-        case "noStart": return LI("creator_issue_no_start")
-        case "noFinish": return LI("creator_issue_no_finish")
-        case "tooFew": return LI("creator_issue_too_few", Int(issue.limit))
-        case "tooMany": return LI("creator_issue_too_many", Int(issue.limit))
+        // The codes of CreatorCodes.issue.
+        case "noStartHold": return LI("creator_issue_no_start")
+        case "noFinishHold": return LI("creator_issue_no_finish")
+        case "tooFewHolds": return LI("creator_issue_too_few", Int(issue.limit))
+        case "tooManyHolds": return LI("creator_issue_too_many", Int(issue.limit))
         case "tooManyStarts": return LI("creator_issue_too_many_starts", Int(issue.limit))
         case "tooManyFinishes": return LI("creator_issue_too_many_finishes", Int(issue.limit))
         case "nameMissing": return LI("creator_issue_name_missing")
@@ -286,6 +312,8 @@ struct CreatorView: View {
 private struct CreatorCanvas: View {
     let imagePaths: [String]
     let holds: [CreatorHoldUi]
+    /// The popular-holds heatmap, drawn under the holds; empty while it is off.
+    let heat: [CreatorHeatUi]
     let aspect: CGFloat
     let onTap: (CGFloat, CGFloat) -> Void
     let onLongPress: (CGFloat, CGFloat) -> Void
@@ -309,6 +337,7 @@ private struct CreatorCanvas: View {
                 } else {
                     context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(.secondarySystemBackground)))
                 }
+                CreatorHeat.draw(heat, in: &context, size: size)
                 let radius = max(size.width * 0.028, 6)
                 for hold in holds {
                     let point = CGPoint(x: CGFloat(hold.x) * size.width, y: CGFloat(hold.y) * size.height)

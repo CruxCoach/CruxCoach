@@ -245,6 +245,8 @@ struct ClimbDetailView: View {
         }
         .onChange(of: ui.moonLayoutPath) { _, path in loadMoonLayout(model: model, path: path) }
         .onChange(of: "\(ui.uuid)|\(ui.status)", initial: true) { _, _ in pageChanged(ui: ui) }
+        .modifier(DetailAutoSendTrigger(core: core, model: model, ui: ui, connected: ble.state.connected,
+                                        send: { sendChecked(model: model) }))
         .modifier(DetailTourLayer(anchors: anchors, tour: tour, step: tourStep, connected: ble.state.connected,
                                   quickLogged: ui.canUndoQuickLog,
                                   visible: tourVisible(ui),

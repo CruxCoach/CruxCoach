@@ -64,6 +64,9 @@ struct SettingsDetailView: View {
                 Text(L("board_ble_title"))
             }
 
+            // Android's board settings: "Send to board" after the connection rows.
+            BoardSendModeSettingsSection(core: core)
+
             Section(LI("settings_led_colours")) {
                 ForEach(ui.ledColors, id: \.roleCode) { role in
                     HStack {
