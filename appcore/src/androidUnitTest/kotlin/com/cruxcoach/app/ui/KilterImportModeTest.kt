@@ -62,10 +62,13 @@ class KilterImportModeTest {
     /** Kilter's API: the logbook (empty, or a server error) and the session revocation. */
     private class Portal(var logsStatus: Int = 200) : HttpTransport {
         val requests = ArrayList<String>()
+        var logsBody = "[]"
         override suspend fun request(method: String, url: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Long, timeoutSeconds: Int): HttpResult {
             requests += "$method $url"
             return when {
-                method == "GET" && url.endsWith("/logs") -> HttpResult.Ok(HttpResponse(logsStatus, emptyMap(), "[]".encodeToByteArray()))
+                method == "GET" && url.endsWith("/logs") -> HttpResult.Ok(HttpResponse(logsStatus, emptyMap(), logsBody.encodeToByteArray()))
+                method == "POST" && url == KilterApi.TOKEN_URL -> HttpResult.Ok(HttpResponse(200, emptyMap(),
+                    """{"access_token":"x.e30.y","refresh_token":"r2","expires_in":3600}""".encodeToByteArray()))
                 method == "POST" && url == KilterApi.LOGOUT_URL -> HttpResult.Ok(HttpResponse(204, emptyMap(), ByteArray(0)))
                 else -> HttpResult.Failed(HttpFailure.OTHER, url)
             }
@@ -160,6 +163,49 @@ class KilterImportModeTest {
         assertTrue(portal.requests.none { it.startsWith("POST") })
         assertFalse(settings.snapshot.kilterSyncEnabled)
         assertNull(settings.snapshot.kilterLastSync)
+    }
+
+    @Test fun a_sign_in_shows_androids_preview_before_the_choice() = runTest {
+        // One of the two logs is here already: the preview counts it as imported.
+        portal.logsBody = """[
+            {"logUuid":"log-1","climbUuid":"climb-1","angle":40,"topped":true,"attempts":1,"createdAt":"2026-09-19 18:30:00"},
+            {"logUuid":"log-2","climbUuid":"climb-2","angle":40,"topped":false,"attempts":3,"createdAt":"2026-09-20 18:30:00"}
+        ]"""
+        KilterLogImporter(db.boardRepo, db.personalRepo).import(listOf(
+            KilterLog(logUuid = "log-1", climbUuid = "climb-1", angle = 40, topped = true, createdAt = "2026-09-19 18:30:00"),
+        ))
+        tokens.clear()
+        val (model, _) = model()
+        assertFalse(model.currentState.signedIn)
+
+        model.signIn("me@example.org", "secret")
+        advanceUntilIdle()
+
+        val s = model.currentState
+        assertTrue(s.signedIn)
+        assertEquals("none", s.failure)
+        assertTrue(s.previewLoaded)
+        assertEquals(2, s.previewTotal)
+        assertEquals(1, s.previewNew)
+        assertEquals(1, s.previewDuplicates)
+        assertFalse(s.busy)
+        assertEquals(1, db.personalRepo.getExistingLogUuids().size, "a preview writes nothing")
+    }
+
+    @Test fun a_failed_preview_keeps_the_sign_in_and_says_so() = runTest {
+        portal.logsStatus = 503
+        tokens.clear()
+        val (model, _) = model()
+        model.signIn("me@example.org", "secret")
+        advanceUntilIdle()
+
+        val s = model.currentState
+        assertTrue(s.signedIn)
+        assertTrue(s.previewFailed)
+        assertEquals("serverError", s.failure)
+        assertFalse(s.previewLoaded)
+        model.dismissFailure()
+        assertFalse(model.currentState.previewFailed)
     }
 
     @Test fun switching_upload_on_starts_an_upload() = runTest {

@@ -42,7 +42,7 @@ struct KilterView: View {
                     if ui.syncContinuously {
                         KilterContinuousRows(model: model, ui: ui)
                     } else {
-                        KilterImportChoice(model: model, busy: ui.busy)
+                        KilterImportChoice(model: model, ui: ui)
                     }
                     Button(LI("kilter_sign_out"), role: .destructive) { model.signOut() }.disabled(ui.busy)
                 }
@@ -166,13 +166,19 @@ struct KilterView: View {
 
     private func busyLabel(_ ui: KilterScreenState) -> String {
         switch ui.phase {
-        case "importing": return LI("kilter_importing")
+        case "importing", "previewing": return LI("kilter_importing")
         case "pushing": return LI("kilter_pushing")
         default: return LI("kilter_signing_in")
         }
     }
 
     private func failureText(_ ui: KilterScreenState) -> String {
+        let text: String = baseFailureText(ui)
+        // Android: "Signed in, but loading your Kilter logbook failed: …".
+        return ui.previewFailed ? L("kilter_preview_failed", text) : text
+    }
+
+    private func baseFailureText(_ ui: KilterScreenState) -> String {
         switch ui.failure {
         case "invalidCredentials": return LI("kilter_bad_credentials")
         case "throttled": return LI("kilter_throttled", Int(ui.retryAfterSeconds))
@@ -349,9 +355,18 @@ private struct KilterReportSheet: View {
 /// forgotten) or "Sync continuously" (every app start syncs the logbook again).
 private struct KilterImportChoice: View {
     let model: KilterScreenModel
-    let busy: Bool
+    let ui: KilterScreenState
+
+    private var busy: Bool { ui.busy }
 
     var body: some View {
+        if ui.previewLoaded {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("kilter_preview_title")).font(.subheadline.weight(.semibold))
+                Text(L("kilter_preview_found", Int(ui.previewTotal), Int(ui.previewNew), Int(ui.previewDuplicates)))
+                    .font(.footnote)
+            }
+        }
         Button {
             model.importOnce()
         } label: {

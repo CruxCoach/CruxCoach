@@ -90,6 +90,13 @@ data class KilterScreenState(
     val lastSync: String = "",
     /** The last import was "Import once": the sign-in is gone, the summary stays. */
     val importedOnce: Boolean = false,
+    /** Android's import preview after a sign-in: "N ascents found (n new, d already imported)". */
+    val previewLoaded: Boolean = false,
+    val previewTotal: Int = 0,
+    val previewNew: Int = 0,
+    val previewDuplicates: Int = 0,
+    /** [failure] is the preview's: signed in, but the logbook did not load ("kilter_preview_failed"). */
+    val previewFailed: Boolean = false,
 )
 
 /**
@@ -188,8 +195,34 @@ class KilterScreenModel(
                     userUuid = outcome.userUuid.ifEmpty { tokens.userUuid() },
                     failure = code(outcome.failure),
                     retryAfterSeconds = outcome.retryAfterSeconds,
+                    previewLoaded = false,
+                    previewFailed = false,
                 )
             }
+            // Android loads the import preview right after a sign-in, before the import choice.
+            val settings = syncSettings
+            if (outcome.failure == KilterFailure.NONE && settings != null && !settings.snapshot.kilterSyncEnabled) loadPreview()
+        }
+    }
+
+    private suspend fun loadPreview() {
+        _state.update { it.copy(busy = true, phase = "previewing") }
+        val fetched = withContext(io) { api.fetchLogs() }
+        if (fetched.failure != KilterFailure.NONE) {
+            // Auth and logbook live on different hosts: the sign-in stands, the failure is said.
+            _state.update { it.copy(busy = false, phase = "idle", failure = code(fetched.failure), previewFailed = true, signedIn = tokens.isSignedIn) }
+            return
+        }
+        val counts = withContext(io) { importer.preview(fetched.logs) }
+        _state.update {
+            it.copy(
+                busy = false,
+                phase = "idle",
+                previewLoaded = true,
+                previewTotal = counts.total,
+                previewNew = counts.fresh,
+                previewDuplicates = counts.duplicates,
+            )
         }
     }
 
@@ -220,7 +253,7 @@ class KilterScreenModel(
     private fun runImport(mode: Int) {
         if (job?.isActive == true) return
         job = scope.launch {
-            _state.update { it.copy(busy = true, phase = "importing", failure = "none", importedOnce = false) }
+            _state.update { it.copy(busy = true, phase = "importing", failure = "none", importedOnce = false, previewFailed = false) }
             val fetched = withContext(io) { api.fetchLogs() }
             if (fetched.failure != KilterFailure.NONE) {
                 _state.update {
@@ -368,12 +401,13 @@ class KilterScreenModel(
             // Android's disconnect ends continuous sync with the session.
             syncSettings?.setKilterSyncEnabled(false)
             _state.update {
-                withSyncSettings(it.copy(busy = false, signedIn = false, phase = "idle", failure = "none", imported = 0, alreadyPresent = 0, unknownClimb = 0, circuits = 0))
+                withSyncSettings(it.copy(busy = false, signedIn = false, phase = "idle", failure = "none", imported = 0, alreadyPresent = 0, unknownClimb = 0, circuits = 0,
+                    previewLoaded = false, previewFailed = false))
             }
         }
     }
 
-    fun dismissFailure() = _state.update { it.copy(failure = "none") }
+    fun dismissFailure() = _state.update { it.copy(failure = "none", previewFailed = false) }
 
     fun close() = scope.cancel()
 

@@ -107,4 +107,17 @@ class KilterLogImporter(
         }
         return KilterImportSummary(imported, present, unknown)
     }
+
+    /**
+     * Android's `previewImport`: how many of [logs] an import would add and how many are already
+     * here (or deleted here and not to come back). Writes nothing.
+     */
+    fun preview(logs: List<KilterLog>): KilterImportPreviewCounts {
+        val existing = personalRepository.getExistingLogUuids().toHashSet()
+        val deleted = personalRepository.pendingLogDeletions().toHashSet()
+        val fresh = logs.count { it.logUuid !in existing && it.logUuid !in deleted }
+        return KilterImportPreviewCounts(total = logs.size, fresh = fresh, duplicates = logs.size - fresh)
+    }
 }
+
+class KilterImportPreviewCounts(val total: Int, val fresh: Int, val duplicates: Int)
