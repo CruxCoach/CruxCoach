@@ -100,6 +100,7 @@ import com.cruxcoach.app.ui.SyncScreenModel
 import com.cruxcoach.app.ui.createBackupScreenModel
 import platform.Foundation.NSBundle
 import com.cruxcoach.app.athlete.AthleteService
+import com.cruxcoach.app.ui.KeyScreenModel
 import com.cruxcoach.app.playlist.BoardSessionRecorder
 import com.cruxcoach.app.athlete.ClimbingDaysReader
 import com.cruxcoach.app.athlete.ExerciseCatalogStore
@@ -610,6 +611,24 @@ class AppCore private constructor(
         override fun importLegacyBodyStats(rows: List<com.cruxcoach.domain.model.BodyStat>): Int =
             athleteStack?.service?.importBackupBodyStats(rows) ?: 0
     }
+
+    /**
+     * Account key (Android KeyManagementScreen + KeyImportScreen): the npub, the
+     * private key behind Face ID / passcode, and importing a saved key. An import
+     * writes the key to the Keychain only after the npub was confirmed and read back;
+     * Swift then restarts the core, which opens that identity's own databases. The
+     * previous identity's files stay on the phone and come back with its key.
+     */
+    fun makeKeyScreen(): KeyScreenModel = KeyScreenModel(
+        scope = MainScope(),
+        activePubkeyProvider = { pubkeyHex },
+        secretKeyProvider = { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
+        applyKey = { key ->
+            platform.secrets.write(LocalIdentity.NOSTR_KEY, key) &&
+                platform.secrets.read(LocalIdentity.NOSTR_KEY)?.let { stored -> stored.contentEquals(key).also { stored.fill(0) } } == true
+        },
+        deviceAuth = platform.deviceAuth,
+    )
 
     /** Empty until that brand's catalogue is installed. */
     fun boardOptions(brandWire: String): List<BoardOption> = try {

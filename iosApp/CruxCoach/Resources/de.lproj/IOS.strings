@@ -390,3 +390,6 @@
 "climber_profile_failed" = "Das Kletterprofil konnte nicht gelesen werden. Bitte versuche es später noch einmal.";
 "climber_axis_grade" = "Grad";
 "climber_axis_strength" = "Kraft in Prozent des Körpergewichts";
+"key_format_not_on_iphone" = "Dieses Schlüsselformat (ncryptsec oder Wiederherstellungswörter) geht auf dem iPhone noch nicht. Füge den nsec- oder den 64-stelligen Hex-Schlüssel ein.";
+"key_auth_failed" = "Face ID oder der Code wurde nicht bestätigt. Der Schlüssel bleibt verborgen.";
+"key_open" = "Kontoschlüssel: anzeigen oder importieren";

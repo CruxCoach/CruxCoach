@@ -57,13 +57,10 @@ class KeyScreenModel(
 
     val currentState: KeyScreenState get() = states.value
 
+    /** The app-wide [Subscription] type, so SwiftUI's ScreenHost can hold this model like any other. */
     fun watch(onState: (KeyScreenState) -> Unit): Subscription {
         val job = scope.launch { states.collect { onState(it) } }
-        return Subscription(job)
-    }
-
-    class Subscription internal constructor(private val job: Job) {
-        fun cancel() = job.cancel()
+        return Subscription { job.cancel() }
     }
 
     fun updateInput(text: String) {

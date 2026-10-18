@@ -29,6 +29,7 @@ struct SettingsView: View {
                 NavigationLink(LI("kilter_title")) { KilterView(core: core) }
             }
             Section(LI("backup_title")) {
+                NavigationLink(LI("key_open")) { KeyView(core: core) }
                 NavigationLink(LI("backup_open")) { BackupView(core: core) }
                 NavigationLink(LI("data_exchange_open")) { DataExchangeView(core: core) }
                 NavigationLink(LI("health_title")) { HealthSettingsView(core: core) }

@@ -16,6 +16,12 @@ final class AppEnvironment {
     /// Keeps the training-day reminders following the week plan, pauses and trainings.
     @ObservationIgnored private var trainingReminders: Subscription?
 
+    /// After a key import: start the core again, so the new identity's own databases open.
+    func restart() {
+        phase = .starting
+        start()
+    }
+
     func start() {
         guard case .starting = phase else { return }
         let result = AppCore.companion.start(
