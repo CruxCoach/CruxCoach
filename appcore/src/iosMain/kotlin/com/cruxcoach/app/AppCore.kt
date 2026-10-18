@@ -1742,7 +1742,8 @@ class AppCore private constructor(
      * [com.cruxcoach.app.crash.CrashHooks]) is offered, sent or deleted per the stored choice.
      */
     fun makeCrashReportPrompt(): com.cruxcoach.app.crash.CrashReportPromptModel {
-        val sender = com.cruxcoach.app.crash.DevContactCrashSender(crashZapDevContact())
+        val devContact = crashZapDevContact()
+        val sender = com.cruxcoach.app.crash.DevContactCrashSender(devContact)
         return com.cruxcoach.app.crash.CrashReportPromptModel(
             files = com.cruxcoach.app.crash.CrashReportFiles(platform.files, com.cruxcoach.app.crash.CrashHooks.reportDirectory()),
             readOptIn = { settingsStore.snapshot.crashReportOptIn },
@@ -1750,6 +1751,11 @@ class AppCore private constructor(
             sender = { report -> sender.send(report) },
             scope = MainScope(),
             io = Dispatchers.IO,
+            // A queued report goes out again as the same row (robust, 0.2.4).
+            drainQueue = {
+                devContact.dropUndeliveredCrashCopies()
+                devContact.retryQueued()
+            },
         )
     }
 
@@ -2188,7 +2194,7 @@ class AppCore private constructor(
     //
     // Android's PendingImports: own climbs of an import wait in `pending_import` while a
     // catalogue download (or a nearby receive) holds the board database, and follow when it ends
-    // and at every start ([startConnectivity] starts it).
+    // and at every start ([startConnectivity] starts it). And the crash report badge.
 
     private val pendingOwnClimbs: com.cruxcoach.app.backup.PendingOwnClimbs by lazy {
         com.cruxcoach.app.backup.PendingOwnClimbs(
@@ -2202,5 +2208,12 @@ class AppCore private constructor(
             io = Dispatchers.IO,
         )
     }
+
+    /**
+     * Android's badge on the settings row "Crash reports": unread maintainer replies to crash
+     * reports. [onCount] runs on the main thread; 0 when the database cannot be read.
+     */
+    fun loadCrashReportBadge(onCount: (Int) -> Unit) =
+        com.cruxcoach.app.ui.CrashReportBadge(crashZapDevContact(), Dispatchers.Main, Dispatchers.IO).load(onCount)
 
 }

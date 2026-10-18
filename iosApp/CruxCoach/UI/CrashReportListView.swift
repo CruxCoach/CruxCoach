@@ -128,6 +128,7 @@ struct CrashReportListView: View {
         let time: String = Self.timestamp(report.createdAtEpochSeconds)
         switch report.statusCode {
         case "delivered": return L("devcontact_status_delivered", time)
+        case "queued": return L("devcontact_status_queued")
         case "notDelivered": return L("devcontact_status_not_delivered")
         default: return L("devcontact_developer") + " · " + time
         }
@@ -136,6 +137,7 @@ struct CrashReportListView: View {
     private func statusColor(_ report: CrashReportRowUi) -> Color {
         switch report.statusCode {
         case "delivered": return .green
+        case "queued": return .orange
         case "notDelivered": return .red
         default: return .secondary
         }
@@ -150,5 +152,25 @@ struct CrashReportListView: View {
 
     private static func timestamp(_ epochSeconds: Int64) -> String {
         formatter.string(from: Date(timeIntervalSince1970: TimeInterval(epochSeconds)))
+    }
+}
+
+/// Android's settings row "Crash reports" with its count badge: unread maintainer replies to
+/// crash reports, read again each time the row appears (Android refreshes on every visit).
+struct CrashReportsSettingsLink: View {
+    let core: AppCore
+    @State private var unread: Int = 0
+
+    var body: some View {
+        NavigationLink(L("devcontact_crash_reports")) { CrashReportListView(core: core) }
+            .badge(unread)
+            .onAppear { reload() }
+    }
+
+    private func reload() {
+        core.loadCrashReportBadge { count in
+            let value: Int = Int(count.int32Value)
+            unread = value
+        }
     }
 }

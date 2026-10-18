@@ -139,6 +139,13 @@ class DevContactRepository(
     /** Android's `deleteMessage`: the row goes, with its kept wraps. */
     fun delete(id: String) = queries.deleteById(id)
 
+    /** Deletes the undelivered older copies of crash reports ([CrashReportList.undeliveredCopies]). */
+    fun dropUndeliveredCrashCopies(): Int {
+        val ids = CrashReportList.undeliveredCopies(messages())
+        ids.forEach { queries.deleteById(it) }
+        return ids.size
+    }
+
     /** Android's `markThreadRead`: the report and every reply in its thread. */
     fun markThreadRead(rootId: String) = queries.markThreadRead(rootId)
 
@@ -236,6 +243,9 @@ class DevContactRepository(
     }
 
     fun unreadCount(): Long = queries.getTotalUnreadCount().executeAsOne()
+
+    /** Unread maintainer replies of one [type]; Android's crash-report badge counts [DevMessageType.CRASH]. */
+    fun unreadCount(type: DevMessageType): Long = queries.getUnreadCountByType(type.label).executeAsOne()
 
     /** Project announcements, newest first. */
     fun announcements(language: String): List<Announcement> =

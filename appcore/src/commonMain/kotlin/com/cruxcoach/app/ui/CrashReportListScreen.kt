@@ -3,6 +3,7 @@ package com.cruxcoach.app.ui
 import com.cruxcoach.app.messages.CrashReportList
 import com.cruxcoach.app.messages.DevContactRepository
 import com.cruxcoach.app.messages.DevMessage
+import com.cruxcoach.app.messages.DevMessageType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -31,7 +32,10 @@ class CrashReportRowUi(
     /** The whole report, without the wire prefix. */
     val content: String,
     val createdAtEpochSeconds: Long,
-    /** delivered | notDelivered for a report; "" for a lone reply. */
+    /**
+     * delivered | queued (no relay took it yet; its sealed wraps are kept and go out again) |
+     * notDelivered for a report; "" for a lone reply. Android's three statuses.
+     */
     val statusCode: String,
     /** Android's retry button: a report no relay took whose sealed wraps are kept. */
     val canRetry: Boolean,
@@ -80,6 +84,7 @@ class CrashReportListModel internal constructor(
         if (started) return
         started = true
         scope.launch {
+            safely { repository.dropUndeliveredCrashCopies() }
             reload()
             val delivered = safely { repository.retryQueued() } ?: 0
             if (delivered > 0) reload()
@@ -151,6 +156,7 @@ class CrashReportListModel internal constructor(
             statusCode = when {
                 !message.outgoing -> ""
                 message.relayAccepted -> "delivered"
+                message.retryable -> "queued"
                 else -> "notDelivered"
             },
             canRetry = message.outgoing && !message.relayAccepted && message.retryable,
@@ -177,5 +183,32 @@ class CrashReportListModel internal constructor(
     companion object {
         const val NOTICE_NONE = "none"
         const val NOTICE_RETRY_FAILED = "retryFailed"
+    }
+}
+
+/**
+ * Android's count badge on the settings row "Crash reports" (`DevContactSection`): unread
+ * maintainer replies to crash reports. Read again each time the settings page appears; opening
+ * a report's thread in the list reads its replies.
+ */
+class CrashReportBadge internal constructor(
+    private val repository: DevContactRepository,
+    main: CoroutineDispatcher,
+    private val io: CoroutineDispatcher,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + main)
+
+    /** [onCount] runs on the main dispatcher; 0 when the database cannot be read. */
+    fun load(onCount: (Int) -> Unit) {
+        scope.launch {
+            val count = try {
+                withContext(io) { repository.unreadCount(DevMessageType.CRASH).toInt() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                0
+            }
+            onCount(count)
+        }
     }
 }

@@ -19,6 +19,19 @@ object CrashReportList {
         return crashes.filter { it.id in reportIds || (!it.outgoing && it.replyToId !in reportIds) }
     }
 
+    /**
+     * Own reports hidden as older copies of a listed one that no relay took: builds before
+     * 0.2.4 sent a report once per launch while offline. Dropping them keeps a drain from
+     * sending the same report again and again; delivered copies stay.
+     */
+    fun undeliveredCopies(messages: List<DevMessage>): List<String> {
+        val listed = of(messages).mapTo(HashSet()) { it.id }
+        return messages
+            .filter { it.type == DevMessageType.CRASH && it.outgoing && it.replyToId == null }
+            .filter { it.id !in listed && !it.relayAccepted }
+            .map { it.id }
+    }
+
     /** The report as the user wrote it: iOS stores the wire text, which starts with "[CRASH] ". */
     fun text(message: DevMessage): String = message.content.removePrefix(WIRE_PREFIX).trim()
 }

@@ -43,7 +43,7 @@ struct SettingsView: View {
             Section(L("devcontact_title")) {
                 ZapGiftRow(core: core)
                 CrashReportSettingsRow(core: core)
-                NavigationLink(L("devcontact_crash_reports")) { CrashReportListView(core: core) }
+                CrashReportsSettingsLink(core: core)
             }
             Section(LI("settings_about")) {
                 // Android's app info row: seven taps unlock the easter LED animation.

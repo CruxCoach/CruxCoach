@@ -2,6 +2,7 @@ package com.cruxcoach.app.messages
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.app.logbook.CI_WAIT_MS
+import com.cruxcoach.app.logbook.awaitValue
 import com.cruxcoach.app.nostr.KotlinNip44Cipher
 import com.cruxcoach.app.nostr.Nip17
 import com.cruxcoach.app.nostr.NostrEvent
@@ -12,6 +13,7 @@ import com.cruxcoach.app.platform.WebSocketHandle
 import com.cruxcoach.app.platform.WebSocketListener
 import com.cruxcoach.app.testing.FixedClock
 import com.cruxcoach.app.testing.JvmHashing
+import com.cruxcoach.app.ui.CrashReportBadge
 import com.cruxcoach.app.ui.CrashReportListModel
 import com.cruxcoach.app.ui.CrashReportListState
 import com.cruxcoach.db.secure.SecureDatabase
@@ -226,7 +228,8 @@ class CrashReportListTest {
         assertEquals(1, first.unreadReplies)
         val second = ui.reports[1]
         assertEquals(undelivered.messageId, second.id)
-        assertEquals("notDelivered", second.statusCode)
+        // Android's "In queue": no relay took it, its sealed wraps wait for the next drain.
+        assertEquals("queued", second.statusCode)
         assertTrue(second.canRetry)
         assertTrue(second.canDelete)
 
@@ -237,7 +240,7 @@ class CrashReportListTest {
         // Still no relay: Android's retry fails visibly and the report stays.
         model.retry(second.id)
         ui = await(model) { it.noticeCode == CrashReportListModel.NOTICE_RETRY_FAILED && it.busyId.isEmpty() }
-        assertEquals("notDelivered", ui.reports[1].statusCode)
+        assertEquals("queued", ui.reports[1].statusCode)
         model.consumeNotice()
 
         relay.accept = true
@@ -286,6 +289,77 @@ class CrashReportListTest {
         assertEquals("", ui.reports.single().statusCode)
         assertFalse(ui.reports.single().canDelete)
         assertEquals(0L, withContext(single) { repo.unreadCount() })
+        model.close()
+    }
+
+    @Test
+    fun `the settings badge counts unread maintainer replies to crash reports only`() = runBlocking {
+        val repo = repository(SwitchableRelay(accept = true))
+        val report = repo.send(DevMessageType.CRASH, "trace")!!
+        repo.send(DevMessageType.BUG, "lists vanish")
+        fun received(id: String, type: DevMessageType, replyTo: String?) = database.nostrMessagesQueries.insert(
+            id = id, type = type.label, direction = "received", content = "answer",
+            subject = null, sender_pubkey = devPubkey, created_at = clock.seconds + 5, relay_accepted = 1L,
+            read = 0L, reply_to_id = replyTo, thread_anchor_id = null, reply_to_wire_id = null,
+        )
+        received("c1", DevMessageType.CRASH, report.messageId)
+        received("c2", DevMessageType.CRASH, report.messageId)
+        received("b1", DevMessageType.BUG, null)
+        // The user's own reports are stored read and never count.
+        assertEquals(2L, repo.unreadCount(DevMessageType.CRASH))
+        val badge = java.util.concurrent.atomic.AtomicInteger(-1)
+        CrashReportBadge(repo, single, single).load { badge.set(it) }
+        awaitValue(2) { badge.get() }
+
+        // Opening the report in the list reads its thread, so the badge goes.
+        val model = CrashReportListModel(repo, single, single)
+        model.start()
+        await(model) { !it.isLoading && it.reports.size == 1 }
+        model.open(report.messageId)
+        awaitValue(0L) { withContext(single) { repo.unreadCount(DevMessageType.CRASH) } }
+        assertEquals(1L, withContext(single) { repo.unreadCount(DevMessageType.BUG) })
+        model.close()
+    }
+
+    @Test
+    fun `a report no relay took and no wraps were kept for is not delivered`() = runBlocking {
+        val repo = repository(SwitchableRelay(accept = false))
+        val legacy = repo.send(DevMessageType.CRASH, "old trace")!!
+        // A row from before wraps were kept (or whose queue entry expired).
+        database.nostrMessagesQueries.markQueued(queued_at = null, event_json = null, id = legacy.messageId)
+        val model = CrashReportListModel(repo, single, single)
+        model.start()
+        val ui = await(model) { !it.isLoading && it.reports.size == 1 }
+        assertEquals("notDelivered", ui.reports.single().statusCode)
+        assertFalse(ui.reports.single().canRetry)
+        assertTrue(ui.reports.single().canDelete)
+        model.close()
+    }
+
+    @Test
+    fun `copies an earlier build sent once per launch go before the queue is sent again`() = runBlocking {
+        val relay = SwitchableRelay(accept = false)
+        val repo = repository(relay)
+        // Earlier builds: the same crash, sent at three launches while no relay took it.
+        val copies = (1..3).map {
+            clock.seconds += 60
+            repo.send(DevMessageType.CRASH, "--- CruxCoach Crash Report ---\nsame")!!.messageId
+        }
+        clock.seconds += 60
+        relay.accept = true
+        val deliveredOther = repo.send(DevMessageType.CRASH, "--- CruxCoach Crash Report ---\nother")!!.messageId
+        relay.accept = false
+        assertEquals(copies.take(2).reversed(), CrashReportList.undeliveredCopies(repo.messages()))
+
+        relay.accept = true
+        relay.offered.clear()
+        val model = CrashReportListModel(repo, single, single)
+        model.start()
+        val ui = await(model) { state -> !state.isLoading && state.reports.size == 2 && state.reports.all { it.statusCode == "delivered" } }
+        assertEquals(listOf(deliveredOther, copies.last()).toSet(), ui.reports.map { it.id }.toSet())
+        // Only the newest copy went out (its two sealed wraps); the older two were dropped unsent.
+        assertEquals(2, withContext(single) { relay.offered.size })
+        assertNull(withContext(single) { database.nostrMessagesQueries.getById(copies.first()).executeAsOneOrNull() })
         model.close()
     }
 

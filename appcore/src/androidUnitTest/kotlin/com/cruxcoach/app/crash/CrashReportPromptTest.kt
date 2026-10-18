@@ -25,6 +25,7 @@ class CrashReportPromptTest {
     private var optIn: Boolean? = null
     private val sent = ArrayList<String>()
     private var outcome = CrashSendOutcome.DELIVERED
+    private var drains = 0
 
     @AfterTest
     fun cleanUp() {
@@ -40,6 +41,7 @@ class CrashReportPromptTest {
             sender = { report -> sent += report; outcome },
             scope = CoroutineScope(SupervisorJob() + dispatcher),
             io = dispatcher,
+            drainQueue = { drains++ },
         )
     }
 
@@ -80,7 +82,7 @@ class CrashReportPromptTest {
     }
 
     @Test
-    fun `automatic sending keeps a report no relay took for the next launch`() = runTest {
+    fun `automatic sending queues a report no relay took once instead of once per launch`() = runTest {
         optIn = true
         outcome = CrashSendOutcome.NOT_DELIVERED
         files.write("REPORT")
@@ -88,8 +90,62 @@ class CrashReportPromptTest {
         model.start()
         advanceUntilIdle()
         assertEquals(1, sent.size)
-        assertTrue(files.exists())
+        // Android's sendCrashReport: the stored, queued report leaves the file; the queue retries it.
+        assertFalse(files.exists())
         assertEquals("none", model.currentState.noticeCode, "automatic sending is silent")
+        model.close()
+
+        // The next launch sends no second copy; it drains the queue, which holds the first.
+        val next = model()
+        next.start()
+        advanceUntilIdle()
+        assertEquals(1, sent.size)
+        assertEquals(2, drains)
+        next.close()
+    }
+
+    @Test
+    fun `automatic sending keeps a report that could not be stored for the next launch`() = runTest {
+        optIn = true
+        outcome = CrashSendOutcome.FAILED
+        files.write("REPORT")
+        val model = model()
+        model.start()
+        advanceUntilIdle()
+        assertEquals(1, sent.size)
+        assertTrue(files.exists())
+        model.close()
+    }
+
+    @Test
+    fun `the queue is drained only while automatic sending is on`() = runTest {
+        files.write("REPORT")
+        val asking = model()
+        asking.start()
+        advanceUntilIdle()
+        assertEquals(0, drains)
+        asking.close()
+
+        optIn = false
+        val off = model()
+        off.start()
+        advanceUntilIdle()
+        assertEquals(0, drains)
+        off.close()
+    }
+
+    @Test
+    fun `a send from the prompt that no relay took is queued and counts as sent`() = runTest {
+        outcome = CrashSendOutcome.NOT_DELIVERED
+        files.write("REPORT")
+        val model = model()
+        model.start()
+        advanceUntilIdle()
+        model.send(rememberChoice = true)
+        advanceUntilIdle()
+        assertEquals("sent", model.currentState.noticeCode)
+        assertEquals(true, optIn)
+        assertFalse(files.exists(), "not offered again: the queue holds it")
         model.close()
     }
 

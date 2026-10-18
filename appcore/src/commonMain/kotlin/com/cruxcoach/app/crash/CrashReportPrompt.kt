@@ -53,6 +53,11 @@ class CrashReportPromptModel(
     private val sender: suspend (String) -> CrashSendOutcome,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
+    /**
+     * Sends every kept message no relay took once more (Android's `drainQueue`), so a queued
+     * report goes out again as the same row instead of as a new one per launch.
+     */
+    private val drainQueue: suspend () -> Unit = {},
 ) {
     private val state = MutableStateFlow(CrashPromptUi(PHASE_IDLE, "", NOTICE_NONE))
     private var started = false
@@ -70,6 +75,8 @@ class CrashReportPromptModel(
         if (started) return
         started = true
         work = scope.launch {
+            // Automatic sending: what earlier launches queued goes out again first, as the same rows.
+            if (readOptIn() == true) drainSafely()
             val report = try {
                 withContext(io) { files.readOrDiscard() }
             } catch (e: CancellationException) {
@@ -82,8 +89,11 @@ class CrashReportPromptModel(
                 when (readOptIn()) {
                     null -> state.value = CrashPromptUi(PHASE_ASK, report, NOTICE_NONE)
                     true -> {
-                        // Automatic: no prompt, no notice. Kept on any failure.
-                        if (sendSafely(report) == CrashSendOutcome.DELIVERED) {
+                        // Automatic: no prompt, no notice. Android's sendCrashReport: once the report
+                        // is stored (delivered or queued) the file goes, so a relay that is down does
+                        // not add a "not delivered" row per launch; it stays only when nothing could
+                        // be stored.
+                        if (sendSafely(report) != CrashSendOutcome.FAILED) {
                             withContext(io) { files.delete() }
                         }
                     }
@@ -107,7 +117,9 @@ class CrashReportPromptModel(
         state.value = CrashPromptUi(PHASE_SENDING, report, NOTICE_NONE)
         work = scope.launch {
             val outcome = sendSafely(report)
-            if (outcome == CrashSendOutcome.DELIVERED) {
+            // Android counts a queued report as sent ("we either sent or queued"): the queue
+            // delivers it later as the same row.
+            if (outcome != CrashSendOutcome.FAILED) {
                 withContext(io) { files.delete() }
                 if (rememberChoice) writeOptIn(true)
                 state.value = CrashPromptUi(PHASE_IDLE, "", NOTICE_SENT)
@@ -130,6 +142,16 @@ class CrashReportPromptModel(
     fun consumeNotice() = state.update { CrashPromptUi(it.phaseCode, it.reportText, NOTICE_NONE) }
 
     fun close() = scope.cancel()
+
+    private suspend fun drainSafely() {
+        try {
+            withContext(io) { drainQueue() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Offline: the kept messages wait for the next launch or the list.
+        }
+    }
 
     private suspend fun sendSafely(report: String): CrashSendOutcome = try {
         withContext(io) { sender(report) }
