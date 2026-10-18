@@ -2,6 +2,7 @@ package com.cruxcoach.app.localshare
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.app.logbook.CI_WAIT_MS
+import com.cruxcoach.app.platform.ConnectivityMonitor
 import com.cruxcoach.app.sync.CatalogueSyncController
 import com.cruxcoach.app.sync.FakeHttp
 import com.cruxcoach.app.sync.FakeKeyValueStore
@@ -16,6 +17,8 @@ import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.domain.board.FramesBinaryCodec
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.io.File
@@ -228,5 +231,41 @@ class ReceiveShareScreenModelTest {
             listOf("172.20.10.1:4949", "192.168.49.1:4949", "192.168.43.1:4949"),
             sender.requests.map { it.host }.distinct(),
         )
+    }
+
+    @Test
+    fun `the boards from the internet wait for a connection without a mobile data question`() {
+        val online = MutableStateFlow(false)
+        val connectivity = object : ConnectivityMonitor {
+            override val isOnline: StateFlow<Boolean> = online
+            override fun start() {}
+            override fun stop() {}
+        }
+        val waiting = ReceiveShareScreenModel(
+            client, receiver, sync, fx.handle, thread, thread, probeAttempts = 2, probeRetryMs = 1, connectivity = connectivity,
+        )
+        try {
+            serve(senderSnapshot())
+            waiting.submitLink("http://192.168.49.1:4949/")
+            runBlocking { withTimeout(CI_WAIT_MS) { while (waiting.currentState.phase != "offer") delay(5) } }
+            val other = waiting.currentState.others.first().brandWire
+            assertTrue(other !in waiting.currentState.offered.map { it.brandWire })
+            waiting.toggle(other)
+            waiting.confirm()
+            runBlocking {
+                withTimeout(CI_WAIT_MS) { while (waiting.currentState.phase != "done" || sync.state.value.running) delay(5) }
+                // Settle: a follow-up that did not wait would have claimed the sync slot by now.
+                delay(200)
+            }
+            assertTrue(sync.state.value.brands.isEmpty(), "offline: the internet download waits")
+
+            online.value = true
+            runBlocking {
+                withTimeout(CI_WAIT_MS) { while (sync.state.value.brands.map { it.brand.wireValue } != listOf(other)) delay(5) }
+                withTimeout(CI_WAIT_MS) { while (sync.state.value.running) delay(5) }
+            }
+        } finally {
+            waiting.close()
+        }
     }
 }

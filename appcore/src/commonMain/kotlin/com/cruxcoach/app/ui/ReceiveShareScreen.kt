@@ -12,6 +12,7 @@ import com.cruxcoach.app.localshare.LocalShareReceiver
 import com.cruxcoach.app.localshare.NoSnapshotException
 import com.cruxcoach.app.localshare.ShareSessionChangedException
 import com.cruxcoach.app.localshare.VerificationFailed
+import com.cruxcoach.app.platform.ConnectivityMonitor
 import com.cruxcoach.app.sync.CatalogueImporter
 import com.cruxcoach.app.sync.CatalogueSyncController
 import com.cruxcoach.data.BoardDatabaseHandle
@@ -25,6 +26,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,6 +77,8 @@ class ReceiveShareScreenModel internal constructor(
     private val io: CoroutineDispatcher,
     private val probeAttempts: Int = PROBE_ATTEMPTS,
     private val probeRetryMs: Long = PROBE_RETRY_MS,
+    /** The internet download of the families the sender lacks waits for a connection; null: start at once. */
+    private val connectivity: ConnectivityMonitor? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + main)
     private val state = MutableStateFlow(initial())
@@ -84,6 +88,7 @@ class ReceiveShareScreenModel internal constructor(
     private var chosen: Set<String> = emptySet()
     private var chosenOthers: Set<String> = emptySet()
     private var pendingOnline: List<BoardBrand>? = null
+    private var onlineFollowUp: Job? = null
 
     val currentState: ReceiveShareState get() = state.value
 
@@ -209,9 +214,25 @@ class ReceiveShareScreenModel internal constructor(
                 // The import is atomic, so a failure changed nothing; re-reading is still harmless
                 // and also covers a cancellation that arrived after the import had committed.
                 withContext(NonCancellable + io) { catalogueSync.releaseLocalShare(changed = true) }
-                pendingOnline?.let { catalogueSync.start(it) }
+                pendingOnline?.let { fetchOnlineWhenConnected(it) }
                 pendingOnline = null
             }
+        }
+    }
+
+    /**
+     * Android `loadBoardCatalogue` for each ticked family the sender does not have: a WorkManager
+     * job with `NetworkType.CONNECTED` and `allowMetered = true` once the sync slot is free. The
+     * tick under "Other boards (internet needed)" is the consent, so Android asks no mobile-data
+     * question here; without a connection (e.g. the sender's offline Wi-Fi was left) the download
+     * waits for one while the app runs instead of failing. Leaving the screen does not cancel it.
+     */
+    private fun fetchOnlineWhenConnected(brands: List<BoardBrand>) {
+        onlineFollowUp?.cancel()
+        onlineFollowUp = scope.launch {
+            connectivity?.isOnline?.first { it }
+            catalogueSync.state.first { !it.running }
+            catalogueSync.start(brands)
         }
     }
 

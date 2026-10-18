@@ -2127,7 +2127,9 @@ class AppCore private constructor(
             importer = com.cruxcoach.app.localshare.LocalShareImporter(boardDb),
             workDirectory = platform.files.workDirectory(),
         )
-        com.cruxcoach.app.ui.ReceiveShareScreenModel(client, receiver, catalogueSync, boardDb, Dispatchers.Main, Dispatchers.IO)
+        com.cruxcoach.app.ui.ReceiveShareScreenModel(
+            client, receiver, catalogueSync, boardDb, Dispatchers.Main, Dispatchers.IO, connectivity = connectivity,
+        )
     }
 
     /** True for the sender landing page's "open in app" link (`cruxcoach://offline-share?…`). */
