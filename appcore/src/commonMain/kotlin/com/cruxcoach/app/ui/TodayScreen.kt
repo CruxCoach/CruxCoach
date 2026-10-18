@@ -225,6 +225,13 @@ class TodayScreenModel internal constructor(
     /** [title] is the card's title as Swift rendered it: it names the training. */
     fun startSuggestion(title: String) = presenter.startSuggestion(title)
     fun saveSuggestion(title: String) = presenter.saveSuggestion(title)
+    /** "Adapt": the routine id to edit ("" = none) and the editor's `from` ("" = none, else "draft:…"). */
+    fun editSuggestion(title: String): List<String> = try {
+        val (routineId, from) = presenter.editTarget(title)
+        listOf(routineId ?: "", from ?: "")
+    } catch (e: Exception) {
+        listOf("", "")
+    }
     fun consumeSuggestionSaved() = presenter.consumeSuggestionSaved()
     fun shuffleSuggestion() = presenter.nextSuggestion()
     /** "" = the coach decides. */

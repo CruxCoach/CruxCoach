@@ -61,6 +61,8 @@ private struct TodayContent: View {
     @State private var notYet: String?
     /// The training pages Today links to (injuries, training settings, the quick estimate).
     @State private var progressSheet: TodayProgressLink?
+    /** "Adapt" opens the workout editor on today's suggestion (Android `onOpenEditor`). */
+    @State private var editorTarget: TodayEditorTarget?
     /// The climbing-day sheet: "" logs a new day, an id edits today's entry (device test D30); nil = closed.
     @State private var climbingSheet: String?
     @State private var climbingList = false
@@ -266,6 +268,7 @@ private struct TodayContent: View {
         } message: {
             Text(tr: ui.pendingText)
         }
+        .modifier(TodayEditorSheet(core: core, target: $editorTarget))
         .sheet(item: $progressSheet) { link in
             switch link {
             case .estimate:
@@ -614,7 +617,12 @@ private struct TodayContent: View {
             Spacer()
             Menu {
                 Button { showWhy = true } label: { Label(L("trsg_why_title"), systemImage: "info.circle") }
-                Button { notYet = L("trsg_edit") } label: { Label(L("trsg_edit"), systemImage: "pencil") }
+                Button {
+                    let target = model.editSuggestion(title: title)
+                    if target.count == 2, !(target[0].isEmpty && target[1].isEmpty) {
+                        editorTarget = TodayEditorTarget(routineId: target[0], from: target[1], name: title)
+                    }
+                } label: { Label(L("trsg_edit"), systemImage: "pencil") }
                     .disabled(!ui.canStart)
                 Button { model.saveSuggestion(title: title) } label: { Label(L("trsg_save"), systemImage: "bookmark") }
                     .disabled(!ui.canStart)
@@ -1320,4 +1328,25 @@ struct TrainingEquipmentEditor: View {
 private enum TodayProgressLink: String, Identifiable {
     case injuries, settings, estimate, coach, review, history
     var id: String { rawValue }
+}
+
+private struct TodayEditorTarget: Identifiable {
+    let routineId: String
+    let from: String
+    let name: String
+    var id: String { routineId + "|" + from }
+}
+
+/// Kept out of Today's own modifier chain so it stays within the type checker's budget.
+private struct TodayEditorSheet: ViewModifier {
+    let core: AppCore
+    @Binding var target: TodayEditorTarget?
+
+    func body(content: Content) -> some View {
+        content.sheet(item: $target) { t in
+            NavigationStack {
+                RoutineEditorView(core: core, routineId: t.routineId, from: t.from, defaultName: t.name)
+            }
+        }
+    }
 }

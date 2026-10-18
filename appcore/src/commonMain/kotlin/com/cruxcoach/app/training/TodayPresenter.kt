@@ -904,6 +904,28 @@ internal class TodayPresenter(
         _state.update { it.copy(startedWorkout = true, startedGuided = true) }
     }
 
+    /**
+     * Where "adapt" opens the editor (port of Android `TodayViewModel.editTarget`):
+     * the planned own workout itself when the suggestion is that workout unchanged,
+     * otherwise a draft that keeps every item detail (warm-up flags, sides, sets cut
+     * to the time budget).
+     */
+    fun editTarget(title: String): Pair<String?, String?> {
+        val s = _state.value.suggestion ?: return null to null
+        val planned = s.plannedEntry
+        val changed = setOf(SuggestionReason.PLAN_FILTERED_FOR_INJURY, SuggestionReason.FINGERS_LOADED_RECENTLY,
+            SuggestionReason.FINGERS_TIRED, SuggestionReason.SHORTENED_TO_TIME, SuggestionReason.RECOVERY_AFTER_LIMIT,
+            SuggestionReason.RECOVERY_AFTER_HARD, SuggestionReason.RECOVERY_AFTER_VOLUME, SuggestionReason.FINGER_LOAD_RISING,
+            SuggestionReason.SKIN_LOAD_RISING, SuggestionReason.GUARDRAIL_YOUTH, SuggestionReason.BLOCK_INTRO,
+            SuggestionReason.BLOCK_DELOAD, SuggestionReason.BLOCK_TAPER)
+        io { service.logSuggestion(SuggestionEventKind.EDITED, s.focus.name, s.routine.items.map { it.slug }) }
+        if (s.focus == SuggestionFocus.PLANNED && planned != null && !planned.startsWith("builtin:") && s.reasons.none { it in changed }) {
+            return planned to null
+        }
+        service.offerEditorDraft(s.routine.copy(name = title, builtinKey = null))
+        return null to "draft:" + s.routine.items.joinToString(",") { it.slug }
+    }
+
     /** Keeps the suggestion as one of the athlete's own workouts. */
     fun saveSuggestion(title: String) = io {
         val suggestion = _state.value.suggestion ?: return@io

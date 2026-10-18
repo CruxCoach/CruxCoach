@@ -270,4 +270,23 @@ class TodayPresenterTest {
         assertEquals(4, state.tiles.size)
         assertEquals(0, model.mapFailures)
     }
+
+    @Test
+    fun `adapt opens the editor on a draft of today's suggestion`() {
+        val vm = answered()
+        val slugs = vm.items().map { it.slug }
+        val (routineId, from) = kit.db { vm.editTarget("My day") }
+        if (routineId == null) {
+            assertEquals("draft:" + slugs.joinToString(","), from)
+            val draft = kit.db { service.takeEditorDraft() }
+            assertEquals("My day", draft?.name)
+            assertEquals(null, draft?.builtinKey)
+            assertEquals(slugs, draft?.items?.map { it.slug })
+        } else {
+            // A planned own workout, unchanged: the editor opens that workout itself (Android's rule).
+            assertEquals(null, from)
+        }
+        kit.until("edit logged") { kit.db { repo.suggestionEventsForDay(day) }.any { it.kind == SuggestionEventKind.EDITED } }
+        vm.close()
+    }
 }
