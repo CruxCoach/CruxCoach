@@ -40,6 +40,7 @@ struct QuantumLayersSheet: View {
 
     private func content(model: QuantumLayersScreenModel, ui: QuantumLayersScreenState) -> some View {
         List {
+            wallPictureSection(ui: ui)
             wallSection(ui: ui)
             lampSection(model: model, ui: ui)
             layersSection(model: model, ui: ui)
@@ -57,6 +58,16 @@ struct QuantumLayersSheet: View {
     }
 
     // MARK: Wall
+
+    @ViewBuilder
+    private func wallPictureSection(ui: QuantumLayersScreenState) -> some View {
+        if ui.hasClimb {
+            Section {
+                QuantumWallCanvas(imagePaths: ui.boardImagePaths, climbHolds: ui.climbHolds, layerHolds: ui.layerHolds)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+            }
+        }
+    }
 
     private func wallSection(ui: QuantumLayersScreenState) -> some View {
         Section {
@@ -234,6 +245,77 @@ struct QuantumLayersSheet: View {
         case 0xFFFF00FF: return L("board_layer_color_magenta")
         case 0xFFFFFF00: return L("board_layer_color_yellow")
         default: return L("board_layer_custom_color")
+        }
+    }
+}
+
+/// The square model image with the climb's role rings and Android's layer overlay: a
+/// diode shared by several layers is a ring split into one segment per layer colour.
+/// Sizes follow Android's 20 dp diode with a 4 dp ring.
+struct QuantumWallCanvas: View {
+    let imagePaths: [String]
+    let climbHolds: [QuantumWallHoldUi]
+    let layerHolds: [QuantumWallHoldUi]
+
+    private var image: UIImage? {
+        for path in imagePaths {
+            if let url = Bundle.main.resourceURL?.appendingPathComponent(path),
+               let image = UIImage(contentsOfFile: url.path) {
+                return image
+            }
+        }
+        return nil
+    }
+
+    var body: some View {
+        let loaded: UIImage? = image
+        let climb: [QuantumWallHoldUi] = climbHolds
+        let layers: [QuantumWallHoldUi] = layerHolds
+        return Canvas { context, size in
+            if let loaded {
+                context.draw(Image(uiImage: loaded), in: CGRect(origin: .zero, size: size))
+            } else {
+                context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(.secondarySystemBackground)))
+            }
+            for hold in climb {
+                QuantumWallCanvas.ring(context: context, size: size, hold: hold)
+            }
+            for hold in layers {
+                QuantumWallCanvas.segments(context: context, size: size, hold: hold)
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityLabel(LI("detail_board_a11y", climb.count))
+    }
+
+    private static let radius: CGFloat = 10
+    private static let stroke: CGFloat = 4
+
+    private static func center(_ hold: QuantumWallHoldUi, _ size: CGSize) -> CGPoint {
+        CGPoint(x: CGFloat(hold.x) * size.width, y: CGFloat(hold.y) * size.height)
+    }
+
+    private static func ring(context: GraphicsContext, size: CGSize, hold: QuantumWallHoldUi) {
+        let c: CGPoint = center(hold, size)
+        let rect = CGRect(x: c.x - radius, y: c.y - radius, width: radius * 2, height: radius * 2)
+        let argb: Int64 = hold.argbs.first?.int64Value ?? 0xFFFFFFFF
+        context.stroke(Path(ellipseIn: rect), with: .color(.black.opacity(0.7)), lineWidth: stroke + 2)
+        context.stroke(Path(ellipseIn: rect), with: .color(Color(argb: argb)), lineWidth: stroke)
+    }
+
+    private static func segments(context: GraphicsContext, size: CGSize, hold: QuantumWallHoldUi) {
+        let c: CGPoint = center(hold, size)
+        let colors: [Int64] = hold.argbs.map { $0.int64Value }
+        guard !colors.isEmpty else { return }
+        let sweep: Double = 360.0 / Double(colors.count)
+        let gap: Double = colors.count > 1 ? 3 : 0
+        for (index, argb) in colors.enumerated() {
+            var path = Path()
+            let start: Double = -90 + Double(index) * sweep
+            path.addArc(center: c, radius: radius, startAngle: .degrees(start),
+                        endAngle: .degrees(start + sweep - gap), clockwise: false)
+            context.stroke(path, with: .color(Color(argb: argb)), lineWidth: stroke)
         }
     }
 }

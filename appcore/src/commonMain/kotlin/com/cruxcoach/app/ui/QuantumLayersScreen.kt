@@ -9,9 +9,11 @@ import com.cruxcoach.app.quantum.QuantumLayerController
 import com.cruxcoach.app.quantum.QuantumLayerUiPolicy
 import com.cruxcoach.app.quantum.QuantumLayerVisualState
 import com.cruxcoach.app.quantum.QuantumSendState
+import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.QuantumBoardModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -46,6 +48,9 @@ class QuantumLayerRowUi(
     val canCancelReplacement: Boolean,
 )
 
+/** One diode on the wall picture; [argbs] holds one colour, or one per layer sharing the diode. */
+class QuantumWallHoldUi(val placementId: Int, val x: Float, val y: Float, val argbs: List<Long>)
+
 class QuantumLayersScreenState(
     /** The climb is a Quantum climb with holds. */
     val hasClimb: Boolean,
@@ -76,6 +81,12 @@ class QuantumLayersScreenState(
     val errorKey: String,
     /** False while a joined shared session owns the board. */
     val managementAllowed: Boolean,
+    /** Bundle-relative image of the climb's model, normalized coordinates below are over it (square). */
+    val boardImagePaths: List<String>,
+    /** The climb's holds in role colours; empty while one of the layers is exactly this climb. */
+    val climbHolds: List<QuantumWallHoldUi>,
+    /** Android's projection overlay: every own layer's holds, a ring segment per layer colour. */
+    val layerHolds: List<QuantumWallHoldUi>,
 )
 
 /**
@@ -92,6 +103,11 @@ class QuantumLayersScreenModel internal constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + main)
     private val climb = MutableStateFlow<QuantumClimbSnapshot?>(null)
+
+    /** The climb's model and its diode coordinates, for the wall picture. */
+    private class Wall(val model: QuantumBoardModel, val placements: Map<Int, BoardPlacement>)
+
+    private var wall: Wall? = null
 
     val currentState: QuantumLayersScreenState
         get() = map(controller.layers.state.value, controller.send.value, climb.value)
@@ -114,14 +130,23 @@ class QuantumLayersScreenModel internal constructor(
                     if (BoardBrand.fromWire(row.boardBrand) != BoardBrand.QUANTUM) return@withContext null
                     // Same holds the detail shows: Quantum climbs are a single frame.
                     val holds = BoardClimbParser.parseMultiFrames(row.frames).firstOrNull().orEmpty()
-                    QuantumClimbSnapshot(row.uuid, row.name, angle, row.layoutId, row.difficultyAverage, holds)
+                    val wallOfClimb = QuantumBoardModel.fromLayoutId(row.layoutId)?.let { m ->
+                        Wall(
+                            m,
+                            boardRepository.getPlacementsForLayout(m.productSizeId.toInt(), m.layoutId.toInt(), BoardBrand.QUANTUM.wireValue)
+                                .associateBy { it.placementId.toInt() },
+                        )
+                    }
+                    QuantumClimbSnapshot(row.uuid, row.name, angle, row.layoutId, row.difficultyAverage, holds) to wallOfClimb
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 null
             }
-            climb.value = loaded
+            // Both on the main thread, wall first: the next state already maps over it.
+            wall = loaded?.second
+            climb.value = loaded?.first
         }
     }
 
@@ -203,7 +228,41 @@ class QuantumLayersScreenModel internal constructor(
             success = send.success,
             errorKey = send.error ?: "",
             managementAllowed = localManagementAllowed(),
+            boardImagePaths = current?.let { wall }?.let {
+                com.cruxcoach.app.render.boardImageCandidatePaths(BoardBrand.QUANTUM, it.model.productSizeId, it.model.layoutId)
+            } ?: emptyList(),
+            climbHolds = climbHolds(layers, current),
+            layerHolds = layerHolds(layers, current),
         )
+    }
+
+    private fun point(placementId: Int): com.cruxcoach.app.render.BoardPoint? {
+        val w = wall ?: return null
+        val placement = w.placements[placementId] ?: return null
+        return com.cruxcoach.app.render.QuantumRender.normalized(w.model, placement.x, placement.y)
+            .takeIf(com.cruxcoach.app.render.QuantumRender::isVisible)
+    }
+
+    /** Android hides the climb's own rings when a layer projects exactly its holds. */
+    private fun climbHolds(layers: BoardLayerState, current: QuantumClimbSnapshot?): List<QuantumWallHoldUi> {
+        if (current == null) return emptyList()
+        val placements = current.holds.map { it.placementId }.toSet()
+        if (layers.layers.any { layer -> layer.holds.map { it.placementId }.toSet() == placements }) return emptyList()
+        val colors = com.cruxcoach.app.render.LedHoldColors.standardFor(BoardBrand.QUANTUM)
+        return current.holds.mapNotNull { hold ->
+            point(hold.placementId)?.let { QuantumWallHoldUi(hold.placementId, it.x, it.y, listOf(colors.argbForRole(hold.roleId))) }
+        }
+    }
+
+    private fun layerHolds(layers: BoardLayerState, current: QuantumClimbSnapshot?): List<QuantumWallHoldUi> {
+        if (current == null) return emptyList()
+        val colorsByPlacement = LinkedHashMap<Int, MutableList<Long>>()
+        layers.layers.sortedBy { it.slot }.forEach { layer ->
+            layer.holds.forEach { colorsByPlacement.getOrPut(it.placementId) { ArrayList() } += argb(layer.color) }
+        }
+        return colorsByPlacement.mapNotNull { (placementId, colors) ->
+            point(placementId)?.let { QuantumWallHoldUi(placementId, it.x, it.y, colors.distinct()) }
+        }
     }
 
     private companion object {

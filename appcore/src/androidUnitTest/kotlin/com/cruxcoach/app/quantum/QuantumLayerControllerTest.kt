@@ -261,6 +261,11 @@ class QuantumLayerControllerTest {
         assertEquals(0xFF00FF00L, s.suggestedArgb)
         assertEquals("", s.suggestionBlockKey)
         assertEquals(listOf("free", "free", "free", "free"), s.rows.map { it.stateCode })
+        assertEquals("board_images/quantum/board_9203.png", s.boardImagePaths.first())
+        assertEquals(listOf(3000001, 3000002, 3000003), s.climbHolds.map { it.placementId })
+        val d1 = com.cruxcoach.app.render.QuantumRender.normalized(QuantumBoardModel.M, 1_000, 1_000)
+        assertEquals(d1.x, s.climbHolds.first().x, 1e-6f)
+        assertTrue(s.layerHolds.isEmpty())
 
         screen.light(); advanceUntilIdle()
         s = screen.currentState
@@ -270,6 +275,10 @@ class QuantumLayerControllerTest {
         assertEquals(1, s.activeCount)
         assertTrue(s.success)
         assertTrue(s.suggestionUsesExistingSlot)
+        // Lit as layer 1: Android hides the climb's own rings and draws the layer's colour instead.
+        assertTrue(s.climbHolds.isEmpty())
+        assertEquals(listOf(3000001, 3000002, 3000003), s.layerHolds.map { it.placementId })
+        assertTrue(s.layerHolds.all { it.argbs == listOf(0xFF00FF00L) })
         watch.cancel()
         screen.close()
     }
