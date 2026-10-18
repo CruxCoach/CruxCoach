@@ -23,8 +23,15 @@ struct FilterView: View {
                         in: 0...Int(model.maxGradeIndex))
                 Toggle(LI("filter_ungraded_only"), isOn: flag(ui.ungradedOnly) { edit, value in edit.ungraded = value })
             }
+            if ui.isQuantum {
+                quantumRulesSection
+                quantumOverlapSection
+            }
             Section {
-                Toggle(LI("filter_benchmark_only"), isOn: flag(ui.benchmarkOnly) { edit, value in edit.benchmark = value })
+                // Android BoardBrowsePolicy: Quantum has no benchmark climbs.
+                if !ui.isQuantum {
+                    Toggle(LI("filter_benchmark_only"), isOn: flag(ui.benchmarkOnly) { edit, value in edit.benchmark = value })
+                }
                 Toggle(LI("filter_my_climbs"), isOn: flag(ui.myClimbsOnly) { edit, value in edit.mine = value })
                 Stepper(LI("filter_min_ascents", Int(ui.minAscensionists)),
                         value: binding(Int(ui.minAscensionists)) { edit, value in edit.ascents = value },
@@ -36,6 +43,29 @@ struct FilterView: View {
         }
         .navigationTitle(L("board_filter_title"))
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("action_done")) { dismiss() } } }
+    }
+
+    // MARK: Quantum (Android BoardFilterScreen: rules chips and "Fits the wall")
+
+    private var quantumRulesSection: some View {
+        let codes: [String] = model.quantumRuleCodes
+        let active: [String] = ui.quantumRules
+        return Section(L("board_filter_quantum_rules")) {
+            ForEach(codes, id: \.self) { code in
+                Toggle(L("board_filter_quantum_" + code), isOn: Binding(
+                    get: { active.contains(code) },
+                    set: { _ in model.toggleQuantumRule(code: code) }))
+            }
+        }
+    }
+
+    /// Android filters against the layers the controller confirms; iOS has no layer roster yet.
+    private var quantumOverlapSection: some View {
+        Section(L("board_filter_quantum_overlap_title")) {
+            Label(LI("quantum_wall_fit_unsupported"), systemImage: "iphone.slash")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func statusToggle(_ code: String, _ title: String, _ isOn: Bool) -> some View {

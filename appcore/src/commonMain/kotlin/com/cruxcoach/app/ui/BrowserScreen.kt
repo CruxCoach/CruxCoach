@@ -57,6 +57,13 @@ class BrowserScreenState(
     val zoneTop: Float,
     val zoneRight: Float,
     val zoneBottom: Float,
+    /**
+     * Quantum board: the rule filter applies, benchmark/type filters do not (Android
+     * BoardBrowsePolicy). "Fits the wall" needs the layer roster, not on iPhone yet.
+     */
+    val isQuantum: Boolean,
+    /** Required route rules as lowercase codes (standard, campusing, edge, kickplate, matching). */
+    val quantumRules: List<String>,
 )
 
 /** One selectable hold: [x]/[y] are normalized over the board image. */
@@ -106,7 +113,8 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
             boardImagePaths = state.board.boardSize?.let {
                 com.cruxcoach.app.render.boardImageCandidatePaths(brand, it.id, filter.layoutId.toLong())
             } ?: emptyList(),
-            boardAspect = state.board.boardSize?.let { size ->
+            boardAspect = if (quantumModel(state) != null) com.cruxcoach.app.render.QuantumRender.ASPECT
+            else state.board.boardSize?.let { size ->
                 val w = (size.edgeRight - size.edgeLeft).toFloat()
                 val h = (size.edgeTop - size.edgeBottom).toFloat()
                 if (w > 0f && h > 0f) w / h else DEFAULT_BOARD_ASPECT
@@ -116,12 +124,36 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
             zoneTop = zoneBox[1],
             zoneRight = zoneBox[2],
             zoneBottom = zoneBox[3],
+            isQuantum = brand == BoardBrand.QUANTUM,
+            quantumRules = QUANTUM_RULES.filter { (_, rule) -> (filter.quantumRuleMask and rule.bit) != 0L }.map { it.first },
         )
     }
+
+    /** Android `toggleQuantumRuleFilter`: one positive rule on or off; ignored off a Quantum board. */
+    fun toggleQuantumRule(code: String) {
+        val rule = QUANTUM_RULES.firstOrNull { it.first == code }?.second ?: return
+        val current = presenter.state.value.filter
+        if (BoardBrand.fromWire(current.boardBrand) != BoardBrand.QUANTUM) return
+        presenter.setFilters(edit(current).copy(quantumRuleMask = current.quantumRuleMask xor rule.bit))
+    }
+
+    private fun edit(f: com.cruxcoach.app.browse.BrowserFilterState) = BrowseFilterEdit(
+        minGradeIndex = f.minGradeIndex,
+        maxGradeIndex = f.maxGradeIndex,
+        minAscensionists = f.minAscensionists,
+        climbTypeFilter = f.climbTypeFilter,
+        benchmarkOnly = f.benchmarkOnly,
+        originFilter = f.originFilter,
+        myClimbsOnly = f.myClimbsOnly,
+        ungradedOnly = f.ungradedOnly,
+        quantumRuleMask = f.quantumRuleMask,
+        quantumOverlapFilter = f.quantumOverlapFilter,
+    )
 
     /** left, top, right, bottom of [zone] over the board image; zeros while no area is set. */
     private fun zoneRect(state: BoardBrowserUiState): List<Float> {
         val z = zone ?: return listOf(0f, 0f, 0f, 0f)
+        quantumModel(state)?.let { return com.cruxcoach.app.render.QuantumRender.zoneRect(it, z) }
         val geometry = com.cruxcoach.app.render.AuroraBoardGeometry.of(state.board.boardSize)
         // y grows upwards on the board: the zone's top edge is maxY.
         val topLeft = geometry.normalized(z.minX, z.maxY)
@@ -181,7 +213,19 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
         presenter.applyHoldFilter(holdFilter.toSet(), null)
     }
 
+    /** Non-null only on a Quantum board: its holds follow the model's own mapping, not the edge box. */
+    private fun quantumModel(state: BoardBrowserUiState): com.cruxcoach.domain.board.QuantumBoardModel? =
+        if (BoardBrand.fromWire(state.filter.boardBrand) != BoardBrand.QUANTUM) null
+        else com.cruxcoach.app.render.QuantumRender.model(state.board.boardSize, state.filter.layoutId.toLong())
+
     private fun boardHolds(state: BoardBrowserUiState): List<BrowseBoardHoldUi> {
+        quantumModel(state)?.let { model ->
+            return state.board.placements.mapNotNull { (id, placement) ->
+                com.cruxcoach.app.render.QuantumRender.normalized(model, placement.x, placement.y)
+                    .takeIf(com.cruxcoach.app.render.QuantumRender::isVisible)
+                    ?.let { BrowseBoardHoldUi(id, it.x, it.y) }
+            }
+        }
         val size = state.board.boardSize ?: return emptyList()
         val geometry = com.cruxcoach.app.render.AuroraBoardGeometry.of(size)
         return state.board.placements.map { (id, placement) ->
@@ -259,11 +303,23 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
         )
     }
 
+    /** Quantum rule codes in Android's chip order, for the filter sheet. */
+    val quantumRuleCodes: List<String> = QUANTUM_RULES.map { it.first }
+
     /** Sort codes the UI may offer, in Android's order. */
     val sortCodes: List<String> = listOf("popular", "quality", "qualitySends", "hardest", "easiest", "name", "newest", "random")
 
     companion object {
         const val DEFAULT_BOARD_ASPECT = 0.65f
+
+        /** Android's chip order in the filter sheet. */
+        private val QUANTUM_RULES = listOf(
+            "standard" to com.cruxcoach.app.browse.QuantumRuleFilter.STANDARD,
+            "campusing" to com.cruxcoach.app.browse.QuantumRuleFilter.CAMPUSING,
+            "edge" to com.cruxcoach.app.browse.QuantumRuleFilter.EDGE,
+            "kickplate" to com.cruxcoach.app.browse.QuantumRuleFilter.KICKPLATE,
+            "matching" to com.cruxcoach.app.browse.QuantumRuleFilter.MATCHING,
+        )
 
         /** Kilter's continuous angle range; other boards use [BrowserScreenState.angleChips]. */
         const val MIN_ANGLE = 0

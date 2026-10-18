@@ -448,3 +448,7 @@
 "ble_powered_off_hint" = "Schalte es im Kontrollzentrum oder in den Einstellungen ein.";
 "tour_spotlight_quicklog_ios" = "„Versuch“ oder „Geschafft“ antippen – landet direkt im Logbuch.";
 "tour_spotlight_entry_swipe" = "Dein Eintrag. Nach links wischen, um ihn zu bearbeiten oder zu löschen.";
+/* Quantum board (iOS 0.2.4 wave 7): layers are not ported yet */
+"quantum_send_unsupported" = "Quantum-Climbs leuchten über nummerierte Board-Ebenen. Ebenen gibt es auf dem iPhone noch nicht.";
+"quantum_layers_unsupported" = "Quantum-Board-Ebenen (Climbs anzeigen, Wand löschen) gibt es auf dem iPhone noch nicht.";
+"quantum_wall_fit_unsupported" = "Braucht die Ebenen an der Wand, die das iPhone noch nicht lesen kann.";

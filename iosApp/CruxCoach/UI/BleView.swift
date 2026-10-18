@@ -17,7 +17,11 @@ struct BleView: View {
             if ui.connected {
                 Section(L("board_ble_connected")) {
                     Label(ui.connectedName, systemImage: "lightbulb.fill")
-                    Button(LI("ble_clear")) { model.clearBoard() }.disabled(ui.sending)
+                    if ui.connectedQuantum {
+                        quantumRows
+                    } else {
+                        Button(LI("ble_clear")) { model.clearBoard() }.disabled(ui.sending)
+                    }
                     Button(L("board_ble_disconnect"), role: .destructive) { model.disconnect() }
                 }
             } else {
@@ -75,6 +79,30 @@ struct BleView: View {
                     RememberedBoardRow(board: board) { model.reconnectRemembered(brandWire: board.brandWire) }
                 }
             }
+        }
+    }
+
+    /// Quantum walls are driven through layers on Android; the controller refuses a plain clear.
+    @ViewBuilder
+    private var quantumRows: some View {
+        if !ui.quantumModelName.isEmpty {
+            LabeledContent(L("board_selection_quantum_model_label"), value: ui.quantumModelName)
+        }
+        Text(quantumWallText).font(.footnote)
+        Label(LI("quantum_layers_unsupported"), systemImage: "iphone.slash")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+    }
+
+    /// Android's wall status strip, read-only: every app's routes count, ours included.
+    private var quantumWallText: String {
+        let active: Int = Int(ui.quantumWallActive)
+        let capacity: Int = Int(ui.quantumWallCapacity)
+        switch ui.quantumWall {
+        case "live": return L("quantum_wall_occupancy", active, capacity)
+        case "stale": return L("quantum_wall_occupancy_stale", active, capacity)
+        case "syncing": return L("quantum_wall_syncing")
+        default: return L("quantum_wall_unsynced")
         }
     }
 

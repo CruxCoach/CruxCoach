@@ -285,6 +285,28 @@ struct ClimbDetailView: View {
         if opened { ownKilter?.model.load(uuid: ui.uuid) }
     }
 
+    private func lightUpButton(model: DetailScreenModel) -> some View {
+        Button {
+            advanceTour(from: "project")
+            if ble.state.connected { model.sendToBoard() } else { showBle = true }
+        } label: {
+            Label(ble.state.connected ? LI("detail_light_up") : L("board_ble_title"), systemImage: "lightbulb.max")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(ble.state.sending)
+        .tourAnchor("light", in: anchors)
+    }
+
+    /// Android lights Quantum climbs through numbered board layers (BoardLayerManager); not ported.
+    private var quantumSendUnsupported: some View {
+        Label(LI("quantum_send_unsupported"), systemImage: "lightbulb.slash")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func sendRequestMessage(_ code: String) -> String {
         switch code {
         case "noBoardGeometry": return LI("detail_send_no_geometry")
@@ -396,17 +418,11 @@ struct ClimbDetailView: View {
 
     private func actions(model: DetailScreenModel, ui: DetailScreenState) -> some View {
         VStack(spacing: 10) {
-            Button {
-                advanceTour(from: "project")
-                if ble.state.connected { model.sendToBoard() } else { showBle = true }
-            } label: {
-                Label(ble.state.connected ? LI("detail_light_up") : L("board_ble_title"), systemImage: "lightbulb.max")
-                    .frame(maxWidth: .infinity)
+            if ui.isQuantum {
+                quantumSendUnsupported
+            } else {
+                lightUpButton(model: model)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(ble.state.sending)
-            .tourAnchor("light", in: anchors)
             if ui.sendRequestFailure != "none" {
                 Text(sendRequestMessage(ui.sendRequestFailure)).font(.footnote).foregroundStyle(.red)
             } else if ble.state.sendResult != "none" && ble.state.sendResult != "ok" {

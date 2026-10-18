@@ -36,6 +36,9 @@ data class BoardConnectionUiState(
     val sending: Boolean = false,
     /** Outcome of the most recent send or clear; null while one is running or before the first. */
     val lastSendResult: BoardSendResult? = null,
+    /** Quantum only: routes the controller reports on the wall (all apps), and how fresh that roster is. */
+    val quantumActivePlayers: Int = 0,
+    val quantumSyncStatus: QuantumControllerSyncStatus = QuantumControllerSyncStatus.UNSYNCED,
 )
 
 /** Handle returned by [BoardConnectionPresenter.watch]; Swift calls [close] from `onDisappear`/`deinit`. */
@@ -94,6 +97,15 @@ class BoardConnectionPresenter(
                         connectFailure = link.failure,
                     )
                 }
+            }
+        }
+    }
+
+    init {
+        // Read-only Quantum wall status (Android's layer status strip); layers themselves are not ported.
+        scope.launch {
+            controller.quantumState.collect { quantum ->
+                _state.update { it.copy(quantumActivePlayers = quantum.players.size, quantumSyncStatus = quantum.syncStatus) }
             }
         }
     }

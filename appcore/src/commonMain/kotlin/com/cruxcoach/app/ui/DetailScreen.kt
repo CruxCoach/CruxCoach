@@ -71,6 +71,8 @@ class DetailScreenState(
     val pageIndex: Int,
     /** 1 = no paging: the climb was not in a list, or the list had only it. */
     val pageCount: Int,
+    /** A Quantum climb: lit through board layers on Android, which iOS does not have yet. */
+    val isQuantum: Boolean,
 )
 
 /**
@@ -225,9 +227,15 @@ class DetailScreenModel(
         } else {
             null
         }
+        val quantum = if (climb != null && BoardBrand.fromWire(climb.boardBrand) == BoardBrand.QUANTUM) {
+            com.cruxcoach.app.render.QuantumRender.model(data?.boardSize, climb.layoutId)
+        } else null
         val holds = state.holds.mapNotNull { hold ->
             when {
                 hold.x >= 0f && hold.y >= 0f -> DetailHoldUi(hold.placementId, hold.x, hold.y, hold.argb)
+                quantum != null -> com.cruxcoach.app.render.QuantumRender.normalized(quantum, hold.boardX, hold.boardY)
+                    .takeIf(com.cruxcoach.app.render.QuantumRender::isVisible)
+                    ?.let { DetailHoldUi(hold.placementId, it.x, it.y, hold.argb) }
                 moon != null -> moon.geometry.point(hold.placementId, 1f, 1f)
                     ?.let { DetailHoldUi(hold.placementId, it.x, it.y, hold.argb) }
                 else -> null
@@ -236,6 +244,7 @@ class DetailScreenModel(
         val size = data?.boardSize
         val aspect = when {
             moon != null -> moon.geometry.imageAspect
+            quantum != null -> com.cruxcoach.app.render.QuantumRender.ASPECT
             size != null && size.edgeRight > size.edgeLeft && size.edgeTop > size.edgeBottom ->
                 (size.edgeRight - size.edgeLeft).toFloat() / (size.edgeTop - size.edgeBottom).toFloat()
             else -> DEFAULT_ASPECT
@@ -282,6 +291,7 @@ class DetailScreenModel(
             logBenchmark = log.ascent.isBenchmark,
             pageIndex = pager.index,
             pageCount = pager.count,
+            isQuantum = climb != null && BoardBrand.fromWire(climb.boardBrand) == BoardBrand.QUANTUM,
         )
     }
 

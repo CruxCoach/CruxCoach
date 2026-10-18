@@ -43,6 +43,15 @@ class BleScreenState(
     val statusBoardName: String,
     /** A remembered board can be reconnected without a scan (Android's "Reconnect"). */
     val canReconnect: Boolean,
+    /** Connected to a Quantum controller: layers, not single sends or a plain clear (Android BoardLayerManager). */
+    val connectedQuantum: Boolean,
+    /** The model the controller's own record proves; empty until read. */
+    val quantumModelName: String,
+    /** unsynced | syncing | live | stale — freshness of the controller's route roster. */
+    val quantumWall: String,
+    /** Routes on the wall from every app, out of [quantumWallCapacity]. */
+    val quantumWallActive: Int,
+    val quantumWallCapacity: Int,
 )
 
 /** Board connection screen. The phone is the BLE central; nothing here has run on hardware. */
@@ -110,6 +119,16 @@ class BleScreenModel(private val presenter: BoardConnectionPresenter) {
         status = status(state),
         statusBoardName = statusBoard(state)?.displayName ?: "",
         canReconnect = !linkBusy(state) && reconnectBrand(state) != null,
+        connectedQuantum = state.connectedBoard?.boardBrand == com.cruxcoach.domain.board.BoardBrand.QUANTUM,
+        quantumModelName = state.quantumModel?.displayName ?: "",
+        quantumWall = when (state.quantumSyncStatus) {
+            com.cruxcoach.app.ble.QuantumControllerSyncStatus.UNSYNCED -> "unsynced"
+            com.cruxcoach.app.ble.QuantumControllerSyncStatus.SYNCING -> "syncing"
+            com.cruxcoach.app.ble.QuantumControllerSyncStatus.LIVE -> "live"
+            com.cruxcoach.app.ble.QuantumControllerSyncStatus.STALE -> "stale"
+        },
+        quantumWallActive = state.quantumActivePlayers,
+        quantumWallCapacity = QUANTUM_WALL_CAPACITY,
     )
 
     /** Idempotent: every watcher maps the same emission, so remembering must not depend on order. */
@@ -147,6 +166,11 @@ class BleScreenModel(private val presenter: BoardConnectionPresenter) {
     private fun reconnectBrand(state: BoardConnectionUiState): String? {
         val lost = lastLink?.boardBrand?.wireValue
         return state.remembered.firstOrNull { it.brand == lost }?.brand ?: state.remembered.firstOrNull()?.brand
+    }
+
+    private companion object {
+        /** "All four Quantum Board places are occupied" (Android board_layer_error_board_full). */
+        const val QUANTUM_WALL_CAPACITY = 4
     }
 
     fun activate() = presenter.activate()
