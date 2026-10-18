@@ -3,7 +3,9 @@ import SwiftUI
 
 /// Choose the physical board (brand → layout → size) from the installed catalogues,
 /// or find it through the gym you climb at (Android `BoardSelectionDialog`:
-/// "Find a gym near you" and the gym search).
+/// "Find a gym near you" and the gym search). As on Android a tap only selects
+/// (the active board, or the guided fix's suggestion, starts selected); "Confirm"
+/// applies the choice and "Cancel" leaves the board as it was.
 struct BoardPickerView: View {
     let core: AppCore
     let brandWires: [String]
@@ -13,6 +15,9 @@ struct BoardPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showGymSearch = false
     @State private var gymSearchNearby = false
+    /// The pending choice; only "Confirm" hands it to [onPick].
+    @State private var selection: BoardOption?
+    @State private var seeded = false
 
     var body: some View {
         List {
@@ -46,7 +51,46 @@ struct BoardPickerView: View {
             GymSearchView(core: core, availableBrandWires: brandWires, startNearby: gymSearchNearby,
                           onPick: onPick, onPickDirectly: { showGymSearch = false })
         }
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L("action_close")) { dismiss() } } }
+        .toolbar { toolbarItems }
+        .onAppear { seed() }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button(L("board_model_dialog_cancel")) { dismiss() }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            Button(L("board_model_dialog_confirm")) { confirm() }
+                .fontWeight(.bold)
+                .disabled(selection == nil)
+                .accessibilityIdentifier("board_picker_confirm")
+        }
+    }
+
+    private func confirm() {
+        guard let choice = selection else { return }
+        onPick(choice)
+    }
+
+    /// Android seeds the dialog once: the guided fix's suggestion, else the active board when
+    /// its catalogue is offered here.
+    private func seed() {
+        guard !seeded else { return }
+        seeded = true
+        if let mismatch {
+            selection = guidedOptions(mismatch).first { isPrefill($0, mismatch) }
+            return
+        }
+        if let active = core.activeBoardOption(), brandWires.contains(active.brandWire) {
+            selection = active
+        }
+    }
+
+    private func isSelected(_ option: BoardOption) -> Bool {
+        guard let chosen = selection else { return false }
+        return chosen.brandWire == option.brandWire && chosen.layoutId == option.layoutId
+            && chosen.productSizeId == option.productSizeId
     }
 
     /// The guided fix lists the expected family on top; it is not repeated below.
@@ -64,7 +108,7 @@ struct BoardPickerView: View {
                 Text(LI("browser_no_catalogue_hint")).font(.footnote)
             }
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
-                guidedRow(option, preselected: isPrefill(option, mismatch))
+                optionRow(option)
             }
         } header: {
             Text(L("board_mismatch_choose_detail"))
@@ -86,24 +130,6 @@ struct BoardPickerView: View {
         return option.layoutId == layout && (size == 0 || option.productSizeId == size)
     }
 
-    private func guidedRow(_ option: BoardOption, preselected: Bool) -> some View {
-        Button { onPick(option) } label: {
-            HStack {
-                VStack(alignment: .leading) {
-                    Text(option.layoutName).foregroundStyle(.primary)
-                    if !option.sizeName.isEmpty {
-                        Text(option.sizeName).font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                if preselected {
-                    Image(systemName: "checkmark").foregroundStyle(Color.orange)
-                }
-            }
-        }
-        .accessibilityAddTraits(preselected ? .isSelected : [])
-    }
-
     @ViewBuilder
     private func brandSection(_ wire: String) -> some View {
         let options: [BoardOption] = core.boardOptions(brandWire: wire)
@@ -123,14 +149,23 @@ struct BoardPickerView: View {
         }
     }
 
+    /// Android's radio rows: a tap selects, the selected one carries the mark.
     private func optionRow(_ option: BoardOption) -> some View {
-        Button { onPick(option) } label: {
-            VStack(alignment: .leading) {
-                Text(option.layoutName).foregroundStyle(.primary)
-                if !option.sizeName.isEmpty {
-                    Text(option.sizeName).font(.footnote).foregroundStyle(.secondary)
+        let chosen: Bool = isSelected(option)
+        return Button { selection = option } label: {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text(option.layoutName).foregroundStyle(.primary)
+                    if !option.sizeName.isEmpty {
+                        Text(option.sizeName).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if chosen {
+                    Image(systemName: "checkmark").foregroundStyle(Color.orange)
                 }
             }
         }
+        .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 }

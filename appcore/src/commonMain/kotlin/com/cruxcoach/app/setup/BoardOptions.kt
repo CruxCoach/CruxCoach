@@ -48,6 +48,14 @@ object BoardOptions {
         else -> emptyList()
     }
 
+    /**
+     * The picker's preselection: Android seeds its board dialog with the active board and
+     * applies only on Confirm. The option that is the stored layout and size (MoonBoard
+     * options carry no size), or null — a size the catalogue does not offer is not guessed.
+     */
+    fun matching(options: List<BoardOption>, layoutId: Int, productSizeId: Int): BoardOption? =
+        options.firstOrNull { it.layoutId == layoutId && (it.productSizeId == 0 || it.productSizeId == productSizeId) }
+
     fun forBrand(brand: BoardBrand, repository: BoardRepository): List<BoardOption> {
         if (brand == BoardBrand.MOONBOARD) {
             return MoonBoardVariant.entries.map {

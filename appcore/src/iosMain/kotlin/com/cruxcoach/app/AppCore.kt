@@ -2114,4 +2114,14 @@ class AppCore private constructor(
         return url.startsWith("cruxcoach://offline-share") && com.cruxcoach.app.ui.ReceiveShareScreenModel.parseLink(url) != null
     }
 
+    // ── Browser polish (wave 5, polish2): board picker confirm step ──
+
+    /** The active board as one of the picker's options, for its preselection; null when none is. */
+    fun activeBoardOption(): BoardOption? = try {
+        val stored = BrowsePreferences(platform.keyValues).boardSelection()
+        BoardOptions.matching(boardOptions(stored.boardBrand), stored.layoutId, stored.productSizeId)
+    } catch (e: Exception) {
+        null
+    }
+
 }

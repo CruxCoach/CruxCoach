@@ -44,6 +44,29 @@ class BoardOptionsTest {
     }
 
     @Test
+    fun `the picker preselects the stored board and never guesses a size`() {
+        val kilter = listOf(
+            BoardOption("kilter", "Kilter Board", 1, 10, "Kilter Board Original", "12 x 14"),
+            BoardOption("kilter", "Kilter Board", 1, 14, "Kilter Board Original", "7 x 10"),
+            BoardOption("kilter", "Kilter Board", 8, 17, "Kilter Board Homewall", "10 x 12"),
+        )
+        assertEquals(kilter[1], BoardOptions.matching(kilter, 1, 14))
+        assertEquals(kilter[2], BoardOptions.matching(kilter, 8, 17))
+        assertEquals(null, BoardOptions.matching(kilter, 8, 10), "a size of another layout is not this board")
+        assertEquals(null, BoardOptions.matching(kilter, 1, 99))
+        assertEquals(null, BoardOptions.matching(emptyList(), 1, 10))
+
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { BoardDatabase.Schema.create(it) }
+        val repo = BoardRepositoryImpl(BoardDatabase(driver, Climbs.Adapter(frames)))
+        val moon = BoardOptions.forBrand(BoardBrand.MOONBOARD, repo)
+        // MoonBoard options carry no size: the stored one (any value) does not matter.
+        assertEquals(2, BoardOptions.matching(moon, 2, 10)?.layoutId)
+        val quantum = BoardOptions.forBrand(BoardBrand.QUANTUM, repo)
+        assertEquals("L", BoardOptions.matching(quantum, 9102, 9202)?.layoutName)
+        assertEquals(null, BoardOptions.matching(quantum, 9102, 9201))
+    }
+
+    @Test
     fun `a brand without imported sizes offers nothing rather than guesses`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { BoardDatabase.Schema.create(it) }
         val repo = BoardRepositoryImpl(BoardDatabase(driver, Climbs.Adapter(frames)))
