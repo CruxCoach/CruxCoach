@@ -2,6 +2,9 @@ package com.cruxcoach.app.ui
 
 import com.cruxcoach.app.platform.ConnectivityMonitor
 import com.cruxcoach.app.setup.BoardOptions
+import com.cruxcoach.app.sync.CatalogueAutoSync
+import com.cruxcoach.app.sync.CatalogueDownloadGate
+import com.cruxcoach.app.sync.CatalogueGateState
 import com.cruxcoach.app.sync.CatalogueSyncController
 import com.cruxcoach.domain.board.BoardBrand
 import kotlinx.coroutines.CoroutineDispatcher
@@ -33,29 +36,48 @@ class SyncScreenState(
     /** False until the first database read answered; the UI shows a spinner, not onboarding. */
     val installedKnown: Boolean,
     val catalogueRevision: Int,
+    /** Android's "Download over mobile data?" dialog is open. */
+    val meteredConfirm: Boolean,
+    /** Android's "No network connection" dialog is open. */
+    val noNetwork: Boolean,
+    /** A start waits for Wi-Fi ("Queued — starts automatically on WiFi"). */
+    val waitingForWifi: Boolean,
+    /** Online over mobile data, a hotspot or Low Data Mode: Android's "No WiFi" banner. */
+    val onMeteredNetwork: Boolean,
+    /** Days without a successful automatic update once three cycles were missed; -1 otherwise. */
+    val overdueDays: Int,
 )
 
 /** Board-catalogue download screen (Android: onboarding step 1 and "Sync board data"). */
 class SyncScreenModel(
     private val controller: CatalogueSyncController,
     private val connectivity: ConnectivityMonitor,
+    /** Android's mobile-data consent and Wi-Fi queue for user-started downloads. */
+    private val gate: CatalogueDownloadGate,
+    /** The automatic refresh, for Android's "not updated for N days" hint. */
+    private val autoSync: CatalogueAutoSync,
     main: CoroutineDispatcher = Dispatchers.Main,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + main)
 
     val brandWires: List<String> = BoardOptions.downloadableBrands.map { it.wireValue }
 
-    val currentState: SyncScreenState get() = map(controller.state.value, connectivity.isOnline.value)
+    val currentState: SyncScreenState get() = map(controller.state.value, connectivity.isOnline.value, gate.state.value)
 
     fun watch(onState: (SyncScreenState) -> Unit): Subscription {
         val job = scope.launch {
-            combine(controller.state, connectivity.isOnline) { sync, online -> map(sync, online) }
-                .collect { onState(it) }
+            combine(controller.state, connectivity.isOnline, gate.state, gate.networkKind) { sync, online, gateState, _ ->
+                map(sync, online, gateState)
+            }.collect { onState(it) }
         }
         return Subscription { job.cancel() }
     }
 
-    private fun map(sync: com.cruxcoach.app.sync.CatalogueSyncState, online: Boolean): SyncScreenState {
+    private fun map(
+        sync: com.cruxcoach.app.sync.CatalogueSyncState,
+        online: Boolean,
+        gateState: CatalogueGateState,
+    ): SyncScreenState {
         val installed = sync.installedBrands.map { it.wireValue }.toSet()
         return SyncScreenState(
             running = sync.running,
@@ -76,13 +98,35 @@ class SyncScreenModel(
             installedCount = installed.size,
             installedKnown = sync.installedKnown,
             catalogueRevision = sync.catalogueRevision,
+            meteredConfirm = gateState.meteredConfirm,
+            noNetwork = gateState.noNetwork,
+            waitingForWifi = gateState.waitingForWifi,
+            onMeteredNetwork = online && gate.isMeteredNow,
+            overdueDays = if (sync.running) -1 else autoSync.overdueDays(),
         )
     }
 
+    /** Starts at once, without the mobile-data question (callers that already asked). */
     fun start(brandWires: List<String>) {
         val brands = brandWires.mapNotNull { BoardBrand.fromWireOrNull(it) }
         if (brands.isNotEmpty()) controller.start(brands)
     }
+
+    /** A user-started download: asks before mobile data, says when there is no network (Android `startApiSync`). */
+    fun requestStart(brandWires: List<String>) =
+        gate.request(brandWires.mapNotNull { BoardBrand.fromWireOrNull(it) }, queueWhenOffline = false)
+
+    /** The onboarding's download: offline or declined over mobile data, it waits for Wi-Fi instead. */
+    fun requestStartQueued(brandWires: List<String>) =
+        gate.request(brandWires.mapNotNull { BoardBrand.fromWireOrNull(it) }, queueWhenOffline = true)
+
+    /** "Use mobile data". */
+    fun confirmMetered() = gate.confirmMetered()
+
+    /** "Cancel" on the mobile-data question. */
+    fun dismissMetered() = gate.dismissMetered()
+
+    fun dismissNoNetwork() = gate.dismissNoNetwork()
 
     fun cancel() = controller.cancel()
 

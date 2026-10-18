@@ -30,6 +30,8 @@ class CatalogueAutoSync(
     private val keyValues: KeyValueStore,
     private val connectivity: ConnectivityMonitor,
     private val clock: WallClock,
+    /** Android's periodic worker requires `NetworkType.UNMETERED`; so does this refresh. */
+    private val network: NetworkCost,
 ) {
     /**
      * Returns the brands a refresh was started for, empty when nothing was due.
@@ -41,6 +43,9 @@ class CatalogueAutoSync(
         if (interval == SyncInterval.MANUAL) return emptyList()
         if (controller.state.value.running) return emptyList()
         if (!connectivity.isOnline.value) return emptyList()
+        // Automatic downloads never use mobile data or Low Data Mode (Android `syncIfStale`: "no WiFi —
+        // skipping"). Not marked as run: the gate calls again once an unmetered link appears.
+        if (network.kind.value != NetworkCost.UNMETERED) return emptyList()
         // Nothing installed yet is the catalogue screen's job, not a refresh.
         val installed = controller.installedBrands
         if (installed.isEmpty()) return emptyList()
@@ -60,6 +65,21 @@ class CatalogueAutoSync(
         val last = lastRun() ?: return 0L
         val elapsed = clock.epochSeconds() - last
         return (cycleSeconds(interval) - elapsed).coerceAtLeast(0L)
+    }
+
+    /**
+     * Android's `refreshAutoSyncHealth`: days since the last successful download when automatic
+     * updates have missed [MISSED_CYCLES_BEFORE_WARNING] cycles, else -1 (manual cadence, never
+     * synced, or no board selected for download).
+     */
+    fun overdueDays(): Int {
+        val interval = settings.snapshot.syncInterval
+        if (interval == SyncInterval.MANUAL) return -1
+        if (BoardDownloadSelection.selected(keyValues).isEmpty()) return -1
+        val last = keyValues.safeGet(KEY_LAST_SUCCESS)?.toLongOrNull() ?: return -1
+        val ageDays = ((clock.epochSeconds() - last) / DAY_SECONDS).toInt()
+        val cycleDays = if (interval == SyncInterval.WEEKLY) 7 else 1
+        return if (ageDays >= cycleDays * MISSED_CYCLES_BEFORE_WARNING) ageDays else -1
     }
 
     private fun isDue(interval: SyncInterval): Boolean {
@@ -82,7 +102,14 @@ class CatalogueAutoSync(
 
     companion object {
         const val KEY_LAST_AUTO_SYNC = "catalogue_auto_sync_last_epoch"
+        /**
+         * Epoch seconds of the last download in which every board came through (Android's
+         * `last_sync_timestamp`, kept under an iOS key for the reason above).
+         */
+        const val KEY_LAST_SUCCESS = "catalogue_last_success_epoch"
         const val DAY_SECONDS = 86_400L
         const val WEEK_SECONDS = 7 * DAY_SECONDS
+        /** Missed automatic cycles before the card says so: one skipped run is ordinary, three is a fault. */
+        const val MISSED_CYCLES_BEFORE_WARNING = 3
     }
 }

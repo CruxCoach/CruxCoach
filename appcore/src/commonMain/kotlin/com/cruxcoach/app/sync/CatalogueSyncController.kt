@@ -7,6 +7,7 @@ import com.cruxcoach.app.platform.KeyValueStore
 import com.cruxcoach.app.platform.WallClock
 import com.cruxcoach.app.platform.WebSocketConnector
 import com.cruxcoach.app.platform.ZstdDecompressor
+import com.cruxcoach.app.settings.safePut
 import com.cruxcoach.data.BoardDatabaseHandle
 import com.cruxcoach.domain.board.BoardBrand
 import kotlinx.coroutines.CancellationException
@@ -160,6 +161,10 @@ class CatalogueSyncController internal constructor(
                 if (changed) importer.analyze()
             } finally {
                 refreshInstalledQuietly()
+                // Android's lastSyncTimestamp: only a run in which every board came through. Written before
+                // `running` drops, so whoever waits for the end of the run reads it.
+                val ended = _state.value.brands
+                if (ended.isNotEmpty() && ended.all { it.phase in SUCCESS }) recordSuccess()
                 _state.update { current ->
                     current.copy(
                         running = false,
@@ -190,7 +195,10 @@ class CatalogueSyncController internal constructor(
 
     /** Frees the slot taken by [claimLocalShare]; a changed catalogue re-reads the installed boards and bumps the revision. */
     fun releaseLocalShare(changed: Boolean) {
-        if (changed) refreshInstalledQuietly()
+        if (changed) {
+            refreshInstalledQuietly()
+            recordSuccess()
+        }
         _state.update { it.copy(running = false, catalogueRevision = if (changed) it.catalogueRevision + 1 else it.catalogueRevision) }
     }
 
@@ -454,9 +462,15 @@ class CatalogueSyncController internal constructor(
         ImportFailure.UNSUPPORTED -> CatalogueSyncFailure.UNSUPPORTED_BRAND
     }
 
+    /** When every board of a run (or a nearby import) came through; read by [CatalogueAutoSync.overdueDays]. */
+    private fun recordSuccess() {
+        keyValues.safePut(CatalogueAutoSync.KEY_LAST_SUCCESS, clock.epochSeconds().toString())
+    }
+
     private companion object {
         /** Four streams fill a mobile link without tripping per-IP limits on mirrors that share a provider. */
         const val PARALLEL_DOWNLOADS = 4
         val TERMINAL = setOf(CatalogueSyncPhase.UP_TO_DATE, CatalogueSyncPhase.DONE, CatalogueSyncPhase.FAILED)
+        val SUCCESS = setOf(CatalogueSyncPhase.UP_TO_DATE, CatalogueSyncPhase.DONE)
     }
 }

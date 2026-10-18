@@ -208,7 +208,7 @@ class AppCore private constructor(
         BoardSender(boardRepository, boardConnection, platform.keyValues, { sendFailureSink(it) })
     }
 
-    val syncScreen: SyncScreenModel by lazy { SyncScreenModel(catalogueSync, connectivity) }
+    val syncScreen: SyncScreenModel by lazy { SyncScreenModel(catalogueSync, connectivity, catalogueGate, autoSync) }
 
     /**
      * Encrypted Nostr backup, wire-compatible with Android. The private key is
@@ -259,7 +259,7 @@ class AppCore private constructor(
     }
 
     private val autoSync: CatalogueAutoSync by lazy {
-        CatalogueAutoSync(catalogueSync, settingsStore, platform.keyValues, connectivity, platform.clock)
+        CatalogueAutoSync(catalogueSync, settingsStore, platform.keyValues, connectivity, platform.clock, catalogueNetwork)
     }
 
     /**
@@ -2302,7 +2302,26 @@ class AppCore private constructor(
 
     // ── Data gaps (datagaps, wave 5) ────────────────────────────────────
     //
-    // Weekly targets card on Progress (Android WeeklyVolumeCard).
+    // Weekly targets card on Progress (Android WeeklyVolumeCard). Catalogue downloads and mobile
+    // data (Android BoardSyncManager.startApiSync / BoardSyncWorker UNMETERED): `syncScreen` and
+    // `autoSync` above take these two.
+
+    /** Started with the first catalogue screen or refresh, i.e. at launch: the refresh needs its answer. */
+    private val catalogueNetwork: com.cruxcoach.app.sync.IosNetworkCost by lazy {
+        com.cruxcoach.app.sync.IosNetworkCost().also { it.start() }
+    }
+
+    private val catalogueGate: com.cruxcoach.app.sync.CatalogueDownloadGate by lazy {
+        com.cruxcoach.app.sync.CatalogueDownloadGate(
+            controller = catalogueSync,
+            connectivity = connectivity,
+            network = catalogueNetwork,
+            keyValues = platform.keyValues,
+            scope = MainScope(),
+            // Wi-Fi back and nothing queued: the automatic refresh looks whether it is due.
+            onUnmetered = { refreshCataloguesIfDue() },
+        )
+    }
 
     /** The "Weekly targets" card of the Progress tab (Android `WeeklyVolumeCard`); null without the athlete stack. */
     fun makeWeeklyVolumeCard(): com.cruxcoach.app.ui.WeeklyVolumeCardModel? {

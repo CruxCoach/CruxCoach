@@ -21,6 +21,7 @@ struct CatalogueView: View {
                     Label(LI("catalogue_offline"), systemImage: "wifi.slash").foregroundStyle(.orange)
                 }
             }
+            CatalogueNetworkHints(state: state)
             Section(LI("catalogue_choose")) {
                 ForEach(state.rows, id: \.brandWire) { row in
                     BrandRow(row: row, isSelected: selected.contains(row.brandWire)) {
@@ -49,7 +50,8 @@ struct CatalogueView: View {
                     Button(L("action_cancel"), role: .cancel) { sync.model.cancel() }
                 } else {
                     Button(LI("catalogue_download")) {
-                        sync.model.start(brandWires: Array(selected))
+                        // Off Wi-Fi Android asks first (~130 MB of mobile data); the prompt below answers.
+                        sync.model.requestStart(brandWires: Array(selected))
                     }
                     .disabled(selected.isEmpty)
                 }
@@ -58,12 +60,64 @@ struct CatalogueView: View {
             }
         }
         .navigationTitle(L("board_sync_title"))
+        .modifier(CatalogueNetworkPrompts(model: sync.model, state: state))
         .modifier(RestTimerBannerSlot(core: core))
         .toolbar {
             if !isOnboarding {
                 ToolbarItem(placement: .cancellationAction) { Button(L("action_close")) { dismiss() } }
             }
         }
+    }
+}
+
+/// Android's sync-card banners: "No WiFi — downloading now will use mobile data", a start that
+/// waits for Wi-Fi, and automatic updates that stopped happening ("No automatic update for N days").
+struct CatalogueNetworkHints: View {
+    let state: SyncScreenState
+
+    var body: some View {
+        if state.onMeteredNetwork || state.waitingForWifi || state.overdueDays >= 0 {
+            Section {
+                if state.onMeteredNetwork {
+                    Label(L("board_sync_no_wifi_banner"), systemImage: "antenna.radiowaves.left.and.right")
+                        .foregroundStyle(.orange)
+                }
+                if state.waitingForWifi {
+                    Label(L("board_sync_compact_waiting_wifi"), systemImage: "wifi")
+                    Text(LI("catalogue_waiting_wifi_hint")).font(.footnote).foregroundStyle(.secondary)
+                }
+                if state.overdueDays >= 0 {
+                    Label(LI("catalogue_overdue", Int(state.overdueDays)), systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.yellow)
+                }
+            }
+        }
+    }
+}
+
+/// Android's two dialogs of a user-started download: the mobile-data consent ("Download over
+/// mobile data?", ~130 MB) and "No network connection".
+struct CatalogueNetworkPrompts: ViewModifier {
+    let model: SyncScreenModel
+    let state: SyncScreenState
+
+    func body(content: Content) -> some View {
+        content
+            .alert(L("board_sync_metered_confirm_title"), isPresented: Binding(
+                get: { state.meteredConfirm },
+                set: { if !$0 { model.dismissMetered() } })) {
+                Button(L("action_cancel"), role: .cancel) { model.dismissMetered() }
+                Button(L("board_sync_metered_confirm_action")) { model.confirmMetered() }
+            } message: {
+                Text(L("board_sync_metered_confirm_message"))
+            }
+            .alert(L("board_sync_no_network_title"), isPresented: Binding(
+                get: { state.noNetwork },
+                set: { if !$0 { model.dismissNoNetwork() } })) {
+                Button(L("action_ok")) { model.dismissNoNetwork() }
+            } message: {
+                Text(L("board_sync_no_network_message"))
+            }
     }
 }
 

@@ -76,12 +76,14 @@ struct OnboardingView: View {
                         Button(LI("onboarding_continue")) {
                             model.confirmDownloads()
                             let chosen = ui.downloadBrandWires.map { $0 }
-                            if !chosen.isEmpty { sync.model.start(brandWires: chosen) }
+                            // Android's onboarding start: off Wi-Fi it asks; offline or declined it waits for Wi-Fi.
+                            if !chosen.isEmpty { sync.model.requestStartQueued(brandWires: chosen) }
                         }
                         .disabled(ui.downloadBrandWires.isEmpty)
                     }
                 } else {
                     Section { Text(LI("onboarding_data_intro")) }
+                    CatalogueNetworkHints(state: sync.state)
                     Section(LI("onboarding_bring_data")) {
                         NavigationLink(LI("import_title")) { ImportView(core: core) }
                         NavigationLink(LI("kilter_title")) { KilterView(core: core) }
@@ -95,6 +97,7 @@ struct OnboardingView: View {
             }
             .navigationTitle(LI("onboarding_title", Int(ui.stepNumber), Int(ui.stepCount)))
             .navigationBarTitleDisplayMode(.inline)
+            .modifier(CatalogueNetworkPrompts(model: sync.model, state: sync.state))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(LI("onboarding_skip")) { model.skip() }

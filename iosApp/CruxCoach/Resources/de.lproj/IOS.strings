@@ -477,3 +477,6 @@
 /* Board UI parity (boardui): statistics date range */
 "stats_range_from" = "Von";
 "stats_range_to" = "Bis";
+/* Catalogue downloads and mobile data (datagaps, wave 5) */
+"catalogue_waiting_wifi_hint" = "Auf dem iPhone startet der Download, wenn CruxCoach im WLAN geöffnet ist.";
+"catalogue_overdue" = "Seit %ld Tagen keine automatische Aktualisierung — tippe auf „Auswahl herunterladen“.";
