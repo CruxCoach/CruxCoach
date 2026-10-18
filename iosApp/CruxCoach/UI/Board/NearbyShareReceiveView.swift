@@ -1,4 +1,5 @@
 import CruxCoachCore
+import Network
 import SwiftUI
 import UIKit
 import VisionKit
@@ -108,6 +109,10 @@ private struct NearbyEnterSection: View {
     var body: some View {
         Section {
             Text(LI("nearby_receive_intro"))
+            Button(LI("nearby_receive_search"), systemImage: "wifi") {
+                nearbyWifiGateways { gateways in model.searchWifi(gateways: gateways) }
+            }
+                .accessibilityIdentifier("nearby_receive_search")
             Button(LI("nearby_receive_scan"), systemImage: "qrcode.viewfinder", action: onScan)
                 .accessibilityIdentifier("nearby_receive_scan")
         } footer: {
@@ -152,7 +157,9 @@ private struct NearbyJoinWifiSection: View {
             }
         }
         Section {
-            Button(LI("nearby_receive_joined")) { model.continueAfterWifi() }
+            Button(LI("nearby_receive_joined")) {
+                nearbyWifiGateways { gateways in model.continueAfterWifi(gateways: gateways) }
+            }
             Button(L("action_cancel"), role: .cancel) { model.cancel() }
         }
     }
@@ -244,6 +251,26 @@ private struct NearbyBrandToggle: View {
         }
         .accessibilityAddTraits(row.selected ? .isSelected : [])
     }
+}
+
+/// The IPv4 gateways iOS reports for the current Wi-Fi path; Android's discovery reads the same
+/// from the link's routes. Delivered on the main queue, empty when there is no Wi-Fi.
+private func nearbyWifiGateways(_ done: @escaping ([String]) -> Void) {
+    let monitor = NWPathMonitor(requiredInterfaceType: .wifi)
+    monitor.pathUpdateHandler = { path in
+        // One answer is enough; dropping the handler also breaks the monitor ↔ closure cycle.
+        monitor.pathUpdateHandler = nil
+        monitor.cancel()
+        var hosts: [String] = []
+        for endpoint in path.gateways {
+            if case let .hostPort(host, _) = endpoint, case let .ipv4(address) = host {
+                let octets: [String] = address.rawValue.map { String($0) }
+                hosts.append(octets.joined(separator: "."))
+            }
+        }
+        DispatchQueue.main.async { done(hosts) }
+    }
+    monitor.start(queue: DispatchQueue.global(qos: .userInitiated))
 }
 
 /// Android `board_sync_share_climbs`: the count grouped like every other climb count ("284.253").
@@ -339,9 +366,13 @@ private struct NearbyFailedSection: View {
         }
     }
 
+    private var title: String {
+        ui.errorCode == "notFound" ? LI("nearby_receive_not_found") : L("board_sync_error_import")
+    }
+
     var body: some View {
         Section {
-            Label(L("board_sync_error_import"), systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+            Label(title, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
             if let hint {
                 Text(hint).font(.footnote).foregroundStyle(.secondary)
             }
