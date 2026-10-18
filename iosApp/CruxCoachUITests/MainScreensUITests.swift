@@ -85,6 +85,14 @@ final class MainScreensUITests: XCTestCase {
             shot("07a-training-quick-start")
             later.tap()
         }
+        // Today asks first how strong you feel and whether anything hurts (Android 0.2.4), then suggests.
+        let quickShow = app.buttons["today_quick_show"]
+        if quickShow.waitForExistence(timeout: 20) {
+            app.buttons["4"].firstMatch.tap()
+            app.buttons[Strings.l("trt_quick_no")].firstMatch.tap()
+            shot("07a-training-quick-checkin")
+            quickShow.tap()
+        }
         let start = app.buttons["today_suggestion_start"]
         XCTAssertTrue(start.waitForExistence(timeout: 30), "Today shows no suggestion to start:\n\(screenTail())")
         shot("07b-training-today")
