@@ -201,7 +201,7 @@ private struct TodayContent: View {
             TodayEquipmentSheet(ui: ui, model: model) { showEquipment = false }
         }
         .sheet(item: Binding(get: { swapSlug.map { TodaySwapTarget(slug: $0) } }, set: { swapSlug = $0?.slug })) { target in
-            TodaySwapSheet(model: model, slug: target.slug, onSwap: { to in
+            TodaySwapSheet(model: model, slug: target.slug, pictogram: { core.exercisePictogram(slug: $0) }, onSwap: { to in
                 let from = model.nameOf(slug: target.slug)
                 let toName = model.nameOf(slug: to)
                 swapSlug = nil
@@ -1154,6 +1154,8 @@ private struct TodayNextSheet: View {
 private struct TodaySwapSheet: View {
     let model: TodayScreenModel
     let slug: String
+    /// The exercise's movement pictogram, as Android's swap list shows it.
+    let pictogram: (String) -> PictogramUi?
     let onSwap: (String) -> Void
     let onDrop: () -> Void
     let onExclude: () -> Void
@@ -1168,13 +1170,7 @@ private struct TodaySwapSheet: View {
                         Text(L("trt_swap_none")).foregroundStyle(.secondary)
                     }
                     ForEach(alternatives, id: \.slug) { alt in
-                        Button { onSwap(alt.slug) } label: {
-                            VStack(alignment: .leading) {
-                                Text(alt.name)
-                                Text([TrRender.text(alt.tag), TrRender.text(alt.equipment)].filter { !$0.isEmpty }.joined(separator: " · "))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
+                        Button { onSwap(alt.slug) } label: { alternativeRow(alt) }
                     }
                 } else {
                     ProgressView()
@@ -1194,6 +1190,18 @@ private struct TodaySwapSheet: View {
             }
         }
         .task { alternatives = model.alternatives(slug: slug) }
+    }
+
+    private func alternativeRow(_ alt: TodayAlternativeUi) -> some View {
+        let detail: String = [TrRender.text(alt.tag), TrRender.text(alt.equipment)].filter { !$0.isEmpty }.joined(separator: " · ")
+        let tile: PictogramUi? = pictogram(alt.slug)
+        return HStack(spacing: 12) {
+            if let tile { ExercisePictogramTile(pictogram: tile, size: 40) }
+            VStack(alignment: .leading) {
+                Text(alt.name)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
