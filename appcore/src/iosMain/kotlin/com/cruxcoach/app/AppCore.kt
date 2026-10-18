@@ -1,5 +1,6 @@
 package com.cruxcoach.app
 
+import platform.Foundation.NSLog
 import com.cruxcoach.app.ble.BoardConnectionPresenter
 import com.cruxcoach.app.ble.CoreBluetoothCentral
 import com.cruxcoach.app.browse.BoardBrowserPresenter
@@ -1916,6 +1917,8 @@ class AppCore private constructor(
             catalogueLoading = kotlinx.coroutines.flow.flow { catalogueSync.state.collect { emit(it.running) } },
             scope = MainScope(),
             ioDispatcher = Dispatchers.IO,
+            // Android writes the line to logcat; NSLog puts it into the device log.
+            audit = { line -> NSLog("%@", line) },
         )
     )
 
