@@ -554,6 +554,8 @@ private struct LogbookEditSheet: View {
 struct HistoryView: View {
     let core: AppCore
     @State private var host: ScreenHost<HistoryScreenModel, HistoryScreenState>?
+    /// The board link the climb detail a row opens needs.
+    @State private var ble: ScreenHost<BleScreenModel, BleScreenState>?
     /// Android's "Delete entries" confirmation for the selected rows.
     @State private var confirmDeleteSelected = false
 
@@ -573,8 +575,12 @@ struct HistoryView: View {
                     } footer: {
                         Text(LI("history_hint"))
                     }
+                    let selecting: Bool = ui.selectedCount > 0
                     ForEach(ui.entries, id: \.id) { entry in
-                        HistorySelectableRow(entry: entry) { model.toggleSelection(id: entry.id) }
+                        HistorySelectableRow(entry: entry, selecting: selecting,
+                                             onToggle: { model.toggleSelection(id: entry.id) }) {
+                            historyDetail(entry)
+                        }
                     }
                     if !ui.entries.isEmpty {
                         Button(LI("history_clear"), role: .destructive) { model.clearHistory() }
@@ -599,6 +605,20 @@ struct HistoryView: View {
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
+            let bleModel = core.bleScreen
+            ble = ScreenHost(model: bleModel, initial: bleModel.currentState) { model, onState in
+                model.watch(onState: onState)
+            }
+        }
+    }
+
+    /// Android `onNavigateToClimb`: the climb detail at the angle it was sent at.
+    @ViewBuilder
+    private func historyDetail(_ entry: HistoryEntryUi) -> some View {
+        if let ble {
+            ClimbDetailView(core: core, uuid: entry.climbUuid, angle: entry.angle, ble: ble) {}
+        } else {
+            ProgressView()
         }
     }
 }
@@ -628,24 +648,40 @@ extension HistoryView {
     }
 }
 
-/// One history row; a tap selects or deselects it (Android's contextual multi-select).
-private struct HistorySelectableRow: View {
+/// One history row (Android `HistoryEntryCard`): the checkbox selects; a tap on the row opens the
+/// climb, or, while rows are selected, extends the selection (the contextual multi-select gesture).
+private struct HistorySelectableRow<Destination: View>: View {
     let entry: HistoryEntryUi
+    let selecting: Bool
     let onToggle: () -> Void
+    @ViewBuilder let destination: () -> Destination
 
     var body: some View {
-        Button(action: onToggle) {
-            HStack(spacing: 12) {
+        HStack(spacing: 12) {
+            Button(action: onToggle) {
                 Image(systemName: entry.isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(entry.isSelected ? Color.orange : Color.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.climbName).foregroundStyle(.primary)
-                    Text("\(entry.recordedAt) · \(entry.angle)°")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(entry.climbName)
+            .accessibilityAddTraits(entry.isSelected ? AccessibilityTraits.isSelected : AccessibilityTraits())
+            if selecting {
+                Button(action: onToggle) { details }
+                    .buttonStyle(.plain)
+            } else {
+                NavigationLink { destination() } label: { details }
             }
         }
-        .accessibilityAddTraits(entry.isSelected ? .isSelected : [])
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(entry.climbName).foregroundStyle(.primary)
+            Text("\(entry.recordedAt) · \(entry.angle)°")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 
