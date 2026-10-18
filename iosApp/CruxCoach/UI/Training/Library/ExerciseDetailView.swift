@@ -58,6 +58,26 @@ struct ExerciseDetailView: View {
     }
 
     @ViewBuilder
+    /// Android's performance-value card (value per side, enter, short test) and the progress card
+    /// with its chart and "Open statistics", each on its own page here.
+    @ViewBuilder
+    private var measuresSection: some View {
+        Section {
+            if core.exerciseHasBenchmark(slug: slug) {
+                NavigationLink {
+                    ProgressBenchmarksView(core: core, focusSlug: slug)
+                } label: {
+                    Label(L("trbm_card_title"), systemImage: "gauge.with.dots.needle.67percent")
+                }
+            }
+            NavigationLink {
+                ProgressExerciseStatsView(core: core, slug: slug)
+            } label: {
+                Label(L("trs_open_stats"), systemImage: "chart.xyaxis.line")
+            }
+        }
+    }
+
     private func content(model: ExerciseDetailScreenModel, ui: ExerciseDetailScreenState) -> some View {
         List {
             Section {
@@ -178,10 +198,7 @@ struct ExerciseDetailView: View {
                     }
                 }
             }
-            // Android's performance-value card and progress chart are other parts of the port.
-            Section {
-                Text(LI("trainingviz_detail_not_yet")).font(.footnote).foregroundStyle(.secondary)
-            }
+            measuresSection
         }
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 8) {

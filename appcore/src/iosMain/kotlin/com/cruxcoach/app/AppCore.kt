@@ -826,6 +826,20 @@ class AppCore private constructor(
         )
     }
 
+    /** The performance-value card of one exercise's page (Android `BenchmarkCard`). */
+    fun makeExerciseBenchmarkScreen(language: String, slug: String): com.cruxcoach.app.ui.BenchmarksScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.BenchmarksScreenModel(
+            com.cruxcoach.app.progress.BenchmarksPresenter(service, MainScope(), Dispatchers.IO, focusSlug = slug), language,
+        )
+    }
+
+    /** Whether an exercise has a performance value at all (Android hides the card otherwise). */
+    fun exerciseHasBenchmark(slug: String): Boolean {
+        val def = athlete?.catalog?.get(slug) ?: return false
+        return com.cruxcoach.athlete.logic.BenchmarkMath.capacityKind(def) != null
+    }
+
     /** The quick estimate in two questions (Android `QuickEstimateSheet`). */
     fun makeQuickEstimateScreen(): com.cruxcoach.app.ui.QuickEstimateScreenModel? {
         val service = athlete ?: return null

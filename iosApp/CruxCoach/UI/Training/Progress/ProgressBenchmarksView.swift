@@ -7,25 +7,35 @@ import SwiftUI
 /// none of its own.
 struct ProgressBenchmarksView: View {
     let core: AppCore
+    /// One exercise only: the card of its page (Android `BenchmarkCard`).
+    let focusSlug: String?
 
     @State private var host: ScreenHost<BenchmarksScreenModel, BenchmarksScreenState>?
 
-    init(core: AppCore) {
+    init(core: AppCore, focusSlug: String? = nil) {
         self.core = core
+        self.focusSlug = focusSlug
+    }
+
+    private func makeModel() -> BenchmarksScreenModel? {
+        if let focusSlug {
+            return core.makeExerciseBenchmarkScreen(language: TrainingStyle.catalogLanguage, slug: focusSlug)
+        }
+        return core.makeBenchmarksScreen(language: TrainingStyle.catalogLanguage)
     }
 
     var body: some View {
         Group {
             if let host {
-                BenchmarksContent(core: core, model: host.model, ui: host.state)
+                BenchmarksContent(core: core, model: host.model, ui: host.state, focused: focusSlug != nil)
             } else {
                 ProgressView()
             }
         }
-        .navigationTitle(L("trbm_title"))
+        .navigationTitle(focusSlug == nil ? L("trbm_title") : L("trbm_card_title"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            guard host == nil, let model = core.makeBenchmarksScreen(language: TrainingStyle.catalogLanguage) else { return }
+            guard host == nil, let model = makeModel() else { return }
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
@@ -51,6 +61,8 @@ private struct BenchmarksContent: View {
     let core: AppCore
     let model: BenchmarksScreenModel
     let ui: BenchmarksScreenState
+    /// The single exercise of an exercise page: no quick estimate, no list headings.
+    var focused: Bool = false
 
     @State private var entry: BenchmarkEntryTarget?
     @State private var deleting: BenchmarkDeleteTarget?
@@ -68,10 +80,7 @@ private struct BenchmarksContent: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
                         if ui.needsWeight { weightCard }
-                        Button(L("trc_quick_estimate")) { estimating = true }
-                            .buttonStyle(.bordered)
-                        Text(L("trc_quick_estimate_hint")).font(.caption).foregroundStyle(.secondary)
-                        Text(L("trbm_key_title")).font(.headline).padding(.top, 8)
+                        if !focused { listHeader }
                         ForEach(ui.key, id: \.slug) { row in card(row) }
                         if !ui.others.isEmpty {
                             Text(L("trbm_other_title")).font(.headline).padding(.top, 8)
@@ -129,6 +138,14 @@ private struct BenchmarksContent: View {
             WorkoutSummaryView(core: core, workoutId: target.id, onClose: { summary = nil },
                                onOpenNutrition: { summary = nil })
         }
+    }
+
+    @ViewBuilder
+    private var listHeader: some View {
+        Button(L("trc_quick_estimate")) { estimating = true }
+            .buttonStyle(.bordered)
+        Text(L("trc_quick_estimate_hint")).font(.caption).foregroundStyle(.secondary)
+        Text(L("trbm_key_title")).font(.headline).padding(.top, 8)
     }
 
     private var weightCard: some View {

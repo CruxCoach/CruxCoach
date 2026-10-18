@@ -69,6 +69,11 @@ internal class BenchmarksPresenter(
     private val service: AthleteService,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
+    /**
+     * One exercise only (Android's `BenchmarkCard` on the exercise page): its row, with or
+     * without a value, as the single key row — none when the exercise has no capacity measure.
+     */
+    private val focusSlug: String? = null,
 ) {
     private val _state = MutableStateFlow(BenchmarksRunState())
     val state: StateFlow<BenchmarksRunState> = _state.asStateFlow()
@@ -87,10 +92,13 @@ internal class BenchmarksPresenter(
                     return BenchmarkValuesRow(def, latestPerSide(list), InjuryAdvisor.assess(def, injuries),
                         LearningState.of(slug, list, workSessionCount(service, slug)))
                 }
+                val focused = focusSlug?.let { slug ->
+                    listOfNotNull(row(slug)?.takeIf { BenchmarkMath.capacityKind(it.def) != null })
+                }
                 BenchmarksRunState(
                     loading = false,
-                    key = KEY_BENCHMARK_SLUGS.mapNotNull(::row),
-                    others = bySlug.keys.filter { it !in KEY_BENCHMARK_SLUGS }.mapNotNull(::row)
+                    key = focused ?: KEY_BENCHMARK_SLUGS.mapNotNull(::row),
+                    others = if (focused != null) emptyList() else bySlug.keys.filter { it !in KEY_BENCHMARK_SLUGS }.mapNotNull(::row)
                         .sortedBy { it.def.name("en") },
                     profile = profile,
                     bodyweight = service.currentBodyweight(),

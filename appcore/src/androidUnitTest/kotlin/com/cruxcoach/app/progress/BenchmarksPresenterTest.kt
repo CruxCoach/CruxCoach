@@ -209,4 +209,20 @@ class BenchmarksPresenterTest {
         kit.until("weight") { p.state.value.bodyweight != null }
         assertFalse(model.currentState.needsWeight)
     }
+
+    @Test
+    fun `the exercise page card shows just that exercise, with or without a value`() {
+        val p = BenchmarksPresenter(service, kit.scope(), kit.dispatcher, focusSlug = "push.push_up")
+        kit.until("loaded") { !p.state.value.loading }
+        val model = BenchmarksScreenModel(p, "en")
+        assertEquals(listOf("push.push_up"), model.currentState.key.map { it.slug })
+        assertTrue(model.currentState.others.isEmpty())
+        assertFalse(model.currentState.key.single().sides.any { it.hasValue }, "no value yet: the card offers entering one")
+        checkTexts(model.currentState)
+
+        val noMeasure = service.catalog.all.first { com.cruxcoach.athlete.logic.BenchmarkMath.capacityKind(it) == null }
+        val q = BenchmarksPresenter(service, kit.scope(), kit.dispatcher, focusSlug = noMeasure.slug)
+        kit.until("loaded") { !q.state.value.loading }
+        assertTrue(q.state.value.key.isEmpty(), "an exercise without a capacity measure has no card, as on Android")
+    }
 }
