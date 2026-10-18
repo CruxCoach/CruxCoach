@@ -86,7 +86,7 @@ class SharedSessionsState(
     val canEdit: Boolean,
 )
 
-class SharedSessionsModel internal constructor(private val presenter: SharedSessionsPresenter) {
+class SharedSessionsModel internal constructor(internal val presenter: SharedSessionsPresenter) {
     val currentState: SharedSessionsState get() = map(presenter.current())
 
     fun watch(onState: (SharedSessionsState) -> Unit): Subscription {

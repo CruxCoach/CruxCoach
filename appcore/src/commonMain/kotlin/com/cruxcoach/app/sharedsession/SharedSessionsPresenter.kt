@@ -23,7 +23,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-internal class ClimbLabel(val name: String, val grade: String)
+/** [uuid] is the catalogue's own spelling of the id (for opening the climb); empty when not known. */
+internal class ClimbLabel(val name: String, val grade: String, val uuid: String = "")
 
 /** Resolves a climb against the local catalogue; null when this phone does not have it. */
 internal fun interface ClimbLookup {
@@ -35,7 +36,7 @@ internal class CatalogueClimbLookup(
     private val gradeLabel: (Double?) -> String,
 ) : ClimbLookup {
     override fun label(uuid: String, angle: Int): ClimbLabel? = try {
-        repository.getClimbByUuidAnySpelling(uuid, angle)?.let { ClimbLabel(it.name, gradeLabel(it.difficultyAverage)) }
+        repository.getClimbByUuidAnySpelling(uuid, angle)?.let { ClimbLabel(it.name, gradeLabel(it.difficultyAverage), it.uuid) }
     } catch (e: Exception) {
         null
     }
@@ -69,6 +70,8 @@ internal class SharedSessionsPresenter(
     private val labels = MutableStateFlow<Map<String, ClimbLabel?>>(emptyMap())
     private val inFlight = mutableSetOf<String>()
     private var wantScan = false
+    /** A board screen's nearby area is visible (it starts only once Bluetooth is allowed). */
+    private var wantPassiveScan = false
     private var cleanupJob: Job? = null
 
     private val _state = MutableStateFlow(snapshot())
@@ -103,13 +106,29 @@ internal class SharedSessionsPresenter(
         applyScan()
     }
 
+    /**
+     * A board screen shows the nearby area: scan like Android's app-wide nearby scanner. The
+     * caller asks only once Bluetooth is allowed, so this never brings up the permission prompt.
+     */
+    fun startPassiveScan() {
+        wantPassiveScan = true
+        central.activate()
+        adapter.value = central.adapterState()
+        applyScan()
+    }
+
+    fun stopPassiveScan() {
+        wantPassiveScan = false
+        applyScan()
+    }
+
     private fun participantActive(): Boolean = when (participant.state.value.phase) {
         ParticipantPhase.CONNECTING, ParticipantPhase.JOINED, ParticipantPhase.HOST_LOST -> true
         else -> false
     }
 
     private fun applyScan() {
-        val desired = wantScan || participantActive()
+        val desired = wantScan || wantPassiveScan || participantActive()
         if (desired && adapter.value == BleAdapterState.POWERED_ON && !scanning.value) {
             central.startScan()
             scanning.value = true

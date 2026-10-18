@@ -2070,4 +2070,19 @@ class AppCore private constructor(
         main = Dispatchers.Main,
     )
 
+    // ── Nearby area (wave 5, nearbyarea): Android's BleStatusArea sharing rows on the board screens ──
+
+    /**
+     * App-wide like Android's BleShareManager: one board-state memory and one scan for every board
+     * screen, sharing the shared-session central and scanner. The board screens scan only once
+     * Bluetooth is allowed, so they never bring up the permission prompt.
+     */
+    val nearbyArea: com.cruxcoach.app.ui.NearbyAreaModel by lazy {
+        com.cruxcoach.app.ui.NearbyAreaModel(
+            presenter = sharedSessions.presenter,
+            scanAllowed = { com.cruxcoach.app.nearby.bluetoothAlreadyAllowed() },
+            scope = MainScope(),
+        )
+    }
+
 }
