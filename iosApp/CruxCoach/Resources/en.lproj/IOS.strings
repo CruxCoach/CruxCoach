@@ -393,3 +393,5 @@
 "key_format_not_on_iphone" = "This key format (ncryptsec or recovery words) is not supported on iPhone yet. Paste the nsec or the 64-character hex key.";
 "key_auth_failed" = "Face ID or the passcode did not confirm. The key stays hidden.";
 "key_open" = "Account key: show or import";
+/* Backup-key reminder (wave 4 "notify" agent) */
+"key_backup_not_on_iphone" = "Showing and copying the account key is not available on iPhone yet.";

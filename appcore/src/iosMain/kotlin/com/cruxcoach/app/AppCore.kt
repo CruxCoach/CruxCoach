@@ -1233,4 +1233,17 @@ class AppCore private constructor(
             com.cruxcoach.app.coach.TrainingHistoryPresenter(service, MainScope(), Dispatchers.IO),
         )
     }
+
+    // ── Notification taps and the backup-key reminder (wave 4, notify agent) ──
+
+    /**
+     * Whether the backup-key reminder card shows (Android `BackupKeyWarningCard`, see
+     * [com.cruxcoach.app.notify.KeyBackupReminder]). Cheap: it reads three stored values.
+     */
+    fun isKeyBackupWarningDue(): Boolean {
+        val state = com.cruxcoach.app.backup.BackupState(platform.keyValues, platform.hashing)
+        return com.cruxcoach.app.notify.KeyBackupReminder.due(
+            state.backupEnabled, state.lastBackupSync, settingsStore.snapshot.keyBackedUp,
+        )
+    }
 }

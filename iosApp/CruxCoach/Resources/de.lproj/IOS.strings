@@ -393,3 +393,5 @@
 "key_format_not_on_iphone" = "Dieses Schlüsselformat (ncryptsec oder Wiederherstellungswörter) geht auf dem iPhone noch nicht. Füge den nsec- oder den 64-stelligen Hex-Schlüssel ein.";
 "key_auth_failed" = "Face ID oder der Code wurde nicht bestätigt. Der Schlüssel bleibt verborgen.";
 "key_open" = "Kontoschlüssel: anzeigen oder importieren";
+/* Backup-key reminder (wave 4 "notify" agent) */
+"key_backup_not_on_iphone" = "Den Kontoschlüssel anzeigen und kopieren geht auf dem iPhone noch nicht.";
