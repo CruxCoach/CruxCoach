@@ -1,5 +1,7 @@
+import BackgroundTasks
 import CruxCoachCore
 import Observation
+import UIKit
 import UserNotifications
 
 /// Composition root: hands the four Swift-implemented platform services to the Kotlin core.
@@ -63,6 +65,88 @@ final class AppEnvironment {
         guard case .ready(let core) = phase else { return }
         core.rescheduleBodyReminders(notifications: LocalNotificationScheduler())
         core.rescheduleTrainingReminders(notifications: LocalNotificationScheduler())
+    }
+
+    // MARK: Background refresh
+
+    /// The `BGTaskSchedulerPermittedIdentifiers` entry in Info.plist.
+    static let refreshTaskIdentifier = "org.cruxcoach.ios.refresh"
+    /// The refresh of the running core; rebuilt when a key import starts a new core.
+    @ObservationIgnored private var backgroundRefresh: BackgroundRefreshModel?
+    @ObservationIgnored private var backgroundRefreshCore: AppCore?
+
+    /// Android runs its periodic workers through WorkManager; iOS hands an app short background
+    /// slots of its own choosing (`BGAppRefreshTask`, about 30 s, best effort). Called once,
+    /// while the app launches.
+    func registerBackgroundRefresh() {
+        _ = BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.refreshTaskIdentifier, using: DispatchQueue.main) { [weak self] task in
+            guard let self else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self.runBackgroundRefresh(task)
+        }
+    }
+
+    /// Asks for the next slot no earlier than Android's shortest period. Fails quietly where the
+    /// system offers none (the simulator, Background App Refresh switched off).
+    func scheduleBackgroundRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: Self.refreshTaskIdentifier)
+        let seconds: Int32 = backgroundRefresh?.nextRunSeconds ?? 900
+        request.earliestBeginDate = Date(timeIntervalSinceNow: TimeInterval(seconds))
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            // Nothing to fall back to: the foreground refresh still runs.
+        }
+    }
+
+    /// Every return to the foreground: the same steps, each only when it is due.
+    func refreshInForeground() {
+        start()
+        guard let refresh = currentBackgroundRefresh() else { return }
+        refresh.runInForeground { _ in }
+    }
+
+    private func runBackgroundRefresh(_ task: BGTask) {
+        // The next slot first: a run the system cuts off must not end the chain.
+        scheduleBackgroundRefresh()
+        start()
+        if case .failed = phase, UIApplication.shared.applicationState == .background {
+            // Before the first unlock after a restart the Keychain is closed. A start that failed
+            // in the background is forgotten, so opening the app tries again instead of showing it.
+            phase = .starting
+        }
+        guard let refresh = currentBackgroundRefresh() else {
+            task.setTaskCompleted(success: false)
+            return
+        }
+        var completed = false
+        let finish: (Bool) -> Void = { success in
+            guard !completed else { return }
+            completed = true
+            task.setTaskCompleted(success: success)
+        }
+        task.expirationHandler = {
+            let stop: () -> Void = {
+                refresh.cancel()
+                finish(false)
+            }
+            if Thread.isMainThread { stop() } else { DispatchQueue.main.async(execute: stop) }
+        }
+        refresh.runInBackground { summary in
+            finish(summary.success)
+        }
+    }
+
+    private func currentBackgroundRefresh() -> BackgroundRefreshModel? {
+        guard case .ready(let core) = phase else { return nil }
+        if let refresh = backgroundRefresh, backgroundRefreshCore === core { return refresh }
+        let language: String = Bundle.main.preferredLocalizations.first ?? "en"
+        let refresh = core.makeBackgroundRefresh(notifications: LocalNotificationScheduler(), language: language)
+        backgroundRefresh = refresh
+        backgroundRefreshCore = core
+        return refresh
     }
 }
 
