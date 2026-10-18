@@ -473,3 +473,7 @@
 "nearby_receive_no_space" = "There is not enough free storage on this iPhone for the board data.";
 "nearby_receive_search" = "Search this Wi-Fi";
 "nearby_receive_not_found" = "No CruxCoach share answered on this Wi-Fi. Check that this iPhone is on the other phone’s Wi-Fi, or scan its second code.";
+
+/* Board UI parity (boardui): statistics date range */
+"stats_range_from" = "From";
+"stats_range_to" = "To";

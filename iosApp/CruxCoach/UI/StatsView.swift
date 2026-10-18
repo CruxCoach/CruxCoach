@@ -18,6 +18,8 @@ struct StatsView: View {
     let core: AppCore
     @State private var host: ScreenHost<LogbookScreenModel, LogbookScreenState>?
     @State private var heat: ScreenHost<StatsHeatmapModel, StatsHeatmapScreenState>?
+    /// Android `CustomDateRangeDialog`.
+    @State private var rangeOpen = false
 
     var body: some View {
         Group {
@@ -59,6 +61,7 @@ struct StatsView: View {
                 // Grouped in threes: a ViewBuilder block takes at most ten children.
                 Group {
                     periodSection(model: model, ui: ui)
+                    boardComparisonSection(model: model, ui: ui)
                     summarySection(stats: stats)
                     recordsSection(records: stats.records)
                     gradePyramidSection(stats: stats)
@@ -86,14 +89,17 @@ struct StatsView: View {
     @ViewBuilder
     private func periodSection(model: LogbookScreenModel, ui: LogbookScreenState) -> some View {
         Section {
+            // A custom range deselects every interval, as Android's chips do.
             Picker(L("board_stats_select_period"),
-                   selection: Binding(get: { ui.intervalCode }, set: { model.setInterval(code: $0) })) {
+                   selection: Binding(get: { ui.customFrom.isEmpty ? ui.intervalCode : "" },
+                                      set: { model.setInterval(code: $0) })) {
                 Text(L("board_stats_interval_30d")).tag("days30")
                 Text(L("board_stats_interval_90d")).tag("days90")
                 Text(L("board_stats_interval_1y")).tag("year1")
                 Text(L("board_stats_interval_all")).tag("all")
             }
             .pickerStyle(.segmented)
+            customRangeButton(model: model, ui: ui)
 
             if ui.availableBoardWires.count > 1 {
                 Picker(L("board_stats_board_comparison_board"),
@@ -108,6 +114,74 @@ struct StatsView: View {
         } footer: {
             Text(L("ux_stats_help")).font(.footnote)
         }
+    }
+
+    /// Android `CustomDateChip`: "dd.MM - dd.MM" while a range applies.
+    private func customRangeButton(model: LogbookScreenModel, ui: LogbookScreenState) -> some View {
+        let active: Bool = !ui.customFrom.isEmpty && !ui.customTo.isEmpty
+        let title: String = active ? StatsView.dayMonth(ui.customFrom) + " - " + StatsView.dayMonth(ui.customTo)
+            : L("board_stats_date_range")
+        return Button { rangeOpen = true } label: {
+            Label(title, systemImage: active ? "calendar.badge.checkmark" : "calendar")
+                .foregroundStyle(active ? Color.orange : Color.accentColor)
+        }
+        .sheet(isPresented: $rangeOpen) {
+            StatsDateRangeSheet(initialFrom: ui.customFrom, initialTo: ui.customTo) { from, to in
+                model.setCustomRange(fromIso: from, toIso: to)
+            }
+        }
+    }
+
+    /// "yyyy-MM-dd" as Android's chip prints it ("dd.MM").
+    static func dayMonth(_ iso: String) -> String {
+        let parts: [Substring] = iso.split(separator: "-")
+        guard parts.count == 3 else { return iso }
+        return String(parts[2]) + "." + String(parts[1])
+    }
+
+    // MARK: - Board comparison (Android BoardComparisonSection)
+
+    /// One row per logged board: sends and best grade over the period; a tap scopes the stats to it.
+    @ViewBuilder
+    private func boardComparisonSection(model: LogbookScreenModel, ui: LogbookScreenState) -> some View {
+        if ui.availableBoardWires.count > 1 && ui.boardComparison.count > 1 {
+            Section {
+                comparisonHeader
+                ForEach(ui.boardComparison, id: \.boardWire) { entry in
+                    comparisonRow(entry, selected: ui.statsBoardFilter, model: model)
+                }
+            } header: {
+                Text(L("board_stats_board_comparison"))
+            }
+        }
+    }
+
+    private var comparisonHeader: some View {
+        HStack {
+            Text(L("board_stats_board_comparison_board")).frame(maxWidth: .infinity, alignment: .leading)
+            Text(L("board_sends")).lineLimit(1).frame(width: 88, alignment: .trailing)
+            Text(L("board_logbook_best_grade")).lineLimit(2).frame(width: 76, alignment: .trailing)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private func comparisonRow(_ entry: BoardComparisonUi, selected: String, model: LogbookScreenModel) -> some View {
+        let active: Bool = selected == entry.boardWire
+        let sends: Int32 = entry.sends
+        let grade: String = entry.hardestGrade.isEmpty ? "-" : entry.hardestGrade
+        // Tapping the active board returns to "all", as on Android.
+        return Button { model.setStatsBoardFilter(boardWire: active ? "" : entry.boardWire) } label: {
+            HStack {
+                Text(entry.boardTitle)
+                    .fontWeight(active ? .bold : .medium)
+                    .foregroundStyle(active ? Color.orange : Color.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(String(sends)).bold().foregroundStyle(ChartPalette.good).frame(width: 88, alignment: .trailing)
+                Text(grade).bold().frame(width: 76, alignment: .trailing)
+            }
+        }
+        .listRowBackground(active ? Color.orange.opacity(0.15) : nil)
     }
 
     // MARK: - Volume headline
@@ -862,4 +936,54 @@ private struct HeatmapCanvas: View {
         let blue = Double(argb & 0xFF) / 255
         return Color(red: red, green: green, blue: blue)
     }
+}
+
+/// Android `CustomDateRangeDialog`: an inclusive from/to range; OK applies it, Cancel keeps the old one.
+private struct StatsDateRangeSheet: View {
+    let onConfirm: (String, String) -> Void
+    @State private var from: Date
+    @State private var to: Date
+    @Environment(\.dismiss) private var dismiss
+
+    init(initialFrom: String, initialTo: String, onConfirm: @escaping (String, String) -> Void) {
+        self.onConfirm = onConfirm
+        let end: Date = StatsDateRangeSheet.parse(initialTo) ?? Date()
+        let start: Date = StatsDateRangeSheet.parse(initialFrom)
+            ?? Calendar.current.date(byAdding: .day, value: -30, to: end) ?? end
+        _from = State(initialValue: min(start, end))
+        _to = State(initialValue: end)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker(LI("stats_range_from"), selection: $from, displayedComponents: .date)
+                DatePicker(LI("stats_range_to"), selection: $to, in: from..., displayedComponents: .date)
+            }
+            .navigationTitle(L("board_stats_select_date_range"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(L("action_cancel")) { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("action_ok")) {
+                        onConfirm(StatsDateRangeSheet.iso(from), StatsDateRangeSheet.iso(max(from, to)))
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private static func formatter() -> DateFormatter {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone.current
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }
+
+    static func parse(_ iso: String) -> Date? { iso.isEmpty ? nil : formatter().date(from: iso) }
+    static func iso(_ date: Date) -> String { formatter().string(from: date) }
 }

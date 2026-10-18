@@ -473,3 +473,7 @@
 "nearby_receive_no_space" = "Auf diesem iPhone ist nicht genug Speicher für die Board-Daten frei.";
 "nearby_receive_search" = "Dieses WLAN durchsuchen";
 "nearby_receive_not_found" = "In diesem WLAN hat keine CruxCoach-Freigabe geantwortet. Prüfe, ob dieses iPhone im WLAN des anderen Handys ist, oder scanne seinen zweiten Code.";
+
+/* Board UI parity (boardui): statistics date range */
+"stats_range_from" = "Von";
+"stats_range_to" = "Bis";
