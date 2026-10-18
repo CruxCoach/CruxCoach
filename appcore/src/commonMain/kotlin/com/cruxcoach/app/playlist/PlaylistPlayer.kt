@@ -148,6 +148,12 @@ class PlaylistPlayerPresenter(
 
     private var restJob: Job? = null
 
+    /**
+     * "uuid:angle" of the climb last put on the wall (Android `lastSentClimbKey`): a board
+     * that connects again is not sent the climb it already shows. Moving to a climb clears it.
+     */
+    private var lastSentKey: String? = null
+
     fun watch(onState: (PlaylistPlayerState) -> Unit): StateWatch = scope.watchState(state, onState)
 
     /** Starts a private local playlist. Playlists never publish a joinable session. */
@@ -160,6 +166,7 @@ class PlaylistPlayerPresenter(
     ) {
         if (items.isEmpty()) return
         cancelRest()
+        lastSentKey = null
         val queue = if (order == ListPlaybackOrder.SHUFFLE) items.shuffled(random) else items
         _state.value = PlaylistPlayerState(
             isActive = true,
@@ -177,6 +184,7 @@ class PlaylistPlayerPresenter(
 
     fun stop() {
         cancelRest()
+        lastSentKey = null
         sessions?.end()
         _state.value = PlaylistPlayerState()
     }
@@ -188,6 +196,7 @@ class PlaylistPlayerPresenter(
      */
     fun endSession() {
         cancelRest()
+        lastSentKey = null
         val recorded = sessions?.end()
         _state.value = PlaylistPlayerState()
         if (recorded == null) return
@@ -284,7 +293,8 @@ class PlaylistPlayerPresenter(
         val s = _state.value
         if (!s.isActive || climbUuid.isBlank()) return
         _state.update { it.copy(queue = it.queue + PlaybackItem(climbUuid, angle, 0)) }
-        if (s.currentIndex < 0) moveTo(0, armRest = false)
+        // Android's addClimb sends without clearing what was last sent.
+        if (s.currentIndex < 0) moveTo(0, armRest = false, clearLastSent = false)
     }
 
     /** Android `SessionQueueManager.moveClimb`: the current climb is followed, nothing is sent. */
@@ -313,12 +323,25 @@ class PlaylistPlayerPresenter(
 
     fun acknowledgeRestFinished() = _state.update { it.copy(restFinished = false) }
 
-    /** Puts the current climb back on the wall: the lamp, an explicit request in either mode. */
+    /**
+     * Puts the current climb back on the wall: the lamp, an explicit request in either mode,
+     * also for the climb the wall already shows. Without a board there is nothing to send to.
+     */
     fun resendCurrentClimb() {
-        val current = _state.value.currentClimb ?: return
-        transport.sendClimb(current.climbUuid, current.angle)
-        _state.update { it.copy(awaitingExplicitSend = false) }
+        if (_state.value.currentClimb == null) return
+        deliverCurrent(explicitRequest = true, forceResend = true)
+    }
+
+    /**
+     * Android `SessionQueueManager`'s connection watch: a board that connects while the
+     * playlist runs gets the current climb, under the same rules as an advance ("tap to
+     * send" offers the lamp instead; a climb already sent is not sent again).
+     */
+    fun onBoardConnected() {
         refreshConnection()
+        val s = _state.value
+        if (!s.isActive || s.currentClimb == null) return
+        deliverCurrent(explicitRequest = false)
     }
 
     fun refreshConnection() = _state.update { it.copy(boardConnected = transport.isBoardConnected) }
@@ -356,7 +379,7 @@ class PlaylistPlayerPresenter(
         _state.update { it.copy(queue = queue, currentClimb = queue.getOrNull(it.currentIndex)) }
     }
 
-    private fun moveTo(index: Int, armRest: Boolean, explicitRequest: Boolean = false) {
+    private fun moveTo(index: Int, armRest: Boolean, explicitRequest: Boolean = false, clearLastSent: Boolean = true) {
         val s = _state.value
         val leaving = if (armRest) s.currentClimb else null
         val item = s.queue.getOrNull(index) ?: return
@@ -370,24 +393,34 @@ class PlaylistPlayerPresenter(
                 boardConnected = transport.isBoardConnected,
             )
         }
+        // Android's setCurrentClimb: the climb moved to is sent even when it equals the last one.
+        if (clearLastSent) lastSentKey = null
         deliverCurrent(explicitRequest)
         val restSeconds = leaving?.restAfterSeconds ?: 0
         if (restSeconds > 0) startRest(restSeconds)
     }
 
     /**
-     * Android `SessionQueueManager.sendCurrentClimbToBoard` under `QueueDeliveryPolicy`:
-     * in "tap to send" mode an advance leaves the wall as it is and the player offers
-     * the lamp; the lamp and the first climb of a started playlist are explicit. With no
-     * board the transport reports the failed send itself, as before.
+     * Android `SessionQueueManager.sendCurrentClimbToBoard` under `QueueDeliveryPolicy`,
+     * in its order: with no board connected nothing is sent (in either mode, also not
+     * the lamp; the board's connect sends later, see [onBoardConnected]); in "tap to send"
+     * mode an advance leaves the wall as it is and the player offers the lamp; the lamp
+     * and the first climb of a started playlist are explicit. A climb already sent is
+     * not sent again unless [forceResend] (the lamp).
      */
-    private fun deliverCurrent(explicitRequest: Boolean) {
+    private fun deliverCurrent(explicitRequest: Boolean, forceResend: Boolean = false) {
         val current = _state.value.currentClimb ?: return
+        val connected = transport.isBoardConnected
+        _state.update { it.copy(boardConnected = connected) }
+        if (!connected) return
         if (!explicitRequest && !transport.sendsAutomatically) {
             _state.update { it.copy(awaitingExplicitSend = true) }
             return
         }
+        val key = "${current.climbUuid}:${current.angle}"
+        if (!forceResend && key == lastSentKey) return
         transport.sendClimb(current.climbUuid, current.angle)
+        lastSentKey = key
         _state.update { it.copy(awaitingExplicitSend = false) }
     }
 

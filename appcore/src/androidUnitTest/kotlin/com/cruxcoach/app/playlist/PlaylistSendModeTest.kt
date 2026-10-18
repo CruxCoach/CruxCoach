@@ -18,9 +18,9 @@ import kotlinx.coroutines.test.runTest
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlaylistSendModeTest {
 
-    private class ModeTransport(var automatic: Boolean) : PlaybackTransport {
+    private class ModeTransport(var automatic: Boolean, var connected: Boolean = true) : PlaybackTransport {
         val sent = mutableListOf<String>()
-        override val isBoardConnected: Boolean = true
+        override val isBoardConnected: Boolean get() = connected
         override val sendsAutomatically: Boolean get() = automatic
         override fun sendClimb(climbUuid: String, angle: Int) {
             sent += climbUuid
@@ -79,6 +79,58 @@ class PlaylistSendModeTest {
         p.next()
         assertEquals(listOf("a", "b", "a", "c"), transport.sent)
         assertFalse(p.state.value.awaitingExplicitSend)
+        p.close()
+    }
+
+    @Test
+    fun `without a board nothing is sent and the connect sends the current climb`() = runTest {
+        val transport = ModeTransport(automatic = true, connected = false)
+        val p = player(transport)
+        p.play("List", queue)
+        p.next()
+        p.resendCurrentClimb()
+        assertTrue(transport.sent.isEmpty(), "no board: Android's QueueDeliveryPolicy skips, also the lamp")
+        assertFalse(p.state.value.awaitingExplicitSend, "skipped is not waiting for the lamp")
+        assertFalse(p.state.value.boardConnected)
+
+        transport.connected = true
+        p.onBoardConnected()
+        assertEquals(listOf("b"), transport.sent)
+        assertTrue(p.state.value.boardConnected)
+        p.onBoardConnected()
+        assertEquals(listOf("b"), transport.sent, "the wall already shows it")
+        p.resendCurrentClimb()
+        assertEquals(listOf("b", "b"), transport.sent, "the lamp sends what the wall shows again")
+        p.close()
+    }
+
+    @Test
+    fun `tap to send offers the lamp when the board connects`() = runTest {
+        val transport = ModeTransport(automatic = false, connected = false)
+        val p = player(transport)
+        p.play("List", queue)
+        assertTrue(transport.sent.isEmpty(), "even the explicit start needs a board")
+        assertFalse(p.state.value.awaitingExplicitSend)
+
+        transport.connected = true
+        p.onBoardConnected()
+        assertTrue(transport.sent.isEmpty())
+        assertTrue(p.state.value.awaitingExplicitSend)
+        p.resendCurrentClimb()
+        assertEquals(listOf("a"), transport.sent)
+        assertFalse(p.state.value.awaitingExplicitSend)
+        p.close()
+    }
+
+    @Test
+    fun `a connect without a running playlist sends nothing`() = runTest {
+        val transport = ModeTransport(automatic = true)
+        val p = player(transport)
+        p.onBoardConnected()
+        p.play("List", queue)
+        p.stop()
+        p.onBoardConnected()
+        assertEquals(listOf("a"), transport.sent)
         p.close()
     }
 }

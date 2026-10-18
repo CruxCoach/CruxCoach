@@ -41,7 +41,9 @@ class BoardSessionHubTest {
 
     private class Transport : PlaybackTransport {
         val sent = mutableListOf<String>()
-        override var isBoardConnected: Boolean = false
+        /** The hub's board link, set by [hub]: the transport sees the same connection. */
+        var link: MutableStateFlow<Boolean> = MutableStateFlow(false)
+        override val isBoardConnected: Boolean get() = link.value
         override fun sendClimb(climbUuid: String, angle: Int) {
             sent += "$climbUuid@$angle"
         }
@@ -57,6 +59,7 @@ class BoardSessionHubTest {
     }
 
     private fun hub(scope: CoroutineScope, transport: Transport, linked: MutableStateFlow<Boolean>): BoardSessionHub {
+        transport.link = linked
         val presenter = PlaylistPlayerPresenter(
             transport = transport,
             clock = Clock(),
@@ -79,7 +82,8 @@ class BoardSessionHubTest {
     @Test
     fun `starting what is already playing resumes it instead of reloading`() = runTest {
         val transport = Transport()
-        val hub = hub(backgroundScope, transport, MutableStateFlow(false))
+        // A board is linked: without one nothing reaches the wall (Android `QueueDeliveryPolicy`).
+        val hub = hub(backgroundScope, transport, MutableStateFlow(true))
         assertTrue(hub.playList("Warm-up", "a", "b", "c"))
         assertNotNull(repo.getActiveSession(), "the run is recorded as a board session")
         hub.next()
@@ -132,12 +136,14 @@ class BoardSessionHubTest {
         assertFalse(banner.hasPrevious)
         assertTrue(banner.hasNext)
         assertFalse(banner.canLight, "no board, no lamp")
+        assertTrue(transport.sent.isEmpty(), "no board: the send is skipped (Android QueueDeliveryPolicy)")
 
         linked.value = true
         runCurrent()
         assertTrue(seen!!.canLight)
+        assertEquals(listOf("nameless@40"), transport.sent, "the board that connects gets the current climb")
         hub.light()
-        assertEquals(listOf("nameless@40", "nameless@40"), transport.sent)
+        assertEquals(listOf("nameless@40", "nameless@40"), transport.sent, "the lamp sends again")
 
         hub.next()
         runCurrent()
@@ -245,5 +251,41 @@ class BoardSessionHubTest {
         assertEquals(0, hub.queueState.currentIndex)
         assertEquals("Climb z", hub.bannerState.currentClimbName)
         assertEquals("z@40", transport.sent.last())
+    }
+
+    @Test
+    fun `a board connecting while the playlist runs gets the current climb once`() = runTest {
+        val transport = Transport()
+        val linked = MutableStateFlow(false)
+        val hub = hub(backgroundScope, transport, linked)
+        runCurrent()
+        hub.playList("Later", "a", "b")
+        hub.next()
+        runCurrent()
+        assertTrue(transport.sent.isEmpty(), "automatic mode without a board skips every send")
+        assertEquals(2, hub.bannerState.position)
+
+        linked.value = true
+        runCurrent()
+        assertEquals(listOf("b@40"), transport.sent)
+        assertTrue(hub.player.currentState.boardConnected)
+
+        // A reconnect does not send the climb the wall already shows (Android `lastSentClimbKey`).
+        linked.value = false
+        runCurrent()
+        assertFalse(hub.player.currentState.boardConnected)
+        linked.value = true
+        runCurrent()
+        assertEquals(listOf("b@40"), transport.sent)
+
+        // A move sends again; a connect after the playlist ended sends nothing.
+        hub.previous()
+        assertEquals(listOf("b@40", "a@40"), transport.sent)
+        hub.player.endSession()
+        linked.value = false
+        runCurrent()
+        linked.value = true
+        runCurrent()
+        assertEquals(listOf("b@40", "a@40"), transport.sent)
     }
 }

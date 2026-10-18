@@ -84,6 +84,18 @@ class BoardSessionHub(
     /** uuid → resolved row info, as Android caches it; touched on the main thread only. */
     private val rowInfoCache = mutableMapOf<String, PlayerClimbInfo?>()
 
+    init {
+        // Android `SessionQueueManager`: a board that connects while the playlist runs (started
+        // before the connection, or a reconnect) gets the current climb.
+        scope.launch {
+            var wasConnected = false
+            boardConnected.collect { connected ->
+                if (connected && !wasConnected) presenter.onBoardConnected() else presenter.refreshConnection()
+                wasConnected = connected
+            }
+        }
+    }
+
     /** The list the running playback was started from (Android `playingSource`). */
     private var playingSource: String? = null
 
