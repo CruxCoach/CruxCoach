@@ -152,6 +152,45 @@ final class FoodVisionEngineTests: XCTestCase {
         runner.unload()
     }
 
+    /// A typed meal through the runner's `runText`, the path the text sheet takes:
+    /// the engine without an image (Android's text-only request), with Android's
+    /// text prompt and the same grammar, read by the core's envelope parser.
+    func testTheRunnerReadsATypedMealWithoutAPhoto() throws {
+        let env = ProcessInfo.processInfo.environment
+        let required = env["CRUX_VISION_REQUIRED"] == "1"
+        guard FoodVisionEngine.isAvailable, let modelPath = env["CRUX_VISION_MODEL"], let projectorPath = env["CRUX_VISION_MMPROJ"] else {
+            if required { XCTFail("engine or test model missing") }
+            throw XCTSkip("built without the vision engine or without a test model")
+        }
+        let prompt = try XCTUnwrap(VisionPrompt.load(), "foodvision prompt files missing from the app bundle")
+        XCTAssertTrue(prompt.textUser.contains("{meal}"), "the text prompt has the place for the meal")
+
+        let runner = FoodVisionRunner()
+        let meal: String = MealTextVision.companion.forMeal(meal: "Zum Frühstück 80 g Haferflocken mit 200 ml Milch und eine Banane")
+        let answered = expectation(description: "typed meal answered")
+        var envelope = ""
+        runner.runText(modelPath: modelPath, projectorPath: projectorPath, threads: 2, meal: meal, maxTokens: 384) { reply in
+            XCTAssertTrue(Thread.isMainThread)
+            envelope = reply
+            answered.fulfill()
+        }
+        wait(for: [answered], timeout: 600)
+        print("VISION_TEXT_RESULT \(envelope)")
+        let outcome = VisionOutcome.companion.parse(envelope: envelope)
+        XCTAssertTrue(outcome.ok, envelope)
+        XCTAssertGreaterThan(outcome.promptTokens, 0)
+        XCTAssertGreaterThan(outcome.outputTokens, 0)
+        XCTAssertLessThanOrEqual(outcome.outputTokens, 384)
+
+        // The grammar forces {"items":[…]} without an image too.
+        let answer = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(outcome.text.utf8)) as? [String: Any], outcome.text)
+        let items = try XCTUnwrap(answer["items"] as? [Any], outcome.text)
+        XCTAssertLessThanOrEqual(items.count, 8)
+        let foods = FoodVisionParser.shared.parse(text: outcome.text)
+        XCTAssertLessThanOrEqual(foods.count, items.count)
+        runner.unload()
+    }
+
     func testAMissingModelFileIsAnErrorCodeNotACrash() throws {
         guard FoodVisionEngine.isAvailable else { throw XCTSkip("built without the vision engine (project.yml)") }
         let loaded = FoodVisionEngine.load(modelPath: "/nonexistent/model.gguf", projectorPath: "/nonexistent/mmproj.gguf", threads: 1)
