@@ -57,7 +57,6 @@ struct ExerciseDetailView: View {
         }
     }
 
-    @ViewBuilder
     /// Android's performance-value card (value per side, enter, short test) and the progress card
     /// with its chart and "Open statistics", each on its own page here.
     @ViewBuilder
@@ -78,6 +77,7 @@ struct ExerciseDetailView: View {
         }
     }
 
+    @ViewBuilder
     private func content(model: ExerciseDetailScreenModel, ui: ExerciseDetailScreenState) -> some View {
         List {
             Section {
