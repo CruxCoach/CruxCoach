@@ -749,6 +749,14 @@ class AppCore private constructor(
         )
     }
 
+    /** Performance values (Android `BenchmarksScreen`). */
+    fun makeBenchmarksScreen(language: String): com.cruxcoach.app.ui.BenchmarksScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.BenchmarksScreenModel(
+            com.cruxcoach.app.progress.BenchmarksPresenter(service, MainScope(), Dispatchers.IO), language,
+        )
+    }
+
     companion object {
         fun start(
             aead: AeadCipher,

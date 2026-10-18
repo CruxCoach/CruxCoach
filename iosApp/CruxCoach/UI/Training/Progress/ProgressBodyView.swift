@@ -18,7 +18,7 @@ struct ProgressBodyView: View {
     var body: some View {
         Group {
             if let host {
-                BodyContent(model: host.model, ui: host.state)
+                BodyContent(core: core, model: host.model, ui: host.state)
             } else {
                 ProgressView()
             }
@@ -44,6 +44,7 @@ private struct BodyEntryTarget: Identifiable {
 }
 
 private struct BodyContent: View {
+    let core: AppCore
     let model: BodyScreenModel
     let ui: BodyScreenState
 
@@ -228,7 +229,8 @@ private struct BodyContent: View {
         title(L("trb_strength_title"), info: L("trb_strength_info_text"))
         if ui.strength.isEmpty {
             Text(L("trb_strength_empty")).font(.subheadline).foregroundStyle(.secondary)
-            Button(L("trt_sugg_benchmarks_title")) { notYet = L("trt_sugg_benchmarks_title") }
+            // The empty state brings its action instead of pointing to another tab.
+            NavigationLink(L("trt_sugg_benchmarks_title")) { ProgressBenchmarksView(core: core) }
                 .font(.subheadline)
         } else {
             Chart {

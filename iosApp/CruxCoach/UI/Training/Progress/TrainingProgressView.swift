@@ -35,6 +35,7 @@ struct TrainingProgressView: View {
             .navigationDestination(for: ProgressRoute.self) { route in
                 switch route {
                 case .body: ProgressBodyView(core: core)
+                case .benchmarks: ProgressBenchmarksView(core: core)
                 }
             }
         }
@@ -47,7 +48,7 @@ struct TrainingProgressView: View {
     }
 }
 
-enum ProgressRoute: Hashable { case body }
+enum ProgressRoute: Hashable { case body, benchmarks }
 
 /// ISO days (yyyy-mm-dd) as local midnight, so a chart's date axis shows the same day.
 enum ProgressDates {
@@ -146,9 +147,12 @@ private struct ProgressContent: View {
                              supporting: L("trs_tile_training_days")) { notYet = L("trt_weekly_review") }
             }
             GridRow {
-                ProgressTile(icon: "speedometer", tint: TrainingStyle.positive, label: L("trbm_title"),
-                             value: TrRender.text(ui.benchmarksValue), valueIsAction: ui.benchmarksIsAction,
-                             supporting: L("tru_hub_benchmarks")) { notYet = L("trbm_title") }
+                NavigationLink(value: ProgressRoute.benchmarks) {
+                    ProgressTileFace(icon: "speedometer", tint: TrainingStyle.positive, label: L("trbm_title"),
+                                     value: TrRender.text(ui.benchmarksValue), valueIsAction: ui.benchmarksIsAction,
+                                     supporting: L("tru_hub_benchmarks"))
+                }
+                .buttonStyle(.plain)
                 ProgressTile(icon: "clock.arrow.circlepath", tint: .teal, label: L("trt_done_hero_history"),
                              value: "\(ui.historyValue)", valueIsAction: false,
                              supporting: TrRender.text(ui.historySupporting)) { notYet = L("trt_done_hero_history") }
