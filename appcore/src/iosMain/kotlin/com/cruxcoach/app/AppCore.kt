@@ -1810,4 +1810,102 @@ class AppCore private constructor(
         )
     }
 
+
+    // ── Meal photo recognition (foodphoto, 0.2.4) ───────────────────────
+    //
+    // Android's FEAT-069 on the iPhone: the model store (download on request,
+    // space check, SHA-256) lives as long as the core, so a download goes on
+    // while the photo sheet is closed; the engine itself is Swift's
+    // (FoodVisionHost over CruxVision.xcframework).
+
+    private val visionNetwork: com.cruxcoach.app.foodvision.IosVisionNetwork by lazy {
+        com.cruxcoach.app.foodvision.IosVisionNetwork().also { it.start() }
+    }
+
+    private val visionModelStore: com.cruxcoach.app.foodvision.VisionModelStore by lazy {
+        com.cruxcoach.app.foodvision.VisionModelStore(
+            files = platform.files,
+            hashing = platform.hashing,
+            keyValues = platform.keyValues,
+            http = platform.http,
+            network = visionNetwork,
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default),
+            io = Dispatchers.IO,
+        )
+    }
+
+    /**
+     * The photo tile before the sheet opens (Android greys it out): the
+     * device's support code ("supported", "no_engine", "low_ram", "cpu",
+     * "abi"), or "too_slow" once the probe found this phone too slow.
+     */
+    fun foodPhotoSupport(
+        physicalMemoryBytes: Long,
+        dotProduct: Boolean,
+        halfPrecision: Boolean,
+        activeProcessors: Int,
+        engineBuilt: Boolean,
+    ): String {
+        val facts = com.cruxcoach.app.foodvision.IosDeviceFacts(
+            physicalMemoryBytes, dotProduct, halfPrecision, activeProcessors, engineBuilt,
+        )
+        val code = com.cruxcoach.app.foodvision.VisionDevice.supportCode(facts)
+        if (code != com.cruxcoach.app.foodvision.VisionDevice.SUPPORTED) return code
+        val state = visionModelStore.state.value
+        val slow = (state as? com.cruxcoach.app.foodvision.VisionModelStore.State.Ready)?.probe?.verdict ==
+            com.cruxcoach.athlete.logic.VisionCapability.ProbeVerdict.TOO_SLOW
+        return if (slow) "too_slow" else code
+    }
+
+    /**
+     * "Log a meal from a photo" for [dayIso]; [mealCode] and [unitsCode] as in
+     * [makeMealTextScreen]. The device facts come from Swift (ProcessInfo,
+     * sysctl hw.optional.arm.FEAT_DotProd / FEAT_FP16); [engineBuilt] is false
+     * in a build without CruxVision.xcframework. Null when nutrition is unavailable.
+     */
+    fun makeMealPhotoScreen(
+        dayIso: String,
+        mealCode: String,
+        unitsCode: String,
+        physicalMemoryBytes: Long,
+        dotProduct: Boolean,
+        halfPrecision: Boolean,
+        activeProcessors: Int,
+        engineBuilt: Boolean,
+        host: com.cruxcoach.app.foodvision.FoodVisionHost,
+    ): com.cruxcoach.app.ui.MealPhotoScreenModel? {
+        val service = athlete ?: return null
+        val catalog = nutritionCatalog ?: return null
+        val comma = nutritionDecimalComma()
+        val scope = MainScope()
+        val presenter = com.cruxcoach.app.nutrition.MealReviewPresenter(
+            service, catalog, scope, Dispatchers.IO, Dispatchers.Default,
+            inputText = { base, unit -> com.cruxcoach.app.ui.NutritionFormat.inputText(base, unit, comma) },
+        )
+        val review = com.cruxcoach.app.ui.MealTextScreenModel(
+            presenter, catalog, scope, dayIso,
+            com.cruxcoach.app.ui.NutritionFormat.meal(mealCode) ?: com.cruxcoach.athlete.model.Meal.SNACK,
+            if (unitsCode == "us") com.cruxcoach.athlete.model.UnitSystem.IMPERIAL else com.cruxcoach.athlete.model.UnitSystem.METRIC,
+        )
+        val facts = com.cruxcoach.app.foodvision.IosDeviceFacts(
+            physicalMemoryBytes = physicalMemoryBytes,
+            dotProduct = dotProduct,
+            halfPrecision = halfPrecision,
+            activeProcessors = activeProcessors,
+            engineBuilt = engineBuilt,
+        )
+        return com.cruxcoach.app.ui.MealPhotoScreenModel(
+            store = visionModelStore,
+            host = host,
+            facts = facts,
+            modelFor = { tier -> com.cruxcoach.app.foodvision.VisionModels.forTier(tier) },
+            presenter = presenter,
+            review = review,
+            keyValues = platform.keyValues,
+            scope = scope,
+            compute = Dispatchers.Default,
+            clock = { platform.clock.epochMillis() },
+        )
+    }
+
 }
