@@ -13,6 +13,10 @@ struct TrainingHomeView: View {
     @State private var tab: Tab = .today
     @State private var basics: BasicsScreenModel?
     @State private var showBasics = false
+    // A workout started from the Training tab opens the same player as Today's card.
+    @State private var libraryPlayerOpen = false
+    @State private var libraryFinishedId: String?
+    @State private var librarySummary: LibrarySummaryTarget?
 
     var body: some View {
         if core.athleteAvailable {
@@ -22,7 +26,7 @@ struct TrainingHomeView: View {
                           onOpenProgress: { tab = .progress })
                     .tabItem { Label(L("tr_tab_today"), systemImage: "calendar") }
                     .tag(Tab.today)
-                TrainingWorkoutsPlaceholder(onClose: onClose)
+                TrainingLibraryView(core: core, onStartWorkout: { _ in libraryPlayerOpen = true }, onClose: onClose)
                     .tabItem { Label(L("tr_tab_training"), systemImage: "dumbbell") }
                     .tag(Tab.training)
                 NavigationStack {
@@ -52,6 +56,22 @@ struct TrainingHomeView: View {
                 }
                 model.close()
             }
+            .fullScreenCover(isPresented: $libraryPlayerOpen, onDismiss: {
+                // The summary comes up once the player is gone, as on Today.
+                if let id = libraryFinishedId {
+                    libraryFinishedId = nil
+                    librarySummary = LibrarySummaryTarget(id: id)
+                }
+            }) {
+                WorkoutPlayerView(core: core, onClose: { libraryPlayerOpen = false }, onFinished: { id in
+                    libraryFinishedId = id
+                    libraryPlayerOpen = false
+                }, onOpenNutrition: { libraryPlayerOpen = false; tab = .nutrition })
+            }
+            .sheet(item: $librarySummary) { target in
+                WorkoutSummaryView(core: core, workoutId: target.id, onClose: { librarySummary = nil },
+                                   onOpenNutrition: { librarySummary = nil; tab = .nutrition })
+            }
             .fullScreenCover(isPresented: $showBasics) {
                 BasicsView(core: core) { showBasics = false }
             }
@@ -70,4 +90,8 @@ struct TrainingHomeView: View {
             }
         }
     }
+}
+
+private struct LibrarySummaryTarget: Identifiable {
+    let id: String
 }
