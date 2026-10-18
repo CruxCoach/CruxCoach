@@ -34,6 +34,7 @@ class TrArg(
     val text: String,
     val number: Double,
     val decimals: Int,
-    val signed: Boolean,
+    /** "+" before a positive number. Not `signed`: that is a C keyword, which the ObjC export renames. */
+    val withSign: Boolean,
     val nested: TrText?,
 )

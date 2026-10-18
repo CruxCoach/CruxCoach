@@ -33,7 +33,7 @@ enum TrRender {
         case "text": return a.text
         case "key": return NSLocalizedString(a.text, comment: "")
         case "int": return String(Int(a.number))
-        case "num": return number(a.number, decimals: Int(a.decimals), signed: a.signed)
+        case "num": return number(a.number, decimals: Int(a.decimals), signed: a.withSign)
         case "nested": return a.nested.map { text($0) } ?? ""
         case "date": return date(a.text)
         case "weekday": return weekday(Int(a.number))

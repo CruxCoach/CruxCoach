@@ -37,8 +37,8 @@ class LibraryArg internal constructor(
     val doubleValue: Double,
     /** Most decimals shown; trailing zeros are dropped (Android `formatNumber`). */
     val decimals: Int,
-    /** "+" before a positive number. */
-    val signed: Boolean,
+    /** "+" before a positive number. Not `signed`: that is a C keyword, which the ObjC export renames. */
+    val withSign: Boolean,
     val nested: LibraryText?,
 )
 

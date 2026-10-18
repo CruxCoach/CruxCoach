@@ -17,7 +17,7 @@ enum LibraryRender {
         switch a.kind {
         case "key": return NSLocalizedString(a.text, comment: "")
         case "int": return String(a.intValue)
-        case "decimal": return number(a.doubleValue, decimals: Int(a.decimals), signed: a.signed)
+        case "decimal": return number(a.doubleValue, decimals: Int(a.decimals), signed: a.withSign)
         case "nested":
             if let nested = a.nested { return text(nested) }
             return ""
