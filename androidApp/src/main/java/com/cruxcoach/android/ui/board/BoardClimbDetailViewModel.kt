@@ -14,6 +14,7 @@ import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.PhysicalBoardIdentity
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.led.AnimationPauseOwner
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.BoardConstants
@@ -353,6 +354,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val communityClimbDeleter: com.cruxcoach.android.community.CommunityClimbDeleter,
     private val ownClimbPublisher: com.cruxcoach.android.community.OwnKilterClimbPublisher,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
+    private val ledAnimationEngine: com.cruxcoach.android.led.LedAnimationEngine,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -441,6 +443,10 @@ class BoardClimbDetailViewModel @Inject constructor(
             // there at all. Asking isConnected() alone let the animation run
             // through while a session queue swallowed every single frame.
             if (sendController.canSendToBoard()) sendController.sendToBoard(automaticLayer = true)
+        },
+        onBoardOwnershipChanged = { owned ->
+            if (owned) ledAnimationEngine.pause(AnimationPauseOwner.ROUTE_PLAYBACK)
+            else ledAnimationEngine.resume(AnimationPauseOwner.ROUTE_PLAYBACK)
         }
     )
 

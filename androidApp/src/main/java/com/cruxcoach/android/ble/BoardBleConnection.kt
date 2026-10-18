@@ -472,6 +472,26 @@ internal fun isQuantumScopedRemovalConfirmed(
 }
 
 /**
+ * Outcome of one attempt to push a frame nobody asked for — an LED animation
+ * frame, see [BoardBleConnection.sendAnimationLeds].
+ *
+ * The distinction that matters is between a link that is *busy* and a link that
+ * is *gone*. Background traffic has to give way to a deliberate send without
+ * concluding that the board went away, so a caller needs to be able to tell a
+ * retry-later from an error.
+ */
+enum class FrameSendResult {
+    /** Written. */
+    SENT,
+
+    /** Not written and nothing is wrong: someone else is mid-send, or the link is not up. */
+    DEFERRED,
+
+    /** The write itself failed. */
+    FAILED,
+}
+
+/**
  * Manages GATT connection to an Aurora Climbing board and sends hold/clear packets.
  *
  * Write flow control: waits for onCharacteristicWrite callback before sending
@@ -850,6 +870,21 @@ class BoardBleConnection(
         quantumRouteListRequestActive = false
         quantumNotificationAccumulator.reset()
     }
+
+    private val _litFrame = MutableStateFlow<LitFrame?>(null)
+
+    /**
+     * What is lit on the wall right now, resolved to (LED, role, colour) —
+     * updated by every successful [sendClimb] and nulled by [clearBoard] and
+     * disconnect.
+     *
+     * [lastHolds] exists to re-send a climb with new colours; this exists so the
+     * LED animations can derive frames without re-resolving role colours, and so
+     * an animation loop ends by itself when the wall goes dark. Set on
+     * *success* only: after a failed write the wall's state is unknown and
+     * animating on top of it would compound the error.
+     */
+    val litFrame: StateFlow<LitFrame?> = _litFrame.asStateFlow()
 
     private fun resetIdleTimer() {
         disconnectJob?.cancel()
@@ -1509,6 +1544,10 @@ class BoardBleConnection(
 
     /** Finalize state after disconnect callback (or error). */
     private fun finalizeDisconnect(status: Int) {
+        // Nothing is lit any more, whatever kind of disconnect this was: an
+        // animation still holding the old frame would keep pushing colours at a
+        // board that is gone (and, on reconnect, at the wrong board).
+        _litFrame.value = null
         val wasQuantum = _connectedBoardBrand.value == BoardBrand.QUANTUM
         cancelQuantumGattOperations()
         shinyWallShown = null
@@ -1994,22 +2033,29 @@ class BoardBleConnection(
                     color = quantumColor,
                 )
             }
-            val holdPairs = if (roleColors != null) {
-                // Resolve each hold's colour by canonical role CLASS, not raw
-                // code. A climb authored on an Aurora board carries the editor's
-                // Kilter-style codes (12-15) while the board's colour map is
-                // keyed by its native codes (1-4), so a raw-id lookup would miss
-                // and fall back to the wrong palette. roleClass folds 1-4 /
-                // 12-15 / 42-44 onto the same role, so authored and catalogue
-                // climbs light identically in the board's own colours.
-                val byClass = roleColors.entries.associate { HoldRole.roleClass(it.key) to it.value }
-                holds.mapNotNull { hold ->
-                    val led = placementToLed[hold.placementId] ?: return@mapNotNull null
-                    led to (byClass[HoldRole.roleClass(hold.roleId)] ?: BoardPacketEncoder.roleToColor(hold.roleId))
-                }
-            } else {
-                encoder.holdPairs(holds, placementToLed)
+            // Resolve each hold's colour by canonical role CLASS, not raw
+            // code. A climb authored on an Aurora board carries the editor's
+            // Kilter-style codes (12-15) while the board's colour map is keyed by
+            // its native codes (1-4), so a raw-id lookup would miss and fall back
+            // to the wrong palette. roleClass folds 1-4 / 12-15 / 42-44 onto the
+            // same role, so authored and catalogue climbs light identically in
+            // the board's own colours.
+            //
+            // The resolution happens once and feeds both the packet and
+            // [_litFrame], so what the LED animations move is exactly what the
+            // board was sent — per-board catalogue colours included.
+            val byClass = roleColors?.entries?.associate { HoldRole.roleClass(it.key) to it.value }
+            val litLeds = holds.mapNotNull { hold ->
+                val led = placementToLed[hold.placementId] ?: return@mapNotNull null
+                val roleClass = HoldRole.roleClass(hold.roleId)
+                LitLed(
+                    position = led,
+                    roleClass = roleClass,
+                    baseColor = byClass?.get(roleClass)
+                        ?: BoardPacketEncoder.roleToColor(hold.roleId),
+                )
             }
+            val holdPairs = litLeds.map { it.position to it.baseColor }
             if (encoder.litNothing(holdPairs)) {
                 Log.w(TAG, "Refusing an API-2 frame of ${holdPairs.size} holds: the 18 W budget would light none of them")
                 return false
@@ -2017,7 +2063,10 @@ class BoardBleConnection(
             val chunks = encoder.encodeClimb(holdPairs)
 
             val success = writeChunks(chunks)
-            if (success) cleaning.projected(cleaningTicket, chunks)
+            if (success) {
+                cleaning.projected(cleaningTicket, chunks)
+                _litFrame.value = litLeds.ifEmpty { null }?.let { LitFrame(it) }
+            }
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
@@ -2380,6 +2429,46 @@ class BoardBleConnection(
     }
 
     /**
+     * Push one LED-animation frame, with the two rules an animation needs and
+     * [sendRawChunks] deliberately goes without.
+     *
+     * First, it gives way instead of queueing. If anything else is mid-send — a
+     * climb from the editor, the next climb of a session — the caller gets
+     * [FrameSendResult.DEFERRED] straight away. Waiting on [writeMutex] instead
+     * would let a frame computed from the *previous* climb land after the new one
+     * and repaint a climb the user has already moved on from.
+     *
+     * Second, an animation counts as activity: the idle-disconnect timer is parked
+     * for the write and re-armed afterwards, so a board the user is watching does
+     * not go quiet in the middle of an effect. The timer is armed from the last
+     * frame, so once the animation stops — backgrounded, cleared, or set to none —
+     * the link still drops on schedule.
+     *
+     * The connection state is left alone: no [ConnectionState.SENDING] here, because
+     * an animation frame is not a user-visible send and flicking the state would make
+     * every other `isConnected()` reader see a board that is still perfectly there.
+     */
+    suspend fun sendAnimationLeds(leds: List<Pair<Int, Int>>): FrameSendResult {
+        if (_connectionState.value != ConnectionState.CONNECTED) return FrameSendResult.DEFERRED
+        return writeMutex.withLock {
+            // Re-checked under the lock. A climb send that was already waiting when
+            // we got here has run by now, and its climb is the one on the wall.
+            if (_connectionState.value != ConnectionState.CONNECTED) return@withLock FrameSendResult.DEFERRED
+            disconnectJob?.cancel()
+            try {
+                val written = writeChunks(encoder.encodeClimb(leds))
+                if (written) FrameSendResult.SENT else FrameSendResult.FAILED
+            } finally {
+                // Even when the frame was cancelled mid-write — an animation
+                // stopped by a pause or a background with no claim — the timer this
+                // call parked has to be re-armed, or the link would never
+                // idle-disconnect again.
+                resetIdleTimer()
+            }
+        }
+    }
+
+    /**
      * Send a MoonBoard climb to the connected board (FEAT-027).
      *
      * MoonBoard speaks the Nordic UART Service — the same GATT service
@@ -2576,7 +2665,12 @@ class BoardBleConnection(
                 else -> encoder.encodeClear()
             }
             val success = writeChunks(chunks)
-            if (success) cleaning.projected(ticket, chunks)
+            if (success) {
+                cleaning.projected(ticket, chunks)
+                // Nothing is lit any more — an LED animation watching this must
+                // stop rather than re-light the last climb.
+                _litFrame.value = null
+            }
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
@@ -2638,6 +2732,10 @@ class BoardBleConnection(
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null
+        // Cleared here rather than only in the disconnect callback: with no GATT
+        // object left there is no callback to wait for, and an animation loop must
+        // stop seeing a lit board the moment the user pulls the plug.
+        _litFrame.value = null
         _connectedQuantumModel.value = null
         serviceDiscoveryGatt = null
         serviceDiscoveryHandledGatt = null

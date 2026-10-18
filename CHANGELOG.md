@@ -420,6 +420,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   exercise, also when that is lower; and on holds the seconds answered as
   "how many more?" count as time held. Loads planned from an existing value
   do not change.
+- **LED animations** — a new option under LED colors in Settings; it
+  animates the holds of whatever climb is lit on a connected Kilter
+  Board: Pulse breathes each hold in its own color, Two-phase strobe
+  alternates the CruxCoach and Kilter color schemes, Chaotic strobe
+  jumps colors around, and Rainbow wave rotates everything slowly
+  around the color wheel. Nothing extra to press — the moment a climb
+  is lit on the board, those holds start moving. The two flashing
+  options change color at most three times a second, and the default is
+  None — static colors, as before — so nothing changes until you opt
+  in. Switching to another app — to film the climb, say — keeps the
+  effect running behind a notification you can stop from; if Android
+  later freezes or closes the app, the animation simply stops with it.
 
 ### Fixed
 - After a catalogue import the app frees the temporary database file at once. A Tension

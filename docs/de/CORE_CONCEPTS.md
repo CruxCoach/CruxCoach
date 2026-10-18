@@ -205,6 +205,35 @@ Konto bleibt die bestehende Trennung der Daten erhalten. Ohne lokale Schlüsselk
 wird ein Import angeboten, statt beim Trennen eine neue Identität zu erzeugen.
 Private Schlüssel bleiben beim Import zunächst verdeckt; der Screenshot-Schutz bleibt aktiv.
 
+## LED-Animationen
+
+In den Kilter-Board-Einstellungen folgt unter „Kilter: Farben für Griffe und
+Tritte“ der Punkt **LED-Animationen**. Standard ist **Keine**: Das beleuchtete
+Problem behält seine
+statischen Rollenfarben. Die übrigen Optionen bewegen dasselbe Problem weiter.
+**Puls** atmet in der Farbe jedes Griffs heller und dunkler,
+**Zwei-Phasen-Stroboskop** wechselt zwischen dem CruxCoach- und dem
+Kilter-Farbschema, **Chaotisches Stroboskop** lässt die Farben springen, wobei
+die Rollen unterscheidbar bleiben, und **Regenbogen-Welle** dreht alle Farben
+langsam um den Farbkreis. Die Auswahl wird auch ohne verbundenes Board
+gespeichert. Animiert wird aber nur auf einem verbundenen Kilter Board und nur
+bei Problemen bis 120 leuchtenden LEDs; alles andere bleibt statisch.
+
+Die beiden Stroboskope wechseln die Farben des gesamten Boards und sind auf drei
+Farbwechsel pro Sekunde begrenzt. Wer empfindlich auf blinkendes Licht reagiert,
+nutzt besser Puls oder die Regenbogen-Welle, deren Farben sich allmählich
+verändern.
+
+Eine Animation konkurriert nie mit dem, was du selbst ans Board sendest: Sie
+weicht allem, was du beleuchtest, und pausiert für die automatische
+Routenwiedergabe und die Oster-Animation, bis diese beendet sind. Der Wechsel in
+eine andere App, zum Beispiel um das Problem zu filmen, kann die Animation mit
+einer Benachrichtigung samt Aktion **Stopp** am Laufen halten. Diese Fortsetzung
+ist nicht garantiert: Sie hält keinen Wake Lock. Tiefenschlaf oder eine strenge
+Akku-Strategie beenden die Animation, und die Wand behält den letzten Frame.
+Zurück in der App verschwindet die Benachrichtigung. Während die Animation läuft,
+verbraucht sie etwas mehr Akku.
+
 ## Boardkarte
 
 Die Karte zeigt je Standort einen Marker in Farbe und Buchstabe seiner Board-Familie (Kilter rot „K“, MoonBoard gelb „M“, Tension schiefergrau „T“, …); ein Standort mit mehreren Familien bekommt je Familie ein Tortenstück. Nahe Standorte werden zu neutralen Zahlenblasen zusammengefasst, die die Farbe einer Familie annehmen, wenn die Board-Auswahl genau eine übrig lässt. Ab Stadtzoom stehen die Hallennamen unter den Markern. Der Board-Chip oben listet jede Familie mit Marker und Anzahl und ist damit zugleich die Legende; der Filter-Chip nennt die Zahl weiterer aktiver Filter.
