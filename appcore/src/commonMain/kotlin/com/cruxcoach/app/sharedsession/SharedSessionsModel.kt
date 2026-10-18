@@ -42,6 +42,8 @@ class SharedQueueRowUi(
     val grade: String,
     val angle: Int,
     val isCurrent: Boolean,
+    /** In this phone's catalogue, so it can be opened (and logged). */
+    val known: Boolean,
 )
 
 /**
@@ -127,7 +129,7 @@ class SharedSessionsModel internal constructor(private val presenter: SharedSess
         val rows = p.queue.mapIndexed { i, item ->
             val known = label(item.climbUuid, item.angle)
             SharedQueueRowUi(i, item.climbUuid, known?.name ?: item.climbUuid.take(8), known?.grade ?: "",
-                item.angle, i == p.currentIndex)
+                item.angle, i == p.currentIndex, known != null)
         }
         return SharedSessionsState(
             bluetoothCode = when (s.adapter) {

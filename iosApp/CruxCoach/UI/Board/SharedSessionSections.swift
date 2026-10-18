@@ -91,9 +91,17 @@ struct SharedSessionSections: View {
     private var restRow: some View {
         let seconds: Int = Int(ui.restSeconds)
         let clock: String = String(format: "%ld:%02ld", seconds / 60, seconds % 60)
-        return Label("\(L("board_rest_timer_rest")) \(clock)", systemImage: "timer")
-            .font(.body.monospacedDigit())
-            .foregroundStyle(Color.orange)
+        let text: String = L("board_rest_timer_rest") + " " + clock
+        return HStack {
+            Label(text, systemImage: "timer")
+                .font(.body.monospacedDigit())
+                .foregroundStyle(Color.orange)
+            Spacer()
+            // Android: a participant's "skip rest" is a Next the host reads as "end the pause".
+            Button(L("playlist_player_skip_rest")) { model.next() }
+                .buttonStyle(.borderless)
+                .disabled(ui.phaseCode != "joined")
+        }
     }
 
     // MARK: Successor (Android `ble_successor_join_*`)
@@ -114,6 +122,7 @@ struct SharedSessionSections: View {
         let count: Int = ui.rows.count
         let position: Int = Int(ui.currentIndex) + 1
         return Section {
+            currentClimbLink
             HStack {
                 Button { model.previous() } label: { Image(systemName: "backward.end.fill") }
                     .disabled(!ui.hasPrevious)
@@ -134,6 +143,18 @@ struct SharedSessionSections: View {
             }
             .buttonStyle(.borderless)
             .font(.title3)
+        }
+    }
+
+    /// The climb on the host's wall, opened in the browser's detail (where it can be logged).
+    @ViewBuilder
+    private var currentClimbLink: some View {
+        let index: Int = Int(ui.currentIndex)
+        if index >= 0 && index < ui.rows.count && ui.rows[index].known {
+            // Resolved by the browser's navigation stack (`navigationDestination(for: String.self)`).
+            NavigationLink(value: ui.rows[index].uuid) {
+                SharedQueueRow(row: ui.rows[index])
+            }
         }
     }
 

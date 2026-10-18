@@ -133,6 +133,7 @@ class SharedSessionParticipantTest {
         assertEquals(2, s.participantCount)
         assertEquals(listOf("Participant 1"), s.participants)
         assertEquals(listOf("Alpha", "Bravo", "Charlie"), s.rows.map { it.name })
+        assertTrue(s.rows.all { it.known })
         assertEquals(1, s.currentIndex)
         assertTrue(s.rows[1].isCurrent)
         assertTrue(s.hasPrevious && s.hasNext && s.canEdit)
@@ -237,6 +238,18 @@ class SharedSessionParticipantTest {
         settle()
         assertTrue(central.writes.isEmpty())
         assertEquals("unavailable", model.currentState.feedbackCode)
+    }
+
+    @Test
+    fun `a climb missing from this catalogue shows its id prefix and cannot be opened`() {
+        joined()
+        val unknown = "DDDDDDDD11112222333344445555666F"
+        notify(SessionGattUuids.QUEUE_STATE, SessionQueueProtocol.encodeQueueState(0, listOf(QueueItem(unknown, 40))))
+        settle()
+        val row = model.currentState.rows.single()
+        assertEquals("DDDDDDDD", row.name)
+        assertFalse(row.known)
+        assertEquals("", row.grade)
     }
 
     @Test
