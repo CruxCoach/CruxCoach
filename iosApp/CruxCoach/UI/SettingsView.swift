@@ -39,6 +39,11 @@ struct SettingsView: View {
                 NavigationLink(LI("background_open")) { BackgroundRefreshSettingsView(core: core) }
                 Button(L("tour_replay")) { core.makeBrowserTour().start(replay: true) }
             }
+            // Android's developer-contact part of the settings: the gift sheet and crash reports.
+            Section(L("devcontact_title")) {
+                ZapGiftRow(core: core)
+                CrashReportSettingsRow(core: core)
+            }
             Section(LI("settings_about")) {
                 // Android's app info row: seven taps unlock the easter LED animation.
                 EasterAnimationRows(core: core)

@@ -43,6 +43,7 @@ struct SettingsDetailView: View {
                     Text("V-Scale").tag("vScale")
                 }
                 Toggle(LI("settings_keep_screen_on"), isOn: Binding(get: { ui.keepScreenOn }, set: { model.setKeepScreenOn(enabled: $0) }))
+                AppLanguageRow()
             }
 
             Section {
@@ -145,5 +146,25 @@ struct SettingsDetailView: View {
         case "foot": return LI("creator_role_foot")
         default: return code
         }
+    }
+}
+
+/// Android's in-app language choice. iOS keeps each app's language in the Settings app, so the
+/// row opens CruxCoach's page there instead of offering a picker that could not take effect.
+private struct AppLanguageRow: View {
+    private var currentLanguage: String {
+        Bundle.main.preferredLocalizations.first == "de" ? "Deutsch" : "English"
+    }
+
+    var body: some View {
+        Button {
+            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                LabeledContent(L("settings_language_title"), value: currentLanguage)
+                Text(LI("settings_language_ios_hint")).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .foregroundStyle(.primary)
     }
 }

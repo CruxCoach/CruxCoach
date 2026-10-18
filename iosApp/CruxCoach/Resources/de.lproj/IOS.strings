@@ -427,3 +427,15 @@
 "shared_add_to_playlist" = "Zur Playlist hinzufügen";
 "shared_sharing_needs_android" = "Den eigenen Boulder in der Nähe teilen und andere bitten, das Board freizugeben, geht nur mit einem Android-Handy: Eine iPhone-App kann das nicht in Bluetooth-Werbepakete schreiben.";
 "shared_hosting_needs_android" = "Eine geteilte Playlist hosten geht nur mit einem Android-Handy: Eine iPhone-App kann eine Session nicht so ankündigen wie Android. Auf dem iPhone kannst du einer beitreten. Das Handy des Hosts steuert die Wand; dieses iPhone schickt die Playlist nicht an seine eigene Board-Verbindung.";
+
+/* Crash reports, Lightning gifts, app language (wave 7, crashzap) */
+"crash_reports_desc_ios" = "Automatischer Versand\nSendet gespeicherte Absturzberichte beim nächsten App-Start. Enthalten sind Fehlerdetails, Zeitpunkt, App- und iOS-Version, Sprache und eine grobe Leistungsklasse des Geräts.\n\nDatenschutz\nEnde-zu-Ende-verschlüsselt, aber deinem öffentlichen Kontoschlüssel zugeordnet; nicht anonym. Aus: Du meldest Fehler selbst.";
+"settings_language_ios_hint" = "Das iPhone verwaltet die Sprache jeder App in der Einstellungen-App: hier tippen, dann „Sprache“. Fehlt dieser Eintrag, füge unter Allgemein → Sprache & Region eine zweite Sprache hinzu.";
+"zap_invoice_hint" = "Bezahle diese Rechnung in deiner Lightning-Wallet. CruxCoach sieht nicht, ob sie bezahlt wurde.";
+"zap_error_no_address" = "Der Empfänger hat keine Lightning-Adresse im Profil.";
+"zap_error_pay_info" = "Der Lightning-Dienst des Empfängers hat nicht geantwortet. Prüfe die Verbindung und versuche es erneut.";
+"zap_error_out_of_range" = "Dieser Lightning-Dienst nimmt %1$lld bis %2$lld Sats an.";
+"zap_error_no_nostr" = "Dieser Lightning-Dienst nimmt keine öffentlichen Zaps an. Wähle stattdessen die private Variante.";
+"zap_error_signing" = "Der Zap konnte nicht mit deinem Schlüssel signiert werden.";
+"zap_error_invoice" = "Es kam keine Rechnung zurück. Versuche es später erneut.";
+"zap_error_mismatch" = "Die Rechnung lautet auf einen anderen Betrag als gewählt und wird deshalb nicht angezeigt.";

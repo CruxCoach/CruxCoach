@@ -34,6 +34,7 @@
 	<key>UIBackgroundModes</key><array><string>bluetooth-central</string><string>fetch</string></array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key><array><string>org.cruxcoach.ios.refresh</string></array>
 	<key>ITSAppUsesNonExemptEncryption</key><false/>
+	<key>LSApplicationQueriesSchemes</key><array><string>lightning</string></array>
 	<key>CFBundleURLTypes</key>
 	<array><dict>
 		<key>CFBundleURLName</key><string>org.cruxcoach.ios</string>

@@ -427,3 +427,15 @@
 "shared_add_to_playlist" = "Add to playlist";
 "shared_sharing_needs_android" = "Sharing your own climb nearby and asking others to free the board need an Android phone: an iPhone app cannot put them into Bluetooth advertisements.";
 "shared_hosting_needs_android" = "Hosting a shared playlist needs an Android phone: an iPhone app cannot advertise a session the way Android does. On iPhone you can join one. The host’s phone lights the wall; this iPhone does not send the playlist to its own board connection.";
+
+/* Crash reports, Lightning gifts, app language (wave 7, crashzap) */
+"crash_reports_desc_ios" = "Automatic reporting\nSends saved crash reports on the next app start. Includes error details, time, app and iOS versions, language and a broad device performance tier.\n\nPrivacy\nEnd-to-end encrypted, but linked to your public account key; not anonymous. Off: you send reports yourself.";
+"settings_language_ios_hint" = "iPhone keeps each app’s language in the Settings app: tap here, then Language. If that entry is missing, add a second language under General → Language & Region.";
+"zap_invoice_hint" = "Pay this invoice in your Lightning wallet. CruxCoach does not see whether it was paid.";
+"zap_error_no_address" = "The recipient has no Lightning address in their profile.";
+"zap_error_pay_info" = "The recipient’s Lightning service did not answer. Check your connection and try again.";
+"zap_error_out_of_range" = "This Lightning service accepts %1$lld to %2$lld sats.";
+"zap_error_no_nostr" = "This Lightning service does not accept public zaps. Choose the private option instead.";
+"zap_error_signing" = "The zap could not be signed with your key.";
+"zap_error_invoice" = "No invoice came back. Try again later.";
+"zap_error_mismatch" = "The invoice is for a different amount than you chose, so it is not shown.";
