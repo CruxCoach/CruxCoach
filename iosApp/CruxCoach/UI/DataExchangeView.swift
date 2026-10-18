@@ -10,6 +10,8 @@ struct DataExchangeView: View {
     @State private var picking = false
     /// Android's export format chips: "json", "csv" (CSV ZIP) or "excel" (export only).
     @State private var format = "json"
+    /// Android's import picker: the JSON export or a CSV ZIP; the core detects which from the content.
+    private static let importTypes: [UTType] = [.json, .zip]
 
     var body: some View {
         Group {
@@ -52,6 +54,7 @@ struct DataExchangeView: View {
             Section(header: Text(LI("data_import_title"))) {
                 Button(LI("data_import_pick")) { picking = true }
                     .disabled(ui.isBusy)
+                Text(L("import_auto_detect_hint")).font(.footnote).foregroundStyle(.secondary)
                 if ui.importedAscents >= 0 {
                     Text([
                         LP("import_result_board_sends", Int(ui.importedAscents)),
@@ -65,7 +68,7 @@ struct DataExchangeView: View {
                 Section { ProgressView().frame(maxWidth: .infinity) }
             }
         }
-        .fileImporter(isPresented: $picking, allowedContentTypes: [.json]) { result in
+        .fileImporter(isPresented: $picking, allowedContentTypes: Self.importTypes) { result in
             guard case .success(let url) = result else { return }
             // A document picked outside the app's container is security-scoped;
             // the Kotlin side reads a plain path, so the scope is opened here
