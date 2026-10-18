@@ -332,7 +332,6 @@
 "devcontact_error_fetch" = "Die Relays waren nicht erreichbar.";
 "devcontact_error_send" = "Die Nachricht konnte nicht gesendet werden.";
 "devcontact_open" = "Entwickler kontaktieren";
-"payment_no_wallet_hint" = "Kopiere die Adresse in deine Lightning-Wallet oder nutze den Ko-fi-Link. CruxCoach wickelt selbst keine Zahlungen ab.";
 "profile_pick_picture" = "Profilbild auswählen";
 "profile_pick_banner" = "Titelbild auswählen";
 "profile_uploading" = "Wird hochgeladen …";

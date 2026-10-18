@@ -26,7 +26,8 @@ struct RootView: View {
             case .starting:
                 ProgressView()
             case .ready(let core):
-                MainView(core: core)
+                // Android's start-up question about a report from the last crash.
+                MainView(core: core).modifier(CrashReportPrompt(core: core))
             case .failed(let code, let detail):
                 StartFailureView(code: code, detail: detail)
             }

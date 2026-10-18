@@ -58,9 +58,8 @@ struct DevContactView: View {
                     Text(core.maintainerLightningAddress)
                         .font(.caption).textSelection(.enabled).multilineTextAlignment(.trailing)
                 }
-                // No in-app payment: sending sats needs a wallet, and the
-                // address is here to be copied into one.
-                Text(LI("payment_no_wallet_hint")).font(.footnote).foregroundStyle(.secondary)
+                // Android's gift: a zap to the maintainer through the user's own wallet app.
+                ZapGiftRow(core: core)
             }
             if !ui.announcements.isEmpty {
                 Section(header: Text(L("devcontact_announcements"))) {
