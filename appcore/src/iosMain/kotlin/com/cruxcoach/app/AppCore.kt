@@ -2300,4 +2300,16 @@ class AppCore private constructor(
         return model
     }
 
+    // ── Data gaps (datagaps, wave 5) ────────────────────────────────────
+    //
+    // Weekly targets card on Progress (Android WeeklyVolumeCard).
+
+    /** The "Weekly targets" card of the Progress tab (Android `WeeklyVolumeCard`); null without the athlete stack. */
+    fun makeWeeklyVolumeCard(): com.cruxcoach.app.ui.WeeklyVolumeCardModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.WeeklyVolumeCardModel(
+            com.cruxcoach.app.progress.WeeklyVolumePresenter(service, MainScope(), Dispatchers.IO),
+        )
+    }
+
 }

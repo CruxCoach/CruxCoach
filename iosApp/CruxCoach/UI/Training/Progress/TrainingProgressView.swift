@@ -91,7 +91,11 @@ private struct ProgressContent: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        hub
+                        Group {
+                            hub
+                            // The week's targets per area, right under the hub (Android `volumeCard`).
+                            WeeklyVolumeCardView(core: core)
+                        }
                         sectionTitle(L("tru_progress_training"))
                         TrainingFlow {
                             ForEach(model.rangeCodes, id: \.self) { code in
