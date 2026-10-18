@@ -90,7 +90,7 @@ struct BrowserView: View {
                     ForEach(ui.climbs, id: \.uuid) { climb in
                         NavigationLink(value: climb.uuid) {
                             HStack(spacing: 8) {
-                                ClimbRow(climb: climb)
+                                ClimbRow(climb: climb, onSetter: setterAction(climb))
                                 queueAdd(climb: climb, angle: ui.angle)
                             }
                         }
@@ -124,6 +124,9 @@ struct BrowserView: View {
             .onChange(of: search) { _, query in model.setSearch(query: query) }
             .navigationTitle(L("board_browser_title"))
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: SetterRoute.self) { route in
+                SetterDetailView(core: core, pubkey: route.pubkey, fallbackName: route.name)
+            }
             .navigationDestination(for: String.self) { uuid in
                 ClimbDetailView(core: core, uuid: uuid, angle: ui.angle, ble: ble, pageUuids: ui.climbs.map { $0.uuid }) { model.refresh() }
             }
@@ -226,6 +229,14 @@ struct BrowserView: View {
     }
 
     /// Android ClimbCard's "+" while a playlist runs, with how often the climb is queued.
+    /// Android ClimbCard: a CruxCoach setter's name opens the setter's profile; others stay plain text.
+    private func setterAction(_ climb: ClimbRowUi) -> (() -> Void)? {
+        let pubkey: String = climb.setterPubkey
+        if pubkey.isEmpty { return nil }
+        let name: String = climb.setter
+        return { path.append(SetterRoute(pubkey: pubkey, name: name)) }
+    }
+
     @ViewBuilder private func queueAdd(climb: ClimbRowUi, angle: Int32) -> some View {
         if let session, session.state.isActive {
             SessionQueueAddButton(hub: session.model, ui: session.state, climbUuid: climb.uuid, angle: angle)
@@ -396,16 +407,22 @@ private struct AnglePicker: View {
     }
 }
 
+/// A setter's profile pushed from a climb row (Android `Routes.setterDetail`).
+struct SetterRoute: Hashable {
+    let pubkey: String
+    let name: String
+}
+
 struct ClimbRow: View {
     let climb: ClimbRowUi
+    /// Non-nil: the setter name is a link to the setter's profile.
+    var onSetter: (() -> Void)? = nil
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(climb.name).font(.body)
-                if !climb.setter.isEmpty {
-                    Text(climb.setter).font(.footnote).foregroundStyle(.secondary)
-                }
+                setterLine
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
@@ -420,7 +437,18 @@ struct ClimbRow: View {
                 .foregroundStyle(.secondary)
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: onSetter == nil ? .combine : .contain)
+    }
+
+    @ViewBuilder private var setterLine: some View {
+        if let onSetter, !climb.setter.isEmpty {
+            Button(action: onSetter) {
+                Text(climb.setter).font(.footnote).underline().foregroundStyle(Color.orange)
+            }
+            .buttonStyle(.borderless)
+        } else if !climb.setter.isEmpty {
+            Text(climb.setter).font(.footnote).foregroundStyle(.secondary)
+        }
     }
 }
 

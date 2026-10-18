@@ -17,6 +17,9 @@ struct PlayerView: View {
 
     @State private var host: ScreenHost<PlayerScreenModel, PlayerScreenState>?
     @State private var confirmEnd = false
+    /// Android's setter line under the climb name; looked up per shown climb.
+    @State private var setterLookup: ClimbSetterLookup?
+    @State private var setter: ClimbSetterUi?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -59,6 +62,27 @@ struct PlayerView: View {
         }
     }
 
+    private func lookUpSetter(_ uuid: String) {
+        let lookup: ClimbSetterLookup = setterLookup ?? core.makeClimbSetterLookup()
+        setterLookup = lookup
+        lookup.lookup(uuid: uuid) { result in setter = result }
+    }
+
+    /// Android `PlaylistPlayerScreen`: a CruxCoach setter's name opens the setter's profile.
+    @ViewBuilder private func setterLine(climbUuid: String) -> some View {
+        if let setter, setter.uuid == climbUuid, !setter.display.isEmpty {
+            if setter.pubkey.isEmpty {
+                Text(setter.display).font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                NavigationLink {
+                    SetterDetailView(core: core, pubkey: setter.pubkey, fallbackName: setter.display)
+                } label: {
+                    Text(setter.display).font(.subheadline).underline().foregroundStyle(Color.orange)
+                }
+            }
+        }
+    }
+
     private var summaryBinding: Binding<Bool> {
         Binding(get: { host?.state.showSummary ?? false },
                 set: { if !$0 { closeSummary() } })
@@ -91,6 +115,7 @@ struct PlayerView: View {
             } else {
                 VStack(spacing: 6) {
                     Text(ui.currentClimbName).font(.title2).multilineTextAlignment(.center)
+                    setterLine(climbUuid: ui.currentClimbUuid)
                     HStack(spacing: 10) {
                         if !ui.currentClimbGrade.isEmpty { Text(ui.currentClimbGrade) }
                         Text("\(ui.currentAngle)°")
@@ -102,6 +127,7 @@ struct PlayerView: View {
                     Text(LI("player_position", Int(ui.currentIndex) + 1, ui.queue.count))
                         .font(.footnote).foregroundStyle(.secondary)
                 }
+                .task(id: ui.currentClimbUuid) { lookUpSetter(ui.currentClimbUuid) }
 
                 if ui.phaseCode == "resting" {
                     VStack(spacing: 8) {

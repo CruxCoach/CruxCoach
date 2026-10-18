@@ -2218,4 +2218,14 @@ class AppCore private constructor(
     fun loadCrashReportBadge(onCount: (Int) -> Unit) =
         com.cruxcoach.app.ui.CrashReportBadge(crashZapDevContact(), Dispatchers.Main, Dispatchers.IO).load(onCount)
 
+
+    // ── Board UI parity (wave 5, boardui): setter links, detail ascents, stats, generator ──
+
+    /** The playlist player's setter line (Android `PlaylistPlayerScreen`): a queued climb's setter and profile link. */
+    fun makeClimbSetterLookup(): com.cruxcoach.app.ui.ClimbSetterLookup = com.cruxcoach.app.ui.ClimbSetterLookup(
+        load = { uuid -> boardRepository.getClimbsByUuidsAnyAngle(listOf(uuid)).firstOrNull() },
+        main = Dispatchers.Main,
+        io = Dispatchers.IO,
+    )
+
 }

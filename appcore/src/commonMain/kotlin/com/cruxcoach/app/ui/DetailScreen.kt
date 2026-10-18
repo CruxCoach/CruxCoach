@@ -89,6 +89,8 @@ class DetailScreenState(
     val methodCode: String,
     /** A catalogue benchmark (benchmark difficulty above 0). */
     val isBenchmark: Boolean,
+    /** Non-empty: the setter name opens this setter's profile (CruxCoach climbs only, as on Android). */
+    val setterPubkey: String,
 )
 
 /**
@@ -271,7 +273,7 @@ class DetailScreenModel(
             status = UiCodes.detailStatus(state.status),
             uuid = state.uuid,
             name = climb?.name ?: "",
-            setter = climb?.setterUsername ?: "",
+            setter = climb?.let { SetterLink.display(it) } ?: "",
             grade = grades.label(climb?.difficultyAverage),
             notes = climb?.description ?: "",
             angle = state.angle,
@@ -324,6 +326,7 @@ class DetailScreenModel(
             noMatch = climb?.isNomatch ?: false,
             methodCode = methodCode(climb?.method),
             isBenchmark = (climb?.benchmarkDifficulty ?: 0.0) > 0.0,
+            setterPubkey = climb?.let { SetterLink.pubkey(it) } ?: "",
         )
     }
 

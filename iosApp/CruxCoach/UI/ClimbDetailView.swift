@@ -462,10 +462,21 @@ struct ClimbDetailView: View {
                 }
             }
             .pickerStyle(.menu)
-            if !ui.setter.isEmpty {
-                Label(ui.setter, systemImage: "person").font(.footnote).foregroundStyle(.secondary)
-            }
+            setterLine(ui: ui)
             DetailInfoBlock(ui: ui)
+        }
+    }
+
+    /// Android detail: a CruxCoach setter's name opens the setter's profile; a catalogue setter is plain text.
+    @ViewBuilder private func setterLine(ui: DetailScreenState) -> some View {
+        if !ui.setter.isEmpty && !ui.setterPubkey.isEmpty {
+            NavigationLink {
+                SetterDetailView(core: core, pubkey: ui.setterPubkey, fallbackName: ui.setter)
+            } label: {
+                Label(ui.setter, systemImage: "person").font(.footnote).foregroundStyle(Color.orange)
+            }
+        } else if !ui.setter.isEmpty {
+            Label(ui.setter, systemImage: "person").font(.footnote).foregroundStyle(.secondary)
         }
     }
 

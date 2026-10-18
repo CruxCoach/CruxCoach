@@ -18,6 +18,8 @@ class ClimbRowUi(
     val grade: String,
     val quality: String,
     val sends: Long,
+    /** Non-empty: the setter name opens this setter's profile (Android ClimbCard). */
+    val setterPubkey: String,
 )
 
 class BrowserScreenState(
@@ -268,10 +270,11 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
     private fun row(climb: ClimbWithStats) = ClimbRowUi(
         uuid = climb.uuid,
         name = climb.name,
-        setter = climb.setterUsername ?: "",
+        setter = SetterLink.display(climb),
         grade = grades.label(climb.difficultyAverage),
         quality = climb.qualityAverage?.let { grades.oneDecimal(it) } ?: "",
         sends = climb.ascensionistCount ?: 0L,
+        setterPubkey = SetterLink.pubkey(climb),
     )
 
     private var holdFilter: MutableSet<Int> = linkedSetOf()
