@@ -33,6 +33,11 @@ class BoardPlaybackTransport(
 
     private val scope = CoroutineScope(SupervisorJob() + main)
 
+    /** Quantum: a playlist climb is lit as a layer of the shared rack, never as a plain send. */
+    private val quantumPlaylist = com.cruxcoach.app.quantum.QuantumPlaylistProjection(
+        connection.quantumLayers, connection.quantumLink, boardRepository, io,
+    )
+
     override val isBoardConnected: Boolean
         get() = connection.state.value.connection.let {
             it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
@@ -49,6 +54,7 @@ class BoardPlaybackTransport(
                         ?: boardRepository.getClimbByUuidNormalized(climbUuid, angle)
                         ?: return@withContext null
                     Prepared(
+                        name = climb.name,
                         frames = climb.frames,
                         layoutId = climb.layoutId,
                         ledMap = if (brand == BoardBrand.MOONBOARD) emptyMap() else boardRepository.getPlacementLedMap(sizeId, brandWire),
@@ -59,7 +65,17 @@ class BoardPlaybackTransport(
                 null
             } ?: return@launch
 
-            if (brand == BoardBrand.MOONBOARD) {
+            if (brand == BoardBrand.QUANTUM) {
+                val holds = BoardClimbParser.parseFrames(prepared.frames)
+                if (holds.isEmpty()) return@launch
+                try {
+                    quantumPlaylist.send(climbUuid, prepared.name, prepared.layoutId, angle, holds)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Unlit, as on Android: the playlist goes on and the detail rack can retry.
+                }
+            } else if (brand == BoardBrand.MOONBOARD) {
                 connection.sendMoonBoardClimb(prepared.frames, prepared.layoutId, keyValues.getString(MOONBOARD_LED_MODE))
             } else {
                 val holds = BoardClimbParser.parseFrames(prepared.frames)
@@ -71,6 +87,7 @@ class BoardPlaybackTransport(
     }
 
     private class Prepared(
+        val name: String,
         val frames: String,
         val layoutId: Long,
         val ledMap: Map<Int, Int>,

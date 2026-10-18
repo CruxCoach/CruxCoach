@@ -295,4 +295,34 @@ class QuantumLayerControllerTest {
         assertNull(c.send.value.error)
         screen.close()
     }
+
+    // ── Playlist projection (Android SessionQueueManager.sendQuantumPlaylistLayer) ──
+
+    private fun playlist(layers: BoardLayerManager, link: FakeLink) =
+        QuantumPlaylistProjection(layers, link, repository, dispatcher)
+
+    @Test
+    fun `a playlist climb is lit in the first free layer and keeps that layer when sent again`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        val layers = BoardLayerManager(FakeKeyValueStore())
+        val projection = playlist(layers, link)
+        assertTrue(projection.send(climbUuid, "Clean Room", 9103, 40, climb.holds))
+        assertEquals(listOf<Any>(vendorRoute, layers.identityForSlot(0), 0x00ff00, listOf(101, 102, 103)), link.sends.single().take(4))
+        assertEquals(BoardLayerStatus.CONFIRMED, layers.state.value.layers.single().status)
+
+        assertTrue(projection.send(climbUuid, "Clean Room", 9103, 40, climb.holds))
+        assertEquals(layers.identityForSlot(0), link.sends[1][1])
+        assertEquals(1, layers.state.value.layers.size)
+    }
+
+    @Test
+    fun `a playlist never lights a climb of another model or next to an unknown route`() = scope.runTest {
+        val other = FakeLink(QuantumBoardModel.L)
+        assertFalse(playlist(BoardLayerManager(FakeKeyValueStore()), other).send(climbUuid, "Clean Room", 9103, 40, climb.holds))
+
+        val busy = FakeLink(QuantumBoardModel.M)
+        busy.roster(listOf(QuantumActivePlayer("99999999-0000-4000-8000-000000000000", foreignUser, 100, 0x123456)))
+        assertFalse(playlist(BoardLayerManager(FakeKeyValueStore()), busy).send(climbUuid, "Clean Room", 9103, 40, climb.holds))
+        assertTrue(other.sends.isEmpty() && busy.sends.isEmpty())
+    }
 }

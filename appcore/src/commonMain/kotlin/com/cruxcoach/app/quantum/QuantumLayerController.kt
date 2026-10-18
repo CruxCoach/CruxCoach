@@ -45,6 +45,59 @@ internal interface QuantumLink {
     suspend fun removeLayer(userId: String, expectedRouteId: String, expectedBoard: BoardLayerBoardIdentity): BoardSendResult
 }
 
+/** Roster plumbing shared by the detail rack and the playlist (Android SessionQueueManager + BoardSendController). */
+internal object QuantumRoster {
+    fun connectedLayerBoard(connection: BoardConnectionUiState): BoardLayerBoardIdentity? {
+        val board = connection.connectedBoard ?: return null
+        val model = connection.quantumModel ?: return null
+        if (board.boardBrand != BoardBrand.QUANTUM) return null
+        val physical = PhysicalBoardIdentity.resolve(board) ?: return null
+        return BoardLayerBoardIdentity(physical, model.productSizeId)
+    }
+
+    /** Android `applyQuantumControllerState`: reconcile, then resolve every reported route locally. */
+    suspend fun hydrate(
+        layers: BoardLayerManager,
+        link: QuantumLink,
+        boardRepository: BoardRepository,
+        io: CoroutineDispatcher,
+        controller: QuantumControllerState,
+    ): Boolean {
+        if (!controller.authoritative) return false
+        val connection = link.connection.value
+        val identity = connectedLayerBoard(connection) ?: return false
+        val model = connection.quantumModel ?: return false
+        if (!layers.isBoundTo(identity)) return false
+        layers.reconcile(controller.players)
+        val resolved = withContext(io) {
+            val ledMap = boardRepository.getPlacementLedMap(model.productSizeId.toInt(), BoardBrand.QUANTUM.wireValue)
+            controller.players.mapNotNull { player ->
+                val climb = boardRepository.getQuantumClimbByExternalRoute(
+                    routeUuid = player.routeId,
+                    model = model.wireValue,
+                    allowDirectUuidFallback = layers.ownsIdentity(player.userId),
+                ) ?: return@mapNotNull null
+                val holds = BoardClimbParser.parseSingleFrameStrict(climb.frames) ?: return@mapNotNull null
+                if (!hasCompleteQuantumLedMapping(holds, ledMap)) return@mapNotNull null
+                BoardLayerControllerRouteKey(player.routeId, player.userId) to
+                    BoardLayerRouteDetails(climbUuid = climb.uuid, climbName = climb.name, holds = holds)
+            }.toMap()
+        }
+        // Details apply by exact route/user tuple to current entries only, so a
+        // concurrent roster refresh is safe; a different board or model is not.
+        val latest = link.connection.value
+        if (connectedLayerBoard(latest) != identity || latest.quantumModel != model || !layers.isBoundTo(identity)) return false
+        layers.hydrateControllerRoutes(resolved)
+        return true
+    }
+
+    /** A fresh authoritative roster, hydrated. */
+    suspend fun refreshAndHydrate(layers: BoardLayerManager, link: QuantumLink, boardRepository: BoardRepository, io: CoroutineDispatcher): Boolean {
+        if (!link.refresh()) return false
+        return hydrate(layers, link, boardRepository, io, link.controller.value)
+    }
+}
+
 /** One climb as the detail shows it. Quantum climbs are single-frame and never mirrored. */
 internal data class QuantumClimbSnapshot(
     val uuid: String,
@@ -131,48 +184,16 @@ internal class QuantumLayerController(
         if (controller.authoritative) hydrate(controller)
     }
 
-    /** Android `hydrateQuantumControllerState`: reconcile, then resolve every reported route locally. */
-    private suspend fun hydrate(controller: QuantumControllerState): Boolean {
-        if (!controller.authoritative) return false
-        val connection = link.connection.value
-        val identity = connectedLayerBoard(connection) ?: return false
-        val model = connection.quantumModel ?: return false
-        if (!layers.isBoundTo(identity)) return false
-        layers.reconcile(controller.players)
-        val resolved = withContext(io) {
-            val ledMap = boardRepository.getPlacementLedMap(model.productSizeId.toInt(), BoardBrand.QUANTUM.wireValue)
-            controller.players.mapNotNull { player ->
-                val climb = boardRepository.getQuantumClimbByExternalRoute(
-                    routeUuid = player.routeId,
-                    model = model.wireValue,
-                    allowDirectUuidFallback = layers.ownsIdentity(player.userId),
-                ) ?: return@mapNotNull null
-                val holds = BoardClimbParser.parseSingleFrameStrict(climb.frames) ?: return@mapNotNull null
-                if (!hasCompleteQuantumLedMapping(holds, ledMap)) return@mapNotNull null
-                BoardLayerControllerRouteKey(player.routeId, player.userId) to
-                    BoardLayerRouteDetails(climbUuid = climb.uuid, climbName = climb.name, holds = holds)
-            }.toMap()
-        }
-        // Details apply by exact route/user tuple to current entries only, so a
-        // concurrent roster refresh is safe; a different board or model is not.
-        val latest = link.connection.value
-        if (connectedLayerBoard(latest) != identity || latest.quantumModel != model || !layers.isBoundTo(identity)) return false
-        layers.hydrateControllerRoutes(resolved)
-        return true
-    }
+    private suspend fun hydrate(controller: QuantumControllerState): Boolean =
+        QuantumRoster.hydrate(layers, link, boardRepository, io, controller)
 
     private suspend fun refreshAndHydrate(): Boolean {
         if (!link.refresh()) return false
         return hydrate(link.controller.value)
     }
 
-    private fun connectedLayerBoard(connection: BoardConnectionUiState): BoardLayerBoardIdentity? {
-        val board = connection.connectedBoard ?: return null
-        val model = connection.quantumModel ?: return null
-        if (board.boardBrand != BoardBrand.QUANTUM) return null
-        val physical = PhysicalBoardIdentity.resolve(board) ?: return null
-        return BoardLayerBoardIdentity(physical, model.productSizeId)
-    }
+    private fun connectedLayerBoard(connection: BoardConnectionUiState): BoardLayerBoardIdentity? =
+        QuantumRoster.connectedLayerBoard(connection)
 
     private fun connected(): Boolean = link.connection.value.connection == ConnectionState.CONNECTED
 
