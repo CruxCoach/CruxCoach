@@ -177,6 +177,17 @@ class KilterClimbPublisherTest {
     }
 
     @Test
+    fun `a cached name of another Kilter account is never reused`() = runBlocking {
+        ready()
+        answer(200)
+        publisher.publish(uuid, 1L, state, boardSize, concat)
+        assertEquals("wallsetter", session.account.cachedUsername())
+        // Another Kilter account signs in under the same CruxCoach identity.
+        session.signIn(userUuid = "user-uuid-2")
+        assertEquals("", session.account.cachedUsername())
+    }
+
+    @Test
     fun `without any usable name the placeholder is sent and not cached`() = runBlocking {
         ready()
         session.http.responder = { req -> if ("/climbs/" in req.url) portalOk("{}") else null }

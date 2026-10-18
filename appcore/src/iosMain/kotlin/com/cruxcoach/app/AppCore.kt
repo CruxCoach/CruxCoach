@@ -1626,5 +1626,90 @@ class AppCore private constructor(
             scope = MainScope(),
             io = Dispatchers.IO,
         )
+
+    // ── Kilter climb publishing (wave 5b, kilterpublish area): own climbs to Kilter, backfill ──
+
+    /** Android `kilterClimbPublishEnabled`: opt-in, per identity, read fresh on every use. */
+    private fun kilterClimbPublishEnabled(): Boolean =
+        platform.keyValues.getString(settingsStore.scopedKey(SettingsStore.KILTER_CLIMB_PUBLISH_ENABLED)) == "true"
+
+    /** The identity's Kilter session (the same stored tokens the Kilter screen signs in to). */
+    private val kilterClimbTokens: KilterTokens by lazy { KilterTokens(platform.secrets, platform.keyValues, pubkeyHex.take(16)) }
+
+    private val kilterClimbApi: KilterApi by lazy { KilterApi(platform.http, platform.clock, kilterClimbTokens) }
+
+    private val kilterClimbAccount: com.cruxcoach.app.kilter.KilterClimbAccount by lazy {
+        com.cruxcoach.app.kilter.KilterClimbAccount(kilterClimbApi, kilterClimbTokens, platform.keyValues, pubkeyHex.take(16))
+    }
+
+    private val kilterClimbPublisher: com.cruxcoach.app.kilter.KilterClimbPublisher by lazy {
+        com.cruxcoach.app.kilter.KilterClimbPublisher(
+            kilterClimbApi, kilterClimbAccount, boardRepository, { kilterClimbPublishEnabled() },
+        ) { platform.clock.epochMillis() }
+    }
+
+    /**
+     * The Kilter publish retry pass (Android `KilterPublishRetryWorker.doWork`). The
+     * background orchestrator calls `run()` on its cadence (Android: every 6 h).
+     */
+    fun kilterClimbPublishRetry(): com.cruxcoach.app.kilter.KilterClimbPublishRetry =
+        com.cruxcoach.app.kilter.KilterClimbPublishRetry(
+            kilterClimbPublisher, kilterClimbAccount, boardRepository,
+            { kilterClimbPublishEnabled() }, { pubkeyHex }, { platform.clock.epochMillis() },
+        )
+
+    /** Own logged/authored Kilter climbs into the board DB; run before a Kilter log import writes its logs. */
+    fun kilterClimbBackfiller(): com.cruxcoach.app.kilter.KilterClimbBackfiller =
+        com.cruxcoach.app.kilter.KilterClimbBackfiller(kilterClimbApi, boardRepository)
+
+    /** [makeCreatorScreen] with the Kilter step after the Nostr publish and the profile's note default. */
+    fun makeCreatorScreenWithKilter(): CreatorScreenModel {
+        val model = makeCreatorScreen()
+        model.attachKilter(
+            com.cruxcoach.app.kilter.KilterClimbCreatorLeg(
+                kilterClimbPublisher, kilterClimbAccount, boardRepository, { kilterClimbPublishEnabled() },
+            ),
+            com.cruxcoach.app.kilter.KilterClimbPublisherPrefs.autoNoteEnabled(platform.keyValues),
+        )
+        return model
+    }
+
+    /** "Publish own climbs to Kilter" and the publish queue with "Retry now" (Android Kilter account card). */
+    fun makeKilterPublishSettings(): com.cruxcoach.app.kilter.KilterPublishSettingsModel =
+        com.cruxcoach.app.kilter.KilterPublishSettingsModel(
+            kilterClimbAccount, boardRepository, kilterClimbPublishRetry(),
+            { kilterClimbPublishEnabled() }, { settingsStore.setKilterClimbPublishEnabled(it) }, kilterRunScope,
+        )
+
+    /** The profile's note default and "Use Kilter username" (Android `NostrProfileScreen`). */
+    fun makeKilterProfileExtras(): com.cruxcoach.app.kilter.KilterProfileExtrasModel =
+        com.cruxcoach.app.kilter.KilterProfileExtrasModel(kilterClimbAccount, platform.keyValues)
+
+    /**
+     * The climb detail's "Publish as mine" for a climb the connected Kilter account set
+     * (Android `OwnKilterClimbPublisher`), signed with the identity's key read fresh.
+     */
+    fun makeOwnKilterClimb(): com.cruxcoach.app.kilter.OwnKilterClimbModel =
+        com.cruxcoach.app.kilter.OwnKilterClimbModel(ownKilterClimbPublisher())
+
+    /** "My climbs" (Android `MyKilterClimbsScreen`): own drafts, published climbs and unclaimed Kilter climbs. */
+    fun makeMyKilterClimbs(): com.cruxcoach.app.kilter.MyKilterClimbsModel =
+        com.cruxcoach.app.kilter.MyKilterClimbsModel(
+            ownKilterClimbPublisher(), boardRepository, kilterClimbAccount, { pubkeyHex }, settings.gradeFormatter(),
+        )
+
+    private fun ownKilterClimbPublisher(): com.cruxcoach.app.kilter.OwnKilterClimbPublisher {
+        val community = CommunityPublisher(
+            boardRepository,
+            RelayCommunityRelay(RelayClient(platform.webSockets, platform.hashing)),
+            LocalEventSigner(platform.hashing) { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
+            platform.hashing,
+            platform.clock,
+        ) { pubkeyHex }
+        return com.cruxcoach.app.kilter.OwnKilterClimbPublisher(
+            boardRepository, kilterClimbAccount, community, { pubkeyHex },
+        ) { platform.clock.epochSeconds() }
+    }
+
 }
 

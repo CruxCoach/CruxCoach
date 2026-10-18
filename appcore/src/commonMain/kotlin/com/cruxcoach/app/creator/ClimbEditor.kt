@@ -93,6 +93,17 @@ data class ClimbEditorUiState(
     /** True while the duplicate warning is waiting on the user's decision. */
     val pendingDuplicateConfirm: Boolean = false,
     val error: EditorError = EditorError.NONE,
+    /**
+     * Per-publish "also post a public note" choice (Android `alsoPostNote`),
+     * seeded from the profile's global default when the editor opens.
+     */
+    val alsoPostNote: Boolean = false,
+    /** The note text; null until the toggle was first switched on (then the default template). */
+    val autoNoteText: String? = null,
+    /** Kilter side of the last publish; null when it did not run (Android `kilterPublishOutcome`). */
+    val kilterOutcome: com.cruxcoach.app.kilter.KilterClimbPublishOutcome? = null,
+    /** Publishing to Kilter is on but no account is connected (Android `showKilterConnectNudge`). */
+    val kilterConnectNudge: Boolean = false,
 )
 
 /**
@@ -138,6 +149,9 @@ class ClimbEditor(
 ) {
     private val _state = MutableStateFlow(ClimbEditorUiState())
     val state: StateFlow<ClimbEditorUiState> = _state.asStateFlow()
+
+    /** The Kilter step after a Nostr publish; null keeps the climb community-only. */
+    var kilterLeg: com.cruxcoach.app.kilter.CreatorKilterLeg? = null
 
     private val undoStack = ArrayDeque<ClimbEditorState>()
     private val redoStack = ArrayDeque<ClimbEditorState>()
@@ -505,6 +519,7 @@ class ClimbEditor(
             _state.update { it.copy(publishPhase = PublishPhase.FAILED, error = EditorError.SAVE_FAILED) }
             return
         }
+        val isEdit = _state.value.loadedDraftUuid != null
         val sizeLabel = _state.value.boardSize?.name.orEmpty()
         val result = publisher.publish(
             uuid = uuid,
@@ -520,6 +535,14 @@ class ClimbEditor(
                 )
             },
         )
+        // Kilter only after Nostr accepted the climb, as on Android: Nostr is the source of truth.
+        val kilter = kilterLeg?.takeIf { result.failure == PublishFailure.NONE }?.let { leg ->
+            withContext(ioDispatcher) {
+                leg.afterNostrPublish(
+                    uuid, layoutId, BoardBrand.fromWire(current.boardBrand), current, _state.value.boardSize, isEdit,
+                )
+            }
+        }
         val refreshed = withContext(ioDispatcher) { drafts.drafts(current.boardBrand) }
         _state.update {
             it.copy(
@@ -527,9 +550,26 @@ class ClimbEditor(
                 publishResult = result,
                 loadedDraftUuid = uuid,
                 drafts = refreshed,
+                kilterOutcome = kilter?.outcome,
+                kilterConnectNudge = kilter?.nudgeToConnect ?: false,
             )
         }
     }
+
+    // ── Auto-note and Kilter outcome (Android ClimbEditorViewModel) ──
+
+    /**
+     * Flips the per-publish note. The first switch-on seeds [defaultTemplate];
+     * an already edited text survives off and on again.
+     */
+    fun setAlsoPostNote(value: Boolean, defaultTemplate: String) = _state.update {
+        val seeded = if (value && it.autoNoteText.isNullOrBlank()) defaultTemplate else it.autoNoteText
+        it.copy(alsoPostNote = value, autoNoteText = seeded)
+    }
+
+    fun setAutoNoteText(text: String) = _state.update { it.copy(autoNoteText = text) }
+
+    fun consumeKilterOutcome() = _state.update { it.copy(kilterOutcome = null, kilterConnectNudge = false) }
 
     fun close() = scope.cancel()
 

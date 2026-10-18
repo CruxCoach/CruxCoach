@@ -123,9 +123,20 @@ class KilterClimbAccount(
 
     fun userUuid(): String = tokens.userUuid()
 
-    /** The cached setter name, or "" when none was resolved yet or it is e-mail shaped. */
-    fun cachedUsername(): String =
-        keyValues.getString(usernameKey)?.takeIf { it.isNotBlank() && !it.contains("@") } ?: ""
+    /**
+     * The cached setter name, or "" when none was resolved yet, it is e-mail
+     * shaped, or it belongs to another Kilter account than the signed-in one
+     * (the cache is stored with the user uuid it was resolved for).
+     */
+    fun cachedUsername(): String {
+        val stored = keyValues.getString(usernameKey) ?: return ""
+        val owner = stored.substringBefore('\n', missingDelimiterValue = "")
+        val name = stored.substringAfter('\n', missingDelimiterValue = "")
+        if (owner.isEmpty() || owner != tokens.userUuid()) return ""
+        return name.takeIf { it.isNotBlank() && !it.contains("@") } ?: ""
+    }
+
+    private fun cache(name: String) = keyValues.putString(usernameKey, tokens.userUuid() + "\n" + name)
 
     /** The setter name for a publish, resolving and caching it when needed; "" without a login. */
     internal suspend fun resolveUsername(): String {
@@ -133,12 +144,12 @@ class KilterClimbAccount(
         val uuid = tokens.userUuid().takeIf { it.isNotBlank() } ?: return ""
         val display = fetchDisplayUsername(uuid)
         if (display != null) {
-            keyValues.putString(usernameKey, display)
+            cache(display)
             return display
         }
         val nameClaim = tokens.accessToken()?.let { claimOf(it, "name") }?.takeIf { it.isNotBlank() && !it.contains("@") }
         if (nameClaim != null) {
-            keyValues.putString(usernameKey, nameClaim)
+            cache(nameClaim)
             return nameClaim
         }
         // Android's last resort, not cached: the next publish tries the portal again.
@@ -149,7 +160,7 @@ class KilterClimbAccount(
     internal suspend fun refreshDisplayUsername(): String? {
         val uuid = tokens.userUuid().takeIf { it.isNotBlank() } ?: return null
         val display = fetchDisplayUsername(uuid) ?: return null
-        keyValues.putString(usernameKey, display)
+        cache(display)
         return display
     }
 

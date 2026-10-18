@@ -104,6 +104,23 @@ class CreatorScreenState(
     val publishPartial: Boolean,
     /** none | loadFailed | saveFailed | draftsLoadFailed | draftsDeleteFailed | editLockedByKilter */
     val errorCode: String,
+    // ── Auto-note and Kilter (Android ClimbEditorViewModel) ──
+    /** "Also post to Nostr" for this publish. */
+    val alsoPostNote: Boolean = false,
+    /** The note text the publish sends (Android placeholders stay literal). */
+    val autoNoteText: String = "",
+    /** The climb went out, but no relay took the note (`climb_creator_auto_note_zero_relays`). */
+    val autoNoteZeroRelays: Boolean = false,
+    /** True when this editor can publish to Kilter (the leg is attached and the board is a Kilter). */
+    val kilterPublishAvailable: Boolean = false,
+    /** Kilter side of the last publish: none | synced | failed | diverged | skipped */
+    val kilterOutcomeCode: String = "none",
+    /** Android string key for a failed/diverged outcome, "" otherwise. */
+    val kilterOutcomeMessageKey: String = "",
+    /** Portal status for the `_with_code` messages, 0 otherwise. */
+    val kilterOutcomeHttpCode: Int = 0,
+    /** Kilter publishing is on but no account is connected (`climb_creator_kilter_connect_nudge`). */
+    val kilterConnectNudge: Boolean = false,
 )
 
 /**
@@ -195,10 +212,31 @@ class CreatorScreenModel(
     fun checkForDuplicate() = editor.checkForDuplicate()
     fun dismissDuplicate() = editor.dismissDuplicate()
 
-    fun publish(autoNoteText: String) = editor.publish(autoNoteText)
-    fun confirmPublishWithDuplicate(autoNoteText: String) = editor.confirmPublishWithDuplicate(autoNoteText)
+    /**
+     * [autoNoteText] blank = no note. `{npub_cruxcoach}` resolves to the project's
+     * key, which the note also mentions, as Android's official build does
+     * (`NostrConfig.DEV_PUBKEY`, `AUTO_NOTE_PTAG_MAINTAINER` true).
+     */
+    fun publish(autoNoteText: String) =
+        editor.publish(autoNoteText, com.cruxcoach.app.AppConfig.MAINTAINER_PUBKEY, mentionMaintainer = true)
+    fun confirmPublishWithDuplicate(autoNoteText: String) =
+        editor.confirmPublishWithDuplicate(autoNoteText, com.cruxcoach.app.AppConfig.MAINTAINER_PUBKEY, mentionMaintainer = true)
     fun cancelPublish() = editor.cancelPublish()
     fun consumePublishResult() = editor.consumePublishResult()
+
+    /** [defaultTemplate] is `auto_note_default_template`, seeded on the first switch-on. */
+    fun setAlsoPostNote(value: Boolean, defaultTemplate: String) = editor.setAlsoPostNote(value, defaultTemplate)
+    fun setAutoNoteText(text: String) = editor.setAutoNoteText(text)
+    fun consumeKilterOutcome() = editor.consumeKilterOutcome()
+
+    /**
+     * Attaches the Kilter step and seeds the note toggle from the profile's
+     * global default, as Android's editor does once on open.
+     */
+    internal fun attachKilter(leg: com.cruxcoach.app.kilter.CreatorKilterLeg?, autoNoteDefault: Boolean) {
+        editor.kilterLeg = leg
+        if (autoNoteDefault) editor.setAlsoPostNote(true, "")
+    }
 
     fun consumeError() = editor.consumeError()
 
@@ -290,6 +328,14 @@ class CreatorScreenModel(
             },
             publishPartial = result?.isPartial ?: false,
             errorCode = CreatorCodes.error(state.error),
+            alsoPostNote = state.alsoPostNote,
+            autoNoteText = state.autoNoteText.orEmpty(),
+            autoNoteZeroRelays = result != null && result.autoNoteAttempted != null && result.autoNoteAccepted == 0,
+            kilterPublishAvailable = editor.kilterLeg != null && brand.supportsOfficialAppPublish,
+            kilterOutcomeCode = state.kilterOutcome?.code ?: "none",
+            kilterOutcomeMessageKey = state.kilterOutcome?.messageKey.orEmpty(),
+            kilterOutcomeHttpCode = state.kilterOutcome?.httpCode ?: 0,
+            kilterConnectNudge = state.kilterConnectNudge,
         )
     }
 
