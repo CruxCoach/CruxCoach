@@ -6,6 +6,7 @@ import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.CoreBluetooth.CBAdvertisementDataLocalNameKey
+import platform.CoreBluetooth.CBAdvertisementDataManufacturerDataKey
 import platform.CoreBluetooth.CBCentralManager
 import platform.CoreBluetooth.CBCentralManagerDelegateProtocol
 import platform.CoreBluetooth.CBCentralManagerScanOptionAllowDuplicatesKey
@@ -46,7 +47,18 @@ import kotlin.concurrent.Volatile
  * listener from there. The host app needs NSBluetoothAlwaysUsageDescription.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-class CoreBluetoothCentral : BleCentral {
+class CoreBluetoothCentral() : BleCentral {
+    /**
+     * With [reportManufacturerData] the central also forwards "CRUX" manufacturer data
+     * (Android's nearby-climb and session advertisements) through
+     * [BleCentralListener.onManufacturerData] and retains those peripherals so they can be
+     * connected. The no-argument central (board connection, force gauge) never does.
+     */
+    constructor(reportManufacturerData: Boolean) : this() {
+        this.reportManufacturerData = reportManufacturerData
+    }
+
+    private var reportManufacturerData = false
     private val queue = dispatch_queue_create("com.cruxcoach.ble.central", null)
 
     // CoreBluetooth holds its delegates weakly: these fields are what keeps them alive.
@@ -266,6 +278,7 @@ class CoreBluetoothCentral : BleCentral {
             RSSI: NSNumber,
         ) {
             val identifier = didDiscoverPeripheral.identifier.UUIDString
+            if (reportManufacturerData) reportCrux(didDiscoverPeripheral, identifier, advertisementData, RSSI)
             val advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
             val cachedName = didDiscoverPeripheral.name
             // Retain only what could be a board; a busy gym advertises hundreds of devices.
@@ -273,6 +286,17 @@ class CoreBluetoothCentral : BleCentral {
             if (BoardBleNames.classify(name, identifier, 0) == null) return
             peripherals[identifier] = didDiscoverPeripheral
             listener?.onAdvertisement(identifier, advertisedName, cachedName, RSSI.intValue)
+        }
+
+        /** Company id (2 bytes, little endian) + "CRUX" magic; anything else stays unreported. */
+        private fun reportCrux(peripheral: CBPeripheral, identifier: String, advertisementData: Map<Any?, *>, rssi: NSNumber) {
+            val field = (advertisementData[CBAdvertisementDataManufacturerDataKey] as? NSData)?.toByteArray() ?: return
+            if (field.size < 6) return
+            if (field[2] != CRUX[0] || field[3] != CRUX[1] || field[4] != CRUX[2] || field[5] != CRUX[3]) return
+            val companyId = (field[0].toInt() and 0xFF) or ((field[1].toInt() and 0xFF) shl 8)
+            // Retained so a session host can be connected by identifier later.
+            peripherals[identifier] = peripheral
+            listener?.onManufacturerData(identifier, companyId, field.copyOfRange(2, field.size), rssi.intValue)
         }
 
         override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) {
@@ -372,6 +396,8 @@ class CoreBluetoothCentral : BleCentral {
         }
     }
 }
+
+private val CRUX = byteArrayOf(0x43, 0x52, 0x55, 0x58)
 
 private fun isUuidString(value: String): Boolean =
     value.length == 36 && value.withIndex().all { (i, c) ->

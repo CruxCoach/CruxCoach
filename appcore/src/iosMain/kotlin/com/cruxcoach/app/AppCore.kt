@@ -1716,5 +1716,23 @@ class AppCore private constructor(
         ) { platform.clock.epochSeconds() }
     }
 
-}
+    // ── Shared sessions (wave 6, sessionjoin area): join an Android-hosted session, climbing nearby ──
 
+    /**
+     * App-wide like Android's bridge: a joined session survives leaving its screen. Its own
+     * CoreBluetooth manager, so the board connection is never touched; the Bluetooth prompt
+     * appears on the first scan.
+     */
+    val sharedSessions: com.cruxcoach.app.sharedsession.SharedSessionsModel by lazy {
+        com.cruxcoach.app.sharedsession.SharedSessionsModel(
+            com.cruxcoach.app.sharedsession.SharedSessionsPresenter(
+                central = CoreBluetoothCentral(reportManufacturerData = true),
+                scope = MainScope(),
+                io = Dispatchers.IO,
+                millis = { platform.clock.epochMillis() },
+                lookup = com.cruxcoach.app.sharedsession.CatalogueClimbLookup(boardRepository) { settings.gradeFormatter().label(it) },
+            ),
+        )
+    }
+
+}

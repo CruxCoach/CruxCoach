@@ -42,6 +42,14 @@ interface BleCentralListener {
     fun onCharacteristicRead(identifier: String, characteristicUuid: String, value: ByteArray?)
     fun onNotifyStateChanged(identifier: String, characteristicUuid: String, enabled: Boolean, success: Boolean)
     fun onNotification(identifier: String, characteristicUuid: String, value: ByteArray)
+
+    /**
+     * The manufacturer-specific data of an advertisement, delivered only by a central built
+     * to report it (the nearby-session scanner) and only for fields carrying the "CRUX"
+     * magic. [companyId] is the field's leading little-endian 16-bit id; [payload] is the
+     * rest. A no-op by default, so existing listeners and the board connection are unchanged.
+     */
+    fun onManufacturerData(identifier: String, companyId: Int, payload: ByteArray, rssi: Int) {}
 }
 
 /**
