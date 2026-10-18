@@ -181,3 +181,141 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
           path: ${{ runner.temp }}/screenshots/*.png
+
+  # On-device meal photo recognition (FEAT-069 on iOS), kept apart from the `ios` job until it
+  # is proven: Android's engine (food_vision.cpp) over the same pinned llama.cpp b11396 + libmtmd,
+  # built for device and simulator; the app generated WITH it (project-vision.yml); one real
+  # inference on the simulator with a small public vision model (SmolVLM-256M, pinned SHA-256)
+  # through Android's prompt, grammar and parser; and the device build linked with it.
+  # continue-on-error: a failure here never fails the workflow or touches the `ios` job.
+  vision:
+    runs-on: macos-15
+    timeout-minutes: 90
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Restore the vision engine
+        id: vision-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: iosApp/Frameworks/CruxVision.xcframework
+          key: cruxvision-b11396-fce45a07-${{ hashFiles('iosApp/Vision/**', 'iosApp/scripts/build-vision.sh', 'androidApp/src/main/cpp/vision/food_vision.cpp', 'androidApp/src/main/cpp/vision/food_vision.h') }}
+      - name: Build CruxVision.xcframework (llama.cpp b11396 + libmtmd + engine)
+        if: steps.vision-cache.outputs.cache-hit != 'true'
+        run: |
+          set -o pipefail
+          cmake --version
+          { iosApp/scripts/build-vision.sh || { echo "== Makefile build failed; retrying with the Xcode generator"; CRUX_VISION_GENERATOR=Xcode iosApp/scripts/build-vision.sh; }; } 2>&1 | tee "$RUNNER_TEMP/ci-vision-build.log" | grep -vE '^\[ *[0-9]+%\]' | tail -200
+      - name: Save the vision engine
+        if: steps.vision-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: iosApp/Frameworks/CruxVision.xcframework
+          key: ${{ steps.vision-cache.outputs.cache-primary-key }}
+      - name: Restore the test model
+        id: model-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ${{ runner.temp }}/vision-models
+          key: smolvlm-256m-instruct-q8-2a31195d-7e943f7c
+      - name: Download the test model (SmolVLM-256M-Instruct Q8_0, pinned revision)
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/vision-models" && cd "$RUNNER_TEMP/vision-models"
+          BASE="https://huggingface.co/ggml-org/SmolVLM-256M-Instruct-GGUF/resolve/b9e4379657e1450d04d02eec8e345667265b0a00"
+          curl -fsSL --retry 3 -o model.gguf "$BASE/SmolVLM-256M-Instruct-Q8_0.gguf"
+          curl -fsSL --retry 3 -o mmproj.gguf "$BASE/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf"
+      - name: Verify the test model
+        run: |
+          cd "$RUNNER_TEMP/vision-models"
+          printf '%s  %s\n' \
+            2a31195d3769c0b0fd0a4906201666108834848db768af11de1d2cef7cd35e65 model.gguf \
+            7e943f7c53f0382a6fc41b6ee0c2def63ba4fded9ab8ed039cc9e2ab905e0edd mmproj.gguf | shasum -a 256 -c -
+      - name: Save the test model
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ${{ runner.temp }}/vision-models
+          key: ${{ steps.model-cache.outputs.cache-primary-key }}
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Link CruxCoachCore.xcframework
+        run: |
+          set -o pipefail
+          iosApp/scripts/build-core.sh Debug 2>&1 | tee "$RUNNER_TEMP/ci-vision-link.log" | tail -60
+      - name: Generate the Xcode project with the vision engine
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          cd iosApp && xcodegen generate --spec project-vision.yml
+      - name: Run the engine on the simulator
+        run: |
+          set -o pipefail
+          DEVICE="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9]+[^(]*' | sed 's/ *$//')"
+          echo "Simulator: $DEVICE"
+          cd iosApp
+          xcodebuild build-for-testing -project CruxCoach.xcodeproj -scheme CruxCoach \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -derivedDataPath build/sim 2>&1 | tee "$RUNNER_TEMP/ci-vision-sim.log" | tail -100
+          TEST_RUNNER_CRUX_VISION_REQUIRED=1 \
+          TEST_RUNNER_CRUX_VISION_MODEL="$RUNNER_TEMP/vision-models/model.gguf" \
+          TEST_RUNNER_CRUX_VISION_MMPROJ="$RUNNER_TEMP/vision-models/mmproj.gguf" \
+          TEST_RUNNER_CRUX_VISION_REPORT="$RUNNER_TEMP/vision-report.json" \
+          xcodebuild test-without-building -project CruxCoach.xcodeproj -scheme CruxCoach \
+            -destination "platform=iOS Simulator,name=$DEVICE" -only-testing:CruxCoachTests/FoodVisionEngineTests \
+            -resultBundlePath "$RUNNER_TEMP/vision.xcresult" \
+            -derivedDataPath build/sim 2>&1 | tee -a "$RUNNER_TEMP/ci-vision-sim.log" | tail -100
+          if [ -f "$RUNNER_TEMP/vision-report.json" ]; then
+            echo "::notice title=Vision engine on the simulator::$(head -c 1500 "$RUNNER_TEMP/vision-report.json")"
+          fi
+          # Passing is not enough: the engine test must have run, not been skipped.
+          xcrun xcresulttool get test-results tests --path "$RUNNER_TEMP/vision.xcresult" > "$RUNNER_TEMP/vision-tests.json"
+          python3 - "$RUNNER_TEMP/vision-tests.json" <<'PY'
+          import json, sys
+          def walk(node, out):
+              if node.get("nodeType") == "Test Case":
+                  out.append((node.get("name", ""), node.get("result", "")))
+              for child in node.get("children", []):
+                  walk(child, out)
+          cases = []
+          for node in json.load(open(sys.argv[1])).get("testNodes", []):
+              walk(node, cases)
+          print(cases)
+          engine = [result for name, result in cases if name.startswith("testTheEngineAnswersAPhoto")]
+          sys.exit(0 if engine == ["Passed"] else 1)
+          PY
+      - name: Build for device with the vision engine, unsigned
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          cd iosApp && xcodebuild build -project CruxCoach.xcodeproj -scheme CruxCoach \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" 2>&1 | tee "$RUNNER_TEMP/ci-vision-device.log" | tail -100
+          APP="build/device/Build/Products/Release-iphoneos/CruxCoach.app"
+          test -d "$APP"
+          ls -la "$APP/CruxCoach"
+          rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/
+          VERSION="$(sed -n 's/^ *MARKETING_VERSION: *"\(.*\)"/\1/p' project.yml | head -1)"
+          NAME="CruxCoach-${VERSION}-${GITHUB_SHA:0:12}-VISION-UNSIGNED.ipa"
+          zip -qry "$NAME" Payload
+          shasum -a 256 "$NAME" | tee "$NAME.sha256"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: CruxCoach-iOS-VISION-UNSIGNED-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            iosApp/CruxCoach-*-VISION-UNSIGNED.ipa
+            iosApp/CruxCoach-*-VISION-UNSIGNED.ipa.sha256
+      - name: Vision test summary
+        if: always()
+        run: |
+          test -d "$RUNNER_TEMP/vision.xcresult" || exit 0
+          python3 scripts/ci_xcresult_summary.py "$RUNNER_TEMP/vision.xcresult" "$RUNNER_TEMP/vision-screenshots"
+      - name: Summarise failure
+        if: failure()
+        run: python3 scripts/ci_log_tail.py "$RUNNER_TEMP/ci-vision-*.log"

@@ -1,0 +1,28 @@
+# The app WITH the on-device meal photo engine (FEAT-069): project.yml plus
+# Frameworks/CruxVision.xcframework (built by scripts/build-vision.sh) and
+# Android's prompt files. Generate with `xcodegen generate --spec project-vision.yml`.
+# project.yml alone still builds the app without the engine; the photo entry then
+# says that this build has no photo recognition. XcodeGen appends the arrays
+# below to project.yml's and merges the settings.
+include:
+  - path: project.yml
+targets:
+  CruxCoach:
+    sources:
+      # The same prompt and grammar files Android ships (referenced, not copied).
+      - path: ../androidApp/src/main/assets/foodvision
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - framework: Frameworks/CruxVision.xcframework
+        embed: false
+      # The engine is C++; the app has no C++ sources of its own.
+      - sdk: libc++.tbd
+    settings:
+      base:
+        # The C bridge's module map (import CruxVision).
+        SWIFT_INCLUDE_PATHS: "$(inherited) $(SRCROOT)/Vision/include"
+  CruxCoachTests:
+    settings:
+      base:
+        SWIFT_INCLUDE_PATHS: "$(inherited) $(SRCROOT)/Vision/include"

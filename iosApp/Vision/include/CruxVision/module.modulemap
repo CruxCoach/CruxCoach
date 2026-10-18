@@ -1,0 +1,6 @@
+module CruxVision {
+    header "food_vision_c.h"
+    // The engine is C++ (llama.cpp, libmtmd); the app has no C++ sources of its own.
+    link "c++"
+    export *
+}
