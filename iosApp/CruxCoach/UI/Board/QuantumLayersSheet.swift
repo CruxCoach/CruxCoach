@@ -44,6 +44,7 @@ struct QuantumLayersSheet: View {
             wallSection(ui: ui)
             lampSection(model: model, ui: ui)
             layersSection(model: model, ui: ui)
+            pickerSection(model: model, ui: ui)
         }
         .confirmationDialog(L("quantum_layer_remove_live_title"),
                             isPresented: Binding(get: { removeSlot >= 0 }, set: { if !$0 { removeSlot = -1 } }),
@@ -122,9 +123,10 @@ struct QuantumLayersSheet: View {
                 Text(L(ui.suggestionUsesExistingSlot ? "quantum_layer_suggestion_existing_reason" : "quantum_layer_suggestion_reason"))
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            if !ui.suggestionUsesExistingSlot {
-                Button(L("quantum_layer_select_suggestion")) { model.assignSuggested() }
+            if !ui.suggestionSelected {
+                Button(L("quantum_layer_select_suggestion")) { model.selectSuggestion() }
                     .disabled(ui.sending)
+                    .accessibilityIdentifier("quantum_layer_select_suggestion")
             }
         } else if !ui.suggestionBlockKey.isEmpty && ui.hasClimb {
             Text(L(ui.suggestionBlockKey)).font(.footnote).foregroundStyle(.orange)
@@ -176,6 +178,35 @@ struct QuantumLayersSheet: View {
     }
 
     private func layerRow(model: QuantumLayersScreenModel, ui: QuantumLayersScreenState, row: QuantumLayerRowUi) -> some View {
+        let selected: Bool = row.slot == ui.selectedSlot
+        let background: Color = selected ? Color.orange.opacity(0.16) : Color(.secondarySystemGroupedBackground)
+        return HStack(spacing: 12) {
+            selectableRowLabel(model: model, ui: ui, row: row, selected: selected)
+            Spacer()
+            rowActions(model: model, ui: ui, row: row)
+        }
+        .accessibilityElement(children: .contain)
+        .listRowBackground(background)
+    }
+
+    /// Android's rack rows are radio buttons choosing the layer the picker acts on;
+    /// another app's route is read-only, so its row cannot be chosen.
+    @ViewBuilder
+    private func selectableRowLabel(model: QuantumLayersScreenModel, ui: QuantumLayersScreenState,
+                                    row: QuantumLayerRowUi, selected: Bool) -> some View {
+        if ui.managementAllowed && ui.hasClimb && row.stateCode != "foreign" {
+            Button { model.selectSlot(slot: row.slot) } label: {
+                rowLabel(row: row).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityIdentifier("board_layer_slot_\(Int(row.number))")
+        } else {
+            rowLabel(row: row)
+        }
+    }
+
+    private func rowLabel(row: QuantumLayerRowUi) -> some View {
         let number: Int = Int(row.number)
         return HStack(spacing: 12) {
             Circle()
@@ -190,10 +221,79 @@ struct QuantumLayersSheet: View {
                     Text(L("quantum_layer_confirmed_previous", row.confirmedClimbName)).font(.caption).foregroundStyle(.secondary)
                 }
             }
-            Spacer()
-            rowActions(model: model, ui: ui, row: row)
         }
-        .accessibilityElement(children: .contain)
+    }
+
+    // MARK: Colour picker (Android BoardLayerColorPicker + assign button)
+
+    @ViewBuilder
+    private func pickerSection(model: QuantumLayersScreenModel, ui: QuantumLayersScreenState) -> some View {
+        if ui.managementAllowed && ui.hasClimb {
+            Section {
+                if ui.selectedSlot < 0 {
+                    Text(L("board_layer_select_hint")).font(.footnote).foregroundStyle(.secondary)
+                } else {
+                    colorPicker(model: model, ui: ui)
+                    assignButton(model: model, ui: ui)
+                    pickerWarnings(ui: ui)
+                }
+            } header: {
+                Text(L("board_layer_color"))
+            }
+        }
+    }
+
+    private func colorPicker(model: QuantumLayersScreenModel, ui: QuantumLayersScreenState) -> some View {
+        let choices: [QuantumLayerColorUi] = ui.colorChoices
+        return HStack(spacing: 10) {
+            ForEach(Array(choices.enumerated()), id: \.offset) { index, choice in
+                swatch(model: model, ui: ui, choice: choice, index: index)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func swatch(model: QuantumLayersScreenModel, ui: QuantumLayersScreenState,
+                        choice: QuantumLayerColorUi, index: Int) -> some View {
+        let name: String = colorName(choice.argb)
+        let label: String = choice.isAvailable ? name : L("board_layer_color_unavailable", name)
+        let opacity: Double = choice.isAvailable ? 1 : 0.22
+        return Button { model.selectColor(argb: choice.argb) } label: {
+            Circle()
+                .fill(Color(argb: choice.argb).opacity(opacity))
+                .frame(width: 44, height: 44)
+                .overlay(Circle().stroke(Color.primary, lineWidth: choice.isChosen ? 3 : 0))
+        }
+        .buttonStyle(.plain)
+        .disabled(!choice.isAvailable || ui.sending)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(choice.isChosen ? .isSelected : [])
+        .accessibilityIdentifier("board_layer_color_\(index)")
+    }
+
+    private func assignButton(model: QuantumLayersScreenModel, ui: QuantumLayersScreenState) -> some View {
+        let number: Int = Int(ui.selectedSlot) + 1
+        return Button { model.assignCurrent() } label: {
+            Label(L(ui.assignKey, number), systemImage: "checkmark").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .disabled(!ui.canAssign)
+        .accessibilityIdentifier("board_layer_assign_current")
+    }
+
+    @ViewBuilder
+    private func pickerWarnings(ui: QuantumLayersScreenState) -> some View {
+        if ui.alreadyAssignedNumber > 0 {
+            Text(L("quantum_layer_already_assigned", Int(ui.alreadyAssignedNumber)))
+                .font(.footnote).foregroundStyle(.yellow)
+        }
+        if ui.selectedSharedHoldCount > 0 {
+            Text(L("board_layer_preview_overlap_warning", Int(ui.selectedSharedHoldCount)))
+                .font(.footnote).foregroundStyle(.yellow)
+        }
+        if ui.selectedColorTaken {
+            Text(L("board_layer_error_color_taken")).font(.footnote).foregroundStyle(.red)
+        }
     }
 
     @ViewBuilder

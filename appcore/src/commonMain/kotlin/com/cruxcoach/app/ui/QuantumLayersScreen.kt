@@ -3,6 +3,7 @@ package com.cruxcoach.app.ui
 import com.cruxcoach.app.ble.MAX_LAYER_IDENTITIES
 import com.cruxcoach.app.ble.ConnectionState
 import com.cruxcoach.app.ble.QuantumControllerSyncStatus
+import com.cruxcoach.app.quantum.BoardLayerManager
 import com.cruxcoach.app.quantum.BoardLayerState
 import com.cruxcoach.app.quantum.QuantumClimbSnapshot
 import com.cruxcoach.app.quantum.QuantumLayerController
@@ -48,6 +49,14 @@ class QuantumLayerRowUi(
     val canCancelReplacement: Boolean,
 )
 
+/** One of the four controller colours in the rack's picker (Android `BoardLayerColorPicker`). */
+class QuantumLayerColorUi(
+    val argb: Long,
+    /** False while another layer (own plan, lit route or another app) holds this colour. */
+    val isAvailable: Boolean,
+    val isChosen: Boolean,
+)
+
 /** One diode on the wall picture; [argbs] holds one colour, or one per layer sharing the diode. */
 class QuantumWallHoldUi(val placementId: Int, val x: Float, val y: Float, val argbs: List<Long>)
 
@@ -87,6 +96,23 @@ class QuantumLayersScreenState(
     val climbHolds: List<QuantumWallHoldUi>,
     /** Android's projection overlay: every own layer's holds, a ring segment per layer colour. */
     val layerHolds: List<QuantumWallHoldUi>,
+    /** 0-based layer the rack's controls act on (picked, else the one holding this climb); -1 none. */
+    val selectedSlot: Int,
+    /** Colour the selected layer would get; 0 when no layer is selected. */
+    val selectedArgb: Long,
+    /** The four controller colours for [selectedSlot]; empty when none is selected. */
+    val colorChoices: List<QuantumLayerColorUi>,
+    /** The chosen colour is already on another layer (Android board_layer_error_color_taken). */
+    val selectedColorTaken: Boolean,
+    /** Android key of the assign button: board_layer_add_current | _replace_current | _update_current; empty without a selection. */
+    val assignKey: String,
+    val canAssign: Boolean,
+    /** 1-based layer this climb already uses when another one is selected; 0 otherwise. */
+    val alreadyAssignedNumber: Int,
+    /** Holds shared with every layer but the selected one (Android board_layer_preview_overlap_warning). */
+    val selectedSharedHoldCount: Int,
+    /** The recommendation is already the selected layer and colour (Android hides "Select recommendation"). */
+    val suggestionSelected: Boolean,
 )
 
 /**
@@ -104,18 +130,23 @@ class QuantumLayersScreenModel internal constructor(
     private val scope = CoroutineScope(SupervisorJob() + main)
     private val climb = MutableStateFlow<QuantumClimbSnapshot?>(null)
 
+    /** Android `selectedBoardLayerSlot`/`selectedBoardLayerColor`: a local choice, reset per climb. */
+    private class Selection(val slot: Int?, val color: Int?)
+
+    private val selection = MutableStateFlow(Selection(null, null))
+
     /** The climb's model and its diode coordinates, for the wall picture. */
     private class Wall(val model: QuantumBoardModel, val placements: Map<Int, BoardPlacement>)
 
     private var wall: Wall? = null
 
     val currentState: QuantumLayersScreenState
-        get() = map(controller.layers.state.value, controller.send.value, climb.value)
+        get() = map(controller.layers.state.value, controller.send.value, climb.value, selection.value)
 
     fun watch(onState: (QuantumLayersScreenState) -> Unit): Subscription {
         val job = scope.launch {
-            combine(controller.layers.state, controller.send, climb, controller.connectionState) { layers, send, current, _ ->
-                map(layers, send, current)
+            combine(controller.layers.state, controller.send, climb, controller.connectionState, selection) { layers, send, current, _, picked ->
+                map(layers, send, current, picked)
             }.collect { onState(it) }
         }
         return Subscription { job.cancel() }
@@ -146,21 +177,53 @@ class QuantumLayersScreenModel internal constructor(
             }
             // Both on the main thread, wall first: the next state already maps over it.
             wall = loaded?.second
+            selection.value = Selection(null, null)
             climb.value = loaded?.first
         }
     }
 
-    /** The detail lamp. */
+    /** The detail lamp; a colour picked in the rack is honoured (Android lamp uses `selectedBoardLayerColor`). */
     fun light() {
-        climb.value?.let(controller::light)
+        climb.value?.let { controller.light(it, selection.value.color) }
     }
 
-    /** Stage this climb in the recommended layer without sending (Android "Select recommendation"). */
-    fun assignSuggested() {
-        val current = climb.value ?: return
-        val summary = summary(controller.layers.state.value, current)
+    /** Android `selectSuggestedBoardLayer`: the policy's one safe answer as the selection, nothing staged. */
+    fun selectSuggestion() {
+        if (!localManagementAllowed()) return
+        val summary = summary(controller.layers.state.value, climb.value)
         val slot = summary.suggestedSlot ?: return
-        controller.assign(current, slot, summary.suggestedColor)
+        val color = summary.suggestedColor ?: return
+        if (slot !in 0 until MAX_LAYER_IDENTITIES || color !in BoardLayerManager.LAYER_COLORS) return
+        selection.value = Selection(slot, color)
+    }
+
+    /** Android `selectBoardLayer`: another app's route stays read-only, so its row is not selectable. */
+    fun selectSlot(slot: Int) {
+        if (!localManagementAllowed() || slot !in 0 until MAX_LAYER_IDENTITIES) return
+        val layers = controller.layers.state.value
+        val row = summary(layers, climb.value).slots.firstOrNull { it.slot == slot } ?: return
+        if (row.externalLayer != null) return
+        val existing = layers.layers.firstOrNull { it.slot == slot }
+        selection.value = Selection(slot, existing?.color ?: controller.layers.defaultColor(slot))
+    }
+
+    /** Android `selectBoardLayerColor`; only a free controller colour can be chosen. */
+    fun selectColor(argb: Long) {
+        if (!localManagementAllowed()) return
+        val color = argb.toInt()
+        if (color !in BoardLayerManager.LAYER_COLORS) return
+        val layers = controller.layers.state.value
+        val slot = selectedSlot(layers, climb.value, selection.value)
+        if (slot == null || color in layers.reservedLayerColors(slot)) return
+        selection.value = Selection(selection.value.slot, color)
+    }
+
+    /** Android `assignCurrentToBoardLayer`: stage this climb on the selected layer in the chosen colour, unsent. */
+    fun assignCurrent() {
+        val current = climb.value ?: return
+        val picked = selection.value
+        val slot = selectedSlot(controller.layers.state.value, current, picked) ?: return
+        controller.assign(current, slot, picked.color)
     }
 
     fun sendLayer(slot: Int) = controller.sendLayer(slot)
@@ -175,13 +238,31 @@ class QuantumLayersScreenModel internal constructor(
         layers, current?.uuid, current?.holds.orEmpty().mapTo(mutableSetOf()) { it.placementId },
     )
 
-    private fun map(layers: BoardLayerState, send: QuantumSendState, current: QuantumClimbSnapshot?): QuantumLayersScreenState {
+    private fun selectedSlot(layers: BoardLayerState, current: QuantumClimbSnapshot?, picked: Selection): Int? =
+        picked.slot?.takeIf { it in 0 until MAX_LAYER_IDENTITIES }
+            ?: current?.let { c -> layers.layers.firstOrNull { it.climbUuid == c.uuid } }?.slot
+
+    private fun map(
+        layers: BoardLayerState,
+        send: QuantumSendState,
+        current: QuantumClimbSnapshot?,
+        picked: Selection,
+    ): QuantumLayersScreenState {
         val summary = summary(layers, current)
         val connection = controller.connectionState.value
         val connected = connection.connection != ConnectionState.DISCONNECTED &&
             connection.connection != ConnectionState.CONNECTING &&
             connection.connectedBoard?.boardBrand == BoardBrand.QUANTUM
         val placements = current?.holds.orEmpty().mapTo(mutableSetOf()) { it.placementId }
+        // Android BoardLayerRack: explicit pick first, then the layer that already holds this climb.
+        val currentLayer = current?.let { c -> layers.layers.firstOrNull { it.climbUuid == c.uuid } }
+        val selectedSlot = selectedSlot(layers, current, picked)
+        val selectedLayer = selectedSlot?.let { s -> layers.layers.firstOrNull { it.slot == s } }
+        val selectedColor = picked.color ?: selectedLayer?.color ?: selectedSlot?.let { BoardLayerManager.LAYER_COLORS[it] }
+        val reserved = layers.reservedLayerColors(selectedSlot)
+        val colorTaken = selectedColor != null && selectedColor in reserved
+        val alreadyOnOther = currentLayer != null && selectedSlot != null && currentLayer.slot != selectedSlot
+        val managementAllowed = localManagementAllowed()
         return QuantumLayersScreenState(
             hasClimb = current != null && current.holds.isNotEmpty(),
             climbName = current?.name ?: "",
@@ -227,12 +308,30 @@ class QuantumLayersScreenModel internal constructor(
             sending = send.sending,
             success = send.success,
             errorKey = send.error ?: "",
-            managementAllowed = localManagementAllowed(),
+            managementAllowed = managementAllowed,
             boardImagePaths = current?.let { wall }?.let {
                 com.cruxcoach.app.render.boardImageCandidatePaths(BoardBrand.QUANTUM, it.model.productSizeId, it.model.layoutId)
             } ?: emptyList(),
             climbHolds = climbHolds(layers, current),
             layerHolds = layerHolds(layers, current),
+            selectedSlot = selectedSlot ?: -1,
+            selectedArgb = selectedColor?.let(::argb) ?: 0L,
+            colorChoices = if (selectedSlot == null) emptyList() else BoardLayerManager.LAYER_COLORS.map { color ->
+                QuantumLayerColorUi(argb(color), isAvailable = color !in reserved, isChosen = color == selectedColor)
+            },
+            selectedColorTaken = colorTaken,
+            assignKey = when {
+                selectedSlot == null -> ""
+                current != null && selectedLayer?.climbUuid == current.uuid -> "board_layer_update_current"
+                selectedLayer != null -> "board_layer_replace_current"
+                else -> "board_layer_add_current"
+            },
+            canAssign = selectedSlot != null && managementAllowed && !send.sending && !colorTaken && !alreadyOnOther &&
+                current != null && current.holds.isNotEmpty(),
+            alreadyAssignedNumber = currentLayer?.takeIf { alreadyOnOther }?.let { it.slot + 1 } ?: 0,
+            selectedSharedHoldCount = if (selectedSlot == null) 0 else QuantumLayerUiPolicy.knownSharedHoldCount(layers, placements, selectedSlot),
+            suggestionSelected = summary.suggestedSlot != null && summary.suggestedSlot == selectedSlot &&
+                summary.suggestedColor == selectedColor,
         )
     }
 

@@ -296,6 +296,117 @@ class QuantumLayerControllerTest {
         screen.close()
     }
 
+    // ── Colour picker (Android BoardLayerRack + BoardLayerColorPicker) ──
+
+    private val green = 0xFF00FF00L
+    private val cyan = 0xFF00FFFFL
+    private val magenta = 0xFFFF00FFL
+
+    @Test
+    fun `picking a layer and a colour stages the climb there unsent in that colour`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        val c = controller(link)
+        val screen = QuantumLayersScreenModel(c, repository, { allowed }, dispatcher, dispatcher)
+        screen.setClimb(climbUuid, 40); advanceUntilIdle()
+        assertEquals(-1, screen.currentState.selectedSlot)
+        assertTrue(screen.currentState.colorChoices.isEmpty())
+        assertEquals("", screen.currentState.assignKey)
+
+        screen.selectSlot(2)
+        var s = screen.currentState
+        assertEquals(2, s.selectedSlot)
+        // Android selectBoardLayer: an empty layer starts with its own palette colour.
+        assertEquals(magenta, s.selectedArgb)
+        assertEquals(listOf(green, cyan, magenta, 0xFFFFFF00L), s.colorChoices.map { it.argb })
+        assertEquals(listOf(false, false, true, false), s.colorChoices.map { it.isChosen })
+        assertTrue(s.colorChoices.all { it.isAvailable })
+        assertEquals("board_layer_add_current", s.assignKey)
+        assertTrue(s.canAssign)
+
+        screen.selectColor(cyan)
+        assertEquals(cyan, screen.currentState.selectedArgb)
+        screen.assignCurrent(); advanceUntilIdle()
+
+        val staged = c.layers.state.value.layers.single()
+        assertEquals(2, staged.slot)
+        assertEquals(cyan.toInt(), staged.color)
+        assertEquals(BoardLayerStatus.PREVIEW, staged.status)
+        assertTrue(link.sends.isEmpty(), "assigning is local until a lamp is tapped")
+        s = screen.currentState
+        assertEquals("planned", s.rows[2].stateCode)
+        assertEquals("board_layer_update_current", s.assignKey)
+
+        // Another layer while this climb sits on layer 3: Android refuses to move the identity.
+        screen.selectSlot(0)
+        s = screen.currentState
+        assertEquals(3, s.alreadyAssignedNumber)
+        assertFalse(s.canAssign)
+        // Cyan now belongs to layer 3, so layer 1 cannot take it.
+        assertEquals(listOf(true, false, true, true), s.colorChoices.map { it.isAvailable })
+        screen.selectColor(cyan)
+        assertEquals(green, screen.currentState.selectedArgb)
+        screen.close()
+    }
+
+    @Test
+    fun `another app's route is read only and its colour cannot be picked`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        link.roster(listOf(QuantumActivePlayer("99999999-0000-4000-8000-000000000000", foreignUser, 100, 0x00ffff)))
+        val c = controller(link)
+        val screen = QuantumLayersScreenModel(c, repository, { allowed }, dispatcher, dispatcher)
+        screen.setClimb(climbUuid, 40); advanceUntilIdle()
+        assertEquals("foreign", screen.currentState.rows[1].stateCode)
+
+        screen.selectSlot(1)
+        assertEquals(-1, screen.currentState.selectedSlot)
+
+        screen.selectSlot(3)
+        screen.selectColor(cyan)
+        val s = screen.currentState
+        assertEquals(0xFFFFFF00L, s.selectedArgb)
+        assertFalse(s.colorChoices[1].isAvailable)
+        assertFalse(s.selectedColorTaken)
+        screen.close()
+    }
+
+    @Test
+    fun `the recommendation becomes the selection and a picked colour reaches the lamp`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        val c = controller(link)
+        val screen = QuantumLayersScreenModel(c, repository, { allowed }, dispatcher, dispatcher)
+        screen.setClimb(climbUuid, 40); advanceUntilIdle()
+        assertFalse(screen.currentState.suggestionSelected)
+
+        screen.selectSuggestion()
+        var s = screen.currentState
+        assertEquals(0, s.selectedSlot)
+        assertEquals(green, s.selectedArgb)
+        assertTrue(s.suggestionSelected)
+        assertTrue(c.layers.state.value.layers.isEmpty(), "selecting the recommendation stages nothing")
+
+        screen.selectColor(magenta)
+        assertFalse(screen.currentState.suggestionSelected)
+        screen.light(); advanceUntilIdle()
+        assertEquals(0xff00ff, link.sends.single()[2])
+        s = screen.currentState
+        assertEquals("onBoard", s.rows[0].stateCode)
+        assertEquals(magenta, s.rows[0].plannedArgb)
+        screen.close()
+    }
+
+    @Test
+    fun `a joined shared session cannot pick layers or colours`() = scope.runTest {
+        allowed = false
+        val c = controller(FakeLink(QuantumBoardModel.M))
+        val screen = QuantumLayersScreenModel(c, repository, { allowed }, dispatcher, dispatcher)
+        screen.setClimb(climbUuid, 40); advanceUntilIdle()
+        screen.selectSlot(1)
+        screen.selectSuggestion()
+        assertEquals(-1, screen.currentState.selectedSlot)
+        assertFalse(screen.currentState.canAssign)
+        screen.close()
+    }
+
     // ── Playlist projection (Android SessionQueueManager.sendQuantumPlaylistLayer) ──
 
     private fun playlist(layers: BoardLayerManager, link: FakeLink) =
