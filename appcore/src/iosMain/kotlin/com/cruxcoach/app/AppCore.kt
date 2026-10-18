@@ -1415,7 +1415,7 @@ class AppCore private constructor(
                 backgroundKilterContinuousSyncStep(),
                 backgroundCommunityStep(),
                 // Android's KilterPublishRetryWorker: own climbs the portal has not taken yet.
-                com.cruxcoach.app.background.KilterClimbPublishStep({ kilterClimbPublishEnabled() }) {
+                com.cruxcoach.app.background.KilterClimbPublishStep({ kilterClimbPublishAllowed() }) {
                     !kilterClimbPublishRetry().run().retrySoon
                 },
                 backgroundBackupStep(),
@@ -1628,6 +1628,14 @@ class AppCore private constructor(
     private fun kilterClimbPublishEnabled(): Boolean =
         platform.keyValues.getString(settingsStore.scopedKey(SettingsStore.KILTER_CLIMB_PUBLISH_ENABLED)) == "true"
 
+    /**
+     * Android's gate for every automatic Kilter publish (`KilterClimbPublisher.submit`,
+     * `KilterPublishRetryWorker`): the switch AND "Sync continuously", so a token left over
+     * from a one-time import never becomes a silent upload channel.
+     */
+    private fun kilterClimbPublishAllowed(): Boolean =
+        kilterClimbPublishEnabled() && settingsStore.snapshot.kilterSyncEnabled
+
     /** The identity's Kilter session (the same stored tokens the Kilter screen signs in to). */
     private val kilterClimbTokens: KilterTokens by lazy { KilterTokens(platform.secrets, platform.keyValues, pubkeyHex.take(16)) }
 
@@ -1639,7 +1647,7 @@ class AppCore private constructor(
 
     private val kilterClimbPublisher: com.cruxcoach.app.kilter.KilterClimbPublisher by lazy {
         com.cruxcoach.app.kilter.KilterClimbPublisher(
-            kilterClimbApi, kilterClimbAccount, boardRepository, { kilterClimbPublishEnabled() },
+            kilterClimbApi, kilterClimbAccount, boardRepository, { kilterClimbPublishAllowed() },
         ) { platform.clock.epochMillis() }
     }
 
@@ -1650,7 +1658,7 @@ class AppCore private constructor(
     fun kilterClimbPublishRetry(): com.cruxcoach.app.kilter.KilterClimbPublishRetry =
         com.cruxcoach.app.kilter.KilterClimbPublishRetry(
             kilterClimbPublisher, kilterClimbAccount, boardRepository,
-            { kilterClimbPublishEnabled() }, { pubkeyHex }, { platform.clock.epochMillis() },
+            { kilterClimbPublishAllowed() }, { pubkeyHex }, { platform.clock.epochMillis() },
         )
 
     /** Own logged/authored Kilter climbs into the board DB; run before a Kilter log import writes its logs. */
@@ -1662,7 +1670,7 @@ class AppCore private constructor(
         val model = makeCreatorScreen()
         model.attachKilter(
             com.cruxcoach.app.kilter.KilterClimbCreatorLeg(
-                kilterClimbPublisher, kilterClimbAccount, boardRepository, { kilterClimbPublishEnabled() },
+                kilterClimbPublisher, kilterClimbAccount, boardRepository, { kilterClimbPublishAllowed() },
             ),
             com.cruxcoach.app.kilter.KilterClimbPublisherPrefs.autoNoteEnabled(platform.keyValues),
         )

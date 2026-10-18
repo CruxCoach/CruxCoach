@@ -201,12 +201,9 @@
 "creator_grade" = "Your grade";
 "creator_save_draft" = "Save draft";
 "creator_draft_saved" = "Draft saved.";
-"creator_discard" = "Discard";
 "creator_publish" = "Publish";
 "creator_published" = "Published: %1$ld of %2$ld relays accepted it.";
 "creator_publish_failed" = "Publishing failed: %@";
-"creator_duplicate_title" = "A problem with these holds already exists";
-"creator_duplicate" = "“%@” uses the same holds on this layout.";
 "creator_role_start" = "Start";
 "creator_role_hand" = "Hand";
 "creator_role_finish" = "Finish";

@@ -201,12 +201,9 @@
 "creator_grade" = "Deine Bewertung";
 "creator_save_draft" = "Entwurf speichern";
 "creator_draft_saved" = "Entwurf gespeichert.";
-"creator_discard" = "Verwerfen";
 "creator_publish" = "Veröffentlichen";
 "creator_published" = "Veröffentlicht: %1$ld von %2$ld Relays haben es angenommen.";
 "creator_publish_failed" = "Veröffentlichen fehlgeschlagen: %@";
-"creator_duplicate_title" = "Ein Problem mit diesen Griffen existiert bereits";
-"creator_duplicate" = "„%@“ verwendet dieselben Griffe auf diesem Layout.";
 "creator_role_start" = "Start";
 "creator_role_hand" = "Hand";
 "creator_role_finish" = "Top";
