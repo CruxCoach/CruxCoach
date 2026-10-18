@@ -89,7 +89,8 @@ class MealTextParserTest {
     fun countsFillerAndDecimalCommas() {
         assertEquals(listOf("Nüsse" to 30, "Apfel" to 150), items("Eine Handvoll Nüsse und ein Apfel"))
         assertEquals(listOf("Döner" to 400), items("Döner mit allem"))
-        assertEquals(listOf("Eier" to 120, "Toast" to 50, "Kaffee" to 150, "Milch" to 200), items("2 Eier, 2 Toast und ein Kaffee mit Milch"))
+        // Milk in a coffee is a splash, not a glass (2026-10-19).
+        assertEquals(listOf("Eier" to 120, "Toast" to 50, "Kaffee" to 150, "Milch" to 30), items("2 Eier, 2 Toast und ein Kaffee mit Milch"))
         assertEquals(listOf("Wasser" to 1500), items("1,5 l Wasser"))
         assertEquals(listOf("Skyr" to 250), items("250g Skyr"))
     }
