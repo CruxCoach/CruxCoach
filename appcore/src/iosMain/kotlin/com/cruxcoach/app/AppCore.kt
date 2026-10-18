@@ -1609,5 +1609,22 @@ class AppCore private constructor(
     /** Android `LogbookOnlyClimbContent`: a logged climb the catalogue does not have. */
     fun makeLogbookOnlyClimb(): com.cruxcoach.app.logbook.LogbookOnlyClimbModel =
         com.cruxcoach.app.logbook.LogbookOnlyClimbModel(personalRepository, MainScope(), Dispatchers.IO)
+
+    /** Android's hidden easter LED animation (Settings → About, seven taps), Kilter only. */
+    fun makeEasterAnimation(): com.cruxcoach.app.playback.EasterAnimationModel =
+        com.cruxcoach.app.playback.EasterAnimationModel(
+            keyValues = platform.keyValues,
+            boardLinked = com.cruxcoach.app.session.BoardLink.linked(boardConnection.state),
+            isBoardLinked = { com.cruxcoach.app.session.BoardLink.isLinked(boardConnection.state.value.connection) },
+            connectedIsKilter = { boardConnection.state.value.connectedBoard?.boardBrand == BoardBrand.KILTER },
+            // Android reads the LED grid of the selected product size, Kilter's partition.
+            loadGrid = { boardRepository.getLedGrid(BrowsePreferences(platform.keyValues).boardSelection().productSizeId, "kilter") },
+            sendFrame = { leds ->
+                boardConnection.sendRawLeds(leds, BoardBrand.KILTER) == com.cruxcoach.app.ble.BoardSendResult.OK
+            },
+            clearBoard = { boardConnection.clearBoardFor(BoardBrand.KILTER) },
+            scope = MainScope(),
+            io = Dispatchers.IO,
+        )
 }
 

@@ -224,3 +224,81 @@ struct RoutePlaybackSettingsSection: View {
                        in: low...high)
     }
 }
+
+/// Android `AppInfoSection`: seven taps on the app info unlock the hidden easter
+/// LED animation (an LED playback like the route's), which can then be
+/// projected onto a connected Kilter board.
+struct EasterAnimationRows: View {
+    let core: AppCore
+    @State private var host: ScreenHost<EasterAnimationModel, EasterAnimationState>?
+    /// Android's toast after a tap, shown under the row for a moment.
+    @State private var hint = ""
+
+    var body: some View {
+        appInfoRow
+            .task { load() }
+        if let host, host.state.unlocked {
+            playRow(model: host.model, ui: host.state)
+        }
+    }
+
+    private var appInfoRow: some View {
+        let version: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        return Button { tap() } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("settings_app_info_title"))
+                Text("CruxCoach v\(version)").font(.footnote).foregroundStyle(.secondary)
+                if !hint.isEmpty {
+                    Text(hint).font(.footnote).foregroundStyle(Color.orange)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("settings_app_info")
+    }
+
+    @ViewBuilder
+    private func playRow(model: EasterAnimationModel, ui: EasterAnimationState) -> some View {
+        if ui.isAnimating {
+            Button(role: .destructive) { model.stop() } label: {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text(L("settings_app_info_animation_stop"))
+                }
+            }
+        } else {
+            Button(ui.boardConnected ? L("settings_app_info_easter_play") : L("settings_app_info_easter_no_board")) {
+                model.play()
+            }
+            .disabled(!ui.boardConnected)
+        }
+    }
+
+    private func load() {
+        guard host == nil else { return }
+        let model = core.makeEasterAnimation()
+        host = ScreenHost(model: model, initial: model.currentState,
+                          subscribe: { model, onState in model.watch(onState: onState) },
+                          onClose: { model in model.close() })
+    }
+
+    private func tap() {
+        guard let host else { return }
+        let result: Int = Int(host.model.tapAppInfo())
+        if result == 0 {
+            showHint(L("settings_app_info_easter_unlocked"))
+        } else if result > 0 {
+            showHint(L("settings_app_info_easter_remaining", result))
+        }
+    }
+
+    private func showHint(_ text: String) {
+        hint = text
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if hint == text { hint = "" }
+        }
+    }
+}

@@ -549,6 +549,28 @@ class BoardConnectionController(
      * frame in one write, as on Android since 0.2.4 (before, it was sent the
      * Aurora v2 empty packet its apiLevel-0 encoder produced).
      */
+    /**
+     * Android `sendRawLeds` (the easter animation): (LED position, RGB332 colour)
+     * pairs as one frame, encoded for the connected board's api level. Aurora
+     * family only — a MoonBoard or Quantum cannot parse these packets.
+     */
+    suspend fun sendRawLeds(leds: List<Pair<Int, Int>>, expectedBrand: BoardBrand? = null): BoardSendResult =
+        writeMutex.withLock {
+            if (cleaning.state.value.active) return BoardSendResult.CLEANING_ACTIVE
+            val ticket = cleaning.ticket()
+            if (connection != ConnectionState.CONNECTED) return BoardSendResult.NOT_CONNECTED
+            if (connectedBrand == BoardBrand.QUANTUM || connectedBrand == BoardBrand.MOONBOARD) {
+                return BoardSendResult.WRONG_BOARD_FAMILY
+            }
+            if (!boardScopedCommandAllowed(connectedBrand, expectedBrand)) return BoardSendResult.BOARD_MISMATCH
+            sending {
+                val chunks = encoder.encodeClimb(leds)
+                val result = writeChunks(chunks)
+                if (result == BoardSendResult.OK) cleaning.projected(ticket, emptySet(), chunks)
+                result
+            }
+        }
+
     suspend fun clearBoard(expectedBrand: BoardBrand? = null): BoardSendResult = writeMutex.withLock {
         if (cleaning.state.value.active) return BoardSendResult.CLEANING_ACTIVE
         if (connection != ConnectionState.CONNECTED) return BoardSendResult.NOT_CONNECTED

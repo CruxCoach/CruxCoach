@@ -165,6 +165,16 @@ class BoardConnectionPresenter(
 
     fun clearBoard() = run { controller.clearBoard() }
 
+    /** The easter animation's frames: the result goes to the caller, not to the send banner. */
+    internal suspend fun sendRawLeds(leds: List<Pair<Int, Int>>, expectedBrand: BoardBrand): BoardSendResult = try {
+        controller.sendRawLeds(leds, expectedBrand)
+    } catch (e: IllegalArgumentException) {
+        BoardSendResult.INVALID_PAYLOAD
+    }
+
+    /** Clears the board only while [expectedBrand] is the one connected (the easter animation's end). */
+    internal suspend fun clearBoardFor(expectedBrand: BoardBrand): BoardSendResult = controller.clearBoard(expectedBrand)
+
     // ── Clean holds ─────────────────────────────────────────────────────
 
     val cleaningState: StateFlow<BoardCleaningState> get() = controller.cleaningState
