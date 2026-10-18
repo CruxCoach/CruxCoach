@@ -1,9 +1,9 @@
 import CruxCoachCore
 import SwiftUI
 
-/// Kilter account: sign in, pull the account's ascents into the logbook and
-/// upload this iPhone's entries. The password goes straight into the sign-in
-/// call and is never stored.
+/// Kilter account: sign in, pull the account's ascents into the logbook (and
+/// its circuits into climb lists) and upload this iPhone's entries. The password
+/// goes straight into the sign-in call and is never stored.
 struct KilterView: View {
     let core: AppCore
     @State private var host: ScreenHost<KilterScreenModel, KilterScreenState>?
@@ -24,7 +24,7 @@ struct KilterView: View {
         .navigationTitle(LI("kilter_title"))
         .task {
             guard host == nil else { return }
-            let model = core.kilterScreen
+            let model = core.kilterScreenWithCircuits()
             host = ScreenHost(model: model, initial: model.currentState) { model, onState in
                 model.watch(onState: onState)
             }
@@ -49,6 +49,9 @@ struct KilterView: View {
                             .foregroundStyle(.green)
                         if ui.unknownClimb > 0 {
                             Text(LI("kilter_unknown", Int(ui.unknownClimb))).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        if ui.circuits > 0 {
+                            Text(L("kilter_import_part_circuits", Int(ui.circuits))).font(.footnote).foregroundStyle(.secondary)
                         }
                     }
                 }

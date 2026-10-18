@@ -1256,4 +1256,23 @@ class AppCore private constructor(
             com.cruxcoach.app.waistline.WaistlineImportPresenter(service, MainScope(), Dispatchers.IO),
         )
     }
+
+    /**
+     * The Kilter screen with circuits → climb lists after each log import (Android
+     * `KilterCircuitImporter`, read from the PowerSync stream line by line). Same instance as
+     * [kilterScreen]; the importer is attached once.
+     */
+    fun kilterScreenWithCircuits(): KilterScreenModel {
+        val screen = kilterScreen
+        if (screen.circuitImporter == null) {
+            val tokens = KilterTokens(platform.secrets, platform.keyValues, pubkeyHex.take(16))
+            screen.circuitImporter = com.cruxcoach.app.kilter.KilterCircuitImporter(
+                com.cruxcoach.app.kilter.KilterCircuitFetcher(
+                    com.cruxcoach.app.kilter.IosKilterCircuitLineSource(), tokens, platform.clock,
+                ),
+                secureDatabase,
+            )
+        }
+        return screen
+    }
 }

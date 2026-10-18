@@ -1,6 +1,7 @@
 package com.cruxcoach.app.ui
 
 import com.cruxcoach.app.kilter.KilterApi
+import com.cruxcoach.app.kilter.KilterCircuitImporter
 import com.cruxcoach.app.kilter.KilterFailure
 import com.cruxcoach.app.kilter.KilterLogImporter
 import com.cruxcoach.app.kilter.KilterNotUploadedEntry
@@ -58,6 +59,8 @@ data class KilterScreenState(
     val imported: Int,
     val alreadyPresent: Int,
     val unknownClimb: Int,
+    /** Kilter circuits written as climb lists by the last import (Android `kilter_import_part_circuits`). */
+    val circuits: Int = 0,
     /** A run (manual or automatic) holds the upload. */
     val uploading: Boolean = false,
     /** False until the first upload run of this identity: "kilter_upload_unchecked". */
@@ -103,6 +106,12 @@ class KilterScreenModel(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + main)
     private var job: Job? = null
+
+    /**
+     * Circuits → climb lists after each log import (Android's sync engine runs
+     * `KilterCircuitImporter` with every import). Set once by the composition root.
+     */
+    internal var circuitImporter: KilterCircuitImporter? = null
 
     private val _state = MutableStateFlow(
         KilterScreenState(
@@ -167,6 +176,8 @@ class KilterScreenModel(
                 return@launch
             }
             val summary = withContext(io) { importer.import(fetched.logs) }
+            // Best-effort and non-fatal, as on Android: the token was refreshed by the log fetch.
+            val circuits = circuitImporter?.let { withContext(io) { it.importCircuits() } } ?: 0
             _state.update {
                 it.copy(
                     busy = false,
@@ -174,6 +185,7 @@ class KilterScreenModel(
                     imported = summary.imported,
                     alreadyPresent = summary.alreadyPresent,
                     unknownClimb = summary.unknownClimb,
+                    circuits = circuits,
                 )
             }
         }
@@ -276,7 +288,7 @@ class KilterScreenModel(
             }
             engine.clearSessionExpired()
             _state.update {
-                it.copy(busy = false, signedIn = false, phase = "idle", failure = "none", imported = 0, alreadyPresent = 0, unknownClimb = 0)
+                it.copy(busy = false, signedIn = false, phase = "idle", failure = "none", imported = 0, alreadyPresent = 0, unknownClimb = 0, circuits = 0)
             }
         }
     }
