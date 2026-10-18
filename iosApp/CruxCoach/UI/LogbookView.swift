@@ -8,6 +8,7 @@ struct LogbookView: View {
     @State private var host: ScreenHost<LogbookScreenModel, LogbookScreenState>?
     @State private var cleaning: ScreenHost<BoardCleaningScreenModel, BoardCleaningScreenState>?
     @State private var showCleaning = false
+    @State private var showFilters = false
 
     var body: some View {
         Group {
@@ -18,17 +19,10 @@ struct LogbookView: View {
             }
         }
         .navigationTitle(L("board_logbook_title"))
-        .toolbar {
-            // Android's logbook options menu; "Clean holds" is its entry point.
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button { showCleaning = true } label: {
-                        Label(L("board_cleaning_title"), systemImage: "sparkles")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .accessibilityLabel(L("board_cleaning_logbook_options"))
-                }
+        .toolbar { toolbarContent() }
+        .sheet(isPresented: $showFilters) {
+            if let host {
+                LogbookFilterSheet(model: host.model, ui: host.state) { showFilters = false }
             }
         }
         .sheet(isPresented: $showCleaning) {
@@ -74,18 +68,13 @@ struct LogbookView: View {
                     .pickerStyle(.segmented)
                     StatsSummary(stats: ui.stats)
                 }
-                Section {
-                    Picker(LI("logbook_outcome_filter"), selection: Binding(get: { ui.outcomeFilterCode }, set: { model.setOutcomeFilter(code: $0) })) {
-                        Text(LI("outcome_all")).tag("all")
-                        Text(LI("outcome_sends")).tag("sends")
-                        Text(LI("outcome_attempts")).tag("attempts")
-                    }
-                    .pickerStyle(.segmented)
+                if ui.selectedCount > 0 {
+                    selectionSection(model: model, ui: ui)
                 }
                 ForEach(ui.days, id: \.date) { day in
                     Section {
                         ForEach(day.entries, id: \.uuid) { entry in
-                            LogbookRow(entry: entry)
+                            LogbookRow(entry: entry) { model.toggleSelection(uuid: entry.uuid) }
                                 .swipeActions {
                                     Button(LI("logbook_delete"), role: .destructive) { model.requestDelete(uuid: entry.uuid) }
                                     Button(LI("logbook_edit")) { model.edit(uuid: entry.uuid) }
@@ -99,6 +88,14 @@ struct LogbookView: View {
                     ProgressView().frame(maxWidth: .infinity).onAppear { model.loadMore() }
                 }
             }
+        }
+        .alert(LP("board_logbook_delete_title", Int(ui.selectedCount)), isPresented: Binding(
+            get: { ui.showBatchDeleteConfirm },
+            set: { if !$0 { model.dismissBatchDeleteConfirm() } })) {
+            Button(L("action_cancel"), role: .cancel) { model.dismissBatchDeleteConfirm() }
+            Button(L("action_delete"), role: .destructive) { model.confirmBatchDelete() }
+        } message: {
+            Text(L("board_logbook_delete_message"))
         }
         .alert(LI("logbook_delete_confirm"), isPresented: Binding(
             get: { !ui.deleteConfirmUuid.isEmpty },
@@ -118,6 +115,160 @@ struct LogbookView: View {
             }
         }
     }
+}
+
+private extension LogbookView {
+    /// Android's logbook actions: filters, then the options menu ("Clean holds",
+    /// select all, delete selected).
+    @ToolbarContentBuilder
+    func toolbarContent() -> some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if let host, host.state.hasData {
+                Button { showFilters = true } label: {
+                    Image(systemName: filtersActive(host.state)
+                          ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        .accessibilityLabel(L("board_logbook_filters"))
+                }
+            }
+            Menu {
+                Button { showCleaning = true } label: {
+                    Label(L("board_cleaning_title"), systemImage: "sparkles")
+                }
+                if let host, host.state.hasData {
+                    selectionMenuItems(model: host.model, ui: host.state)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .accessibilityLabel(L("board_cleaning_logbook_options"))
+            }
+        }
+    }
+
+    @ViewBuilder
+    func selectionMenuItems(model: LogbookScreenModel, ui: LogbookScreenState) -> some View {
+        let all: Bool = allSelected(ui)
+        Button {
+            if all { model.clearSelection() } else { model.selectAll() }
+        } label: {
+            Label(all ? L("cd_deselect_all") : L("cd_select_all"), systemImage: "checklist")
+        }
+        Button(role: .destructive) { model.requestBatchDelete() } label: {
+            Label(L("cd_delete_selected"), systemImage: "trash")
+        }
+        .disabled(ui.selectedCount == 0)
+    }
+
+    func selectionSection(model: LogbookScreenModel, ui: LogbookScreenState) -> some View {
+        Section {
+            HStack {
+                Text(L("board_logbook_selected", Int(ui.selectedCount)))
+                Spacer()
+                Button(L("cd_deselect_all")) { model.clearSelection() }
+                    .buttonStyle(.borderless)
+                Button(role: .destructive) { model.requestBatchDelete() } label: {
+                    Image(systemName: "trash").accessibilityLabel(L("cd_delete_selected"))
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+    }
+
+    func filtersActive(_ ui: LogbookScreenState) -> Bool {
+        ui.outcomeFilterCode != "all" || !ui.listBoardFilter.isEmpty || ui.angleFilter >= 0
+    }
+
+    func allSelected(_ ui: LogbookScreenState) -> Bool {
+        var visible: Int = 0
+        for day in ui.days { visible += day.entries.count }
+        return visible > 0 && Int(ui.selectedCount) == visible
+    }
+}
+
+/// Android `LogbookFilterSheet`: result, board (with more than one) and angle.
+private struct LogbookFilterSheet: View {
+    let model: LogbookScreenModel
+    let ui: LogbookScreenState
+    let onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(L("ux_logbook_help")).font(.footnote).foregroundStyle(.secondary)
+                }
+                outcomeSection
+                if ui.availableBoardWires.count > 1 {
+                    boardSection
+                }
+                if !ui.availableAngles.isEmpty {
+                    angleSection
+                }
+            }
+            .navigationTitle(L("board_logbook_filters"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button(L("action_done"), action: onDone) }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var outcomeSection: some View {
+        Section(L("board_logbook_filter_outcome")) {
+            Picker(L("board_logbook_filter_outcome"),
+                   selection: Binding(get: { ui.outcomeFilterCode }, set: { model.setOutcomeFilter(code: $0) })) {
+                Text(L("map_filter_show_all")).tag("all")
+                Text(L("board_sends")).tag("sends")
+                Text(L("ux_logbook_unsent_attempts")).tag("attempts")
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private var boardSection: some View {
+        let choices: [LogbookBoardChoice] = boardChoices()
+        return Section(L("board_logbook_filter_board")) {
+            Picker(L("board_logbook_filter_board"),
+                   selection: Binding(get: { ui.listBoardFilter }, set: { model.setListBoardFilter(boardWire: $0) })) {
+                Text(L("map_filter_show_all")).tag("")
+                ForEach(choices) { choice in
+                    Text(choice.title).tag(choice.id)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        }
+    }
+
+    private var angleSection: some View {
+        let angles: [Int32] = ui.availableAngles.map { $0.int32Value }
+        return Section(L("board_logbook_filter_angle")) {
+            Picker(L("board_logbook_filter_angle"),
+                   selection: Binding(get: { ui.angleFilter }, set: { model.setAngleFilter(angle: $0) })) {
+                Text(L("map_filter_show_all")).tag(Int32(-1))
+                ForEach(angles, id: \.self) { angle in
+                    Text("\(angle)°").tag(angle)
+                }
+            }
+            .pickerStyle(.menu)
+        }
+    }
+
+    private func boardChoices() -> [LogbookBoardChoice] {
+        let wires: [String] = ui.availableBoardWires
+        let titles: [String] = ui.availableBoardTitles
+        var out: [LogbookBoardChoice] = []
+        for index in 0..<wires.count {
+            let title: String = index < titles.count ? titles[index] : wires[index]
+            out.append(LogbookBoardChoice(id: wires[index], title: title))
+        }
+        return out
+    }
+}
+
+private struct LogbookBoardChoice: Identifiable {
+    let id: String
+    let title: String
 }
 
 private struct StatsSummary: View {
@@ -167,8 +318,24 @@ private struct StatsSummary: View {
 
 private struct LogbookRow: View {
     let entry: LogbookEntryUi
+    let onToggleSelect: () -> Void
 
     var body: some View {
+        HStack {
+            // Android AscentCard's selection checkbox; outside the combined
+            // element so VoiceOver can still reach it on its own.
+            Button(action: onToggleSelect) {
+                Image(systemName: entry.isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(entry.isSelected ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(L("board_logbook_select_entry", entry.climbName))
+            .accessibilityAddTraits(entry.isSelected ? AccessibilityTraits.isSelected : AccessibilityTraits())
+            details
+        }
+    }
+
+    private var details: some View {
         HStack {
             Image(systemName: entry.isSend ? (entry.isFlash ? "bolt.circle.fill" : "checkmark.circle.fill") : "circle.dotted")
                 .foregroundStyle(entry.isSend ? Color.accentColor : .secondary)
