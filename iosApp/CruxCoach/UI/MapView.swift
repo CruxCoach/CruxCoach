@@ -76,9 +76,8 @@ struct MapView: View {
     private func mapLayer(model: MapScreenModel, ui: MapScreenState, styles: MapMarkerStyleBook) -> some View {
         let showNames = (visibleRegion?.span.latitudeDelta ?? 180) < Self.namesBelowSpan
         return Map(position: $camera, interactionModes: [.pan, .zoom]) {
-            mapContent(model: model, ui: ui, styles: styles)
+            mapContent(model: model, ui: ui, styles: styles, showNames: showNames)
         }
-        .annotationTitles(showNames ? .automatic : .hidden)
         .mapStyle(.standard(pointsOfInterest: .excludingAll))
         .mapControls { MapScaleView() }
         .onMapCameraChange(frequency: .onEnd) { context in
@@ -88,7 +87,8 @@ struct MapView: View {
     }
 
     @MapContentBuilder
-    private func mapContent(model: MapScreenModel, ui: MapScreenState, styles: MapMarkerStyleBook) -> some MapContent {
+    private func mapContent(model: MapScreenModel, ui: MapScreenState, styles: MapMarkerStyleBook,
+                            showNames: Bool) -> some MapContent {
         let shown = visiblePins(ui.pins)
 
             ForEach(shown, id: \.id) { pin in
@@ -103,6 +103,8 @@ struct MapView: View {
                         .accessibilityLabel(accessibilityLabel(pin))
                         .accessibilityAddTraits(.isButton)
                 }
+                // Gym names from city zoom on (a MapContent modifier, not a Map one).
+                .annotationTitles(showNames ? Visibility.automatic : Visibility.hidden)
             }
             if ui.hasUserPosition {
                 Annotation(L("locate_me"), coordinate: CLLocationCoordinate2D(latitude: ui.userLatitude,

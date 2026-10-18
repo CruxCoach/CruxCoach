@@ -260,7 +260,7 @@ private struct ProgressContent: View {
                 .frame(height: 40)
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(TrRender.text(domain.description))
+            .accessibilityLabel(TrRender.text(domain.description_))
         }
     }
 
