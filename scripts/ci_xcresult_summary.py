@@ -10,6 +10,7 @@ name the test gave them, for the workflow to upload.
 Usage: ci_xcresult_summary.py RESULT.xcresult OUT_DIR
 """
 import json
+import re
 import pathlib
 import shutil
 import subprocess
@@ -75,6 +76,10 @@ def export_screenshots(bundle: str, out_dir: str) -> None:
             if not source.is_file():
                 continue
             name = item.get("suggestedHumanReadableName") or source.name
+            # Keep the screens the flows name ("01-browser…") and the failure shots;
+            # XCTest's automatic per-step screenshots would bury them (950+ per run).
+            if not (re.match(r"\d\d", name) or "ailure" in name):
+                continue
             shutil.copy(source, pathlib.Path(out_dir) / name)
             count += 1
     shutil.rmtree(raw, ignore_errors=True)
