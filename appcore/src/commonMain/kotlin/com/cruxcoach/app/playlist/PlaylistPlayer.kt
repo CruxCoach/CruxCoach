@@ -236,6 +236,61 @@ class PlaylistPlayerPresenter(
     }
 
     /**
+     * Android `SessionQueueManager.removeClimb` (queue sheet): the current climb
+     * keeps its place; removing it makes the next one (or the new last) current
+     * and puts that on the wall. An emptied queue has no current climb.
+     */
+    fun removeAt(index: Int) {
+        val s = _state.value
+        if (!s.isActive || index !in s.queue.indices) return
+        val queue = s.queue.toMutableList().apply { removeAt(index) }
+        val newIndex = when {
+            queue.isEmpty() -> -1
+            index < s.currentIndex -> s.currentIndex - 1
+            index == s.currentIndex -> s.currentIndex.coerceAtMost(queue.size - 1)
+            else -> s.currentIndex
+        }
+        val current = queue.getOrNull(newIndex)
+        val changed = index == s.currentIndex
+        val info = if (changed && current != null) climbInfo(current.climbUuid) else null
+        _state.update {
+            it.copy(
+                queue = queue,
+                currentIndex = newIndex,
+                currentClimb = current,
+                currentClimbName = if (changed) info?.name ?: "" else it.currentClimbName,
+                currentClimbGrade = if (changed) gradeLabel(info?.difficultyAverage) else it.currentClimbGrade,
+            )
+        }
+        if (changed && current != null) transport.sendClimb(current.climbUuid, current.angle)
+    }
+
+    /**
+     * Android `SessionQueueManager.addClimb` (the browser's "+" while a playlist
+     * runs): appended without a rest; into an empty queue it becomes current
+     * and goes on the wall.
+     */
+    fun addClimb(climbUuid: String, angle: Int) {
+        val s = _state.value
+        if (!s.isActive || climbUuid.isBlank()) return
+        _state.update { it.copy(queue = it.queue + PlaybackItem(climbUuid, angle, 0)) }
+        if (s.currentIndex < 0) moveTo(0, armRest = false)
+    }
+
+    /** Android `SessionQueueManager.moveClimb`: the current climb is followed, nothing is sent. */
+    fun move(from: Int, to: Int) {
+        val s = _state.value
+        if (!s.isActive || from !in s.queue.indices || to !in s.queue.indices || from == to) return
+        val queue = s.queue.toMutableList().apply { add(to, removeAt(from)) }
+        val newIndex = when (s.currentIndex) {
+            from -> to
+            in minOf(from, to)..maxOf(from, to) -> if (from < to) s.currentIndex - 1 else s.currentIndex + 1
+            else -> s.currentIndex
+        }
+        _state.update { it.copy(queue = queue, currentIndex = newIndex, currentClimb = queue.getOrNull(newIndex)) }
+    }
+
+    /**
      * Starts a rest of [seconds] right now — Android's rest-timer auto-start
      * after a logged attempt (`rest_timer_duration_seconds`). A rest that is
      * already running wins; an auto-start must never cut a planned pause short.

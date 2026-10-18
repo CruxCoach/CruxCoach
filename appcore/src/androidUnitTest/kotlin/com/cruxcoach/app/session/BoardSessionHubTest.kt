@@ -66,7 +66,11 @@ class BoardSessionHubTest {
             random = Random(3),
             sessions = sessions,
         )
-        return BoardSessionHub(presenter, PlayerScreenModel(presenter), linked, { linked.value }, scope)
+        return BoardSessionHub(
+            presenter, PlayerScreenModel(presenter), linked, { linked.value }, scope,
+            rowInfo = { uuid, _ -> if (uuid.startsWith("nameless")) null else PlayerClimbInfo("Climb $uuid", if (uuid == "x") null else 18.0) },
+            gradeLabel = { "6b" },
+        )
     }
 
     private fun BoardSessionHub.playList(name: String, vararg uuids: String): Boolean =
@@ -156,5 +160,90 @@ class BoardSessionHubTest {
         assertFalse(hub.play("Bad", listOf("a", "b"), listOf(40), listOf(0, 0), "list", "manual", 0))
         assertFalse(hub.isActive)
         assertNull(repo.getActiveSession())
+    }
+
+    @Test
+    fun `the queue sheet jumps removes and reorders as Android's queue manager`() = runTest {
+        val transport = Transport()
+        val hub = hub(backgroundScope, transport, MutableStateFlow(true))
+        hub.playList("Queue", "a", "b", "c", "d")
+        var q = hub.queueState
+        assertEquals(listOf("Climb a", "Climb b", "Climb c", "Climb d"), q.rows.map { it.name })
+        assertEquals("6b", q.rows[0].grade)
+        assertTrue(q.rows[0].isCurrent)
+
+        hub.selectQueueClimb(2)
+        assertEquals(2, hub.queueState.currentIndex)
+        assertEquals("c@40", transport.sent.last(), "a jump puts the climb on the wall")
+
+        // Removing before the current one keeps the current climb current.
+        hub.removeQueueClimb(0)
+        q = hub.queueState
+        assertEquals(listOf("b", "c", "d"), q.rows.map { it.climbUuid })
+        assertEquals(1, q.currentIndex)
+        assertEquals("c", q.rows[q.currentIndex].climbUuid)
+        val sentBefore = transport.sent.size
+        // Removing the current one makes the next current and lights it.
+        hub.removeQueueClimb(1)
+        q = hub.queueState
+        assertEquals(listOf("b", "d"), q.rows.map { it.climbUuid })
+        assertEquals("d", q.rows[q.currentIndex].climbUuid)
+        assertEquals("Climb d", hub.bannerState.currentClimbName)
+        assertEquals(listOf("d@40"), transport.sent.drop(sentBefore))
+
+        // Moving follows the current climb and sends nothing.
+        hub.moveQueueClimb(1, 0)
+        q = hub.queueState
+        assertEquals(listOf("d", "b"), q.rows.map { it.climbUuid })
+        assertEquals(0, q.currentIndex)
+        assertEquals(1 + sentBefore, transport.sent.size)
+        hub.moveQueueClimb(0, 5) // out of range: ignored
+        assertEquals(listOf("d", "b"), hub.queueState.rows.map { it.climbUuid })
+
+        // Removing the last one: an empty queue, no current climb (Android shows "add climbs").
+        hub.removeQueueClimb(1)
+        hub.removeQueueClimb(0)
+        q = hub.queueState
+        assertTrue(q.rows.isEmpty())
+        assertEquals(-1, q.currentIndex)
+        assertTrue(q.isActive, "the playlist itself runs on until it is ended")
+        assertFalse(hub.bannerState.canLight)
+    }
+
+    @Test
+    fun `an unresolved queued climb shows its uuid start and no grade`() = runTest {
+        val hub = hub(backgroundScope, Transport(), MutableStateFlow(false))
+        hub.playList("Odd", "nameless-climb-uuid", "x")
+        val rows = hub.queueState.rows
+        assertEquals("nameless", rows[0].name.take(8))
+        assertEquals("Climb x", rows[1].name)
+        assertEquals("", rows[1].grade, "no difficulty, no grade")
+    }
+
+    @Test
+    fun `the browser plus queues a climb and counts it per angle`() = runTest {
+        val transport = Transport()
+        val hub = hub(backgroundScope, transport, MutableStateFlow(true))
+        hub.addToQueue("idle", 40) // nothing runs: nothing to add to
+        assertFalse(hub.isActive)
+        hub.playList("Mix", "a", "b")
+        hub.addToQueue("C", 40)
+        hub.addToQueue("c", 40)
+        hub.addToQueue("c", 25)
+        val banner = hub.bannerState
+        assertEquals(5, banner.total)
+        assertEquals(2, hub.queuedCount(banner, "c", 40), "Android counts case-blind at the browsed angle")
+        assertEquals(1, hub.queuedCount(banner, "C", 25))
+        assertEquals(0, hub.queuedCount(banner, "c", 30))
+        assertEquals(listOf("a@40"), transport.sent, "an append does not take the wall")
+        assertEquals(0, hub.queueState.rows.last { it.climbUuid == "c" }.restAfterSeconds)
+
+        // Into an emptied queue the added climb becomes current and is lit.
+        repeat(5) { hub.removeQueueClimb(0) }
+        assertEquals(-1, hub.queueState.currentIndex)
+        hub.addToQueue("z", 40)
+        assertEquals(0, hub.queueState.currentIndex)
+        assertEquals("Climb z", hub.bannerState.currentClimbName)
+        assertEquals("z@40", transport.sent.last())
     }
 }

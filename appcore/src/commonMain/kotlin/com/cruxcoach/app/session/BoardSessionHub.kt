@@ -2,6 +2,7 @@ package com.cruxcoach.app.session
 
 import com.cruxcoach.app.ble.BoardConnectionUiState
 import com.cruxcoach.app.ble.ConnectionState
+import com.cruxcoach.app.playlist.PlayerClimbInfo
 import com.cruxcoach.app.playlist.PlaylistPlayerPresenter
 import com.cruxcoach.app.playlist.PlaylistPlayerState
 import com.cruxcoach.app.playlist.PlaybackPhase
@@ -36,6 +37,28 @@ class SessionBannerState(
     val canLight: Boolean,
     val isResting: Boolean,
     val restSecondsRemaining: Int,
+    /** One "uuid@angle" per queued entry (uuid lowercased): the browser counts a climb's entries from it. */
+    val queuedKeys: List<String>,
+)
+
+/** One row of Android's `SessionQueueSheet`. */
+class SessionQueueRowUi(
+    val index: Int,
+    val climbUuid: String,
+    val angle: Int,
+    val name: String,
+    /** "" without a grade. */
+    val grade: String,
+    val isCurrent: Boolean,
+    val restAfterSeconds: Int,
+)
+
+class SessionQueueSheetState(
+    val isActive: Boolean,
+    val rows: List<SessionQueueRowUi>,
+    val currentIndex: Int,
+    val hasPrevious: Boolean,
+    val hasNext: Boolean,
 )
 
 /**
@@ -54,7 +77,13 @@ class BoardSessionHub(
     private val boardConnected: Flow<Boolean>,
     private val isBoardConnected: () -> Boolean,
     private val scope: CoroutineScope,
+    /** Name and difficulty of a queued climb for the queue sheet (Android `SessionQueueViewModel`). */
+    private val rowInfo: (climbUuid: String, angle: Int) -> PlayerClimbInfo? = { _, _ -> null },
+    private val gradeLabel: (Double?) -> String = { "" },
 ) {
+    /** uuid → resolved row info, as Android caches it; touched on the main thread only. */
+    private val rowInfoCache = mutableMapOf<String, PlayerClimbInfo?>()
+
     /** The list the running playback was started from (Android `playingSource`). */
     private var playingSource: String? = null
 
@@ -104,11 +133,57 @@ class BoardSessionHub(
     fun isPlaying(listName: String, climbUuids: List<String>, angles: List<Int>): Boolean =
         presenter.state.value.isActive && playingSource == sourceKey(listName, climbUuids, angles)
 
+    val queueState: SessionQueueSheetState get() = mapQueue(presenter.state.value)
+
+    fun watchQueue(onState: (SessionQueueSheetState) -> Unit): Subscription {
+        val job = scope.launch { presenter.state.collect { onState(mapQueue(it)) } }
+        return Subscription { job.cancel() }
+    }
+
+    /** The player's queue sheet: a jump is a user override and never arms a rest (Android). */
+    fun selectQueueClimb(index: Int) = player.setCurrent(index)
+    fun removeQueueClimb(index: Int) = presenter.removeAt(index)
+    fun moveQueueClimb(from: Int, to: Int) = presenter.move(from, to)
+
+    /** Android's "+" on a browser row while a playlist runs: queue the climb at the browsed angle. */
+    fun addToQueue(climbUuid: String, angle: Int) = presenter.addClimb(climbUuid, angle)
+
+    /** How often [climbUuid] is queued at [angle] (Android `runningPlaylistCounts`, case-blind). */
+    fun queuedCount(state: SessionBannerState, climbUuid: String, angle: Int): Int {
+        val key = queueKey(climbUuid, angle)
+        return state.queuedKeys.count { it == key }
+    }
+
     fun previous() = player.previous()
     fun next() = player.next()
 
     /** The banner's lamp: put the current climb back on the wall. */
     fun light() = player.resendCurrentClimb()
+
+    private fun mapQueue(state: PlaylistPlayerState): SessionQueueSheetState {
+        val rows = state.queue.mapIndexed { index, item ->
+            val info = rowInfoCache.getOrPut(item.climbUuid) { runCatching { rowInfo(item.climbUuid, item.angle) }.getOrNull() }
+            SessionQueueRowUi(
+                index = index,
+                climbUuid = item.climbUuid,
+                angle = item.angle,
+                // Android shows the uuid's first 8 characters for a climb it cannot resolve.
+                name = info?.name?.takeIf { it.isNotBlank() } ?: item.climbUuid.take(8),
+                grade = info?.difficultyAverage?.let { gradeLabel(it) } ?: "",
+                isCurrent = index == state.currentIndex,
+                restAfterSeconds = item.restAfterSeconds,
+            )
+        }
+        return SessionQueueSheetState(
+            isActive = state.isActive,
+            rows = rows,
+            currentIndex = state.currentIndex,
+            hasPrevious = state.isActive && state.hasPrevious,
+            hasNext = state.isActive && state.hasNext,
+        )
+    }
+
+    private fun queueKey(climbUuid: String, angle: Int) = "${climbUuid.lowercase()}@$angle"
 
     private fun sourceKey(listName: String, climbUuids: List<String>, angles: List<Int>): String =
         listName + "\n" + climbUuids.indices.joinToString(",") { "${climbUuids[it]}@${angles[it]}" }
@@ -130,6 +205,7 @@ class BoardSessionHub(
             canLight = state.isActive && current != null && connected,
             isResting = resting != null,
             restSecondsRemaining = resting?.secondsRemaining ?: 0,
+            queuedKeys = if (state.isActive) state.queue.map { queueKey(it.climbUuid, it.angle) } else emptyList(),
         )
     }
 }

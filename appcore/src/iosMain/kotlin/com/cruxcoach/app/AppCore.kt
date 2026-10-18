@@ -1558,6 +1558,14 @@ class AppCore private constructor(
             boardConnected = com.cruxcoach.app.session.BoardLink.linked(boardConnection.state),
             isBoardConnected = { com.cruxcoach.app.session.BoardLink.isLinked(boardConnection.state.value.connection) },
             scope = MainScope(),
+            rowInfo = { uuid, angle ->
+                try {
+                    boardRepository.getClimbByUuid(uuid, angle)?.let { PlayerClimbInfo(it.name, it.difficultyAverage) }
+                } catch (e: Exception) {
+                    null
+                }
+            },
+            gradeLabel = { settings.gradeFormatter().label(it) },
         )
     }
 
