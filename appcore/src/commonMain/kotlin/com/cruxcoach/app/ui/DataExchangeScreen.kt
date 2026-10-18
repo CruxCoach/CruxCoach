@@ -35,6 +35,8 @@ class DataExchangeScreenModel(private val presenter: FileExchangePresenter) {
     /** Android's readable XLSX copy; it cannot be imported back (Swift shows Android's notice). */
     fun exportExcel() = presenter.exportExcel()
     fun discardExport() = presenter.discardExport()
+
+    /** Imports a JSON export or a CSV ZIP (detected from the content, as on Android). */
     fun importFile(path: String, onFinished: () -> Unit) = presenter.import(path, onFinished)
     fun consumeError() = presenter.consumeError()
     fun close() = presenter.close()

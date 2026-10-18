@@ -193,6 +193,32 @@ class FileExchangePresenterTest {
     }
 
     @Test
+    fun `a csv zip is imported through the same path as the json export`() = runBlocking {
+        val exported = """{"version":3,"app":"CruxCoach","nostrPubkey":"abcd","boardAscents":[{"climbUuid":"c1","angle":40}],"boardBids":[]}"""
+        val archive = CruxCoachCsvArchive.fromJson(exported, CruxCoachCsvArchive.ALL_CATEGORIES)
+        val file = File(root, "cruxcoach_csv_export.zip").apply { writeBytes(archive) }
+        val store = FakeStore()
+        val presenter = presenter(store)
+
+        presenter.import(file.absolutePath)
+        val done = await(presenter) { it.importedAscents >= 0 || it.error != FileExchangeError.NONE }
+        assertEquals(FileExchangeError.NONE, done.error)
+        assertEquals(CruxCoachCsvArchive.toJson(archive), store.imported)
+        assertTrue(store.imported!!.contains(""""boardAscents":[{"angle":40,"climbUuid":"c1"}]"""))
+        assertTrue(store.imported!!.contains(""""nostrPubkey":"abcd""""), "the identity check still sees the owner")
+
+        // Excel is export-only: its workbook is a ZIP, but not a CSV ZIP; nothing reaches the store.
+        store.imported = null
+        presenter.exportExcel()
+        val excel = await(presenter) { it.exportPath.isNotEmpty() || it.error != FileExchangeError.NONE }
+        presenter.import(excel.exportPath)
+        val refused = await(presenter) { it.error != FileExchangeError.NONE }
+        assertEquals(FileExchangeError.IMPORT_FAILED, refused.error)
+        assertEquals(null, store.imported)
+        presenter.close()
+    }
+
+    @Test
     fun `a missing file is a readable error, not a crash`() = runBlocking {
         val presenter = presenter(FakeStore())
         presenter.import(File(root, "gone.json").absolutePath)

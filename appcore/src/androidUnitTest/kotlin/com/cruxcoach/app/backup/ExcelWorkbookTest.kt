@@ -9,7 +9,7 @@ import java.io.ByteArrayInputStream
 import java.util.zip.ZipInputStream
 import javax.xml.parsers.DocumentBuilderFactory
 
-/** Port of Android's `CruxCoachExcelWorkbookTest`; the workbook is a STORED zip here. */
+/** Port of Android's `CruxCoachExcelWorkbookTest`; the workbook is a DEFLATED zip, as on Android. */
 class ExcelWorkbookTest {
     @Test
     fun `workbook contains readable category sheets and safe inline strings`() {

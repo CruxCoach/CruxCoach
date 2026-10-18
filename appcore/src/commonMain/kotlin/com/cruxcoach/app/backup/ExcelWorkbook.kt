@@ -1,5 +1,6 @@
 package com.cruxcoach.app.backup
 
+import com.cruxcoach.app.zip.ZipWriter
 import com.cruxcoach.data.CruxCoachBackup.Category
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -11,8 +12,8 @@ import kotlinx.serialization.json.booleanOrNull
 /**
  * Readable XLSX export, ported from Android's `CruxCoachExcelWorkbook` (same
  * sheets, columns, shared strings, styles). This intentionally has no import
- * counterpart. The only change: the package is written with [StoredZipWriter]
- * (STORED entries) instead of `java.util.zip`; XLSX readers accept both.
+ * counterpart. The only change: the package is written with [ZipWriter]
+ * (DEFLATED entries, like `ZipOutputStream`) instead of `java.util.zip`.
  */
 object CruxCoachExcelWorkbook {
     const val MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -25,7 +26,7 @@ object CruxCoachExcelWorkbook {
         val tables = CruxCoachCsvArchive.tablesFromJson(jsonString, categories)
         require(tables.isNotEmpty()) { "No categories selected for Excel export" }
         val sharedStrings = sharedStrings(tables)
-        val zip = StoredZipWriter()
+        val zip = ZipWriter()
         write(zip, "[Content_Types].xml", contentTypes(tables.size))
         write(zip, "_rels/.rels", packageRelationships)
         write(zip, "xl/workbook.xml", workbook(tables))
@@ -242,7 +243,7 @@ object CruxCoachExcelWorkbook {
         .replace("\"", "&quot;")
         .replace("'", "&apos;")
 
-    private fun write(zip: StoredZipWriter, name: String, content: String) {
+    private fun write(zip: ZipWriter, name: String, content: String) {
         zip.add(name, content.encodeToByteArray())
     }
 

@@ -60,7 +60,7 @@ class FileExchangePresenter(
     /**
      * Android's "CSV ZIP" export: the same JSON, turned into spreadsheet tables
      * (logbook, climb notes, lists, own climbs) by [CruxCoachCsvArchive].
-     * Export only here — Android imports it, this app imports the JSON file.
+     * Both apps import it again (see [import]).
      */
     fun exportCsvZip() = export(ExportKind.CSV_ZIP)
 
@@ -124,7 +124,13 @@ class FileExchangePresenter(
         }
     }
 
-    /** Reads a file the user picked and writes it into the current identity. */
+    /**
+     * Reads a file the user picked and writes it into the current identity.
+     * Like Android, the format is detected from the content: a ZIP is a CSV
+     * ZIP export and is turned back into the JSON document first; anything
+     * else is read as the JSON export. Excel workbooks are export-only (an
+     * XLSX is a ZIP too, and [CruxCoachCsvArchive] refuses its file names).
+     */
     fun import(path: String, onFinished: () -> Unit = {}) {
         if (_state.value.isBusy) {
             onFinished()
@@ -146,7 +152,12 @@ class FileExchangePresenter(
                         failure = FileExchangeError.FILE_UNREADABLE
                         null
                     } else {
-                        payloads.importJson(bytes.decodeToString(), pubkey)
+                        val json = if (CruxCoachCsvArchive.looksLikeZip(bytes)) {
+                            CruxCoachCsvArchive.toJson(bytes)
+                        } else {
+                            bytes.decodeToString()
+                        }
+                        payloads.importJson(json, pubkey)
                     }
                 }
             } catch (e: CancellationException) {
