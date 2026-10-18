@@ -204,7 +204,7 @@ struct GripPictureView: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(TrRender.text(grip.accessibilityText))
+        .accessibilityLabel(TrRender.text(grip.spokenText))
     }
 }
 

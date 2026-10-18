@@ -99,7 +99,7 @@ class BodyMapScreenTest {
         assertEquals(edge ?: -1, grip.edgeMm)
         assertEquals(edge != null, grip.showsEdge)
         assertEquals("hand", grip.shapes.last { it.role == "hand" }.role)
-        TrTextCheck.check(grip.accessibilityText, "grip")
+        TrTextCheck.check(grip.spokenText, "grip")
         TrTextCheck.check(s.mapText, "map")
     }
 

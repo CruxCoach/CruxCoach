@@ -150,7 +150,7 @@ class GripPictureUi(
     val boxHeight: Double,
     val shapes: List<BodyShapeUi>,
     /** "Half crimp · 20 mm" for screen readers. */
-    val accessibilityText: TrText,
+    val spokenText: TrText,
 )
 
 class ExerciseVisualsState(
@@ -227,7 +227,7 @@ class ExerciseVisualsModel internal constructor(
                     boxWidth = GripPictograms.BOX_W.toDouble(),
                     boxHeight = GripPictograms.BOX_H.toDouble(),
                     shapes = GripPictograms.shapes(g, edge?.toDouble()).map { BodyMapKit.shape(it) },
-                    accessibilityText = if (shows) Tx.join(listOf(Tx.t(g.labelKey), Tx.t("trb_edge_mm", Tx.i(edge ?: 0)))) else Tx.t(g.labelKey),
+                    spokenText = if (shows) Tx.join(listOf(Tx.t(g.labelKey), Tx.t("trb_edge_mm", Tx.i(edge ?: 0)))) else Tx.t(g.labelKey),
                 )
             }
             return ExerciseVisualsState(
