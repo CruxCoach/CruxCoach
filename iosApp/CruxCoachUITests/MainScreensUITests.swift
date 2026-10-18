@@ -14,6 +14,14 @@ final class MainScreensUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        // A first rest asks for notifications; answer system prompts so they cannot block a flow.
+        addUIInterruptionMonitor(withDescription: "System alert") { alert in
+            for title in ["Allow", "Don’t Allow", "Don't Allow", "OK"] where alert.buttons[title].exists {
+                alert.buttons[title].tap()
+                return true
+            }
+            return false
+        }
         app.launch()
     }
 
@@ -71,9 +79,7 @@ final class MainScreensUITests: XCTestCase {
     func test07TrainingTodayStartsAndLogsASet() throws {
         try reachBrowser()
         app.buttons[Strings.li("browser_more")].tap()
-        let entry = app.buttons["browser_training"]
-        XCTAssertTrue(entry.waitForExistence(timeout: 10), "No training entry in the menu:\n\(app.debugDescription)")
-        entry.tap()
+        try tapTrainingEntry()
         let later = app.buttons[Strings.l("trq_later")]
         if later.waitForExistence(timeout: 10) {
             shot("07a-training-quick-start")
@@ -101,9 +107,7 @@ final class MainScreensUITests: XCTestCase {
     func test08TrainingTabsOpen() throws {
         try reachBrowser()
         app.buttons[Strings.li("browser_more")].tap()
-        let entry = app.buttons["browser_training"]
-        XCTAssertTrue(entry.waitForExistence(timeout: 10), "No training entry in the menu:\n\(app.debugDescription)")
-        entry.tap()
+        try tapTrainingEntry()
         let later = app.buttons[Strings.l("trq_later")]
         if later.waitForExistence(timeout: 5) { later.tap() }
         for (index, key) in ["tr_tab_training", "tr_nav_fuel", "tr_tab_progress"].enumerated() {
@@ -131,6 +135,15 @@ final class MainScreensUITests: XCTestCase {
         }
         XCTFail("The board browser never appeared:\n\(app.debugDescription)")
         throw XCTSkip("browser not reachable")
+    }
+
+    /// Menu items do not always carry their identifier into the UIMenu, so the label is the fallback.
+    private func tapTrainingEntry() throws {
+        let byId = app.buttons["browser_training"]
+        let byLabel = app.buttons[Strings.l("tr_nav_training_nutrition")]
+        if byId.waitForExistence(timeout: 5) { byId.tap(); return }
+        XCTAssertTrue(byLabel.waitForExistence(timeout: 10), "No training entry in the menu:\n\(app.debugDescription)")
+        byLabel.tap()
     }
 
     private func openFromMenu(_ title: String) throws {
