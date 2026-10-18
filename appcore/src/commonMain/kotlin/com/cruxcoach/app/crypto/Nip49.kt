@@ -42,8 +42,10 @@ internal object Nip49 {
         if (decoded.hrp != HRP) return null
         val bytes = Bech32.fromBase5(decoded.data) ?: return null
         if (bytes.size != PAYLOAD_SIZE || bytes[0].toInt() != VERSION) return null
+        // Any cost byte is well-formed; one above the cap is refused later as too expensive,
+        // which tells the user more than "invalid". N = 2^0 = 1 is not a valid scrypt cost.
         val logN = bytes[1].toInt() and 0xff
-        if (logN < 1 || logN > 30) return null
+        if (logN < 1) return null
         return Payload(
             logN = logN,
             salt = bytes.copyOfRange(2, 18),

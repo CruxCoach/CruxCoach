@@ -162,6 +162,24 @@ class KeyDerivationVectorsTest {
     }
 
     @Test
+    fun `a well-formed ncryptsec with a huge cost is too expensive, not malformed`() {
+        val bytes = assertNotNull(com.cruxcoach.app.nostr.Bech32.fromBase5(assertNotNull(com.cruxcoach.app.nostr.Bech32.decode(specNcryptsec)).data))
+        fun withLogN(logN: Int): String {
+            val patched = bytes.copyOf().also { it[1] = logN.toByte() }
+            return assertNotNull(com.cruxcoach.app.nostr.Bech32.encode("ncryptsec", com.cruxcoach.app.nostr.Bech32.toBase5(patched)))
+        }
+        for (logN in listOf(21, 22, 40, 255)) {
+            val payload = assertNotNull(Nip49.parse(withLogN(logN)), "log_n $logN")
+            assertEquals(logN, payload.logN)
+            assertIs<Nip49.Result.TooExpensive>(Nip49.decrypt(payload, "nostr", maxLogN = Nip49.MAX_LOG_N))
+        }
+        assertNull(Nip49.parse(withLogN(0)))
+        // Version 1 payloads are not NIP-49 v2.
+        val v1 = bytes.copyOf().also { it[0] = 1 }
+        assertNull(Nip49.parse(assertNotNull(com.cruxcoach.app.nostr.Bech32.encode("ncryptsec", com.cruxcoach.app.nostr.Bech32.toBase5(v1)))))
+    }
+
+    @Test
     fun `nip49 reads what the library Android uses writes`() {
         val reference = com.vitorpamplona.quartz.nip49PrivKeyEnc.Nip49()
         val secret = "67dea2ed018072d675f5415ecfaed7d2597555e202d85b3d65ea4e58d2d92ffa"
