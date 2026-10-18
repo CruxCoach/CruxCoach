@@ -160,10 +160,11 @@ class ScreenModelTest {
         model.cancelImport()
         assertNull(model.currentState.previewNpub)
 
-        // Unsupported and malformed input produce codes, not exceptions.
+        // Malformed input produces codes, not exceptions.
         model.updateInput("ncryptsec1abc")
         model.preview()
-        assertEquals(KeyImport.Failure.NCRYPTSEC_UNSUPPORTED.name, model.currentState.failureCode)
+        assertEquals(KeyImport.Failure.INVALID_NCRYPTSEC.name, model.currentState.failureCode)
+        assertFalse(model.currentState.needsPassword)
         model.updateInput("nonsense")
         model.preview()
         assertEquals(KeyImport.Failure.UNKNOWN_FORMAT.name, model.currentState.failureCode)

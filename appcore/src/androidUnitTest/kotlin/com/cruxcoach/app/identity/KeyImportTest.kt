@@ -63,14 +63,50 @@ class KeyImportTest {
         assertEquals(KeyImport.Failure.INVALID_NSEC, failure(nsec.dropLast(1) + "q"))
         assertEquals(KeyImport.Failure.INVALID_NSEC, failure("nsec1"))
         assertEquals(KeyImport.Failure.UNKNOWN_FORMAT, failure("hello"))
-        assertEquals(KeyImport.Failure.NCRYPTSEC_UNSUPPORTED, failure("ncryptsec1qqqq"))
-        assertEquals(KeyImport.Failure.MNEMONIC_UNSUPPORTED, failure(List(12) { "abandon" }.joinToString(" ")))
+        assertEquals(KeyImport.Failure.INVALID_NCRYPTSEC, failure("ncryptsec1qqqq"))
+        // Twelve known words whose checksum fails (the valid all-zero mnemonic ends in "about").
+        assertEquals(KeyImport.Failure.INVALID_MNEMONIC_CHECKSUM, failure(List(12) { "abandon" }.joinToString(" ")))
+        assertEquals(KeyImport.Failure.UNKNOWN_MNEMONIC_WORD, failure(List(11) { "abandon" }.joinToString(" ") + " abou"))
+        assertEquals(KeyImport.Failure.INVALID_MNEMONIC_LENGTH, failure(List(13) { "abandon" }.joinToString(" ")))
         // 64 hex characters that are not a valid scalar: zero and n itself.
         assertEquals(KeyImport.Failure.INVALID_HEX, failure("0".repeat(64)))
         assertEquals(
             KeyImport.Failure.INVALID_HEX,
             failure("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"),
         )
+    }
+
+    private val specNcryptsec =
+        "ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p"
+
+    @Test
+    fun `ncryptsec asks for its password and then previews the NIP-49 vector account`() {
+        assertEquals(KeyImport.Format.NCRYPTSEC, KeyImport.detectFormat(specNcryptsec))
+        assertTrue(KeyImport.isSlow(specNcryptsec))
+        assertNull(KeyImport.checkNcryptsec(specNcryptsec, maxScryptLogN = 16))
+        assertEquals(KeyImport.Failure.NCRYPTSEC_TOO_EXPENSIVE, KeyImport.checkNcryptsec(specNcryptsec, maxScryptLogN = 15))
+        assertEquals(
+            KeyImport.Failure.PASSWORD_REQUIRED,
+            assertIs<KeyImport.Result.Rejected>(KeyImport.preview(specNcryptsec, null, null, 16)).failure,
+        )
+        assertEquals(
+            KeyImport.Failure.WRONG_PASSWORD,
+            assertIs<KeyImport.Result.Rejected>(KeyImport.preview(specNcryptsec, "nostr!", null, 16)).failure,
+        )
+        val ready = assertIs<KeyImport.Result.Ready>(KeyImport.preview(" $specNcryptsec\n", "nostr", null, 16))
+        assertEquals("3501454135014541350145413501453fefb02227e449e57cf4d3a3ce05378683", ready.candidate.secretKey.toHex())
+        assertEquals(Nip19.encodeNpub(NostrKeys.publicKeyHex(ready.candidate.secretKey)!!), ready.candidate.npub)
+    }
+
+    @Test
+    fun `recovery words preview the NIP-06 vector account`() {
+        val words = "leader monkey parrot ring guide accident before fence cannon height naive bean"
+        assertEquals(KeyImport.Format.MNEMONIC, KeyImport.detectFormat(words))
+        assertTrue(KeyImport.isSlow(words))
+        val ready = assertIs<KeyImport.Result.Ready>(KeyImport.preview(words.replace(" ", "\n"), null))
+        assertEquals("7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a", ready.candidate.secretKey.toHex())
+        assertEquals("npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu", ready.candidate.npub)
+        assertFalse(KeyImport.isSlow(nsec))
     }
 
     @Test

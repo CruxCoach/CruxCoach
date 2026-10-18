@@ -397,3 +397,6 @@
 "key_backup_not_on_iphone" = "Den Kontoschlüssel anzeigen und kopieren geht auf dem iPhone noch nicht.";
 /* Training visuals (wave 5 "trainingviz" agent): body map, grip, places */
 "trainingviz_detail_not_yet" = "Leistungswerte und der Verlauf dieser Übung sind auf dem iPhone noch nicht verfügbar.";
+/* Account: ncryptsec and recovery-word import (wave 5 "account" agent) */
+"key_ncryptsec_too_costly" = "Dieser passwortgeschützte Schlüssel wurde mit einem Speicheraufwand erstellt, den dieses iPhone nicht aufbringen kann. Importiere stattdessen seinen nsec oder verschlüssele ihn mit geringerem Aufwand neu.";
+"key_words_invalid" = "Diese Wiederherstellungswörter sind ungültig: Prüfe die Schreibweise jedes Worts, die Reihenfolge und die Anzahl (12, 15, 18, 21 oder 24 Wörter).";

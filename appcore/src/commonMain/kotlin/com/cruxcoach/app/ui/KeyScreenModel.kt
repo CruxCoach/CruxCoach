@@ -3,12 +3,15 @@ package com.cruxcoach.app.ui
 import com.cruxcoach.app.identity.KeyExport
 import com.cruxcoach.app.identity.KeyImport
 import com.cruxcoach.app.platform.DeviceAuthenticator
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** State of the account screen: key import, and the device-auth-gated reveal. */
 data class KeyScreenState(
@@ -25,6 +28,10 @@ data class KeyScreenState(
     val revealedNsec: String? = null,
     /** A [KeyImport.Failure] name, or one of the codes below. */
     val failureCode: String? = null,
+    /** An ncryptsec was recognised: Swift asks for its password and calls [KeyScreenModel.submitPassword]. */
+    val needsPassword: Boolean = false,
+    /** Decrypting / deriving (scrypt, PBKDF2) runs; Android's "Checking key…". */
+    val isWorking: Boolean = false,
 ) {
     companion object {
         const val FAILURE_STORE_WRITE_FAILED = "STORE_WRITE_FAILED"
@@ -40,6 +47,9 @@ data class KeyScreenState(
  * show the npub, and only [confirmImport] hands the key to [applyKey]. The
  * private key never appears in this state except through [revealSecretKey],
  * which is gated on [DeviceAuthenticator].
+ *
+ * ncryptsec (password, scrypt) and recovery words (PBKDF2) are derived on
+ * [worker]; a result that arrives after the input changed is wiped unseen.
  */
 class KeyScreenModel(
     private val scope: CoroutineScope,
@@ -48,12 +58,19 @@ class KeyScreenModel(
     /** Persists the new key (Keychain); false when the store refused the write. */
     private val applyKey: (ByteArray) -> Boolean,
     private val deviceAuth: DeviceAuthenticator,
+    private val worker: CoroutineDispatcher = Dispatchers.Default,
+    /** Highest ncryptsec scrypt cost to attempt; the phone's memory decides by default. */
+    private val maxScryptLogN: Int = KeyImport.deviceMaxScryptLogN(),
 ) {
     private val _state = MutableStateFlow(KeyScreenState(activeNpub = activeNpub()))
     private val states: StateFlow<KeyScreenState> = _state.asStateFlow()
 
     /** Live key material for the pending import; zeroed on confirm or cancel. */
     private var candidate: KeyImport.Candidate? = null
+
+    /** Bumped by every input change; a slow derivation only lands if it still matches. */
+    private var generation = 0
+    private var derivation: Job? = null
 
     val currentState: KeyScreenState get() = states.value
 
@@ -64,6 +81,7 @@ class KeyScreenModel(
     }
 
     fun updateInput(text: String) {
+        abandonDerivation()
         discardCandidate()
         _state.value = _state.value.copy(
             input = text,
@@ -73,13 +91,73 @@ class KeyScreenModel(
             replacesLocalKey = false,
             imported = false,
             failureCode = null,
+            needsPassword = false,
+            isWorking = false,
         )
     }
 
-    /** Derives the npub of the pasted key without storing anything. */
+    /**
+     * Derives the npub of the pasted key without storing anything. For an
+     * ncryptsec this first sets [KeyScreenState.needsPassword] (Android's
+     * password dialog); recovery words are derived in the background.
+     */
     fun preview() {
+        if (_state.value.isWorking) return
         discardCandidate()
-        when (val result = KeyImport.preview(_state.value.input, activePubkeyProvider())) {
+        val input = _state.value.input
+        when (KeyImport.detectFormat(input)) {
+            KeyImport.Format.NCRYPTSEC -> {
+                val failure = KeyImport.checkNcryptsec(input, maxScryptLogN)
+                _state.value = _state.value.copy(
+                    previewNpub = null,
+                    needsPassword = failure == null,
+                    failureCode = failure?.name,
+                )
+            }
+            KeyImport.Format.MNEMONIC -> derive(input, password = null)
+            else -> show(KeyImport.preview(input, null, activePubkeyProvider(), maxScryptLogN))
+        }
+    }
+
+    /** Decrypts the ncryptsec with [password]; a wrong one reports WRONG_PASSWORD. */
+    fun submitPassword(password: String) {
+        if (_state.value.isWorking || !_state.value.needsPassword) return
+        _state.value = _state.value.copy(needsPassword = false)
+        derive(_state.value.input, password)
+    }
+
+    fun cancelPassword() {
+        _state.value = _state.value.copy(needsPassword = false)
+    }
+
+    private fun derive(input: String, password: String?) {
+        abandonDerivation()
+        val ticket = generation
+        val active = activePubkeyProvider()
+        _state.value = _state.value.copy(isWorking = true, failureCode = null, previewNpub = null)
+        derivation = scope.launch {
+            // Kept outside withContext so a key derived just before cancellation is still wiped.
+            var produced: KeyImport.Result? = null
+            val result = try {
+                withContext(worker) { KeyImport.preview(input, password, active, maxScryptLogN).also { produced = it } }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) {
+                    (produced as? KeyImport.Result.Ready)?.candidate?.secretKey?.fill(0)
+                    throw e
+                }
+                KeyImport.Result.Rejected(KeyImport.Failure.INVALID_KEY)
+            }
+            if (ticket != generation) {
+                (result as? KeyImport.Result.Ready)?.candidate?.secretKey?.fill(0)
+                return@launch
+            }
+            _state.value = _state.value.copy(isWorking = false)
+            show(result)
+        }
+    }
+
+    private fun show(result: KeyImport.Result) {
+        when (result) {
             is KeyImport.Result.Ready -> {
                 candidate = result.candidate
                 _state.value = _state.value.copy(
@@ -96,6 +174,7 @@ class KeyScreenModel(
 
     /** Stores the previewed key. No-op until [preview] produced an npub. */
     fun confirmImport() {
+        if (_state.value.isWorking) return
         val pending = candidate ?: return
         val stored = try {
             applyKey(pending.secretKey)
@@ -111,8 +190,15 @@ class KeyScreenModel(
     }
 
     fun cancelImport() {
+        abandonDerivation()
         discardCandidate()
-        _state.value = _state.value.copy(previewNpub = null, sameAccount = false, replacesLocalKey = false)
+        _state.value = _state.value.copy(
+            previewNpub = null,
+            sameAccount = false,
+            replacesLocalKey = false,
+            needsPassword = false,
+            isWorking = false,
+        )
     }
 
     /**
@@ -153,6 +239,13 @@ class KeyScreenModel(
 
     private fun activeNpub(): String? =
         activePubkeyProvider()?.let { com.cruxcoach.app.nostr.Nip19.encodeNpub(it) }
+
+    /** A running scrypt cannot be interrupted; its result is dropped (and wiped) when it lands. */
+    private fun abandonDerivation() {
+        generation++
+        derivation?.cancel()
+        derivation = null
+    }
 
     private fun discardCandidate() {
         candidate?.secretKey?.fill(0)

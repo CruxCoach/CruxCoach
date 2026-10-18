@@ -10,6 +10,8 @@ struct KeyView: View {
     @State private var host: ScreenHost<KeyScreenModel, KeyScreenState>?
     @State private var input = ""
     @State private var confirmSwitch = false
+    /// The ncryptsec password; cleared as soon as it is handed to the core.
+    @State private var password = ""
 
     var body: some View {
         Group {
@@ -48,6 +50,7 @@ struct KeyView: View {
         } message: {
             Text(L("account_access_different"))
         }
+        .modifier(KeyPasswordPrompt(model: model, needsPassword: ui.needsPassword, password: $password))
         .onChange(of: ui.imported) { _, imported in
             // The new key is stored; the core restarts on that identity's own databases.
             if imported { environment.restart() }
@@ -102,8 +105,15 @@ struct KeyView: View {
                 .autocorrectionDisabled()
                 .onChange(of: input) { _, text in model.updateInput(text: text) }
             Text(L("key_import_supported_formats")).font(.caption).foregroundStyle(.secondary)
+            detectedRow(ui: ui)
+            if ui.isWorking {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text(L("account_import_checking")).font(.footnote)
+                }
+            }
             Button(L("key_import_button")) { model.preview() }
-                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(ui.isWorking || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             if let preview = ui.previewNpub {
                 Text(L("key_import_confirm_title")).font(.subheadline.weight(.semibold))
                 Text(preview).font(.caption.monospaced()).textSelection(.enabled)
@@ -121,13 +131,53 @@ struct KeyView: View {
         }
     }
 
+    /// Android's "Detected: …" line; recovery words get their own name.
+    @ViewBuilder
+    private func detectedRow(ui: KeyScreenState) -> some View {
+        let format: String = ui.detectedFormat
+        if format != "UNKNOWN" {
+            let name: String = format == "MNEMONIC" ? L("account_recovery_words") : format.lowercased()
+            Text(L("key_import_detected", name)).font(.caption)
+        }
+    }
+
     private func failureText(_ code: String) -> String {
         switch code {
         case "INVALID_NSEC": return L("key_import_invalid_nsec")
         case "UNKNOWN_FORMAT", "INVALID_HEX", "INVALID_KEY": return L("key_import_hint_unrecognized")
-        case "NCRYPTSEC_UNSUPPORTED", "MNEMONIC_UNSUPPORTED": return LI("key_format_not_on_iphone")
+        case "NCRYPTSEC_TOO_EXPENSIVE": return LI("key_ncryptsec_too_costly")
+        case "INVALID_MNEMONIC_LENGTH", "UNKNOWN_MNEMONIC_WORD", "INVALID_MNEMONIC_CHECKSUM": return LI("key_words_invalid")
         case "DEVICE_AUTH_FAILED": return LI("key_auth_failed")
+        // INVALID_NCRYPTSEC, WRONG_PASSWORD, STORE_WRITE_FAILED: Android's generic message.
         default: return L("account_import_error")
+        }
+    }
+}
+
+/// Android's ncryptsec password dialog. The password goes to the core once and the
+/// field is cleared; the core normalises it (NFKC), runs scrypt and wipes its bytes.
+private struct KeyPasswordPrompt: ViewModifier {
+    let model: KeyScreenModel
+    let needsPassword: Bool
+    @Binding var password: String
+
+    func body(content: Content) -> some View {
+        content.alert(L("key_import_password_title"), isPresented: Binding(
+            get: { needsPassword },
+            set: { if !$0 { model.cancelPassword() } })) {
+            SecureField(L("key_import_password_label"), text: $password)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button(L("action_cancel"), role: .cancel) {
+                password = ""
+                model.cancelPassword()
+            }
+            Button(L("key_import_decrypt_button")) {
+                let entered: String = password
+                password = ""
+                model.submitPassword(password: entered)
+            }
+            .disabled(password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
 }
