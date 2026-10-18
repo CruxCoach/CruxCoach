@@ -60,14 +60,23 @@ struct FilterView: View {
     }
 
     /// Android's "Fits the wall": measured against the layers the controller confirms right now.
+    @ViewBuilder
     private var quantumOverlapSection: some View {
-        Section(L("board_filter_quantum_overlap_title")) {
-            ForEach(["off", "none", "atMostOne"], id: \.self) { code in
-                quantumOverlapRow(code)
+        if ui.quantumWallKnown {
+            Section(L("board_filter_quantum_overlap_title")) {
+                ForEach(["off", "none", "atMostOne"], id: \.self) { code in
+                    quantumOverlapRow(code)
+                }
+                Text(quantumOverlapHint)
+                    .font(.footnote)
+                    .foregroundStyle(quantumOverlapWarns ? Color.red : Color.secondary)
             }
-            Text(quantumOverlapHint)
-                .font(.footnote)
-                .foregroundStyle(quantumOverlapWarns ? Color.red : Color.secondary)
+        } else {
+            Section(L("board_filter_quantum_overlap_title")) {
+                Label(LI("quantum_wall_fit_unavailable"), systemImage: "iphone.slash")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

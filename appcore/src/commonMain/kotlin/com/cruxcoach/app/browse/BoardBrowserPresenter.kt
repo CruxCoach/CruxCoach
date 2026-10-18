@@ -298,8 +298,13 @@ class BoardBrowserPresenter(
     /** The newest wall roster from [followQuantumLayers], re-applied when the browser switches to Quantum. */
     private var latestQuantumLayers: BrowserQuantumLayerState? = null
 
+    /** Whether a layer rack feeds this browser; without one "Fits the wall" cannot know the wall. */
+    internal var followsQuantumLayers = false
+        private set
+
     /** Android's browser follows the process-wide layer rack ("Fits the wall"). */
     internal fun followQuantumLayers(layers: kotlinx.coroutines.flow.Flow<BrowserQuantumLayerState>) {
+        followsQuantumLayers = true
         scope.launch {
             layers.collect { next ->
                 latestQuantumLayers = next

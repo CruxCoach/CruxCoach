@@ -111,10 +111,12 @@ class QuantumBrowserTest {
         val watch = m.watch { last = it }
         m.start(); advanceUntilIdle()
         assertFalse(last!!.quantumLayersAvailable)
+        assertFalse(last!!.quantumWallKnown, "no rack feeds the browser yet")
 
         // Another app lights d2 (placement 3000002): Clean Room shares it, Campus Only does not.
         val wall = MutableStateFlow(BrowserQuantumLayerState(setOf(3000002), layerCount = 1, complete = true))
         m.followQuantumLayers(wall); advanceUntilIdle()
+        assertTrue(last!!.quantumWallKnown)
         assertTrue(last!!.quantumLayersAvailable && last!!.quantumLayersOccupied && last!!.quantumLayersComplete)
 
         m.setQuantumOverlap("none"); advanceUntilIdle()

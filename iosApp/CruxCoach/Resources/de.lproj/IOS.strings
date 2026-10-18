@@ -448,3 +448,5 @@
 "ble_powered_off_hint" = "Schalte es im Kontrollzentrum oder in den Einstellungen ein.";
 "tour_spotlight_quicklog_ios" = "„Versuch“ oder „Geschafft“ antippen – landet direkt im Logbuch.";
 "tour_spotlight_entry_swipe" = "Dein Eintrag. Nach links wischen, um ihn zu bearbeiten oder zu löschen.";
+/* Quantum board (wave 7) */
+"quantum_wall_fit_unavailable" = "Auf dem iPhone noch nicht verfügbar: Diese Ansicht folgt den Ebenen an der Wand nicht.";

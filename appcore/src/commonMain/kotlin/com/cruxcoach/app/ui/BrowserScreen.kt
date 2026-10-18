@@ -63,6 +63,8 @@ class BrowserScreenState(
     val quantumRules: List<String>,
     /** "Fits the wall": off | none | atMostOne */
     val quantumOverlap: String,
+    /** False while no layer rack feeds this browser: Swift shows the filter as unavailable. */
+    val quantumWallKnown: Boolean,
     /** The wall's lit holds are known: the wall-fit choices can be enabled. */
     val quantumLayersAvailable: Boolean,
     val quantumLayersOccupied: Boolean,
@@ -132,6 +134,7 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
             isQuantum = brand == BoardBrand.QUANTUM,
             quantumRules = QUANTUM_RULES.filter { (_, rule) -> (filter.quantumRuleMask and rule.bit) != 0L }.map { it.first },
             quantumOverlap = QUANTUM_OVERLAPS.firstOrNull { it.second == filter.quantumOverlapFilter }?.first ?: "off",
+            quantumWallKnown = presenter.followsQuantumLayers,
             quantumLayersAvailable = state.core.quantumLayers.available,
             quantumLayersOccupied = state.core.quantumLayers.occupied,
             quantumLayersComplete = state.core.quantumLayers.complete,
