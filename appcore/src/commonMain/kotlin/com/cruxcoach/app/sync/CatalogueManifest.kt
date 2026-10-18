@@ -104,6 +104,22 @@ object CatalogueTrust {
             if (candidateWins) candidate else selected
         }
 
+    const val QUANTUM_SOURCE = "ewalls-authorized-snapshot"
+    const val QUANTUM_CHUNK_NAME = "quantum_snapshot_v1"
+
+    /**
+     * Android's `QuantumCatalogueSync` requirements: v1, board and source
+     * pinned, zstd, and exactly one `quantum` chunk with the v1 snapshot name.
+     */
+    fun isQuantumManifestShape(manifest: CatalogueManifest): Boolean =
+        manifest.v == 1 &&
+            manifest.board == "quantum" &&
+            manifest.source == QUANTUM_SOURCE &&
+            manifest.compression == "zstd" &&
+            manifest.chunks.size == 1 &&
+            manifest.chunks.single().type == "quantum" &&
+            manifest.chunks.single().name == QUANTUM_CHUNK_NAME
+
     fun isValidChunk(chunk: CatalogueChunk): Boolean =
         CHUNK_NAME_REGEX.matches(chunk.name) && chunk.urls.any { it.startsWith("https://") }
 

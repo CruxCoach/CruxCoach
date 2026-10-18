@@ -168,7 +168,12 @@ class SnapshotImportTest {
     }
 
     @Test
-    fun `unported Quantum import reports unsupported`() {
-        assertEquals(ImportResult.Failed(ImportFailure.UNSUPPORTED), fx.importer.importQuantumSnapshot("x"))
+    fun `an Aurora snapshot handed to the Quantum importer is rejected and imports nothing`() {
+        // Quantum import is ported (QuantumSnapshotImportTest); a foreign schema must still never apply.
+        assertEquals(
+            ImportResult.Failed(ImportFailure.SOURCE_REJECTED),
+            fx.importer.importQuantumSnapshot(auroraSnapshot("not-quantum.sqlite3")),
+        )
+        assertEquals(0L, fx.long("SELECT COUNT(*) FROM climbs"))
     }
 }

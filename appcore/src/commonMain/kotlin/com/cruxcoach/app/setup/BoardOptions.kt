@@ -4,6 +4,7 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumBoardModel
 
 /** One selectable physical board: what Android's board picker resolves to. [productSizeId] is 0 for MoonBoard. */
 data class BoardOption(
@@ -23,10 +24,10 @@ data class BoardOption(
  * an internal non-product layout).
  */
 object BoardOptions {
-    /** Brands whose catalogue the iOS sync can install today. Quantum import is not ported. */
+    /** Brands whose catalogue the iOS sync can install: every interactive brand, in Android's order. */
     val downloadableBrands: List<BoardBrand> = listOf(
         BoardBrand.KILTER, BoardBrand.MOONBOARD, BoardBrand.TENSION, BoardBrand.GRASSHOPPER,
-        BoardBrand.DECOY, BoardBrand.SOILL, BoardBrand.TOUCHSTONE,
+        BoardBrand.DECOY, BoardBrand.SOILL, BoardBrand.TOUCHSTONE, BoardBrand.QUANTUM,
     )
 
     private fun title(brand: BoardBrand): String = com.cruxcoach.app.ui.UiCodes.brandTitle(brand)
@@ -51,6 +52,12 @@ object BoardOptions {
         if (brand == BoardBrand.MOONBOARD) {
             return MoonBoardVariant.entries.map {
                 BoardOption(brand.wireValue, title(brand), it.layoutId.toInt(), 0, it.displayName, "")
+            }
+        }
+        // Android's picker offers the five fixed models whether or not the catalogue is installed yet.
+        if (brand == BoardBrand.QUANTUM) {
+            return QuantumBoardModel.entries.map {
+                BoardOption(brand.wireValue, title(brand), it.layoutId.toInt(), it.productSizeId.toInt(), it.displayName, "")
             }
         }
         val sizes: List<BoardSize> = repository.getSelectableProductSizesForBrand(brand.wireValue)

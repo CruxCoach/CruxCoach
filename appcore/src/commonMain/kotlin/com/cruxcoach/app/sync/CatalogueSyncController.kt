@@ -203,6 +203,8 @@ class CatalogueSyncController internal constructor(
     private fun track(brand: BoardBrand): Track? = when {
         brand == BoardBrand.KILTER -> Track(CatalogueTrust.KILTER_D_TAG, CatalogueTrust.KILTER_PREFS, CatalogueTrust.BETA_IMPORT_VERSION)
         brand == BoardBrand.MOONBOARD -> Track(CatalogueTrust.MOONBOARD_D_TAG, CatalogueTrust.MOONBOARD_PREFS, null)
+        // v2 prefs, as on Android: schema 27 forced a one-shot Quantum reimport.
+        brand == BoardBrand.QUANTUM -> Track(CatalogueTrust.QUANTUM_D_TAG, CatalogueTrust.QUANTUM_PREFS, CatalogueTrust.BETA_IMPORT_VERSION)
         brand.usesAuroraProtocol -> Track(
             CatalogueTrust.auroraDTag(brand.wireValue), CatalogueTrust.auroraPrefs(brand.wireValue), CatalogueTrust.BETA_IMPORT_VERSION,
         )
@@ -211,7 +213,6 @@ class CatalogueSyncController internal constructor(
 
     /** True when catalogue contents changed. */
     private suspend fun syncBrand(brand: BoardBrand): Boolean {
-        // Quantum's importer is not ported; say so rather than download something that cannot be applied.
         val track = track(brand) ?: return false.also { fail(brand, CatalogueSyncFailure.UNSUPPORTED_BRAND) }
         update(brand) { it.copy(phase = CatalogueSyncPhase.CHECKING) }
         val store = ManifestTrackStore(keyValues, track.prefsName, clock)
@@ -219,6 +220,10 @@ class CatalogueSyncController internal constructor(
         val manifest = when (val fetched = fetchManifest(track.dTag)) {
             is ManifestFetchResult.Found -> fetched.manifest
             is ManifestFetchResult.NotFound -> return false.also { fail(brand, CatalogueSyncFailure.MANIFEST_UNAVAILABLE) }
+        }
+        // Android checks the Quantum lane's shape before the rollback watermark.
+        if (brand == BoardBrand.QUANTUM && !CatalogueTrust.isQuantumManifestShape(manifest)) {
+            return false.also { fail(brand, CatalogueSyncFailure.MANIFEST_INVALID) }
         }
         // A stale (rolled-back) manifest is a normal no-update result: keep what is installed.
         if (!store.canApplyManifest(manifest)) return false.also { finish(brand, CatalogueSyncPhase.UP_TO_DATE) }
@@ -282,8 +287,11 @@ class CatalogueSyncController internal constructor(
             )
             if (downloaded is ChunkResult.Failed) return false.also { fail(brand, downloaded.reason.toSyncFailure()) }
             update(brand) { it.copy(phase = CatalogueSyncPhase.IMPORTING) }
-            val imported = if (brand == BoardBrand.MOONBOARD) importer.importMoonBoardSnapshot(output)
-            else importer.importAuroraSnapshot(output, brand.wireValue)
+            val imported = when (brand) {
+                BoardBrand.MOONBOARD -> importer.importMoonBoardSnapshot(output)
+                BoardBrand.QUANTUM -> importer.importQuantumSnapshot(output)
+                else -> importer.importAuroraSnapshot(output, brand.wireValue)
+            }
             return when (imported) {
                 is ImportResult.Failed -> false.also { fail(brand, imported.reason.toSyncFailure()) }
                 is ImportResult.Imported -> {

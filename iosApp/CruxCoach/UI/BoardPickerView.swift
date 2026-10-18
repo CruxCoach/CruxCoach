@@ -33,21 +33,7 @@ struct BoardPickerView: View {
                 Text(LI("browser_no_catalogue_hint"))
             }
             ForEach(brandWires, id: \.self) { wire in
-                let options = core.boardOptions(brandWire: wire)
-                if !options.isEmpty {
-                    Section(options.first?.brandTitle ?? wire) {
-                        ForEach(Array(options.enumerated()), id: \.offset) { _, option in
-                            Button { onPick(option) } label: {
-                                VStack(alignment: .leading) {
-                                    Text(option.layoutName).foregroundStyle(.primary)
-                                    if !option.sizeName.isEmpty {
-                                        Text(option.sizeName).font(.footnote).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                brandSection(wire)
             }
         }
         .navigationTitle(LI("browser_board"))
@@ -56,5 +42,35 @@ struct BoardPickerView: View {
                           onPick: onPick, onPickDirectly: { showGymSearch = false })
         }
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L("action_close")) { dismiss() } } }
+    }
+
+    @ViewBuilder
+    private func brandSection(_ wire: String) -> some View {
+        let options: [BoardOption] = core.boardOptions(brandWire: wire)
+        if !options.isEmpty {
+            Section {
+                ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                    optionRow(option)
+                }
+            } header: {
+                Text(options.first?.brandTitle ?? wire)
+            } footer: {
+                // Android's Quantum picker: the five fixed models, with the schematic note.
+                if wire == "quantum" {
+                    Text(L("board_selection_quantum_schematic_hint"))
+                }
+            }
+        }
+    }
+
+    private func optionRow(_ option: BoardOption) -> some View {
+        Button { onPick(option) } label: {
+            VStack(alignment: .leading) {
+                Text(option.layoutName).foregroundStyle(.primary)
+                if !option.sizeName.isEmpty {
+                    Text(option.sizeName).font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }

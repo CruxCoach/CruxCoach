@@ -150,7 +150,8 @@ class CatalogueSyncControllerTest {
                 BoardBrand.TENSION to (CatalogueSyncPhase.DONE to CatalogueSyncFailure.NONE),
                 BoardBrand.MOONBOARD to (CatalogueSyncPhase.DONE to CatalogueSyncFailure.NONE),
                 BoardBrand.DECOY to (CatalogueSyncPhase.FAILED to CatalogueSyncFailure.MANIFEST_UNAVAILABLE),
-                BoardBrand.QUANTUM to (CatalogueSyncPhase.FAILED to CatalogueSyncFailure.UNSUPPORTED_BRAND),
+                // Quantum has its own lane now (QuantumCatalogueSyncTest); here its relays simply have nothing.
+                BoardBrand.QUANTUM to (CatalogueSyncPhase.FAILED to CatalogueSyncFailure.MANIFEST_UNAVAILABLE),
             ),
             state.brands.map { it.brand to (it.phase to it.failure) },
         )

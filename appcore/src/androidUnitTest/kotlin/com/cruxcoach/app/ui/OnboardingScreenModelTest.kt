@@ -67,7 +67,7 @@ class OnboardingScreenModelTest {
         assertTrue(model.currentState.downloadBrandWires.isEmpty())
 
         // Only brands whose catalogue this app can install are offerable.
-        model.toggleDownloadBrand("quantum")
+        model.toggleDownloadBrand("aurora")
         model.toggleDownloadBrand("not-a-board")
         assertTrue(model.currentState.downloadBrandWires.isEmpty())
     }
