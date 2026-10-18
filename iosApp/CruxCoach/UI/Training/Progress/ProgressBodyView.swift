@@ -513,9 +513,10 @@ private struct WaistlineImportFlow: ViewModifier {
     // reliable type once they pass through a share sheet.
     private static let types: [UTType] = [.json, .commaSeparatedText, .plainText, .data]
 
+    private var eventCode: String { host?.state.eventCode ?? "none" }
+
     func body(content: Content) -> some View {
-        let eventCode: String = host?.state.eventCode ?? "none"
-        return content
+        content
             .fileImporter(isPresented: $picking, allowedContentTypes: Self.types) { result in
                 handlePick(result)
             }
