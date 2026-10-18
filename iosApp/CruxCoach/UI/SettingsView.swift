@@ -40,6 +40,12 @@ struct SettingsView: View {
                 LabeledContent("CruxCoach iOS", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
                 LabeledContent(LI("settings_storage"), value: "SQLCipher \(core.cipherVersion)")
                 NavigationLink(L("settings_licenses_title")) { LicensesView() }
+                if let privacy = URL(string: "https://cruxcoach.org/privacy.html") {
+                    Link(L("settings_privacy_title"), destination: privacy)
+                }
+                if let source = URL(string: "https://github.com/CruxCoach/CruxCoach") {
+                    Link(L("settings_source_title"), destination: source)
+                }
                 Text(LI("settings_preview_notice")).font(.footnote).foregroundStyle(.secondary)
             }
         }
