@@ -1275,4 +1275,25 @@ class AppCore private constructor(
         }
         return screen
     }
+
+    /**
+     * The force gauge (Android `ForceGaugeScreen`, Tindeq Progressor). Its own CoreBluetooth
+     * manager, so it never touches the board connection; the Bluetooth prompt appears on the
+     * first "Connect". Null without athlete database.
+     */
+    fun makeForceGaugeScreen(): com.cruxcoach.app.force.ForceGaugeModel? {
+        val service = athlete ?: return null
+        val client = com.cruxcoach.app.force.ProgressorClient(CoreBluetoothCentral(), MainScope()) { platform.clock.epochMillis() }
+        return com.cruxcoach.app.force.ForceGaugeModel(
+            com.cruxcoach.app.force.ForceGaugePresenter(service, client, MainScope(), Dispatchers.IO),
+        )
+    }
+
+    /** The force gauge switch of the training settings (Android `ForceGaugeSettingsCard`). */
+    fun makeForceGaugeSettings(): com.cruxcoach.app.force.ForceGaugeSettingsModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.force.ForceGaugeSettingsModel(
+            com.cruxcoach.app.force.ForceGaugeSettingsPresenter(service, MainScope(), Dispatchers.IO),
+        )
+    }
 }
