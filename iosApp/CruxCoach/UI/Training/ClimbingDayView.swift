@@ -42,82 +42,113 @@ struct ClimbingDaySheetView: View {
         }
     }
 
+    // One function per section: as a single Form the expression was too large for the type checker.
     @ViewBuilder
     private func form(_ model: ClimbingDayScreenModel, _ ui: ClimbingDayScreenState) -> some View {
         Form {
-            Section {
-                Text(L("trl_day_intro")).font(.caption).foregroundStyle(.secondary)
-                TrainingFlow {
-                    TrainingChoiceChip(title: L("trl_day_today"), selected: ui.dayCode == "today") { model.setDay(code: "today") }
-                    TrainingChoiceChip(title: L("trl_day_yesterday"), selected: ui.dayCode == "yesterday") { model.setDay(code: "yesterday") }
-                    TrainingChoiceChip(title: ui.dayCode == "other" ? TrRender.date(ui.day) : L("trl_day_pick"), selected: ui.dayCode == "other") {
-                        picking = true
-                    }
-                }
-                if picking {
-                    DatePicker(L("trl_day_pick"), selection: $pickedDate, in: ...Date(), displayedComponents: .date)
-                        .datePickerStyle(.graphical)
-                        .onChange(of: pickedDate) { _, date in
-                            model.setDay(code: Self.iso(date))
-                            picking = false
-                        }
-                }
-            }
-            Section(L("trl_day_kind")) {
-                TrainingFlow {
-                    ForEach(model.kindCodes, id: \.self) { code in
-                        TrainingChoiceChip(title: TrRender.text(model.kindLabel(code: code)), selected: ui.kindCode == code) {
-                            model.setKind(code: code)
-                        }
-                    }
+            daySection(model, ui)
+            kindSection(model, ui)
+            minutesSection(model, ui)
+            intensitySection(model, ui)
+            noteSection(model, ui)
+            actionsSection(model, ui)
+        }
+    }
+
+    @ViewBuilder
+    private func daySection(_ model: ClimbingDayScreenModel, _ ui: ClimbingDayScreenState) -> some View {
+        Section {
+            Text(L("trl_day_intro")).font(.caption).foregroundStyle(.secondary)
+            TrainingFlow {
+                TrainingChoiceChip(title: L("trl_day_today"), selected: ui.dayCode == "today") { model.setDay(code: "today") }
+                TrainingChoiceChip(title: L("trl_day_yesterday"), selected: ui.dayCode == "yesterday") { model.setDay(code: "yesterday") }
+                TrainingChoiceChip(title: ui.dayCode == "other" ? TrRender.date(ui.day) : L("trl_day_pick"), selected: ui.dayCode == "other") {
+                    picking = true
                 }
             }
-            Section(L("trl_day_minutes")) {
-                TrainingFlow {
-                    ForEach(ui.minuteOptions.map { $0.intValue }, id: \.self) { m in
-                        TrainingChoiceChip(title: L("trl_day_minutes_value", Int(m)), selected: ui.minutes == m) {
-                            model.setMinutes(minutes: m)
-                        }
+            if picking {
+                DatePicker(L("trl_day_pick"), selection: $pickedDate, in: ...Date(), displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .onChange(of: pickedDate) { _, date in
+                        model.setDay(code: Self.iso(date))
+                        picking = false
                     }
-                }
             }
-            Section(L("trl_day_intensity")) {
-                ForEach(model.intensityCodes, id: \.self) { code in
-                    Button { model.setIntensity(code: code) } label: {
-                        HStack {
-                            Image(systemName: ui.intensityCode == code ? "largecircle.fill.circle" : "circle")
-                                .foregroundStyle(Color.accentColor)
-                            VStack(alignment: .leading) {
-                                Text(tr: model.intensityLabel(code: code))
-                                Text(tr: model.intensityHint(code: code)).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            Section {
-                TextField(L("trl_day_note"), text: Binding(get: { ui.note }, set: { model.setNote(note: $0) }))
-                if ui.fromHealth {
-                    Text(L("trl_day_from_health")).font(.caption).foregroundStyle(.secondary)
-                    if ui.hasOverlap {
-                        Text(tr: ui.overlapText)
-                        Toggle(isOn: Binding(get: { ui.countAnyway }, set: { model.setCountAnyway(on: $0) })) {
-                            VStack(alignment: .leading) {
-                                Text(L("trl_day_count_anyway"))
-                                Text(L("trl_day_count_anyway_hint")).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
+        }
+    }
+
+    @ViewBuilder
+    private func kindSection(_ model: ClimbingDayScreenModel, _ ui: ClimbingDayScreenState) -> some View {
+        Section(L("trl_day_kind")) {
+            TrainingFlow {
+                ForEach(model.kindCodes, id: \.self) { code in
+                    TrainingChoiceChip(title: TrRender.text(model.kindLabel(code: code)), selected: ui.kindCode == code) {
+                        model.setKind(code: code)
                     }
                 }
             }
-            Section {
-                Button(L("action_save")) { model.save() }
-                if ui.isEdit {
-                    Button(L("action_delete"), role: .destructive) { model.delete() }
-                    if let onAddAnother {
-                        Button { onAddAnother() } label: { Label(L("trl_day_add_another"), systemImage: "plus") }
+        }
+    }
+
+    @ViewBuilder
+    private func minutesSection(_ model: ClimbingDayScreenModel, _ ui: ClimbingDayScreenState) -> some View {
+        Section(L("trl_day_minutes")) {
+            TrainingFlow {
+                ForEach(ui.minuteOptions.map { $0.intValue }, id: \.self) { m in
+                    TrainingChoiceChip(title: L("trl_day_minutes_value", Int(m)), selected: ui.minutes == m) {
+                        model.setMinutes(minutes: m)
                     }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func intensitySection(_ model: ClimbingDayScreenModel, _ ui: ClimbingDayScreenState) -> some View {
+        Section(L("trl_day_intensity")) {
+            ForEach(model.intensityCodes, id: \.self) { code in
+                Button { model.setIntensity(code: code) } label: {
+                    HStack {
+                        Image(systemName: ui.intensityCode == code ? "largecircle.fill.circle" : "circle")
+                            .foregroundStyle(Color.accentColor)
+                        VStack(alignment: .leading) {
+                            Text(tr: model.intensityLabel(code: code))
+                            Text(tr: model.intensityHint(code: code)).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func noteSection(_ model: ClimbingDayScreenModel, _ ui: ClimbingDayScreenState) -> some View {
+        Section {
+            TextField(L("trl_day_note"), text: Binding(get: { ui.note }, set: { model.setNote(note: $0) }))
+            if ui.fromHealth {
+                Text(L("trl_day_from_health")).font(.caption).foregroundStyle(.secondary)
+                if ui.hasOverlap {
+                    Text(tr: ui.overlapText)
+                    Toggle(isOn: Binding(get: { ui.countAnyway }, set: { model.setCountAnyway(on: $0) })) {
+                        VStack(alignment: .leading) {
+                            Text(L("trl_day_count_anyway"))
+                            Text(L("trl_day_count_anyway_hint")).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func actionsSection(_ model: ClimbingDayScreenModel, _ ui: ClimbingDayScreenState) -> some View {
+        Section {
+            Button(L("action_save")) { model.save() }
+            if ui.isEdit {
+                Button(L("action_delete"), role: .destructive) { model.delete() }
+                if let onAddAnother {
+                    Button { onAddAnother() } label: { Label(L("trl_day_add_another"), systemImage: "plus") }
                 }
             }
         }
