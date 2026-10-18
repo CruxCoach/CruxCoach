@@ -23,6 +23,8 @@
     <string name="trpg_row_cd">Set %1$s: %2$s</string>
     <string name="trpg_page_cd">Exercise %1$d of %2$d: %3$s, %4$d of %5$d sets</string>
     <string name="trpg_page_progress">%1$d of %2$d sets</string>
+    <string name="trpg_page_cd_sides">Exercise %1$d of %2$d: %3$s, %4$d of %5$d sets per side</string>
+    <string name="trpg_page_progress_sides">%1$d of %2$d sets per side</string>
     <string name="trpg_reserve_question">How many more?</string>
     <string name="trpg_start_seconds">Start · %1$d s</string>
     <string name="trpg_log_test">Log it</string>

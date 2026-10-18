@@ -75,6 +75,15 @@ data class PlayerPage(
     val done: Int get() = counted.count { it.isCompleted }
     val total: Int get() = counted.size
     val open: Boolean get() = sets.any { !it.isCompleted }
+    /**
+     * Each set is logged once per side (left, right): the strip and the overview count sets per side, as the page
+     * and the card do ("Satz 1 von 2 · LINKS", "2 × 1–3") – device test D47 heard "0 of 4 sets".
+     */
+    val perSide: Boolean get() = counted.isNotEmpty() && counted.all { it.side != null } && counted.mapTo(HashSet()) { it.side }.size > 1
+    /** Sets done with both sides finished, when [perSide]; otherwise [done]. */
+    val setsDone: Int get() = if (perSide) counted.groupBy { it.side }.values.minOf { s -> s.count { it.isCompleted } } else done
+    /** Sets per side, when [perSide]; otherwise [total]. */
+    val setsTotal: Int get() = if (perSide) counted.groupBy { it.side }.values.maxOf { it.size } else total
 }
 
 /** An exercise ended early, for the "Undo" in the snackbar. */
