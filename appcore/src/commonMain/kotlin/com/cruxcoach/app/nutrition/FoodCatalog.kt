@@ -6,6 +6,7 @@ import com.cruxcoach.athlete.logic.BlsFood
 import com.cruxcoach.athlete.logic.DetectedFood
 import com.cruxcoach.athlete.logic.FoodVisionParser
 import com.cruxcoach.athlete.logic.FuelUnits
+import com.cruxcoach.athlete.logic.MealTextParser
 import com.cruxcoach.athlete.logic.MicroWatch
 import com.cruxcoach.athlete.logic.OffProduct
 import com.cruxcoach.athlete.logic.OffTable
@@ -97,11 +98,32 @@ object FoodItems {
         )
     }
 
-    /** A BLS food as an (unsaved) per-100 g food item; saved on first use. */
-    fun blsFoodItem(food: BlsFood, german: Boolean) = FoodItem(
-        id = "bls:${food.code}", name = blsName(food, german), source = FoodTable.BLS_SOURCE,
-        kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
-    )
+    /**
+     * A BLS food as an (unsaved) per-100 g food item; saved on first use. Foods people count (a banana, an egg)
+     * get one piece as their portion, so the amount dialog offers pieces next to grams (device test D43).
+     */
+    fun blsFoodItem(food: BlsFood, german: Boolean): FoodItem {
+        val piece = MealTextParser.pieceGramsOf(food.nameDe)
+        return FoodItem(
+            id = "bls:${food.code}", name = blsName(food, german), source = FoodTable.BLS_SOURCE,
+            kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
+            servingG = piece, servingLabel = piece?.let { pieceLabel(it, german) },
+        )
+    }
+
+    // Stored with the food like Android's label, so it reads the same wherever the saved food shows up.
+    private fun pieceLabel(grams: Double, german: Boolean) =
+        if (german) "1 Stück (${grams.toInt()} g)" else "1 piece (${grams.toInt()} g)"
+
+    /**
+     * A BLS food saved before it knew its piece weight ("my foods"), with the piece added for the amount dialog;
+     * logging it saves the piece (device test D43: the saved "Banane roh" still offered only grams).
+     */
+    fun withPiece(item: FoodItem, german: Boolean): FoodItem {
+        if (item.source != FoodTable.BLS_SOURCE || item.servingG != null) return item
+        val piece = MealTextParser.pieceGramsOf(item.name) ?: return item
+        return item.copy(servingG = piece, servingLabel = pieceLabel(piece, german))
+    }
 
     fun displayName(food: DetectedFood, german: Boolean): String = if (german) food.nameDe else food.nameEn
 

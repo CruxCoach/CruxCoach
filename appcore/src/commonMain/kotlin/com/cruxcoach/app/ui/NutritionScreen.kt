@@ -382,7 +382,8 @@ class NutritionScreenModel internal constructor(
     /** The amount for a picked row ("add" in the add sheet's meal); null when the row is gone. */
     fun amountForm(ref: String): FoodAmountForm? {
         val s = presenter.state.value
-        val item = food(ref) ?: return null
+        // A saved BLS food from before pieces existed gets its piece too (Android `FoodPhotoViewModel.withPiece`, D43).
+        val item = food(ref)?.let { FoodItems.withPiece(it, catalog.german()) } ?: return null
         return forms.amount(item, extra.value.meal, s.profile.units, s.profile.showCalories, s.lastByFood[item.id])
     }
 

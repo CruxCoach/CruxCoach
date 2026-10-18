@@ -67,6 +67,52 @@ class FoodSearchAndTextTest {
     }
 
     @Test
+    fun `a food people count is offered by the piece (device test D43)`() = runBlocking<Unit> {
+        val k = kit()
+        val screen = k.open()
+        screen.beginSearch("log", "snack", null)
+        screen.setQuery("banane")
+        screen.await { s -> s.search.bls.any { it.ref == "bls:F503100" } }
+        val amount = assertNotNull(screen.amountForm("bls:F503100"))
+        // It opens on pieces, one banana, and says what a piece weighs; grams stay one tap away.
+        val ui = amount.current
+        assertFalse(ui.useGrams)
+        assertTrue(ui.showChoice && ui.canPortion)
+        assertEquals("1", ui.portionsText)
+        assertTrue("(120 g)" in ui.serving.text, ui.serving.text)
+        amount.setPortions("2")
+        assertTrue(amount.confirm())
+
+        val day = k.service.today().toString()
+        k.awaitDb { k.repo.foodLog(day).isNotEmpty() }
+        val entry = k.db { k.repo.foodLog(day).single() }
+        assertEquals(2.0, entry.portions!!, 0.0)
+        assertEquals(240.0, entry.amountG!!, 0.0)
+        assertEquals(120.0, k.db { k.repo.foodItem("bls:F503100")!!.servingG!! }, 0.0)
+    }
+
+    @Test
+    fun `a banana saved before pieces existed offers pieces from my foods and learns its piece weight`() = runBlocking<Unit> {
+        val k = kit()
+        k.db {
+            k.repo.saveFoodItem(FoodItem(id = "bls:F503100", name = "Banane roh", source = "bls",
+                kcalPer100 = 79.0, proteinPer100 = 1.3, carbsPer100 = 15.9, fatPer100 = 0.4))
+        }
+        val screen = k.open()
+        screen.beginSearch("log", "snack", null)
+        screen.await { s -> s.search.own.any { it.ref == "bls:F503100" } }
+        val amount = assertNotNull(screen.amountForm("bls:F503100"))
+        assertFalse(amount.current.useGrams)
+        assertTrue("(120 g)" in amount.current.serving.text, amount.current.serving.text)
+        assertTrue(amount.confirm())
+        val day = k.service.today().toString()
+        k.awaitDb { k.repo.foodLog(day).isNotEmpty() }
+        assertEquals(120.0, k.db { k.repo.foodLog(day).single().amountG!! }, 0.0)
+        k.awaitDb { k.repo.foodItem("bls:F503100")?.servingG == 120.0 }
+        assertEquals("1 piece (120 g)", k.db { k.repo.foodItem("bls:F503100")!!.servingLabel })
+    }
+
+    @Test
     fun `product search finds a packaged product and logs one serving`() = runBlocking<Unit> {
         val k = kit(products = "# version: t\n4025500000001\tSkyr Natur\t\tMilbona\t63\t11\t4\t0.2\t150\t1\n")
         val screen = k.open()
