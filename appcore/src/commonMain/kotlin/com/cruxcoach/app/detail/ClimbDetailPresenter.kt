@@ -72,6 +72,18 @@ class ClimbDetailPresenter(
         load(uuid, angle)
     }
 
+    /**
+     * Android `switchClimb`: the detail pages to another climb of the list it
+     * was opened from. Unlike [open], a pending "browser must refresh" flag
+     * survives, or ignoring one climb and swiping on would leave it listed.
+     */
+    fun switchClimb(uuid: String, angle: Int) {
+        val s = _state.value
+        if (uuid == s.uuid && angle == s.angle) return
+        _state.value = ClimbDetailUiState(uuid = uuid, angle = angle, browserDirty = s.browserDirty)
+        load(uuid, angle)
+    }
+
     fun selectAngle(angle: Int) {
         val s = _state.value
         if (angle == s.angle || s.uuid.isEmpty()) return

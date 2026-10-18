@@ -2,6 +2,7 @@ package com.cruxcoach.app.ui
 
 import com.cruxcoach.app.detail.ClimbDetailPresenter
 import com.cruxcoach.app.detail.ClimbDetailUiState
+import com.cruxcoach.app.detail.DetailPages
 import com.cruxcoach.app.logbook.LogAttemptPresenter
 import com.cruxcoach.app.logbook.LogAttemptState
 import com.cruxcoach.app.logbook.LogTarget
@@ -66,6 +67,10 @@ class DetailScreenState(
     val logQuality: Int,
     val logComment: String,
     val logBenchmark: Boolean,
+    /** 0-based position in the list the detail was opened from (Android's swipe pager). */
+    val pageIndex: Int,
+    /** 1 = no paging: the climb was not in a list, or the list had only it. */
+    val pageCount: Int,
 )
 
 /**
@@ -82,26 +87,55 @@ class DetailScreenModel(
     private val scope = CoroutineScope(SupervisorJob() + main)
     private val moonLayout = MutableStateFlow<MoonLayout?>(null)
     private val sendFailure = MutableStateFlow("none")
+    private val pages = MutableStateFlow(DetailPages.single(""))
+    /** Android pages with the angle the list was browsed at, not the one picked on a page. */
+    private var pageAngle = 0
     private var lastDetail: ClimbDetailUiState? = null
     private var lastTargetKey: String = ""
 
     private class MoonLayout(val geometry: MoonBoardMappedGeometry, val imagePath: String)
 
     val currentState: DetailScreenState
-        get() = map(detail.state.value, logger.state.value, moonLayout.value, sendFailure.value)
+        get() = map(detail.state.value, logger.state.value, moonLayout.value, sendFailure.value, pages.value)
 
     fun watch(onState: (DetailScreenState) -> Unit): Subscription {
         val job = scope.launch {
-            combine(detail.state, logger.state, moonLayout, sendFailure) { d, l, moon, failure ->
+            combine(detail.state, logger.state, moonLayout, sendFailure, pages) { d, l, moon, failure, p ->
                 lastDetail = d
                 syncLogTarget(d)
-                map(d, l, moon, failure)
+                map(d, l, moon, failure, p)
             }.collect { onState(it) }
         }
         return Subscription { job.cancel() }
     }
 
-    fun open(uuid: String, angle: Int) = detail.open(uuid, angle)
+    fun open(uuid: String, angle: Int) {
+        pages.value = DetailPages.single(uuid)
+        pageAngle = angle
+        detail.open(uuid, angle)
+    }
+
+    /**
+     * Opens [uuid] with the list it was tapped in ([pageUuids], e.g. the
+     * browser's current results) so the detail can page through it.
+     */
+    fun openPaged(uuid: String, angle: Int, pageUuids: List<String>) {
+        pages.value = DetailPages.of(pageUuids, uuid)
+        pageAngle = angle
+        detail.open(uuid, angle)
+    }
+
+    /** Android's settled pager page: switch to the climb at [index]; out of range is ignored. */
+    fun showPage(index: Int) {
+        val next = pages.value.moveTo(index) ?: return
+        // A send or failure banner belongs to the climb it was raised on.
+        sendFailure.value = "none"
+        pages.value = next
+        detail.switchClimb(next.current, pageAngle)
+    }
+
+    fun nextPage() = showPage(pages.value.index + 1)
+    fun previousPage() = showPage(pages.value.index - 1)
 
     /** Swift loads [DetailScreenState.moonLayoutPath] from the bundle and hands the text back. */
     fun setMoonLayoutJson(jsonText: String) {
@@ -181,6 +215,7 @@ class DetailScreenModel(
         log: LogAttemptState,
         moon: MoonLayout?,
         sendRequestFailure: String,
+        pager: DetailPages,
     ): DetailScreenState {
         val data = state.data
         val climb = data?.climb
@@ -245,6 +280,8 @@ class DetailScreenModel(
             logQuality = log.ascent.quality,
             logComment = log.ascent.comment,
             logBenchmark = log.ascent.isBenchmark,
+            pageIndex = pager.index,
+            pageCount = pager.count,
         )
     }
 
@@ -441,4 +478,78 @@ class ClimbOwnerActionsModel(
         resultKilterWarning = s.resultKilter,
         deleted = s.deleted,
     )
+}
+
+class RestTimerUiState(
+    /** idle | running | finished */
+    val phase: String,
+    val secondsRemaining: Int,
+    val totalSeconds: Int,
+    /** 1 → 0 over the rest. */
+    val progress: Float,
+    /** normal | warning | critical | finished — Android's orange, yellow (≤30 s), red (≤10 s), green. */
+    val tone: String,
+    /** "1:05" from a minute up, "45s" below, as Android's banner prints it. */
+    val countdown: String,
+    /** The settings length (`rest_timer_duration_seconds`) the start sheet is pre-filled with. */
+    val defaultSeconds: Int,
+)
+
+/**
+ * The board rest timer of the climb detail (Android's timer button,
+ * `RestTimerStartDialog` and `RestTimerBannerSlot`). It drives the app's one
+ * rest timer, which the training shares; closing the screen does not stop the
+ * rest, and its end reaches a locked phone through [com.cruxcoach.app.notify.RestTimerNotifier].
+ */
+class RestTimerModel(
+    private val timer: com.cruxcoach.app.athlete.TrainingRestTimer,
+    private val defaultSeconds: () -> Int,
+    main: CoroutineDispatcher = Dispatchers.Main,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + main)
+
+    val minSeconds: Int = com.cruxcoach.app.resttimer.RestTimerRules.MIN_SECONDS
+    val maxSeconds: Int = com.cruxcoach.app.resttimer.RestTimerRules.MAX_SECONDS
+
+    val currentState: RestTimerUiState get() = map(timer.restTimer.value)
+
+    fun watch(onState: (RestTimerUiState) -> Unit): Subscription {
+        val job = scope.launch { timer.restTimer.collect { onState(map(it)) } }
+        return Subscription { job.cancel() }
+    }
+
+    /** The start sheet's length; not persisted — the setting stays the default and the auto-start length. */
+    fun start(seconds: Int) = timer.startRestTimer(com.cruxcoach.app.resttimer.RestTimerRules.clamp(seconds))
+
+    /** The banner's close button: dismisses a finished rest, cancels a running one. */
+    fun closeBanner(finished: Boolean) {
+        if (finished) timer.dismissRestTimerFinished() else timer.cancelRestTimer()
+    }
+
+    fun cancel() = timer.cancelRestTimer()
+    fun dismissFinished() = timer.dismissRestTimerFinished()
+
+    /** Recomputes the remainder, e.g. when the app returns to the foreground. */
+    fun refresh() = timer.tick()
+
+    fun canStep(current: Int, delta: Int): Boolean = com.cruxcoach.app.resttimer.RestTimerRules.canStep(current, delta)
+    fun step(current: Int, delta: Int): Int = com.cruxcoach.app.resttimer.RestTimerRules.step(current, delta)
+    fun clamp(seconds: Int): Int = com.cruxcoach.app.resttimer.RestTimerRules.clamp(seconds)
+    fun countdownText(seconds: Int): String = com.cruxcoach.app.resttimer.RestTimerRules.countdown(seconds)
+
+    /** Stops this screen's observation only; the rest keeps running. */
+    fun detach() = scope.cancel()
+
+    private fun map(state: com.cruxcoach.app.athlete.RestTimerState): RestTimerUiState {
+        val rules = com.cruxcoach.app.resttimer.RestTimerRules
+        return RestTimerUiState(
+            phase = rules.phase(state),
+            secondsRemaining = state.secondsRemaining,
+            totalSeconds = state.totalSeconds,
+            progress = rules.progress(state),
+            tone = rules.tone(state),
+            countdown = rules.countdown(state.secondsRemaining),
+            defaultSeconds = rules.clamp(defaultSeconds()),
+        )
+    }
 }

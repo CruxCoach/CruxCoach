@@ -1301,4 +1301,35 @@ class AppCore private constructor(
             com.cruxcoach.app.force.ForceGaugeSettingsPresenter(service, MainScope(), Dispatchers.IO),
         )
     }
+
+    // ── Board extras (wave 4, board-extras area): detail rest timer and paging ──
+
+    /**
+     * The climb detail's rest timer (Android's timer button and banner). It drives
+     * the same rest timer as the training player, as Android's BoardSessionManager
+     * is shared by both.
+     */
+    fun makeBoardRestTimer(): com.cruxcoach.app.ui.RestTimerModel =
+        com.cruxcoach.app.ui.RestTimerModel(trainingRestTimer, { settingsStore.snapshot.restTimerDurationSeconds })
+
+    /**
+     * [makeDetailScreen] plus Android's `rest_timer_auto_start`: a logged attempt
+     * starts the rest with the settings length when the user opted in.
+     */
+    fun makeDetailScreenWithRestTimer(): DetailScreenModel {
+        val autoStart = com.cruxcoach.app.resttimer.RestAutoStart(
+            trainingRestTimer,
+            enabled = { settingsStore.snapshot.restTimerAutoStart },
+            durationSeconds = { settingsStore.snapshot.restTimerDurationSeconds },
+        )
+        val model = DetailScreenModel(
+            ClimbDetailPresenter(boardRepository, personalRepository, platform.keyValues),
+            LogAttemptPresenter(personalRepository, listener = autoStart),
+            boardSender,
+            settings.gradeFormatter(),
+        )
+        // One detail screen is visible at a time; the newest owns the shared sender.
+        sendFailureSink = { code -> model.reportSendFailure(code) }
+        return model
+    }
 }

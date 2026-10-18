@@ -6,11 +6,18 @@ struct ClimbDetailView: View {
     let uuid: String
     let angle: Int32
     let ble: ScreenHost<BleScreenModel, BleScreenState>
+    /// The list the climb was tapped in (e.g. the browser's results), for
+    /// Android's swipe paging. Empty or without [uuid]: a single page.
+    var pageUuids: [String] = []
     let onChanged: () -> Void
 
     @State private var host: ScreenHost<DetailScreenModel, DetailScreenState>?
     @State private var note = ""
-    @State private var noteLoaded = false
+    /// The climb whose stored note [note] was filled from; paging loads the next one's.
+    @State private var noteUuid = ""
+    @State private var rest: ScreenHost<RestTimerModel, RestTimerUiState>?
+    @State private var showRestStart = false
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showBle = false
     @State private var showLists = false
     @State private var editorTarget: DetailEditorTarget?
@@ -29,11 +36,15 @@ struct ClimbDetailView: View {
         }
         .task {
             guard host == nil else { return }
-            let model = core.makeDetailScreen()
+            let model = core.makeDetailScreenWithRestTimer()
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
-            model.open(uuid: uuid, angle: angle)
+            model.openPaged(uuid: uuid, angle: angle, pageUuids: pageUuids)
+            let timer = core.makeBoardRestTimer()
+            rest = ScreenHost(model: timer, initial: timer.currentState,
+                              subscribe: { model, onState in model.watch(onState: onState) },
+                              onClose: { model in model.detach() })
             let actions = core.makeClimbOwnerActions()
             owner = ScreenHost(model: actions, initial: actions.currentState,
                                subscribe: { model, onState in model.watch(onState: onState) },
@@ -44,6 +55,11 @@ struct ClimbDetailView: View {
             if host?.state.browserDirty == true { onChanged() }
             host?.close()
             owner?.close()
+            rest?.close()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // The countdown is an end instant; a suspended app shows the right remainder on return.
+            if phase == .active { rest?.model.refresh() }
         }
         .modifier(OwnerDeleteDialogs(owner: owner))
         .onChange(of: owner?.state.deleted ?? false) { _, deleted in
@@ -128,6 +144,7 @@ struct ClimbDetailView: View {
                 Button { model.toggleFavourite() } label: {
                     Label(LI("detail_favourite"), systemImage: ui.isFavourite ? "heart.fill" : "heart")
                 }
+                restTimerButton
                 Menu {
                     if ui.isMirrorable {
                         Button(LI("detail_mirror"), systemImage: "arrow.left.and.right") { model.toggleMirror() }
@@ -153,13 +170,32 @@ struct ClimbDetailView: View {
         .sheet(isPresented: $showBle) { NavigationStack { BleView(ble: ble) } }
         .modifier(DetailExtraSheets(core: core, uuid: ui.uuid, angle: ui.angle,
                                     showLists: $showLists, editorTarget: $editorTarget, linkCopied: linkCopied))
+        .modifier(DetailRestTimerSheet(rest: rest, isPresented: $showRestStart))
         .sheet(isPresented: Binding(get: { ui.showLogDialog }, set: { if !$0 { model.dismissLogDialog() } })) {
             NavigationStack { LogSheet(model: model, ui: ui) }.presentationDetents([.medium, .large])
         }
         .onChange(of: ui.moonLayoutPath) { _, path in loadMoonLayout(model: model, path: path) }
-        .onChange(of: ui.personalNote) { _, value in
-            if !noteLoaded { note = value; noteLoaded = true }
+        .onChange(of: "\(ui.uuid)|\(ui.status)", initial: true) { _, _ in pageChanged(ui: ui) }
+    }
+
+    /// Android's timer button in the detail's top bar; orange while a rest runs.
+    private var restTimerButton: some View {
+        let running: Bool = rest?.state.phase == "running"
+        return Button { showRestStart = true } label: {
+            Label(L("cd_rest_timer"), systemImage: "timer")
         }
+        .foregroundStyle(running ? Color.orange : Color.accentColor)
+        .accessibilityIdentifier("detail_rest_timer_button")
+    }
+
+    /// A loaded climb (first open or a new page): fill the note editor once and
+    /// point the owner actions at it.
+    private func pageChanged(ui: DetailScreenState) {
+        guard ui.status == "ready", noteUuid != ui.uuid else { return }
+        let opened: Bool = !noteUuid.isEmpty
+        noteUuid = ui.uuid
+        note = ui.personalNote
+        if opened { owner?.model.open(uuid: ui.uuid) }
     }
 
     private func sendRequestMessage(_ code: String) -> String {
@@ -182,7 +218,10 @@ struct ClimbDetailView: View {
     @ViewBuilder private func content(model: DetailScreenModel, ui: DetailScreenState) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if let rest { RestTimerBanner(model: rest.model, ui: rest.state) }
                 BoardCanvasView(imagePaths: ui.imagePaths, holds: ui.holds, aspect: CGFloat(ui.boardAspect))
+                    .simultaneousGesture(pageSwipe(model: model))
+                pager(model: model, ui: ui)
                 stats(model: model, ui: ui)
                 actions(model: model, ui: ui)
                 if !ui.notes.isEmpty { Text(ui.notes).font(.callout) }
@@ -191,6 +230,39 @@ struct ClimbDetailView: View {
                 history(ui: ui)
             }
             .padding()
+        }
+    }
+
+    /// Android's horizontal pager: a clearly horizontal swipe over the board turns the page.
+    private func pageSwipe(model: DetailScreenModel) -> some Gesture {
+        DragGesture(minimumDistance: 24).onEnded { value in
+            let dx: CGFloat = value.translation.width
+            let dy: CGFloat = value.translation.height
+            guard abs(dx) > 60, abs(dx) > abs(dy) * 2 else { return }
+            if dx < 0 { model.nextPage() } else { model.previousPage() }
+        }
+    }
+
+    /// Previous/next through the list the climb was opened from.
+    @ViewBuilder private func pager(model: DetailScreenModel, ui: DetailScreenState) -> some View {
+        if ui.pageCount > 1 {
+            let index: Int = Int(ui.pageIndex)
+            let count: Int = Int(ui.pageCount)
+            HStack {
+                Button { model.previousPage() } label: { Image(systemName: "chevron.left") }
+                    .disabled(index <= 0)
+                    .accessibilityLabel(L("cd_previous"))
+                Spacer()
+                Text("\(index + 1) / \(count)")
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button { model.nextPage() } label: { Image(systemName: "chevron.right") }
+                    .disabled(index >= count - 1)
+                    .accessibilityLabel(L("cd_next"))
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("detail_pager")
         }
     }
 
@@ -372,5 +444,24 @@ private struct DetailExtraSheets: ViewModifier {
                         .padding(.bottom, 24)
                 }
             }
+    }
+}
+
+/// Android's `RestTimerStartDialog`, kept out of the detail's modifier chain.
+private struct DetailRestTimerSheet: ViewModifier {
+    let rest: ScreenHost<RestTimerModel, RestTimerUiState>?
+    @Binding var isPresented: Bool
+
+    func body(content: Content) -> some View {
+        content.sheet(isPresented: $isPresented) {
+            if let rest {
+                NavigationStack {
+                    RestTimerStartSheet(model: rest.model, initialSeconds: rest.state.defaultSeconds) {
+                        isPresented = false
+                    }
+                }
+                .presentationDetents([.medium])
+            }
+        }
     }
 }
