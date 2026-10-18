@@ -1,9 +1,10 @@
 // Port of androidApp/.../ui/training/body/BodyViewModel.kt (0e1bad0c6) for the iOS app.
 // Kept close to the Android file so later Android changes carry over by diff. Platform seams:
 // an injected scope and IO dispatcher instead of viewModelScope/Dispatchers.IO, the common
-// clock, kotlinx-datetime instead of java.time. The Waistline file import is not ported (the
-// iOS screen says so); everything else — trend, summaries, ape index, strength to weight,
-// entries with back-dating, the measurement round, delete and undo — is.
+// clock, kotlinx-datetime instead of java.time. The Waistline file import lives in
+// `app/waistline/WaistlineImportPresenter` (same logic, its own facade); everything else — trend,
+// summaries, ape index, strength to weight, entries with back-dating, the measurement round,
+// delete and undo — is here.
 package com.cruxcoach.app.progress
 
 import com.cruxcoach.app.athlete.AthleteService

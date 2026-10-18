@@ -1246,4 +1246,14 @@ class AppCore private constructor(
             state.backupEnabled, state.lastBackupSync, settingsStore.snapshot.keyBackedUp,
         )
     }
+
+    // ── Data extras: Waistline import, Kilter circuits, force gauge ──────────────────────────
+
+    /** The Waistline import of the body page (Android `BodyScreen` import). Null without athlete database. */
+    fun makeWaistlineImport(): com.cruxcoach.app.waistline.WaistlineImportModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.waistline.WaistlineImportModel(
+            com.cruxcoach.app.waistline.WaistlineImportPresenter(service, MainScope(), Dispatchers.IO),
+        )
+    }
 }

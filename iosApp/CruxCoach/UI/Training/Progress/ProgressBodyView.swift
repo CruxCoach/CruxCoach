@@ -1,15 +1,17 @@
 import Charts
 import CruxCoachCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The body page (Android `BodyScreen`): the weight trend with its range, the measurement round,
 /// measurements with the ape index, strength to weight and the recent entries; every entry can be
-/// back-dated, corrected or deleted (with undo). Push it inside a `NavigationStack`; it has none of
-/// its own. The Waistline file import is not on iPhone and says so.
+/// back-dated, corrected or deleted (with undo), and a Waistline backup or diary export can be
+/// imported. Push it inside a `NavigationStack`; it has none of its own.
 struct ProgressBodyView: View {
     let core: AppCore
 
     @State private var host: ScreenHost<BodyScreenModel, BodyScreenState>?
+    @State private var importHost: ScreenHost<WaistlineImportModel, WaistlineImportState>?
 
     init(core: AppCore) {
         self.core = core
@@ -18,7 +20,7 @@ struct ProgressBodyView: View {
     var body: some View {
         Group {
             if let host {
-                BodyContent(core: core, model: host.model, ui: host.state)
+                BodyContent(core: core, model: host.model, ui: host.state, importHost: importHost)
             } else {
                 ProgressView()
             }
@@ -30,6 +32,11 @@ struct ProgressBodyView: View {
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
+            if importHost == nil, let importer = core.makeWaistlineImport() {
+                importHost = ScreenHost(model: importer, initial: importer.currentState,
+                                        subscribe: { model, onState in model.watch(onState: onState) },
+                                        onClose: { model in model.close() })
+            }
         }
     }
 }
@@ -47,12 +54,13 @@ private struct BodyContent: View {
     let core: AppCore
     let model: BodyScreenModel
     let ui: BodyScreenState
+    let importHost: ScreenHost<WaistlineImportModel, WaistlineImportState>?
 
     @State private var entry: BodyEntryTarget?
+    @State private var picking = false
     @State private var roundOpen = false
     @State private var snack: TrainingSnack?
     @State private var snackAction: (() -> Void)?
-    @State private var notYet: String?
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -89,9 +97,10 @@ private struct BodyContent: View {
                 Menu {
                     Toggle(L("tra_hide_numbers"), isOn: Binding(get: { ui.hideNumbers },
                                                                  set: { model.setHideNumbers(hide: $0) }))
-                    Button { notYet = L("trb_import_action") } label: {
+                    Button { picking = true } label: {
                         Label(L("trb_import_action"), systemImage: "square.and.arrow.down")
                     }
+                    .disabled(importHost == nil || (importHost?.state.busy ?? false))
                 } label: {
                     Label(L("tr_action_settings"), systemImage: "slider.horizontal.3")
                 }
@@ -115,11 +124,10 @@ private struct BodyContent: View {
             snack = TrainingSnack(text: LP("trb_round_saved", Int(count)), action: nil)
             model.consumeRoundSaved()
         }
-        .alert(notYet ?? "", isPresented: Binding(get: { notYet != nil }, set: { if !$0 { notYet = nil } })) {
-            Button(L("action_ok")) { notYet = nil }
-        } message: {
-            Text(LI("training_not_on_iphone"))
-        }
+        .modifier(WaistlineImportFlow(host: importHost, picking: $picking) { text in
+            snackAction = nil
+            snack = TrainingSnack(text: text, action: nil)
+        })
     }
 
     // MARK: Weight
@@ -482,5 +490,184 @@ private struct BodyRoundSheet: View {
         }
         let saved = model.saveRound(isoDay: ProgressDates.iso(day), keys: keys, displayValues: values)
         if saved < 0 { invalid = true } else { onDone() }
+    }
+}
+
+// MARK: Waistline import
+
+/// What the picked file turned out to be (Android `readImportFile`).
+private enum WaistlineFile {
+    case text(String)
+    case tooLarge
+    case failed
+}
+
+/// The file picker, the preview sheet and the outcome message of the Waistline import, kept out
+/// of the body's modifier chain.
+private struct WaistlineImportFlow: ViewModifier {
+    let host: ScreenHost<WaistlineImportModel, WaistlineImportState>?
+    @Binding var picking: Bool
+    let onMessage: (String) -> Void
+
+    // Android accepts JSON, CSV, plain text and untyped files: Waistline's exports carry no
+    // reliable type once they pass through a share sheet.
+    private static let types: [UTType] = [.json, .commaSeparatedText, .plainText, .data]
+
+    func body(content: Content) -> some View {
+        let eventCode: String = host?.state.eventCode ?? "none"
+        return content
+            .fileImporter(isPresented: $picking, allowedContentTypes: Self.types) { result in
+                handlePick(result)
+            }
+            .sheet(isPresented: previewShown) {
+                if let host { WaistlineImportSheet(host: host) }
+            }
+            .onChange(of: eventCode) { _, code in
+                guard code != "none", let host else { return }
+                if let text = Self.message(host.state) { onMessage(text) }
+                host.model.consumeEvent()
+            }
+    }
+
+    private var previewShown: Binding<Bool> {
+        Binding(get: { host?.state.hasPreview ?? false },
+                set: { shown in if !shown, let host, host.state.hasPreview, !host.state.busy { host.model.cancel() } })
+    }
+
+    private func handlePick(_ result: Result<URL, Error>) {
+        guard let model = host?.model else { return }
+        guard case .success(let url) = result else {
+            model.previewUnreadable()
+            return
+        }
+        switch Self.read(url, limit: Int(model.maxImportBytes)) {
+        case .text(let text): model.preview(text: text)
+        case .tooLarge: model.reportTooLarge()
+        case .failed: model.previewUnreadable()
+        }
+    }
+
+    /// Reads at most one byte more than the limit, so a huge file is refused without loading it.
+    /// Malformed UTF-8 is replaced, as Android's reader does.
+    private static func read(_ url: URL, limit: Int) -> WaistlineFile {
+        // A picked file lives outside the sandbox until it is opened.
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let data: Data = try handle.read(upToCount: limit + 1) ?? Data()
+            if data.count > limit { return .tooLarge }
+            return .text(String(decoding: data, as: UTF8.self))
+        } catch {
+            return .failed
+        }
+    }
+
+    /// Android's snackbar texts (`BodyEvent`).
+    private static func message(_ ui: WaistlineImportState) -> String? {
+        switch ui.eventCode {
+        case "imported":
+            var parts: [String] = [LP("trb_import_done", Int(ui.eventWritten))]
+            if ui.eventKept > 0 { parts.append(LP("trb_import_kept", Int(ui.eventKept))) }
+            if ui.eventSkipped > 0 { parts.append(LP("trb_import_skipped", Int(ui.eventSkipped))) }
+            return parts.joined(separator: " · ")
+        case "empty": return L("trb_import_empty")
+        case "failed": return L("trb_import_failed")
+        case "tooLarge": return L("trb_import_too_large")
+        default: return nil
+        }
+    }
+}
+
+/// The preview before anything is written (Android `ImportPreviewDialog`): source format, date
+/// range, values per metric, skipped values, the day/month choice for ambiguous dates and
+/// keep-or-overwrite for days that already have an entry.
+private struct WaistlineImportSheet: View {
+    let host: ScreenHost<WaistlineImportModel, WaistlineImportState>
+
+    @State private var overwrite = false
+
+    var body: some View {
+        let ui: WaistlineImportState = host.state
+        NavigationStack {
+            Form {
+                summarySection(ui)
+                countsSection(ui)
+                if ui.askDateOrder { dateOrderSection(ui) }
+                if ui.conflicts > 0 { conflictSection(ui) }
+                if ui.busy {
+                    Section { ProgressView().frame(maxWidth: .infinity) }
+                }
+            }
+            .navigationTitle(L("trb_import_title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { toolbarContent(ui) }
+        }
+        .interactiveDismissDisabled(ui.busy)
+    }
+
+    @ToolbarContentBuilder
+    private func toolbarContent(_ ui: WaistlineImportState) -> some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button(L("tr_action_cancel")) { host.model.cancel() }.disabled(ui.busy)
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            Button(L("trb_import_confirm")) { host.model.confirm(overwrite: overwrite) }
+                .disabled(ui.busy)
+                .accessibilityIdentifier("body_import_confirm")
+        }
+    }
+
+    private func summarySection(_ ui: WaistlineImportState) -> some View {
+        let format: String = L(ui.formatCode == "json" ? "trb_import_format_json" : "trb_import_format_csv")
+        let range: String? = TrRender.optional(ui.range)
+        return Section {
+            Text(format).font(.footnote).foregroundStyle(.secondary)
+            if let range { Text(range) }
+        }
+    }
+
+    private func countsSection(_ ui: WaistlineImportState) -> some View {
+        let skipped: Int = Int(ui.skipped)
+        return Section {
+            ForEach(ui.counts, id: \.key) { row in
+                HStack {
+                    Text(tr: row.label)
+                    Spacer()
+                    Text("\(row.count)").fontWeight(.semibold)
+                }
+            }
+            if skipped > 0 {
+                Text(LP("trb_import_skipped", skipped)).font(.footnote).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text(L("trb_import_found"))
+        }
+    }
+
+    private func dateOrderSection(_ ui: WaistlineImportState) -> some View {
+        let selection = Binding<Bool>(get: { ui.dayFirst }, set: { host.model.setDayFirst(dayFirst: $0) })
+        return Section {
+            Text(L("trb_import_date_order_hint")).font(.footnote)
+            Picker(L("trb_import_date_order"), selection: selection) {
+                Text(L("trb_import_day_month")).tag(true)
+                Text(L("trb_import_month_day")).tag(false)
+            }
+            .pickerStyle(.segmented)
+            .disabled(ui.busy)
+        } header: {
+            Text(L("trb_import_date_order"))
+        }
+    }
+
+    private func conflictSection(_ ui: WaistlineImportState) -> some View {
+        let conflicts: Int = Int(ui.conflicts)
+        return Section {
+            Text(LP("trb_import_conflicts", conflicts)).font(.footnote)
+            Toggle(L("trb_import_overwrite"), isOn: $overwrite)
+                .disabled(ui.busy)
+                .accessibilityIdentifier("body_import_overwrite")
+        }
     }
 }
