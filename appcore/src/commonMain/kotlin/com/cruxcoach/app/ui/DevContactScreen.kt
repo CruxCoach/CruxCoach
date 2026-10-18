@@ -73,6 +73,57 @@ class DevContactScreenModel(private val presenter: DevContactPresenter) {
     fun consumeSent() = presenter.consumeSent()
     fun close() = presenter.close()
 
+    /**
+     * Android's bug report form (`BugReportScreen` → `sendBugReport`): sent as a bug report with
+     * the title as subject. [osVersion], [physicalMemoryBytes] and [language] make the device
+     * line (iOS version, Android's three memory tiers, never the model); [appVersion] is
+     * "name (build)".
+     */
+    fun sendBugReport(
+        title: String,
+        details: String,
+        steps: String,
+        osVersion: String,
+        physicalMemoryBytes: Long,
+        language: String,
+        appVersion: String,
+    ) {
+        val text = composeBugReport(
+            title, details, steps,
+            deviceLine(osVersion, physicalMemoryBytes, language), appVersion,
+        )
+        presenter.setType(DevMessageType.BUG)
+        presenter.setSubject(title.trim())
+        presenter.setDraft(text)
+        presenter.send()
+    }
+
+    companion object {
+        /** Android's `sendBugReport` text, in its (German) section labels the maintainer reads. */
+        internal fun composeBugReport(
+            title: String,
+            description: String,
+            steps: String,
+            deviceLine: String,
+            appVersion: String,
+        ): String = buildString {
+            append(title.trim())
+            append("\n\nBeschreibung:\n")
+            append(description.trim())
+            if (steps.isNotBlank()) {
+                append("\n\nSchritte:\n")
+                append(steps.trim())
+            }
+            append("\n\n---\n")
+            append(deviceLine)
+            append("\nApp ").append(appVersion)
+        }
+
+        /** Android's `generalizedDeviceInfoLine` ("Android API 34 | mid-range | de"), for iOS. */
+        internal fun deviceLine(osVersion: String, physicalMemoryBytes: Long, language: String): String =
+            "iOS $osVersion | ${com.cruxcoach.app.crash.CrashReportFormat.deviceTier(physicalMemoryBytes)} | $language"
+    }
+
     private fun type(code: String): DevMessageType? = when (code) {
         "crash" -> DevMessageType.CRASH
         "bug" -> DevMessageType.BUG

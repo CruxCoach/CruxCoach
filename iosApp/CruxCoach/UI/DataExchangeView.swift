@@ -14,6 +14,8 @@ struct DataExchangeView: View {
     @State private var picking = false
     /// Android's export format chips: "json", "csv" (CSV ZIP) or "excel" (export only).
     @State private var format = "json"
+    /// Android's error card "Report bug": the bug report form, prefilled with the error.
+    @State private var bugReport: BugReportDraft?
     /// Android's import picker: the JSON export or a CSV ZIP; the core detects which from the content.
     private static let importTypes: [UTType] = [.json, .zip]
 
@@ -65,7 +67,8 @@ struct DataExchangeView: View {
             })
         }
         .modifier(DataImportMismatchAlert(model: model, ui: ui))
-        .modifier(DataExchangeErrorAlert(model: model, ui: ui))
+        .modifier(DataExchangeErrorAlert(model: model, ui: ui) { draft in bugReport = draft })
+        .modifier(DataImportBugReport(core: core, draft: $bugReport))
     }
 
     // MARK: Export
@@ -242,18 +245,36 @@ private struct DataImportMismatchAlert: ViewModifier {
 }
 
 /// Export failures and Android's import error texts ("File not readable: …", "Import failed: …").
+/// An import error offers Android's error card action "Report bug": the error becomes the
+/// description of a prefilled bug report, and the error is cleared, as on Android.
 private struct DataExchangeErrorAlert: ViewModifier {
     let model: DataExchangeScreenModel
     let ui: DataExchangeScreenState
+    let onReport: (BugReportDraft) -> Void
 
     func body(content: Content) -> some View {
         let title: String = Self.message(ui)
+        let reportable: Bool = Self.importCodes.contains(ui.errorCode)
         return content.alert(title, isPresented: Binding(
             get: { ui.errorCode != "none" },
             set: { if !$0 { model.consumeError() } })) {
+            if reportable {
+                Button(L("error_report_bug")) { report(title) }
+            }
             Button(L("action_done")) { model.consumeError() }
         }
     }
+
+    private func report(_ text: String) {
+        model.consumeError()
+        let draft = BugReportDraft(title: L("error_bug_report_import_title"), details: text)
+        let open: (BugReportDraft) -> Void = onReport
+        // The form comes up once the alert has gone; a sheet asked for during its dismissal is refused.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { open(draft) }
+    }
+
+    /// The errors of Android's import screen, whose error card carries "Report bug".
+    private static let importCodes: Set<String> = ["fileNotReadable", "importFailed", "selectCategory"]
 
     private static func message(_ ui: DataExchangeScreenState) -> String {
         if let text = TrRender.optional(ui.errorText) { return text }
@@ -261,6 +282,20 @@ private struct DataExchangeErrorAlert: ViewModifier {
         case "exportFailed": return LI("data_export_failed")
         case "noIdentity": return LI("data_export_no_identity")
         default: return LI("data_import_failed")
+        }
+    }
+}
+
+/// The prefilled bug report of an import error (Android navigates to its bug report form).
+private struct DataImportBugReport: ViewModifier {
+    let core: AppCore
+    @Binding var draft: BugReportDraft?
+
+    func body(content: Content) -> some View {
+        content.sheet(item: $draft) { report in
+            NavigationStack {
+                BugReportSheet(core: core, draft: report) { draft = nil }
+            }
         }
     }
 }

@@ -87,6 +87,11 @@ class FileExchangePresenter(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val maxImportBytes: Long = ImportFiles.MAX_IMPORT_BYTES,
+    /**
+     * Where the cross-identity audit line goes (Android writes it to logcat). Never carries more
+     * than the first 8 hex characters of either public key.
+     */
+    private val audit: (String) -> Unit = { println(it) },
 ) {
     private val _state = MutableStateFlow(FileExchangeState())
     val state: StateFlow<FileExchangeState> = _state.asStateFlow()
@@ -285,6 +290,9 @@ class FileExchangePresenter(
         val accepted = s.importMismatchAccepted
         val expected = if (accepted) null else currentPubkey
         val adopt = if (accepted) currentPubkey else null
+        // Android's audit line: an import across identities stays attributable when someone
+        // asks why these climbs are in their account.
+        if (accepted) audit(overrideAuditLine(s.importSourcePubkey, currentPubkey))
         _state.update {
             it.copy(isImporting = true, error = FileExchangeError.NONE, importFailure = ImportFailure.NONE, importFailureDetail = "")
         }
@@ -359,6 +367,12 @@ class FileExchangePresenter(
 
     fun close() {
         scope.cancel()
+    }
+
+    companion object {
+        /** Android's `import-with-pubkey-override` line (DataExchangeViewModel.confirmImport). */
+        fun overrideAuditLine(source: String?, active: String): String =
+            "import-with-pubkey-override: source=${source?.take(8) ?: "?"}… active=${active.take(8)}…"
     }
 
     private fun isoSeconds(epochSeconds: Long): String =
