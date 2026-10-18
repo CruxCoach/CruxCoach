@@ -1735,4 +1735,79 @@ class AppCore private constructor(
         )
     }
 
+    // ── Crash reports and Lightning gifts (wave 7, crashzap area) ─────────────────────────────
+
+    /** The maintainer conversation's transport, shared by the crash prompt and the gift note. */
+    private fun crashZapDevContact(): DevContactRepository = DevContactRepository(
+        database = secureDatabase,
+        relays = RelayClient(platform.webSockets, platform.hashing),
+        hashing = platform.hashing,
+        nip44 = platform.nip44,
+        clock = platform.clock,
+        devPubkey = AppConfig.MAINTAINER_PUBKEY,
+        secretKeyProvider = { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
+    )
+
+    /**
+     * Android's start-up crash handling: the report the last crash left (written by
+     * [com.cruxcoach.app.crash.CrashHooks]) is offered, sent or deleted per the stored choice.
+     */
+    fun makeCrashReportPrompt(): com.cruxcoach.app.crash.CrashReportPromptModel {
+        val sender = com.cruxcoach.app.crash.DevContactCrashSender(crashZapDevContact())
+        return com.cruxcoach.app.crash.CrashReportPromptModel(
+            files = com.cruxcoach.app.crash.CrashReportFiles(platform.files, com.cruxcoach.app.crash.CrashHooks.reportDirectory()),
+            readOptIn = { settingsStore.snapshot.crashReportOptIn },
+            writeOptIn = { settingsStore.setCrashReportOptIn(it) },
+            sender = { report -> sender.send(report) },
+            scope = MainScope(),
+            io = Dispatchers.IO,
+        )
+    }
+
+    /** Android's "Send crash reports" switch. */
+    fun makeCrashReportSettings(): com.cruxcoach.app.crash.CrashReportSettingsModel =
+        com.cruxcoach.app.crash.CrashReportSettingsModel(
+            { settingsStore.snapshot.crashReportOptIn },
+            { settingsStore.setCrashReportOptIn(it) },
+        )
+
+    /** Notes to the maintainer outlive the gift sheet, as Android's app-scoped delivery does. */
+    private val zapNoteScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+    )
+
+    /** Android's gift sheet (Settings → "Send a Gift"): Lightning invoice for the maintainer. */
+    fun makeZapToMaintainer(): com.cruxcoach.app.zap.ZapModel {
+        val profiles = ProfileLookup(
+            NostrProfileStore(secureDatabase, platform.clock),
+            RelayClient(platform.webSockets, platform.hashing),
+        )
+        val resolver = com.cruxcoach.app.zap.LightningAddressResolver(
+            profileAddress = { pubkey -> profiles.resolve(pubkey)?.lightningAddress },
+            maintainerPubkey = AppConfig.MAINTAINER_PUBKEY,
+            maintainerAddress = AppConfig.MAINTAINER_LIGHTNING_ADDRESS,
+        )
+        val client = com.cruxcoach.app.zap.ZapClient(
+            http = platform.http,
+            signer = LocalEventSigner(platform.hashing) { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
+            clock = platform.clock,
+            lightningAddressOf = { pubkey -> resolver.resolve(pubkey) },
+        )
+        val devContact = crashZapDevContact()
+        return com.cruxcoach.app.zap.ZapModel(
+            client = client,
+            recipientPubkey = AppConfig.MAINTAINER_PUBKEY,
+            senderPubkey = pubkeyHex,
+            log = com.cruxcoach.app.zap.PaymentLog(secureDatabase),
+            donationMessage = { content, subject ->
+                devContact.send(com.cruxcoach.app.messages.DevMessageType.CHAT, content, subject)
+            },
+            idFactory = { com.cruxcoach.app.zap.PaymentIds.random(platform.hashing) },
+            millis = { platform.clock.epochMillis() },
+            scope = MainScope(),
+            appScope = zapNoteScope,
+            io = Dispatchers.IO,
+        )
+    }
+
 }
