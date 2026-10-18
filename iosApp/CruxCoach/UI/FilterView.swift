@@ -59,13 +59,42 @@ struct FilterView: View {
         }
     }
 
-    /// Android filters against the layers the controller confirms; iOS has no layer roster yet.
+    /// Android's "Fits the wall": measured against the layers the controller confirms right now.
     private var quantumOverlapSection: some View {
         Section(L("board_filter_quantum_overlap_title")) {
-            Label(LI("quantum_wall_fit_unsupported"), systemImage: "iphone.slash")
+            ForEach(["off", "none", "atMostOne"], id: \.self) { code in
+                quantumOverlapRow(code)
+            }
+            Text(quantumOverlapHint)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(quantumOverlapWarns ? Color.red : Color.secondary)
         }
+    }
+
+    private func quantumOverlapRow(_ code: String) -> some View {
+        let selected: Bool = ui.quantumOverlap == code
+        let enabled: Bool = code == "off" || ui.quantumLayersAvailable
+        let title: String = code == "off" ? L("board_filter_quantum_overlap_off")
+            : (code == "none" ? L("board_filter_quantum_overlap_none") : L("board_filter_quantum_overlap_one"))
+        return Button { model.setQuantumOverlap(code: code) } label: {
+            HStack {
+                Text(title).foregroundStyle(.primary)
+                Spacer()
+                if selected { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+            }
+        }
+        .disabled(!enabled)
+        .accessibilityIdentifier("board_filter_quantum_overlap_" + code)
+    }
+
+    private var quantumOverlapWarns: Bool { ui.quantumLayersOccupied && !ui.quantumLayersComplete }
+
+    private var quantumOverlapHint: String {
+        if quantumOverlapWarns { return L("board_filter_quantum_overlap_incomplete") }
+        if !ui.quantumLayersOccupied { return L("board_filter_quantum_overlap_inert") }
+        let count: Int64 = ui.quantumFitCount
+        if ui.quantumOverlap != "off" && count >= 0 { return L("board_filter_quantum_overlap_count", Int(count)) }
+        return L("board_filter_quantum_overlap_hint")
     }
 
     private func statusToggle(_ code: String, _ title: String, _ isOn: Bool) -> some View {

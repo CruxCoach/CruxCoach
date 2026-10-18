@@ -82,16 +82,13 @@ struct BleView: View {
         }
     }
 
-    /// Quantum walls are driven through layers on Android; the controller refuses a plain clear.
+    /// Quantum walls are driven through layers (climb detail); the controller refuses a plain clear.
     @ViewBuilder
     private var quantumRows: some View {
         if !ui.quantumModelName.isEmpty {
             LabeledContent(L("board_selection_quantum_model_label"), value: ui.quantumModelName)
         }
         Text(quantumWallText).font(.footnote)
-        Label(LI("quantum_layers_unsupported"), systemImage: "iphone.slash")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
     }
 
     /// Android's wall status strip, read-only: every app's routes count, ours included.

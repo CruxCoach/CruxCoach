@@ -1,0 +1,289 @@
+package com.cruxcoach.app.quantum
+
+import com.cruxcoach.app.ble.BoardConnectionUiState
+import com.cruxcoach.app.ble.BoardLayerBoardIdentity
+import com.cruxcoach.app.ble.BoardSendResult
+import com.cruxcoach.app.ble.ConnectionState
+import com.cruxcoach.app.ble.DiscoveredBoard
+import com.cruxcoach.app.ble.QuantumCommandFailure
+import com.cruxcoach.app.ble.QuantumControllerState
+import com.cruxcoach.app.ble.QuantumControllerSyncStatus
+import com.cruxcoach.app.sync.FakeKeyValueStore
+import com.cruxcoach.app.sync.ImportResult
+import com.cruxcoach.app.sync.ImporterFixture
+import com.cruxcoach.app.sync.QuantumSnapshots
+import com.cruxcoach.app.ui.QuantumLayersScreenModel
+import com.cruxcoach.data.repository.BoardRepositoryImpl
+import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.board.QuantumActivePlayer
+import com.cruxcoach.domain.board.QuantumBoardModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * The layer lamp, rack and removal (Android BoardSendController's Quantum half)
+ * against an imported Quantum snapshot and a simulated controller roster.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class QuantumLayerControllerTest {
+    private val fx = ImporterFixture().also {
+        assertIs<ImportResult.Imported>(it.importer.importQuantumSnapshot(it.source("q.sqlite3", *QuantumSnapshots.MINIMAL)))
+    }
+    private val repository = BoardRepositoryImpl(fx.handle.database)
+    private val dispatcher = StandardTestDispatcher()
+    private val scope = TestScope(dispatcher)
+
+    private val climbUuid = "04d652a3-0099-5af3-9961-183a8b69d376"
+    private val vendorRoute = "00112233-4455-6677-8899-aabbccddeeff"
+    private val foreignUser = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+    private val climb = QuantumClimbSnapshot(
+        uuid = climbUuid, name = "Clean Room", angle = 40, layoutId = 9103, difficultyAverage = 15.0,
+        holds = listOf(BoardHold(3000001, 12), BoardHold(3000002, 13), BoardHold(3000003, 14)),
+    )
+
+    /** A controller that applies scoped writes to its roster, like the simulator in QuantumLinkTest. */
+    private class FakeLink(model: QuantumBoardModel) : QuantumLink {
+        val board = DiscoveredBoard("QB_020000000001", "020000000001", 1, "id-q", -40, BoardBrand.QUANTUM)
+        override val connection = MutableStateFlow(
+            BoardConnectionUiState(connection = ConnectionState.CONNECTED, connectedBoard = board, quantumModel = model),
+        )
+        override val controller = MutableStateFlow(
+            QuantumControllerState(authoritative = true, syncStatus = QuantumControllerSyncStatus.LIVE, revision = 1),
+        )
+        val sends = mutableListOf<List<Any>>()
+        val removals = mutableListOf<Pair<String, String>>()
+        var refuseWith: BoardSendResult? = null
+
+        fun roster(players: List<QuantumActivePlayer>) {
+            controller.value = controller.value.copy(players = players, revision = controller.value.revision + 1)
+        }
+
+        override suspend fun refresh(): Boolean {
+            controller.value = controller.value.copy(revision = controller.value.revision + 1)
+            return true
+        }
+
+        override suspend fun sendClimb(
+            holds: List<BoardHold>, placementToLed: Map<Int, Int>, routeId: String, userId: String, color: Int,
+            expectedPlayers: List<QuantumActivePlayer>, expectedBoard: BoardLayerBoardIdentity,
+        ): BoardSendResult {
+            sends += listOf(routeId, userId, color and 0xffffff, holds.map { placementToLed.getValue(it.placementId) }, expectedBoard)
+            refuseWith?.let { return it }
+            roster(controller.value.players.filterNot { it.userId == userId } + QuantumActivePlayer(routeId, userId, 0xffff, color and 0xffffff))
+            return BoardSendResult.OK
+        }
+
+        override suspend fun removeLayer(userId: String, expectedRouteId: String, expectedBoard: BoardLayerBoardIdentity): BoardSendResult {
+            removals += userId to expectedRouteId
+            roster(controller.value.players.filterNot { it.userId == userId })
+            return BoardSendResult.OK
+        }
+    }
+
+    private val recorded = mutableListOf<QuantumClimbSnapshot>()
+    private var activeBoard: Pair<String, Int>? = "quantum" to 9103
+    private var allowed = true
+
+    // Not backgroundScope: advanceUntilIdle() stops once only background work is left.
+    private val controllerScopes = mutableListOf<CoroutineScope>()
+
+    @AfterTest
+    fun cancelControllers() = controllerScopes.forEach { it.cancel() }
+
+    private fun controller(link: FakeLink) = QuantumLayerController(
+        layers = BoardLayerManager(FakeKeyValueStore()),
+        link = link,
+        boardRepository = repository,
+        activeBoard = { activeBoard },
+        localManagementAllowed = { allowed },
+        recordSent = { recorded += it },
+        scope = CoroutineScope(SupervisorJob() + dispatcher).also { controllerScopes += it },
+        io = dispatcher,
+    )
+
+    @Test
+    fun `the lamp lights the climb in the first free layer with its vendor route and confirms it`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        val c = controller(link)
+        advanceUntilIdle()
+        assertEquals(BoardLayerBoardIdentity("quantum:serial:020000000001", 9203), c.layers.state.value.board)
+
+        c.light(climb); advanceUntilIdle()
+
+        val layers = c.layers
+        val send = link.sends.single()
+        assertEquals(vendorRoute, send[0], "the controller gets the vendor route, not the app uuid")
+        assertEquals(layers.identityForSlot(0), send[1])
+        assertEquals(0x00ff00, send[2])
+        assertEquals(listOf(101, 102, 103), send[3])
+        val lit = layers.state.value.layers.single()
+        assertEquals(BoardLayerStatus.CONFIRMED, lit.status)
+        assertEquals(vendorRoute, lit.confirmedRouteUuid)
+        assertEquals(QuantumSendState(success = true), c.send.value)
+        assertEquals(listOf(climb), recorded)
+
+        // A second tap keeps the climb in its own layer.
+        c.light(climb); advanceUntilIdle()
+        assertEquals(2, link.sends.size)
+        assertEquals(layers.identityForSlot(0), link.sends[1][1])
+        assertEquals(1, layers.state.value.layers.size)
+    }
+
+    @Test
+    fun `an unknown route from another app blocks the lamp before any write`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        link.roster(listOf(QuantumActivePlayer("99999999-0000-4000-8000-000000000000", foreignUser, 100, 0x123456)))
+        val c = controller(link)
+        advanceUntilIdle()
+
+        c.light(climb); advanceUntilIdle()
+
+        assertTrue(link.sends.isEmpty())
+        assertEquals("board_layer_error_external_unknown", c.send.value.error)
+        assertFalse(c.send.value.sending)
+    }
+
+    @Test
+    fun `another app's known route on the same holds is a conflict, resolved through the vendor bridge`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        link.roster(listOf(QuantumActivePlayer(vendorRoute, foreignUser, 100, 0x123456)))
+        val c = controller(link)
+        advanceUntilIdle()
+        assertEquals(climb.holds, c.layers.state.value.externalLayers.single().holds)
+
+        c.light(climb); advanceUntilIdle()
+
+        assertTrue(link.sends.isEmpty())
+        assertEquals("board_layer_error_shared_hold", c.send.value.error)
+    }
+
+    @Test
+    fun `a lit layer is removed only through a scoped removal of exactly its route`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        val c = controller(link)
+        advanceUntilIdle()
+        c.light(climb); advanceUntilIdle()
+
+        c.remove(0); advanceUntilIdle()
+
+        assertEquals(listOf(c.layers.identityForSlot(0) to vendorRoute), link.removals)
+        assertTrue(c.layers.state.value.layers.isEmpty())
+        assertTrue(c.send.value.success)
+    }
+
+    @Test
+    fun `a staged plan is dropped locally without a board command`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        val c = controller(link)
+        advanceUntilIdle()
+        c.assign(climb, slot = 2, color = null); advanceUntilIdle()
+        assertEquals(BoardLayerStatus.PREVIEW, c.layers.state.value.layers.single().status)
+        assertEquals(2, c.layers.state.value.layers.single().slot)
+
+        c.remove(2); advanceUntilIdle()
+
+        assertTrue(c.layers.state.value.layers.isEmpty())
+        assertTrue(link.removals.isEmpty() && link.sends.isEmpty())
+    }
+
+    @Test
+    fun `board selection and controller model mismatches refuse before any write`() = scope.runTest {
+        activeBoard = "kilter" to 1
+        val link = FakeLink(QuantumBoardModel.M)
+        val c = controller(link)
+        advanceUntilIdle()
+        c.light(climb); advanceUntilIdle()
+        assertEquals("board_send_error_brand_mismatch", c.send.value.error)
+
+        activeBoard = "quantum" to 9103
+        val other = FakeLink(QuantumBoardModel.L)
+        val d = controller(other)
+        advanceUntilIdle()
+        d.light(climb); advanceUntilIdle()
+        assertEquals("board_send_error_connected_board_mismatch", d.send.value.error)
+        assertTrue(link.sends.isEmpty() && other.sends.isEmpty())
+        assertTrue(d.layers.state.value.layers.isEmpty())
+    }
+
+    @Test
+    fun `a refused activation fails the layer with the controller's reason`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        link.refuseWith = BoardSendResult.QUANTUM_NOT_CONFIRMED
+        val c = controller(link)
+        advanceUntilIdle()
+        link.controller.value = link.controller.value.copy(lastFailure = QuantumCommandFailure.BOARD_FULL)
+
+        c.light(climb); advanceUntilIdle()
+
+        assertEquals(BoardLayerStatus.FAILED, c.layers.state.value.layers.single().status)
+        assertEquals("board_layer_error_board_full", c.send.value.error)
+        assertTrue(recorded.isEmpty())
+    }
+
+    @Test
+    fun `a joined shared session owns the board and the lamp does nothing`() = scope.runTest {
+        allowed = false
+        val link = FakeLink(QuantumBoardModel.M)
+        val c = controller(link)
+        advanceUntilIdle()
+        c.light(climb); advanceUntilIdle()
+        assertTrue(link.sends.isEmpty())
+        assertEquals(QuantumSendState(), c.send.value)
+    }
+
+    @Test
+    fun `the rack screen loads the climb, recommends layer 1 and shows it lit`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        val c = controller(link)
+        val screen = QuantumLayersScreenModel(c, repository, { allowed }, dispatcher, dispatcher)
+        val watch = screen.watch { }
+        screen.setClimb(climbUuid, 40); advanceUntilIdle()
+        var s = screen.currentState
+        assertTrue(s.hasClimb && s.connected)
+        assertEquals("live", s.wallCode)
+        assertEquals(0, s.suggestedSlot)
+        assertEquals(0xFF00FF00L, s.suggestedArgb)
+        assertEquals("", s.suggestionBlockKey)
+        assertEquals(listOf("free", "free", "free", "free"), s.rows.map { it.stateCode })
+
+        screen.light(); advanceUntilIdle()
+        s = screen.currentState
+        assertEquals("onBoard", s.rows[0].stateCode)
+        assertTrue(s.rows[0].isCurrentClimb && s.rows[0].removeIsLive)
+        assertEquals("Clean Room", s.rows[0].climbName)
+        assertEquals(1, s.activeCount)
+        assertTrue(s.success)
+        assertTrue(s.suggestionUsesExistingSlot)
+        watch.cancel()
+        screen.close()
+    }
+
+    @Test
+    fun `a non quantum climb leaves the rack empty`() = scope.runTest {
+        fx.execTarget("INSERT INTO climbs(uuid,layout_id,name,frames,board_brand) VALUES('k1',1,'Kilter',x'01020c','kilter')")
+        val c = controller(FakeLink(QuantumBoardModel.M))
+        val screen = QuantumLayersScreenModel(c, repository, { true }, dispatcher, dispatcher)
+        screen.setClimb("k1", 40); advanceUntilIdle()
+        assertFalse(screen.currentState.hasClimb)
+        assertEquals("board_send_error_no_led_data", screen.currentState.suggestionBlockKey)
+        screen.light(); advanceUntilIdle()
+        assertNull(c.send.value.error)
+        screen.close()
+    }
+}

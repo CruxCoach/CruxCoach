@@ -19,6 +19,7 @@ struct ClimbDetailView: View {
     @State private var showRestStart = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var showBle = false
+    @State private var showQuantumLayers = false
     @State private var showLists = false
     @State private var editorTarget: DetailEditorTarget?
     @State private var linkCopied = false
@@ -299,12 +300,17 @@ struct ClimbDetailView: View {
         .tourAnchor("light", in: anchors)
     }
 
-    /// Android lights Quantum climbs through numbered board layers (BoardLayerManager); not ported.
-    private var quantumSendUnsupported: some View {
-        Label(LI("quantum_send_unsupported"), systemImage: "lightbulb.slash")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    /// Quantum climbs are lit through numbered board layers (Android's rack and lamp), in a sheet here.
+    private func quantumLayersButton(ui: DetailScreenState) -> some View {
+        Button { showQuantumLayers = true } label: {
+            Label(LI("detail_light_up"), systemImage: "square.stack.3d.up")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .accessibilityIdentifier("detail_quantum_layers")
+        .modifier(QuantumLayersSheetModifier(core: core, ble: ble, climbUuid: ui.uuid, angle: ui.angle,
+                                             isPresented: $showQuantumLayers))
     }
 
     private func sendRequestMessage(_ code: String) -> String {
@@ -419,7 +425,7 @@ struct ClimbDetailView: View {
     private func actions(model: DetailScreenModel, ui: DetailScreenState) -> some View {
         VStack(spacing: 10) {
             if ui.isQuantum {
-                quantumSendUnsupported
+                quantumLayersButton(ui: ui)
             } else {
                 lightUpButton(model: model)
             }

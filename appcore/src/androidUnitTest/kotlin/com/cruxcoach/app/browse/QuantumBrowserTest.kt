@@ -14,12 +14,14 @@ import com.cruxcoach.data.repository.PersonalBoardRepositoryImpl
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.board.QuantumBoardModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -98,6 +100,34 @@ class QuantumBrowserTest {
         m.toggleQuantumRule("not-a-rule"); advanceUntilIdle()
         assertEquals(listOf("campusing"), last!!.quantumRules)
         assertEquals(listOf("standard", "campusing", "edge", "kickplate", "matching"), m.quantumRuleCodes)
+        watch.cancel()
+        m.close()
+    }
+
+    @Test
+    fun `fits the wall follows the lit holds the layer rack reports`() = scope.runTest {
+        val m = model()
+        var last: BrowserScreenState? = null
+        val watch = m.watch { last = it }
+        m.start(); advanceUntilIdle()
+        assertFalse(last!!.quantumLayersAvailable)
+
+        // Another app lights d2 (placement 3000002): Clean Room shares it, Campus Only does not.
+        val wall = MutableStateFlow(BrowserQuantumLayerState(setOf(3000002), layerCount = 1, complete = true))
+        m.followQuantumLayers(wall); advanceUntilIdle()
+        assertTrue(last!!.quantumLayersAvailable && last!!.quantumLayersOccupied && last!!.quantumLayersComplete)
+
+        m.setQuantumOverlap("none"); advanceUntilIdle()
+        assertEquals("none", last!!.quantumOverlap)
+        assertEquals(setOf("Campus Only"), last!!.names())
+        m.setQuantumOverlap("atMostOne"); advanceUntilIdle()
+        assertEquals(setOf("Clean Room", "Campus Only"), last!!.names())
+
+        m.setQuantumOverlap("none"); advanceUntilIdle()
+        wall.value = BrowserQuantumLayerState(emptySet(), layerCount = 0, complete = true)
+        advanceUntilIdle()
+        assertFalse(last!!.quantumLayersAvailable)
+        assertEquals(setOf("Clean Room", "Campus Only"), last!!.names(), "an empty wall makes the filter inert")
         watch.cancel()
         m.close()
     }

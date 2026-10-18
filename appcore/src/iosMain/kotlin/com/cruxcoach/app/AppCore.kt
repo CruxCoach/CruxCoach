@@ -2009,4 +2009,59 @@ class AppCore private constructor(
     fun makeLogbookOwnPublish(): com.cruxcoach.app.kilter.LogbookOwnPublishModel =
         com.cruxcoach.app.kilter.LogbookOwnPublishModel(ownKilterClimbPublisher(), Dispatchers.Main, Dispatchers.IO)
 
+    // ── Quantum board layers (wave 7, quantum area) ──────────────────────────────────────────
+
+    /**
+     * Process-wide like Android's BoardLayerManager + SessionQueueManager roster sync: binds
+     * the rack to the connected controller, hydrates every roster and owns the layer sends.
+     */
+    private val quantumLayerController: com.cruxcoach.app.quantum.QuantumLayerController by lazy {
+        com.cruxcoach.app.quantum.QuantumLayerController(
+            layers = boardConnection.quantumLayers,
+            link = boardConnection.quantumLink,
+            boardRepository = boardRepository,
+            activeBoard = {
+                val brand = platform.keyValues.getString(com.cruxcoach.app.browse.BrowsePreferences.BOARD_BRAND)
+                val layout = platform.keyValues.getString(com.cruxcoach.app.browse.BrowsePreferences.BOARD_LAYOUT_ID)?.toIntOrNull()
+                if (brand != null && layout != null) brand to layout else null
+            },
+            localManagementAllowed = ::quantumLayersAllowed,
+            recordSent = { climb ->
+                val now = com.cruxcoach.util.DateTimeUtil.nowIso()
+                personalRepository.recordClimbHistory(
+                    climbUuid = climb.uuid,
+                    climbName = climb.name,
+                    angle = climb.angle.toLong(),
+                    difficultyAverage = climb.difficultyAverage,
+                    boardBrand = com.cruxcoach.domain.board.BoardBrand.QUANTUM.wireValue,
+                    layoutId = climb.layoutId,
+                    climbedAt = now,
+                    recordedAt = now,
+                )
+            },
+            scope = MainScope(),
+            io = Dispatchers.IO,
+        )
+    }
+
+    /** Android localQuantumLayerManagementAllowed: a joined or connecting shared session owns the board. */
+    private fun quantumLayersAllowed(): Boolean =
+        sharedSessions.currentState.phaseCode !in setOf("connecting", "joined", "hostLost")
+
+    /**
+     * Android's "Fits the wall" follows the rack. Lead wiring: `makeBrowserScreen()` returns
+     * `quantumAwareBrowser(BrowserScreenModel(...))`.
+     */
+    private fun quantumAwareBrowser(model: BrowserScreenModel): BrowserScreenModel =
+        model.also { it.followQuantumLayers(quantumLayerController.browserLayers) }
+
+    /** The layer rack and lamp for one Quantum climb (Android's detail rack). */
+    fun makeQuantumLayersScreen(): com.cruxcoach.app.ui.QuantumLayersScreenModel = com.cruxcoach.app.ui.QuantumLayersScreenModel(
+        controller = quantumLayerController,
+        boardRepository = boardRepository,
+        localManagementAllowed = ::quantumLayersAllowed,
+        io = Dispatchers.IO,
+        main = Dispatchers.Main,
+    )
+
 }

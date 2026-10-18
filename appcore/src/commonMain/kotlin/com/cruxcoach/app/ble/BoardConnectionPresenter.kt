@@ -60,11 +60,14 @@ class BoardConnectionPresenter(
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val remembered = RememberedBoardStore(keyValues)
     private val cleaningStorage = BoardCleaningStorage(keyValues)
+    /** Process-wide Quantum layer rack: its identities are the only ones a scoped Quantum write may use. */
+    internal val quantumLayers = com.cruxcoach.app.quantum.BoardLayerManager(keyValues)
     private val controller = BoardConnectionController(
         central, scope, clock,
         cleaning = BoardCleaningSession(cleaningStorage.load(), cleaningStorage::save) {
             cleaningLocalDate(clock.epochMillis())
         },
+        ownsQuantumUserId = { quantumLayers.ownsIdentity(it) },
     )
     private val _state = MutableStateFlow(BoardConnectionUiState(remembered = remembered.all()))
     val state: StateFlow<BoardConnectionUiState> = _state.asStateFlow()
@@ -222,6 +225,26 @@ class BoardConnectionPresenter(
             }
             onResult(success)
         }
+    }
+
+    /** The connection as the Quantum layer controller needs it; writes run on this presenter's controller. */
+    internal val quantumLink: com.cruxcoach.app.quantum.QuantumLink = object : com.cruxcoach.app.quantum.QuantumLink {
+        override val connection: StateFlow<BoardConnectionUiState> get() = state
+        override val controller: StateFlow<QuantumControllerState> get() = this@BoardConnectionPresenter.controller.quantumState
+        override suspend fun refresh(): Boolean = this@BoardConnectionPresenter.controller.refreshQuantumState()
+        override suspend fun sendClimb(
+            holds: List<BoardHold>,
+            placementToLed: Map<Int, Int>,
+            routeId: String,
+            userId: String,
+            color: Int,
+            expectedPlayers: List<com.cruxcoach.domain.board.QuantumActivePlayer>,
+            expectedBoard: BoardLayerBoardIdentity,
+        ): BoardSendResult = this@BoardConnectionPresenter.controller.sendQuantumClimb(
+            holds, placementToLed, routeId, userId, color, expectedPlayers, expectedBoard,
+        )
+        override suspend fun removeLayer(userId: String, expectedRouteId: String, expectedBoard: BoardLayerBoardIdentity): BoardSendResult =
+            this@BoardConnectionPresenter.controller.removeQuantumLayer(userId, expectedRouteId, expectedBoard)
     }
 
     fun dispose() {

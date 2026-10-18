@@ -159,6 +159,11 @@ class BoardBrowserPresenter(
                     _state.update {
                         it.copy(core = base.onBoardSwitch(BoardAnglePicker.clampAngle(sel.angle, chips0), sel.layoutId, sel.boardBrand, chips0))
                     }
+                    // Android refreshes the layer state on a switch: the wall did not change while another board was shown.
+                    val wall = latestQuantumLayers
+                    if (brand == BoardBrand.QUANTUM && wall != null) {
+                        _state.update { it.copy(core = it.core.copy(quantumLayers = wall.copy(matchCount = -1))) }
+                    }
                     val loaded = withContext(io) { dbLock.withLock { loadBoard(sel, brand) } }
                     _state.update { s ->
                         if (s.filter.boardBrand != sel.boardBrand || s.filter.layoutId != sel.layoutId) s
@@ -287,6 +292,19 @@ class BoardBrowserPresenter(
         pipeline.invalidateRandomCache()
         edit(persist = true, force = true) { f ->
             BrowserFilterState(angle = f.angle, layoutId = f.layoutId, boardBrand = f.boardBrand, angleChips = f.angleChips)
+        }
+    }
+
+    /** The newest wall roster from [followQuantumLayers], re-applied when the browser switches to Quantum. */
+    private var latestQuantumLayers: BrowserQuantumLayerState? = null
+
+    /** Android's browser follows the process-wide layer rack ("Fits the wall"). */
+    internal fun followQuantumLayers(layers: kotlinx.coroutines.flow.Flow<BrowserQuantumLayerState>) {
+        scope.launch {
+            layers.collect { next ->
+                latestQuantumLayers = next
+                setQuantumLayers(next.litPlacements, next.layerCount, next.complete)
+            }
         }
     }
 

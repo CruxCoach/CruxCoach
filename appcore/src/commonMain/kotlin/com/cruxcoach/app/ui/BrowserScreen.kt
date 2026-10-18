@@ -57,13 +57,18 @@ class BrowserScreenState(
     val zoneTop: Float,
     val zoneRight: Float,
     val zoneBottom: Float,
-    /**
-     * Quantum board: the rule filter applies, benchmark/type filters do not (Android
-     * BoardBrowsePolicy). "Fits the wall" needs the layer roster, not on iPhone yet.
-     */
+    /** Quantum board: rule and wall-fit filters apply, benchmark/type filters do not (Android BoardBrowsePolicy). */
     val isQuantum: Boolean,
     /** Required route rules as lowercase codes (standard, campusing, edge, kickplate, matching). */
     val quantumRules: List<String>,
+    /** "Fits the wall": off | none | atMostOne */
+    val quantumOverlap: String,
+    /** The wall's lit holds are known: the wall-fit choices can be enabled. */
+    val quantumLayersAvailable: Boolean,
+    val quantumLayersOccupied: Boolean,
+    val quantumLayersComplete: Boolean,
+    /** Climbs that fit under the active wall-fit filter; -1 while unknown. */
+    val quantumFitCount: Long,
 )
 
 /** One selectable hold: [x]/[y] are normalized over the board image. */
@@ -126,6 +131,11 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
             zoneBottom = zoneBox[3],
             isQuantum = brand == BoardBrand.QUANTUM,
             quantumRules = QUANTUM_RULES.filter { (_, rule) -> (filter.quantumRuleMask and rule.bit) != 0L }.map { it.first },
+            quantumOverlap = QUANTUM_OVERLAPS.firstOrNull { it.second == filter.quantumOverlapFilter }?.first ?: "off",
+            quantumLayersAvailable = state.core.quantumLayers.available,
+            quantumLayersOccupied = state.core.quantumLayers.occupied,
+            quantumLayersComplete = state.core.quantumLayers.complete,
+            quantumFitCount = state.core.quantumLayers.matchCount,
         )
     }
 
@@ -136,6 +146,18 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
         if (BoardBrand.fromWire(current.boardBrand) != BoardBrand.QUANTUM) return
         presenter.setFilters(edit(current).copy(quantumRuleMask = current.quantumRuleMask xor rule.bit))
     }
+
+    /** Android `setQuantumOverlapFilter`: off | none | atMostOne; ignored off a Quantum board. */
+    fun setQuantumOverlap(code: String) {
+        val overlap = QUANTUM_OVERLAPS.firstOrNull { it.first == code }?.second ?: return
+        val current = presenter.state.value.filter
+        if (BoardBrand.fromWire(current.boardBrand) != BoardBrand.QUANTUM || current.quantumOverlapFilter == overlap) return
+        presenter.setFilters(edit(current).copy(quantumOverlapFilter = overlap))
+    }
+
+    /** Feeds the wall's layers into "Fits the wall" (AppCore wires the process-wide rack). */
+    internal fun followQuantumLayers(layers: kotlinx.coroutines.flow.Flow<com.cruxcoach.app.browse.BrowserQuantumLayerState>) =
+        presenter.followQuantumLayers(layers)
 
     private fun edit(f: com.cruxcoach.app.browse.BrowserFilterState) = BrowseFilterEdit(
         minGradeIndex = f.minGradeIndex,
@@ -319,6 +341,11 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
             "edge" to com.cruxcoach.app.browse.QuantumRuleFilter.EDGE,
             "kickplate" to com.cruxcoach.app.browse.QuantumRuleFilter.KICKPLATE,
             "matching" to com.cruxcoach.app.browse.QuantumRuleFilter.MATCHING,
+        )
+        private val QUANTUM_OVERLAPS = listOf(
+            "off" to com.cruxcoach.domain.board.QuantumOverlapFilter.OFF,
+            "none" to com.cruxcoach.domain.board.QuantumOverlapFilter.NONE,
+            "atMostOne" to com.cruxcoach.domain.board.QuantumOverlapFilter.AT_MOST_ONE,
         )
 
         /** Kilter's continuous angle range; other boards use [BrowserScreenState.angleChips]. */
