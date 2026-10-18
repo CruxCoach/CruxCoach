@@ -757,6 +757,14 @@ class AppCore private constructor(
         )
     }
 
+    /** The quick estimate in two questions (Android `QuickEstimateSheet`). */
+    fun makeQuickEstimateScreen(): com.cruxcoach.app.ui.QuickEstimateScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.QuickEstimateScreenModel(
+            com.cruxcoach.app.progress.QuickEstimatePresenter(service, MainScope(), Dispatchers.IO),
+        )
+    }
+
     /** Injuries and pauses (Android `InjuriesScreen`). */
     fun makeInjuriesScreen(): com.cruxcoach.app.ui.InjuriesScreenModel? {
         val service = athlete ?: return null
@@ -765,12 +773,28 @@ class AppCore private constructor(
         )
     }
 
-    /** Training settings (Android `AthleteSettingsScreen`). */
-    fun makeAthleteSettingsScreen(language: String): com.cruxcoach.app.ui.AthleteSettingsScreenModel? {
+    /**
+     * Training settings (Android `AthleteSettingsScreen`). [notifications] schedules the body
+     * reminders (Swift passes its `LocalNotificationScheduler`).
+     */
+    fun makeAthleteSettingsScreen(language: String, notifications: NotificationScheduler): com.cruxcoach.app.ui.AthleteSettingsScreenModel? {
         val service = athlete ?: return null
+        val reminders = com.cruxcoach.app.progress.BodyReminderScheduler(service, notifications) { platform.clock.epochMillis() }
         return com.cruxcoach.app.ui.AthleteSettingsScreenModel(
-            com.cruxcoach.app.progress.AthleteSettingsPresenter(service, MainScope(), Dispatchers.IO), language,
+            com.cruxcoach.app.progress.AthleteSettingsPresenter(service, MainScope(), Dispatchers.IO, reminders, notifications), language,
         )
+    }
+
+    /**
+     * Android `BodyReminders.ensureScheduled`: schedules the weigh-in and measuring reminders ahead
+     * again. Call it at app start (and when the app returns to the foreground); a no-op without the
+     * athlete database or with both reminders off.
+     */
+    fun rescheduleBodyReminders(notifications: NotificationScheduler) {
+        val service = athlete ?: return
+        com.cruxcoach.app.ui.BodyRemindersModel(service,
+            com.cruxcoach.app.progress.BodyReminderScheduler(service, notifications) { platform.clock.epochMillis() },
+            MainScope(), Dispatchers.IO).reschedule()
     }
 
     /** One exercise over time (Android `ExerciseStatsScreen`); Swift calls `load(slug:)`. */

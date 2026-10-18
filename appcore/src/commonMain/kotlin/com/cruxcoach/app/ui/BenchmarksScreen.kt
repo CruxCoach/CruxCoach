@@ -405,3 +405,116 @@ class BenchmarksScreenModel internal constructor(
         }
     }
 }
+
+/** One answer chip of the quick estimate. */
+class QuickEstimateChoiceUi(val code: String, val label: TrText)
+
+class QuickEstimateScreenState(
+    val loading: Boolean,
+    val unitsCode: String,
+    val massUnit: String,
+    val needsWeight: Boolean,
+    val pullChoices: List<QuickEstimateChoiceUi>,
+    val hangChoices: List<QuickEstimateChoiceUi>,
+    val hangAllowed: Boolean,
+    /** One-arm pick-ups are asked (a block somewhere, no injury against it). */
+    val showPickup: Boolean,
+    /** left | right while a one-sided injury allows only that hand; "" = both. */
+    val pickupSide: String,
+    /** The answers were saved: close the sheet. */
+    val saved: Boolean,
+)
+
+/**
+ * The quick estimate in two questions (Android `QuickEstimateSheet`): pull-ups, a two-hand hang
+ * and, with a block, one-arm pick-ups per hand. Answers are passed as typed (codes and texts) and
+ * become performance values marked "estimated".
+ */
+class QuickEstimateScreenModel internal constructor(private val presenter: com.cruxcoach.app.progress.QuickEstimatePresenter) {
+    val currentState: QuickEstimateScreenState get() = map(presenter.state.value)
+
+    fun watch(onState: (QuickEstimateScreenState) -> Unit): Subscription {
+        val scope = MainScope()
+        scope.launch { presenter.state.collect { onState(map(it)) } }
+        return Subscription { scope.cancel() }
+    }
+
+    fun close() = presenter.close()
+
+    /** [display] in the athlete's units; Android's plausible range, else false. */
+    fun logWeight(display: Double): Boolean {
+        val kg = Units.massFromDisplay(display, presenter.state.value.units)
+        if (!kg.isFinite() || kg < ProgressScreenModel.PLAUSIBLE_MIN_KG || kg > ProgressScreenModel.PLAUSIBLE_MAX_KG) return false
+        presenter.logWeight(kg)
+        return true
+    }
+
+    /** "≈ 95 % of body weight · typical for about 6B" for the pull-up answer; empty without. */
+    fun pullHint(pullCode: String, weightedKg: String, weightedReps: String): TrText {
+        val s = presenter.state.value
+        val pct = com.cruxcoach.app.progress.QuickEstimatePresenter.pullPct(pull(pullCode), kg(weightedKg), reps(weightedReps), s.bodyweight)
+            ?: return Tx.EMPTY
+        return BenchmarksScreenModel.plausibilityText(GradeStrengthNorms.Metric.PULL_UP_1RM, pct, s.workingDifficulty)
+    }
+
+    /** The same for the hang answer. */
+    fun hangHint(hangCode: String, hangKg: String): TrText {
+        val s = presenter.state.value
+        val pct = com.cruxcoach.app.progress.QuickEstimatePresenter.fingerPct(hang(hangCode), kg(hangKg), s.bodyweight, s.increment)
+            ?: return Tx.EMPTY
+        return BenchmarksScreenModel.plausibilityText(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM, pct, s.workingDifficulty)
+    }
+
+    /** Android enables "Save" once anything was answered. */
+    fun canSave(pullCode: String, hangCode: String, leftKg: String, rightKg: String): Boolean {
+        val pull = pull(pullCode)
+        val hang = hang(hangCode)
+        return (pull != null && pull != com.cruxcoach.app.progress.PullAnswer.NONE) ||
+            (hang != null && hang != com.cruxcoach.app.progress.HangAnswer.CANNOT) ||
+            (kg(leftKg) ?: 0.0) > 0 || (kg(rightKg) ?: 0.0) > 0
+    }
+
+    /** Saves the answers; false when nothing was answered. */
+    fun save(pullCode: String, weightedKg: String, weightedReps: String, hangCode: String, hangKg: String,
+             leftKg: String, rightKg: String): Boolean {
+        if (!canSave(pullCode, hangCode, leftKg, rightKg)) return false
+        presenter.save(pull(pullCode), kg(weightedKg), reps(weightedReps), hang(hangCode), kg(hangKg), kg(leftKg), kg(rightKg))
+        return true
+    }
+
+    private fun pull(code: String) = com.cruxcoach.app.progress.PullAnswer.entries.firstOrNull { it.name == code }
+    private fun hang(code: String) = com.cruxcoach.app.progress.HangAnswer.entries.firstOrNull { it.name == code }
+    /** Android's fields: six characters, comma or dot decimals. */
+    private fun kg(text: String): Double? =
+        BenchmarksScreenModel.parseDecimal(text.take(6))?.let { Units.massFromDisplay(it, presenter.state.value.units) }
+    private fun reps(text: String): Int? = text.filter(Char::isDigit).take(2).toIntOrNull()
+
+    private fun map(s: com.cruxcoach.app.progress.QuickEstimateRunState) = QuickEstimateScreenState(
+        loading = s.loading,
+        unitsCode = BodyScreenModel.unitsCode(s.units),
+        massUnit = Units.massUnit(s.units),
+        needsWeight = s.bodyweight == null,
+        pullChoices = com.cruxcoach.app.progress.PullAnswer.entries.map { a ->
+            QuickEstimateChoiceUi(a.name, Tx.t(when (a) {
+                com.cruxcoach.app.progress.PullAnswer.NONE -> "trc_estimate_pull_0"
+                com.cruxcoach.app.progress.PullAnswer.FEW -> "trc_estimate_pull_1_3"
+                com.cruxcoach.app.progress.PullAnswer.SOME -> "trc_estimate_pull_4_7"
+                com.cruxcoach.app.progress.PullAnswer.MANY -> "trc_estimate_pull_8_12"
+                com.cruxcoach.app.progress.PullAnswer.LOTS -> "trc_estimate_pull_13"
+                com.cruxcoach.app.progress.PullAnswer.WEIGHTED -> "trc_estimate_pull_weighted"
+            }))
+        },
+        hangChoices = com.cruxcoach.app.progress.HangAnswer.entries.map { a ->
+            QuickEstimateChoiceUi(a.name, Tx.t(when (a) {
+                com.cruxcoach.app.progress.HangAnswer.CANNOT -> "trc_estimate_hang_no"
+                com.cruxcoach.app.progress.HangAnswer.BARELY -> "trc_estimate_hang_barely"
+                com.cruxcoach.app.progress.HangAnswer.EASY -> "trc_estimate_hang_easy"
+                com.cruxcoach.app.progress.HangAnswer.WEIGHTED -> "trc_estimate_hang_weighted"
+            }))
+        },
+        hangAllowed = s.hangAllowed,
+        showPickup = s.hasPickup && s.pickupAllowed,
+        pickupSide = BenchmarksScreenModel.sideCode(s.pickupSide),
+        saved = s.saved,
+    )
+}

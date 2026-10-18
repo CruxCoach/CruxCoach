@@ -354,3 +354,22 @@ class BodyScreenModel internal constructor(
         }
     }
 }
+
+/**
+ * Schedules the body reminders ahead again (Android `BodyReminders.ensureScheduled`), off the main
+ * thread; failures are logged, never thrown into Swift. Built by `AppCore.rescheduleBodyReminders`.
+ */
+class BodyRemindersModel internal constructor(
+    private val service: com.cruxcoach.app.athlete.AthleteService,
+    private val scheduler: com.cruxcoach.app.progress.BodyReminderScheduler,
+    private val scope: kotlinx.coroutines.CoroutineScope,
+    private val io: kotlinx.coroutines.CoroutineDispatcher,
+) {
+    fun reschedule() {
+        scope.launch(io) {
+            runCatching { service.ensureReady(); scheduler.reschedule(service.repo.profile()) }
+                .onFailure { println("BodyRemindersModel: reminders not scheduled: ${it.message}") }
+            scope.cancel()
+        }
+    }
+}

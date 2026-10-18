@@ -54,6 +54,7 @@ class ExerciseStatsPresenterTest {
             session.sets.forEach { TrTextCheck.check(it, "set") }
         }
         model.rangeCodes.forEach { TrTextCheck.check(model.rangeLabel(it), "range") }
+        assertTrue(TrTextCheck.checkAll(s) > 0)
     }
 
     private fun train(item: RoutineItem, done: (com.cruxcoach.athlete.model.ExerciseSet) -> com.cruxcoach.athlete.model.ExerciseSet) = kit.db {

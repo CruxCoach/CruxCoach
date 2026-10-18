@@ -3,8 +3,8 @@ import SwiftUI
 
 /// Performance values (Android `BenchmarksScreen`): the key exercises and every other one with a
 /// value, per hand where it matters; enter, delete, or start a short test (which opens the player
-/// and then the summary). Push it inside a `NavigationStack`; it has none of its own. The quick
-/// estimate in two questions is not on iPhone yet and says so.
+/// and then the summary), or answer the quick estimate. Push it inside a `NavigationStack`; it has
+/// none of its own.
 struct ProgressBenchmarksView: View {
     let core: AppCore
 
@@ -55,7 +55,7 @@ private struct BenchmarksContent: View {
     @State private var entry: BenchmarkEntryTarget?
     @State private var deleting: BenchmarkDeleteTarget?
     @State private var showWeight = false
-    @State private var notYet: String?
+    @State private var estimating = false
     @State private var playerOpen = false
     @State private var finishedId: String?
     @State private var summary: BenchmarkSummaryTarget?
@@ -68,7 +68,7 @@ private struct BenchmarksContent: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
                         if ui.needsWeight { weightCard }
-                        Button(L("trc_quick_estimate")) { notYet = L("trc_quick_estimate") }
+                        Button(L("trc_quick_estimate")) { estimating = true }
                             .buttonStyle(.bordered)
                         Text(L("trc_quick_estimate_hint")).font(.caption).foregroundStyle(.secondary)
                         Text(L("trbm_key_title")).font(.headline).padding(.top, 8)
@@ -92,6 +92,9 @@ private struct BenchmarksContent: View {
         .sheet(item: $entry) { target in
             BenchmarkEntrySheet(model: model, row: target.row, grips: ui.grips) { entry = nil }
         }
+        .sheet(isPresented: $estimating) {
+            ProgressQuickEstimateSheet(core: core) { estimating = false }
+        }
         .sheet(isPresented: $showWeight) {
             BenchmarkWeightSheet(unitsCode: ui.unitsCode, model: model) { showWeight = false }
                 .presentationDetents([.medium])
@@ -104,11 +107,6 @@ private struct BenchmarksContent: View {
             Button(L("tr_action_cancel"), role: .cancel) { deleting = nil }
         } message: {
             Text((deleting.map { TrRender.text($0.side.summary) } ?? "") + "\n\n" + L("trbm_delete_text"))
-        }
-        .alert(notYet ?? "", isPresented: Binding(get: { notYet != nil }, set: { if !$0 { notYet = nil } })) {
-            Button(L("action_ok")) { notYet = nil }
-        } message: {
-            Text(LI("training_not_on_iphone"))
         }
         .onChange(of: ui.testStarted) { _, started in
             guard started else { return }

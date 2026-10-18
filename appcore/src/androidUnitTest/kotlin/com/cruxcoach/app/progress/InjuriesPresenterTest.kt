@@ -41,6 +41,7 @@ class InjuriesPresenterTest {
         (s.pauses + listOfNotNull(s.openPause)).forEach { TrTextCheck.check(it.label, "pause"); TrTextCheck.check(it.text, "pause text") }
         s.regions.forEach { TrTextCheck.check(it.label, "region") }
         s.sides.forEach { TrTextCheck.check(it.label, "side") }
+        assertTrue(TrTextCheck.checkAll(s) > 0)
     }
 
     @Test

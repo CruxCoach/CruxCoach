@@ -47,6 +47,10 @@ internal data class AthleteSettingsRunState(
     /** Exercise names for the kept choices. */
     val catalog: ExerciseCatalog = ExerciseCatalog.EMPTY,
     val today: LocalDate? = null,
+    /** Notifications were refused when a reminder was switched on (Android keeps the setting and says why). */
+    val remindersDenied: Boolean = false,
+    /** A host scheduler is attached: the reminders page works. */
+    val remindersAvailable: Boolean = false,
 )
 
 /**
@@ -76,9 +80,13 @@ internal class AthleteSettingsPresenter(
     private val service: AthleteService,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
+    /** Null on hosts without local notifications: the reminders page is then unavailable. */
+    private val reminders: BodyReminderScheduler? = null,
+    private val notifications: com.cruxcoach.app.notify.NotificationScheduler? = null,
 ) {
     private val _state = MutableStateFlow(AthleteSettingsRunState())
     val state: StateFlow<AthleteSettingsRunState> = _state.asStateFlow()
+    private val denied = MutableStateFlow(false)
 
     init {
         scope.launch(io) {
@@ -89,7 +97,8 @@ internal class AthleteSettingsPresenter(
                 service.repo.observeSeries(BodyMetric.HEIGHT.key),
                 service.repo.observeAllBenchmarks(),
                 service.repo.observeSeries(BodyMetric.WEIGHT.key),
-            ) { profile, heights, benchmarks, _ ->
+                denied,
+            ) { profile, heights, benchmarks, _, refused ->
                 val height = heights.lastOrNull()?.value
                 val trend = service.weightTrend()
                 AthleteSettingsRunState(
@@ -100,6 +109,8 @@ internal class AthleteSettingsPresenter(
                     learned = runCatching { learned(profile, benchmarks) }.getOrDefault(LearnedChoices()),
                     catalog = service.catalog,
                     today = service.today(),
+                    remindersDenied = refused,
+                    remindersAvailable = reminders != null,
                 )
             }.collect { _state.value = it }
         }
@@ -197,6 +208,25 @@ internal class AthleteSettingsPresenter(
     fun setHeight(cm: Double) = io {
         service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.HEIGHT.key, cm, "cm", nowMs()))
     }
+
+    /**
+     * A change of the body reminders: stored, then scheduled again at once. Switching one on asks
+     * for the notification permission first; a refusal keeps the setting (Android does the same)
+     * and the page says why nothing will appear.
+     */
+    fun updateReminders(enabling: Boolean, transform: (AthleteProfile) -> AthleteProfile) {
+        val apply: () -> Unit = {
+            io {
+                service.repo.updateProfile(transform)
+                reminders?.reschedule(service.repo.profile())
+            }
+        }
+        val host = notifications
+        if (enabling && host != null) host.requestPermission { granted -> denied.value = !granted; apply() } else apply()
+    }
+
+    /** Android `ensureScheduled`: the host calls it at app start so the reminders ahead never run out. */
+    fun rescheduleReminders() = io { reminders?.reschedule(service.repo.profile()) }
 
     fun close() = scope.cancel()
 

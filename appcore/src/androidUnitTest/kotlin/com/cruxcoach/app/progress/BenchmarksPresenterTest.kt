@@ -59,6 +59,7 @@ class BenchmarksPresenterTest {
             }
         }
         s.grips.forEach { TrTextCheck.check(it.label, "grip") }
+        assertTrue(TrTextCheck.checkAll(s) > 0)
     }
 
     @Test
@@ -125,7 +126,8 @@ class BenchmarksPresenterTest {
         // Several sets: "5 × 5 at +20 kg".
         assertTrue(model.saveEntry("pull.weighted_pull_up", true, "5", "20", "5", "", "", "", ""))
         kit.until("sets saved") { repo.benchmarks("pull.weighted_pull_up").size == 2 }
-        assertEquals(5, kit.db { repo.benchmarks("pull.weighted_pull_up") }.maxBy { it.measuredAt }.sets)
+        // Both saves can share a millisecond, so the check does not depend on their order.
+        assertEquals(setOf(null, 5), kit.db { repo.benchmarks("pull.weighted_pull_up") }.map { it.sets }.toSet())
         kit.until("row shows it") { p.state.value.key.single { it.def.slug == "pull.weighted_pull_up" }.values.isNotEmpty() }
         checkTexts(model.currentState)
     }

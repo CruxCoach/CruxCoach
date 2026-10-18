@@ -1,5 +1,6 @@
 import CruxCoachCore
 import SwiftUI
+import UIKit
 
 /// Training settings (Android `AthleteSettingsScreen`): an overview with the current value per topic
 /// and one page each — goal and week, about you, places and equipment, timer, display and units,
@@ -26,7 +27,9 @@ struct ProgressSettingsView: View {
         .navigationTitle(L("tr_action_settings"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            guard host == nil, let model = core.makeAthleteSettingsScreen(language: TrainingStyle.catalogLanguage) else { return }
+            guard host == nil,
+                  let model = core.makeAthleteSettingsScreen(language: TrainingStyle.catalogLanguage,
+                                                             notifications: LocalNotificationScheduler()) else { return }
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
@@ -121,6 +124,7 @@ private struct SettingsPage: View {
             case "about": SettingsAboutPage(host: host)
             case "equipment": SettingsPlacesPage(host: host)
             case "timer": timer
+            case "reminders": SettingsRemindersPage(host: host)
             case "display": display
             case "connections": connections
             default: SettingsLearnedPage(host: host)
@@ -142,6 +146,7 @@ private struct SettingsPage: View {
         case "about": return L("tra_personal_info")
         case "equipment": return L("tro_places_intro")
         case "excluded": return L("trlr_info")
+        case "reminders": return L("trr_info_text")
         default: return nil
         }
     }
@@ -438,5 +443,66 @@ private struct SettingsLearnedPage: View {
                 }
             }
         }
+    }
+}
+
+/// Weigh-in and measuring reminders (Android `ReminderSection`); every change is scheduled at once.
+private struct SettingsRemindersPage: View {
+    let host: SettingsHost
+
+    private var ui: AthleteSettingsScreenState { host.state }
+    private var model: AthleteSettingsScreenModel { host.model }
+
+    var body: some View {
+        Section {
+            Toggle(L("trr_weigh"), isOn: Binding(get: { ui.weighReminder }, set: { model.setWeighReminder(on: $0) }))
+            if ui.weighReminder {
+                Text(L("trr_weigh_days")).font(.caption).foregroundStyle(.secondary)
+                TrainingFlow(spacing: 6) {
+                    ForEach(ui.weighDays, id: \.code) { day in
+                        TrainingChoiceChip(title: TrRender.text(day.label), selected: day.selected) {
+                            model.toggleWeighDay(isoDay: Int32(day.code) ?? 0)
+                        }
+                    }
+                }
+            }
+        }
+        Section {
+            Toggle(L("trr_measure"), isOn: Binding(get: { ui.measureReminder }, set: { model.setMeasureReminder(on: $0) }))
+            if ui.measureReminder {
+                Stepper(TrRender.text(ui.measureDayText),
+                        onIncrement: { model.setMeasureDay(day: ui.measureDay + 1) },
+                        onDecrement: { model.setMeasureDay(day: ui.measureDay - 1) })
+            }
+        }
+        if ui.weighReminder || ui.measureReminder {
+            Section {
+                DatePicker(TrRender.text(ui.reminderTimeText), selection: Binding(get: { Self.date(minutes: Int(ui.reminderMinutes)) },
+                                                                                  set: { model.setReminderTime(minutes: Int32(Self.minutes(of: $0))) }),
+                           displayedComponents: .hourAndMinute)
+                if ui.weighReminder && ui.measureReminder {
+                    Text(L("trr_measure_same_time")).font(.caption).foregroundStyle(.secondary)
+                }
+                if ui.remindersDenied {
+                    Text(L("trr_permission_denied")).font(.caption).foregroundStyle(.red)
+                    Button(L("trr_open_notification_settings")) {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                    }
+                }
+            }
+        }
+        Section(L("trw_reminder_title")) {
+            Text(LI("training_not_on_iphone")).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private static func date(minutes: Int) -> Date {
+        let start = Calendar.current.startOfDay(for: Date())
+        return Calendar.current.date(byAdding: .minute, value: max(0, min(minutes, 24 * 60 - 1)), to: start) ?? start
+    }
+
+    private static func minutes(of date: Date) -> Int {
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
     }
 }

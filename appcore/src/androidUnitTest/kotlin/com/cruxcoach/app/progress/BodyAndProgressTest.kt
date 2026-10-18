@@ -67,6 +67,7 @@ class BodyAndProgressTest {
         s.metrics.forEach { texts += listOf("metric" to it.label, "last" to it.lastText) }
         s.strengthSeries.forEach { texts += "best" to it.best }
         texts.forEach { (where, t) -> TrTextCheck.check(t, where) }
+        assertTrue(TrTextCheck.checkAll(s) > 0)
     }
 
     private fun checkTexts(s: ProgressScreenState, model: ProgressScreenModel) {
@@ -78,6 +79,7 @@ class BodyAndProgressTest {
         s.exercises.forEach { texts += "exercise" to it.supporting }
         model.rangeCodes.forEach { texts += "range" to model.rangeLabel(it) }
         texts.forEach { (where, t) -> TrTextCheck.check(t, where) }
+        assertTrue(TrTextCheck.checkAll(s) > 0)
     }
 
     // ── Body ─────────────────────────────────────────────────────────
@@ -305,6 +307,9 @@ class BodyAndProgressTest {
                 } else set
                 service.completeSet(done, startRest = false)
             }
+            // Real sets are seconds apart; here they can share a millisecond, which leaves their order open.
+            repo.setsFor(id).filter { it.exerciseSlug == "pull.weighted_pull_up" && it.setIndex == 1 }
+                .forEach { repo.saveSet(it.copy(completedAt = it.completedAt!! + 60_000L)) }
             service.finishWorkout(id, 6, null)
             // A training day needs training minutes; the test's training ends in the same millisecond.
             repo.workout(id)!!.let { repo.saveWorkout(it.copy(endedAt = it.startedAt + 40 * 60_000L)) }

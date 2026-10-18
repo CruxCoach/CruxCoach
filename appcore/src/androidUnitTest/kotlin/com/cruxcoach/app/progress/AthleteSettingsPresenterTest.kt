@@ -45,6 +45,7 @@ class AthleteSettingsPresenterTest {
         (s.sexes + s.placeKinds + s.increments).forEach { TrTextCheck.check(it.label, "choice ${it.code}") }
         s.places.forEach { TrTextCheck.check(it.label, "place") }
         s.learned.forEach { TrTextCheck.check(it.title, "learned ${it.kind}"); TrTextCheck.check(it.detail, "learned detail ${it.kind}") }
+        assertTrue(TrTextCheck.checkAll(s) > 0)
     }
 
     @Test

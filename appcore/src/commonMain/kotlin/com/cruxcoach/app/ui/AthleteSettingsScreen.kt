@@ -90,6 +90,18 @@ class AthleteSettingsScreenState(
     val learnedMinutesText: TrText,
     val learned: List<LearnedRowUi>,
     val excluded: List<SettingsExcludedUi>,
+    // ── Reminders (weigh-in and measuring round) ──
+    val weighReminder: Boolean,
+    /** ISO weekdays "1"…"7" with the chosen ones selected. */
+    val weighDays: List<SettingsChoiceUi>,
+    val measureReminder: Boolean,
+    val measureDay: Int,
+    val measureDayText: TrText,
+    /** Minutes after midnight, for the time picker. */
+    val reminderMinutes: Int,
+    val reminderTimeText: TrText,
+    /** Notifications were refused: the reminders stay saved but cannot appear. */
+    val remindersDenied: Boolean,
 )
 
 /**
@@ -201,6 +213,27 @@ class AthleteSettingsScreenModel internal constructor(
 
     fun allow(slug: String) = presenter.allow(slug)
 
+    // ── Reminders (Android `ReminderSection`) ──
+
+    fun setWeighReminder(on: Boolean) = presenter.updateReminders(on) { it.copy(weighReminderEnabled = on) }
+
+    /** At least one weekday stays chosen. */
+    fun toggleWeighDay(isoDay: Int) {
+        if (isoDay !in 1..7) return
+        presenter.updateReminders(false) {
+            val days = if (isoDay in it.weighReminderDays) it.weighReminderDays - isoDay else it.weighReminderDays + isoDay
+            it.copy(weighReminderDays = days.ifEmpty { setOf(isoDay) })
+        }
+    }
+
+    fun setMeasureReminder(on: Boolean) = presenter.updateReminders(on) { it.copy(measureReminderEnabled = on) }
+
+    /** Day 1–28 of the month, so every month has it. */
+    fun setMeasureDay(day: Int) = presenter.updateReminders(false) { it.copy(measureReminderDayOfMonth = day.coerceIn(1, 28)) }
+
+    /** Minutes after midnight; both reminders share it. */
+    fun setReminderTime(minutes: Int) = presenter.updateReminders(false) { it.copy(weighReminderMinutes = minutes.coerceIn(0, 24 * 60 - 1)) }
+
     // ── Places ──
 
     /** [placeId] empty: today's place, created as the first place when there is none yet. */
@@ -267,7 +300,7 @@ class AthleteSettingsScreenModel internal constructor(
                 Tx.t("tru_set_nutrition_summary", Tx.n(p.proteinPerKg, 1), Tx.k(if (p.showCalories) "tru_set_on" else "tru_set_off")), false))
             val reminders = listOf(p.weighReminderEnabled, p.measureReminderEnabled, p.trainingReminderEnabled).count { it }
             add(SettingsRowUi("reminders", Tx.t("trr_title"),
-                if (reminders == 0) Tx.t("tru_set_all_off") else Tx.p("tru_set_reminders", reminders, Tx.i(reminders)), false))
+                if (reminders == 0) Tx.t("tru_set_all_off") else Tx.p("tru_set_reminders", reminders, Tx.i(reminders)), s.remindersAvailable))
             add(SettingsRowUi("timer", Tx.t("tra_timer_title"),
                 Tx.join(listOfNotNull(
                     Tx.t("tru_set_timer_auto").takeIf { p.autoRestTimer },
@@ -349,10 +382,24 @@ class AthleteSettingsScreenModel internal constructor(
             learnedMinutesText = learned.minutes?.let { Tx.t("trlr_minutes_text", Tx.i(it), Tx.i(p.sessionMinutes)) } ?: Tx.EMPTY,
             learned = learnedRows,
             excluded = s.excluded.map { SettingsExcludedUi(it.slug, it.name(language)) },
+            weighReminder = p.weighReminderEnabled,
+            weighDays = (1..7).map { d -> SettingsChoiceUi(d.toString(), TrText("", listOf(Tx.weekday(d)), -1, ""), d in p.weighReminderDays) },
+            measureReminder = p.measureReminderEnabled,
+            measureDay = p.measureReminderDayOfMonth,
+            measureDayText = Tx.t("trr_measure_day", Tx.i(p.measureReminderDayOfMonth)),
+            reminderMinutes = p.weighReminderMinutes,
+            reminderTimeText = Tx.t("trr_time", Tx.s(clock(p.weighReminderMinutes))),
+            remindersDenied = s.remindersDenied,
         )
     }
 
     internal companion object {
+        /** "07:30" (Android's `%02d:%02d`). */
+        fun clock(minutes: Int): String {
+            val m = minutes.coerceIn(0, 24 * 60 - 1)
+            return (m / 60).toString().padStart(2, '0') + ":" + (m % 60).toString().padStart(2, '0')
+        }
+
         fun sexKey(s: Sex) = when (s) {
             Sex.FEMALE -> "tra_sex_female"
             Sex.MALE -> "tra_sex_male"
