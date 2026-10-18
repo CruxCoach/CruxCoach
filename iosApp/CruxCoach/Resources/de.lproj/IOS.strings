@@ -298,7 +298,7 @@
 "generator_section_peak" = "Höhepunkt";
 "generator_section_descent" = "Abstieg";
 "generator_open" = "Trainingsliste generieren";
-"data_export_hint" = "Schreibt alle protokollierten Kletterzüge, deine Listen und deine eigenen Probleme in eine JSON-Datei — derselbe Inhalt wie im verschlüsselten Backup. Die Datei ist NICHT verschlüsselt: Wer sie bekommt, kann sie lesen.";
+"data_export_hint" = "Schreibt deine Daten in eine Datei. JSON ist die vollständige Kopie, die auch das verschlüsselte Backup enthält (Logbuch, Listen, eigene Climbs, Notizen, Training, Körperdaten und Ernährung); CSV-ZIP und Excel enthalten Board-Logbuch, Notizen, Listen und eigene Climbs als Tabellen. Die Datei ist NICHT verschlüsselt: Wer sie bekommt, kann sie lesen.";
 "data_export_ready" = "Export fertig (%@). Er bleibt auf diesem Gerät, bis du ihn löschst.";
 "data_export_discard" = "Exportierte Datei löschen";
 "data_export_failed" = "Der Export konnte nicht geschrieben werden.";
