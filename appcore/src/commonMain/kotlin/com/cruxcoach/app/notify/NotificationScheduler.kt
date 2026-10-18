@@ -49,6 +49,14 @@ object NotificationRoutes {
     const val TODAY = "today"
     /** Weigh-in and measuring reminders (Android `TrainingRoutes.BODY`): the body page above Today. */
     const val BODY = "body"
+    /**
+     * A maintainer announcement (Android `Routes.ANNOUNCEMENTS`). Carried in the notification, but
+     * not in [isKnown]: the iOS announcements live inside the settings' maintainer conversation,
+     * which no tap opens yet, so the tap just brings the app forward.
+     */
+    const val ANNOUNCEMENTS = "announcements"
+    /** A reply from the maintainer (Android `Routes.DEV_CHAT`); see [ANNOUNCEMENTS]. */
+    const val DEV_CHAT = "dev_chat"
 
     fun isKnown(route: String): Boolean = route == TODAY || route == BODY
 }

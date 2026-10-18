@@ -1379,4 +1379,143 @@ class AppCore private constructor(
     /** The body map's shapes, layout and hit test for the player's "it hurts" sheet (Android `PainSheet`). */
     fun bodyMapKit(): com.cruxcoach.app.ui.BodyMapKit = com.cruxcoach.app.ui.BodyMapKit.KIT
 
+    // ── Background refresh (wave 5b) ──────────────────────────────────
+    //
+    // Android's periodic workers, as far as iOS lets an app run: a `BGAppRefreshTask` when the
+    // system grants one and every return to the foreground. Each step keeps Android's spacing
+    // on disk (`app/background/BackgroundRefresh`), so an early refresh does nothing for the
+    // steps that are not due. Fully qualified names keep this block free of import conflicts.
+
+    private var backgroundRefreshModel: com.cruxcoach.app.background.BackgroundRefreshModel? = null
+
+    /** The Kilter upload's follow-up run on disk, for a background slot after the process ended. */
+    private val backgroundKilterFollowUps: com.cruxcoach.app.background.KilterFollowUpStore by lazy {
+        com.cruxcoach.app.background.KilterFollowUpStore(platform.keyValues, pubkeyHex.take(16)) { platform.clock.epochMillis() }
+    }
+
+    /** Set by [backgroundKilterRetry] when [createKilterScreen] builds the upload engine. */
+    private var backgroundKilterEngine: KilterUploadEngine? = null
+
+    /**
+     * For [createKilterScreen]: the engine's in-process follow-up timers, also kept on disk so the
+     * background refresh can start a follow-up that fell due while the app was not running.
+     */
+    private fun backgroundKilterRetry(
+        engine: KilterUploadEngine,
+        timers: com.cruxcoach.app.kilter.KilterUploadRetryScheduler,
+    ): com.cruxcoach.app.kilter.KilterUploadRetryScheduler {
+        backgroundKilterEngine = engine
+        return com.cruxcoach.app.background.PersistentKilterRetrySchedule(timers, backgroundKilterFollowUps)
+    }
+
+    /**
+     * The one background refresh of this core. [notifications] posts the announcements and the
+     * maintainer's replies; [language] ("de"/"en") picks the half of a bilingual announcement.
+     */
+    fun makeBackgroundRefresh(
+        notifications: NotificationScheduler,
+        language: String,
+    ): com.cruxcoach.app.background.BackgroundRefreshModel {
+        backgroundRefreshModel?.let { return it }
+        val refresh = com.cruxcoach.app.background.BackgroundRefresh(
+            steps = listOf(
+                backgroundPollStep(notifications, language),
+                backgroundKilterStep(),
+                backgroundCommunityStep(),
+                backgroundBackupStep(),
+                com.cruxcoach.app.background.CatalogueStep {
+                    kotlinx.coroutines.withContext(Dispatchers.Main) { refreshCataloguesIfDue() }
+                },
+            ),
+            keyValues = platform.keyValues,
+            clock = { platform.clock.epochMillis() },
+            scope = MainScope(),
+            io = Dispatchers.IO,
+        )
+        return com.cruxcoach.app.background.BackgroundRefreshModel(refresh).also { backgroundRefreshModel = it }
+    }
+
+    private fun backgroundPollStep(
+        notifications: NotificationScheduler,
+        language: String,
+    ): com.cruxcoach.app.background.BackgroundStep {
+        val relays = RelayClient(platform.webSockets, platform.hashing)
+        val inbox = DevContactRepository(
+            database = secureDatabase,
+            relays = relays,
+            hashing = platform.hashing,
+            nip44 = platform.nip44,
+            clock = platform.clock,
+            devPubkey = AppConfig.MAINTAINER_PUBKEY,
+            secretKeyProvider = { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
+        )
+        return com.cruxcoach.app.background.NotificationPollStep(
+            notes = com.cruxcoach.app.background.RelayMaintainerNotes(relays, AppConfig.MAINTAINER_PUBKEY),
+            announcements = com.cruxcoach.app.background.DatabaseAnnouncementInbox(secureDatabase),
+            replies = com.cruxcoach.app.background.RepositoryDevReplies(inbox),
+            notifications = notifications,
+            keyValues = platform.keyValues,
+            switches = { com.cruxcoach.app.background.BackgroundWiring.announcementSwitches(settingsStore) },
+            language = { language },
+            devPubkey = AppConfig.MAINTAINER_PUBKEY,
+            identityPrefix = pubkeyHex.take(16),
+            clockMs = { platform.clock.epochMillis() },
+        )
+    }
+
+    private fun backgroundKilterStep(): com.cruxcoach.app.background.BackgroundStep =
+        com.cruxcoach.app.background.KilterFollowUpStep(
+            schedule = backgroundKilterFollowUps,
+            signedIn = { KilterTokens(platform.secrets, platform.keyValues, pubkeyHex.take(16)).hasCredentials() },
+            upload = { attempt ->
+                // Building the Kilter screen builds the engine (and registers it here).
+                val engine = backgroundKilterEngine
+                    ?: kotlinx.coroutines.withContext(Dispatchers.Main) { kilterScreen; backgroundKilterEngine }
+                if (engine != null) {
+                    // Detached, as the screen's runs: cut off mid-request a run loses Kilter's answer.
+                    com.cruxcoach.app.background.BackgroundWiring.detached(kilterRunScope) {
+                        engine.upload(KilterUploadTrigger.RETRY, retryAttempt = attempt)
+                    }
+                }
+            },
+            clockMs = { platform.clock.epochMillis() },
+        )
+
+    private fun backgroundCommunityStep(): com.cruxcoach.app.background.BackgroundStep {
+        val signer = LocalEventSigner(platform.hashing) { platform.secrets.read(LocalIdentity.NOSTR_KEY) }
+        val publisher = CommunityPublisher(
+            boardRepository,
+            RelayCommunityRelay(RelayClient(platform.webSockets, platform.hashing)),
+            signer,
+            platform.hashing,
+            platform.clock,
+        ) { pubkeyHex }
+        return com.cruxcoach.app.background.CommunityRetryStep(
+            queue = com.cruxcoach.app.background.BoardCommunityRetryQueue(boardRepository) {
+                BrowsePreferences(platform.keyValues).boardSelection().productSizeId
+            },
+            republisher = com.cruxcoach.app.background.PublisherCommunityRepublisher(publisher),
+            pubkey = { pubkeyHex },
+        )
+    }
+
+    private fun backgroundBackupStep(): com.cruxcoach.app.background.BackgroundStep {
+        val state = com.cruxcoach.app.backup.BackupState(platform.keyValues, platform.hashing)
+        return com.cruxcoach.app.background.BackupStep(
+            keyValues = platform.keyValues,
+            backupEnabled = { state.backupEnabled },
+            // The screen's model, so a periodic and a manual backup never run side by side.
+            backUp = { exportedAt ->
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    com.cruxcoach.app.background.BackgroundWiring.awaitBackup(backupScreen, exportedAt)
+                }
+            },
+            isoNow = { com.cruxcoach.app.community.CommunityEventTime.isoFromEpochSeconds(platform.clock.epochSeconds()) },
+        )
+    }
+
+    /** Announcement switches and the backup cadence, which the background refresh obeys. */
+    fun makeBackgroundSettings(): com.cruxcoach.app.background.BackgroundSettingsModel =
+        com.cruxcoach.app.background.BackgroundSettingsModel(settingsStore, platform.keyValues)
+
 }
