@@ -24,10 +24,10 @@ object IosDatabases {
     /**
      * One handle per database file per process.
      *
-     * SQLite/SQLCipher is opened through SQLiter, and opening the same file a
-     * second time in one process does not re-apply the encryption key: the
-     * second open fails with "file is not a database". The app opens once, but
-     * caching makes a second [open] call safe instead of destructive.
+     * A second open of the same file used to fail with "file is not a database"
+     * because a pragma ran before SQLiter applied the key (fixed in
+     * DatabaseFactory.ios.kt); the cache stays so a second [open] call reuses
+     * the one connection pool instead of opening another.
      *
      * Not synchronised: [open] is a start-up call from the main thread.
      */

@@ -109,12 +109,11 @@ private fun openEncrypted(
             config.copy(
                 journalMode = JournalMode.WAL,
                 extendedConfig = config.extendedConfig.copy(busyTimeout = 5000),
+                // No statement may run in onCreateConnection here: SQLiter calls it BEFORE it
+                // applies the key (NativeDatabaseManager.createConnection), so on an existing
+                // encrypted file any statement fails with "file is not a database". A new,
+                // empty file did not show it, which is why only a second app start broke.
                 encryptionConfig = DatabaseConfiguration.Encryption(key = rawKey),
-                lifecycleConfig = DatabaseConfiguration.Lifecycle(
-                    onCreateConnection = { connection ->
-                        if (cacheSizePragma != null) connection.rawExecSql(cacheSizePragma)
-                    },
-                ),
             )
         },
     )
@@ -131,6 +130,10 @@ private fun openEncrypted(
         throw IllegalStateException(
             "SQLCipher is not linked: refusing to open $dbName without encryption"
         )
+    }
+    // Keyed now: the performance pragma is safe (Android sets the same size).
+    if (cacheSizePragma != null) {
+        driver.executeQuery(null, cacheSizePragma, { cursor -> cursor.next(); QueryResult.Value(Unit) }, 0)
     }
     return driver
 }
