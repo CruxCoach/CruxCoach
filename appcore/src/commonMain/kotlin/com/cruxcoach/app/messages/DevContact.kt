@@ -29,6 +29,8 @@ class DevMessage(
     val relayAccepted: Boolean,
     val read: Boolean,
     val replyToId: String?,
+    /** An outgoing message no relay took whose sealed wraps are kept, so it can be sent again. */
+    val retryable: Boolean = false,
 )
 
 /**
@@ -94,9 +96,61 @@ class DevContactRepository(
             attempted += a
             accepted += ok
         }
-        if (accepted > 0) queries.updateRelayAccepted(rumor.id)
+        if (accepted > 0) {
+            queries.updateRelayAccepted(rumor.id)
+        } else {
+            // Android keeps the sealed wraps with the queued row (`event_json`), so a retry
+            // sends the very same events and a relay that got one before just has it twice.
+            queries.markQueued(
+                queued_at = clock.epochMillis(),
+                event_json = wraps.joinToString("\n") { it.toJson().toString() },
+                id = rumor.id,
+            )
+        }
         return SendOutcome(rumor.id, attempted, accepted)
     }
+
+    /**
+     * Android's `retryMessage`: publishes a kept message's stored wraps again. True once a
+     * relay has it; the row then counts as delivered and leaves the queue. False when nothing
+     * is kept for [id] (sent before wraps were kept, or already delivered) or no relay took it.
+     */
+    suspend fun retry(id: String): Boolean {
+        val row = queries.getById(id).executeAsOneOrNull() ?: return false
+        if (row.direction != "sent" || row.relay_accepted == 1L) return false
+        val wraps = storedWraps(row.event_json ?: return false)
+        if (wraps.isEmpty()) return false
+        var accepted = 0
+        for (wrap in wraps) accepted += relays.publish(wrap).second
+        if (accepted == 0) return false
+        queries.clearQueued(id)
+        return true
+    }
+
+    /** Android's `drainQueue`: every kept message once more, oldest first. Returns how many a relay took. */
+    suspend fun retryQueued(): Int {
+        var delivered = 0
+        for (row in queries.getQueued().executeAsList()) {
+            if (retry(row.id)) delivered++
+        }
+        return delivered
+    }
+
+    /** Android's `deleteMessage`: the row goes, with its kept wraps. */
+    fun delete(id: String) = queries.deleteById(id)
+
+    /** Android's `markThreadRead`: the report and every reply in its thread. */
+    fun markThreadRead(rootId: String) = queries.markThreadRead(rootId)
+
+    /** Our own rows, written by [send]; a line that does not parse is skipped. */
+    private fun storedWraps(stored: String): List<NostrEvent> =
+        stored.split('\n').filter { it.isNotBlank() }.mapNotNull { line ->
+            try {
+                NostrEvent.fromJson(kotlinx.serialization.json.Json.parseToJsonElement(line))
+            } catch (_: Exception) {
+                null
+            }
+        }
 
     /**
      * Fetches gift wraps addressed to this identity and stores the ones the
@@ -177,6 +231,7 @@ class DevContactRepository(
             relayAccepted = row.relay_accepted == 1L,
             read = row.read == 1L,
             replyToId = row.reply_to_id,
+            retryable = row.direction == "sent" && row.relay_accepted != 1L && !row.event_json.isNullOrBlank(),
         )
     }
 

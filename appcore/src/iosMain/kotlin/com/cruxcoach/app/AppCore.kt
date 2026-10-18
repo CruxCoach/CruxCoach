@@ -1966,5 +1966,20 @@ class AppCore private constructor(
             vision,
         )
     }
+    // ── Leftovers (wave 5): crash report list, import bug report, Kilter circuits on refresh, logbook "publish as mine" ──
+
+    /** Android's crash report list (settings → developer contact → crash reports). */
+    fun makeCrashReportList(): com.cruxcoach.app.ui.CrashReportListModel =
+        com.cruxcoach.app.ui.CrashReportListModel(leftoverDevContactRepository(), Dispatchers.Main, Dispatchers.IO)
+
+    private fun leftoverDevContactRepository(): DevContactRepository = DevContactRepository(
+        database = secureDatabase,
+        relays = RelayClient(platform.webSockets, platform.hashing),
+        hashing = platform.hashing,
+        nip44 = platform.nip44,
+        clock = platform.clock,
+        devPubkey = AppConfig.MAINTAINER_PUBKEY,
+        secretKeyProvider = { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
+    )
 
 }
