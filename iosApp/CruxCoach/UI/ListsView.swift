@@ -32,6 +32,12 @@ struct ListsView: View {
             if ui.isLoading && ui.lists.isEmpty {
                 ProgressView().frame(maxWidth: .infinity)
             }
+            // Android's lists screen opens "My climbs" (own climbs and their Kilter state).
+            NavigationLink {
+                MyKilterClimbsView(core: core)
+            } label: {
+                Label(L("my_climbs_title"), systemImage: "person.crop.square")
+            }
             ForEach(ui.lists, id: \.id) { row in
                 NavigationLink {
                     ListDetailView(core: core, listId: row.id, title: row.name)

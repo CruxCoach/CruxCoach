@@ -316,3 +316,30 @@ class CatalogueStep(
         const val CODE = "catalogue"
     }
 }
+
+/**
+ * Port of Android's `KilterPublishRetryWorker` (every 6 hours, 30 minutes back-off): own climbs
+ * the Kilter portal has not taken yet go out again while "publish own climbs to Kilter" is on.
+ * [pass] runs one retry pass and answers false where Android asks WorkManager for a retry.
+ */
+class KilterClimbPublishStep(
+    private val publishEnabled: () -> Boolean,
+    private val pass: suspend () -> Boolean,
+) : BackgroundStep {
+    override val code: String = CODE
+
+    override fun intervalMs(): Long = INTERVAL_MS
+
+    override fun retryAfterMs(): Long = RETRY_MS
+
+    override suspend fun enabled(trigger: String): Boolean = publishEnabled()
+
+    override suspend fun run(): BackgroundStepResult =
+        if (pass()) BackgroundStepResult.OK else BackgroundStepResult.FAILED
+
+    companion object {
+        const val CODE = "kilter_climb_publish"
+        const val INTERVAL_MS = 6L * 60 * 60 * 1000
+        const val RETRY_MS = 30L * 60 * 1000
+    }
+}

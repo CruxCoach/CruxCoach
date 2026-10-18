@@ -336,4 +336,22 @@ class CommunityAndBackupStepTest {
         assertFalse(BackgroundWiring.announcementSwitches(settings).enabled)
         assertNull(keyValues.getString("bg_refresh_ok_backup"))
     }
+
+    @Test
+    fun `the Kilter climb publish step follows the switch and Android's cadence`() = runTest {
+        var on = false
+        var passes = 0
+        var answer = true
+        val step = KilterClimbPublishStep({ on }) { passes++; answer }
+        assertFalse(step.enabled("background"), "switch off: skipped, nothing recorded")
+        on = true
+        assertTrue(step.enabled("background"))
+        assertTrue(step.run().ok)
+        answer = false // every climb failed for a passing reason: Android's Result.retry()
+        assertFalse(step.run().ok)
+        assertEquals(2, passes)
+        assertEquals(6L * 60 * 60 * 1000, step.intervalMs())
+        assertEquals(30L * 60 * 1000, step.retryAfterMs())
+        assertEquals("kilter_climb_publish", step.code)
+    }
 }

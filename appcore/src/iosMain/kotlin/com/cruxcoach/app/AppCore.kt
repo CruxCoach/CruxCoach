@@ -1300,6 +1300,7 @@ class AppCore private constructor(
                 secureDatabase,
             )
         }
+        if (screen.climbBackfiller == null) screen.climbBackfiller = kilterClimbBackfiller()
         return screen
     }
 
@@ -1423,6 +1424,10 @@ class AppCore private constructor(
                 backgroundPollStep(notifications, language),
                 backgroundKilterStep(),
                 backgroundCommunityStep(),
+                // Android's KilterPublishRetryWorker: own climbs the portal has not taken yet.
+                com.cruxcoach.app.background.KilterClimbPublishStep({ kilterClimbPublishEnabled() }) {
+                    !kilterClimbPublishRetry().run().retrySoon
+                },
                 backgroundBackupStep(),
                 com.cruxcoach.app.background.CatalogueStep {
                     kotlinx.coroutines.withContext(Dispatchers.Main) { refreshCataloguesIfDue() }

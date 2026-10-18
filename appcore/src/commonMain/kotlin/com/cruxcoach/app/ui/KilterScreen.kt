@@ -113,6 +113,9 @@ class KilterScreenModel(
      */
     internal var circuitImporter: KilterCircuitImporter? = null
 
+    /** Own logged/authored Kilter climbs into the board DB before the logs land (Android's backfill). */
+    internal var climbBackfiller: com.cruxcoach.app.kilter.KilterClimbBackfiller? = null
+
     private val _state = MutableStateFlow(
         KilterScreenState(
             signedIn = tokens.isSignedIn,
@@ -174,6 +177,18 @@ class KilterScreenModel(
                     it.copy(busy = false, phase = "idle", failure = code(fetched.failure), signedIn = tokens.isSignedIn)
                 }
                 return@launch
+            }
+            // Best-effort, as on Android: a failed backfill never stops the log import.
+            climbBackfiller?.let { backfiller ->
+                withContext(io) {
+                    try {
+                        backfiller.backfillOwnClimbs()
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
             }
             val summary = withContext(io) { importer.import(fetched.logs) }
             // Best-effort and non-fatal, as on Android: the token was refreshed by the log fetch.
