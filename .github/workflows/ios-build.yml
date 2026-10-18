@@ -127,6 +127,32 @@ jobs:
           path: |
             iosApp/CruxCoach-*-UNSIGNED.ipa
             iosApp/CruxCoach-*-UNSIGNED.ipa.sha256
+      # Optional variant for Apple Health: the same app signed ad hoc (no identity, no secret)
+      # with its entitlements, so a re-signing sideload tool can see that it asks for HealthKit.
+      # The unsigned IPA above stays the default.
+      - name: Package ad-hoc variant with the HealthKit entitlement
+        run: |
+          cd iosApp
+          rm -rf Adhoc && mkdir -p Adhoc/Payload
+          cp -R "build/device/Build/Products/Release-iphoneos/CruxCoach.app" Adhoc/Payload/
+          APP="Adhoc/Payload/CruxCoach.app"
+          find "$APP" \( -name "*.framework" -o -name "*.dylib" \) -prune -print | while read -r item; do
+            codesign --force --sign - --timestamp=none "$item"
+          done
+          codesign --force --sign - --timestamp=none --entitlements CruxCoach/CruxCoach.entitlements "$APP"
+          codesign -d --entitlements - "$APP"
+          VERSION="$(sed -n 's/^ *MARKETING_VERSION: *"\(.*\)"/\1/p' project.yml | head -1)"
+          NAME="CruxCoach-${VERSION}-${GITHUB_SHA:0:12}-ADHOC-HEALTHKIT.ipa"
+          (cd Adhoc && zip -qry "../$NAME" Payload)
+          shasum -a 256 "$NAME" | tee "$NAME.sha256"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: CruxCoach-iOS-ADHOC-HEALTHKIT-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            iosApp/CruxCoach-*-ADHOC-HEALTHKIT.ipa
+            iosApp/CruxCoach-*-ADHOC-HEALTHKIT.ipa.sha256
       - name: UI flows on the simulator
         if: ${{ !cancelled() }}
         run: |
