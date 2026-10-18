@@ -351,7 +351,6 @@
 /* Nutrition (0.2.4) */
 "nutrition_unavailable" = "Nutrition is not available";
 "nutrition_unavailable_hint" = "The training and nutrition data on this iPhone could not be opened. Your other data is not affected.";
-"nutrition_photo_unsupported" = "Recognising food on a photo is not available on iPhone yet: it needs a model that runs on the device, which the iPhone app does not have.";
 "nutrition_describe_failed" = "The description could not be read.";
 "nutrition_try_again" = "Try again";
 "nutrition_scan_unavailable" = "Scanning is not available";

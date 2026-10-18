@@ -351,7 +351,6 @@
 /* Nutrition (0.2.4) */
 "nutrition_unavailable" = "Ernährung ist nicht verfügbar";
 "nutrition_unavailable_hint" = "Die Trainings- und Ernährungsdaten auf diesem iPhone konnten nicht geöffnet werden. Deine übrigen Daten sind davon nicht betroffen.";
-"nutrition_photo_unsupported" = "Essen auf einem Foto zu erkennen, gibt es auf dem iPhone noch nicht: Dafür braucht es ein Modell, das auf dem Gerät läuft, und das hat die iPhone-App nicht.";
 "nutrition_describe_failed" = "Die Beschreibung konnte nicht gelesen werden.";
 "nutrition_try_again" = "Erneut versuchen";
 "nutrition_scan_unavailable" = "Scannen ist nicht verfügbar";
