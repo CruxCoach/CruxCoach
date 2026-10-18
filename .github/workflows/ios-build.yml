@@ -311,7 +311,7 @@ jobs:
           for node in json.load(open(sys.argv[1])).get("testNodes", []):
               walk(node, cases)
           print(cases)
-          required = ("testTheEngineAnswersAPhoto", "testTheRunnerServesTheCore")
+          required = ("testTheEngineAnswersAPhoto", "testTheRunnerServesTheCore", "testTheRunnerReadsATypedMeal")
           ran = [[result for name, result in cases if name.startswith(prefix)] for prefix in required]
           sys.exit(0 if all(r == ["Passed"] for r in ran) else 1)
           PY
