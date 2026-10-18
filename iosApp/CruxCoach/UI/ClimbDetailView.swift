@@ -465,6 +465,7 @@ struct ClimbDetailView: View {
             if !ui.setter.isEmpty {
                 Label(ui.setter, systemImage: "person").font(.footnote).foregroundStyle(.secondary)
             }
+            DetailInfoBlock(ui: ui)
         }
     }
 
@@ -726,5 +727,82 @@ private struct DetailTourLayer: ViewModifier {
         case "logbook": return L("tour_spotlight_logbook_back")
         default: return ""
         }
+    }
+}
+
+/// Android `ClimbDetailInfoSheet`'s stat row (moves or frames, quality, sends), its badges
+/// (match rule, MoonBoard method, benchmark) and the first-ascent line.
+private struct DetailInfoBlock: View {
+    let ui: DetailScreenState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            statRow
+            badges
+            if !ui.faName.isEmpty {
+                Text(faLine).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var statRow: some View {
+        let moves: Int32 = ui.infoMoveCount
+        let sends: Int64 = ui.infoSends
+        let quality: String = ui.infoQuality.isEmpty ? "–" : ui.infoQuality
+        return HStack {
+            stat(ui.infoIsRoute ? L("board_detail_frames") : L("board_moves"), String(moves))
+            stat(L("board_quality"), quality)
+            stat(L("board_sends"), String(sends))
+        }
+    }
+
+    private func stat(_ title: String, _ value: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.headline)
+            Text(title).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder private var badges: some View {
+        if ui.matchKnown || ui.methodCode != "none" || ui.isBenchmark {
+            HStack(spacing: 8) {
+                if ui.matchKnown { matchBadge }
+                if ui.methodCode != "none" { badge(methodTitle, systemImage: nil, color: .orange) }
+                if ui.isBenchmark { badge(L("board_detail_benchmark"), systemImage: "checkmark.seal.fill", color: .orange) }
+            }
+        }
+    }
+
+    private var matchBadge: some View {
+        let noMatch: Bool = ui.noMatch
+        return badge(noMatch ? L("board_detail_no_matching") : L("board_detail_matching"),
+                     systemImage: noMatch ? "hand.raised.slash" : "hand.raised",
+                     color: noMatch ? .red : .green)
+    }
+
+    private var methodTitle: String {
+        switch ui.methodCode {
+        case "footless": return L("board_detail_method_footless")
+        case "footlessKickboard": return L("board_detail_method_footless_kickboard")
+        default: return L("board_detail_method_no_kickboard")
+        }
+    }
+
+    private func badge(_ title: String, systemImage: String?, color: Color) -> some View {
+        HStack(spacing: 4) {
+            if let systemImage { Image(systemName: systemImage) }
+            Text(title)
+        }
+        .font(.caption.bold())
+        .foregroundStyle(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// Android prints "FA: name (dd.MM.yyyy)" without a string resource.
+    private var faLine: String {
+        ui.faDate.isEmpty ? "FA: " + ui.faName : "FA: " + ui.faName + " (" + ui.faDate + ")"
     }
 }

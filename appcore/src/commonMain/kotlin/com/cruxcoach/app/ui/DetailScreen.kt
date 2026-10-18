@@ -73,6 +73,22 @@ class DetailScreenState(
     val pageCount: Int,
     /** A Quantum climb: lit through board layers on Android, which iOS does not have yet. */
     val isQuantum: Boolean,
+    /** Android's info block: a route counts frames ("Frames"), a boulder its moves ("Moves"). */
+    val infoIsRoute: Boolean,
+    val infoMoveCount: Int,
+    /** Average star rating with one decimal; empty = Android's "–". */
+    val infoQuality: String,
+    val infoSends: Long,
+    /** First ascent; empty name = no FA line. [faDate] is Android's dd.MM.yyyy, or empty. */
+    val faName: String,
+    val faDate: String,
+    /** The no-match rule is known for this climb (Kilter catalogue only, never MoonBoard). */
+    val matchKnown: Boolean,
+    val noMatch: Boolean,
+    /** MoonBoard method: none | footless | footlessKickboard | noKickboard (unknown tokens: none). */
+    val methodCode: String,
+    /** A catalogue benchmark (benchmark difficulty above 0). */
+    val isBenchmark: Boolean,
 )
 
 /**
@@ -294,12 +310,40 @@ class DetailScreenModel(
             pageIndex = pager.index,
             pageCount = pager.count,
             isQuantum = climb != null && BoardBrand.fromWire(climb.boardBrand) == BoardBrand.QUANTUM,
+            infoIsRoute = climb?.isRoute ?: false,
+            infoMoveCount = when {
+                climb == null -> 0
+                climb.isRoute -> if (state.frameCount > 0) state.frameCount else climb.framesCount.toInt()
+                else -> climb.moveCount
+            },
+            infoQuality = climb?.qualityAverage?.let { grades.oneDecimal(it) } ?: "",
+            infoSends = climb?.ascensionistCount ?: 0L,
+            faName = climb?.faUsername?.takeIf { it.isNotBlank() } ?: "",
+            faDate = climb?.faUsername?.takeIf { it.isNotBlank() }?.let { climb.faAt?.let(::ascentDate) } ?: "",
+            matchKnown = climb?.isMatchStateKnown ?: false,
+            noMatch = climb?.isNomatch ?: false,
+            methodCode = methodCode(climb?.method),
+            isBenchmark = (climb?.benchmarkDifficulty ?: 0.0) > 0.0,
         )
     }
 
     companion object {
         /** Used when neither an image nor product-size edges are known. */
         const val DEFAULT_ASPECT = 0.65f
+
+        /** Android `MethodBadge`: an unknown token from a newer catalogue says nothing. */
+        internal fun methodCode(method: String?): String = when (method) {
+            "method_footless" -> "footless"
+            "method_footless_kickboard" -> "footlessKickboard"
+            "method_no_kickboard" -> "noKickboard"
+            else -> "none"
+        }
+
+        /** Android `formatAscentDate`: the first ten characters as dd.MM.yyyy, or as they are. */
+        internal fun ascentDate(isoDate: String): String {
+            val parts = isoDate.take(10).split("-")
+            return if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else isoDate.take(10)
+        }
     }
 }
 
