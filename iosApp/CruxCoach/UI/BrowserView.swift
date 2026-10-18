@@ -11,6 +11,10 @@ struct BrowserView: View {
     @State private var tour: BrowserTourModel?
     /// Mirrors the Kotlin model's step so SwiftUI re-renders when it moves.
     @State private var tourStep = ""
+    /// Where the tour's controls are, for the spotlight's cut-out.
+    @State private var anchors = TourAnchors()
+    /// The browser itself is on screen (nothing pushed over it): only then its spotlight shows.
+    @State private var rootVisible = true
     @State private var search = ""
     @State private var sheet: Sheet?
     @State private var path = NavigationPath()
@@ -67,9 +71,6 @@ struct BrowserView: View {
         NavigationStack(path: $path) {
             List {
                 Section { header(model: model, ui: ui) }
-                if let tour, !tourStep.isEmpty, tourStep != "inactive", tourStep != "done" {
-                    Section { TourBanner(tour: tour, step: tourStep) { tourStep = tour.step } }
-                }
                 if !ui.hasCatalogue {
                     ContentUnavailableView(LI("browser_no_catalogue"), systemImage: "square.and.arrow.down",
                                            description: Text(LI("browser_no_catalogue_hint")))
@@ -77,6 +78,7 @@ struct BrowserView: View {
                     ContentUnavailableView(LI("browser_failed"), systemImage: "exclamationmark.triangle")
                     Button(L("action_retry")) { model.refresh() }
                 } else {
+                    let firstUuid: String = ui.climbs.first?.uuid ?? ""
                     ForEach(ui.climbs, id: \.uuid) { climb in
                         NavigationLink(value: climb.uuid) {
                             HStack(spacing: 8) {
@@ -84,6 +86,7 @@ struct BrowserView: View {
                                 queueAdd(climb: climb, angle: ui.angle)
                             }
                         }
+                        .tourAnchor("climb", in: climb.uuid == firstUuid ? anchors : nil)
                     }
                     if ui.canLoadMore {
                         ProgressView()
@@ -96,6 +99,10 @@ struct BrowserView: View {
             .overlay {
                 if ui.loadState == "loading" && ui.climbs.isEmpty { ProgressView() }
             }
+            .onAppear { rootVisible = true; refreshTour() }
+            .onDisappear { rootVisible = false }
+            // Android's BleStatusArea: the board link's chip under the playlist strip.
+            .modifier(BleStatusInset(ble: ble) { sheet = .ble })
             .modifier(BrowserSessionStrip(core: core, model: model, ui: ui, ble: ble, path: $path))
             .modifier(RestTimerBannerSlot(core: core))
             .searchable(text: $search, prompt: L("board_search_placeholder"))
@@ -115,6 +122,7 @@ struct BrowserView: View {
                     Button { sheet = .ble } label: {
                         Label(L("board_ble_title"), systemImage: ble.state.connected ? "lightbulb.fill" : "lightbulb")
                     }
+                    .tourAnchor("ble", in: anchors)
                     Menu {
                         Button(L("board_filter_title"), systemImage: "line.3.horizontal.decrease") { sheet = .filters }
                         Button(LI("hold_search_title"), systemImage: "hand.point.up.left") { sheet = .holds }
@@ -145,6 +153,7 @@ struct BrowserView: View {
                     } label: {
                         Label(LI("browser_more"), systemImage: "ellipsis.circle")
                     }
+                    .tourAnchor("more", in: anchors)
                 }
             }
             .sheet(item: $sheet) { which in
@@ -167,6 +176,7 @@ struct BrowserView: View {
                 }
             }
             .onChange(of: sync.state.catalogueRevision) { _, _ in model.refresh() }
+            .onChange(of: sheet) { old, new in sheetChanged(from: old, to: new) }
             .fullScreenCover(isPresented: $trainingOpen) { trainingArea() }
             .onOpenURL { url in
                 // Universal links need a paid team, so `cruxcoach://c/<uuid>`
@@ -176,6 +186,30 @@ struct BrowserView: View {
             }
         }
         .task { model.start() }
+        .modifier(BrowserTourLayer(anchors: anchors, tour: tour, step: tourStep, ui: ui,
+                                   connected: ble.state.connected,
+                                   visible: rootVisible && sheet == nil && !trainingOpen,
+                                   onMove: { refreshTour() }))
+    }
+
+    /// The Kotlin model is not observable: SwiftUI learns a new step through [tourStep].
+    private func refreshTour() {
+        guard let tour else { return }
+        tour.refresh()
+        tourStep = tour.step
+    }
+
+    private func advanceTour(from step: String) {
+        guard let tour, tour.step == step else { return }
+        tour.advance(from: step)
+        tourStep = tour.step
+    }
+
+    /// Android moves on when the step's own action happened: the Bluetooth sheet was closed,
+    /// the filters were opened.
+    private func sheetChanged(from old: Sheet?, to new: Sheet?) {
+        if old == .ble && new == nil { advanceTour(from: "connect") }
+        if new == .filters { advanceTour(from: "filter") }
     }
 
     /// Android ClimbCard's "+" while a playlist runs, with how often the climb is queued.
@@ -226,7 +260,11 @@ struct BrowserView: View {
                         .accessibilityLabel(LI("browser_count_a11y", Int(ui.totalCount)))
                 }
             }
-            AnglePicker(state: ui) { model.setAngle(angle: Int32($0)) }
+            AnglePicker(state: ui) { angle in
+                model.setAngle(angle: Int32(angle))
+                advanceTour(from: "angle")
+            }
+            .tourAnchor("angle", in: anchors)
             Toggle(L("board_filter_exclude_sent"),
                    isOn: Binding(get: { ui.excludesSent }, set: { model.setExcludeSent(exclude: $0) }))
         }
@@ -326,44 +364,49 @@ struct ClimbRow: View {
     }
 }
 
-/// One step of the guided first browse.
-///
-/// Android draws a spotlight cut-out around the control it describes; this is
-/// a banner instead, so the text says which control it means. The steps, their
-/// order and their persistence are the Kotlin model's, shared with Android's.
-private struct TourBanner: View {
-    let tour: BrowserTourModel
-    /// Passed in rather than read off the model: a Kotlin object is not
-    /// observable, so the step has to reach SwiftUI as a value.
+/// The guided first browse over the browser (Android `TourHost` around the
+/// browser): which control each step points at and what it says. The steps,
+/// their order and their persistence are the Kotlin model's (`BrowserTourModel`).
+private struct BrowserTourLayer: ViewModifier {
+    let anchors: TourAnchors
+    let tour: BrowserTourModel?
     let step: String
+    let ui: BrowserScreenState
+    let connected: Bool
+    let visible: Bool
     let onMove: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L(Self.text[step] ?? "")).font(.footnote)
-            HStack {
-                Button(L("tour_skip")) { tour.skip(); onMove() }
-                    .buttonStyle(.bordered)
-                Spacer()
-                if step == "connect" {
-                    Button(LI("tour_no_board")) { tour.deferBluetooth(); onMove() }
-                }
-                Button(L("action_next")) { tour.advance(from: step); onMove() }
-                    .buttonStyle(.borderedProminent)
-            }
+    func body(content: Content) -> some View {
+        content.tourSpotlight(anchors: anchors, tour: tour, step: step, target: target,
+                              message: message, visible: visible && filled, onMove: onMove)
+    }
+
+    /// Android waits, step kept, for a filled browser: before that the steps
+    /// point at controls whose actions cannot happen yet.
+    private var filled: Bool {
+        ui.hasCatalogue && !ui.climbs.isEmpty
+    }
+
+    /// The filters and the logbook sit under More on iPhone. The later steps
+    /// (project, log, entry) belong to the climb detail and the logbook.
+    private var target: String? {
+        switch step {
+        case "connect": return "ble"
+        case "angle": return "angle"
+        case "filter", "logbook": return "more"
+        case "open": return "climb"
+        default: return nil
         }
     }
 
-    /// The Kotlin model's own step codes (lowercase strings, like every
-    /// other code the facade exposes).
-    private static let text = [
-        "connect": "tour_spotlight_connect",
-        "angle": "tour_spotlight_angle",
-        "filter": "tour_spotlight_filter",
-        "open": "tour_spotlight_open",
-        "project": "tour_spotlight_project",
-        "log": "tour_spotlight_quicklog",
-        "logbook": "tour_spotlight_logbook",
-        "entry": "tour_spotlight_entry",
-    ]
+    private var message: String {
+        switch step {
+        case "connect": return connected ? L("tour_spotlight_connect_done") : L("tour_spotlight_connect")
+        case "angle": return L("tour_spotlight_angle")
+        case "filter": return L("tour_spotlight_filter")
+        case "open": return L("tour_spotlight_open")
+        case "logbook": return L("tour_spotlight_logbook_overflow")
+        default: return ""
+        }
+    }
 }

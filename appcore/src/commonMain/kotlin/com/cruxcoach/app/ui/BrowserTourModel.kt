@@ -10,8 +10,14 @@ import com.cruxcoach.app.platform.KeyValueStore
  * Deliberately separate from onboarding completion, as on Android: an upgrade
  * is never dragged back into a tour, and a dismissal survives a restart.
  *
- * **Difference from Android:** the steps are shown as a banner over the
- * browser, not as a spotlight cut-out around the control being described.
+ * Swift draws each step as Android's spotlight (a dimmed screen with a
+ * cut-out around the real control, `TourSpotlight.swift`) on the screen the
+ * step belongs to: browser (connect, angle, filter, open, logbook), climb
+ * detail (project, log, logbook) and logbook (entry). Both platforms advance on
+ * the step's own action; iOS adds a Next button to every step.
+ *
+ * **Differences from Android:** no board-picker step (iOS starts at connect),
+ * and the filter and logbook steps point at More, where the iPhone keeps both.
  */
 class BrowserTourModel(private val store: KeyValueStore) {
 

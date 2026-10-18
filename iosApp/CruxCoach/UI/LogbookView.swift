@@ -11,6 +11,10 @@ struct LogbookView: View {
     @State private var showFilters = false
     /// The board link the climb detail needs (Android's logbook opens the detail on a tap).
     @State private var ble: ScreenHost<BleScreenModel, BleScreenState>?
+    /// The guided first browse ends here: the entry just logged.
+    @State private var tour: BrowserTourModel?
+    @State private var tourStep = ""
+    @State private var anchors = TourAnchors()
 
     var body: some View {
         Group {
@@ -20,6 +24,7 @@ struct LogbookView: View {
                 ProgressView()
             }
         }
+        .modifier(BleStatusInset(ble: ble))
         .modifier(RestTimerBannerSlot(core: core))
         .navigationTitle(L("board_logbook_title"))
         .toolbar { toolbarContent() }
@@ -38,6 +43,11 @@ struct LogbookView: View {
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
             model.refresh()
+            // Android: opening the logbook is the logbook step's action.
+            let guided = core.makeBrowserTour()
+            guided.advance(from: "logbook")
+            tour = guided
+            tourStep = guided.step
             let bleModel = core.bleScreen
             ble = ScreenHost(model: bleModel, initial: bleModel.currentState) { model, onState in
                 model.watch(onState: onState)
@@ -79,10 +89,12 @@ struct LogbookView: View {
                     selectionSection(model: model, ui: ui)
                 }
                 let pages: [String] = climbPages(ui)
+                let tourEntry: String = tourEntryUuid(ui)
                 ForEach(ui.days, id: \.date) { day in
                     Section {
                         ForEach(day.entries, id: \.uuid) { entry in
                             entryRow(model: model, entry: entry, pages: pages)
+                                .tourAnchor("entry", in: entry.uuid == tourEntry ? anchors : nil)
                         }
                     } header: {
                         Text("\(day.date) · \(LI("logbook_day_summary", Int(day.sendCount), Int(day.attemptCount)))")
@@ -110,6 +122,15 @@ struct LogbookView: View {
         .sheet(isPresented: Binding(get: { ui.isEditing }, set: { if !$0 { model.dismissEdit() } })) {
             NavigationStack { LogbookEditSheet(model: model, ui: ui) }.presentationDetents([.medium])
         }
+        .tourSpotlight(anchors: anchors, tour: tour, step: tourStep,
+                       target: tourTarget(ui),
+                       message: LI("tour_spotlight_entry_swipe"),
+                       visible: !ui.isEditing && !showFilters && !showCleaning,
+                       onMove: { refreshTour() })
+        .onChange(of: tourEntryMissing(ui)) { _, missing in
+            // Android ends the tour when the logged entry is not there to show.
+            if missing { tour?.skip(); refreshTour() }
+        }
         .overlay(alignment: .bottom) {
             if ui.errorCode != "none" {
                 Text(LI("logbook_error", ui.errorCode))
@@ -122,6 +143,37 @@ struct LogbookView: View {
 }
 
 private extension LogbookView {
+    func refreshTour() {
+        guard let tour else { return }
+        tour.refresh()
+        tourStep = tour.step
+    }
+
+    /// The entry the tour logged, else the newest one (iOS logs through the detail,
+    /// which does not hand the new entry's id back). Empty while there is none.
+    func tourEntryUuid(_ ui: LogbookScreenState) -> String {
+        guard tourStep == "entry" else { return "" }
+        let logged: String = tour?.loggedEntryUuid ?? ""
+        var newest = ""
+        for day in ui.days {
+            for entry in day.entries {
+                if !logged.isEmpty && entry.uuid == logged { return logged }
+                if newest.isEmpty { newest = entry.uuid }
+            }
+        }
+        return logged.isEmpty ? newest : ""
+    }
+
+    func tourTarget(_ ui: LogbookScreenState) -> String? {
+        let uuid: String = tourEntryUuid(ui)
+        return uuid.isEmpty ? nil : "entry"
+    }
+
+    /// Loaded completely and still nothing for the tour to point at.
+    func tourEntryMissing(_ ui: LogbookScreenState) -> Bool {
+        tourStep == "entry" && !ui.isLoading && !ui.canLoadMore && tourEntryUuid(ui).isEmpty
+    }
+
     /// Android pages the detail through the logbook's distinct climbs.
     func climbPages(_ ui: LogbookScreenState) -> [String] {
         var seen = Set<String>()
@@ -141,7 +193,14 @@ private extension LogbookView {
         }
         .swipeActions {
             Button(LI("logbook_delete"), role: .destructive) { model.requestDelete(uuid: entry.uuid) }
-            Button(LI("logbook_edit")) { model.edit(uuid: entry.uuid) }
+            Button(LI("logbook_edit")) {
+                model.edit(uuid: entry.uuid)
+                // Android: editing the tour's entry is its last step.
+                if tourStep == "entry", let tour {
+                    tour.advance(from: "entry")
+                    refreshTour()
+                }
+            }
         }
     }
 

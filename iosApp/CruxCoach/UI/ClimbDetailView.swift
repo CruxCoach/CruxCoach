@@ -29,6 +29,10 @@ struct ClimbDetailView: View {
     /// "Publish as mine" for a climb the connected Kilter account set (Android `canPublishAsMine`).
     @State private var ownKilter: ScreenHost<OwnKilterClimbModel, OwnKilterClimbState>?
     @Environment(\.dismiss) private var dismiss
+    /// The guided first browse's detail steps (project, log, back to the logbook).
+    @State private var tour: BrowserTourModel?
+    @State private var tourStep = ""
+    @State private var anchors = TourAnchors()
 
     var body: some View {
         Group {
@@ -40,6 +44,9 @@ struct ClimbDetailView: View {
         }
         .task {
             guard host == nil else { return }
+            let guided = core.makeBrowserTour()
+            tour = guided
+            tourStep = guided.step
             // The rest-timer detail plus route playback beside it.
             let withPlayback = core.makeDetailWithRoutePlayback()
             let model = withPlayback.detail
@@ -228,6 +235,32 @@ struct ClimbDetailView: View {
         }
         .onChange(of: ui.moonLayoutPath) { _, path in loadMoonLayout(model: model, path: path) }
         .onChange(of: "\(ui.uuid)|\(ui.status)", initial: true) { _, _ in pageChanged(ui: ui) }
+        .modifier(DetailTourLayer(anchors: anchors, tour: tour, step: tourStep, connected: ble.state.connected,
+                                  quickLogged: ui.canUndoQuickLog,
+                                  visible: tourVisible(ui),
+                                  onQuickLogged: { advanceTour(from: "log") },
+                                  onMove: { refreshTour() }))
+    }
+
+    /// Android hides the spotlight under the detail's sheets and dialogs.
+    private func tourVisible(_ ui: DetailScreenState) -> Bool {
+        let covered: Bool = showBle || ui.showLogDialog || showLists || editorTarget != nil || showRestStart
+        return ui.status == "ready" && !covered
+    }
+
+    /// The Kotlin model is not observable: SwiftUI learns a new step through [tourStep].
+    private func refreshTour() {
+        guard let tour else { return }
+        tour.refresh()
+        tourStep = tour.step
+    }
+
+    /// Android moves on when the step's own action happened (a climb opened, lit, logged).
+    private func advanceTour(from step: String) {
+        guard let tour else { return }
+        tour.refresh()
+        if tour.step == step { tour.advance(from: step) }
+        tourStep = tour.step
     }
 
     /// Android's timer button in the detail's top bar; orange while a rest runs.
@@ -243,6 +276,7 @@ struct ClimbDetailView: View {
     /// A loaded climb (first open or a new page): fill the note editor once and
     /// point the owner actions at it.
     private func pageChanged(ui: DetailScreenState) {
+        if ui.status == "ready" { advanceTour(from: "open") }
         guard ui.status == "ready", noteUuid != ui.uuid else { return }
         let opened: Bool = !noteUuid.isEmpty
         noteUuid = ui.uuid
@@ -286,7 +320,8 @@ struct ClimbDetailView: View {
             }
             .padding()
         }
-        // Android's BleStatusArea on the detail: the running playlist's banner.
+        // Android's BleStatusArea on the detail: the board link's chip under the running playlist's banner.
+        .modifier(BleStatusInset(ble: ble) { showBle = true })
         .safeAreaInset(edge: .top, spacing: 0) { SessionPlaylistBanner(core: core) }
     }
 
@@ -362,6 +397,7 @@ struct ClimbDetailView: View {
     private func actions(model: DetailScreenModel, ui: DetailScreenState) -> some View {
         VStack(spacing: 10) {
             Button {
+                advanceTour(from: "project")
                 if ble.state.connected { model.sendToBoard() } else { showBle = true }
             } label: {
                 Label(ble.state.connected ? LI("detail_light_up") : L("board_ble_title"), systemImage: "lightbulb.max")
@@ -370,16 +406,17 @@ struct ClimbDetailView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(ble.state.sending)
+            .tourAnchor("light", in: anchors)
             if ui.sendRequestFailure != "none" {
                 Text(sendRequestMessage(ui.sendRequestFailure)).font(.footnote).foregroundStyle(.red)
             } else if ble.state.sendResult != "none" && ble.state.sendResult != "ok" {
                 Text(LI("detail_send_failed", ble.state.sendResult)).font(.footnote).foregroundStyle(.red)
             }
             HStack {
-                Button { model.quickLog(isSend: false) } label: {
+                Button { advanceTour(from: "project"); model.quickLog(isSend: false) } label: {
                     Label(LI("detail_attempt"), systemImage: "plus").frame(maxWidth: .infinity)
                 }
-                Button { model.quickLog(isSend: true) } label: {
+                Button { advanceTour(from: "project"); model.quickLog(isSend: true) } label: {
                     Label(LI("detail_sent"), systemImage: "checkmark").frame(maxWidth: .infinity)
                 }
                 Button { model.showLogDialog() } label: {
@@ -388,6 +425,7 @@ struct ClimbDetailView: View {
             }
             .buttonStyle(.bordered)
             .disabled(ui.quickLogging)
+            .tourAnchor("quicklog", in: anchors)
             if ui.canUndoQuickLog {
                 Button(LI("detail_undo")) { model.undoQuickLog() }.font(.footnote)
             }
@@ -541,6 +579,49 @@ private struct DetailRestTimerSheet: ViewModifier {
                 }
                 .presentationDetents([.medium])
             }
+        }
+    }
+}
+
+/// The guided first browse on the climb detail (Android `TourHost` around the
+/// detail): light the climb, log it, then back to the list for the logbook.
+private struct DetailTourLayer: ViewModifier {
+    let anchors: TourAnchors
+    let tour: BrowserTourModel?
+    let step: String
+    let connected: Bool
+    /// A quick log just landed (its undo is offered): the log step is done.
+    let quickLogged: Bool
+    let visible: Bool
+    let onQuickLogged: () -> Void
+    let onMove: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .tourSpotlight(anchors: anchors, tour: tour, step: step, target: target,
+                           message: message, visible: visible, onMove: onMove)
+            .onChange(of: quickLogged) { _, logged in
+                if logged { onQuickLogged() }
+            }
+            .onAppear { onMove() }
+    }
+
+    /// The system back button cannot be measured: the logbook step's text stands alone.
+    private var target: String? {
+        switch step {
+        case "project": return "light"
+        case "log": return "quicklog"
+        case "logbook": return ""
+        default: return nil
+        }
+    }
+
+    private var message: String {
+        switch step {
+        case "project": return connected ? L("tour_spotlight_project") : L("tour_spotlight_detail_connect")
+        case "log": return LI("tour_spotlight_quicklog_ios")
+        case "logbook": return L("tour_spotlight_logbook_back")
+        default: return ""
         }
     }
 }
