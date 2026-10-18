@@ -49,9 +49,16 @@ struct NutritionView: View {
     @State private var guideInfo = false
     /// The recipe whose ingredient is being picked; the amount goes back to it.
     @State private var recipeInProgress: RecipeForm?
+    /// Sends the shown day's meals and water to Apple Health when that is switched on (Android: Health Connect export).
+    @State private var healthActions: HealthActions?
 
     init(core: AppCore) {
         self.core = core
+    }
+
+    /// Changes whenever the day, its water or any total changes, i.e. when there is something new to send.
+    private static func exportKey(_ ui: NutritionDayUi) -> String {
+        ui.dayIso + "|" + NutritionText.render(ui.water.total) + "|" + ui.rings.map { NutritionText.render($0.value) }.joined(separator: ",")
     }
 
     var body: some View {
@@ -66,7 +73,11 @@ struct NutritionView: View {
             }
         }
         .navigationTitle(L("tr_nav_fuel"))
+        .onChange(of: host.map { Self.exportKey($0.state) } ?? "") { _, _ in
+            if let day = host?.state.dayIso, !day.isEmpty { healthActions?.exportDay(dayIso: day) }
+        }
         .task {
+            if healthActions == nil { healthActions = core.makeHealthActions() }
             guard host == nil, !unavailable else { return }
             guard let model = core.makeNutritionScreen() else {
                 unavailable = true
