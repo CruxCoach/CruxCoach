@@ -1,4 +1,5 @@
 import CruxCoachCore
+import Observation
 import SwiftUI
 
 /// Where the controls a tour step can point at are, in window coordinates.
