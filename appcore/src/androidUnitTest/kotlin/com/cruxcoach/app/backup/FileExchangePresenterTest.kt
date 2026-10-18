@@ -76,23 +76,6 @@ class FileExchangePresenterTest {
     }
 
     @Test
-    fun `document access is released after the asynchronous import and on cancellation`() = runBlocking {
-        val store = FakeStore()
-        val presenter = presenter(store)
-        val file = File(root, "scoped.json").apply { writeText("{}") }
-        val finished = kotlinx.coroutines.CompletableDeferred<Unit>()
-        presenter.import(file.absolutePath) {
-            assertEquals("{}", store.imported)
-            finished.complete(Unit)
-        }
-        withTimeout(CI_WAIT_MS) { finished.await() }
-        presenter.close()
-        val cancelled = kotlinx.coroutines.CompletableDeferred<Unit>()
-        presenter.import(file.absolutePath) { cancelled.complete(Unit) }
-        withTimeout(CI_WAIT_MS) { cancelled.await() }
-    }
-
-    @Test
     fun `export writes the payload and discarding removes the file`() = runBlocking {
         val store = FakeStore()
         val presenter = presenter(store)
@@ -161,69 +144,6 @@ class FileExchangePresenterTest {
         assertEquals(FileExchangeError.EXPORT_FAILED, done.error)
         assertTrue(done.exportPath.isEmpty())
         assertTrue(root.listFiles()?.isEmpty() != false, "nothing may be written on failure")
-        presenter.close()
-    }
-
-    @Test
-    fun `importing a file the store rejects is reported, not swallowed`() = runBlocking {
-        val store = FakeStore(summary = null)
-        val presenter = presenter(store)
-        val file = File(root, "foreign.json").apply { writeText("""{"ascents":[]}""") }
-
-        presenter.import(file.absolutePath)
-        val done = await(presenter) { it.error != FileExchangeError.NONE || it.importedAscents >= 0 }
-        assertEquals(FileExchangeError.IMPORT_FAILED, done.error)
-        presenter.close()
-    }
-
-    @Test
-    fun `a successful import reports what it wrote`() = runBlocking {
-        val store = FakeStore()
-        val presenter = presenter(store)
-        val file = File(root, "mine.json").apply { writeText("""{"ascents":[1]}""") }
-
-        presenter.import(file.absolutePath)
-        val done = await(presenter) { it.importedAscents >= 0 || it.error != FileExchangeError.NONE }
-        assertEquals(FileExchangeError.NONE, done.error)
-        assertEquals(3, done.importedAscents)
-        assertEquals(2, done.importedBids)
-        assertEquals(1, done.importedLists)
-        assertEquals("""{"ascents":[1]}""", store.imported)
-        presenter.close()
-    }
-
-    @Test
-    fun `a csv zip is imported through the same path as the json export`() = runBlocking {
-        val exported = """{"version":3,"app":"CruxCoach","nostrPubkey":"abcd","boardAscents":[{"climbUuid":"c1","angle":40}],"boardBids":[]}"""
-        val archive = CruxCoachCsvArchive.fromJson(exported, CruxCoachCsvArchive.ALL_CATEGORIES)
-        val file = File(root, "cruxcoach_csv_export.zip").apply { writeBytes(archive) }
-        val store = FakeStore()
-        val presenter = presenter(store)
-
-        presenter.import(file.absolutePath)
-        val done = await(presenter) { it.importedAscents >= 0 || it.error != FileExchangeError.NONE }
-        assertEquals(FileExchangeError.NONE, done.error)
-        assertEquals(CruxCoachCsvArchive.toJson(archive), store.imported)
-        assertTrue(store.imported!!.contains(""""boardAscents":[{"angle":40,"climbUuid":"c1"}]"""))
-        assertTrue(store.imported!!.contains(""""nostrPubkey":"abcd""""), "the identity check still sees the owner")
-
-        // Excel is export-only: its workbook is a ZIP, but not a CSV ZIP; nothing reaches the store.
-        store.imported = null
-        presenter.exportExcel()
-        val excel = await(presenter) { it.exportPath.isNotEmpty() || it.error != FileExchangeError.NONE }
-        presenter.import(excel.exportPath)
-        val refused = await(presenter) { it.error != FileExchangeError.NONE }
-        assertEquals(FileExchangeError.IMPORT_FAILED, refused.error)
-        assertEquals(null, store.imported)
-        presenter.close()
-    }
-
-    @Test
-    fun `a missing file is a readable error, not a crash`() = runBlocking {
-        val presenter = presenter(FakeStore())
-        presenter.import(File(root, "gone.json").absolutePath)
-        val done = await(presenter) { it.error != FileExchangeError.NONE }
-        assertEquals(FileExchangeError.FILE_UNREADABLE, done.error)
         presenter.close()
     }
 

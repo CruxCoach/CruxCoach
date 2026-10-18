@@ -1908,4 +1908,29 @@ class AppCore private constructor(
         )
     }
 
+
+    // ── Data import with preview (Android's DataImportScreen) ─────────────
+    /**
+     * Plain-file export, and Android's import flow: preview of the picked file,
+     * category choice, identity-mismatch confirmation, then the import of the
+     * chosen categories only. Replaces [makeDataExchangeScreen], whose import
+     * wrote every category without asking.
+     */
+    fun makeDataTransferScreen(): DataExchangeScreenModel = DataExchangeScreenModel(
+        FileExchangePresenter(
+            payloads = CruxCoachBackupPayloadStore(
+                secureDatabase, boardRepository, personalRepository, athleteBackupHooks,
+            ),
+            files = platform.files,
+            clock = platform.clock,
+            pubkeyHex = { pubkeyHex },
+            importer = com.cruxcoach.app.backup.CruxCoachManualImportStore(
+                secureDatabase, boardRepository, personalRepository, athleteBackupHooks,
+            ),
+            catalogueLoading = kotlinx.coroutines.flow.flow { catalogueSync.state.collect { emit(it.running) } },
+            scope = MainScope(),
+            ioDispatcher = Dispatchers.IO,
+        )
+    )
+
 }
