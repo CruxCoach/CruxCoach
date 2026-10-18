@@ -12,6 +12,8 @@ struct MapPlacesPanel: View {
     let canPickBoards: Bool
     let onBrowse: (BoardOption) -> Void
     let onChoose: (String) -> Void
+    /// A place was picked from the list: the host ends a search (device test D46).
+    let onPick: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,6 +57,7 @@ struct MapPlacesPanel: View {
                         Button {
                             model.selectVenue(id: row.id)
                             expanded = true
+                            onPick()
                         } label: {
                             rowView(row)
                         }

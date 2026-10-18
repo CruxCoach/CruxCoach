@@ -137,7 +137,8 @@ struct MapView: View {
                 MapPlacesPanel(model: model, ui: ui, styles: styles, expanded: $panelExpanded,
                                canPickBoards: core != nil && onPickBoard != nil,
                                onBrowse: { option in onPickBoard?(option) },
-                               onChoose: { venueId in chooseVenueId = venueId })
+                               onChoose: { venueId in chooseVenueId = venueId },
+                               onPick: { endSearch() })
             }
         }
         .overlay {
@@ -263,9 +264,7 @@ struct MapView: View {
                     Button {
                         model.pickSearchResult(index: result.index)
                         if result.kind == "venue" { panelExpanded = true }
-                        query = ""
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                                        to: nil, from: nil, for: nil)
+                        endSearch()
                     } label: {
                         HStack(spacing: 10) {
                             if result.kind == "venue" {
@@ -291,6 +290,13 @@ struct MapView: View {
             }
         }
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    /// Picking a place – from the search results or from the list below – ends a search, so the keyboard and the
+    /// results do not cover its details (Android `MapScreen`, device test D46).
+    private func endSearch() {
+        if !query.isEmpty { query = "" }
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     // MARK: My location
