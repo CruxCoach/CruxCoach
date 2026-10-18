@@ -300,10 +300,17 @@ class AppCore private constructor(
         settings.gradeFormatter(),
     )
 
-    fun makeDetailScreen(): DetailScreenModel {
+    fun makeDetailScreen(): DetailScreenModel = detailScreen(listener = null)
+
+    /**
+     * Both detail factories share this, so every detail logs into the running board
+     * session (Android's detail feeds `BoardSessionManager`; recording is a no-op while
+     * no session runs).
+     */
+    private fun detailScreen(listener: com.cruxcoach.app.logbook.LogAttemptListener?): DetailScreenModel {
         val model = DetailScreenModel(
             ClimbDetailPresenter(boardRepository, personalRepository, platform.keyValues),
-            LogAttemptPresenter(personalRepository),
+            LogAttemptPresenter(personalRepository, sessionRecorder = boardSessions, listener = listener),
             boardSender,
             settings.gradeFormatter(),
         )
@@ -1323,15 +1330,7 @@ class AppCore private constructor(
             enabled = { settingsStore.snapshot.restTimerAutoStart },
             durationSeconds = { settingsStore.snapshot.restTimerDurationSeconds },
         )
-        val model = DetailScreenModel(
-            ClimbDetailPresenter(boardRepository, personalRepository, platform.keyValues),
-            LogAttemptPresenter(personalRepository, listener = autoStart),
-            boardSender,
-            settings.gradeFormatter(),
-        )
-        // One detail screen is visible at a time; the newest owns the shared sender.
-        sendFailureSink = { code -> model.reportSendFailure(code) }
-        return model
+        return detailScreen(listener = autoStart)
     }
 
     /** The statistics' hold heatmap (Android's stats sheet heatmap section). */

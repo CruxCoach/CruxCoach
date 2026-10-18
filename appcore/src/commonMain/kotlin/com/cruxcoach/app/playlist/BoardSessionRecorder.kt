@@ -45,7 +45,7 @@ class BoardSessionRecorder(
     private val repository: PersonalBoardRepository,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val nowIso: () -> String = { DateTimeUtil.nowIso() },
-) {
+) : com.cruxcoach.app.logbook.SessionRecorder {
     private var activeId: Long? = null
     private var startedAt: String? = null
     private var startMs = 0L
@@ -91,15 +91,29 @@ class BoardSessionRecorder(
         persist()
     }
 
-    fun recordAscent() {
+    override fun recordAscent() {
         if (!isActive) return
         ascents++
         persist()
     }
 
-    fun recordBid() {
+    override fun recordBid() {
         if (!isActive) return
         bids++
+        persist()
+    }
+
+    /** Reverses a one-tap send while its undo is offered (Android `BoardSessionManager`). */
+    override fun undoRecordedAscent() {
+        if (!isActive || ascents == 0) return
+        ascents--
+        persist()
+    }
+
+    /** Reverses a one-tap attempt while its undo is offered. */
+    override fun undoRecordedBid() {
+        if (!isActive || bids == 0) return
+        bids--
         persist()
     }
 

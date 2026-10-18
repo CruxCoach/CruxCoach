@@ -71,4 +71,18 @@ class BoardSessionRecorderTest {
         assertEquals("2026-10-17T10:30", row.endedAt?.take(16))
         assertTrue(row.bidCount == 1L)
     }
+
+    @Test
+    fun `an undone one-tap log is taken back out of the session, never below zero`() {
+        val sessions = recorder()
+        sessions.recordAscent() // no session yet: nothing to count
+        sessions.start()
+        sessions.recordAscent(); sessions.recordAscent(); sessions.recordBid()
+        sessions.undoRecordedAscent()
+        sessions.undoRecordedBid(); sessions.undoRecordedBid()
+        now += 10 * 60_000L
+        val ended = assertNotNull(sessions.end())
+        assertEquals(1, ended.ascents)
+        assertEquals(0, ended.bids)
+    }
 }

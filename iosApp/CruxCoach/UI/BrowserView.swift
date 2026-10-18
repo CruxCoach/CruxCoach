@@ -86,7 +86,7 @@ struct BrowserView: View {
             .navigationTitle(L("board_browser_title"))
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: String.self) { uuid in
-                ClimbDetailView(core: core, uuid: uuid, angle: ui.angle, ble: ble) { model.refresh() }
+                ClimbDetailView(core: core, uuid: uuid, angle: ui.angle, ble: ble, pageUuids: ui.climbs.map { $0.uuid }) { model.refresh() }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
