@@ -168,6 +168,13 @@ class BleScreenModel(private val presenter: BoardConnectionPresenter) {
         presenter.reconnectRemembered(brand)
     }
 
+    /** Android's "Reconnect" on a remembered board in the connection sheet: no scan, one attempt. */
+    fun reconnectRemembered(brandWire: String) {
+        if (linkBusy(presenter.state.value)) return
+        presenter.activate()
+        presenter.reconnectRemembered(brandWire)
+    }
+
     /** Hides the chip's current status until it changes; a lost link is let go for good. */
     fun dismissStatus() {
         val current = status(presenter.state.value)

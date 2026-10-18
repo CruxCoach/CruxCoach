@@ -96,6 +96,27 @@ class BleScreenStatusTest {
     }
 
     @Test
+    fun `the sheet reconnects a remembered board by its family and never over a live link`() = runTest {
+        val rig = Rig(this)
+        connectKilter(rig)
+        assertEquals(listOf("kilter"), rig.model.currentState.remembered.map { it.brandWire })
+        rig.model.reconnectRemembered(brandWire = "kilter")
+        runCurrent()
+        assertEquals(1, rig.central.connects.size, "a live link is not replaced")
+
+        rig.model.disconnect()
+        runCurrent()
+        rig.model.reconnectRemembered(brandWire = "tension")
+        runCurrent()
+        assertEquals(1, rig.central.connects.size, "nothing remembered for that family")
+        rig.model.reconnectRemembered(brandWire = "kilter")
+        advanceTimeBy(1_000); runCurrent()
+        assertEquals(2, rig.central.connects.size)
+        assertEquals("connected", rig.model.currentState.status)
+        rig.close()
+    }
+
+    @Test
     fun `dismissing a lost link hides it until the next link drops`() = runTest {
         val rig = Rig(this)
         connectKilter(rig)

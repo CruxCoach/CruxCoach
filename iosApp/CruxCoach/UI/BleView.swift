@@ -23,6 +23,8 @@ struct BleView: View {
             } else {
                 if ui.connection == "connecting" {
                     Section { HStack { ProgressView(); Text(LI("ble_connecting")) } }
+                } else {
+                    rememberedSection
                 }
                 if ui.connectFailure != "none" {
                     Section {
@@ -64,12 +66,44 @@ struct BleView: View {
         .onDisappear { model.stopScan() }
     }
 
+    /// Android's "Last used" card: reconnect a remembered board directly, without a scan.
+    @ViewBuilder
+    private var rememberedSection: some View {
+        if !ui.remembered.isEmpty {
+            Section(L("board_ble_last_used")) {
+                ForEach(ui.remembered, id: \.identifier) { board in
+                    RememberedBoardRow(board: board) { model.reconnectRemembered(brandWire: board.brandWire) }
+                }
+            }
+        }
+    }
+
     private var adapterProblem: String? {
         switch ui.adapter {
         case "poweredOff": return LI("ble_powered_off")
         case "unauthorized": return LI("ble_unauthorized")
         case "unsupported": return LI("ble_unsupported")
         default: return nil
+        }
+    }
+}
+
+private struct RememberedBoardRow: View {
+    let board: BleBoardRowUi
+    let onReconnect: () -> Void
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text(board.name).fontWeight(.semibold)
+                Text(board.serial.isEmpty ? board.brandTitle : "\(board.brandTitle) · \(board.serial)")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(L("board_ble_reconnect"), action: onReconnect)
+                .buttonStyle(.borderedProminent)
+                .tint(Color.orange)
+                .accessibilityIdentifier("ble_reconnect_button")
         }
     }
 }

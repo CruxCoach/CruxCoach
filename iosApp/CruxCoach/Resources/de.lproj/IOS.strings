@@ -444,3 +444,8 @@
 "nutrition_photo_app_memory" = "iOS lässt CruxCoach gerade nicht genug Arbeitsspeicher für das Modell. Schließe andere Apps und versuche es erneut.";
 "nutrition_photo_keep_open" = "Lass CruxCoach geöffnet, bis der Download fertig ist: Auf dem iPhone endet er, wenn die App geschlossen oder der Bildschirm gesperrt wird.";
 "nutrition_photo_save_failed" = "Die Mahlzeit konnte nicht eingetragen werden. Bitte versuche es erneut.";
+/* Board link status chip and tour spotlight (uipolish) */
+"ble_open_settings" = "Einstellungen öffnen";
+"ble_powered_off_hint" = "Schalte es im Kontrollzentrum oder in den Einstellungen ein.";
+"tour_spotlight_quicklog_ios" = "„Versuch“ oder „Geschafft“ antippen – landet direkt im Logbuch.";
+"tour_spotlight_entry_swipe" = "Dein Eintrag. Nach links wischen, um ihn zu bearbeiten oder zu löschen.";
