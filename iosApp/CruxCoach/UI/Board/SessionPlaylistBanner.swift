@@ -144,3 +144,37 @@ private struct SessionPlaylistCard: View {
         .font(.subheadline)
     }
 }
+
+/// Android `ClimbCard`'s add-to-playlist button: queues the climb at the browsed
+/// angle into the running playlist; the badge counts the entries already queued.
+struct SessionQueueAddButton: View {
+    let hub: BoardSessionHub
+    let ui: SessionBannerState
+    let climbUuid: String
+    let angle: Int32
+
+    var body: some View {
+        let count: Int = Int(hub.queuedCount(state: ui, climbUuid: climbUuid, angle: angle))
+        return Button { hub.addToQueue(climbUuid: climbUuid, angle: angle) } label: {
+            Image(systemName: "plus.circle.fill")
+                .font(.title2)
+                .foregroundStyle(Color.orange)
+                .overlay(alignment: .topTrailing) { badge(count) }
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(L("board_playlist_add"))
+        .accessibilityValue(count > 0 ? LP("board_playlist_already_queued", count) : "")
+        .accessibilityIdentifier("board_climb_add_to_playlist")
+    }
+
+    @ViewBuilder private func badge(_ count: Int) -> some View {
+        if count > 0 {
+            Text("\(count)")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Color.black)
+                .padding(.horizontal, 4)
+                .background(Color.orange, in: RoundedRectangle(cornerRadius: 6))
+                .offset(x: 6, y: -6)
+        }
+    }
+}

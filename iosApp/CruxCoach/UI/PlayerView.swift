@@ -50,6 +50,7 @@ struct PlayerView: View {
             Button(L("action_cancel"), role: .cancel) {}
             Button(L("board_session_end_confirm"), role: .destructive) { host?.model.endSession() }
         }
+        .modifier(PlayerQueueAccess(core: core, isActive: host?.state.isActive ?? false) { endFromQueue() })
         .sheet(isPresented: summaryBinding) {
             if let host {
                 SessionSummarySheet(summary: host.state.summary) { closeSummary() }
@@ -60,6 +61,17 @@ struct PlayerView: View {
     private var summaryBinding: Binding<Bool> {
         Binding(get: { host?.state.showSummary ?? false },
                 set: { if !$0 { closeSummary() } })
+    }
+
+    /// Android's queue sheet ends through the player's stop, so the summary appears.
+    private func endFromQueue() {
+        guard let host else { return }
+        if host.state.sessionRunning {
+            host.model.endSession()
+        } else {
+            host.model.stop()
+            dismiss()
+        }
     }
 
     private func closeSummary() {
