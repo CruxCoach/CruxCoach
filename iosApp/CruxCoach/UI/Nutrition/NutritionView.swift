@@ -11,6 +11,7 @@ enum NutritionSheet: Identifiable {
     case recipe(RecipeForm)
     case ingredient(RecipeForm)
     case describe(String)
+    case photo(String)
     case energy
     case goal(WeightGoalForm)
     case weight
@@ -27,6 +28,7 @@ enum NutritionSheet: Identifiable {
         case .recipe(let form): return "recipe-\(ObjectIdentifier(form).hashValue)"
         case .ingredient(let form): return "ingredient-\(ObjectIdentifier(form).hashValue)"
         case .describe(let meal): return "describe-\(meal)"
+        case .photo(let meal): return "photo-\(meal)"
         case .energy: return "energy"
         case .goal(let form): return "goal-\(ObjectIdentifier(form).hashValue)"
         case .weight: return "weight"
@@ -281,7 +283,8 @@ struct NutritionView: View {
         switch which {
         case .add:
             if let host {
-                FoodAddSheet(host: host, onSelect: { next in sheet = next }, onIngredientPicked: nil)
+                FoodAddSheet(host: host, onSelect: { next in sheet = next }, onIngredientPicked: nil,
+                             photoSupport: MealPhotoSheet.support(core))
             }
         case .ingredient(let recipe):
             if let host {
@@ -328,6 +331,9 @@ struct NutritionView: View {
         case .describe(let meal):
             MealTextSheet(core: core, dayIso: host?.state.dayIso ?? "", mealCode: meal,
                           unitsCode: host?.state.unitsCode ?? "metric", onDone: { sheet = nil })
+        case .photo(let meal):
+            MealPhotoSheet(core: core, dayIso: host?.state.dayIso ?? "", mealCode: meal,
+                           unitsCode: host?.state.unitsCode ?? "metric", onDone: { sheet = nil })
         case .energy:
             if let host {
                 NutritionEnergySheet(host: host, onGoal: { sheet = .goal(model.weightGoalForm()) }, onDone: { sheet = nil })

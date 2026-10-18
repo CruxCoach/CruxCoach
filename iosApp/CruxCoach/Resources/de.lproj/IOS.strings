@@ -438,3 +438,9 @@
 "zap_error_signing" = "Der Zap konnte nicht mit deinem Schlüssel signiert werden.";
 "zap_error_invoice" = "Es kam keine Rechnung zurück. Versuche es später erneut.";
 "zap_error_mismatch" = "Die Rechnung lautet auf einen anderen Betrag als gewählt und wird deshalb nicht angezeigt.";
+
+/* Meal photo recognition (foodphoto) */
+"nutrition_photo_no_engine" = "Die Fotoerkennung ist in diesem Build von CruxCoach nicht enthalten. Suche, Barcode, Beschreiben und Schnelleintrag funktionieren wie gewohnt.";
+"nutrition_photo_app_memory" = "iOS lässt CruxCoach gerade nicht genug Arbeitsspeicher für das Modell. Schließe andere Apps und versuche es erneut.";
+"nutrition_photo_keep_open" = "Lass CruxCoach geöffnet, bis der Download fertig ist: Auf dem iPhone endet er, wenn die App geschlossen oder der Bildschirm gesperrt wird.";
+"nutrition_photo_save_failed" = "Die Mahlzeit konnte nicht eingetragen werden. Bitte versuche es erneut.";

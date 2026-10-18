@@ -79,6 +79,32 @@ jobs:
         run: |
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           cd iosApp && xcodegen generate
+      # Meal photo engine (FEAT-069 on iOS, proven by the `vision` job): restored from the cache the
+      # `vision` job fills, or built here. If it cannot be built, the app is generated without it
+      # (project.yml) and says so in the photo entry; the warning below makes that visible.
+      - name: Restore the meal photo engine
+        id: app-vision-cache
+        if: ${{ !cancelled() }}
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: iosApp/Frameworks/CruxVision.xcframework
+          key: cruxvision-b11396-fce45a07-${{ hashFiles('iosApp/Vision/**', 'iosApp/scripts/build-vision.sh', 'androidApp/src/main/cpp/vision/food_vision.cpp', 'androidApp/src/main/cpp/vision/food_vision.h') }}
+      - name: Build the meal photo engine
+        if: ${{ !cancelled() && steps.app-vision-cache.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          iosApp/scripts/build-vision.sh 2>&1 | tee "$RUNNER_TEMP/ci-app-vision.log" | grep -vE '^\[ *[0-9]+%\]' | tail -100
+      - name: Generate the Xcode project with the meal photo engine
+        if: ${{ !cancelled() }}
+        run: |
+          cd iosApp
+          if [ -d Frameworks/CruxVision.xcframework ]; then
+            xcodegen generate --spec project-vision.yml
+            echo "::notice title=Meal photo engine::linked into this build (project-vision.yml)"
+          else
+            echo "::warning title=Meal photo engine::not available; this build has no photo recognition (project.yml)"
+          fi
       # Simulator builds are signed ad hoc by Xcode ("sign to run locally", no identity, no secret);
       # without it the test host has no keychain entitlement and SecItem calls fail.
       - name: Build and run the unit tests on the simulator
@@ -272,7 +298,7 @@ jobs:
           if [ -f "$RUNNER_TEMP/vision-report.json" ]; then
             echo "::notice title=Vision engine on the simulator::$(head -c 1500 "$RUNNER_TEMP/vision-report.json")"
           fi
-          # Passing is not enough: the engine test must have run, not been skipped.
+          # Passing is not enough: the engine tests must have run, not been skipped.
           xcrun xcresulttool get test-results tests --path "$RUNNER_TEMP/vision.xcresult" > "$RUNNER_TEMP/vision-tests.json"
           python3 - "$RUNNER_TEMP/vision-tests.json" <<'PY'
           import json, sys
@@ -285,8 +311,9 @@ jobs:
           for node in json.load(open(sys.argv[1])).get("testNodes", []):
               walk(node, cases)
           print(cases)
-          engine = [result for name, result in cases if name.startswith("testTheEngineAnswersAPhoto")]
-          sys.exit(0 if engine == ["Passed"] else 1)
+          required = ("testTheEngineAnswersAPhoto", "testTheRunnerServesTheCore")
+          ran = [[result for name, result in cases if name.startswith(prefix)] for prefix in required]
+          sys.exit(0 if all(r == ["Passed"] for r in ran) else 1)
           PY
       - name: Build for device with the vision engine, unsigned
         if: ${{ !cancelled() }}

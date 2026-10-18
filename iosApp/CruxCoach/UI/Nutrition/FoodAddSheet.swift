@@ -12,6 +12,8 @@ struct FoodAddSheet: View {
     let onSelect: (NutritionSheet?) -> Void
     /// Set while picking a recipe ingredient: the picked row's ref goes here.
     let onIngredientPicked: ((String) -> Void)?
+    /// MealPhotoSheet.support: "supported", "too_slow" or why the photo entry is unavailable.
+    var photoSupport: String = "no_engine"
     @State private var query = ""
     @State private var confirmDelete: FoodRowUi?
     @State private var photoInfo = false
@@ -154,24 +156,34 @@ struct FoodAddSheet: View {
             .alert(L("fvp_unavailable_title"), isPresented: $photoInfo) {
                 Button(L("fvp_ok"), role: .cancel) {}
             } message: {
-                Text(LI("nutrition_photo_unsupported") + "\n\n" + L("fvp_unavailable_alternatives"))
+                Text(MealPhotoSheet.reason(photoSupport) + "\n\n" + L("fvp_unavailable_alternatives"))
             }
         }
     }
 
-    /// Scan, describe, photo and plain values. Photo stays visible and explains
-    /// why it is not available on iPhone instead.
+    /// Scan, describe, photo and plain values. On a phone (or build) without
+    /// photo recognition the photo tile stays visible, greyed out, and explains
+    /// why; after a too-slow test run it opens the sheet, which says so.
     private var actionTiles: some View {
-        HStack(spacing: 8) {
+        let photoDimmed: Bool = photoSupport != "supported"
+        return HStack(spacing: 8) {
             tile(L("tru_add_scan"), "barcode.viewfinder", dimmed: false) { onSelect(.scan) }
             tile(L("trf_describe"), "text.bubble", dimmed: false) { onSelect(.describe(ui.mealCode)) }
-            tile(L("fvp_button"), "camera", dimmed: true) { photoInfo = true }
-                .accessibilityValue(L("fvp_unavailable_short"))
+            tile(L("fvp_button"), "camera", dimmed: photoDimmed) { openPhoto() }
+                .accessibilityValue(photoDimmed ? L("fvp_unavailable_short") : "")
             tile(L("tru_add_quick"), "bolt", dimmed: false) {
                 onSelect(.quick(model.quickForm(mealCode: ui.mealCode)))
             }
         }
         .buttonStyle(.borderless)
+    }
+
+    private func openPhoto() {
+        if photoSupport == "supported" || photoSupport == "too_slow" {
+            onSelect(.photo(ui.mealCode))
+        } else {
+            photoInfo = true
+        }
     }
 
     private func tile(_ label: String, _ icon: String, dimmed: Bool, action: @escaping () -> Void) -> some View {

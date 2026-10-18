@@ -108,6 +108,50 @@ final class FoodVisionEngineTests: XCTestCase {
         XCTAssertTrue(wrong.contains("\"error\":\"invalid_image\""), wrong)
     }
 
+    /// The path the app takes: the core's FoodVisionHost (FoodVisionRunner) with
+    /// the drawn plate, answered on the main thread and read by the core's
+    /// envelope parser; then a run cancelled right after it was asked for.
+    func testTheRunnerServesTheCoreAndHonoursCancel() throws {
+        let env = ProcessInfo.processInfo.environment
+        let required = env["CRUX_VISION_REQUIRED"] == "1"
+        guard FoodVisionEngine.isAvailable, let modelPath = env["CRUX_VISION_MODEL"], let projectorPath = env["CRUX_VISION_MMPROJ"] else {
+            if required { XCTFail("engine or test model missing") }
+            throw XCTSkip("built without the vision engine or without a test model")
+        }
+        // The engine is compiled for these two features; the simulator's Apple-silicon host has them.
+        XCTAssertTrue(VisionDeviceFacts.dotProduct, "hw.optional.arm.FEAT_DotProd")
+        XCTAssertTrue(VisionDeviceFacts.halfPrecision, "hw.optional.arm.FEAT_FP16")
+        XCTAssertGreaterThan(VisionDeviceFacts.physicalMemoryBytes, 0)
+
+        let runner = FoodVisionRunner()
+        let probed = expectation(description: "probe answered")
+        var envelope = ""
+        runner.run(modelPath: modelPath, projectorPath: projectorPath, threads: 2, imageKind: "probe", maxTokens: 32) { reply in
+            XCTAssertTrue(Thread.isMainThread)
+            envelope = reply
+            probed.fulfill()
+        }
+        wait(for: [probed], timeout: 600)
+        let outcome = VisionOutcome.companion.parse(envelope: envelope)
+        XCTAssertTrue(outcome.ok, envelope)
+        XCTAssertGreaterThan(outcome.outputTokens, 0)
+        XCTAssertLessThanOrEqual(outcome.outputTokens, 32)
+        XCTAssertGreaterThan(outcome.imageMs, 0)
+
+        let probe = try XCTUnwrap(PhotoInput.probeImage())
+        runner.setPhoto(probe)
+        let cancelled = expectation(description: "cancelled run answered")
+        var cancelReply = ""
+        runner.run(modelPath: modelPath, projectorPath: projectorPath, threads: 2, imageKind: "photo", maxTokens: 384) { reply in
+            cancelReply = reply
+            cancelled.fulfill()
+        }
+        runner.cancel()
+        wait(for: [cancelled], timeout: 600)
+        XCTAssertEqual(VisionOutcome.companion.parse(envelope: cancelReply).error, "cancelled", cancelReply)
+        runner.unload()
+    }
+
     func testAMissingModelFileIsAnErrorCodeNotACrash() throws {
         guard FoodVisionEngine.isAvailable else { throw XCTSkip("built without the vision engine (project.yml)") }
         let loaded = FoodVisionEngine.load(modelPath: "/nonexistent/model.gguf", projectorPath: "/nonexistent/mmproj.gguf", threads: 1)
