@@ -302,6 +302,56 @@ class KilterApi(
     /** See [KilterWallContext.fromLogs]. */
     fun wallContextFromLogs(logs: List<KilterLog>): KilterWallContext? = KilterWallContext.fromLogs(logs)
 
+    /**
+     * One authorized portal call for the own-climb paths ([KilterClimbPublisher],
+     * [KilterClimbBackfiller]): `$apiBase/[path]` with the account's Bearer token.
+     * A 401 gets exactly one forced token refresh and one resend, as Android's
+     * `submitClimb` does. [path] is built by the caller from validated segments.
+     */
+    internal suspend fun climbCall(
+        method: String,
+        path: String,
+        jsonBody: String?,
+        maxResponseBytes: Long,
+        timeoutSeconds: Int,
+    ): KilterClimbCall {
+        val access = accessToken()
+        if (access.offline) return KilterClimbCall(0, "", KilterFailure.OFFLINE, null)
+        var token = access.token ?: return KilterClimbCall(0, "", KilterFailure.NOT_SIGNED_IN, null)
+        suspend fun send(bearer: String): HttpResult = http.request(
+            method = method,
+            url = "$apiBase/$path",
+            headers = buildMap {
+                put("Authorization", "Bearer $bearer")
+                put("Accept", "application/json")
+                if (jsonBody != null) put("Content-Type", "application/json")
+            },
+            body = jsonBody?.encodeToByteArray(),
+            maxResponseBytes = maxResponseBytes,
+            timeoutSeconds = timeoutSeconds,
+        )
+        var result = send(token)
+        if (result is HttpResult.Ok && result.response.status == 401) {
+            val refresh = tokens.refreshToken()
+            val refreshed = refresh?.let { r ->
+                (refreshAccessToken(r) as? HttpResult.Ok)?.let { storeRefreshed(it.response, r) }
+            }
+            if (refreshed != null) {
+                token = refreshed
+                result = send(token)
+            }
+        }
+        return when (result) {
+            is HttpResult.Failed -> KilterClimbCall(0, result.detail, result.reason.toFailure(), null)
+            is HttpResult.Ok -> KilterClimbCall(
+                result.response.status,
+                result.response.body.decodeToString(),
+                KilterFailure.NONE,
+                result.response.headers.entries.firstOrNull { it.key.equals("Retry-After", ignoreCase = true) }?.value,
+            )
+        }
+    }
+
     /** An access token, or why there is none: [offline] when the token endpoint could not be reached. */
     private class Access(val token: String?, val offline: Boolean)
 
@@ -438,3 +488,15 @@ private fun urlEncode(value: String): String {
     }
     return out.toString()
 }
+
+/**
+ * Raw answer of [KilterApi.climbCall]: [status] 0 when no response arrived
+ * ([failure] then says why; [body] is the transport's detail). The caller bounds
+ * what it keeps of an error body.
+ */
+internal class KilterClimbCall(
+    val status: Int,
+    val body: String,
+    val failure: KilterFailure,
+    val retryAfter: String?,
+)
