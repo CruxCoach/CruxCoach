@@ -436,7 +436,13 @@ fun MapScreen(
         onOpenFilters = { showFilterSheet = true },
         onSelectAllBrands = viewModel::selectAllBrands,
         onToggleBrand = viewModel::toggleBrand,
-        onSelectVenue = ::showVenue,
+        // Picking a place from the list ends a search too, so the keyboard and the results do not cover its sheet
+        // (device test D46: with "MTV" typed, the place picked from the list stayed under keyboard and results).
+        onSelectVenue = { venue ->
+            showVenue(venue)
+            if (searchQuery.isNotEmpty()) searchQuery = ""
+            focusManager.clearFocus()
+        },
         onCloseVenue = { viewModel.selectVenue(null) },
         onBrowseClimbs = { brand, layoutId, sizeId ->
             viewModel.applyBoardConfigForBrowse(brand, layoutId, sizeId)
