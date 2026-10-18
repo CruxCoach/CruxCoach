@@ -81,6 +81,7 @@ struct BrowserView: View {
             .overlay {
                 if ui.loadState == "loading" && ui.climbs.isEmpty { ProgressView() }
             }
+            .modifier(BrowserSessionStrip(core: core, model: model, ui: ui, ble: ble, path: $path))
             .searchable(text: $search, prompt: L("board_search_placeholder"))
             .onChange(of: search) { _, query in model.setSearch(query: query) }
             .navigationTitle(L("board_browser_title"))
@@ -203,6 +204,48 @@ struct BrowserView: View {
             Toggle(L("board_filter_exclude_sent"),
                    isOn: Binding(get: { ui.excludesSent }, set: { model.setExcludeSent(exclude: $0) }))
         }
+    }
+}
+
+/// A random pick from the browser (Android `pickRandomClimb`): a page of its own.
+struct RandomClimbTarget: Hashable {
+    let uuid: String
+}
+
+/// Android's strip under the browser header (`SessionTimerBar` / the playlist
+/// banner) and the random pick it opens. A modifier of its own keeps the
+/// browser's modifier chain short enough for the type checker.
+private struct BrowserSessionStrip: ViewModifier {
+    let core: AppCore
+    let model: BrowserScreenModel
+    let ui: BrowserScreenState
+    let ble: ScreenHost<BleScreenModel, BleScreenState>
+    @Binding var path: NavigationPath
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaInset(edge: .top, spacing: 0) { strip }
+            .onChange(of: ui.randomClimbUuid) { _, uuid in openRandomClimb(uuid) }
+            .navigationDestination(for: RandomClimbTarget.self) { target in
+                // Android opens a random pick on its own, without the list's pager.
+                ClimbDetailView(core: core, uuid: target.uuid, angle: ui.angle, ble: ble) { model.refresh() }
+            }
+    }
+
+    /// The running playlist's banner, or "Random climb" while nothing runs and the catalogue is there.
+    private var strip: some View {
+        var pick: (() -> Void)? = nil
+        if ui.hasCatalogue {
+            let browser: BrowserScreenModel = model
+            pick = { browser.pickRandom() }
+        }
+        return SessionPlaylistBanner(core: core, onRandomClimb: pick)
+    }
+
+    private func openRandomClimb(_ uuid: String) {
+        guard !uuid.isEmpty else { return }
+        model.consumeRandom()
+        path.append(RandomClimbTarget(uuid: uuid))
     }
 }
 

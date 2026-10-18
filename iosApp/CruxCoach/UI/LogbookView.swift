@@ -9,6 +9,8 @@ struct LogbookView: View {
     @State private var cleaning: ScreenHost<BoardCleaningScreenModel, BoardCleaningScreenState>?
     @State private var showCleaning = false
     @State private var showFilters = false
+    /// The board link the climb detail needs (Android's logbook opens the detail on a tap).
+    @State private var ble: ScreenHost<BleScreenModel, BleScreenState>?
 
     var body: some View {
         Group {
@@ -35,6 +37,10 @@ struct LogbookView: View {
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
             model.refresh()
+            let bleModel = core.bleScreen
+            ble = ScreenHost(model: bleModel, initial: bleModel.currentState) { model, onState in
+                model.watch(onState: onState)
+            }
             let cleaningModel = core.makeBoardCleaningScreen()
             cleaning = ScreenHost(model: cleaningModel, initial: cleaningModel.currentState,
                                   subscribe: { model, onState in model.watch(onState: onState) },
@@ -71,14 +77,11 @@ struct LogbookView: View {
                 if ui.selectedCount > 0 {
                     selectionSection(model: model, ui: ui)
                 }
+                let pages: [String] = climbPages(ui)
                 ForEach(ui.days, id: \.date) { day in
                     Section {
                         ForEach(day.entries, id: \.uuid) { entry in
-                            LogbookRow(entry: entry) { model.toggleSelection(uuid: entry.uuid) }
-                                .swipeActions {
-                                    Button(LI("logbook_delete"), role: .destructive) { model.requestDelete(uuid: entry.uuid) }
-                                    Button(LI("logbook_edit")) { model.edit(uuid: entry.uuid) }
-                                }
+                            entryRow(model: model, entry: entry, pages: pages)
                         }
                     } header: {
                         Text("\(day.date) · \(LI("logbook_day_summary", Int(day.sendCount), Int(day.attemptCount)))")
@@ -118,6 +121,42 @@ struct LogbookView: View {
 }
 
 private extension LogbookView {
+    /// Android pages the detail through the logbook's distinct climbs.
+    func climbPages(_ ui: LogbookScreenState) -> [String] {
+        var seen = Set<String>()
+        var pages: [String] = []
+        for day in ui.days {
+            for entry in day.entries where seen.insert(entry.climbUuid).inserted {
+                pages.append(entry.climbUuid)
+            }
+        }
+        return pages
+    }
+
+    /// One entry: selection, tap to the climb detail, swipe to delete or edit.
+    func entryRow(model: LogbookScreenModel, entry: LogbookEntryUi, pages: [String]) -> some View {
+        LogbookRow(entry: entry, onToggleSelect: { model.toggleSelection(uuid: entry.uuid) }) {
+            climbDetail(model: model, entry: entry, pages: pages)
+        }
+        .swipeActions {
+            Button(LI("logbook_delete"), role: .destructive) { model.requestDelete(uuid: entry.uuid) }
+            Button(LI("logbook_edit")) { model.edit(uuid: entry.uuid) }
+        }
+    }
+
+    /// Android's logbook tap: the climb detail at the logged angle. A climb the
+    /// catalogue lacks opens on what the logbook rows carry (`LogbookOnlyClimbView`).
+    @ViewBuilder
+    func climbDetail(model: LogbookScreenModel, entry: LogbookEntryUi, pages: [String]) -> some View {
+        if let ble {
+            ClimbDetailView(core: core, uuid: entry.climbUuid, angle: entry.angle, ble: ble, pageUuids: pages) {
+                model.refresh()
+            }
+        } else {
+            ProgressView()
+        }
+    }
+
     /// Android's logbook actions: filters, then the options menu ("Clean holds",
     /// select all, delete selected).
     @ToolbarContentBuilder
@@ -316,9 +355,10 @@ private struct StatsSummary: View {
     }
 }
 
-private struct LogbookRow: View {
+private struct LogbookRow<Destination: View>: View {
     let entry: LogbookEntryUi
     let onToggleSelect: () -> Void
+    @ViewBuilder let destination: () -> Destination
 
     var body: some View {
         HStack {
@@ -331,7 +371,7 @@ private struct LogbookRow: View {
             .buttonStyle(.borderless)
             .accessibilityLabel(L("board_logbook_select_entry", entry.climbName))
             .accessibilityAddTraits(entry.isSelected ? AccessibilityTraits.isSelected : AccessibilityTraits())
-            details
+            NavigationLink { destination() } label: { details }
         }
     }
 
@@ -426,5 +466,104 @@ struct HistoryView: View {
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
         }
+    }
+}
+
+/// Android `LogbookOnlyClimbContent`: a climb the user logged but the catalogue
+/// lacks (e.g. a Kilter climb CruxCoach never mirrored) shows a friendly
+/// explanation and exactly what the logbook rows carry — no uuid diagnostic.
+struct LogbookOnlyClimbView: View {
+    let core: AppCore
+    let climbUuid: String
+    @State private var host: ScreenHost<LogbookOnlyClimbModel, LogbookOnlyClimbState>?
+
+    var body: some View {
+        Group {
+            if let host {
+                content(ui: host.state)
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            guard host == nil else { return }
+            let model = core.makeLogbookOnlyClimb()
+            host = ScreenHost(model: model, initial: model.currentState,
+                              subscribe: { model, onState in model.watch(onState: onState) },
+                              onClose: { model in model.close() })
+            model.open(climbUuid: climbUuid)
+        }
+    }
+
+    @ViewBuilder
+    private func content(ui: LogbookOnlyClimbState) -> some View {
+        if ui.status == "loading" {
+            ProgressView()
+        } else {
+            List {
+                Section { explanation(ui: ui) }
+                Section {
+                    ForEach(ui.entries, id: \.uuid) { entry in
+                        LogbookOnlyEntryRow(entry: entry)
+                    }
+                } header: {
+                    Text(L("error_climb_not_in_db_your_logs"))
+                }
+            }
+        }
+    }
+
+    private func explanation(ui: LogbookOnlyClimbState) -> some View {
+        let name: String = ui.climbName.isEmpty ? L("error_climb_not_in_db_unnamed") : ui.climbName
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(name).font(.title2.weight(.bold))
+            Label {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L("error_climb_not_in_db_title")).font(.headline)
+                    Text(L("error_climb_not_in_db_body")).font(.subheadline).foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "info.circle").foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityIdentifier("detail_logbook_only")
+    }
+}
+
+private struct LogbookOnlyEntryRow: View {
+    let entry: LogbookOnlyEntryUi
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(entry.isSend ? L("error_climb_not_in_db_log_send") : L("error_climb_not_in_db_log_attempt"))
+                    .font(.body.weight(.bold))
+                Text("\(entry.angle)°").font(.footnote).foregroundStyle(.secondary)
+                Text(Self.dateText(entry.date)).font(.footnote).foregroundStyle(.secondary)
+                if entry.isMirror {
+                    Image(systemName: "arrow.left.and.right")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(L("cd_mirrored"))
+                }
+            }
+            Text(L("error_climb_not_in_db_log_attempts", Int(entry.attempts)))
+                .font(.footnote).foregroundStyle(.secondary)
+            if !entry.comment.isEmpty {
+                Text("\"\(entry.comment)\"")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Android `formatDate`: the locale's medium date, the raw day when it does not parse.
+    static func dateText(_ isoDay: String) -> String {
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.dateFormat = "yyyy-MM-dd"
+        guard let date = parser.date(from: isoDay) else { return isoDay }
+        return date.formatted(date: .abbreviated, time: .omitted)
     }
 }

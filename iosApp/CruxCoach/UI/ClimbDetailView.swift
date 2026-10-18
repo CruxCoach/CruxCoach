@@ -24,6 +24,8 @@ struct ClimbDetailView: View {
     @State private var linkCopied = false
     @State private var loadedMoonPath = ""
     @State private var owner: ScreenHost<ClimbOwnerActionsModel, ClimbOwnerActionsState>?
+    /// Android's route playback: a route's sections one after another.
+    @State private var playback: ScreenHost<RoutePlaybackModel, RoutePlaybackUiState>?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -36,10 +38,16 @@ struct ClimbDetailView: View {
         }
         .task {
             guard host == nil else { return }
-            let model = core.makeDetailScreenWithRestTimer()
+            // The rest-timer detail plus route playback beside it.
+            let withPlayback = core.makeDetailWithRoutePlayback()
+            let model = withPlayback.detail
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
+            let routes = withPlayback.playback
+            playback = ScreenHost(model: routes, initial: routes.currentState,
+                                  subscribe: { model, onState in model.watch(onState: onState) },
+                                  onClose: { model in model.close() })
             model.openPaged(uuid: uuid, angle: angle, pageUuids: pageUuids)
             let timer = core.makeBoardRestTimer()
             rest = ScreenHost(model: timer, initial: timer.currentState,
@@ -53,6 +61,7 @@ struct ClimbDetailView: View {
         }
         .onDisappear {
             if host?.state.browserDirty == true { onChanged() }
+            playback?.close()
             host?.close()
             owner?.close()
             rest?.close()
@@ -221,6 +230,8 @@ struct ClimbDetailView: View {
                 if let rest { RestTimerBanner(model: rest.model, ui: rest.state) }
                 BoardCanvasView(imagePaths: ui.imagePaths, holds: ui.holds, aspect: CGFloat(ui.boardAspect))
                     .simultaneousGesture(pageSwipe(model: model))
+                    .overlay { routeCountdown }
+                routeControls
                 pager(model: model, ui: ui)
                 stats(model: model, ui: ui)
                 actions(model: model, ui: ui)
@@ -230,6 +241,22 @@ struct ClimbDetailView: View {
                 history(ui: ui)
             }
             .padding()
+        }
+        // Android's BleStatusArea on the detail: the running playlist's banner.
+        .safeAreaInset(edge: .top, spacing: 0) { SessionPlaylistBanner(core: core) }
+    }
+
+    /// Android's countdown over the board before route playback starts.
+    @ViewBuilder private var routeCountdown: some View {
+        if let playback {
+            RoutePlaybackCountdown(seconds: playback.state.countdownSeconds)
+        }
+    }
+
+    /// Android `RoutePlaybackControls`, only for a route (more than one section).
+    @ViewBuilder private var routeControls: some View {
+        if let playback, playback.state.isRoute {
+            RoutePlaybackControls(model: playback.model, ui: playback.state)
         }
     }
 
