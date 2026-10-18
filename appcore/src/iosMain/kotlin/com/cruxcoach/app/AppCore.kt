@@ -873,4 +873,34 @@ class AppCore private constructor(
             if (unitsCode == "us") com.cruxcoach.athlete.model.UnitSystem.IMPERIAL else com.cruxcoach.athlete.model.UnitSystem.METRIC,
         )
     }
+
+    // ── HealthKit (0.2.4) ─────────────────────────────────────────────
+    //
+    // The iOS counterpart of Android's optional Health Connect link. Swift
+    // attaches its HKHealthStore wrapper once at start; until then (or on a
+    // device without HealthKit) the link reports itself unavailable.
+
+    @kotlin.concurrent.Volatile private var healthStore: com.cruxcoach.app.health.HealthStore? = null
+
+    fun attachHealthStore(store: com.cruxcoach.app.health.HealthStore) { healthStore = store }
+
+    private val healthSync: com.cruxcoach.app.health.HealthSync? by lazy {
+        athlete?.let { com.cruxcoach.app.health.HealthSync(it, { healthStore }, platform.keyValues, Dispatchers.IO) }
+    }
+
+    /** The Apple Health card of the training settings; null when the athlete database is unavailable. */
+    fun makeHealthScreen(): com.cruxcoach.app.ui.HealthScreenModel? {
+        val service = athlete ?: return null
+        val sync = healthSync ?: return null
+        return com.cruxcoach.app.ui.HealthScreenModel(
+            com.cruxcoach.app.health.HealthSettingsPresenter(sync, service, MainScope(), Dispatchers.IO),
+        )
+    }
+
+    /** Today's sleep hint and climbing sync, and the nutrition export; null when unavailable. */
+    fun makeHealthActions(): com.cruxcoach.app.ui.HealthActions? {
+        val service = athlete ?: return null
+        val sync = healthSync ?: return null
+        return com.cruxcoach.app.ui.HealthActions(sync, service, Dispatchers.IO)
+    }
 }
