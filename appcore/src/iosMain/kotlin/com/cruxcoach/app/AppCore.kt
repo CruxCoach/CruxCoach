@@ -1189,4 +1189,17 @@ class AppCore private constructor(
         )
     }
 
+    /** Weekly review (Android `WeeklyReviewScreen`); micronutrients when the food tables opened. */
+    fun makeWeeklyReviewScreen(language: String): com.cruxcoach.app.ui.WeeklyReviewScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.WeeklyReviewScreenModel.create(service, nutritionCatalog, language, MainScope(), Dispatchers.IO)
+    }
+
+    /** Training history (Android `TrainingHistoryScreen`). */
+    fun makeTrainingHistoryScreen(): com.cruxcoach.app.ui.TrainingHistoryScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.TrainingHistoryScreenModel(
+            com.cruxcoach.app.coach.TrainingHistoryPresenter(service, MainScope(), Dispatchers.IO),
+        )
+    }
 }
