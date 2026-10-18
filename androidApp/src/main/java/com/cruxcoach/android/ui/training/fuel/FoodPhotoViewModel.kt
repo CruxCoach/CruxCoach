@@ -284,7 +284,11 @@ class FoodPhotoViewModel @Inject constructor(
         if (trimmed.isEmpty()) return
         work?.cancel()
         work = viewModelScope.launch {
-            val parsed = withContext(Dispatchers.Default) { MealTextParser.parse(trimmed) }
+            val matcher = bls.matcher()
+            // The food table tells which words are foods, so a list typed without separators is split (2026-10-19).
+            val parsed = withContext(Dispatchers.Default) {
+                MealTextParser.parse(trimmed) { name -> matcher.match(DetectedFood(name, name, 100.0), 1).firstOrNull()?.score ?: 0.0 }
+            }
             showReview(null, parsed.foods, seconds = 0, source = ReviewSource.TEXT_RULES, mealHint = parsed.meal, text = trimmed)
         }
     }
