@@ -291,6 +291,17 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
         }
     }
 
+    /**
+     * Android returns to the browser with the board the guided fix chose elsewhere (climb detail,
+     * Quantum rack): reload it, dropping the old board's hold search. A no-op while it is shown.
+     */
+    fun refreshIfBoardChanged() {
+        if (!presenter.storedBoardDiffers()) return
+        holdFilter = linkedSetOf()
+        zone = null
+        presenter.refresh()
+    }
+
     fun start() = presenter.start()
     fun close() = presenter.close()
     fun refresh() = presenter.refresh()

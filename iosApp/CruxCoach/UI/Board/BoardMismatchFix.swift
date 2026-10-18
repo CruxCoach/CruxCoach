@@ -94,3 +94,44 @@ struct BleMismatchPrompt: ViewModifier {
         }
     }
 }
+
+/// The board-match guard's refusal where one climb is lit (climb detail, Quantum rack):
+/// Android's send error for the mismatch and its "Fix board configuration" action.
+struct BoardFixRow: View {
+    let mismatch: BoardMismatchUi
+    let onFix: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L(BoardFixSupport.sendErrorKey(mismatch.kindCode)))
+                .font(.footnote)
+                .foregroundStyle(.red)
+            Button(L("board_mismatch_fix_action"), action: onFix)
+                .font(.footnote)
+                .accessibilityIdentifier("board_mismatch_fix_action")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+enum BoardFixSupport {
+    /// Android `BoardSendController.mismatchError`.
+    static func sendErrorKey(_ kindCode: String) -> String {
+        switch kindCode {
+        case "connectedBrand", "connectedModel": return "board_send_error_connected_board_mismatch"
+        case "activeSize": return "board_send_error_climb_off_board"
+        default: return "board_send_error_brand_mismatch"
+        }
+    }
+
+    /// The Quantum controller's refusals that are a board mismatch (its own guard ran first).
+    static func isMismatchError(_ key: String) -> Bool {
+        key == "board_send_error_connected_board_mismatch" || key == "board_send_error_brand_mismatch"
+    }
+
+    /// The catalogues the picker can offer outside the browser.
+    static func installedBrandWires(_ core: AppCore) -> [String] {
+        let rows: [SyncBrandRow] = core.syncScreen.currentState.rows
+        return rows.filter { $0.installed }.map { $0.brandWire }
+    }
+}

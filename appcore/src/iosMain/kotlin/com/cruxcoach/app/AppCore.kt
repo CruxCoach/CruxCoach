@@ -2124,4 +2124,45 @@ class AppCore private constructor(
         null
     }
 
+    // ── Browser polish (wave 5, polish2): board-mismatch fix from the climb detail and the Quantum rack ──
+
+    /** Android's board-match guard before lighting one climb (detail send, Quantum lamp). */
+    val boardFixCheck: com.cruxcoach.app.ui.BoardFixCheck by lazy {
+        com.cruxcoach.app.ui.BoardFixCheck(
+            climb = { uuid ->
+                (boardRepository.getClimbByUuid(uuid, BrowsePreferences.DEFAULT_ANGLE)
+                    ?: boardRepository.getClimbByUuidNormalized(uuid, BrowsePreferences.DEFAULT_ANGLE))
+                    ?.let { BoardBrand.fromWire(it.boardBrand) to it.layoutId }
+            },
+            activeBoard = { BrowsePreferences(platform.keyValues).boardSelection() },
+            connectedBrand = {
+                val link = boardConnection.state.value
+                val up = link.connection == com.cruxcoach.app.ble.ConnectionState.CONNECTED ||
+                    link.connection == com.cruxcoach.app.ble.ConnectionState.SENDING
+                if (up) link.connectedBoard?.boardBrand else null
+            },
+            connectedQuantum = { boardConnection.state.value.quantumModel },
+        )
+    }
+
+    /**
+     * The guided fix confirmed outside the browser (climb detail, Quantum rack): Android's picker
+     * stores the board; the browser reloads it when it shows again (`refreshIfBoardChanged`).
+     */
+    fun applyBoardChoice(option: BoardOption) {
+        try {
+            BrowsePreferences(platform.keyValues)
+                .setBoardSelection(option.brandWire, option.layoutId, option.productSizeId.takeIf { it > 0 }, null)
+        } catch (e: Exception) {
+            // A failed preference write leaves the board as it was; nothing may reach Swift.
+        }
+    }
+
+    /** The configured board's family, for the connection sheet's guided fix outside the browser. */
+    fun activeBoardBrandWire(): String = try {
+        BrowsePreferences(platform.keyValues).boardSelection().boardBrand
+    } catch (e: Exception) {
+        ""
+    }
+
 }

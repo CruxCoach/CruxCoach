@@ -107,7 +107,12 @@ struct BrowserView: View {
             .overlay {
                 if ui.loadState == "loading" && ui.climbs.isEmpty { ProgressView() }
             }
-            .onAppear { rootVisible = true; refreshTour() }
+            .onAppear {
+                rootVisible = true
+                refreshTour()
+                // The guided board fix may have stored another board from a climb detail.
+                model.refreshIfBoardChanged()
+            }
             .onDisappear { rootVisible = false }
             // Android's BleStatusArea: the board link's chip under the playlist strip, nearby phones below it.
             .modifier(NearbyStatusInset(core: core, ble: ble))

@@ -34,6 +34,12 @@ struct ClimbDetailView: View {
     @State private var tour: BrowserTourModel?
     @State private var tourStep = ""
     @State private var anchors = TourAnchors()
+    /// Android's board-match guard refused the last send on this page: its evidence for the guided fix.
+    @State private var boardFix: BoardMismatchUi?
+    @State private var boardFixUuid = ""
+    @State private var showBoardFix = false
+    /// A guided fix was confirmed in a sheet: Android then returns to the board browser.
+    @State private var leaveAfterFix = false
 
     var body: some View {
         Group {
@@ -227,7 +233,10 @@ struct ClimbDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showBle) { NavigationStack { BleView(ble: ble) } }
+        .sheet(isPresented: $showBle) { NavigationStack { BleView(ble: ble, fix: bleFixRoute) } }
+        .modifier(DetailBoardFixLayer(core: core, mismatch: boardFix, showFix: $showBoardFix,
+                                      showBle: showBle, showQuantumLayers: showQuantumLayers,
+                                      leaveAfterFix: leaveAfterFix, onLeave: { leaveForBrowser() }))
         .modifier(DetailExtraSheets(core: core, uuid: ui.uuid, angle: ui.angle,
                                     showLists: $showLists, editorTarget: $editorTarget, linkCopied: linkCopied))
         .modifier(DetailRestTimerSheet(rest: rest, isPresented: $showRestStart))
@@ -241,6 +250,38 @@ struct ClimbDetailView: View {
                                   visible: tourVisible(ui),
                                   onQuickLogged: { advanceTour(from: "log") },
                                   onMove: { refreshTour() }))
+    }
+
+    /// Android's connection sheet in the detail offers the guided fix too, and leaves for the browser.
+    private var bleFixRoute: BoardMismatchRoute {
+        BoardMismatchRoute(core: core, activeBrandWire: core.activeBoardBrandWire(),
+                           brandWires: BoardFixSupport.installedBrandWires(core),
+                           onPick: { option in
+                               core.applyBoardChoice(option: option)
+                               leaveAfterFix = true
+                               showBle = false
+                           })
+    }
+
+    /// Android `onNavigateToBoardBrowser` after the guided fix: the browser reloads the new board.
+    private func leaveForBrowser() {
+        boardFix = nil
+        leaveAfterFix = false
+        onChanged()
+        dismiss()
+    }
+
+    /// Android BoardSendController: the board-match guard runs before every send.
+    private func sendChecked(model: DetailScreenModel) {
+        let current: String = host?.state.uuid ?? uuid
+        let mismatch: BoardMismatchUi = core.boardFixCheck.forClimb(climbUuid: current)
+        if mismatch.active {
+            boardFix = mismatch
+            boardFixUuid = current
+            return
+        }
+        boardFix = nil
+        model.sendToBoard()
     }
 
     /// Android hides the spotlight under the detail's sheets and dialogs.
@@ -277,6 +318,8 @@ struct ClimbDetailView: View {
     /// A loaded climb (first open or a new page): fill the note editor once and
     /// point the owner actions at it.
     private func pageChanged(ui: DetailScreenState) {
+        // A refused send belongs to the climb it was raised on (Android resets it on a page switch).
+        if boardFix != nil && boardFixUuid != ui.uuid { boardFix = nil }
         if ui.status == "ready" { advanceTour(from: "open") }
         guard ui.status == "ready", noteUuid != ui.uuid else { return }
         let opened: Bool = !noteUuid.isEmpty
@@ -289,7 +332,7 @@ struct ClimbDetailView: View {
     private func lightUpButton(model: DetailScreenModel) -> some View {
         Button {
             advanceTour(from: "project")
-            if ble.state.connected { model.sendToBoard() } else { showBle = true }
+            if ble.state.connected { sendChecked(model: model) } else { showBle = true }
         } label: {
             Label(ble.state.connected ? LI("detail_light_up") : L("board_ble_title"), systemImage: "lightbulb.max")
                 .frame(maxWidth: .infinity)
@@ -310,7 +353,8 @@ struct ClimbDetailView: View {
         .controlSize(.large)
         .accessibilityIdentifier("detail_quantum_layers")
         .modifier(QuantumLayersSheetModifier(core: core, ble: ble, climbUuid: ui.uuid, angle: ui.angle,
-                                             isPresented: $showQuantumLayers))
+                                             isPresented: $showQuantumLayers,
+                                             onBoardFixed: { leaveAfterFix = true }))
     }
 
     private func sendRequestMessage(_ code: String) -> String {
@@ -431,7 +475,9 @@ struct ClimbDetailView: View {
             } else {
                 lightUpButton(model: model)
             }
-            if ui.sendRequestFailure != "none" {
+            if let boardFix {
+                BoardFixRow(mismatch: boardFix) { showBoardFix = true }
+            } else if ui.sendRequestFailure != "none" {
                 Text(sendRequestMessage(ui.sendRequestFailure)).font(.footnote).foregroundStyle(.red)
             } else if ble.state.sendResult != "none" && ble.state.sendResult != "ok" {
                 Text(LI("detail_send_failed", ble.state.sendResult)).font(.footnote).foregroundStyle(.red)
@@ -503,6 +549,39 @@ struct ClimbDetailView: View {
                 }
             }
         }
+    }
+}
+
+/// Android's guided board fix from the detail (`BoardPickerDialog` with the send's mismatch):
+/// confirming or closing it clears the refusal and returns to the board browser, as on Android.
+/// A guided fix confirmed in the connection sheet or the Quantum rack leaves once that sheet is down.
+private struct DetailBoardFixLayer: ViewModifier {
+    let core: AppCore
+    let mismatch: BoardMismatchUi?
+    @Binding var showFix: Bool
+    let showBle: Bool
+    let showQuantumLayers: Bool
+    let leaveAfterFix: Bool
+    let onLeave: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $showFix, onDismiss: onLeave) { picker }
+            .onChange(of: showBle) { _, open in leaveIfFixed(open) }
+            .onChange(of: showQuantumLayers) { _, open in leaveIfFixed(open) }
+    }
+
+    private var picker: some View {
+        NavigationStack {
+            BoardPickerView(core: core, brandWires: BoardFixSupport.installedBrandWires(core), onPick: { option in
+                core.applyBoardChoice(option: option)
+                showFix = false
+            }, mismatch: mismatch)
+        }
+    }
+
+    private func leaveIfFixed(_ open: Bool) {
+        if !open && leaveAfterFix { onLeave() }
     }
 }
 

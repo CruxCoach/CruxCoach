@@ -9,10 +9,15 @@ struct QuantumLayersSheet: View {
     let ble: ScreenHost<BleScreenModel, BleScreenState>
     let climbUuid: String
     let angle: Int32
+    /// The guided board fix was confirmed here; the detail then returns to the browser, as on Android.
+    var onBoardFixed: () -> Void = {}
 
     @State private var host: ScreenHost<QuantumLayersScreenModel, QuantumLayersScreenState>?
     @State private var showBle = false
     @State private var removeSlot: Int32 = -1
+    /// The board-match guard's evidence for "Fix board configuration" after a refused lamp.
+    @State private var fix: BoardMismatchUi?
+    @State private var showFix = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -36,6 +41,31 @@ struct QuantumLayersSheet: View {
         }
         .onDisappear { host?.close() }
         .sheet(isPresented: $showBle) { NavigationStack { BleView(ble: ble) } }
+        .navigationDestination(isPresented: $showFix) { fixPicker }
+    }
+
+    /// Android's guided picker with the refused climb's evidence; a confirmed board closes the rack.
+    @ViewBuilder
+    private var fixPicker: some View {
+        if let fix {
+            BoardPickerView(core: core, brandWires: BoardFixSupport.installedBrandWires(core), onPick: { option in
+                core.applyBoardChoice(option: option)
+                onBoardFixed()
+                dismiss()
+            }, mismatch: fix)
+        }
+    }
+
+    /// The controller refused the lamp for a board mismatch: resolve the guided fix's evidence now.
+    private func openFix(model: QuantumLayersScreenModel) {
+        let mismatch: BoardMismatchUi = core.boardFixCheck.forClimb(climbUuid: climbUuid)
+        guard mismatch.active else {
+            // The link or the board changed since: the refusal no longer applies.
+            model.dismissResult()
+            return
+        }
+        fix = mismatch
+        showFix = true
     }
 
     private func content(model: QuantumLayersScreenModel, ui: QuantumLayersScreenState) -> some View {
@@ -152,6 +182,11 @@ struct QuantumLayersSheet: View {
         } else if !ui.errorKey.isEmpty {
             Text(L(ui.errorKey)).font(.footnote).foregroundStyle(.red)
                 .onTapGesture { model.dismissResult() }
+            if BoardFixSupport.isMismatchError(ui.errorKey) {
+                Button(L("board_mismatch_fix_action")) { openFix(model: model) }
+                    .font(.footnote)
+                    .accessibilityIdentifier("board_mismatch_fix_action")
+            }
         } else if ui.success {
             Label(L("board_layer_confirmed"), systemImage: "checkmark.circle").foregroundStyle(.green)
         }
@@ -427,11 +462,12 @@ struct QuantumLayersSheetModifier: ViewModifier {
     let climbUuid: String
     let angle: Int32
     @Binding var isPresented: Bool
+    var onBoardFixed: () -> Void = {}
 
     func body(content: Content) -> some View {
         content.sheet(isPresented: $isPresented) {
             NavigationStack {
-                QuantumLayersSheet(core: core, ble: ble, climbUuid: climbUuid, angle: angle)
+                QuantumLayersSheet(core: core, ble: ble, climbUuid: climbUuid, angle: angle, onBoardFixed: onBoardFixed)
             }
         }
     }

@@ -142,6 +142,18 @@ class BoardBrowserPresenter(
         reloadBoard(force = false)
     }
 
+    /**
+     * The stored board is not the one shown: another screen (the detail's guided fix) changed it.
+     * False before the first load, which reads the stored board anyway.
+     */
+    internal fun storedBoardDiffers(): Boolean {
+        if (!filtersLoaded) return false
+        val sel = try { prefs.boardSelection() } catch (e: Exception) { return false }
+        val s = _state.value
+        return s.filter.boardBrand != sel.boardBrand || s.filter.layoutId != sel.layoutId ||
+            s.board.productSizeId != sel.productSizeId
+    }
+
     private fun reloadBoard(force: Boolean) {
         boardJob?.cancel()
         boardJob = scope.launch {
