@@ -757,6 +757,22 @@ class AppCore private constructor(
         )
     }
 
+    /** Injuries and pauses (Android `InjuriesScreen`). */
+    fun makeInjuriesScreen(): com.cruxcoach.app.ui.InjuriesScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.InjuriesScreenModel(
+            com.cruxcoach.app.progress.InjuriesPresenter(service, MainScope(), Dispatchers.IO),
+        )
+    }
+
+    /** Training settings (Android `AthleteSettingsScreen`). */
+    fun makeAthleteSettingsScreen(language: String): com.cruxcoach.app.ui.AthleteSettingsScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.AthleteSettingsScreenModel(
+            com.cruxcoach.app.progress.AthleteSettingsPresenter(service, MainScope(), Dispatchers.IO), language,
+        )
+    }
+
     companion object {
         fun start(
             aead: AeadCipher,

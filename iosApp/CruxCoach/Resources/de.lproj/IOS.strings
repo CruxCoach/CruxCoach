@@ -381,3 +381,4 @@
 "health_privacy" = "Die Verbindung selbst lädt nichts hoch: Was CruxCoach liest, bleibt in seiner verschlüsselten Datenbank auf diesem iPhone (und ist nur Teil deines verschlüsselten Backups, wenn du das Backup eingeschaltet hast), und was es schreibt, geht nur an Apple Health auf diesem iPhone.";
 "health_sleep_chip" = "Aus Apple Health: %1$@ h → %2$ld";
 "gym_board_not_installed" = "Die Daten dieses Boards sind noch nicht auf diesem iPhone. Lade sie zuerst unter „Board-Daten synchronisieren“ herunter.";
+"training_health_connect_unavailable" = "Health Connect ist ein Android-Dienst: Schlaf, Klettertage und Mahlzeiten werden auf dem iPhone noch nicht aus anderen Apps gelesen, und eine Kraftmessung lässt sich hier nicht verbinden.";

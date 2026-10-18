@@ -66,7 +66,9 @@ private struct BodyContent: View {
                         measurementsSection
                         strengthSection
                         recentSection
-                        Text(L("trb_settings_hint")).font(.caption).foregroundStyle(.secondary)
+                        NavigationLink { ProgressSettingsView(core: core) } label: {
+                            Text(L("trb_settings_hint")).font(.caption)
+                        }
                         Spacer(minLength: 72)
                     }
                     .padding(.horizontal, 16)
