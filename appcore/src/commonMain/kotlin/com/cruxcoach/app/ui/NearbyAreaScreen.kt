@@ -4,6 +4,7 @@ import com.cruxcoach.app.nearby.NearbyBoard
 import com.cruxcoach.app.nearby.NearbyBoardResolver
 import com.cruxcoach.app.nearby.OnBoardSource
 import com.cruxcoach.app.nearby.OwnSession
+import com.cruxcoach.app.sharedsession.ClimbUuidBytes
 import com.cruxcoach.app.sharedsession.NearbySessionUi
 import com.cruxcoach.app.sharedsession.ParticipantPhase
 import com.cruxcoach.app.sharedsession.SharedSessionsPresenter
@@ -131,6 +132,15 @@ class NearbyAreaModel internal constructor(
         }
     }
 
+    /**
+     * Bluetooth may just have been allowed (the board sheet's prompt, the Settings app): a
+     * visible board screen starts scanning now instead of on its next appearance (Android's
+     * `retryScan`).
+     */
+    fun permissionMayHaveChanged() {
+        if (shownScreens > 0 && scanAllowed()) presenter.startPassiveScan()
+    }
+
     /** Joins a row of [NearbyAreaState.playlists] (Android's `SessionHostItem` tap). */
     fun join(identifier: String) {
         val phase = presenter.participant.state.value.phase
@@ -139,6 +149,15 @@ class NearbyAreaModel internal constructor(
 
     /** The mini player's one shortcut: asks the host for the next climb. */
     fun next() = presenter.participant.next()
+
+    /** Joined, and [uuid] is an id the session protocol can carry (Android's "+" on the detail). */
+    fun canAdd(uuid: String): Boolean =
+        presenter.participant.state.value.phase == ParticipantPhase.JOINED && ClimbUuidBytes.parse(uuid) != null
+
+    /** Asks the host to append the climb on screen; the host decides and broadcasts the queue. */
+    fun add(uuid: String, angle: Int) {
+        if (canAdd(uuid)) presenter.participant.addClimb(uuid, angle)
+    }
 
     private fun map(s: SharedSessionsSnapshot): NearbyAreaState {
         val p = s.participant

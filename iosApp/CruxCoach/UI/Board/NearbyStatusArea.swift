@@ -18,30 +18,41 @@ struct NearbyClimbTarget: Hashable {
 struct NearbyStatusInset: ViewModifier {
     let core: AppCore
     let ble: ScreenHost<BleScreenModel, BleScreenState>?
-    /// The climb on screen (the detail page): not repeated as "on the board". Empty elsewhere.
+    /// The climb on screen (the detail page): not repeated as "on the board", and the one the
+    /// joined playlist's "+" adds. Empty elsewhere.
     let currentClimbUuid: String
+    let currentClimbAngle: Int32
     let onOpenClimb: ((String, Int32) -> Void)?
     @State private var target: NearbyClimbTarget? = nil
+    @Environment(\.scenePhase) private var scenePhase
 
     init(core: AppCore,
          ble: ScreenHost<BleScreenModel, BleScreenState>?,
          currentClimbUuid: String = "",
+         currentClimbAngle: Int32 = 0,
          onOpenClimb: ((String, Int32) -> Void)? = nil) {
         self.core = core
         self.ble = ble
         self.currentClimbUuid = currentClimbUuid
+        self.currentClimbAngle = currentClimbAngle
         self.onOpenClimb = onOpenClimb
     }
 
     func body(content: Content) -> some View {
-        content
+        let adapter: String = ble?.state.adapter ?? ""
+        return content
             .safeAreaInset(edge: .top, spacing: 0) {
-                NearbyStatusArea(core: core, currentClimbUuid: currentClimbUuid,
+                NearbyStatusArea(core: core, currentClimbUuid: currentClimbUuid, currentClimbAngle: currentClimbAngle,
                                  canOpen: onOpenClimb != nil || ble != nil,
                                  onOpenClimb: { uuid, angle in openClimb(uuid, angle) })
             }
             .navigationDestination(item: $target) { picked in
                 destination(picked)
+            }
+            // Bluetooth may just have been allowed: the board sheet's prompt, or the Settings app.
+            .onChange(of: adapter) { _, _ in core.nearbyArea.permissionMayHaveChanged() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { core.nearbyArea.permissionMayHaveChanged() }
             }
     }
 
@@ -66,6 +77,7 @@ struct NearbyStatusInset: ViewModifier {
 struct NearbyStatusArea: View {
     let core: AppCore
     let currentClimbUuid: String
+    let currentClimbAngle: Int32
     let canOpen: Bool
     let onOpenClimb: (String, Int32) -> Void
 
@@ -111,7 +123,8 @@ struct NearbyStatusArea: View {
                                   currentClimbUuid: currentClimbUuid, canOpen: canOpen,
                                   onOpenClimb: onOpenClimb, onCollapse: { expanded = false })
             } else if host.state.inSession {
-                NearbySessionChip(core: core, model: host.model, ui: host.state, currentClimbUuid: currentClimbUuid)
+                NearbySessionChip(core: core, model: host.model, ui: host.state,
+                                  currentClimbUuid: currentClimbUuid, currentClimbAngle: currentClimbAngle)
             } else {
                 NearbySummaryChip(ui: host.state, currentClimbUuid: currentClimbUuid) { expanded = true }
             }
@@ -242,12 +255,14 @@ private struct NearbySummaryChip: View {
     }
 }
 
-/// Android `SessionChipContent` for the joined playlist: position, climb, Next; a tap opens it.
+/// Android `SessionChipContent` for the joined playlist: position, climb, "+" on a climb's
+/// detail, Next; a tap opens it.
 private struct NearbySessionChip: View {
     let core: AppCore
     let model: NearbyAreaModel
     let ui: NearbyAreaState
     let currentClimbUuid: String
+    let currentClimbAngle: Int32
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -258,6 +273,7 @@ private struct NearbySessionChip: View {
                     titleRow
                 }
                 .buttonStyle(.plain)
+                addButton
                 Button { model.next() } label: {
                     Image(systemName: "forward.end.fill").frame(width: 32, height: 32)
                 }
@@ -276,6 +292,18 @@ private struct NearbySessionChip: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
         .accessibilityIdentifier("nearby_session_chip")
+    }
+
+    /// Android's "+" (the detail's `onAddToQueue`): asks the host to append the climb on screen.
+    @ViewBuilder
+    private var addButton: some View {
+        if !currentClimbUuid.isEmpty && ui.sessionPhaseCode == "joined" && model.canAdd(uuid: currentClimbUuid) {
+            Button { model.add(uuid: currentClimbUuid, angle: currentClimbAngle) } label: {
+                Image(systemName: "plus").frame(width: 32, height: 32)
+            }
+            .foregroundStyle(Color.orange)
+            .accessibilityLabel(L("cd_add"))
+        }
     }
 
     private var titleRow: some View {
@@ -423,34 +451,42 @@ private struct NearbyOnBoardRow: View {
 
     var body: some View {
         let openable: Bool = canOpen && !ui.onBoardOpenUuid.isEmpty
-        Button {
-            onOpenClimb(ui.onBoardOpenUuid, ui.onBoardAngle)
-        } label: {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L(ui.onBoardStillProjected ? "ble_on_board" : "ble_last_climb"))
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.orange)
-                    Text(NearbyStatusText.climbName(ui))
-                        .font(.body.weight(.semibold))
-                    Text(NearbyStatusText.panelDetail(ui))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 4)
-                if openable {
-                    Image(systemName: "chevron.right")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(L("cd_open"))
-                }
+        if openable {
+            Button {
+                onOpenClimb(ui.onBoardOpenUuid, ui.onBoardAngle)
+            } label: {
+                row(openable: true)
             }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("nearby_on_board")
+        } else {
+            // Not in this phone's catalogue: nothing to open, but still worth knowing.
+            row(openable: false)
         }
-        .buttonStyle(.plain)
-        .disabled(!openable)
-        .accessibilityIdentifier("nearby_on_board")
+    }
+
+    private func row(openable: Bool) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L(ui.onBoardStillProjected ? "ble_on_board" : "ble_last_climb"))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.orange)
+                Text(NearbyStatusText.climbName(ui))
+                    .font(.body.weight(.semibold))
+                Text(NearbyStatusText.panelDetail(ui))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            if openable {
+                Image(systemName: "chevron.right")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(L("cd_open"))
+            }
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
     }
 }
 

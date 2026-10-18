@@ -5,6 +5,7 @@ import com.cruxcoach.app.nearby.NearbyClimbProtocol
 import com.cruxcoach.app.sharedsession.ClimbLabel
 import com.cruxcoach.app.sharedsession.ClimbLookup
 import com.cruxcoach.app.sharedsession.QueueItem
+import com.cruxcoach.app.sharedsession.SessionCommand
 import com.cruxcoach.app.sharedsession.SessionGattUuids
 import com.cruxcoach.app.sharedsession.SessionQueueProtocol
 import com.cruxcoach.app.sharedsession.SharedSessionParticipantTest
@@ -77,6 +78,23 @@ class NearbyAreaModelTest {
         assertFalse(central.scanning)
         assertFalse(model.currentState.scanning)
         assertFalse(model.currentState.hasContent(""))
+    }
+
+    @Test
+    fun `Bluetooth allowed while a board screen shows starts the scan there`() {
+        allowed = false
+        shown()
+        allowed = true
+        model.permissionMayHaveChanged()
+        settle()
+        assertTrue(central.scanning)
+        // Without a visible board screen nothing starts.
+        model.screenHidden()
+        advance(NearbyAreaModel.STOP_GRACE_MS)
+        assertFalse(central.scanning)
+        model.permissionMayHaveChanged()
+        settle()
+        assertFalse(central.scanning)
     }
 
     @Test
@@ -205,6 +223,26 @@ class NearbyAreaModelTest {
         settle()
         assertEquals(1, central.writes.size)
         assertEquals(SessionGattUuids.QUEUE_COMMAND, central.writes.single().characteristic)
+        val next = SessionQueueProtocol.decodeCommandRequest(central.writes.single().bytes.toByteArray())
+        assertEquals(SessionCommand.Next, next?.command)
+
+        // The detail's "+" asks the host to append the climb on screen.
+        central.writes.clear()
+        assertTrue(model.canAdd(C_CATALOGUE))
+        assertFalse(model.canAdd("not-a-uuid"))
+        model.add(C_CATALOGUE, 35)
+        settle()
+        val add = SessionQueueProtocol.decodeCommandRequest(central.writes.single().bytes.toByteArray())
+        assertEquals(SessionCommand.Add(C, 35), add?.command)
+    }
+
+    @Test
+    fun `nothing can be added without a joined playlist`() {
+        shown()
+        assertFalse(model.canAdd(C_CATALOGUE))
+        model.add(C_CATALOGUE, 35)
+        settle()
+        assertTrue(central.writes.isEmpty())
     }
 
     @Test

@@ -9,6 +9,7 @@ import platform.CoreBluetooth.CBAdvertisementDataLocalNameKey
 import platform.CoreBluetooth.CBAdvertisementDataManufacturerDataKey
 import platform.CoreBluetooth.CBCentralManager
 import platform.CoreBluetooth.CBCentralManagerDelegateProtocol
+import platform.CoreBluetooth.CBCentralManagerOptionShowPowerAlertKey
 import platform.CoreBluetooth.CBCentralManagerScanOptionAllowDuplicatesKey
 import platform.CoreBluetooth.CBCharacteristic
 import platform.CoreBluetooth.CBCharacteristicPropertyIndicate
@@ -90,7 +91,23 @@ class CoreBluetoothCentral() : BleCentral {
     override fun activate() = onQueue { ensureManager() }
 
     private fun ensureManager(): CBCentralManager =
-        manager ?: CBCentralManager(delegate = centralDelegate, queue = queue).also { manager = it }
+        manager ?: createManager().also { manager = it }
+
+    /**
+     * The nearby central also starts on its own from the board screens; it must not raise the
+     * system's "turn on Bluetooth" alert there (its screens say so themselves). The board
+     * connection's central keeps the system default.
+     */
+    private fun createManager(): CBCentralManager =
+        if (reportManufacturerData) {
+            CBCentralManager(
+                delegate = centralDelegate,
+                queue = queue,
+                options = mapOf<Any?, Any?>(CBCentralManagerOptionShowPowerAlertKey to false),
+            )
+        } else {
+            CBCentralManager(delegate = centralDelegate, queue = queue)
+        }
 
     override fun startScan() = onQueue {
         val central = ensureManager()
