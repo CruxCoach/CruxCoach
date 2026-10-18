@@ -170,7 +170,7 @@ struct QuantumLayersSheet: View {
             Circle()
                 .fill(row.plannedArgb == 0 ? Color.secondary.opacity(0.25) : Color(argb: row.plannedArgb))
                 .frame(width: 22, height: 22)
-                .overlay(Text("\(number)").font(.caption2.bold()).foregroundStyle(.black))
+                .overlay { Text("\(number)").font(.caption2.bold()).foregroundStyle(.black) }
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.climbName.isEmpty ? L("board_layer_number", number) : row.climbName)
                     .fontWeight(row.isCurrentClimb ? .bold : .regular)

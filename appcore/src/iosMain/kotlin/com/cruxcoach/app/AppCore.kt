@@ -2055,6 +2055,12 @@ class AppCore private constructor(
     private fun quantumAwareBrowser(model: BrowserScreenModel): BrowserScreenModel =
         model.also { it.followQuantumLayers(quantumLayerController.browserLayers) }
 
+    /**
+     * Android CruxCoachApp.onStart: a connected Quantum controller's roster older than its
+     * refresh interval is read again. Lead wiring: call from `AppEnvironment.refreshInForeground()`.
+     */
+    fun refreshQuantumOnForeground() = boardConnection.refreshQuantumOnForeground()
+
     /** The layer rack and lamp for one Quantum climb (Android's detail rack). */
     fun makeQuantumLayersScreen(): com.cruxcoach.app.ui.QuantumLayersScreenModel = com.cruxcoach.app.ui.QuantumLayersScreenModel(
         controller = quantumLayerController,

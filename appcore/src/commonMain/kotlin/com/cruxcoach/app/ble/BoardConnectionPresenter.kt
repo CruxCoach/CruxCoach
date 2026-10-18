@@ -227,6 +227,9 @@ class BoardConnectionPresenter(
         }
     }
 
+    /** Android refreshes a stale Quantum roster on every return to the foreground. */
+    fun refreshQuantumOnForeground() = controller.refreshQuantumStateOnForeground()
+
     /** The connection as the Quantum layer controller needs it; writes run on this presenter's controller. */
     internal val quantumLink: com.cruxcoach.app.quantum.QuantumLink = object : com.cruxcoach.app.quantum.QuantumLink {
         override val connection: StateFlow<BoardConnectionUiState> get() = state
