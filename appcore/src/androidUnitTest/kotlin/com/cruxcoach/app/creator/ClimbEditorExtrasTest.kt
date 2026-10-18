@@ -332,6 +332,12 @@ class ClimbEditorExtrasTest {
         editor.toggleHold(4)
         awaitValue(mapOf(5 to 1f)) { editor.state.value.heatmap }
 
+        // A draft loaded while the overlay is on reseeds it (the loaded editor holds the start brush).
+        val draft = ClimbEditorState(selectedHolds = mapOf(7 to HoldRole.FINISH), name = "Andere", angle = 40)
+        val draftUuid = assertNotNull(db { drafts().saveDraft(draft, layoutId = 1L) })
+        editor.loadDraft(draftUuid)
+        awaitValue(mapOf(6 to 1f)) { editor.state.value.heatmap }
+
         editor.toggleHeatmap()
         assertFalse(editor.state.value.heatmapEnabled)
         editor.close()

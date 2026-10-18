@@ -987,6 +987,8 @@ class ClimbEditor(
                 validationIssues = validate(seeded),
             )
         }
+        // A loaded draft is a new seed for an open heatmap.
+        recomputeHeatmap()
     }
 
     private fun defaultBrushFor(brandWire: String): Int =
