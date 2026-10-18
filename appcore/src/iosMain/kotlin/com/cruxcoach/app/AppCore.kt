@@ -731,6 +731,24 @@ class AppCore private constructor(
         com.cruxcoach.app.ui.CustomExerciseScreenModel(com.cruxcoach.app.library.CustomExercisePresenter(it, Dispatchers.IO))
     }
 
+    // ── Training: progress and body ───────────────────────────────────
+
+    /** The Progress tab (Android `StatsHubScreen`). */
+    fun makeProgressScreen(language: String): com.cruxcoach.app.ui.ProgressScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.ProgressScreenModel(
+            com.cruxcoach.app.progress.ProgressPresenter(service, MainScope(), Dispatchers.IO), language,
+        )
+    }
+
+    /** The body page (Android `BodyScreen`). */
+    fun makeBodyScreen(language: String): com.cruxcoach.app.ui.BodyScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.BodyScreenModel(
+            com.cruxcoach.app.progress.BodyPresenter(service, MainScope(), Dispatchers.IO), language,
+        )
+    }
+
     companion object {
         fun start(
             aead: AeadCipher,

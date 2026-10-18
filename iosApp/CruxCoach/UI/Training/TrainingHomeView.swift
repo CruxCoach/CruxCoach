@@ -37,7 +37,7 @@ struct TrainingHomeView: View {
                 }
                     .tabItem { Label(L("tr_nav_fuel"), systemImage: "fork.knife") }
                     .tag(Tab.nutrition)
-                TrainingProgressPlaceholder(onClose: onClose)
+                TrainingProgressView(core: core, onClose: onClose)
                     .tabItem { Label(L("tr_tab_progress"), systemImage: "chart.line.uptrend.xyaxis") }
                     .tag(Tab.progress)
             }
