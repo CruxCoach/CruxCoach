@@ -1,9 +1,11 @@
 package com.cruxcoach.app.progress
 
+import com.cruxcoach.app.notify.NotificationRoutes
 import com.cruxcoach.app.notify.NotificationScheduler
 import com.cruxcoach.app.training.TrTextCheck
 import com.cruxcoach.app.training.TrainingKit
 import com.cruxcoach.app.ui.AthleteSettingsScreenModel
+import com.cruxcoach.app.ui.TrText
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
@@ -64,9 +66,17 @@ class BodyReminderPlanTest {
     private class Recording : NotificationScheduler {
         val scheduled = linkedMapOf<String, Pair<Int, String>>()
         val cancelled = mutableSetOf<String>()
+        val routes = mutableMapOf<String, String>()
+        val texts = mutableListOf<TrText>()
         var grant = true
         override fun schedule(id: String, afterSeconds: Int, titleKey: String, bodyKey: String) {
             scheduled[id] = afterSeconds to titleKey; cancelled -= id
+        }
+        override fun scheduleText(id: String, afterSeconds: Int, title: TrText, body: TrText, route: String) {
+            scheduled[id] = afterSeconds to title.key; cancelled -= id
+            routes[id] = route
+            texts += title
+            texts += body
         }
         override fun cancel(id: String) { scheduled -= id; cancelled += id }
         override fun requestPermission(onResult: (Boolean) -> Unit) = onResult(grant)
@@ -98,6 +108,8 @@ class BodyReminderPlanTest {
         // Default: Mondays at 07:30; the first one is next Monday, 2026-10-19.
         val first = host.scheduled.getValue(BodyReminderPlan.WEIGH_ID + "0")
         assertEquals("trr_notify_weigh_title", first.second)
+        // Android opens the body page from the reminder (`navigate_to` = "body").
+        assertEquals(NotificationRoutes.BODY, host.routes.getValue(BodyReminderPlan.WEIGH_ID + "0"))
         val expected = LocalDateTime(LocalDate(2026, 10, 19), LocalTime(7, 30)).toInstant(zone).toEpochMilliseconds()
         assertEquals(((expected - fixedNow) / 1000).toInt(), first.first)
         model.toggleWeighDay(3)
@@ -108,6 +120,9 @@ class BodyReminderPlanTest {
         model.setMeasureReminder(true)
         model.setMeasureDay(40)
         kit.until("measure") { kit.repo.profile().measureReminderDayOfMonth == 28 && host.scheduled.containsKey(BodyReminderPlan.MEASURE_ID + "0") }
+        assertEquals("trr_notify_measure_title", host.scheduled.getValue(BodyReminderPlan.MEASURE_ID + "0").second)
+        assertEquals(NotificationRoutes.BODY, host.routes.getValue(BodyReminderPlan.MEASURE_ID + "0"))
+        host.texts.toList().forEach { TrTextCheck.check(it, "body reminder") }
         // The page follows the stored profile once the presenter has re-read it.
         kit.until("page state") { p.state.value.profile.let { it.weighReminderEnabled && it.measureReminderEnabled && it.measureReminderDayOfMonth == 28 } }
         val s = model.currentState

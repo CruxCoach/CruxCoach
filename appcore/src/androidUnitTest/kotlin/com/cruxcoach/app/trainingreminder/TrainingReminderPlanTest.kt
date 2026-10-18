@@ -1,8 +1,10 @@
 package com.cruxcoach.app.trainingreminder
 
+import com.cruxcoach.app.notify.NotificationRoutes
 import com.cruxcoach.app.notify.NotificationScheduler
 import com.cruxcoach.app.training.TrTextCheck
 import com.cruxcoach.app.training.TrainingKit
+import com.cruxcoach.app.ui.TrText
 import com.cruxcoach.app.ui.TrainingReminderSettingsModel
 import com.cruxcoach.app.ui.TrainingRemindersModel
 import com.cruxcoach.athlete.logic.BuiltinRoutines
@@ -11,6 +13,7 @@ import com.cruxcoach.athlete.model.PLAN_BOARD
 import com.cruxcoach.athlete.model.PLAN_REST
 import com.cruxcoach.athlete.model.PausePeriod
 import com.cruxcoach.athlete.model.PauseReason
+import com.cruxcoach.athlete.model.Routine
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -83,13 +86,47 @@ class TrainingReminderPlanTest {
         assertTrue(TrainingReminderPlan.upcoming(wedMorning, profile(emptyMap()), utc, 8, emptySet(), emptySet()).isEmpty())
     }
 
+    @Test
+    fun `the title names the routine as Android does and a deleted one gets none`() {
+        val own = listOf(Routine(id = "own1", name = "Fingers at home", items = emptyList()))
+        // Board day: "Today: Board session".
+        val board = TrainingReminderPlan.title(PLAN_BOARD, own)!!
+        assertEquals("trw_notify_title", board.key)
+        assertEquals("trw_notify_board", board.args.single().nested!!.key)
+        // A built-in routine: its localized name (Android `builtinRoutineNameRes`).
+        val key = builtin.removePrefix("builtin:")
+        val named = TrainingReminderPlan.title(builtin, own)!!
+        assertEquals("tr_routine_$key", named.args.single().nested!!.key)
+        // An own routine: its stored name as it is.
+        val mine = TrainingReminderPlan.title("own1", own)!!.args.single().nested!!
+        assertEquals("", mine.key)
+        assertEquals("Fingers at home", mine.args.single().text)
+        assertEquals("text", mine.args.single().kind)
+        // Deleted since it was planned, or an unknown built-in: say nothing rather than something wrong.
+        assertNull(TrainingReminderPlan.title("gone", own))
+        assertNull(TrainingReminderPlan.title("builtin:no_such_routine", own))
+        listOf(board, named, TrainingReminderPlan.title("own1", own)!!).forEach { TrTextCheck.check(it, "reminder title") }
+        assertTrue(NotificationRoutes.isKnown(NotificationRoutes.TODAY))
+        assertFalse(NotificationRoutes.isKnown("board_sync?localDbUrl=x"))
+        assertFalse(NotificationRoutes.isKnown(""))
+    }
+
     private class Recording : NotificationScheduler {
         val scheduled = linkedMapOf<String, Triple<Int, String, String>>()
+        val titles = mutableMapOf<String, TrText>()
+        val routes = mutableMapOf<String, String>()
+        var plain = 0
         var grant = true
         override fun schedule(id: String, afterSeconds: Int, titleKey: String, bodyKey: String) {
+            plain++
             scheduled[id] = Triple(afterSeconds, titleKey, bodyKey)
         }
-        override fun cancel(id: String) { scheduled -= id }
+        override fun scheduleText(id: String, afterSeconds: Int, title: TrText, body: TrText, route: String) {
+            scheduled[id] = Triple(afterSeconds, title.key, body.key)
+            titles[id] = title
+            routes[id] = route
+        }
+        override fun cancel(id: String) { scheduled -= id; titles -= id; routes -= id }
         override fun requestPermission(onResult: (Boolean) -> Unit) = onResult(grant)
     }
 
@@ -118,8 +155,15 @@ class TrainingReminderPlanTest {
         assertEquals((0 until TrainingReminderPlan.AHEAD).map { TrainingReminderPlan.ID + it }.toSet(), host.scheduled.keys)
         val first = host.scheduled.getValue(TrainingReminderPlan.ID + "0")
         assertEquals(11 * 3600, first.first)
-        assertEquals("training_reminder_title", first.second)
+        assertEquals("trw_notify_title", first.second)
         assertEquals("trw_notify_text", first.third)
+        // "Today: <routine>" with the built-in routine's name; a tap opens Today.
+        val title = host.titles.getValue(TrainingReminderPlan.ID + "0")
+        assertEquals("tr_routine_" + builtin.removePrefix("builtin:"), title.args.single().nested!!.key)
+        TrTextCheck.check(title, "scheduled title")
+        assertTrue(host.routes.values.all { it == NotificationRoutes.TODAY })
+        assertEquals(TrainingReminderPlan.AHEAD, host.routes.size)
+        assertEquals(0, host.plain)
         val second = host.scheduled.getValue(TrainingReminderPlan.ID + "1")
         assertEquals(((LocalDateTime(today.plus(DatePeriod(days = 1)), LocalTime(17, 0)).toInstant(zone).toEpochMilliseconds() - nowMs) / 1000).toInt(),
             second.first)

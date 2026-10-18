@@ -8,7 +8,9 @@
 package com.cruxcoach.app.progress
 
 import com.cruxcoach.app.athlete.AthleteService
+import com.cruxcoach.app.notify.NotificationRoutes
 import com.cruxcoach.app.notify.NotificationScheduler
+import com.cruxcoach.app.training.Tx
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.BodyMetric
 import com.cruxcoach.athlete.model.MetricGroup
@@ -120,7 +122,9 @@ internal class BodyReminderScheduler(
             val id = prefix + i
             val at = times.getOrNull(i)
             val after = at?.let { (it.toInstant(zone).epochSeconds - nowSeconds).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt() }
-            if (after == null || after < 1) scheduler.cancel(id) else scheduler.schedule(id, after, title, body)
+            // Android opens the body page from both reminders (`navigate_to` = "body").
+            if (after == null || after < 1) scheduler.cancel(id)
+            else scheduler.scheduleText(id, after, Tx.t(title), Tx.t(body), NotificationRoutes.BODY)
         }
     }
 }

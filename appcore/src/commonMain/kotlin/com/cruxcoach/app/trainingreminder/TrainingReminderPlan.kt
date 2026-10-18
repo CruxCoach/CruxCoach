@@ -7,15 +7,21 @@
 // Android's quiet rules, as far as they can be known ahead: rest and free days and, unless wanted,
 // board days get nothing; an open pause schedules nothing; today is skipped once trained or with
 // a training running; a routine deleted since it was planned is skipped ("say nothing rather than
-// something wrong").
+// something wrong"). Android names the routine when the reminder fires; here it is named when the
+// reminder is scheduled (app start, return to the foreground, a change of the plan, a pause or a
+// training), so a routine renamed in between keeps its old name in reminders until then.
 package com.cruxcoach.app.trainingreminder
 
 import com.cruxcoach.app.athlete.AthleteService
+import com.cruxcoach.app.notify.NotificationRoutes
 import com.cruxcoach.app.notify.NotificationScheduler
+import com.cruxcoach.app.training.Tx
+import com.cruxcoach.app.ui.TrText
 import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.PLAN_BOARD
 import com.cruxcoach.athlete.model.PLAN_REST
+import com.cruxcoach.athlete.model.Routine
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -35,12 +41,11 @@ internal object TrainingReminderPlan {
     const val AHEAD = 8
     /** How far ahead planned days are looked for (two weeks of the repeating plan). */
     const val HORIZON_DAYS = 14
-    /**
-     * Android's title "Today: <routine>" carries the routine's name, but the host scheduler takes
-     * plain string keys without arguments, so the name-free title of the same reminder is used.
-     */
-    const val TITLE_KEY = "training_reminder_title"
+    /** Android `WeekPlanReminderWorker`: "Today: <routine>" over "Tap for your suggestion …". */
+    const val TITLE_KEY = "trw_notify_title"
     const val BODY_KEY = "trw_notify_text"
+    /** The routine name of a board day. */
+    const val BOARD_KEY = "trw_notify_board"
     /** Android's default time when nothing was stored: 17:00. */
     const val DEFAULT_MINUTES = 17 * 60
 
@@ -77,6 +82,21 @@ internal object TrainingReminderPlan {
     /** Whether a routine entry still names a routine (built-in key or own routine id). */
     fun routineExists(entry: String, ownRoutineIds: Set<String>): Boolean =
         if (entry.startsWith(BUILTIN)) BuiltinRoutines.byKey(entry.removePrefix(BUILTIN)) != null else entry in ownRoutineIds
+
+    /**
+     * Android `WeekPlanReminderWorker`'s title for a plan [entry]: the board session, a built-in
+     * routine's localized name (else its stored name), an own routine's name. Null for a routine that
+     * no longer exists — that day gets no reminder rather than a wrong one.
+     */
+    fun title(entry: String, ownRoutines: List<Routine>): TrText? {
+        val name: TrText = when {
+            entry == PLAN_BOARD -> Tx.t(BOARD_KEY)
+            entry.startsWith(BUILTIN) ->
+                BuiltinRoutines.byKey(entry.removePrefix(BUILTIN))?.let { Tx.routineName(it) } ?: return null
+            else -> ownRoutines.firstOrNull { it.id == entry }?.let { Tx.plain(it.name) } ?: return null
+        }
+        return Tx.t(TITLE_KEY, Tx.x(name))
+    }
 
     /**
      * The next [count] planned days from [now] within [HORIZON_DAYS], at the chosen time; a day in
@@ -121,20 +141,25 @@ internal class TrainingReminderScheduler(
         val nowInstant = kotlin.time.Instant.fromEpochMilliseconds(nowMillis())
         val now = nowInstant.toLocalDateTime(zone)
         val repo = service.repo
+        val own = if (!profile.trainingReminderEnabled) emptyList() else repo.routines()
         val planned = if (!profile.trainingReminderEnabled || repo.openPause() != null) emptyList() else {
             val today = now.date
             val skipToday = repo.openWorkout() != null ||
                 runCatching { service.activities(1)[today.toString()]?.trained == true }.getOrDefault(false)
             TrainingReminderPlan.upcoming(now, profile, zone, TrainingReminderPlan.AHEAD,
-                if (skipToday) setOf(today) else emptySet(), repo.routines().map { it.id }.toSet())
+                if (skipToday) setOf(today) else emptySet(), own.map { it.id }.toSet())
         }
+        val body = Tx.t(TrainingReminderPlan.BODY_KEY)
         for (i in 0 until TrainingReminderPlan.AHEAD) {
             val id = TrainingReminderPlan.ID + i
-            val after = planned.getOrNull(i)?.let {
+            val next = planned.getOrNull(i)
+            val after = next?.let {
                 (it.at.toInstant(zone).epochSeconds - nowInstant.epochSeconds).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
             }
-            if (after == null || after < 1) scheduler.cancel(id)
-            else scheduler.schedule(id, after, TrainingReminderPlan.TITLE_KEY, TrainingReminderPlan.BODY_KEY)
+            val title = next?.let { TrainingReminderPlan.title(it.entry, own) }
+            // Android opens Today from this reminder (`navigate_to` = "today").
+            if (after == null || after < 1 || title == null) scheduler.cancel(id)
+            else scheduler.scheduleText(id, after, title, body, NotificationRoutes.TODAY)
         }
     }
 }
