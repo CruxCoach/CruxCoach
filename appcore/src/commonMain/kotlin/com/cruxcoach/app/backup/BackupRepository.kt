@@ -40,6 +40,52 @@ sealed class RestoreOutcome {
     class Failed(val failure: BackupFailure) : RestoreOutcome()
 }
 
+/**
+ * Android's `DeleteRemoteNote`: why a remote deletion fell short. [code] is the note
+ * (dtagDerivationFailed | noWriteRelays | noRelayAccepted | partialRelayAccept | relayPublishThrew |
+ * blossomAuthFailed | blossomFullyRejected | blossomPartial | tombstonePublishFailed | unexpectedError);
+ * the counts and [type] fill its text where it has any.
+ */
+class DeleteRemoteNote(
+    val code: String,
+    val accepted: Int = 0,
+    val attempted: Int = 0,
+    /** Tombstone notes: relays that took the pointer's and the key's marker. */
+    val backupAccepted: Int = 0,
+    val keyAccepted: Int = 0,
+    val type: String = "",
+) {
+    companion object {
+        const val DTAG_DERIVATION_FAILED = "dtagDerivationFailed"
+        const val NO_WRITE_RELAYS = "noWriteRelays"
+        const val NO_RELAY_ACCEPTED = "noRelayAccepted"
+        const val PARTIAL_RELAY_ACCEPT = "partialRelayAccept"
+        const val RELAY_PUBLISH_THREW = "relayPublishThrew"
+        const val BLOSSOM_AUTH_FAILED = "blossomAuthFailed"
+        const val BLOSSOM_FULLY_REJECTED = "blossomFullyRejected"
+        const val BLOSSOM_PARTIAL = "blossomPartial"
+        const val TOMBSTONE_PUBLISH_FAILED = "tombstonePublishFailed"
+        const val UNEXPECTED_ERROR = "unexpectedError"
+    }
+}
+
+/**
+ * Android's `DeleteRemoteOutcome`: what each server confirmed. Only confirmations count; a relay
+ * or server that did not answer "accepted" is never reported as having deleted anything.
+ */
+class DeleteRemoteOutcome(
+    val relaysAttempted: Int,
+    val relaysAccepted: Int,
+    val blossomAttempted: Int,
+    val blossomAccepted: Int,
+    val notes: List<DeleteRemoteNote>,
+) {
+    /** Android's "Remote deletion requests completed." versus "partially deleted". */
+    val complete: Boolean
+        get() = notes.isEmpty() && relaysAttempted > 0 && relaysAccepted == relaysAttempted &&
+            (blossomAttempted == 0 || blossomAccepted == blossomAttempted)
+}
+
 sealed class BackupOutcome {
     class Completed(val sha256: String, val bytes: Int) : BackupOutcome()
     class Failed(val failure: BackupFailure) : BackupOutcome()
@@ -306,6 +352,108 @@ class BackupRepository(
         return event?.content?.takeIf { it != TOMBSTONE_CONTENT }
     }
 
+    // ----------------------------------------------------------------- delete
+
+    /**
+     * Port of Android's `deleteRemoteBackups` (FEAT-002 §20.2, the active opt-out): a NIP-09 deletion
+     * for the pointer and key events, DELETE of the current blob on every Blossom server, a
+     * tombstone that replaces both replaceable events, then the local identity state goes and
+     * backups are switched off — also when the remote side fell short, as the user asked to opt
+     * out. Every count is a confirmation the server gave; [DeleteRemoteOutcome.notes] say what fell
+     * short. Never throws.
+     */
+    suspend fun deleteRemoteBackups(): DeleteRemoteOutcome {
+        // Android cancels the periodic worker first; here the scheduled step checks this flag, and a
+        // run already under way finishes under the pipeline lock before the deletion starts.
+        state.backupEnabled = false
+        return pipelineMutex.withLock {
+            val secret = secretKeyProvider()
+            try {
+                deleteRemote(secret)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                DeleteRemoteOutcome(0, 0, 0, 0, listOf(DeleteRemoteNote(DeleteRemoteNote.UNEXPECTED_ERROR, type = e::class.simpleName ?: "Exception")))
+            } finally {
+                secret?.fill(0)
+                // Clear local state regardless: the user explicitly asked for the opt-out.
+                state.clearIdentityState()
+            }
+        }
+    }
+
+    private suspend fun deleteRemote(secret: ByteArray?): DeleteRemoteOutcome {
+        val notes = mutableListOf<DeleteRemoteNote>()
+        val pubkey = secret?.let { NostrKeys.publicKeyHex(it) }
+        val backupDTag = if (secret != null && pubkey != null) dTag(secret, DTagDeriver.IDENTIFIER_BACKUP) else null
+        val keyDTag = if (secret != null && pubkey != null) dTag(secret, DTagDeriver.IDENTIFIER_KEY) else null
+        if (backupDTag == null || keyDTag == null) notes += DeleteRemoteNote(DeleteRemoteNote.DTAG_DERIVATION_FAILED)
+
+        var relaysAttempted = 0
+        var relaysAccepted = 0
+        if (pubkey != null && backupDTag != null && keyDTag != null) {
+            val tags = listOf(backupDTag, keyDTag).map { listOf("a", "$KIND_PARAMETERIZED_REPLACEABLE:$pubkey:$it") } +
+                listOf(listOf("k", KIND_PARAMETERIZED_REPLACEABLE.toString()))
+            val stats = publishOrNull(KIND_DELETION, tags, DELETION_CONTENT)
+            if (stats == null) {
+                notes += DeleteRemoteNote(DeleteRemoteNote.RELAY_PUBLISH_THREW)
+            } else {
+                relaysAttempted = stats.attempted
+                relaysAccepted = stats.accepted
+                when {
+                    stats.attempted == 0 -> notes += DeleteRemoteNote(DeleteRemoteNote.NO_WRITE_RELAYS)
+                    stats.accepted == 0 -> notes += DeleteRemoteNote(DeleteRemoteNote.NO_RELAY_ACCEPTED)
+                    stats.accepted < stats.attempted ->
+                        notes += DeleteRemoteNote(DeleteRemoteNote.PARTIAL_RELAY_ACCEPT, accepted = stats.accepted, attempted = stats.attempted)
+                }
+            }
+        }
+
+        var blossomAttempted = 0
+        var blossomAccepted = 0
+        state.previousBlobSha256?.let { sha ->
+            val servers = if (pubkey != null) discoverServers(pubkey) else BlossomClient.DEFAULT_SERVERS
+            val outcome = blossom.delete(sha, servers)
+            blossomAttempted = outcome.attempted
+            blossomAccepted = outcome.succeeded
+            when {
+                outcome.authFailed -> notes += DeleteRemoteNote(DeleteRemoteNote.BLOSSOM_AUTH_FAILED)
+                outcome.fullyFailed() -> notes += DeleteRemoteNote(DeleteRemoteNote.BLOSSOM_FULLY_REJECTED)
+                outcome.partiallySucceeded() ->
+                    notes += DeleteRemoteNote(DeleteRemoteNote.BLOSSOM_PARTIAL, accepted = outcome.succeeded, attempted = outcome.attempted)
+            }
+        }
+
+        // NIP-09 is best effort and dropped by major relays for replaceable kinds; replacing both
+        // events with the sentinel is what every relay must honour, so a restore finds nothing.
+        if (backupDTag != null && keyDTag != null) {
+            val backup = publishOrNull(KIND_PARAMETERIZED_REPLACEABLE, listOf(listOf("d", backupDTag)), TOMBSTONE_CONTENT)
+            val key = publishOrNull(KIND_PARAMETERIZED_REPLACEABLE, listOf(listOf("d", keyDTag)), TOMBSTONE_CONTENT)
+            val backupAccepted = backup?.accepted ?: 0
+            val keyAccepted = key?.accepted ?: 0
+            if (backupAccepted == 0 || keyAccepted == 0) {
+                notes += DeleteRemoteNote(
+                    DeleteRemoteNote.TOMBSTONE_PUBLISH_FAILED,
+                    attempted = maxOf(backup?.attempted ?: 0, key?.attempted ?: 0),
+                    backupAccepted = backupAccepted,
+                    keyAccepted = keyAccepted,
+                )
+            }
+        }
+
+        return DeleteRemoteOutcome(relaysAttempted, relaysAccepted, blossomAttempted, blossomAccepted, notes.toList())
+    }
+
+    /** Signs and publishes; null when it could not be signed or the publish threw (Android's "threw"). */
+    private suspend fun publishOrNull(kind: Int, tags: List<List<String>>, content: String): PublishStats? = try {
+        signer.sign(createdAt = clock.epochSeconds(), kind = kind, tags = tags, content = content)
+            ?.let { events.publish(it) }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+
     private suspend fun publishKeyEvent(secret: ByteArray, wrappedDataKey: String): Boolean {
         val dTag = dTag(secret, DTagDeriver.IDENTIFIER_KEY) ?: return false
         val event = signer.sign(
@@ -381,6 +529,9 @@ class BackupRepository(
 
         /** Sentinel that replaces a live pointer after an opt-out (NIP-01 replaceable semantics). */
         const val TOMBSTONE_CONTENT = "CRUXCOACH_BACKUP_TOMBSTONE_V1"
+
+        /** The NIP-09 deletion's content, as Android writes it. */
+        const val DELETION_CONTENT = "backup opt-out"
 
         /** LAST_BACKUP_SYNC is written after the publish, so the pointer is routinely seconds older. */
         const val STALE_POINTER_TOLERANCE_SEC = 5L * 60L

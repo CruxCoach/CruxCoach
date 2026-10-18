@@ -33,6 +33,18 @@ data class BackupScreenState(
     val listsInBackup: Int = 0,
     /** A [com.cruxcoach.app.backup.BackupFailure] name, or null. */
     val failureCode: String? = null,
+    // ── Remote deletion (Android "Delete remote backups…") ──
+    val deletingRemote: Boolean = false,
+    /** A deletion ran: its report is shown until [BackupScreenModel.dismissDeleteResult]. */
+    val deleteFinished: Boolean = false,
+    /** Every relay and server confirmed and nothing fell short (Android's "completed" header). */
+    val deleteComplete: Boolean = false,
+    val deleteRelaysAccepted: Int = 0,
+    val deleteRelaysAttempted: Int = 0,
+    val deleteBlossomAccepted: Int = 0,
+    /** 0: no backup data was on record, so no storage server was asked. */
+    val deleteBlossomAttempted: Int = 0,
+    val deleteNotes: List<BackupDeleteNoteUi> = emptyList(),
 ) {
     companion object {
         const val PHASE_IDLE = "IDLE"
@@ -45,6 +57,20 @@ data class BackupScreenState(
         const val PHASE_BACKED_UP = "BACKED_UP"
     }
 }
+
+/**
+ * One "•" line of the deletion report (Android `localizedDeleteRemoteNote`): [code] names the
+ * `delete_remote_note_*` text, the numbers and [errorType] fill it.
+ */
+class BackupDeleteNoteUi(
+    val code: String,
+    val accepted: Int,
+    val attempted: Int,
+    val backupAccepted: Int,
+    val keyAccepted: Int,
+    /** The unexpected error's class name ("unexpectedError" only). */
+    val errorType: String,
+)
 
 /**
  * Swift-facing facade over [BackupRepository]: no suspend functions, no Flow
@@ -213,6 +239,43 @@ class BackupScreenModel(
                 )
             }
         }
+    }
+
+    /**
+     * Android's `confirmDeleteRemoteBackups`, after the user confirmed: asks every relay and Blossom
+     * server to delete, publishes the tombstones, switches backups off and forgets the local backup
+     * state. The report counts only what servers confirmed.
+     */
+    fun deleteRemote() {
+        if (_state.value.busy || _state.value.deletingRemote) return
+        _state.value = _state.value.copy(deletingRemote = true, busy = true, deleteFinished = false, failureCode = null)
+        running = scope.launch {
+            val outcome = runCatchingOutcome { repository.deleteRemoteBackups() }
+                ?: com.cruxcoach.app.backup.DeleteRemoteOutcome(0, 0, 0, 0, listOf(
+                    com.cruxcoach.app.backup.DeleteRemoteNote(com.cruxcoach.app.backup.DeleteRemoteNote.UNEXPECTED_ERROR, type = "Exception"),
+                ))
+            pending = null
+            _state.value = _state.value.copy(
+                phase = BackupScreenState.PHASE_IDLE,
+                busy = false,
+                deletingRemote = false,
+                backupEnabled = backupState.backupEnabled,
+                lastBackupAt = backupState.lastBackupSync ?: 0,
+                hasBackup = false,
+                backupSizeBytes = 0,
+                deleteFinished = true,
+                deleteComplete = outcome.complete,
+                deleteRelaysAccepted = outcome.relaysAccepted,
+                deleteRelaysAttempted = outcome.relaysAttempted,
+                deleteBlossomAccepted = outcome.blossomAccepted,
+                deleteBlossomAttempted = outcome.blossomAttempted,
+                deleteNotes = outcome.notes.map { BackupDeleteNoteUi(it.code, it.accepted, it.attempted, it.backupAccepted, it.keyAccepted, it.type) },
+            )
+        }
+    }
+
+    fun dismissDeleteResult() {
+        _state.value = _state.value.copy(deleteFinished = false)
     }
 
     fun dismissFailure() {
