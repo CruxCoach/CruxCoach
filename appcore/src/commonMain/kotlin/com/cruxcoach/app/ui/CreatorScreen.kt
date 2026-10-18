@@ -252,24 +252,36 @@ class CreatorScreenModel(
             return moon?.geometry?.holdIdAt(x, y, 1f, 1f)
         }
         if (state.placements.isEmpty()) return null
+        quantumModel(state)?.let { model ->
+            return com.cruxcoach.app.render.QuantumRender.nearestPlacement(model, x, y, state.placements.values)
+        }
         return AuroraBoardGeometry.of(state.boardSize)
             .nearestPlacement(x, y, state.placements.values, 1f, 1f)
     }
+
+    /** Quantum holds follow the model's own mapping over the square image, not the edge box. */
+    private fun quantumModel(state: ClimbEditorUiState): com.cruxcoach.domain.board.QuantumBoardModel? =
+        if (BoardBrand.fromWire(state.editor.boardBrand) != BoardBrand.QUANTUM) null
+        else com.cruxcoach.app.render.QuantumRender.model(state.boardSize, state.layoutId)
 
     private fun map(state: ClimbEditorUiState, moon: MoonLayout?): CreatorScreenState {
         val brand = BoardBrand.fromWire(state.editor.boardBrand)
         val colors = state.ledColors
         val geometry = AuroraBoardGeometry.of(state.boardSize)
+        val quantum = quantumModel(state)
         val holds = state.editor.selectedHolds.entries.mapNotNull { (placementId, roleId) ->
-            val point = if (brand == BoardBrand.MOONBOARD) {
-                moon?.geometry?.point(placementId, 1f, 1f)
-            } else {
-                state.placements[placementId]?.let { geometry.normalized(it.x, it.y) }
+            val point = when {
+                brand == BoardBrand.MOONBOARD -> moon?.geometry?.point(placementId, 1f, 1f)
+                quantum != null -> state.placements[placementId]
+                    ?.let { com.cruxcoach.app.render.QuantumRender.normalized(quantum, it.x, it.y) }
+                    ?.takeIf(com.cruxcoach.app.render.QuantumRender::isVisible)
+                else -> state.placements[placementId]?.let { geometry.normalized(it.x, it.y) }
             } ?: return@mapNotNull null
             CreatorHoldUi(placementId, point.x, point.y, colors.argbForRole(roleId), roleCode(roleId))
         }
         val aspect = when {
             moon != null && brand == BoardBrand.MOONBOARD -> moon.geometry.imageAspect
+            quantum != null -> com.cruxcoach.app.render.QuantumRender.ASPECT
             state.boardSize != null && geometry.boardWidth > 0f && geometry.boardHeight > 0f -> geometry.aspectRatio
             else -> DetailScreenModel.DEFAULT_ASPECT
         }
