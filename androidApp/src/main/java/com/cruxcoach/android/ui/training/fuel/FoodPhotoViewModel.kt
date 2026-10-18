@@ -536,9 +536,20 @@ class FoodPhotoViewModel @Inject constructor(
             return FoodItem(
                 id = "bls:${food.code}", name = blsName(food), source = BlsRepository.SOURCE,
                 kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
-                servingG = piece,
-                servingLabel = piece?.let { g -> if (german()) "1 Stück (${g.toInt()} g)" else "1 piece (${g.toInt()} g)" },
+                servingG = piece, servingLabel = piece?.let(::pieceLabel),
             )
+        }
+
+        private fun pieceLabel(grams: Double) = if (german()) "1 Stück (${grams.toInt()} g)" else "1 piece (${grams.toInt()} g)"
+
+        /**
+         * A BLS food saved before it knew its piece weight ("my foods"), with the piece added for the amount dialog;
+         * logging it saves the piece (device test D43: the saved "Banane roh" still offered only grams).
+         */
+        fun withPiece(item: FoodItem): FoodItem {
+            if (item.source != BlsRepository.SOURCE || item.servingG != null) return item
+            val piece = com.cruxcoach.athlete.logic.MealTextParser.pieceGramsOf(item.name) ?: return item
+            return item.copy(servingG = piece, servingLabel = pieceLabel(piece))
         }
 
         fun displayName(food: DetectedFood): String = if (german()) food.nameDe else food.nameEn

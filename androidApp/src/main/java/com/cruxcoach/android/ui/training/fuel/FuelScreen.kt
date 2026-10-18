@@ -253,7 +253,7 @@ fun FuelScreen(
         FoodsSheet(
             foods = state.foods,
             onDismiss = { foodsOpen = false },
-            onPick = { amountFor = it; foodsOpen = false },
+            onPick = { amountFor = FoodPhotoViewModel.withPiece(it); foodsOpen = false },
             onToggleFavorite = viewModel::toggleFavorite,
             onDelete = viewModel::deleteFood,
             onCreate = { createFood = true; foodsOpen = false },
