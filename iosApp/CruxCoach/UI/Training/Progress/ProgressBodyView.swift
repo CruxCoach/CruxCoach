@@ -139,8 +139,8 @@ private struct BodyContent: View {
                 BodyStatTile(label: L("trb_tile_entries"), value: "\(ui.readings)", supporting: nil)
             }
             TrainingFlow(spacing: 6) {
-                ForEach(Self.ranges, id: \.0) { code, key in
-                    TrainingChoiceChip(title: L(key), selected: ui.rangeCode == code) { model.setRange(code: code) }
+                ForEach(Self.ranges, id: \.0) { range in
+                    TrainingChoiceChip(title: L(range.1), selected: ui.rangeCode == range.0) { model.setRange(code: range.0) }
                 }
             }
             Chart {

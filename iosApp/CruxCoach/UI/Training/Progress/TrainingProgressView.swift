@@ -36,6 +36,7 @@ struct TrainingProgressView: View {
                 switch route {
                 case .body: ProgressBodyView(core: core)
                 case .benchmarks: ProgressBenchmarksView(core: core)
+                case .exercise(let slug): ProgressExerciseStatsView(core: core, slug: slug)
                 }
             }
         }
@@ -48,7 +49,7 @@ struct TrainingProgressView: View {
     }
 }
 
-enum ProgressRoute: Hashable { case body, benchmarks }
+enum ProgressRoute: Hashable { case body, benchmarks, exercise(String) }
 
 /// ISO days (yyyy-mm-dd) as local midnight, so a chart's date axis shows the same day.
 enum ProgressDates {
@@ -96,10 +97,13 @@ private struct ProgressContent: View {
                             }
                         }
                         climberProfileCard
-                        if ui.hasLoad { loadChips }
-                        if !ui.hasAnyData { hint(L("trs_empty")) }
-                        if !ui.trained && ui.hasAnyData { hint(L("trs_no_training")) }
-                        if ui.trained { trainingCharts }
+                        // Grouped so the stack stays within the classic ten-view builder limit.
+                        Group {
+                            if ui.hasLoad { loadChips }
+                            if !ui.hasAnyData { hint(L("trs_empty")) }
+                            if !ui.trained && ui.hasAnyData { hint(L("trs_no_training")) }
+                            if ui.trained { trainingCharts }
+                        }
                         bodySection
                         if !ui.strength.isEmpty { strengthSection }
                         exercisesSection
@@ -335,7 +339,7 @@ private struct ProgressContent: View {
             Text(L("trs_exercises_empty")).font(.caption).foregroundStyle(.secondary)
         }
         ForEach(ui.exercises, id: \.slug) { row in
-            Button { notYet = row.name } label: {
+            NavigationLink(value: ProgressRoute.exercise(row.slug)) {
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(row.name).font(.body)

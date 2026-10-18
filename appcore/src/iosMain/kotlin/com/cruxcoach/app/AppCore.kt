@@ -773,6 +773,14 @@ class AppCore private constructor(
         )
     }
 
+    /** One exercise over time (Android `ExerciseStatsScreen`); Swift calls `load(slug:)`. */
+    fun makeExerciseStatsScreen(language: String): com.cruxcoach.app.ui.ExerciseStatsScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.ExerciseStatsScreenModel(
+            com.cruxcoach.app.progress.ExerciseStatsPresenter(service, MainScope(), Dispatchers.IO), language,
+        )
+    }
+
     companion object {
         fun start(
             aead: AeadCipher,
