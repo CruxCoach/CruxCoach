@@ -1,3 +1,5 @@
 "NSBluetoothAlwaysUsageDescription" = "CruxCoach verbindet sich direkt mit deinem Kletterboard, um Probleme zu beleuchten.";
 "NSCameraUsageDescription" = "CruxCoach nutzt die Kamera, um QR-Codes für Konten und geteilte Listen sowie Barcodes von Lebensmitteln zu scannen.";
 "NSFaceIDUsageDescription" = "CruxCoach fragt nach Face ID, bevor dein privater Schlüssel angezeigt wird.";
+"NSHealthShareUsageDescription" = "CruxCoach liest den Schlaf der letzten Nacht, um ihn im Check-in vorzuschlagen, und Kletter-Workouts, um sie für den Coach als Klettertage zu zählen. Es wird nichts hochgeladen.";
+"NSHealthUpdateUsageDescription" = "CruxCoach schreibt die Mahlzeiten und das Wasser, die du einträgst, in Apple Health – nur wenn du das einschaltest. Es wird nichts hochgeladen.";

@@ -362,3 +362,21 @@
 "library_unavailable" = "Die Trainingsdaten konnten auf diesem iPhone nicht geöffnet werden.";
 "library_failed" = "Etwas ist schiefgelaufen. Deine letzte Änderung wurde eventuell nicht gespeichert.";
 "library_detail_not_yet" = "Körperkarte, Leistungswerte und der Verlauf dieser Übung sind auf dem iPhone noch nicht verfügbar.";
+
+/* Apple Health link (training settings) */
+"health_title" = "Apple Health";
+"health_summary" = "Optionale Verbindung mit der Health-App auf diesem iPhone. Jede Richtung hat ihren eigenen Schalter und ihren eigenen Zugriff.";
+"health_export_switch" = "Mahlzeiten und Wasser an Apple Health senden";
+"health_export_hint" = "Jedes eingetragene Lebensmittel und jedes Glas Wasser wird in Apple Health geschrieben; geänderte oder gelöschte Einträge werden dort aktualisiert, wenn du die Ernährung öffnest oder synchronisierst.";
+"health_unavailable" = "Apple Health ist auf diesem Gerät nicht verfügbar.";
+"health_access_failed" = "Diese Version der App kann Apple Health nicht nutzen (ihr fehlt die Health-Berechtigung). Es wird nichts gelesen oder geschrieben.";
+"health_permission_hint" = "Erlaube in Apple Health den Zugriff für die Teile, die du eingeschaltet hast.";
+"health_write_denied" = "Senden an Apple Health ist nicht erlaubt. Erlaube es in der Health-App: dein Profil → Apps → CruxCoach.";
+"health_read_unknown" = "Apple Health sagt Apps nicht, ob Lesen erlaubt ist. Kommt nichts an, prüfe die Health-App: dein Profil → Apps → CruxCoach.";
+"health_open_app" = "Health-App öffnen";
+"health_sync_failed" = "Abgleich hat nicht geklappt – prüfe den Zugriff in der Health-App.";
+"health_export_done" = "Die heutigen Mahlzeiten und das Wasser wurden an Apple Health gesendet.";
+"health_export_unchanged" = "Die heutigen Mahlzeiten und das Wasser sind schon in Apple Health.";
+"health_export_failed" = "Mahlzeiten und Wasser konnten nicht an Apple Health gesendet werden.";
+"health_privacy" = "Die Verbindung selbst lädt nichts hoch: Was CruxCoach liest, bleibt in seiner verschlüsselten Datenbank auf diesem iPhone (und ist nur Teil deines verschlüsselten Backups, wenn du das Backup eingeschaltet hast), und was es schreibt, geht nur an Apple Health auf diesem iPhone.";
+"health_sleep_chip" = "Aus Apple Health: %1$@ h → %2$ld";

@@ -362,3 +362,21 @@
 "library_unavailable" = "The training data could not be opened on this iPhone.";
 "library_failed" = "Something went wrong. Your last change may not have been saved.";
 "library_detail_not_yet" = "The body map, performance values and this exercise's progress are not on iPhone yet.";
+
+/* Apple Health link (training settings) */
+"health_title" = "Apple Health";
+"health_summary" = "Optional link with the Health app on this iPhone. Each direction has its own switch and its own access.";
+"health_export_switch" = "Send meals and water to Apple Health";
+"health_export_hint" = "Each logged food and glass of water is written to Apple Health; changed or deleted entries are updated there when you open nutrition or sync.";
+"health_unavailable" = "Apple Health is not available on this device.";
+"health_access_failed" = "Apple Health cannot be used by this build of the app (it lacks the Health permission). Nothing is read or written.";
+"health_permission_hint" = "Allow access in Apple Health for the parts you switched on.";
+"health_write_denied" = "Sending to Apple Health is not allowed. Allow it in the Health app: your profile → Apps → CruxCoach.";
+"health_read_unknown" = "Apple Health does not tell apps whether reading is allowed. If nothing arrives, check the Health app: your profile → Apps → CruxCoach.";
+"health_open_app" = "Open the Health app";
+"health_sync_failed" = "Sync did not work – check access in the Health app.";
+"health_export_done" = "Today's meals and water were sent to Apple Health.";
+"health_export_unchanged" = "Today's meals and water are already in Apple Health.";
+"health_export_failed" = "Meals and water could not be sent to Apple Health.";
+"health_privacy" = "The link itself uploads nothing: what CruxCoach reads stays in its encrypted database on this iPhone (and is part of your encrypted backup only if you turned the backup on), and what it writes goes only to Apple Health on this iPhone.";
+"health_sleep_chip" = "From Apple Health: %1$@ h → %2$ld";

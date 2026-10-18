@@ -67,6 +67,8 @@ targets:
       - sdk: Security.framework
       - sdk: LocalAuthentication.framework
       - sdk: Network.framework
+      # Optional Apple Health link (sleep, climbing workouts, meals and water).
+      - sdk: HealthKit.framework
       - sdk: libz.tbd
     settings:
       base:
@@ -83,6 +85,8 @@ targets:
         OTHER_LDFLAGS: "$(inherited) -ObjC"
         ENABLE_USER_SCRIPT_SANDBOXING: YES
         CODE_SIGN_STYLE: Automatic
+        # HealthKit entitlement. The unsigned device IPA carries none; the app then shows the link as unavailable.
+        CODE_SIGN_ENTITLEMENTS: CruxCoach/CruxCoach.entitlements
   CruxCoachTests:
     type: bundle.unit-test
     platform: iOS

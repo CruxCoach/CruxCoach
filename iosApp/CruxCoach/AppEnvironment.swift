@@ -27,6 +27,7 @@ final class AppEnvironment {
             core.startConnectivity()
             UNUserNotificationCenter.current().delegate = notificationPresenter
             _ = core.attachNotifications(scheduler: LocalNotificationScheduler())
+            core.attachHealthStore(store: HealthKitStore())
             phase = .ready(core)
         } else {
             phase = .failed(code: result.failureCode, detail: result.detail)

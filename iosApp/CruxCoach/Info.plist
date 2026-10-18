@@ -25,6 +25,10 @@
 	<string>CruxCoach uses the camera to scan QR codes for accounts and shared lists, and barcodes of food products.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>CruxCoach asks for Face ID before showing your private key.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>CruxCoach reads last night's sleep to suggest it in the check-in, and climbing workouts to count them as climbing days for the coach. Nothing is uploaded.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>CruxCoach writes the meals and water you log to Apple Health, only when you switch this on. Nothing is uploaded.</string>
 	<key>UIBackgroundModes</key><array><string>bluetooth-central</string></array>
 	<key>ITSAppUsesNonExemptEncryption</key><false/>
 	<key>CFBundleURLTypes</key>
