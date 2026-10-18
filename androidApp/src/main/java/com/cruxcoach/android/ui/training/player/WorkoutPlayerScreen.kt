@@ -356,7 +356,8 @@ private fun ExerciseStrip(state: PlayerState, language: String, onShow: (Int) ->
         state.pages.forEachIndexed { i, page ->
             val names = page.blockIndexes.mapNotNull { b -> page.sets.firstOrNull { it.blockIndex == b } }
                 .joinToString(", ") { state.def(it.exerciseSlug)?.name(language) ?: it.exerciseSlug }
-            val description = stringResource(R.string.trpg_page_cd, i + 1, state.pages.size, names, page.done, page.total)
+            val description = stringResource(if (page.perSide) R.string.trpg_page_cd_sides else R.string.trpg_page_cd,
+                i + 1, state.pages.size, names, page.setsDone, page.setsTotal)
             val shown = i == state.pageIndex
             val fraction = if (page.total > 0) page.done.toFloat() / page.total else 0f
             val fill = when {
@@ -491,7 +492,8 @@ private fun OverviewSheet(
                 ListItem(
                     headlineContent = { Text(names, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         fontWeight = if (i == state.pageIndex) FontWeight.SemiBold else FontWeight.Normal) },
-                    supportingContent = { Text(stringResource(R.string.trpg_page_progress, page.done, page.total)) },
+                    supportingContent = { Text(stringResource(if (page.perSide) R.string.trpg_page_progress_sides else R.string.trpg_page_progress,
+                        page.setsDone, page.setsTotal)) },
                     trailingContent = { if (!page.open) Icon(Icons.Default.CheckCircle, null, tint = CruxCoachDesign.colors.positive) },
                     colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                     modifier = Modifier.clickable { onShowPage(i) }.testTag("player_overview_page_$i"),
