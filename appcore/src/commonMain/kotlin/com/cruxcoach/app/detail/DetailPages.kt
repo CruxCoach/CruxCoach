@@ -16,6 +16,9 @@ class DetailPages private constructor(val uuids: List<String>, val index: Int) {
     val hasPrevious: Boolean get() = index > 0
     val hasNext: Boolean get() = index < uuids.size - 1
 
+    /** The pages either side of the current one: what Android's pager composes (and loads) ahead. */
+    val neighbours: List<String> get() = listOfNotNull(uuids.getOrNull(index - 1), uuids.getOrNull(index + 1))
+
     /** Null when [target] is outside the list or already shown. */
     fun moveTo(target: Int): DetailPages? =
         if (target !in uuids.indices || target == index) null else DetailPages(uuids, target)

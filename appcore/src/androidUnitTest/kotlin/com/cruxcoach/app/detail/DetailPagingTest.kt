@@ -87,6 +87,77 @@ class DetailPagingTest {
     }
 
     @Test
+    fun `the neighbouring pages are loaded ahead and a swipe shows them at once then reloads them`() = scope.runTest {
+        val p = ClimbDetailPresenter(db.boardRepo, db.personalRepo, MemoryKeyValueStore(), main = dispatcher, io = dispatcher)
+        p.open("k2", 40)
+        p.preload(listOf("k1", "k3"), 40)
+        advanceUntilIdle()
+
+        // Favoured elsewhere after k3 was loaded ahead: the swipe shows the cached page, the reload the truth.
+        val other = ClimbDetailPresenter(db.boardRepo, db.personalRepo, MemoryKeyValueStore(), main = dispatcher, io = dispatcher)
+        other.open("k3", 40); advanceUntilIdle()
+        other.toggleFavourite(); advanceUntilIdle()
+        assertTrue(other.state.value.isFavorited)
+
+        p.switchClimb("k3", 40)
+        var s = p.state.value
+        assertEquals(ClimbDetailStatus.READY, s.status, "no loading flash for a preloaded neighbour")
+        assertEquals("Climb k3", s.data!!.climb.name)
+        assertFalse(s.isFavorited)
+        advanceUntilIdle()
+        assertTrue(p.state.value.isFavorited, "the switch still reloads the page")
+
+        // Only the pages next to the one shown stay cached.
+        p.preload(listOf("k2"), 40); advanceUntilIdle()
+        p.switchClimb("k1", 40)
+        assertEquals(ClimbDetailStatus.LOADING, p.state.value.status)
+        advanceUntilIdle()
+        assertEquals("Climb k1", p.state.value.data!!.climb.name)
+
+        // Another angle is another page; a fresh open forgets the old list's pages.
+        p.preload(listOf("k2"), 40); advanceUntilIdle()
+        p.switchClimb("k2", 25)
+        assertEquals(ClimbDetailStatus.LOADING, p.state.value.status)
+        advanceUntilIdle()
+        p.open("k3", 40)
+        p.switchClimb("k2", 40)
+        assertEquals(ClimbDetailStatus.LOADING, p.state.value.status)
+        advanceUntilIdle()
+        p.close(); other.close()
+    }
+
+    @Test
+    fun `the detail model loads the pages next to the one shown`() = scope.runTest {
+        val sender = BoardSender(
+            db.boardRepo,
+            BoardConnectionPresenter(FakeBleCentral { 0L }, MemoryKeyValueStore(), FixedClock(1), dispatcher),
+            MemoryKeyValueStore(),
+            main = dispatcher, io = dispatcher,
+        )
+        val loggerScope = CoroutineScope(SupervisorJob() + dispatcher)
+        val model = DetailScreenModel(
+            ClimbDetailPresenter(db.boardRepo, db.personalRepo, MemoryKeyValueStore(), main = dispatcher, io = dispatcher),
+            LogAttemptPresenter(db.personalRepo, NoSessionRecorder, null, loggerScope, dispatcher),
+            sender,
+            GradeFormatter(french = false),
+            dispatcher,
+        )
+        val watch = model.watch { }
+        model.openPaged("k1", 40, listOf("k1", "k2", "k3"))
+        advanceUntilIdle()
+        model.nextPage()
+        assertEquals("ready", model.currentState.status)
+        assertEquals("Climb k2", model.currentState.name)
+        advanceUntilIdle()
+        // k2's own neighbour k3 was loaded once k2 was shown.
+        model.nextPage()
+        assertEquals("Climb k3", model.currentState.name)
+        watch.cancel()
+        model.close()
+        loggerScope.cancel()
+    }
+
+    @Test
     fun `the detail pages through the browser list at the browsed angle`() = scope.runTest {
         val sender = BoardSender(
             db.boardRepo,

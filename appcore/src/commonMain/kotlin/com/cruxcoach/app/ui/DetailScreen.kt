@@ -125,6 +125,7 @@ class DetailScreenModel(
         pages.value = DetailPages.of(pageUuids, uuid)
         pageAngle = angle
         detail.open(uuid, angle)
+        detail.preload(pages.value.neighbours, angle)
     }
 
     /** Android's settled pager page: switch to the climb at [index]; out of range is ignored. */
@@ -134,6 +135,7 @@ class DetailScreenModel(
         sendFailure.value = "none"
         pages.value = next
         detail.switchClimb(next.current, pageAngle)
+        detail.preload(next.neighbours, pageAngle)
     }
 
     fun nextPage() = showPage(pages.value.index + 1)

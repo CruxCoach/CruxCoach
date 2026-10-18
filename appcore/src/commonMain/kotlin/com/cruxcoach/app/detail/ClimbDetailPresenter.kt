@@ -58,6 +58,13 @@ class ClimbDetailPresenter(
     private val scope = CoroutineScope(SupervisorJob() + main)
     private var loadJob: Job? = null
     private var noteJob: Job? = null
+    private var preloadJob: Job? = null
+
+    /**
+     * Android `pageCache`: the neighbouring pages, loaded ahead so a swipe shows the climb at once
+     * (the switch still reloads it, so a cached page is never left stale). Main thread only.
+     */
+    private val pageCache = LinkedHashMap<String, ClimbDetailLoad.Found>()
 
     private val _state = MutableStateFlow(ClimbDetailUiState())
     val state: StateFlow<ClimbDetailUiState> = _state.asStateFlow()
@@ -68,6 +75,9 @@ class ClimbDetailPresenter(
     fun close() = scope.cancel()
 
     fun open(uuid: String, angle: Int) {
+        // Another list's pages are not this one's neighbours.
+        preloadJob?.cancel()
+        pageCache.clear()
         _state.value = ClimbDetailUiState(uuid = uuid, angle = angle)
         load(uuid, angle)
     }
@@ -80,9 +90,40 @@ class ClimbDetailPresenter(
     fun switchClimb(uuid: String, angle: Int) {
         val s = _state.value
         if (uuid == s.uuid && angle == s.angle) return
-        _state.value = ClimbDetailUiState(uuid = uuid, angle = angle, browserDirty = s.browserDirty)
+        val fresh = ClimbDetailUiState(uuid = uuid, angle = angle, browserDirty = s.browserDirty)
+        val cached = pageCache[pageKey(uuid, angle)]
+        _state.value = if (cached != null) found(fresh, cached) else fresh
         load(uuid, angle)
     }
+
+    /**
+     * Android's pager preloads the pages next to the one shown ([uuids]); only those stay cached.
+     * Loaded one after another once the shown page has loaded (it comes first, and detail loads
+     * never overlap), and dropped with the presenter's scope.
+     */
+    fun preload(uuids: List<String>, angle: Int) {
+        val keys = uuids.filter { it.isNotEmpty() }.distinct().map { it to pageKey(it, angle) }
+        pageCache.keys.retainAll(keys.mapTo(mutableSetOf()) { it.second })
+        val missing = keys.filter { (_, key) -> key !in pageCache }
+        preloadJob?.cancel()
+        if (missing.isEmpty()) return
+        val shown = loadJob
+        preloadJob = scope.launch {
+            shown?.join()
+            for ((uuid, key) in missing) {
+                val result = try {
+                    withContext(io) { assembler.load(uuid, angle) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+                if (result is ClimbDetailLoad.Found) pageCache[key] = result
+            }
+        }
+    }
+
+    private fun pageKey(uuid: String, angle: Int) = "$uuid@$angle"
 
     fun selectAngle(angle: Int) {
         val s = _state.value
@@ -99,16 +140,7 @@ class ClimbDetailPresenter(
                 _state.update { s ->
                     if (s.uuid != uuid || s.angle != angle) return@update s
                     when (result) {
-                        is ClimbDetailLoad.Found -> render(
-                            s.copy(
-                                status = ClimbDetailStatus.READY, data = result.data,
-                                frameCount = result.data.frames.size,
-                                frameIndex = s.frameIndex.coerceIn(0, (result.data.frames.size - 1).coerceAtLeast(0)),
-                                isMirrored = s.isMirrored && result.data.isMirrorable,
-                                isFavorited = result.data.isFavorited, isIgnored = result.data.isIgnored,
-                                personalNote = result.data.personalNote, logbookAscents = emptyList(),
-                            ),
-                        )
+                        is ClimbDetailLoad.Found -> found(s, result)
                         is ClimbDetailLoad.LogbookOnly -> s.copy(
                             status = ClimbDetailStatus.LOGBOOK_ONLY, data = null, holds = emptyList(), logbookAscents = result.ascents,
                         )
@@ -122,6 +154,17 @@ class ClimbDetailPresenter(
             }
         }
     }
+
+    private fun found(s: ClimbDetailUiState, result: ClimbDetailLoad.Found): ClimbDetailUiState = render(
+        s.copy(
+            status = ClimbDetailStatus.READY, data = result.data,
+            frameCount = result.data.frames.size,
+            frameIndex = s.frameIndex.coerceIn(0, (result.data.frames.size - 1).coerceAtLeast(0)),
+            isMirrored = s.isMirrored && result.data.isMirrorable,
+            isFavorited = result.data.isFavorited, isIgnored = result.data.isIgnored,
+            personalNote = result.data.personalNote, logbookAscents = emptyList(),
+        ),
+    )
 
     private fun render(s: ClimbDetailUiState): ClimbDetailUiState {
         val data = s.data ?: return s
