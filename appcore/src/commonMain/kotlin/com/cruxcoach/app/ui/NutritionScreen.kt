@@ -74,7 +74,18 @@ class NutritionWaterUi(
     val addLabel: NutriText,
     /** The newest water entry, which tapping the last full glass removes. */
     val lastEntryId: String,
-)
+) {
+    /**
+     * Glasses in one row when [fitting] fit side by side: as many as fit, and a bigger target wraps into even rows
+     * (6 + 5, not 10 + 1 – Android `WaterCard`, device test D42).
+     */
+    fun glassesPerRow(fitting: Int): Int {
+        val perRow = fitting.coerceAtLeast(1)
+        if (glasses <= 0) return perRow
+        val rows = (glasses + perRow - 1) / perRow
+        return (glasses + rows - 1) / rows
+    }
+}
 
 class FoodEntryUi(
     val id: String,

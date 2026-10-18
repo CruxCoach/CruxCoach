@@ -105,12 +105,20 @@ struct NutritionWaterCard: View {
                 Spacer()
                 Text(NutritionText.render(water.total)).font(.subheadline.monospacedDigit())
             }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 24), spacing: 2), count: 10), spacing: 4) {
+            // As many glasses per row as fit; a bigger target wraps into even rows (6 + 5, not 10 + 1 – device test D42).
+            WaterGlassRows(perRow: { fitting in perRow(fitting) }) {
                 ForEach(0..<Int(water.glasses), id: \.self) { index in
                     glass(index)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// Glasses per row when `fitting` fit side by side (the even-rows rule lives in the Kotlin facade).
+    private func perRow(_ fitting: Int) -> Int {
+        let count: Int32 = water.glassesPerRow(fitting: Int32(clamping: fitting))
+        return Int(count)
     }
 
     @ViewBuilder
@@ -130,6 +138,59 @@ struct NutritionWaterCard: View {
         .buttonStyle(.borderless)
         .disabled(filled && !isLast)
         .accessibilityLabel(isLast ? L("tru_water_remove") : (filled ? "" : NutritionText.render(water.addLabel)))
+    }
+}
+
+/// The water glasses in rows of equal length (Android: `FlowRow` with `maxItemsInEachRow`, device test D42):
+/// it measures how many glasses fit the offered width and asks `perRow` how many to put in each row.
+struct WaterGlassRows: Layout {
+    let perRow: (Int) -> Int
+    var spacing: CGFloat = 2
+    var rowSpacing: CGFloat = 4
+
+    private func cell(_ subviews: Subviews) -> CGSize {
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            width = max(width, size.width)
+            height = max(height, size.height)
+        }
+        return CGSize(width: width, height: height)
+    }
+
+    private func columns(width: CGFloat?, cell: CGSize, count: Int) -> Int {
+        guard count > 0 else { return 1 }
+        var fitting = count
+        if let width, width.isFinite, cell.width > 0 {
+            fitting = max(1, Int((width + spacing) / (cell.width + spacing)))
+        }
+        return min(max(1, perRow(fitting)), count)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let count = subviews.count
+        guard count > 0 else { return .zero }
+        let c = cell(subviews)
+        let cols = columns(width: proposal.width, cell: c, count: count)
+        let rows = (count + cols - 1) / cols
+        let width = CGFloat(cols) * c.width + CGFloat(cols - 1) * spacing
+        let height = CGFloat(rows) * c.height + CGFloat(rows - 1) * rowSpacing
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let count = subviews.count
+        guard count > 0 else { return }
+        let c = cell(subviews)
+        let cols = columns(width: proposal.width ?? bounds.width, cell: c, count: count)
+        for (index, view) in subviews.enumerated() {
+            let column = index % cols
+            let row = index / cols
+            let x = bounds.minX + CGFloat(column) * (c.width + spacing) + c.width / 2
+            let y = bounds.minY + CGFloat(row) * (c.height + rowSpacing) + c.height / 2
+            view.place(at: CGPoint(x: x, y: y), anchor: .center, proposal: ProposedViewSize(c))
+        }
     }
 }
 
