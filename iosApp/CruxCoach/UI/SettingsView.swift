@@ -31,6 +31,7 @@ struct SettingsView: View {
             Section(LI("backup_title")) {
                 NavigationLink(LI("backup_open")) { BackupView(core: core) }
                 NavigationLink(LI("data_exchange_open")) { DataExchangeView(core: core) }
+                NavigationLink(LI("health_title")) { HealthSettingsView(core: core) }
                 NavigationLink(LI("profile_open")) { ProfileView(core: core) }
                 NavigationLink(LI("devcontact_open")) { DevContactView(core: core) }
                 Button(L("tour_replay")) { core.makeBrowserTour().start(replay: true) }

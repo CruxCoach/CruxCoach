@@ -108,7 +108,9 @@ struct BrowserView: View {
                             MapView(makeModel: {
                                 core.makeMapScreen(boardMapDirectory:
                                     Bundle.main.resourceURL?.appendingPathComponent("board_map").path ?? "")
-                            })
+                            }, core: core,
+                            onPickBoard: { model.switchBoard(option: $0) },
+                            boardBrandWires: sync.state.rows.filter { $0.installed }.map { $0.brandWire })
                         }
                         Button(L("tr_nav_training_nutrition"), systemImage: "figure.climbing") { trainingOpen = true }
                             .accessibilityIdentifier("browser_training")

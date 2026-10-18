@@ -26,6 +26,9 @@ struct TodayView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .task {
+            // Android syncs climbing sessions from Health Connect when Today opens; here Apple Health.
+            // Does nothing while reading is switched off.
+            core.makeHealthActions()?.syncClimbing()
             guard host == nil, let model = core.makeTodayScreen(language: TrainingStyle.catalogLanguage) else { return }
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
