@@ -18,6 +18,8 @@ struct BrowserView: View {
     @State private var search = ""
     @State private var sheet: Sheet?
     @State private var path = NavigationPath()
+    /// Bumped to rebuild the stack at its root after a guided board fix (`returnToRoot`).
+    @State private var stackGeneration = 0
     /// The training area (Android's "Training & nutrition" menu entry) covers the browser while open.
     @State private var trainingOpen = false
     /// The body page over the training area, opened by a body reminder's notification.
@@ -202,12 +204,23 @@ struct BrowserView: View {
                 if !uuid.isEmpty { path.append(uuid) }
             }
         }
+        .id(stackGeneration)
+        .environment(\.browserRoot, BrowserRootAction(run: { returnToRoot() }))
         .task { model.start() }
         .modifier(NearbyShareLinkHandler(core: core))
         .modifier(BrowserTourLayer(anchors: anchors, tour: tour, step: tourStep, ui: ui,
                                    connected: ble.state.connected,
                                    visible: rootVisible && sheet == nil && !trainingOpen && !contactOpen,
                                    onMove: { refreshTour() }))
+    }
+
+    /// Android `onNavigateToBoardBrowser` after a guided board fix: back to this list from any
+    /// depth. Pages pushed by a plain NavigationLink (lists, logbook, history …) are not in [path],
+    /// so the stack is rebuilt at its root as well; the list reloads the new board on appear.
+    private func returnToRoot() {
+        sheet = nil
+        path = NavigationPath()
+        stackGeneration += 1
     }
 
     /// The Kotlin model is not observable: SwiftUI learns a new step through [tourStep].

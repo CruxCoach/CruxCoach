@@ -11,6 +11,24 @@ struct BoardMismatchRoute {
     let onPick: (BoardOption) -> Void
 }
 
+/// Android returns to the board browser after a guided fix (`onNavigateToBoardBrowser`, which pops
+/// everything above it). The browser hands every page in its stack this action; a page outside
+/// the browser's stack has none and just goes back.
+struct BrowserRootAction {
+    let run: () -> Void
+}
+
+private struct BrowserRootKey: EnvironmentKey {
+    static let defaultValue: BrowserRootAction? = nil
+}
+
+extension EnvironmentValues {
+    var browserRoot: BrowserRootAction? {
+        get { self[BrowserRootKey.self] }
+        set { self[BrowserRootKey.self] = newValue }
+    }
+}
+
 /// Android `BoardMismatchExplanation`: title, why, where the preselection came from,
 /// and that only a confirmed choice changes the active board.
 struct BoardMismatchExplanation: View {

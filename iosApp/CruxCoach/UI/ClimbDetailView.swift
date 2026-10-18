@@ -30,6 +30,8 @@ struct ClimbDetailView: View {
     /// "Publish as mine" for a climb the connected Kilter account set (Android `canPublishAsMine`).
     @State private var ownKilter: ScreenHost<OwnKilterClimbModel, OwnKilterClimbState>?
     @Environment(\.dismiss) private var dismiss
+    /// Set inside the browser's stack: the guided fix returns to the browser itself, from any depth.
+    @Environment(\.browserRoot) private var browserRoot
     /// The guided first browse's detail steps (project, log, back to the logbook).
     @State private var tour: BrowserTourModel?
     @State private var tourStep = ""
@@ -265,12 +267,17 @@ struct ClimbDetailView: View {
                            })
     }
 
-    /// Android `onNavigateToBoardBrowser` after the guided fix: the browser reloads the new board.
+    /// Android `onNavigateToBoardBrowser` after the guided fix: back to the browser root (not just
+    /// one page up, e.g. from a list or the logbook), which reloads the new board.
     private func leaveForBrowser() {
         boardFix = nil
         leaveAfterFix = false
         onChanged()
-        dismiss()
+        if let browserRoot {
+            browserRoot.run()
+        } else {
+            dismiss()
+        }
     }
 
     /// Android BoardSendController: the board-match guard runs before every send.
