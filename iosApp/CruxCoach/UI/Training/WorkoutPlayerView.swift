@@ -19,7 +19,7 @@ struct WorkoutPlayerView: View {
         NavigationStack {
             Group {
                 if let host {
-                    WorkoutPlayerContent(model: host.model, ui: host.state, onClose: onClose, onFinished: onFinished)
+                    WorkoutPlayerContent(core: core, model: host.model, ui: host.state, onClose: onClose, onFinished: onFinished)
                 } else {
                     ProgressView()
                 }
@@ -38,6 +38,8 @@ struct WorkoutPlayerView: View {
 }
 
 private struct WorkoutPlayerContent: View {
+    /// For the exercise pictogram and the pain sheet's body map.
+    let core: AppCore
     let model: WorkoutPlayerScreenModel
     let ui: WorkoutPlayerState
     let onClose: () -> Void
@@ -176,14 +178,14 @@ private struct WorkoutPlayerContent: View {
             afterOverview = ""
         }) { overviewSheet }
         .sheet(isPresented: $swapping) {
-            WorkoutSwapSheet(model: model, name: ui.exerciseName) { slug in
+            WorkoutSwapSheet(model: model, name: ui.exerciseName, pictogram: pictogramOf) { slug in
                 swapping = false
                 model.swapExercise(to: slug)
             } onClose: { swapping = false }
             .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $pain) {
-            WorkoutPainSheet(model: model, exerciseName: ui.exerciseName) { pain = false }
+            WorkoutPainSheet(model: model, kit: core.bodyMapKit(), exerciseName: ui.exerciseName) { pain = false }
         }
         .sheet(isPresented: $adding) {
             WorkoutAddExerciseSheet(model: model) { adding = false }
@@ -266,6 +268,19 @@ private struct WorkoutPlayerContent: View {
         return page.total > 0 ? CGFloat(page.done) / CGFloat(page.total) : 0
     }
 
+    /// The exercise's movement pictogram before its name (Android `ExerciseHeader`'s `ExerciseThumb`).
+    @ViewBuilder
+    private var headerThumb: some View {
+        if let pictogram = pictogramOf(ui.exerciseSlug) {
+            ExercisePictogramTile(pictogram: pictogram, size: 40)
+        }
+    }
+
+    /// Android `ExerciseThumb` for a catalogue slug; nil while the catalogue does not know it.
+    private func pictogramOf(_ slug: String) -> PictogramUi? {
+        slug.isEmpty ? nil : core.exercisePictogram(slug: slug)
+    }
+
     private var pageHeader: some View {
         VStack(alignment: .leading, spacing: 2) {
             if ui.pageIsCircuit {
@@ -276,6 +291,7 @@ private struct WorkoutPlayerContent: View {
                 }
             } else {
                 HStack(alignment: .top) {
+                    headerThumb
                     Text(ui.exerciseName).font(.title2.weight(.bold)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                     exerciseMenu
                 }
@@ -833,6 +849,8 @@ private struct WorkoutRestBar: View {
 private struct WorkoutSwapSheet: View {
     let model: WorkoutPlayerScreenModel
     let name: String
+    /// Android shows each alternative's `ExerciseThumb`.
+    let pictogram: (String) -> PictogramUi?
     let onSwap: (String) -> Void
     let onClose: () -> Void
     @State private var alternatives: [TodayAlternativeUi]?
@@ -844,10 +862,13 @@ private struct WorkoutSwapSheet: View {
                     if alternatives.isEmpty { Text(L("trt_swap_none")).foregroundStyle(.secondary) }
                     ForEach(alternatives, id: \.slug) { alt in
                         Button { onSwap(alt.slug) } label: {
-                            VStack(alignment: .leading) {
-                                Text(alt.name)
-                                Text([TrRender.text(alt.tag), TrRender.text(alt.equipment)].filter { !$0.isEmpty }.joined(separator: " · "))
-                                    .font(.caption).foregroundStyle(.secondary)
+                            HStack(spacing: 10) {
+                                if let tile = pictogram(alt.slug) { ExercisePictogramTile(pictogram: tile, size: 40) }
+                                VStack(alignment: .leading) {
+                                    Text(alt.name)
+                                    Text([TrRender.text(alt.tag), TrRender.text(alt.equipment)].filter { !$0.isEmpty }.joined(separator: " · "))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }
@@ -870,8 +891,10 @@ private struct WorkoutSwapSheet: View {
 /// "It hurts" during a set (Android `PainSheet`): where, which side, how much, then swap, lighter or end.
 private struct WorkoutPainSheet: View {
     let model: WorkoutPlayerScreenModel
+    let kit: BodyMapKit
     let exerciseName: String
     let onDone: () -> Void
+    @State private var area = ""
     @State private var region = ""
     @State private var side = ""
     @State private var level = 4.0
@@ -886,13 +909,7 @@ private struct WorkoutPainSheet: View {
                 Section {
                     Text(exerciseName).foregroundStyle(.secondary)
                 }
-                Section(L("trp2_pain_region")) {
-                    TrainingFlow {
-                        ForEach(model.painRegionCodes, id: \.self) { code in
-                            TrainingChoiceChip(title: TrRender.text(model.regionLabel(code: code)), selected: region == code) { region = code }
-                        }
-                    }
-                }
+                regionSection
                 Section(L("trp2_pain_side")) {
                     TrainingFlow {
                         ForEach(model.painSideCodes, id: \.self) { code in
@@ -932,6 +949,26 @@ private struct WorkoutPainSheet: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L("tr_action_cancel"), action: onDone) } }
         }
         .onAppear { side = model.painStartSide }
+    }
+}
+
+extension WorkoutPainSheet {
+    /// Android `PainSheet`: tap the body — the area picks the region, a paired area the side — or a chip.
+    var regionSection: some View {
+        Section(L("trp2_pain_region")) {
+            BodyMapPicker(kit: kit, selected: area) { hit in
+                area = hit.areaCode
+                let code: String = kit.injuryRegionCode(areaCode: hit.areaCode)
+                if !code.isEmpty { region = code }
+                if hit.bodySideCode == "left" { side = "LEFT" }
+                if hit.bodySideCode == "right" { side = "RIGHT" }
+            }
+            TrainingFlow {
+                ForEach(model.painRegionCodes, id: \.self) { code in
+                    TrainingChoiceChip(title: TrRender.text(model.regionLabel(code: code)), selected: region == code) { region = code }
+                }
+            }
+        }
     }
 }
 

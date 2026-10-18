@@ -2,8 +2,8 @@ import CruxCoachCore
 import SwiftUI
 
 /// Injuries and pauses (Android `InjuriesScreen`): report an injury by region and side, pain,
-/// climbing paused, healed; holiday pauses. The body-map picker of Android's dialog is not on
-/// iPhone; the region chips below it are. Push it inside a `NavigationStack`; it has none of its own.
+/// climbing paused, healed; holiday pauses. Report by tapping the body map or a region chip, as in
+/// Android's dialog. Push it inside a `NavigationStack`; it has none of its own.
 struct ProgressInjuriesView: View {
     let core: AppCore
 
@@ -131,7 +131,9 @@ private struct InjuryCardRows: View {
     }
 }
 
-/// Report an injury (Android `AddInjuryDialog`, without the body map).
+/// Report an injury (Android `AddInjuryDialog`): tap the body — the area picks the region, a
+/// paired area of a limb also the side, and a finer area than the region (forearm → elbow,
+/// hamstring → knee) goes into an empty detail field — or pick a region chip.
 private struct InjuryAddSheet: View {
     let model: InjuriesScreenModel
     let ui: InjuriesScreenState
@@ -143,20 +145,12 @@ private struct InjuryAddSheet: View {
     @State private var severity: Double = 3
     @State private var pauseClimbing = true
     @State private var pauseStreak = true
+    @State private var area = "fingers"
 
     var body: some View {
         NavigationStack {
             Form {
-                Section(L("tra_injury_where")) {
-                    TrainingFlow(spacing: 6) {
-                        ForEach(ui.regions, id: \.code) { r in
-                            TrainingChoiceChip(title: TrRender.text(r.label), selected: region == r.code) {
-                                region = r.code
-                                pauseClimbing = r.pausesClimbing
-                            }
-                        }
-                    }
-                }
+                whereSection
                 Section(L("tra_injury_side")) {
                     TrainingFlow(spacing: 6) {
                         ForEach(ui.sides, id: \.code) { s in
@@ -194,5 +188,38 @@ private struct InjuryAddSheet: View {
                 }
             }
         }
+    }
+
+    private var whereSection: some View {
+        Section(L("tra_injury_where")) {
+            Text(L("trb_injury_where")).font(.caption).foregroundStyle(.secondary)
+            BodyMapPicker(kit: model.bodyMap, selected: area) { hit in pick(hit) }
+            TrainingFlow(spacing: 6) {
+                ForEach(ui.regions, id: \.code) { r in
+                    TrainingChoiceChip(title: TrRender.text(r.label), selected: region == r.code) {
+                        choose(r)
+                    }
+                }
+            }
+        }
+    }
+
+    /// A region chip: its climbing pause and its first area on the map (Android `chooseRegion`).
+    private func choose(_ r: InjuryRegionUi) {
+        region = r.code
+        pauseClimbing = r.pausesClimbing
+        area = model.firstAreaOf(regionCode: r.code)
+    }
+
+    /// Android's `BodyMapPicker` callbacks: region (and its climbing pause), side, detail.
+    private func pick(_ hit: BodyHitUi) {
+        guard let choice = model.pickArea(areaCode: hit.areaCode, bodySideCode: hit.bodySideCode) else { return }
+        area = choice.areaCode
+        region = choice.regionCode
+        pauseClimbing = choice.pausesClimbing
+        if detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !choice.detailKey.isEmpty {
+            detail = L(choice.detailKey)
+        }
+        if !choice.sideCode.isEmpty { side = choice.sideCode }
     }
 }
