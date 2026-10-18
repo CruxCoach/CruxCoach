@@ -109,8 +109,8 @@ private struct TodayContent: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button { notYet = L("trt_weekly_review") } label: { Label(L("trt_weekly_review"), systemImage: "chart.bar") }
-                    Button { notYet = L("trt_done_hero_history") } label: { Label(L("trt_done_hero_history"), systemImage: "clock.arrow.circlepath") }
+                    Button { progressSheet = .review } label: { Label(L("trt_weekly_review"), systemImage: "chart.bar") }
+                    Button { progressSheet = .history } label: { Label(L("trt_done_hero_history"), systemImage: "clock.arrow.circlepath") }
                     if !ui.hasOpenWorkout {
                         Button { model.startEmptyWorkout() } label: { Label(L("trt_quick_free"), systemImage: "plus") }
                     }
@@ -270,10 +270,17 @@ private struct TodayContent: View {
             switch link {
             case .estimate:
                 ProgressQuickEstimateSheet(core: core) { progressSheet = nil }
-            case .injuries, .settings:
+            case .coach:
+                CoachSetupView(core: core) { progressSheet = nil }
+            case .injuries, .settings, .review, .history:
                 NavigationStack {
                     Group {
-                        if link == .injuries { ProgressInjuriesView(core: core) } else { ProgressSettingsView(core: core) }
+                        switch link {
+                        case .injuries: ProgressInjuriesView(core: core)
+                        case .settings: ProgressSettingsView(core: core)
+                        case .review: WeeklyReviewView(core: core)
+                        default: TrainingHistoryView(core: core)
+                        }
                     }
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) { Button(L("action_done")) { progressSheet = nil } }
@@ -333,7 +340,7 @@ private struct TodayContent: View {
     @ViewBuilder
     private var setupChecklist: some View {
         let steps: [(done: Bool, title: String, text: String, open: () -> Void)] = [
-            (ui.setupCoachDone, L("tru_setup_coach"), L("tru_setup_coach_text"), { notYet = L("tru_setup_coach") }),
+            (ui.setupCoachDone, L("tru_setup_coach"), L("tru_setup_coach_text"), { progressSheet = .coach }),
             (ui.setupEquipmentDone, L("tru_setup_equipment"), L("tru_setup_equipment_text"), { showEquipment = true }),
             (ui.setupWeightDone, L("tru_setup_weight"), L("tru_setup_weight_text"), { showWeight = true }),
         ]
@@ -419,7 +426,7 @@ private struct TodayContent: View {
                 Text(L("trt_done_hero_text")).font(.caption)
                 HStack {
                     Button(L("trt_done_hero_more")) { moreToday = true }.buttonStyle(.bordered)
-                    Button(L("trt_done_hero_history")) { notYet = L("trt_done_hero_history") }
+                    Button(L("trt_done_hero_history")) { progressSheet = .history }
                 }
             }
             .padding(16)
@@ -1311,6 +1318,6 @@ struct TrainingEquipmentEditor: View {
 }
 
 private enum TodayProgressLink: String, Identifiable {
-    case injuries, settings, estimate
+    case injuries, settings, estimate, coach, review, history
     var id: String { rawValue }
 }

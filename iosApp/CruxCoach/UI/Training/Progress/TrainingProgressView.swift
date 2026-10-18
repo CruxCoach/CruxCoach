@@ -37,6 +37,8 @@ struct TrainingProgressView: View {
                 case .body: ProgressBodyView(core: core)
                 case .benchmarks: ProgressBenchmarksView(core: core)
                 case .exercise(let slug): ProgressExerciseStatsView(core: core, slug: slug)
+                case .weeklyReview: WeeklyReviewView(core: core)
+                case .history: TrainingHistoryView(core: core)
                 }
             }
         }
@@ -49,7 +51,7 @@ struct TrainingProgressView: View {
     }
 }
 
-enum ProgressRoute: Hashable { case body, benchmarks, exercise(String) }
+enum ProgressRoute: Hashable { case body, benchmarks, exercise(String), weeklyReview, history }
 
 /// ISO days (yyyy-mm-dd) as local midnight, so a chart's date axis shows the same day.
 enum ProgressDates {
@@ -146,9 +148,12 @@ private struct ProgressContent: View {
                     }
                     .buttonStyle(.plain)
                 }
-                ProgressTile(icon: "calendar", tint: .accentColor, label: L("trt_weekly_review"),
-                             value: ui.weeklyValue, valueIsAction: false,
-                             supporting: L("trs_tile_training_days")) { notYet = L("trt_weekly_review") }
+                NavigationLink(value: ProgressRoute.weeklyReview) {
+                    ProgressTileFace(icon: "calendar", tint: .accentColor, label: L("trt_weekly_review"),
+                                     value: ui.weeklyValue, valueIsAction: false,
+                                     supporting: L("trs_tile_training_days"))
+                }
+                .buttonStyle(.plain)
             }
             GridRow {
                 NavigationLink(value: ProgressRoute.benchmarks) {
@@ -157,9 +162,12 @@ private struct ProgressContent: View {
                                      supporting: L("tru_hub_benchmarks"))
                 }
                 .buttonStyle(.plain)
-                ProgressTile(icon: "clock.arrow.circlepath", tint: .teal, label: L("trt_done_hero_history"),
-                             value: "\(ui.historyValue)", valueIsAction: false,
-                             supporting: TrRender.text(ui.historySupporting)) { notYet = L("trt_done_hero_history") }
+                NavigationLink(value: ProgressRoute.history) {
+                    ProgressTileFace(icon: "clock.arrow.circlepath", tint: .teal, label: L("trt_done_hero_history"),
+                                     value: "\(ui.historyValue)", valueIsAction: false,
+                                     supporting: TrRender.text(ui.historySupporting))
+                }
+                .buttonStyle(.plain)
             }
         }
     }
