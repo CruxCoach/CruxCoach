@@ -176,8 +176,10 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
     )
 
     /** left, top, right, bottom of [zone] over the board image; zeros while no area is set. */
-    private fun zoneRect(state: BoardBrowserUiState): List<Float> {
-        val z = zone ?: return listOf(0f, 0f, 0f, 0f)
+    private fun zoneRect(state: BoardBrowserUiState): List<Float> = zoneBox(state, zone)
+
+    internal fun zoneBox(state: BoardBrowserUiState, area: com.cruxcoach.domain.board.BoardZone?): List<Float> {
+        val z = area ?: return listOf(0f, 0f, 0f, 0f)
         quantumModel(state)?.let { return com.cruxcoach.app.render.QuantumRender.zoneRect(it, z) }
         val geometry = com.cruxcoach.app.render.AuroraBoardGeometry.of(state.board.boardSize)
         // y grows upwards on the board: the zone's top edge is maxY.
@@ -223,12 +225,33 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
      * is dropped by Swift (Android: below twice the touch slop).
      */
     fun setZone(ax: Float, ay: Float, bx: Float, by: Float) {
+        zone = zoneFromCanvas(ax, ay, bx, by) ?: return
+        presenter.applyHoldFilter(holdFilter.toSet(), zone)
+    }
+
+    /** The drag's two image-normalized points as a board area; null for points that are not numbers. */
+    internal fun zoneFromCanvas(ax: Float, ay: Float, bx: Float, by: Float): com.cruxcoach.domain.board.BoardZone? {
         val values = listOf(ax, ay, bx, by)
-        if (values.any { it.isNaN() || it.isInfinite() }) return
+        if (values.any { it.isNaN() || it.isInfinite() }) return null
         val clamped = values.map { it.coerceIn(0f, 1f) }
         val geometry = com.cruxcoach.app.render.AuroraBoardGeometry.of(presenter.state.value.board.boardSize)
-        zone = geometry.zoneFromCanvas(clamped[0], clamped[1], clamped[2], clamped[3], 1f, 1f)
-        presenter.applyHoldFilter(holdFilter.toSet(), zone)
+        return geometry.zoneFromCanvas(clamped[0], clamped[1], clamped[2], clamped[3], 1f, 1f)
+    }
+
+    /** Android's hold search sheet: a pending selection counted on its own and applied by "Filter". */
+    fun makeHoldSearch(): HoldSearchScreenModel = HoldSearchScreenModel(this, kotlinx.coroutines.Dispatchers.Main)
+
+    internal val browserState: BoardBrowserUiState get() = presenter.state.value
+    internal fun appliedHolds(): Set<Int> = holdFilter.toSet()
+    internal fun appliedZone(): com.cruxcoach.domain.board.BoardZone? = zone
+    internal suspend fun holdMatchCount(holds: Set<Int>, area: com.cruxcoach.domain.board.BoardZone?): Int =
+        presenter.holdMatchCount(holds, area)
+
+    /** Android `applyHoldFilter`/`clearHoldSelection`: the sheet's selection becomes the browser's filter. */
+    internal fun applyHoldSearch(holds: Set<Int>, area: com.cruxcoach.domain.board.BoardZone?) {
+        holdFilter = LinkedHashSet(holds)
+        zone = area
+        presenter.applyHoldFilter(holds, area)
     }
 
     /** Android's "Remove area": the hold selection stays. */

@@ -323,6 +323,19 @@ class BoardBrowserPresenter(
         if (s.filter.quantumOverlapFilter.active) search(preserveDepth = false)
     }
 
+    /**
+     * Android `countHoldMatches`: how many climbs the hold search would keep under the current
+     * filter, without applying it (the sheet's "N climbs found" before "Filter"). 0 when both are empty.
+     */
+    internal suspend fun holdMatchCount(selectedHolds: Set<Int>, zone: com.cruxcoach.domain.board.BoardZone?): Int {
+        if (selectedHolds.isEmpty() && zone == null) return 0
+        val s = _state.value
+        val xy = s.board.placements.mapValues { it.value.x to it.value.y }
+        return withContext(io) {
+            dbLock.withLock { pipeline.findUuidsMatchingHoldFilter(s.filter, context(s), selectedHolds, zone, xy) }
+        }.size
+    }
+
     /** Hold/zone search: climbs using ALL [selectedHolds] and lying inside [zone]. Both empty clears the filter. */
     fun applyHoldFilter(selectedHolds: Set<Int>, zone: com.cruxcoach.domain.board.BoardZone?) {
         if (selectedHolds.isEmpty() && zone == null) {

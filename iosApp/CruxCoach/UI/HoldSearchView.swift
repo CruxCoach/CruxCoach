@@ -2,12 +2,14 @@ import CruxCoachCore
 import SwiftUI
 
 /// Hold search: tap the holds a problem must use, or (Android's "Select area")
-/// drag a box the problem must fit into. The result list narrows to climbs that
-/// use every selected hold and lie fully inside the area, which is Android's rule.
+/// drag a box the problem must fit into. As on Android the selection is pending:
+/// the sheet counts the climbs it matches on its own, and "Filter" narrows the
+/// browser to climbs that use every selected hold and lie fully inside the area.
 struct HoldSearchView: View {
     let model: BrowserScreenModel
     let ui: BrowserScreenState
     @Environment(\.dismiss) private var dismiss
+    @State private var search: ScreenHost<HoldSearchScreenModel, HoldSearchScreenState>?
     /// Android's "Select area" chip: while on, a drag frames the area instead of tapping holds.
     @State private var areaMode = false
     /// The live drag, normalized over the board image, while framing an area.
@@ -25,34 +27,52 @@ struct HoldSearchView: View {
     }
 
     var body: some View {
+        Group {
+            if let search {
+                content(sheet: search.model, hs: search.state)
+            } else {
+                ProgressView()
+            }
+        }
+        .navigationTitle(L("board_holdsearch_title"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L("action_close")) { dismiss() } } }
+        .task {
+            guard search == nil else { return }
+            let sheet = model.makeHoldSearch()
+            search = ScreenHost(model: sheet, initial: sheet.currentState,
+                                subscribe: { model, onState in model.watch(onState: onState) },
+                                onClose: { model in model.close() })
+        }
+        .onDisappear { search?.close() }
+    }
+
+    private func content(sheet: HoldSearchScreenModel, hs: HoldSearchScreenState) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text(areaMode ? L("board_holdsearch_zone_hint") : LI("hold_search_hint"))
+                Text(areaMode ? L("board_holdsearch_zone_hint") : L("board_holdsearch_hint"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                areaControls
-                summary
-                canvas
+                areaControls(sheet: sheet, hs: hs)
+                summary(sheet: sheet, hs: hs)
+                canvas(sheet: sheet, hs: hs)
             }
             .padding()
         }
         // A drag on the board frames the area; it must not scroll the sheet.
         .scrollDisabled(areaMode)
-        .navigationTitle(LI("hold_search_title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("action_done")) { dismiss() } } }
     }
 
-    private var areaControls: some View {
+    private func areaControls(sheet: HoldSearchScreenModel, hs: HoldSearchScreenState) -> some View {
         HStack(spacing: 8) {
             Toggle(isOn: $areaMode) {
                 Label(L("board_holdsearch_zone_mode"), systemImage: "square.grid.3x3")
             }
             .toggleStyle(.button)
             .accessibilityIdentifier("hold_search_area_mode")
-            if ui.zoneActive {
+            if hs.zoneActive {
                 Button {
-                    model.clearZone()
+                    if sheet.clearZone() { dismiss() }
                 } label: {
                     Label(L("board_holdsearch_zone_active"), systemImage: "xmark.circle.fill")
                 }
@@ -63,32 +83,55 @@ struct HoldSearchView: View {
         }
     }
 
-    @ViewBuilder private var summary: some View {
-        let holdCount: Int = ui.holdFilter.count
-        if holdCount > 0 || ui.zoneActive {
+    /// Android: the selection with "Reset", then the count of climbs it matches and "Filter".
+    @ViewBuilder
+    private func summary(sheet: HoldSearchScreenModel, hs: HoldSearchScreenState) -> some View {
+        let holdCount: Int = hs.selectedHolds.count
+        if hs.hasSelection {
             HStack {
-                Text(holdCount == 0 ? L("board_holdsearch_zone_only") : LI("hold_search_selected", holdCount))
+                Text(holdCount == 0 ? L("board_holdsearch_zone_only") : L("board_holdsearch_holds_selected", holdCount))
                     .font(.subheadline.bold())
                 Spacer()
-                if ui.loadState == "loading" {
-                    ProgressView()
-                } else if ui.totalCount >= 0 {
-                    Text(L("board_holdsearch_climbs_found", Int(ui.totalCount)))
-                        .font(.subheadline)
-                        .foregroundStyle(ui.totalCount > 0 ? Color.green : Color.red)
-                }
-                Button(L("board_holdsearch_reset")) { model.clearHoldFilter() }
+                Button(L("board_holdsearch_reset"), systemImage: "xmark") { sheet.reset() }
                     .buttonStyle(.borderless)
+            }
+            HStack {
+                matchText(hs: hs)
+                Spacer()
+                Button {
+                    if sheet.apply() { dismiss() }
+                } label: {
+                    Label(L("board_holdsearch_filter"), systemImage: "magnifyingglass").fontWeight(.bold)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.orange)
+                .disabled(!hs.canApply)
+                .accessibilityIdentifier("hold_search_filter")
             }
         }
     }
 
-    private var canvas: some View {
+    @ViewBuilder
+    private func matchText(hs: HoldSearchScreenState) -> some View {
+        let count: Int = Int(hs.matchCount)
+        if hs.searching {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text(L("board_holdsearch_searching")).font(.footnote)
+            }
+        } else if count >= 0 {
+            Text(L("board_holdsearch_climbs_found", count))
+                .font(.subheadline.bold())
+                .foregroundStyle(count > 0 ? Color.green : Color.red)
+        }
+    }
+
+    private func canvas(sheet: HoldSearchScreenModel, hs: HoldSearchScreenState) -> some View {
         let loaded = image
-        let selected = Set(ui.holdFilter.map { Int(truncating: $0) })
-        let zone: CGRect? = ui.zoneActive
-            ? CGRect(x: CGFloat(ui.zoneLeft), y: CGFloat(ui.zoneTop),
-                     width: CGFloat(ui.zoneRight - ui.zoneLeft), height: CGFloat(ui.zoneBottom - ui.zoneTop))
+        let selected: Set<Int> = Set(hs.selectedHolds.map { Int(truncating: $0) })
+        let zone: CGRect? = hs.zoneActive
+            ? CGRect(x: CGFloat(hs.zoneLeft), y: CGFloat(hs.zoneTop),
+                     width: CGFloat(hs.zoneRight - hs.zoneLeft), height: CGFloat(hs.zoneBottom - hs.zoneTop))
             : nil
         let preview: CGRect? = dragRect
         return GeometryReader { geo in
@@ -103,13 +146,13 @@ struct HoldSearchView: View {
                 if let preview { drawArea(context: context, size: size, rect: preview, dashed: true) }
             }
             .contentShape(Rectangle())
-            .gesture(areaDrag(size: geo.size), including: areaMode ? .all : .subviews)
+            .gesture(areaDrag(sheet: sheet, size: geo.size), including: areaMode ? .all : .subviews)
             .onTapGesture { location in
                 guard !areaMode else { return }
                 let nx = Float(location.x / geo.size.width)
                 let ny = Float(location.y / geo.size.height)
                 if let nearest = nearestHold(nx: nx, ny: ny) {
-                    model.toggleHoldFilter(placementId: nearest)
+                    sheet.toggleHold(placementId: nearest)
                 }
             }
         }
@@ -147,7 +190,7 @@ struct HoldSearchView: View {
 
     /// Android: a one-finger drag frames the area; it is committed on release
     /// unless the finger barely moved, and area mode then ends.
-    private func areaDrag(size: CGSize) -> some Gesture {
+    private func areaDrag(sheet: HoldSearchScreenModel, size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard size.width > 0, size.height > 0 else { return }
@@ -160,7 +203,7 @@ struct HoldSearchView: View {
                 dragStart = nil
                 dragEnd = nil
                 guard size.width > 0, size.height > 0, (dx * dx + dy * dy).squareRoot() > 16 else { return }
-                model.setZone(ax: Float(value.startLocation.x / size.width), ay: Float(value.startLocation.y / size.height),
+                sheet.setZone(ax: Float(value.startLocation.x / size.width), ay: Float(value.startLocation.y / size.height),
                               bx: Float(value.location.x / size.width), by: Float(value.location.y / size.height))
                 areaMode = false
             }
