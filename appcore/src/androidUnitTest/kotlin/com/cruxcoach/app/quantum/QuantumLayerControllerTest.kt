@@ -188,6 +188,24 @@ class QuantumLayerControllerTest {
     }
 
     @Test
+    fun `with no colour picked the lamp uses the layer's own default colour as on Android`() = scope.runTest {
+        val link = FakeLink(QuantumBoardModel.M)
+        val c = controller(link)
+        advanceUntilIdle()
+        // Layer 1 holds another climb, staged in magenta (layer 3's default): green is the first free
+        // colour (the rack's suggestion), but Android lights layer 2 in its own cyan.
+        val other = climb.copy(uuid = "11111111-2222-4333-8444-555555555555", holds = listOf(BoardHold(3000009, 12)))
+        c.assign(other, slot = 0, color = 0xFFFF00FF.toInt()); advanceUntilIdle()
+
+        c.light(climb); advanceUntilIdle()
+
+        val send = link.sends.single()
+        assertEquals(c.layers.identityForSlot(1), send[1])
+        assertEquals(0x00ffff, send[2], "Android buildQuantumLayer: selected ?: existing ?: defaultColor(slot)")
+        assertEquals(0xFF00FFFF.toInt(), c.layers.state.value.layers.first { it.slot == 1 }.color)
+    }
+
+    @Test
     fun `a staged plan is dropped locally without a board command`() = scope.runTest {
         val link = FakeLink(QuantumBoardModel.M)
         val c = controller(link)

@@ -204,15 +204,15 @@ internal class QuantumLayerController(
     /**
      * The detail lamp: the current climb into its existing or the first free conflict-free layer, then sent.
      * [pickedColor] is a colour the user chose in the rack (Android `selectedBoardLayerColor`); it wins
-     * when it is still free, otherwise the layer falls back like any other plan.
+     * when it is still free. Without one the layer keeps its colour or takes its own slot default, as
+     * Android's `buildQuantumLayer` does (not the rack's suggested colour); a taken colour falls back
+     * like any other plan.
      */
     fun light(climb: QuantumClimbSnapshot, pickedColor: Int? = null) {
         if (!localManagementAllowed() || _send.value.sending) return
         if (climb.holds.isEmpty() || !connected()) return
         val slot = layers.layerForClimb(climb.uuid)?.slot ?: automaticSlot(climb) ?: return
-        val color = pickedColor ?: QuantumLayerUiPolicy.summarize(
-            layers.state.value, climb.uuid, climb.holds.mapTo(mutableSetOf()) { it.placementId },
-        ).suggestedColor
+        val color = pickedColor
         val slotBefore = layers.state.value.layers.firstOrNull { it.slot == slot }
         start { fence ->
             mismatchError(climb)?.let { error ->
