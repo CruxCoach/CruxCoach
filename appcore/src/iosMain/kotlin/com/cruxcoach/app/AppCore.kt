@@ -281,10 +281,10 @@ class AppCore private constructor(
         boardConnection.setAutoDisconnectSeconds(settingsStore.snapshot.bleAutoDisconnectSeconds)
     }
 
-    fun makeBrowserScreen(): BrowserScreenModel = BrowserScreenModel(
+    fun makeBrowserScreen(): BrowserScreenModel = quantumAwareBrowser(BrowserScreenModel(
         BoardBrowserPresenter(boardRepository, personalRepository, platform.keyValues, { pubkeyHex }),
         settings.gradeFormatter(),
-    )
+    ))
 
     fun makeDetailScreen(): DetailScreenModel = detailScreen(listener = null)
 

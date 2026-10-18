@@ -104,6 +104,8 @@ final class AppEnvironment {
     /// Every return to the foreground: the same steps, each only when it is due.
     func refreshInForeground() {
         start()
+        // A connected Quantum controller's route roster may have changed while the app was away.
+        if case .ready(let core) = phase { core.refreshQuantumOnForeground() }
         guard let refresh = currentBackgroundRefresh() else { return }
         refresh.runInForeground { _ in }
     }
