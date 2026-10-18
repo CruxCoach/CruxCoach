@@ -7,8 +7,10 @@ import com.cruxcoach.app.testing.JvmHashing
 import com.cruxcoach.athlete.logic.VisionCapability
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -166,7 +168,9 @@ class VisionModelStoreTest {
         downloads.auto = false
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         store(appScope).start(model, allowMobile = false)
-        appScope.cancel() // the app is closed; the system's transfers go on
+        // The app is closed; the system's transfers go on. Joined, so no refresh of the old
+        // process is still in flight (a dead process has none).
+        appScope.coroutineContext[Job]!!.cancelAndJoin()
         downloads.ids().forEach { downloads.complete(it) }
 
         val relaunched = store()
@@ -184,7 +188,7 @@ class VisionModelStoreTest {
         downloads.auto = false
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         store(appScope).start(model, allowMobile = false)
-        appScope.cancel()
+        appScope.coroutineContext[Job]!!.cancelAndJoin()
         downloads.forgetAll()
 
         val relaunched = store()
