@@ -10,7 +10,10 @@
 //   index waits its Android delay (1 s + 3 s per index) and then offers the strongest other
 //   nearby session for one explicit answer, else the session ends with the queue kept on screen.
 // - It does not project the queue onto its own board connection: the host drives the wall.
-// - The host's rest phase drives a countdown on this screen, not the app-wide rest timer.
+//
+// The host's rest phase drives the countdown on this screen and, as on Android ("drive the
+// participant's OWN rest timer rather than inventing a second kind of rest UI"), the phone's own
+// rest timer through [HostRestSink]: the app-wide rest banner and its end notification.
 package com.cruxcoach.app.sharedsession
 
 import com.cruxcoach.app.nearby.NearbySession
@@ -60,12 +63,23 @@ internal data class ParticipantState(
     val currentClimb: QueueItem? get() = queue.getOrNull(currentIndex)
 }
 
+/**
+ * The phone's own rest timer as the host's rest drives it (Android's `SessionGattBridge`:
+ * RestStarted → `startRestTimer(remainingSeconds)`, RestEnded → `cancelRestTimer()`).
+ */
+internal interface HostRestSink {
+    fun hostRestStarted(seconds: Int)
+    fun hostRestEnded()
+}
+
 internal class SharedSessionParticipant(
     private val client: SessionGattClient,
     /** The live nearby sessions: the session id of a joined row and successor candidates. */
     private val nearbySessions: () -> List<NearbySession>,
     private val scope: CoroutineScope,
     private val millis: () -> Long,
+    /** Null: the host's rest shows on the sessions screen only. */
+    private val hostRest: HostRestSink? = null,
 ) {
     companion object {
         const val MIGRATION_BASE_DELAY_MS = 1000L
@@ -90,6 +104,8 @@ internal class SharedSessionParticipant(
     private var migrationJob: Job? = null
     private var migrationGeneration = 0L
     private var restJob: Job? = null
+    /** The phone's own rest timer runs a rest the host started (so leaving only ends that one). */
+    private var hostRestOnTimer = false
     private var isRejoining = false
     private var lastHostSessionId = 0
     private var lastQueueReread = Long.MIN_VALUE / 2
@@ -182,6 +198,8 @@ internal class SharedSessionParticipant(
         joinJob?.cancel()
         joinJob = null
         stopRest()
+        // Android's leaveSession → endSession → cancelRestTimer.
+        endHostRest()
         clearPending()
         _state.update { ParticipantState(feedbackSeq = it.feedbackSeq) }
         scope.launch {
@@ -281,9 +299,18 @@ internal class SharedSessionParticipant(
             is SessionEvent.RestStarted -> {
                 // The host says where the queue landed; trust it if CurrentChanged was dropped.
                 if (event.nextIndex != _state.value.currentIndex) setCurrent(event.nextIndex)
-                if (event.remainingSeconds > 0) startRest(event.remainingSeconds)
+                if (event.remainingSeconds > 0) {
+                    startRest(event.remainingSeconds)
+                    hostRest?.let {
+                        it.hostRestStarted(event.remainingSeconds)
+                        hostRestOnTimer = true
+                    }
+                }
             }
-            is SessionEvent.RestEnded -> stopRest()
+            is SessionEvent.RestEnded -> {
+                stopRest()
+                endHostRest()
+            }
             is SessionEvent.CommandResult -> {
                 pendingCommands.remove(event.requestId) ?: return
                 publishPending()
@@ -324,6 +351,12 @@ internal class SharedSessionParticipant(
                 if (left == 0) break
             }
         }
+    }
+
+    private fun endHostRest() {
+        if (!hostRestOnTimer) return
+        hostRestOnTimer = false
+        hostRest?.hostRestEnded()
     }
 
     private fun stopRest() {
@@ -477,6 +510,9 @@ internal class SharedSessionParticipant(
 
     private fun endSession(reason: ParticipantEndReason, keepQueue: Boolean) {
         stopRest()
+        // Android's handleSessionEndedForEveryone ends the rest; a lost host does not (its
+        // participant takes the session over there, and the rest keeps counting).
+        if (reason == ParticipantEndReason.ENDED_BY_HOST) endHostRest()
         clearPending()
         _state.update {
             ParticipantState(

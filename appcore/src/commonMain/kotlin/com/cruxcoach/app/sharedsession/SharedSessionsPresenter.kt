@@ -59,11 +59,13 @@ internal class SharedSessionsPresenter(
     private val io: CoroutineDispatcher,
     private val millis: () -> Long,
     private val lookup: ClimbLookup,
+    /** The phone's own rest timer, driven by a joined host's rest as on Android. */
+    hostRest: HostRestSink? = null,
 ) : BleCentralListener {
 
     val scanner = NearbyScanner(millis)
     val client = SessionGattClient(central, scope)
-    val participant = SharedSessionParticipant(client, { scanner.nearbySessions.value }, scope, millis)
+    val participant = SharedSessionParticipant(client, { scanner.nearbySessions.value }, scope, millis, hostRest)
 
     private val adapter = MutableStateFlow(BleAdapterState.UNKNOWN)
     private val scanning = MutableStateFlow(false)

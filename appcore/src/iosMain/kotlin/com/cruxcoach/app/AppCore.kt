@@ -1720,6 +1720,8 @@ class AppCore private constructor(
                 io = Dispatchers.IO,
                 millis = { platform.clock.epochMillis() },
                 lookup = com.cruxcoach.app.sharedsession.CatalogueClimbLookup(boardRepository) { settings.gradeFormatter().label(it) },
+                // Android: a joined host's rest runs on this phone's own rest timer (app-wide banner).
+                hostRest = com.cruxcoach.app.sharedsession.RestTimerHostRest(trainingRestTimer),
             ),
         )
     }
