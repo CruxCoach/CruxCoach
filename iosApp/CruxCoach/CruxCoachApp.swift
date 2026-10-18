@@ -27,6 +27,8 @@ final class AppLaunchDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // First, so a crash while the core starts is reported on the next launch too.
+        CrashReporting.install()
         environment.registerBackgroundRefresh()
         return true
     }
