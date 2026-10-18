@@ -60,6 +60,10 @@ data class BoardBrowserUiState(
     val error: BrowseError = BrowseError.NONE,
     val excludesSent: Boolean = false,
     val randomClimb: RandomClimbEvent? = null,
+    /** The hold search filters the list (Android `holdFilterActive`): the browser shows its banner. */
+    val holdFilterActive: Boolean = false,
+    /** Climbs the applied hold search matches on its own (Android `holdFilterUuids.size`). */
+    val holdFilterMatches: Int = 0,
 ) {
     val filter: BrowserFilterState get() = core.filter
 }
@@ -157,7 +161,11 @@ class BoardBrowserPresenter(
                     // Atomic: brand/layout/angle land together with a ZEROED mask; the real mask follows below.
                     val chips0 = BoardAnglePicker.chipsFor(brand, sel.layoutId, emptyList())
                     _state.update {
-                        it.copy(core = base.onBoardSwitch(BoardAnglePicker.clampAngle(sel.angle, chips0), sel.layoutId, sel.boardBrand, chips0))
+                        it.copy(
+                            core = base.onBoardSwitch(BoardAnglePicker.clampAngle(sel.angle, chips0), sel.layoutId, sel.boardBrand, chips0),
+                            holdFilterActive = false,
+                            holdFilterMatches = 0,
+                        )
                     }
                     // Android refreshes the layer state on a switch: the wall did not change while another board was shown.
                     val wall = latestQuantumLayers
@@ -341,6 +349,7 @@ class BoardBrowserPresenter(
         if (selectedHolds.isEmpty() && zone == null) {
             holdFilterActive = false
             holdFilterUuids = emptySet()
+            _state.update { it.copy(holdFilterActive = false, holdFilterMatches = 0) }
             search(preserveDepth = false)
             return
         }
@@ -353,6 +362,7 @@ class BoardBrowserPresenter(
                 }
                 holdFilterActive = true
                 holdFilterUuids = uuids
+                _state.update { it.copy(holdFilterActive = true, holdFilterMatches = uuids.size) }
                 search(preserveDepth = false)
             } catch (e: CancellationException) {
                 throw e

@@ -76,6 +76,9 @@ struct BrowserView: View {
         NavigationStack(path: $path) {
             List {
                 Section { header(model: model, ui: ui) }
+                if ui.holdFilterActive {
+                    HoldFilterBanner(ui: ui, onChange: { sheet = .holds }, onClear: { model.clearHoldFilter() })
+                }
                 if !ui.hasCatalogue {
                     ContentUnavailableView(LI("browser_no_catalogue"), systemImage: "square.and.arrow.down",
                                            description: Text(LI("browser_no_catalogue_hint")))
@@ -280,6 +283,38 @@ struct BrowserView: View {
             Toggle(L("board_filter_exclude_sent"),
                    isOn: Binding(get: { ui.excludesSent }, set: { model.setExcludeSent(exclude: $0) }))
         }
+    }
+}
+
+/// Android's active hold-filter banner (`HoldSearchActionBar`): what the applied hold search
+/// is and how many climbs it matches, with "Change" (reopens the sheet) and "Clear".
+private struct HoldFilterBanner: View {
+    let ui: BrowserScreenState
+    let onChange: () -> Void
+    let onClear: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "square.grid.3x3")
+                .font(.footnote)
+                .foregroundStyle(Color.orange)
+            Text(summary).font(.footnote.bold())
+            Spacer()
+            Button(L("board_holdsearch_change"), action: onChange).font(.footnote)
+            Button(L("board_holdsearch_clear"), action: onClear).font(.footnote)
+        }
+        // Two buttons in one list row: each must take only its own taps.
+        .buttonStyle(.borderless)
+        .listRowBackground(Color.orange.opacity(0.12))
+    }
+
+    private var summary: String {
+        let holds: Int = ui.holdFilter.count
+        let matches: Int = Int(ui.holdFilterMatches)
+        if holds == 0 && ui.zoneActive {
+            return L("board_holdsearch_zone_filter_summary", matches)
+        }
+        return L("board_holdsearch_filter_summary", holds, matches)
     }
 }
 

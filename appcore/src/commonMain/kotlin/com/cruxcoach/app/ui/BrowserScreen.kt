@@ -71,6 +71,13 @@ class BrowserScreenState(
     val quantumLayersComplete: Boolean,
     /** Climbs that fit under the active wall-fit filter; -1 while unknown. */
     val quantumFitCount: Long,
+    /**
+     * Android's active hold-filter banner ("N holds → M climbs", Change / Clear): shown while the
+     * applied hold search narrows the list. [holdFilter]/[zoneActive] say what it consists of.
+     */
+    val holdFilterActive: Boolean,
+    /** Climbs the applied hold search matches on its own (the banner's M). */
+    val holdFilterMatches: Int,
 )
 
 /** One selectable hold: [x]/[y] are normalized over the board image. */
@@ -139,6 +146,8 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
             quantumLayersOccupied = state.core.quantumLayers.occupied,
             quantumLayersComplete = state.core.quantumLayers.complete,
             quantumFitCount = state.core.quantumLayers.matchCount,
+            holdFilterActive = state.holdFilterActive,
+            holdFilterMatches = state.holdFilterMatches,
         )
     }
 

@@ -116,6 +116,47 @@ class HoldSearchSheetTest {
     }
 
     @Test
+    fun `the banner counts the applied hold matches and Clear removes it`() = scope.runTest {
+        val m = model()
+        var last: BrowserScreenState? = null
+        val watch = m.watch { last = it }
+        m.start(); advanceUntilIdle()
+        m.setSearch("wide"); advanceUntilIdle()
+        assertFalse(last!!.holdFilterActive)
+
+        val sheet = HoldSearchScreenModel(m, dispatcher)
+        sheet.toggleHold(100); advanceUntilIdle()
+        assertFalse(last!!.holdFilterActive, "a pending selection shows no banner")
+        assertTrue(sheet.apply()); advanceUntilIdle()
+        var s = last!!
+        assertTrue(s.holdFilterActive)
+        assertEquals(3, s.holdFilterMatches, "Android's holdFilterUuids.size")
+        // Android's hold-filter query path does not apply the search text either.
+        assertEquals(3L, s.totalCount)
+        assertEquals(listOf(100), s.holdFilter)
+
+        // An area alone ("Area → M climbs").
+        sheet.toggleHold(100)
+        sheet.setZone(0.3f, 1f, 0f, 0f); advanceUntilIdle()
+        assertTrue(sheet.apply()); advanceUntilIdle()
+        s = last!!
+        assertTrue(s.holdFilterActive)
+        assertTrue(s.holdFilter.isEmpty())
+        assertTrue(s.zoneActive)
+        assertEquals(1, s.holdFilterMatches)
+
+        // "Clear" (Android clearHoldSelection).
+        m.clearHoldFilter(); advanceUntilIdle()
+        s = last!!
+        assertFalse(s.holdFilterActive)
+        assertEquals(0, s.holdFilterMatches)
+        assertFalse(s.zoneActive)
+        assertEquals(setOf("wide"), s.uuids())
+        watch.cancel()
+        sheet.close(); m.close()
+    }
+
+    @Test
     fun `an area is pending until Filter and removing it re-filters an active search`() = scope.runTest {
         val m = model()
         var last: BrowserScreenState? = null
