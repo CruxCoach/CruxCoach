@@ -197,6 +197,30 @@ switching accounts keeps the existing isolation/reset behavior. Without a retain
 local key, the UI offers import rather than a disconnect that creates an identity.
 Private keys remain masked during import, and screenshot protection remains active.
 
+## LED animations
+
+The Kilter board settings offer **LED animations** below “Kilter hold colours”. The
+default is **None**: the lit problem keeps its static role colors. The other
+options keep that same problem moving — **Pulse** breathes brighter and dimmer in
+each hold's own color, **Two-phase strobe** alternates the CruxCoach and Kilter
+color schemes, **Chaotic strobe** jumps colors around while the roles stay
+distinguishable, and **Rainbow wave** rotates every color slowly around the color
+wheel. The choice is stored even with no board connected, but only a connected
+Kilter board animates and only problems up to 120 lit LEDs; everything else keeps
+static colors.
+
+The two strobes change whole-board colors and are capped at three color
+changes per second. If flashing light is a concern, use Pulse or the Rainbow
+wave, which change gradually.
+
+An animation never competes with your own sends: it gives way to whatever you
+light, and it pauses for automatic route playback and the Easter animation until
+those are done. Switching to another app — to film the climb, say — can keep the
+effect running behind a notification with a **Stop** action. That continuation is
+best effort: it holds no wake lock, so deep sleep or an aggressive battery policy
+ends the animation and the wall keeps its last frame, and returning to the app
+removes the notification. Expect some extra battery use while it runs.
+
 ## Board map
 
 The map shows one marker per venue in the colour and letter of its board family (Kilter red "K", MoonBoard yellow "M", Tension slate "T", …); a venue with several families gets one pie segment per family. Nearby venues merge into neutral count bubbles that take a family's colour when the board choice leaves exactly one family. From city zoom on, gym names stand under the markers. The board chip on top lists every family with its marker and count, so it is also the legend; the filter chip carries the number of further active filters.

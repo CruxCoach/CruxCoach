@@ -6,6 +6,8 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.led.AnimationPauseOwner
+import com.cruxcoach.android.led.LedAnimationEngine
 import android.util.Log
 import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.android.nostr.NostrSigner
@@ -595,7 +597,8 @@ class BoardBrowserViewModel @Inject constructor(
     private val nostrSigner: NostrSigner,
     private val playbackCoordinator:
         com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
-    val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState
+    val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
+    private val ledAnimationEngine: LedAnimationEngine
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BoardBrowserState())
@@ -2299,6 +2302,9 @@ class BoardBrowserViewModel @Inject constructor(
             // stale active-board pref must not push Kilter frames — or the
             // trailing clearBoard() — to a different board still on the link.
             if (bleConnection.connectedBoardBrand.value != BoardBrand.KILTER) return@safeLaunch
+            // Whole-board frames on its own 250 ms cadence: the selected LED
+            // animation would fight it for the same LEDs.
+            ledAnimationEngine.pause(AnimationPauseOwner.EASTER_ANIMATION)
             _isAnimating.value = true
             try {
                 val animSizeId = userPreferences.boardProductSizeId.first()
@@ -2339,6 +2345,7 @@ class BoardBrowserViewModel @Inject constructor(
                 // poisoned with the uncaught exception.
                 android.util.Log.w("BoardBrowserVM", "easter animation failed", e)
             } finally {
+                ledAnimationEngine.resume(AnimationPauseOwner.EASTER_ANIMATION)
                 _isAnimating.value = false
             }
         }

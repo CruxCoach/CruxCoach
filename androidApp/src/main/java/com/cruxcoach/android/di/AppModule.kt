@@ -66,6 +66,8 @@ import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.RelayGattServer
 import com.cruxcoach.android.ble.SessionGattClient
 import com.cruxcoach.android.ble.SessionGattServer
+import com.cruxcoach.android.led.BoardBleLedSink
+import com.cruxcoach.android.led.LedFrameSink
 import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.data.BoardDriverFactory
 import com.cruxcoach.data.SecureDriverFactory
@@ -423,6 +425,17 @@ object AppModule {
         boardRepository: BoardRepository
     ): ClimbNameResolver {
         return ClimbNameResolver(boardRepository)
+    }
+
+    /**
+     * The LED animations' view of the link. Bound as the interface so the engine
+     * depends on "something that can show frames and says whether it may", which
+     * is what makes it testable without a GATT connection.
+     */
+    @Provides
+    @Singleton
+    fun provideLedFrameSink(bleConnection: BoardBleConnection): LedFrameSink {
+        return BoardBleLedSink(bleConnection)
     }
 
     @Provides
