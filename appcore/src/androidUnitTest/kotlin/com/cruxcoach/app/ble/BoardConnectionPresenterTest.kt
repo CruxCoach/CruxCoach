@@ -74,6 +74,38 @@ class BoardConnectionPresenterTest {
     }
 
     @Test
+    fun aConfirmedSendIsThisPhonesLiveClimbUntilTheLinkEnds() = runTest {
+        val central = FakeBleCentral { testScheduler.currentTime }
+        val presenter = presenter(central, MemoryStore())
+        presenter.startScan()
+        central.listener!!.onAdvertisement("11111111-2222-3333-4444-555555555555", "Kilter Board#A1@3", null, -80)
+        runCurrent()
+        presenter.connect("11111111-2222-3333-4444-555555555555")
+        advanceTimeBy(1_000); runCurrent()
+        val colors = LedHoldColors.kilterStandard().toRoleColorMap()
+
+        // A refused write is not on the wall.
+        presenter.sendClimb(listOf(BoardHold(1, 12)), mapOf(1 to 5), colors, "tension", SentClimb("u-refused", 40, "No"))
+        runCurrent()
+        assertNull(presenter.localBoardClimb.state.value)
+
+        presenter.sendClimb(listOf(BoardHold(1, 12)), mapOf(1 to 5), colors, "kilter", SentClimb("u-1", 35, "Alpha"))
+        runCurrent()
+        assertEquals(BoardSendResult.OK, presenter.state.value.lastSendResult)
+        val sent = presenter.localBoardClimb.state.value!!
+        assertEquals("u-1", sent.uuid)
+        assertEquals(35, sent.angle)
+        assertEquals("Alpha", sent.name)
+        assertTrue(sent.projectionSurvivesDisconnect)
+        assertEquals("11111111-2222-3333-4444-555555555555", sent.liveOnBoard)
+
+        presenter.disconnect()
+        runCurrent()
+        assertEquals("", presenter.localBoardClimb.state.value?.liveOnBoard, "the last climb, no longer live")
+        presenter.dispose()
+    }
+
+    @Test
     fun rememberedBoardReconnectsByIdentifierWithASingleAttempt() = runTest {
         val central = FakeBleCentral { testScheduler.currentTime }
         val store = MemoryStore()

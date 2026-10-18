@@ -13,6 +13,7 @@ import com.cruxcoach.app.sharedsession.SharedSessionsPresenter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlin.test.AfterTest
@@ -257,6 +258,132 @@ class NearbyAreaModelTest {
         settle()
         assertEquals(connects, central.connects.size)
         assertEquals(listOf("Ben"), model.currentState.playlists.map { it.hostName })
+    }
+
+    @Test
+    fun `this phone's live climb is its own on the board and the area gives way to hold cleaning`() {
+        val climb = MutableStateFlow<com.cruxcoach.app.nearby.LocalBoardClimb?>(null)
+        val linked = MutableStateFlow<String?>("board-1")
+        val cleaning = MutableStateFlow(false)
+        model.followOwnBoard(climb, linked, cleaning)
+        shown()
+        assertFalse(model.currentState.hasOnBoard)
+
+        climb.value = com.cruxcoach.app.nearby.LocalBoardClimb(A, 40, "Stored name", 1L, true, "board-1")
+        settle()
+        var s = model.currentState
+        assertEquals("localActive", s.onBoardSourceCode)
+        assertEquals("Alpha", s.onBoardName, "the catalogue label, looked up like a scanned climb")
+        assertEquals("6a", s.onBoardGrade)
+        assertEquals(A_CATALOGUE, s.onBoardOpenUuid)
+        assertTrue(s.showsOnBoard(""))
+        assertFalse(s.showsOnBoard(B_CATALOGUE), "the detail never repeats this phone's live climb")
+
+        // The link went down: the last climb on this phone, still shown on the detail.
+        linked.value = null
+        settle()
+        s = model.currentState
+        assertEquals("localManager", s.onBoardSourceCode)
+        assertTrue(s.onBoardStillProjected)
+        assertTrue(s.showsOnBoard(B_CATALOGUE))
+        assertFalse(s.showsOnBoard(A_CATALOGUE))
+
+        // A climb outside this phone's catalogue keeps the name it was sent with.
+        climb.value = com.cruxcoach.app.nearby.LocalBoardClimb(UNKNOWN, 40, "Stored name", 2L, false, "")
+        settle()
+        s = model.currentState
+        assertEquals("Stored name", s.onBoardName)
+        assertEquals(UNKNOWN, s.onBoardOpenUuid)
+        assertFalse(s.onBoardStillProjected)
+
+        assertFalse(s.cleaningActive)
+        cleaning.value = true
+        settle()
+        assertTrue(model.currentState.cleaningActive)
+    }
+
+    @Test
+    fun `a running local playlist owns the wall so this phone's send of it is not repeated`() {
+        val climb = MutableStateFlow<com.cruxcoach.app.nearby.LocalBoardClimb?>(
+            com.cruxcoach.app.nearby.LocalBoardClimb(A, 40, "", 1L, true, "board-1"),
+        )
+        val playlist = MutableStateFlow<Pair<String, Int>?>(null)
+        model.followOwnBoard(climb, MutableStateFlow<String?>("board-1"), MutableStateFlow(false))
+        model.followPlaylist(playlist)
+        shown()
+        assertEquals("localActive", model.currentState.onBoardSourceCode)
+
+        playlist.value = A_CATALOGUE to 40
+        settle()
+        assertFalse(model.currentState.hasOnBoard, "the playlist banner already names it")
+        assertFalse(model.currentState.inSession, "a local playlist is not a joined one")
+
+        // Someone else writing the wall still shows (Android never suppresses REMOTE_ACTIVE).
+        crux("phone", NearbyClimbProtocol.encodeClimbData(C, 35))
+        assertEquals("remoteActive", model.currentState.onBoardSourceCode)
+
+        playlist.value = null
+        settle()
+        assertEquals("remoteActive", model.currentState.onBoardSourceCode)
+    }
+
+    private class FakeSessionClock : BoardSessionClock {
+        override var isActive = false
+        override var isPaused = false
+        var starts = 0
+        var ends = 0
+        override fun start() {
+            starts++
+            isActive = true
+        }
+        override fun end() {
+            ends++
+            isActive = false
+        }
+        override fun elapsedSeconds(): Int = if (isActive) 75 else 0
+    }
+
+    @Test
+    fun `joining a playlist starts a board session and leaving it ends it`() {
+        val clock = FakeSessionClock()
+        model.useBoardSessionClock(clock)
+        shown()
+        crux(HOST, NearbyClimbProtocol.encodeSessionAdvertisement(SESSION_ID, 2, "Anna"), rssi = -60)
+        assertFalse(model.currentState.sessionTimerActive)
+        assertEquals(0, clock.starts)
+
+        model.join(HOST)
+        settle()
+        var s = model.currentState
+        assertEquals("joined", s.sessionPhaseCode)
+        assertEquals(1, clock.starts, "Android joinNearbySession starts the board session")
+        assertTrue(s.sessionTimerActive)
+        assertFalse(s.sessionTimerPaused)
+        assertEquals(75, model.sessionElapsedSeconds())
+
+        presenter.participant.leave()
+        settle()
+        s = model.currentState
+        assertFalse(s.inSession)
+        assertEquals(1, clock.ends)
+        assertFalse(s.sessionTimerActive)
+        assertEquals(0, model.sessionElapsedSeconds())
+    }
+
+    @Test
+    fun `a board session that already runs is neither taken over nor ended`() {
+        val clock = FakeSessionClock().apply { isActive = true }
+        model.useBoardSessionClock(clock)
+        shown()
+        crux(HOST, NearbyClimbProtocol.encodeSessionAdvertisement(SESSION_ID, 2, "Anna"), rssi = -60)
+        model.join(HOST)
+        settle()
+        assertEquals(0, clock.starts)
+        assertTrue(model.currentState.sessionTimerActive)
+        presenter.participant.leave()
+        settle()
+        assertEquals(0, clock.ends, "a playlist run's session is the playlist's to end")
+        assertTrue(clock.isActive)
     }
 
     companion object {

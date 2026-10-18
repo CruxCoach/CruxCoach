@@ -76,12 +76,14 @@ class BoardPlaybackTransport(
                     // Unlit, as on Android: the playlist goes on and the detail rack can retry.
                 }
             } else if (brand == BoardBrand.MOONBOARD) {
-                connection.sendMoonBoardClimb(prepared.frames, prepared.layoutId, keyValues.getString(MOONBOARD_LED_MODE))
+                connection.sendMoonBoardClimb(prepared.frames, prepared.layoutId, keyValues.getString(MOONBOARD_LED_MODE),
+                    com.cruxcoach.app.ble.SentClimb(climbUuid, angle, prepared.name))
             } else {
                 val holds = BoardClimbParser.parseFrames(prepared.frames)
                 if (holds.isEmpty() || prepared.ledMap.isEmpty()) return@launch
                 val colors = resolveRoleColors(brand, prepared.roleColors, UserLedColors.read(keyValues))
-                connection.sendClimb(holds, prepared.ledMap, colors, brandWire)
+                connection.sendClimb(holds, prepared.ledMap, colors, brandWire,
+                    com.cruxcoach.app.ble.SentClimb(climbUuid, angle, prepared.name))
             }
         }
     }

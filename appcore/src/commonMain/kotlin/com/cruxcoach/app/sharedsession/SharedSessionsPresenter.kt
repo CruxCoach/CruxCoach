@@ -69,6 +69,8 @@ internal class SharedSessionsPresenter(
     private val scanning = MutableStateFlow(false)
     private val labels = MutableStateFlow<Map<String, ClimbLabel?>>(emptyMap())
     private val inFlight = mutableSetOf<String>()
+    /** A climb outside the scan whose label the nearby area shows: this phone's own last send. */
+    private var ownLabel: Pair<String, Int>? = null
     private var wantScan = false
     /** A board screen's nearby area is visible (it starts only once Bluetooth is allowed). */
     private var wantPassiveScan = false
@@ -152,6 +154,13 @@ internal class SharedSessionsPresenter(
         scanner.clear()
     }
 
+    /** Looks up [uuid] at [angle] like a scanned climb (this phone's own last send). */
+    fun wantLabel(uuid: String, angle: Int) {
+        if (ownLabel == (uuid to angle)) return
+        ownLabel = uuid to angle
+        publish()
+    }
+
     /** The live values; [state] publishes the same one dispatch later. */
     fun current(): SharedSessionsSnapshot = snapshot()
 
@@ -175,6 +184,7 @@ internal class SharedSessionsPresenter(
             s.participant.queue.forEach { add(it.climbUuid to it.angle) }
             s.climbs.filter { it.climbUuid.isNotEmpty() }.forEach { add(it.climbUuid to it.angle) }
             s.sessions.forEach { session -> session.currentClimbUuid?.let { add(it to session.currentClimbAngle) } }
+            ownLabel?.let { add(it) }
         }
         val missing = wanted.distinct().filter { (uuid, angle) ->
             val key = labelKey(uuid, angle)

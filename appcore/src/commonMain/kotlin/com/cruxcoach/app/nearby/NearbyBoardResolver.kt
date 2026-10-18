@@ -2,19 +2,31 @@
 // `resolveOnBoardClimb`, the suppression in `buildUiState`, the occupied count and
 // `canRequestDisconnect`. It decides which one climb the board screens' nearby area names.
 //
+// This phone's own sends (LOCAL_ACTIVE while the link they went over is up, LOCAL_MANAGER after
+// it) come from [LocalBoardClimbMemory]: an iPhone cannot advertise, so "active" means the climb
+// this phone lit over the link that is still up, not an advertiser's state. Android's stale
+// ClimbData check and session-overwrite detection clear that live state as on Android.
 // What an iPhone does not have, and therefore never enters the resolution:
-// - Android's own advertiser (`hasActiveClimb()` is always false here: an iPhone app cannot put
-//   manufacturer data into an advertisement), so LOCAL_ACTIVE, the stale-ClimbData check and
-//   the session-overwrite detection that clears an own active climb do not apply.
-// - Android's persisted `BoardStateManager` and its bridge, so LOCAL_MANAGER does not exist;
-//   a remote phone's last climb is shown while the scan still holds it (REMOTE_LAST).
+// - Android's bridge of other phones' climbs into `BoardStateManager`: a remote phone's last
+//   climb is shown while the scan still holds it (REMOTE_LAST).
 // - Hosting: the only own session is a joined Android host (participant).
 // - `localPresenceToken`: the iPhone never advertises BoardConnected, so no loopback to drop.
 // Android's "sharing enabled" switch gates only its own advertising and requests; reading
 // nearby phones needs nothing but the scan, so that switch is not consulted here.
 package com.cruxcoach.app.nearby
 
-internal enum class OnBoardSource { REMOTE_ACTIVE, REMOTE_LAST, SESSION_REMOTE }
+internal enum class OnBoardSource { REMOTE_ACTIVE, REMOTE_LAST, SESSION_REMOTE, LOCAL_ACTIVE, LOCAL_MANAGER }
+
+/** This phone's last send (Android `BoardStateManager.lastClimb` + `ClimbBleAdvertiser.hasActiveClimb`). */
+internal data class LocalBoard(
+    val climbUuid: String,
+    val angle: Int,
+    val projectionSurvivesDisconnect: Boolean,
+    /** Sent over the link that is still up. */
+    val live: Boolean,
+    /** Identifies one send: an overwrite clears exactly this one. */
+    val sentAtMs: Long,
+)
 
 internal data class OnBoardClimb(
     val climbUuid: String,
@@ -59,10 +71,24 @@ internal class NearbyBoardResolver {
      */
     private var overwriteSessionUuid: String? = null
 
-    fun resolve(climbs: List<NearbyClimb>, sessions: List<NearbySession>, own: OwnSession?): NearbyBoard {
+    /** Android `lastSeenRemoteActiveUuid`: ClimbData that has not changed since our send is stale. */
+    private var lastSeenRemoteActiveUuid: String? = null
+
+    /** Android `lastSeenSessionClimbUuid`: a nearby session advancing overwrote our climb. */
+    private var lastSeenSessionClimbUuid: String? = null
+
+    /** The send whose live state another phone or a session overwrote (Android `clearActiveClimb`). */
+    private var clearedSendAtMs: Long? = null
+
+    fun resolve(
+        climbs: List<NearbyClimb>,
+        sessions: List<NearbySession>,
+        own: OwnSession?,
+        local: LocalBoard? = null,
+    ): NearbyBoard {
         val member = own?.member == true
         val connecting = own?.connecting == true
-        val raw = resolveOnBoard(climbs, sessions, own)
+        val raw = resolveOnBoard(climbs, sessions, own, local)
         val sessionClimbUuid = own?.currentClimbUuid
         // SESSION_REMOTE from the own queue repeats the session row; a remote writer never does.
         val nonSuppressible = raw != null && (
@@ -79,16 +105,43 @@ internal class NearbyBoardResolver {
         )
     }
 
-    private fun resolveOnBoard(climbs: List<NearbyClimb>, sessions: List<NearbySession>, own: OwnSession?): OnBoardClimb? {
+    /** Android `climbAdvertiser.hasActiveClimb()` for this phone's last send. */
+    private fun hasActive(local: LocalBoard?): Boolean =
+        local != null && local.live && local.sentAtMs != clearedSendAtMs
+
+    private fun resolveOnBoard(
+        climbs: List<NearbyClimb>,
+        sessions: List<NearbySession>,
+        own: OwnSession?,
+        local: LocalBoard?,
+    ): OnBoardClimb? {
         val member = own?.member == true
         val connecting = own?.connecting == true
         val memberSessionUuid = own?.currentClimbUuid
         val nearbySessionUuid = sessions.firstOrNull { it.currentClimbUuid != null }?.currentClimbUuid
         val anySessionClimbUuid = memberSessionUuid ?: nearbySessionUuid
 
-        // 1. Someone is connected and climbing right now.
+        // Android (role NONE, joining included): a nearby session advancing (A→B, not its first
+        // sighting) overwrote our LEDs.
+        if (!member) {
+            if (nearbySessionUuid != null) {
+                val sessionOverwrites = lastSeenSessionClimbUuid != null && nearbySessionUuid != lastSeenSessionClimbUuid
+                if (sessionOverwrites && hasActive(local)) clearedSendAtMs = local?.sentAtMs
+                lastSeenSessionClimbUuid = nearbySessionUuid
+            } else {
+                lastSeenSessionClimbUuid = null
+            }
+        }
+
+        // 1. Someone is connected and climbing right now. ClimbData unchanged since our send is
+        //    stale (the board takes several links); a new uuid is a new send over ours (the bridge).
         val remoteActive = climbs.firstOrNull { !it.connectedOnly && it.climbUuid.isNotEmpty() && !it.isLastClimb }
         if (remoteActive != null) {
+            val isNewRemoteSend = remoteActive.climbUuid != lastSeenRemoteActiveUuid
+            lastSeenRemoteActiveUuid = remoteActive.climbUuid
+            if (isNewRemoteSend && hasActive(local)) clearedSendAtMs = local?.sentAtMs
+        }
+        if (remoteActive != null && !hasActive(local)) {
             overwriteSessionUuid = anySessionClimbUuid
             return OnBoardClimb(remoteActive.climbUuid, remoteActive.angle, OnBoardSource.REMOTE_ACTIVE)
         }
@@ -97,7 +150,7 @@ internal class NearbyBoardResolver {
 
         // 2. The other phone left, but the session has not sent a new climb since it wrote the wall.
         val remoteLast = climbs.firstOrNull { !it.connectedOnly && it.climbUuid.isNotEmpty() && it.isLastClimb }
-        if (remoteLast != null && remoteLast.projectionSurvivesDisconnect && overwriteSessionUuid != null) {
+        if (remoteLast != null && remoteLast.projectionSurvivesDisconnect && !hasActive(local) && overwriteSessionUuid != null) {
             if (anySessionClimbUuid == overwriteSessionUuid) {
                 return OnBoardClimb(remoteLast.climbUuid, remoteLast.angle, OnBoardSource.REMOTE_LAST, isStillProjected = true)
             }
@@ -110,6 +163,11 @@ internal class NearbyBoardResolver {
             return OnBoardClimb(own.currentClimbUuid, own.currentClimbAngle, OnBoardSource.SESSION_REMOTE)
         }
 
+        // 4. This phone's climb, lit over the link that is still up: what it sent is on the wall.
+        if (local != null && hasActive(local)) {
+            return OnBoardClimb(local.climbUuid, local.angle, OnBoardSource.LOCAL_ACTIVE)
+        }
+
         // 5. A session advertisement's climb; once in a session only that session may speak here.
         val ownSessionId = own?.sessionId?.takeIf { it != 0 }
         val sessionClimb = sessions.firstOrNull {
@@ -120,9 +178,15 @@ internal class NearbyBoardResolver {
         }
 
         // 6. A remote phone's last climb without overwrite tracking.
-        if (remoteLast != null) {
+        if (remoteLast != null && !hasActive(local)) {
             return OnBoardClimb(remoteLast.climbUuid, remoteLast.angle, OnBoardSource.REMOTE_LAST,
                 isStillProjected = remoteLast.projectionSurvivesDisconnect)
+        }
+
+        // 7. What this phone lit last, the link gone (Android LOCAL_MANAGER).
+        if (local != null) {
+            return OnBoardClimb(local.climbUuid, local.angle, OnBoardSource.LOCAL_MANAGER,
+                isStillProjected = local.projectionSurvivesDisconnect)
         }
         return null
     }

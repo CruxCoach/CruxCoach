@@ -115,7 +115,8 @@ struct BrowserView: View {
             }
             .onDisappear { rootVisible = false }
             // Android's BleStatusArea: the board link's chip under the playlist strip, nearby phones below it.
-            .modifier(NearbyStatusInset(core: core, ble: ble))
+            .modifier(NearbyStatusInset(core: core, ble: ble,
+                                        onRandomToQueue: { model.addRandomToSession(area: core.nearbyArea) }))
             .modifier(BleStatusInset(ble: ble) { sheet = .ble })
             .modifier(BrowserSessionStrip(core: core, model: model, ui: ui, ble: ble, path: $path))
             .modifier(RestTimerBannerSlot(core: core))

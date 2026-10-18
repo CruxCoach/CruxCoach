@@ -517,6 +517,24 @@ class BoardBrowserPresenter(
     }
 
     fun consumeRandomClimb() = _state.update { it.copy(randomClimb = null) }
+
+    /**
+     * Android `addRandomClimbToQueue`: the same random pick as [pickRandom], handed to [onPicked]
+     * with the browsed angle instead of being opened.
+     */
+    internal fun pickRandomThen(onPicked: (String, Int) -> Unit) {
+        val s = _state.value
+        scope.launch {
+            try {
+                val uuid = withContext(io) { dbLock.withLock { pipeline.pickRandom(s.filter, context(s), s.climbs) } }
+                if (uuid != null) onPicked(uuid, s.filter.angle)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // No pick; nothing to report.
+            }
+        }
+    }
 }
 
 class BrowseWatch internal constructor(private val job: Job) {

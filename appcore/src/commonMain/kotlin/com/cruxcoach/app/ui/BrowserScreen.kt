@@ -302,6 +302,9 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
         presenter.refresh()
     }
 
+    /** Android's dice in the joined playlist's chip: asks the host to queue a random climb of this browser. */
+    fun addRandomToSession(area: NearbyAreaModel) = presenter.pickRandomThen { uuid, angle -> area.add(uuid, angle) }
+
     fun start() = presenter.start()
     fun close() = presenter.close()
     fun refresh() = presenter.refresh()

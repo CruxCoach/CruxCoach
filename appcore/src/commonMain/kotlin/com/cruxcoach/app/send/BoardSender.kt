@@ -44,8 +44,10 @@ class BoardSender(
         val data = detail.data ?: return "noClimb"
         val brandWire = data.boardSize?.boardBrand?.wireValue ?: keyValues.getString("board_brand") ?: "kilter"
         val brand = BoardBrand.fromWireOrNull(brandWire) ?: return "unknownBrand"
+        // The nearby area's "your climb" once the board confirms the write.
+        val sent = com.cruxcoach.app.ble.SentClimb(data.climb.uuid, detail.angle, data.climb.name)
         if (brand == BoardBrand.MOONBOARD) {
-            connection.sendMoonBoardClimb(data.climb.frames, data.climb.layoutId, keyValues.getString("moonboard_led_mode"))
+            connection.sendMoonBoardClimb(data.climb.frames, data.climb.layoutId, keyValues.getString("moonboard_led_mode"), sent)
             return "started"
         }
         // Without the product size there is no LED map, so the board could not
@@ -66,7 +68,7 @@ class BoardSender(
                 return@launch
             }
             // The catalogue's own placement_roles win; the user's colours are Kilter's fallback, as on Android.
-            connection.sendClimb(holds, maps.first, resolveRoleColors(brand, maps.second, UserLedColors.read(keyValues)), brandWire)
+            connection.sendClimb(holds, maps.first, resolveRoleColors(brand, maps.second, UserLedColors.read(keyValues)), brandWire, sent)
         }
         return "started"
     }

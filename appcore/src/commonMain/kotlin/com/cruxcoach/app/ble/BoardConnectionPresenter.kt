@@ -72,6 +72,9 @@ class BoardConnectionPresenter(
     private val _state = MutableStateFlow(BoardConnectionUiState(remembered = remembered.all()))
     val state: StateFlow<BoardConnectionUiState> = _state.asStateFlow()
 
+    /** What this phone last lit, for the nearby area's "your climb" (Android `BoardStateManager`). */
+    internal val localBoardClimb = com.cruxcoach.app.nearby.LocalBoardClimbMemory(keyValues, clock::epochMillis, scope)
+
     init {
         scope.launch {
             var previous = ConnectionState.DISCONNECTED
@@ -80,6 +83,9 @@ class BoardConnectionPresenter(
                     link.connectedBoard?.let(remembered::remember)
                 }
                 previous = link.connection
+                if (link.connection != ConnectionState.CONNECTED && link.connection != ConnectionState.SENDING) {
+                    localBoardClimb.linkEnded()
+                }
                 val known = remembered.all()
                 val knownIds = known.mapTo(mutableSetOf()) { it.identifier }
                 _state.update { ui ->
@@ -160,23 +166,37 @@ class BoardConnectionPresenter(
         placementToLed: Map<Int, Int>,
         roleColors: Map<Int, Int>,
         expectedBrandWire: String,
+    ) = sendClimb(holds, placementToLed, roleColors, expectedBrandWire, sent = null)
+
+    /** As [sendClimb]; a confirmed write records [sent] as this phone's climb on the wall. */
+    internal fun sendClimb(
+        holds: List<BoardHold>,
+        placementToLed: Map<Int, Int>,
+        roleColors: Map<Int, Int>,
+        expectedBrandWire: String,
+        sent: SentClimb?,
     ) {
         val brand = BoardBrand.fromWireOrNull(expectedBrandWire)
         if (brand == null) {
             _state.update { it.copy(lastSendResult = BoardSendResult.BOARD_MISMATCH) }
             return
         }
-        run { controller.sendClimb(holds, placementToLed, roleColors, expectedBrand = brand) }
+        run(sent, survives = true) { controller.sendClimb(holds, placementToLed, roleColors, expectedBrand = brand) }
     }
 
     /** [layoutId] is the CLIMB's layout: the serpentine differs per variant. Unknown ids fall back to 2016, as on Android. */
-    fun sendMoonBoardClimb(frames: String, layoutId: Long, ledModeWire: String?) = run {
-        controller.sendMoonBoardClimb(
-            frames,
-            MoonBoardVariant.fromLayoutId(layoutId) ?: MoonBoardVariant.MOONBOARD_2016,
-            MoonBoardLedMode.fromWire(ledModeWire),
-        )
-    }
+    fun sendMoonBoardClimb(frames: String, layoutId: Long, ledModeWire: String?) =
+        sendMoonBoardClimb(frames, layoutId, ledModeWire, sent = null)
+
+    /** A MoonBoard's LEDs go out with the link (Android `BoardProjectionPolicy`). */
+    internal fun sendMoonBoardClimb(frames: String, layoutId: Long, ledModeWire: String?, sent: SentClimb?) =
+        run(sent, survives = false) {
+            controller.sendMoonBoardClimb(
+                frames,
+                MoonBoardVariant.fromLayoutId(layoutId) ?: MoonBoardVariant.MOONBOARD_2016,
+                MoonBoardLedMode.fromWire(ledModeWire),
+            )
+        }
 
     fun clearBoard() = run { controller.clearBoard() }
 
@@ -255,7 +275,9 @@ class BoardConnectionPresenter(
         scope.cancel()
     }
 
-    private fun run(operation: suspend () -> BoardSendResult) {
+    private fun run(operation: suspend () -> BoardSendResult) = run(null, survives = true, operation)
+
+    private fun run(sent: SentClimb?, survives: Boolean, operation: suspend () -> BoardSendResult) {
         if (_state.value.sending) return
         _state.update { it.copy(sending = true, lastSendResult = null) }
         scope.launch {
@@ -265,7 +287,14 @@ class BoardConnectionPresenter(
                 // The shared encoders reject malformed frames/ids by throwing.
                 BoardSendResult.INVALID_PAYLOAD
             }
+            val board = _state.value.connectedBoard?.identifier
+            if (result == BoardSendResult.OK && sent != null && board != null) {
+                localBoardClimb.record(sent.uuid, sent.angle, sent.name, survives, board)
+            }
             _state.update { it.copy(sending = false, lastSendResult = result) }
         }
     }
 }
+
+/** Which climb a send lights, for the nearby area's "your climb". */
+internal data class SentClimb(val uuid: String, val angle: Int, val name: String)

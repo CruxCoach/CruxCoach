@@ -23,6 +23,10 @@ struct NearbyStatusInset: ViewModifier {
     let currentClimbUuid: String
     let currentClimbAngle: Int32
     let onOpenClimb: ((String, Int32) -> Void)?
+    /// The browser's dice in the joined playlist's chip (Android `onRandomToQueue`).
+    let onRandomToQueue: (() -> Void)?
+    /// Android puts the hold-cleaning banner where this area is; a screen that shows its own passes false.
+    let cleaningBanner: Bool
     @State private var target: NearbyClimbTarget? = nil
     @Environment(\.scenePhase) private var scenePhase
 
@@ -30,12 +34,16 @@ struct NearbyStatusInset: ViewModifier {
          ble: ScreenHost<BleScreenModel, BleScreenState>?,
          currentClimbUuid: String = "",
          currentClimbAngle: Int32 = 0,
-         onOpenClimb: ((String, Int32) -> Void)? = nil) {
+         onOpenClimb: ((String, Int32) -> Void)? = nil,
+         onRandomToQueue: (() -> Void)? = nil,
+         cleaningBanner: Bool = true) {
         self.core = core
         self.ble = ble
         self.currentClimbUuid = currentClimbUuid
         self.currentClimbAngle = currentClimbAngle
         self.onOpenClimb = onOpenClimb
+        self.onRandomToQueue = onRandomToQueue
+        self.cleaningBanner = cleaningBanner
     }
 
     func body(content: Content) -> some View {
@@ -44,7 +52,8 @@ struct NearbyStatusInset: ViewModifier {
             .safeAreaInset(edge: .top, spacing: 0) {
                 NearbyStatusArea(core: core, currentClimbUuid: currentClimbUuid, currentClimbAngle: currentClimbAngle,
                                  canOpen: onOpenClimb != nil || ble != nil,
-                                 onOpenClimb: { uuid, angle in openClimb(uuid, angle) })
+                                 onOpenClimb: { uuid, angle in openClimb(uuid, angle) },
+                                 onRandomToQueue: onRandomToQueue, cleaningBanner: cleaningBanner)
             }
             .navigationDestination(item: $target) { picked in
                 destination(picked)
@@ -80,9 +89,12 @@ struct NearbyStatusArea: View {
     let currentClimbAngle: Int32
     let canOpen: Bool
     let onOpenClimb: (String, Int32) -> Void
+    let onRandomToQueue: (() -> Void)?
+    let cleaningBanner: Bool
 
     @State private var host: ScreenHost<NearbyAreaModel, NearbyAreaState>?
     @State private var expanded = false
+    @State private var showCleaning = false
     /// This view counted itself as a visible board screen (keeps shown/hidden balanced).
     @State private var counted = false
 
@@ -113,18 +125,29 @@ struct NearbyStatusArea: View {
             counted = false
             core.nearbyArea.screenHidden()
         }
+        .sheet(isPresented: $showCleaning) {
+            NavigationStack { BoardCleaningSheet(core: core) }
+        }
     }
 
     @ViewBuilder
     private var content: some View {
-        if let host, host.state.hasContent(currentClimbUuid: currentClimbUuid) {
+        if let host, host.state.cleaningActive {
+            // Android `BleStatusArea`: while holds are cleaned only the cleaning banner shows.
+            if cleaningBanner {
+                NearbyCleaningBanner { showCleaning = true }
+            } else {
+                Color.clear.frame(height: 0)
+            }
+        } else if let host, host.state.hasContent(currentClimbUuid: currentClimbUuid) {
             if expanded {
                 NearbyStatusPanel(core: core, model: host.model, ui: host.state,
                                   currentClimbUuid: currentClimbUuid, canOpen: canOpen,
                                   onOpenClimb: onOpenClimb, onCollapse: { expanded = false })
             } else if host.state.inSession {
                 NearbySessionChip(core: core, model: host.model, ui: host.state,
-                                  currentClimbUuid: currentClimbUuid, currentClimbAngle: currentClimbAngle)
+                                  currentClimbUuid: currentClimbUuid, currentClimbAngle: currentClimbAngle,
+                                  onRandomToQueue: onRandomToQueue)
             } else {
                 NearbySummaryChip(ui: host.state, currentClimbUuid: currentClimbUuid) { expanded = true }
             }
@@ -162,6 +185,7 @@ enum NearbyStatusText {
         switch ui.onBoardSourceCode {
         case "remoteActive": return L("ble_climbing_now")
         case "sessionRemote": return L("ble_session_climb")
+        case "localActive": return L("ble_your_climb")
         default: return ui.onBoardStillProjected ? L("ble_still_visible") : L("ble_last_climb")
         }
     }
@@ -171,6 +195,7 @@ enum NearbyStatusText {
         switch ui.onBoardSourceCode {
         case "remoteActive": return L("ble_climbing_now")
         case "sessionRemote": return L("ble_session_climb")
+        case "localActive": return L("ble_your_climb")
         default: return ui.onBoardStillProjected ? L("ble_still_visible") : L("ble_ready_to_resend")
         }
     }
@@ -209,6 +234,14 @@ enum NearbyStatusText {
         let grade: String = ui.onBoardGrade.isEmpty ? "" : " \(ui.onBoardGrade)"
         let angle: Int = Int(ui.onBoardAngle)
         return L("ble_board_shows_instead", "\(name)\(grade) \(angle)°")
+    }
+
+    /// Android's line under the mini player: a joined playlist is the host's published one
+    /// (`setParticipantRole` makes it joinable); while joining nothing is published yet.
+    static func sessionVisibility(_ ui: NearbyAreaState) -> String {
+        ui.sessionPhaseCode == "connecting"
+            ? L("ble_session_visibility_status_local")
+            : L("ble_session_visibility_status_joinable")
     }
 
     /// While joining, or after the host left: what the playlist is doing.
@@ -263,17 +296,19 @@ private struct NearbySessionChip: View {
     let ui: NearbyAreaState
     let currentClimbUuid: String
     let currentClimbAngle: Int32
+    let onRandomToQueue: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
+                NearbySessionTimer(model: model, ui: ui)
                 NavigationLink {
                     SharedSessionsView(core: core)
                 } label: {
                     titleRow
                 }
                 .buttonStyle(.plain)
-                addButton
+                queueButton
                 Button { model.next() } label: {
                     Image(systemName: "forward.end.fill").frame(width: 32, height: 32)
                 }
@@ -283,6 +318,9 @@ private struct NearbySessionChip: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            Text(NearbyStatusText.sessionVisibility(ui))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             NearbySessionNotes(ui: ui, currentClimbUuid: currentClimbUuid)
         }
         .padding(.leading, 10)
@@ -292,6 +330,21 @@ private struct NearbySessionChip: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
         .accessibilityIdentifier("nearby_session_chip")
+    }
+
+    /// Android: the dice on the browser (`onRandomToQueue`), the "+" on a climb's detail.
+    @ViewBuilder
+    private var queueButton: some View {
+        if let onRandomToQueue, ui.sessionPhaseCode == "joined" {
+            Button(action: onRandomToQueue) {
+                Image(systemName: "dice").frame(width: 32, height: 32)
+            }
+            .foregroundStyle(Color.orange)
+            .accessibilityLabel(L("cd_random_add"))
+            .accessibilityIdentifier("nearby_random_to_queue")
+        } else {
+            addButton
+        }
     }
 
     /// Android's "+" (the detail's `onAddToQueue`): asks the host to append the climb on screen.
@@ -319,6 +372,52 @@ private struct NearbySessionChip: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityHint(L("cd_open"))
+    }
+}
+
+/// Android's board-session timer at the start of the mini player: green while it runs,
+/// yellow with a pause mark while paused; read live once a second.
+private struct NearbySessionTimer: View {
+    let model: NearbyAreaModel
+    let ui: NearbyAreaState
+
+    var body: some View {
+        if ui.sessionTimerActive {
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                label
+            }
+        }
+    }
+
+    private var label: some View {
+        let seconds: Int = Int(model.sessionElapsedSeconds())
+        let paused: Bool = ui.sessionTimerPaused
+        return HStack(spacing: 2) {
+            Image(systemName: "timer")
+            Text(sessionTimeText(seconds)).monospacedDigit()
+            if paused {
+                Image(systemName: "pause.fill").font(.caption2)
+            }
+        }
+        .font(.caption.weight(.bold))
+        .foregroundStyle(paused ? Color.yellow : Color.green)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Android `BoardCleaningBanner` in the area's place on every board screen; a tap opens the cleaning.
+private struct NearbyCleaningBanner: View {
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            Label(L("board_cleaning_active"), systemImage: "sparkles")
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.borderedProminent)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+        .accessibilityIdentifier("board_cleaning_banner")
     }
 }
 

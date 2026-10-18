@@ -26,7 +26,8 @@ struct LogbookView: View {
                 ProgressView()
             }
         }
-        .modifier(NearbyStatusInset(core: core, ble: ble))
+        // The logbook lists its own cleaning banner (Android shows one per board screen).
+        .modifier(NearbyStatusInset(core: core, ble: ble, cleaningBanner: false))
         .modifier(BleStatusInset(ble: ble))
         .modifier(RestTimerBannerSlot(core: core))
         .modifier(LogbookOwnPublishFeedback(host: ownPublish))

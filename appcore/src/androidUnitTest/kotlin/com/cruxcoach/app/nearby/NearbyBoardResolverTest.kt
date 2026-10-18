@@ -9,8 +9,9 @@ import kotlin.test.assertTrue
 
 /**
  * The cases of Android's `BleShareManagerTest` (0e1bad0c6) that concern what nearby phones
- * report. Cases about Android's own advertiser and persisted board state (LOCAL_ACTIVE,
- * LOCAL_MANAGER, the bridge) have no iPhone counterpart; see [NearbyBoardResolver].
+ * report and this phone's own sends (LOCAL_ACTIVE / LOCAL_MANAGER, the bridge's clearing of an
+ * own live climb). Android's bridge of other phones' climbs into its persisted board state has
+ * no iPhone counterpart; see [NearbyBoardResolver].
  */
 class NearbyBoardResolverTest {
     private val resolver = NearbyBoardResolver()
@@ -39,7 +40,84 @@ class NearbyBoardResolverTest {
         climbs: List<NearbyClimb> = emptyList(),
         sessions: List<NearbySession> = emptyList(),
         own: OwnSession? = null,
-    ) = resolver.resolve(climbs, sessions, own)
+        local: LocalBoard? = null,
+    ) = resolver.resolve(climbs, sessions, own, local)
+
+    /** Android `climb(uuid)` in the board state manager, [live] = `hasActiveClimb()`. */
+    private fun mine(uuid: String = UUID_B, live: Boolean = true, survives: Boolean = true, sentAtMs: Long = 1L) =
+        LocalBoard(uuid, 40, survives, live, sentAtMs)
+
+    @Test
+    fun `REMOTE_LAST is skipped while we have a live climb`() {
+        val board = resolve(climbs = listOf(nearbyClimb(UUID_A, isLastClimb = true)), local = mine(UUID_B))
+        assertEquals(OnBoardSource.LOCAL_ACTIVE, board.onBoard?.source)
+        assertEquals(UUID_B, board.onBoard?.climbUuid)
+    }
+
+    @Test
+    fun `LOCAL_ACTIVE when connected and sending`() {
+        assertEquals(OnBoardSource.LOCAL_ACTIVE, resolve(local = mine(UUID_A)).onBoard?.source)
+    }
+
+    @Test
+    fun `a participant's queue climb suppresses even a live own climb`() {
+        val board = resolve(own = participant(UUID_A), local = mine(UUID_B))
+        assertNull(board.onBoard)
+    }
+
+    @Test
+    fun `SESSION_REMOTE beats LOCAL_MANAGER for a non participant`() {
+        val board = resolve(sessions = listOf(session(currentClimbUuid = UUID_A)), local = mine(UUID_B, live = false))
+        assertEquals(OnBoardSource.SESSION_REMOTE, board.onBoard?.source)
+        assertEquals(UUID_A, board.onBoard?.climbUuid)
+    }
+
+    @Test
+    fun `LOCAL_ACTIVE beats SESSION_REMOTE for a non participant`() {
+        val board = resolve(sessions = listOf(session(currentClimbUuid = UUID_B)), local = mine(UUID_A))
+        assertEquals(OnBoardSource.LOCAL_ACTIVE, board.onBoard?.source)
+        assertEquals(UUID_A, board.onBoard?.climbUuid)
+    }
+
+    @Test
+    fun `LOCAL_MANAGER is the fallback and a MoonBoard climb is no longer projected`() {
+        var board = resolve(local = mine(UUID_A, live = false))
+        assertEquals(OnBoardSource.LOCAL_MANAGER, board.onBoard?.source)
+        assertTrue(board.onBoard!!.isStillProjected)
+        board = resolve(local = mine(UUID_A, live = false, survives = false))
+        assertFalse(board.onBoard!!.isStillProjected)
+        assertNull(resolve().onBoard)
+    }
+
+    @Test
+    fun `unchanged ClimbData from before our send is stale and a new remote send overwrites ours`() {
+        // Another phone already advertised A; then this phone sent B over its own link.
+        assertEquals(OnBoardSource.REMOTE_ACTIVE, resolve(climbs = listOf(nearbyClimb(UUID_A))).onBoard?.source)
+        var board = resolve(climbs = listOf(nearbyClimb(UUID_A)), local = mine(UUID_B))
+        assertEquals(OnBoardSource.LOCAL_ACTIVE, board.onBoard?.source, "A is stale: the board shows our B")
+
+        // The other phone sends C: it wrote the wall after us (Android's bridge clears our climb).
+        board = resolve(climbs = listOf(nearbyClimb(UUID_C)), local = mine(UUID_B))
+        assertEquals(OnBoardSource.REMOTE_ACTIVE, board.onBoard?.source)
+        assertEquals(UUID_C, board.onBoard?.climbUuid)
+        // It stays cleared for that send, also once the other phone only reports its last climb.
+        board = resolve(climbs = listOf(nearbyClimb(UUID_C, isLastClimb = true)), local = mine(UUID_B))
+        assertEquals(OnBoardSource.REMOTE_LAST, board.onBoard?.source)
+
+        // Our next send is live again; C did not change since, so it is stale.
+        board = resolve(climbs = listOf(nearbyClimb(UUID_C)), local = mine(UUID_A, sentAtMs = 2L))
+        assertEquals(OnBoardSource.LOCAL_ACTIVE, board.onBoard?.source)
+        assertEquals(UUID_A, board.onBoard?.climbUuid)
+    }
+
+    @Test
+    fun `a nearby session advancing overwrites our live climb but its first sighting does not`() {
+        var board = resolve(sessions = listOf(session(currentClimbUuid = UUID_A)), local = mine(UUID_B))
+        assertEquals(OnBoardSource.LOCAL_ACTIVE, board.onBoard?.source, "first sighting is no proof")
+        board = resolve(sessions = listOf(session(currentClimbUuid = UUID_C)), local = mine(UUID_B))
+        assertEquals(OnBoardSource.SESSION_REMOTE, board.onBoard?.source)
+        assertEquals(UUID_C, board.onBoard?.climbUuid)
+    }
 
     @Test
     fun `remote active beats a session climb and a last climb`() {

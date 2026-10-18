@@ -1,5 +1,7 @@
 package com.cruxcoach.app.ui
 
+import com.cruxcoach.app.nearby.LocalBoard
+import com.cruxcoach.app.nearby.LocalBoardClimb
 import com.cruxcoach.app.nearby.NearbyBoard
 import com.cruxcoach.app.nearby.NearbyBoardResolver
 import com.cruxcoach.app.nearby.OnBoardSource
@@ -14,7 +16,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -26,7 +32,11 @@ class NearbyAreaState(
     /** The nearby scan runs (Bluetooth allowed and on, a board screen or a joined playlist wants it). */
     val scanning: Boolean,
     val hasOnBoard: Boolean,
-    /** remoteActive | remoteLast | sessionRemote; empty without [hasOnBoard]. */
+    /**
+     * remoteActive | remoteLast | sessionRemote | localActive (this phone's climb on the link that is
+     * up: Android "Your climb") | localManager (this phone's last climb, the link gone); empty
+     * without [hasOnBoard].
+     */
     val onBoardSourceCode: String,
     /** As advertised. */
     val onBoardUuid: String,
@@ -59,15 +69,29 @@ class NearbyAreaState(
     val sessionHasNext: Boolean,
     /** An external board app last wrote the host's wall. */
     val externalBoardOverride: Boolean,
+    /**
+     * Holds are being cleaned on the connected board: Android shows only the cleaning banner
+     * (`BoardCleaningBanner`) where this area would be.
+     */
+    val cleaningActive: Boolean,
+    /**
+     * Android's board-session timer in the joined playlist's mini player: joining starts a board
+     * session (it books the climbing time), the playlist ending ends it. Swift reads the seconds
+     * live through [NearbyAreaModel.sessionElapsedSeconds].
+     */
+    val sessionTimerActive: Boolean,
+    val sessionTimerPaused: Boolean,
 ) {
     val inSession: Boolean get() = sessionPhaseCode != "none"
 
     /**
      * Android's `effectiveOnBoard`: on a climb's own detail page ([currentClimbUuid]) that climb
-     * is not repeated. Empty [currentClimbUuid] on every other screen.
+     * is not repeated, and neither is this phone's live climb (paging through climbs it sends
+     * would flash the previous one). Empty [currentClimbUuid] on every other screen.
      */
     fun showsOnBoard(currentClimbUuid: String): Boolean =
-        hasOnBoard && !NearbyBoardResolver.sameClimb(onBoardUuid, currentClimbUuid)
+        hasOnBoard && !NearbyBoardResolver.sameClimb(onBoardUuid, currentClimbUuid) &&
+            !(currentClimbUuid.isNotEmpty() && onBoardSourceCode == "localActive")
 
     /** Something to show; without it the area takes no space at all. */
     fun hasContent(currentClimbUuid: String): Boolean =
@@ -77,6 +101,15 @@ class NearbyAreaState(
     fun boardDiffers(currentClimbUuid: String): Boolean =
         showsOnBoard(currentClimbUuid) && onBoardUuid.isNotBlank() &&
             !NearbyBoardResolver.sameClimb(onBoardUuid, sessionClimbUuid)
+}
+
+/** Android's `BoardSessionManager` as a joined playlist uses it (AppCore adapts the board-session recorder). */
+internal interface BoardSessionClock {
+    val isActive: Boolean
+    val isPaused: Boolean
+    fun start()
+    fun end()
+    fun elapsedSeconds(): Int
 }
 
 /**
@@ -96,12 +129,89 @@ class NearbyAreaModel internal constructor(
     }
 
     private val resolver = NearbyBoardResolver()
-    private val state = MutableStateFlow(map(presenter.current()))
+    /** This phone's own board: its last send, the link it is live on, hold cleaning. */
+    private var ownBoard = OwnBoard(null, null, false)
+    /** The local playlist's current climb while one runs (Android: this phone hosts that queue). */
+    private var playlistClimb: Pair<String, Int>? = null
+    private var sessionClock: BoardSessionClock? = null
+    /** This model started the running board session for the joined playlist (and so ends it). */
+    private var clockStartedHere = false
+    private var latest: SharedSessionsSnapshot = presenter.current()
+    private val state = MutableStateFlow(map(latest))
     private var shownScreens = 0
     private var stopJob: Job? = null
 
     init {
-        scope.launch { presenter.state.collect { state.value = map(it) } }
+        scope.launch {
+            presenter.state.collect {
+                latest = it
+                state.value = map(it)
+            }
+        }
+    }
+
+    private data class OwnBoard(val climb: LocalBoardClimb?, val linkedBoard: String?, val cleaning: Boolean)
+
+    /**
+     * Android's local playlist is a queue this phone hosts: its current climb is the session's, so
+     * this phone's own send of it is not repeated under the playlist banner (the suppression).
+     */
+    internal fun followPlaylist(current: Flow<Pair<String, Int>?>) {
+        scope.launch {
+            current.collect {
+                playlistClimb = it
+                state.value = map(latest)
+            }
+        }
+    }
+
+    /** Android `joinNearbySession` starts a board session; leaving or the host ending it ends it. */
+    internal fun useBoardSessionClock(clock: BoardSessionClock) {
+        sessionClock = clock
+        state.value = map(latest)
+    }
+
+    /** Seconds since the joined playlist's board session started; 0 while none runs. */
+    fun sessionElapsedSeconds(): Int = sessionClock?.takeIf { it.isActive }?.elapsedSeconds() ?: 0
+
+    private fun syncSessionClock(phase: ParticipantPhase) {
+        val clock = sessionClock ?: return
+        val inSession = phase == ParticipantPhase.CONNECTING || phase == ParticipantPhase.JOINED ||
+            phase == ParticipantPhase.HOST_LOST
+        if (inSession && !clockStartedHere && !clock.isActive) {
+            clock.start()
+            clockStartedHere = clock.isActive
+        } else if (!inSession && clockStartedHere) {
+            clockStartedHere = false
+            clock.end()
+        }
+    }
+
+    /**
+     * Android's BleShareManager reads this phone's own board state too: what it last lit
+     * ([climb]), the board its link is up to ([linkedBoard], null while none) and hold cleaning.
+     * AppCore feeds the shared board connection in.
+     */
+    internal fun followOwnBoard(connection: com.cruxcoach.app.ble.BoardConnectionPresenter) = followOwnBoard(
+        climb = connection.localBoardClimb.state,
+        linkedBoard = connection.state.map { s ->
+            val up = s.connection == com.cruxcoach.app.ble.ConnectionState.CONNECTED ||
+                s.connection == com.cruxcoach.app.ble.ConnectionState.SENDING
+            s.connectedBoard?.identifier?.takeIf { up }
+        },
+        cleaning = connection.cleaningState.map { it.active },
+    )
+
+    internal fun followOwnBoard(climb: Flow<LocalBoardClimb?>, linkedBoard: Flow<String?>, cleaning: Flow<Boolean>) {
+        scope.launch {
+            combine(climb, linkedBoard, cleaning) { c, b, k -> OwnBoard(c, b, k) }
+                .distinctUntilChanged()
+                .collect { own ->
+                    ownBoard = own
+                    own.climb?.let { presenter.wantLabel(it.uuid, it.angle) }
+                    state.value = map(latest)
+                }
+        }
     }
 
     val currentState: NearbyAreaState get() = state.value
@@ -161,18 +271,34 @@ class NearbyAreaModel internal constructor(
 
     private fun map(s: SharedSessionsSnapshot): NearbyAreaState {
         val p = s.participant
+        syncSessionClock(p.phase)
         val member = p.phase == ParticipantPhase.JOINED || p.phase == ParticipantPhase.HOST_LOST
         val connecting = p.phase == ParticipantPhase.CONNECTING
         val current = p.currentClimb
+        val hosted = playlistClimb
         val own = if (member || connecting) {
             OwnSession(member, connecting, p.sessionId, current?.climbUuid, current?.angle ?: 0)
+        } else if (hosted != null) {
+            // Android role HOST resolves and suppresses like a member (steps 3 and the suppression).
+            OwnSession(member = true, connecting = false, sessionId = 0, currentClimbUuid = hosted.first, currentClimbAngle = hosted.second)
         } else {
             null
         }
-        val board: NearbyBoard = resolver.resolve(s.climbs, s.sessions, own)
+        val sent = ownBoard.climb
+        val local = sent?.let {
+            LocalBoard(
+                climbUuid = it.uuid,
+                angle = it.angle,
+                projectionSurvivesDisconnect = it.projectionSurvivesDisconnect,
+                live = it.liveOnBoard.isNotEmpty() && it.liveOnBoard == ownBoard.linkedBoard,
+                sentAtMs = it.sentAtMs,
+            )
+        }
+        val board: NearbyBoard = resolver.resolve(s.climbs, s.sessions, own, local)
         fun label(uuid: String, angle: Int) = s.labels[SharedSessionsPresenter.labelKey(uuid, angle)]
         val onBoard = board.onBoard
         val onBoardLabel = onBoard?.let { label(it.climbUuid, it.angle) }
+        val isLocal = onBoard?.source == OnBoardSource.LOCAL_ACTIVE || onBoard?.source == OnBoardSource.LOCAL_MANAGER
         val sessionLabel = current?.let { label(it.climbUuid, it.angle) }
         val joinable = p.phase == ParticipantPhase.IDLE || p.phase == ParticipantPhase.ENDED
         return NearbyAreaState(
@@ -183,11 +309,19 @@ class NearbyAreaModel internal constructor(
                 OnBoardSource.REMOTE_ACTIVE -> "remoteActive"
                 OnBoardSource.REMOTE_LAST -> "remoteLast"
                 OnBoardSource.SESSION_REMOTE -> "sessionRemote"
+                OnBoardSource.LOCAL_ACTIVE -> "localActive"
+                OnBoardSource.LOCAL_MANAGER -> "localManager"
             },
             onBoardUuid = onBoard?.climbUuid ?: "",
-            onBoardOpenUuid = if (onBoard != null && onBoardLabel != null) onBoardLabel.uuid.ifEmpty { onBoard.climbUuid } else "",
+            // This phone sent it from its own catalogue: it can be opened before its label is read.
+            onBoardOpenUuid = when {
+                onBoard == null -> ""
+                onBoardLabel != null -> onBoardLabel.uuid.ifEmpty { onBoard.climbUuid }
+                isLocal -> onBoard.climbUuid
+                else -> ""
+            },
             onBoardAngle = onBoard?.angle ?: 0,
-            onBoardName = onBoardLabel?.name ?: "",
+            onBoardName = onBoardLabel?.name ?: sent?.name?.takeIf { isLocal } ?: "",
             onBoardGrade = onBoardLabel?.grade ?: "",
             onBoardStillProjected = onBoard?.isStillProjected ?: false,
             boardOccupiedCount = board.boardOccupiedCount,
@@ -216,6 +350,9 @@ class NearbyAreaModel internal constructor(
             sessionClimbGrade = sessionLabel?.grade ?: "",
             sessionHasNext = p.phase == ParticipantPhase.JOINED && p.currentIndex >= 0 && p.currentIndex < p.queue.size - 1,
             externalBoardOverride = p.externalBoardOverride,
+            cleaningActive = ownBoard.cleaning,
+            sessionTimerActive = (member || connecting) && sessionClock?.isActive == true,
+            sessionTimerPaused = (member || connecting) && sessionClock?.isPaused == true,
         )
     }
 }

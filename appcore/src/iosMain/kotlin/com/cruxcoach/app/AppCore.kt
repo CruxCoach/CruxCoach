@@ -2082,7 +2082,12 @@ class AppCore private constructor(
             presenter = sharedSessions.presenter,
             scanAllowed = { com.cruxcoach.app.nearby.bluetoothAlreadyAllowed() },
             scope = MainScope(),
-        )
+        ).also {
+            // polish2: this phone's own sends, hold cleaning, the joined playlist's board session.
+            it.followOwnBoard(boardConnection)
+            it.useBoardSessionClock(participantBoardSessionClock())
+            it.followPlaylist(boardSessionHub.currentClimbFlow)
+        }
     }
 
     // ── Nearby-share catalogue receive (iOS 0.2.4 parity: Android offline Wi-Fi share, receiving side) ──
@@ -2164,5 +2169,19 @@ class AppCore private constructor(
     } catch (e: Exception) {
         ""
     }
+
+    // ── Browser polish (wave 5, polish2): nearby area extras ──
+
+    /** The joined playlist's board session (Android starts one on join): the shared board-session recorder. */
+    private fun participantBoardSessionClock(): com.cruxcoach.app.ui.BoardSessionClock =
+        object : com.cruxcoach.app.ui.BoardSessionClock {
+            override val isActive: Boolean get() = boardSessions.isActive
+            override val isPaused: Boolean get() = boardSessions.isPaused
+            override fun start() = boardSessions.start()
+            override fun end() {
+                boardSessions.end()
+            }
+            override fun elapsedSeconds(): Int = boardSessions.elapsedSeconds()
+        }
 
 }

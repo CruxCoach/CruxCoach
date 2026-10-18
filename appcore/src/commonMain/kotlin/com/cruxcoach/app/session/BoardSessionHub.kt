@@ -92,6 +92,15 @@ class BoardSessionHub(
     /** True while a playlist runs. */
     val isActive: Boolean get() = presenter.state.value.isActive
 
+    /**
+     * The running playlist's current climb (uuid, angle); null while none runs. The nearby area treats
+     * it as Android treats a hosted queue's current climb.
+     */
+    internal val currentClimbFlow: Flow<Pair<String, Int>?>
+        get() = presenter.state
+            .map { s -> s.currentClimb?.takeIf { s.isActive }?.let { it.climbUuid to it.angle } }
+            .distinctUntilChanged()
+
     /** A running playlist owns the wall: the detail's route playback stays on screen then. */
     internal val activeFlow: Flow<Boolean> get() = presenter.state.map { it.isActive }.distinctUntilChanged()
 
