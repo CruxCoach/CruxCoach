@@ -386,3 +386,7 @@
 /* Board: training-plan editor, logbook selection, session summary */
 "plan_error" = "Der Trainingsplan konnte nicht geändert werden.";
 "detail_edit_not_yet" = "Einen Climb von seiner Detailseite aus zu bearbeiten oder zu remixen geht auf dem iPhone noch nicht. Lege stattdessen im Editor einen neuen Climb an.";
+/* Climber profile (wave 3 "profile" agent) */
+"climber_profile_failed" = "Das Kletterprofil konnte nicht gelesen werden. Bitte versuche es später noch einmal.";
+"climber_axis_grade" = "Grad";
+"climber_axis_strength" = "Kraft in Prozent des Körpergewichts";
