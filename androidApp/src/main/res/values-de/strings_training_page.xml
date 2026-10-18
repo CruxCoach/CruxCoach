@@ -23,6 +23,8 @@
     <string name="trpg_row_cd">Satz %1$s: %2$s</string>
     <string name="trpg_page_cd">Übung %1$d von %2$d: %3$s, %4$d von %5$d Sätzen</string>
     <string name="trpg_page_progress">%1$d von %2$d Sätzen</string>
+    <string name="trpg_page_cd_sides">Übung %1$d von %2$d: %3$s, %4$d von %5$d Sätzen je Seite</string>
+    <string name="trpg_page_progress_sides">%1$d von %2$d Sätzen je Seite</string>
     <string name="trpg_reserve_question">Wie viele noch?</string>
     <string name="trpg_start_seconds">Start · %1$d s</string>
     <string name="trpg_log_test">Eintragen</string>
