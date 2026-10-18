@@ -231,7 +231,7 @@ struct ClimbDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let rest { RestTimerBanner(model: rest.model, ui: rest.state) }
-                BoardCanvasView(imagePaths: ui.imagePaths, holds: ui.holds, aspect: CGFloat(ui.boardAspect))
+                BoardCanvasView(imagePaths: ui.imagePaths, holds: shownHolds(ui), aspect: CGFloat(ui.boardAspect))
                     .simultaneousGesture(pageSwipe(model: model))
                     .overlay { routeCountdown }
                 routeControls
@@ -247,6 +247,14 @@ struct ClimbDetailView: View {
         }
         // Android's BleStatusArea on the detail: the running playlist's banner.
         .safeAreaInset(edge: .top, spacing: 0) { SessionPlaylistBanner(core: core) }
+    }
+
+    /// Android's route preview draws every section at once; otherwise the current one.
+    private func shownHolds(_ ui: DetailScreenState) -> [DetailHoldUi] {
+        if let playback, playback.state.showPreview {
+            return playback.state.previewHolds
+        }
+        return ui.holds
     }
 
     /// Android's countdown over the board before route playback starts.

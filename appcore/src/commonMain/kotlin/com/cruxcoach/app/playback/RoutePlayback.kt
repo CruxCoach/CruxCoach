@@ -42,6 +42,8 @@ data class RoutePlaybackState(
     val isLooping: Boolean = false,
     val speedSec: Float = 5f,
     val countdownSeconds: Int = 0,
+    /** Android's preview: every section's holds at once, on screen only. */
+    val showPreview: Boolean = false,
     /** False while something else owns the wall — a running playlist, or no board. */
     val canReachBoard: Boolean = true,
 )
@@ -88,6 +90,7 @@ class RoutePlaybackPresenter(
                 currentFrameIndex = 0,
                 totalFrames = totalFrames.coerceAtLeast(1),
                 isRoute = isRoute,
+                showPreview = false,
                 speedSec = speedOverride ?: it.speedSec,
             )
         }
@@ -99,7 +102,7 @@ class RoutePlaybackPresenter(
     fun goToFrame(index: Int) {
         val p = _state.value
         if (!p.isRoute || index !in 0 until p.totalFrames) return
-        _state.update { it.copy(currentFrameIndex = index) }
+        _state.update { it.copy(currentFrameIndex = index, showPreview = false) }
         onFrameChanged(index)
     }
 
@@ -165,6 +168,12 @@ class RoutePlaybackPresenter(
         _state.update { it.copy(isPlaying = false, countdownSeconds = 0, auto = false) }
     }
 
+    /** Android `togglePreview`: all sections at once, or back to the current one. Nothing is sent. */
+    fun togglePreview() {
+        if (!_state.value.isRoute) return
+        _state.update { it.copy(showPreview = !it.showPreview) }
+    }
+
     fun toggleLoop() {
         _state.update { it.copy(isLooping = !it.isLooping) }
         saveAutoLoop(_state.value.isLooping)
@@ -218,19 +227,29 @@ class RoutePlaybackUiState(
     val showDots: Boolean,
     val minSpeedSeconds: Double,
     val maxSpeedSeconds: Double,
+    /** Android's preview: draw [previewHolds] instead of the detail's holds. */
+    val showPreview: Boolean,
+    /** Every section's holds (mirror applied); empty unless [showPreview]. */
+    val previewHolds: List<com.cruxcoach.app.ui.DetailHoldUi>,
 )
 
 /** Facade over [RoutePlaybackPresenter] for the climb detail. */
 class RoutePlaybackModel internal constructor(
     private val presenter: RoutePlaybackPresenter,
     private val scope: CoroutineScope,
+    private val previewHolds: StateFlow<List<com.cruxcoach.app.ui.DetailHoldUi>> = MutableStateFlow(emptyList()),
 ) {
-    val currentState: RoutePlaybackUiState get() = map(presenter.state.value)
+    val currentState: RoutePlaybackUiState get() = map(presenter.state.value, previewHolds.value)
 
     fun watch(onState: (RoutePlaybackUiState) -> Unit): Subscription {
-        val job = scope.launch { presenter.state.collect { onState(map(it)) } }
+        val job = scope.launch {
+            kotlinx.coroutines.flow.combine(presenter.state, previewHolds) { p, holds -> map(p, holds) }
+                .collect { onState(it) }
+        }
         return Subscription { job.cancel() }
     }
+
+    fun togglePreview() = presenter.togglePreview()
 
     fun goToFrame(index: Int) = presenter.goToFrame(index)
     fun firstFrame() = presenter.goToFrame(0)
@@ -254,7 +273,7 @@ class RoutePlaybackModel internal constructor(
         scope.cancel()
     }
 
-    private fun map(p: RoutePlaybackState): RoutePlaybackUiState {
+    private fun map(p: RoutePlaybackState, preview: List<com.cruxcoach.app.ui.DetailHoldUi>): RoutePlaybackUiState {
         val idle = !p.isPlaying
         return RoutePlaybackUiState(
             isRoute = p.isRoute,
@@ -274,6 +293,8 @@ class RoutePlaybackModel internal constructor(
             showDots = p.totalFrames <= RoutePlaybackPresenter.MAX_DOTS,
             minSpeedSeconds = RoutePlaybackPresenter.MIN_SPEED_SEC.toDouble(),
             maxSpeedSeconds = RoutePlaybackPresenter.MAX_SPEED_SEC.toDouble(),
+            showPreview = p.showPreview && p.isRoute,
+            previewHolds = if (p.showPreview && p.isRoute) preview else emptyList(),
         )
     }
 }

@@ -65,7 +65,23 @@ class RoutePlaybackWiringTest {
         assertTrue(ui.canReachBoard)
         assertEquals(listOf(100), presenter.state.value.holds.map { it.placementId })
 
+        // Android's preview: every section at once, on screen only.
+        model.togglePreview(); advanceUntilIdle()
+        assertTrue(model.currentState.showPreview)
+        assertEquals(listOf(100, 101, 102), model.currentState.previewHolds.map { it.placementId }.sorted())
+        assertTrue(sent.isEmpty(), "the preview is not sent")
+        val startArgb = model.currentState.previewHolds.first { it.placementId == 100 }.argb
+        val handArgb = model.currentState.previewHolds.first { it.placementId == 101 }.argb
+        assertTrue(startArgb != handArgb)
+        presenter.toggleMirror(); advanceUntilIdle()
+        assertEquals(listOf(100, 101, 102), model.currentState.previewHolds.map { it.placementId }.sorted())
+        assertEquals(startArgb, model.currentState.previewHolds.first { it.placementId == 101 }.argb,
+            "mirrored, the start hold moves to its partner")
+        presenter.toggleMirror(); advanceUntilIdle()
+
         model.nextFrame(); advanceUntilIdle()
+        assertFalse(model.currentState.showPreview, "stepping to a section ends the preview")
+        assertTrue(model.currentState.previewHolds.isEmpty())
         assertEquals(listOf(100, 101), presenter.state.value.holds.map { it.placementId }.sorted())
         assertEquals(listOf(listOf(100, 101)), sent, "the frame just selected is the one sent")
 

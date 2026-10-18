@@ -1,6 +1,12 @@
 package com.cruxcoach.app.playback
 
+import com.cruxcoach.app.detail.ClimbDetailAssembler
 import com.cruxcoach.app.detail.ClimbDetailPresenter
+import com.cruxcoach.app.render.LedHoldColors
+import com.cruxcoach.app.ui.DetailHoldUi
+import com.cruxcoach.data.repository.brand
+import com.cruxcoach.domain.board.BoardBrand
+import kotlinx.coroutines.flow.MutableStateFlow
 import com.cruxcoach.app.detail.ClimbDetailStatus
 import com.cruxcoach.app.detail.ClimbDetailUiState
 import com.cruxcoach.app.settings.SettingsSnapshot
@@ -34,6 +40,8 @@ internal fun routePlaybackFor(
     saveAutoLoop: (Boolean) -> Unit,
     scope: CoroutineScope,
     pause: suspend (Long) -> Unit = { delay(it) },
+    /** The detail presenter's Kilter palette (its default), for the preview. */
+    kilterColors: LedHoldColors = LedHoldColors(),
 ): RoutePlaybackModel {
     var reachable = false
     val playback = RoutePlaybackPresenter(
@@ -67,7 +75,28 @@ internal fun routePlaybackFor(
             playback.setCanReachBoard(it)
         }
     }
-    return RoutePlaybackModel(playback, scope)
+    val preview = MutableStateFlow<List<DetailHoldUi>>(emptyList())
+    scope.launch {
+        combine(playback.state, presenter.state) { p, s -> if (p.showPreview && p.isRoute) previewHolds(s, kilterColors) else emptyList() }
+            .collect { preview.value = it }
+    }
+    return RoutePlaybackModel(playback, scope, preview)
+}
+
+/**
+ * Android `togglePreview`: every section's holds at once (mirror applied). A
+ * hold that appears in several sections is drawn once, in its last role —
+ * what Android's overdrawing shows.
+ */
+internal fun previewHolds(s: ClimbDetailUiState, kilterColors: LedHoldColors): List<DetailHoldUi> {
+    val data = s.data ?: return emptyList()
+    val all = data.frames.flatten()
+    val shown = if (s.isMirrored) ClimbDetailAssembler.mirrorHolds(all, data.mirrorMap) else all
+    val unique = shown.associateBy { it.placementId }.values.toList()
+    val colors = if (data.climb.brand == BoardBrand.KILTER) kilterColors else LedHoldColors.standardFor(data.climb.brand)
+    return ClimbDetailAssembler.renderHolds(data, unique, colors)
+        .filter { it.x >= 0f && it.y >= 0f }
+        .map { DetailHoldUi(it.placementId, it.x, it.y, it.argb) }
 }
 
 /** Android's "Route playback" settings section. */

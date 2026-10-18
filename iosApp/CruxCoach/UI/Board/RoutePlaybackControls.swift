@@ -38,6 +38,11 @@ struct RoutePlaybackControls: View {
         let frame: Int = Int(ui.frameNumber)
         let total: Int = Int(ui.totalFrames)
         return HStack {
+            Button { model.togglePreview() } label: {
+                Image(systemName: ui.showPreview ? "eye.slash" : "eye").frame(width: 36, height: 36)
+            }
+            .foregroundStyle(ui.showPreview ? Color.orange : Color.secondary)
+            .accessibilityLabel(L(ui.showPreview ? "cd_preview_off" : "cd_preview_on"))
             Spacer()
             Text(L("board_playback_frame", frame, total))
                 .font(.subheadline.weight(.bold).monospacedDigit())
