@@ -49,6 +49,11 @@ targets:
       # The repository's third-party notice, shown under Settings → Open-source licenses.
       - path: ../THIRD_PARTY_LICENSES.md
         buildPhase: resources
+      # Nutrition: BLS 4.0 and USDA SR Legacy tables, and the zstd Open Food Facts
+      # extract (17 MB) that is unpacked once on first use, as on Android.
+      - path: ../androidApp/src/main/assets/fuel
+        type: folder
+        buildPhase: resources
     dependencies:
       - framework: Frameworks/CruxCoachCore.xcframework
         embed: false

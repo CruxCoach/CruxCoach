@@ -348,3 +348,12 @@
 "training_tab_not_on_iphone" = "This part of training & nutrition is not on iPhone yet. It is available in the Android app.";
 "training_not_on_iphone" = "This is not on iPhone yet. It is available in the Android app.";
 "training_weight_invalid" = "Please enter a plausible body weight.";
+
+/* Nutrition (0.2.4) */
+"nutrition_unavailable" = "Nutrition is not available";
+"nutrition_unavailable_hint" = "The training and nutrition data on this iPhone could not be opened. Your other data is not affected.";
+"nutrition_photo_unsupported" = "Recognising food on a photo is not available on iPhone yet: it needs a model that runs on the device, which the iPhone app does not have.";
+"nutrition_describe_failed" = "The description could not be read.";
+"nutrition_try_again" = "Try again";
+"nutrition_scan_unavailable" = "Scanning is not available";
+"nutrition_scan_unavailable_hint" = "Allow camera access for CruxCoach in the iPhone settings, or search for the product by name.";
