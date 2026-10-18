@@ -24,7 +24,7 @@ struct KilterView: View {
         .navigationTitle(LI("kilter_title"))
         .task {
             guard host == nil else { return }
-            let model = core.kilterScreenWithCircuits()
+            let model = core.kilterScreenWithSync()
             host = ScreenHost(model: model, initial: model.currentState) { model, onState in
                 model.watch(onState: onState)
             }
@@ -39,23 +39,17 @@ struct KilterView: View {
                     if !ui.userUuid.isEmpty {
                         LabeledContent(LI("kilter_user"), value: String(ui.userUuid.prefix(8)))
                     }
-                    Button(LI("kilter_import")) { model.importLogs() }.disabled(ui.busy)
+                    if ui.syncContinuously {
+                        KilterContinuousRows(model: model, ui: ui)
+                    } else {
+                        KilterImportChoice(model: model, busy: ui.busy)
+                    }
                     Button(LI("kilter_sign_out"), role: .destructive) { model.signOut() }.disabled(ui.busy)
                 }
                 uploadSection(model: model, ui: ui)
-                if ui.phase == "done" {
-                    Section {
-                        Label(LI("kilter_imported", Int(ui.imported), Int(ui.alreadyPresent)), systemImage: "checkmark.circle")
-                            .foregroundStyle(.green)
-                        if ui.unknownClimb > 0 {
-                            Text(LI("kilter_unknown", Int(ui.unknownClimb))).font(.footnote).foregroundStyle(.secondary)
-                        }
-                        if ui.circuits > 0 {
-                            Text(L("kilter_import_part_circuits", Int(ui.circuits))).font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                }
+                if ui.phase == "done" { importSummary(ui: ui) }
             } else {
+                if ui.phase == "done" && ui.importedOnce { importSummary(ui: ui) }
                 Section {
                     TextField(LI("kilter_email"), text: $email)
                         .textContentType(.emailAddress)
@@ -106,6 +100,21 @@ struct KilterView: View {
             Button(L("action_cancel"), role: .cancel) {}
         } message: {
             Text(L("kilter_upload_imported_message"))
+        }
+    }
+
+    /// What the last import brought in (Android `formatKilterImportSummary`, iOS wording).
+    @ViewBuilder
+    private func importSummary(ui: KilterScreenState) -> some View {
+        Section {
+            Label(LI("kilter_imported", Int(ui.imported), Int(ui.alreadyPresent)), systemImage: "checkmark.circle")
+                .foregroundStyle(.green)
+            if ui.unknownClimb > 0 {
+                Text(LI("kilter_unknown", Int(ui.unknownClimb))).font(.footnote).foregroundStyle(.secondary)
+            }
+            if ui.circuits > 0 {
+                Text(L("kilter_import_part_circuits", Int(ui.circuits))).font(.footnote).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -333,5 +342,62 @@ private struct KilterReportSheet: View {
         model.setSubject(value: title.trimmingCharacters(in: .whitespaces))
         model.setDraft(value: text)
         model.send()
+    }
+}
+
+/// Android's import dialog choice: "Import once" (the logbook, then the sign-in is revoked and
+/// forgotten) or "Sync continuously" (every app start syncs the logbook again).
+private struct KilterImportChoice: View {
+    let model: KilterScreenModel
+    let busy: Bool
+
+    var body: some View {
+        Button {
+            model.importOnce()
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("kilter_import_one_time"))
+                Text(L("kilter_import_one_time_desc")).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .disabled(busy)
+        Button {
+            model.importContinuously()
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("kilter_import_persistent"))
+                Text(L("kilter_import_persistent_desc")).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .disabled(busy)
+    }
+}
+
+/// While "Sync continuously" is on: the last sync, "Upload to Kilter" and a manual import.
+private struct KilterContinuousRows: View {
+    let model: KilterScreenModel
+    let ui: KilterScreenState
+
+    var body: some View {
+        if !ui.lastSync.isEmpty {
+            Text(L("kilter_last_sync", KilterContinuousRows.dateText(ui.lastSync)))
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        Toggle(L("kilter_push_label"), isOn: Binding(
+            get: { ui.pushEnabled },
+            set: { model.setPushEnabled(enabled: $0) }))
+            .disabled(ui.busy)
+        Text(L("kilter_push_desc")).font(.caption).foregroundStyle(.secondary)
+        Text(LI("kilter_continuous_ios_hint")).font(.caption).foregroundStyle(.secondary)
+        Button(LI("kilter_import")) { model.importLogs() }.disabled(ui.busy)
+    }
+
+    /// The stored ISO instant in the device's short date and time.
+    static func dateText(_ iso: String) -> String {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        guard let date = fractional.date(from: iso) ?? plain.date(from: iso) else { return iso }
+        return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
     }
 }

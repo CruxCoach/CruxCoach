@@ -82,6 +82,14 @@ data class KilterScreenState(
     val diagnostics: String = "",
     /** "0.2.4 (code)", for the report header. */
     val appVersion: String = "",
+    /** "Sync continuously" was chosen (Android `kilter_sync_enabled`): the start syncs the logbook. */
+    val syncContinuously: Boolean = false,
+    /** "Upload to Kilter" (Android `kilter_push_enabled`): the start's sync also uploads. */
+    val pushEnabled: Boolean = false,
+    /** ISO instant of the last sync that moved something, "" before the first. */
+    val lastSync: String = "",
+    /** The last import was "Import once": the sign-in is gone, the summary stays. */
+    val importedOnce: Boolean = false,
 )
 
 /**
@@ -115,6 +123,25 @@ class KilterScreenModel(
 
     /** Own logged/authored Kilter climbs into the board DB before the logs land (Android's backfill). */
     internal var climbBackfiller: com.cruxcoach.app.kilter.KilterClimbBackfiller? = null
+
+    /**
+     * The identity's Kilter choices (`kilter_sync_enabled`, `kilter_push_enabled`, `kilter_last_sync`),
+     * set once by the composition root; without it the import-mode choice is not offered.
+     */
+    internal var syncSettings: com.cruxcoach.app.settings.SettingsStore? = null
+        set(value) {
+            field = value
+            _state.update { withSyncSettings(it) }
+        }
+
+    private fun withSyncSettings(state: KilterScreenState): KilterScreenState {
+        val snapshot = syncSettings?.snapshot ?: return state
+        return state.copy(
+            syncContinuously = snapshot.kilterSyncEnabled,
+            pushEnabled = snapshot.kilterPushEnabled,
+            lastSync = snapshot.kilterLastSync ?: "",
+        )
+    }
 
     private val _state = MutableStateFlow(
         KilterScreenState(
@@ -167,10 +194,33 @@ class KilterScreenModel(
     }
 
     /** Downloads the account's ascents and merges them into the logbook. */
-    fun importLogs() {
+    fun importLogs() = runImport(mode = MODE_PLAIN)
+
+    /**
+     * Android's "Import once": the logbook comes in, then the sign-in is revoked at Kilter and
+     * forgotten here (the user uuid stays, so own authored climbs remain claimable) and continuous
+     * sync is off. A failed import keeps the sign-in, so the user can try again.
+     */
+    fun importOnce() = runImport(mode = MODE_ONCE)
+
+    /** Android's "Sync continuously": the logbook comes in and every app start syncs it again. */
+    fun importContinuously() = runImport(mode = MODE_CONTINUOUS)
+
+    /**
+     * Android's "Upload to Kilter" switch. Switching it on starts an upload of the pending sends
+     * and attempts at once; afterwards each start's sync uploads too.
+     */
+    fun setPushEnabled(enabled: Boolean) {
+        val settings = syncSettings ?: return
+        settings.setKilterPushEnabled(enabled)
+        _state.update { withSyncSettings(it) }
+        if (enabled) startUpload(enableImported = false, trigger = KilterUploadTrigger.ENABLED)
+    }
+
+    private fun runImport(mode: Int) {
         if (job?.isActive == true) return
         job = scope.launch {
-            _state.update { it.copy(busy = true, phase = "importing", failure = "none") }
+            _state.update { it.copy(busy = true, phase = "importing", failure = "none", importedOnce = false) }
             val fetched = withContext(io) { api.fetchLogs() }
             if (fetched.failure != KilterFailure.NONE) {
                 _state.update {
@@ -193,15 +243,28 @@ class KilterScreenModel(
             val summary = withContext(io) { importer.import(fetched.logs) }
             // Best-effort and non-fatal, as on Android: the token was refreshed by the log fetch.
             val circuits = circuitImporter?.let { withContext(io) { it.importCircuits() } } ?: 0
+            val settings = syncSettings
+            if (mode != MODE_PLAIN && settings != null) {
+                settings.setKilterLastSync(kotlin.time.Clock.System.now().toString())
+                if (mode == MODE_ONCE) {
+                    // Revoked at Kilter before it is forgotten here, so the 30-day refresh token
+                    // cannot outlive the "import once" choice; the user uuid stays.
+                    withContext(io) { api.signOut() }
+                    engine.clearSessionExpired()
+                }
+                settings.setKilterSyncEnabled(mode == MODE_CONTINUOUS)
+            }
             _state.update {
-                it.copy(
+                withSyncSettings(it.copy(
                     busy = false,
                     phase = "done",
                     imported = summary.imported,
                     alreadyPresent = summary.alreadyPresent,
                     unknownClimb = summary.unknownClimb,
                     circuits = circuits,
-                )
+                    signedIn = tokens.isSignedIn,
+                    importedOnce = mode == MODE_ONCE && settings != null,
+                ))
             }
         }
     }
@@ -211,12 +274,12 @@ class KilterScreenModel(
      * yet ("Sync now"). The outcome is the engine's status, shown by the
      * status block; it is not repeated as a screen failure.
      */
-    fun pushLogs() = startUpload(enableImported = false)
+    fun pushLogs() = startUpload(enableImported = false, trigger = KilterUploadTrigger.MANUAL)
 
     /** Opt in to uploading Aurora-imported entries (they are matched against Kilter first), then upload. */
-    fun uploadImported() = startUpload(enableImported = true)
+    fun uploadImported() = startUpload(enableImported = true, trigger = KilterUploadTrigger.MANUAL)
 
-    private fun startUpload(enableImported: Boolean) {
+    private fun startUpload(enableImported: Boolean, trigger: KilterUploadTrigger) {
         if (job?.isActive == true) return
         job = scope.launch {
             updateUpload { it.copy(busy = true, phase = "pushing", failure = "none", uploading = true) }
@@ -225,7 +288,7 @@ class KilterScreenModel(
                 // in flight only through the next one, which waits for it.
                 runScope.async {
                     if (enableImported) engine.setImportedUploadEnabled(true)
-                    engine.upload(KilterUploadTrigger.MANUAL)
+                    engine.upload(trigger)
                 }.await()
             } catch (e: CancellationException) {
                 throw e
@@ -302,8 +365,10 @@ class KilterScreenModel(
                 engine.clearUploadLedger()
             }
             engine.clearSessionExpired()
+            // Android's disconnect ends continuous sync with the session.
+            syncSettings?.setKilterSyncEnabled(false)
             _state.update {
-                it.copy(busy = false, signedIn = false, phase = "idle", failure = "none", imported = 0, alreadyPresent = 0, unknownClimb = 0, circuits = 0)
+                withSyncSettings(it.copy(busy = false, signedIn = false, phase = "idle", failure = "none", imported = 0, alreadyPresent = 0, unknownClimb = 0, circuits = 0))
             }
         }
     }
@@ -325,6 +390,10 @@ class KilterScreenModel(
     }
 
     companion object {
+        private const val MODE_PLAIN = 0
+        private const val MODE_ONCE = 1
+        private const val MODE_CONTINUOUS = 2
+
         /** Port of Android's `KilterLogbookSyncStatus` decisions; the push switch is always on here. */
         internal fun withUpload(state: KilterScreenState, status: KilterUploadStatus?, expired: Boolean): KilterScreenState {
             val needsLogin = expired || status?.reason == KilterUploadReason.AUTHENTICATION

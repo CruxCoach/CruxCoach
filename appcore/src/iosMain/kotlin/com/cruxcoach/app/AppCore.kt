@@ -1412,6 +1412,7 @@ class AppCore private constructor(
                 backgroundPollStep(notifications, language),
                 backgroundKilterStep(),
                 backgroundKilterCircuitStep(),
+                backgroundKilterContinuousSyncStep(),
                 backgroundCommunityStep(),
                 // Android's KilterPublishRetryWorker: own climbs the portal has not taken yet.
                 com.cruxcoach.app.background.KilterClimbPublishStep({ kilterClimbPublishEnabled() }) {
@@ -2330,5 +2331,62 @@ class AppCore private constructor(
             com.cruxcoach.app.progress.WeeklyVolumePresenter(service, MainScope(), Dispatchers.IO),
         )
     }
+
+    // Kilter "Import once / Sync continuously" (Android KilterSyncEngine.importLogs(oneTimeOnly) and
+    // syncOnAppStartIfEnabled). `makeBackgroundRefresh` lists the step after the circuit step.
+
+    /** The Kilter screen with circuits and the identity's sync choices; KilterView uses this one. */
+    fun kilterScreenWithSync(): KilterScreenModel {
+        val screen = kilterScreenWithCircuits()
+        if (screen.syncSettings == null) screen.syncSettings = settingsStore
+        return screen
+    }
+
+    private fun backgroundKilterContinuousSyncStep(): com.cruxcoach.app.background.BackgroundStep =
+        com.cruxcoach.app.background.KilterContinuousSyncStep(
+            syncEnabled = { settingsStore.snapshot.kilterSyncEnabled },
+            signedIn = { kilterClimbTokens.hasCredentials() },
+            pushEnabled = { settingsStore.snapshot.kilterPushEnabled },
+            upload = {
+                // Building the Kilter screen builds the engine (and registers it for the background).
+                val engine = backgroundKilterEngine
+                    ?: kotlinx.coroutines.withContext(Dispatchers.Main) { kilterScreen; backgroundKilterEngine }
+                var status: com.cruxcoach.app.kilter.KilterUploadStatus? = null
+                if (engine != null) {
+                    // Detached, as the screen's runs: cut off mid-request a run loses Kilter's answer.
+                    com.cruxcoach.app.background.BackgroundWiring.detached(kilterRunScope) {
+                        status = engine.upload(KilterUploadTrigger.APP_START)
+                    }
+                }
+                status?.let {
+                    com.cruxcoach.app.background.KilterStartUpload(
+                        uploaded = it.uploaded,
+                        authenticationFailed = it.reason == com.cruxcoach.app.kilter.KilterUploadReason.AUTHENTICATION,
+                        failed = it.failed,
+                        pending = it.pending,
+                    )
+                }
+            },
+            freshToken = { kilterClimbApi.ensureAccessToken() },
+            download = {
+                val fetched = kilterClimbApi.fetchLogs()
+                if (fetched.failure != com.cruxcoach.app.kilter.KilterFailure.NONE) {
+                    -1
+                } else {
+                    // Best effort, as on Android: a failed backfill never stops the log import.
+                    try {
+                        kilterClimbBackfiller().backfillOwnClimbs()
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        null
+                    }
+                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        com.cruxcoach.app.kilter.KilterLogImporter(boardRepository, personalRepository).import(fetched.logs).imported
+                    }
+                }
+            },
+            recordLastSync = { settingsStore.setKilterLastSync(kotlin.time.Clock.System.now().toString()) },
+        )
 
 }
