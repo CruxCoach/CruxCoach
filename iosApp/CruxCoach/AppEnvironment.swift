@@ -28,6 +28,8 @@ final class AppEnvironment {
             UNUserNotificationCenter.current().delegate = notificationPresenter
             _ = core.attachNotifications(scheduler: LocalNotificationScheduler())
             core.attachHealthStore(store: HealthKitStore())
+            // Weigh-in and measuring reminders are scheduled ahead; refresh them at every start.
+            core.rescheduleBodyReminders(notifications: LocalNotificationScheduler())
             phase = .ready(core)
         } else {
             phase = .failed(code: result.failureCode, detail: result.detail)

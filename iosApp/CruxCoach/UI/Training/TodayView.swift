@@ -59,6 +59,8 @@ private struct TodayContent: View {
     @State private var finishedId: String?
     @State private var afterNext = ""
     @State private var notYet: String?
+    /// The training pages Today links to (injuries, training settings, the quick estimate).
+    @State private var progressSheet: TodayProgressLink?
     /// The climbing-day sheet: "" logs a new day, an id edits today's entry (device test D30); nil = closed.
     @State private var climbingSheet: String?
     @State private var climbingList = false
@@ -111,8 +113,8 @@ private struct TodayContent: View {
                     if !ui.hasOpenWorkout {
                         Button { model.startEmptyWorkout() } label: { Label(L("trt_quick_free"), systemImage: "plus") }
                     }
-                    Button { notYet = L("trt_report_injury") } label: { Label(L("trt_report_injury"), systemImage: "bandage") }
-                    Button { notYet = L("tr_action_settings") } label: { Label(L("tr_action_settings"), systemImage: "slider.horizontal.3") }
+                    Button { progressSheet = .injuries } label: { Label(L("trt_report_injury"), systemImage: "bandage") }
+                    Button { progressSheet = .settings } label: { Label(L("tr_action_settings"), systemImage: "slider.horizontal.3") }
                 } label: {
                     Label(L("trt_more_actions"), systemImage: "ellipsis.circle")
                 }
@@ -263,6 +265,21 @@ private struct TodayContent: View {
         } message: {
             Text(tr: ui.pendingText)
         }
+        .sheet(item: $progressSheet) { link in
+            switch link {
+            case .estimate:
+                ProgressQuickEstimateSheet(core: core) { progressSheet = nil }
+            case .injuries, .settings:
+                NavigationStack {
+                    Group {
+                        if link == .injuries { ProgressInjuriesView(core: core) } else { ProgressSettingsView(core: core) }
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button(L("action_done")) { progressSheet = nil } }
+                    }
+                }
+            }
+        }
         .alert(notYet ?? "", isPresented: Binding(get: { notYet != nil }, set: { if !$0 { notYet = nil } })) {
             Button(L("action_close"), role: .cancel) { notYet = nil }
         } message: {
@@ -294,7 +311,7 @@ private struct TodayContent: View {
     }
 
     private var injuryBanner: some View {
-        Button { notYet = L("trt_injury_manage") } label: {
+        Button { progressSheet = .injuries } label: {
             HStack {
                 Image(systemName: "bandage")
                 VStack(alignment: .leading) {
@@ -653,7 +670,7 @@ private struct TodayContent: View {
                 HStack {
                     Spacer()
                     Button(L(benchmarks ? "tru_estimate" : "tr_action_start")) {
-                        if benchmarks { notYet = L("tru_estimate") } else { model.startBaselineTests() }
+                        if benchmarks { progressSheet = .estimate } else { model.startBaselineTests() }
                     }
                     .buttonStyle(.bordered)
                 }
@@ -1290,4 +1307,9 @@ struct TrainingEquipmentEditor: View {
             }
         }
     }
+}
+
+private enum TodayProgressLink: String, Identifiable {
+    case injuries, settings, estimate
+    var id: String { rawValue }
 }
