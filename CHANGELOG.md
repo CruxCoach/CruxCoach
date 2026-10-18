@@ -500,8 +500,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - Foods people count – a banana, an apple, an egg, a roll – offer pieces
-  next to grams when picked from the food database ("1 piece (120 g)");
-  grams stay one tap away.
+  next to grams when picked from the food database ("1 piece (120 g)"),
+  also when they were saved to my foods before; grams stay one tap away.
 - "Another suggestion" is shorter: the kind of training, "lighter" or
   "harder" today, and one "Another mix" button. Time, place and single
   exercises are changed on the card itself (time and place now share one row);
@@ -566,6 +566,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   days); the entry comes back with its board-overlap choice.
 - The map no longer draws a place's sheet under the navigation bar, where
   "Choose this board" sat behind the buttons and a tap hit Back.
+- Picking a place from the map's list while a search is typed ends the
+  search, so the keyboard and results no longer cover the place.
 - The nutrition page left open over midnight moves to the new day by itself
   instead of showing "Yesterday" with the old day's food; a day picked with
   the arrows stays picked.
