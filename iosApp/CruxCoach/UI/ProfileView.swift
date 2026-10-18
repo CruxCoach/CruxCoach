@@ -10,6 +10,7 @@ struct ProfileView: View {
     @State private var confirmingPublish = false
     @State private var pickedPicture: PhotosPickerItem?
     @State private var pickedBanner: PhotosPickerItem?
+    @State private var extras: ScreenHost<KilterProfileExtrasModel, KilterProfileExtrasState>?
 
     var body: some View {
         Group {
@@ -27,6 +28,11 @@ struct ProfileView: View {
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
             model.load()
+            let extrasModel = core.makeKilterProfileExtras()
+            extras = ScreenHost(model: extrasModel, initial: extrasModel.currentState,
+                                subscribe: { model, onState in model.watch(onState: onState) },
+                                onClose: { model in model.close() })
+            extrasModel.loadKilterUsername()
         }
     }
 
@@ -42,11 +48,12 @@ struct ProfileView: View {
             Section {
                 TextField(L("nostr_profile_display_name"),
                           text: binding(ui.displayName) { model.setDisplayName(value: $0) })
+                kilterUsernameRows(model: model, ui: ui)
                 TextField(L("nostr_profile_about"),
                           text: binding(ui.about) { model.setAbout(value: $0) }, axis: .vertical)
                     .lineLimit(2...6)
             }
-            notOnIPhoneSection()
+            communitySection()
             Section(header: Text(LI("profile_images"))) {
                 TextField(L("nostr_profile_picture_change"),
                           text: binding(ui.pictureUrl) { model.setPictureUrl(value: $0) })
@@ -116,14 +123,33 @@ struct ProfileView: View {
         }
     }
 
-    /// Android's profile also offers "Use Kilter username" and, under Community, the
-    /// default for posting a short Nostr note with each new climb. Neither exists on
-    /// iPhone yet (no Kilter display name is fetched here, and the editor posts no
-    /// notes), so the screen says so instead of showing controls that do nothing.
+    /// Android's "Use Kilter username": fills an empty display name with the connected
+    /// Kilter account's name (never overwrites one), and explains when the two differ.
     @ViewBuilder
-    private func notOnIPhoneSection() -> some View {
+    private func kilterUsernameRows(model: ProfileScreenModel, ui: ProfileScreenState) -> some View {
+        let kilterName: String = extras?.state.kilterUsername ?? ""
+        if !kilterName.isEmpty {
+            Button(L("nostr_profile_import_from_kilter")) {
+                if ui.displayName.isEmpty { model.setDisplayName(value: kilterName) }
+            }
+            if !ui.displayName.isEmpty && ui.displayName != kilterName {
+                Text(L("nostr_profile_kilter_divergence_hint", kilterName))
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Android's Community card: the editor's default for a short public Nostr note
+    /// with each newly published climb (off by default; per climb in the editor).
+    @ViewBuilder
+    private func communitySection() -> some View {
         Section(header: Text(L("profile_community_title"))) {
-            Text(LI("profile_extras_not_on_iphone")).font(.footnote).foregroundStyle(.secondary)
+            if let extras {
+                Toggle(L("auto_note_setting_title"), isOn: Binding(
+                    get: { extras.state.autoNoteEnabled },
+                    set: { extras.model.setAutoNoteEnabled(enabled: $0) }))
+                Text(L("auto_note_setting_body")).font(.footnote).foregroundStyle(.secondary)
+            }
         }
     }
 

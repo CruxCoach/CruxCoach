@@ -26,6 +26,8 @@ struct ClimbDetailView: View {
     @State private var owner: ScreenHost<ClimbOwnerActionsModel, ClimbOwnerActionsState>?
     /// Android's route playback: a route's sections one after another.
     @State private var playback: ScreenHost<RoutePlaybackModel, RoutePlaybackUiState>?
+    /// "Publish as mine" for a climb the connected Kilter account set (Android `canPublishAsMine`).
+    @State private var ownKilter: ScreenHost<OwnKilterClimbModel, OwnKilterClimbState>?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -58,12 +60,18 @@ struct ClimbDetailView: View {
                                subscribe: { model, onState in model.watch(onState: onState) },
                                onClose: { model in model.close() })
             actions.open(uuid: uuid)
+            let ownModel = core.makeOwnKilterClimb()
+            ownKilter = ScreenHost(model: ownModel, initial: ownModel.currentState,
+                                   subscribe: { model, onState in model.watch(onState: onState) },
+                                   onClose: { model in model.close() })
+            ownModel.load(uuid: uuid)
         }
         .onDisappear {
             if host?.state.browserDirty == true { onChanged() }
             playback?.close()
             host?.close()
             owner?.close()
+            ownKilter?.close()
             rest?.close()
         }
         .onChange(of: scenePhase) { _, phase in
@@ -79,6 +87,34 @@ struct ClimbDetailView: View {
             }
         }
         .overlay(alignment: .top) { ownerResultBanner }
+        .overlay(alignment: .bottom) { ownKilterBanner }
+    }
+
+    /// Android's snackbar after "Publish as mine".
+    @ViewBuilder
+    private var ownKilterBanner: some View {
+        if let ownKilter, ownKilter.state.feedback != "none" {
+            Text(ownKilterFeedbackText(ownKilter.state.feedback))
+                .font(.footnote)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.thinMaterial, in: Capsule())
+                .padding(.bottom, 12)
+                .onTapGesture { ownKilter.model.consumeFeedback() }
+                .onAppear {
+                    // Now an own community climb: the owner rows (Edit, Delete) apply.
+                    if ownKilter.state.feedback == "published" { owner?.model.open(uuid: ownKilter.state.uuid) }
+                }
+        }
+    }
+
+    private func ownKilterFeedbackText(_ code: String) -> String {
+        switch code {
+        case "published": return L("own_climb_publish_done")
+        case "noNostrIdentity": return L("own_climb_publish_no_nostr")
+        case "notAuthor": return L("own_climb_publish_not_author")
+        case "alreadyPublished": return L("own_climb_publish_already")
+        default: return L("climb_creator_publish_failed")
+        }
     }
 
     @ViewBuilder
@@ -111,6 +147,10 @@ struct ClimbDetailView: View {
     /// Kilter) and the draft or publication delete.
     @ViewBuilder
     private func ownerMenuItems() -> some View {
+        if let ownKilter, ownKilter.state.canPublishAsMine {
+            Button(L("own_climb_publish_action"), systemImage: "person.3") { ownKilter.model.publish() }
+                .disabled(ownKilter.state.inProgress)
+        }
         if let owner, owner.state.isLoaded {
             let state: ClimbOwnerActionsState = owner.state
             Divider()
@@ -208,6 +248,7 @@ struct ClimbDetailView: View {
         noteUuid = ui.uuid
         note = ui.personalNote
         if opened { owner?.model.open(uuid: ui.uuid) }
+        if opened { ownKilter?.model.load(uuid: ui.uuid) }
     }
 
     private func sendRequestMessage(_ code: String) -> String {

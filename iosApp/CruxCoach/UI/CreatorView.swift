@@ -25,7 +25,11 @@ struct CreatorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard host == nil else { return }
-            let model = core.makeCreatorScreen()
+            let model = core.makeCreatorScreenWithKilter()
+            // The profile's note default switched the toggle on: seed Android's template.
+            if model.currentState.alsoPostNote {
+                model.setAlsoPostNote(value: true, defaultTemplate: L("auto_note_default_template"))
+            }
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
@@ -47,6 +51,8 @@ struct CreatorView: View {
                 brushes(model: model, ui: ui)
                 fields(model: model, ui: ui)
                 issues(ui: ui)
+                autoNote(model: model, ui: ui)
+                if ui.kilterPublishAvailable { CreatorKilterSection(core: core) }
                 actions(model: model, ui: ui)
             }
             .padding()
@@ -69,7 +75,7 @@ struct CreatorView: View {
             set: { if !$0 { model.dismissDuplicate() } })) {
             Button(L("action_cancel"), role: .cancel) { model.cancelPublish() }
             if !ui.duplicateBlocksPublish {
-                Button(LI("creator_publish")) { model.confirmPublishWithDuplicate(autoNoteText: "") }
+                Button(LI("creator_publish")) { model.confirmPublishWithDuplicate(autoNoteText: noteText(ui)) }
             }
         } message: {
             Text(LI("creator_duplicate", ui.duplicateName))
@@ -148,13 +154,14 @@ struct CreatorView: View {
                 .buttonStyle(.borderedProminent)
                 .frame(maxWidth: .infinity)
                 .disabled(!ui.isValid)
-            Button(LI("creator_publish")) { model.publish(autoNoteText: "") }
+            Button(LI("creator_publish")) { model.publish(autoNoteText: noteText(ui)) }
                 .disabled(!ui.isValid || ui.publishPhase == "publishing")
             if ui.publishPhase == "publishing" { ProgressView() }
             if ui.publishPhase == "published" {
                 Label(LI("creator_published", Int(ui.publishAccepted), Int(ui.publishAttempted)), systemImage: "checkmark.circle")
                     .font(.footnote)
                     .foregroundStyle(ui.publishPartial ? .orange : .green)
+                publishFollowUps(ui: ui)
             }
             if !ui.publishFailureCode.isEmpty && ui.publishFailureCode != "none" {
                 Text(LI("creator_publish_failed", ui.publishFailureCode)).font(.footnote).foregroundStyle(.red)
@@ -165,6 +172,58 @@ struct CreatorView: View {
             }
             Button(LI("creator_discard"), role: .destructive) { model.discard() }.font(.footnote)
         }
+    }
+
+    /// Android's per-publish "Also post to Nostr" with its editable text; the
+    /// placeholders stay literal and are filled in at publish time.
+    @ViewBuilder
+    private func autoNote(model: CreatorScreenModel, ui: CreatorScreenState) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(L("climb_creator_also_post_note"), isOn: Binding(
+                get: { ui.alsoPostNote },
+                set: { model.setAlsoPostNote(value: $0, defaultTemplate: L("auto_note_default_template")) }))
+            Text(L("climb_creator_also_post_note_hint")).font(.footnote).foregroundStyle(.secondary)
+            if ui.alsoPostNote {
+                TextField(L("climb_creator_auto_note_text_label"),
+                          text: Binding(get: { ui.autoNoteText }, set: { model.setAutoNoteText(text: $0) }),
+                          axis: .vertical)
+                    .lineLimit(4...10)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.footnote)
+                Text(L("climb_creator_auto_note_placeholders_hint")).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// The text the publish sends: blank means no note.
+    private func noteText(_ ui: CreatorScreenState) -> String {
+        guard ui.alsoPostNote else { return "" }
+        return ui.autoNoteText.isEmpty ? L("auto_note_default_template") : ui.autoNoteText
+    }
+
+    /// After the Nostr publish: the Kilter side and the note's reach (Android's follow-up snackbars).
+    @ViewBuilder
+    private func publishFollowUps(ui: CreatorScreenState) -> some View {
+        if ui.kilterConnectNudge {
+            Text(L("climb_creator_kilter_connect_nudge")).font(.footnote).foregroundStyle(.secondary)
+        } else if ui.kilterOutcomeCode == "synced" {
+            Text(L("climb_creator_publish_both_ok")).font(.footnote).foregroundStyle(.green)
+        } else if ui.kilterOutcomeCode == "failed" || ui.kilterOutcomeCode == "diverged" {
+            Text(L("climb_creator_publish_kilter_pending")).font(.footnote).foregroundStyle(.orange)
+            if let detail = kilterDetail(ui) {
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        if ui.autoNoteZeroRelays {
+            Text(L("climb_creator_auto_note_zero_relays")).font(.footnote).foregroundStyle(.orange)
+        }
+    }
+
+    private func kilterDetail(_ ui: CreatorScreenState) -> String? {
+        let key: String = ui.kilterOutcomeMessageKey
+        if key.isEmpty { return nil }
+        let code: Int = Int(ui.kilterOutcomeHttpCode)
+        return key.hasSuffix("_with_code") ? L(key, code) : L(key)
     }
 
     private func draftsSheet(model: CreatorScreenModel, ui: CreatorScreenState) -> some View {
@@ -272,5 +331,76 @@ private struct CreatorCanvas: View {
         .aspectRatio(aspect > 0 ? aspect : 0.65, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .accessibilityLabel(LI("detail_board_a11y", holds.count))
+    }
+}
+
+/// "Publish own climbs to Kilter" and the publish queue (Android's Kilter account card),
+/// shown in the editor of a Kilter climb. The switch is the same per-identity setting.
+private struct CreatorKilterSection: View {
+    let core: AppCore
+    @State private var host: ScreenHost<KilterPublishSettingsModel, KilterPublishSettingsState>?
+
+    var body: some View {
+        Group {
+            if let host {
+                content(model: host.model, ui: host.state)
+            } else {
+                // A view must exist for `.task` to run.
+                ProgressView()
+            }
+        }
+        .task {
+            guard host == nil else { return }
+            let model = core.makeKilterPublishSettings()
+            host = ScreenHost(model: model, initial: model.currentState,
+                              subscribe: { model, onState in model.watch(onState: onState) },
+                              onClose: { model in model.close() })
+            model.refresh()
+        }
+    }
+
+    @ViewBuilder
+    private func content(model: KilterPublishSettingsModel, ui: KilterPublishSettingsState) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(L("kilter_climb_publish_label"), isOn: Binding(
+                get: { ui.publishEnabled },
+                set: { model.setPublishEnabled(enabled: $0) }))
+            if ui.publishEnabled && !ui.signedIn {
+                Text(L("kilter_climb_publish_disconnected_hint")).font(.footnote).foregroundStyle(.secondary)
+            }
+            if ui.signedIn && (ui.pendingCount > 0 || ui.failedCount > 0) {
+                queue(model: model, ui: ui)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func queue(model: KilterPublishSettingsModel, ui: KilterPublishSettingsState) -> some View {
+        let pending: Int = Int(ui.pendingCount)
+        let failed: Int = Int(ui.failedCount)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L("kilter_publish_queue_title")).font(.footnote.bold())
+            Text(L("kilter_publish_queue_pending", pending)).font(.footnote).foregroundStyle(.secondary)
+            if failed > 0 {
+                Text(L("kilter_publish_queue_failed", failed)).font(.footnote).foregroundStyle(.red)
+            }
+            if ui.lastAttemptAtMs > 0 {
+                Text(L("kilter_publish_queue_last_attempt") + ": " + Self.format(ui.lastAttemptAtMs))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                Button(L("kilter_publish_queue_retry_now")) { model.retryNow() }
+                    .disabled(ui.retryRunning)
+                if ui.retryRunning { ProgressView() }
+            }
+        }
+        .padding(8)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private static func format(_ millis: Int64) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
+        return date.formatted(date: .abbreviated, time: .shortened)
     }
 }
