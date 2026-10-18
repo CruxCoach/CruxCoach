@@ -1172,4 +1172,21 @@ class AppCore private constructor(
             com.cruxcoach.app.trainingreminder.TrainingReminderScheduler(service, notifications) { platform.clock.epochMillis() },
             MainScope(), Dispatchers.IO).follow()
     }
+    // ── Coach setup, weekly review, training history (wave 3, coach area) ──
+
+    /**
+     * The optional coach setup (Android `CoachSetupScreen`): prefilled from the board logbook and the
+     * old settings profile. Null when the athlete database is unavailable.
+     */
+    fun makeCoachSetupScreen(language: String): com.cruxcoach.app.ui.CoachSetupScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.CoachSetupScreenModel(
+            com.cruxcoach.app.coach.CoachSetupPresenter(
+                service, com.cruxcoach.data.repository.UserRepositoryImpl(secureDatabase), personalRepository,
+                MainScope(), Dispatchers.IO,
+            ),
+            language,
+        )
+    }
+
 }
