@@ -13,13 +13,14 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.timeIntervalSince1970
 import platform.UIKit.UIDevice
+import platform.posix.abort
 
 /**
  * Writes crash reports on iOS, the counterpart of Android's
  * `CruxCoachCrashHandler`. Three sources end in the same file and format:
  *
  * - uncaught Kotlin exceptions, through Kotlin/Native's unhandled-exception
- *   hook (the runtime still terminates afterwards, exactly as without it);
+ *   hook (the process still ends with abort(), exactly as without the hook);
  * - Objective-C exceptions, handed in by Swift's `NSSetUncaughtExceptionHandler`;
  * - MetricKit crash diagnostics (signals neither hook sees), delivered by the
  *   system on a later launch.
@@ -32,17 +33,26 @@ class CrashHooks private constructor() {
         private var environment: CrashEnvironment? = null
         private var directory: String? = null
         private var installed = false
+        private var handling = false
 
         /** Gathers the report header and installs the Kotlin hook; repeated calls do nothing. */
-        @OptIn(ExperimentalNativeApi::class)
+        @OptIn(ExperimentalNativeApi::class, ExperimentalForeignApi::class)
         fun install() {
             if (installed) return
             installed = true
             prepare(defaultDirectory())
             val previous = setUnhandledExceptionHook(null)
             setUnhandledExceptionHook { throwable ->
-                recordThrowable(throwable)
-                previous?.invoke(throwable)
+                if (!handling) {
+                    handling = true
+                    recordThrowable(throwable)
+                    previous?.invoke(throwable)
+                }
+                // Without a hook the runtime prints the trace and aborts. With one, an exception
+                // that reached kotlinx.coroutines' last-resort handler would let the process run
+                // on in a broken state, so the hook ends it the same way itself.
+                throwable.printStackTrace()
+                abort()
             }
         }
 

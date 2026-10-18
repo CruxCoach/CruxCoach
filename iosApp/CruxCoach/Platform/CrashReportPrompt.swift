@@ -21,37 +21,30 @@ struct CrashReportPrompt: ViewModifier {
                                   onClose: { model in model.close() })
                 model.start()
             }
-            .sheet(isPresented: askBinding) {
+            .sheet(isPresented: shownBinding) {
                 if let host {
                     CrashReportSheet(model: host.model, ui: host.state)
                 }
             }
-            .alert(noticeTitle, isPresented: noticeBinding) {
-                Button(L("action_ok")) { host?.model.consumeNotice() }
-            }
     }
 
     private var phase: String { host?.state.phaseCode ?? "idle" }
+    private var notice: String { host?.state.noticeCode ?? "none" }
 
-    /// Dismissing the prompt is Android's "dismiss": the report is deleted, the choice stays open.
-    private var askBinding: Binding<Bool> {
+    /// Open while asking, while sending, and until the result is acknowledged (Android's toast),
+    /// so no second presentation has to follow the sheet. Swiping it away is Android's "dismiss":
+    /// the report is deleted and the choice stays open.
+    private var shownBinding: Binding<Bool> {
         Binding(
-            get: { phase == "ask" || phase == "sending" },
+            get: { phase == "ask" || phase == "sending" || notice != "none" },
             set: { shown in
-                if !shown, phase == "ask" { host?.model.decline(rememberChoice: false) }
+                guard !shown else { return }
+                if phase == "ask" {
+                    host?.model.decline(rememberChoice: false)
+                } else if notice != "none" {
+                    host?.model.consumeNotice()
+                }
             })
-    }
-
-    private var noticeBinding: Binding<Bool> {
-        Binding(
-            get: { (host?.state.noticeCode ?? "none") != "none" },
-            set: { shown in
-                if !shown { host?.model.consumeNotice() }
-            })
-    }
-
-    private var noticeTitle: String {
-        host?.state.noticeCode == "sent" ? L("crash_send_success") : L("crash_send_failure")
     }
 }
 
@@ -65,13 +58,25 @@ private struct CrashReportSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                messageSection
-                rememberSection
-                actionSection
+                if ui.noticeCode == "none" {
+                    messageSection
+                    rememberSection
+                    actionSection
+                } else {
+                    resultSection
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
         }
         .interactiveDismissDisabled(sending)
+    }
+
+    /// Android's toast after the dialog: sent, or kept for the next launch.
+    private var resultSection: some View {
+        Section {
+            Text(ui.noticeCode == "sent" ? L("crash_send_success") : L("crash_send_failure"))
+            Button(L("action_ok")) { model.consumeNotice() }
+        }
     }
 
     private var messageSection: some View {

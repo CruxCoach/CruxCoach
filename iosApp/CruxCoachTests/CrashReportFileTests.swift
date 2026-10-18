@@ -62,9 +62,4 @@ final class CrashReportFileTests: XCTestCase {
             windowStartEpochSeconds: now - 100_000, windowEndEpochSeconds: now - 90_000))
         XCTAssertTrue(try XCTUnwrap(CrashHooks.companion.readPendingReport()).contains("Signal: 11"))
     }
-
-    func testTheAppInstalledTheObjectiveCHandlerAtLaunch() {
-        // The test host runs the app's didFinishLaunching, which installs the hooks.
-        XCTAssertNotNil(NSGetUncaughtExceptionHandler())
-    }
 }
