@@ -441,7 +441,7 @@
 /* Meal photo recognition (foodphoto) */
 "nutrition_photo_no_engine" = "Die Fotoerkennung ist in diesem Build von CruxCoach nicht enthalten. Suche, Barcode, Beschreiben und Schnelleintrag funktionieren wie gewohnt.";
 "nutrition_photo_app_memory" = "iOS lässt CruxCoach gerade nicht genug Arbeitsspeicher für das Modell. Schließe andere Apps und versuche es erneut.";
-"nutrition_photo_keep_open" = "Lass CruxCoach geöffnet, bis der Download fertig ist: Auf dem iPhone endet er, wenn die App geschlossen oder der Bildschirm gesperrt wird.";
+"nutrition_photo_background_download" = "Der Download läuft weiter, wenn du CruxCoach schließt oder den Bildschirm sperrst. Wischst du CruxCoach im App-Umschalter weg, hält iOS ihn an, bis du die App wieder öffnest.";
 "nutrition_photo_save_failed" = "Die Mahlzeit konnte nicht eingetragen werden. Bitte versuche es erneut.";
 /* Board link status chip and tour spotlight (uipolish) */
 "ble_open_settings" = "Einstellungen öffnen";

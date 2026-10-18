@@ -1,3 +1,4 @@
+import CruxCoachCore
 import SwiftUI
 import UIKit
 
@@ -30,7 +31,17 @@ final class AppLaunchDelegate: NSObject, UIApplicationDelegate {
         // First, so a crash while the core starts is reported on the next launch too.
         CrashReporting.install()
         environment.registerBackgroundRefresh()
+        // A photo model download the system ended while the app was gone (swiped away) continues.
+        IosModelDownloads.companion.reconnect()
         return true
+    }
+
+    /// The system finished (part of) the photo model download in the background, as Android's
+    /// DownloadManager does: the shared session takes the files over, then calls the handler.
+    func application(_ application: UIApplication,
+                     handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        IosModelDownloads.companion.handleBackgroundEvents(identifier: identifier, completion: completionHandler)
     }
 
     /// Approach 2 beside the system's background slots: every return to the foreground runs the

@@ -164,7 +164,7 @@ struct MealPhotoSheet: View {
                 Text(L("fvp_setup_text", ui.modelName, size))
                 Text(L("fvp_setup_estimate"))
                 Text(L("fvp_setup_source")).font(.footnote).foregroundStyle(.secondary)
-                Text(LI("nutrition_photo_keep_open")).font(.footnote).foregroundStyle(.secondary)
+                Text(LI("nutrition_photo_background_download")).font(.footnote).foregroundStyle(.secondary)
             }
             Section {
                 Toggle(L("fvp_allow_mobile"), isOn: $allowMobile)
@@ -183,7 +183,7 @@ struct MealPhotoSheet: View {
                 if ui.waiting {
                     Text(L("fvp_download_waiting")).font(.footnote)
                 }
-                Text(LI("nutrition_photo_keep_open")).font(.footnote).foregroundStyle(.secondary)
+                Text(LI("nutrition_photo_background_download")).font(.footnote).foregroundStyle(.secondary)
             }
             Section {
                 Button(L("tr_action_cancel"), role: .destructive) { model.removeModel() }

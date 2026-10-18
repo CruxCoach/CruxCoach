@@ -1805,17 +1805,14 @@ class AppCore private constructor(
     // while the photo sheet is closed; the engine itself is Swift's
     // (FoodVisionHost over CruxVision.xcframework).
 
-    private val visionNetwork: com.cruxcoach.app.foodvision.IosVisionNetwork by lazy {
-        com.cruxcoach.app.foodvision.IosVisionNetwork().also { it.start() }
-    }
-
     private val visionModelStore: com.cruxcoach.app.foodvision.VisionModelStore by lazy {
         com.cruxcoach.app.foodvision.VisionModelStore(
             files = platform.files,
             hashing = platform.hashing,
             keyValues = platform.keyValues,
             http = platform.http,
-            network = visionNetwork,
+            // The system's background transfer, as Android's DownloadManager.
+            downloads = com.cruxcoach.app.foodvision.IosModelDownloads.shared,
             scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default),
             io = Dispatchers.IO,
         )

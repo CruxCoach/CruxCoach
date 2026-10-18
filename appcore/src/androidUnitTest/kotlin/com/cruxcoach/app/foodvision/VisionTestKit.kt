@@ -28,10 +28,6 @@ object TinyModels {
     val ALL = listOf(SMALL)
 }
 
-class FakeNetwork(@Volatile var kind: String = VisionNetwork.UNMETERED) : VisionNetwork {
-    override fun current(): String = kind
-}
-
 /** Serves bodies per URL; HEAD answers with the body's length or [heads]. Enforces the byte ceiling like the real transport. */
 class FakeModelHttp : HttpTransport {
     val bodies = HashMap<String, ByteArray>()
@@ -65,4 +61,64 @@ suspend fun <T> StateFlow<T>.await(predicate: (T) -> Boolean): T = try {
     withTimeout(CI_WAIT_MS) { first(predicate) }
 } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
     throw AssertionError("timed out; last state: $value")
+}
+
+/**
+ * The system's background transfer in tests. With [auto] a transfer ends at
+ * once with [http]'s body for its URL, judged as the iOS transport judges it
+ * (2xx and exactly the expected size, else failed); without it the test moves
+ * each transfer by hand, as the system would while the app is closed.
+ */
+class FakeModelDownloads(private val http: FakeModelHttp, @Volatile var auto: Boolean = true) : ModelDownloads {
+    class Enqueued(val url: String, val destinationPath: String, val expectedBytes: Long, val allowMetered: Boolean)
+
+    val enqueued: MutableMap<String, Enqueued> = Collections.synchronizedMap(LinkedHashMap())
+    val rows: MutableMap<String, DownloadRow> = Collections.synchronizedMap(HashMap())
+    val removed: MutableList<String> = Collections.synchronizedList(ArrayList())
+    private var next = 0
+
+    @Synchronized
+    override fun enqueue(url: String, destinationPath: String, expectedBytes: Long, allowMetered: Boolean): String? {
+        if (!url.startsWith("https://")) return null
+        val id = "t${++next}"
+        http.downloads += url
+        enqueued[id] = Enqueued(url, destinationPath, expectedBytes, allowMetered)
+        rows[id] = DownloadRow(ModelDownloads.PENDING, 0)
+        if (auto) complete(id)
+        return id
+    }
+
+    override fun query(id: String): DownloadRow? = rows[id]
+
+    override fun remove(id: String) {
+        removed += id
+        val row = rows.remove(id) ?: return
+        if (row.status != ModelDownloads.SUCCESSFUL) enqueued[id]?.let { File(it.destinationPath).delete() }
+    }
+
+    fun ids(): List<String> = enqueued.keys.toList()
+
+    fun progress(id: String, doneBytes: Long, status: String = ModelDownloads.RUNNING) {
+        rows[id] = DownloadRow(status, doneBytes)
+    }
+
+    /** Ends transfer [id] with the served body, or fails it. */
+    fun complete(id: String) {
+        val e = enqueued.getValue(id)
+        val body = http.bodies[e.url]
+        val status = http.statuses[e.url] ?: 200
+        if (body == null || status !in 200..299 || body.size.toLong() != e.expectedBytes) {
+            rows[id] = DownloadRow(ModelDownloads.FAILED, 0)
+            return
+        }
+        File(e.destinationPath).writeBytes(body)
+        rows[id] = DownloadRow(ModelDownloads.SUCCESSFUL, e.expectedBytes)
+    }
+
+    fun failTransfer(id: String) {
+        rows[id] = DownloadRow(ModelDownloads.FAILED, 0)
+    }
+
+    /** The system lost every transfer (e.g. the app was reinstalled). */
+    fun forgetAll() = rows.clear()
 }

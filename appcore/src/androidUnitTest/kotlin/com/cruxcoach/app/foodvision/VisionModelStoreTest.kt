@@ -9,7 +9,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -25,12 +24,12 @@ class VisionModelStoreTest {
     private val files = JvmFileSystem(dir)
     private val keys = FakeKeyValueStore()
     private val http = FakeModelHttp()
-    private val network = FakeNetwork()
+    private val downloads = FakeModelDownloads(http)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val model = TinyModels.SMALL
 
-    private fun store() = VisionModelStore(files, JvmHashing, keys, http, network, scope, Dispatchers.IO,
-        networkCheckMs = 20, models = TinyModels.ALL)
+    private fun store(scope: CoroutineScope = this.scope) = VisionModelStore(files, JvmHashing, keys, http, downloads, scope, Dispatchers.IO,
+        pollMs = 20, models = TinyModels.ALL)
 
     private fun serveFromHuggingFace(weights: ByteArray = TinyModels.weightsBytes) {
         http.bodies[model.weights.url] = weights
@@ -38,6 +37,8 @@ class VisionModelStoreTest {
     }
 
     private fun leftovers() = dir.listFiles().orEmpty().map { it.name }.sorted()
+
+    private suspend fun settled(store: VisionModelStore) = store.state.await { it is State.Ready || it is State.Failed }
 
     @After
     fun tearDown() {
@@ -51,13 +52,18 @@ class VisionModelStoreTest {
         val store = store()
         assertEquals(State.Missing, store.state.value)
         assertEquals(VisionModelStore.StartResult.Started, store.start(model, allowMobile = false))
-        val ready = store.state.await { it is State.Ready || it is State.Failed } as State.Ready
+        val ready = settled(store) as State.Ready
         assertEquals(model, ready.model)
         assertNull(ready.probe)
         assertEquals(listOf("foodvision-tiny-p.gguf", "foodvision-tiny-w.gguf"), leftovers())
         assertEquals(listOf(model.weights.url, model.projector.url), http.downloads)
+        assertEquals(listOf(files.workDirectory() + "/foodvision-tiny-w.gguf", files.workDirectory() + "/foodvision-tiny-p.gguf"),
+            downloads.enqueued.values.map { it.destinationPath })
         // The mirror was asked first for both files and did not hold them.
         assertEquals(VisionModels.mirrorUrls(model.weights) + VisionModels.mirrorUrls(model.projector), http.headRequests)
+        // Done transfers are released and their ids forgotten.
+        assertEquals(downloads.ids(), downloads.removed)
+        assertNull(keys.getString("foodvision.downloads"))
     }
 
     @Test
@@ -71,7 +77,7 @@ class VisionModelStoreTest {
         http.bodies[model.projector.url] = TinyModels.projectorBytes
         val store = store()
         store.start(model, allowMobile = false)
-        assertTrue(store.state.await { it is State.Ready || it is State.Failed } is State.Ready)
+        assertTrue(settled(store) is State.Ready)
         assertEquals(listOf(mirrorWeights, model.projector.url), http.downloads)
     }
 
@@ -80,10 +86,11 @@ class VisionModelStoreTest {
         serveFromHuggingFace(weights = ByteArray(TinyModels.weightsBytes.size) { 1 })
         val store = store()
         store.start(model, allowMobile = false)
-        val failed = store.state.await { it is State.Ready || it is State.Failed } as State.Failed
+        val failed = settled(store) as State.Failed
         assertEquals(VisionModelStore.Reason.HASH_MISMATCH, failed.reason)
         assertEquals(emptyList<String>(), leftovers())
         assertNull(keys.getString("foodvision.verified"))
+        assertNull(keys.getString("foodvision.downloads"))
     }
 
     @Test
@@ -92,16 +99,29 @@ class VisionModelStoreTest {
         http.bodies[model.projector.url] = TinyModels.projectorBytes
         val store = store()
         store.start(model, allowMobile = false)
-        val failed = store.state.await { it is State.Ready || it is State.Failed } as State.Failed
-        assertEquals(VisionModelStore.Reason.DOWNLOAD_FAILED, failed.reason)
+        assertEquals(VisionModelStore.Reason.DOWNLOAD_FAILED, (settled(store) as State.Failed).reason)
         assertEquals(emptyList<String>(), leftovers())
 
         serveFromHuggingFace()
         http.statuses[model.projector.url] = 500
         store.start(model, allowMobile = false)
-        assertEquals(VisionModelStore.Reason.DOWNLOAD_FAILED,
-            (store.state.await { it is State.Ready || it is State.Failed } as State.Failed).reason)
+        assertEquals(VisionModelStore.Reason.DOWNLOAD_FAILED, (settled(store) as State.Failed).reason)
         assertEquals(emptyList<String>(), leftovers())
+    }
+
+    @Test
+    fun `when one file fails the other transfer is stopped`() = runBlocking<Unit> {
+        serveFromHuggingFace()
+        downloads.auto = false
+        val store = store()
+        store.start(model, allowMobile = false)
+        val (weights, projector) = downloads.ids()
+        downloads.progress(weights, 1000)
+        downloads.failTransfer(projector)
+        assertEquals(VisionModelStore.Reason.DOWNLOAD_FAILED, (settled(store) as State.Failed).reason)
+        assertTrue("the running weights transfer is cancelled", weights in downloads.removed)
+        assertNull(downloads.query(weights))
+        assertNull(keys.getString("foodvision.downloads"))
     }
 
     @Test
@@ -112,25 +132,93 @@ class VisionModelStoreTest {
         assertEquals(model.downloadBytes + 300L * 1024 * 1024, result.neededBytes)
         assertEquals(model.downloadBytes + 1000, result.freeBytes)
         assertTrue(http.downloads.isEmpty())
+        assertTrue(downloads.enqueued.isEmpty())
     }
 
     @Test
-    fun `on mobile data the download waits unless the user allowed it`() = runBlocking<Unit> {
+    fun `progress and waiting follow the system and the mobile data choice goes with every file`() = runBlocking<Unit> {
         serveFromHuggingFace()
-        network.kind = VisionNetwork.METERED
+        downloads.auto = false
         val store = store()
         store.start(model, allowMobile = false)
-        delay(150)
-        val waiting = store.state.value as State.Downloading
-        assertTrue(waiting.waiting)
-        assertTrue("nothing goes over mobile data", http.downloads.isEmpty())
-        network.kind = VisionNetwork.UNMETERED
-        assertTrue(store.state.await { it is State.Ready || it is State.Failed } is State.Ready)
+        assertEquals(State.Downloading(model, 0, waiting = true), store.state.value)
+        assertTrue(downloads.enqueued.values.none { it.allowMetered })
+        assertEquals(listOf(model.weights.bytes, model.projector.bytes), downloads.enqueued.values.map { it.expectedBytes })
+
+        val (weights, projector) = downloads.ids()
+        downloads.progress(weights, 1000)
+        assertEquals(State.Downloading(model, 1000, waiting = true), store.state.await { it == State.Downloading(model, 1000, waiting = true) })
+        downloads.progress(projector, 200)
+        assertEquals(State.Downloading(model, 1200, waiting = false), store.state.await { it == State.Downloading(model, 1200, waiting = false) })
+        downloads.complete(weights)
+        store.state.await { it == State.Downloading(model, model.weights.bytes + 200, waiting = false) }
+        downloads.complete(projector)
+        assertTrue(settled(store) is State.Ready)
 
         store.remove()
-        network.kind = VisionNetwork.METERED
         store.start(model, allowMobile = true)
-        assertTrue(store.state.await { it is State.Ready || it is State.Failed } is State.Ready)
+        assertEquals(2, downloads.enqueued.values.count { it.allowMetered })
+    }
+
+    @Test
+    fun `a download goes on while the app is closed and is verified after the relaunch`() = runBlocking<Unit> {
+        serveFromHuggingFace()
+        downloads.auto = false
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        store(appScope).start(model, allowMobile = false)
+        appScope.cancel() // the app is closed; the system's transfers go on
+        downloads.ids().forEach { downloads.complete(it) }
+
+        val relaunched = store()
+        assertTrue(relaunched.state.value is State.Downloading)
+        val ready = settled(relaunched) as State.Ready
+        assertEquals(model, ready.model)
+        assertEquals(listOf("foodvision-tiny-p.gguf", "foodvision-tiny-w.gguf"), leftovers())
+        // Nothing was downloaded twice.
+        assertEquals(2, http.downloads.size)
+    }
+
+    @Test
+    fun `a transfer the system no longer knows ends the download after a relaunch`() = runBlocking<Unit> {
+        serveFromHuggingFace()
+        downloads.auto = false
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        store(appScope).start(model, allowMobile = false)
+        appScope.cancel()
+        downloads.forgetAll()
+
+        val relaunched = store()
+        assertEquals(VisionModelStore.Reason.DOWNLOAD_FAILED, (settled(relaunched) as State.Failed).reason)
+        assertNull(keys.getString("foodvision.downloads"))
+        assertEquals(emptyList<String>(), leftovers())
+    }
+
+    @Test
+    fun `removing a running download cancels both transfers`() = runBlocking<Unit> {
+        serveFromHuggingFace()
+        downloads.auto = false
+        val store = store()
+        store.start(model, allowMobile = true)
+        downloads.complete(downloads.ids().first())
+        store.remove()
+        assertEquals(State.Missing, store.state.value)
+        assertEquals(downloads.ids(), downloads.removed)
+        assertEquals(emptyList<String>(), leftovers())
+        assertTrue(keys.map.keys.none { it.startsWith("foodvision.") })
+        assertEquals(State.Missing, store().state.value)
+    }
+
+    @Test
+    fun `a new start stops the transfers of an earlier one`() = runBlocking<Unit> {
+        serveFromHuggingFace()
+        downloads.auto = false
+        val store = store()
+        store.start(model, allowMobile = false)
+        val first = downloads.ids()
+        store.start(model, allowMobile = false)
+        assertEquals(first, downloads.removed)
+        assertEquals(4, downloads.enqueued.size)
+        assertEquals(downloads.ids().drop(2).joinToString(","), keys.getString("foodvision.downloads"))
     }
 
     @Test
@@ -174,7 +262,7 @@ class VisionModelStoreTest {
             assertTrue(f.url.startsWith("https://huggingface.co/unsloth/"))
             assertEquals(64, f.sha256.length)
         }
-        val real = VisionModelStore(files, JvmHashing, keys, http, network, scope, Dispatchers.IO)
+        val real = VisionModelStore(files, JvmHashing, keys, http, downloads, scope, Dispatchers.IO)
         assertEquals("${dir.absolutePath}/foodvision-qwen3.5-2b-q4km.gguf", real.path(VisionModels.SMALL.weights))
     }
 }

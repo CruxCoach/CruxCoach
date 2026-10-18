@@ -50,8 +50,8 @@ class MealTextVisionTest {
     private val http = FakeModelHttp()
     private val storeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val modelDir = kit.dir.resolve("models").apply { mkdirs() }
-    private val store = VisionModelStore(JvmFileSystem(modelDir), JvmHashing, keys, http, FakeNetwork(), storeScope, Dispatchers.IO,
-        networkCheckMs = 20, models = TinyModels.ALL)
+    private val store = VisionModelStore(JvmFileSystem(modelDir), JvmHashing, keys, http, FakeModelDownloads(http), storeScope, Dispatchers.IO,
+        pollMs = 20, models = TinyModels.ALL)
     private val host = FakeVisionHost()
     private val closers = mutableListOf<() -> Unit>()
     private val day = kit.service.today().toString()

@@ -441,7 +441,7 @@
 /* Meal photo recognition (foodphoto) */
 "nutrition_photo_no_engine" = "Photo recognition is not part of this build of CruxCoach. Search, barcode, describe and quick entry work as usual.";
 "nutrition_photo_app_memory" = "iOS does not leave CruxCoach enough memory for the model right now. Close other apps and try again.";
-"nutrition_photo_keep_open" = "Keep CruxCoach open until the download is complete: on iPhone it stops when the app is closed or the screen locks.";
+"nutrition_photo_background_download" = "The download goes on when you close CruxCoach or lock the screen. If you swipe CruxCoach away in the app switcher, iOS pauses it until you open the app again.";
 "nutrition_photo_save_failed" = "The meal could not be logged. Please try again.";
 /* Board link status chip and tour spotlight (uipolish) */
 "ble_open_settings" = "Open Settings";
