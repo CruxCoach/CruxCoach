@@ -554,6 +554,8 @@ private struct LogbookEditSheet: View {
 struct HistoryView: View {
     let core: AppCore
     @State private var host: ScreenHost<HistoryScreenModel, HistoryScreenState>?
+    /// Android's "Delete entries" confirmation for the selected rows.
+    @State private var confirmDeleteSelected = false
 
     var body: some View {
         Group {
@@ -572,21 +574,24 @@ struct HistoryView: View {
                         Text(LI("history_hint"))
                     }
                     ForEach(ui.entries, id: \.id) { entry in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.climbName)
-                            Text("\(entry.recordedAt) · \(entry.angle)°")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
+                        HistorySelectableRow(entry: entry) { model.toggleSelection(id: entry.id) }
                     }
                     if !ui.entries.isEmpty {
                         Button(LI("history_clear"), role: .destructive) { model.clearHistory() }
                     }
                 }
+                .toolbar { selectionToolbar(model: model, ui: ui) }
+                .alert(L("history_delete_title"), isPresented: $confirmDeleteSelected) {
+                    Button(L("action_cancel"), role: .cancel) {}
+                    Button(L("action_delete"), role: .destructive) { model.deleteSelected() }
+                } message: {
+                    Text(LP("history_delete_body", Int(ui.selectedCount)))
+                }
             } else {
                 ProgressView()
             }
         }
-        .navigationTitle(LI("history_title"))
+        .navigationTitle(historyTitle)
         .modifier(RestTimerBannerSlot(core: core))
         .task {
             guard host == nil else { return }
@@ -595,6 +600,52 @@ struct HistoryView: View {
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
         }
+    }
+}
+
+extension HistoryView {
+    /// Android's top bar: "N selected" while rows are selected.
+    private var historyTitle: String {
+        let count: Int32 = host?.state.selectedCount ?? 0
+        return count > 0 ? L("history_selected_count", Int(count)) : LI("history_title")
+    }
+
+    /// Android `BoardClimbHistoryScreen` actions: select all / none, and delete the selection.
+    @ToolbarContentBuilder
+    private func selectionToolbar(model: HistoryScreenModel, ui: HistoryScreenState) -> some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if !ui.entries.isEmpty {
+                Button { model.toggleSelectAll() } label: {
+                    Label(ui.allSelected ? L("cd_deselect_all") : L("cd_select_all"),
+                          systemImage: ui.allSelected ? "checkmark.circle.fill" : "checkmark.circle")
+                }
+                Button(role: .destructive) { confirmDeleteSelected = true } label: {
+                    Label(L("cd_clear_selection"), systemImage: "trash")
+                }
+                .disabled(ui.selectedCount == 0)
+            }
+        }
+    }
+}
+
+/// One history row; a tap selects or deselects it (Android's contextual multi-select).
+private struct HistorySelectableRow: View {
+    let entry: HistoryEntryUi
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 12) {
+                Image(systemName: entry.isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(entry.isSelected ? Color.orange : Color.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.climbName).foregroundStyle(.primary)
+                    Text("\(entry.recordedAt) · \(entry.angle)°")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .accessibilityAddTraits(entry.isSelected ? .isSelected : [])
     }
 }
 
