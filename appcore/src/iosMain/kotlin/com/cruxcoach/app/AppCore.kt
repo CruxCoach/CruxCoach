@@ -228,21 +228,6 @@ class AppCore private constructor(
     val bleScreen: BleScreenModel by lazy { BleScreenModel(boardConnection) }
 
     /**
-     * Plain-file export and import of the whole account, beside the encrypted
-     * cloud backup. The written file is NOT encrypted — the screen says so.
-     */
-    fun makeDataExchangeScreen(): DataExchangeScreenModel = DataExchangeScreenModel(
-        FileExchangePresenter(
-            payloads = CruxCoachBackupPayloadStore(
-                secureDatabase, boardRepository, personalRepository, athleteBackupHooks,
-            ),
-            files = platform.files,
-            clock = platform.clock,
-            pubkeyHex = { pubkeyHex },
-        )
-    )
-
-    /**
      * One settings model for the whole app: the root view reads dark mode and
      * keep-screen-on from it while the settings pages write to it, and a second
      * instance would give them two separate snapshots of the same store.
@@ -1913,7 +1898,7 @@ class AppCore private constructor(
     /**
      * Plain-file export, and Android's import flow: preview of the picked file,
      * category choice, identity-mismatch confirmation, then the import of the
-     * chosen categories only. Replaces [makeDataExchangeScreen], whose import
+     * chosen categories only. Replaced the earlier one-step factory, whose import
      * wrote every category without asking.
      */
     fun makeDataTransferScreen(): DataExchangeScreenModel = DataExchangeScreenModel(
