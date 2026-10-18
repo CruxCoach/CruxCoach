@@ -1032,4 +1032,61 @@ class AppCore private constructor(
             )
         )
     }
+
+    // ── Board polish (wave 3): playlist player with session bar and end-of-session summary ──
+
+    /**
+     * The playlist player of [makePlayerScreen] plus Android's end-of-session
+     * summary: same transport, same app-wide session recorder, and a
+     * summarizer over the personal logbook (intensity zones of the last 90
+     * days, true flashes over the full history).
+     */
+    fun makeBoardSessionPlayerScreen(): PlayerScreenModel {
+        val grades = settings.gradeFormatter()
+        val summarizer = com.cruxcoach.app.playlist.BoardSessionSummarizer(personalRepository, {
+            if (settings.gradeScale == "V_SCALE") com.cruxcoach.app.settings.GradeScale.V_SCALE
+            else com.cruxcoach.app.settings.GradeScale.FRENCH
+        })
+        return PlayerScreenModel(
+            PlaylistPlayerPresenter(
+                transport = playbackTransport,
+                climbInfo = { uuid ->
+                    try {
+                        boardRepository.getClimbByUuid(uuid, browseAngle())
+                            ?.let { PlayerClimbInfo(it.name, it.difficultyAverage) }
+                    } catch (e: Exception) {
+                        null
+                    }
+                },
+                gradeLabel = { grades.label(it) },
+                sessions = boardSessions,
+                summarize = { session -> summarizer.summarize(session) },
+                summaryDispatcher = Dispatchers.IO,
+            ),
+            restNotifier = { restTimer },
+        )
+    }
+
+    /**
+     * Climb detail owner actions: delete a never-published draft locally, or
+     * delete an own publication with a signed relay deletion (key read fresh
+     * from the Keychain, as the editor's publisher does).
+     */
+    fun makeClimbOwnerActions(): com.cruxcoach.app.ui.ClimbOwnerActionsModel {
+        val signer = LocalEventSigner(platform.hashing) { platform.secrets.read(LocalIdentity.NOSTR_KEY) }
+        val deleter = com.cruxcoach.app.community.CommunityDeleter(
+            boardRepository,
+            RelayCommunityRelay(RelayClient(platform.webSockets, platform.hashing)),
+            signer,
+            platform.hashing,
+            platform.clock,
+        ) { pubkeyHex }
+        return com.cruxcoach.app.ui.ClimbOwnerActionsModel(
+            loadClimb = { uuid -> boardRepository.getClimbsByUuidsAnyAngle(listOf(uuid)).firstOrNull() },
+            currentPubkey = { pubkeyHex },
+            deleteDraft = { uuid -> boardRepository.deleteLocalClimb(uuid) },
+            deletePublication = { uuid -> deleter.delete(uuid) },
+            io = Dispatchers.IO,
+        )
+    }
 }

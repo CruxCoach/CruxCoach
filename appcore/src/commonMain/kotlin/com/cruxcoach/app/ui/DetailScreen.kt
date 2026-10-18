@@ -253,3 +253,192 @@ class DetailScreenModel(
         const val DEFAULT_ASPECT = 0.65f
     }
 }
+
+class ClimbOwnerActionsState(
+    val isLoaded: Boolean,
+    /** Remix forks the loaded climb into the editor (Android: any loaded climb). */
+    val canRemix: Boolean,
+    /** Own CruxCoach climb (origin and signing key match): Edit plus one delete. */
+    val isOwn: Boolean,
+    /** Own climb mirrored to Kilter, which is immutable there: Edit is shown locked. */
+    val editLocked: Boolean,
+    /** Own climb that never reached a relay: its delete is local only. */
+    val isUnpublishedDraft: Boolean,
+    val climbName: String,
+    /** none | draft | publication — the open confirmation. */
+    val dialogCode: String,
+    /** The publication also lives in Kilter, which has no delete. */
+    val dialogKilterWarning: Boolean,
+    val inProgress: Boolean,
+    /** none | draftDeleted | done | localTombstoneFailed | notOwner | failed */
+    val resultCode: String,
+    val resultAccepted: Int,
+    val resultAttempted: Int,
+    val resultKilterWarning: Boolean,
+    /** The climb is gone: the detail screen closes, as Android navigates back. */
+    val deleted: Boolean,
+)
+
+/**
+ * The owner half of Android `BoardClimbDetailViewModel`: the Edit/Remix gate
+ * and the two deletes — a never-published draft locally, an own publication
+ * through a signed relay deletion ([com.cruxcoach.app.community.CommunityDeleter],
+ * which re-checks origin and ownership itself; this gate is UX, not security).
+ */
+class ClimbOwnerActionsModel(
+    private val loadClimb: (uuid: String) -> com.cruxcoach.data.repository.ClimbWithStats?,
+    private val currentPubkey: () -> String?,
+    private val deleteDraft: (uuid: String) -> Unit,
+    private val deletePublication: suspend (uuid: String) -> com.cruxcoach.app.community.CommunityDeleteResult,
+    main: CoroutineDispatcher = Dispatchers.Main,
+    private val io: CoroutineDispatcher = Dispatchers.Default,
+) {
+    private class Internal(
+        val climb: com.cruxcoach.data.repository.ClimbWithStats? = null,
+        val pubkey: String? = null,
+        val dialog: String = "none",
+        val inProgress: Boolean = false,
+        val result: String = "none",
+        val accepted: Int = 0,
+        val attempted: Int = 0,
+        val resultKilter: Boolean = false,
+        val deleted: Boolean = false,
+    ) {
+        fun with(
+            dialog: String = this.dialog,
+            inProgress: Boolean = this.inProgress,
+            result: String = this.result,
+            accepted: Int = this.accepted,
+            attempted: Int = this.attempted,
+            resultKilter: Boolean = this.resultKilter,
+            deleted: Boolean = this.deleted,
+        ) = Internal(climb, pubkey, dialog, inProgress, result, accepted, attempted, resultKilter, deleted)
+    }
+
+    private val scope = CoroutineScope(SupervisorJob() + main)
+    private val state = MutableStateFlow(Internal())
+
+    val currentState: ClimbOwnerActionsState get() = map(state.value)
+
+    fun watch(onState: (ClimbOwnerActionsState) -> Unit): Subscription {
+        val job = scope.launch { state.collect { onState(map(it)) } }
+        return Subscription { job.cancel() }
+    }
+
+    fun open(uuid: String) {
+        scope.launch {
+            val loaded = try {
+                kotlinx.coroutines.withContext(io) { loadClimb(uuid) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            state.value = Internal(climb = loaded, pubkey = currentPubkey())
+        }
+    }
+
+    /** Opens the draft or the publication confirmation, whichever applies. */
+    fun requestDelete() {
+        val s = state.value
+        if (!isOwn(s)) return
+        state.value = s.with(dialog = if (isUnpublishedDraft(s)) "draft" else "publication")
+    }
+
+    fun dismissDelete() {
+        val s = state.value
+        if (!s.inProgress) state.value = s.with(dialog = "none")
+    }
+
+    fun confirmDelete() {
+        val s = state.value
+        val climb = s.climb ?: return
+        if (s.inProgress || s.dialog == "none" || !isOwn(s)) return
+        val draft = s.dialog == "draft"
+        // An iOS alert closes on tap: drop the dialog now, or SwiftUI shows it again
+        // while the deletion runs. [inProgress] blocks a second confirmation.
+        state.value = s.with(dialog = "none", inProgress = true)
+        scope.launch {
+            val next = if (draft) runDraftDelete(climb.uuid) else runPublicationDelete(climb.uuid)
+            state.value = next
+        }
+    }
+
+    fun consumeResult() {
+        state.value = state.value.with(result = "none")
+    }
+
+    fun close() = scope.cancel()
+
+    private suspend fun runDraftDelete(uuid: String): Internal {
+        val ok = try {
+            // The repository gate is `source='local' AND nostr_event_id IS NULL`.
+            kotlinx.coroutines.withContext(io) { deleteDraft(uuid) }
+            true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+        return state.value.with(
+            dialog = "none",
+            inProgress = false,
+            result = if (ok) "draftDeleted" else "failed",
+            deleted = ok,
+        )
+    }
+
+    private suspend fun runPublicationDelete(uuid: String): Internal {
+        val outcome = try {
+            deletePublication(uuid)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        val code = when (outcome?.outcome) {
+            com.cruxcoach.app.community.DeleteOutcome.DONE -> "done"
+            com.cruxcoach.app.community.DeleteOutcome.LOCAL_TOMBSTONE_FAILED -> "localTombstoneFailed"
+            com.cruxcoach.app.community.DeleteOutcome.NOT_OWNER -> "notOwner"
+            else -> "failed"
+        }
+        return state.value.with(
+            dialog = "none",
+            inProgress = false,
+            result = code,
+            accepted = outcome?.accepted ?: 0,
+            attempted = outcome?.attempted ?: 0,
+            resultKilter = outcome?.kilterWasPublished ?: false,
+            deleted = code == "done",
+        )
+    }
+
+    private fun isOwn(s: Internal): Boolean {
+        val climb = s.climb ?: return false
+        val signer = s.pubkey?.takeIf { it.isNotBlank() } ?: return false
+        return climb.origin == "cruxcoach" && climb.createdByPubkey != null && climb.createdByPubkey == signer
+    }
+
+    /** Android: `source == "local"` and no event id, mirroring the repository's delete gate. */
+    private fun isUnpublishedDraft(s: Internal): Boolean {
+        val climb = s.climb ?: return false
+        return climb.source == "local" && climb.nostrEventId.isNullOrBlank()
+    }
+
+    private fun map(s: Internal) = ClimbOwnerActionsState(
+        isLoaded = s.climb != null,
+        canRemix = s.climb != null,
+        isOwn = isOwn(s),
+        editLocked = s.climb?.kilterStatus == "synced" || s.climb?.kilterStatus == "diverged",
+        isUnpublishedDraft = isUnpublishedDraft(s),
+        climbName = s.climb?.name ?: "",
+        dialogCode = s.dialog,
+        dialogKilterWarning = s.climb?.kilterStatus == "synced",
+        inProgress = s.inProgress,
+        resultCode = s.result,
+        resultAccepted = s.accepted,
+        resultAttempted = s.attempted,
+        resultKilterWarning = s.resultKilter,
+        deleted = s.deleted,
+    )
+}

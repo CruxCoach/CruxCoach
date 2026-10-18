@@ -14,6 +14,7 @@ struct PlayerView: View {
     let defaultRestSeconds: Int32
 
     @State private var host: ScreenHost<PlayerScreenModel, PlayerScreenState>?
+    @State private var confirmEnd = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -28,7 +29,8 @@ struct PlayerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard host == nil else { return }
-            let model = core.makePlayerScreen()
+            // The board-session variant: same player, plus the end-of-session summary.
+            let model = core.makeBoardSessionPlayerScreen()
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
@@ -41,11 +43,33 @@ struct PlayerView: View {
                        defaultRestSeconds: defaultRestSeconds)
         }
         .onDisappear { host?.model.stop() }
+        .alert(L("board_session_end_title"), isPresented: $confirmEnd) {
+            Button(L("action_cancel"), role: .cancel) {}
+            Button(L("board_session_end_confirm"), role: .destructive) { host?.model.endSession() }
+        }
+        .sheet(isPresented: summaryBinding) {
+            if let host {
+                SessionSummarySheet(summary: host.state.summary) { closeSummary() }
+            }
+        }
+    }
+
+    private var summaryBinding: Binding<Bool> {
+        Binding(get: { host?.state.showSummary ?? false },
+                set: { if !$0 { closeSummary() } })
+    }
+
+    private func closeSummary() {
+        host?.model.dismissSummary()
+        dismiss()
     }
 
     @ViewBuilder
     private func screen(model: PlayerScreenModel, ui: PlayerScreenState) -> some View {
         VStack(spacing: 20) {
+            if ui.sessionRunning {
+                SessionBar(model: model)
+            }
             if !ui.isActive {
                 ContentUnavailableView(LI("player_finished"), systemImage: "checkmark.circle")
             } else {
@@ -103,7 +127,11 @@ struct PlayerView: View {
                 .font(.title3)
             }
             Spacer()
-            Button(LI("player_stop"), role: .destructive) { model.stop(); dismiss() }
+            if ui.sessionRunning {
+                Button(LI("player_stop"), role: .destructive) { confirmEnd = true }
+            } else {
+                Button(LI("player_stop"), role: .destructive) { model.stop(); dismiss() }
+            }
         }
         .padding()
     }

@@ -6,6 +6,8 @@ import com.cruxcoach.data.repository.ListPlaybackAdvance
 import com.cruxcoach.data.repository.ListPlaybackOrder
 import kotlin.random.Random
 import kotlin.time.Clock
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** One queued climb and the rest that follows it. */
 data class PlaybackItem(val climbUuid: String, val angle: Int, val restAfterSeconds: Int = 0)
@@ -83,6 +86,8 @@ data class PlaylistPlayerState(
     val boardConnected: Boolean = false,
     /** The rest ended and the banner has not been acknowledged yet. */
     val restFinished: Boolean = false,
+    /** The session just ended through [PlaylistPlayerPresenter.endSession]; its sheet is open. */
+    val finished: FinishedSession? = null,
 ) {
     val isResting: Boolean get() = phase is PlaybackPhase.Resting
 
@@ -125,6 +130,9 @@ class PlaylistPlayerPresenter(
     private val random: Random = Random.Default,
     /** Records the run as a board session (Android: PlaylistPlaybackCoordinator → BoardSessionManager). */
     private val sessions: BoardSessionRecorder? = null,
+    /** Builds the end-of-session sheet (Android `SessionSummaryBuilder`); it reads the logbook. */
+    private val summarize: ((RecordedSession) -> FinishedSession)? = null,
+    private val summaryDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val _state = MutableStateFlow(PlaylistPlayerState())
     val state: StateFlow<PlaylistPlayerState> = _state.asStateFlow()
@@ -162,6 +170,42 @@ class PlaylistPlayerPresenter(
         sessions?.end()
         _state.value = PlaylistPlayerState()
     }
+
+    /**
+     * Ends the run and opens the summary (Android: ending the playlist shows
+     * `SessionSummarySheet`). The clock stops now; the logbook-derived part
+     * follows once it has been read.
+     */
+    fun endSession() {
+        cancelRest()
+        val recorded = sessions?.end()
+        _state.value = PlaylistPlayerState()
+        if (recorded == null) return
+        val build = summarize
+        if (build == null) {
+            _state.update { it.copy(finished = FinishedSession(recorded, null)) }
+            return
+        }
+        scope.launch {
+            val finished = try {
+                withContext(summaryDispatcher) { build(recorded) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                FinishedSession(recorded, null)
+            }
+            _state.update { it.copy(finished = finished) }
+        }
+    }
+
+    fun dismissSummary() = _state.update { it.copy(finished = null) }
+
+    /** Live session clock for the session bar: (elapsed, paused) seconds; (0, 0) without a session. */
+    fun sessionElapsedSeconds(): Int = sessions?.elapsedSeconds() ?: 0
+
+    fun sessionPausedSeconds(): Int = sessions?.pausedSeconds() ?: 0
+
+    val isSessionRunning: Boolean get() = sessions?.isActive == true
 
     fun next() {
         // A rest was armed while advancing, so the queue already points at the

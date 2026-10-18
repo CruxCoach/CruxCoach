@@ -385,3 +385,4 @@
 
 /* Board: training-plan editor, logbook selection, session summary */
 "plan_error" = "Der Trainingsplan konnte nicht geändert werden.";
+"detail_edit_not_yet" = "Einen Climb von seiner Detailseite aus zu bearbeiten oder zu remixen geht auf dem iPhone noch nicht. Lege stattdessen im Editor einen neuen Climb an.";

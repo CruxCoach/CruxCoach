@@ -1,11 +1,38 @@
 package com.cruxcoach.app.ui
 
+import com.cruxcoach.app.playlist.FinishedSession
 import com.cruxcoach.app.playlist.PlaybackItem
+import com.cruxcoach.domain.board.SessionType
 import com.cruxcoach.app.playlist.PlaybackPhase
 import com.cruxcoach.app.playlist.PlaylistPlayerPresenter
 import com.cruxcoach.app.playlist.PlaylistPlayerState
 
 class QueueItemUi(val climbUuid: String, val angle: Int, val restAfterSeconds: Int)
+
+/**
+ * Android `SessionSummarySheet` data. [hasDetails] is false when the logbook
+ * holds no row of the session window; the sheet then shows the session's own
+ * counters, as Android does without a summary.
+ */
+class SessionSummaryUi(
+    val totalSeconds: Int,
+    val activeSeconds: Int,
+    val pauseSeconds: Int,
+    val sends: Int,
+    val attempts: Int,
+    val hasDetails: Boolean,
+    val flashes: Int,
+    val uniqueClimbs: Int,
+    /** "" without a graded send. */
+    val hardestGrade: String,
+    val hardestName: String,
+    val gradeDistribution: List<GradeBarUi>,
+    val warmupCount: Int,
+    val optimalCount: Int,
+    val limitCount: Int,
+    /** warmup | volume | limit | pyramid */
+    val sessionTypeCode: String,
+)
 
 class PlayerScreenState(
     val isActive: Boolean,
@@ -36,6 +63,11 @@ class PlayerScreenState(
     val advanceCode: String,
     val defaultRestSeconds: Int,
     val boardConnected: Boolean,
+    /** A board session is being recorded: the session bar shows its clock. */
+    val sessionRunning: Boolean,
+    /** The run ended and its summary sheet is open. */
+    val showSummary: Boolean,
+    val summary: SessionSummaryUi,
 )
 
 /** Playlist player. Local playback only: no session sharing, no participants. */
@@ -101,6 +133,20 @@ class PlayerScreenModel(
         endRestNotifications()
     }
 
+    /** Ends the run and opens the end-of-session summary. */
+    fun endSession() {
+        presenter.endSession()
+        endRestNotifications()
+    }
+
+    fun dismissSummary() = presenter.dismissSummary()
+
+    /** Live: read each second by the session bar, not pushed through [watch]. */
+    fun sessionElapsedSeconds(): Int = presenter.sessionElapsedSeconds()
+
+    fun sessionActiveSeconds(): Int =
+        (presenter.sessionElapsedSeconds() - presenter.sessionPausedSeconds()).coerceAtLeast(0)
+
     fun close() {
         presenter.close()
         endRestNotifications()
@@ -138,6 +184,38 @@ class PlayerScreenModel(
             advanceCode = ListCodes.advance(state.advance),
             defaultRestSeconds = state.defaultRestSeconds,
             boardConnected = state.boardConnected,
+            sessionRunning = state.isActive && presenter.isSessionRunning,
+            showSummary = state.finished != null,
+            summary = summary(state.finished),
+        )
+    }
+
+    private fun summary(finished: FinishedSession?): SessionSummaryUi {
+        val session = finished?.session
+        val details = finished?.summary
+        return SessionSummaryUi(
+            totalSeconds = session?.totalSeconds ?: 0,
+            activeSeconds = session?.activeSeconds ?: 0,
+            pauseSeconds = session?.pauseSeconds ?: 0,
+            sends = session?.ascents ?: 0,
+            // Same definition as the logbook stats: every logged row counts at least one try.
+            attempts = details?.totalAttempts ?: session?.bids ?: 0,
+            hasDetails = details != null,
+            flashes = details?.flashCount ?: 0,
+            uniqueClimbs = details?.uniqueClimbs ?: 0,
+            hardestGrade = details?.hardestSendGrade ?: "",
+            hardestName = details?.hardestSendName ?: "",
+            gradeDistribution = details?.gradeDistribution?.map { GradeBarUi(it.grade, it.difficultyInt, it.count) }
+                ?: emptyList(),
+            warmupCount = details?.warmupCount ?: 0,
+            optimalCount = details?.optimalCount ?: 0,
+            limitCount = details?.limitCount ?: 0,
+            sessionTypeCode = when (details?.sessionType ?: SessionType.PYRAMID_SESSION) {
+                SessionType.WARMUP_SESSION -> "warmup"
+                SessionType.VOLUME_SESSION -> "volume"
+                SessionType.LIMIT_SESSION -> "limit"
+                SessionType.PYRAMID_SESSION -> "pyramid"
+            },
         )
     }
 }

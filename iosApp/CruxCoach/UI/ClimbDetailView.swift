@@ -15,6 +15,8 @@ struct ClimbDetailView: View {
     @State private var showLists = false
     @State private var linkCopied = false
     @State private var loadedMoonPath = ""
+    @State private var owner: ScreenHost<ClimbOwnerActionsModel, ClimbOwnerActionsState>?
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -31,10 +33,80 @@ struct ClimbDetailView: View {
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
             model.open(uuid: uuid, angle: angle)
+            let actions = core.makeClimbOwnerActions()
+            owner = ScreenHost(model: actions, initial: actions.currentState,
+                               subscribe: { model, onState in model.watch(onState: onState) },
+                               onClose: { model in model.close() })
+            actions.open(uuid: uuid)
         }
         .onDisappear {
             if host?.state.browserDirty == true { onChanged() }
             host?.close()
+            owner?.close()
+        }
+        .modifier(OwnerDeleteDialogs(owner: owner))
+        .onChange(of: owner?.state.deleted ?? false) { _, deleted in
+            // Android navigates back once the climb is gone; the browser must drop it.
+            if deleted {
+                onChanged()
+                dismiss()
+            }
+        }
+        .overlay(alignment: .top) { ownerResultBanner }
+    }
+
+    @ViewBuilder
+    private var ownerResultBanner: some View {
+        if let owner, owner.state.resultCode != "none", !owner.state.deleted {
+            Text(ownerResultText(owner.state))
+                .font(.footnote)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.thinMaterial, in: Capsule())
+                .padding(.top, 8)
+                .onTapGesture { owner.model.consumeResult() }
+        }
+    }
+
+    private func ownerResultText(_ state: ClimbOwnerActionsState) -> String {
+        let accepted: Int = Int(state.resultAccepted)
+        let attempted: Int = Int(state.resultAttempted)
+        switch state.resultCode {
+        case "done":
+            return state.resultKilterWarning
+                ? L("community_climb_delete_done_with_kilter", accepted, attempted)
+                : L("community_climb_delete_done_nostr_only", accepted, attempted)
+        case "localTombstoneFailed": return L("community_climb_delete_local_failed", accepted, attempted)
+        case "notOwner": return L("community_climb_delete_not_owner")
+        default: return L("community_climb_delete_failed")
+        }
+    }
+
+    /// Android's owner rows in the overflow menu: Remix, Edit (locked once on
+    /// Kilter) and the draft or publication delete.
+    @ViewBuilder
+    private func ownerMenuItems() -> some View {
+        if let owner, owner.state.isLoaded {
+            let state: ClimbOwnerActionsState = owner.state
+            Divider()
+            // The editor cannot be opened on a given climb from here yet.
+            Button(L("climb_creator_remix_action"), systemImage: "arrow.triangle.branch") {}
+                .disabled(true)
+            if state.isOwn {
+                if state.editLocked {
+                    Button(L("climb_detail_edit_locked_kilter"), systemImage: "pencil") {}
+                        .disabled(true)
+                } else {
+                    Button(L("climb_creator_edit_action"), systemImage: "pencil") {}
+                        .disabled(true)
+                }
+                Text(LI("detail_edit_not_yet"))
+                Button(state.isUnpublishedDraft ? L("climb_creator_drafts_delete_action") : L("community_climb_delete_action"),
+                       systemImage: "trash", role: .destructive) {
+                    owner.model.requestDelete()
+                }
+            } else {
+                Text(LI("detail_edit_not_yet"))
+            }
         }
     }
 
@@ -73,6 +145,7 @@ struct ClimbDetailView: View {
                             linkCopied = false
                         }
                     }
+                    ownerMenuItems()
                 } label: {
                     Label(LI("browser_more"), systemImage: "ellipsis.circle")
                 }
@@ -228,5 +301,36 @@ struct ClimbDetailView: View {
                 }
             }
         }
+    }
+}
+
+/// Android's two delete confirmations: the local draft and the signed relay deletion.
+private struct OwnerDeleteDialogs: ViewModifier {
+    let owner: ScreenHost<ClimbOwnerActionsModel, ClimbOwnerActionsState>?
+
+    func body(content: Content) -> some View {
+        content
+            .alert(L("climb_creator_drafts_delete_title"), isPresented: binding("draft")) {
+                Button(L("action_cancel"), role: .cancel) { owner?.model.dismissDelete() }
+                Button(L("climb_creator_drafts_delete_confirm"), role: .destructive) { owner?.model.confirmDelete() }
+            } message: {
+                Text(L("climb_creator_drafts_delete_message", owner?.state.climbName ?? ""))
+            }
+            .alert(L("community_climb_delete_confirm_title"), isPresented: binding("publication")) {
+                Button(L("community_climb_delete_cancel_button"), role: .cancel) { owner?.model.dismissDelete() }
+                Button(L("community_climb_delete_confirm_button"), role: .destructive) { owner?.model.confirmDelete() }
+            } message: {
+                Text(publicationMessage)
+            }
+    }
+
+    private var publicationMessage: String {
+        let kilter: Bool = owner?.state.dialogKilterWarning ?? false
+        return kilter ? L("community_climb_delete_confirm_kilter_warning") : L("community_climb_delete_confirm_nostr_only")
+    }
+
+    private func binding(_ code: String) -> Binding<Bool> {
+        Binding(get: { owner?.state.dialogCode == code },
+                set: { if !$0 && owner?.state.dialogCode == code { owner?.model.dismissDelete() } })
     }
 }

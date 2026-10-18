@@ -103,6 +103,16 @@ class BoardSessionRecorder(
         persist()
     }
 
+    /** Seconds since the session started, read live; 0 while none runs. */
+    fun elapsedSeconds(): Int = if (!isActive) 0 else ((nowMs() - startMs) / 1000).toInt()
+
+    /** Seconds the clock has stood still so far, a running pause included. */
+    fun pausedSeconds(): Int {
+        if (!isActive) return 0
+        val running = if (isPaused) nowMs() - pauseStartMs else 0L
+        return ((accumulatedPauseMs + running) / 1000).toInt()
+    }
+
     fun end(): RecordedSession? {
         val begun = startedAt ?: return null
         if (isPaused) accumulatedPauseMs += nowMs() - pauseStartMs
