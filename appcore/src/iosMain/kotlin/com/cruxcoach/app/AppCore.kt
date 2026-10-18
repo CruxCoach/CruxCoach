@@ -715,4 +715,115 @@ class AppCore private constructor(
         /** Must not be the bundle identifier: NSUserDefaults rejects that as a suite name. */
         const val USER_DEFAULTS_SUITE = "org.cruxcoach.prefs"
     }
+
+    // ── Nutrition (0.2.4) ─────────────────────────────────────────────
+    //
+    // The food tables and the product database are app-wide like Android's
+    // singletons: the 7,000-row tables are parsed once, the 52 MB product
+    // database is unpacked once into the backup-excluded work directory.
+
+    private val nutritionCatalog: com.cruxcoach.app.nutrition.FoodCatalog? by lazy {
+        athlete?.let { openNutritionCatalog(it) }
+    }
+
+    private fun openNutritionCatalog(service: AthleteService): com.cruxcoach.app.nutrition.FoodCatalog? = try {
+        val bundle = NSBundle.mainBundle.resourcePath ?: error("bundle missing")
+        fun table(asset: String): () -> String = {
+            platform.files.readBytes("$bundle/$asset", com.cruxcoach.app.nutrition.FoodTable.MAX_TABLE_BYTES)?.decodeToString()
+                ?: error("$asset missing from the app bundle")
+        }
+        val bls = com.cruxcoach.app.nutrition.FoodTable.bls(table(com.cruxcoach.app.nutrition.FoodTable.BLS_ASSET), Dispatchers.IO)
+        val usda = com.cruxcoach.app.nutrition.FoodTable.usda(table(com.cruxcoach.app.nutrition.FoodTable.USDA_ASSET), Dispatchers.IO)
+        val products = com.cruxcoach.app.nutrition.OffProductStore(
+            files = platform.files,
+            directory = platform.files.workDirectory(),
+            openDriver = { path, scratch -> com.cruxcoach.app.nutrition.IosScratchSqlite.open(path, scratch) },
+            io = Dispatchers.IO,
+        ).apply {
+            val packed = "$bundle/${com.cruxcoach.app.nutrition.OffProductStore.ASSET}"
+            prebuilt = { tmp ->
+                platform.zstd.decompressFile(packed, tmp, com.cruxcoach.app.nutrition.OffProductStore.MAX_UNPACKED_BYTES) >= 0
+            }
+            assetVersion = {
+                platform.files.readBytes("$bundle/${com.cruxcoach.app.nutrition.OffProductStore.VERSION_ASSET}", 1024)
+                    ?.decodeToString()?.trim().orEmpty()
+            }
+            preferredRegion = {
+                if (nutritionGerman()) com.cruxcoach.athlete.logic.OffProduct.REGION_GERMAN else com.cruxcoach.athlete.logic.OffProduct.REGION_ENGLISH
+            }
+        }
+        val micros = com.cruxcoach.app.nutrition.MicronutrientWeek(service, bls, usda, Dispatchers.IO)
+        com.cruxcoach.app.nutrition.FoodCatalog(bls, usda, products, micros, { nutritionGerman() }, Dispatchers.Default)
+    } catch (e: Throwable) {
+        println("AppCore: nutrition data unavailable: ${e.message}")
+        null
+    }
+
+    private fun nutritionGerman(): Boolean = com.cruxcoach.app.nutrition.IosNutritionLocale.german()
+
+    private fun nutritionDecimalComma(): Boolean = com.cruxcoach.app.nutrition.IosNutritionLocale.decimalComma()
+
+    private fun nutritionYear(): Int = com.cruxcoach.app.nutrition.FuelRules.yearNow()
+
+    /** Newer product extracts between releases, through the signed catalogue channel. */
+    private val foodProductsSync: com.cruxcoach.app.nutrition.FoodProductsSync? by lazy {
+        nutritionCatalog?.let { catalog ->
+            com.cruxcoach.app.nutrition.FoodProductsSync(
+                products = catalog.products,
+                manifest = {
+                    (com.cruxcoach.app.sync.ManifestFetcher(platform.webSockets, platform.hashing, platform.clock)
+                        .fetch(com.cruxcoach.app.nutrition.FoodProductsSync.D_TAG) as? com.cruxcoach.app.sync.ManifestFetchResult.Found)
+                        ?.manifest
+                },
+                download = { chunk, compression, output ->
+                    com.cruxcoach.app.sync.ChunkDownloader(platform.http, platform.files, platform.hashing, platform.zstd)
+                        .downloadAndDecompress(chunk, compression, output) is com.cruxcoach.app.sync.ChunkResult.Ok
+                },
+                track = com.cruxcoach.app.sync.ManifestTrackStore(
+                    platform.keyValues, com.cruxcoach.app.nutrition.FoodProductsSync.PREFS_NAME, platform.clock,
+                ),
+                keyValues = platform.keyValues,
+                files = platform.files,
+                workDirectory = platform.files.workDirectory(),
+                lines = { path -> com.cruxcoach.app.nutrition.IosFoodProductsUpdate.lines(path) },
+                io = Dispatchers.IO,
+            )
+        }
+    }
+
+    /** The nutrition tab; null when the athlete database is unavailable (the tab then says so). */
+    fun makeNutritionScreen(): com.cruxcoach.app.ui.NutritionScreenModel? {
+        val service = athlete ?: return null
+        val catalog = nutritionCatalog ?: return null
+        foodProductsSync?.let {
+            com.cruxcoach.app.nutrition.IosFoodProductsUpdate.refreshIfDue(
+                it, settingsStore.snapshot.syncInterval, platform.keyValues, platform.clock,
+            )
+        }
+        val scope = MainScope()
+        return com.cruxcoach.app.ui.NutritionScreenModel(
+            com.cruxcoach.app.nutrition.FuelPresenter(service, scope, Dispatchers.IO),
+            catalog, scope, nutritionDecimalComma(), { nutritionYear() },
+        )
+    }
+
+    /**
+     * "Describe a meal" for [dayIso] (the shown day). [mealCode] is the add
+     * sheet's meal, [unitsCode] "metric" or "us". Null when unavailable.
+     */
+    fun makeMealTextScreen(dayIso: String, mealCode: String, unitsCode: String): com.cruxcoach.app.ui.MealTextScreenModel? {
+        val service = athlete ?: return null
+        val catalog = nutritionCatalog ?: return null
+        val comma = nutritionDecimalComma()
+        val scope = MainScope()
+        val presenter = com.cruxcoach.app.nutrition.MealReviewPresenter(
+            service, catalog, scope, Dispatchers.IO, Dispatchers.Default,
+            inputText = { base, unit -> com.cruxcoach.app.ui.NutritionFormat.inputText(base, unit, comma) },
+        )
+        return com.cruxcoach.app.ui.MealTextScreenModel(
+            presenter, catalog, scope, dayIso,
+            com.cruxcoach.app.ui.NutritionFormat.meal(mealCode) ?: com.cruxcoach.athlete.model.Meal.SNACK,
+            if (unitsCode == "us") com.cruxcoach.athlete.model.UnitSystem.IMPERIAL else com.cruxcoach.athlete.model.UnitSystem.METRIC,
+        )
+    }
 }
