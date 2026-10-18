@@ -114,6 +114,7 @@ struct ListDetailView: View {
             }
         }
         .navigationTitle(host?.state.name ?? title)
+        .modifier(RestTimerBannerSlot(core: core))
         .task {
             guard host == nil else { return }
             let model = core.makeListDetailScreen(listId: listId)

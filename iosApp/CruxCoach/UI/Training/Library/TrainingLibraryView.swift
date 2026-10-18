@@ -44,6 +44,7 @@ struct TrainingLibraryView: View {
                 }
             }
             .navigationTitle(L("tr_tab_training"))
+            .modifier(RestTimerBannerSlot(core: core))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

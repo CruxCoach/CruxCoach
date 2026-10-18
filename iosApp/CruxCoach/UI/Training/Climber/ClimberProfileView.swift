@@ -27,6 +27,7 @@ struct ClimberProfileView: View {
             }
         }
         .navigationTitle(L("trl_profile_title"))
+        .modifier(RestTimerBannerSlot(core: core))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard host == nil, let model = core.makeClimberProfileScreen() else { return }

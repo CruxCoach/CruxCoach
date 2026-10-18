@@ -21,6 +21,7 @@ struct TrainingHistoryView: View {
             }
         }
         .navigationTitle(L("trw_history_title"))
+        .modifier(RestTimerBannerSlot(core: core))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard host == nil, let model = core.makeTrainingHistoryScreen() else { return }

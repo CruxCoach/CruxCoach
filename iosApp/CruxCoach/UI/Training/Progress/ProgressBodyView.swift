@@ -26,6 +26,7 @@ struct ProgressBodyView: View {
             }
         }
         .navigationTitle(L("tr_nav_body"))
+        .modifier(RestTimerBannerSlot(core: core))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard host == nil, let model = core.makeBodyScreen(language: TrainingStyle.catalogLanguage) else { return }

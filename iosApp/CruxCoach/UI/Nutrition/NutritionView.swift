@@ -75,6 +75,7 @@ struct NutritionView: View {
             }
         }
         .navigationTitle(L("tr_nav_fuel"))
+        .modifier(RestTimerBannerSlot(core: core))
         .onChange(of: host.map { Self.exportKey($0.state) } ?? "") { _, _ in
             if let day = host?.state.dayIso, !day.isEmpty { healthActions?.exportDay(dayIso: day) }
         }

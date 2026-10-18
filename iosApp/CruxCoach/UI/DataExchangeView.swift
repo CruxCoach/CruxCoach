@@ -28,6 +28,7 @@ struct DataExchangeView: View {
             }
         }
         .navigationTitle(L("settings_data_export"))
+        .modifier(RestTimerBannerSlot(core: core))
         .task {
             guard host == nil else { return }
             let model = core.makeDataTransferScreen()

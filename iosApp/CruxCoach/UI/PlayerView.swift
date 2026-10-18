@@ -28,6 +28,7 @@ struct PlayerView: View {
             }
         }
         .navigationTitle(listName)
+        .modifier(RestTimerBannerSlot(core: core))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard host == nil else { return }

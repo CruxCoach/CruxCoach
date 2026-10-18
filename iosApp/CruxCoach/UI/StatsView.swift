@@ -28,6 +28,7 @@ struct StatsView: View {
             }
         }
         .navigationTitle(L("board_stats_title"))
+        .modifier(RestTimerBannerSlot(core: core))
         .task {
             guard host == nil else { return }
             let model = core.makeLogbookScreen()

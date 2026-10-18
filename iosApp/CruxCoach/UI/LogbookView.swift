@@ -586,6 +586,7 @@ struct HistoryView: View {
             }
         }
         .navigationTitle(LI("history_title"))
+        .modifier(RestTimerBannerSlot(core: core))
         .task {
             guard host == nil else { return }
             let model = core.makeHistoryScreen()

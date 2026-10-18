@@ -23,6 +23,7 @@ struct WeeklyReviewView: View {
             }
         }
         .navigationTitle(L("trt_weekly_review"))
+        .modifier(RestTimerBannerSlot(core: core))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard host == nil, let model = core.makeWeeklyReviewScreen(language: TrainingStyle.catalogLanguage) else { return }

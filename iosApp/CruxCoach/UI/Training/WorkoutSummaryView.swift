@@ -21,6 +21,7 @@ struct WorkoutSummaryView: View {
                 }
             }
             .navigationTitle(L("trw_summary_title"))
+            .modifier(RestTimerBannerSlot(core: core))
             .navigationBarTitleDisplayMode(.inline)
         }
         .task {

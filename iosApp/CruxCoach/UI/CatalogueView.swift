@@ -53,6 +53,7 @@ struct CatalogueView: View {
             }
         }
         .navigationTitle(L("board_sync_title"))
+        .modifier(RestTimerBannerSlot(core: core))
         .toolbar {
             if !isOnboarding {
                 ToolbarItem(placement: .cancellationAction) { Button(L("action_close")) { dismiss() } }

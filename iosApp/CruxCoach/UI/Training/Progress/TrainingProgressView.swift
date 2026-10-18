@@ -26,6 +26,7 @@ struct TrainingProgressView: View {
                 }
             }
             .navigationTitle(L("tr_tab_progress"))
+            .modifier(RestTimerBannerSlot(core: core))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

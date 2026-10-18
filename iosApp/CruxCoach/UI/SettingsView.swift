@@ -61,5 +61,6 @@ struct SettingsView: View {
             }
         }
         .navigationTitle(L("settings_title"))
+        .modifier(RestTimerBannerSlot(core: core))
     }
 }

@@ -23,6 +23,7 @@ struct TodayView: View {
                 }
             }
             .navigationTitle(L("tr_nav_today"))
+            .modifier(RestTimerBannerSlot(core: core))
             .navigationBarTitleDisplayMode(.inline)
         }
         .task {

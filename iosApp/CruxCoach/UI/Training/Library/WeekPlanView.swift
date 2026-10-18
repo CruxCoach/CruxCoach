@@ -23,6 +23,7 @@ struct WeekPlanView: View {
             }
         }
         .navigationTitle(L("trwo_week_plan"))
+        .modifier(RestTimerBannerSlot(core: core))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
