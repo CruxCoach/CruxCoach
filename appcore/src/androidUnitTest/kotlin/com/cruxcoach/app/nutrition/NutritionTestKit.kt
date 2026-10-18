@@ -67,9 +67,10 @@ class NutritionTestKit(
         runBlocking { db { service.ensureReady() } }
     }
 
-    fun screen(): NutritionScreenModel {
+    /** [dayTickMs]: how often the day screen looks at the date (the midnight test shortens it). */
+    fun screen(dayTickMs: Long = FuelPresenter.DAY_TICK_MS): NutritionScreenModel {
         val scope = CoroutineScope(SupervisorJob() + serial)
-        return NutritionScreenModel(FuelPresenter(service, scope, serial), catalog, scope, false, { FuelRules.yearNow() })
+        return NutritionScreenModel(FuelPresenter(service, scope, serial, dayTickMs = dayTickMs), catalog, scope, false, { FuelRules.yearNow() })
     }
 
     fun mealText(day: String, meal: Meal = Meal.SNACK, units: UnitSystem = UnitSystem.METRIC): MealTextScreenModel {
