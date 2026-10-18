@@ -409,3 +409,21 @@
 "background_backup_desc" = "Backs up automatically at this interval. Manual: only when you start a backup yourself.";
 "background_backup_off" = "Cloud backup is off. The interval applies once it is switched on.";
 "background_footer" = "iOS decides when CruxCoach may refresh in the background: at most every 15 minutes, and not at all while Background App Refresh is off. Each time you open the app, whatever is due is refreshed as well.";
+
+/* Shared sessions nearby (wave 6, sessionjoin) */
+"shared_sessions_title" = "Sessions nearby";
+"shared_sessions_header" = "Shared playlists nearby";
+"shared_sessions_searching" = "Looking for shared playlists…";
+"shared_sessions_none" = "No shared playlist nearby. The host makes a playlist joinable on an Android phone; it then appears here.";
+"shared_bt_off" = "Bluetooth is off. Turn it on to find shared playlists nearby.";
+"shared_bt_unauthorized" = "CruxCoach may not use Bluetooth. Allow it in Settings › Privacy & Security › Bluetooth.";
+"shared_bt_unsupported" = "This device has no Bluetooth LE.";
+"shared_session_people" = "%ld in session";
+"shared_session_connecting" = "Joining…";
+"shared_session_host_lost" = "The host left. Looking for a phone that carries the playlist on…";
+"shared_session_host_left" = "The host left the playlist. An iPhone cannot take over as host — that needs an Android phone. The queue stays here for reference.";
+"shared_session_ended_by_host" = "The host ended the playlist for everyone.";
+"shared_successor_decline" = "Don’t join";
+"shared_add_to_playlist" = "Add to playlist";
+"shared_sharing_needs_android" = "Sharing your own climb nearby and asking others to free the board need an Android phone: an iPhone app cannot put them into Bluetooth advertisements.";
+"shared_hosting_needs_android" = "Hosting a shared playlist needs an Android phone: an iPhone app cannot advertise a session the way Android does. On iPhone you can join one. The host’s phone lights the wall; this iPhone does not send the playlist to its own board connection.";

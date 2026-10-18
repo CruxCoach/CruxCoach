@@ -409,3 +409,21 @@
 "background_backup_desc" = "Sichert automatisch in diesem Intervall. Manuell: nur, wenn du selbst eine Sicherung startest.";
 "background_backup_off" = "Das Cloud-Backup ist aus. Das Intervall gilt, sobald es eingeschaltet ist.";
 "background_footer" = "iOS entscheidet, wann CruxCoach im Hintergrund aktualisieren darf: höchstens alle 15 Minuten und gar nicht, solange die Hintergrundaktualisierung aus ist. Bei jedem Öffnen der App wird außerdem aktualisiert, was fällig ist.";
+
+/* Shared sessions nearby (wave 6, sessionjoin) */
+"shared_sessions_title" = "Sessions in der Nähe";
+"shared_sessions_header" = "Geteilte Playlists in der Nähe";
+"shared_sessions_searching" = "Suche nach geteilten Playlists…";
+"shared_sessions_none" = "Keine geteilte Playlist in der Nähe. Der Host macht eine Playlist auf einem Android-Handy beitretbar; dann erscheint sie hier.";
+"shared_bt_off" = "Bluetooth ist aus. Schalte es ein, um geteilte Playlists in der Nähe zu finden.";
+"shared_bt_unauthorized" = "CruxCoach darf Bluetooth nicht verwenden. Erlaube es unter Einstellungen › Datenschutz & Sicherheit › Bluetooth.";
+"shared_bt_unsupported" = "Dieses Gerät hat kein Bluetooth LE.";
+"shared_session_people" = "%ld in der Session";
+"shared_session_connecting" = "Trete bei…";
+"shared_session_host_lost" = "Der Host ist gegangen. Suche ein Handy, das die Playlist weiterführt…";
+"shared_session_host_left" = "Der Host hat die Playlist verlassen. Ein iPhone kann nicht als Host übernehmen – dafür braucht es ein Android-Handy. Die Warteschlange bleibt zum Nachsehen hier.";
+"shared_session_ended_by_host" = "Der Host hat die Playlist für alle beendet.";
+"shared_successor_decline" = "Nicht beitreten";
+"shared_add_to_playlist" = "Zur Playlist hinzufügen";
+"shared_sharing_needs_android" = "Den eigenen Boulder in der Nähe teilen und andere bitten, das Board freizugeben, geht nur mit einem Android-Handy: Eine iPhone-App kann das nicht in Bluetooth-Werbepakete schreiben.";
+"shared_hosting_needs_android" = "Eine geteilte Playlist hosten geht nur mit einem Android-Handy: Eine iPhone-App kann eine Session nicht so ankündigen wie Android. Auf dem iPhone kannst du einer beitreten. Das Handy des Hosts steuert die Wand; dieses iPhone schickt die Playlist nicht an seine eigene Board-Verbindung.";
