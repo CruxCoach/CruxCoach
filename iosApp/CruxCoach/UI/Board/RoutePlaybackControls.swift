@@ -6,7 +6,8 @@ func routeSpeedText(_ seconds: Double) -> String {
     if seconds == seconds.rounded() {
         return "\(Int(seconds))s"
     }
-    return String(format: "%.1fs", seconds)
+    // Android formats with the device locale ("2,5s" in German).
+    return String(format: "%.1fs", locale: Locale.current, seconds)
 }
 
 /// Android `RoutePlaybackControls`: a route's hold sections one after another,
