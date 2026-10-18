@@ -25,7 +25,12 @@ struct TrainingHomeView: View {
                 TrainingWorkoutsPlaceholder(onClose: onClose)
                     .tabItem { Label(L("tr_tab_training"), systemImage: "dumbbell") }
                     .tag(Tab.training)
-                TrainingNutritionPlaceholder(onClose: onClose)
+                NavigationStack {
+                    NutritionView(core: core)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) { Button(L("action_close"), action: onClose) }
+                        }
+                }
                     .tabItem { Label(L("tr_nav_fuel"), systemImage: "fork.knife") }
                     .tag(Tab.nutrition)
                 TrainingProgressPlaceholder(onClose: onClose)

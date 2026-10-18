@@ -22,7 +22,7 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>CruxCoach connects directly to your climbing board to light up problems.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>CruxCoach uses the camera to scan QR codes for accounts and shared lists.</string>
+	<string>CruxCoach uses the camera to scan QR codes for accounts and shared lists, and barcodes of food products.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>CruxCoach asks for Face ID before showing your private key.</string>
 	<key>UIBackgroundModes</key><array><string>bluetooth-central</string></array>
