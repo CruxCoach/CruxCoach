@@ -73,7 +73,9 @@ struct MainView: View {
     var body: some View {
         Group {
             if let sync, sync.state.installedKnown {
-                if sync.state.installedCount == 0 && !onboardingDone {
+                // Shown until it was finished or skipped once (persisted, as on Android);
+                // an older install with catalogues but no flag is not sent through it again.
+                if sync.state.installedCount == 0 && !onboardingDone && !core.isOnboardingCompleted() {
                     OnboardingView(core: core, sync: sync) {
                         onboardingDone = true
                         // Android starts the guided browse right after the
@@ -82,7 +84,8 @@ struct MainView: View {
                     }
                 } else {
                     BrowserView(core: core, sync: sync)
-                        .modifier(WhatsNewOverlay(core: core, onboardingDone: true))
+                        // A fresh install has nothing "new" to announce (Android: watermark set, queue empty).
+                        .modifier(WhatsNewOverlay(core: core, onboardingDone: core.onboardingCompletedAtStart))
                 }
             } else {
                 ProgressView()

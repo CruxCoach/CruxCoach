@@ -38,7 +38,7 @@ final class MainScreensUITests: XCTestCase {
         try reachBrowser()
         try openFromMenu(Strings.l("settings_title"))
         XCTAssertTrue(app.navigationBars[Strings.l("settings_title")].waitForExistence(timeout: 15),
-                      "Settings did not open:\n\(app.debugDescription)")
+                      "Settings did not open:\n\(screenTail())")
         shot("02-settings")
     }
 
@@ -46,7 +46,7 @@ final class MainScreensUITests: XCTestCase {
         try reachBrowser()
         try openFromMenu(Strings.l("board_logbook_title"))
         XCTAssertTrue(app.navigationBars[Strings.l("board_logbook_title")].waitForExistence(timeout: 15),
-                      "Logbook did not open:\n\(app.debugDescription)")
+                      "Logbook did not open:\n\(screenTail())")
         shot("03-logbook")
     }
 
@@ -54,7 +54,7 @@ final class MainScreensUITests: XCTestCase {
         try reachBrowser()
         try openFromMenu(Strings.l("board_lists_title"))
         XCTAssertTrue(app.navigationBars[Strings.l("board_lists_title")].waitForExistence(timeout: 15),
-                      "Lists did not open:\n\(app.debugDescription)")
+                      "Lists did not open:\n\(screenTail())")
         shot("04-lists")
     }
 
@@ -62,7 +62,7 @@ final class MainScreensUITests: XCTestCase {
         try reachBrowser()
         try openFromMenu(Strings.li("map_title"))
         XCTAssertTrue(app.maps.firstMatch.waitForExistence(timeout: 20),
-                      "The board map shows no map:\n\(app.debugDescription)")
+                      "The board map shows no map:\n\(screenTail())")
         shot("05-board-map")
     }
 
@@ -70,7 +70,7 @@ final class MainScreensUITests: XCTestCase {
         try reachBrowser()
         try openFromMenu(Strings.li("stats_title"))
         XCTAssertTrue(app.navigationBars[Strings.li("stats_title")].waitForExistence(timeout: 15),
-                      "Statistics did not open:\n\(app.debugDescription)")
+                      "Statistics did not open:\n\(screenTail())")
         shot("06-statistics")
     }
 
@@ -86,7 +86,7 @@ final class MainScreensUITests: XCTestCase {
             later.tap()
         }
         let start = app.buttons["today_suggestion_start"]
-        XCTAssertTrue(start.waitForExistence(timeout: 30), "Today shows no suggestion to start:\n\(app.debugDescription)")
+        XCTAssertTrue(start.waitForExistence(timeout: 30), "Today shows no suggestion to start:\n\(screenTail())")
         shot("07b-training-today")
         start.tap()
         // A rep set logs with "done"; a timed set (warm-up hang, plank) offers "done without timer".
@@ -99,7 +99,7 @@ final class MainScreensUITests: XCTestCase {
             else { _ = done.waitForExistence(timeout: 1) }
         }
         shot("07c-training-player")
-        let set = try XCTUnwrap(target, "The training player shows no set to log:\n\(app.debugDescription)")
+        let set = try XCTUnwrap(target, "The training player shows no set to log:\n\(screenTail())")
         set.tap()
         shot("07d-training-set-logged")
     }
@@ -112,7 +112,7 @@ final class MainScreensUITests: XCTestCase {
         if later.waitForExistence(timeout: 5) { later.tap() }
         for (index, key) in ["tr_tab_training", "tr_nav_fuel", "tr_tab_progress"].enumerated() {
             let tab = app.tabBars.buttons[Strings.l(key)]
-            XCTAssertTrue(tab.waitForExistence(timeout: 10), "No tab \(key):\n\(app.debugDescription)")
+            XCTAssertTrue(tab.waitForExistence(timeout: 10), "No tab \(key):\n\(screenTail())")
             tab.tap()
             shot("08\(index)-training-tab-\(key)")
         }
@@ -125,15 +125,26 @@ final class MainScreensUITests: XCTestCase {
         let more = app.buttons[Strings.li("browser_more")]
         let skip = app.buttons[Strings.li("onboarding_skip")]
         let deadline = Date().addingTimeInterval(60)
+        var coveredSince: Date?
         while Date() < deadline {
             if more.exists && more.isHittable { return }
+            // Present but covered: a sheet is on top. Record it, then swipe it away.
+            if more.exists {
+                if coveredSince == nil { coveredSince = Date() }
+                if let since = coveredSince, Date().timeIntervalSince(since) > 5 {
+                    shot("00-covered-browser")
+                    print("Browser covered by:\n\(screenTail())")
+                    app.swipeDown(velocity: .fast)
+                    coveredSince = nil
+                }
+            }
             if skip.exists && skip.isHittable {
                 shot("00-onboarding")
                 skip.tap()
             }
             _ = more.waitForExistence(timeout: 2)
         }
-        XCTFail("The board browser never appeared:\n\(app.debugDescription)")
+        XCTFail("The board browser never appeared:\n\(screenTail())")
         throw XCTSkip("browser not reachable")
     }
 
@@ -142,15 +153,21 @@ final class MainScreensUITests: XCTestCase {
         let byId = app.buttons["browser_training"]
         let byLabel = app.buttons[Strings.l("tr_nav_training_nutrition")]
         if byId.waitForExistence(timeout: 5) { byId.tap(); return }
-        XCTAssertTrue(byLabel.waitForExistence(timeout: 10), "No training entry in the menu:\n\(app.debugDescription)")
+        XCTAssertTrue(byLabel.waitForExistence(timeout: 10), "No training entry in the menu:\n\(screenTail())")
         byLabel.tap()
     }
 
     private func openFromMenu(_ title: String) throws {
         app.buttons[Strings.li("browser_more")].tap()
         let item = app.buttons[title]
-        XCTAssertTrue(item.waitForExistence(timeout: 10), "Menu has no \"\(title)\":\n\(app.debugDescription)")
+        XCTAssertTrue(item.waitForExistence(timeout: 10), "Menu has no \"\(title)\":\n\(screenTail())")
         item.tap()
+    }
+
+    /// The end of the element tree: a sheet or alert on top is listed last.
+    private func screenTail() -> String {
+        let tree = app.debugDescription
+        return tree.count > 2800 ? "…" + String(tree.suffix(2800)) : tree
     }
 
     private func shot(_ name: String) {

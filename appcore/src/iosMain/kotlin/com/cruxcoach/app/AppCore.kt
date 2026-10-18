@@ -177,6 +177,16 @@ class AppCore private constructor(
      */
     private val settingsStore = SettingsStore(platform.keyValues, pubkeyHex)
 
+    /**
+     * Android decides two things from `onboarding_completed`: whether the first-run
+     * setup shows (it never comes back once finished or skipped), and — read
+     * before this session's setup — whether this is an upgrade with release
+     * notes to show or a fresh install with none.
+     */
+    val onboardingCompletedAtStart: Boolean = settingsStore.snapshot.onboardingCompleted
+
+    fun isOnboardingCompleted(): Boolean = settingsStore.snapshot.onboardingCompleted
+
     /** The account id users actually exchange; empty only if encoding fails. */
     val npub: String = Nip19.encodeNpub(pubkeyHex) ?: ""
 
