@@ -97,6 +97,7 @@ struct BrowserView: View {
                 if ui.loadState == "loading" && ui.climbs.isEmpty { ProgressView() }
             }
             .modifier(BrowserSessionStrip(core: core, model: model, ui: ui, ble: ble, path: $path))
+            .modifier(RestTimerBannerSlot(core: core))
             .searchable(text: $search, prompt: L("board_search_placeholder"))
             .onChange(of: search) { _, query in model.setSearch(query: query) }
             .navigationTitle(L("board_browser_title"))

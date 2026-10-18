@@ -20,6 +20,7 @@ struct LogbookView: View {
                 ProgressView()
             }
         }
+        .modifier(RestTimerBannerSlot(core: core))
         .navigationTitle(L("board_logbook_title"))
         .toolbar { toolbarContent() }
         .sheet(isPresented: $showFilters) {

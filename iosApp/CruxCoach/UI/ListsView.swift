@@ -15,6 +15,7 @@ struct ListsView: View {
                 ProgressView()
             }
         }
+        .modifier(RestTimerBannerSlot(core: core))
         .navigationTitle(L("board_lists_title"))
         .task {
             guard host == nil else { return }
