@@ -105,12 +105,15 @@ struct OnboardingView: View {
             }
             .sheet(isPresented: $showBoardPicker) {
                 NavigationStack {
-                    BoardPickerView(core: core, brandWires: sync.state.rows.map { $0.brandWire }) { option in
-                        model.chooseBoard(brandWire: option.brandWire,
-                                          layoutId: option.layoutId,
-                                          productSizeId: option.productSizeId)
-                        showBoardPicker = false
-                    }
+                    // Android's onboarding picker offers "Find via Bluetooth" too; the picker hosts the link.
+                    BoardPickerView(core: core, brandWires: sync.state.rows.map { $0.brandWire },
+                                    onPick: { option in
+                                        model.chooseBoard(brandWire: option.brandWire,
+                                                          layoutId: option.layoutId,
+                                                          productSizeId: option.productSizeId)
+                                        showBoardPicker = false
+                                    },
+                                    offersBluetooth: true)
                 }
             }
             .sheet(isPresented: $showNearbyGyms) {
