@@ -75,21 +75,29 @@ class EditorAutosave(
 
 /**
  * Android's profile hint before a publish (`shouldShowProfileHint`): shown while the
- * identity has no display name and the hint was never answered for it. iOS reads the
- * local profile cache only; the relay lookup Android falls back to is not made here, so
- * a profile that exists only on relays still gets the hint once.
+ * identity has no display name and the hint was never answered for it. The name comes
+ * from Android's `NostrProfileManager.getProfile` path: the local cache, and the relays'
+ * kind-0 when the cache has none or a stale one. A failed lookup reads as no profile,
+ * as on Android.
  */
 class CreatorProfileHint(
     private val dismissed: () -> Boolean,
     private val setDismissed: () -> Unit,
-    /** The identity's cached display name; null when there is no identity or no profile. */
-    private val ownDisplayName: () -> String?,
+    /** The identity's display name, cache first, then relays; null when there is no profile. */
+    private val ownDisplayName: suspend () -> String?,
     private val hasIdentity: () -> Boolean,
 ) {
-    fun shouldShow(): Boolean {
+    suspend fun shouldShow(): Boolean {
         if (dismissed()) return false
         if (!hasIdentity()) return false
-        return ownDisplayName().isNullOrBlank()
+        val name = try {
+            ownDisplayName()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+        return name.isNullOrBlank()
     }
 
     fun dismiss() = setDismissed()

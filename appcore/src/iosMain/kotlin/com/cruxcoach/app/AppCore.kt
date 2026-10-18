@@ -2285,7 +2285,7 @@ class AppCore private constructor(
         val hint = com.cruxcoach.app.creator.CreatorProfileHint(
             dismissed = { SettingsStore(platform.keyValues, pubkeyHex).snapshot.profileHintDismissed },
             setDismissed = { settingsStore.setProfileHintDismissed(true) },
-            ownDisplayName = { NostrProfileStore(secureDatabase, platform.clock).cached(pubkeyHex)?.displayName },
+            ownDisplayName = { ownProfileDisplayName() },
             hasIdentity = { pubkeyHex.isNotBlank() },
         )
         val mirror = com.cruxcoach.app.creator.CreatorBoardMirror(
@@ -2417,5 +2417,15 @@ class AppCore private constructor(
             scope = kilterRunScope,
             next = next,
         )
+
+    // Creator profile hint (Android ClimbEditorViewModel.shouldShowProfileHint via
+    // NostrProfileManager.getProfile), used by makeCreatorScreenComplete.
+
+    /** The identity's kind-0 display name: the cache, then the relays when it is missing or stale. */
+    private suspend fun ownProfileDisplayName(): String? =
+        ProfileLookup(
+            NostrProfileStore(secureDatabase, platform.clock),
+            RelayClient(platform.webSockets, platform.hashing),
+        ).resolve(pubkeyHex)?.displayName
 
 }
