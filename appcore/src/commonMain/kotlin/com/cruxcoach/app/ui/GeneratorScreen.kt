@@ -1,6 +1,9 @@
 package com.cruxcoach.app.ui
 
+import com.cruxcoach.app.browse.ClimbStatusFilter
+import com.cruxcoach.app.browse.OriginFilter
 import com.cruxcoach.app.logbook.BoardStatsComputer
+import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.app.playlist.GeneratorPresenter
 import com.cruxcoach.app.playlist.GeneratorState
 import com.cruxcoach.app.settings.GradeScale
@@ -76,6 +79,20 @@ class GeneratorScreenState(
     val maxDifficulty: Double,
     /** Label per whole difficulty point from [minDifficulty] upwards. */
     val gradeLabels: List<String>,
+    /** Android "Minimum ascents": 0 = all. */
+    val minAscensionists: Int,
+    /** Android's thresholds plus whatever value came in from the board browser. */
+    val minAscentOptions: List<Int>,
+    /** "More filters" (Android's sheet): benchmarks only, status, origin, type. */
+    val benchmarkOnly: Boolean,
+    /** all | new | unsent | sent; empty for a browser status mix the sheet has no chip for. */
+    val statusCode: String,
+    /** all | cruxcoach | kilter | boardsesh */
+    val originCode: String,
+    /** boulder | route | all */
+    val climbTypeCode: String,
+    /** The restrictions narrowing the candidates now, in Android's order: benchmark, then status/origin/type codes. */
+    val activeFilterCodes: List<String>,
 )
 
 internal object GeneratorCodes {
@@ -261,6 +278,66 @@ class GeneratorScreenModel(private val presenter: GeneratorPresenter) {
             minDifficulty = TrainingRanges.MIN_DIFFICULTY,
             maxDifficulty = TrainingRanges.MAX_DIFFICULTY,
             gradeLabels = gradeLabels(scale),
+            minAscensionists = state.minAscensionists,
+            minAscentOptions = (MIN_ASCENT_OPTIONS + state.minAscensionists).distinct().sorted(),
+            benchmarkOnly = state.benchmarkOnly,
+            statusCode = STATUS_OPTIONS.firstOrNull { it.second == state.statusFilter }?.first ?: "",
+            originCode = ORIGIN_OPTIONS.firstOrNull { it.second == state.originFilter }?.first ?: "all",
+            climbTypeCode = TYPE_OPTIONS.firstOrNull { it.second == state.climbType }?.first ?: "boulder",
+            activeFilterCodes = activeFilters(state),
+        )
+    }
+
+    /** Android `minAscentOptions` choice; clamped to 0…50 by the presenter. */
+    fun setMinAscensionists(count: Int) = presenter.setMinAscensionists(count)
+    fun setBenchmarkOnly(enabled: Boolean) = presenter.setBenchmarkOnly(enabled)
+
+    /** all | new | unsent | sent; unknown codes are ignored. */
+    fun setStatusCode(code: String) {
+        STATUS_OPTIONS.firstOrNull { it.first == code }?.let { presenter.setStatusFilter(it.second) }
+    }
+
+    /** all | cruxcoach | kilter | boardsesh; unknown codes are ignored. */
+    fun setOriginCode(code: String) {
+        ORIGIN_OPTIONS.firstOrNull { it.first == code }?.let { presenter.setOriginFilter(it.second) }
+    }
+
+    /** boulder | route | all; unknown codes are ignored. */
+    fun setClimbTypeCode(code: String) {
+        TYPE_OPTIONS.firstOrNull { it.first == code }?.let { presenter.setClimbType(it.second) }
+    }
+
+    /** Android `activeFilterLabelRes`: what the "More filters" button names while it narrows the result. */
+    private fun activeFilters(state: GeneratorState): List<String> = buildList {
+        if (state.benchmarkOnly) add("benchmark")
+        STATUS_OPTIONS.firstOrNull { it.second == state.statusFilter && it.second.isNotEmpty() }?.let { add(it.first) }
+        ORIGIN_OPTIONS.firstOrNull { it.second == state.originFilter && it.second != OriginFilter.ALL }?.let { add(it.first) }
+        TYPE_OPTIONS.firstOrNull { it.second == state.climbType && it.second != ClimbTypeFilter.BOULDER }?.let { add(it.first) }
+    }
+
+    /** Sheet option codes in Android's chip order. */
+    val statusCodes: List<String> = STATUS_OPTIONS.map { it.first }
+    val originCodes: List<String> = ORIGIN_OPTIONS.map { it.first }
+    val climbTypeCodes: List<String> = TYPE_OPTIONS.map { it.first }
+
+    private companion object {
+        val MIN_ASCENT_OPTIONS = listOf(0, 5, 20, 100, 500)
+        val STATUS_OPTIONS = listOf(
+            "all" to emptySet<ClimbStatusFilter>(),
+            "new" to setOf(ClimbStatusFilter.NEW),
+            "unsent" to setOf(ClimbStatusFilter.NEW, ClimbStatusFilter.ATTEMPTED),
+            "sent" to setOf(ClimbStatusFilter.SENT),
+        )
+        val ORIGIN_OPTIONS = listOf(
+            "all" to OriginFilter.ALL,
+            "cruxcoach" to OriginFilter.CRUXCOACH,
+            "kilter" to OriginFilter.KILTER,
+            "boardsesh" to OriginFilter.BOARDSESH,
+        )
+        val TYPE_OPTIONS = listOf(
+            "boulder" to ClimbTypeFilter.BOULDER,
+            "route" to ClimbTypeFilter.ROUTE,
+            "all" to ClimbTypeFilter.ALL,
         )
     }
 

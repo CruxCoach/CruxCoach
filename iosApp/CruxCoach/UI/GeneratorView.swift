@@ -16,6 +16,8 @@ struct GeneratorView: View {
     @State private var host: ScreenHost<GeneratorScreenModel, GeneratorScreenState>?
     @State private var naming = false
     @State private var name = ""
+    /// Android's "More filters" sheet.
+    @State private var filtersOpen = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -45,6 +47,7 @@ struct GeneratorView: View {
             profileSection(ui)
             typeSection(model: model, ui: ui)
             shapeSection(model: model, ui: ui)
+            filtersSection(model: model, ui: ui)
             if ui.typeCode == "manual" {
                 manualSection(model: model, ui: ui)
             } else {
@@ -184,6 +187,33 @@ struct GeneratorView: View {
         }
     }
 
+    /// Android: "Minimum ascents" on the generator itself, the rare restrictions one tap away
+    /// but named on the button while they narrow the result.
+    private func filtersSection(model: GeneratorScreenModel, ui: GeneratorScreenState) -> some View {
+        let options: [Int] = ui.minAscentOptions.map { Int(truncating: $0) }
+        let active: [String] = ui.activeFilterCodes
+        let title: String = active.isEmpty ? L("playlist_generator_more_filters")
+            : L("playlist_generator_more_filters_active", active.map { GeneratorFiltersSheet.label($0) }.joined(separator: " · "))
+        return Section {
+            Picker(L("playlist_generator_min_ascents"), selection: Binding(
+                get: { Int(ui.minAscensionists) }, set: { model.setMinAscensionists(count: Int32($0)) })) {
+                ForEach(options, id: \.self) { count in
+                    Text(count == 0 ? L("board_filter_all") : "\(count)+").tag(count)
+                }
+            }
+            .accessibilityIdentifier("playlist_gen_min_ascents")
+            Button { filtersOpen = true } label: {
+                Label(title, systemImage: "line.3.horizontal.decrease")
+            }
+            .accessibilityIdentifier("playlist_gen_filters")
+            .sheet(isPresented: $filtersOpen) {
+                GeneratorFiltersSheet(model: model, ui: ui)
+            }
+        } footer: {
+            Text(L("playlist_generator_min_ascents_info")).font(.footnote)
+        }
+    }
+
     @ViewBuilder
     private func gradeSection(model: GeneratorScreenModel, ui: GeneratorScreenState) -> some View {
         Section {
@@ -313,4 +343,72 @@ struct GeneratorView: View {
         "volume": "playlist_default_name_volume", "limit": "playlist_default_name_limit",
         "projecting": "playlist_default_name_projecting", "manual": "playlist_default_name_manual",
     ]
+}
+
+/// Android `PlaylistGeneratorScreen`'s "More filters" sheet: benchmarks only, status, origin and type.
+private struct GeneratorFiltersSheet: View {
+    let model: GeneratorScreenModel
+    let ui: GeneratorScreenState
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Toggle(L("board_filter_benchmarks_only"), isOn: Binding(
+                        get: { ui.benchmarkOnly }, set: { model.setBenchmarkOnly(enabled: $0) }))
+                } footer: {
+                    Text(L("playlist_generator_filters_hint")).font(.footnote)
+                }
+                choiceSection(L("board_filter_status"), codes: model.statusCodes, selected: ui.statusCode, kind: "status") {
+                    model.setStatusCode(code: $0)
+                }
+                choiceSection(L("board_filter_origin"), codes: model.originCodes, selected: ui.originCode, kind: "origin") {
+                    model.setOriginCode(code: $0)
+                }
+                choiceSection(L("board_filter_type"), codes: model.climbTypeCodes, selected: ui.climbTypeCode, kind: "type") {
+                    model.setClimbTypeCode(code: $0)
+                }
+            }
+            .navigationTitle(L("playlist_generator_more_filters"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("action_done")) { dismiss() } } }
+        }
+    }
+
+    private func choiceSection(_ title: String, codes: [String], selected: String, kind: String,
+                               onSelect: @escaping (String) -> Void) -> some View {
+        Section(title) {
+            ForEach(codes, id: \.self) { code in
+                Button { onSelect(code) } label: {
+                    HStack {
+                        Text(GeneratorFiltersSheet.optionTitle(code, kind: kind)).foregroundStyle(.primary)
+                        Spacer()
+                        if code == selected { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                    }
+                }
+            }
+        }
+    }
+
+    static func optionTitle(_ code: String, kind: String) -> String {
+        if code == "all" { return L("board_filter_all") }
+        return label(code)
+    }
+
+    /// The label of an active restriction code (Android `activeFilterLabelRes`).
+    static func label(_ code: String) -> String {
+        switch code {
+        case "benchmark": return L("board_filter_benchmarks_only")
+        case "new": return L("board_filter_status_new")
+        case "unsent": return L("board_filter_status_unsent")
+        case "sent": return L("board_filter_status_sent")
+        case "cruxcoach": return L("board_filter_origin_cruxcoach")
+        case "kilter": return L("board_filter_origin_kilter")
+        case "boardsesh": return L("board_filter_origin_boardsesh")
+        case "boulder": return L("board_filter_type_boulder")
+        case "route": return L("board_filter_type_routes")
+        default: return L("board_filter_all")
+        }
+    }
 }

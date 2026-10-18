@@ -429,7 +429,7 @@ class GeneratorPresenter(
     }
 
     fun setMinAscensionists(count: Int) {
-        _state.update { it.copy(minAscensionists = count.coerceIn(0, 50)) }
+        _state.update { it.copy(minAscensionists = count.coerceIn(0, MAX_MIN_ASCENSIONISTS)) }
     }
 
     fun setBenchmarkOnly(enabled: Boolean) {
@@ -784,6 +784,9 @@ class GeneratorPresenter(
     }
 
     companion object {
+        /** Android `MAX_MIN_ASCENSIONISTS`: far above the old 50, a popular climb on a big board has thousands. */
+        const val MAX_MIN_ASCENSIONISTS = 5000
+
         /** Anchor windows, newest first: current ability, not all-time best. */
         private val PROFILE_RECENCY_WINDOWS_MONTHS = listOf(12, 24)
 
