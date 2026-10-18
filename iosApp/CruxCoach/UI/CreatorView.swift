@@ -5,6 +5,9 @@ import SwiftUI
 /// draft, and optionally publish it to the community.
 struct CreatorView: View {
     let core: AppCore
+    /// Opens an own climb for editing, or any climb as a remix (Android `climb_creator?editUuid=&forkUuid=`).
+    var editUuid: String = ""
+    var forkUuid: String = ""
     @State private var host: ScreenHost<CreatorScreenModel, CreatorScreenState>?
     @State private var loadedMoonPath = ""
     @State private var showPublish = false
@@ -26,7 +29,13 @@ struct CreatorView: View {
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
-            model.open()
+            if !editUuid.isEmpty {
+                model.openForEdit(uuid: editUuid)
+            } else if !forkUuid.isEmpty {
+                model.openForRemix(uuid: forkUuid)
+            } else {
+                model.open()
+            }
         }
     }
 

@@ -13,6 +13,7 @@ struct ClimbDetailView: View {
     @State private var noteLoaded = false
     @State private var showBle = false
     @State private var showLists = false
+    @State private var editorTarget: DetailEditorTarget?
     @State private var linkCopied = false
     @State private var loadedMoonPath = ""
     @State private var owner: ScreenHost<ClimbOwnerActionsModel, ClimbOwnerActionsState>?
@@ -88,24 +89,22 @@ struct ClimbDetailView: View {
         if let owner, owner.state.isLoaded {
             let state: ClimbOwnerActionsState = owner.state
             Divider()
-            // The editor cannot be opened on a given climb from here yet.
-            Button(L("climb_creator_remix_action"), systemImage: "arrow.triangle.branch") {}
-                .disabled(true)
+            Button(L("climb_creator_remix_action"), systemImage: "arrow.triangle.branch") {
+                editorTarget = DetailEditorTarget(edit: false)
+            }
             if state.isOwn {
                 if state.editLocked {
                     Button(L("climb_detail_edit_locked_kilter"), systemImage: "pencil") {}
                         .disabled(true)
                 } else {
-                    Button(L("climb_creator_edit_action"), systemImage: "pencil") {}
-                        .disabled(true)
+                    Button(L("climb_creator_edit_action"), systemImage: "pencil") {
+                        editorTarget = DetailEditorTarget(edit: true)
+                    }
                 }
-                Text(LI("detail_edit_not_yet"))
                 Button(state.isUnpublishedDraft ? L("climb_creator_drafts_delete_action") : L("community_climb_delete_action"),
                        systemImage: "trash", role: .destructive) {
                     owner.model.requestDelete()
                 }
-            } else {
-                Text(LI("detail_edit_not_yet"))
             }
         }
     }
@@ -152,18 +151,8 @@ struct ClimbDetailView: View {
             }
         }
         .sheet(isPresented: $showBle) { NavigationStack { BleView(ble: ble) } }
-        .sheet(isPresented: $showLists) {
-            NavigationStack { AddToListSheet(core: core, climbUuid: ui.uuid, angle: ui.angle) }
-        }
-        .overlay(alignment: .bottom) {
-            if linkCopied {
-                Text(L("board_detail_link_copied"))
-                    .font(.footnote)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(.thinMaterial, in: Capsule())
-                    .padding(.bottom, 24)
-            }
-        }
+        .modifier(DetailExtraSheets(core: core, uuid: ui.uuid, angle: ui.angle,
+                                    showLists: $showLists, editorTarget: $editorTarget, linkCopied: linkCopied))
         .sheet(isPresented: Binding(get: { ui.showLogDialog }, set: { if !$0 { model.dismissLogDialog() } })) {
             NavigationStack { LogSheet(model: model, ui: ui) }.presentationDetents([.medium, .large])
         }
@@ -332,5 +321,56 @@ private struct OwnerDeleteDialogs: ViewModifier {
     private func binding(_ code: String) -> Binding<Bool> {
         Binding(get: { owner?.state.dialogCode == code },
                 set: { if !$0 && owner?.state.dialogCode == code { owner?.model.dismissDelete() } })
+    }
+}
+
+/// Which editor the detail opens: an own climb to edit, or a remix of this one.
+private struct DetailEditorTarget: Identifiable {
+    let edit: Bool
+    var id: String { edit ? "edit" : "remix" }
+}
+
+/// The add-to-list and editor sheets and the "link copied" note, kept out of the
+/// detail's own modifier chain so it stays within the type checker's budget.
+private struct DetailExtraSheets: ViewModifier {
+    let core: AppCore
+    let climbUuid: String
+    let angle: Int32
+    @Binding var showLists: Bool
+    @Binding var editorTarget: DetailEditorTarget?
+    let linkCopied: Bool
+
+    init(core: AppCore, uuid: String, angle: Int32, showLists: Binding<Bool>,
+         editorTarget: Binding<DetailEditorTarget?>, linkCopied: Bool) {
+        self.core = core
+        self.climbUuid = uuid
+        self.angle = angle
+        self._showLists = showLists
+        self._editorTarget = editorTarget
+        self.linkCopied = linkCopied
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $editorTarget) { target in
+                NavigationStack {
+                    CreatorView(core: core, editUuid: target.edit ? climbUuid : "", forkUuid: target.edit ? "" : climbUuid)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) { Button(L("action_close")) { editorTarget = nil } }
+                        }
+                }
+            }
+            .sheet(isPresented: $showLists) {
+                NavigationStack { AddToListSheet(core: core, climbUuid: climbUuid, angle: angle) }
+            }
+            .overlay(alignment: .bottom) {
+                if linkCopied {
+                    Text(L("board_detail_link_copied"))
+                        .font(.footnote)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(.thinMaterial, in: Capsule())
+                        .padding(.bottom, 24)
+                }
+            }
     }
 }
