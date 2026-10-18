@@ -64,12 +64,33 @@ struct MapView: View {
         }
     }
 
+    // Split in stages: as one expression the map, its overlays and its sheets were too large
+    // for the type checker.
     @ViewBuilder
     private func content(model: MapScreenModel, ui: MapScreenState) -> some View {
-        let shown = visiblePins(ui.pins)
         let styles = MapMarkerStyleBook(ui.markerStyles)
+        sheets(overlays(mapLayer(model: model, ui: ui, styles: styles), model: model, ui: ui, styles: styles),
+               model: model, ui: ui, styles: styles)
+    }
+
+    private func mapLayer(model: MapScreenModel, ui: MapScreenState, styles: MapMarkerStyleBook) -> some View {
         let showNames = (visibleRegion?.span.latitudeDelta ?? 180) < Self.namesBelowSpan
-        Map(position: $camera, interactionModes: [.pan, .zoom]) {
+        return Map(position: $camera, interactionModes: [.pan, .zoom]) {
+            mapContent(model: model, ui: ui, styles: styles)
+        }
+        .annotationTitles(showNames ? .automatic : .hidden)
+        .mapStyle(.standard(pointsOfInterest: .excludingAll))
+        .mapControls { MapScaleView() }
+        .onMapCameraChange(frequency: .onEnd) { context in
+            visibleRegion = context.region
+            report(context.region, model: model)
+        }
+    }
+
+    @MapContentBuilder
+    private func mapContent(model: MapScreenModel, ui: MapScreenState, styles: MapMarkerStyleBook) -> some MapContent {
+        let shown = visiblePins(ui.pins)
+
             ForEach(shown, id: \.id) { pin in
                 Annotation(pin.title, coordinate: CLLocationCoordinate2D(latitude: pin.latitude, longitude: pin.longitude),
                            anchor: .center) {
@@ -93,14 +114,10 @@ struct MapView: View {
                         .shadow(radius: 2)
                 }
             }
-        }
-        .annotationTitles(showNames ? .automatic : .hidden)
-        .mapStyle(.standard(pointsOfInterest: .excludingAll))
-        .mapControls { MapScaleView() }
-        .onMapCameraChange(frequency: .onEnd) { context in
-            visibleRegion = context.region
-            report(context.region, model: model)
-        }
+    }
+
+    private func overlays<Base: View>(_ base: Base, model: MapScreenModel, ui: MapScreenState, styles: MapMarkerStyleBook) -> some View {
+        base
         .onChange(of: ui.hasStartCamera, initial: true) { _, ready in
             guard ready, !startApplied else { return }
             startApplied = true
@@ -129,6 +146,10 @@ struct MapView: View {
                     .background(.background)
             }
         }
+    }
+
+    private func sheets<Base: View>(_ base: Base, model: MapScreenModel, ui: MapScreenState, styles: MapMarkerStyleBook) -> some View {
+        base
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(L("map_open_stats"), systemImage: "chart.bar") { showStats = true }

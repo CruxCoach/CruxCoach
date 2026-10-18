@@ -92,15 +92,20 @@ struct ClimbingDaySheetView: View {
 
     @ViewBuilder
     private func minutesSection(_ model: ClimbingDayScreenModel, _ ui: ClimbingDayScreenState) -> some View {
+        let options: [Int32] = ui.minuteOptions.map { $0.int32Value }
+        let chosen: Int32 = ui.minutes
         Section(L("trl_day_minutes")) {
             TrainingFlow {
-                ForEach(ui.minuteOptions.map { $0.intValue }, id: \.self) { m in
-                    TrainingChoiceChip(title: L("trl_day_minutes_value", Int(m)), selected: ui.minutes == m) {
-                        model.setMinutes(minutes: m)
-                    }
+                ForEach(options, id: \.self) { m in
+                    minuteChip(m, selected: m == chosen, model: model)
                 }
             }
         }
+    }
+
+    private func minuteChip(_ m: Int32, selected: Bool, model: ClimbingDayScreenModel) -> some View {
+        let title: String = L("trl_day_minutes_value", Int(m))
+        return TrainingChoiceChip(title: title, selected: selected) { model.setMinutes(minutes: m) }
     }
 
     @ViewBuilder
