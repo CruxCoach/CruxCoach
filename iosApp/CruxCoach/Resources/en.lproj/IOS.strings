@@ -450,3 +450,5 @@
 "tour_spotlight_entry_swipe" = "Your entry. Swipe it to the left to edit or delete it.";
 /* Quantum board (wave 7) */
 "quantum_wall_fit_unavailable" = "Not available on iPhone yet: this screen does not follow the layers on the wall.";
+/* Nearby area on the board screens (wave 5, nearbyarea) */
+"nearby_disconnect_needs_android" = "Asking the other phone to free the board needs an Android phone: an iPhone app cannot send that request over Bluetooth.";

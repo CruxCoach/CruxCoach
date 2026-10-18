@@ -27,7 +27,8 @@ struct RootView: View {
                 ProgressView()
             case .ready(let core):
                 // Android's start-up question about a report from the last crash.
-                MainView(core: core).modifier(CrashReportPrompt(core: core))
+                // Android's successor question is asked from any screen (`SharedSuccessorPrompt`).
+                MainView(core: core).modifier(CrashReportPrompt(core: core)).modifier(SharedSuccessorPrompt(core: core))
             case .failed(let code, let detail):
                 StartFailureView(code: code, detail: detail)
             }

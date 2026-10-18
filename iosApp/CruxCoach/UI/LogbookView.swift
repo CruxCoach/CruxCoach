@@ -26,6 +26,7 @@ struct LogbookView: View {
                 ProgressView()
             }
         }
+        .modifier(NearbyStatusInset(core: core, ble: ble))
         .modifier(BleStatusInset(ble: ble))
         .modifier(RestTimerBannerSlot(core: core))
         .modifier(LogbookOwnPublishFeedback(host: ownPublish))

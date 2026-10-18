@@ -348,7 +348,9 @@ struct ClimbDetailView: View {
             }
             .padding()
         }
-        // Android's BleStatusArea on the detail: the board link's chip under the running playlist's banner.
+        // Android's BleStatusArea on the detail: the board link's chip under the running playlist's banner,
+        // nearby phones below it; their climb opens here in place (Android `switchClimb`).
+        .modifier(NearbyStatusInset(core: core, ble: ble, currentClimbUuid: ui.uuid) { uuid, angle in model.open(uuid: uuid, angle: angle) })
         .modifier(BleStatusInset(ble: ble) { showBle = true })
         .safeAreaInset(edge: .top, spacing: 0) { SessionPlaylistBanner(core: core) }
     }
