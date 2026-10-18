@@ -81,7 +81,7 @@ jobs:
           cd iosApp && xcodegen generate
       # Simulator builds are signed ad hoc by Xcode ("sign to run locally", no identity, no secret);
       # without it the test host has no keychain entitlement and SecItem calls fail.
-      - name: Build and test on the simulator
+      - name: Build and run the unit tests on the simulator
         # Runs after an earlier failure too (the job still fails), so one CI round reports every
         # broken stage at once.
         if: ${{ !cancelled() }}
@@ -89,30 +89,24 @@ jobs:
           set -o pipefail
           DEVICE="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9]+[^(]*' | sed 's/ *$//')"
           echo "Simulator: $DEVICE"
-          cd iosApp && xcodebuild test -project CruxCoach.xcodeproj -scheme CruxCoach \
+          echo "SIM_DEVICE=$DEVICE" >> "$GITHUB_ENV"
+          cd iosApp
+          xcodebuild build-for-testing -project CruxCoach.xcodeproj -scheme CruxCoach \
             -destination "platform=iOS Simulator,name=$DEVICE" \
-            -resultBundlePath "$RUNNER_TEMP/sim.xcresult" \
-            -derivedDataPath build/sim 2>&1 | tee "$RUNNER_TEMP/ci-sim.log" | tail -200
-      # Public summary of every simulator test (logs need a login, annotations do not),
-      # and the UI tests' screenshots for the artifact.
-      - name: Simulator test summary and screenshots
-        if: always()
-        run: |
-          test -d "$RUNNER_TEMP/sim.xcresult" || exit 0
-          python3 scripts/ci_xcresult_summary.py "$RUNNER_TEMP/sim.xcresult" "$RUNNER_TEMP/screenshots"
+            -derivedDataPath build/sim 2>&1 | tee "$RUNNER_TEMP/ci-sim.log" | tail -100
+          xcodebuild test-without-building -project CruxCoach.xcodeproj -scheme CruxCoach \
+            -destination "platform=iOS Simulator,name=$DEVICE" -only-testing:CruxCoachTests \
+            -resultBundlePath "$RUNNER_TEMP/sim-unit.xcresult" \
+            -derivedDataPath build/sim 2>&1 | tee -a "$RUNNER_TEMP/ci-sim.log" | tail -100
       - name: Build for device, unsigned
-        # Runs after an earlier failure too (the job still fails), so one CI round reports every
-        # broken stage at once.
         if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           cd iosApp && xcodebuild build -project CruxCoach.xcodeproj -scheme CruxCoach \
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" 2>&1 | tee "$RUNNER_TEMP/ci-device.log" | tail -200
-      # Job logs need admin rights on the repository; annotations are public.
-      - name: Summarise failure
-        if: failure()
-        run: python3 scripts/ci_log_tail.py "$RUNNER_TEMP/ci-*.log"
+      # The IPA is packaged as soon as the app builds and its unit tests pass; the UI flows
+      # below still decide whether the run is green.
       - name: Package unsigned IPA
         run: |
           cd iosApp
@@ -126,13 +120,6 @@ jobs:
           shasum -a 256 "$NAME" | tee "$NAME.sha256"
           lipo -info "Payload/CruxCoach.app/CruxCoach"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: CruxCoach-iOS-simulator-screenshots-${{ github.sha }}
-          if-no-files-found: ignore
-          retention-days: 14
-          path: ${{ runner.temp }}/screenshots/*.png
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: CruxCoach-iOS-UNSIGNED-${{ github.sha }}
           if-no-files-found: error
@@ -140,3 +127,31 @@ jobs:
           path: |
             iosApp/CruxCoach-*-UNSIGNED.ipa
             iosApp/CruxCoach-*-UNSIGNED.ipa.sha256
+      - name: UI flows on the simulator
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          cd iosApp && xcodebuild test-without-building -project CruxCoach.xcodeproj -scheme CruxCoach \
+            -destination "platform=iOS Simulator,name=$SIM_DEVICE" -only-testing:CruxCoachUITests \
+            -resultBundlePath "$RUNNER_TEMP/sim-ui.xcresult" \
+            -derivedDataPath build/sim 2>&1 | tee "$RUNNER_TEMP/ci-ui.log" | tail -100
+      # Public summary of every simulator test (logs need a login, annotations do not),
+      # and the UI flows' screenshots for the artifact.
+      - name: Simulator test summary and screenshots
+        if: always()
+        run: |
+          for bundle in "$RUNNER_TEMP/sim-unit.xcresult" "$RUNNER_TEMP/sim-ui.xcresult"; do
+            test -d "$bundle" || continue
+            python3 scripts/ci_xcresult_summary.py "$bundle" "$RUNNER_TEMP/screenshots"
+          done
+      # Job logs need admin rights on the repository; annotations are public.
+      - name: Summarise failure
+        if: failure()
+        run: python3 scripts/ci_log_tail.py "$RUNNER_TEMP/ci-*.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: CruxCoach-iOS-simulator-screenshots-${{ github.sha }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: ${{ runner.temp }}/screenshots/*.png
