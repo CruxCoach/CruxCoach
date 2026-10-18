@@ -673,6 +673,8 @@ class AppCore private constructor(
         return com.cruxcoach.app.ui.ClimbingDayScreenModel(
             com.cruxcoach.app.training.ClimbingDayPresenter(service, MainScope(), Dispatchers.IO),
         )
+    }
+
     // ── Training: workouts and exercises ──────────────────────────────
     //
     // The Training tab's library: workouts, the editor, the week plan and the
