@@ -20,6 +20,8 @@ struct BrowserView: View {
     @State private var bodyOpen = false
     /// The app's running playlist: a row's "+" queues the climb while it plays (Android).
     @State private var session: ScreenHost<BoardSessionHub, SessionBannerState>?
+    /// A joined Android-hosted shared playlist (the participant side).
+    @State private var shared: ScreenHost<SharedSessionsModel, SharedSessionsState>?
 
     enum Sheet: String, Identifiable { case board, ble, catalogue, filters, holds; var id: String { rawValue } }
 
@@ -47,6 +49,9 @@ struct BrowserView: View {
             let hub = core.boardSessionHub
             session = ScreenHost(model: hub, initial: hub.bannerState,
                                  subscribe: { model, onState in model.watchBanner(onState: onState) })
+            let joined = core.sharedSessions
+            shared = ScreenHost(model: joined, initial: joined.currentState,
+                                subscribe: { model, onState in model.watch(onState: onState) })
             let guided = core.makeBrowserTour()
             tour = guided
             tourStep = guided.step
@@ -176,6 +181,8 @@ struct BrowserView: View {
     @ViewBuilder private func queueAdd(climb: ClimbRowUi, angle: Int32) -> some View {
         if let session, session.state.isActive {
             SessionQueueAddButton(hub: session.model, ui: session.state, climbUuid: climb.uuid, angle: angle)
+        } else if let shared {
+            SharedSessionAddButton(model: shared.model, ui: shared.state, climbUuid: climb.uuid, angle: angle)
         }
     }
 
