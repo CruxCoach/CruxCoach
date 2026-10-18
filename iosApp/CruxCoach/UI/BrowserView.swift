@@ -5,6 +5,7 @@ import SwiftUI
 struct BrowserView: View {
     let core: AppCore
     let sync: ScreenHost<SyncScreenModel, SyncScreenState>
+    @Environment(AppEnvironment.self) private var environment
     @State private var host: ScreenHost<BrowserScreenModel, BrowserScreenState>?
     @State private var ble: ScreenHost<BleScreenModel, BleScreenState>?
     @State private var tour: BrowserTourModel?
@@ -15,6 +16,8 @@ struct BrowserView: View {
     @State private var path = NavigationPath()
     /// The training area (Android's "Training & nutrition" menu entry) covers the browser while open.
     @State private var trainingOpen = false
+    /// The body page over the training area, opened by a body reminder's notification.
+    @State private var bodyOpen = false
 
     enum Sheet: String, Identifiable { case board, ble, catalogue, filters, holds; var id: String { rawValue } }
 
@@ -22,6 +25,9 @@ struct BrowserView: View {
         Group {
             if let host, let ble {
                 content(host: host, ble: ble)
+                    .modifier(NotificationRouting(router: environment.router, athleteAvailable: core.athleteAvailable,
+                                                  trainingOpen: $trainingOpen, bodyOpen: $bodyOpen,
+                                                  closeSheet: { closeSheet() }))
             } else {
                 ProgressView()
             }
@@ -143,9 +149,7 @@ struct BrowserView: View {
                 }
             }
             .onChange(of: sync.state.catalogueRevision) { _, _ in model.refresh() }
-            .fullScreenCover(isPresented: $trainingOpen) {
-                TrainingHomeView(core: core) { trainingOpen = false }
-            }
+            .fullScreenCover(isPresented: $trainingOpen) { trainingArea() }
             .onOpenURL { url in
                 // Universal links need a paid team, so `cruxcoach://c/<uuid>`
                 // and a pasted CruxCoach URL go through the same parser.
@@ -154,6 +158,20 @@ struct BrowserView: View {
             }
         }
         .task { model.start() }
+    }
+
+    private func trainingArea() -> some View {
+        TrainingHomeView(core: core) { trainingOpen = false }
+            .sheet(isPresented: $bodyOpen) {
+                NotificationBodySheet(core: core) { bodyOpen = false }
+            }
+    }
+
+    /// For a notification tap: a cover cannot come up over the browser's own sheet.
+    private func closeSheet() -> Bool {
+        let wasOpen: Bool = sheet != nil
+        sheet = nil
+        return wasOpen
     }
 
     private func sortTitle(_ code: String) -> String {

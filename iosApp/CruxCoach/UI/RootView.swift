@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.scenePhase) private var scenePhase
 
     private var keepScreenOn: Bool {
         guard case .ready(let core) = environment.phase else { return false }
@@ -36,6 +37,9 @@ struct RootView: View {
             UIApplication.shared.isIdleTimerDisabled = keepOn
         }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { environment.refreshReminders() }
+        }
     }
 }
 
@@ -179,4 +183,56 @@ private struct WhatsNewSheet: View {
         "release-0.2.1": "whatsnew_021_hint",
         "release-0.2.2": "whatsnew_022_hint",
     ]
+}
+
+/// Follows a tapped notification's route (Android `navigate_to`) from the board browser, which
+/// presents the training area: "today" opens it (Today is its first tab), "body" opens the body
+/// page above it, so closing that page leads into the training area, as Android's Back does.
+struct NotificationRouting: ViewModifier {
+    let router: AppRouter
+    let athleteAvailable: Bool
+    @Binding var trainingOpen: Bool
+    @Binding var bodyOpen: Bool
+    /// Closes a sheet of the browser; true when one was open (a cover cannot come up over it).
+    let closeSheet: () -> Bool
+
+    func body(content: Content) -> some View {
+        content.onChange(of: router.pending, initial: true) { _, route in
+            follow(route)
+        }
+    }
+
+    private func follow(_ route: String) {
+        guard !route.isEmpty else { return }
+        let taken: String = router.take()
+        let hadSheet: Bool = closeSheet()
+        let wasOpen: Bool = trainingOpen
+        Task {
+            // A sheet still going down, or the training area still coming up, refuses the next presentation.
+            if hadSheet { try? await Task.sleep(nanoseconds: Self.settle) }
+            trainingOpen = true
+            guard taken == AppRouter.body, athleteAvailable else { return }
+            if !wasOpen { try? await Task.sleep(nanoseconds: Self.settle) }
+            bodyOpen = true
+        }
+    }
+
+    private static let settle: UInt64 = 700_000_000
+}
+
+/// The body page over the training area, opened by a weigh-in or measuring reminder.
+struct NotificationBodySheet: View {
+    let core: AppCore
+    let onClose: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ProgressBodyView(core: core)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(L("action_close"), action: onClose)
+                    }
+                }
+        }
+    }
 }
