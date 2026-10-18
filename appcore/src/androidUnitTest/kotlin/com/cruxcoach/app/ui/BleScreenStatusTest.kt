@@ -182,6 +182,42 @@ class BleScreenStatusTest {
         rig.close()
     }
 
+    @Test
+    fun `a board of another family on the link offers the guided fix once per connection`() = runTest {
+        val rig = Rig(this)
+        assertFalse(rig.model.connectionMismatch(activeBrandWire = "moonboard").active, "nothing on the link")
+        connectKilter(rig)
+        assertEquals("kilter", rig.model.currentState.connectedBrandWire)
+        assertFalse(rig.model.connectionMismatch(activeBrandWire = "kilter").active)
+
+        val fix = rig.model.connectionMismatch(activeBrandWire = "moonboard")
+        assertTrue(fix.active)
+        assertEquals("activeBrand", fix.kindCode)
+        assertEquals("board_mismatch_active_brand", fix.messageKey)
+        assertEquals("MoonBoard", fix.messageArg1)
+        assertEquals("Kilter", fix.messageArg2)
+        assertEquals("board_mismatch_detected_controller", fix.sourceKey)
+        // Android lands a generic Kilter controller on the Original 12x12 with kickboard.
+        assertEquals("kilter", fix.prefillBrandWire)
+        assertEquals(1, fix.prefillLayoutId)
+        assertEquals(10, fix.prefillProductSizeId)
+
+        assertFalse(rig.model.currentState.mismatchPromptDismissed)
+        rig.model.dismissConnectionMismatch()
+        assertTrue(rig.model.currentState.mismatchPromptDismissed)
+        assertTrue(rig.seen.last().mismatchPromptDismissed, "the dismissal reaches watchers without a link change")
+        assertTrue(rig.model.connectionMismatch(activeBrandWire = "moonboard").active, "the mismatch itself stays")
+
+        rig.model.disconnect()
+        runCurrent()
+        assertEquals("", rig.model.currentState.connectedBrandWire)
+        assertFalse(rig.model.currentState.mismatchPromptDismissed)
+        rig.model.reconnectRemembered(brandWire = "kilter")
+        advanceTimeBy(1_000); runCurrent()
+        assertFalse(rig.model.currentState.mismatchPromptDismissed, "a new connection asks again")
+        rig.close()
+    }
+
     private companion object {
         const val KILTER_ID = "11111111-2222-3333-4444-555555555555"
     }

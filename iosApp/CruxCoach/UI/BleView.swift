@@ -4,7 +4,10 @@ import SwiftUI
 /// Scan for, connect to and disconnect from a board. The phone itself is the BLE central.
 struct BleView: View {
     let ble: ScreenHost<BleScreenModel, BleScreenState>
+    /// Hosts that own the active board pass this to get Android's guided fix for a board of another family.
+    var fix: BoardMismatchRoute? = nil
     @Environment(\.dismiss) private var dismiss
+    @State private var showFix = false
 
     private var ui: BleScreenState { ble.state }
     private var model: BleScreenModel { ble.model }
@@ -23,6 +26,9 @@ struct BleView: View {
                         Button(LI("ble_clear")) { model.clearBoard() }.disabled(ui.sending)
                     }
                     Button(L("board_ble_disconnect"), role: .destructive) { model.disconnect() }
+                }
+                if let mismatch {
+                    BleMismatchSection(mismatch: mismatch, canFix: fix != nil) { showFix = true }
                 }
             } else {
                 if ui.connection == "connecting" {
@@ -68,6 +74,14 @@ struct BleView: View {
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L("action_close")) { dismiss() } } }
         .onAppear { model.activate(); model.startScan() }
         .onDisappear { model.stopScan() }
+        .modifier(BleMismatchPrompt(ble: ble, route: fix, showFix: $showFix))
+    }
+
+    /// Android `connectedBoardConfigurationMismatch` for the board on the link; nil when it matches.
+    private var mismatch: BoardMismatchUi? {
+        guard let fix, !ui.connectedBrandWire.isEmpty else { return nil }
+        let result: BoardMismatchUi = model.connectionMismatch(activeBrandWire: fix.activeBrandWire)
+        return result.active ? result : nil
     }
 
     /// Android's "Last used" card: reconnect a remembered board directly, without a scan.

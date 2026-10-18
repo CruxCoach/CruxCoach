@@ -8,12 +8,17 @@ struct BoardPickerView: View {
     let core: AppCore
     let brandWires: [String]
     let onPick: (BoardOption) -> Void
+    /// Android's guided fix: explain the mismatch and offer the board the evidence points at first.
+    var mismatch: BoardMismatchUi? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var showGymSearch = false
     @State private var gymSearchNearby = false
 
     var body: some View {
         List {
+            if let mismatch {
+                guidedSections(mismatch)
+            }
             Section {
                 Button {
                     gymSearchNearby = true
@@ -32,7 +37,7 @@ struct BoardPickerView: View {
             if brandWires.isEmpty {
                 Text(LI("browser_no_catalogue_hint"))
             }
-            ForEach(brandWires, id: \.self) { wire in
+            ForEach(otherBrandWires, id: \.self) { wire in
                 brandSection(wire)
             }
         }
@@ -42,6 +47,61 @@ struct BoardPickerView: View {
                           onPick: onPick, onPickDirectly: { showGymSearch = false })
         }
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L("action_close")) { dismiss() } } }
+    }
+
+    /// The guided fix lists the expected family on top; it is not repeated below.
+    private var otherBrandWires: [String] {
+        guard let wire = mismatch?.prefillBrandWire else { return brandWires }
+        return brandWires.filter { $0 != wire }
+    }
+
+    @ViewBuilder
+    private func guidedSections(_ mismatch: BoardMismatchUi) -> some View {
+        let options: [BoardOption] = guidedOptions(mismatch)
+        Section { BoardMismatchExplanation(mismatch: mismatch) }
+        Section {
+            if options.isEmpty {
+                Text(LI("browser_no_catalogue_hint")).font(.footnote)
+            }
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                guidedRow(option, preselected: isPrefill(option, mismatch))
+            }
+        } header: {
+            Text(L("board_mismatch_choose_detail"))
+        }
+    }
+
+    /// The prefilled board first (Android preselects it), then the family's other choices.
+    private func guidedOptions(_ mismatch: BoardMismatchUi) -> [BoardOption] {
+        let all: [BoardOption] = core.boardOptions(brandWire: mismatch.prefillBrandWire)
+        let first: [BoardOption] = all.filter { isPrefill($0, mismatch) }
+        let rest: [BoardOption] = all.filter { !isPrefill($0, mismatch) }
+        return first + rest
+    }
+
+    private func isPrefill(_ option: BoardOption, _ mismatch: BoardMismatchUi) -> Bool {
+        let layout: Int32 = mismatch.prefillLayoutId
+        let size: Int32 = mismatch.prefillProductSizeId
+        if layout == 0 { return false }
+        return option.layoutId == layout && (size == 0 || option.productSizeId == size)
+    }
+
+    private func guidedRow(_ option: BoardOption, preselected: Bool) -> some View {
+        Button { onPick(option) } label: {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text(option.layoutName).foregroundStyle(.primary)
+                    if !option.sizeName.isEmpty {
+                        Text(option.sizeName).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if preselected {
+                    Image(systemName: "checkmark").foregroundStyle(Color.orange)
+                }
+            }
+        }
+        .accessibilityAddTraits(preselected ? .isSelected : [])
     }
 
     @ViewBuilder

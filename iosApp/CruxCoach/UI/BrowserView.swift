@@ -171,7 +171,7 @@ struct BrowserView: View {
                             sheet = nil
                         }
                     case .ble:
-                        BleView(ble: ble)
+                        BleView(ble: ble, fix: BoardMismatchRoute(core: core, activeBrandWire: ui.brandWire, brandWires: sync.state.rows.filter { $0.installed }.map { $0.brandWire }, onPick: { option in model.switchBoard(option: option); sheet = nil }))
                     case .catalogue:
                         CatalogueView(core: core, sync: sync, isOnboarding: false)
                     case .filters:

@@ -52,6 +52,10 @@ class BleScreenState(
     /** Routes on the wall from every app, out of [quantumWallCapacity]. */
     val quantumWallActive: Int,
     val quantumWallCapacity: Int,
+    /** Wire value of the board family on the link; empty while none is connected. */
+    val connectedBrandWire: String,
+    /** The user closed this connection's guided board fix (Android: one prompt per physical connection). */
+    val mismatchPromptDismissed: Boolean,
 )
 
 /** Board connection screen. The phone is the BLE central; nothing here has run on hardware. */
@@ -65,6 +69,8 @@ class BleScreenModel(private val presenter: BoardConnectionPresenter) {
     private var released = true
     /** A status the user dismissed; it stays hidden until the status changes. */
     private var dismissedStatus = ""
+    /** The connected board whose mismatch prompt the user closed; cleared once the link is down. */
+    private var mismatchDismissedFor: String? = null
 
     val currentState: BleScreenState get() = map(presenter.state.value)
 
@@ -129,7 +135,36 @@ class BleScreenModel(private val presenter: BoardConnectionPresenter) {
         },
         quantumWallActive = state.quantumActivePlayers,
         quantumWallCapacity = QUANTUM_WALL_CAPACITY,
+        connectedBrandWire = if (linkUp(state)) state.connectedBoard?.boardBrand?.wireValue ?: "" else "",
+        mismatchPromptDismissed = mismatchDismissed(state),
     )
+
+    /** Idempotent like [status]: Android resets the dismissal while connecting or disconnected. */
+    private fun mismatchDismissed(state: BoardConnectionUiState): Boolean {
+        if (!linkUp(state)) mismatchDismissedFor = null
+        val board = state.connectedBoard?.identifier ?: return false
+        return linkUp(state) && mismatchDismissedFor == board
+    }
+
+    /**
+     * Android `connectedBoardConfigurationMismatch`: the board on the link is another family
+     * than the configured one, with the guided picker's prefill (the Quantum model the
+     * controller proves, Kilter Original 12x12, MoonBoard 2016). Inactive while nothing is connected.
+     */
+    fun connectionMismatch(activeBrandWire: String): BoardMismatchUi {
+        val state = presenter.state.value
+        if (!linkUp(state)) return BoardMismatchUi.NONE
+        val active = com.cruxcoach.domain.board.BoardBrand.fromWireOrNull(activeBrandWire) ?: return BoardMismatchUi.NONE
+        return BoardMismatchUi.of(
+            com.cruxcoach.app.setup.BoardMismatchPolicy.connected(active, state.connectedBoard?.boardBrand, state.quantumModel),
+        )
+    }
+
+    /** Closes this connection's guided fix; the send fences still refuse the other board. */
+    fun dismissConnectionMismatch() {
+        mismatchDismissedFor = presenter.state.value.connectedBoard?.identifier ?: return
+        republish()
+    }
 
     /** Idempotent: every watcher maps the same emission, so remembering must not depend on order. */
     private fun status(state: BoardConnectionUiState): String {
