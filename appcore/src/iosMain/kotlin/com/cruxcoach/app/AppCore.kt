@@ -1340,4 +1340,29 @@ class AppCore private constructor(
                 boardRepository, personalRepository, com.cruxcoach.app.browse.BrowsePreferences(platform.keyValues),
             ),
         )
+
+    // ── Training visuals (wave 5, trainingviz area): body map, grip picture, exercise thumbnails ──
+
+    /**
+     * What an exercise trains, as a picture (Android exercise page: body map, legend, tap text and
+     * the grip on the edge). Null while the athlete database is unavailable.
+     */
+    fun makeExerciseVisuals(slug: String): com.cruxcoach.app.ui.ExerciseVisualsModel? {
+        val service = athlete ?: return null
+        val store = service.catalogStore
+        return com.cruxcoach.app.ui.ExerciseVisualsModel(store.catalog, slug, { store.ensureLoaded() })
+    }
+
+    /**
+     * The movement pictogram of an exercise for the player header and the swap lists (Android
+     * `ExerciseThumb`). Null when the catalogue does not know the exercise or is not loaded yet.
+     */
+    fun exercisePictogram(slug: String): com.cruxcoach.app.ui.PictogramUi? {
+        val def = athlete?.catalog?.get(slug) ?: return null
+        return com.cruxcoach.app.ui.LibraryRows.pictogram(def)
+    }
+
+    /** The body map's shapes, layout and hit test for the player's "it hurts" sheet (Android `PainSheet`). */
+    fun bodyMapKit(): com.cruxcoach.app.ui.BodyMapKit = com.cruxcoach.app.ui.BodyMapKit.KIT
+
 }

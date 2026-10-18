@@ -1,5 +1,8 @@
 package com.cruxcoach.app.ui
 
+import com.cruxcoach.app.bodymap.BodyArea
+import com.cruxcoach.app.bodymap.bodyAreas
+import com.cruxcoach.app.bodymap.toInjuryRegion
 import com.cruxcoach.app.progress.InjuriesPresenter
 import com.cruxcoach.app.progress.InjuriesRunState
 import com.cruxcoach.app.training.Tx
@@ -42,6 +45,23 @@ class InjuryRegionUi(
 )
 
 class InjurySideUi(val code: String, val label: TrText)
+
+/**
+ * What a tap on the body map means for the injury form (Android `AddInjuryDialog`'s
+ * `BodyMapPicker` callbacks): the region (and its "pause climbing"), the side for a paired area
+ * of a limb region, and, when the area is finer than the region (forearm → elbow,
+ * hamstring → knee), its label for an empty detail field.
+ */
+class InjuryAreaPickUi(
+    val areaCode: String,
+    /** InjuryRegion name. */
+    val regionCode: String,
+    val pausesClimbing: Boolean,
+    /** InjurySide name to select, "" to keep the side as it is. */
+    val sideCode: String,
+    /** String key of the area's label for an empty detail field, "" for none. */
+    val detailKey: String,
+)
 
 class InjuriesScreenState(
     val loading: Boolean,
@@ -95,6 +115,26 @@ class InjuriesScreenModel internal constructor(private val presenter: InjuriesPr
     fun delete(id: String) { active(id)?.let { presenter.delete(it) } }
 
     fun startHoliday() = presenter.startHoliday()
+
+    /** The body map drawn in the form. */
+    val bodyMap: BodyMapKit = BodyMapKit.KIT
+
+    /** A tap on [areaCode]; [bodySideCode] is the hit's `left` | `right` | "". Null for an unknown area. */
+    fun pickArea(areaCode: String, bodySideCode: String): InjuryAreaPickUi? {
+        val area = BodyArea.ofCode(areaCode) ?: return null
+        val region = area.toInjuryRegion() ?: return null
+        val side = when (bodySideCode) {
+            "left" -> InjurySide.LEFT
+            "right" -> InjurySide.RIGHT
+            else -> null
+        }?.takeIf { region.limb }
+        return InjuryAreaPickUi(area.code, region.name, region in PAUSING_REGIONS, side?.name ?: "",
+            if (area in region.bodyAreas()) "" else "trb_area_" + area.code)
+    }
+
+    /** The area a region chip selects on the map (its first), "" when it has none (other). */
+    fun firstAreaOf(regionCode: String): String =
+        InjuryRegion.entries.firstOrNull { it.name == regionCode }?.bodyAreas()?.firstOrNull()?.code ?: ""
 
     fun endPause() { presenter.state.value.pauses.firstOrNull { it.endDay == null }?.let { presenter.endPause(it) } }
 
