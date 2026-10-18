@@ -113,6 +113,45 @@ class FileExchangePresenterTest {
     }
 
     @Test
+    fun `the csv zip export writes Android's archive from the same payload`() = runBlocking {
+        val store = FakeStore(
+            payload = """{"version":3,"app":"CruxCoach","boardAscents":[{"climbUuid":"c1","angle":40}],"boardBids":[]}""",
+        )
+        val presenter = presenter(store)
+        presenter.exportCsvZip()
+
+        val done = await(presenter) { it.exportPath.isNotEmpty() || it.error != FileExchangeError.NONE }
+        assertEquals(FileExchangeError.NONE, done.error)
+        val file = File(done.exportPath)
+        assertEquals("cruxcoach_csv_export.zip", file.name)
+        assertEquals(file.length(), done.exportBytes)
+        val names = java.util.zip.ZipFile(file).use { zip -> zip.entries().toList().map { it.name } }
+        assertEquals(listOf("manifest.json", "board_logbook.csv", "climb_notes.csv", "climb_lists.csv", "own_climbs.csv"), names)
+        presenter.discardExport()
+        await(presenter) { it.exportPath.isEmpty() }
+        assertFalse(file.exists())
+
+        // A payload the archive cannot read is an export failure, not a crash or an empty file.
+        store.payload = "[]"
+        presenter.exportCsvZip()
+        val failed = await(presenter) { it.error != FileExchangeError.NONE }
+        assertEquals(FileExchangeError.EXPORT_FAILED, failed.error)
+        assertFalse(File(root, "cruxcoach_csv_export.zip").exists())
+
+        // Android's readable XLSX copy from the same payload.
+        store.payload = """{"version":3,"app":"CruxCoach","boardAscents":[{"climbUuid":"c1","angle":40}],"boardBids":[]}"""
+        presenter.consumeError()
+        presenter.exportExcel()
+        val excel = await(presenter) { it.exportPath.isNotEmpty() || it.error != FileExchangeError.NONE }
+        assertEquals(FileExchangeError.NONE, excel.error)
+        assertEquals("cruxcoach_readable_export.xlsx", File(excel.exportPath).name)
+        val parts = java.util.zip.ZipFile(File(excel.exportPath)).use { zip -> zip.entries().toList().map { it.name } }
+        assertEquals("[Content_Types].xml", parts.first())
+        assertTrue("xl/worksheets/sheet4.xml" in parts)
+        presenter.close()
+    }
+
+    @Test
     fun `a failed export is reported instead of leaving a file behind`() = runBlocking {
         val store = FakeStore(payload = null)
         val presenter = presenter(store)

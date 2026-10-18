@@ -54,8 +54,22 @@ class FileExchangePresenter(
     fun watch(onState: (FileExchangeState) -> Unit) =
         com.cruxcoach.app.logbook.StateWatch(scope.launch { state.collect { onState(it) } })
 
-    /** Writes the export and leaves its path in the state for a share sheet. */
-    fun export() {
+    /** Writes the JSON export and leaves its path in the state for a share sheet. */
+    fun export() = export(ExportKind.JSON)
+
+    /**
+     * Android's "CSV ZIP" export: the same JSON, turned into spreadsheet tables
+     * (logbook, climb notes, lists, own climbs) by [CruxCoachCsvArchive].
+     * Export only here — Android imports it, this app imports the JSON file.
+     */
+    fun exportCsvZip() = export(ExportKind.CSV_ZIP)
+
+    /** Android's "Excel (export only)": the same tables as a readable XLSX workbook. */
+    fun exportExcel() = export(ExportKind.EXCEL)
+
+    private enum class ExportKind { JSON, CSV_ZIP, EXCEL }
+
+    private fun export(kind: ExportKind) {
         if (_state.value.isBusy) return
         val pubkey = pubkeyHex()
         if (pubkey.isEmpty()) {
@@ -69,8 +83,17 @@ class FileExchangePresenter(
                     val exportedAt = isoSeconds(clock.epochSeconds())
                     val json = payloads.exportJson(exportedAt, pubkey)
                         ?: return@withContext null
-                    val bytes = json.encodeToByteArray()
-                    val path = "${files.workDirectory()}/${fileName(clock.epochSeconds())}"
+                    val bytes = when (kind) {
+                        ExportKind.JSON -> json.encodeToByteArray()
+                        ExportKind.CSV_ZIP -> CruxCoachCsvArchive.fromJson(json, CruxCoachCsvArchive.ALL_CATEGORIES)
+                        ExportKind.EXCEL -> CruxCoachExcelWorkbook.fromJson(json, CruxCoachCsvArchive.ALL_CATEGORIES)
+                    }
+                    val name = when (kind) {
+                        ExportKind.JSON -> fileName(clock.epochSeconds())
+                        ExportKind.CSV_ZIP -> CruxCoachCsvArchive.FILE_NAME
+                        ExportKind.EXCEL -> CruxCoachExcelWorkbook.FILE_NAME
+                    }
+                    val path = "${files.workDirectory()}/$name"
                     // A stale export of the same day would otherwise be shared
                     // instead of this one.
                     files.delete(path)

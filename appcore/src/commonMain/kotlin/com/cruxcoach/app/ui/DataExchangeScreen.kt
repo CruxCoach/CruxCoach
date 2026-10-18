@@ -28,6 +28,12 @@ class DataExchangeScreenModel(private val presenter: FileExchangePresenter) {
     }
 
     fun export() = presenter.export()
+
+    /** Android's CSV ZIP (spreadsheet tables of the board data); shared like the JSON file. */
+    fun exportCsvZip() = presenter.exportCsvZip()
+
+    /** Android's readable XLSX copy; it cannot be imported back (Swift shows Android's notice). */
+    fun exportExcel() = presenter.exportExcel()
     fun discardExport() = presenter.discardExport()
     fun importFile(path: String, onFinished: () -> Unit) = presenter.import(path, onFinished)
     fun consumeError() = presenter.consumeError()

@@ -8,6 +8,8 @@ struct DataExchangeView: View {
     let core: AppCore
     @State private var host: ScreenHost<DataExchangeScreenModel, DataExchangeScreenState>?
     @State private var picking = false
+    /// Android's export format chips: "json", "csv" (CSV ZIP) or "excel" (export only).
+    @State private var format = "json"
 
     var body: some View {
         Group {
@@ -35,7 +37,8 @@ struct DataExchangeView: View {
             }
             Section(header: Text(L("bodystat_export"))) {
                 if ui.exportPath.isEmpty {
-                    Button(L("export_save_file")) { model.export() }
+                    formatPicker()
+                    Button(L("export_save_file")) { startExport(model: model) }
                         .disabled(ui.isBusy)
                 } else {
                     ShareLink(item: URL(fileURLWithPath: ui.exportPath)) {
@@ -75,6 +78,27 @@ struct DataExchangeView: View {
         .alert(LI(errorKey(ui.errorCode)),
                isPresented: Binding(get: { ui.errorCode != "none" }, set: { if !$0 { model.consumeError() } })) {
             Button(L("action_done")) { model.consumeError() }
+        }
+    }
+
+    @ViewBuilder
+    private func formatPicker() -> some View {
+        Picker(L("export_format_title"), selection: $format) {
+            Text(L("export_format_json")).tag("json")
+            Text(L("export_format_csv")).tag("csv")
+            Text(L("export_format_excel")).tag("excel")
+        }
+        .pickerStyle(.segmented)
+        if format == "excel" {
+            Text(L("export_excel_not_backup")).font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+
+    private func startExport(model: DataExchangeScreenModel) {
+        switch format {
+        case "csv": model.exportCsvZip()
+        case "excel": model.exportExcel()
+        default: model.export()
         }
     }
 
