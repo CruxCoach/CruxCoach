@@ -176,6 +176,24 @@ class CatalogueSyncController internal constructor(
         job?.cancel()
     }
 
+    /**
+     * A nearby-share import takes the same single-writer slot as a run (Android's sync slot).
+     * False while a run is active; while it is held, [start] is ignored.
+     */
+    fun claimLocalShare(): Boolean {
+        var claimed = false
+        _state.update { current ->
+            if (current.running) current else current.copy(running = true, brands = emptyList()).also { claimed = true }
+        }
+        return claimed
+    }
+
+    /** Frees the slot taken by [claimLocalShare]; a changed catalogue re-reads the installed boards and bumps the revision. */
+    fun releaseLocalShare(changed: Boolean) {
+        if (changed) refreshInstalledQuietly()
+        _state.update { it.copy(running = false, catalogueRevision = if (changed) it.catalogueRevision + 1 else it.catalogueRevision) }
+    }
+
     /** Forget a board's incremental markers after its catalogue was deleted, so the next run re-downloads it. */
     fun resetBrand(brand: BoardBrand) {
         track(brand)?.let { ManifestTrackStore(keyValues, it.prefsName, clock).clear() }

@@ -2085,4 +2085,30 @@ class AppCore private constructor(
         )
     }
 
+    // ── Nearby-share catalogue receive (iOS 0.2.4 parity: Android offline Wi-Fi share, receiving side) ──
+
+    private val localShareTransport: com.cruxcoach.app.localshare.IosLocalShareTransport by lazy {
+        com.cruxcoach.app.localshare.IosLocalShareTransport()
+    }
+
+    /** "Receive from a nearby phone": scan or paste the sender's code, choose boards, import. */
+    fun makeReceiveShareScreen(): com.cruxcoach.app.ui.ReceiveShareScreenModel {
+        val client = com.cruxcoach.app.localshare.LocalShareClient(localShareTransport, platform.files, platform.hashing)
+        val receiver = com.cruxcoach.app.localshare.LocalShareReceiver(
+            client = client,
+            files = platform.files,
+            hashing = platform.hashing,
+            gunzip = com.cruxcoach.app.localshare.IosFileGunzip(),
+            openSnapshot = { path -> com.cruxcoach.app.localshare.IosSnapshotDatabases.open(path) },
+            importer = com.cruxcoach.app.localshare.LocalShareImporter(boardDb),
+            workDirectory = platform.files.workDirectory(),
+        )
+        return com.cruxcoach.app.ui.ReceiveShareScreenModel(client, receiver, catalogueSync, boardDb, Dispatchers.Main, Dispatchers.IO)
+    }
+
+    /** True for the sender landing page's "open in app" link (`cruxcoach://offline-share?…`). */
+    fun isNearbyShareLink(url: String): Boolean {
+        return url.startsWith("cruxcoach://offline-share") && com.cruxcoach.app.ui.ReceiveShareScreenModel.parseLink(url) != null
+    }
+
 }
