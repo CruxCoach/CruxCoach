@@ -120,9 +120,10 @@ struct BrowserView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { sheet = .board } label: {
+                    Button { advanceTour(from: "board"); sheet = .board } label: {
                         Label(LI("browser_board"), systemImage: "square.grid.3x3")
                     }
+                    .tourAnchor("board", in: anchors)
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { sheet = .ble } label: {
@@ -401,6 +402,7 @@ private struct BrowserTourLayer: ViewModifier {
     /// (project, log, entry) belong to the climb detail and the logbook.
     private var target: String? {
         switch step {
+        case "board": return "board"
         case "connect": return "ble"
         case "angle": return "angle"
         case "filter", "logbook": return "more"
@@ -411,6 +413,7 @@ private struct BrowserTourLayer: ViewModifier {
 
     private var message: String {
         switch step {
+        case "board": return L("tour_spotlight_board_picker")
         case "connect": return connected ? L("tour_spotlight_connect_done") : L("tour_spotlight_connect")
         case "angle": return L("tour_spotlight_angle")
         case "filter": return L("tour_spotlight_filter")

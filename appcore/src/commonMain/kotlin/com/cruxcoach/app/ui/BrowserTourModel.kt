@@ -4,7 +4,7 @@ import com.cruxcoach.app.platform.KeyValueStore
 
 /**
  * The guided first browse, port of Android's `BrowserTour` state machine:
- * connect a board, set the angle, filter, open a climb, save it as a project,
+ * pick the board, connect it, set the angle, filter, open a climb, save it as a project,
  * log an attempt, and find it again in the logbook.
  *
  * Deliberately separate from onboarding completion, as on Android: an upgrade
@@ -12,16 +12,16 @@ import com.cruxcoach.app.platform.KeyValueStore
  *
  * Swift draws each step as Android's spotlight (a dimmed screen with a
  * cut-out around the real control, `TourSpotlight.swift`) on the screen the
- * step belongs to: browser (connect, angle, filter, open, logbook), climb
+ * step belongs to: browser (board, connect, angle, filter, open, logbook), climb
  * detail (project, log, logbook) and logbook (entry). Both platforms advance on
  * the step's own action; iOS adds a Next button to every step.
  *
- * **Differences from Android:** no board-picker step (iOS starts at connect),
- * and the filter and logbook steps point at More, where the iPhone keeps both.
+ * **Difference from Android:** the filter and logbook steps point at More,
+ * where the iPhone keeps both.
  */
 class BrowserTourModel(private val store: KeyValueStore) {
 
-    /** inactive | connect | angle | filter | open | project | log | logbook | entry | done */
+    /** inactive | board | connect | angle | filter | open | project | log | logbook | entry | done */
     var step: String = STEP_INACTIVE
         private set
 
@@ -41,14 +41,15 @@ class BrowserTourModel(private val store: KeyValueStore) {
     val isActive: Boolean get() = step != STEP_INACTIVE && step != STEP_DONE
 
     /**
-     * Starts the tour. Without Bluetooth the connect step is skipped rather
-     * than shown and failed; [replay] from settings offers it again.
+     * Starts the tour, always at the board picker as on Android: model and size
+     * decide the whole catalogue, and a connection made during setup must not
+     * hide where that choice lives. [replay] from settings offers Bluetooth again.
      */
     fun start(replay: Boolean) {
         store.putString(KEY_ENTRY, null)
         loggedEntryUuid = ""
         if (replay) store.putString(KEY_DEFER_BLE, "false")
-        move(if (store.getString(KEY_DEFER_BLE) == "true") STEP_ANGLE else STEP_CONNECT)
+        move(STEP_BOARD)
     }
 
     /** The user has no board to connect: never offer that step again. */
@@ -60,6 +61,11 @@ class BrowserTourModel(private val store: KeyValueStore) {
     /** Advances only from [from], so a repeated action cannot skip a step. */
     fun advance(from: String) {
         if (step != from) return
+        // Android `afterBoardStep`: without Bluetooth the connect step is skipped rather than shown and failed.
+        if (from == STEP_BOARD) {
+            move(if (store.getString(KEY_DEFER_BLE) == "true") STEP_ANGLE else STEP_CONNECT)
+            return
+        }
         val index = ORDER.indexOf(from)
         if (index < 0 || index + 1 >= ORDER.size) return
         move(ORDER[index + 1])
@@ -80,6 +86,7 @@ class BrowserTourModel(private val store: KeyValueStore) {
 
     companion object {
         const val STEP_INACTIVE = "inactive"
+        const val STEP_BOARD = "board"
         const val STEP_CONNECT = "connect"
         const val STEP_ANGLE = "angle"
         const val STEP_FILTER = "filter"
@@ -96,7 +103,7 @@ class BrowserTourModel(private val store: KeyValueStore) {
         const val KEY_DEFER_BLE = "browser_tour_defer_ble"
 
         private val ORDER = listOf(
-            STEP_CONNECT, STEP_ANGLE, STEP_FILTER, STEP_OPEN,
+            STEP_BOARD, STEP_CONNECT, STEP_ANGLE, STEP_FILTER, STEP_OPEN,
             STEP_PROJECT, STEP_LOG, STEP_LOGBOOK, STEP_ENTRY, STEP_DONE,
         )
         private val STEPS = (ORDER + STEP_INACTIVE).toSet()
