@@ -628,6 +628,8 @@ class AppCore private constructor(
         val parts = versionName.split('.').map { it.toIntOrNull() ?: 0 }
         val version = parts.getOrElse(0) { 0 } * 10_000 + parts.getOrElse(1) { 0 } * 100 + parts.getOrElse(2) { 0 }
         return version * 1_000 + (build.toIntOrNull() ?: 0).coerceIn(0, 999)
+    }
+
     // ── Training: Today and player ────────────────────────────────────
     //
     // Each screen gets its own presenter with a main-thread scope; the work runs
