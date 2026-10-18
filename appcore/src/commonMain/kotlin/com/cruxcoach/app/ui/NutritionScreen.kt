@@ -265,7 +265,8 @@ class NutritionScreenModel internal constructor(
     fun watch(onState: (NutritionDayUi) -> Unit): Subscription {
         val job = scope.launch {
             // The product state only changes the hints; it is read in [map].
-            combine(presenter.state, search.state, extra, catalog.products.state) { s, q, e, _ -> map(s, q, e) }.collect { onState(it) }
+            combine(presenter.state, search.state, extra, catalog.products.state) { s, q, e, _ -> safeMap(s, q, e) }
+                .collect { ui -> if (ui != null) onState(ui) }
         }
         return Subscription { job.cancel() }
     }
@@ -544,6 +545,18 @@ class NutritionScreenModel internal constructor(
     }
 
     // ── Mapping ──────────────────────────────────────────────────────
+
+    /**
+     * A mapping bug must not take the app down (an uncaught exception in a
+     * Kotlin/Native coroutine terminates the process): the screen then keeps
+     * its last state.
+     */
+    private fun safeMap(s: FuelState, q: FoodSearchPresenter.State, e: Extra): NutritionDayUi? = try {
+        map(s, q, e)
+    } catch (t: Exception) {
+        println("NutritionScreenModel: state could not be shown: ${t.message}")
+        null
+    }
 
     private fun recommended(s: FuelState, kind: FuelTargets.TargetKind): Int? {
         val rec = s.targets?.let { it.recommended ?: it }

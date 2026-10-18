@@ -91,7 +91,12 @@ class MealTextScreenModel internal constructor(
     val currentState: MealTextUi get() = map(presenter.phase.value, local.value)
 
     fun watch(onState: (MealTextUi) -> Unit): Subscription {
-        val job = scope.launch { combine(presenter.phase, local) { p, l -> map(p, l) }.collect { onState(it) } }
+        val job = scope.launch {
+            combine(presenter.phase, local) { p, l ->
+                // A mapping bug keeps the last state instead of terminating the app.
+                try { map(p, l) } catch (t: Exception) { println("MealTextScreenModel: ${t.message}"); null }
+            }.collect { ui -> if (ui != null) onState(ui) }
+        }
         return Subscription { job.cancel() }
     }
 
