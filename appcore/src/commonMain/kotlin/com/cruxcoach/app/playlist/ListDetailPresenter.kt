@@ -57,6 +57,8 @@ data class ListDetailState(
     val renameValue: String = "",
     /** Rest rows being edited together. */
     val editRestStepIds: List<Long> = emptyList(),
+    /** Plan editor: every step as its own row with reorder/remove controls. */
+    val editMode: Boolean = false,
     val error: ListDetailError = ListDetailError.NONE,
 )
 
@@ -105,7 +107,11 @@ class ListDetailPresenter(
             val steps = personalBoardRepo.getPlaybackSteps(listId)
             val uuids = entries.map { it.first } + steps.mapNotNull { it.climbUuid }
             val climbs = climbLookup.resolve(uuids, angle)
-            Loaded(list, entries, steps, climbs)
+            // A step pins its own angle, so its grade must come from that angle's statistics.
+            val pinned = climbLookup.resolvePinnedAngles(
+                steps.mapNotNull { r -> r.climbUuid?.let { u -> r.angle?.let { a -> u to a.toInt() } } },
+            )
+            Loaded(list, entries, steps, climbs, pinned)
         }
         val list = loaded.list
         if (list == null) {
@@ -130,7 +136,9 @@ class ListDetailPresenter(
                         restSeconds = row.restSeconds,
                         climbUuid = row.climbUuid,
                         angle = row.angle,
-                        climb = row.climbUuid?.let { uuid -> loaded.climbs[normUuidKey(uuid)] },
+                        climb = row.climbUuid?.let { uuid ->
+                            gradeForPinnedAngle(loaded.climbs[normUuidKey(uuid)], loaded.pinned, uuid, row.angle)
+                        },
                     )
                 },
                 hasPlaybackPlan = loaded.steps.isNotEmpty(),
@@ -151,6 +159,7 @@ class ListDetailPresenter(
         val entries: List<Pair<String, String>>,
         val steps: List<com.cruxcoach.data.repository.ListPlaybackStepRow>,
         val climbs: Map<String, ClimbWithStats>,
+        val pinned: Map<Pair<String, Int>, ClimbWithStats>,
     )
 
     // --- Name ---
@@ -225,6 +234,33 @@ class ListDetailPresenter(
     }
 
     // --- Explicit plan ---
+
+    fun toggleEditMode() = _state.update { it.copy(editMode = !it.editMode) }
+
+    /**
+     * Android `preparePlaybackPlan`: opening the plan editor of a list without
+     * a plan seeds one from membership, with an inferred rest between climbs.
+     * Decided on the stored rows, not on state that may not have loaded yet.
+     */
+    fun preparePlan() {
+        val angle = defaultAngle().toLong()
+        mutate(ListDetailError.PLAN_FAILED) {
+            if (personalBoardRepo.getPlaybackSteps(listId).isNotEmpty()) return@mutate
+            val climbUuids = personalBoardRepo.getClimbListEntryUuids(listId, Int.MAX_VALUE, 0).map { it.first }
+            val list = personalBoardRepo.getClimbListById(listId) ?: return@mutate
+            personalBoardRepo.replacePlaybackSteps(
+                listId,
+                playbackStepsWithAutoRests(
+                    climbUuids = climbUuids,
+                    angle = angle,
+                    restSeconds = inferAutoPlaybackRestSeconds(
+                        previousRestSeconds = emptyList(),
+                        configuredFallbackSeconds = list.playbackRestSeconds,
+                    ),
+                ),
+            )
+        }
+    }
 
     /** Rebuilds the plan from unique membership, with an inferred rest between climbs. */
     fun resetPlanFromList() {

@@ -382,3 +382,6 @@
 "health_sleep_chip" = "Aus Apple Health: %1$@ h → %2$ld";
 "gym_board_not_installed" = "Die Daten dieses Boards sind noch nicht auf diesem iPhone. Lade sie zuerst unter „Board-Daten synchronisieren“ herunter.";
 "training_health_connect_unavailable" = "Health Connect ist ein Android-Dienst: Schlaf, Klettertage und Mahlzeiten werden auf dem iPhone noch nicht aus anderen Apps gelesen, und eine Kraftmessung lässt sich hier nicht verbinden.";
+
+/* Board: training-plan editor, logbook selection, session summary */
+"plan_error" = "Der Trainingsplan konnte nicht geändert werden.";

@@ -5,7 +5,13 @@ import com.cruxcoach.app.playlist.ListDetailState
 import com.cruxcoach.app.playlist.ListMember
 import com.cruxcoach.app.playlist.ListsPresenter
 import com.cruxcoach.app.playlist.ListsState
+import com.cruxcoach.app.playlist.PlanRow
 import com.cruxcoach.app.playlist.PlanStep
+import com.cruxcoach.app.playlist.PreparedPlayback
+import com.cruxcoach.app.playlist.groupAttempts
+import com.cruxcoach.app.playlist.memberPlayback
+import com.cruxcoach.app.playlist.planPlayback
+import com.cruxcoach.app.links.PlaylistShareLink
 import com.cruxcoach.app.logbook.BoardStatsComputer
 import com.cruxcoach.app.settings.GradeScale
 import com.cruxcoach.data.repository.Climb_lists
@@ -60,6 +66,25 @@ class PlanStepUi(
     /** -1 when the step pins no angle. */
     val angle: Int,
     val isAvailable: Boolean,
+    /** Index in the plan, for move up/down. */
+    val index: Int,
+    /** Android offers "add rest after" only when the next step is not a rest already. */
+    val canAddRestAfter: Boolean,
+    val canMoveUp: Boolean,
+    val canMoveDown: Boolean,
+)
+
+/** View-mode row: a rest, or a climb with its collapsed attempts (Android `PlaylistRow`). */
+class PlanRowUi(
+    val key: String,
+    val isRest: Boolean,
+    val step: PlanStepUi,
+    /** 1 for a single climb. */
+    val attemptCount: Int,
+    /** -1 unless the collapsed attempts share one rest. */
+    val attemptRestSeconds: Int,
+    /** The rests between the collapsed attempts, edited together. */
+    val attemptRestStepIds: List<Long>,
 )
 
 class ListDetailScreenState(
@@ -83,8 +108,26 @@ class ListDetailScreenState(
     val showRenameDialog: Boolean,
     val renameValue: String,
     val editRestStepIds: List<Long>,
+    /** Duration the rest editor opens with (the first edited rest's, or 60). */
+    val editRestSeconds: Int,
     /** none | loadFailed | notFound | renameFailed | editFailed | planFailed */
     val errorCode: String,
+    /** Plan editor: [planSteps] one by one with controls; otherwise [planRows]. */
+    val editMode: Boolean,
+    val planRows: List<PlanRowUi>,
+    /** Plan steps whose climb this device cannot resolve (skipped on playback). */
+    val planUnavailableCount: Int,
+    /** A rest needs a climb before it: false while the plan holds no climb. */
+    val canAddRest: Boolean,
+    /**
+     * What "Start" plays: the plan when there is one, else the list once in
+     * order. Parallel arrays; rests already folded onto the climb before them.
+     */
+    val playClimbUuids: List<String>,
+    val playAngles: List<Int>,
+    val playRestsAfter: List<Int>,
+    /** More than one board configuration cannot be played as one plan. */
+    val playHasMultipleBoards: Boolean,
 )
 
 internal object ListCodes {
@@ -209,6 +252,34 @@ class ListDetailScreenModel(
 
     fun setDefaultRestSeconds(seconds: Int) = presenter.setPlaybackRestSeconds(seconds.toLong())
 
+    fun toggleEditMode() = presenter.toggleEditMode()
+
+    /** Seeds a plan from the list when it has none (opening the plan editor). */
+    fun preparePlan() = presenter.preparePlan()
+
+    /**
+     * Versioned `/l/<payload>` link: ordered steps, pinned angles, rests and
+     * playback defaults. "" when the plan holds no encodable climb.
+     */
+    fun planShareLink(): String {
+        val state = presenter.state.value
+        val steps = state.planSteps.mapNotNull { step ->
+            if (step.isRest) {
+                PlaylistShareLink.SharedStep.Rest((step.restSeconds ?: 0L).toInt())
+            } else {
+                val uuid = step.climbUuid ?: return@mapNotNull null
+                PlaylistShareLink.SharedStep.Climb(uuid, step.angle?.toInt() ?: 40)
+            }
+        }
+        return PlaylistShareLink.buildPlan(
+            name = state.name,
+            steps = steps,
+            order = state.playbackOrder,
+            advance = state.playbackAdvance,
+            defaultRestSeconds = state.playbackRestSeconds.toInt(),
+        ) ?: ""
+    }
+
     fun resetPlanFromList() = presenter.resetPlanFromList()
     fun clearPlan() = presenter.clearPlan()
 
@@ -222,11 +293,36 @@ class ListDetailScreenModel(
     fun moveStep(fromIndex: Int, toIndex: Int) = presenter.moveStep(fromIndex, toIndex)
     fun commitOrder(orderedStepIds: List<Long>) = presenter.commitOrder(orderedStepIds)
     fun showEditRests(stepIds: List<Long>) = presenter.showEditRests(stepIds)
+
+    /** Opens the rest editor for one rest step. */
+    fun editRest(stepId: Long) = presenter.showEditRests(listOf(stepId))
+
+    /** Opens the rest editor for the uniform rests of a collapsed attempt row. */
+    fun editAttemptRests(rowKey: String) {
+        val row = groupAttempts(presenter.state.value.planSteps).firstOrNull { it.key == rowKey } as? PlanRow.Climb
+        if (row != null && row.attemptRestStepIds.isNotEmpty()) presenter.showEditRests(row.attemptRestStepIds)
+    }
     fun dismissEditRests() = presenter.dismissEditRests()
     fun setSelectedRestSeconds(seconds: Int) = presenter.updateSelectedRestSeconds(seconds.toLong())
     fun removeSelectedRests() = presenter.removeSelectedRests()
 
-    private fun map(state: ListDetailState) = ListDetailScreenState(
+    private fun map(state: ListDetailState): ListDetailScreenState {
+        val playback = if (state.hasPlaybackPlan) {
+            planPlayback(state.planSteps, defaultAngle)
+        } else {
+            memberPlayback(state.members, defaultAngle, state.playbackRestSeconds.toInt())
+        }
+        val steps = state.planSteps.mapIndexed { index, step -> step(step, index, state.planSteps) }
+        val byId = steps.associateBy { it.stepId }
+        return mapState(state, steps, byId, playback)
+    }
+
+    private fun mapState(
+        state: ListDetailState,
+        steps: List<PlanStepUi>,
+        byId: Map<Long, PlanStepUi>,
+        playback: PreparedPlayback,
+    ) = ListDetailScreenState(
         listId = state.listId,
         isLoading = state.isLoading,
         name = state.name,
@@ -234,7 +330,7 @@ class ListDetailScreenModel(
         isIgnoredList = state.isIgnoredList,
         isGenerated = state.isGenerated,
         members = state.members.map { member(it) },
-        planSteps = state.planSteps.map { step(it) },
+        planSteps = steps,
         hasPlaybackPlan = state.hasPlaybackPlan,
         orderCode = ListCodes.order(state.playbackOrder),
         advanceCode = ListCodes.advance(state.playbackAdvance),
@@ -244,8 +340,35 @@ class ListDetailScreenModel(
         showRenameDialog = state.showRenameDialog,
         renameValue = state.renameValue,
         editRestStepIds = state.editRestStepIds,
+        editRestSeconds = state.editRestStepIds.firstOrNull()
+            ?.let { id -> state.planSteps.firstOrNull { it.stepId == id }?.restSeconds }
+            ?.toInt() ?: 60,
         errorCode = ListCodes.code(state.error.name),
+        editMode = state.editMode,
+        planRows = groupAttempts(state.planSteps).mapNotNull { row -> planRow(row, byId) },
+        planUnavailableCount = state.planSteps.count { !it.isRest && it.climb == null },
+        canAddRest = state.planSteps.any { !it.isRest },
+        playClimbUuids = playback.items.map { it.climbUuid },
+        playAngles = playback.items.map { it.angle },
+        playRestsAfter = playback.items.map { it.restAfterSeconds },
+        playHasMultipleBoards = playback.boardCount > 1,
     )
+
+    private fun planRow(row: PlanRow, byId: Map<Long, PlanStepUi>): PlanRowUi? = when (row) {
+        is PlanRow.Rest -> byId[row.step.stepId]?.let { step ->
+            PlanRowUi(row.key, true, step, 1, -1, emptyList())
+        }
+        is PlanRow.Climb -> byId[row.step.stepId]?.let { step ->
+            PlanRowUi(
+                key = row.key,
+                isRest = false,
+                step = step,
+                attemptCount = row.attemptCount,
+                attemptRestSeconds = row.attemptRestSeconds?.toInt() ?: -1,
+                attemptRestStepIds = row.attemptRestStepIds,
+            )
+        }
+    }
 
     private fun gradeLabel(difficulty: Double?): String =
         difficulty?.let { BoardStatsComputer.formatDifficulty(it, scale) } ?: ""
@@ -260,7 +383,7 @@ class ListDetailScreenModel(
         isAvailable = member.climb != null,
     )
 
-    private fun step(step: PlanStep) = PlanStepUi(
+    private fun step(step: PlanStep, index: Int, all: List<PlanStep>) = PlanStepUi(
         stepId = step.stepId,
         isRest = step.isRest,
         restSeconds = (step.restSeconds ?: 0L).toInt(),
@@ -269,5 +392,9 @@ class ListDetailScreenModel(
         grade = gradeLabel(step.climb?.difficultyAverage),
         angle = step.angle?.toInt() ?: -1,
         isAvailable = step.isRest || step.climb != null,
+        index = index,
+        canAddRestAfter = !step.isRest && all.getOrNull(index + 1)?.isRest != true,
+        canMoveUp = index > 0,
+        canMoveDown = index < all.lastIndex,
     )
 }

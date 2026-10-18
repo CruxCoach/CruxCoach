@@ -382,3 +382,6 @@
 "health_sleep_chip" = "From Apple Health: %1$@ h → %2$ld";
 "gym_board_not_installed" = "This board's data is not on this iPhone yet. Download it first under “Sync board data”.";
 "training_health_connect_unavailable" = "Health Connect is an Android service: sleep, climbing days and meals are not read from other apps on iPhone yet, and no force gauge can be connected here.";
+
+/* Board: training-plan editor, logbook selection, session summary */
+"plan_error" = "The training plan could not be changed.";

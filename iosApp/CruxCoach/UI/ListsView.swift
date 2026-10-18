@@ -101,53 +101,7 @@ struct ListDetailView: View {
     var body: some View {
         Group {
             if let host {
-                let model = host.model
-                let ui = host.state
-                List {
-                    if ui.members.isEmpty && !ui.isLoading {
-                        ContentUnavailableView(LI("lists_empty"), systemImage: "list.bullet")
-                    }
-                    ForEach(ui.members, id: \.climbUuid) { member in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(member.name)
-                            HStack(spacing: 6) {
-                                if !member.grade.isEmpty { Text(member.grade) }
-                                if !member.setter.isEmpty { Text(member.setter) }
-                                if !member.isAvailable { Text(LI("lists_unavailable")) }
-                            }
-                            .font(.footnote).foregroundStyle(.secondary)
-                        }
-                        .swipeActions {
-                            Button(LI("lists_remove"), role: .destructive) { model.removeFromList(climbUuid: member.climbUuid) }
-                        }
-                    }
-                }
-                .toolbar {
-                    ToolbarItemGroup(placement: .topBarTrailing) {
-                        if !ui.members.isEmpty {
-                            NavigationLink {
-                                PlayerView(core: core,
-                                           listName: ui.name,
-                                           climbUuids: playbackUuids(ui),
-                                           angles: playbackAngles(ui),
-                                           restsAfter: playbackRests(ui),
-                                           orderCode: ui.orderCode,
-                                           advanceCode: ui.advanceCode,
-                                           defaultRestSeconds: ui.defaultRestSeconds)
-                            } label: {
-                                Label(LI("player_start"), systemImage: "play.fill")
-                            }
-                        }
-                        if !ui.isBuiltin {
-                            Button(LI("lists_rename")) { model.showRenameDialog() }
-                        }
-                    }
-                }
-                .alert(LI("lists_rename"), isPresented: Binding(get: { ui.showRenameDialog }, set: { if !$0 { model.dismissRenameDialog() } })) {
-                    TextField(LI("lists_name"), text: Binding(get: { ui.renameValue }, set: { model.setRenameValue(value: $0) }))
-                    Button(L("action_cancel"), role: .cancel) { model.dismissRenameDialog() }
-                    Button(L("action_save")) { model.confirmRename() }
-                }
+                screen(host: host)
             } else {
                 ProgressView()
             }
@@ -165,25 +119,86 @@ struct ListDetailView: View {
 }
 
 private extension ListDetailView {
-    /// A saved plan wins over plain membership: it carries repeats, pinned
-    /// angles and rests. Rest steps become the rest that follows the climb
-    /// before them, which is how the player consumes them.
-    func playbackSteps(_ ui: ListDetailScreenState) -> [(uuid: String, angle: Int32, rest: Int32)] {
-        if !ui.planSteps.isEmpty {
-            var steps: [(uuid: String, angle: Int32, rest: Int32)] = []
-            for step in ui.planSteps {
-                if step.isRest {
-                    if !steps.isEmpty { steps[steps.count - 1].rest = step.restSeconds }
-                } else {
-                    steps.append((step.climbUuid, step.angle >= 0 ? step.angle : ui.defaultAngle, 0))
-                }
+    @ViewBuilder
+    func screen(host: ScreenHost<ListDetailScreenModel, ListDetailScreenState>) -> some View {
+        let model: ListDetailScreenModel = host.model
+        let ui: ListDetailScreenState = host.state
+        List {
+            if ui.members.isEmpty && !ui.isLoading {
+                ContentUnavailableView(LI("lists_empty"), systemImage: "list.bullet")
             }
-            return steps
+            if ui.playHasMultipleBoards {
+                Text(L("list_playback_error_multiple_boards")).font(.footnote).foregroundStyle(.red)
+            }
+            ForEach(ui.members, id: \.climbUuid) { member in
+                memberRow(member)
+                    .swipeActions {
+                        Button(LI("lists_remove"), role: .destructive) { model.removeFromList(climbUuid: member.climbUuid) }
+                    }
+            }
         }
-        return ui.members.map { ($0.climbUuid, ui.defaultAngle, 0) }
+        .toolbar { toolbarContent(host: host, ui: ui) }
+        .alert(LI("lists_rename"), isPresented: Binding(get: { ui.showRenameDialog }, set: { if !$0 { model.dismissRenameDialog() } })) {
+            TextField(LI("lists_name"), text: Binding(get: { ui.renameValue }, set: { model.setRenameValue(value: $0) }))
+            Button(L("action_cancel"), role: .cancel) { model.dismissRenameDialog() }
+            Button(L("action_save")) { model.confirmRename() }
+        }
     }
 
-    func playbackUuids(_ ui: ListDetailScreenState) -> [String] { playbackSteps(ui).map { $0.uuid } }
-    func playbackAngles(_ ui: ListDetailScreenState) -> [Int32] { playbackSteps(ui).map { $0.angle } }
-    func playbackRests(_ ui: ListDetailScreenState) -> [Int32] { playbackSteps(ui).map { $0.rest } }
+    func memberRow(_ member: ListMemberUi) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(member.name)
+            HStack(spacing: 6) {
+                if !member.grade.isEmpty { Text(member.grade) }
+                if !member.setter.isEmpty { Text(member.setter) }
+                if !member.isAvailable { Text(LI("lists_unavailable")) }
+            }
+            .font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+
+    @ToolbarContentBuilder
+    func toolbarContent(host: ScreenHost<ListDetailScreenModel, ListDetailScreenState>,
+                        ui: ListDetailScreenState) -> some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if !ui.playClimbUuids.isEmpty && !ui.playHasMultipleBoards {
+                NavigationLink {
+                    playerView(ui)
+                } label: {
+                    Label(LI("player_start"), systemImage: "play.fill")
+                }
+            }
+            // Android: the plan editor is offered for a non-empty list that is not the ignored list.
+            if !ui.isIgnoredList && !ui.members.isEmpty {
+                NavigationLink {
+                    PlanEditorView(core: core, host: host)
+                } label: {
+                    Label(L("list_playback_edit_plan"), systemImage: "slider.horizontal.3")
+                }
+            }
+            if !ui.isBuiltin {
+                Button(LI("lists_rename")) { host.model.showRenameDialog() }
+            }
+        }
+    }
+
+    /// The Kotlin model compiles what "Start" plays (Android `startPlayback`):
+    /// the plan with its repeats and rests when there is one, else the list once.
+    func playerView(_ ui: ListDetailScreenState) -> PlayerView {
+        playlistPlayer(core: core, ui: ui)
+    }
+}
+
+/// Player for a list detail state; shared by the list detail and the plan editor.
+func playlistPlayer(core: AppCore, ui: ListDetailScreenState) -> PlayerView {
+    let angles: [Int32] = ui.playAngles.map { $0.int32Value }
+    let rests: [Int32] = ui.playRestsAfter.map { $0.int32Value }
+    return PlayerView(core: core,
+                      listName: ui.name,
+                      climbUuids: ui.playClimbUuids,
+                      angles: angles,
+                      restsAfter: rests,
+                      orderCode: ui.orderCode,
+                      advanceCode: ui.advanceCode,
+                      defaultRestSeconds: ui.defaultRestSeconds)
 }
