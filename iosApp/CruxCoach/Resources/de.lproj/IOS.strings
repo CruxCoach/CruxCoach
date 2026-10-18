@@ -400,3 +400,12 @@
 "key_ncryptsec_too_costly" = "Dieser passwortgeschützte Schlüssel wurde mit einem Speicheraufwand erstellt, den dieses iPhone nicht aufbringen kann. Importiere stattdessen seinen nsec oder verschlüssele ihn mit geringerem Aufwand neu.";
 "key_words_invalid" = "Diese Wiederherstellungswörter sind ungültig: Prüfe die Schreibweise jedes Worts, die Reihenfolge und die Anzahl (12, 15, 18, 21 oder 24 Wörter).";
 "profile_extras_not_on_iphone" = "Den Kilter-Benutzernamen übernehmen und zu jedem neuen Climb eine kurze Nostr-Notiz posten geht auf dem iPhone noch nicht.";
+"trainingviz_detail_not_yet" = "Leistungswerte und der Verlauf dieser Übung sind auf dem iPhone noch nicht verfügbar.";
+/* Background refresh (wave 5 "background" agent) */
+"background_open" = "Aktualisierung im Hintergrund";
+"background_title" = "Aktualisierung im Hintergrund";
+"background_announcements_desc" = "Benachrichtigt dich über Ankündigungen des Entwicklers in den gewählten Kategorien. Aus: Es werden gar keine Ankündigungen abgerufen.";
+"background_backup_header" = "Cloud-Backup";
+"background_backup_desc" = "Sichert automatisch in diesem Intervall. Manuell: nur, wenn du selbst eine Sicherung startest.";
+"background_backup_off" = "Das Cloud-Backup ist aus. Das Intervall gilt, sobald es eingeschaltet ist.";
+"background_footer" = "iOS entscheidet, wann CruxCoach im Hintergrund aktualisieren darf: höchstens alle 15 Minuten und gar nicht, solange die Hintergrundaktualisierung aus ist. Bei jedem Öffnen der App wird außerdem aktualisiert, was fällig ist.";

@@ -400,3 +400,12 @@
 "key_ncryptsec_too_costly" = "This password-protected key was made with a memory cost this iPhone cannot provide. Import its nsec instead, or re-encrypt it with a lower cost.";
 "key_words_invalid" = "These recovery words are not valid: check each word's spelling, the order and the number of words (12, 15, 18, 21 or 24).";
 "profile_extras_not_on_iphone" = "Taking over your Kilter username and posting a short Nostr note with each new climb are not on iPhone yet.";
+"trainingviz_detail_not_yet" = "Performance values and this exercise's progress are not on iPhone yet.";
+/* Background refresh (wave 5 "background" agent) */
+"background_open" = "Background refresh";
+"background_title" = "Background refresh";
+"background_announcements_desc" = "Notifies you of developer announcements in the selected categories. Off: no announcements are fetched at all.";
+"background_backup_header" = "Cloud backup";
+"background_backup_desc" = "Backs up automatically at this interval. Manual: only when you start a backup yourself.";
+"background_backup_off" = "Cloud backup is off. The interval applies once it is switched on.";
+"background_footer" = "iOS decides when CruxCoach may refresh in the background: at most every 15 minutes, and not at all while Background App Refresh is off. Each time you open the app, whatever is due is refreshed as well.";
