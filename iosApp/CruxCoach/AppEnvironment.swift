@@ -13,6 +13,8 @@ final class AppEnvironment {
 
     private(set) var phase: Phase = .starting
     @ObservationIgnored private let notificationPresenter = ForegroundNotificationPresenter()
+    /// Keeps the training-day reminders following the week plan, pauses and trainings.
+    @ObservationIgnored private var trainingReminders: Subscription?
 
     func start() {
         guard case .starting = phase else { return }
@@ -30,6 +32,8 @@ final class AppEnvironment {
             core.attachHealthStore(store: HealthKitStore())
             // Weigh-in and measuring reminders are scheduled ahead; refresh them at every start.
             core.rescheduleBodyReminders(notifications: LocalNotificationScheduler())
+            // Training-day reminders are scheduled ahead and follow every change that decides them.
+            trainingReminders = core.followTrainingReminders(notifications: LocalNotificationScheduler())
             phase = .ready(core)
         } else {
             phase = .failed(code: result.failureCode, detail: result.detail)

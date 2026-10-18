@@ -124,7 +124,7 @@ private struct SettingsPage: View {
             case "about": SettingsAboutPage(host: host)
             case "equipment": SettingsPlacesPage(host: host)
             case "timer": timer
-            case "reminders": SettingsRemindersPage(host: host)
+            case "reminders": SettingsRemindersPage(core: core, host: host)
             case "display": display
             case "connections": connections
             default: SettingsLearnedPage(host: host)
@@ -448,6 +448,7 @@ private struct SettingsLearnedPage: View {
 
 /// Weigh-in and measuring reminders (Android `ReminderSection`); every change is scheduled at once.
 private struct SettingsRemindersPage: View {
+    let core: AppCore
     let host: SettingsHost
 
     private var ui: AthleteSettingsScreenState { host.state }
@@ -491,9 +492,7 @@ private struct SettingsRemindersPage: View {
                 }
             }
         }
-        Section(L("trw_reminder_title")) {
-            Text(LI("training_not_on_iphone")).font(.caption).foregroundStyle(.secondary)
-        }
+        TrainingReminderSection(core: core)
     }
 
     private static func date(minutes: Int) -> Date {

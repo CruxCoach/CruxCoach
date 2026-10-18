@@ -165,7 +165,7 @@ private struct ProgressContent: View {
     }
 
     private var climberProfileCard: some View {
-        Button { notYet = L("trl_profile_title") } label: {
+        NavigationLink { ClimberProfileView(core: core) } label: {
             HStack(spacing: 12) {
                 Image(systemName: "chart.dots.scatter").font(.title2).foregroundStyle(Color.accentColor)
                 VStack(alignment: .leading, spacing: 2) {

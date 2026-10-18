@@ -61,6 +61,7 @@ private struct BodyContent: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
+                        EnergyCareCardView(core: core)
                         weightSection
                         roundCard
                         measurementsSection

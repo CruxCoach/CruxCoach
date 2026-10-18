@@ -90,6 +90,7 @@ private struct TodayContent: View {
                                 model.answerGradeOffer(take: take)
                             }
                         }
+                        EnergyCareCardView(core: core)
                         if ui.hasLoadSpike { loadSpikeCard }
                         dayGrid
                         nextStepCard
