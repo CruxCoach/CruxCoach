@@ -275,6 +275,8 @@ private struct SettingsPlaceTarget: Identifiable {
 private struct SettingsPlacesPage: View {
     let host: SettingsHost
     @State private var editing: SettingsPlaceTarget?
+    /// The places already shown, so a place just added opens right away (Android `PlacesEditor`).
+    @State private var known: Set<String>?
 
     private var ui: AthleteSettingsScreenState { host.state }
     private var model: AthleteSettingsScreenModel { host.model }
@@ -289,16 +291,10 @@ private struct SettingsPlacesPage: View {
         ForEach(ui.places, id: \.id) { place in
             Section {
                 Button { editing = SettingsPlaceTarget(id: place.id) } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(tr: place.label).font(.headline)
-                            if place.isDefault { Text(L("tro_default")).font(.caption).foregroundStyle(.secondary) }
-                            if place.isToday { Text(L("tro_today")).font(.caption).foregroundStyle(Color.accentColor) }
-                        }
-                        Text(LP("tru_set_equipment_count", place.equipmentCodes.count)).font(.caption).foregroundStyle(.secondary)
-                    }
+                    SettingsPlaceRow(place: place)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("place_" + place.id)
                 if !place.isDefault {
                     Button(L("tro_make_default")) { model.makeDefaultPlace(placeId: place.id) }
                 }
@@ -310,7 +306,10 @@ private struct SettingsPlacesPage: View {
         if !ui.places.isEmpty {
             Section(L("tro_add")) {
                 ForEach(ui.placeKinds, id: \.code) { kind in
-                    Button(TrRender.text(kind.label)) { model.addPlace(kindCode: kind.code) }
+                    Button { model.addPlace(kindCode: kind.code) } label: {
+                        Label(TrRender.text(kind.label), systemImage: "plus")
+                    }
+                    .accessibilityIdentifier("place_add_" + kind.code.lowercased())
                 }
             }
         }
@@ -324,6 +323,45 @@ private struct SettingsPlacesPage: View {
         .sheet(item: $editing) { target in
             SettingsPlaceSheet(host: host, placeId: target.id) { editing = nil }
         }
+        .onAppear { if known == nil { known = Set(ui.places.map { $0.id }) } }
+        .onChange(of: ui.places.map { $0.id }) { _, ids in openAdded(ids) }
+    }
+
+    private func openAdded(_ ids: [String]) {
+        defer { known = Set(ids) }
+        guard let before = known, editing == nil else { return }
+        if let added = ids.first(where: { !before.contains($0) }) {
+            editing = SettingsPlaceTarget(id: added)
+        }
+    }
+}
+
+/// A place: its kind's icon, its name, "Default" or "Today" and the equipment count (Android `PlacesEditor`'s card).
+private struct SettingsPlaceRow: View {
+    let place: SettingsPlaceUi
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: TodayIcons.place(place.kindCode.lowercased()))
+                .frame(width: 24)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tr: place.label).font(.headline)
+                Text(summary).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+    }
+
+    /// "Default · 5 pieces of equipment"; "Today" only for a place that is not the default.
+    private var summary: String {
+        var parts: [String] = []
+        if place.isDefault { parts.append(L("tro_default")) }
+        if place.isToday && !place.isDefault { parts.append(L("tro_today")) }
+        parts.append(LP("tru_set_equipment_count", place.equipmentCodes.count))
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -338,14 +376,23 @@ private struct SettingsPlaceSheet: View {
 
     private var place: SettingsPlaceUi? { host.state.places.first { $0.id == placeId } }
 
+    private var kindLabel: String {
+        let code = place?.kindCode ?? ""
+        return host.state.placeKinds.first { $0.code == code }.map { TrRender.text($0.label) } ?? L("tro_name")
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if !placeId.isEmpty {
-                        TextField(L("tro_name"), text: $name)
+                        // Android: the name field is labelled "Name", the kind is the placeholder, 40 characters at most.
+                        Text(L("tro_name")).font(.caption).foregroundStyle(.secondary)
+                        TextField(kindLabel, text: $name)
                             .textFieldStyle(.roundedBorder)
                             .onSubmit { host.model.renamePlace(placeId: placeId, name: name) }
+                            .onChange(of: name) { _, now in if now.count > 40 { name = String(now.prefix(40)) } }
+                            .accessibilityIdentifier("place_name_" + placeId)
                     }
                     TrainingEquipmentEditor(selected: $selected)
                 }
