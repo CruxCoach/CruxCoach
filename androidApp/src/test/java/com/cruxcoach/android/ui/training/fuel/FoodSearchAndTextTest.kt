@@ -98,6 +98,28 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `a banana saved before pieces existed offers pieces from my foods and learns its piece weight`() {
+        repo.saveFoodItem(com.cruxcoach.athlete.model.FoodItem(id = "bls:F503100", name = "Banane roh", source = "bls",
+            kcalPer100 = 79.0, proteinPer100 = 1.3, carbsPer100 = 15.9, fatPer100 = 0.4))
+        render()
+        waitForTag("fuel_my_foods")
+        compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_food_bls:F503100")); true }
+                .getOrDefault(false)
+        }
+        compose.onNodeWithTag("fuel_food_bls:F503100").performSemanticsAction(SemanticsActions.OnClick)
+        waitForTag("fuel_amount_dialog")
+        waitForTag("fuel_amount_portions")
+        waitForText("(120 g)")
+        compose.onNodeWithTag("fuel_amount_confirm").performSemanticsAction(SemanticsActions.OnClick)
+        val day = service.today().toString()
+        compose.waitUntil(WAIT_MS) { repo.foodLog(day).isNotEmpty() }
+        assertEquals(120.0, repo.foodLog(day).single().amountG!!, 0.0)
+        compose.waitUntil(WAIT_MS) { repo.foodItem("bls:F503100")?.servingG == 120.0 }
+    }
+
+    @Test
     fun `product search finds a packaged product and logs one serving`() {
         val products = OffRepository(context).apply {
             source = { "# version: t\n4025500000001\tSkyr Natur\t\tMilbona\t63\t11\t4\t0.2\t150\t1\n".reader().buffered() }
