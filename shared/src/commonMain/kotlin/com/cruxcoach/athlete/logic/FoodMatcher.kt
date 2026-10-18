@@ -130,6 +130,7 @@ class FoodMatcher(foods: List<BlsFood>) {
         // Typed text has one name for both slots; its look-alikes in the other language
         // ("Paprika" in "Paprika bacon sausage") are coincidence, not agreement.
         val typed = de.tokens == en.tokens
+        if (hasNoCounterpart(de) || hasNoCounterpart(en)) return emptyList()
         val everyday = (everydayCodes(de) + everydayCodes(en)).distinct()
         return rank(limit) {
             // A long name in the other language is no reason to rank lower than no match at all.
@@ -317,6 +318,33 @@ class FoodMatcher(foods: List<BlsFood>) {
             put(listOf("N256000"), "apfelschorle")
             put(listOf("P163000", "P161000"), "bier", "beer")
             put(listOf("P2A3000", "P210000"), "wein", "wine")
+            // Typed-meal probe 2026-10-19: plurals and bare words that found a fried, cooked or compound dish first.
+            put(listOf("F503100"), "banane", "bananen", "banana", "bananas")
+            put(listOf("G520100"), "gurke", "gurken", "salatgurke", "cucumber")
+            put(listOf("D440300", "D431100"), "kuchen", "cake")
+            put(listOf("S132000"), "marmelade", "konfituere", "jam")
+            put(listOf("X9A2100", "C133000"), "porridge", "oatmeal", "haferbrei")
+            put(listOf("F092100", "F304100"), "beeren", "berries", "mixed berries", "beerenmix")
+            put(listOf("S111000"), "zucker", "sugar")
+            put(listOf("Q991000"), "mayonnaise", "mayo")
+            put(listOf("R141100"), "ketchup", "tomatenketchup")
+            // The BLS has no Greek-style yogurt; the plain full-fat one is the nearest, not "Griechischer Salat".
+            put(listOf("M141300"), "griechischer joghurt", "griechisch joghurt", "greek yogurt", "greek yoghurt")
+            put(listOf("X5A3000", "X518233"), "gemuese", "mischgemuese", "vegetables", "veggies", "mixed vegetables")
+        }
+
+        /**
+         * Foods the BLS has no counterpart for: a protein shake is not "Eiweißbrot" and whey powder not "Süßmolke".
+         * They get no candidate, so the review says so instead of logging wrong nutrients.
+         */
+        private val NO_COUNTERPART = setOf(
+            "whey", "proteinshake", "eiweissshake", "proteinpulver", "eiweisspulver", "proteinriegel", "eiweissriegel",
+            "protein shake", "protein powder", "protein bar", "whey protein", "proteindrink", "eiweissdrink",
+        )
+
+        private fun hasNoCounterpart(words: Words): Boolean {
+            val c = words.content
+            return c.any { it in NO_COUNTERPART } || c.zipWithNext { a, b -> "$a $b" }.any { it in NO_COUNTERPART }
         }
 
         private fun everydayCodes(query: Words): List<String> =
