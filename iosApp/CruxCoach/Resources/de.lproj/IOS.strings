@@ -395,3 +395,5 @@
 "key_open" = "Kontoschlüssel: anzeigen oder importieren";
 /* Backup-key reminder (wave 4 "notify" agent) */
 "key_backup_not_on_iphone" = "Den Kontoschlüssel anzeigen und kopieren geht auf dem iPhone noch nicht.";
+/* Training visuals (wave 5 "trainingviz" agent): body map, grip, places */
+"trainingviz_detail_not_yet" = "Leistungswerte und der Verlauf dieser Übung sind auf dem iPhone noch nicht verfügbar.";

@@ -395,3 +395,5 @@
 "key_open" = "Account key: show or import";
 /* Backup-key reminder (wave 4 "notify" agent) */
 "key_backup_not_on_iphone" = "Showing and copying the account key is not available on iPhone yet.";
+/* Training visuals (wave 5 "trainingviz" agent): body map, grip, places */
+"trainingviz_detail_not_yet" = "Performance values and this exercise's progress are not on iPhone yet.";

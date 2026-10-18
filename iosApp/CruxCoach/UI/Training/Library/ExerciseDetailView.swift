@@ -16,6 +16,7 @@ struct ExerciseDetailView: View {
     @State private var addSheet = false
     @State private var confirmDelete = false
     @State private var rejected = false
+    @State private var visuals: ScreenHost<ExerciseVisualsModel, ExerciseVisualsState>?
 
     var body: some View {
         Group {
@@ -41,6 +42,7 @@ struct ExerciseDetailView: View {
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
+            if visuals == nil { visuals = ExerciseBodyMapSection.makeHost(core: core, slug: slug) }
         }
     }
 
@@ -88,6 +90,7 @@ struct ExerciseDetailView: View {
                     Text(L("trx_pick_rejected")).font(.footnote).foregroundStyle(.red)
                 }
             }
+            ExerciseBodyMapSection(host: visuals)
             if !ui.why.isEmpty {
                 Section(L("trx_why")) { Text(ui.why) }
             }
@@ -175,9 +178,9 @@ struct ExerciseDetailView: View {
                     }
                 }
             }
-            // Android's body map, performance-value card and progress chart are other parts of the port.
+            // Android's performance-value card and progress chart are other parts of the port.
             Section {
-                Text(LI("library_detail_not_yet")).font(.footnote).foregroundStyle(.secondary)
+                Text(LI("trainingviz_detail_not_yet")).font(.footnote).foregroundStyle(.secondary)
             }
         }
         .safeAreaInset(edge: .bottom) {
