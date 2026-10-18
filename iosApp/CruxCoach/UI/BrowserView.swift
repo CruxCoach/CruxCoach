@@ -142,11 +142,7 @@ struct BrowserView: View {
                     Menu {
                         Button(L("board_filter_title"), systemImage: "line.3.horizontal.decrease") { sheet = .filters }
                         Button(LI("hold_search_title"), systemImage: "hand.point.up.left") { sheet = .holds }
-                        Menu(LI("browser_sort")) {
-                            ForEach(model.sortCodes, id: \.self) { code in
-                                Button(sortTitle(code)) { model.setSort(code: code) }
-                            }
-                        }
+                        sortMenu(model: model, ui: ui)
                         Button(L("board_sync_title"), systemImage: "arrow.down.circle") { sheet = .catalogue }
                         NavigationLink(LI("creator_title")) { CreatorView(core: core) }
                         NavigationLink(L("board_lists_title")) { ListsView(core: core) }
@@ -256,16 +252,27 @@ struct BrowserView: View {
         return wasOpen
     }
 
-    private func sortTitle(_ code: String) -> String {
-        switch code {
-        case "quality": return LI("sort_quality")
-        case "qualitySends": return L("board_sort_quality_sends")
-        case "hardest": return LI("sort_hardest")
-        case "easiest": return LI("sort_easiest")
-        case "name": return LI("sort_name")
-        case "newest": return L("board_sort_newest")
-        case "random": return L("board_sort_random")
-        default: return LI("sort_popular")
+    /// Android's sort choices (BoardFilterScreen): the field, then its direction except for random.
+    private func sortMenu(model: BrowserScreenModel, ui: BrowserScreenState) -> some View {
+        let fields: [String] = model.sortFieldCodes
+        let current: String = ui.sortField
+        let descending: Bool = ui.sortDescending
+        return Menu(LI("browser_sort")) {
+            Picker(L("board_filter_sort"), selection: Binding(
+                get: { current },
+                set: { code in model.setSortField(code: code) })) {
+                ForEach(fields, id: \.self) { code in
+                    Text(FilterView.sortFieldTitle(code)).tag(code)
+                }
+            }
+            if current != "random" {
+                Picker(L("board_filter_order"), selection: Binding(
+                    get: { descending },
+                    set: { value in model.setSortDescending(descending: value) })) {
+                    Text(L("board_filter_sort_desc")).tag(true)
+                    Text(L("board_filter_sort_asc")).tag(false)
+                }
+            }
         }
     }
 

@@ -155,6 +155,13 @@ class BoardBrowsePipeline(
     private fun hsmMask(f: BrowserFilterState, ctx: BrowseContext): Long =
         BoardBrowsePolicy.exclusionMask(BoardBrand.fromWire(f.boardBrand), ctx.hsmExcludedMask, f.quantumRuleMask)
 
+    /** Android `refreshUngradedAvailable`'s query: catalogue climbs without a grade at this board/angle/type. */
+    fun countUngraded(f: BrowserFilterState, ctx: BrowseContext): Long =
+        boardRepository.countFilteredClimbs(
+            f.angle, f.layoutId, f.boardBrand, UNGRADED_ONLY_MIN_DIFF, UNGRADED_ONLY_MAX_DIFF, 0, f.climbTypeFilter,
+            selProductSizeId = selSizeId(f, ctx), hsmExcludedMask = hsmMask(f, ctx), showUngraded = true,
+        )
+
     private fun sort(climbs: List<ClimbWithStats>, f: BrowserFilterState) =
         boardBrowserSortInKotlin(climbs, f.sortField, f.sortDirection)
 

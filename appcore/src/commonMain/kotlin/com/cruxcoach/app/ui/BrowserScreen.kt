@@ -6,6 +6,7 @@ import com.cruxcoach.app.browse.BoardBrowserUiState
 import com.cruxcoach.app.setup.BoardOption
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.data.repository.SortDirection
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.util.GradeConverter
 
@@ -78,6 +79,20 @@ class BrowserScreenState(
     val holdFilterActive: Boolean,
     /** Climbs the applied hold search matches on its own (the banner's M). */
     val holdFilterMatches: Int,
+    /** Android's sort field, one of [BrowserScreenModel.sortFieldCodes] (or difficulty/name from older iOS picks). */
+    val sortField: String,
+    /** Android's "Sort direction"; meaningless (and hidden) while [sortField] is random. */
+    val sortDescending: Boolean,
+    /** boulder | route | all (Android "Type"). */
+    val climbType: String,
+    /** all | cruxcoach | kilter | boardsesh (Android "Origin"). */
+    val origin: String,
+    /** Android BoardBrand capabilities: which "More filters" rows the board offers. */
+    val supportsClimbType: Boolean,
+    val supportsBenchmark: Boolean,
+    val supportsBoardSeshOrigin: Boolean,
+    /** Climbs the "without a grade" switch would show here; -1 until counted. */
+    val ungradedAvailable: Long,
 )
 
 /** One selectable hold: [x]/[y] are normalized over the board image. */
@@ -148,8 +163,61 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
             quantumFitCount = state.core.quantumLayers.matchCount,
             holdFilterActive = state.holdFilterActive,
             holdFilterMatches = state.holdFilterMatches,
+            sortField = SORT_FIELDS.firstOrNull { it.second == filter.sortField }?.first ?: "popular",
+            sortDescending = filter.sortDirection == SortDirection.DESC,
+            climbType = CLIMB_TYPES.firstOrNull { it.second == filter.climbTypeFilter }?.first ?: "boulder",
+            origin = ORIGINS.firstOrNull { it.second == filter.originFilter }?.first ?: "all",
+            supportsClimbType = brand.supportsClimbTypeFilter,
+            supportsBenchmark = brand.supportsBenchmarkFilter,
+            supportsBoardSeshOrigin = brand.supportsBoardSeshOrigin,
+            ungradedAvailable = state.ungradedAvailable,
         )
     }
+
+    /** Android `updateSortField`: the field changes, the chosen direction stays. Unknown codes are ignored. */
+    fun setSortField(code: String) {
+        val field = SORT_FIELDS.firstOrNull { it.first == code }?.second ?: return
+        presenter.setSort(field, presenter.state.value.filter.sortDirection)
+    }
+
+    /** Android `toggleSortDirection`, as the "Sort direction" choice: only a real change reloads. */
+    fun setSortDescending(descending: Boolean) {
+        val f = presenter.state.value.filter
+        val next = if (descending) SortDirection.DESC else SortDirection.ASC
+        if (next == f.sortDirection) return
+        presenter.setSort(f.sortField, next)
+    }
+
+    /** Android `updateClimbTypeFilter`: boulder | route | all; the presenter keeps Quantum on boulders. */
+    fun setClimbType(code: String) {
+        val type = CLIMB_TYPES.firstOrNull { it.first == code }?.second ?: return
+        val current = presenter.state.value.filter
+        if (current.climbTypeFilter == type) return
+        presenter.setFilters(edit(current).copy(climbTypeFilter = type))
+    }
+
+    /** Android `updateOriginFilter`: all | cruxcoach | kilter | boardsesh (BoardSesh only where the board has it). */
+    fun setOrigin(code: String) {
+        val origin = ORIGINS.firstOrNull { it.first == code }?.second ?: return
+        val current = presenter.state.value.filter
+        if (current.originFilter == origin) return
+        presenter.setFilters(edit(current).copy(originFilter = origin))
+    }
+
+    /**
+     * Android `updateUngradedOnlyFilter`: an ungraded climb has no ascents and is no benchmark, so
+     * turning the mode on clears both — left on, either one guaranteed an empty list.
+     */
+    fun setUngradedOnly(enabled: Boolean) {
+        val current = presenter.state.value.filter
+        presenter.setFilters(
+            if (enabled) edit(current).copy(ungradedOnly = true, minAscensionists = 0, benchmarkOnly = false)
+            else edit(current).copy(ungradedOnly = false)
+        )
+    }
+
+    /** Android `refreshUngradedAvailable`: counts the climbs the "without a grade" switch would show. */
+    fun refreshUngradedAvailable() = presenter.refreshUngradedAvailable()
 
     /** Android `toggleQuantumRuleFilter`: one positive rule on or off; ignored off a Quantum board. */
     fun toggleQuantumRule(code: String) {
@@ -377,6 +445,12 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
     /** Quantum rule codes in Android's chip order, for the filter sheet. */
     val quantumRuleCodes: List<String> = QUANTUM_RULES.map { it.first }
 
+    /** Android's sort fields in its filter-screen order (Sends, Quality, Sends × Quality, Moves, Newest, Random). */
+    val sortFieldCodes: List<String> = listOf("popular", "quality", "qualitySends", "moves", "newest", "random")
+
+    /** Android's "Type" choices, in its order. */
+    val climbTypeCodes: List<String> = listOf("boulder", "route", "all")
+
     /** Sort codes the UI may offer, in Android's order. */
     val sortCodes: List<String> = listOf("popular", "quality", "qualitySends", "hardest", "easiest", "name", "newest", "random")
 
@@ -390,6 +464,27 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
             "edge" to com.cruxcoach.app.browse.QuantumRuleFilter.EDGE,
             "kickplate" to com.cruxcoach.app.browse.QuantumRuleFilter.KICKPLATE,
             "matching" to com.cruxcoach.app.browse.QuantumRuleFilter.MATCHING,
+        )
+        private val SORT_FIELDS = listOf(
+            "popular" to ClimbSortField.ASCENSIONISTS,
+            "quality" to ClimbSortField.QUALITY,
+            "qualitySends" to ClimbSortField.QUALITY_SENDS,
+            "moves" to ClimbSortField.HOLDS,
+            "newest" to ClimbSortField.NEWEST,
+            "random" to ClimbSortField.RANDOM,
+            "difficulty" to ClimbSortField.DIFFICULTY,
+            "name" to ClimbSortField.NAME,
+        )
+        private val CLIMB_TYPES = listOf(
+            "boulder" to com.cruxcoach.data.repository.ClimbTypeFilter.BOULDER,
+            "route" to com.cruxcoach.data.repository.ClimbTypeFilter.ROUTE,
+            "all" to com.cruxcoach.data.repository.ClimbTypeFilter.ALL,
+        )
+        private val ORIGINS = listOf(
+            "all" to com.cruxcoach.app.browse.OriginFilter.ALL,
+            "cruxcoach" to com.cruxcoach.app.browse.OriginFilter.CRUXCOACH,
+            "kilter" to com.cruxcoach.app.browse.OriginFilter.KILTER,
+            "boardsesh" to com.cruxcoach.app.browse.OriginFilter.BOARDSESH,
         )
         private val QUANTUM_OVERLAPS = listOf(
             "off" to com.cruxcoach.domain.board.QuantumOverlapFilter.OFF,

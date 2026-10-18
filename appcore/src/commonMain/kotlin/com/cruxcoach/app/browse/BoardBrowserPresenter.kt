@@ -64,6 +64,8 @@ data class BoardBrowserUiState(
     val holdFilterActive: Boolean = false,
     /** Climbs the applied hold search matches on its own (Android `holdFilterUuids.size`). */
     val holdFilterMatches: Int = 0,
+    /** Android `ungradedAvailable`: climbs the "without a grade" switch would show; -1 until counted. */
+    val ungradedAvailable: Long = -1,
 ) {
     val filter: BrowserFilterState get() = core.filter
 }
@@ -442,6 +444,31 @@ class BoardBrowserPresenter(
                 if (gate.accepts(generation)) {
                     _state.update { it.copy(loadState = BrowseLoadState.FAILED, error = BrowseError.QUERY_FAILED) }
                 }
+            }
+        }
+    }
+
+    /**
+     * Android `refreshUngradedAvailable`: the filter sheet offers "without a grade" with its count,
+     * and disables it where the catalogue grades every climb. A count for another board/angle/type
+     * than the one now shown is dropped.
+     */
+    fun refreshUngradedAvailable() {
+        val snapshot = _state.value
+        val f = snapshot.filter
+        scope.launch {
+            try {
+                val count = withContext(io) { dbLock.withLock { pipeline.countUngraded(f, context(snapshot)) } }
+                val now = _state.value.filter
+                if (now.angle == f.angle && now.layoutId == f.layoutId && now.boardBrand == f.boardBrand &&
+                    now.climbTypeFilter == f.climbTypeFilter
+                ) {
+                    _state.update { it.copy(ungradedAvailable = count) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Unknown stays -1: the switch then stays usable rather than wrongly disabled.
             }
         }
     }
