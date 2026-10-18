@@ -499,6 +499,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   collection; an active-mode button keeps the controls accessible.
 
 ### Changed
+- Typed meals need fewer format rules: "2 eier 1 banane 200ml milch" or
+  "Banane Apfel Birne" are split into their foods without commas, "1/2",
+  "eine halbe" and "2 x" are understood, "Käsebrot" becomes bread and cheese,
+  and what goes into a coffee or onto bread gets a realistic amount (a splash
+  of milk, a spoon of sugar or honey, 10 g of oil) instead of 150 g. Plain
+  words find the plain food (bananas, berries, cucumber, cake, sugar); protein
+  shakes and bars, which the food table does not have, are left unmatched
+  rather than matched to protein bread.
 - Foods people count – a banana, an apple, an egg, a roll – offer pieces
   next to grams when picked from the food database ("1 piece (120 g)"),
   also when they were saved to my foods before; grams stay one tap away.
