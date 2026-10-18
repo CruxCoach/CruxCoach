@@ -28,8 +28,17 @@ enum VisionDeviceFacts {
 /// The core's `FoodVisionHost` over `FoodVisionEngine`: one serial queue, the
 /// model stays loaded between photos (as in Android's ":vision" process) until
 /// `unload()`. The chosen photo is handed over with `setPhoto` right before the
-/// core asks for a run, and dropped once the run has it.
+/// core asks for a run, and dropped once the run has it. A typed meal runs the
+/// same engine without an image (`runText`).
 final class FoodVisionRunner: NSObject, FoodVisionHost {
+    /// What one run feeds the engine.
+    private enum Request {
+        case probe
+        case photo(PreparedImage?)
+        /// The typed meal, already cleaned and capped by the core (`MealTextVision.forMeal`).
+        case text(String)
+    }
+
     private let queue = DispatchQueue(label: "org.cruxcoach.foodvision", qos: .userInitiated)
     private let lock = NSLock()
     // Guarded by `lock`.
@@ -56,11 +65,28 @@ final class FoodVisionRunner: NSObject, FoodVisionHost {
         let image: PreparedImage? = imageKind == "photo" ? photo : nil
         if imageKind == "photo" { photo = nil }
         lock.unlock()
+        let request: Request = imageKind == "probe" ? .probe : .photo(image)
+        enqueue(modelPath: modelPath, projectorPath: projectorPath, threads: threads, request: request,
+                maxTokens: maxTokens, ticket: ticket, onResult: onResult)
+    }
+
+    func runText(modelPath: String, projectorPath: String, threads: Int32, meal: String, maxTokens: Int32,
+                 onResult: @escaping (String) -> Void) {
+        lock.lock()
+        generation += 1
+        let ticket = generation
+        lock.unlock()
+        enqueue(modelPath: modelPath, projectorPath: projectorPath, threads: threads, request: .text(meal),
+                maxTokens: maxTokens, ticket: ticket, onResult: onResult)
+    }
+
+    private func enqueue(modelPath: String, projectorPath: String, threads: Int32, request: Request,
+                         maxTokens: Int32, ticket: Int, onResult: @escaping (String) -> Void) {
         queue.async { [weak self] in
             let reply: String
             if let self {
                 reply = self.runNow(modelPath: modelPath, projectorPath: projectorPath, threads: threads,
-                                    probe: imageKind == "probe", image: image, maxTokens: maxTokens, ticket: ticket)
+                                    request: request, maxTokens: maxTokens, ticket: ticket)
             } else {
                 reply = FoodVisionRunner.failure("not_loaded")
             }
@@ -99,8 +125,8 @@ final class FoodVisionRunner: NSObject, FoodVisionHost {
         lock.unlock()
     }
 
-    private func runNow(modelPath: String, projectorPath: String, threads: Int32, probe: Bool,
-                        image: PreparedImage?, maxTokens: Int32, ticket: Int) -> String {
+    private func runNow(modelPath: String, projectorPath: String, threads: Int32, request: Request,
+                        maxTokens: Int32, ticket: Int) -> String {
         guard FoodVisionEngine.isAvailable else { return Self.failure("engine_not_built") }
         if prompt == nil { prompt = VisionPrompt.load() }
         guard let prompt else { return Self.failure("prompt_missing") }
@@ -115,7 +141,22 @@ final class FoodVisionRunner: NSObject, FoodVisionHost {
         // Loading takes seconds and cannot be interrupted; a cancel meanwhile still counts.
         if isCancelled(ticket) { return Self.failure("cancelled") }
         guard let engine else { return Self.failure("not_loaded") }
-        let input: PreparedImage? = probe ? PhotoInput.probeImage() : image
+        let input: PreparedImage?
+        switch request {
+        case .probe:
+            input = PhotoInput.probeImage()
+        case .photo(let image):
+            input = image
+        case .text(let meal):
+            setCurrent(engine)
+            defer { setCurrent(nil) }
+            if isCancelled(ticket) { return Self.failure("cancelled") }
+            // No pixels: the C bridge passes no image, and food_vision.cpp builds
+            // the prompt without the media marker, as Android's text-only request.
+            let user: String = prompt.textUser.replacingOccurrences(of: "{meal}", with: meal)
+            return engine.run(rgb: [], width: 0, height: 0,
+                              system: prompt.textSystem, user: user, grammar: prompt.grammar, maxTokens: maxTokens)
+        }
         guard let input else { return Self.failure("invalid_image") }
         setCurrent(engine)
         defer { setCurrent(nil) }

@@ -1918,4 +1918,53 @@ class AppCore private constructor(
         )
     )
 
+
+    // ── Typed meal with the on-device model (mealai, 0.2.4) ─────────────
+    //
+    // Android's "Analyse with the AI model" under a typed meal's rules list:
+    // the same model store as the photo sheet, Swift's engine (FoodVisionHost)
+    // without an image. Offered only with the installed, probed model on a
+    // phone that passed the device check; the rules work on every phone.
+
+    /**
+     * "Describe a meal" with the model's second pass. Arguments as in
+     * [makeMealPhotoScreen]; [host] is a fresh FoodVisionRunner, freed when the
+     * sheet closes. Null when nutrition is unavailable.
+     */
+    fun makeMealTextScreenWithModel(
+        dayIso: String,
+        mealCode: String,
+        unitsCode: String,
+        physicalMemoryBytes: Long,
+        dotProduct: Boolean,
+        halfPrecision: Boolean,
+        activeProcessors: Int,
+        engineBuilt: Boolean,
+        host: com.cruxcoach.app.foodvision.FoodVisionHost,
+    ): com.cruxcoach.app.ui.MealTextScreenModel? {
+        val service = athlete ?: return null
+        val catalog = nutritionCatalog ?: return null
+        val comma = nutritionDecimalComma()
+        val scope = MainScope()
+        val presenter = com.cruxcoach.app.nutrition.MealReviewPresenter(
+            service, catalog, scope, Dispatchers.IO, Dispatchers.Default,
+            inputText = { base, unit -> com.cruxcoach.app.ui.NutritionFormat.inputText(base, unit, comma) },
+            clock = { platform.clock.epochMillis() },
+        )
+        val facts = com.cruxcoach.app.foodvision.IosDeviceFacts(
+            physicalMemoryBytes = physicalMemoryBytes,
+            dotProduct = dotProduct,
+            halfPrecision = halfPrecision,
+            activeProcessors = activeProcessors,
+            engineBuilt = engineBuilt,
+        )
+        val vision = com.cruxcoach.app.foodvision.MealTextVision(visionModelStore, host, facts, platform.keyValues)
+        return com.cruxcoach.app.ui.MealTextScreenModel(
+            presenter, catalog, scope, dayIso,
+            com.cruxcoach.app.ui.NutritionFormat.meal(mealCode) ?: com.cruxcoach.athlete.model.Meal.SNACK,
+            if (unitsCode == "us") com.cruxcoach.athlete.model.UnitSystem.IMPERIAL else com.cruxcoach.athlete.model.UnitSystem.METRIC,
+            vision,
+        )
+    }
+
 }

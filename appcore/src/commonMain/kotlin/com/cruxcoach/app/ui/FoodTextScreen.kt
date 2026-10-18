@@ -1,10 +1,13 @@
 package com.cruxcoach.app.ui
 
+import com.cruxcoach.app.foodvision.MealTextVision
+import com.cruxcoach.app.foodvision.VisionModelStore
 import com.cruxcoach.app.nutrition.FoodCatalog
 import com.cruxcoach.app.nutrition.FoodItems
 import com.cruxcoach.app.nutrition.MealReviewPresenter
 import com.cruxcoach.app.nutrition.ReviewItem
 import com.cruxcoach.app.nutrition.ReviewPhase
+import com.cruxcoach.app.nutrition.ReviewSource
 import com.cruxcoach.app.ui.NutritionTexts.msg
 import com.cruxcoach.app.ui.NutritionTexts.num
 import com.cruxcoach.app.ui.NutritionTexts.t
@@ -16,8 +19,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -42,9 +47,24 @@ class MealReviewRowUi(
 class FoodChoiceUi(val code: String, val title: String, val subtitle: NutriText)
 
 class MealTextUi(
-    /** input | reading | review | saved | failed */
+    /** input | reading | analyzing | review | saved | failed */
     val phase: String,
     val text: String,
+    /** Where the review list came from: rules | model | photo; empty outside the review. */
+    val source: String,
+    /** Seconds the model took, for "Read by the AI model in %d s". */
+    val reviewSeconds: Int,
+    /**
+     * Android's "Analyse with the AI model" under a rules list: only with the
+     * installed, probed model on a phone that passed the device check.
+     */
+    val canAskModel: Boolean,
+    /** Wall-clock start of "analyzing", for the elapsed seconds; 0 otherwise. */
+    val phaseStartedMs: Long,
+    /** For phase "failed": empty (the description or the save failed), or memory | app_memory | engine. */
+    val error: String,
+    /** The engine's code for error "engine". */
+    val errorCode: String,
     val rows: List<MealReviewRowUi>,
     val mealCode: String,
     val saveCount: Int,
@@ -61,7 +81,8 @@ class MealTextUi(
 /**
  * "Describe a meal" (Android `FoodTextSheet` + the review list): a sentence
  * becomes a checkable list through the shared rule parser and the BLS
- * matcher – on every phone, offline, without a model.
+ * matcher – on every phone, offline, without a model. Where photos would be
+ * recognised, the installed model may read the sentence again ([readWithModel]).
  */
 class MealTextScreenModel internal constructor(
     private val presenter: MealReviewPresenter,
@@ -70,6 +91,8 @@ class MealTextScreenModel internal constructor(
     private val day: String,
     initialMeal: Meal,
     units: UnitSystem,
+    /** The model's second pass; null for the photo's review list and where only the rules read. */
+    private val vision: MealTextVision? = null,
 ) {
     private data class Local(
         val text: String = "",
@@ -86,22 +109,28 @@ class MealTextScreenModel internal constructor(
 
     init {
         presenter.units = units
+        if (vision?.takeInterruptedRun() == true) presenter.reportVisionFailure("memory")
     }
 
-    val currentState: MealTextUi get() = map(presenter.phase.value, local.value)
+    private val modelState: Flow<VisionModelStore.State> = vision?.state ?: flowOf(VisionModelStore.State.Missing)
+
+    val currentState: MealTextUi
+        get() = map(presenter.phase.value, local.value, vision?.state?.value ?: VisionModelStore.State.Missing)
 
     fun watch(onState: (MealTextUi) -> Unit): Subscription {
         val job = scope.launch {
-            combine(presenter.phase, local) { p, l ->
+            combine(presenter.phase, local, modelState) { p, l, s ->
                 // A mapping bug keeps the last state instead of terminating the app.
-                try { map(p, l) } catch (t: Exception) { println("MealTextScreenModel: ${t.message}"); null }
+                try { map(p, l, s) } catch (t: Exception) { println("MealTextScreenModel: ${t.message}"); null }
             }.collect { ui -> if (ui != null) onState(ui) }
         }
         return Subscription { job.cancel() }
     }
 
+    /** Also frees the model's memory, like Android's onClose. */
     fun close() {
         presenter.close()
+        vision?.release()
         scope.cancel()
     }
 
@@ -109,7 +138,19 @@ class MealTextScreenModel internal constructor(
 
     fun read() = presenter.onText(local.value.text)
 
-    /** Back to the text field (after an error, or to change the description). */
+    /**
+     * Android "Analyse with the AI model" under the rules' list. Does nothing
+     * unless [MealTextUi.canAskModel]: no model runs where it is not offered.
+     */
+    fun readWithModel() {
+        val v = vision ?: return
+        val review = presenter.phase.value as? ReviewPhase.Review ?: return
+        val text = review.text ?: return
+        if (!canAskModel(review, v.state.value)) return
+        presenter.onTextWithModel(text, v)
+    }
+
+    /** Back to the text field (after an error, to change the description, or to stop the model). */
     fun edit() = presenter.cancel()
 
     fun setMeal(code: String) {
@@ -206,19 +247,35 @@ class MealTextScreenModel internal constructor(
         )
     }
 
-    private fun map(phase: ReviewPhase, l: Local): MealTextUi {
+    private fun canAskModel(review: ReviewPhase.Review?, s: VisionModelStore.State): Boolean =
+        review != null && review.source == ReviewSource.TEXT_RULES && review.text != null && vision?.available(s) == true
+
+    private fun map(phase: ReviewPhase, l: Local, s: VisionModelStore.State): MealTextUi {
         val german = catalog.german()
         val review = phase as? ReviewPhase.Review
+        val failed = phase as? ReviewPhase.VisionFailed
         val count = review?.items?.count { it.included && MealReviewPresenter.amountOf(it) != null } ?: 0
         return MealTextUi(
             phase = when (phase) {
                 ReviewPhase.Idle -> "input"
                 ReviewPhase.Reading -> "reading"
+                is ReviewPhase.Analyzing -> "analyzing"
                 is ReviewPhase.Review -> "review"
                 ReviewPhase.Saved -> "saved"
-                ReviewPhase.Failed -> "failed"
+                ReviewPhase.Failed, is ReviewPhase.VisionFailed -> "failed"
             },
             text = l.text,
+            source = when (review?.source) {
+                ReviewSource.TEXT_RULES -> "rules"
+                ReviewSource.TEXT_MODEL -> "model"
+                ReviewSource.PHOTO -> "photo"
+                null -> ""
+            },
+            reviewSeconds = review?.seconds ?: 0,
+            canAskModel = canAskModel(review, s),
+            phaseStartedMs = (phase as? ReviewPhase.Analyzing)?.startedMs ?: 0L,
+            error = failed?.error.orEmpty(),
+            errorCode = failed?.code.orEmpty(),
             rows = review?.items.orEmpty().map { row(it, german) },
             mealCode = NutritionFormat.mealCode(meal(phase, l)),
             saveCount = count,
@@ -234,7 +291,6 @@ class MealTextScreenModel internal constructor(
     }
 
     private companion object {
-        /** Android VisionPrompt.MAX_MEAL_CHARS. */
-        const val MAX_MEAL_CHARS = 500
+        const val MAX_MEAL_CHARS = MealTextVision.MAX_MEAL_CHARS
     }
 }

@@ -1,13 +1,18 @@
 // The typed-meal part of androidApp/.../fuel/FoodPhotoViewModel.kt (0e1bad0c6):
 // a description becomes a checkable list through the shared rule parser and
-// FoodMatcher, then food log entries. The photo model is not part of iOS.
+// FoodMatcher, then food log entries; the installed model may read it again
+// (onTextWithModel). MealPhotoScreenModel ends its photos in the same list.
 package com.cruxcoach.app.nutrition
+
+import com.cruxcoach.app.foodvision.MealTextVision
+import com.cruxcoach.app.foodvision.VisionOutcome
 
 import com.cruxcoach.app.athlete.AthleteService
 import com.cruxcoach.app.athlete.nowMs
 import com.cruxcoach.athlete.logic.BlsFood
 import com.cruxcoach.athlete.logic.DetectedFood
 import com.cruxcoach.athlete.logic.FoodMatcher
+import com.cruxcoach.athlete.logic.FoodVisionParser
 import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.MealTextParser
 import com.cruxcoach.athlete.model.FoodItem
@@ -43,17 +48,31 @@ data class ReviewItem(
     val unit: FuelUnits.Amount = if (water) FuelUnits.Amount.ML else FuelUnits.Amount.G,
 )
 
+/** Where the review list came from (Android ReviewSource). */
+enum class ReviewSource { PHOTO, TEXT_RULES, TEXT_MODEL }
+
 sealed interface ReviewPhase {
     data object Idle : ReviewPhase
     data object Reading : ReviewPhase
+    /** The on-device model reads the typed meal (Android PhotoPhase.Analyzing); wall-clock start. */
+    data class Analyzing(val startedMs: Long) : ReviewPhase
     data class Review(
         val items: List<ReviewItem>,
         /** Meal named in a typed description ("zum Frühstück"). */
         val mealHint: Meal? = null,
+        /** The typed description, kept for a second pass with the model. */
         val text: String? = null,
+        val source: ReviewSource = ReviewSource.PHOTO,
+        /** Seconds the model took; 0 for the rules. */
+        val seconds: Int = 0,
     ) : ReviewPhase
     data object Saved : ReviewPhase
     data object Failed : ReviewPhase
+    /**
+     * A model run failed with no rules list to go back to (Android failFor):
+     * [error] memory | app_memory | engine, [code] the engine's code.
+     */
+    data class VisionFailed(val error: String, val code: String) : ReviewPhase
 }
 
 class MealReviewPresenter(
@@ -76,8 +95,10 @@ class MealReviewPresenter(
     var units: UnitSystem = UnitSystem.METRIC
 
     /**
-     * Turns a typed description into the review list at once: on typical
-     * sentences the rules beat a small model and need no waiting.
+     * Turns a typed description into the review list at once, without the
+     * model: on typical sentences the rules beat the 2B model (which also
+     * invents foods for vague input) and need no waiting. The model stays
+     * available as a second opinion, see [onTextWithModel].
      */
     fun onText(text: String) {
         val trimmed = text.trim()
@@ -87,7 +108,7 @@ class MealReviewPresenter(
             _phase.value = ReviewPhase.Reading
             try {
                 val parsed = withContext(compute) { MealTextParser.parse(trimmed) }
-                showReview(parsed.foods, parsed.meal, trimmed)
+                showReview(parsed.foods, parsed.meal, trimmed, ReviewSource.TEXT_RULES)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -96,12 +117,63 @@ class MealReviewPresenter(
         }
     }
 
+    /**
+     * Asks the on-device model to read the description; keeps the rules'
+     * list if it fails or finds nothing (Android onTextWithModel). The caller
+     * offers this only while [MealTextVision.available]; [vision] checks again.
+     */
+    fun onTextWithModel(text: String, vision: MealTextVision) {
+        val fallback = _phase.value as? ReviewPhase.Review
+        work?.cancel()
+        work = scope.launch {
+            val started = clock()
+            _phase.value = ReviewPhase.Analyzing(started)
+            try {
+                val hint = withContext(compute) { MealTextParser.parse(text).meal }
+                val outcome = vision.read(text)
+                val foods = if (outcome.ok) withContext(compute) { FoodVisionParser.parse(outcome.text) } else emptyList()
+                if (foods.isEmpty() && fallback != null) {
+                    _phase.value = fallback
+                    return@launch
+                }
+                if (!outcome.ok) {
+                    _phase.value = visionFailure(outcome)
+                    return@launch
+                }
+                val seconds = ((clock() - started) / 1000).toInt()
+                showReview(foods, hint, text, ReviewSource.TEXT_MODEL, seconds)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _phase.value = fallback ?: ReviewPhase.Failed
+            }
+        }
+    }
+
+    /** A model run that ended the app last time (MealTextVision.takeInterruptedRun). */
+    fun reportVisionFailure(error: String) {
+        _phase.value = ReviewPhase.VisionFailed(error, "")
+    }
+
+    private fun visionFailure(outcome: VisionOutcome): ReviewPhase.VisionFailed =
+        if (outcome.error == MealTextVision.APP_MEMORY) {
+            ReviewPhase.VisionFailed(MealTextVision.APP_MEMORY, "")
+        } else {
+            ReviewPhase.VisionFailed("engine", outcome.error ?: "unknown")
+        }
+
     /** Matches the detected foods against BLS and opens the review list. */
-    internal suspend fun showReview(detections: List<DetectedFood>, mealHint: Meal?, text: String?) {
+    internal suspend fun showReview(
+        detections: List<DetectedFood>,
+        mealHint: Meal?,
+        text: String?,
+        source: ReviewSource = ReviewSource.PHOTO,
+        seconds: Int = 0,
+    ) {
         val matcher = catalog.bls.matcher()
         // Scoring 7,140 foods per detection is too much for the main thread.
         val items = withContext(compute) { detections.map { reviewItem(it, matcher) } }
-        _phase.value = ReviewPhase.Review(items, mealHint, text)
+        _phase.value = ReviewPhase.Review(items, mealHint, text, source, seconds)
     }
 
     fun cancel() {

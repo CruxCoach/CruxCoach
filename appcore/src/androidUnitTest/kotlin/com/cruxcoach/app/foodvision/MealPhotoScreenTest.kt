@@ -29,10 +29,13 @@ import kotlin.test.assertTrue
 
 /** Stands in for Swift's engine host: records each run and answers with a canned envelope. */
 class FakeVisionHost : FoodVisionHost {
-    class Run(val modelPath: String, val projectorPath: String, val threads: Int, val kind: String, val maxTokens: Int)
+    /** [kind] is PHOTO, PROBE or [TEXT]; [meal] the typed meal of a text run. */
+    class Run(val modelPath: String, val projectorPath: String, val threads: Int, val kind: String, val maxTokens: Int, val meal: String = "")
 
     val runs: MutableList<Run> = Collections.synchronizedList(ArrayList())
     @Volatile var available = 0L
+    /** How often the core asked for the memory it may use (it does before every run). */
+    @Volatile var memoryChecks = 0
     @Volatile var cancels = 0
     @Volatile var releases = 0
     /** When set, a run answers only on cancel(). */
@@ -45,6 +48,11 @@ class FakeVisionHost : FoodVisionHost {
         if (hold) pending = onResult else onResult(reply(imageKind))
     }
 
+    override fun runText(modelPath: String, projectorPath: String, threads: Int, meal: String, maxTokens: Int, onResult: (String) -> Unit) {
+        runs += Run(modelPath, projectorPath, threads, TEXT, maxTokens, meal)
+        if (hold) pending = onResult else onResult(reply(TEXT))
+    }
+
     override fun cancel() {
         cancels++
         pending?.invoke("""{"ok":false,"error":"cancelled"}""")
@@ -53,9 +61,14 @@ class FakeVisionHost : FoodVisionHost {
 
     override fun unload() { releases++ }
 
-    override fun availableMemoryBytes(): Long = available
+    override fun availableMemoryBytes(): Long {
+        memoryChecks++
+        return available
+    }
 
     companion object {
+        const val TEXT = "text"
+
         /** 3 s image, 32 tokens in 1.6 s: about 11 s per photo. */
         const val PROBE_FAST = """{"ok":true,"error":"","text":"{\"items\":[","promptTokens":300,"outputTokens":32,"imageMs":3000,"generateMs":1600}"""
         const val PROBE_SLOW = """{"ok":true,"error":"","text":"","promptTokens":300,"outputTokens":32,"imageMs":150000,"generateMs":6400}"""
@@ -160,6 +173,8 @@ class MealPhotoScreenTest {
 
         val review = screen.review.currentState
         assertEquals(2, review.rows.size)
+        assertEquals("photo", review.source)
+        assertFalse(review.canAskModel, "the model's text pass belongs to a typed meal")
         val banana = review.rows.single { !it.isWater }
         assertTrue(banana.hasChoice, "matched against BLS")
         assertTrue(banana.title.contains("banan", ignoreCase = true), banana.title)

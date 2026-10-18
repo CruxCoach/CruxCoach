@@ -14,6 +14,14 @@ interface FoodVisionHost {
      */
     fun run(modelPath: String, projectorPath: String, threads: Int, imageKind: String, maxTokens: Int, onResult: (String) -> Unit)
 
+    /**
+     * A typed meal without an image (Android's text-only request): the bundled
+     * text system prompt, the text user prompt with [meal] in place of
+     * "{meal}", and the same grammar. [meal] arrives cleaned and capped by
+     * `MealTextVision.forMeal`. Otherwise as [run].
+     */
+    fun runText(modelPath: String, projectorPath: String, threads: Int, meal: String, maxTokens: Int, onResult: (String) -> Unit)
+
     /** Stops a running request at its next token. */
     fun cancel()
 
