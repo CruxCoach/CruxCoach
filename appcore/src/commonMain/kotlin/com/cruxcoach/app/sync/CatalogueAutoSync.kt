@@ -32,6 +32,8 @@ class CatalogueAutoSync(
     private val clock: WallClock,
     /** Android's periodic worker requires `NetworkType.UNMETERED`; so does this refresh. */
     private val network: NetworkCost,
+    /** ... and `setRequiresBatteryNotLow(true)`: no automatic download on a low battery unless charging. */
+    private val battery: BatteryStatus = BatteryStatus.NEVER_LOW,
 ) {
     /**
      * Returns the brands a refresh was started for, empty when nothing was due.
@@ -46,6 +48,8 @@ class CatalogueAutoSync(
         // Automatic downloads never use mobile data or Low Data Mode (Android `syncIfStale`: "no WiFi —
         // skipping"). Not marked as run: the gate calls again once an unmetered link appears.
         if (network.kind.value != NetworkCost.UNMETERED) return emptyList()
+        // Not marked as run either: the battery's recovery, Wi-Fi or the next start ask again.
+        if (battery.isLow()) return emptyList()
         // Nothing installed yet is the catalogue screen's job, not a refresh.
         val installed = controller.installedBrands
         if (installed.isEmpty()) return emptyList()

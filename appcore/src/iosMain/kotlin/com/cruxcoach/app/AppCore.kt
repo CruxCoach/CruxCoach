@@ -259,7 +259,7 @@ class AppCore private constructor(
     }
 
     private val autoSync: CatalogueAutoSync by lazy {
-        CatalogueAutoSync(catalogueSync, settingsStore, platform.keyValues, connectivity, platform.clock, catalogueNetwork)
+        CatalogueAutoSync(catalogueSync, settingsStore, platform.keyValues, connectivity, platform.clock, catalogueNetwork, catalogueBattery)
     }
 
     /**
@@ -2427,5 +2427,13 @@ class AppCore private constructor(
             NostrProfileStore(secureDatabase, platform.clock),
             RelayClient(platform.webSockets, platform.hashing),
         ).resolve(pubkeyHex)?.displayName
+
+    // Catalogue automatic downloads wait on a low battery (Android BoardSyncWorker
+    // setRequiresBatteryNotLow); `autoSync` above takes it.
+
+    /** Built with the first refresh, on the main thread; a recovering battery asks the refresh again. */
+    private val catalogueBattery: com.cruxcoach.app.sync.IosBatteryStatus by lazy {
+        com.cruxcoach.app.sync.IosBatteryStatus(onNotLow = { refreshCataloguesIfDue() }).also { it.start() }
+    }
 
 }

@@ -241,4 +241,34 @@ class CatalogueDownloadGateTest {
         kv.map.remove(CatalogueAutoSync.KEY_LAST_SUCCESS)
         assertEquals(-1, autoSync(SyncInterval.DAILY).overdueDays())
     }
+
+    @Test
+    fun `the automatic refresh waits on a low battery unless charging`() {
+        publishKilter()
+        kind.value = NetworkCost.UNMETERED
+        gate().request(listOf(BoardBrand.KILTER), queueWhenOffline = false)
+        assertEquals(listOf(BoardBrand.KILTER), ranBrands())
+
+        var level = 0.15f
+        var charging = false
+        val battery = object : BatteryStatus {
+            override fun isLow(): Boolean = BatteryStatus.isLow(level, charging)
+        }
+        val settings = SettingsStore(kv).also { it.setSyncInterval(SyncInterval.DAILY) }
+        val auto = CatalogueAutoSync(controller, settings, kv, connectivity, clock, network, battery)
+        assertEquals(emptyList(), auto.refreshIfDue(), "15 % is low (WorkManager BATTERY_LOW_THRESHOLD)")
+        assertNull(kv.map[CatalogueAutoSync.KEY_LAST_AUTO_SYNC], "a skipped refresh is not marked as run")
+        charging = true
+        assertEquals(listOf("kilter"), auto.refreshIfDue(), "charging is never low")
+    }
+
+    @Test
+    fun `the battery threshold is WorkManager's`() {
+        assertTrue(BatteryStatus.isLow(0.05f, charging = false))
+        assertTrue(BatteryStatus.isLow(0.15f, charging = false))
+        assertFalse(BatteryStatus.isLow(0.16f, charging = false))
+        assertFalse(BatteryStatus.isLow(0.05f, charging = true))
+        assertFalse(BatteryStatus.isLow(-1f, charging = false), "unknown (no battery, simulator) is not low")
+        assertFalse(BatteryStatus.NEVER_LOW.isLow())
+    }
 }
