@@ -3838,6 +3838,7 @@
 "trl_day_add_another" = "Log another climbing session";
 "trl_day_count_anyway" = "Count anyway";
 "trl_day_count_anyway_hint" = "Only if it was extra climbing that the board logbook does not know.";
+"trl_day_deleted" = "Climbing day deleted";
 "trl_day_edit_title" = "Edit climbing day";
 "trl_day_from_health" = "Imported from Health Connect.";
 "trl_day_intensity" = "How hard";

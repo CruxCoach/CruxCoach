@@ -49,6 +49,14 @@ class ClimbingDayScreenState(
     val listLoaded: Boolean,
 )
 
+/**
+ * A climbing day just deleted, for the host's "Undo" (Android `AthleteService.DeletedClimb`, device test D45):
+ * [restore] brings the entry and its board-overlap choice back unchanged, also after the sheet has closed.
+ */
+class ClimbingDayUndo internal constructor(private val restorer: () -> Unit) {
+    fun restore() = restorer()
+}
+
 /** "Log a climbing day" and the list of climbing days (Android `ClimbingDaySheet`, `ClimbingDaysScreen`). */
 class ClimbingDayScreenModel internal constructor(private val presenter: ClimbingDayPresenter) {
     val currentState: ClimbingDayScreenState get() = map(presenter.state.value)
@@ -89,6 +97,10 @@ class ClimbingDayScreenModel internal constructor(private val presenter: Climbin
     fun save() = presenter.save()
     fun delete() = presenter.delete()
     fun consumeDone() = presenter.consumeDone()
+
+    /** What the last delete removed, for "Undo"; null when nothing was deleted. Read it before [consumeDone]. */
+    fun lastDeleted(): ClimbingDayUndo? =
+        presenter.state.value.deleted?.let { d -> ClimbingDayUndo { presenter.restore(d) } }
 
     private var lastGood: ClimbingDayScreenState? = null
 

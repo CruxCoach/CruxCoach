@@ -224,7 +224,8 @@ private struct TodayContent: View {
         }
         .sheet(item: Binding(get: { climbingSheet.map { ClimbingDayEditTarget(id: $0) } }, set: { climbingSheet = $0?.id })) { target in
             ClimbingDaySheetView(core: core, editId: target.id, onDone: { climbingSheet = nil },
-                                 onAddAnother: addAnother(editing: target.id))
+                                 onAddAnother: addAnother(editing: target.id),
+                                 onDeleted: { undo in offerClimbingUndo(undo) })
                 .id(target.id)
         }
         .sheet(isPresented: $boardGenerator) {
@@ -307,6 +308,11 @@ private struct TodayContent: View {
     private func addAnother(editing id: String) -> (() -> Void)? {
         if id.isEmpty { return nil }
         return { climbingSheet = "" }
+    }
+
+    /// A climbing day deleted from the tile: one line with "Undo" (device test D45).
+    private func offerClimbingUndo(_ undo: ClimbingDayUndo) {
+        show(L("trl_day_deleted"), action: L("trf_undo")) { undo.restore() }
     }
 
     // ── Banners ──────────────────────────────────────────────────────

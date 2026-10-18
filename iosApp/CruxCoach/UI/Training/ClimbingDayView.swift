@@ -9,6 +9,8 @@ struct ClimbingDaySheetView: View {
     let onDone: () -> Void
     /// While editing: log another session instead (today's entry opened from Today's tile).
     var onAddAnother: (() -> Void)?
+    /// The entry was deleted: the host offers "Undo" (device test D45).
+    var onDeleted: ((ClimbingDayUndo) -> Void)?
 
     @State private var host: ScreenHost<ClimbingDayScreenModel, ClimbingDayScreenState>?
     @State private var picking = false
@@ -36,7 +38,10 @@ struct ClimbingDaySheetView: View {
         }
         .onChange(of: host?.state.done ?? false) { _, done in
             if done {
+                // Read before consumeDone, which forgets it.
+                let undo: ClimbingDayUndo? = host?.model.lastDeleted()
                 host?.model.consumeDone()
+                if let undo, let onDeleted { onDeleted(undo) }
                 onDone()
             }
         }
@@ -176,33 +181,17 @@ struct ClimbingDaysListView: View {
     @State private var host: ScreenHost<ClimbingDayScreenModel, ClimbingDayScreenState>?
     @State private var editing: String?
     @State private var adding = false
+    /// "Climbing day deleted · Undo" after a delete from the list (device test D45).
+    @State private var snack: TrainingSnack?
+    @State private var snackAction: (() -> Void)?
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let host, host.state.listLoaded {
-                    if host.state.rows.isEmpty {
-                        ContentUnavailableView(L("trl_days_empty"), systemImage: "mountain.2")
-                    } else {
-                        List(host.state.rows, id: \.id) { row in
-                            Button { editing = row.id } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    HStack {
-                                        Text(tr: row.kind).font(.subheadline.weight(.semibold))
-                                        if row.fromHealth { Text(L("trl_days_source_health")).font(.caption).foregroundStyle(.secondary) }
-                                    }
-                                    Text(tr: row.line).font(.caption).foregroundStyle(.secondary)
-                                    if !row.note.isEmpty { Text(row.note).font(.caption) }
-                                    if let overlap = TrRender.optional(row.overlap) { Text(overlap).font(.caption).foregroundStyle(.secondary) }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                } else {
-                    ProgressView()
-                }
+            ZStack(alignment: .bottom) {
+                content
+                TrainingSnackBar(snack: $snack) { snackAction?() }
             }
+            .animation(.default, value: snack)
             .navigationTitle(L("trl_days_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -220,11 +209,46 @@ struct ClimbingDaysListView: View {
             model.loadList()
         }
         .sheet(item: Binding(get: { editing.map { ClimbingDayEditTarget(id: $0) } }, set: { editing = $0?.id })) { target in
-            ClimbingDaySheetView(core: core, editId: target.id) { editing = nil }
+            ClimbingDaySheetView(core: core, editId: target.id, onDone: { editing = nil },
+                                 onDeleted: { undo in offerUndo(undo) })
         }
         .sheet(isPresented: $adding) {
             ClimbingDaySheetView(core: core, editId: "") { adding = false }
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let host, host.state.listLoaded {
+            if host.state.rows.isEmpty {
+                ContentUnavailableView(L("trl_days_empty"), systemImage: "mountain.2")
+            } else {
+                List(host.state.rows, id: \.id) { row in
+                    Button { editing = row.id } label: { rowView(row) }
+                        .buttonStyle(.plain)
+                }
+            }
+        } else {
+            ProgressView()
+        }
+    }
+
+    private func rowView(_ row: ClimbingDayRowUi) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(tr: row.kind).font(.subheadline.weight(.semibold))
+                if row.fromHealth { Text(L("trl_days_source_health")).font(.caption).foregroundStyle(.secondary) }
+            }
+            Text(tr: row.line).font(.caption).foregroundStyle(.secondary)
+            if !row.note.isEmpty { Text(row.note).font(.caption) }
+            if let overlap = TrRender.optional(row.overlap) { Text(overlap).font(.caption).foregroundStyle(.secondary) }
+        }
+    }
+
+    /// The entry and its board-overlap choice come back with one tap (Android `ClimbingDaysScreen`).
+    private func offerUndo(_ undo: ClimbingDayUndo) {
+        snackAction = { undo.restore() }
+        snack = TrainingSnack(text: L("trl_day_deleted"), action: L("trf_undo"))
     }
 }
 

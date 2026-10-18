@@ -3838,6 +3838,7 @@
 "trl_day_add_another" = "Weitere Klettereinheit eintragen";
 "trl_day_count_anyway" = "Trotzdem zählen";
 "trl_day_count_anyway_hint" = "Nur wenn es zusätzliches Klettern war, das das Board-Logbuch nicht kennt.";
+"trl_day_deleted" = "Klettertag gelöscht";
 "trl_day_edit_title" = "Klettertag bearbeiten";
 "trl_day_from_health" = "Aus Health Connect übernommen.";
 "trl_day_intensity" = "Wie hart";

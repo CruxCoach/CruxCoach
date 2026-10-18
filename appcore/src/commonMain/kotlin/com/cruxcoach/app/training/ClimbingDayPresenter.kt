@@ -6,8 +6,10 @@ import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.ClimbingDayEntry
 import com.cruxcoach.athlete.model.ClimbingDayKind
 import com.cruxcoach.athlete.model.ClimbingDaySource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +35,8 @@ internal data class ClimbingDayFormState(
     val countAnyway: Boolean = false,
     /** Saved or deleted: the sheet closes. */
     val done: Boolean = false,
+    /** The entry just deleted, for the host's "Rückgängig" (device test D45). */
+    val deleted: AthleteService.DeletedClimb? = null,
     /** The last year's climbing days, newest first, for the list; null until read. */
     val list: List<ClimbingDayEntry>? = null,
     /** Board overlaps of the synced entries (audit W3), by entry id. */
@@ -115,12 +119,30 @@ internal class ClimbingDayPresenter(
         val id = _state.value.existing?.id ?: return
         scope.launch(io) {
             service.ensureReady()
-            service.deleteClimbingDay(id)
-            _state.update { it.copy(done = true) }
+            val deleted = service.deleteClimbingDayForUndo(id)
+            _state.update { it.copy(done = true, deleted = deleted) }
         }
     }
 
-    fun consumeDone() = _state.update { it.copy(done = false) }
+    /**
+     * "Rückgängig" after a delete (Android `ClimbingDaysViewModel.restore`, `TodayViewModel.undoClimbingDelete`).
+     * Offered by the host after the sheet has closed, so it runs outside the sheet's scope.
+     */
+    fun restore(d: AthleteService.DeletedClimb) {
+        CoroutineScope(SupervisorJob() + io).launch {
+            try {
+                service.ensureReady()
+                service.restoreClimbingDay(d)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // An uncaught exception in a Kotlin/Native coroutine would end the app; the day simply stays deleted.
+                println("ClimbingDayPresenter: restore failed: ${e.message}")
+            }
+        }
+    }
+
+    fun consumeDone() = _state.update { it.copy(done = false, deleted = null) }
 
     fun close() = scope.cancel()
 }
