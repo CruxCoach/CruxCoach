@@ -58,7 +58,8 @@ class IosModelDownloads private constructor() : ModelDownloads {
     private val lock = NSLock()
     private val defaults = NSUserDefaults.standardUserDefaults
     private val files = IosFileSystem()
-    private val network = IosVisionNetwork().also { it.start() }
+    // Started on the first query: a launch without a download has nothing to watch.
+    private val network: IosVisionNetwork by lazy { IosVisionNetwork().also { it.start() } }
     private val delegate = Delegate()
     private val tasks = HashMap<String, NSURLSessionDownloadTask>()
     private val progress = HashMap<String, Long>()
