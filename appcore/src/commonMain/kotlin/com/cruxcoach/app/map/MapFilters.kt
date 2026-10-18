@@ -48,6 +48,20 @@ data class MapFilters(
             adjustabilities.isEmpty() && sizeIds.isEmpty() && brands.isEmpty() &&
             !wellpassOnly && moonLayoutIds.isEmpty() && moonLedStates.isEmpty()
 
+    /** How many filter dimensions besides the brand choice narrow the map: the "Filters" chip's number. */
+    val activeCountExceptBrands: Int
+        get() = listOf(
+            !(showOriginal && showHomewalls),
+            matchesMyBoard,
+            countries.isNotEmpty(),
+            accessTypes.isNotEmpty(),
+            adjustabilities.isNotEmpty(),
+            sizeIds.isNotEmpty(),
+            wellpassOnly,
+            moonLayoutIds.isNotEmpty(),
+            moonLedStates.isNotEmpty(),
+        ).count { it }
+
     fun apply(
         locations: List<BoardLocation>,
         userBoardLayoutId: Int? = null,

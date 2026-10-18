@@ -2,29 +2,47 @@ import CruxCoachCore
 import MapKit
 import SwiftUI
 
-/// Board-location map. MapKit is a system framework, so nothing is added to the
-/// dependency set; the whole dataset is offline (the bundled cruxcoach-pages
-/// snapshot merged with the synced `locations` chunk).
+/// Board map (Android 0.2.4 `MapScreen`): MapKit over the offline dataset (the
+/// bundled cruxcoach-pages snapshot merged with the synced `locations` chunk).
 ///
-/// A pin is a VENUE, not a board: boards within ~11 m collapse into one pin and
-/// the pin shows how many boards stand there. The statistics describe every
-/// recorded board regardless of the filters — the Android rule, stated in
-/// `map_stats_scope`.
+/// One marker per venue in its family colour and letter, a pie for several
+/// families; gym names from city zoom; a floating search bar; the family list
+/// with counts ("All boards") and the filter count; a panel listing the places
+/// in view, nearest to the centre (or to you, once located) first; the venue
+/// detail. Rotation and tilt are off. The map reopens where it was left; a
+/// first visit opens on the country of the phone's timezone.
+///
+/// "Browse climbs" and "Choose this board" need the board browser: they show
+/// only when the host passes [core] and [onPickBoard].
 ///
 /// The model is created by the caller's closure inside `.task`, never in `init`:
 /// SwiftUI re-runs `init` on every render pass and would leak a Kotlin presenter.
 struct MapView: View {
     let makeModel: () -> MapScreenModel
+    var core: AppCore? = nil
+    var onPickBoard: ((BoardOption) -> Void)? = nil
+    /// Brands whose catalogue is installed: the boards "Choose this board" can switch to.
+    var boardBrandWires: [String] = []
 
     @State private var host: ScreenHost<MapScreenModel, MapScreenState>?
     @State private var camera: MapCameraPosition = .automatic
     @State private var visibleRegion: MKCoordinateRegion?
+    @State private var startApplied = false
     @State private var showFilters = false
     @State private var showStats = false
+    @State private var showLegend = false
+    @State private var query = ""
+    @State private var panelExpanded = false
+    @State private var locator: LocationProvider?
+    @State private var locating = false
+    @State private var locateFailure: LocateOutcome?
+    @State private var chooseVenueId: String?
 
     /// SwiftUI's `Map` draws every annotation it is given. The dataset holds
     /// ~2 900 venues, so only what is on screen is handed over, bounded.
     private static let maxAnnotations = 400
+    /// Gym names appear from about city zoom (Android: zoom 9).
+    private static let namesBelowSpan = 0.8
 
     var body: some View {
         Group {
@@ -49,31 +67,59 @@ struct MapView: View {
     @ViewBuilder
     private func content(model: MapScreenModel, ui: MapScreenState) -> some View {
         let shown = visiblePins(ui.pins)
-        ZStack(alignment: .bottom) {
-            Map(position: $camera) {
-                ForEach(shown, id: \.id) { pin in
-                    Annotation(pin.title, coordinate: coordinate(pin)) {
-                        PinMarker(pin: pin)
-                            .onTapGesture { model.selectVenue(id: pin.id) }
-                            .accessibilityLabel(accessibilityLabel(pin))
-                    }
+        let styles = MapMarkerStyleBook(ui.markerStyles)
+        let showNames = (visibleRegion?.span.latitudeDelta ?? 180) < Self.namesBelowSpan
+        Map(position: $camera, interactionModes: [.pan, .zoom]) {
+            ForEach(shown, id: \.id) { pin in
+                Annotation(pin.title, coordinate: CLLocationCoordinate2D(latitude: pin.latitude, longitude: pin.longitude),
+                           anchor: .center) {
+                    MapVenueMarker(brandWires: pin.markerBrandWires, styles: styles,
+                                   selected: pin.id == ui.selectedVenue?.id)
+                        .onTapGesture {
+                            model.selectVenue(id: pin.id)
+                            panelExpanded = true
+                        }
+                        .accessibilityLabel(accessibilityLabel(pin))
+                        .accessibilityAddTraits(.isButton)
                 }
             }
-            .mapStyle(.standard(pointsOfInterest: .excludingAll))
-            .onMapCameraChange(frequency: .onEnd) { context in
-                visibleRegion = context.region
-            }
-            .onAppear {
-                if case .automatic = camera {
-                    camera = .region(MKCoordinateRegion(
-                        center: CLLocationCoordinate2D(latitude: ui.initialLatitude,
-                                                       longitude: ui.initialLongitude),
-                        span: MKCoordinateSpan(latitudeDelta: ui.initialSpanDegrees,
-                                               longitudeDelta: ui.initialSpanDegrees)))
+            if ui.hasUserPosition {
+                Annotation(L("locate_me"), coordinate: CLLocationCoordinate2D(latitude: ui.userLatitude,
+                                                                             longitude: ui.userLongitude),
+                           anchor: .center) {
+                    Circle().fill(Color.blue)
+                        .frame(width: 14, height: 14)
+                        .overlay(Circle().strokeBorder(.white, lineWidth: 2.5))
+                        .shadow(radius: 2)
                 }
             }
-
-            footer(ui: ui, shown: shown.count)
+        }
+        .annotationTitles(showNames ? .automatic : .hidden)
+        .mapStyle(.standard(pointsOfInterest: .excludingAll))
+        .mapControls { MapScaleView() }
+        .onMapCameraChange(frequency: .onEnd) { context in
+            visibleRegion = context.region
+            report(context.region, model: model)
+        }
+        .onChange(of: ui.hasStartCamera, initial: true) { _, ready in
+            guard ready, !startApplied else { return }
+            startApplied = true
+            camera = .region(region(ui.startCamera))
+        }
+        .onChange(of: ui.cameraRequestId) { _, _ in
+            withAnimation { camera = .region(region(ui.cameraRequest)) }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            topBar(model: model, ui: ui, styles: styles)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(alignment: .trailing, spacing: 8) {
+                locateButton(model: model)
+                MapPlacesPanel(model: model, ui: ui, styles: styles, expanded: $panelExpanded,
+                               canPickBoards: core != nil && onPickBoard != nil,
+                               onBrowse: { option in onPickBoard?(option) },
+                               onChoose: { venueId in chooseVenueId = venueId })
+            }
         }
         .overlay {
             if ui.isLoading {
@@ -87,13 +133,6 @@ struct MapView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(L("map_open_stats"), systemImage: "chart.bar") { showStats = true }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(L("map_open_filters"),
-                       systemImage: ui.filters.isAtDefault ? "line.3.horizontal.decrease.circle"
-                                                           : "line.3.horizontal.decrease.circle.fill") {
-                    showFilters = true
-                }
-            }
         }
         .sheet(isPresented: $showFilters) {
             NavigationStack { MapFilterSheet(model: model, ui: ui) }
@@ -101,38 +140,192 @@ struct MapView: View {
         .sheet(isPresented: $showStats) {
             NavigationStack { MapStatsSheet(stats: ui.stats) }
         }
-        .sheet(isPresented: Binding(get: { ui.selectedVenue != nil },
-                                    set: { if !$0 { model.selectVenue(id: "") } })) {
-            if let venue = ui.selectedVenue {
-                NavigationStack { MapVenueSheet(venue: venue) }
-                    .presentationDetents([.medium, .large])
-            }
+        .sheet(isPresented: $showLegend) {
+            NavigationStack { MapLegendSheet(model: model, ui: ui, styles: styles) }
+                .presentationDetents([.medium, .large])
         }
-        .overlay(alignment: .top) {
-            if ui.errorCode != "none" {
-                Text(L("map_init_error_generic"))
-                    .font(.footnote).padding(8)
-                    .background(.red.opacity(0.85)).foregroundStyle(.white)
-                    .clipShape(Capsule())
+        .sheet(isPresented: Binding(get: { chooseVenueId != nil }, set: { if !$0 { chooseVenueId = nil } })) {
+            if let core, let onPickBoard, let venueId = chooseVenueId {
+                NavigationStack {
+                    GymSearchView(core: core, availableBrandWires: boardBrandWires,
+                                  startNearby: false,
+                                  onPick: { option in
+                                      chooseVenueId = nil
+                                      onPickBoard(option)
+                                  },
+                                  onPickDirectly: { chooseVenueId = nil },
+                                  mapModel: model, startVenueId: venueId)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(L("action_close")) { chooseVenueId = nil }
+                        }
+                    }
+                }
             }
         }
     }
 
-    private func footer(ui: MapScreenState, shown: Int) -> some View {
-        VStack(spacing: 2) {
-            Text(L("map_filter_count_template", Int(ui.venueCount), Int(ui.totalVenueCount)))
-            if shown < Int(ui.venueCount) {
-                Text(LI("map_pins_capped", shown)).foregroundStyle(.secondary)
+    // MARK: Top bar: search, family list, filters
+
+    @ViewBuilder
+    private func topBar(model: MapScreenModel, ui: MapScreenState, styles: MapMarkerStyleBook) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField(L("map_search_hint"), text: $query)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .onChange(of: query) { _, text in model.search(query: text) }
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .accessibilityLabel(L("map_search_clear"))
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(.regularMaterial, in: Capsule())
+
+            if query.trimmingCharacters(in: .whitespaces).count >= 2 {
+                searchResults(model: model, ui: ui, styles: styles)
+            } else {
+                HStack(spacing: 8) {
+                    Button { showLegend = true } label: {
+                        Label(brandChipTitle(ui), systemImage: "circle.grid.2x2")
+                    }
+                    .buttonStyle(.bordered)
+                    Button { showFilters = true } label: {
+                        Label(ui.filterCount > 0 ? L("map_filters_chip_active", Int(ui.filterCount)) : L("map_filters_chip"),
+                              systemImage: ui.filterCount > 0 ? "line.3.horizontal.decrease.circle.fill"
+                                                              : "line.3.horizontal.decrease.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    Spacer()
+                }
+                .font(.footnote)
+                .tint(Color.primary)
+            }
+            if let failure = locateFailure, let text = failure.failureText {
+                HStack {
+                    Text(text).font(.footnote)
+                    Spacer()
+                    if failure.opensSettings {
+                        Button(L("locate_me_open_settings")) { LocationSettings.open() }.font(.footnote)
+                    }
+                    Button { locateFailure = nil } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel(L("action_close"))
+                }
+                .padding(10)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .font(.footnote)
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(.thinMaterial, in: Capsule())
-        .padding(.bottom, 12)
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
     }
 
-    private func coordinate(_ pin: MapPinUi) -> CLLocationCoordinate2D {
-        CLLocationCoordinate2D(latitude: pin.latitude, longitude: pin.longitude)
+    private func brandChipTitle(_ ui: MapScreenState) -> String {
+        let chosen = ui.brandOptions.filter { $0.isSelected }.map { $0.label }
+        return chosen.isEmpty ? L("map_brand_all") : chosen.joined(separator: ", ")
+    }
+
+    @ViewBuilder
+    private func searchResults(model: MapScreenModel, ui: MapScreenState, styles: MapMarkerStyleBook) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if ui.searchResults.isEmpty {
+                Text(L("map_search_no_results")).font(.footnote).foregroundStyle(.secondary).padding(12)
+            } else {
+                ForEach(ui.searchResults, id: \.index) { result in
+                    Button {
+                        model.pickSearchResult(index: result.index)
+                        if result.kind == "venue" { panelExpanded = true }
+                        query = ""
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                        to: nil, from: nil, for: nil)
+                    } label: {
+                        HStack(spacing: 10) {
+                            if result.kind == "venue" {
+                                MapVenueMarker(brandWires: result.markerBrandWires, styles: styles, selected: false,
+                                               diameter: 18)
+                            } else {
+                                Image(systemName: "building.2").frame(width: 22, height: 22).foregroundStyle(.secondary)
+                            }
+                            VStack(alignment: .leading) {
+                                Text(result.title).foregroundStyle(.primary)
+                                let sub = [result.subtitle, result.countryCode.isEmpty ? "" : mapCountryName(result.countryCode)]
+                                    .filter { !$0.isEmpty }.joined(separator: ", ")
+                                if !sub.isEmpty { Text(sub).font(.footnote).foregroundStyle(.secondary) }
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Divider()
+                }
+            }
+        }
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: My location
+
+    private func locateButton(model: MapScreenModel) -> some View {
+        Button {
+            locateFailure = nil
+            let provider = locator ?? LocationProvider()
+            locator = provider
+            guard !provider.isLocating else { return }
+            locating = true
+            provider.locate { outcome in
+                locating = false
+                if case let .found(latitude, longitude) = outcome {
+                    model.showMyLocation(latitude: latitude, longitude: longitude)
+                } else {
+                    locateFailure = outcome
+                }
+            }
+        } label: {
+            Group {
+                if locating { ProgressView() } else { Image(systemName: "location.fill") }
+            }
+            .frame(width: 44, height: 44)
+            .background(.regularMaterial, in: Circle())
+        }
+        .accessibilityLabel(locating ? L("locate_me_finding") : L("locate_me"))
+        .padding(.trailing, 12)
+    }
+
+    // MARK: Camera
+
+    private func region(_ c: MapCameraUi) -> MKCoordinateRegion {
+        MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: c.latitude, longitude: c.longitude),
+                           span: MKCoordinateSpan(latitudeDelta: c.latitudeDelta, longitudeDelta: c.longitudeDelta))
+    }
+
+    private func report(_ region: MKCoordinateRegion, model: MapScreenModel) {
+        let lat = region.center.latitude
+        let lng = region.center.longitude
+        let south = max(-90, lat - region.span.latitudeDelta / 2)
+        let north = min(90, lat + region.span.latitudeDelta / 2)
+        var west = lng - region.span.longitudeDelta / 2
+        var east = lng + region.span.longitudeDelta / 2
+        if region.span.longitudeDelta >= 360 {
+            west = -180
+            east = 180
+        } else {
+            if west < -180 { west += 360 }
+            if east > 180 { east -= 360 }
+        }
+        model.setViewport(south: south, west: west, north: north, east: east,
+                          centerLatitude: lat, centerLongitude: lng)
+        // Only after the start view: the automatic first camera must not overwrite the memory.
+        if startApplied {
+            model.rememberCamera(latitude: lat, longitude: lng,
+                                 latitudeDelta: region.span.latitudeDelta, longitudeDelta: region.span.longitudeDelta)
+        }
     }
 
     private func accessibilityLabel(_ pin: MapPinUi) -> String {
@@ -151,49 +344,23 @@ struct MapView: View {
         var result: [MapPinUi] = []
         result.reserveCapacity(Self.maxAnnotations)
         for pin in pins where pin.latitude >= minLat && pin.latitude <= maxLat
-            && pin.longitude >= minLng && pin.longitude <= maxLng {
+            && inLongitude(pin.longitude, minLng, maxLng) {
             result.append(pin)
             if result.count == Self.maxAnnotations { break }
         }
         return result
     }
-}
 
-/// Colour is the board family; the count badge, not the colour, says
-/// "several boards here".
-private struct PinMarker: View {
-    let pin: MapPinUi
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Circle()
-                .fill(MapPalette.color(forBrandWire: pin.brandWire))
-                .frame(width: 16, height: 16)
-                .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
-                .shadow(radius: 1)
-            if pin.boardCount > 1 {
-                Text("\(pin.boardCount)")
-                    .font(.system(size: 9, weight: .bold)).monospacedDigit()
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 3).padding(.vertical, 1)
-                    .background(Capsule().fill(.black.opacity(0.75)))
-                    .offset(x: 8, y: -6)
-            }
-        }
-        .frame(width: 32, height: 32, alignment: .center)
-        .contentShape(Rectangle())
+    /// A region across the antimeridian reports longitudes beyond ±180.
+    private func inLongitude(_ lng: Double, _ minLng: Double, _ maxLng: Double) -> Bool {
+        (lng >= minLng && lng <= maxLng) || (lng + 360 >= minLng && lng + 360 <= maxLng)
+            || (lng - 360 >= minLng && lng - 360 <= maxLng)
     }
 }
 
-enum MapPalette {
-    static func color(forBrandWire wire: String) -> Color {
-        switch wire {
-        case "kilter": return ChartPalette.orange
-        case "moonboard": return ChartPalette.blue
-        case "multi": return ChartPalette.aqua
-        default: return Color.secondary
-        }
-    }
+/// The country's name in the user's language.
+func mapCountryName(_ code: String) -> String {
+    Locale.current.localizedString(forRegionCode: code) ?? code
 }
 
 // MARK: - Filters
@@ -467,65 +634,3 @@ private struct MapStatsSheet: View {
     }
 }
 
-// MARK: - Venue detail
-
-private struct MapVenueSheet: View {
-    let venue: MapVenueUi
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        List {
-            Section {
-                if !venue.address.isEmpty { Text(venue.address) }
-                if !venue.city.isEmpty || !venue.countryCode.isEmpty {
-                    Text([venue.city, countryName(venue.countryCode)]
-                        .filter { !$0.isEmpty }.joined(separator: " · "))
-                }
-                if let url = URL(string: venue.url), !venue.url.isEmpty {
-                    Link(venue.url, destination: url)
-                }
-                if venue.boards.contains(where: { $0.acceptsWellpass }) {
-                    Text(L("map_venue_wellpass_badge")).foregroundStyle(.secondary)
-                }
-                Link(L("map_marker_open_in_maps"), destination: mapsURL)
-            }
-
-            Section(L("map_venue_section_boards")) {
-                ForEach(Array(venue.boards.enumerated()), id: \.offset) { _, board in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(boardTitle(board)).font(.headline)
-                        LabeledContent(L("map_marker_access"), value: accessLabel(board.accessCode))
-                        LabeledContent(L("map_marker_adjustability"), value: adjustability(board))
-                        if !board.sizeLabel.isEmpty {
-                            LabeledContent(L("map_filter_section_size"), value: board.sizeLabel)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-        .navigationTitle(venue.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button(L("map_offline_dialog_close")) { dismiss() }
-            }
-        }
-    }
-
-    private var mapsURL: URL {
-        // Apple Maps query link; no location permission and no network call here.
-        URL(string: "http://maps.apple.com/?ll=\(venue.latitude),\(venue.longitude)")!
-    }
-
-    private func boardTitle(_ board: MapBoardUi) -> String {
-        board.layoutLabel.isEmpty ? board.brandTitle : "\(board.brandTitle) · \(board.layoutLabel)"
-    }
-
-    private func adjustability(_ board: MapBoardUi) -> String {
-        if board.adjustabilityCode == "fixed" && board.fixedAngle > 0 {
-            return L("map_adjustability_fixed_angle", Int(board.fixedAngle))
-        }
-        return adjustabilityLabel(board.adjustabilityCode)
-    }
-}

@@ -21,6 +21,8 @@ data class MapVenue(
     val city: String?,
     val countryCode: String,
     val boards: List<BoardLocation>,
+    /** Map-only extras from the Pages snapshot (hours, hedged city). */
+    val info: MapVenueInfo = MapVenueInfo(),
 ) {
     /** Distinct board families present at this venue. */
     val brands: Set<BoardBrand> get() = boards.mapTo(linkedSetOf()) { it.boardBrand }
@@ -42,6 +44,12 @@ data class MapVenue(
                 else -> VenueBrandKey.OTHER
             }
         }
+
+    /**
+     * The families the 0.2.4 marker shows (one colour each, a pie for several),
+     * in [BoardBrand] declaration order so a mixed gym always looks the same.
+     */
+    val markerBrands: List<BoardBrand> get() = brands.sortedBy { it.ordinal }
 
     /** True when at least one Kilter Homewall is installed here. */
     val hasHomewall: Boolean
@@ -87,7 +95,10 @@ private fun brandRank(brand: BoardBrand): Int =
  * from the first board that has a usable value (MoonBoard rows, for instance,
  * ship no country — `??` — so a co-located Kilter row fills it in).
  */
-fun groupIntoVenues(locations: List<BoardLocation>): List<MapVenue> {
+fun groupIntoVenues(
+    locations: List<BoardLocation>,
+    venueInfo: Map<String, MapVenueInfo> = emptyMap(),
+): List<MapVenue> {
     if (locations.isEmpty()) return emptyList()
     return locations
         .groupBy { venueKey(it.lat, it.lng) }
@@ -106,6 +117,7 @@ fun groupIntoVenues(locations: List<BoardLocation>): List<MapVenue> {
                     .firstNotNullOfOrNull { it.countryCode.takeIf { c -> c.isNotBlank() && c != "??" } }
                     ?: rep.countryCode,
                 boards = ordered,
+                info = venueInfo[key] ?: MapVenueInfo(),
             )
         }
 }

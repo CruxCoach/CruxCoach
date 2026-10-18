@@ -19,6 +19,9 @@ struct GymSearchView: View {
     let onPick: (BoardOption) -> Void
     /// "Pick your board directly": back to the manual picker.
     let onPickDirectly: () -> Void
+    /// The board map's "Choose this board": the open map and the place to show right away.
+    var mapModel: MapScreenModel? = nil
+    var startVenueId: String = ""
 
     @State private var host: ScreenHost<GymSearchScreenModel, GymSearchScreenState>?
     @State private var query = ""
@@ -40,12 +43,18 @@ struct GymSearchView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard host == nil else { return }
-            let model = core.makeGymSearchScreen()
+            let model: GymSearchScreenModel
+            if let mapModel, !startVenueId.isEmpty {
+                model = core.makeGymSearchScreenForVenue(map: mapModel, venueId: startVenueId)
+            } else {
+                model = core.makeGymSearchScreen()
+            }
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
             nearbyAsked = startNearby
-            if startNearby || LocationProvider.hasPermission {
+            // A place handed over by the map shows its boards; no lookup overrides it.
+            if startVenueId.isEmpty && (startNearby || LocationProvider.hasPermission) {
                 locate(model: model)
             }
         }

@@ -112,6 +112,10 @@ import com.cruxcoach.data.repository.BodyStatRepositoryImpl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import platform.Foundation.NSLocale
+import platform.Foundation.ISOCountryCodes
+import platform.Foundation.NSTimeZone
+import platform.Foundation.localTimeZone
+import platform.Foundation.localizedStringForCountryCode
 import platform.Foundation.countryCode
 import platform.Foundation.currentLocale
 import com.cruxcoach.app.sync.CatalogueImporter
@@ -499,7 +503,12 @@ class AppCore private constructor(
             BoardLocationRepositoryImpl(boardDb.database),
             BundledPagesBoardMapSource(platform.files, boardMapDirectory),
             platform.keyValues,
-        )
+            timeZoneId = { mapTimeZoneId() },
+            localeCountry = { NSLocale.currentLocale.countryCode },
+            countryNames = { mapCountryNames() },
+            germanUi = mapGermanUi(),
+        ),
+        germanUi = mapGermanUi(),
     )
 
     fun makeLogbookScreen(): LogbookScreenModel =
@@ -905,9 +914,33 @@ class AppCore private constructor(
     }
     // ── Map, gyms and location (0.2.4) ──────────────────────────────────
 
-    /** The bundled cruxcoach-pages map snapshot that ships in the app bundle. */
-    private fun bundledBoardMap(): BundledPagesBoardMapSource =
-        BundledPagesBoardMapSource(platform.files, "${NSBundle.mainBundle.resourcePath ?: ""}/board_map")
+    /** The bundled cruxcoach-pages map folder in the app bundle. */
+    private fun bundledBoardMapDirectory(): String = "${NSBundle.mainBundle.resourcePath ?: ""}/board_map"
+
+    private fun mapTimeZoneId(): String? = NSTimeZone.localTimeZone.name
+
+    /** The app's own language, not the phone's: the map texts follow the app. */
+    private fun mapGermanUi(): Boolean = (NSBundle.mainBundle.preferredLocalizations.firstOrNull() as? String) == "de"
+
+    private fun mapCountryNames(): Map<String, String> {
+        val locale = NSLocale.currentLocale
+        return NSLocale.ISOCountryCodes.mapNotNull { code ->
+            val iso = code as? String ?: return@mapNotNull null
+            locale.localizedStringForCountryCode(iso)?.let { iso to it }
+        }.toMap()
+    }
+
+    /**
+     * The gym search with one board-map place already picked ("Choose this
+     * board"): the place's rows come from the open map screen. Unknown ids
+     * open the plain search.
+     */
+    fun makeGymSearchScreenForVenue(map: MapScreenModel, venueId: String): com.cruxcoach.app.ui.GymSearchScreenModel {
+        val model = makeGymSearchScreen()
+        val rows = map.venueRows(venueId)
+        if (rows.isNotEmpty()) model.openGym(rows)
+        return model
+    }
 
     /**
      * "Find your gym" with "Gyms near me". Searches the synced locations and
@@ -915,7 +948,7 @@ class AppCore private constructor(
      * Android. The position Swift passes in is used for one ranking only.
      */
     fun makeGymSearchScreen(): com.cruxcoach.app.ui.GymSearchScreenModel {
-        val snapshot = bundledBoardMap()
+        val snapshot = BundledPagesBoardMapSource(platform.files, bundledBoardMapDirectory(), includePlaces = false)
         return com.cruxcoach.app.ui.GymSearchScreenModel(
             com.cruxcoach.app.gym.GymBoardPickerPresenter(
                 BoardLocationRepositoryImpl(boardDb.database),

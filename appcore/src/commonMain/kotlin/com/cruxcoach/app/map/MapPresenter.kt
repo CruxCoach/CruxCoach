@@ -51,6 +51,24 @@ data class MapState(
     val selectedVenueId: String? = null,
     val noLocationData: Boolean = false,
     val error: MapError = MapError.NONE,
+    // ── 0.2.4 ──
+    val places: List<MapPlace> = emptyList(),
+    /** Map-only extras from the Pages snapshot (hours, wall angles, models). */
+    val venueInfo: Map<String, MapVenueInfo> = emptyMap(),
+    val boardInfo: Map<String, MapBoardInfo> = emptyMap(),
+    /** Where the map opens: the remembered camera, else the timezone's country, else the world. Null until loaded. */
+    val startView: MapStartView? = null,
+    /** What the user sees (null until the first camera report). */
+    val viewport: MapViewport? = null,
+    /** "My location" result; on the device only, never stored. */
+    val userPosition: UserPosition? = null,
+    /** The sheet's list: filter-passing venues in [viewport], nearest first. */
+    val inView: VenuesInView = VenuesInView.Empty,
+    /** A camera move the presenter asks for ("My location", a search pick); [cameraRequestId] counts them. */
+    val cameraRequest: MapStartView? = null,
+    val cameraRequestId: Int = 0,
+    val searchQuery: String = "",
+    val searchResults: List<MapSearchResult> = emptyList(),
 )
 
 /**
@@ -64,11 +82,19 @@ class MapPresenter(
     keyValues: KeyValueStore,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    /** Device timezone id ("Europe/Vienna") and locale country for the first view. */
+    private val timeZoneId: () -> String? = { null },
+    private val localeCountry: () -> String? = { null },
+    /** ISO code → country name in the user's language, for search. */
+    private val countryNames: () -> Map<String, String> = { emptyMap() },
+    private val germanUi: Boolean = false,
 ) {
     private val filterStore = MapFilterStore(keyValues)
     private val preferences = keyValues
 
     private val _state = MutableStateFlow(MapState())
+    private var searchIndex: BoardMapSearchIndex? = null
+    private var searchJob: kotlinx.coroutines.Job? = null
     val state: StateFlow<MapState> = _state.asStateFlow()
 
     init {
@@ -90,12 +116,20 @@ class MapPresenter(
                 pages.load() to repository.getAll()
             }
             val all = mergeCanonicalMapLocations(snapshot.locations, dynamic)
+            val venues = groupIntoVenues(all, snapshot.venueInfo)
+            val start = _state.value.startView ?: rememberedCamera()
+                ?: guessStartView(timeZoneId(), localeCountry(), snapshot.places, venues)
+            searchIndex = null
             _state.update {
                 it.copy(
                     isLoading = false,
                     canonicalLocations = snapshot.locations,
+                    places = snapshot.places,
+                    venueInfo = snapshot.venueInfo,
+                    boardInfo = snapshot.boardInfo,
+                    startView = start,
                     unfilteredLocations = all,
-                    unfilteredVenues = groupIntoVenues(all),
+                    unfilteredVenues = venues,
                     unfilteredStats = MapStats.from(all),
                     noLocationData = all.isEmpty(),
                     filters = filterStore.read(),
@@ -136,7 +170,7 @@ class MapPresenter(
             userBoardSizeId = s.userBoardSizeId,
             userBoardBrand = s.userBoardBrand,
         )
-        val venues = groupIntoVenues(filtered)
+        val venues = groupIntoVenues(filtered, s.venueInfo)
         _state.update {
             it.copy(
                 filteredLocations = filtered,
@@ -144,9 +178,108 @@ class MapPresenter(
                 stats = MapStats.from(filtered),
                 // A pin that no longer exists must not keep a detail sheet open.
                 selectedVenueId = it.selectedVenueId?.takeIf { id -> venues.any { v -> v.id == id } },
+                inView = it.viewport?.let { vp -> venuesInView(venues, vp, origin = it.userPosition) } ?: VenuesInView.Empty,
             )
         }
     }
+
+    // ── 0.2.4: viewport, "My location", camera memory, search ─────────
+
+    /** The visible region after each camera move; also remembered for the next visit. */
+    fun setViewport(viewport: MapViewport) {
+        _state.update {
+            it.copy(viewport = viewport, inView = venuesInView(it.filteredVenues, viewport, origin = it.userPosition))
+        }
+    }
+
+    /** Stores the camera so the map reopens where it was left (Android keeps it in its prefs too). */
+    fun rememberCamera(lat: Double, lng: Double, latSpan: Double, lngSpan: Double) {
+        if (!lat.isFinite() || !lng.isFinite() || !latSpan.isFinite() || !lngSpan.isFinite()) return
+        preferences.putString(CAMERA_LAT, lat.toString())
+        preferences.putString(CAMERA_LNG, lng.toString())
+        preferences.putString(CAMERA_LAT_SPAN, latSpan.toString())
+        preferences.putString(CAMERA_LNG_SPAN, lngSpan.toString())
+    }
+
+    private fun rememberedCamera(): MapStartView.Region? {
+        val lat = preferences.getString(CAMERA_LAT)?.toDoubleOrNull() ?: return null
+        val lng = preferences.getString(CAMERA_LNG)?.toDoubleOrNull() ?: return null
+        val latSpan = preferences.getString(CAMERA_LAT_SPAN)?.toDoubleOrNull() ?: return null
+        val lngSpan = preferences.getString(CAMERA_LNG_SPAN)?.toDoubleOrNull() ?: return null
+        if (lat !in -90.0..90.0 || lng !in -180.0..180.0 || latSpan <= 0 || lngSpan <= 0) return null
+        return MapStartView.Region(lat, lng, latSpan, lngSpan)
+    }
+
+    /** "My location": frames the user with the nearest boards and lists by distance from them. */
+    fun showUserPosition(position: UserPosition) {
+        val frame = nearestFrame(_state.value.filteredVenues, position.lat, position.lng)
+            ?: MapStartView.Camera(position.lat, position.lng, CITY_ZOOM)
+        _state.update {
+            it.copy(
+                userPosition = position,
+                inView = it.viewport?.let { vp -> venuesInView(it.filteredVenues, vp, origin = position) } ?: it.inView,
+                cameraRequest = frame,
+                cameraRequestId = it.cameraRequestId + 1,
+            )
+        }
+    }
+
+    /** "Show nearest boards" when nothing is in view: the centre plus the nearest venues. */
+    fun showNearestToCentre() {
+        val s = _state.value
+        val viewport = s.viewport ?: return
+        val frame = nearestFrame(s.filteredVenues, viewport) ?: return
+        _state.update { it.copy(cameraRequest = frame, cameraRequestId = it.cameraRequestId + 1) }
+    }
+
+    fun search(query: String) {
+        _state.update { it.copy(searchQuery = query) }
+        searchJob?.cancel()
+        if (normalizeMapSearchText(query).length < 2) {
+            _state.update { it.copy(searchResults = emptyList()) }
+            return
+        }
+        searchJob = scope.launch {
+            try {
+                val s = _state.value
+                val results = withContext(ioDispatcher) {
+                    // Built once per dataset off the main thread (Android: per-keystroke normalising froze the map).
+                    val index = searchIndex ?: BoardMapSearchIndex(s.unfilteredVenues, s.places, countryNames(), germanUi)
+                        .also { searchIndex = it }
+                    index.search(query)
+                }
+                if (_state.value.searchQuery == query) _state.update { it.copy(searchResults = results) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(searchResults = emptyList()) }
+            }
+        }
+    }
+
+    /** A search pick: a venue opens its details, a place moves the camera there. */
+    fun pickSearchResult(index: Int) {
+        val result = _state.value.searchResults.getOrNull(index) ?: return
+        val (camera, venueId) = when (result) {
+            is MapSearchResult.Venue -> MapStartView.Camera(result.venue.lat, result.venue.lng, VENUE_ZOOM) to result.venue.id
+            is MapSearchResult.Place -> MapStartView.Camera(result.place.lat, result.place.lng, CITY_ZOOM) to null
+        }
+        searchJob?.cancel()
+        _state.update {
+            it.copy(
+                searchQuery = "",
+                searchResults = emptyList(),
+                // A venue the filters hide still opens: the search covers every board.
+                selectedVenueId = venueId ?: it.selectedVenueId,
+                cameraRequest = camera,
+                cameraRequestId = it.cameraRequestId + 1,
+            )
+        }
+    }
+
+    /** All rows of one venue (unfiltered), for "Choose this board" → the gym search. */
+    fun venueRows(venueId: String): List<BoardLocation> =
+        _state.value.unfilteredVenues.firstOrNull { it.id == venueId }?.boards.orEmpty()
 
     private fun mutate(block: (MapFilters) -> MapFilters) {
         val next = block(_state.value.filters)
@@ -212,5 +345,13 @@ class MapPresenter(
         private const val BOARD_BRAND = "board_brand"
         private const val BOARD_LAYOUT_ID = "board_layout_id"
         private const val BOARD_PRODUCT_SIZE_ID = "board_product_size_id"
+        private const val CAMERA_LAT = "map_camera_lat"
+        private const val CAMERA_LNG = "map_camera_lng"
+        private const val CAMERA_LAT_SPAN = "map_camera_lat_span"
+        private const val CAMERA_LNG_SPAN = "map_camera_lng_span"
+
+        /** Android zoom levels for a city and a single venue; the facade turns them into spans. */
+        const val CITY_ZOOM = 11.0
+        const val VENUE_ZOOM = 14.0
     }
 }

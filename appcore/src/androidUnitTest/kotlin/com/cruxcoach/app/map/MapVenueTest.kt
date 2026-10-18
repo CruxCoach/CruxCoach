@@ -106,4 +106,32 @@ class MapVenueTest {
         assertEquals(rows, mergeCanonicalMapLocations(rows, emptyList()))
         assertEquals(emptyList(), mergeCanonicalMapLocations(emptyList(), emptyList()))
     }
+
+    // ── 0.2.4: one colour per family, a pie for several (Android `MapVenueTest`) ──
+
+    @Test
+    fun `mixed venue marker lists its families in declaration order`() {
+        val v = groupIntoVenues(
+            listOf(
+                mapBoard("m", 48.1370, 11.5750, brand = BoardBrand.MOONBOARD),
+                mapBoard("k", 48.1370, 11.5750),
+            )
+        ).single()
+        assertEquals(listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD), v.markerBrands)
+    }
+
+    @Test
+    fun `single Kilter venue has a Kilter-only marker`() {
+        val v = groupIntoVenues(listOf(mapBoard("a", 48.1370, 11.5750))).single()
+        assertEquals(listOf(BoardBrand.KILTER), v.markerBrands)
+        assertTrue(!v.isMultiBoard)
+    }
+
+    @Test
+    fun `single MoonBoard venue has a MoonBoard-only marker`() {
+        val v = groupIntoVenues(
+            listOf(mapBoard("m", 48.1370, 11.5750, brand = BoardBrand.MOONBOARD, layoutId = 5))
+        ).single()
+        assertEquals(listOf(BoardBrand.MOONBOARD), v.markerBrands)
+    }
 }
