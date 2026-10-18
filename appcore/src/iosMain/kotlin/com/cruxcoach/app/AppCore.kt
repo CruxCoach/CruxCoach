@@ -1096,6 +1096,24 @@ class AppCore private constructor(
         )
     }
 
+    // ── Climber profile, energy card, training reminder (wave 3 "profile" agent) ──────────────
+
+    /** The climber profile (Android `ClimberProfileScreen`). */
+    fun makeClimberProfileScreen(): com.cruxcoach.app.ui.ClimberProfileScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.ClimberProfileScreenModel(
+            com.cruxcoach.app.climber.ClimberProfilePresenter(service, MainScope(), Dispatchers.IO),
+        )
+    }
+
+    /** The energy card on its own (Android `EnergyCareCard`), for Today, Body and the weekly review. */
+    fun makeEnergyCareCard(): com.cruxcoach.app.ui.EnergyCareCardModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.EnergyCareCardModel(
+            com.cruxcoach.app.energycare.EnergyCarePresenter(service, MainScope(), Dispatchers.IO),
+        )
+    }
+
     /**
      * Climb detail owner actions: delete a never-published draft locally, or
      * delete an own publication with a signed relay deletion (key read fresh
@@ -1117,5 +1135,41 @@ class AppCore private constructor(
             deletePublication = { uuid -> deleter.delete(uuid) },
             io = Dispatchers.IO,
         )
+    }
+     * The training reminder in the training settings (Android `TrainingReminderSection`).
+     * [notifications] schedules it (Swift passes its `LocalNotificationScheduler`).
+     */
+    fun makeTrainingReminderSettings(notifications: NotificationScheduler): com.cruxcoach.app.ui.TrainingReminderSettingsModel? {
+        val service = athlete ?: return null
+        val reminders = com.cruxcoach.app.trainingreminder.TrainingReminderScheduler(service, notifications) { platform.clock.epochMillis() }
+        return com.cruxcoach.app.ui.TrainingReminderSettingsModel(
+            com.cruxcoach.app.trainingreminder.TrainingReminderSettingsPresenter(service, MainScope(), Dispatchers.IO, reminders, notifications),
+        )
+    }
+
+    /**
+     * Android `TrainingReminders.ensureScheduled`: schedules the planned training days ahead again.
+     * iOS runs nothing when a reminder fires, so call it at app start, when the app returns to the
+     * foreground, and after the week plan changed; a no-op without the athlete database, and it
+     * cancels everything while the reminder is off or a pause is open.
+     */
+    fun rescheduleTrainingReminders(notifications: NotificationScheduler) {
+        val service = athlete ?: return
+        com.cruxcoach.app.ui.TrainingRemindersModel(service,
+            com.cruxcoach.app.trainingreminder.TrainingReminderScheduler(service, notifications) { platform.clock.epochMillis() },
+            MainScope(), Dispatchers.IO).reschedule()
+    }
+
+    /**
+     * Keeps the training-day reminders following the plan: reschedules on every change of the
+     * reminder settings, the week plan, a pause or an open training, until the returned
+     * subscription is cancelled. Call once at app start and keep the subscription; it replaces the
+     * need to call [rescheduleTrainingReminders] after the week plan was edited.
+     */
+    fun followTrainingReminders(notifications: NotificationScheduler): com.cruxcoach.app.ui.Subscription {
+        val service = athlete ?: return com.cruxcoach.app.ui.Subscription { }
+        return com.cruxcoach.app.ui.TrainingRemindersModel(service,
+            com.cruxcoach.app.trainingreminder.TrainingReminderScheduler(service, notifications) { platform.clock.epochMillis() },
+            MainScope(), Dispatchers.IO).follow()
     }
 }
