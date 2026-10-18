@@ -673,6 +673,51 @@ class AppCore private constructor(
         return com.cruxcoach.app.ui.ClimbingDayScreenModel(
             com.cruxcoach.app.training.ClimbingDayPresenter(service, MainScope(), Dispatchers.IO),
         )
+    // ── Training: workouts and exercises ──────────────────────────────
+    //
+    // The Training tab's library: workouts, the editor, the week plan and the
+    // exercise library. Each returns null while the athlete database is
+    // unavailable (the training area then says so). [language] is the UI
+    // language; catalogue texts are German for "de", English otherwise.
+
+    fun makeWorkoutsScreen(language: String): com.cruxcoach.app.ui.WorkoutsScreenModel? = athlete?.let {
+        com.cruxcoach.app.ui.WorkoutsScreenModel(com.cruxcoach.app.library.WorkoutsPresenter(it, Dispatchers.IO), language)
+    }
+
+    /**
+     * [routineId]: an own workout to edit, "" for a new one. [from]: "builtin:<key>" copies a
+     * starter routine, "ex:<slug>[,<slug>…]" starts with exercises, "" with nothing.
+     * [defaultName]: the localized starter-routine name when copying one.
+     */
+    fun makeRoutineEditorScreen(routineId: String, from: String, defaultName: String, language: String): com.cruxcoach.app.ui.RoutineEditorScreenModel? =
+        athlete?.let {
+            val presenter = com.cruxcoach.app.library.RoutineEditorPresenter(it, Dispatchers.IO)
+            presenter.load(routineId.ifEmpty { null }, from.ifEmpty { null }, defaultName.ifEmpty { null })
+            com.cruxcoach.app.ui.RoutineEditorScreenModel(presenter, language)
+        }
+
+    fun makeWeekPlanScreen(): com.cruxcoach.app.ui.WeekPlanScreenModel? = athlete?.let {
+        com.cruxcoach.app.ui.WeekPlanScreenModel(com.cruxcoach.app.library.WeekPlanPresenter(it, Dispatchers.IO))
+    }
+
+    fun makeExerciseLibraryScreen(language: String): com.cruxcoach.app.ui.ExerciseLibraryScreenModel? = athlete?.let {
+        com.cruxcoach.app.ui.ExerciseLibraryScreenModel(com.cruxcoach.app.library.ExerciseLibraryPresenter(it, Dispatchers.IO), language)
+    }
+
+    fun makeExerciseDetailScreen(slug: String, language: String): com.cruxcoach.app.ui.ExerciseDetailScreenModel? = athlete?.let {
+        val presenter = com.cruxcoach.app.library.ExerciseDetailPresenter(it, Dispatchers.IO)
+        presenter.load(slug)
+        com.cruxcoach.app.ui.ExerciseDetailScreenModel(presenter, language)
+    }
+
+    fun makeAddToWorkoutScreen(slug: String, language: String): com.cruxcoach.app.ui.AddToWorkoutScreenModel? = athlete?.let {
+        val presenter = com.cruxcoach.app.library.AddToWorkoutPresenter(it, Dispatchers.IO)
+        presenter.load(slug)
+        com.cruxcoach.app.ui.AddToWorkoutScreenModel(presenter, language)
+    }
+
+    fun makeCustomExerciseScreen(): com.cruxcoach.app.ui.CustomExerciseScreenModel? = athlete?.let {
+        com.cruxcoach.app.ui.CustomExerciseScreenModel(com.cruxcoach.app.library.CustomExercisePresenter(it, Dispatchers.IO))
     }
 
     companion object {
