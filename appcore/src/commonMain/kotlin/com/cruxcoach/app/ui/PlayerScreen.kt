@@ -79,6 +79,12 @@ class PlayerScreenModel(
      * host attaches notifications after start-up; null = none attached.
      */
     private val restNotifier: () -> com.cruxcoach.app.notify.RestTimerNotifier? = { null },
+    /**
+     * Writes an attempt or a send of the current climb to the logbook, as
+     * Android's player does. Null = the host cannot log (tests); the queue still
+     * advances by the list's rule.
+     */
+    private val logClimb: ((climbUuid: String, angle: Int, isSend: Boolean) -> Unit)? = null,
 ) {
     private var restWatch: Subscription? = null
 
@@ -126,7 +132,11 @@ class PlayerScreenModel(
     fun refreshConnection() = presenter.refreshConnection()
 
     /** Call after every log so a send can drop the remaining tries. */
-    fun climbLogged(isSend: Boolean) = presenter.onClimbLogged(isSend)
+    fun climbLogged(isSend: Boolean) {
+        // Logged first: the advance below may move the queue to the next climb.
+        presenter.state.value.currentClimb?.let { current -> logClimb?.invoke(current.climbUuid, current.angle, isSend) }
+        presenter.onClimbLogged(isSend)
+    }
 
     fun stop() {
         presenter.stop()

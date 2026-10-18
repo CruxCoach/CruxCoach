@@ -419,6 +419,33 @@ class AppCore private constructor(
         BoardPlaybackTransport(boardRepository, boardConnection, platform.keyValues)
     }
 
+    /**
+     * The playlist player's attempt/send buttons write to the logbook through the
+     * same quick-log path as the climb detail (Android's player logs too). The
+     * climb is read at the queued angle; the brand is the active board's.
+     */
+    private val playerLogger: LogAttemptPresenter by lazy { LogAttemptPresenter(personalRepository) }
+
+    private fun logFromPlayer(climbUuid: String, angle: Int, isSend: Boolean) {
+        val climb = try { boardRepository.getClimbByUuid(climbUuid, angle) } catch (e: Exception) { null } ?: return
+        val brand = platform.keyValues.getString(com.cruxcoach.app.browse.BrowsePreferences.BOARD_BRAND)
+            ?.takeIf { it.isNotBlank() } ?: BoardBrand.KILTER.wireValue
+        playerLogger.setTarget(
+            com.cruxcoach.app.logbook.LogTarget(
+                climbUuid = climb.uuid,
+                climbName = climb.name,
+                frames = climb.frames,
+                framesCount = climb.framesCount,
+                difficultyAverage = climb.difficultyAverage,
+                boardBrand = brand,
+                layoutId = climb.layoutId,
+                angle = angle,
+                isMirrored = false,
+            )
+        )
+        playerLogger.quickLog(isSend)
+    }
+
     /** One session recorder for the app, like Android's singleton BoardSessionManager. */
     private val boardSessions: BoardSessionRecorder by lazy { BoardSessionRecorder(personalRepository) }
 
@@ -439,6 +466,7 @@ class AppCore private constructor(
                 sessions = boardSessions,
             ),
             restNotifier = { restTimer },
+            logClimb = ::logFromPlayer,
         )
     }
 
@@ -1064,6 +1092,7 @@ class AppCore private constructor(
                 summaryDispatcher = Dispatchers.IO,
             ),
             restNotifier = { restTimer },
+            logClimb = ::logFromPlayer,
         )
     }
 
