@@ -490,6 +490,8 @@ class BoardConnectionController(
         placementToLed: Map<Int, Int>,
         roleColors: Map<Int, Int>? = null,
         expectedBrand: BoardBrand? = null,
+        /** False for the climb editor's live preview: holds being drafted are not climbed holds. */
+        collectForCleaning: Boolean = true,
     ): BoardSendResult = writeMutex.withLock {
         if (cleaning.state.value.active) return BoardSendResult.CLEANING_ACTIVE
         val cleaningTicket = cleaning.ticket()
@@ -510,7 +512,7 @@ class BoardConnectionController(
                 encoder.encodeClimbFromHolds(holds, placementToLed)
             }
             val result = writeChunks(chunks)
-            if (result == BoardSendResult.OK) {
+            if (result == BoardSendResult.OK && collectForCleaning) {
                 val maxLed = if ((link?.board?.apiLevel ?: 3) < 3) 1023 else 65535
                 cleaning.projected(
                     cleaningTicket,
@@ -527,6 +529,7 @@ class BoardConnectionController(
         frames: String,
         variant: MoonBoardVariant,
         ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
+        collectForCleaning: Boolean = true,
     ): BoardSendResult = writeMutex.withLock {
         if (cleaning.state.value.active) return BoardSendResult.CLEANING_ACTIVE
         val cleaningTicket = cleaning.ticket()
@@ -536,7 +539,7 @@ class BoardConnectionController(
             val payload = MoonBoardFrameEncoder.encode(frames, variant, ledMode)
             val chunks = payload.toList().chunked(BoardPacketEncoder.BLE_MTU).map { it.toByteArray() }
             val result = writeChunks(chunks, MOONBOARD_UART_INTER_CHUNK_DELAY_MS)
-            if (result == BoardSendResult.OK) {
+            if (result == BoardSendResult.OK && collectForCleaning) {
                 cleaning.projected(cleaningTicket, MoonBoardFrameEncoder.cleaningPositions(frames, variant), chunks)
             }
             result

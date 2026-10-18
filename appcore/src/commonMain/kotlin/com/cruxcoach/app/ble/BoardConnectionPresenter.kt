@@ -200,6 +200,32 @@ class BoardConnectionPresenter(
 
     fun clearBoard() = run { controller.clearBoard() }
 
+    /**
+     * The climb editor's live LED mirror (Android `syncLeds`): the same fenced write as a
+     * detail send, but neither recorded as this phone's climb nor counted for hold cleaning.
+     * Dropped like any send while another one is still writing; the mirror sends the latest
+     * holds again once [BoardConnectionUiState.sending] clears.
+     */
+    internal fun sendEditorPreview(
+        holds: List<BoardHold>,
+        placementToLed: Map<Int, Int>,
+        roleColors: Map<Int, Int>,
+        expectedBrand: BoardBrand,
+    ) = run(null, survives = true) {
+        controller.sendClimb(holds, placementToLed, roleColors, expectedBrand = expectedBrand, collectForCleaning = false)
+    }
+
+    /** As [sendEditorPreview], for a MoonBoard problem being drafted. */
+    internal fun sendEditorPreviewMoonBoard(frames: String, layoutId: Long, ledModeWire: String?) =
+        run(null, survives = false) {
+            controller.sendMoonBoardClimb(
+                frames,
+                MoonBoardVariant.fromLayoutId(layoutId) ?: MoonBoardVariant.MOONBOARD_2016,
+                MoonBoardLedMode.fromWire(ledModeWire),
+                collectForCleaning = false,
+            )
+        }
+
     /** The easter animation's frames: the result goes to the caller, not to the send banner. */
     internal suspend fun sendRawLeds(leds: List<Pair<Int, Int>>, expectedBrand: BoardBrand): BoardSendResult = try {
         controller.sendRawLeds(leds, expectedBrand)

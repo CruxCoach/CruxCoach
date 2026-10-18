@@ -104,6 +104,16 @@ data class ClimbEditorUiState(
     val kilterOutcome: com.cruxcoach.app.kilter.KilterClimbPublishOutcome? = null,
     /** Publishing to Kilter is on but no account is connected (Android `showKilterConnectNudge`). */
     val kilterConnectNudge: Boolean = false,
+    /** Popular co-occurring holds (placementId → 0..1), Android's heatmap overlay. */
+    val heatmap: Map<Int, Float> = emptyMap(),
+    /** The user switched the heatmap overlay on. */
+    val heatmapEnabled: Boolean = false,
+    /** [duplicateOf] is the user's own climb: "Update existing" is offered. */
+    val duplicateIsOwn: Boolean = false,
+    /** The publish waits on the profile hint's answer (Android `pendingProfileHint`). */
+    val pendingProfileHint: Boolean = false,
+    /** One-shot: the user chose "Set up profile"; the host opens the profile editor. */
+    val profileSetupRequested: Boolean = false,
 )
 
 /**
@@ -131,12 +141,10 @@ object CreatorAnglePicker {
 
 /**
  * Port of Android's `ClimbEditorViewModel`: hold painting, drag-move, undo/redo,
- * live validation, duplicate detection and the drafts drawer.
- *
- * Deliberately NOT ported (each is a separate Android dependency, and a stub
- * would be worse than an absence): the debounced DataStore autosave, the
- * co-occurrence heatmap overlay, the BLE LED mirror, the Kind-0 profile hint and
- * the whole Kilter publish leg.
+ * live validation, duplicate detection (with "Update existing" for an own climb),
+ * the drafts drawer, the debounced per-board autosave, the popular-holds heatmap and
+ * the profile hint before a publish. The live LED mirror is [CreatorBoardMirror]; the
+ * Kilter publish leg is [kilterLeg].
  */
 class ClimbEditor(
     private val boardRepository: BoardRepository,
@@ -152,6 +160,17 @@ class ClimbEditor(
 
     /** The Kilter step after a Nostr publish; null keeps the climb community-only. */
     var kilterLeg: com.cruxcoach.app.kilter.CreatorKilterLeg? = null
+
+    /** Android `EditorAutosave`; null keeps the editor without one. Set before [open]. */
+    var autosave: EditorAutosave? = null
+
+    /** Android's profile hint before a publish; null publishes without asking. */
+    var profileHint: CreatorProfileHint? = null
+
+    /** Exact-board slot (brand_layout_size), set once the board is loaded. */
+    private var autosaveBoardKey: String = ""
+    private var autosaveJob: kotlinx.coroutines.Job? = null
+    private var heatmapJob: kotlinx.coroutines.Job? = null
 
     private val undoStack = ArrayDeque<ClimbEditorState>()
     private val redoStack = ArrayDeque<ClimbEditorState>()
@@ -170,6 +189,9 @@ class ClimbEditor(
                 when {
                     !editUuid.isNullOrBlank() -> seedFromEdit(editUuid)
                     !forkUuid.isNullOrBlank() -> seedFromFork(forkUuid)
+                    // Only a fresh editor restores: an edit or remix that failed to
+                    // seed must never come back as yesterday's draft.
+                    else -> restoreAutosave()
                 }
                 // Validate whatever we landed on: without this a freshly-opened
                 // editor reports "ready to publish" on an empty climb.
@@ -239,6 +261,8 @@ class ClimbEditor(
         _state.update {
             it.copy(editor = current.copy(activeBrush = if (current.activeBrush == role) null else role))
         }
+        // The heatmap follows the brush: it suggests holds for the role being painted.
+        recomputeHeatmap()
     }
 
     /**
@@ -278,13 +302,23 @@ class ClimbEditor(
     }
 
     /**
-     * Wipes the working state and unpins the loaded draft, so the next save
-     * creates a fresh row. The undo stack survives, so one Undo brings a mistaken
-     * tap back.
+     * Android "Clear editor": wipes the climb (not the board or its angle) through the
+     * undo stack, so one Undo brings a mistaken tap back, unpins the loaded draft so the
+     * next save creates a fresh row, and empties the autosave slot.
      */
     fun clearEditor() {
-        applyEditor(ClimbEditorState(boardBrand = _state.value.editor.boardBrand, activeBrush = defaultBrushFor(_state.value.editor.boardBrand)))
-        _state.update { it.copy(loadedDraftUuid = null, isEditingExisting = false) }
+        val current = _state.value.editor
+        push(
+            ClimbEditorState(
+                boardBrand = current.boardBrand,
+                activeBrush = defaultBrushFor(current.boardBrand),
+                angle = current.angle,
+            )
+        )
+        // After the push: its debounced write of the empty state must not survive either.
+        cancelAutosave()
+        clearAutosaveSlot()
+        _state.update { it.copy(loadedDraftUuid = null) }
     }
 
     // ── Drafts ───────────────────────────────────────────────────
@@ -312,6 +346,8 @@ class ClimbEditor(
                     _state.update { it.copy(error = EditorError.SAVE_FAILED) }
                     return@launch
                 }
+                cancelAutosave()
+                clearAutosaveSlot()
                 val refreshed = withContext(ioDispatcher) { drafts.drafts(current.boardBrand) }
                 _state.update {
                     it.copy(drafts = refreshed, loadedDraftUuid = uuid, savedDraftUuid = uuid)
@@ -373,9 +409,15 @@ class ClimbEditor(
         scope.launch {
             try {
                 val brand = _state.value.editor.boardBrand
+                val wasLoaded = _state.value.loadedDraftUuid == uuid
                 val remaining = withContext(ioDispatcher) {
                     drafts.deleteDraft(uuid)
                     drafts.drafts(brand)
+                }
+                // The slot must not bring the deleted draft back on the next open.
+                if (wasLoaded) {
+                    cancelAutosave()
+                    clearAutosaveSlot()
                 }
                 _state.update { s ->
                     s.copy(
@@ -455,7 +497,17 @@ class ClimbEditor(
                 val duplicate = withContext(ioDispatcher) { drafts.findDuplicate(current, layoutId) }
                 val loaded = _state.value.loadedDraftUuid
                 if (duplicate != null && duplicate.uuid != loaded) {
-                    _state.update { it.copy(duplicateOf = duplicate, pendingDuplicateConfirm = true) }
+                    val own = drafts.ownPubkey()
+                    val isOwn = own != null && duplicate.createdByPubkey == own && duplicate.source != "kilter"
+                    _state.update {
+                        it.copy(duplicateOf = duplicate, duplicateIsOwn = isOwn, pendingDuplicateConfirm = true)
+                    }
+                    return@launch
+                }
+                // Before the first publish without a profile: ask once (Android).
+                val hint = profileHint
+                if (hint != null && withContext(ioDispatcher) { hint.shouldShow() }) {
+                    _state.update { it.copy(pendingProfileHint = true) }
                     return@launch
                 }
                 runPublish(autoNoteText, maintainerPubkeyHex, mentionMaintainer)
@@ -472,7 +524,43 @@ class ClimbEditor(
         maintainerPubkeyHex: String = "",
         mentionMaintainer: Boolean = false,
     ) {
-        _state.update { it.copy(duplicateOf = null, pendingDuplicateConfirm = false) }
+        // Only the tap that closes the dialog publishes; a second one would create a second climb.
+        val taken = consumePending({ it.pendingDuplicateConfirm }) {
+            it.copy(duplicateOf = null, duplicateIsOwn = false, pendingDuplicateConfirm = false)
+        }
+        if (!taken) return
+        scope.launch {
+            try {
+                runPublish(autoNoteText, maintainerPubkeyHex, mentionMaintainer)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(publishPhase = PublishPhase.FAILED, error = EditorError.SAVE_FAILED) }
+            }
+        }
+    }
+
+    /**
+     * Android `updateExistingOnDuplicate`: the duplicate is the user's own climb, so the
+     * editor is published as an edit of it — same uuid, so relays replace the original
+     * event — with the editor's name, grade and description.
+     */
+    fun updateExistingOnDuplicate(
+        autoNoteText: String = "",
+        maintainerPubkeyHex: String = "",
+        mentionMaintainer: Boolean = false,
+    ) {
+        val own = _state.value.duplicateOf?.takeIf { _state.value.duplicateIsOwn } ?: return
+        val taken = consumePending({ it.pendingDuplicateConfirm }) {
+            it.copy(
+                duplicateOf = null,
+                duplicateIsOwn = false,
+                pendingDuplicateConfirm = false,
+                loadedDraftUuid = own.uuid,
+                isEditingExisting = true,
+            )
+        }
+        if (!taken) return
         scope.launch {
             try {
                 runPublish(autoNoteText, maintainerPubkeyHex, mentionMaintainer)
@@ -486,7 +574,69 @@ class ClimbEditor(
 
     /** Backs out of the duplicate warning and releases the publish claim. */
     fun cancelPublish() = _state.update {
-        it.copy(duplicateOf = null, pendingDuplicateConfirm = false, publishPhase = PublishPhase.IDLE)
+        it.copy(duplicateOf = null, duplicateIsOwn = false, pendingDuplicateConfirm = false, publishPhase = PublishPhase.IDLE)
+    }
+
+    // ── Profile hint (Android ClimbEditorViewModel) ──────────────
+
+    /** "Set up profile": no publish; the host opens the profile editor. The hint is answered. */
+    fun acceptProfileHint() {
+        val taken = consumePending({ it.pendingProfileHint }) {
+            it.copy(pendingProfileHint = false, profileSetupRequested = true, publishPhase = PublishPhase.IDLE)
+        }
+        if (!taken) return
+        scope.launch { answerProfileHint() }
+    }
+
+    /** "Skip for now" (and a dismissed dialog): the hint is answered, the publish goes ahead. */
+    fun dismissProfileHintAndPublish(
+        autoNoteText: String = "",
+        maintainerPubkeyHex: String = "",
+        mentionMaintainer: Boolean = false,
+    ) {
+        val taken = consumePending({ it.pendingProfileHint }) { it.copy(pendingProfileHint = false) }
+        if (!taken) return
+        scope.launch {
+            answerProfileHint()
+            try {
+                runPublish(autoNoteText, maintainerPubkeyHex, mentionMaintainer)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(publishPhase = PublishPhase.FAILED, error = EditorError.SAVE_FAILED) }
+            }
+        }
+    }
+
+    fun acknowledgeProfileSetupNavigated() = _state.update { it.copy(profileSetupRequested = false) }
+
+    /** A failed write must not trap the user on the dialog: at worst the hint comes back once. */
+    private suspend fun answerProfileHint() {
+        try {
+            withContext(ioDispatcher) { profileHint?.dismiss() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Asked again next time.
+        }
+    }
+
+    /** Atomically takes a pending decision; false when another tap already took it. */
+    private fun consumePending(
+        isPending: (ClimbEditorUiState) -> Boolean,
+        take: (ClimbEditorUiState) -> ClimbEditorUiState,
+    ): Boolean {
+        var taken = false
+        _state.update { s ->
+            if (isPending(s)) {
+                taken = true
+                take(s)
+            } else {
+                taken = false
+                s
+            }
+        }
+        return taken
     }
 
     fun consumePublishResult() = _state.update {
@@ -543,6 +693,10 @@ class ClimbEditor(
                 )
             }
         }
+        if (result.failure == PublishFailure.NONE) {
+            cancelAutosave()
+            clearAutosaveSlot()
+        }
         val refreshed = withContext(ioDispatcher) { drafts.drafts(current.boardBrand) }
         _state.update {
             it.copy(
@@ -571,6 +725,101 @@ class ClimbEditor(
 
     fun consumeKilterOutcome() = _state.update { it.copy(kilterOutcome = null, kilterConnectNudge = false) }
 
+    // ── Heatmap overlay (Android ClimbEditorViewModel) ───────────
+
+    /** Popular co-occurring holds for the climb so far; Aurora-family and Quantum boards only. */
+    fun toggleHeatmap() {
+        val enabled = !_state.value.heatmapEnabled
+        _state.update { it.copy(heatmapEnabled = enabled) }
+        if (enabled) recomputeHeatmap()
+    }
+
+    private fun recomputeHeatmap() {
+        val snapshot = _state.value
+        if (!snapshot.heatmapEnabled) return
+        // MoonBoard hold ids are not placement ids: it has no heatmap layer.
+        if (!BoardBrand.fromWire(snapshot.editor.boardBrand).hasHeatmap) return
+        heatmapJob?.cancel()
+        heatmapJob = scope.launch {
+            kotlinx.coroutines.delay(HEATMAP_DEBOUNCE_MS)
+            val current = _state.value
+            val angle = current.editor.angle ?: return@launch
+            try {
+                val map = withContext(ioDispatcher) {
+                    boardRepository.computeEditorHeatmap(
+                        current.layoutId,
+                        angle.toLong(),
+                        current.editor.selectedHolds.keys,
+                        // With a brush: holds popular for that role; without: role-agnostic.
+                        current.editor.activeBrush,
+                    )
+                }
+                _state.update { it.copy(heatmap = map) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A non-essential overlay: the previous heatmap stays visible.
+            }
+        }
+    }
+
+    // ── Autosave (Android EditorAutosave) ────────────────────────
+
+    private fun restoreAutosave() {
+        val store = autosave ?: return
+        if (autosaveBoardKey.isEmpty()) return
+        val snapshot = try {
+            store.load(autosaveBoardKey)
+        } catch (e: Exception) {
+            null
+        } ?: return
+        val current = _state.value.editor
+        if (current.selectedHolds.isNotEmpty()) return
+        // Content only: the board, brand and brush stay what the board load set.
+        applyEditor(
+            current.copy(
+                selectedHolds = snapshot.selectedHolds,
+                name = snapshot.name,
+                description = snapshot.description,
+                setterGradeId = snapshot.setterGradeId,
+                angle = snapshot.angle ?: current.angle,
+            )
+        )
+    }
+
+    /** Debounced; the latest edit wins. An edit of a published climb never writes the creator slot. */
+    private fun scheduleAutosave(next: ClimbEditorState) {
+        val store = autosave ?: return
+        if (_state.value.isEditingExisting || autosaveBoardKey.isEmpty()) return
+        val boardKey = autosaveBoardKey
+        autosaveJob?.cancel()
+        autosaveJob = scope.launch {
+            kotlinx.coroutines.delay(AUTOSAVE_DEBOUNCE_MS)
+            try {
+                withContext(ioDispatcher) { store.save(boardKey, next) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Best effort, as on Android: editing goes on without a recovery copy.
+            }
+        }
+    }
+
+    private fun cancelAutosave() {
+        autosaveJob?.cancel()
+        autosaveJob = null
+    }
+
+    private fun clearAutosaveSlot() {
+        val store = autosave ?: return
+        if (autosaveBoardKey.isEmpty()) return
+        try {
+            store.clear(autosaveBoardKey)
+        } catch (e: Exception) {
+            // A slot that could not be cleared restores once more; nothing is lost.
+        }
+    }
+
     fun close() = scope.cancel()
 
     // ── Internals ────────────────────────────────────────────────
@@ -579,6 +828,8 @@ class ClimbEditor(
         val selection = preferences.boardSelection()
         val brand = BoardBrand.fromWire(selection.boardBrand)
         val layoutId = selection.layoutId.toLong()
+        // The slot is the exact board, so a draft only ever restores onto the wall it was set on.
+        autosaveBoardKey = "${brand.wireValue}_${layoutId}_${selection.productSizeId}"
 
         if (brand == BoardBrand.MOONBOARD) {
             // No Aurora placement / LED / image rows exist: the MoonBoard renders
@@ -771,6 +1022,7 @@ class ClimbEditor(
     }
 
     private fun applyEditor(next: ClimbEditorState) {
+        val previousHolds = _state.value.editor.selectedHolds
         _state.update {
             it.copy(
                 editor = next,
@@ -781,9 +1033,13 @@ class ClimbEditor(
                 validationIssues = validate(next),
             )
         }
+        scheduleAutosave(next)
+        if (next.selectedHolds.keys != previousHolds.keys) recomputeHeatmap()
     }
 
     internal companion object {
         const val UNDO_DEPTH = 50
+        const val AUTOSAVE_DEBOUNCE_MS = 500L
+        const val HEATMAP_DEBOUNCE_MS = 500L
     }
 }

@@ -422,7 +422,7 @@ class AppCore private constructor(
 
     /** Playback puts each climb on the wall through the one shared board link. */
     private val playbackTransport: BoardPlaybackTransport by lazy {
-        BoardPlaybackTransport(boardRepository, boardConnection, platform.keyValues)
+        BoardPlaybackTransport(boardRepository, boardConnection, platform.keyValues, automaticMode = ::playlistSendsAutomatically)
     }
 
     /**
@@ -2231,5 +2231,73 @@ class AppCore private constructor(
     /** The board picker's "Find via Bluetooth" (Android `onboardingBoardSuggestion`): the connected controller's family. */
     fun bluetoothBoardSuggestion(): com.cruxcoach.app.ui.BluetoothBoardSuggestionUi =
         com.cruxcoach.app.ui.BluetoothBoardSuggestion.of(boardConnection.state.value.connectedBoard)
+    // ── Send to board and climb editor extras (wave 5, sendcreator) ──
+
+    /** Android `SessionQueueManager.resolveSendMode` for the app's playlist: the connected controller's mode. */
+    private fun playlistSendsAutomatically(): Boolean {
+        val snapshot = SettingsStore(platform.keyValues, pubkeyHex).snapshot
+        return com.cruxcoach.app.send.BoardAutoSend.resolvedMode(
+            single = snapshot.singleConnectionSendMode,
+            multi = snapshot.multiConnectionSendMode,
+            capacity = com.cruxcoach.app.ble.BoardControllerProfiles
+                .forBoard(boardConnection.state.value.connectedBoard).connectionCapacity,
+            hostingForOthers = false,
+        ) == com.cruxcoach.app.ble.BoardSendMode.AUTOMATIC
+    }
+
+    /**
+     * The climb detail's automatic send (Android "Send to board: automatic"): Swift asks it
+     * after each settled page and on connect, then sends through the detail's guarded lamp.
+     */
+    fun makeDetailAutoSend(detail: DetailScreenModel): com.cruxcoach.app.ui.DetailAutoSendModel =
+        com.cruxcoach.app.ui.DetailAutoSendModel(
+            shown = { detail.shownClimb() },
+            // Read fresh: the settings page writes through its own store instance.
+            settings = { SettingsStore(platform.keyValues, pubkeyHex).snapshot },
+            connection = { boardConnection.state.value },
+            sharedSessionPhase = { sharedSessions.currentState.phaseCode },
+            playlistRunning = { boardSessionHub.isActive },
+        )
+
+    /** Android's "Send to board" rows (single- and multi-connection boards). */
+    fun makeBoardSendModeSettings(): com.cruxcoach.app.ui.BoardSendModeSettingsModel =
+        com.cruxcoach.app.ui.BoardSendModeSettingsModel(settingsStore)
+
+    /**
+     * [makeCreatorScreenWithKilter] plus Android's editor extras: the per-board autosave
+     * (identity-scoped), the profile hint before the first publish and the live LED mirror
+     * over the shared board link (the detail's fenced send; started and stopped by the view).
+     */
+    fun makeCreatorScreenComplete(): CreatorScreenModel {
+        val model = makeCreatorScreenWithKilter()
+        val autosave = com.cruxcoach.app.creator.EditorAutosave(
+            platform.keyValues, { settingsStore.scopedKey(it) }, { platform.clock.epochMillis() },
+        )
+        val hint = com.cruxcoach.app.creator.CreatorProfileHint(
+            dismissed = { SettingsStore(platform.keyValues, pubkeyHex).snapshot.profileHintDismissed },
+            setDismissed = { settingsStore.setProfileHintDismissed(true) },
+            ownDisplayName = { NostrProfileStore(secureDatabase, platform.clock).cached(pubkeyHex)?.displayName },
+            hasIdentity = { pubkeyHex.isNotBlank() },
+        )
+        val mirror = com.cruxcoach.app.creator.CreatorBoardMirror(
+            editor = model.editorState,
+            link = com.cruxcoach.app.creator.EditorPreviewLinks.of(boardConnection),
+            ledMaps = { sizeId, brandWire ->
+                com.cruxcoach.app.creator.EditorLedMaps(
+                    boardRepository.getPlacementLedMap(sizeId, brandWire),
+                    com.cruxcoach.app.ble.resolveRoleColors(
+                        BoardBrand.fromWire(brandWire),
+                        boardRepository.getRoleColorMapForBrand(brandWire),
+                        com.cruxcoach.app.settings.UserLedColors.read(platform.keyValues),
+                    ),
+                )
+            },
+            moonLedMode = { platform.keyValues.getString("moonboard_led_mode") },
+            scope = MainScope(),
+            io = Dispatchers.IO,
+        )
+        model.attachExtras(autosave, hint, mirror)
+        return model
+    }
 
 }

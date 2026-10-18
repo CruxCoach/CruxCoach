@@ -29,6 +29,8 @@ class BoardPlaybackTransport(
     private val keyValues: KeyValueStore,
     main: CoroutineDispatcher = Dispatchers.Main,
     private val io: CoroutineDispatcher = Dispatchers.Default,
+    /** The "Send to board" mode for the connected controller is automatic (Android `resolveSendMode`). */
+    private val automaticMode: () -> Boolean = { true },
 ) : PlaybackTransport {
 
     private val scope = CoroutineScope(SupervisorJob() + main)
@@ -41,6 +43,14 @@ class BoardPlaybackTransport(
     override val isBoardConnected: Boolean
         get() = connection.state.value.connection.let {
             it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
+        }
+
+    override val sendsAutomatically: Boolean
+        get() = try {
+            automaticMode()
+        } catch (e: Exception) {
+            // Android: a mode that cannot be read is no reason to leave the wall dark.
+            true
         }
 
     override fun sendClimb(climbUuid: String, angle: Int) {

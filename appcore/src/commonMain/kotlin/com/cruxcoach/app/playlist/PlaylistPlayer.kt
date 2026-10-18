@@ -51,6 +51,13 @@ interface PlaybackTransport {
 
     /** Puts the climb on the wall. A local-only build has nowhere to put it. */
     fun sendClimb(climbUuid: String, angle: Int)
+
+    /**
+     * Android's "Send to board" mode for the connected controller is "automatic":
+     * advancing puts the next climb on the wall. False keeps the wall as it is
+     * until the lamp is tapped (`QueueDeliveryPolicy.AWAIT_EXPLICIT`).
+     */
+    val sendsAutomatically: Boolean get() = true
 }
 
 object LocalOnlyTransport : PlaybackTransport {
@@ -88,6 +95,8 @@ data class PlaylistPlayerState(
     val restFinished: Boolean = false,
     /** The session just ended through [PlaylistPlayerPresenter.endSession]; its sheet is open. */
     val finished: FinishedSession? = null,
+    /** The current climb is not on the wall yet: "tap to send" mode waits for the lamp. */
+    val awaitingExplicitSend: Boolean = false,
 ) {
     val isResting: Boolean get() = phase is PlaybackPhase.Resting
 
@@ -162,7 +171,8 @@ class PlaylistPlayerPresenter(
             boardConnected = transport.isBoardConnected,
         )
         sessions?.start()
-        moveTo(0, armRest = false)
+        // Starting a playlist is the explicit request for its first climb (Android).
+        moveTo(0, armRest = false, explicitRequest = true)
     }
 
     fun stop() {
@@ -262,7 +272,7 @@ class PlaylistPlayerPresenter(
                 currentClimbGrade = if (changed) gradeLabel(info?.difficultyAverage) else it.currentClimbGrade,
             )
         }
-        if (changed && current != null) transport.sendClimb(current.climbUuid, current.angle)
+        if (changed && current != null) deliverCurrent(explicitRequest = false)
     }
 
     /**
@@ -303,10 +313,11 @@ class PlaylistPlayerPresenter(
 
     fun acknowledgeRestFinished() = _state.update { it.copy(restFinished = false) }
 
-    /** Puts the current climb back on the wall. */
+    /** Puts the current climb back on the wall: the lamp, an explicit request in either mode. */
     fun resendCurrentClimb() {
         val current = _state.value.currentClimb ?: return
         transport.sendClimb(current.climbUuid, current.angle)
+        _state.update { it.copy(awaitingExplicitSend = false) }
         refreshConnection()
     }
 
@@ -345,7 +356,7 @@ class PlaylistPlayerPresenter(
         _state.update { it.copy(queue = queue, currentClimb = queue.getOrNull(it.currentIndex)) }
     }
 
-    private fun moveTo(index: Int, armRest: Boolean) {
+    private fun moveTo(index: Int, armRest: Boolean, explicitRequest: Boolean = false) {
         val s = _state.value
         val leaving = if (armRest) s.currentClimb else null
         val item = s.queue.getOrNull(index) ?: return
@@ -359,9 +370,25 @@ class PlaylistPlayerPresenter(
                 boardConnected = transport.isBoardConnected,
             )
         }
-        transport.sendClimb(item.climbUuid, item.angle)
+        deliverCurrent(explicitRequest)
         val restSeconds = leaving?.restAfterSeconds ?: 0
         if (restSeconds > 0) startRest(restSeconds)
+    }
+
+    /**
+     * Android `SessionQueueManager.sendCurrentClimbToBoard` under `QueueDeliveryPolicy`:
+     * in "tap to send" mode an advance leaves the wall as it is and the player offers
+     * the lamp; the lamp and the first climb of a started playlist are explicit. With no
+     * board the transport reports the failed send itself, as before.
+     */
+    private fun deliverCurrent(explicitRequest: Boolean) {
+        val current = _state.value.currentClimb ?: return
+        if (!explicitRequest && !transport.sendsAutomatically) {
+            _state.update { it.copy(awaitingExplicitSend = true) }
+            return
+        }
+        transport.sendClimb(current.climbUuid, current.angle)
+        _state.update { it.copy(awaitingExplicitSend = false) }
     }
 
     private fun startRest(seconds: Int) {

@@ -209,6 +209,9 @@ class DetailScreenModel(
 
     fun dismissSendFailure() { sendFailure.value = "none" }
 
+    /** The page on screen, for the automatic send ([DetailAutoSendModel]). Not part of the Swift API. */
+    internal fun shownClimb(): ClimbDetailUiState = detail.state.value
+
     /** Late failure from the send's background half. Not part of the Swift API. */
     internal fun reportSendFailure(code: String) { sendFailure.value = code }
 

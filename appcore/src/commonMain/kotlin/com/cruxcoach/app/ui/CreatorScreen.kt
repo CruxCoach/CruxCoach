@@ -43,6 +43,9 @@ class CreatorBrushUi(
     val count: Int,
 )
 
+/** One heatmap spot: [x]/[y] normalized like [CreatorHoldUi], [intensity] 0…1. */
+class CreatorHeatUi(val placementId: Int, val x: Float, val y: Float, val intensity: Float)
+
 class CreatorDraftUi(
     val uuid: String,
     val name: String,
@@ -121,6 +124,22 @@ class CreatorScreenState(
     val kilterOutcomeHttpCode: Int = 0,
     /** Kilter publishing is on but no account is connected (`climb_creator_kilter_connect_nudge`). */
     val kilterConnectNudge: Boolean = false,
+    // ── Editor extras (Android ClimbEditorScreen) ──
+    /** The board has a popular-holds heatmap (Aurora family, Quantum); MoonBoard has none. */
+    val heatmapAvailable: Boolean = false,
+    val heatmapEnabled: Boolean = false,
+    /** Empty while the overlay is off. */
+    val heat: List<CreatorHeatUi> = emptyList(),
+    /** The duplicate is the user's own climb: "Update existing" / "Publish as new". */
+    val duplicateIsOwn: Boolean = false,
+    /** The own duplicate never went out (a draft or a failed publish). */
+    val duplicateIsDraft: Boolean = false,
+    /** The profile hint waits for an answer before the publish goes on. */
+    val profileHintPending: Boolean = false,
+    /** One-shot: open the profile editor, then call [CreatorScreenModel.acknowledgeProfileSetup]. */
+    val profileSetupRequested: Boolean = false,
+    /** The connected board belongs to another family than the climb's board (Android's dialog). */
+    val boardMismatch: BoardMismatchUi = BoardMismatchUi.NONE,
 )
 
 /**
@@ -138,14 +157,18 @@ class CreatorScreenModel(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + main)
     private val moonGeometry = MutableStateFlow<MoonLayout?>(null)
+    private var mirror: com.cruxcoach.app.creator.CreatorBoardMirror? = null
+    private val mirrorMismatch = MutableStateFlow<com.cruxcoach.app.setup.BoardConfigurationMismatch?>(null)
+    private var mirrorWatch: kotlinx.coroutines.Job? = null
 
     private class MoonLayout(val geometry: MoonBoardMappedGeometry, val imagePath: String)
 
-    val currentState: CreatorScreenState get() = map(editor.state.value, moonGeometry.value)
+    val currentState: CreatorScreenState get() = map(editor.state.value, moonGeometry.value, mirrorMismatch.value)
 
     fun watch(onState: (CreatorScreenState) -> Unit): Subscription {
         val job = scope.launch {
-            combine(editor.state, moonGeometry) { state, moon -> map(state, moon) }.collect { onState(it) }
+            combine(editor.state, moonGeometry, mirrorMismatch) { state, moon, mismatch -> map(state, moon, mismatch) }
+                .collect { onState(it) }
         }
         return Subscription { job.cancel() }
     }
@@ -240,7 +263,56 @@ class CreatorScreenModel(
 
     fun consumeError() = editor.consumeError()
 
+    // ── Editor extras (Android ClimbEditorScreen) ──
+
+    /** The overflow menu's popular-holds heatmap. */
+    fun toggleHeatmap() = editor.toggleHeatmap()
+
+    /** Own duplicate: publish the editor as an edit of that climb (same uuid). */
+    fun updateExistingOnDuplicate(autoNoteText: String) =
+        editor.updateExistingOnDuplicate(autoNoteText, com.cruxcoach.app.AppConfig.MAINTAINER_PUBKEY, mentionMaintainer = true)
+
+    /** Profile hint "Set up profile": no publish; [CreatorScreenState.profileSetupRequested] follows. */
+    fun acceptProfileHint() = editor.acceptProfileHint()
+
+    /** Profile hint "Skip for now" (or the dialog dismissed): the publish goes on. */
+    fun skipProfileHint(autoNoteText: String) =
+        editor.dismissProfileHintAndPublish(autoNoteText, com.cruxcoach.app.AppConfig.MAINTAINER_PUBKEY, mentionMaintainer = true)
+
+    fun acknowledgeProfileSetup() = editor.acknowledgeProfileSetupNavigated()
+
+    /** The live LED mirror runs while the editor is on screen (Android: while the screen exists). */
+    fun startBoardMirror() {
+        val active = mirror ?: return
+        active.start()
+        if (mirrorWatch == null) {
+            mirrorWatch = scope.launch { active.mismatch.collect { mirrorMismatch.value = it } }
+        }
+    }
+
+    fun stopBoardMirror() {
+        mirror?.stop()
+        mirrorWatch?.cancel()
+        mirrorWatch = null
+        mirrorMismatch.value = null
+    }
+
+    /** The editor's state, for the LED mirror the app builds around it. */
+    internal val editorState: kotlinx.coroutines.flow.StateFlow<ClimbEditorUiState> get() = editor.state
+
+    /** Autosave, profile hint and LED mirror, wired by the app (`AppCore`); set before [open]. */
+    internal fun attachExtras(
+        autosave: com.cruxcoach.app.creator.EditorAutosave?,
+        profileHint: com.cruxcoach.app.creator.CreatorProfileHint?,
+        boardMirror: com.cruxcoach.app.creator.CreatorBoardMirror?,
+    ) {
+        editor.autosave = autosave
+        editor.profileHint = profileHint
+        mirror = boardMirror
+    }
+
     fun close() {
+        stopBoardMirror()
         scope.cancel()
         editor.close()
     }
@@ -264,21 +336,38 @@ class CreatorScreenModel(
         if (BoardBrand.fromWire(state.editor.boardBrand) != BoardBrand.QUANTUM) null
         else com.cruxcoach.app.render.QuantumRender.model(state.boardSize, state.layoutId)
 
-    private fun map(state: ClimbEditorUiState, moon: MoonLayout?): CreatorScreenState {
+    private fun map(
+        state: ClimbEditorUiState,
+        moon: MoonLayout?,
+        mismatch: com.cruxcoach.app.setup.BoardConfigurationMismatch?,
+    ): CreatorScreenState {
         val brand = BoardBrand.fromWire(state.editor.boardBrand)
         val colors = state.ledColors
         val geometry = AuroraBoardGeometry.of(state.boardSize)
         val quantum = quantumModel(state)
+        fun pointOf(placementId: Int) = when {
+            brand == BoardBrand.MOONBOARD -> moon?.geometry?.point(placementId, 1f, 1f)
+            quantum != null -> state.placements[placementId]
+                ?.let { com.cruxcoach.app.render.QuantumRender.normalized(quantum, it.x, it.y) }
+                ?.takeIf(com.cruxcoach.app.render.QuantumRender::isVisible)
+            else -> state.placements[placementId]?.let { geometry.normalized(it.x, it.y) }
+        }
         val holds = state.editor.selectedHolds.entries.mapNotNull { (placementId, roleId) ->
-            val point = when {
-                brand == BoardBrand.MOONBOARD -> moon?.geometry?.point(placementId, 1f, 1f)
-                quantum != null -> state.placements[placementId]
-                    ?.let { com.cruxcoach.app.render.QuantumRender.normalized(quantum, it.x, it.y) }
-                    ?.takeIf(com.cruxcoach.app.render.QuantumRender::isVisible)
-                else -> state.placements[placementId]?.let { geometry.normalized(it.x, it.y) }
-            } ?: return@mapNotNull null
+            val point = pointOf(placementId) ?: return@mapNotNull null
             CreatorHoldUi(placementId, point.x, point.y, colors.argbForRole(roleId), roleCode(roleId))
         }
+        val heatmapAvailable = brand.hasHeatmap
+        val heat = if (state.heatmapEnabled && heatmapAvailable) {
+            state.heatmap.entries.mapNotNull { (placementId, intensity) ->
+                // Holds already on the climb are drawn as holds, not as suggestions.
+                if (placementId in state.editor.selectedHolds) return@mapNotNull null
+                val point = pointOf(placementId) ?: return@mapNotNull null
+                CreatorHeatUi(placementId, point.x, point.y, intensity.coerceIn(0f, 1f))
+            }
+        } else {
+            emptyList()
+        }
+        val duplicate = state.duplicateOf
         val aspect = when {
             moon != null && brand == BoardBrand.MOONBOARD -> moon.geometry.imageAspect
             quantum != null -> com.cruxcoach.app.render.QuantumRender.ASPECT
@@ -348,6 +437,14 @@ class CreatorScreenModel(
             kilterOutcomeMessageKey = state.kilterOutcome?.messageKey.orEmpty(),
             kilterOutcomeHttpCode = state.kilterOutcome?.httpCode ?: 0,
             kilterConnectNudge = state.kilterConnectNudge,
+            heatmapAvailable = heatmapAvailable,
+            heatmapEnabled = state.heatmapEnabled,
+            heat = heat,
+            duplicateIsOwn = state.duplicateIsOwn,
+            duplicateIsDraft = duplicate != null && (duplicate.syncStatus == "draft" || duplicate.syncStatus == "failed"),
+            profileHintPending = state.pendingProfileHint,
+            profileSetupRequested = state.profileSetupRequested,
+            boardMismatch = BoardMismatchUi.of(mismatch),
         )
     }
 
