@@ -2,6 +2,7 @@ package com.cruxcoach.app.send
 
 import com.cruxcoach.app.ble.BoardConnectionPresenter
 import com.cruxcoach.app.ble.resolveRoleColors
+import com.cruxcoach.app.browse.BrowsePreferences
 import com.cruxcoach.app.detail.ClimbDetailUiState
 import com.cruxcoach.app.platform.KeyValueStore
 import com.cruxcoach.app.settings.UserLedColors
@@ -25,7 +26,10 @@ class BoardSender(
     private val boardRepository: BoardRepository,
     private val connection: BoardConnectionPresenter,
     private val keyValues: KeyValueStore,
-    /** Called when the LED map could not be read after the request was accepted. */
+    /**
+     * The send's late outcome after the request was accepted: "noBoardGeometry" (the LED map
+     * could not be read), "noLedData", "climbOffBoard" (refused) or "holdsNotLit" (sent, partly).
+     */
     private val onRequestFailed: (String) -> Unit = {},
     main: CoroutineDispatcher = Dispatchers.Main,
     private val io: CoroutineDispatcher = Dispatchers.Default,
@@ -50,9 +54,11 @@ class BoardSender(
             connection.sendMoonBoardClimb(data.climb.frames, data.climb.layoutId, keyValues.getString("moonboard_led_mode"), sent)
             return "started"
         }
-        // Without the product size there is no LED map, so the board could not
-        // be told which holds to light: say so rather than doing nothing.
-        val sizeId = data.boardSize?.id?.toInt() ?: return "noBoardGeometry"
+        // Android sends with the ACTIVE board's size: the detail may draw a larger
+        // "effective" board whose LED map addresses LEDs this wall does not have.
+        // Only when the guard did not run (another family is configured) does the
+        // drawn board stand in. Without either there is no LED map: say so.
+        val sizeId = activeSizeFor(brandWire) ?: data.boardSize?.id?.toInt() ?: return "noBoardGeometry"
         val holds = detail.holds.map { BoardHold(it.placementId, it.roleId) }
         if (holds.isEmpty()) return "noHolds"
         scope.launch {
@@ -67,9 +73,53 @@ class BoardSender(
                 onRequestFailed("noBoardGeometry")
                 return@launch
             }
+            when (BoardSendFit.of(holds, maps.first)) {
+                BoardSendFit.NO_LED_DATA -> {
+                    onRequestFailed("noLedData")
+                    return@launch
+                }
+                BoardSendFit.OFF_BOARD -> {
+                    onRequestFailed("climbOffBoard")
+                    return@launch
+                }
+                // Android sends what fits and warns that the rest stayed dark.
+                BoardSendFit.PARTIAL -> onRequestFailed("holdsNotLit")
+                else -> Unit
+            }
             // The catalogue's own placement_roles win; the user's colours are Kilter's fallback, as on Android.
             connection.sendClimb(holds, maps.first, resolveRoleColors(brand, maps.second, UserLedColors.read(keyValues)), brandWire, sent)
         }
         return "started"
+    }
+
+    /** The configured size when the configured board is this climb's family (Android `boardProductSizeId`). */
+    private fun activeSizeFor(brandWire: String): Int? = try {
+        val active = BrowsePreferences(keyValues).boardSelection()
+        if (active.boardBrand == brandWire) active.productSizeId else null
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/**
+ * Android BoardSendController's LED-map checks before a direct send: no LED map at all is
+ * "no LED data"; holds of which NONE map to the configured size's LEDs are a wrong-size climb
+ * the family guard cannot catch (both are e.g. Kilter) and are refused; some unmapped holds
+ * are sent with a warning that they stay dark.
+ */
+internal object BoardSendFit {
+    const val FITS = "fits"
+    const val PARTIAL = "partial"
+    const val OFF_BOARD = "offBoard"
+    const val NO_LED_DATA = "noLedData"
+
+    fun of(holds: List<BoardHold>, placementToLed: Map<Int, Int>): String {
+        if (placementToLed.isEmpty()) return NO_LED_DATA
+        val unmapped = holds.count { it.placementId !in placementToLed }
+        return when {
+            unmapped == 0 -> FITS
+            unmapped == holds.size -> OFF_BOARD
+            else -> PARTIAL
+        }
     }
 }

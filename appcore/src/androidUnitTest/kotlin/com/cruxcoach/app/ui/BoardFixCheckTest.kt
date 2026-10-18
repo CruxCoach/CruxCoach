@@ -83,4 +83,18 @@ class BoardFixCheckTest {
         assertFalse(check(kilterOriginal, BoardBrand.MOONBOARD).forClimb("logbook-only").active)
         assertFalse(check(kilterOriginal, BoardBrand.MOONBOARD, failLookup = true).forClimb("tension").active)
     }
+
+    @Test
+    fun `a refused off board send offers the climb's layout and leaves the size open`() {
+        val ui = check(kilterOriginal, BoardBrand.KILTER).sizeMismatch("kilter-original")
+        assertTrue(ui.active)
+        assertEquals("activeSize", ui.kindCode)
+        assertEquals("board_mismatch_active_size", ui.messageKey)
+        assertEquals("kilter", ui.prefillBrandWire)
+        assertEquals(1, ui.prefillLayoutId)
+        assertEquals(0, ui.prefillProductSizeId, "zero LED overlap proves a wrong size, not which one")
+        assertEquals("board_mismatch_detected_climb", ui.sourceKey)
+        assertFalse(check(kilterOriginal).sizeMismatch("logbook-only").active)
+        assertFalse(check(kilterOriginal, failLookup = true).sizeMismatch("tension").active)
+    }
 }

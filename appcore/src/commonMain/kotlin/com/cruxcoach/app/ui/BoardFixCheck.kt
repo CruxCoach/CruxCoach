@@ -29,19 +29,31 @@ class BoardFixCheck internal constructor(
         BoardMismatchUi.NONE
     }
 
-    internal fun resolve(climbUuid: String): com.cruxcoach.app.setup.BoardConfigurationMismatch? {
+    /**
+     * The send's LED-map check refused [climbUuid] ("climbOffBoard": none of its holds is on the
+     * configured size): Android's `boardSizeMismatch`, which offers the climb's layout and leaves
+     * the size to the user. Inactive when the climb is unknown.
+     */
+    fun sizeMismatch(climbUuid: String): BoardMismatchUi = try {
+        identity(climbUuid)?.let { BoardMismatchUi.of(BoardMismatchPolicy.size(it)) } ?: BoardMismatchUi.NONE
+    } catch (e: Exception) {
+        BoardMismatchUi.NONE
+    }
+
+    internal fun resolve(climbUuid: String): com.cruxcoach.app.setup.BoardConfigurationMismatch? =
+        identity(climbUuid)?.let(BoardMismatchPolicy::resolve)
+
+    private fun identity(climbUuid: String): BoardSendIdentity? {
         val (brand, layoutId) = climb(climbUuid) ?: return null
         val active = activeBoard()
-        return BoardMismatchPolicy.resolve(
-            BoardSendIdentity(
-                climbBrand = brand,
-                climbLayoutId = layoutId,
-                activeBrand = active?.let { BoardBrand.fromWireOrNull(it.boardBrand) },
-                activeLayoutId = active?.layoutId?.toLong(),
-                activeProductSizeId = active?.productSizeId,
-                connectedBrand = connectedBrand(),
-                connectedQuantumModel = connectedQuantum(),
-            ),
+        return BoardSendIdentity(
+            climbBrand = brand,
+            climbLayoutId = layoutId,
+            activeBrand = active?.let { BoardBrand.fromWireOrNull(it.boardBrand) },
+            activeLayoutId = active?.layoutId?.toLong(),
+            activeProductSizeId = active?.productSizeId,
+            connectedBrand = connectedBrand(),
+            connectedQuantumModel = connectedQuantum(),
         )
     }
 }

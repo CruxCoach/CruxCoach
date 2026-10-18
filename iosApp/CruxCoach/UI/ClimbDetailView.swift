@@ -369,6 +369,8 @@ struct ClimbDetailView: View {
     private func sendRequestMessage(_ code: String) -> String {
         switch code {
         case "noBoardGeometry": return LI("detail_send_no_geometry")
+        case "noLedData": return L("board_send_error_no_led_data")
+        case "climbOffBoard": return L("board_send_error_climb_off_board")
         case "noHolds": return LI("detail_send_no_holds")
         default: return LI("detail_send_failed", code)
         }
@@ -498,6 +500,8 @@ struct ClimbDetailView: View {
             }
             if let boardFix {
                 BoardFixRow(mismatch: boardFix) { showBoardFix = true }
+            } else if ui.sendRequestFailure == "holdsNotLit" {
+                partialSendRow
             } else if ui.sendRequestFailure != "none" {
                 Text(sendRequestMessage(ui.sendRequestFailure)).font(.footnote).foregroundStyle(.red)
             } else if ble.state.sendResult != "none" && ble.state.sendResult != "ok" {
@@ -524,6 +528,27 @@ struct ClimbDetailView: View {
                 Text(LI("detail_log_failed")).font(.footnote).foregroundStyle(.red)
             }
         }
+        .onChange(of: ui.sendRequestFailure) { _, code in sendRefusedOffBoard(code, uuid: ui.uuid) }
+    }
+
+    /// Android sends what fits the configured size and warns that the rest stayed dark.
+    @ViewBuilder private var partialSendRow: some View {
+        let result: String = ble.state.sendResult
+        if result == "ok" {
+            Text(L("board_send_warning_holds_not_lit")).font(.footnote).foregroundStyle(.orange)
+        } else if result != "none" {
+            Text(LI("detail_send_failed", result)).font(.footnote).foregroundStyle(.red)
+        }
+    }
+
+    /// Android `boardSizeMismatch`: none of the holds is on the configured size, so the send was
+    /// refused with "Fix board configuration" (the climb's layout preselected, the size left open).
+    private func sendRefusedOffBoard(_ code: String, uuid current: String) {
+        guard code == "climbOffBoard" else { return }
+        let mismatch: BoardMismatchUi = core.boardFixCheck.sizeMismatch(climbUuid: current)
+        guard mismatch.active else { return }
+        boardFix = mismatch
+        boardFixUuid = current
     }
 
     @ViewBuilder private func betaLinks(ui: DetailScreenState) -> some View {
