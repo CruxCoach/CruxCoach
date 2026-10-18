@@ -142,9 +142,9 @@ interface ManualImportStore {
  * [CruxCoachBackupPayloadStore]. Unlike the cloud restore it writes only the
  * selected categories, as Android's DataImportScreen does.
  *
- * Own climbs are written immediately: Android stages them while a catalogue
- * import holds its board database, but the iOS catalogue import merges rows
- * in short transactions and the board writes simply follow it.
+ * Own climbs follow the logbook as on Android: written at once while no
+ * catalogue download runs, else held back by [ownClimbs] and applied when it
+ * ends. Without [ownClimbs] (tests, export-only wirings) they are written at once.
  */
 class CruxCoachManualImportStore(
     private val userRepository: UserRepository,
@@ -156,6 +156,7 @@ class CruxCoachManualImportStore(
     private val boardRepository: BoardRepository,
     private val transactionRunner: TransactionRunner,
     private val athlete: AthleteBackupHooks? = null,
+    private val ownClimbs: PendingOwnClimbs? = null,
 ) : ManualImportStore {
 
     /** [personalBoardRepo] is the instance the screens use, so its cached list ids stay right. */
@@ -164,6 +165,7 @@ class CruxCoachManualImportStore(
         boardRepository: BoardRepository,
         personalBoardRepo: PersonalBoardRepository,
         athlete: AthleteBackupHooks?,
+        ownClimbs: PendingOwnClimbs? = null,
     ) : this(
         userRepository = UserRepositoryImpl(secureDb),
         bodyStatRepository = BodyStatRepositoryImpl(secureDb),
@@ -174,9 +176,28 @@ class CruxCoachManualImportStore(
         boardRepository = boardRepository,
         transactionRunner = SecureDatabaseTransactionRunner(secureDb),
         athlete = athlete,
+        ownClimbs = ownClimbs,
     )
 
     override fun importSelected(
+        json: String,
+        categories: Set<Category>,
+        expectedNostrPubkey: String?,
+        adoptLocalDraftsForPubkey: String?,
+    ): CruxCoachBackup.ImportResult {
+        val result = importLogbook(json, categories, expectedNostrPubkey, adoptLocalDraftsForPubkey)
+        val pending = ownClimbs ?: return result
+        if (Category.OWN_CLIMBS !in categories) return result
+        // The logbook is in; own climbs follow now or after the catalogue download (Android's confirmImport).
+        val own = pending.restoreOrStage(json, adoptLocalDraftsForPubkey)
+        return result.copy(
+            ownClimbs = own.restored,
+            skippedDuplicates = result.skippedDuplicates + own.skipped,
+            pendingOwnClimbs = own.staged,
+        )
+    }
+
+    private fun importLogbook(
         json: String,
         categories: Set<Category>,
         expectedNostrPubkey: String?,
@@ -194,7 +215,7 @@ class CruxCoachManualImportStore(
         transactionRunner = transactionRunner,
         expectedNostrPubkey = expectedNostrPubkey,
         adoptLocalDraftsForPubkey = adoptLocalDraftsForPubkey,
-        restoreOwnClimbsNow = true,
+        restoreOwnClimbsNow = ownClimbs == null,
         athleteRestore = athlete?.let { hooks -> { snapshot, withProfile -> hooks.restore(snapshot, withProfile) } },
         athleteLegacyBodyStats = athlete?.let { hooks -> { rows -> hooks.importLegacyBodyStats(rows) } },
     )

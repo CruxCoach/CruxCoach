@@ -191,8 +191,8 @@ internal object DataExchangeTexts {
 
     /**
      * Android's import message (`confirmImport`): the written rows per kind,
-     * the skipped duplicates and the own climbs still to follow. iOS writes own
-     * climbs at once, so `ownClimbs` is what Android reports as restored.
+     * the skipped duplicates and the own climbs still to follow (held back
+     * while a catalogue download runs); `ownClimbs` is what Android reports as restored.
      */
     fun result(r: CruxCoachBackup.ImportResult): TrText {
         val parts = buildList {

@@ -276,6 +276,8 @@ class AppCore private constructor(
 
     fun startConnectivity() {
         connectivity.start()
+        // Own climbs an import held back during a catalogue download (robust, 0.2.4).
+        pendingOwnClimbs.start()
         // The idle timeout is a preference the link has to be told about; it is
         // not read on every send.
         boardConnection.setAutoDisconnectSeconds(settingsStore.snapshot.bleAutoDisconnectSeconds)
@@ -1909,7 +1911,7 @@ class AppCore private constructor(
             clock = platform.clock,
             pubkeyHex = { pubkeyHex },
             importer = com.cruxcoach.app.backup.CruxCoachManualImportStore(
-                secureDatabase, boardRepository, personalRepository, athleteBackupHooks,
+                secureDatabase, boardRepository, personalRepository, athleteBackupHooks, pendingOwnClimbs,
             ),
             catalogueLoading = kotlinx.coroutines.flow.flow { catalogueSync.state.collect { emit(it.running) } },
             scope = MainScope(),
@@ -2180,5 +2182,25 @@ class AppCore private constructor(
             }
             override fun elapsedSeconds(): Int = boardSessions.elapsedSeconds()
         }
+
+
+    // ── Robustness (robust, 0.2.4) ──────────────────────────────────────
+    //
+    // Android's PendingImports: own climbs of an import wait in `pending_import` while a
+    // catalogue download (or a nearby receive) holds the board database, and follow when it ends
+    // and at every start ([startConnectivity] starts it).
+
+    private val pendingOwnClimbs: com.cruxcoach.app.backup.PendingOwnClimbs by lazy {
+        com.cruxcoach.app.backup.PendingOwnClimbs(
+            secureDb = secureDatabase,
+            boardRepository = boardRepository,
+            catalogueRunning = { catalogueSync.state.value.running },
+            catalogueRunningChanges = kotlinx.coroutines.flow.flow { catalogueSync.state.collect { emit(it.running) } },
+            hashing = platform.hashing,
+            clock = platform.clock,
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default),
+            io = Dispatchers.IO,
+        )
+    }
 
 }
