@@ -38,6 +38,7 @@ struct SettingsView: View {
             Section(LI("settings_about")) {
                 LabeledContent("CruxCoach iOS", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
                 LabeledContent(LI("settings_storage"), value: "SQLCipher \(core.cipherVersion)")
+                NavigationLink(L("settings_licenses_title")) { LicensesView() }
                 Text(LI("settings_preview_notice")).font(.footnote).foregroundStyle(.secondary)
             }
         }

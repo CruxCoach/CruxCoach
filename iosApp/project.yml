@@ -46,6 +46,9 @@ targets:
       - path: ../androidApp/src/main/assets/kilter
         type: folder
         buildPhase: resources
+      # The repository's third-party notice, shown under Settings → Open-source licenses.
+      - path: ../THIRD_PARTY_LICENSES.md
+        buildPhase: resources
     dependencies:
       - framework: Frameworks/CruxCoachCore.xcframework
         embed: false
