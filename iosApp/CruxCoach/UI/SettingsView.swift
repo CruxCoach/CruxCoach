@@ -36,6 +36,7 @@ struct SettingsView: View {
                 NavigationLink(LI("health_title")) { HealthSettingsView(core: core) }
                 NavigationLink(LI("profile_open")) { ProfileView(core: core) }
                 NavigationLink(LI("devcontact_open")) { DevContactView(core: core) }
+                NavigationLink(LI("background_open")) { BackgroundRefreshSettingsView(core: core) }
                 Button(L("tour_replay")) { core.makeBrowserTour().start(replay: true) }
             }
             Section(LI("settings_about")) {

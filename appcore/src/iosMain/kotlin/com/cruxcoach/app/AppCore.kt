@@ -678,9 +678,10 @@ class AppCore private constructor(
             appVersionCode = versionCode,
             clock = { platform.clock.epochMillis() },
         )
-        engine.retryScheduler = CoroutineKilterUploadRetryScheduler(kilterRunScope) { attempt ->
+        // The next retry is also kept on disk, so a background slot can continue the chain.
+        engine.retryScheduler = backgroundKilterRetry(engine, CoroutineKilterUploadRetryScheduler(kilterRunScope) { attempt ->
             engine.upload(KilterUploadTrigger.RETRY, retryAttempt = attempt)
-        }
+        })
         return KilterScreenModel(
             api,
             tokens,
