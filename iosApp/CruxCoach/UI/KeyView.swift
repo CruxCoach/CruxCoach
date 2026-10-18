@@ -12,6 +12,8 @@ struct KeyView: View {
     @State private var confirmSwitch = false
     /// The ncryptsec password; cleared as soon as it is handed to the core.
     @State private var password = ""
+    /// Android's public-id QR dialog (`showPublicQr`).
+    @State private var showPublicQr = false
 
     var body: some View {
         Group {
@@ -51,6 +53,7 @@ struct KeyView: View {
             Text(L("account_access_different"))
         }
         .modifier(KeyPasswordPrompt(model: model, needsPassword: ui.needsPassword, password: $password))
+        .modifier(KeyPublicQrSheet(npub: ui.activeNpub ?? "", isPresented: $showPublicQr))
         .onChange(of: ui.imported) { _, imported in
             // The new key is stored; the core restarts on that identity's own databases.
             if imported { environment.restart() }
@@ -67,6 +70,7 @@ struct KeyView: View {
             if let npub = ui.activeNpub {
                 Text(npub).font(.caption.monospaced()).textSelection(.enabled)
                 Button(L("account_copy_id"), systemImage: "doc.on.doc") { UIPasteboard.general.string = npub }
+                Button(L("account_show_qr"), systemImage: "qrcode") { showPublicQr = true }
             }
         }
     }
@@ -178,6 +182,60 @@ private struct KeyPasswordPrompt: ViewModifier {
                 model.submitPassword(password: entered)
             }
             .disabled(password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+}
+
+/// Android's public account id dialog: the QR code of `nostr:<npub>` (ZXing there, CoreImage
+/// here) under the title "Your account", closed with "Close".
+private struct KeyPublicQrSheet: ViewModifier {
+    let npub: String
+    @Binding var isPresented: Bool
+
+    func body(content: Content) -> some View {
+        content.sheet(isPresented: $isPresented) {
+            NavigationStack {
+                KeyPublicQrContent(npub: npub)
+                    .navigationTitle(L("account_public_id"))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(L("action_close")) { isPresented = false }
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+}
+
+private struct KeyPublicQrContent: View {
+    let npub: String
+    @State private var qr: UIImage?
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if let qr {
+                Image(uiImage: qr)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 240, height: 240)
+                    .padding(8)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .accessibilityLabel(L("account_show_qr"))
+            }
+            Text(npub)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .textSelection(.enabled)
+        }
+        .padding()
+        .task(id: npub) {
+            // Android encodes the NIP-21 URI so wallets and clients open the profile directly.
+            qr = npub.isEmpty ? nil : ZapQrCode.image("nostr:" + npub)
         }
     }
 }
