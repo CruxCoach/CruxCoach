@@ -115,7 +115,7 @@ class EditorItemUi(
 
 class PickerRowUi(val slug: String, val name: String, val categoryKey: String, val selected: Boolean, val favorite: Boolean)
 
-class TypedLineUi(val name: String, val summary: LibraryText, val isNew: Boolean, val newHint: LibraryText)
+class TypedLineUi(val name: String, val summary: LibraryText, val isNew: Boolean, val creationHint: LibraryText)
 
 class RoutineEditorScreenState(
     val isLoading: Boolean,
@@ -397,7 +397,7 @@ class RoutineEditorScreenModel internal constructor(
                     name = line.match?.name(lang) ?: line.name,
                     summary = LibraryItemTexts.summary(line.item, kind, load, s.units),
                     isNew = line.isNew,
-                    newHint = LibraryTexts.key("trwo_text_new", LibraryTexts.ref(LibraryKeys.kind(kind))),
+                    creationHint = LibraryTexts.key("trwo_text_new", LibraryTexts.ref(LibraryKeys.kind(kind))),
                 )
             },
             typedApplyLabel = if (lines.isEmpty()) LibraryTexts.key("trwo_text_apply_none")

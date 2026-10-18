@@ -221,7 +221,7 @@ class AddToWorkoutScreenState(
     /** One-shot: the training the exercise went into; "" when none. */
     val startedWorkoutId: String,
     /** The editor's `from` for "new workout with this exercise". */
-    val newRoutineFrom: String,
+    val routineFrom: String,
 )
 
 /** "Plan this exercise" (Android `AddToWorkoutSheet`). */
@@ -263,7 +263,7 @@ class AddToWorkoutScreenModel internal constructor(
             message = message ?: LibraryTexts.EMPTY,
             messageIsWarning = s.rejected,
             startedWorkoutId = s.trainingStarted ?: "",
-            newRoutineFrom = s.def?.let { "ex:${it.slug}" } ?: "",
+            routineFrom = s.def?.let { "ex:${it.slug}" } ?: "",
         )
     }
 }

@@ -221,11 +221,15 @@ class WorkoutsPresenter(
         else begin(null, null, replace = false)
     }
 
-    /** true: end the open training and start; false: continue the open one; null: start nothing. */
-    fun resolveStart(replace: Boolean?) = io {
-        val pending = _state.value.pendingStart ?: return@io
+    /**
+     * true: end the open training and start; false: continue the open one; null: start nothing.
+     * The question is taken on the calling thread, so a second answer (a dialog's dismissal right
+     * after its button) finds nothing left to resolve.
+     */
+    fun resolveStart(replace: Boolean?) {
+        val pending = _state.value.pendingStart ?: return
         _state.update { it.copy(pendingStart = null) }
-        if (replace != null) begin(pending.routine, pending.startTitle, replace)
+        if (replace != null) io { begin(pending.routine, pending.startTitle, replace) }
     }
 
     private fun begin(routine: Routine?, title: String?, replace: Boolean) {
