@@ -113,11 +113,14 @@ struct MainView: View {
 private struct WhatsNewOverlay: ViewModifier {
     let core: AppCore
     let onboardingDone: Bool
+    @Environment(AppEnvironment.self) private var environment
     @State private var model: WhatsNewScreenModel?
     @State private var showing = ""
 
     func body(content: Content) -> some View {
         content
+            // A notification tap waits until the note is read: no cover comes up over this sheet.
+            .onChange(of: showing, initial: true) { _, id in environment.router.held = !id.isEmpty }
             .task {
                 guard model == nil else { return }
                 let created = core.makeWhatsNewScreen()
@@ -197,19 +200,28 @@ struct NotificationRouting: ViewModifier {
     let closeSheet: () -> Bool
 
     func body(content: Content) -> some View {
-        content.onChange(of: router.pending, initial: true) { _, route in
-            follow(route)
-        }
+        content
+            // A cold start from a tap: the browser just appeared, and the release notes may be
+            // about to come up over it, so look once things have settled.
+            .task { follow(router.pending, settleFirst: true) }
+            .onChange(of: router.pending) { _, route in
+                follow(route, settleFirst: false)
+            }
+            .onChange(of: router.held) { _, held in
+                if !held { follow(router.pending, settleFirst: true) }
+            }
     }
 
-    private func follow(_ route: String) {
-        guard !route.isEmpty else { return }
-        let taken: String = router.take()
-        let hadSheet: Bool = closeSheet()
-        let wasOpen: Bool = trainingOpen
+    private func follow(_ route: String, settleFirst: Bool) {
+        guard !route.isEmpty, !router.held else { return }
+        let hadSheet: Bool = closeSheet() || settleFirst
         Task {
             // A sheet still going down, or the training area still coming up, refuses the next presentation.
             if hadSheet { try? await Task.sleep(nanoseconds: Self.settle) }
+            // Covered meanwhile: the route waits for `held` to clear; taken by another call: done.
+            guard !router.held, !router.pending.isEmpty else { return }
+            let taken: String = router.take()
+            let wasOpen: Bool = trainingOpen
             trainingOpen = true
             guard taken == AppRouter.body, athleteAvailable else { return }
             if !wasOpen { try? await Task.sleep(nanoseconds: Self.settle) }

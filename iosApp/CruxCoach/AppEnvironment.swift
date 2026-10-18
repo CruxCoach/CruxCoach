@@ -81,6 +81,9 @@ final class AppRouter {
     /// Counts the opened training-area routes, so an already open training area can go back to
     /// its Today tab (Android navigates to Today single-top).
     private(set) var todayRequests = 0
+    /// True while a sheet covers the board browser from above (the release notes): no cover can
+    /// come up over it, so a route waits until it is gone.
+    var held = false
 
     func open(_ route: String) {
         guard route == Self.today || route == Self.body else { return }
