@@ -160,7 +160,7 @@ private struct TodayContent: View {
     private func withSheets<V: View>(_ view: V) -> some View {
         view
         .sheet(isPresented: $showCheckin) {
-            TodayCheckinSheet(ui: ui, model: model) { showCheckin = false }
+            TodayCheckinSheet(ui: ui, model: model, onDone: { showCheckin = false }, healthActions: core.makeHealthActions())
         }
         .sheet(isPresented: $showWhy) {
             TodayWhySheet(ui: ui) { showWhy = false }
@@ -921,6 +921,9 @@ private struct TodayCheckinSheet: View {
     let ui: TodayScreenState
     let model: TodayScreenModel
     let onDone: () -> Void
+    /// Apple Health's sleep of last night, offered as a tap while sleep is unanswered (Android: Health Connect).
+    var healthActions: HealthActions? = nil
+    @State private var sleepHint: HealthSleepHintUi?
     @State private var sleep = 0
     @State private var energy = 0
     @State private var skin = 0
@@ -934,6 +937,12 @@ private struct TodayCheckinSheet: View {
                 Section {
                     Text(L("trt_checkin_hint")).font(.caption).foregroundStyle(.secondary)
                     scale(L("trt_q_sleep"), $sleep)
+                    if let hint = sleepHint, hint.hasHint, sleep == 0 {
+                        Button(LI("health_sleep_chip", hint.hours.formatted(.number.precision(.fractionLength(0...1))), Int(hint.score))) {
+                            sleep = Int(hint.score)
+                        }
+                        .font(.caption)
+                    }
                     scale(L("trt_q_energy"), $energy)
                     scale(L("trt_q_skin"), $skin)
                     scale(L("trt_q_fingers"), $fingers)
@@ -963,6 +972,7 @@ private struct TodayCheckinSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button(L("action_cancel"), action: onDone) }
             }
         }
+        .task { healthActions?.loadSleepHint { sleepHint = $0 } }
         .onAppear {
             sleep = Int(ui.sleep)
             energy = Int(ui.energy)
