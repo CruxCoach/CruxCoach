@@ -40,6 +40,8 @@ struct SettingsView: View {
                 Button(L("tour_replay")) { core.makeBrowserTour().start(replay: true) }
             }
             Section(LI("settings_about")) {
+                // Android's app info row: seven taps unlock the easter LED animation.
+                EasterAnimationRows(core: core)
                 LabeledContent("CruxCoach iOS", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
                 LabeledContent(LI("settings_storage"), value: "SQLCipher \(core.cipherVersion)")
                 NavigationLink(L("settings_licenses_title")) { LicensesView() }
