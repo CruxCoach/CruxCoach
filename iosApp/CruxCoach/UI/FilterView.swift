@@ -27,6 +27,7 @@ struct FilterView: View {
                 Button(LI("filter_clear"), role: .destructive) { model.clearFilters() }
             }
         }
+        .safeAreaInset(edge: .bottom) { showResultsBar }
         .navigationTitle(L("board_filter_title"))
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -39,6 +40,20 @@ struct FilterView: View {
         .sheet(isPresented: $termsOpen) { FilterTermsSheet() }
         // Android refreshes the "without a grade" count whenever board, angle or type change.
         .task(id: ungradedKey) { model.refreshUngradedAvailable() }
+    }
+
+    /// Android's bottom bar: "Show N problems" (the current filter's count once known) closes the filters.
+    private var showResultsBar: some View {
+        let count: Int64 = ui.filterResultCount
+        let title: String = count >= 0 ? L("board_filter_show_count", Int(count)) : L("board_filter_show_results")
+        return Button { dismiss() } label: {
+            Text(title).frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .padding()
+        .background(.bar)
+        .accessibilityIdentifier("board_filter_show_results")
     }
 
     private var ungradedKey: String { ui.brandWire + "|" + String(ui.angle) + "|" + ui.climbType + "|" + ui.boardTitle }

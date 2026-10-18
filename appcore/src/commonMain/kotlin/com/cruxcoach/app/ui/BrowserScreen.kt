@@ -3,6 +3,7 @@ package com.cruxcoach.app.ui
 import com.cruxcoach.app.browse.BoardBrowserPresenter
 import com.cruxcoach.app.browse.BrowseFilterEdit
 import com.cruxcoach.app.browse.BoardBrowserUiState
+import com.cruxcoach.app.browse.BrowseLoadState
 import com.cruxcoach.app.setup.BoardOption
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbWithStats
@@ -95,6 +96,11 @@ class BrowserScreenState(
     val supportsBoardSeshOrigin: Boolean,
     /** Climbs the "without a grade" switch would show here; -1 until counted. */
     val ungradedAvailable: Long,
+    /**
+     * Android's filter-sheet button "Show N problems": the current filter's exact count once
+     * the list is loaded; -1 ("Show problems") while it is still loading or being counted.
+     */
+    val filterResultCount: Long,
 )
 
 /** One selectable hold: [x]/[y] are normalized over the board image. */
@@ -173,6 +179,7 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
             supportsBenchmark = brand.supportsBenchmarkFilter,
             supportsBoardSeshOrigin = brand.supportsBoardSeshOrigin,
             ungradedAvailable = state.ungradedAvailable,
+            filterResultCount = if (state.loadState == BrowseLoadState.LOADING) -1L else state.totalCount,
         )
     }
 

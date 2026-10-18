@@ -130,4 +130,19 @@ class BrowserFilterSortTest {
         m.refreshUngradedAvailable(); advanceUntilIdle()
         assertEquals(0L, m.currentState.ungradedAvailable, "the fixtures are graded only at 40 degrees")
     }
+
+    @Test
+    fun `the filter sheet's show button carries the current filter's count once it is known`() = scope.runTest {
+        val m = model()
+        assertEquals(-1L, m.currentState.filterResultCount, "nothing counted before the first load")
+        m.start(); advanceUntilIdle()
+        val all = m.currentState
+        assertTrue(all.filterResultCount > 0)
+        assertEquals(all.climbs.size.toLong(), all.filterResultCount)
+
+        m.setOrigin("cruxcoach"); advanceUntilIdle()
+        assertEquals(2L, m.currentState.filterResultCount)
+        m.setClimbType("route"); advanceUntilIdle()
+        assertEquals(0L, m.currentState.filterResultCount, "an empty result is a count, not unknown")
+    }
 }
