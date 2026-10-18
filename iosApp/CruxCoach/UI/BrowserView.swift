@@ -193,6 +193,7 @@ struct BrowserView: View {
             }
         }
         .task { model.start() }
+        .modifier(NearbyShareLinkHandler(core: core))
         .modifier(BrowserTourLayer(anchors: anchors, tour: tour, step: tourStep, ui: ui,
                                    connected: ble.state.connected,
                                    visible: rootVisible && sheet == nil && !trainingOpen && !contactOpen,

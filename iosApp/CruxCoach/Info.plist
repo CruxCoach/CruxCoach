@@ -31,6 +31,10 @@
 	<string>CruxCoach writes the meals and water you log to Apple Health, only when you switch this on. Nothing is uploaded.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>CruxCoach uses your location only when you tap “My location” or “Gyms near me”, to show the boards near you. It stays on this phone.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>CruxCoach connects to a nearby phone on your Wi-Fi to receive the board catalogues it shares offline.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict><key>NSAllowsLocalNetworking</key><true/></dict>
 	<key>UIBackgroundModes</key><array><string>bluetooth-central</string><string>fetch</string></array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key><array><string>org.cruxcoach.ios.refresh</string></array>
 	<key>ITSAppUsesNonExemptEncryption</key><false/>

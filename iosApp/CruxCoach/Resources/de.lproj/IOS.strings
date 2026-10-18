@@ -452,3 +452,22 @@
 "quantum_wall_fit_unavailable" = "Auf dem iPhone noch nicht verfügbar: Diese Ansicht folgt den Ebenen an der Wand nicht.";
 /* Nearby area on the board screens (wave 5, nearbyarea) */
 "nearby_disconnect_needs_android" = "Das andere Handy um die Freigabe des Boards zu bitten, geht nur mit einem Android-Handy: Eine iPhone-App kann diese Anfrage nicht per Bluetooth senden.";
+/* Receive board catalogues from a nearby phone (catalogreceive) */
+"nearby_receive_title" = "Von einem Handy in der Nähe empfangen";
+"nearby_receive_entry_hint" = "Board-Kataloge von einem Handy in der Nähe laden, das sie offline teilt. Kein Internet nötig.";
+"nearby_receive_intro" = "Öffne auf dem anderen Handy Einstellungen → Teilen in der Nähe → Offline teilen. Scanne seinen ersten Code (das WLAN) mit der iPhone-Kamera und tritt dem Netzwerk bei. Scanne dann hier seinen zweiten Code oder gib die Adresse ein, die darunter steht.";
+"nearby_receive_permission_hint" = "iOS fragt einmal, ob CruxCoach Geräte in deinem lokalen Netzwerk finden darf. Erlaube es, sonst kann nichts empfangen werden.";
+"nearby_receive_scan" = "Code scannen";
+"nearby_receive_scan_unavailable" = "Die Kamera kann auf diesem iPhone gerade keine Codes scannen. Gib stattdessen die Adresse ein.";
+"nearby_receive_address" = "Adresse oder Link";
+"nearby_receive_continue" = "Weiter";
+"nearby_receive_invalid_link" = "Das ist kein CruxCoach-Teilen-Code. Scanne den zweiten Code des anderen Handys; seine Adresse beginnt mit http:// und einer lokalen Nummer wie 192.168.";
+"nearby_receive_join_wifi" = "Dieser Code ist das WLAN des anderen Handys. Das iPhone kann ihm nicht für CruxCoach beitreten: Öffne Einstellungen → WLAN, wähle dieses Netzwerk, gib das Passwort ein, komm dann zurück und scanne den zweiten Code.";
+"nearby_receive_network" = "Netzwerk";
+"nearby_receive_password" = "Passwort";
+"nearby_receive_copy" = "Passwort kopieren";
+"nearby_receive_joined" = "Ich bin verbunden";
+"nearby_receive_busy" = "Ein Board-Download läuft noch. Versuche es erneut, wenn er fertig ist.";
+"nearby_receive_keep_open" = "Lass CruxCoach geöffnet, bis die Übertragung fertig ist: Auf dem iPhone stoppt sie, wenn die App geschlossen wird oder der Bildschirm sperrt. Ein unterbrochener Download setzt dort fort, wo er stand.";
+"nearby_receive_unreachable_hint" = "Prüfe, ob dieses iPhone mit dem WLAN des anderen Handys verbunden ist und das Teilen dort noch läuft.";
+"nearby_receive_no_space" = "Auf diesem iPhone ist nicht genug Speicher für die Board-Daten frei.";

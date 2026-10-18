@@ -40,6 +40,11 @@ struct CatalogueView: View {
                 Text(LI("community_hint"))
             }
             Section {
+                NavigationLink(LI("nearby_receive_title")) { NearbyShareReceiveView(core: core) }
+            } footer: {
+                Text(LI("nearby_receive_entry_hint"))
+            }
+            Section {
                 if state.running {
                     Button(L("action_cancel"), role: .cancel) { sync.model.cancel() }
                 } else {

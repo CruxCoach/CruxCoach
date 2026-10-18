@@ -4,3 +4,4 @@
 "NSHealthShareUsageDescription" = "CruxCoach liest den Schlaf der letzten Nacht, um ihn im Check-in vorzuschlagen, und Kletter-Workouts, um sie für den Coach als Klettertage zu zählen. Es wird nichts hochgeladen.";
 "NSHealthUpdateUsageDescription" = "CruxCoach schreibt die Mahlzeiten und das Wasser, die du einträgst, in Apple Health – nur wenn du das einschaltest. Es wird nichts hochgeladen.";
 "NSLocationWhenInUseUsageDescription" = "CruxCoach nutzt deinen Standort nur, wenn du auf „Mein Standort“ oder „Hallen in meiner Nähe“ tippst, um Boards in deiner Nähe zu zeigen. Er bleibt auf diesem Telefon.";
+"NSLocalNetworkUsageDescription" = "CruxCoach verbindet sich über dein WLAN mit einem Handy in der Nähe, um die Board-Kataloge zu empfangen, die es offline teilt.";
