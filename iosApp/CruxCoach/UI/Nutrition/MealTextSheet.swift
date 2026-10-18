@@ -12,6 +12,8 @@ struct MealTextSheet: View {
     let onDone: () -> Void
     @State private var host: ScreenHost<MealTextScreenModel, MealTextUi>?
     @State private var unavailable = false
+    /// Typed text stays in the view: the core's state arrives a run-loop later, and binding a field to it loses keystrokes.
+    @State private var text = ""
 
     var body: some View {
         NavigationStack {
@@ -63,16 +65,19 @@ struct MealTextSheet: View {
         default:
             Form {
                 Section {
-                    TextField(L("trf_describe_placeholder"),
-                              text: Binding(get: { ui.text }, set: { model.setText(text: $0) }), axis: .vertical)
+                    TextField(L("trf_describe_placeholder"), text: $text, axis: .vertical)
                         .lineLimit(3...8)
                         .textInputAutocapitalization(.sentences)
+                        .onChange(of: text) { _, value in model.setText(text: value) }
                 } footer: {
                     Text(L("trf_describe_hint"))
                 }
                 Section {
-                    Button(L("trf_describe_go")) { model.read() }
-                        .disabled(ui.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button(L("trf_describe_go")) {
+                        model.setText(text: text)
+                        model.read()
+                    }
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
@@ -113,6 +118,11 @@ struct MealTextSheet: View {
 private struct ReviewRow: View {
     let row: MealReviewRowUi
     let model: MealTextScreenModel
+    /// The typed amount, kept here for the same reason as the description.
+    @State private var amount = ""
+    /// While typing, the core's echoes lag behind and are not written back; changes made
+    /// elsewhere (another food switches g to ml) arrive while the field is not focused.
+    @FocusState private var focused: Bool
 
     var body: some View {
         HStack(alignment: .top) {
@@ -149,13 +159,21 @@ private struct ReviewRow: View {
             .buttonStyle(.borderless)
             Spacer()
             HStack(spacing: 2) {
-                TextField("", text: Binding(get: { row.amountText }, set: { model.setAmount(key: row.key, text: $0) }))
+                TextField("", text: $amount)
+                    .focused($focused)
                     .keyboardType(.decimalPad)
+                    .onChange(of: amount) { _, value in
+                        if value != row.amountText { model.setAmount(key: row.key, text: value) }
+                    }
                     .multilineTextAlignment(.trailing)
                     .frame(width: 56)
                     .foregroundStyle(row.amountInvalid ? Color.red : Color.primary)
                 Text(NutritionText.render(row.unitLabel)).font(.caption).foregroundStyle(.secondary)
             }
+        }
+        .onAppear { amount = row.amountText }
+        .onChange(of: row.amountText) { _, value in
+            if !focused && value != amount { amount = value }
         }
     }
 }
@@ -164,6 +182,7 @@ private struct ReviewRow: View {
 private struct ChooseFoodSheet: View {
     let model: MealTextScreenModel
     let ui: MealTextUi
+    @State private var query = ""
 
     var body: some View {
         NavigationStack {
@@ -177,8 +196,8 @@ private struct ChooseFoodSheet: View {
                     }
                 }
             }
-            .searchable(text: Binding(get: { ui.choiceQuery }, set: { model.setChoiceQuery(text: $0) }),
-                        placement: .navigationBarDrawer(displayMode: .always), prompt: L("fvp_choose_search"))
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: L("fvp_choose_search"))
+            .onChange(of: query) { _, value in model.setChoiceQuery(text: value) }
             .navigationTitle(L("fvp_choose_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
