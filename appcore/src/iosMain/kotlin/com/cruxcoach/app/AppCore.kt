@@ -1519,4 +1519,87 @@ class AppCore private constructor(
     fun makeBackgroundSettings(): com.cruxcoach.app.background.BackgroundSettingsModel =
         com.cruxcoach.app.background.BackgroundSettingsModel(settingsStore, platform.keyValues)
 
+    // ── Board session (wave 5, boardsession area): one running playlist, route playback, logbook-only climbs ──
+
+    private val boardSessionPresenter: PlaylistPlayerPresenter by lazy {
+        val grades = settings.gradeFormatter()
+        val summarizer = com.cruxcoach.app.playlist.BoardSessionSummarizer(personalRepository, {
+            if (settings.gradeScale == "V_SCALE") com.cruxcoach.app.settings.GradeScale.V_SCALE
+            else com.cruxcoach.app.settings.GradeScale.FRENCH
+        })
+        PlaylistPlayerPresenter(
+            transport = playbackTransport,
+            climbInfo = { uuid ->
+                try {
+                    boardRepository.getClimbByUuid(uuid, browseAngle())
+                        ?.let { PlayerClimbInfo(it.name, it.difficultyAverage) }
+                } catch (e: Exception) {
+                    null
+                }
+            },
+            gradeLabel = { grades.label(it) },
+            sessions = boardSessions,
+            summarize = { session -> summarizer.summarize(session) },
+            summaryDispatcher = Dispatchers.IO,
+        )
+    }
+
+    /**
+     * The app's one running playlist (Android's single PlaylistPlaybackCoordinator):
+     * the player view shows [com.cruxcoach.app.session.BoardSessionHub.player] and never
+     * closes it, so leaving the player keeps the playlist and its session running and
+     * the board screens show its banner.
+     */
+    val boardSessionHub: com.cruxcoach.app.session.BoardSessionHub by lazy {
+        val presenter = boardSessionPresenter
+        com.cruxcoach.app.session.BoardSessionHub(
+            presenter = presenter,
+            player = PlayerScreenModel(presenter, restNotifier = { restTimer }, logClimb = ::logFromPlayer),
+            boardConnected = com.cruxcoach.app.session.BoardLink.linked(boardConnection.state),
+            isBoardConnected = { com.cruxcoach.app.session.BoardLink.isLinked(boardConnection.state.value.connection) },
+            scope = MainScope(),
+        )
+    }
+
+    /**
+     * [makeDetailScreenWithRestTimer] plus Android's route playback: frames shown one
+     * after another and sent to the board while no playlist owns it.
+     */
+    fun makeDetailWithRoutePlayback(): com.cruxcoach.app.playback.DetailWithPlayback {
+        val autoStart = com.cruxcoach.app.resttimer.RestAutoStart(
+            trainingRestTimer,
+            enabled = { settingsStore.snapshot.restTimerAutoStart },
+            durationSeconds = { settingsStore.snapshot.restTimerDurationSeconds },
+        )
+        val presenter = ClimbDetailPresenter(boardRepository, personalRepository, platform.keyValues)
+        val model = DetailScreenModel(
+            presenter,
+            LogAttemptPresenter(personalRepository, sessionRecorder = boardSessions, listener = autoStart),
+            boardSender,
+            settings.gradeFormatter(),
+        )
+        // One detail screen is visible at a time; the newest owns the shared sender.
+        sendFailureSink = { code -> model.reportSendFailure(code) }
+        val hub = boardSessionHub
+        val playback = com.cruxcoach.app.playback.routePlaybackFor(
+            presenter = presenter,
+            send = { state -> boardSender.send(state) },
+            reportSendFailure = { code -> model.reportSendFailure(code) },
+            boardLinked = com.cruxcoach.app.session.BoardLink.linked(boardConnection.state),
+            playlistRunning = hub.activeFlow,
+            prefs = { com.cruxcoach.app.playback.RoutePlaybackPrefs.from(settingsStore.snapshot) },
+            saveAutoLoop = { settingsStore.setRouteAutoLoop(it) },
+            scope = MainScope(),
+        )
+        return com.cruxcoach.app.playback.DetailWithPlayback(model, playback)
+    }
+
+    /** Android's "Route playback" settings section. */
+    fun makeRoutePlaybackSettings(): com.cruxcoach.app.playback.RoutePlaybackSettingsModel =
+        com.cruxcoach.app.playback.RoutePlaybackSettingsModel(settingsStore, MainScope())
+
+    /** Android `LogbookOnlyClimbContent`: a logged climb the catalogue does not have. */
+    fun makeLogbookOnlyClimb(): com.cruxcoach.app.logbook.LogbookOnlyClimbModel =
+        com.cruxcoach.app.logbook.LogbookOnlyClimbModel(personalRepository, MainScope(), Dispatchers.IO)
 }
+
