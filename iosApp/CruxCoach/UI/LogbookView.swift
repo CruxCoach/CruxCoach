@@ -15,6 +15,8 @@ struct LogbookView: View {
     @State private var tour: BrowserTourModel?
     @State private var tourStep = ""
     @State private var anchors = TourAnchors()
+    /// Android's "publish as mine" under entries of climbs the connected Kilter account set.
+    @State private var ownPublish: ScreenHost<LogbookOwnPublishModel, LogbookOwnPublishState>?
 
     var body: some View {
         Group {
@@ -26,6 +28,7 @@ struct LogbookView: View {
         }
         .modifier(BleStatusInset(ble: ble))
         .modifier(RestTimerBannerSlot(core: core))
+        .modifier(LogbookOwnPublishFeedback(host: ownPublish))
         .navigationTitle(L("board_logbook_title"))
         .toolbar { toolbarContent() }
         .sheet(isPresented: $showFilters) {
@@ -43,6 +46,11 @@ struct LogbookView: View {
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
             model.refresh()
+            let publishModel = core.makeLogbookOwnPublish()
+            ownPublish = ScreenHost(model: publishModel, initial: publishModel.currentState,
+                                    subscribe: { model, onState in model.watch(onState: onState) },
+                                    onClose: { model in model.close() })
+            publishModel.load()
             // Android: opening the logbook is the logbook step's action.
             let guided = core.makeBrowserTour()
             guided.advance(from: "logbook")
@@ -95,6 +103,7 @@ struct LogbookView: View {
                         ForEach(day.entries, id: \.uuid) { entry in
                             entryRow(model: model, entry: entry, pages: pages)
                                 .tourAnchor("entry", in: entry.uuid == tourEntry ? anchors : nil)
+                            ownPublishRow(entry: entry)
                         }
                     } header: {
                         Text("\(day.date) · \(LI("logbook_day_summary", Int(day.sendCount), Int(day.attemptCount)))")
@@ -201,6 +210,36 @@ private extension LogbookView {
                     refreshTour()
                 }
             }
+        }
+    }
+
+    /// Android's action under an entry whose climb the connected Kilter account set and that
+    /// is not on the community yet; one publish runs at a time.
+    @ViewBuilder
+    func ownPublishRow(entry: LogbookEntryUi) -> some View {
+        if let ownPublish, ownPublish.state.isPublishable(climbUuid: entry.climbUuid) {
+            let busy: Bool = !ownPublish.state.inProgressUuid.isEmpty
+            let running: Bool = ownPublish.state.inProgressUuid == entry.climbUuid
+            Button {
+                ownPublish.model.publish(climbUuid: entry.climbUuid)
+            } label: {
+                ownPublishLabel(running: running)
+            }
+            .foregroundStyle(.orange)
+            .disabled(busy)
+            .accessibilityIdentifier("logbook_publish_own_climb")
+        }
+    }
+
+    @ViewBuilder
+    func ownPublishLabel(running: Bool) -> some View {
+        HStack(spacing: 6) {
+            if running {
+                ProgressView()
+            } else {
+                Image(systemName: "person.3")
+            }
+            Text(L("own_climb_publish_action")).font(.footnote)
         }
     }
 
@@ -412,6 +451,33 @@ private struct StatsSummary: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Android's snackbar after a logbook "publish as mine" (same texts as the climb detail). Back
+/// from a climb the gate is read again: its detail may have published the climb meanwhile.
+private struct LogbookOwnPublishFeedback: ViewModifier {
+    let host: ScreenHost<LogbookOwnPublishModel, LogbookOwnPublishState>?
+
+    func body(content: Content) -> some View {
+        let code: String = host?.state.feedback ?? "none"
+        return content
+            .onAppear { host?.model.load() }
+            .alert(Self.text(code), isPresented: Binding(
+            get: { code != "none" },
+            set: { if !$0 { host?.model.consumeFeedback() } })) {
+            Button(L("action_close")) { host?.model.consumeFeedback() }
+        }
+    }
+
+    private static func text(_ code: String) -> String {
+        switch code {
+        case "published": return L("own_climb_publish_done")
+        case "noNostrIdentity": return L("own_climb_publish_no_nostr")
+        case "notAuthor": return L("own_climb_publish_not_author")
+        case "alreadyPublished": return L("own_climb_publish_already")
+        default: return L("climb_creator_publish_failed")
+        }
     }
 }
 

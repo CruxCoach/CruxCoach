@@ -50,6 +50,17 @@ class OwnKilterClimbPublisher(
     }
 
     /**
+     * The logbook's gate (Android `BoardLogbookViewModel.refreshOwnPublishable`): every climb the
+     * connected account authored that is not on the community yet, as [normalizeClimbUuid]
+     * spellings, because logbook rows carry BLE/API spellings of the uuid. Empty without an account.
+     */
+    fun publishableAsMineUuids(): Set<String> {
+        val connected = account.userUuid().takeIf { it.isNotBlank() } ?: return emptySet()
+        val rows = runCatching { boardRepository.getOwnAuthoredKilterClimbs(connected) }.getOrNull() ?: return emptySet()
+        return rows.filterNot { it.isCommunityPublished() }.mapTo(HashSet()) { normalizeClimbUuid(it.uuid) }
+    }
+
+    /**
      * Converts and publishes. [setterGradeId] null falls back to the stored
      * grade, then the editor default, as on Android's one-tap surfaces; the
      * resolved grade is written locally so the climb shows it.
@@ -118,6 +129,11 @@ class OwnKilterClimbPublisher(
 
     private fun CommunityClimbRow.isCommunityPublished(): Boolean =
         !nostrEventId.isNullOrBlank() || syncStatus == "published_nostr"
+
+    companion object {
+        /** Android `normalizeClimbUuid`: lowercase, no dashes. */
+        fun normalizeClimbUuid(uuid: String): String = uuid.lowercase().replace("-", "")
+    }
 }
 
 /**

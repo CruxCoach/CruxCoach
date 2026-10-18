@@ -2002,4 +2002,8 @@ class AppCore private constructor(
         )
     }
 
+    /** The logbook's "publish as mine" under own-authored Kilter climbs (Android `BoardLogbookScreen`). */
+    fun makeLogbookOwnPublish(): com.cruxcoach.app.kilter.LogbookOwnPublishModel =
+        com.cruxcoach.app.kilter.LogbookOwnPublishModel(ownKilterClimbPublisher(), Dispatchers.Main, Dispatchers.IO)
+
 }
