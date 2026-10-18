@@ -1577,7 +1577,7 @@ class AppCore private constructor(
         val presenter = ClimbDetailPresenter(boardRepository, personalRepository, platform.keyValues)
         val model = DetailScreenModel(
             presenter,
-            LogAttemptPresenter(personalRepository, sessionRecorder = boardSessions, listener = autoStart),
+            LogAttemptPresenter(personalRepository, sessionRecorder = boardSessions, listener = kilterUploadAfterLog(autoStart)),
             boardSender,
             settings.gradeFormatter(),
         )
@@ -2395,6 +2395,27 @@ class AppCore private constructor(
                 }
             },
             recordLastSync = { settingsStore.setKilterLastSync(kotlin.time.Clock.System.now().toString()) },
+        )
+
+    // ── Last sync gaps (lastsync, wave 5) ───────────────────────────────
+    //
+    // Kilter upload right after a logged ascent (Android KilterSyncEngine.uploadNewAscentIfEnabled,
+    // wired in makeDetailWithRoutePlayback).
+
+    /** The detail's `onAscentSaved` plus a Kilter upload with "Sync continuously" and "Upload to Kilter" on. */
+    private fun kilterUploadAfterLog(next: com.cruxcoach.app.logbook.LogAttemptListener): com.cruxcoach.app.logbook.LogAttemptListener =
+        com.cruxcoach.app.kilter.KilterUploadAfterLog(
+            syncEnabled = { settingsStore.snapshot.kilterSyncEnabled },
+            pushEnabled = { settingsStore.snapshot.kilterPushEnabled },
+            upload = {
+                // Building the Kilter screen builds the engine; the engine serialises runs.
+                val engine = backgroundKilterEngine
+                    ?: kotlinx.coroutines.withContext(Dispatchers.Main) { kilterScreen; backgroundKilterEngine }
+                engine?.upload(KilterUploadTrigger.NEW_LOG)
+            },
+            // App lifetime: leaving the detail must not cut a run off mid-request.
+            scope = kilterRunScope,
+            next = next,
         )
 
 }

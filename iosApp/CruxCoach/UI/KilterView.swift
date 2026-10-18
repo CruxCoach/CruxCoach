@@ -118,7 +118,7 @@ struct KilterView: View {
         }
     }
 
-    /// Android's logbook sync status block. On iOS the upload is always a tap,
+    /// Android's logbook sync status block. Without continuous upload the upload is a tap,
     /// so "Sync now" stays available rather than only after a failure.
     @ViewBuilder
     private func uploadSection(model: KilterScreenModel, ui: KilterScreenState) -> some View {
@@ -155,7 +155,10 @@ struct KilterView: View {
         } header: {
             Text(L("kilter_push_label"))
         } footer: {
-            Text(LI("kilter_push_manual_hint"))
+            // With "Sync continuously" and "Upload to Kilter" on, new entries upload by themselves.
+            if !(ui.syncContinuously && ui.pushEnabled) {
+                Text(LI("kilter_push_manual_hint"))
+            }
         }
     }
 
@@ -403,7 +406,6 @@ private struct KilterContinuousRows: View {
             set: { model.setPushEnabled(enabled: $0) }))
             .disabled(ui.busy)
         Text(L("kilter_push_desc")).font(.caption).foregroundStyle(.secondary)
-        Text(LI("kilter_continuous_ios_hint")).font(.caption).foregroundStyle(.secondary)
         Button(LI("kilter_import")) { model.importLogs() }.disabled(ui.busy)
     }
 
