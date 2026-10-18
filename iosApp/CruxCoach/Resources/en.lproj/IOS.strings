@@ -357,3 +357,8 @@
 "nutrition_try_again" = "Try again";
 "nutrition_scan_unavailable" = "Scanning is not available";
 "nutrition_scan_unavailable_hint" = "Allow camera access for CruxCoach in the iPhone settings, or search for the product by name.";
+
+/* Training library (workouts and exercises) */
+"library_unavailable" = "The training data could not be opened on this iPhone.";
+"library_failed" = "Something went wrong. Your last change may not have been saved.";
+"library_detail_not_yet" = "The body map, performance values and this exercise's progress are not on iPhone yet.";
