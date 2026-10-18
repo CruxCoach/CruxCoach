@@ -352,6 +352,13 @@ class KilterApi(
         }
     }
 
+    /**
+     * Android's app-start sync refreshes an expiring access token before it downloads anything.
+     * True when a usable access token is stored afterwards; false offline, without a session,
+     * or when the portal refused the refresh.
+     */
+    suspend fun ensureAccessToken(): Boolean = accessToken().token != null
+
     /** An access token, or why there is none: [offline] when the token endpoint could not be reached. */
     private class Access(val token: String?, val offline: Boolean)
 

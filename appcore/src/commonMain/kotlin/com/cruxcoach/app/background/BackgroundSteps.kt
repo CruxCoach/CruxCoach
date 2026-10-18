@@ -126,6 +126,47 @@ class KilterFollowUpStep(
     }
 }
 
+// ── Kilter: circuits with the app-start sync ──────────────────────────────
+
+/**
+ * Android's app-start Kilter sync (`KilterSyncEngine.syncOnAppStartIfEnabled`) brings the
+ * account's circuits in as climb lists every time the app starts; iOS did so only on the Kilter
+ * screen's "Import". Same cadence and gate here: once per app start (once per started core, at
+ * its first refresh, foreground or background) while a Kilter account is signed in. The access
+ * token is refreshed first, as Android does; without one (offline, session expired) the start
+ * passes without circuits and the next start tries again, as on Android. The import is best
+ * effort and never fails the refresh.
+ */
+class KilterCircuitStep(
+    private val signedIn: () -> Boolean,
+    /** Refreshes an expiring access token; false when there is no usable one. */
+    private val freshToken: suspend () -> Boolean,
+    /** Fetches the circuits and writes them as climb lists; returns how many were written. */
+    private val importCircuits: suspend () -> Int,
+) : BackgroundStep {
+    /** Runs (and the refresh's steps) are serialised by the refresh's lock. */
+    private var ranThisStart = false
+
+    override val code: String = CODE
+
+    override fun intervalMs(): Long = 0
+
+    override fun retryAfterMs(): Long = 0
+
+    override suspend fun enabled(trigger: String): Boolean = !ranThisStart && signedIn()
+
+    override suspend fun run(): BackgroundStepResult {
+        ranThisStart = true
+        if (!freshToken()) return BackgroundStepResult.OK
+        importCircuits()
+        return BackgroundStepResult.OK
+    }
+
+    companion object {
+        const val CODE = "kilter_circuits"
+    }
+}
+
 // ── Community climbs: the Nostr publish retry ─────────────────────────────
 
 class CommunityRetryItem(

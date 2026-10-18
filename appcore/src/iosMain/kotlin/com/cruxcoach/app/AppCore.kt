@@ -1408,6 +1408,7 @@ class AppCore private constructor(
             steps = listOf(
                 backgroundPollStep(notifications, language),
                 backgroundKilterStep(),
+                backgroundKilterCircuitStep(),
                 backgroundCommunityStep(),
                 // Android's KilterPublishRetryWorker: own climbs the portal has not taken yet.
                 com.cruxcoach.app.background.KilterClimbPublishStep({ kilterClimbPublishEnabled() }) {
@@ -1981,5 +1982,24 @@ class AppCore private constructor(
         devPubkey = AppConfig.MAINTAINER_PUBKEY,
         secretKeyProvider = { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
     )
+
+    /**
+     * Android's app-start Kilter sync imports the account's circuits as climb lists: once per
+     * start while signed in (step list of [makeBackgroundRefresh]). Its own importer, so no
+     * screen has to be built; the token refresh goes through the shared climb-publishing client.
+     */
+    private fun backgroundKilterCircuitStep(): com.cruxcoach.app.background.BackgroundStep {
+        val importer = com.cruxcoach.app.kilter.KilterCircuitImporter(
+            com.cruxcoach.app.kilter.KilterCircuitFetcher(
+                com.cruxcoach.app.kilter.IosKilterCircuitLineSource(), kilterClimbTokens, platform.clock,
+            ),
+            secureDatabase,
+        )
+        return com.cruxcoach.app.background.KilterCircuitStep(
+            signedIn = { kilterClimbTokens.hasCredentials() },
+            freshToken = { kilterClimbApi.ensureAccessToken() },
+            importCircuits = { importer.importCircuits() },
+        )
+    }
 
 }
