@@ -29,7 +29,21 @@ class DetailAngleUi(val angle: Int, val grade: String, val sends: Long, val isSe
 
 class DetailBetaUi(val url: String, val label: String)
 
-class DetailAscentUi(val uuid: String, val date: String, val angle: Int, val tries: Long, val isSend: Boolean)
+class DetailAscentUi(
+    val uuid: String,
+    val date: String,
+    val angle: Int,
+    val tries: Long,
+    val isSend: Boolean,
+    /** Android `formatAscentDate`: dd.MM.yyyy. */
+    val dateLabel: String,
+    /** Stars 1…5; 0 = none. */
+    val quality: Int,
+    val comment: String,
+    val isMirror: Boolean,
+    /** The very first contact with this climb at this angle was a send in one try (Android "Flash"). */
+    val isFlash: Boolean,
+)
 
 class DetailScreenState(
     /** loading | ready | logbookOnly | notFound | failed */
@@ -91,6 +105,10 @@ class DetailScreenState(
     val isBenchmark: Boolean,
     /** Non-empty: the setter name opens this setter's profile (CruxCoach climbs only, as on Android). */
     val setterPubkey: String,
+    /** The log sheet edits an entry of the ascent list (Android's "Edit log entry" title). */
+    val logIsEditing: Boolean,
+    /** Android's "Delete ascent?" confirmation is open. */
+    val deleteAscentPending: Boolean,
 )
 
 /**
@@ -205,6 +223,21 @@ class DetailScreenModel(
     fun quickLog(isSend: Boolean) = logger.quickLog(isSend)
     fun undoQuickLog() = logger.undoQuickLog()
 
+    /** Android `UserAscentHistory` edit: opens the log sheet on that entry; an unknown uuid is ignored. */
+    fun editAscent(uuid: String) {
+        val entry = logger.state.value.userAscents.firstOrNull { it.uuid == uuid } ?: return
+        logger.edit(entry)
+    }
+
+    /** Android's delete icon: asks first ("Delete ascent?"). */
+    fun requestDeleteAscent(uuid: String) {
+        if (logger.state.value.userAscents.none { it.uuid == uuid }) return
+        logger.requestDelete(uuid)
+    }
+
+    fun dismissDeleteAscent() = logger.dismissDeleteConfirm()
+    fun confirmDeleteAscent() = logger.confirmDelete()
+
     fun close() {
         scope.cancel()
         detail.close()
@@ -295,8 +328,22 @@ class DetailScreenModel(
                     DetailBetaUi(it, item.link.foreignUsername ?: item.link.provider)
                 }
             },
-            ascents = log.userAscents.map {
-                DetailAscentUi(it.uuid, it.climbedAt.take(10), it.angle.toInt(), it.bidCount, it.isSend)
+            ascents = log.userAscents.let { entries ->
+                val flashes = com.cruxcoach.app.logbook.BoardStatsComputer.trueFlashUuids(entries)
+                entries.map {
+                    DetailAscentUi(
+                        uuid = it.uuid,
+                        date = it.climbedAt.take(10),
+                        angle = it.angle.toInt(),
+                        tries = it.bidCount,
+                        isSend = it.isSend,
+                        dateLabel = ascentDate(it.climbedAt),
+                        quality = (it.quality ?: 0L).toInt().coerceIn(0, 5),
+                        comment = it.comment?.takeIf { c -> c.isNotBlank() } ?: "",
+                        isMirror = it.isMirror,
+                        isFlash = it.uuid in flashes,
+                    )
+                }
             },
             quickLogging = log.isQuickLogging,
             canUndoQuickLog = log.quickLogFeedback != null,
@@ -327,6 +374,8 @@ class DetailScreenModel(
             methodCode = methodCode(climb?.method),
             isBenchmark = (climb?.benchmarkDifficulty ?: 0.0) > 0.0,
             setterPubkey = climb?.let { SetterLink.pubkey(it) } ?: "",
+            logIsEditing = log.ascent.editingUuid != null,
+            deleteAscentPending = log.ascent.deleteConfirmUuid != null,
         )
     }
 

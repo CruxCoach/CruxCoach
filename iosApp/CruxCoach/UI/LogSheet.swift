@@ -26,7 +26,8 @@ struct LogSheet: View {
             }
             TextField(LI("log_comment"), text: Binding(get: { ui.logComment }, set: { model.setLogComment(comment: $0) }), axis: .vertical)
         }
-        .navigationTitle(LI("detail_log"))
+        // Android AscentLoggingDialog: editing an entry from the ascent list has its own title.
+        .navigationTitle(ui.logIsEditing ? L("board_ascent_edit_title") : LI("detail_log"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button(L("action_cancel")) { model.dismissLogDialog() } }

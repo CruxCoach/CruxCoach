@@ -388,7 +388,7 @@ struct ClimbDetailView: View {
                 if !ui.notes.isEmpty { Text(ui.notes).font(.callout) }
                 betaLinks(ui: ui)
                 noteEditor(model: model, ui: ui)
-                history(ui: ui)
+                history(model: model, ui: ui)
             }
             .padding()
         }
@@ -545,22 +545,28 @@ struct ClimbDetailView: View {
         }
     }
 
-    @ViewBuilder private func history(ui: DetailScreenState) -> some View {
+    /// Android `UserAscentHistory`: every own entry of this climb with edit and delete.
+    @ViewBuilder private func history(model: DetailScreenModel, ui: DetailScreenState) -> some View {
         if !ui.ascents.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Text(L("board_logbook_title")).font(.headline)
+                Text(L("board_ascenthistory_title")).font(.headline)
                 ForEach(ui.ascents, id: \.uuid) { entry in
-                    HStack {
-                        Image(systemName: entry.isSend ? "checkmark.circle.fill" : "circle.dotted")
-                        Text(entry.date)
-                        Text("\(entry.angle)°").foregroundStyle(.secondary)
-                        Spacer()
-                        Text("×\(entry.tries)").foregroundStyle(.secondary)
-                    }
-                    .font(.footnote)
+                    DetailAscentRow(entry: entry,
+                                    onEdit: { model.editAscent(uuid: entry.uuid) },
+                                    onDelete: { model.requestDeleteAscent(uuid: entry.uuid) })
                 }
             }
+            .alert(L("board_detail_delete_ascent_title"), isPresented: deleteAscentBinding(model: model, ui: ui)) {
+                Button(L("action_cancel"), role: .cancel) { model.dismissDeleteAscent() }
+                Button(L("action_delete"), role: .destructive) { model.confirmDeleteAscent() }
+            } message: {
+                Text(L("board_detail_delete_ascent_message"))
+            }
         }
+    }
+
+    private func deleteAscentBinding(model: DetailScreenModel, ui: DetailScreenState) -> Binding<Bool> {
+        Binding(get: { ui.deleteAscentPending }, set: { if !$0 { model.dismissDeleteAscent() } })
     }
 }
 
@@ -815,5 +821,68 @@ private struct DetailInfoBlock: View {
     /// Android prints "FA: name (dd.MM.yyyy)" without a string resource.
     private var faLine: String {
         ui.faDate.isEmpty ? "FA: " + ui.faName : "FA: " + ui.faName + " (" + ui.faDate + ")"
+    }
+}
+
+/// One row of Android's `UserAscentHistory`: date, outcome, angle, mirror, tries or flash,
+/// stars and comment, then edit and delete.
+private struct DetailAscentRow: View {
+    let entry: DetailAscentUi
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.dateLabel).font(.subheadline.bold())
+                badges
+                if !entry.comment.isEmpty {
+                    // Straight quotes, as Android prints them.
+                    Text("\"" + entry.comment + "\"").font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onEdit) {
+                Image(systemName: "pencil").accessibilityLabel(L("cd_edit"))
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            Button(action: onDelete) {
+                Image(systemName: "trash").accessibilityLabel(L("action_delete"))
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.red)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var badges: some View {
+        let angle: Int32 = entry.angle
+        let quality: Int32 = entry.quality
+        return HStack(spacing: 8) {
+            Text(entry.isSend ? L("board_ascent_send") : L("board_ascent_attempt"))
+                .bold()
+                .foregroundStyle(entry.isSend ? Color.green : Color.red)
+            Text(String(angle) + "°").foregroundStyle(.secondary)
+            if entry.isMirror {
+                Image(systemName: "arrow.left.and.right").foregroundStyle(.secondary)
+                    .accessibilityLabel(L("cd_mirrored"))
+            }
+            if entry.isSend {
+                Text(triesLabel).bold().foregroundStyle(entry.isFlash ? Color.green : Color.orange)
+            }
+            if quality > 0 {
+                Text(String(quality) + "★").foregroundStyle(.yellow)
+            }
+        }
+        .font(.caption)
+    }
+
+    /// Android: "Flash" for a true flash, else first try or the tries.
+    private var triesLabel: String {
+        let tries: Int64 = entry.tries
+        if entry.isFlash { return "Flash" }
+        if tries <= 1 { return L("board_ascent_first_try") }
+        return L("board_ascent_tries", Int(tries))
     }
 }
