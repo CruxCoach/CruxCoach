@@ -28,6 +28,7 @@ struct SettingsView: View {
             Section(LI("kilter_title")) {
                 NavigationLink(LI("kilter_title")) { KilterView(core: core) }
             }
+            KeyBackupCard(core: core, openBackup: true)
             Section(LI("backup_title")) {
                 NavigationLink(LI("key_open")) { KeyView(core: core) }
                 NavigationLink(LI("backup_open")) { BackupView(core: core) }

@@ -619,6 +619,11 @@ class AppCore private constructor(
      * Swift then restarts the core, which opens that identity's own databases. The
      * previous identity's files stay on the phone and come back with its key.
      */
+    /** Android's "key safely stored": the account key is confirmed as kept outside this phone. */
+    fun confirmKeyBackedUp() = settingsStore.setKeyBackedUp(true)
+
+    val isKeyBackedUp: Boolean get() = settingsStore.snapshot.keyBackedUp
+
     fun makeKeyScreen(): KeyScreenModel = KeyScreenModel(
         scope = MainScope(),
         activePubkeyProvider = { pubkeyHex },

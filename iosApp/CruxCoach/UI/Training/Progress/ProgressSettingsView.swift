@@ -196,11 +196,11 @@ private struct SettingsPage: View {
     @ViewBuilder
     private var connections: some View {
         Section {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(L("tru_set_connections"))
-                Text(LI("training_health_connect_unavailable")).font(.caption).foregroundStyle(.secondary)
-            }
+            Text(L("tru_set_connections"))
+            // Android's Health Connect card; on iPhone the same switches talk to Apple Health.
+            NavigationLink(LI("health_title")) { HealthSettingsView(core: core) }
         }
+        ForceGaugeSettingsCard(core: core)
     }
 
     private func toggle(_ title: String, _ value: Bool, _ code: String) -> some View {

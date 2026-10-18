@@ -7,6 +7,7 @@ import SwiftUI
 struct TrainingHomeView: View {
     let core: AppCore
     let onClose: () -> Void
+    @Environment(AppEnvironment.self) private var environment
 
     enum Tab: Hashable { case today, training, nutrition, progress }
 
@@ -41,6 +42,8 @@ struct TrainingHomeView: View {
                     .tabItem { Label(L("tr_tab_progress"), systemImage: "chart.line.uptrend.xyaxis") }
                     .tag(Tab.progress)
             }
+            // A tapped training reminder brings Today to the front, also when the area is open.
+            .onChange(of: environment.router.todayRequests) { _, _ in tab = .today }
             .task {
                 // The first visit asks the basics once (Android `BasicsGate`).
                 guard basics == nil, let model = core.makeBasicsScreen() else { return }

@@ -34,6 +34,7 @@ struct BackupView: View {
             Section {
                 Text(LI("backup_explanation"))
             }
+            KeyBackupCard(core: core, revision: ui.lastBackupAt)
             Section(LI("backup_remote")) {
                 if ui.busy {
                     HStack { ProgressView(); Text(phaseText(ui.phase)) }

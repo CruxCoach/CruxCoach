@@ -58,6 +58,9 @@ struct KeyView: View {
     private func accountSection(ui: KeyScreenState) -> some View {
         Section {
             Text(L("settings_account_key_reminder")).font(.footnote).foregroundStyle(.secondary)
+            if core.isKeyBackedUp {
+                Label(L("account_backup_acknowledged"), systemImage: "checkmark.shield").font(.footnote)
+            }
             if let npub = ui.activeNpub {
                 Text(npub).font(.caption.monospaced()).textSelection(.enabled)
                 Button(L("account_copy_id"), systemImage: "doc.on.doc") { UIPasteboard.general.string = npub }
@@ -77,6 +80,10 @@ struct KeyView: View {
                                                   options: [.expirationDate: Date().addingTimeInterval(120), .localOnly: true])
                 }
                 Text(L("account_flow_store")).font(.footnote).foregroundStyle(.secondary)
+                Button(L("account_flow_store_only"), systemImage: "checkmark.shield") {
+                    core.confirmKeyBackedUp()
+                    model.hideSecretKey()
+                }
                 Button(L("key_import_hide")) { model.hideSecretKey() }
             } else {
                 Button(L("account_flow_copy"), systemImage: "faceid") {

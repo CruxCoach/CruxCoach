@@ -4,8 +4,8 @@ import SwiftUI
 /// Android `BackupKeyWarningCard`, as a `Form` section: while the cloud backup is in use and the
 /// account key was not confirmed as stored outside this device (`key_backed_up`, the flag Android's
 /// account screen sets), it reminds that the backup cannot be restored without the key. Android's
-/// button opens the account screen to show, copy and confirm the key; the iPhone has no such screen
-/// yet, so the card says so. With `openBackup` (placed outside the backup page) it leads there.
+/// button opens the account screen to show, copy and confirm the key; so does this one (`KeyView`).
+/// With `openBackup` (placed outside the backup page) it leads there.
 /// `revision` is any value that changes when a backup was made, so the card is checked again.
 struct KeyBackupCard: View {
     let core: AppCore
@@ -44,9 +44,7 @@ struct KeyBackupCard: View {
                 .accessibilityLabel(L("backup_key_warning_title"))
             }
             Text(L("backup_key_short_local"))
-            Text(LI("key_backup_not_on_iphone"))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            NavigationLink(L("account_flow_copy")) { KeyView(core: core) }
         }
         .accessibilityIdentifier("key_backup_card")
     }
