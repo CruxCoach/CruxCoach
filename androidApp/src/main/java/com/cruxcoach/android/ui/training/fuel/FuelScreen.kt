@@ -149,12 +149,14 @@ fun FuelScreen(
         // One way in for every kind of food: search, scan, describe, photo or plain values.
         floatingActionButton = {
             if (!state.loading) {
+                // The FAB's merged node carries no text of its own (device dump 2026-10-19): TalkBack needs the label.
+                val fabLabel = stringResource(R.string.tru_fuel_add)
                 ExtendedFloatingActionButton(
                     onClick = { openAdd(mealNow()) },
                     icon = { Icon(Icons.Default.Add, null) },
                     text = { Text(stringResource(R.string.tru_fuel_add)) },
                     containerColor = CruxCoachDesign.colors.brandAccent, contentColor = CruxCoachDesign.colors.onBrandAccent,
-                    modifier = Modifier.testTag("fuel_my_foods"),
+                    modifier = Modifier.testTag("fuel_my_foods").semantics { contentDescription = fabLabel },
                 )
             }
         },

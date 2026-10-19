@@ -299,8 +299,12 @@ internal object WorkoutTextLayout {
     private val ROUNDS_OPEN = Regex("$LEAD(\\d{1,2})\\s*(?:x\\s*)?(?:runden|rounds?|durchg(?:ä|ae|a)nge|durchgang)\\s*(?:of|mit|aus|à|von|je|:)?(?=\\s*\\S)")
     private val ROUNDS_PAREN = Regex("$LEAD(\\d{1,2})\\s*(?:x|mal|×)\\s*(?=\\()")
     private val SETS_HEADER = Regex("$B(\\d{1,2})\\s*(?:sätze|saetze|satze|sets?)$E")
-    private const val ROUND_CTX = "(?:zwischen\\s+(?:den\\s+)?(?:runden|durchg(?:ä|ae)ngen)|nach\\s+(?:jeder|jede|der|einer)\\s+runde|between\\s+rounds|after\\s+(?:each|every|a)\\s+round)"
-    private const val EX_CTX = "(?:zwischen\\s+(?:den\\s+)?(?:übungen|uebungen|stationen)|nach\\s+(?:jeder|jede)\\s+(?:übung|uebung|station)|between\\s+(?:exercises|stations)|after\\s+(?:each|every)\\s+exercise)"
+    // Typos count little here too (device run 2026-10-19: the keyboard made "nach jeder Rande"): "zwichen", "Rudnen", "Übugen".
+    private const val BETWEEN = "(?:zw\\p{L}{3,6}|between|betwen)"
+    private const val ROUND_WORD = "(?:r\\p{L}{1,3}n\\p{L}{0,3}|durchg(?:ä|ae|a)ngen?|rounds?|rouns?)"
+    private const val EX_WORD = "(?:(?:ü|ue|u)b\\p{L}{1,5}|stationen?|exercises?|excercises?)"
+    private const val ROUND_CTX = "(?:$BETWEEN\\s+(?:den\\s+|the\\s+)?$ROUND_WORD|nach\\s+(?:jeder|jede|jedem|der|einer|jder)\\s+$ROUND_WORD|after\\s+(?:each|every|a)\\s+$ROUND_WORD)"
+    private const val EX_CTX = "(?:$BETWEEN\\s+(?:den\\s+|the\\s+)?$EX_WORD|nach\\s+(?:jeder|jede|jedem|jder)\\s+$EX_WORD|after\\s+(?:each|every)\\s+$EX_WORD)"
     private val ROUND_REST = listOf(
         Regex("$B(?:(?:pause|rest|ruhe|erholung)\\s*:?\\s*)?$NUM\\s*$UNIT?\\s*(?:pause|rest|ruhe|erholung)?\\s*$ROUND_CTX$E"),
         Regex("$B(?:pause|rest|ruhe|erholung)\\s*$ROUND_CTX\\s*:?\\s*$NUM\\s*$UNIT?$E"),

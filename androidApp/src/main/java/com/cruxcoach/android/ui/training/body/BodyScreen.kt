@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.training.body
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -128,13 +130,15 @@ fun BodyScreen(
         },
         floatingActionButton = {
             // The frequent action, named: a weigh-in (other values from "Messwert" and the round).
+            // The FAB's merged node carries no text of its own (device dump 2026-10-19): TalkBack needs the label.
+            val fabLabel = stringResource(R.string.tru_enter_weight)
             ExtendedFloatingActionButton(
                 onClick = { dialog = null to BodyMetric.WEIGHT },
                 icon = { Icon(Icons.Default.Add, null) },
                 text = { Text(stringResource(R.string.tru_enter_weight)) },
                 containerColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent,
                 contentColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccent,
-                modifier = Modifier.testTag("body_add"),
+                modifier = Modifier.testTag("body_add").semantics { contentDescription = fabLabel },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
