@@ -37,6 +37,9 @@ import org.junit.Assume
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.datetime.isoDayNumber
+import androidx.compose.foundation.layout.fillMaxSize
+import kotlinx.datetime.plus
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -109,6 +112,58 @@ class TrainingUiReviewTest : AthleteScreenTest() {
     }.getOrDefault(emptyList())
 
     private fun photo() = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context)).tracked()
+
+    private fun planOwnersExample() {
+        val today = service.today()
+        val d = { n: Int -> today.plus(kotlinx.datetime.DatePeriod(days = n)) }
+        val climb = { i: com.cruxcoach.athlete.model.ClimbIntensity ->
+            com.cruxcoach.athlete.logic.DayPlans.Climb(com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER, i).entry }
+        repo.updateProfile { p ->
+            var q = p.copy(fuelIntroAccepted = true, checkinEnabled = false,
+                weekPlan = mapOf(d(5).dayOfWeek.isoDayNumber to "builtin:" + com.cruxcoach.athlete.logic.BuiltinRoutines.FINGER_BASICS))
+            q = com.cruxcoach.athlete.logic.DayPlans.withDay(q, today, com.cruxcoach.athlete.model.PLAN_REST, today)
+            q = com.cruxcoach.athlete.logic.DayPlans.withDay(q, d(1), climb(com.cruxcoach.athlete.model.ClimbIntensity.VOLUME), today)
+            com.cruxcoach.athlete.logic.DayPlans.withDay(q, d(3), climb(com.cruxcoach.athlete.model.ClimbIntensity.LIMIT), today)
+        }
+    }
+
+    @Test
+    fun dayPlanner() {
+        planOwnersExample()
+        val vm = loaded(com.cruxcoach.android.ui.training.workouts.DayPlannerViewModel(service))
+        shoot("day-planner", { waitForTag("day_planner_day_${service.today()}") }) {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                com.cruxcoach.android.ui.training.workouts.DayPlannerSheet(onDismiss = {}, viewModel = vm)
+            }
+        }
+    }
+
+    @Test
+    fun dayPlanChooser() {
+        val today = service.today()
+        shoot("day-plan-chooser", { waitForTag("week_plan_climb") }) {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize())
+            com.cruxcoach.android.ui.training.workouts.PlanChooserDialog(
+                title = "Morgen", current = com.cruxcoach.athlete.logic.DayPlans.Climb(com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER,
+                    com.cruxcoach.athlete.model.ClimbIntensity.VOLUME).entry,
+                routines = emptyList(), onDismiss = {}, onChoose = {}, freeLabel = "Frei – der Coach entscheidet",
+                standardLabel = "Wie in der Standardwoche: frei",
+                swapTargets = (2..5).map { today.plus(kotlinx.datetime.DatePeriod(days = it)) })
+        }
+    }
+
+    @Test
+    fun todayPlannedClimb() {
+        val today = service.today()
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, checkinEnabled = false,
+            datePlan = mapOf(today.toString() to com.cruxcoach.athlete.logic.DayPlans.Climb(com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER,
+                com.cruxcoach.athlete.model.ClimbIntensity.LIMIT).entry,
+                today.plus(kotlinx.datetime.DatePeriod(days = 2)).toString() to com.cruxcoach.athlete.model.PLAN_REST)) }
+        val vm = loaded(TodayViewModel(service))
+        shoot("today-planned-climb", { waitForTag("today_suggestion_card") }) {
+            TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm, tabBar = { TrainingTabBar(TrainingTab.TODAY) {} })
+        }
+    }
 
     @Test
     fun todayNew() {

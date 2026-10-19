@@ -550,7 +550,14 @@ private fun WeekHeader(state: TodayState, onPlanDays: () -> Unit = {}) {
             state.week.forEach { day ->
                 val label = java.time.DayOfWeek.of(day.date.dayOfWeek.ordinal + 1).getDisplayName(TextStyle.NARROW, locale)
                 val filled = day.climbed || day.trained
-                val desc = stringResource(when {
+                val ahead = state.today?.let { day.date >= it } == true
+                val desc = when {
+                    day.climbed || day.trained || day.paused || !ahead -> null
+                    day.climbPlanned -> stringResource(R.string.trw_day_planned, stringResource(R.string.trdp_climb))
+                    day.planned == com.cruxcoach.athlete.model.PLAN_REST -> stringResource(R.string.trw_day_planned, stringResource(R.string.trwo_plan_rest))
+                    day.planned != null -> stringResource(R.string.trw_day_planned, stringResource(R.string.trdp_training))
+                    else -> null
+                } ?: stringResource(when {
                     day.climbed && day.trained -> R.string.trt_day_both
                     day.climbed -> R.string.trt_day_climbed
                     day.trained -> R.string.trt_day_trained
@@ -567,8 +574,6 @@ private fun WeekHeader(state: TodayState, onPlanDays: () -> Unit = {}) {
                             .border(if (day.isToday) 2.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
-                        val today = state.today
-                        val ahead = today != null && day.date >= today
                         when {
                             day.climbed && day.trained -> Icon(Icons.Default.DoneAll, null, Modifier.size(16.dp), tint = CruxCoachDesign.colors.onBrandAccent)
                             day.climbed -> Icon(Icons.Default.Terrain, null, Modifier.size(16.dp), tint = CruxCoachDesign.colors.onBrandAccent)
@@ -1183,6 +1188,15 @@ private fun suggestionReasonText(reason: SuggestionReason, state: TodayState): S
     }
     if (reason == SuggestionReason.USUAL_MINUTES && usualMinutes != null && weekday != null) {
         return stringResource(R.string.trt_reason_usual_minutes, weekday, usualMinutes)
+    }
+    // Planned for this date only ("Heute Ruhetag", a moved day): not the standard week's doing (device check 2026-10-19).
+    if (state.today?.let { com.cruxcoach.athlete.logic.DayPlans.isOverridden(state.profile, it) } == true) {
+        when (reason) {
+            SuggestionReason.WEEK_PLAN_REST -> return stringResource(R.string.trdp_reason_day_rest)
+            SuggestionReason.WEEK_PLAN -> return stringResource(R.string.trdp_reason_day_plan)
+            SuggestionReason.WEEK_PLAN_BOARD -> return stringResource(R.string.trdp_reason_day_board)
+            else -> Unit
+        }
     }
     // The weekly plan names the area it means (device test 2026-10-17: "this area" on a finger day meant pull).
     if (reason == SuggestionReason.WEEKLY_TARGET) {
