@@ -71,6 +71,8 @@ private struct TodayContent: View {
     @State private var boardGenerator = false
     @State private var snack: TrainingSnack?
     @State private var snackAction: (() -> Void)?
+    /// "Plan days" (Android `DayPlannerSheet`, owner 2026-10-19).
+    @State private var planDays = false
 
     var body: some View {
         withAlerts(withSheets(withEvents(page)))
@@ -83,7 +85,7 @@ private struct TodayContent: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        TodayWeekHeader(ui: ui)
+                        TodayWeekHeader(ui: ui, onPlanDays: { planDays = true })
                         if ui.openPause { pauseBanner }
                         if ui.hasInjuries { injuryBanner }
                         if ui.showSetup { setupChecklist }
@@ -150,6 +152,11 @@ private struct TodayContent: View {
             model.consumeLevelKept()
             show(text, action: L("trf_undo")) { model.undoLevelKept() }
         }
+        .onChange(of: ui.hasRestTodayUndo) { _, pending in
+            // "Rest day today": one line with "Undo" (owner 2026-10-19).
+            guard pending, let undo = model.takeRestTodayUndo() else { return }
+            show(L("trt_rest_today_done"), action: L("trf_undo")) { undo.restore() }
+        }
         .onChange(of: ui.neverOfferSlug) { _, slug in
             guard !slug.isEmpty else { return }
             let text = TrRender.text(ui.neverOfferText)
@@ -177,6 +184,7 @@ private struct TodayContent: View {
             switch afterNext {
             case "checkin": showCheckin = true
             case "equipment": showEquipment = true
+            case "plan": planDays = true
             default: break
             }
             afterNext = ""
@@ -184,6 +192,7 @@ private struct TodayContent: View {
             TodayNextSheet(ui: ui, model: model,
                            onHurts: { afterNext = "checkin"; showNext = false },
                            onEquipment: { afterNext = "equipment"; showNext = false },
+                           onPlanDays: { afterNext = "plan"; showNext = false },
                            onDone: { showNext = false })
                 .presentationDetents([.medium, .large])
         }
@@ -240,6 +249,7 @@ private struct TodayContent: View {
         .sheet(isPresented: $climbingList) {
             ClimbingDaysListView(core: core) { climbingList = false }
         }
+        .modifier(TodayDayPlannerSheet(core: core, isPresented: $planDays))
     }
 
     private func withAlerts<V: View>(_ view: V) -> some View {
@@ -612,8 +622,9 @@ private struct TodayContent: View {
             .buttonStyle(.bordered)
             .disabled(!ui.canStart)
         } else {
+            // A planned climbing day: the card holds the warm-up for it (and a short block for afterwards).
             Button { model.startSuggestion(title: title) } label: {
-                Label(L("trsg_start"), systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 44)
+                Label(L(ui.climbDay ? "trt_warmup_start" : "trsg_start"), systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier("today_suggestion_start")
@@ -721,48 +732,79 @@ enum TodayIcons {
     }
 }
 
-/// The week strip and consistency line.
+/// The week strip and consistency line; the strip and its calendar button open "Plan days" (owner 2026-10-19).
 private struct TodayWeekHeader: View {
     let ui: TodayScreenState
+    let onPlanDays: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if ui.hasStreak {
-                HStack {
+            HStack {
+                if ui.hasStreak {
                     VStack(alignment: .leading) {
                         Text(tr: ui.weekProgress).font(.headline)
                         Text(tr: ui.streakLine).font(.caption).foregroundStyle(.secondary)
                     }
-                    Spacer()
-                    if ui.jokers > 0 {
-                        Label(LP("trt_jokers", Int(ui.jokers)), systemImage: "shield").font(.caption)
+                }
+                Spacer()
+                if ui.hasStreak && ui.jokers > 0 {
+                    Label(LP("trt_jokers", Int(ui.jokers)), systemImage: "shield").font(.caption)
+                }
+                Button(action: onPlanDays) {
+                    Image(systemName: "calendar.badge.plus")
+                }
+                .accessibilityLabel(L("trdp_title"))
+                .accessibilityIdentifier("today_plan_days")
+            }
+            Button(action: onPlanDays) {
+                HStack {
+                    ForEach(ui.week, id: \.isoDate) { day in
+                        dayCell(day)
                     }
                 }
+                .contentShape(Rectangle())
             }
-            HStack {
-                ForEach(ui.week, id: \.isoDate) { day in
-                    VStack(spacing: 4) {
-                        Text(TrRender.weekdayNarrow(Int(day.isoWeekday))).font(.caption2.weight(day.isToday ? .bold : .regular))
-                        ZStack {
-                            Circle().fill(day.climbed || day.trained ? Color.accentColor : Color(.secondarySystemBackground))
-                                .frame(width: 28, height: 28)
-                            if day.isToday { Circle().stroke(Color.primary, lineWidth: 2).frame(width: 28, height: 28) }
-                            if day.climbed && day.trained {
-                                Image(systemName: "checkmark.circle").font(.caption).foregroundStyle(.white)
-                            } else if day.climbed {
-                                Image(systemName: "mountain.2").font(.caption2).foregroundStyle(.white)
-                            } else if day.trained {
-                                Image(systemName: "dumbbell").font(.caption2).foregroundStyle(.white)
-                            } else if day.paused {
-                                Image(systemName: "moon").font(.caption2).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(TrRender.weekday(Int(day.isoWeekday)) + ": " + L(dayKey(day)))
-                }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("today_week_strip")
+            .accessibilityHint(L("trdp_title"))
+        }
+    }
+
+    private func dayCell(_ day: TodayWeekDayUi) -> some View {
+        let filled: Bool = day.climbed || day.trained
+        let planned: String = TrRender.text(day.plannedText)
+        let spoken: String = planned.isEmpty ? L(dayKey(day)) : planned
+        return VStack(spacing: 4) {
+            Text(TrRender.weekdayNarrow(Int(day.isoWeekday))).font(.caption2.weight(day.isToday ? .bold : .regular))
+            ZStack {
+                Circle().fill(filled ? Color.accentColor : Color(.secondarySystemBackground))
+                    .frame(width: 28, height: 28)
+                if day.isToday { Circle().stroke(Color.primary, lineWidth: 2).frame(width: 28, height: 28) }
+                dayIcon(day)
             }
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(TrRender.weekday(Int(day.isoWeekday)) + ": " + spoken)
+    }
+
+    @ViewBuilder
+    private func dayIcon(_ day: TodayWeekDayUi) -> some View {
+        if day.climbed && day.trained {
+            Image(systemName: "checkmark.circle").font(.caption).foregroundStyle(.white)
+        } else if day.climbed {
+            Image(systemName: "mountain.2").font(.caption2).foregroundStyle(.white)
+        } else if day.trained {
+            Image(systemName: "dumbbell").font(.caption2).foregroundStyle(.white)
+        } else if day.paused {
+            Image(systemName: "moon").font(.caption2).foregroundStyle(.secondary)
+        } else if day.planCode == "climb" {
+            // What is still ahead this week: planned climbing, a rest day, a planned training.
+            Image(systemName: "mountain.2").font(.caption2).foregroundStyle(.secondary)
+        } else if day.planCode == "rest" {
+            Image(systemName: "sofa").font(.caption2).foregroundStyle(.secondary)
+        } else if day.planCode == "training" {
+            Image(systemName: "dumbbell").font(.caption2).foregroundStyle(.secondary)
         }
     }
 
@@ -1084,6 +1126,7 @@ private struct TodayNextSheet: View {
     let model: TodayScreenModel
     let onHurts: () -> Void
     let onEquipment: () -> Void
+    let onPlanDays: () -> Void
     let onDone: () -> Void
 
     private let kinds: [(code: String, key: String)] = [
@@ -1145,6 +1188,7 @@ private struct TodayNextSheet: View {
                         Spacer()
                         Button(action: onEquipment) { Label(L("trt_next_equipment"), systemImage: "dumbbell") }
                     }
+                    planSection
                 }
                 .padding(16)
             }
@@ -1154,6 +1198,30 @@ private struct TodayNextSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button(L("action_cancel"), action: onDone) }
             }
         }
+    }
+
+    /// No time today: a rest day, and the days around it planned anew (owner 2026-10-19).
+    private var planSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L("trt_next_plan")).font(.headline)
+            HStack {
+                Button {
+                    model.restToday()
+                    onDone()
+                } label: {
+                    Label(L("trt_rest_today"), systemImage: "sofa")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!ui.canRestToday)
+                .accessibilityIdentifier("today_rest_today")
+                Button(action: onPlanDays) {
+                    Label(L("trdp_title"), systemImage: "calendar.badge.plus")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("today_next_plan_days")
+            }
+        }
+        .padding(.top, 8)
     }
 }
 
@@ -1362,6 +1430,18 @@ private struct TodayEditorSheet: ViewModifier {
             NavigationStack {
                 RoutineEditorView(core: core, routineId: t.routineId, from: t.from, defaultName: t.name)
             }
+        }
+    }
+}
+
+/// "Plan days" from Today's week strip and "Another suggestion" (an extra sheet kept out of the long chain above).
+private struct TodayDayPlannerSheet: ViewModifier {
+    let core: AppCore
+    @Binding var isPresented: Bool
+
+    func body(content: Content) -> some View {
+        content.sheet(isPresented: $isPresented) {
+            DayPlannerSheet(core: core) { isPresented = false }
         }
     }
 }

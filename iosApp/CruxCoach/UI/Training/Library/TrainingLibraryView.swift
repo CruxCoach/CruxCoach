@@ -69,6 +69,9 @@ struct WorkoutsListView: View {
     @State private var route: LibraryRoute?
     @State private var deleting: RoutineCardUi?
     @State private var dayCell: WeekDayUi?
+    /// "Plan days" (Android `DayPlannerSheet`, owner 2026-10-19); [planAfterDay] opens it once the day sheet is gone.
+    @State private var planDays = false
+    @State private var planAfterDay = false
 
     var body: some View {
         Group {
@@ -192,7 +195,13 @@ struct WorkoutsListView: View {
         } message: {
             Text(L("trwo_delete_text", deleting.map { LibraryRender.text($0.title) } ?? ""))
         }
-        .sheet(item: Binding(get: { dayCell.map { LibraryDaySelection(cell: $0) } }, set: { dayCell = $0?.cell })) { selection in
+        .sheet(item: Binding(get: { dayCell.map { LibraryDaySelection(cell: $0) } }, set: { dayCell = $0?.cell }), onDismiss: {
+            // Two presentations at once drop the second: the planner opens after the day sheet is gone.
+            if planAfterDay {
+                planAfterDay = false
+                planDays = true
+            }
+        }) { selection in
             WeekDaySheet(cell: selection.cell,
                          onStart: {
                              dayCell = nil
@@ -208,9 +217,14 @@ struct WorkoutsListView: View {
                              }
                          },
                          onLogClimbing: closingDaySheet(onLogClimbing),
-                         onOpenHistory: closingDaySheet(onOpenHistory))
+                         onOpenHistory: closingDaySheet(onOpenHistory),
+                         onPlanDays: {
+                             planAfterDay = true
+                             dayCell = nil
+                         })
                 .presentationDetents([.medium, .large])
         }
+        .modifier(LibraryDayPlannerSheet(core: core, isPresented: $planDays, onDismiss: { model.refreshWeek() }))
     }
 
     /// [action] after the day sheet has closed; nil stays nil (the sheet then hides the button).
@@ -299,8 +313,17 @@ struct WorkoutsListView: View {
             } else {
                 Text(L("trwo_week_plan_empty")).font(.footnote).foregroundStyle(.secondary)
             }
-            Button(L("trwo_week_plan_edit")) { route = .weekPlan }
+            HStack(spacing: 16) {
+                Button(L("trwo_week_plan_edit")) { route = .weekPlan }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("workouts_week_plan_edit")
+                // Single days over the standard week: rest, a climbing day, a training, a swap (owner 2026-10-19).
+                Button { planDays = true } label: {
+                    Label(L("trdp_title"), systemImage: "calendar.badge.plus")
+                }
                 .buttonStyle(.borderless)
+                .accessibilityIdentifier("workouts_plan_days")
+            }
         }
     }
 
@@ -317,7 +340,7 @@ struct WorkoutsListView: View {
             case "done": return "checkmark"
             case "paused": return "moon.zzz"
             case "rest": return "sofa"
-            case "planned", "missed": return cell.plannedBoard ? "mountain.2" : "dumbbell"
+            case "planned", "missed": return cell.plannedBoard || cell.plannedClimb ? "mountain.2" : "dumbbell"
             default: return nil
             }
         }()
@@ -374,6 +397,8 @@ struct WeekDaySheet: View {
     let onAdapt: () -> Void
     let onLogClimbing: (() -> Void)?
     let onOpenHistory: (() -> Void)?
+    /// Today or later: plan this day differently or swap it (owner 2026-10-19).
+    var onPlanDays: (() -> Void)? = nil
 
     var body: some View {
         NavigationStack {
@@ -408,6 +433,10 @@ struct WeekDaySheet: View {
                     if cell.canAdapt {
                         Button(L("trw_action_adapt"), action: onAdapt)
                     }
+                    if !cell.isPast, let onPlanDays {
+                        Button(action: onPlanDays) { Label(L("trdp_change_day"), systemImage: "calendar.badge.plus") }
+                            .accessibilityIdentifier("week_day_plan")
+                    }
                     if cell.isToday || cell.isPast, let onLogClimbing {
                         Button(action: onLogClimbing) { Label(L("trw_action_log"), systemImage: "mountain.2") }
                     }
@@ -418,6 +447,19 @@ struct WeekDaySheet: View {
             }
             .navigationTitle(LibraryRender.fullDate(cell.dateIso))
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+/// "Plan days" from the week card and the day sheet; the week is read again when it closes.
+private struct LibraryDayPlannerSheet: ViewModifier {
+    let core: AppCore
+    @Binding var isPresented: Bool
+    let onDismiss: () -> Void
+
+    func body(content: Content) -> some View {
+        content.sheet(isPresented: $isPresented, onDismiss: onDismiss) {
+            DayPlannerSheet(core: core) { isPresented = false }
         }
     }
 }

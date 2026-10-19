@@ -1,7 +1,7 @@
 import CruxCoachCore
 import SwiftUI
 
-/// The standard week (Android `WeekPlanScreen`): a workout, a board session or rest per weekday,
+/// The standard week (Android `WeekPlanScreen`): a workout, a board session, a climbing day or rest per weekday,
 /// the coach's proposal with "apply" and "undo", and the usual session length.
 struct WeekPlanView: View {
     let core: AppCore
@@ -115,32 +115,58 @@ struct WeekPlanView: View {
             }
         }
         .sheet(item: Binding(get: { choosing.map { LibraryWeekdayChoice(day: $0) } }, set: { choosing = $0?.day })) { choice in
-            NavigationStack {
-                List {
-                    ForEach(choice.day.options, id: \.entry) { option in
-                        Button {
-                            model.setDay(weekday: choice.day.weekday, entry: option.entry)
-                            choosing = nil
-                        } label: {
-                            HStack {
-                                Text(LibraryRender.text(option.label))
-                                Spacer()
-                                if option.selected { Image(systemName: "checkmark") }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .navigationTitle(LibraryRender.weekday(Int(choice.day.weekday)))
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(L("tr_action_cancel")) { choosing = nil }
-                    }
-                }
-            }
-            .presentationDetents([.medium, .large])
+            weekdayChooser(choice.day, ui: ui, model: model)
         }
+    }
+
+    /// Android `PlanChooserDialog` for a weekday: free, rest, a climbing day (where, how hard), board, a training.
+    private func weekdayChooser(_ day: PlanDayUi, ui: WeekPlanScreenState, model: WeekPlanScreenModel) -> some View {
+        let weekday: Int32 = day.weekday
+        let options: [DayPlanChoice] = planChoices(day.options)
+        let head: [DayPlanChoice] = options.filter { $0.entry.isEmpty || $0.entry == "rest" }
+        let trainings: [DayPlanChoice] = options.filter { !$0.entry.isEmpty && $0.entry != "rest" && $0.entry != "board" }
+        let board: DayPlanChoice = options.first(where: { $0.entry == "board" })
+            ?? DayPlanChoice(entry: "board", label: L("trwo_plan_board"), selected: false)
+        return DayPlanChooser(
+            title: LibraryRender.weekday(Int(weekday)),
+            standardLabel: nil,
+            head: head,
+            climbSelected: day.climbSelected,
+            climbKind: day.climbKind,
+            climbIntensity: day.climbIntensity,
+            kinds: climbChoices(ui.climbKinds),
+            intensities: climbChoices(ui.climbIntensities),
+            board: board,
+            swaps: [],
+            trainings: trainings,
+            onChoose: { entry in
+                choosing = nil
+                model.setDay(weekday: weekday, entry: entry)
+            },
+            onClimb: { kind, intensity in
+                choosing = nil
+                model.setDayClimb(weekday: weekday, kind: kind, intensity: intensity)
+            },
+            onStandard: {},
+            onSwap: { _ in },
+            onCancel: { choosing = nil }
+        )
+    }
+
+    private func planChoices(_ options: [PlanOptionUi]) -> [DayPlanChoice] {
+        var out: [DayPlanChoice] = []
+        for option in options {
+            out.append(DayPlanChoice(entry: option.entry, label: LibraryRender.text(option.label), selected: option.selected))
+        }
+        return out
+    }
+
+    private func climbChoices(_ choices: [PlanClimbChoiceUi]) -> [DayPlanChoice] {
+        var out: [DayPlanChoice] = []
+        for choice in choices {
+            out.append(DayPlanChoice(entry: choice.code, label: LibraryRender.text(choice.label), selected: false))
+        }
+        return out
     }
 }
 
