@@ -78,7 +78,7 @@ class ClimbingTileTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) { repo.climbingDay("gym") == null }
         waitForText("Climbing day deleted")
         compose.onNodeWithText("Undo").performClick()
-        compose.waitUntil(WAIT_MS) { repo.climbingDay("gym") != null }
+        compose.waitUntil(WAIT_MS) { repo.climbingDay("gym") != null && repo.setting(overlapKey) == overlap }
         assertEquals(90, repo.climbingDay("gym")!!.minutes)
         assertEquals(overlap, repo.setting(overlapKey))
         compose.waitUntil(WAIT_MS) { today.state.value.climbingEntriesToday == listOf("gym") }

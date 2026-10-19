@@ -372,7 +372,8 @@ class AthleteService @Inject constructor(
     }
 
     /** "Rückgängig" for [deleteClimbingDayForUndo]: the entry and its overlap choice come back unchanged. */
-    fun restoreClimbingDay(d: DeletedClimb) {
+    fun restoreClimbingDay(d: DeletedClimb) = repo.transaction {
+        // One step, so nothing ever sees the entry back without its overlap choice (CI run 39222384023).
         repo.saveClimbingDay(d.entry)
         d.overlap?.let { repo.putSetting(com.cruxcoach.athlete.logic.BoardOverlap.key(d.entry.id), it) }
     }
