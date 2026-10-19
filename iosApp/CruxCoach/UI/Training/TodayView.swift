@@ -75,7 +75,7 @@ private struct TodayContent: View {
     @State private var planDays = false
 
     var body: some View {
-        withAlerts(withSheets(withEvents(page)))
+        withAlerts(withSheets(withEvents(withDayPlans(page))))
     }
 
     private var page: some View {
@@ -152,11 +152,6 @@ private struct TodayContent: View {
             model.consumeLevelKept()
             show(text, action: L("trf_undo")) { model.undoLevelKept() }
         }
-        .onChange(of: ui.hasRestTodayUndo) { _, pending in
-            // "Rest day today": one line with "Undo" (owner 2026-10-19).
-            guard pending, let undo = model.takeRestTodayUndo() else { return }
-            show(L("trt_rest_today_done"), action: L("trf_undo")) { undo.restore() }
-        }
         .onChange(of: ui.neverOfferSlug) { _, slug in
             guard !slug.isEmpty else { return }
             let text = TrRender.text(ui.neverOfferText)
@@ -168,6 +163,16 @@ private struct TodayContent: View {
                 if !model.currentState.neverOfferSlug.isEmpty { model.answerNeverOffer(never: false) }
             }
         }
+    }
+
+    /// "Plan days" and the "Rest day today" undo line (owner 2026-10-19), apart from the long chains below.
+    private func withDayPlans<V: View>(_ view: V) -> some View {
+        view
+        .onChange(of: ui.hasRestTodayUndo) { _, pending in
+            guard pending, let undo = model.takeRestTodayUndo() else { return }
+            show(L("trt_rest_today_done"), action: L("trf_undo")) { undo.restore() }
+        }
+        .modifier(TodayDayPlannerSheet(core: core, isPresented: $planDays))
     }
 
     private func withSheets<V: View>(_ view: V) -> some View {
@@ -249,7 +254,6 @@ private struct TodayContent: View {
         .sheet(isPresented: $climbingList) {
             ClimbingDaysListView(core: core) { climbingList = false }
         }
-        .modifier(TodayDayPlannerSheet(core: core, isPresented: $planDays))
     }
 
     private func withAlerts<V: View>(_ view: V) -> some View {
