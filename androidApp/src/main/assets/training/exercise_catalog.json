@@ -4065,6 +4065,184 @@
    }
   },
   {
+   "slug": "pull.single_arm_lat_pulldown",
+   "category": "PULL",
+   "kind": "LOAD_REPS",
+   "load": "EXTERNAL",
+   "unilateral": true,
+   "equipment": [
+    "CABLE"
+   ],
+   "domains": [
+    "SHOULDER",
+    "ELBOW"
+   ],
+   "muscles": {
+    "primary": [
+     "lats"
+    ],
+    "secondary": [
+     "biceps",
+     "lower_traps",
+     "obliques"
+    ]
+   },
+   "difficulty": 2,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 3,
+    "repsMin": 8,
+    "repsMax": 12,
+    "restS": 60
+   },
+   "contraindications": [
+    "shoulder",
+    "elbow"
+   ],
+   "tags": [
+    "strength",
+    "hypertrophy",
+    "no_climbing",
+    "finger_free"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Einarmiger Latzug",
+     "aliases": [
+      "Einarmiges Latziehen",
+      "Latzug einarmig",
+      "Latziehen einarmig"
+     ],
+     "why": "Trainiert jede Seite einzeln für Lock-offs und einarmiges Blockieren – Unterschiede zwischen links und rechts fallen sofort auf.",
+     "steps": [
+      "Setz dich etwas seitlich versetzt an den Kabelzug und greif den Einzelgriff mit einer Hand.",
+      "Zieh den Griff zur Schulter, Ellbogen nach unten und hinten, Schulterblatt nach unten.",
+      "Lass ihn kontrolliert hoch, bis der Arm gestreckt ist; dann die Seite wechseln."
+     ],
+     "cues": [
+      "Oberkörper ruhig, nicht mitdrehen",
+      "Mit der schwächeren Seite beginnen"
+     ],
+     "mistakes": [
+      "Mit dem Rumpf reißen",
+      "Schulter zum Ohr hochziehen lassen"
+     ]
+    },
+    "en": {
+     "name": "Single-Arm Lat Pulldown",
+     "aliases": [
+      "One-Arm Lat Pulldown",
+      "Single Arm Pulldown",
+      "Unilateral Lat Pulldown"
+     ],
+     "why": "Trains each side on its own for lock-offs and one-arm blocking – differences between left and right show at once.",
+     "steps": [
+      "Sit slightly off-centre at the cable station and take the single handle in one hand.",
+      "Pull the handle to your shoulder, elbow down and back, shoulder blade down.",
+      "Let it rise under control until the arm is straight; then switch sides."
+     ],
+     "cues": [
+      "Keep the torso still, do not twist",
+      "Start with the weaker side"
+     ],
+     "mistakes": [
+      "Yanking with the torso",
+      "Letting the shoulder creep up to the ear"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "pull.seated_cable_row",
+   "category": "PULL",
+   "kind": "LOAD_REPS",
+   "load": "EXTERNAL",
+   "unilateral": false,
+   "equipment": [
+    "CABLE"
+   ],
+   "domains": [
+    "SHOULDER",
+    "ELBOW"
+   ],
+   "muscles": {
+    "primary": [
+     "upper_back",
+     "lats"
+    ],
+    "secondary": [
+     "biceps",
+     "rear_delts",
+     "lower_traps"
+    ]
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 3,
+    "repsMin": 8,
+    "repsMax": 12,
+    "restS": 90
+   },
+   "contraindications": [
+    "shoulder",
+    "elbow"
+   ],
+   "tags": [
+    "strength",
+    "hypertrophy",
+    "no_climbing",
+    "finger_free",
+    "beginner_friendly"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Rudern am Kabelzug",
+     "aliases": [
+      "Kabelrudern",
+      "Sitzendes Rudern",
+      "Rudern sitzend"
+     ],
+     "why": "Kräftigt den oberen Rücken und hält die Schulterblätter stabil – das Fundament für kontrolliertes Ziehen an der Wand.",
+     "steps": [
+      "Setz dich an den Kabelzug, Füße an der Platte, Knie leicht gebeugt, Rücken aufrecht.",
+      "Zieh den Griff zum Bauch und die Schulterblätter zusammen.",
+      "Lass ihn kontrolliert nach vorn, bis die Arme gestreckt sind, ohne den Rücken zu runden."
+     ],
+     "cues": [
+      "Brust raus, Schultern weg von den Ohren"
+     ],
+     "mistakes": [
+      "Mit dem Oberkörper weit nach hinten schwingen",
+      "Runder Rücken beim Vorlassen"
+     ]
+    },
+    "en": {
+     "name": "Seated Cable Row",
+     "aliases": [
+      "Cable Row",
+      "Seated Row",
+      "Low Row"
+     ],
+     "why": "Strengthens the upper back and keeps the shoulder blades stable – the base for controlled pulling on the wall.",
+     "steps": [
+      "Sit at the cable station, feet on the plate, knees slightly bent, back upright.",
+      "Pull the handle to your belly and squeeze the shoulder blades together.",
+      "Let it go forward under control until the arms are straight, without rounding the back."
+     ],
+     "cues": [
+      "Chest up, shoulders away from the ears"
+     ],
+     "mistakes": [
+      "Swinging the torso far back",
+      "Rounding the back on the way forward"
+     ]
+    }
+   }
+  },
+  {
    "slug": "push.bench_dip",
    "category": "PUSH",
    "kind": "REPS",
@@ -5377,6 +5555,179 @@
      "mistakes": [
       "Dropping onto your head",
       "Heavy lower-back arch"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "push.dumbbell_incline_press",
+   "category": "PUSH",
+   "kind": "LOAD_REPS",
+   "load": "EXTERNAL",
+   "unilateral": false,
+   "equipment": [
+    "DUMBBELL",
+    "BENCH"
+   ],
+   "domains": [
+    "SHOULDER",
+    "ELBOW"
+   ],
+   "muscles": {
+    "primary": [
+     "chest",
+     "front_delts"
+    ],
+    "secondary": [
+     "triceps",
+     "serratus"
+    ]
+   },
+   "difficulty": 2,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 3,
+    "repsMin": 6,
+    "repsMax": 10,
+    "restS": 120
+   },
+   "contraindications": [
+    "shoulder"
+   ],
+   "tags": [
+    "strength",
+    "hypertrophy",
+    "antagonist",
+    "no_climbing",
+    "home",
+    "finger_free"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Schrägbankdrücken mit Kurzhanteln",
+     "aliases": [
+      "Kurzhantel-Schrägbankdrücken",
+      "Schrägbankdrücken",
+      "Schrägbank-Drücken"
+     ],
+     "why": "Kräftigt obere Brust und vordere Schulter als Gegenspieler zum Ziehen – der Winkel ist schulterfreundlicher als flaches Drücken.",
+     "steps": [
+      "Stell die Bank auf 30–45° und setz dich mit den Hanteln auf den Oberschenkeln hin.",
+      "Leg dich zurück und drück die Hanteln über der oberen Brust nach oben.",
+      "Senk sie kontrolliert neben die Brust, Ellbogen etwa 45° vom Körper."
+     ],
+     "cues": [
+      "Schulterblätter zurück und nach unten",
+      "Handgelenke gerade über den Ellbogen"
+     ],
+     "mistakes": [
+      "Bank zu steil – dann wird es Schulterdrücken",
+      "Hanteln oben aneinanderschlagen"
+     ]
+    },
+    "en": {
+     "name": "Incline Dumbbell Press",
+     "aliases": [
+      "Dumbbell Incline Press",
+      "Incline Press",
+      "Incline Bench Press"
+     ],
+     "why": "Strengthens the upper chest and front shoulder as the counterpart to pulling – the angle is kinder to the shoulder than a flat press.",
+     "steps": [
+      "Set the bench to 30–45° and sit down with the dumbbells on your thighs.",
+      "Lie back and press the dumbbells up over your upper chest.",
+      "Lower them under control beside your chest, elbows about 45° from your body."
+     ],
+     "cues": [
+      "Shoulder blades back and down",
+      "Wrists stacked over the elbows"
+     ],
+     "mistakes": [
+      "Bench too steep – it turns into a shoulder press",
+      "Knocking the dumbbells together at the top"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "push.triceps_pushdown",
+   "category": "PUSH",
+   "kind": "LOAD_REPS",
+   "load": "EXTERNAL",
+   "unilateral": false,
+   "equipment": [
+    "CABLE"
+   ],
+   "domains": [
+    "ELBOW"
+   ],
+   "muscles": {
+    "primary": [
+     "triceps"
+    ],
+    "secondary": []
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 3,
+    "repsMin": 10,
+    "repsMax": 15,
+    "restS": 60
+   },
+   "contraindications": [
+    "elbow"
+   ],
+   "tags": [
+    "hypertrophy",
+    "antagonist",
+    "no_climbing",
+    "finger_free",
+    "beginner_friendly"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Trizepsdrücken am Kabelzug",
+     "aliases": [
+      "Trizepsdrücken",
+      "Trizeps am Kabel",
+      "Trizeps-Pushdown"
+     ],
+     "why": "Kräftigt den Trizeps als Gegenspieler des Bizeps – Gleichgewicht für den Ellbogen, der beim Klettern fast nur beugt, und Kraft fürs Ausstützen beim Mantle.",
+     "steps": [
+      "Stell dich vor den Kabelzug und greif Seil oder Stange auf Brusthöhe, Ellbogen am Körper.",
+      "Streck die Arme nach unten, bis sie ganz gestreckt sind.",
+      "Lass den Griff langsam bis etwa Brusthöhe zurück; die Ellbogen bleiben an Ort und Stelle."
+     ],
+     "cues": [
+      "Oberarme ruhig an der Seite"
+     ],
+     "mistakes": [
+      "Mit dem Oberkörper nachdrücken",
+      "Ellbogen wandern nach vorn"
+     ]
+    },
+    "en": {
+     "name": "Triceps Pushdown",
+     "aliases": [
+      "Cable Pushdown",
+      "Triceps Cable Pushdown",
+      "Pushdowns"
+     ],
+     "why": "Strengthens the triceps as the counterpart to the biceps – balance for an elbow that mostly bends when climbing, and strength for pressing out of a mantle.",
+     "steps": [
+      "Stand facing the cable station, rope or bar at chest height, elbows at your sides.",
+      "Straighten the arms down until they are fully extended.",
+      "Let the handle return slowly to about chest height; the elbows stay where they are."
+     ],
+     "cues": [
+      "Upper arms still at your sides"
+     ],
+     "mistakes": [
+      "Leaning in with the torso",
+      "Elbows drifting forward"
      ]
     }
    }
@@ -6911,6 +7262,91 @@
      "mistakes": [
       "Bending the loaded elbow",
       "Starting too fast and too heavy"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "antagonist.reverse_fly",
+   "category": "ANTAGONIST",
+   "kind": "LOAD_REPS",
+   "load": "EXTERNAL",
+   "unilateral": false,
+   "equipment": [
+    "DUMBBELL"
+   ],
+   "domains": [
+    "SHOULDER"
+   ],
+   "muscles": {
+    "primary": [
+     "rear_delts",
+     "upper_back"
+    ],
+    "secondary": [
+     "lower_traps",
+     "rotator_cuff"
+    ]
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 3,
+    "repsMin": 12,
+    "repsMax": 15,
+    "restS": 60
+   },
+   "contraindications": [
+    "shoulder"
+   ],
+   "tags": [
+    "prehab",
+    "antagonist",
+    "home",
+    "no_climbing",
+    "finger_free",
+    "beginner_friendly"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Reverse Flys mit Kurzhanteln",
+     "aliases": [
+      "Reverse Flys",
+      "Vorgebeugtes Seitheben",
+      "Reverse Butterfly"
+     ],
+     "why": "Kräftigt hintere Schulter und oberen Rücken gegen die nach vorn gezogenen Kletterschultern – mit leichten Hanteln und langsam ausgeführt.",
+     "steps": [
+      "Beug dich mit geradem Rücken weit nach vorn, leichte Hanteln hängen unter den Schultern.",
+      "Heb die Arme leicht gebeugt seitlich bis auf Schulterhöhe.",
+      "Senk sie langsam wieder ab, ohne Schwung."
+     ],
+     "cues": [
+      "Schulterblätter zusammen, Nacken lang"
+     ],
+     "mistakes": [
+      "Zu schwere Hanteln und Schwung aus dem Rücken"
+     ]
+    },
+    "en": {
+     "name": "Bent-Over Reverse Fly",
+     "aliases": [
+      "Reverse Fly",
+      "Rear Delt Fly",
+      "Dumbbell Reverse Fly"
+     ],
+     "why": "Strengthens the rear shoulder and upper back against the rounded-forward climber's shoulders – light dumbbells, done slowly.",
+     "steps": [
+      "Hinge forward with a straight back, light dumbbells hanging under your shoulders.",
+      "Raise the arms out to the sides, elbows slightly bent, up to shoulder height.",
+      "Lower them slowly again, without momentum."
+     ],
+     "cues": [
+      "Shoulder blades together, long neck"
+     ],
+     "mistakes": [
+      "Dumbbells too heavy, swinging from the back"
      ]
     }
    }
@@ -8914,6 +9350,176 @@
      "mistakes": [
       "Driving the movement with swing",
       "Legs dropping below horizontal"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "core.sit_up",
+   "category": "CORE",
+   "kind": "REPS",
+   "load": "BODYWEIGHT",
+   "unilateral": false,
+   "equipment": [
+    "MAT"
+   ],
+   "domains": [],
+   "muscles": {
+    "primary": [
+     "abs",
+     "hip_flexors"
+    ],
+    "secondary": [
+     "obliques"
+    ]
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": "core.weighted_sit_up",
+   "defaults": {
+    "sets": 3,
+    "repsMin": 12,
+    "repsMax": 20,
+    "restS": 60
+   },
+   "contraindications": [
+    "back"
+   ],
+   "tags": [
+    "strength",
+    "beginner_friendly",
+    "home",
+    "no_climbing",
+    "finger_free"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Sit-ups",
+     "aliases": [
+      "Situps",
+      "Sit-up",
+      "Aufrichter"
+     ],
+     "why": "Kräftigt Bauch und Hüftbeuger für das Einrollen im Überhang – leicht zu lernen und überall machbar.",
+     "steps": [
+      "Leg dich auf den Rücken, Knie gebeugt, Füße flach am Boden (bei Bedarf eingehakt).",
+      "Roll dich Wirbel für Wirbel hoch, bis der Oberkörper aufrecht ist.",
+      "Roll dich langsam wieder ab, bis die Schultern den Boden berühren."
+     ],
+     "cues": [
+      "Hände an der Brust oder neben den Ohren, nicht am Nacken ziehen",
+      "Beim Hochkommen ausatmen"
+     ],
+     "mistakes": [
+      "Mit Schwung aus den Armen hochreißen",
+      "Hohlkreuz beim Ablegen"
+     ]
+    },
+    "en": {
+     "name": "Sit-Up",
+     "aliases": [
+      "Sit-ups",
+      "Situps"
+     ],
+     "why": "Strengthens abs and hip flexors for curling up under overhangs – easy to learn and possible anywhere.",
+     "steps": [
+      "Lie on your back, knees bent, feet flat on the floor (hooked under something if needed).",
+      "Roll up one vertebra at a time until your torso is upright.",
+      "Roll back down slowly until your shoulders touch the floor."
+     ],
+     "cues": [
+      "Hands on the chest or beside the ears, never pull on the neck",
+      "Breathe out on the way up"
+     ],
+     "mistakes": [
+      "Jerking up with momentum from the arms",
+      "Arching the lower back on the way down"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "core.weighted_sit_up",
+   "category": "CORE",
+   "kind": "LOAD_REPS",
+   "load": "BODYWEIGHT_PLUS",
+   "unilateral": false,
+   "equipment": [
+    "MAT",
+    "PLATES"
+   ],
+   "domains": [],
+   "muscles": {
+    "primary": [
+     "abs",
+     "hip_flexors"
+    ],
+    "secondary": [
+     "obliques"
+    ]
+   },
+   "difficulty": 2,
+   "easier": "core.sit_up",
+   "harder": null,
+   "defaults": {
+    "sets": 3,
+    "repsMin": 8,
+    "repsMax": 12,
+    "restS": 90
+   },
+   "contraindications": [
+    "back"
+   ],
+   "tags": [
+    "strength",
+    "hypertrophy",
+    "home",
+    "no_climbing",
+    "finger_free"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Sit-ups mit Zusatzgewicht",
+     "aliases": [
+      "Gewichtete Sit-ups",
+      "Sit-ups mit Gewicht",
+      "Sit-ups mit Hantelscheibe"
+     ],
+     "why": "Baut Bauchkraft auf, wenn Sit-ups ohne Gewicht zu leicht werden – das Gewicht dosiert die Last genau.",
+     "steps": [
+      "Halte eine Hantelscheibe oder Kurzhantel vor der Brust, Füße eingehakt oder flach am Boden.",
+      "Roll dich kontrolliert hoch, bis der Oberkörper aufrecht ist.",
+      "Senk dich langsam ab; trag das Gewicht als Zusatzgewicht ein."
+     ],
+     "cues": [
+      "Gewicht eng am Körper halten",
+      "Erst steigern, wenn 12 saubere Wiederholungen gehen"
+     ],
+     "mistakes": [
+      "Gewicht über den Kopf schwingen",
+      "Schwung statt Bauchkraft"
+     ]
+    },
+    "en": {
+     "name": "Weighted Sit-Up",
+     "aliases": [
+      "Weighted Sit-ups",
+      "Sit-ups with weight",
+      "Plate sit-up"
+     ],
+     "why": "Builds abdominal strength once plain sit-ups get easy – the weight sets the load precisely.",
+     "steps": [
+      "Hold a plate or dumbbell against your chest, feet hooked or flat on the floor.",
+      "Roll up under control until your torso is upright.",
+      "Lower yourself slowly; log the weight as added load."
+     ],
+     "cues": [
+      "Keep the weight close to your body",
+      "Add weight only when 12 clean reps work"
+     ],
+     "mistakes": [
+      "Swinging the weight overhead",
+      "Momentum instead of abdominal strength"
      ]
     }
    }
