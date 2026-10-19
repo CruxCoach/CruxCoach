@@ -3,9 +3,10 @@ import SwiftUI
 import UIKit
 
 /// The review list both the typed meal and the meal photo end in (Android's
-/// `ReviewPane`): check or uncheck lines, change amounts, pick another food or
-/// none, add a food that was missed, choose the meal, log. Under a typed
-/// meal's rules list it may offer the model's second pass.
+/// `ReviewPane`): check or uncheck lines, change amounts (typed, or in one tap:
+/// shares of the amount, whole pieces for counted foods), pick another food, a
+/// packaged product or none, add a food that was missed, choose the meal, log.
+/// Under a typed meal's rules list it may offer the model's second pass.
 struct MealReviewForm: View {
     let model: MealTextScreenModel
     let ui: MealTextUi
@@ -81,6 +82,20 @@ struct MealReviewRow: View {
     @FocusState private var focused: Bool
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            mainLine
+            if row.quick != "none" {
+                // Leaving the field first lets the corrected amount show in it.
+                MealQuickAmounts(row: row, model: model, onTap: { focused = false })
+            }
+        }
+        .onAppear { amount = row.amountText }
+        .onChange(of: row.amountText) { _, value in
+            if !focused && value != amount { amount = value }
+        }
+    }
+
+    private var mainLine: some View {
         HStack(alignment: .top) {
             Button {
                 model.setIncluded(key: row.key, included: !row.included)
@@ -127,14 +142,85 @@ struct MealReviewRow: View {
                 Text(NutritionText.render(row.unitLabel)).font(.caption).foregroundStyle(.secondary)
             }
         }
-        .onAppear { amount = row.amountText }
-        .onChange(of: row.amountText) { _, value in
-            if !focused && value != amount { amount = value }
-        }
     }
 }
 
-/// Another food for a line, "no food", or a food the parser missed.
+/// One of Android's share chips: its label, the factor and what VoiceOver says.
+private struct MealScaleStep {
+    let label: String
+    let factor: Double
+    let key: String
+}
+
+/// One tap to correct an estimate (Android `QuickAmounts`; the photo model is about a
+/// quarter off per food): whole pieces for a food people count, otherwise ½, ¾, 1¼ and
+/// 1½ of the amount. The field stays for any other number.
+private struct MealQuickAmounts: View {
+    let row: MealReviewRowUi
+    let model: MealTextScreenModel
+    let onTap: () -> Void
+
+    private static let steps: [MealScaleStep] = [
+        MealScaleStep(label: "×½", factor: 0.5, key: "fvp_amount_scale_half"),
+        MealScaleStep(label: "×¾", factor: 0.75, key: "fvp_amount_scale_three_quarters"),
+        MealScaleStep(label: "×1¼", factor: 1.25, key: "fvp_amount_scale_more_quarter"),
+        MealScaleStep(label: "×1½", factor: 1.5, key: "fvp_amount_scale_more_half"),
+    ]
+
+    var body: some View {
+        if row.quick == "pieces" {
+            piecesLine
+        } else {
+            scaleLine
+        }
+    }
+
+    private var piecesLine: some View {
+        HStack(spacing: 8) {
+            Button {
+                onTap()
+                model.stepPieces(key: row.key, delta: -1)
+            } label: {
+                Text(verbatim: "−1")
+            }
+            .disabled(!row.canRemovePiece)
+            .accessibilityLabel(L("fvp_piece_less"))
+            Text(NutritionText.render(row.piecesText)).font(.caption)
+            Button {
+                onTap()
+                model.stepPieces(key: row.key, delta: 1)
+            } label: {
+                Text(verbatim: "+1")
+            }
+            .accessibilityLabel(L("fvp_piece_more"))
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    private var scaleLine: some View {
+        HStack(spacing: 6) {
+            ForEach(Self.steps, id: \.label) { step in
+                scaleButton(step)
+            }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    private func scaleButton(_ step: MealScaleStep) -> some View {
+        Button {
+            onTap()
+            model.scaleAmount(key: row.key, factor: step.factor)
+        } label: {
+            Text(verbatim: step.label)
+        }
+        .accessibilityLabel(L(step.key))
+    }
+}
+
+/// Another food for a line, a packaged product, "no food", or a food the parser missed.
+/// A line the food table found nothing for opens with its own name as the search.
 struct MealChooseFoodSheet: View {
     let model: MealTextScreenModel
     let ui: MealTextUi
@@ -142,25 +228,36 @@ struct MealChooseFoodSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(ui.choices, id: \.code) { choice in
-                    Button { model.pick(code: choice.code) } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(choice.title).foregroundStyle(.primary)
-                            Text(NutritionText.render(choice.subtitle)).font(.caption).foregroundStyle(.secondary)
-                        }
+            choiceList
+                .navigationTitle(L("fvp_choose_title"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button(L("tr_action_cancel")) { model.endChoice() } }
+                    if ui.allowNone {
+                        ToolbarItem(placement: .confirmationAction) { Button(L("fvp_choose_none")) { model.pick(code: "") } }
                     }
                 }
+        }
+    }
+
+    private var choiceList: some View {
+        List {
+            ForEach(ui.choices, id: \.code) { choice in
+                choiceButton(choice)
             }
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: L("fvp_choose_search"))
-            .onChange(of: query) { _, value in model.setChoiceQuery(text: value) }
-            .navigationTitle(L("fvp_choose_title"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(L("tr_action_cancel")) { model.endChoice() } }
-                if ui.allowNone {
-                    ToolbarItem(placement: .confirmationAction) { Button(L("fvp_choose_none")) { model.pick(code: "") } }
-                }
+        }
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: L("fvp_choose_search"))
+        // The core may start the search with the line's own name ("Whey"), so the products show at once.
+        .onAppear { if query.isEmpty { query = ui.choiceQuery } }
+        .onChange(of: query) { _, value in model.setChoiceQuery(text: value) }
+    }
+
+    /// A food, or "Product · name" for a packaged product (Android `fvp_product_label`).
+    private func choiceButton(_ choice: FoodChoiceUi) -> some View {
+        Button { model.pick(code: choice.code) } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(NutritionText.render(choice.label)).foregroundStyle(.primary)
+                Text(NutritionText.render(choice.subtitle)).font(.caption).foregroundStyle(.secondary)
             }
         }
     }
