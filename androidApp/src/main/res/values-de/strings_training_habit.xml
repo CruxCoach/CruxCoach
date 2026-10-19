@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Das übliche Training (Besitzer 2026-10-19: immer das gleiche Training, nur die Progression). -->
+    <string name="trhb_reason_weekday">Wie meist am %1$s: „%2$s“, jede Übung mit ihrem nächsten Schritt.</string>
+    <string name="trhb_reason_usual">Dein übliches Training „%1$s“, jede Übung mit ihrem nächsten Schritt.</string>
+    <string name="trhb_reason_generic">Dein übliches Training, jede Übung mit ihrem nächsten Schritt.</string>
+    <string name="trhb_offer">Am %1$s machst du meist „%2$s“. Fest in die Standardwoche übernehmen?</string>
+    <string name="trhb_offer_yes">Übernehmen</string>
+    <string name="trhb_offer_no">Nein danke</string>
+    <string name="trhb_taken">In der Standardwoche: %1$s – %2$s</string>
+    <string name="trlr_habits">Übliche Trainings</string>
+    <string name="trlr_habit_usual">in den meisten Trainings zuletzt</string>
+    <string name="trlr_habit_times">%1$s · %2$d-mal</string>
+</resources>

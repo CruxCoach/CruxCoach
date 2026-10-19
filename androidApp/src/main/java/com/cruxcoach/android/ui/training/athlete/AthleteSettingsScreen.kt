@@ -86,10 +86,14 @@ data class Learned(
     val kept: List<com.cruxcoach.athlete.logic.PreferenceLearning.Kept> = emptyList(),
     /** Level steps kept per kind of training (comparison review #10). */
     val levels: List<Pair<com.cruxcoach.athlete.logic.SuggestionFocus, Int>> = emptyList(),
+    /** The workouts the athlete keeps doing ([com.cruxcoach.athlete.logic.PreferenceLearning.habits]), with the routines to name them. */
+    val habits: List<com.cruxcoach.athlete.logic.PreferenceLearning.Habit> = emptyList(),
+    val routines: List<com.cruxcoach.athlete.model.Routine> = emptyList(),
 ) {
     val isEmpty: Boolean get() = liked.isEmpty() && less.isEmpty() && weekdays.isEmpty() && ownLoads.isEmpty() && minutes == null &&
-        kept.isEmpty() && levels.isEmpty()
-    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size + (if (minutes != null) 1 else 0) + kept.size + levels.size
+        kept.isEmpty() && levels.isEmpty() && habits.isEmpty()
+    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size + (if (minutes != null) 1 else 0) + kept.size + levels.size +
+        habits.size
 }
 
 @HiltViewModel
@@ -168,8 +172,25 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
             minutes = com.cruxcoach.athlete.logic.PreferenceLearning.suggestedSessionMinutes(
                 repo.workoutsBetween(today.minus(kotlinx.datetime.DatePeriod(days = com.cruxcoach.athlete.logic.PreferenceLearning.WINDOW_DAYS)).toString(),
                     today.toString()), profile.sessionMinutes, today),
+            habits = habits(profile, today),
+            routines = repo.routines(),
         )
     }
+
+    /** The usual workouts, as Today sees them (owner 2026-10-19). */
+    private fun habits(profile: AthleteProfile, today: kotlinx.datetime.LocalDate): List<com.cruxcoach.athlete.logic.PreferenceLearning.Habit> {
+        val routines = service.repo.routines()
+        val isRoutine: (String) -> Boolean = { id ->
+            if (id.startsWith("builtin:")) com.cruxcoach.athlete.logic.BuiltinRoutines.byKey(id.removePrefix("builtin:")) != null
+            else routines.any { it.id == id }
+        }
+        val from = today.minus(kotlinx.datetime.DatePeriod(days = com.cruxcoach.athlete.logic.PreferenceLearning.WINDOW_DAYS))
+        return com.cruxcoach.athlete.logic.PreferenceLearning.habits(service.repo.workoutsBetween(from.toString(), today.toString()), today,
+            isRoutine, profile.learningResets)
+    }
+
+    /** The coach forgets that [entry] is a usual workout; it is learned again only from trainings after now. */
+    fun forgetHabit(entry: String) = forget(com.cruxcoach.athlete.logic.PreferenceLearning.habitKey(entry))
 
     private fun forget(key: String) = update { it.copy(learningResets = it.learningResets + (key to System.currentTimeMillis())) }
 
@@ -654,6 +675,16 @@ private fun LearnedSection(state: AthleteSettingsState, viewModel: AthleteSettin
                 u.minutes?.let { stringResource(R.string.trt_duration_value, it) },
             )
             row(day, parts.joinToString(" · "), "learned_day_${u.isoDay}") { viewModel.forgetWeekday(u.isoDay) }
+        }
+    }
+    if (learned.habits.isNotEmpty()) {
+        // "Always the same training": the coach suggests it on its day, with each exercise's progression.
+        SectionTitle(stringResource(R.string.trlr_habits))
+        learned.habits.forEach { h ->
+            val name = com.cruxcoach.android.ui.training.workouts.planEntryLabel(h.entry, learned.routines)
+            val day = h.isoDay?.let { java.time.DayOfWeek.of(it).getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault()) }
+                ?: stringResource(R.string.trlr_habit_usual)
+            row(name, stringResource(R.string.trlr_habit_times, day, h.times), "learned_habit_${h.isoDay ?: 0}") { viewModel.forgetHabit(h.entry) }
         }
     }
     if (learned.levels.isNotEmpty()) {

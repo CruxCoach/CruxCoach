@@ -131,6 +131,10 @@ enum class SuggestionReason {
     PLANNED_CLIMB_NOT_LOGGED,
     /** The planned training has finger work and tomorrow is a hard day: advice only, the plan stays. */
     FINGERS_BEFORE_HARD_DAY,
+    /** The athlete's own workout they usually do on this weekday ([PreferenceLearning.habit]), with each exercise's progression. */
+    USUAL_ROUTINE_WEEKDAY,
+    /** The athlete's own workout they did in most trainings lately. */
+    USUAL_ROUTINE,
 }
 
 /** How much the suggestion knows about the athlete. */
@@ -200,6 +204,8 @@ data class SuggestionInput(
     val climbingToday: Boolean = false,
     /** Yesterday's planned climbing intensity ([DayPlans]), null when nothing was planned or yesterday was a pause. */
     val plannedYesterday: ClimbIntensity? = null,
+    /** The workout the athlete keeps doing ([PreferenceLearning.habit]): today's suggestion on a free day. */
+    val habit: PreferenceLearning.Habit? = null,
     /** Newest performance values, for the evidence line. */
     val benchmarks: List<Benchmark> = emptyList(),
     /** "zu leicht" (+1) / "zu schwer" (−1) for today; on top of the step kept for the kind ([AthleteProfile.keptLevels]). */
@@ -403,7 +409,9 @@ object SessionSuggester {
 
         // The athlete's own choice for today comes before the plan and the rotation; a usual choice of the
         // weekday only fills a free day.
-        input.wish?.takeIf { !input.wishLearned || (planned == null && !input.climbingToday) }?.let { wish ->
+        // A usual workout is more than a usual kind of training: it wins over the learned kind, never over today's choice.
+        val habit = input.habit?.takeIf { planned == null && !input.climbingToday }
+        input.wish?.takeIf { !input.wishLearned || (planned == null && !input.climbingToday && habit == null) }?.let { wish ->
             val why = if (input.wishLearned) SuggestionReason.USUAL_KIND else SuggestionReason.CHOSEN_TODAY
             chosen(ctx, wish, planned, budget, fingerBlock, climbingPaused, readiness, trend.skinSpike, why)?.let { return it }
         }
@@ -456,6 +464,11 @@ object SessionSuggester {
                 }
             }
             planned != null -> plannedRoutine(ctx, planned, climbingPaused, fingerBlock, guard, lowEnergy, budget)?.let { return it }
+            // "Always the same training": the athlete's usual workout on a free day, progression per exercise (owner 2026-10-19).
+            habit != null && (input.wish == null || input.wishLearned) -> {
+                val why = if (habit.kind == PreferenceLearning.HabitKind.WEEKDAY) SuggestionReason.USUAL_ROUTINE_WEEKDAY else SuggestionReason.USUAL_ROUTINE
+                plannedRoutine(ctx, habit.entry, climbingPaused, fingerBlock, guard, lowEnergy, budget, why)?.let { return it }
+            }
         }
 
         // 3. Injury with climbing paused: train around it.
@@ -837,6 +850,7 @@ object SessionSuggester {
         guard: Guard,
         lowEnergy: Boolean,
         budget: Int,
+        why: SuggestionReason = SuggestionReason.WEEK_PLAN,
     ): SessionSuggestion? {
         val input = ctx.input
         val reasons = ctx.reasons
@@ -863,7 +877,7 @@ object SessionSuggester {
         }
         val removed = injuryRemoved + fingerRemoved + guardRemoved
         if (kept.any { !it.warmup } && removed * 2 <= routine.items.size) {
-            reasons.add(0, SuggestionReason.WEEK_PLAN)
+            reasons.add(0, why)
             if (injuryRemoved > 0) reasons += SuggestionReason.PLAN_FILTERED_FOR_INJURY
             if (fingerRemoved > 0) reasons += fingerBlock!!
             // The athlete's own plan stays; finger work before a hard day is pointed out, not removed (warn, don't lock).
@@ -1320,7 +1334,9 @@ object SessionSuggester {
         // Not for what the athlete turned down: "not done for a while" was exactly why a rejected exercise came
         // back right after its rest (simulation 2026-10-17). It returns once the dislike has faded.
         val novelty = if (last == null) 2.0 else min(14L, (input.today.toEpochDays() - last.toEpochDays()).toLong().coerceAtLeast(0L)) / 3.5
-        if (affinity >= DISLIKED) s += novelty * (0.5 + variety / 100.0)
+        // Variety 0 is a fixed routine (owner 2026-10-19): no pull towards the new at all; 50 keeps the classic bonus.
+        val noveltyWeight = if (variety < 50) variety / 50.0 else 0.5 + variety / 100.0
+        if (affinity >= DISLIKED) s += novelty * noveltyWeight
         if (variety < 50 && last != null && (input.today.toEpochDays() - last.toEpochDays()).toLong() <= 14) s += (50 - variety) / 50.0 * 1.5
         if ((input.profile.goal == AthleteGoal.BUILD_STRENGTH || coach.goal == CoachGoal.BUILD_STRENGTH) && "strength" in def.tags) s += 1.5
         if (input.profile.goal == AthleteGoal.PERFORM && def.category in setOf(ExerciseCategoryV2.FINGER, ExerciseCategoryV2.PULL, ExerciseCategoryV2.ANTAGONIST)) s += 0.5

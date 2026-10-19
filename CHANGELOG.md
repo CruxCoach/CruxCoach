@@ -510,6 +510,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   targets count the climbing.
 
 ### Changed
+- The coach notices the usual workout: one of your own workouts done on two
+  of the same weekday (or in three of the last four trainings) becomes that
+  day's suggestion – as you do it, each exercise with its next step – on days
+  the plan leaves free; a choice made today still wins. On a weekday the
+  standard week leaves empty it offers once to put the workout there ("No
+  thanks" holds for six weeks), and the learned page lists usual workouts with
+  "Forget". A usual workout started from Today stays recognisable. Variety 0
+  now means no pull towards new exercises at all.
 - Typed workouts are read as free text: several exercises per line or in
   sentences ("Klimmzüge 5x5 +20 kg Liegestütze 3x15, dann Plank 3x60 s"),
   numbers before or after the name, "and"/"then"/"je" lists, "left and right",
