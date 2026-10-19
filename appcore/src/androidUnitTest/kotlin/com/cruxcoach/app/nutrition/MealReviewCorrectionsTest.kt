@@ -269,4 +269,22 @@ class MealReviewCorrectionsTest {
         assertTrue(review.rows.all { it.hasChoice }, review.rows.map { it.title }.toString())
         assertEquals(3, review.saveCount)
     }
+
+    /** The simulator flow `test10TypedMealReviewCorrectsInOneTap` types English words (no autocorrect surprises). */
+    @Test
+    fun `the UI flow's typed English list splits into pieces and a share of the milk`() = runBlocking<Unit> {
+        val k = kit()
+        val day = k.service.today().toString()
+        val (_, screen) = k.review(day)
+        screen.setText("2 eggs 1 banana 200ml milk")
+        screen.read()
+        val review = screen.await { it.phase == "review" }
+        assertEquals(3, review.rows.size, review.rows.map { it.title }.toString())
+        assertTrue(review.rows.any { it.quick == "pieces" }, review.rows.map { it.title to it.quick }.toString())
+        val milk = review.rows.single { it.quick == "scale" }
+        assertEquals("200", milk.amountText)
+        screen.scaleAmount(milk.key, 0.5)
+        val halved = screen.await { s -> s.rows.single { it.key == milk.key }.amountText == "100" }
+        assertEquals(3, halved.rows.size)
+    }
 }

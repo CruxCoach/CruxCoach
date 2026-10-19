@@ -85,6 +85,7 @@ struct MealTextSheet: View {
         Form {
             Section {
                 TextField(L("trf_describe_placeholder"), text: $text, axis: .vertical)
+                    .accessibilityIdentifier("meal_text_field")
                     .lineLimit(3...8)
                     .textInputAutocapitalization(.sentences)
                     .onChange(of: text) { _, value in model.setText(text: value) }

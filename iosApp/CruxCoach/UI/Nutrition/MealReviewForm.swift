@@ -131,6 +131,7 @@ struct MealReviewRow: View {
             Spacer()
             HStack(spacing: 2) {
                 TextField("", text: $amount)
+                    .accessibilityIdentifier("meal_review_amount")
                     .focused($focused)
                     .keyboardType(.decimalPad)
                     .onChange(of: amount) { _, value in

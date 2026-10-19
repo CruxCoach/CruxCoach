@@ -126,7 +126,108 @@ final class MainScreensUITests: XCTestCase {
         }
     }
 
+    /// "Plan days" (Android 570820eee): tomorrow as a rest day and back with Undo, then a climbing day.
+    func test09TrainingPlansDays() throws {
+        try openTraining()
+        let plan = app.buttons["today_plan_days"]
+        XCTAssertTrue(plan.waitForExistence(timeout: 30), "Today has no plan-days button:\n\(screenTail())")
+        plan.tap()
+        XCTAssertTrue(app.navigationBars[Strings.l("trdp_title")].waitForExistence(timeout: 15),
+                      "The planner did not open:\n\(screenTail())")
+        let tomorrow = app.buttons["day_planner_day_" + Self.isoDay(offset: 1)]
+        XCTAssertTrue(tomorrow.waitForExistence(timeout: 15), "The planner has no row for tomorrow:\n\(screenTail())")
+        shot("09a-plan-days")
+
+        tomorrow.tap()
+        let rest = app.buttons["week_plan_option_rest"]
+        XCTAssertTrue(rest.waitForExistence(timeout: 10), "The day chooser has no rest option:\n\(screenTail())")
+        shot("09b-plan-days-chooser")
+        rest.tap()
+        let restLabel = Strings.l("trwo_plan_rest")
+        XCTAssertTrue(eventually { tomorrow.label.contains(restLabel) }, "Tomorrow is not a rest day: \(tomorrow.label)")
+        let undo = app.buttons["day_planner_undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 10), "No undo after a change:\n\(screenTail())")
+        shot("09c-plan-days-rest")
+        undo.tap()
+        XCTAssertTrue(eventually { !tomorrow.label.contains(restLabel) }, "Undo left the rest day: \(tomorrow.label)")
+
+        let later = app.buttons["day_planner_day_" + Self.isoDay(offset: 2)]
+        XCTAssertTrue(later.waitForExistence(timeout: 10), "No row for the day after tomorrow:\n\(screenTail())")
+        later.tap()
+        let apply = app.buttons["week_plan_climb_apply"]
+        XCTAssertTrue(apply.waitForExistence(timeout: 10), "The chooser offers no climbing day:\n\(screenTail())")
+        if !apply.isHittable { app.swipeUp() }
+        apply.tap()
+        // A planned climbing day reads "<where> · <how hard>" (Android `climbPlanLabel`).
+        XCTAssertTrue(eventually { later.label.contains(" · ") }, "No climbing day planned: \(later.label)")
+        shot("09d-plan-days-climb")
+    }
+
+    /// A typed meal without separators splits into foods, and the review corrects amounts in one tap (Android
+    /// e9e3069ce, b76427fba): counted foods get whole pieces, others shares of the amount.
+    func test10TypedMealReviewCorrectsInOneTap() throws {
+        try openTraining()
+        let fuel = app.tabBars.buttons[Strings.l("tr_nav_fuel")]
+        XCTAssertTrue(fuel.waitForExistence(timeout: 10), "No nutrition tab:\n\(screenTail())")
+        fuel.tap()
+        let add = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", Strings.l("tru_fuel_add"))).firstMatch
+        XCTAssertTrue(add.waitForExistence(timeout: 20), "Nutrition has no add button:\n\(screenTail())")
+        add.tap()
+        // The tile's label may carry its symbol's name too.
+        let describe = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", Strings.l("trf_describe"))).firstMatch
+        XCTAssertTrue(describe.waitForExistence(timeout: 10), "No \"Describe\" tile:\n\(screenTail())")
+        describe.tap()
+        let field = app.descendants(matching: .any).matching(identifier: "meal_text_field").firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "No meal text field:\n\(screenTail())")
+        field.tap()
+        // English words: the simulator keyboard autocorrects in English (the same text is a JVM test case).
+        field.typeText("2 eggs 1 banana 200ml milk")
+        app.buttons[Strings.l("trf_describe_go")].firstMatch.tap()
+
+        let amounts = app.textFields.matching(identifier: "meal_review_amount")
+        XCTAssertTrue(eventually(seconds: 30) { amounts.count == 3 }, "Not three foods:\n\(screenTail())")
+        let half = app.buttons[Strings.l("fvp_amount_scale_half")].firstMatch
+        XCTAssertTrue(half.waitForExistence(timeout: 10), "No one-tap shares for the milk:\n\(screenTail())")
+        XCTAssertTrue(app.buttons[Strings.l("fvp_piece_more")].firstMatch.exists, "No whole pieces for eggs or banana:\n\(screenTail())")
+        XCTAssertTrue(values(amounts).contains("200"), "Milk is not 200: \(values(amounts))")
+        shot("10a-meal-review")
+        half.tap()
+        XCTAssertTrue(eventually { values(amounts).contains("100") }, "Half of 200 is not shown: \(values(amounts))")
+        shot("10b-meal-review-half")
+    }
+
     // MARK: - Helpers
+
+    /// Browser → menu → training area, past the quick start.
+    private func openTraining() throws {
+        try reachBrowser()
+        app.buttons[Strings.li("browser_more")].tap()
+        try tapTrainingEntry()
+        let later = app.buttons[Strings.l("trq_later")]
+        if later.waitForExistence(timeout: 10) { later.tap() }
+    }
+
+    /// Polls [condition] for up to [seconds]: labels and values follow the core a moment later.
+    private func eventually(seconds: TimeInterval = 10, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if condition() { return true }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return condition()
+    }
+
+    private func values(_ fields: XCUIElementQuery) -> [String] {
+        fields.allElementsBoundByIndex.map { ($0.value as? String) ?? "" }
+    }
+
+    /// The local date [offset] days from today as the app keys its days ("2026-10-20").
+    private static func isoDay(offset: Int) -> String {
+        let calendar = Calendar(identifier: .gregorian)
+        let day = calendar.date(byAdding: .day, value: offset, to: Date()) ?? Date()
+        let parts = calendar.dateComponents([.year, .month, .day], from: day)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
 
     /// First run shows the two-step setup; skipping it must land in the browser.
     private func reachBrowser() throws {
