@@ -377,10 +377,24 @@ class FoodPhotoViewModel @Inject constructor(
     }
 
     fun setAmount(key: Int, text: String) = updateItem(key) { it.copy(amountText = text.take(6)) }
+
+    /** "½", "¾", "1¼", "1½": the estimate is often a quarter off, so correcting it takes one tap (owner 2026-10-19). */
+    fun scaleAmount(key: Int, factor: Double) = updateItem(key) { item ->
+        val grams = amountOf(item) ?: return@updateItem item
+        item.copy(amountText = inputText((grams * factor).coerceIn(1.0, FoodVisionParser.MAX_GRAMS), item.unit))
+    }
+
+    /** One piece more or less for a food people count: whole pieces, never fewer than one. */
+    fun stepPieces(key: Int, delta: Int) = updateItem(key) { item ->
+        val piece = pieceOf(item) ?: return@updateItem item
+        val grams = amountOf(item) ?: piece
+        val pieces = (kotlin.math.round(grams / piece).toInt() + delta).coerceIn(1, 20)
+        item.copy(amountText = inputText(pieces * piece, item.unit))
+    }
     fun setIncluded(key: Int, included: Boolean) = updateItem(key) { it.copy(included = included) }
     /** Another food for a line; a drink switches the amount to ml/fl oz (and back), keeping the quantity. */
     fun choose(key: Int, food: BlsFood?) = updateItem(key) { item ->
-        val unit = food?.let { FuelUnits.unitFor(units, FuelUnits.isDrink("bls:${it.code}", it.nameEn)) } ?: item.unit
+        val unit = food?.let { FuelUnits.unitFor(units, isDrinkChoice(it)) } ?: item.unit
         val text = if (unit != item.unit) amountOf(item)?.let { inputText(it, unit) } ?: item.amountText else item.amountText
         item.copy(choice = food, uncertain = false, water = false, unit = unit, amountText = text)
     }
@@ -424,6 +438,16 @@ class FoodPhotoViewModel @Inject constructor(
     suspend fun search(query: String): List<BlsFood> {
         val matcher = bls.matcher()
         return withContext(Dispatchers.Default) { matcher.search(query, limit = 25).map { it.food } }
+    }
+
+    /**
+     * The review's choice: the food table first, then packaged products (protein powders, bars, branded foods the
+     * table has no counterpart for – owner 2026-10-19). Products come as choices with a "off:" code.
+     */
+    suspend fun searchWithProducts(query: String): List<BlsFood> {
+        val foods = search(query)
+        val found = runCatching { products.search(query) }.getOrDefault(emptyList()).take(15).map(::productChoice)
+        return foods.take(15) + found
     }
 
     /** USDA generic foods (English names, household measures). */
@@ -474,7 +498,11 @@ class FoodPhotoViewModel @Inject constructor(
 
     /** The food as a reusable "my foods" entry (per 100 g), keeping favourite and use count. */
     private fun blsItem(food: BlsFood, now: Long): FoodItem =
-        (service.repo.foodItem("bls:${food.code}") ?: blsFoodItem(food)).copy(
+        if (isProduct(food)) (service.repo.foodItem(food.code) ?: FoodItem(
+            id = food.code, name = blsName(food), barcode = food.code.removePrefix(PRODUCT_PREFIX), source = OffRepository.SOURCE,
+            kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
+        )).copy(updatedAt = now)
+        else (service.repo.foodItem("bls:${food.code}") ?: blsFoodItem(food)).copy(
             kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
             updatedAt = now,
         )
@@ -557,6 +585,26 @@ class FoodPhotoViewModel @Inject constructor(
         }
 
         fun displayName(food: DetectedFood): String = if (german()) food.nameDe else food.nameEn
+
+        /** Code prefix of packaged products offered as a review choice. */
+        const val PRODUCT_PREFIX = "off:"
+
+        fun isProduct(food: BlsFood): Boolean = food.code.startsWith(PRODUCT_PREFIX)
+
+        /** A packaged product as a review choice (per 100 g); the brand is part of the name. */
+        fun productChoice(p: OffProduct): BlsFood {
+            fun named(german: Boolean) = p.displayName(german).let { n -> if (p.brand.isBlank() || n.contains(p.brand, ignoreCase = true)) n else "$n (${p.brand})" }
+            return BlsFood(code = PRODUCT_PREFIX + p.code, nameDe = named(true), nameEn = named(false),
+                kcal = p.kcal, protein = p.protein, fat = p.fat, carbs = p.carbs)
+        }
+
+        private fun isDrinkChoice(food: BlsFood): Boolean =
+            if (isProduct(food)) FuelUnits.isDrink(null, food.nameDe) || FuelUnits.isDrink(null, food.nameEn)
+            else FuelUnits.isDrink("bls:${food.code}", food.nameEn)
+
+        /** Grams of one piece when the line's food is one people count ("Banane roh"); products are weighed. */
+        fun pieceOf(item: ReviewItem): Double? =
+            item.choice?.takeUnless { isProduct(it) || item.water }?.let { MealTextParser.pieceGramsOf(it.nameDe) }
 
         /** Grams (or ml for water) of a review line, whatever unit it is shown in. */
         fun amountOf(item: ReviewItem): Double? =
