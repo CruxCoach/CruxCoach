@@ -377,7 +377,8 @@ class AthleteService(
     }
 
     /** "Rückgängig" for [deleteClimbingDayForUndo]: the entry and its overlap choice come back unchanged. */
-    fun restoreClimbingDay(d: DeletedClimb) {
+    fun restoreClimbingDay(d: DeletedClimb) = repo.transaction {
+        // One step, so nothing ever sees the entry back without its overlap choice (as on Android).
         repo.saveClimbingDay(d.entry)
         d.overlap?.let { repo.putSetting(BoardOverlap.key(d.entry.id), it) }
     }
