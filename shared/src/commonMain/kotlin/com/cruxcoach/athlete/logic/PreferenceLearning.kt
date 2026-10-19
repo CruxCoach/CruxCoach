@@ -416,4 +416,71 @@ object PreferenceLearning {
             .groupingBy { it.dayOfWeek.isoDayNumber }.eachCount()
             .filterValues { it >= 3 }.keys
     }
+
+    // ── The usual workout (owner 2026-10-19: "always the same training, only the progression") ──
+
+    /** On which grounds a workout is the usual one: it is done on this weekday, or in most trainings lately. */
+    enum class HabitKind { WEEKDAY, USUAL }
+
+    /** The athlete's own workout (a routine id, or "builtin:<key>") done again and again. */
+    data class Habit(val entry: String, val kind: HabitKind, val isoDay: Int?, val times: Int)
+
+    /** Forgets that [entry] is the usual workout (the learned page's "Vergessen"). */
+    fun habitKey(entry: String) = "habit:$entry"
+
+    /** Times on one weekday that make a workout that weekday's usual one. */
+    const val HABIT_WEEKDAY_TIMES = 2
+    /** Of the last [HABIT_RECENT] trainings, this many with the same workout make it the usual one on any day. */
+    const val HABIT_USUAL_TIMES = 3
+    const val HABIT_RECENT = 4
+
+    /** Separates a suggestion training's id from the workout it was made of: "suggestion:<day>@<entry>". */
+    const val SUGGESTION_OF = '@'
+
+    /** The workout a training was: its routine, or the routine a suggestion was made of; null for anything else. */
+    fun routineOf(w: Workout, isRoutine: (String) -> Boolean): String? {
+        val id = w.routineId ?: return null
+        val entry = if (id.startsWith("suggestion")) id.substringAfter(SUGGESTION_OF, "").ifEmpty { return null } else id
+        return entry.takeIf(isRoutine)
+    }
+
+    /**
+     * The usual workouts as of [today]: per ISO weekday the one done on [HABIT_WEEKDAY_TIMES] days of that weekday within
+     * [WINDOW_DAYS], the last training on that weekday included; and the one done in [HABIT_USUAL_TIMES] of the last
+     * [HABIT_RECENT] trainings. Today's trainings and trainings at or before a reset ([habitKey], the weekday, "all")
+     * do not count. [isRoutine] says whether an id is one of the athlete's routines or a starter routine (deleted
+     * ones are no habit).
+     */
+    fun habits(workouts: List<Workout>, today: LocalDate, isRoutine: (String) -> Boolean, resets: Map<String, Long> = emptyMap()): List<Habit> {
+        val from = today.minus(DatePeriod(days = WINDOW_DAYS)).toString()
+        val done = workouts.filter { !it.isOpen && it.day < today.toString() && it.day >= from }.sortedByDescending { it.startedAt }
+        fun counts(w: Workout, entry: String, iso: Int?) =
+            w.startedAt > since(resets, habitKey(entry)) && (iso == null || w.startedAt > since(resets, weekdayKey(iso)))
+        val out = mutableListOf<Habit>()
+        val byWeekday = done.groupBy { runCatching { LocalDate.parse(it.day).dayOfWeek.isoDayNumber }.getOrNull() }
+        for ((iso, list) in byWeekday) {
+            if (iso == null) continue
+            val last = list.first()
+            val entry = routineOf(last, isRoutine) ?: continue
+            if (!counts(last, entry, iso)) continue
+            val days = list.filter { routineOf(it, isRoutine) == entry && counts(it, entry, iso) }.map { it.day }.distinct().size
+            if (days >= HABIT_WEEKDAY_TIMES) out += Habit(entry, HabitKind.WEEKDAY, iso, days)
+        }
+        val recent = done.take(HABIT_RECENT)
+        recent.mapNotNull { w -> routineOf(w, isRoutine)?.takeIf { counts(w, it, null) } }
+            .groupingBy { it }.eachCount().maxByOrNull { it.value }
+            ?.takeIf { it.value >= HABIT_USUAL_TIMES }
+            ?.let { (entry, times) -> out += Habit(entry, HabitKind.USUAL, null, times) }
+        return out.sortedWith(compareBy({ it.kind }, { it.isoDay ?: 0 }))
+    }
+
+    /** Today's usual workout: this weekday's, else the one done in most trainings lately. */
+    fun habit(workouts: List<Workout>, today: LocalDate, isRoutine: (String) -> Boolean, resets: Map<String, Long> = emptyMap()): Habit? {
+        val all = habits(workouts, today, isRoutine, resets)
+        return all.firstOrNull { it.kind == HabitKind.WEEKDAY && it.isoDay == today.dayOfWeek.isoDayNumber }
+            ?: all.firstOrNull { it.kind == HabitKind.USUAL }
+    }
+
+    /** Setting that remembers "Nein danke" to taking [entry] into the standard week on [isoDay]. */
+    fun habitOfferKey(isoDay: Int, entry: String) = "habit_offer_no:$isoDay:$entry"
 }

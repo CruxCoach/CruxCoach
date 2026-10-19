@@ -59,7 +59,8 @@ object PlannedTraining {
     private val PLAN_REASONS = setOf(
         SuggestionReason.WEEK_PLAN, SuggestionReason.WEEK_PLAN_BOARD, SuggestionReason.CLIMBING_DAY,
         SuggestionReason.CHOSEN_TODAY, SuggestionReason.USUAL_KIND, SuggestionReason.MORE_TIME_TODAY,
-        SuggestionReason.NO_TIME_TODAY, SuggestionReason.PLANNED_CLIMB,
+        SuggestionReason.NO_TIME_TODAY, SuggestionReason.PLANNED_CLIMB, SuggestionReason.USUAL_ROUTINE_WEEKDAY,
+        SuggestionReason.USUAL_ROUTINE,
     )
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
