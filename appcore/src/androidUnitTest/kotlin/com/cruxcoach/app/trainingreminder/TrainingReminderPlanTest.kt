@@ -8,6 +8,10 @@ import com.cruxcoach.app.ui.TrText
 import com.cruxcoach.app.ui.TrainingReminderSettingsModel
 import com.cruxcoach.app.ui.TrainingRemindersModel
 import com.cruxcoach.athlete.logic.BuiltinRoutines
+import com.cruxcoach.athlete.logic.DayPlans
+import com.cruxcoach.athlete.model.ClimbIntensity
+import com.cruxcoach.athlete.model.ClimbingDayKind
+import com.cruxcoach.athlete.model.PLAN_FREE
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.PLAN_BOARD
 import com.cruxcoach.athlete.model.PLAN_REST
@@ -84,6 +88,38 @@ class TrainingReminderPlanTest {
         assertEquals(8, TrainingReminderPlan.upcoming(wedMorning, daily, utc, 8, emptySet(), emptySet()).size)
         assertTrue(TrainingReminderPlan.upcoming(wedMorning, daily.copy(trainingReminderEnabled = false), utc, 8, emptySet(), emptySet()).isEmpty())
         assertTrue(TrainingReminderPlan.upcoming(wedMorning, profile(emptyMap()), utc, 8, emptySet(), emptySet()).isEmpty())
+    }
+
+    @Test
+    fun `a date planned over the standard week reminds as planned that day`() {
+        // Monday 2026-10-19 "no time – rest", Tuesday a limit boulder day (owner 2026-10-19; Android ReminderScheduleTest).
+        val limit = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.LIMIT).entry
+        val p = AthleteProfile(weekPlan = mapOf(1 to "builtin:pull_push"), trainingReminderOnClimbingDays = false,
+            datePlan = mapOf("2026-10-19" to PLAN_REST, "2026-10-20" to limit))
+        assertNull(TrainingReminderPlan.plannedEntry(p, LocalDate(2026, 10, 19)))
+        assertEquals("builtin:pull_push", TrainingReminderPlan.plannedEntry(p, LocalDate(2026, 10, 26)))
+        assertNull(TrainingReminderPlan.plannedEntry(p, LocalDate(2026, 10, 20)))
+        assertEquals(limit, TrainingReminderPlan.plannedEntry(p.copy(trainingReminderOnClimbingDays = true), LocalDate(2026, 10, 20)))
+        // "Free" on a date over a planned weekday: nothing to remind of.
+        assertNull(TrainingReminderPlan.plannedEntry(p.copy(datePlan = mapOf("2026-10-26" to PLAN_FREE)), LocalDate(2026, 10, 26)))
+    }
+
+    @Test
+    fun `planned days ahead follow the dates' own plans and name a climbing day`() {
+        val limit = DayPlans.Climb(ClimbingDayKind.GYM_BOULDER, ClimbIntensity.LIMIT).entry
+        // Wednesday's routine moved to Thursday, Friday a planned limit day.
+        val p = profile(mapOf(3 to builtin)).copy(datePlan = mapOf("2026-10-14" to PLAN_FREE, "2026-10-15" to builtin, "2026-10-16" to limit))
+        val ahead = TrainingReminderPlan.upcoming(wedMorning, p, utc, 3, emptySet(), emptySet())
+        assertEquals(listOf(15, 16, 21).map { LocalDate(2026, 10, it) }, ahead.map { it.at.date })
+        assertEquals(listOf(builtin, limit, builtin), ahead.map { it.entry })
+        // Without reminders on climbing days the limit day stays quiet.
+        assertTrue(TrainingReminderPlan.upcoming(wedMorning, p.copy(trainingReminderOnClimbingDays = false), utc, 3, emptySet(), emptySet())
+            .none { it.entry == limit })
+        // "Today: Climbing day".
+        val title = TrainingReminderPlan.title(limit, emptyList())!!
+        assertEquals("trw_notify_title", title.key)
+        assertEquals("trw_notify_climb", title.args.single().nested!!.key)
+        TrTextCheck.check(title, "climbing day reminder")
     }
 
     @Test
@@ -231,6 +267,10 @@ class TrainingReminderPlanTest {
         // The pause removed again: the days come back.
         kit.db { kit.repo.deletePause("p1") }
         kit.until("resumed") { host.scheduled.size == TrainingReminderPlan.AHEAD }
+        // A date planned as a rest day ("no time today", owner 2026-10-19): that day's reminder goes.
+        val first = kit.db { host.scheduled.getValue(TrainingReminderPlan.ID + "0").first }
+        kit.db { kit.repo.updateProfile { p -> DayPlans.withDay(p, today, PLAN_REST, today) } }
+        kit.until("today rests") { host.scheduled[TrainingReminderPlan.ID + "0"]?.first.let { it != null && it > first } }
         subscription.cancel()
     }
 }

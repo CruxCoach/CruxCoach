@@ -101,7 +101,8 @@ class TrainingRemindersModel internal constructor(
                 val repo = service.repo
                 combine(
                     repo.observeProfile().map { p ->
-                        listOf(p.trainingReminderEnabled, p.trainingReminderMinutes, p.trainingReminderOnClimbingDays, p.weekPlan)
+                        // A date's own plan ("rest today", a moved day) counts like the week plan (owner 2026-10-19).
+                        listOf(p.trainingReminderEnabled, p.trainingReminderMinutes, p.trainingReminderOnClimbingDays, p.weekPlan, p.datePlan)
                     }.distinctUntilChanged(),
                     repo.observePauses().map { list -> list.map { it.id to it.endDay } }.distinctUntilChanged(),
                     repo.observeOpenWorkout().map { it?.id }.distinctUntilChanged(),

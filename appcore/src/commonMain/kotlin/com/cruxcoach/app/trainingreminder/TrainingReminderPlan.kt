@@ -5,7 +5,7 @@
 // and every change of the reminder, the week plan, a pause or a training schedules them again
 // (the host calls it at app start and when the app returns to the foreground).
 // Android's quiet rules, as far as they can be known ahead: rest and free days and, unless wanted,
-// board days get nothing; an open pause schedules nothing; today is skipped once trained or with
+// board and climbing days get nothing; a date's own plan counts before the standard week's; an open pause schedules nothing; today is skipped once trained or with
 // a training running; a routine deleted since it was planned is skipped ("say nothing rather than
 // something wrong"). Android names the routine when the reminder fires; here it is named when the
 // reminder is scheduled (app start, return to the foreground, a change of the plan, a pause or a
@@ -18,6 +18,7 @@ import com.cruxcoach.app.notify.NotificationScheduler
 import com.cruxcoach.app.training.Tx
 import com.cruxcoach.app.ui.TrText
 import com.cruxcoach.athlete.logic.BuiltinRoutines
+import com.cruxcoach.athlete.logic.DayPlans
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.PLAN_BOARD
 import com.cruxcoach.athlete.model.PLAN_REST
@@ -27,12 +28,11 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 
-/** One planned day worth a reminder: when, and the plan entry (a routine id or [PLAN_BOARD]). */
+/** One planned day worth a reminder: when, and the plan entry (a routine id, [PLAN_BOARD] or a climbing day). */
 internal data class PlannedReminder(val at: LocalDateTime, val entry: String)
 
 internal object TrainingReminderPlan {
@@ -46,6 +46,8 @@ internal object TrainingReminderPlan {
     const val BODY_KEY = "trw_notify_text"
     /** The routine name of a board day. */
     const val BOARD_KEY = "trw_notify_board"
+    /** The name of a planned climbing day (Android 570820eee). */
+    const val CLIMB_KEY = "trw_notify_climb"
     /** Android's default time when nothing was stored: 17:00. */
     const val DEFAULT_MINUTES = 17 * 60
 
@@ -70,13 +72,16 @@ internal object TrainingReminderPlan {
      * ("builtin:<key>" or an own routine), [PLAN_BOARD], or null for a free or rest day (and for
      * board days when those are not wanted).
      */
-    fun plannedEntry(profile: AthleteProfile, isoWeekday: Int): String? {
-        val entry = profile.weekPlan[isoWeekday] ?: return null
-        return when (entry) {
-            PLAN_REST -> null
-            PLAN_BOARD -> entry.takeIf { profile.trainingReminderOnClimbingDays }
-            else -> entry
-        }
+    fun plannedEntry(profile: AthleteProfile, isoWeekday: Int): String? = worthReminding(profile, profile.weekPlan[isoWeekday])
+
+    /** The same for a date: its own entry (a moved day, "rest today") before the standard week (owner 2026-10-19). */
+    fun plannedEntry(profile: AthleteProfile, date: LocalDate): String? = worthReminding(profile, DayPlans.entry(profile, date))
+
+    /** Climbing entries count as climbing days ([AthleteProfile.trainingReminderOnClimbingDays]). */
+    private fun worthReminding(profile: AthleteProfile, entry: String?): String? = when {
+        entry == null || entry == PLAN_REST -> null
+        entry == PLAN_BOARD || DayPlans.isClimb(entry) -> entry.takeIf { profile.trainingReminderOnClimbingDays }
+        else -> entry
     }
 
     /** Whether a routine entry still names a routine (built-in key or own routine id). */
@@ -91,6 +96,7 @@ internal object TrainingReminderPlan {
     fun title(entry: String, ownRoutines: List<Routine>): TrText? {
         val name: TrText = when {
             entry == PLAN_BOARD -> Tx.t(BOARD_KEY)
+            DayPlans.isClimb(entry) -> Tx.t(CLIMB_KEY)
             entry.startsWith(BUILTIN) ->
                 BuiltinRoutines.byKey(entry.removePrefix(BUILTIN))?.let { Tx.routineName(it) } ?: return null
             else -> ownRoutines.firstOrNull { it.id == entry }?.let { Tx.plain(it.name) } ?: return null
@@ -118,8 +124,8 @@ internal object TrainingReminderPlan {
             if (out.size >= count) break
             val day = first.plus(DatePeriod(days = offset))
             if (day in skipDays) continue
-            val entry = plannedEntry(profile, day.dayOfWeek.isoDayNumber) ?: continue
-            if (entry != PLAN_BOARD && !routineExists(entry, ownRoutineIds)) continue
+            val entry = plannedEntry(profile, day) ?: continue
+            if (entry != PLAN_BOARD && !DayPlans.isClimb(entry) && !routineExists(entry, ownRoutineIds)) continue
             out += PlannedReminder(at(day, minutes), entry)
         }
         return out
