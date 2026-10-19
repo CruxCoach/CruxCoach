@@ -118,6 +118,16 @@ class WorkoutFreeTextTest {
     }
 
     @Test
+    fun `circuit rests survive typos`() {
+        // Device run 2026-10-19: the keyboard turned "nach jeder Runde" into "nach jeder Rande" and the rest was lost.
+        val r = parse("Zirkel 3 Runden: Klimmzüge 8, Liegestütze 15, 90 s Pause nach jeder Rande, 15 s zwichen den Übugen")
+        assertEquals(listOf("pull.pull_up", "push.push_up"), slugs(r))
+        assertTrue(r.lines.all { it.item.roundRestS == 90 && it.item.circuitRestS == 15 }, "${r.lines.map { it.item }}")
+        val en = parse("circuit 4 rounds: pull-ups 6, dips 10, rest 2 min betwen rouns")
+        assertTrue(en.lines.all { it.circuit == 1 && it.item.roundRestS == 120 }, "${en.lines.map { it.item }}")
+    }
+
+    @Test
     fun `a circuit named after its exercises`() {
         val r = parse("Klimmzüge 8, Liegestütze 15 und Sit-ups 20 als Zirkel, 4 Durchgänge")
         assertEquals(listOf("pull.pull_up", "push.push_up", "core.sit_up"), slugs(r))

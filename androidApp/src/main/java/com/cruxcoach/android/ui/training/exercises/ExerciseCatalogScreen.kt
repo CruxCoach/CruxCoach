@@ -236,13 +236,15 @@ fun ExerciseCatalogScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             if (pickForWorkout == null) {
+                // The FAB's merged node carries no text of its own (device dump 2026-10-19): TalkBack needs the label.
+                val fabLabel = stringResource(R.string.trx_create_custom)
                 ExtendedFloatingActionButton(
                     onClick = onCreateCustom,
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
                     text = { Text(stringResource(R.string.trx_create_custom)) },
                     containerColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent,
                     contentColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccent,
-                    modifier = Modifier.testTag("exercise_create_custom"),
+                    modifier = Modifier.testTag("exercise_create_custom").semantics { contentDescription = fabLabel },
                 )
             }
         },

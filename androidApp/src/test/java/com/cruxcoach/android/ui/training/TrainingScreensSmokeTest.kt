@@ -9,6 +9,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -482,6 +483,8 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         assertEquals(7, vm.state.value.week.size)
         render { com.cruxcoach.android.ui.training.workouts.WorkoutsScreen({}, { _, _ -> }, {}, {}, {}, viewModel = vm) }
         scrollTo("workouts_list", hasTestTag("week_calendar"))
+        // Device dump 2026-10-19: the FAB's merged node had no text, so TalkBack only said "button".
+        compose.onNodeWithTag("workouts_new").assert(androidx.compose.ui.test.hasContentDescription("New workout"))
     }
 
     @Test

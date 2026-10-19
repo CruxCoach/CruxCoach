@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.training.athlete
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -104,11 +106,13 @@ fun InjuriesScreen(onBack: () -> Unit, onOpenRoutines: () -> Unit, viewModel: In
         onBack = onBack,
         actions = { InfoButton(stringResource(R.string.tra_injuries_info_title), stringResource(R.string.tra_injuries_info_text)) },
         floatingActionButton = {
+            // The FAB's merged node carries no text of its own (device dump 2026-10-19): TalkBack needs the label.
+            val fabLabel = stringResource(R.string.tra_injury_add)
             ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Default.Add, null) },
                 text = { Text(stringResource(R.string.tra_injury_add)) },
                 containerColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent,
                 contentColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccent,
-                modifier = Modifier.testTag("injury_add"))
+                modifier = Modifier.testTag("injury_add").semantics { contentDescription = fabLabel })
         },
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp),
