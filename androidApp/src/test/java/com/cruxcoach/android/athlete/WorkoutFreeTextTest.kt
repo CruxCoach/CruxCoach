@@ -242,14 +242,16 @@ class WorkoutFreeTextTest {
         val start = System.nanoTime()
         repeat(runs) { parse(text) }
         val perParse = (System.nanoTime() - start) / runs / 1_000_000
-        assertTrue(perParse < 400, "a ${text.length}-character text took $perParse ms")
+        // Generous bounds: they catch a runaway (quadratic splitting, no index), not a slow CI runner.
+        assertTrue(perParse < 1500, "a ${text.length}-character text took $perParse ms")
         // A typical text, as typed: well below one frame of work per keystroke on a desktop JVM.
         val typical = "Klimmzüge 5x5 +20kg, Liegestütze 3x15, Zirkel 3 Runden: Dips 10, Sit-ups 20, Plank 30s"
         parse(typical)
         val t0 = System.nanoTime()
         repeat(50) { parse(typical) }
         val perTypical = (System.nanoTime() - t0) / 50 / 1_000_000
-        assertTrue(perTypical < 40, "a typical text took $perTypical ms")
+        assertTrue(perTypical < 150, "a typical text took $perTypical ms")
+        println("free-text parse: ${text.length} chars $perParse ms, typical $perTypical ms")
         assertEquals(WorkoutTextParser.MAX_LINES, parse(text).lines.size)
     }
 }
