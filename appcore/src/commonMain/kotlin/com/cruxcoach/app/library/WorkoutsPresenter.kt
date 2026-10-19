@@ -8,7 +8,9 @@ import com.cruxcoach.athlete.logic.ReturnState
 import com.cruxcoach.athlete.logic.ReturnToTraining
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.logic.DayActivity
+import com.cruxcoach.athlete.logic.DayPlans
 import com.cruxcoach.athlete.model.PLAN_BOARD
+import com.cruxcoach.athlete.model.PLAN_FREE
 import com.cruxcoach.athlete.model.PLAN_REST
 import com.cruxcoach.athlete.model.PausePeriod
 import com.cruxcoach.athlete.model.Routine
@@ -35,7 +37,10 @@ enum class LibraryDayStatus { DONE, PLANNED, MISSED, PAUSED, REST, FREE }
 /** One day of the current week (Android `WeekDayCell`). */
 data class LibraryWeekCell(
     val date: LocalDate,
-    /** Week-plan entry: routine id ("builtin:<key>" or own), [PLAN_BOARD], [PLAN_REST] or null. */
+    /**
+     * The plan in force: the date's own entry ([AthleteProfile.datePlan]) over the standard week's – a routine id
+     * ("builtin:<key>" or own), [PLAN_BOARD], [PLAN_REST], a climbing day ("climb:<kind>:<intensity>") or null.
+     */
     val planned: String?,
     val activity: DayActivity?,
     val workouts: List<Workout>,
@@ -52,12 +57,15 @@ internal object LibraryWeek {
         activities: Map<String, DayActivity>,
         workouts: List<Workout>,
         pauses: List<PausePeriod>,
+        /** Single dates planned over the standard week ([AthleteProfile.datePlan], owner 2026-10-19). */
+        datePlan: Map<String, String> = emptyMap(),
     ): List<LibraryWeekCell> {
         val monday = today.minus(DatePeriod(days = today.dayOfWeek.isoDayNumber - 1))
         return (0 until 7).map { offset ->
             val date = monday.plus(DatePeriod(days = offset))
             val key = date.toString()
-            val planned = weekPlan[date.dayOfWeek.isoDayNumber]
+            val planned = datePlan[key]?.takeIf { it != PLAN_FREE }
+                ?: weekPlan[date.dayOfWeek.isoDayNumber].takeIf { key !in datePlan }
             val activity = activities[key]
             val dayWorkouts = workouts.filter { it.day == key && !it.isOpen }
             val paused = pauses.any { p ->
@@ -78,10 +86,10 @@ internal object LibraryWeek {
         }
     }
 
-    /** The routine a plan entry stands for; board, rest and free days have none. */
+    /** The routine a plan entry stands for; board, rest, climbing and free days have none. */
     fun plannedRoutine(entry: String?, routines: List<Routine>): Routine? = entry?.let {
         when {
-            it == PLAN_BOARD || it == PLAN_REST -> null
+            it == PLAN_BOARD || it == PLAN_REST || it == PLAN_FREE || DayPlans.isClimb(it) -> null
             it.startsWith("builtin:") -> BuiltinRoutines.byKey(it.removePrefix("builtin:"))
             else -> routines.firstOrNull { r -> r.id == it }
         }
@@ -194,7 +202,8 @@ class WorkoutsPresenter(
         val activities = service.activities(days = ACTIVITY_DAYS)
         val monday = today.minus(DatePeriod(days = today.dayOfWeek.isoDayNumber - 1))
         val sunday = monday.plus(DatePeriod(days = 6))
-        val week = LibraryWeek.build(today, profile.weekPlan, activities, repo.workoutsBetween(monday.toString(), sunday.toString()), pauses)
+        val week = LibraryWeek.build(today, profile.weekPlan, activities, repo.workoutsBetween(monday.toString(), sunday.toString()), pauses,
+            datePlan = profile.datePlan)
         // The week shows even if the re-entry check below fails.
         _state.update { it.copy(today = today, week = week) }
         // Max-finger work before the break decides whether a long ramp's second week allows it again.

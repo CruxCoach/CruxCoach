@@ -10,10 +10,13 @@ import com.cruxcoach.app.library.WorkoutsPresenter
 import com.cruxcoach.app.library.WorkoutsState
 import com.cruxcoach.app.library.catalogLanguage
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
+import com.cruxcoach.app.training.Tx
 import com.cruxcoach.athlete.logic.BuiltinRoutines
+import com.cruxcoach.athlete.logic.DayPlans
 import com.cruxcoach.athlete.logic.ReturnReason
 import com.cruxcoach.athlete.logic.Units
 import com.cruxcoach.athlete.model.PLAN_BOARD
+import com.cruxcoach.athlete.model.PLAN_FREE
 import com.cruxcoach.athlete.model.PLAN_REST
 import com.cruxcoach.athlete.model.Routine
 import com.cruxcoach.athlete.model.UnitSystem
@@ -105,9 +108,10 @@ internal object LibraryTexts {
 
     /** Localized name of a week-plan entry (Android `planEntryLabel`). */
     fun planEntry(entry: String?, routines: List<Routine>): LibraryText = when {
-        entry == null -> key("trwo_plan_free")
+        entry == null || entry == PLAN_FREE -> key("trwo_plan_free")
         entry == PLAN_REST -> key("trwo_plan_rest")
         entry == PLAN_BOARD -> key("trwo_plan_board")
+        DayPlans.isClimb(entry) -> climbPlan(DayPlans.climbOf(entry)!!)
         entry.startsWith("builtin:") -> BuiltinRoutines.byKey(entry.removePrefix("builtin:"))?.let { routineName(it) }
             ?: key("trwo_plan_unknown")
         else -> routines.firstOrNull { it.id == entry }?.let { literal(it.name) } ?: key("trwo_plan_unknown")
@@ -117,8 +121,13 @@ internal object LibraryTexts {
     fun shortPlanEntry(entry: String, routines: List<Routine>): LibraryText = when (entry) {
         PLAN_BOARD -> key("trw_short_board")
         PLAN_REST -> key("trw_short_rest")
-        else -> planEntry(entry, routines)
+        // A seventh of the screen: how hard ("Limit", "Volume"); the sheet says where.
+        else -> DayPlans.climbOf(entry)?.let { key(Tx.climbLevelKey(it.intensity)) } ?: planEntry(entry, routines)
     }
+
+    /** A climbing day as the plan shows it: "Gym bouldering · Limit" (Android `climbPlanLabel`). */
+    fun climbPlan(climb: DayPlans.Climb): LibraryText =
+        join(listOf(key(Tx.climbKindKey(climb.kind)), key(Tx.climbLevelKey(climb.intensity))))
 
     fun dayStatusKey(s: LibraryDayStatus) = "trw_status_" + LibraryKeys.code(s.name)
 }
@@ -157,6 +166,8 @@ class WeekDayUi(
     val shortPlanLabel: LibraryText,
     /** The plan entry is the board ("board"); other entries are routines or rest. */
     val plannedBoard: Boolean,
+    /** A climbing day is planned ("climb:<kind>:<intensity>"): the calendar shows the climbing icon. */
+    val plannedClimb: Boolean,
     val climbingMinutes: Int,
     val climbingEfforts: Int,
     val workouts: List<WeekWorkoutUi>,
@@ -328,6 +339,7 @@ class WorkoutsScreenModel internal constructor(
             planLabel = LibraryTexts.planEntry(cell.planned, s.routines),
             shortPlanLabel = cell.planned?.let { LibraryTexts.shortPlanEntry(it, s.routines) } ?: LibraryTexts.literal(""),
             plannedBoard = cell.planned == PLAN_BOARD,
+            plannedClimb = DayPlans.isClimb(cell.planned),
             climbingMinutes = a?.climbingMinutes ?: 0,
             climbingEfforts = a?.climbingEfforts ?: 0,
             workouts = cell.workouts.map { WeekWorkoutUi(LibraryTexts.workoutTitle(it), it.durationMinutes ?: -1) },
