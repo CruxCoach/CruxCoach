@@ -163,7 +163,7 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
 
     choosing?.let { day ->
         PlanChooserDialog(
-            day = day,
+            title = weekdayName(day),
             current = state.profile.weekPlan[day],
             routines = state.routines,
             onDismiss = { choosing = null },
@@ -205,36 +205,4 @@ private fun ProposalCard(state: WeekPlanState, onApply: () -> Unit) {
             }
         }
     }
-}
-
-@Composable
-private fun PlanChooserDialog(
-    day: Int,
-    current: String?,
-    routines: List<Routine>,
-    onDismiss: () -> Unit,
-    onChoose: (String?) -> Unit,
-) {
-    // null = free day; the other options are stored as their plan entry.
-    val options: List<String?> = listOf<String?>(null, PLAN_REST, PLAN_BOARD) +
-        routines.map { it.id } + BuiltinRoutines.all.map { "builtin:" + it.builtinKey }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(weekdayName(day)) },
-        text = {
-            LazyColumn(Modifier.heightIn(max = 440.dp).testTag("week_plan_chooser")) {
-                items(options, key = { it ?: "free" }) { entry ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { onChoose(entry) }.padding(vertical = 12.dp)
-                            .testTag("week_plan_option_${entry ?: "free"}"),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(planEntryLabel(entry, routines), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        if (entry == current) Icon(Icons.Default.Check, contentDescription = null)
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) } },
-    )
 }

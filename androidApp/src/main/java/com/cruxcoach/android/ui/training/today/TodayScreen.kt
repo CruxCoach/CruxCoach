@@ -98,6 +98,8 @@ fun TodayScreen(
     var showEquipment by rememberSaveable { mutableStateOf(false) }
     var showGoal by rememberSaveable { mutableStateOf(false) }
     var showCheckin by rememberSaveable { mutableStateOf(false) }
+    /** "Tage planen" (owner 2026-10-19). */
+    var planDays by rememberSaveable { mutableStateOf(false) }
     /** An exercise of today's card the athlete tapped to swap. */
     var swapFor by rememberSaveable { mutableStateOf<String?>(null) }
     var menu by remember { mutableStateOf(false) }
@@ -165,7 +167,7 @@ fun TodayScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // One glance: where the week stands, what is still missing, today's training, then the day.
-            item { WeekHeader(state) }
+            item { WeekHeader(state, onPlanDays = { planDays = true }) }
             state.openPause?.let { item(key = "pause") { PauseBanner(onEndPause = viewModel::endPause) } }
             if (state.injuries.isNotEmpty()) item(key = "injury") { InjuryBanner(state, onOpenInjuries) }
             val steps = setupSteps(state)
@@ -305,7 +307,23 @@ fun TodayScreen(
             onHurts = { askWhy = false; showCheckin = true },
             onEquipment = { askWhy = false; showEquipment = true },
             onPlace = { id -> askWhy = false; viewModel.pickPlace(id) },
+            onRestToday = { askWhy = false; viewModel.restToday() },
+            onPlanDays = { askWhy = false; planDays = true },
         )
+    }
+    if (planDays) com.cruxcoach.android.ui.training.workouts.DayPlannerSheet(onDismiss = { planDays = false })
+    // "Heute Ruhetag": one line with "Rückgängig" (owner 2026-10-19).
+    state.restTodayUndo?.let { before ->
+        val text = stringResource(R.string.trt_rest_today_done)
+        LaunchedEffect(before) {
+            viewModel.consumeRestTodayUndo()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoRestToday(before)
+                }
+            }
+        }
     }
     swapFor?.let { slug ->
         val alternatives = remember(slug, state.suggestion) { viewModel.alternatives(slug) }
@@ -496,7 +514,7 @@ private fun SetupChecklistCard(steps: List<SetupStep>, justDone: Boolean, onDism
 // ── Header: week strip and consistency ──────────────────────────────
 
 @Composable
-private fun WeekHeader(state: TodayState) {
+private fun WeekHeader(state: TodayState, onPlanDays: () -> Unit = {}) {
     val streak = state.streak
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -519,9 +537,15 @@ private fun WeekHeader(state: TodayState) {
                     leadingIcon = { Icon(Icons.Default.Shield, null) })
             }
             InfoButton(stringResource(R.string.trt_streak_info_title), stringResource(R.string.trt_streak_info_text))
+            // Plan the days ahead: rest, climbing days, trainings, swaps (owner 2026-10-19).
+            IconButton(onClick = onPlanDays, modifier = Modifier.testTag("today_plan_days")) {
+                Icon(Icons.Default.EditCalendar, contentDescription = stringResource(R.string.trdp_title))
+            }
         }
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        val planLabel = stringResource(R.string.trdp_title)
+        Row(Modifier.fillMaxWidth().clip(CruxCoachDesign.shapes.small).clickable(onClickLabel = planLabel, onClick = onPlanDays)
+            .testTag("today_week_strip"), horizontalArrangement = Arrangement.SpaceBetween) {
             val locale = Locale.getDefault()
             state.week.forEach { day ->
                 val label = java.time.DayOfWeek.of(day.date.dayOfWeek.ordinal + 1).getDisplayName(TextStyle.NARROW, locale)
@@ -543,11 +567,20 @@ private fun WeekHeader(state: TodayState) {
                             .border(if (day.isToday) 2.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
+                        val today = state.today
+                        val ahead = today != null && day.date >= today
                         when {
                             day.climbed && day.trained -> Icon(Icons.Default.DoneAll, null, Modifier.size(16.dp), tint = CruxCoachDesign.colors.onBrandAccent)
                             day.climbed -> Icon(Icons.Default.Terrain, null, Modifier.size(16.dp), tint = CruxCoachDesign.colors.onBrandAccent)
                             day.trained -> Icon(Icons.Default.FitnessCenter, null, Modifier.size(16.dp), tint = CruxCoachDesign.colors.onBrandAccent)
                             day.paused -> Icon(Icons.Default.Bedtime, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            // What is still ahead this week: planned climbing, a planned training, a rest day.
+                            ahead && day.climbPlanned -> Icon(Icons.Default.Terrain, null, Modifier.size(14.dp).testTag("today_week_planned_climb"),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ahead && day.planned == com.cruxcoach.athlete.model.PLAN_REST -> Icon(Icons.Default.Weekend, null, Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ahead && day.planned != null -> Icon(Icons.Default.FitnessCenter, null, Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -1049,6 +1082,8 @@ private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit, onSecondary
 private fun suggestionTitle(state: TodayState): String {
     val s = state.suggestion ?: return ""
     if (s.addOn) return stringResource(R.string.tre_focus_addon)
+    // A planned climbing day is called what it is: "Halle Bouldern · Limit".
+    com.cruxcoach.athlete.logic.DayPlans.climbOf(s.plannedEntry)?.let { return com.cruxcoach.android.ui.training.workouts.climbPlanLabel(it) }
     if (s.focus == SuggestionFocus.PLANNED) {
         state.plannedName?.let { return it }
         s.plannedEntry?.takeIf { it.startsWith("builtin:") }
@@ -1129,6 +1164,11 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.KEPT_CHOICE -> R.string.tre_reason_kept
     SuggestionReason.LEVEL_EASIER_KEPT -> R.string.tre_reason_level_easier_kept
     SuggestionReason.LEVEL_HARDER_KEPT -> R.string.tre_reason_level_harder_kept
+    SuggestionReason.PLANNED_CLIMB -> R.string.trdp_reason_planned_climb
+    SuggestionReason.CLIMB_LIGHTER_ADVISED -> R.string.trdp_reason_lighter
+    SuggestionReason.LIMIT_TOMORROW -> R.string.trdp_reason_limit_tomorrow
+    SuggestionReason.PLANNED_CLIMB_NOT_LOGGED -> R.string.trdp_reason_not_logged
+    SuggestionReason.FINGERS_BEFORE_HARD_DAY -> R.string.trdp_reason_fingers_before
 })
 
 /** A reason with today's details where it has them ("Heute geschont: Schulter …", "Wie meist am Montag: …"). */
@@ -1337,9 +1377,12 @@ private fun DailySuggestionCard(
                     Text(stringResource(R.string.trt_warmup_start))
                 }
             } else {
+                // A planned climbing day: the card holds the warm-up for it (and a short block for afterwards).
+                val climbDay = !s.addOn && com.cruxcoach.athlete.logic.DayPlans.isClimb(s.plannedEntry)
                 Button(onClick = { onStart(title) }, enabled = s.routine.items.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).testTag("today_suggestion_start")) {
-                    Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.trsg_start))
+                    Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp))
+                    Text(stringResource(if (climbDay) R.string.trt_warmup_start else R.string.trsg_start))
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1672,6 +1715,8 @@ private fun NextSuggestionSheet(
     onHurts: () -> Unit,
     onEquipment: () -> Unit,
     onPlace: (String) -> Unit = {},
+    onRestToday: () -> Unit = {},
+    onPlanDays: () -> Unit = {},
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag("today_next_sheet")) {
@@ -1727,6 +1772,17 @@ private fun NextSuggestionSheet(
                 }
                 TextButton(onClick = onEquipment, modifier = Modifier.testTag("today_next_equipment")) {
                     Icon(Icons.Default.FitnessCenter, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_next_equipment))
+                }
+            }
+            // No time today: a rest day, and the days around it planned anew (owner 2026-10-19).
+            Text(stringResource(R.string.trt_next_plan), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onRestToday, enabled = state.suggestion?.plannedEntry != com.cruxcoach.athlete.model.PLAN_REST,
+                    modifier = Modifier.testTag("today_rest_today")) {
+                    Icon(Icons.Default.Weekend, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_rest_today))
+                }
+                OutlinedButton(onClick = onPlanDays, modifier = Modifier.testTag("today_next_plan_days")) {
+                    Icon(Icons.Default.EditCalendar, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trdp_title))
                 }
             }
         }

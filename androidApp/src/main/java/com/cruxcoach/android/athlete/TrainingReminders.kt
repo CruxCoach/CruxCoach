@@ -86,13 +86,17 @@ object TrainingReminders {
      * ("builtin:<key>" or an own routine), [PLAN_BOARD], or null for a free or
      * rest day (and for board days when those are not wanted).
      */
-    internal fun plannedEntry(profile: AthleteProfile, isoWeekday: Int): String? {
-        val entry = profile.weekPlan[isoWeekday] ?: return null
-        return when (entry) {
-            PLAN_REST -> null
-            PLAN_BOARD -> entry.takeIf { profile.trainingReminderOnClimbingDays }
-            else -> entry
-        }
+    internal fun plannedEntry(profile: AthleteProfile, isoWeekday: Int): String? =
+        worthReminding(profile, profile.weekPlan[isoWeekday])
+
+    /** The same for a date: its own entry (a moved day, "rest today") before the standard week (owner 2026-10-19). */
+    internal fun plannedEntry(profile: AthleteProfile, date: LocalDate): String? =
+        worthReminding(profile, com.cruxcoach.athlete.logic.DayPlans.entry(profile, kotlinx.datetime.LocalDate.parse(date.toString())))
+
+    private fun worthReminding(profile: AthleteProfile, entry: String?): String? = when {
+        entry == null || entry == PLAN_REST -> null
+        entry == PLAN_BOARD || com.cruxcoach.athlete.logic.DayPlans.isClimb(entry) -> entry.takeIf { profile.trainingReminderOnClimbingDays }
+        else -> entry
     }
 }
 
@@ -110,7 +114,7 @@ class WeekPlanReminderWorker @AssistedInject constructor(
         val profile = repo.profile()
         if (profile.trainingReminderEnabled) {
             val today = LocalDate.now()
-            val entry = TrainingReminders.plannedEntry(profile, today.dayOfWeek.value)
+            val entry = TrainingReminders.plannedEntry(profile, today)
             val quiet = entry == null ||
                 repo.openPause() != null ||
                 repo.openWorkout() != null ||
@@ -118,6 +122,7 @@ class WeekPlanReminderWorker @AssistedInject constructor(
             if (!quiet && entry != null) {
                 val name = when {
                     entry == PLAN_BOARD -> applicationContext.getString(R.string.trw_notify_board)
+                    com.cruxcoach.athlete.logic.DayPlans.isClimb(entry) -> applicationContext.getString(R.string.trw_notify_climb)
                     entry.startsWith("builtin:") -> BuiltinRoutines.byKey(entry.removePrefix("builtin:"))
                         ?.let { r -> builtinRoutineNameRes(r.builtinKey)?.let { applicationContext.getString(it) } ?: r.name }
                     else -> repo.routines().firstOrNull { it.id == entry }?.name

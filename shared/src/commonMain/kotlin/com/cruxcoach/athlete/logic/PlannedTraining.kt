@@ -36,7 +36,17 @@ object PlannedTraining {
     /** A planned board day before Today has computed its board plan: the build-week session. */
     const val BOARD_DEFAULT_MINUTES = 60
 
-    enum class Kind { BOARD, OFF_WALL }
+    enum class Kind { BOARD, OFF_WALL, CLIMB }
+
+    /** Minutes a planned climbing day counts with (gym, rope, rock): a volume day is long, a limit day short and hard. */
+    fun climbMinutes(intensity: ClimbIntensity): Int = when (intensity) {
+        ClimbIntensity.LIGHT -> 60
+        ClimbIntensity.VOLUME -> 120
+        ClimbIntensity.HARD, ClimbIntensity.LIMIT -> 90
+    }
+
+    private fun climbSummary(day: LocalDate, climb: DayPlans.Climb) =
+        Summary(day.toString(), Kind.CLIMB, climbMinutes(climb.intensity), climb.intensity.name)
 
     /** Today's plan as stored; [kind] null = nothing planned (a rest day, or only a free day's offer). */
     @Serializable
@@ -49,7 +59,7 @@ object PlannedTraining {
     private val PLAN_REASONS = setOf(
         SuggestionReason.WEEK_PLAN, SuggestionReason.WEEK_PLAN_BOARD, SuggestionReason.CLIMBING_DAY,
         SuggestionReason.CHOSEN_TODAY, SuggestionReason.USUAL_KIND, SuggestionReason.MORE_TIME_TODAY,
-        SuggestionReason.NO_TIME_TODAY,
+        SuggestionReason.NO_TIME_TODAY, SuggestionReason.PLANNED_CLIMB,
     )
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
@@ -60,6 +70,8 @@ object PlannedTraining {
         if (s == null || s.focus == SuggestionFocus.REST) return none
         val planned = (s.plannedEntry != null && s.plannedEntry != PLAN_REST) || s.reasons.any { it in PLAN_REASONS }
         if (!planned) return none
+        // A planned climbing day: the climbing is what the day's targets follow, not the short block after it.
+        DayPlans.climbOf(s.plannedEntry)?.let { return climbSummary(day, it) }
         val board = s.boardPlan
         return when {
             board != null -> Summary(day.toString(), Kind.BOARD, board.minutes, board.type.name)
@@ -77,11 +89,13 @@ object PlannedTraining {
         pauses: List<PausePeriod> = emptyList(),
     ): Summary {
         val weekday = day.dayOfWeek.isoDayNumber
-        val entry = profile.weekPlan[weekday]
+        val entry = DayPlans.entry(profile, day)
         val none = Summary(day.toString())
+        val climb = DayPlans.climbOf(entry)
         return when {
             paused(pauses, day) || entry == PLAN_REST -> none
-            entry == PLAN_BOARD || (entry == null && weekday in profile.coach.climbingDays) ->
+            climb != null -> climbSummary(day, climb)
+            entry == PLAN_BOARD || (entry == null && !DayPlans.isOverridden(profile, day) && weekday in profile.coach.climbingDays) ->
                 Summary(day.toString(), Kind.BOARD, BOARD_DEFAULT_MINUTES)
             entry != null -> {
                 val routine = if (entry.startsWith("builtin:")) BuiltinRoutines.byKey(entry.removePrefix("builtin:"))
@@ -100,6 +114,8 @@ object PlannedTraining {
         val activity = when (kind) {
             Kind.BOARD -> DayActivity(summary.day, climbingMinutes = minutes, climbIntensity = boardIntensity(summary.boardType))
             Kind.OFF_WALL -> DayActivity(summary.day, workoutMinutes = minutes, workoutLoad = minutes * OFF_WALL_RPE)
+            Kind.CLIMB -> DayActivity(summary.day, climbingMinutes = minutes,
+                climbIntensity = ClimbIntensity.entries.firstOrNull { it.name == summary.boardType } ?: ClimbIntensity.VOLUME)
         }
         return Planned(kind, minutes, activity)
     }
@@ -110,7 +126,7 @@ object PlannedTraining {
 
     /** Done: climbing logged on a board day, a finished training otherwise. */
     fun done(kind: Kind, real: DayActivity?): Boolean = real != null && when (kind) {
-        Kind.BOARD -> real.climbingMinutes > 0 || real.climbingEfforts > 0
+        Kind.BOARD, Kind.CLIMB -> real.climbingMinutes > 0 || real.climbingEfforts > 0
         Kind.OFF_WALL -> real.workoutMinutes > 0
     }
 
@@ -135,9 +151,8 @@ object PlannedTraining {
     fun tomorrowHard(profile: AthleteProfile, today: LocalDate, pauses: List<PausePeriod> = emptyList()): Boolean {
         val tomorrow = today.plus(DatePeriod(days = 1))
         if (paused(pauses, tomorrow)) return false
-        val weekday = tomorrow.dayOfWeek.isoDayNumber
-        val entry = profile.weekPlan[weekday]
-        return entry == PLAN_BOARD || (entry == null && weekday in profile.coach.climbingDays)
+        // Tomorrow's own date entry first (a moved day), then the standard week; a light climbing day is no hard day.
+        return DayPlans.climbingPlanned(profile, tomorrow) && DayPlans.climbIntensity(profile, tomorrow) != ClimbIntensity.LIGHT
     }
 
     /** A pause (illness, injury, holiday) covers [day]. */

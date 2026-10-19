@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -119,7 +120,8 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
         val activities = service.activities(days = ACTIVITY_DAYS)
         val monday = today.minus(kotlinx.datetime.DatePeriod(days = today.dayOfWeek.isoDayNumber - 1))
         val sunday = monday.plus(kotlinx.datetime.DatePeriod(days = 6))
-        val week = buildWeek(today, profile.weekPlan, activities, repo.workoutsBetween(monday.toString(), sunday.toString()), pauses)
+        val week = buildWeek(today, profile.weekPlan, activities, repo.workoutsBetween(monday.toString(), sunday.toString()), pauses,
+            datePlan = profile.datePlan)
         // The week shows even if the re-entry check below fails.
         _state.update { it.copy(today = today, week = week) }
         // Max-finger work before the break decides whether a long ramp's second week allows it again.
@@ -189,6 +191,8 @@ internal fun planEntryLabel(entry: String?, routines: List<Routine>): String = w
     entry == null -> stringResource(R.string.trwo_plan_free)
     entry == PLAN_REST -> stringResource(R.string.trwo_plan_rest)
     entry == PLAN_BOARD -> stringResource(R.string.trwo_plan_board)
+    entry == PLAN_FREE -> stringResource(R.string.trwo_plan_free)
+    com.cruxcoach.athlete.logic.DayPlans.isClimb(entry) -> climbPlanLabel(com.cruxcoach.athlete.logic.DayPlans.climbOf(entry)!!)
     entry.startsWith("builtin:") -> BuiltinRoutines.byKey(entry.removePrefix("builtin:"))?.let { routineName(it) }
         ?: stringResource(R.string.trwo_plan_unknown)
     else -> routines.firstOrNull { it.id == entry }?.name ?: stringResource(R.string.trwo_plan_unknown)
@@ -218,6 +222,7 @@ fun WorkoutsScreen(
     val lang = catalogLanguage()
     var deleting by remember { mutableStateOf<Routine?>(null) }
     var dayCell by remember { mutableStateOf<WeekDayCell?>(null) }
+    var planDays by rememberSaveable { mutableStateOf(false) }
     var logClimbing by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { viewModel.refreshWeek() }
     val copySuffix = stringResource(R.string.trwo_copy_suffix)
@@ -262,7 +267,8 @@ fun WorkoutsScreen(
             if (state.week.isNotEmpty()) {
                 item(key = "week") {
                     WeekCalendarCard(state.week, state.routines, onDayClick = { dayCell = it },
-                        onEditPlan = onOpenWeekPlan, planEmpty = state.profile.weekPlan.isEmpty())
+                        onEditPlan = onOpenWeekPlan, planEmpty = state.profile.weekPlan.isEmpty(),
+                        onPlanDays = { planDays = true })
                 }
             }
             item(key = "volume") { volumeCard() }
@@ -337,7 +343,7 @@ fun WorkoutsScreen(
     dayCell?.let { cell ->
         val planned = cell.planned?.let { entry ->
             when {
-                entry == PLAN_BOARD || entry == PLAN_REST -> null
+                entry == PLAN_BOARD || entry == PLAN_REST || com.cruxcoach.athlete.logic.DayPlans.isClimb(entry) -> null
                 entry.startsWith("builtin:") -> BuiltinRoutines.byKey(entry.removePrefix("builtin:"))
                 else -> state.routines.firstOrNull { it.id == entry }
             }
@@ -357,8 +363,11 @@ fun WorkoutsScreen(
             },
             onLogClimbing = { dayCell = null; logClimbing = true },
             onOpenHistory = { dayCell = null; onOpenHistory() },
+            onPlanDays = { dayCell = null; planDays = true },
         )
     }
+    // Plan single days: rest, a climbing day, a training, or swap two days (owner 2026-10-19).
+    if (planDays) DayPlannerSheet(onDismiss = { planDays = false; viewModel.refreshWeek() })
     if (logClimbing) {
         com.cruxcoach.android.ui.training.today.ClimbingDaySheet(onDismiss = { logClimbing = false; viewModel.refreshWeek() })
     }

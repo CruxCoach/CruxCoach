@@ -702,7 +702,11 @@ private fun OwnTargetNotes(state: FuelState, showEnergy: Boolean) {
 /** "board 60 min" / "training 45 min": today's planned training in the day's header and the carbohydrate info. */
 @Composable
 private fun plannedTrainingText(p: com.cruxcoach.athlete.logic.PlannedTraining.Planned): String = stringResource(
-    if (p.kind == com.cruxcoach.athlete.logic.PlannedTraining.Kind.BOARD) R.string.trf_planned_board else R.string.trf_planned_training,
+    when (p.kind) {
+        com.cruxcoach.athlete.logic.PlannedTraining.Kind.BOARD -> R.string.trf_planned_board
+        com.cruxcoach.athlete.logic.PlannedTraining.Kind.CLIMB -> R.string.trf_planned_climb
+        com.cruxcoach.athlete.logic.PlannedTraining.Kind.OFF_WALL -> R.string.trf_planned_training
+    },
     p.minutes,
 )
 
