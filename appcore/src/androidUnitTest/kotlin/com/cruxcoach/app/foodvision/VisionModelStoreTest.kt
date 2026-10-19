@@ -174,7 +174,12 @@ class VisionModelStoreTest {
         downloads.ids().forEach { downloads.complete(it) }
 
         val relaunched = store()
-        assertTrue(relaunched.state.value is State.Downloading)
+        // The relaunched store picks the download up at once: it starts as Downloading, and its follower may
+        // already be verifying (or have verified) the finished transfers by the time this line reads the state
+        // (a race the full suite hit). Missing or Failed would mean the download was lost.
+        val first = relaunched.state.value
+        assertTrue("after the relaunch: $first",
+            first is State.Downloading || first is State.Verifying || first is State.Ready)
         val ready = settled(relaunched) as State.Ready
         assertEquals(model, ready.model)
         assertEquals(listOf("foodvision-tiny-p.gguf", "foodvision-tiny-w.gguf"), leftovers())
