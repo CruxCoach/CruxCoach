@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The usual workout (owner 2026-10-19: always the same training, only the progression). -->
+    <string name="trhb_reason_weekday">As usual on %1$s: “%2$s”, each exercise with its next step.</string>
+    <string name="trhb_reason_usual">Your usual workout “%1$s”, each exercise with its next step.</string>
+    <string name="trhb_reason_generic">Your usual workout, each exercise with its next step.</string>
+    <string name="trhb_offer">You usually do “%2$s” on %1$s. Put it into your standard week?</string>
+    <string name="trhb_offer_yes">Add to week</string>
+    <string name="trhb_offer_no">No thanks</string>
+    <string name="trhb_taken">In your standard week: %1$s – %2$s</string>
+    <string name="trlr_habits">Usual workouts</string>
+    <string name="trlr_habit_usual">in most trainings lately</string>
+    <string name="trlr_habit_times">%1$s · %2$d times</string>
+</resources>

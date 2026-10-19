@@ -213,6 +213,11 @@ fun TodayScreen(
                 state.levelOffer?.let { offer ->
                     item(key = "level_offer") { LevelOfferCard(offer, onAnswer = viewModel::answerLevelOffer) }
                 }
+                state.habitOffer?.let { offer ->
+                    item(key = "habit_offer") {
+                        HabitOfferCard(offer, suggestionTitle(state), onYes = viewModel::acceptHabitOffer, onNo = viewModel::declineHabitOffer)
+                    }
+                }
             }
             // "Your logbook shows 7a – take it over?" once per grade.
             state.gradeOffer?.let { grade -> item(key = "grade_offer") { GradeOfferCard(grade, onAnswer = viewModel::answerGradeOffer) } }
@@ -312,6 +317,20 @@ fun TodayScreen(
         )
     }
     if (planDays) com.cruxcoach.android.ui.training.workouts.DayPlannerSheet(onDismiss = { planDays = false })
+    // The usual workout taken into the standard week: one line with "Rückgängig".
+    state.habitTaken?.let { taken ->
+        val day = java.time.DayOfWeek.of(taken.isoDay).getDisplayName(TextStyle.FULL, Locale.getDefault())
+        val text = stringResource(R.string.trhb_taken, day, suggestionTitle(state))
+        LaunchedEffect(taken) {
+            viewModel.consumeHabitTaken()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoHabitTaken(taken)
+                }
+            }
+        }
+    }
     // "Heute Ruhetag": one line with "Rückgängig" (owner 2026-10-19).
     state.restTodayUndo?.let { before ->
         val text = stringResource(R.string.trt_rest_today_done)
@@ -1174,6 +1193,7 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.LIMIT_TOMORROW -> R.string.trdp_reason_limit_tomorrow
     SuggestionReason.PLANNED_CLIMB_NOT_LOGGED -> R.string.trdp_reason_not_logged
     SuggestionReason.FINGERS_BEFORE_HARD_DAY -> R.string.trdp_reason_fingers_before
+    SuggestionReason.USUAL_ROUTINE_WEEKDAY, SuggestionReason.USUAL_ROUTINE -> R.string.trhb_reason_generic
 })
 
 /** A reason with today's details where it has them ("Heute geschont: Schulter …", "Wie meist am Montag: …"). */
@@ -1189,6 +1209,9 @@ private fun suggestionReasonText(reason: SuggestionReason, state: TodayState): S
     if (reason == SuggestionReason.USUAL_MINUTES && usualMinutes != null && weekday != null) {
         return stringResource(R.string.trt_reason_usual_minutes, weekday, usualMinutes)
     }
+    // The usual workout says which and why: "Wie meist am Montag: „Push-Tag“, jede Übung mit ihrem nächsten Schritt."
+    if (reason == SuggestionReason.USUAL_ROUTINE_WEEKDAY && weekday != null) return stringResource(R.string.trhb_reason_weekday, weekday, suggestionTitle(state))
+    if (reason == SuggestionReason.USUAL_ROUTINE) return stringResource(R.string.trhb_reason_usual, suggestionTitle(state))
     // Planned for this date only ("Heute Ruhetag", a moved day): not the standard week's doing (device check 2026-10-19).
     if (state.today?.let { com.cruxcoach.athlete.logic.DayPlans.isOverridden(state.profile, it) } == true) {
         when (reason) {
@@ -1673,6 +1696,21 @@ internal fun LevelOfferCard(offer: com.cruxcoach.athlete.logic.PreferenceLearnin
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { onAnswer(false) }, modifier = Modifier.testTag("today_level_offer_no")) { Text(stringResource(R.string.trc_no)) }
                 TextButton(onClick = { onAnswer(true) }, modifier = Modifier.testTag("today_level_offer_yes")) { Text(stringResource(R.string.trc_yes)) }
+            }
+        }
+    }
+}
+
+/** "Am Montag machst du meist „Push-Tag“. Fest in die Standardwoche übernehmen?" (owner 2026-10-19). */
+@Composable
+private fun HabitOfferCard(offer: HabitOffer, name: String, onYes: () -> Unit, onNo: () -> Unit) {
+    val day = java.time.DayOfWeek.of(offer.isoDay).getDisplayName(TextStyle.FULL, Locale.getDefault())
+    OutlinedCard(Modifier.fillMaxWidth().testTag("today_habit_offer")) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp)) {
+            Text(stringResource(R.string.trhb_offer, day, name), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onNo, modifier = Modifier.testTag("today_habit_offer_no")) { Text(stringResource(R.string.trhb_offer_no)) }
+                TextButton(onClick = onYes, modifier = Modifier.testTag("today_habit_offer_yes")) { Text(stringResource(R.string.trhb_offer_yes)) }
             }
         }
     }

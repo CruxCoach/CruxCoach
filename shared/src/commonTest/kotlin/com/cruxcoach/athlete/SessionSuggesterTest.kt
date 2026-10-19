@@ -908,4 +908,51 @@ class SessionSuggesterTest {
         assertTrue(s.routine.items.any { !it.warmup && catalog[it.slug]?.category == ExerciseCategoryV2.FINGER }, "${slugs(s)}")
         assertTrue(SuggestionReason.FINGERS_BEFORE_HARD_DAY in s.reasons, "${s.reasons}")
     }
+
+    // ── The usual workout (owner 2026-10-19) ─────────────────────────
+
+    private val pushRoutine = Routine("push", "Push-Tag", items = listOf(RoutineItem("push.push_up", sets = 4, repsMin = 12, repsMax = 12),
+        RoutineItem("antagonist.face_pull", sets = 3, repsMin = 15, repsMax = 15)))
+    private val weekdayHabit = PreferenceLearning.Habit("push", PreferenceLearning.HabitKind.WEEKDAY, 1, 3)
+
+    @Test
+    fun `the usual workout is today's suggestion on a free day, as the athlete does it`() {
+        val s = SessionSuggester.suggest(input(routines = listOf(pushRoutine)).copy(habit = weekdayHabit))
+        assertEquals(SuggestionFocus.PLANNED, s.focus, "${s.reasons}")
+        assertEquals(SuggestionReason.USUAL_ROUTINE_WEEKDAY, s.reasons.first())
+        assertEquals("push", s.plannedEntry)
+        assertEquals(listOf("push.push_up", "antagonist.face_pull"), slugs(s))
+        assertEquals(4, s.routine.items.first().sets)
+        val usual = SessionSuggester.suggest(input(routines = listOf(pushRoutine))
+            .copy(habit = weekdayHabit.copy(kind = PreferenceLearning.HabitKind.USUAL, isoDay = null)))
+        assertEquals(SuggestionReason.USUAL_ROUTINE, usual.reasons.first())
+    }
+
+    @Test
+    fun `the plan and today's own choice come first, a learned kind does not`() {
+        val planned = profile.copy(weekPlan = mapOf(1 to "builtin:" + BuiltinRoutines.FINGER_BASICS))
+        val withPlan = SessionSuggester.suggest(input(profile = planned, routines = listOf(pushRoutine)).copy(habit = weekdayHabit))
+        assertEquals(SuggestionReason.WEEK_PLAN, withPlan.reasons.first())
+        val chosen = SessionSuggester.suggest(input(routines = listOf(pushRoutine)).copy(habit = weekdayHabit, wish = SuggestionFocus.LEGS_CORE))
+        assertEquals(SuggestionFocus.LEGS_CORE, chosen.focus)
+        val learned = SessionSuggester.suggest(input(routines = listOf(pushRoutine))
+            .copy(habit = weekdayHabit, wish = SuggestionFocus.LEGS_CORE, wishLearned = true))
+        assertEquals(SuggestionReason.USUAL_ROUTINE_WEEKDAY, learned.reasons.first(), "${learned.reasons}")
+        // A climbing day planned today is no free day.
+        val climb = profile.copy(datePlan = mapOf(monday.toString() to climb(ClimbIntensity.VOLUME)))
+        assertEquals(SuggestionReason.PLANNED_CLIMB,
+            SessionSuggester.suggest(input(profile = climb, routines = listOf(pushRoutine)).copy(habit = weekdayHabit)).reasons.first())
+    }
+
+    @Test
+    fun `variety zero keeps the exercises done lately instead of new ones`() {
+        // One core slot: the hollow hold done two days ago, the dead bug never. At variety 0 nothing pulls towards the
+        // new any more, so the hollow hold leads whatever the shuffle (with the old half novelty the dead bug could win).
+        val fixed = profile.copy(coach = profile.coach.copy(variety = 0))
+        repeat(12) { v ->
+            val s = SessionSuggester.suggest(input(profile = fixed, variant = v)
+                .copy(wish = SuggestionFocus.PULL_PUSH, lastTrained = mapOf("core.hollow_hold" to monday.minus(DatePeriod(days = 2)))))
+            assertTrue("core.hollow_hold" in slugs(s) && "core.dead_bug" !in slugs(s), "variant $v: ${slugs(s)}")
+        }
+    }
 }
