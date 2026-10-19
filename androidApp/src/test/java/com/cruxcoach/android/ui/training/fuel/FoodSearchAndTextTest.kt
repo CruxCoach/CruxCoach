@@ -17,6 +17,8 @@ import com.cruxcoach.android.foodvision.VisionModelStore
 import com.cruxcoach.athlete.model.Meal
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,7 +39,25 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         context.getDatabasePath(OffRepository.DB_NAME).delete()
     }
 
-    private fun render(products: OffRepository = OffRepository(context)) {
+    /**
+     * A one-line product table instead of the bundled 679k products: unpacking and indexing the real one took longer
+     * than a test's wait on a busy CI runner (publisher run 39302807924, "a food people count is offered by the piece").
+     */
+    private fun smallProducts() = OffRepository(context).apply {
+        source = { "# version: t\n4000000000024\tTestriegel\t\tTestmarke\t400\t20\t15\t45\t50\t1\n".reader().buffered() }
+        assetVersion = { "t" }
+    }
+
+    private val made = mutableListOf<OffRepository>()
+
+    @After
+    fun dropProducts() {
+        runBlocking { made.forEach { it.remove() } }
+        context.getDatabasePath(OffRepository.DB_NAME).delete()
+    }
+
+    private fun render(products: OffRepository = smallProducts()) {
+        made += products
         val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context), products).tracked()
         render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
