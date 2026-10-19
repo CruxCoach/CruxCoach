@@ -41,6 +41,10 @@ class WorkoutPageUi(
     val total: Int,
     val open: Boolean,
     val shown: Boolean,
+    /** Every set is logged per side: [setsDone]/[setsTotal] count sets per side ("0 of 2 sets per side"). */
+    val perSide: Boolean,
+    val setsDone: Int,
+    val setsTotal: Int,
 )
 
 /** One typed line as it will be added (Android `WorkoutTextSheet`): a catalogue exercise or a new one. */
@@ -474,7 +478,8 @@ private class PlayerMapper(
             title = st.workout?.let { Tx.workoutTitle(it) } ?: Tx.t("trp_title"),
             hasWorkout = st.workout != null,
             pages = st.pages.mapIndexed { i, p ->
-                WorkoutPageUi(i, members(p).joinToString(" → ") { name(it.exerciseSlug) }, p.done, p.total, p.open, i == st.pageIndex)
+                WorkoutPageUi(i, members(p).joinToString(" → ") { name(it.exerciseSlug) }, p.done, p.total, p.open, i == st.pageIndex,
+                    p.perSide, p.setsDone, p.setsTotal)
             },
             pageIndex = st.pageIndex,
             browsing = st.browsing,

@@ -232,7 +232,7 @@ private struct WorkoutPlayerContent: View {
                             .frame(maxWidth: .infinity, minHeight: 32)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(L("trpg_page_cd", Int(page.index) + 1, ui.pages.count, page.names, Int(page.done), Int(page.total)))
+                        .accessibilityLabel(playerPageLabel(page, count: ui.pages.count))
                     }
                 }
                 .padding(.horizontal, 12)
@@ -492,7 +492,7 @@ private struct WorkoutPlayerContent: View {
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(page.names).fontWeight(page.shown ? .semibold : .regular).lineLimit(2)
-                                Text(L("trpg_page_progress", Int(page.done), Int(page.total))).font(.caption).foregroundStyle(.secondary)
+                                Text(playerPageProgress(page)).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             if !page.open { Image(systemName: "checkmark.circle.fill").foregroundStyle(TrainingStyle.positive) }
@@ -1210,4 +1210,16 @@ private struct WorkoutHangTimerView: View {
     private func foreground(_ phase: String) -> Color {
         phase == "work" ? .white : .primary
     }
+}
+
+/// "Exercise 2 of 5: …, 0 of 2 sets per side": per-side exercises count sets per side (Android D47).
+private func playerPageLabel(_ page: WorkoutPageUi, count: Int) -> String {
+    let key: String = page.perSide ? "trpg_page_cd_sides" : "trpg_page_cd"
+    let number: Int = Int(page.index) + 1
+    return L(key, number, count, page.names, Int(page.setsDone), Int(page.setsTotal))
+}
+
+private func playerPageProgress(_ page: WorkoutPageUi) -> String {
+    let key: String = page.perSide ? "trpg_page_progress_sides" : "trpg_page_progress"
+    return L(key, Int(page.setsDone), Int(page.setsTotal))
 }
