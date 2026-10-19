@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Einzelne Tage über die Standardwoche planen (Besitzer 2026-10-19). -->
+    <string name="trdp_title">Tage planen</string>
+    <string name="trdp_intro">Tipp einen Tag an, um ihn zu planen oder zu tauschen. Die freien Tage plant der Coach um deine Klettertage herum.</string>
+    <string name="trdp_today">Heute</string>
+    <string name="trdp_tomorrow">Morgen</string>
+    <string name="trdp_free">Frei – der Coach entscheidet</string>
+    <string name="trdp_usual_climb">Üblicher Klettertag</string>
+    <string name="trdp_only_this_day">nur dieser Tag</string>
+    <string name="trdp_standard">Wie in der Standardwoche: %1$s</string>
+    <string name="trdp_change_day">Diesen Tag anders planen</string>
+    <string name="trdp_changed">Plan geändert.</string>
+    <string name="trdp_climb">Klettertag</string>
+    <string name="trdp_climb_where">Wo</string>
+    <string name="trdp_climb_how">Wie hart</string>
+    <string name="trdp_climb_apply">Klettertag planen</string>
+    <string name="trdp_swap">Tauschen mit</string>
+    <string name="trdp_move_offer">%2$s: %1$s entfällt. Verschieben auf %3$s?</string>
+    <string name="trdp_move_yes">Verschieben</string>
+    <string name="trdp_move_no">Weglassen</string>
+    <string name="trdp_hint_after_hard">Coach: Erholung nach dem harten Tag, keine Maximalkraft für die Finger</string>
+    <string name="trdp_hint_before_limit">Coach: Beine und Rumpf, Finger und Zug bleiben frisch für den Limit-Tag</string>
+    <string name="trdp_hint_before_hard">Coach: ohne Fingertraining, frisch für den nächsten Tag</string>
+    <string name="trdp_hint_open">Der Coach entscheidet am Tag</string>
+    <string name="trdp_hint_paused">Pause</string>
+    <string name="trdp_hint_climb">Aufwärmen davor, danach ein kurzer Block</string>
+    <string name="trdp_hint_climb_only">Aufwärmen davor</string>
+    <string name="trdp_warn_back_to_back">%1$s und %2$s sind beide hart. Die Finger brauchen rund zwei Tage: Mach einen davon leichter oder leg einen Tag dazwischen.</string>
+    <string name="trdp_warn_fingers_before">%1$s: Fingertraining am Tag vor einem harten Tag (%2$s). Die Finger gehen müde hinein – tausch die Tage, wenn du magst.</string>
+    <string name="trdp_reason_planned_climb">Heute ist Klettern geplant: Aufwärmen davor, danach höchstens ein kurzer Block.</string>
+    <string name="trdp_reason_lighter">Deine Finger erholen sich noch: Heute lieber Volumen als hart oder Limit.</string>
+    <string name="trdp_reason_limit_tomorrow">Morgen ist Limit-Tag: Heute Beine und Rumpf, Finger und Zug bleiben frisch.</string>
+    <string name="trdp_reason_not_logged">Gestern war ein harter Klettertag geplant, eingetragen ist nichts. Trag ihn ein, dann plant der Coach die Erholung mit.</string>
+    <string name="trdp_reason_fingers_before">Dein Plan hat heute Fingertraining, morgen ist ein harter Tag: Die Finger gehen müde hinein. Tausch die Tage, wenn du magst.</string>
+    <string name="trt_next_plan">Planen</string>
+    <string name="trt_rest_today">Heute Ruhetag</string>
+    <string name="trt_rest_today_done">Heute ist jetzt Ruhetag.</string>
+    <string name="trf_planned_climb">Klettern %1$d min</string>
+    <string name="trw_notify_climb">Klettertag</string>
+</resources>

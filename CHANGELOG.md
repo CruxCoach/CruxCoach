@@ -336,6 +336,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Collections survive app restarts and stay separate per physical board.
   Finish cleaning to restore the previous display and optionally reset the
   collection; an active-mode button keeps the controls accessible.
+- Plan days: today and the next two weeks, one tap per day – rest day, a
+  climbing day (gym bouldering, gym rope, rock or other; easy, volume, hard or
+  limit), a board session, a training, or swap two days. A change holds for
+  that date only; the standard week stays. The coach fits the free days around
+  the climbing: no finger training before a hard day, legs and core before a
+  limit day, recovery after it, and it says so in the planner. Two hard days in
+  a row or finger training before one are pointed out, nothing is locked. A
+  training that gives way is offered the next free day that fits it. "Rest day
+  today" sits in "Another suggestion", with Undo. On a planned climbing day
+  Today shows its warm-up and a short block for afterwards, and the nutrition
+  targets count the climbing.
 
 ### Changed
 - The review after a photo or a typed meal corrects amounts in one tap:

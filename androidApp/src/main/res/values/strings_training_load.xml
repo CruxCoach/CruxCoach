@@ -143,7 +143,7 @@
     <string name="trl_kind_other">Other</string>
     <string name="trl_intensity_light">Easy</string>
     <string name="trl_intensity_light_hint">well below your flash level, technique or recovery</string>
-    <string name="trl_intensity_volume">Moderate</string>
+    <string name="trl_intensity_volume">Volume</string>
     <string name="trl_intensity_volume_hint">many routes around your flash level</string>
     <string name="trl_intensity_hard">Hard</string>
     <string name="trl_intensity_hard_hint">close to your working grade, several hard tries</string>

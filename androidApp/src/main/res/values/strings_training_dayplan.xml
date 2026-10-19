@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Plan single days over the standard week (owner 2026-10-19). -->
+    <string name="trdp_title">Plan days</string>
+    <string name="trdp_intro">Tap a day to plan or swap it. The coach fits the free days around your climbing days.</string>
+    <string name="trdp_today">Today</string>
+    <string name="trdp_tomorrow">Tomorrow</string>
+    <string name="trdp_free">Free – the coach decides</string>
+    <string name="trdp_usual_climb">Usual climbing day</string>
+    <string name="trdp_only_this_day">this day only</string>
+    <string name="trdp_standard">As in the standard week: %1$s</string>
+    <string name="trdp_change_day">Plan this day differently</string>
+    <string name="trdp_changed">Plan changed.</string>
+    <string name="trdp_climb">Climbing day</string>
+    <string name="trdp_climb_where">Where</string>
+    <string name="trdp_climb_how">How hard</string>
+    <string name="trdp_climb_apply">Plan climbing day</string>
+    <string name="trdp_swap">Swap with</string>
+    <string name="trdp_move_offer">%2$s: %1$s is off. Move it to %3$s?</string>
+    <string name="trdp_move_yes">Move</string>
+    <string name="trdp_move_no">Leave out</string>
+    <string name="trdp_hint_after_hard">Coach: recovery after the hard day, no maximal finger work</string>
+    <string name="trdp_hint_before_limit">Coach: legs and core, fingers and pulling stay fresh for the limit day</string>
+    <string name="trdp_hint_before_hard">Coach: no finger training, fresh for the next day</string>
+    <string name="trdp_hint_open">The coach decides on the day</string>
+    <string name="trdp_hint_paused">Pause</string>
+    <string name="trdp_hint_climb">Warm-up before, a short block after</string>
+    <string name="trdp_hint_climb_only">Warm-up before</string>
+    <string name="trdp_warn_back_to_back">%1$s and %2$s are both hard. Fingers need about two days: make one of them easier or put a day in between.</string>
+    <string name="trdp_warn_fingers_before">%1$s: finger training the day before a hard day (%2$s). The fingers go in tired – swap the days if you like.</string>
+    <string name="trdp_reason_planned_climb">Climbing is planned today: warm up before, at most a short block after.</string>
+    <string name="trdp_reason_lighter">Your fingers are still recovering: rather volume than hard or limit today.</string>
+    <string name="trdp_reason_limit_tomorrow">Tomorrow is a limit day: legs and core today, fingers and pulling stay fresh.</string>
+    <string name="trdp_reason_not_logged">A hard climbing day was planned yesterday, but nothing is logged. Log it and the coach plans the recovery.</string>
+    <string name="trdp_reason_fingers_before">Your plan has finger training today and tomorrow is a hard day: the fingers go in tired. Swap the days if you like.</string>
+    <string name="trt_next_plan">Plan</string>
+    <string name="trt_rest_today">Rest day today</string>
+    <string name="trt_rest_today_done">Today is now a rest day.</string>
+    <string name="trf_planned_climb">climbing %1$d min</string>
+    <string name="trw_notify_climb">Climbing day</string>
+</resources>

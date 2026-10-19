@@ -820,4 +820,91 @@ class SessionSuggesterTest {
         assertTrue(gear.isEmpty(), "${slugs(s)} need $gear")
         assertTrue(s.routine.items.isNotEmpty())
     }
+
+    // ── Planned climbing days and single dates (owner 2026-10-19) ─────────────
+
+    private val tuesday = LocalDate.parse("2026-10-06")
+    private fun climb(i: ClimbIntensity, kind: ClimbingDayKind = ClimbingDayKind.GYM_BOULDER) = DayPlans.Climb(kind, i).entry
+
+    @Test
+    fun aPlannedClimbingDayIsTheTrainingWithTheWarmUpForIt() {
+        val p = profile.copy(datePlan = mapOf(monday.toString() to climb(ClimbIntensity.LIMIT)))
+        val s = SessionSuggester.suggest(input(profile = p))
+        assertEquals(SuggestionFocus.BOARD_DAY, s.focus)
+        assertEquals(SuggestionReason.PLANNED_CLIMB, s.reasons.first(), "${s.reasons}")
+        assertEquals(climb(ClimbIntensity.LIMIT), s.plannedEntry)
+        assertEquals(null, s.boardPlan, "a gym day has no board session")
+        assertTrue(s.routine.items.any { it.warmup }, "${slugs(s)}")
+        // Climbed already: only the short block after it.
+        val done = SessionSuggester.suggest(input(profile = p, activities = mapOf(monday to DayActivity(monday.toString(), climbingMinutes = 90))))
+        assertTrue(done.addOn, "${done.reasons}")
+    }
+
+    @Test
+    fun aHardPlannedDayWhileTheFingersRecoverIsAdviceNotALock() {
+        val yesterday = monday.minus(DatePeriod(days = 1))
+        val p = profile.copy(datePlan = mapOf(monday.toString() to climb(ClimbIntensity.LIMIT)))
+        val s = SessionSuggester.suggest(input(profile = p, activities = mapOf(yesterday to
+            DayActivity(yesterday.toString(), climbingMinutes = 90, climbingEfforts = 30, climbIntensity = ClimbIntensity.LIMIT))))
+        assertEquals(SuggestionFocus.BOARD_DAY, s.focus, "the climbing day stays")
+        assertTrue(SuggestionReason.CLIMB_LIGHTER_ADVISED in s.reasons && SuggestionReason.RECOVERY_AFTER_LIMIT in s.reasons, "${s.reasons}")
+    }
+
+    @Test
+    fun noTimeTodayMakesThePlannedTrainingARestDay() {
+        val p = profile.copy(weekPlan = mapOf(1 to "builtin:" + BuiltinRoutines.FINGER_BASICS))
+        assertEquals(SuggestionFocus.PLANNED, SessionSuggester.suggest(input(profile = p)).focus)
+        val rest = SessionSuggester.suggest(input(profile = DayPlans.withDay(p, monday, PLAN_REST, monday)))
+        assertEquals(SuggestionFocus.REST, rest.focus)
+        assertEquals(SuggestionReason.WEEK_PLAN_REST, rest.reasons.first())
+    }
+
+    @Test
+    fun theDayBeforeALimitDayKeepsFingersAndPullingFresh() {
+        val limitTomorrow = profile.copy(datePlan = mapOf(tuesday.toString() to climb(ClimbIntensity.LIMIT)))
+        val s = SessionSuggester.suggest(input(profile = limitTomorrow))
+        assertTrue(s.focus != SuggestionFocus.FINGER_STRENGTH && s.focus != SuggestionFocus.PULL_PUSH, "${s.focus} ${s.reasons}")
+        assertTrue(SuggestionReason.HARD_DAY_TOMORROW in s.reasons, "${s.reasons}")
+        // Whatever the rotation picks: never pull and push before the limit day (both variants).
+        val other = SessionSuggester.suggest(input(profile = limitTomorrow, variant = 1))
+        assertTrue(other.focus != SuggestionFocus.PULL_PUSH && other.focus != SuggestionFocus.FINGER_STRENGTH, "${other.focus}")
+        assertTrue(listOf(s, other).any { SuggestionReason.LIMIT_TOMORROW in it.reasons }, "${s.reasons} / ${other.reasons}")
+        // An easy day tomorrow is no hard day; a volume day is one.
+        val easy = SessionSuggester.suggest(input(profile = profile.copy(datePlan = mapOf(tuesday.toString() to climb(ClimbIntensity.LIGHT)))))
+        assertTrue(SuggestionReason.HARD_DAY_TOMORROW !in easy.reasons, "${easy.reasons}")
+        val volume = SessionSuggester.suggest(input(profile = profile.copy(datePlan = mapOf(tuesday.toString() to climb(ClimbIntensity.VOLUME)))))
+        assertTrue(volume.focus != SuggestionFocus.FINGER_STRENGTH, "${volume.focus}")
+        assertTrue(SuggestionReason.LIMIT_TOMORROW !in volume.reasons, "${volume.reasons}")
+    }
+
+    @Test
+    fun aBoardDayMovedAwayFreesTheFingersAgain() {
+        val boardTomorrow = profile.copy(weekPlan = mapOf(2 to PLAN_BOARD))
+        val moved = DayPlans.withDay(boardTomorrow, tuesday, PLAN_REST, monday)
+        val s = SessionSuggester.suggest(input(profile = moved))
+        assertTrue(SuggestionReason.HARD_DAY_TOMORROW !in s.reasons, "${s.reasons}")
+    }
+
+    @Test
+    fun aHardDayPlannedYesterdayWithoutALogAsksToLogIt() {
+        val yesterday = monday.minus(DatePeriod(days = 1))
+        val s = SessionSuggester.suggest(input().copy(plannedYesterday = ClimbIntensity.LIMIT))
+        assertTrue(SuggestionReason.PLANNED_CLIMB_NOT_LOGGED in s.reasons, "${s.reasons}")
+        assertTrue(s.reasons.first() != SuggestionReason.PLANNED_CLIMB_NOT_LOGGED, "a note never decides")
+        val logged = SessionSuggester.suggest(input(activities = mapOf(yesterday to DayActivity(yesterday.toString(), climbingMinutes = 60)))
+            .copy(plannedYesterday = ClimbIntensity.LIMIT))
+        assertTrue(SuggestionReason.PLANNED_CLIMB_NOT_LOGGED !in logged.reasons, "${logged.reasons}")
+        val easy = SessionSuggester.suggest(input().copy(plannedYesterday = ClimbIntensity.VOLUME))
+        assertTrue(SuggestionReason.PLANNED_CLIMB_NOT_LOGGED !in easy.reasons)
+    }
+
+    @Test
+    fun fingerTrainingPlannedBeforeAHardDayStaysWithAWarning() {
+        val p = profile.copy(weekPlan = mapOf(1 to "builtin:" + BuiltinRoutines.FINGER_BASICS),
+            datePlan = mapOf(tuesday.toString() to climb(ClimbIntensity.LIMIT)))
+        val s = SessionSuggester.suggest(input(profile = p))
+        assertEquals(SuggestionFocus.PLANNED, s.focus, "${s.reasons}")
+        assertTrue(s.routine.items.any { !it.warmup && catalog[it.slug]?.category == ExerciseCategoryV2.FINGER }, "${slugs(s)}")
+        assertTrue(SuggestionReason.FINGERS_BEFORE_HARD_DAY in s.reasons, "${s.reasons}")
+    }
 }

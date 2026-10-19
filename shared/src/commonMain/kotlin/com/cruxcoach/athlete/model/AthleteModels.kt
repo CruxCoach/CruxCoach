@@ -308,6 +308,8 @@ data class PausePeriod(
 
 const val PLAN_BOARD = "board"
 const val PLAN_REST = "rest"
+/** A date override meaning "nothing planned" over the standard week's entry: the coach decides. */
+const val PLAN_FREE = "free"
 
 @Serializable
 enum class UnitSystem { METRIC, IMPERIAL }
@@ -356,9 +358,15 @@ data class AthleteProfile(
     /**
      * Standard week: ISO weekday (1 = Monday … 7 = Sunday) → what is planned:
      * a routine id ("builtin:<key>" for starter routines), [PLAN_BOARD] for a
-     * board session or [PLAN_REST]. Days without an entry are free.
+     * board session, a climbing day ("climb:<kind>:<intensity>", see
+     * [com.cruxcoach.athlete.logic.DayPlans]) or [PLAN_REST]. Days without an entry are free.
      */
     val weekPlan: Map<Int, String> = emptyMap(),
+    /**
+     * This date's plan instead of the standard week's (ISO date → entry as in [weekPlan], or [PLAN_FREE] for "nothing
+     * planned"): "no time today – rest", a day moved, a climbing day added (owner 2026-10-19).
+     */
+    val datePlan: Map<String, String> = emptyMap(),
     /** Preferred length of a suggested training in minutes. */
     val sessionMinutes: Int = 45,
     /** Optional weigh-in reminder: ISO weekdays (1 = Monday … 7 = Sunday) at a time of day. */
