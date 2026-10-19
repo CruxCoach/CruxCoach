@@ -50,6 +50,19 @@ class ReminderScheduleTest {
     }
 
     @Test
+    fun `a date planned over the standard week reminds as planned that day`() {
+        // Monday 2026-10-19 "no time – rest", Tuesday a limit boulder day (owner 2026-10-19).
+        val limit = com.cruxcoach.athlete.logic.DayPlans.Climb(com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER,
+            com.cruxcoach.athlete.model.ClimbIntensity.LIMIT).entry
+        val p = AthleteProfile(weekPlan = mapOf(1 to "builtin:pull_push"), trainingReminderOnClimbingDays = false,
+            datePlan = mapOf("2026-10-19" to PLAN_REST, "2026-10-20" to limit))
+        assertNull(TrainingReminders.plannedEntry(p, java.time.LocalDate.of(2026, 10, 19)))
+        assertEquals("builtin:pull_push", TrainingReminders.plannedEntry(p, java.time.LocalDate.of(2026, 10, 26)))
+        assertNull(TrainingReminders.plannedEntry(p, java.time.LocalDate.of(2026, 10, 20)))
+        assertEquals(limit, TrainingReminders.plannedEntry(p.copy(trainingReminderOnClimbingDays = true), java.time.LocalDate.of(2026, 10, 20)))
+    }
+
+    @Test
     fun `weigh-in comes on the next chosen weekday, a week on when today's time passed`() {
         val sunday = at(2026, 10, 18, 8, 0)
         // Mondays and Thursdays at 07:30.

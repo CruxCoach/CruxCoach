@@ -143,7 +143,7 @@
     <string name="trl_kind_other">Anderes</string>
     <string name="trl_intensity_light">Locker</string>
     <string name="trl_intensity_light_hint">deutlich unter deinem Flash-Niveau, Technik oder Erholung</string>
-    <string name="trl_intensity_volume">Mittel</string>
+    <string name="trl_intensity_volume">Volumen</string>
     <string name="trl_intensity_volume_hint">viele Routen um dein Flash-Niveau</string>
     <string name="trl_intensity_hard">Hart</string>
     <string name="trl_intensity_hard_hint">nahe deinem Arbeitsgrad, mehrere harte Versuche</string>

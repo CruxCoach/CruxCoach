@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.EditCalendar
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
@@ -68,12 +69,15 @@ internal fun buildWeek(
     activities: Map<String, DayActivity>,
     workouts: List<Workout>,
     pauses: List<PausePeriod>,
+    /** Single dates planned over the standard week ([com.cruxcoach.athlete.model.AthleteProfile.datePlan]). */
+    datePlan: Map<String, String> = emptyMap(),
 ): List<WeekDayCell> {
     val monday = today.minus(DatePeriod(days = today.dayOfWeek.isoDayNumber - 1))
     return (0 until 7).map { offset ->
         val date = monday.plus(DatePeriod(days = offset))
         val key = date.toString()
-        val planned = weekPlan[date.dayOfWeek.isoDayNumber]
+        val planned = datePlan[key]?.takeIf { it != com.cruxcoach.athlete.model.PLAN_FREE }
+            ?: weekPlan[date.dayOfWeek.isoDayNumber].takeIf { key !in datePlan }
         val activity = activities[key]
         val dayWorkouts = workouts.filter { it.day == key && !it.isOpen }
         val paused = pauses.any { p ->
@@ -103,6 +107,8 @@ fun WeekCalendarCard(
     /** The standard week lives in this card: an empty plan says so, the button edits it. */
     onEditPlan: (() -> Unit)? = null,
     planEmpty: Boolean = false,
+    /** "Tage planen": single days over the standard week (owner 2026-10-19). */
+    onPlanDays: (() -> Unit)? = null,
 ) {
     // Without a standard week the seven empty days would only repeat Today's week strip: one line and the button instead.
     val compact = onEditPlan != null && planEmpty
@@ -129,8 +135,16 @@ fun WeekCalendarCard(
                     Text(stringResource(R.string.trwo_week_plan_empty), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp))
                 }
-                TextButton(onClick = onEditPlan, modifier = Modifier.padding(start = 0.dp, top = 4.dp).testTag("workouts_week_plan_edit")) {
-                    Text(stringResource(R.string.trwo_week_plan_edit))
+                Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = onEditPlan, modifier = Modifier.testTag("workouts_week_plan_edit")) {
+                        Text(stringResource(R.string.trwo_week_plan_edit))
+                    }
+                    if (onPlanDays != null) {
+                        TextButton(onClick = onPlanDays, modifier = Modifier.testTag("workouts_plan_days")) {
+                            Icon(Icons.Default.EditCalendar, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.trdp_title))
+                        }
+                    }
                 }
             }
         }
@@ -170,7 +184,8 @@ private fun DayCell(cell: WeekDayCell, routines: List<Routine>, modifier: Modifi
                 WeekDayStatus.PAUSED -> Icons.Default.Bedtime
                 WeekDayStatus.REST -> Icons.Default.Weekend
                 WeekDayStatus.PLANNED, WeekDayStatus.MISSED ->
-                    if (cell.planned == PLAN_BOARD) Icons.Default.Terrain else Icons.Default.FitnessCenter
+                    if (cell.planned == PLAN_BOARD || com.cruxcoach.athlete.logic.DayPlans.isClimb(cell.planned)) Icons.Default.Terrain
+                    else Icons.Default.FitnessCenter
                 WeekDayStatus.FREE -> null
             }
             icon?.let { Icon(it, null, Modifier.size(16.dp), tint = fg) }
@@ -187,7 +202,9 @@ private fun DayCell(cell: WeekDayCell, routines: List<Routine>, modifier: Modifi
 private fun shortPlanLabel(entry: String, routines: List<Routine>): String = when (entry) {
     PLAN_BOARD -> stringResource(R.string.trw_short_board)
     PLAN_REST -> stringResource(R.string.trw_short_rest)
-    else -> planEntryLabel(entry, routines)
+    // A seventh of the screen: how hard ("Limit", "Volumen"); the sheet says where.
+    else -> com.cruxcoach.athlete.logic.DayPlans.climbOf(entry)?.let { com.cruxcoach.android.ui.training.today.climbIntensityLabel(it.intensity) }
+        ?: planEntryLabel(entry, routines)
 }
 
 @Composable
@@ -217,6 +234,7 @@ fun WeekDaySheet(
     onAdapt: (Routine) -> Unit,
     onLogClimbing: () -> Unit,
     onOpenHistory: () -> Unit,
+    onPlanDays: (() -> Unit)? = null,
 ) {
     val isToday = cell.date == today
     val past = cell.date < today
@@ -267,6 +285,13 @@ fun WeekDaySheet(
                     OutlinedButton(onClick = { onAdapt(plannedRoutine) }, modifier = Modifier.testTag("week_day_adapt")) {
                         Text(stringResource(R.string.trw_action_adapt))
                     }
+                }
+            }
+            // Today or later: plan this day differently or swap it (owner 2026-10-19).
+            if (!past && onPlanDays != null) {
+                TextButton(onClick = onPlanDays, modifier = Modifier.testTag("week_day_plan")) {
+                    Icon(Icons.Default.EditCalendar, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.trdp_change_day))
                 }
             }
             if (isToday || past) {

@@ -121,6 +121,16 @@ enum class SuggestionReason {
     USUAL_MINUTES,
     /** An exercise the athlete kept after a training leads its slot ([SuggestionInput.kept]). */
     KEPT_CHOICE,
+    /** A climbing day is planned today (gym, rope, rock): its warm-up and at most a short block after it ([DayPlans]). */
+    PLANNED_CLIMB,
+    /** A hard or limit climbing day is planned while the fingers still recover: rather volume today (advice, no lock). */
+    CLIMB_LIGHTER_ADVISED,
+    /** A limit climbing day is planned tomorrow: legs and core today, the pulling muscles go in fresh. */
+    LIMIT_TOMORROW,
+    /** Yesterday a hard or limit climbing day was planned, nothing is logged: log it, then the coach plans the recovery. */
+    PLANNED_CLIMB_NOT_LOGGED,
+    /** The planned training has finger work and tomorrow is a hard day: advice only, the plan stays. */
+    FINGERS_BEFORE_HARD_DAY,
 }
 
 /** How much the suggestion knows about the athlete. */
@@ -188,6 +198,8 @@ data class SuggestionInput(
     val block: BlockState? = null,
     /** The athlete climbs today (already logged, a usual climbing weekday or a planned board day). */
     val climbingToday: Boolean = false,
+    /** Yesterday's planned climbing intensity ([DayPlans]), null when nothing was planned or yesterday was a pause. */
+    val plannedYesterday: ClimbIntensity? = null,
     /** Newest performance values, for the evidence line. */
     val benchmarks: List<Benchmark> = emptyList(),
     /** "zu leicht" (+1) / "zu schwer" (−1) for today; on top of the step kept for the kind ([AthleteProfile.keptLevels]). */
@@ -289,6 +301,8 @@ object SessionSuggester {
     /** Mutable working state of one suggestion. */
     private class Ctx(val input: SuggestionInput) {
         val reasons = mutableListOf<SuggestionReason>()
+        /** Hints that never decide: they go after every other reason. */
+        val notes = mutableListOf<SuggestionReason>()
         val evidence = mutableListOf<Evidence>()
         val coach get() = input.coach
     }
@@ -334,7 +348,8 @@ object SessionSuggester {
         val reasons = ctx.reasons
         val readiness = input.readiness
         val coach = input.coach
-        val planned = input.profile.weekPlan[input.today.dayOfWeek.isoDayNumber]
+        // The date's own plan (a moved day, "no time today") before the standard week (owner 2026-10-19).
+        val planned = DayPlans.entry(input.profile, input.today)
         val chosenMinutes = input.minutesToday?.coerceIn(10, 180)
         var budget = chosenMinutes
             ?: (input.profile.sessionMinutes * input.budgetFactor.coerceIn(0.3, 1.0)).roundToInt().coerceIn(10, 180)
@@ -377,6 +392,12 @@ object SessionSuggester {
         val trend = trendBlock(input)
         trend.evidence.forEach { ctx.evidence += it }
         val fingerBlock = recovery.reason ?: (if (fingersTired) SuggestionReason.FINGERS_TIRED else null) ?: trend.fingerReason
+        // A hard day planned yesterday and nothing logged: the coach cannot know the fingers are tired (owner 2026-10-19).
+        val yesterday = input.activities[input.today.minus(DatePeriod(days = 1))]
+        if ((input.plannedYesterday == ClimbIntensity.HARD || input.plannedYesterday == ClimbIntensity.LIMIT) &&
+            (yesterday == null || (yesterday.climbingMinutes <= 0 && yesterday.climbingEfforts <= 0))) {
+            ctx.notes += SuggestionReason.PLANNED_CLIMB_NOT_LOGGED
+        }
 
         // The athlete's own choice for today comes before the plan and the rotation; a usual choice of the
         // weekday only fills a free day.
@@ -389,9 +410,10 @@ object SessionSuggester {
         // second session — unless the athlete said no to add-ons.
         val today = input.activities[input.today]
         val climbedToday = today != null && (today.climbingMinutes > 0 || today.climbingEfforts > 0)
-        val climbingDayPlan = planned == null || planned == PLAN_BOARD
+        val plannedClimb = DayPlans.climbOf(planned)
+        val climbingDayPlan = planned == null || planned == PLAN_BOARD || plannedClimb != null
         if (climbedToday && climbingDayPlan && coach.addOnAfterClimbing != false && !climbingPaused &&
-            (planned == PLAN_BOARD || input.climbingToday || coach.addOnAfterClimbing == true)) {
+            (planned == PLAN_BOARD || plannedClimb != null || input.climbingToday || coach.addOnAfterClimbing == true)) {
             reasons.add(0, SuggestionReason.CLIMBING_DAY_ADDON)
             return addOn(ctx, planned)
         }
@@ -399,6 +421,18 @@ object SessionSuggester {
         // 2. The week plan wins unless readiness or an injury rules it out.
         val usualClimbingDay = planned == null && input.climbingToday && !climbedToday
         when {
+            // A planned gym, rope or rock day: the climbing is the training; around it only the short block after it.
+            plannedClimb != null && climbingPaused -> reasons += SuggestionReason.PLAN_REPLACED_FOR_INJURY
+            plannedClimb != null -> {
+                reasons.add(0, SuggestionReason.PLANNED_CLIMB)
+                val hard = plannedClimb.intensity == ClimbIntensity.HARD || plannedClimb.intensity == ClimbIntensity.LIMIT
+                // Advice, never a lock: the athlete climbs anyway, the card says what the fingers tell.
+                if ((hard && (fingerBlock != null || trend.skinSpike)) || readiness.avoidClimbing) {
+                    reasons += SuggestionReason.CLIMB_LIGHTER_ADVISED
+                    (fingerBlock ?: if (trend.skinSpike) SuggestionReason.SKIN_LOAD_RISING else null)?.let { if (it !in reasons) reasons += it }
+                }
+                return climbDay(ctx, planned)
+            }
             planned == PLAN_REST -> {
                 reasons.add(0, SuggestionReason.WEEK_PLAN_REST)
                 return build(ctx, SuggestionFocus.REST, listOf(Slot.MOBILITY, Slot.MOBILITY, Slot.MOBILITY), REST_MINUTES, planned, grow = false)
@@ -436,7 +470,7 @@ object SessionSuggester {
         //    then decides what the rest is (and whether the fingers already had their week).
         val skinLow = ReadinessReason.SKIN_LOW in readiness.reasons
         val weekly = weeklyWeights(input)
-        val focus = when {
+        val focus0 = when {
             fingerBlock != null -> { reasons += fingerBlock; null }
             skinLow -> { reasons += SuggestionReason.SKIN_LOW; null }
             coach.fingerPreference == FingerPreference.NONE -> { reasons += SuggestionReason.FINGER_PREFERENCE_NONE; null }
@@ -460,6 +494,11 @@ object SessionSuggester {
             if (legsFirst) { reasons += SuggestionReason.LEGS_LONGER_AGO; SuggestionFocus.LEGS_CORE }
             else { reasons += SuggestionReason.PULL_LONGER_AGO; SuggestionFocus.PULL_PUSH }
         }
+        // A limit day tomorrow: the pulling muscles go into it fresh (owner 2026-10-19), legs and core today.
+        val focus = if (focus0 == SuggestionFocus.PULL_PUSH && limitTomorrow(input)) {
+            reasons += SuggestionReason.LIMIT_TOMORROW
+            SuggestionFocus.LEGS_CORE
+        } else focus0
         goalReasons(ctx)
         val result = build(ctx, focus, withFocusAreas(slotsFor(focus), focus, coach.focus, ctx), budget, planned)
         // Without a hangboard or block (or a guardrail keeping only light work) there is no finger session to suggest.
@@ -768,11 +807,18 @@ object SessionSuggester {
 
     // ── Focus helpers ────────────────────────────────────────────────
 
-    /** Tomorrow's week-plan entry is a board day, or tomorrow is one of the athlete's usual climbing days. */
+    /**
+     * Tomorrow is planned as a board or climbing day (its own date entry first, then the standard week and the usual
+     * climbing days); a light climbing day is none.
+     */
     private fun hardDayTomorrow(input: SuggestionInput): Boolean {
-        val tomorrow = input.today.plus(DatePeriod(days = 1)).dayOfWeek.isoDayNumber
-        return input.profile.weekPlan[tomorrow] == PLAN_BOARD || tomorrow in input.coach.climbingDays
+        val tomorrow = input.today.plus(DatePeriod(days = 1))
+        return DayPlans.climbingPlanned(input.profile, tomorrow) &&
+            DayPlans.climbIntensity(input.profile, tomorrow) != ClimbIntensity.LIGHT
     }
+
+    private fun limitTomorrow(input: SuggestionInput): Boolean =
+        DayPlans.climbIntensity(input.profile, input.today.plus(DatePeriod(days = 1))) == ClimbIntensity.LIMIT
 
     private fun resolve(entry: String, routines: List<Routine>): Routine? =
         if (entry.startsWith("builtin:")) BuiltinRoutines.byKey(entry.removePrefix("builtin:"))
@@ -818,6 +864,10 @@ object SessionSuggester {
             reasons.add(0, SuggestionReason.WEEK_PLAN)
             if (injuryRemoved > 0) reasons += SuggestionReason.PLAN_FILTERED_FOR_INJURY
             if (fingerRemoved > 0) reasons += fingerBlock!!
+            // The athlete's own plan stays; finger work before a hard day is pointed out, not removed (warn, don't lock).
+            if (fingerBlock == null && hardDayTomorrow(input) && kept.any { !it.warmup && LoadDomain.FINGER in input.catalog.fallbackFor(it.slug).domains }) {
+                reasons += SuggestionReason.FINGERS_BEFORE_HARD_DAY
+            }
             // The preferred duration is for free days; a planned workout is only cut when tired or short of time,
             // and only grows when the athlete chose more time today — by exercises after theirs, never by changing them.
             // A duration only learned from habit never reshapes the athlete's own plan (audit P2-13).
@@ -866,6 +916,25 @@ object SessionSuggester {
             plan.copy(minutes = ((chosen - estimateMinutes(items, input.catalog)) / 5.0).roundToInt().times(5).coerceIn(20, 180))
         }
         return finish(ctx, SuggestionFocus.BOARD_DAY, routineOf(SuggestionFocus.BOARD_DAY, items), planned, boardPlan = plan)
+    }
+
+    /**
+     * A planned gym, rope or rock day before the climbing: the warm-up for it and, as on a board day, a short block
+     * for afterwards (none when the athlete said no to add-ons).
+     */
+    private fun climbDay(ctx: Ctx, planned: String?): SessionSuggestion {
+        val input = ctx.input
+        val addOn = input.coach.addOnAfterClimbing
+        val warmup = BuiltinRoutines.byKey(BuiltinRoutines.WARMUP_BOARD)?.items.orEmpty().filter { it.slug !in input.excluded }
+        val after = when (addOn) {
+            false -> emptyList()
+            true -> pickSlots(ctx, listOf(Slot.ANTAGONIST, Slot.CORE), allowWall = true, focus = SuggestionFocus.BOARD_DAY,
+                taken = warmup.map { it.slug }.toMutableSet())
+            null -> pickSlots(ctx, listOf(Slot.ANTAGONIST, Slot.ANTAGONIST), allowWall = true, focus = SuggestionFocus.BOARD_DAY,
+                taken = warmup.map { it.slug }.toMutableSet())
+        }.map { it.copy(sets = min(it.sets, 2)) }
+        if (addOn == true) ctx.reasons += SuggestionReason.CLIMBING_DAY_ADDON
+        return finish(ctx, SuggestionFocus.BOARD_DAY, routineOf(SuggestionFocus.BOARD_DAY, warmup + after), planned)
     }
 
     /** 10–15 minutes of antagonists and core after the climbing session. */
@@ -1056,7 +1125,7 @@ object SessionSuggester {
         return SessionSuggestion(
             focus = focus,
             routine = routine,
-            reasons = ctx.reasons.distinct(),
+            reasons = (ctx.reasons + ctx.notes).distinct(),
             estimatedMinutes = estimateMinutes(routine.items, input.catalog),
             plannedEntry = planned,
             basedOn = ctx.evidence.distinct(),
