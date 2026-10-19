@@ -189,10 +189,22 @@ final class MainScreensUITests: XCTestCase {
         let half = app.buttons[Strings.l("fvp_amount_scale_half")].firstMatch
         XCTAssertTrue(half.waitForExistence(timeout: 10), "No one-tap shares for the milk:\n\(screenTail())")
         XCTAssertTrue(app.buttons[Strings.l("fvp_piece_more")].firstMatch.exists, "No whole pieces for eggs or banana:\n\(screenTail())")
-        XCTAssertTrue(values(amounts).contains("200"), "Milk is not 200: \(values(amounts))")
+        // Amounts show in the device's units (the US simulator: 120 g ≈ 4.2 oz, 200 ml ≈ 6.8 fl oz), so the check is
+        // the relation: every food has an amount, and one tap halves exactly one of them (the JVM test pins 200 → 100).
+        let before = values(amounts)
+        XCTAssertTrue(before.allSatisfy { (Self.number($0) ?? 0) > 0 }, "A food has no amount: \(before)")
         shot("10a-meal-review")
         half.tap()
-        XCTAssertTrue(eventually { values(amounts).contains("100") }, "Half of 200 is not shown: \(values(amounts))")
+        let halved: () -> Bool = {
+            let now = self.values(amounts)
+            guard now.count == before.count else { return false }
+            let changed = zip(before, now).filter { $0.0 != $0.1 }
+            guard changed.count == 1, let old = Self.number(changed[0].0), let new = Self.number(changed[0].1) else {
+                return false
+            }
+            return abs(new - old / 2) <= max(0.06, old * 0.02)
+        }
+        XCTAssertTrue(eventually(halved), "One tap did not halve one amount: \(before) → \(values(amounts))")
         shot("10b-meal-review-half")
     }
 
@@ -219,6 +231,11 @@ final class MainScreensUITests: XCTestCase {
 
     private func values(_ fields: XCUIElementQuery) -> [String] {
         fields.allElementsBoundByIndex.map { ($0.value as? String) ?? "" }
+    }
+
+    /// A shown amount as a number ("6.8", "6,8").
+    private static func number(_ text: String) -> Double? {
+        Double(text.replacingOccurrences(of: ",", with: "."))
     }
 
     /// The local date [offset] days from today as the app keys its days ("2026-10-20").
