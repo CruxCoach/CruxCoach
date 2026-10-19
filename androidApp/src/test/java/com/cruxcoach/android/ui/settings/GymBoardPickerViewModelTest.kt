@@ -38,16 +38,26 @@ class GymBoardPickerViewModelTest {
     private val repo = FakeBoardLocationRepository()
     private lateinit var viewModel: GymBoardPickerViewModel
 
+    /** Every view model a test made, so all of them settle before Main goes (full-suite flake 2026-10-19). */
+    private val created = mutableListOf<GymBoardPickerViewModel>()
+
     @Before fun setUp() { Dispatchers.setMain(dispatcher) }
     @After fun tearDown() {
-        if (::viewModel.isInitialized) viewModel.viewModelScope.cancel()
+        // Cancel, then wait until IO work that was still running has finished: a late resumption on Main after
+        // resetMain threw in the next test ("Dispatchers.Main was accessed when … the test dispatcher was unset").
+        created.forEach { it.viewModelScope.cancel() }
+        kotlinx.coroutines.runBlocking {
+            kotlinx.coroutines.withTimeoutOrNull(5_000) {
+                created.forEach { vm -> vm.viewModelScope.coroutineContext[kotlinx.coroutines.Job]?.join() }
+            }
+        }
         Dispatchers.resetMain()
     }
 
     /** Rows of the bundled map snapshot the picker falls back to. */
     private val bundled = mutableListOf<BoardLocation>()
 
-    private fun createViewModel() = GymBoardPickerViewModel(repo) { bundled.toList() }.also { viewModel = it }
+    private fun createViewModel() = GymBoardPickerViewModel(repo) { bundled.toList() }.also { viewModel = it; created += it }
 
     private fun loc(
         id: String,
