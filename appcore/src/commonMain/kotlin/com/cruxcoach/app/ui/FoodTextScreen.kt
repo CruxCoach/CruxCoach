@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.round
 
 class MealReviewRowUi(
     val key: Int,
@@ -42,9 +43,27 @@ class MealReviewRowUi(
     val amountInvalid: Boolean,
     val unitLabel: NutriText,
     val included: Boolean,
+    /**
+     * One-tap corrections under the line (Android `QuickAmounts`): "pieces" for a food people count (−1 / +1 whole
+     * pieces), "scale" for anything else (×½ ×¾ ×1¼ ×1½), "none" while the amount is not a valid number.
+     */
+    val quick: String,
+    /** "≈ 2 pcs (120 g each)" for quick "pieces"; empty otherwise. */
+    val piecesText: NutriText,
+    /** −1 is offered from two whole pieces up. */
+    val canRemovePiece: Boolean,
 )
 
-class FoodChoiceUi(val code: String, val title: String, val subtitle: NutriText)
+class FoodChoiceUi(
+    val code: String,
+    /** The food's name in the app language. */
+    val title: String,
+    val subtitle: NutriText,
+    /** A packaged product (code "off:…"), saved as that product. */
+    val isProduct: Boolean,
+    /** The shown name: the title, or "Product · title" for a product. */
+    val label: NutriText,
+)
 
 class MealTextUi(
     /** input | reading | analyzing | review | saved | failed */
@@ -160,10 +179,27 @@ class MealTextScreenModel internal constructor(
     fun setAmount(key: Int, text: String) = presenter.setAmount(key, text)
     fun setIncluded(key: Int, included: Boolean) = presenter.setIncluded(key, included)
 
-    /** Opens the food choice for a line ([key]) or, with -2, for a food to add. */
+    /** ×[factor] of the line's amount (Swift offers 0.5, 0.75, 1.25 and 1.5, as Android does). */
+    fun scaleAmount(key: Int, factor: Double) = presenter.scaleAmount(key, factor)
+
+    /** One whole piece more (+1) or less (−1) for a counted food. */
+    fun stepPieces(key: Int, delta: Int) = presenter.stepPieces(key, delta)
+
+    /**
+     * Opens the food choice for a line ([key]) or, with -2, for a food to add. A line the food table found nothing
+     * for ("Whey") starts the search with its own name, so the products show at once.
+     */
     fun beginChoice(key: Int) {
         searchJob?.cancel()
-        local.update { it.copy(choosingKey = key, choiceQuery = "", searchResults = null) }
+        val item = (presenter.phase.value as? ReviewPhase.Review)?.items?.firstOrNull { it.key == key }
+        val start = if (item != null && item.candidates.isEmpty()) {
+            item.detected?.let { FoodItems.displayName(it, catalog.german()) }.orEmpty().take(MAX_QUERY_CHARS)
+        } else {
+            ""
+        }
+        // Key and query in one update: the chooser's field takes the query when it appears.
+        local.update { it.copy(choosingKey = key, choiceQuery = start, searchResults = null) }
+        if (start.isNotBlank()) search(start)
     }
 
     fun endChoice() {
@@ -172,14 +208,20 @@ class MealTextScreenModel internal constructor(
     }
 
     fun setChoiceQuery(text: String) {
-        val query = text.take(60)
+        val query = text.take(MAX_QUERY_CHARS)
         local.update { it.copy(choiceQuery = query, searchResults = if (query.isBlank()) null else it.searchResults) }
         searchJob?.cancel()
         if (query.isBlank()) return
+        search(query)
+    }
+
+    private fun search(query: String) {
+        searchJob?.cancel()
         searchJob = scope.launch {
             delay(250)
             val found = try {
-                catalog.search(query)
+                // Products too: a protein powder or a branded bar is in the product database, not in the food table.
+                catalog.searchWithProducts(query)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -231,6 +273,9 @@ class MealTextScreenModel internal constructor(
             val shown = FoodItems.displayName(d, german)
             if (choice != null && title != null && !title.equals(shown, ignoreCase = true)) t("fvp_detected_as", NutritionTexts.str(shown)) else null
         }
+        val piece = MealReviewPresenter.pieceOf(item)
+        // Android shows round(grams / piece), at least one; round() ties to even like Android's.
+        val pieces = if (piece != null && grams != null) round(grams / piece).toInt().coerceAtLeast(1) else 0
         return MealReviewRowUi(
             key = item.key,
             title = title.orEmpty(),
@@ -244,6 +289,17 @@ class MealTextScreenModel internal constructor(
             amountInvalid = grams == null,
             unitLabel = NutritionTexts.unitLabel(item.unit),
             included = item.included,
+            quick = when {
+                grams == null -> "none"
+                piece != null -> "pieces"
+                else -> "scale"
+            },
+            piecesText = if (piece != null && pieces > 0) {
+                t("fvp_pieces_about", NutritionTexts.str(pieces.toString()), num(piece))
+            } else {
+                NutritionTexts.empty
+            },
+            canRemovePiece = pieces > 1,
         )
     }
 
@@ -283,8 +339,13 @@ class MealTextScreenModel internal constructor(
             choosingKey = l.choosingKey,
             choiceQuery = l.choiceQuery,
             choices = choices(phase, l).map { food ->
-                FoodChoiceUi(food.code, FoodItems.blsName(food, german),
-                    t("fvp_per_100", num(food.kcal), num(food.protein), num(food.carbs), num(food.fat)))
+                val name = FoodItems.blsName(food, german)
+                val product = FoodItems.isProduct(food)
+                FoodChoiceUi(food.code, name,
+                    t("fvp_per_100", num(food.kcal), num(food.protein), num(food.carbs), num(food.fat)),
+                    isProduct = product,
+                    label = if (product) t("fvp_product_label", NutritionTexts.str(name)) else NutritionTexts.literal(name),
+                )
             },
             allowNone = l.choosingKey >= 0,
         )
@@ -292,5 +353,7 @@ class MealTextScreenModel internal constructor(
 
     private companion object {
         const val MAX_MEAL_CHARS = MealTextVision.MAX_MEAL_CHARS
+        /** Android's chooser field keeps 60 characters. */
+        const val MAX_QUERY_CHARS = 60
     }
 }

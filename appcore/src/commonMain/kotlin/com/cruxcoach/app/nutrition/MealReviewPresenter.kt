@@ -1,7 +1,8 @@
-// The typed-meal part of androidApp/.../fuel/FoodPhotoViewModel.kt (0e1bad0c6):
-// a description becomes a checkable list through the shared rule parser and
-// FoodMatcher, then food log entries; the installed model may read it again
-// (onTextWithModel). MealPhotoScreenModel ends its photos in the same list.
+// The typed-meal part of androidApp/.../fuel/FoodPhotoViewModel.kt (0e1bad0c6,
+// 0.2.4 review corrections e9e3069ce, b76427fba, 89c7b902f): a description
+// becomes a checkable list through the shared rule parser and FoodMatcher, then
+// food log entries; the installed model may read it again (onTextWithModel).
+// MealPhotoScreenModel ends its photos in the same list.
 package com.cruxcoach.app.nutrition
 
 import com.cruxcoach.app.foodvision.MealTextVision
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.round
 
 /** One line of the review list. */
 data class ReviewItem(
@@ -107,7 +109,11 @@ class MealReviewPresenter(
         work = scope.launch {
             _phase.value = ReviewPhase.Reading
             try {
-                val parsed = withContext(compute) { MealTextParser.parse(trimmed) }
+                val matcher = catalog.bls.matcher()
+                // The food table tells which words are foods, so a list typed without separators is split (2026-10-19).
+                val parsed = withContext(compute) {
+                    MealTextParser.parse(trimmed) { name -> matcher.match(DetectedFood(name, name, 100.0), 1).firstOrNull()?.score ?: 0.0 }
+                }
                 showReview(parsed.foods, parsed.meal, trimmed, ReviewSource.TEXT_RULES)
             } catch (e: CancellationException) {
                 throw e
@@ -208,11 +214,27 @@ class MealReviewPresenter(
     }
 
     fun setAmount(key: Int, text: String) = updateItem(key) { it.copy(amountText = text.take(6)) }
+
+    /** "½", "¾", "1¼", "1½": the estimate is often a quarter off, so correcting it takes one tap (owner 2026-10-19). */
+    fun scaleAmount(key: Int, factor: Double) = updateItem(key) { item ->
+        val grams = amountOf(item) ?: return@updateItem item
+        item.copy(amountText = inputText((grams * factor).coerceIn(1.0, FoodVisionParser.MAX_GRAMS), item.unit))
+    }
+
+    /** One piece more or less for a food people count: whole pieces, never fewer than one. */
+    fun stepPieces(key: Int, delta: Int) = updateItem(key) { item ->
+        val piece = pieceOf(item) ?: return@updateItem item
+        val grams = amountOf(item) ?: piece
+        // round(): ties to even, as on Android (2.5 pieces shows and steps from 2).
+        val pieces = (round(grams / piece).toInt() + delta).coerceIn(1, MAX_PIECES)
+        item.copy(amountText = inputText(pieces * piece, item.unit))
+    }
+
     fun setIncluded(key: Int, included: Boolean) = updateItem(key) { it.copy(included = included) }
 
     /** Another food for a line; a drink switches the amount to ml/fl oz (and back), keeping the quantity. */
     fun choose(key: Int, food: BlsFood?) = updateItem(key) { item ->
-        val unit = food?.let { FuelUnits.unitFor(units, FuelUnits.isDrink("bls:${it.code}", it.nameEn)) } ?: item.unit
+        val unit = food?.let { FuelUnits.unitFor(units, FoodItems.isDrinkChoice(it)) } ?: item.unit
         val text = if (unit != item.unit) amountOf(item)?.let { inputText(it, unit) } ?: item.amountText else item.amountText
         item.copy(choice = food, uncertain = false, water = false, unit = unit, amountText = text)
     }
@@ -272,9 +294,13 @@ class MealReviewPresenter(
         }
     }
 
-    /** The food as a reusable "my foods" entry (per 100 g), keeping favourite and use count. */
+    /**
+     * The food as a reusable "my foods" entry (per 100 g), keeping favourite and use count; a product chosen in the
+     * review is saved as that product ("off:" item).
+     */
     private fun blsItem(food: BlsFood, now: Long, german: Boolean): FoodItem =
-        (service.repo.foodItem("bls:${food.code}") ?: FoodItems.blsFoodItem(food, german)).copy(
+        if (FoodItems.isProduct(food)) (service.repo.foodItem(food.code) ?: FoodItems.productFoodItem(food, german)).copy(updatedAt = now)
+        else (service.repo.foodItem("bls:${food.code}") ?: FoodItems.blsFoodItem(food, german)).copy(
             kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
             updatedAt = now,
         )
@@ -285,7 +311,14 @@ class MealReviewPresenter(
     }
 
     companion object {
+        /** Most whole pieces one tap may reach (Android stepPieces). */
+        const val MAX_PIECES = 20
+
         /** Grams (or ml for water) of a review line, whatever unit it is shown in. */
         fun amountOf(item: ReviewItem): Double? = FoodItems.amountOf(item.amountText, item.unit)
+
+        /** Grams of one piece when the line's food is one people count ("Banane roh"); products are weighed. */
+        fun pieceOf(item: ReviewItem): Double? =
+            item.choice?.takeUnless { FoodItems.isProduct(it) || item.water }?.let { MealTextParser.pieceGramsOf(it.nameDe) }
     }
 }

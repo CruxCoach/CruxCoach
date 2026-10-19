@@ -1,9 +1,10 @@
 // The food sources and the conversions of androidApp/.../fuel/FoodPhotoViewModel.kt's
-// companion (0e1bad0c6), without the photo model.
+// companion (0e1bad0c6, products as review choices 89c7b902f), without the photo model.
 package com.cruxcoach.app.nutrition
 
 import com.cruxcoach.athlete.logic.BlsFood
 import com.cruxcoach.athlete.logic.DetectedFood
+import com.cruxcoach.athlete.logic.FoodMatcher
 import com.cruxcoach.athlete.logic.FoodVisionParser
 import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.MealTextParser
@@ -12,6 +13,7 @@ import com.cruxcoach.athlete.logic.OffProduct
 import com.cruxcoach.athlete.logic.OffTable
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.Sex
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -50,6 +52,24 @@ class FoodCatalog(
     suspend fun search(query: String): List<BlsFood> {
         val matcher = bls.matcher()
         return withContext(compute) { matcher.search(query, limit = 25).map { it.food } }
+    }
+
+    /**
+     * The review's choice: the food table first, then packaged products (protein powders, bars, branded foods the
+     * table has no counterpart for – owner 2026-10-19). Products come as choices with a "off:" code.
+     */
+    suspend fun searchWithProducts(query: String): List<BlsFood> {
+        val foods = search(query)
+        val packaged: List<OffProduct> = try {
+            products.search(query)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
+        val found = packaged.take(15).map(FoodItems::productChoice)
+        // "Whey" finds sweet whey in the table; what is meant is a product (device test 2026-10-19).
+        return if (FoodMatcher.lacksCounterpart(query)) found + foods.take(15) else foods.take(15) + found
     }
 
     /** USDA generic foods (English names, household measures). */
@@ -126,6 +146,30 @@ object FoodItems {
     }
 
     fun displayName(food: DetectedFood, german: Boolean): String = if (german) food.nameDe else food.nameEn
+
+    /** Code prefix of packaged products offered as a review choice. */
+    const val PRODUCT_PREFIX = "off:"
+
+    fun isProduct(food: BlsFood): Boolean = food.code.startsWith(PRODUCT_PREFIX)
+
+    /** A packaged product as a review choice (per 100 g); the brand is part of the name. */
+    fun productChoice(p: OffProduct): BlsFood {
+        fun named(german: Boolean) =
+            p.displayName(german).let { n -> if (p.brand.isBlank() || n.contains(p.brand, ignoreCase = true)) n else "$n (${p.brand})" }
+        return BlsFood(code = PRODUCT_PREFIX + p.code, nameDe = named(true), nameEn = named(false),
+            kcal = p.kcal, protein = p.protein, fat = p.fat, carbs = p.carbs)
+    }
+
+    /** A product choice as its (unsaved) per-100 g "off:" food item, the same id a scanned barcode gets. */
+    fun productFoodItem(food: BlsFood, german: Boolean) = FoodItem(
+        id = food.code, name = blsName(food, german), barcode = food.code.removePrefix(PRODUCT_PREFIX), source = OffProductStore.SOURCE,
+        kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
+    )
+
+    /** Whether a chosen food is a drink: products by their names, table foods by their group too. */
+    fun isDrinkChoice(food: BlsFood): Boolean =
+        if (isProduct(food)) FuelUnits.isDrink(null, food.nameDe) || FuelUnits.isDrink(null, food.nameEn)
+        else FuelUnits.isDrink("bls:${food.code}", food.nameEn)
 
     /** Grams (or ml for water) of a typed amount in [unit]; null outside 0 < x ≤ 2000. */
     fun amountOf(text: String, unit: FuelUnits.Amount): Double? =
