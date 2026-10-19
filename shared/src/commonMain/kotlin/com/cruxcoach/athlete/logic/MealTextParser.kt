@@ -260,6 +260,8 @@ object MealTextParser {
         "kakao" to 10.0, "kakaopulver" to 10.0, "sahne" to 30.0, "erdnussbutter" to 20.0, "peanut butter" to 20.0,
         "nussmus" to 20.0, "tahin" to 15.0, "hummus" to 50.0, "dressing" to 30.0, "sosse" to 80.0, "sauce" to 80.0,
         "kaesebrot" to 80.0, "butterbrot" to 60.0, "wurstbrot" to 80.0,
+        // A scoop of powder (device test 2026-10-19: "Whey" alone became 150 g).
+        "whey" to 30.0, "proteinpulver" to 30.0, "eiweisspulver" to 30.0, "protein powder" to 30.0, "whey protein" to 30.0,
     )
 
     /** [table]'s grams for the whole normalised name or its singular/plural, else null (no prefix guessing). */

@@ -90,6 +90,8 @@ class MealTextSplitTest {
         assertTrue(read("oatmeal with banana")[0].third!!.startsWith("Porridge"))
         assertEquals(null, read("1 Scoop Whey in 300 ml Milch")[0].third)
         assertEquals(listOf("Whey", "Milch"), names("1 Scoop Whey in 300 ml Milch"))
+        // Powder without an amount is a scoop, not the 150 g default.
+        assertEquals(listOf(30), grams("Whey"))
         assertEquals(null, read("Proteinshake mit Wasser")[0].third)
         assertEquals(null, read("a protein bar")[0].third)
     }
