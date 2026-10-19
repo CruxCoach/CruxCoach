@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -25,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,16 +49,22 @@ import com.cruxcoach.android.ui.training.sideLabel
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
 import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadMode
+import com.cruxcoach.athlete.logic.Circuits
 import com.cruxcoach.athlete.logic.WorkoutTextParser
+import com.cruxcoach.android.ui.training.formatClock
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import com.cruxcoach.athlete.model.RoutineItem
 import com.cruxcoach.athlete.model.Side
 import com.cruxcoach.athlete.model.SideMode
 import com.cruxcoach.athlete.model.UnitSystem
 
 /**
- * "Type a workout" (owner 2026-10-15: like the food entry): one exercise per
- * line, read while typing, with a preview of what each line becomes – a
- * catalogue exercise, or a new one the app creates on "Add".
+ * "Type a workout" (owner 2026-10-15: like the food entry; 2026-10-19: as freely as possible, circuits included,
+ * typos do not matter): read while typing, with a preview of what each exercise becomes – a catalogue exercise,
+ * or a new one the app creates on "Add" – and of the circuits. The text is read off the main thread, a moment
+ * after the last keystroke.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,7 +77,14 @@ fun WorkoutTextSheet(
     title: String = stringResource(R.string.trwo_text_title),
 ) {
     var text by rememberSaveable { mutableStateOf("") }
-    val result = remember(text, catalog) { WorkoutTextParser.parse(text, catalog) }
+    var result by remember { mutableStateOf(WorkoutTextParser.Result(null, emptyList())) }
+    var readText by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(text, catalog) {
+        if (text.isNotEmpty() && readText != null) delay(READ_DELAY_MS)
+        val read = withContext(Dispatchers.Default) { WorkoutTextParser.parse(text, catalog) }
+        result = read
+        readText = text
+    }
     val lang = catalogLanguage()
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -97,10 +112,26 @@ fun WorkoutTextSheet(
                 Text(stringResource(R.string.trwo_text_name, it), style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.testTag("workout_text_title"))
             }
+            val items = result.lines.map { it.item }
             result.lines.forEachIndexed { i, line ->
                 val kind = line.match?.kind ?: line.guess.kind
                 val load = line.match?.load ?: line.guess.load
-                Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth().testTag("workout_text_line_$i")) {
+                val circuit = line.circuit
+                // A circuit's members under one line: rounds, the rest between the exercises, the rest after a round.
+                if (circuit != null && result.lines.getOrNull(i - 1)?.circuit != circuit) {
+                    val members = items.filter { it.circuit == circuit }
+                    val rounds = Circuits.rounds(items, circuit)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("workout_text_circuit_$circuit")) {
+                        Icon(Icons.Default.Repeat, null, Modifier.size(18.dp), tint = CruxCoachDesign.colors.brandAccent)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.trcirc_group, pluralStringResource(R.plurals.trcirc_rounds, rounds, rounds),
+                            formatClock(members.first().circuitRestS ?: Circuits.DEFAULT_CIRCUIT_REST_S),
+                            formatClock(members.first().roundRestS ?: Circuits.defaultRoundRest(members, catalog))),
+                            style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = CruxCoachDesign.colors.brandAccent)
+                    }
+                }
+                Row(verticalAlignment = Alignment.Top,
+                    modifier = Modifier.fillMaxWidth().padding(start = if (circuit != null) 12.dp else 0.dp).testTag("workout_text_line_$i")) {
                     Icon(
                         if (line.isNew) Icons.Default.AddCircle else Icons.Default.CheckCircle, null,
                         tint = if (line.isNew) CruxCoachDesign.colors.brandAccent else CruxCoachDesign.colors.positive,
@@ -118,7 +149,8 @@ fun WorkoutTextSheet(
                 }
             }
             Button(
-                onClick = { onApply(result) },
+                // Typed a moment ago and not read yet: read it now, so "Add" takes exactly what is in the field.
+                onClick = { onApply(if (readText == text) result else WorkoutTextParser.parse(text, catalog)) },
                 enabled = result.lines.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("workout_text_apply"),
             ) {
@@ -128,6 +160,9 @@ fun WorkoutTextSheet(
         }
     }
 }
+
+/** How long after the last keystroke the text is read again. */
+private const val READ_DELAY_MS = 120L
 
 /** "5 × 5 · +20 kg", "3 × 60 s", "6 × 7 s on / 3 s off × 6 · 20 mm", "warm-up". */
 @Composable

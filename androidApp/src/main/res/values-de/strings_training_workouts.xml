@@ -37,8 +37,9 @@
     <string name="trwo_text_open">Per Text eingeben</string>
     <string name="trwo_text_title">Workout per Text</string>
     <string name="trwo_text_label">Übungen</string>
-    <string name="trwo_text_placeholder">Klimmzüge 5×5 +20 kg\nLiegestütze 3×15\nPlank 3×60 s</string>
-    <string name="trwo_text_hint">Eine Übung pro Zeile: Sätze × Wiederholungen oder Sekunden, Gewicht (+ Zusatz, − Entlastung), Leiste in mm, Pause. Eine erste Zeile ohne Zahlen wird der Name. Übungen, die CruxCoach nicht kennt, werden neu angelegt.</string>
+    <string name="trwo_text_placeholder">Klimmzüge 5×5 +20 kg, Liegestütze 3×15
+Zirkel 3 Runden: Dips 10, Sit-ups 20, Plank 30 s</string>
+    <string name="trwo_text_hint">Schreib einfach, wie du es sagen würdest – mehrere Übungen pro Zeile, mit Komma, „und“ oder „dann“. Zahlen davor oder dahinter: Sätze × Wiederholungen oder Sekunden, Gewicht (+ Zusatz, − Entlastung), Leiste in mm, Pause, „links und rechts“. Zirkel: „Zirkel 3 Runden: …“, „… als Zirkel“ oder „im Wechsel mit“, Pausen „zwischen den Übungen“ und „nach jeder Runde“. „Aufwärmen:“ markiert das Aufwärmen, eine erste Zeile ohne Zahlen wird der Name. Tippfehler sind kein Problem; Unbekanntes wird neu angelegt.</string>
     <string name="trwo_text_name">Name: %1$s</string>
     <string name="trwo_text_new">Neue Übung · %1$s</string>
     <plurals name="trwo_text_apply">

@@ -37,8 +37,9 @@
     <string name="trwo_text_open">Type exercises</string>
     <string name="trwo_text_title">Type a workout</string>
     <string name="trwo_text_label">Exercises</string>
-    <string name="trwo_text_placeholder">Pull-ups 5×5 +20 kg\nPush-ups 3×15\nPlank 3×60 s</string>
-    <string name="trwo_text_hint">One exercise per line: sets × reps or seconds, load (+ added, − assisted), edge in mm, rest. A first line without numbers names the workout. Names CruxCoach does not know become new exercises.</string>
+    <string name="trwo_text_placeholder">Pull-ups 5×5 +20 kg, push-ups 3×15
+Circuit 3 rounds: dips 10, sit-ups 20, plank 30 s</string>
+    <string name="trwo_text_hint">Write it the way you would say it – several exercises per line, with commas, “and” or “then”. Numbers before or after: sets × reps or seconds, load (+ added, − assisted), edge in mm, rest, “left and right”. Circuits: “Circuit 3 rounds: …”, “… as a circuit” or “alternating with”, rests “between exercises” and “after each round”. “Warm-up:” marks the warm-up, a first line without numbers names the workout. Typos are fine; anything unknown becomes a new exercise.</string>
     <string name="trwo_text_name">Name: %1$s</string>
     <string name="trwo_text_new">New exercise · %1$s</string>
     <plurals name="trwo_text_apply">

@@ -1354,11 +1354,15 @@ class AthleteService @Inject constructor(
      * the slugs an open injury ruled out, so the screen can say so instead of dropping them silently.
      */
     suspend fun addTyped(workoutId: String, lines: List<com.cruxcoach.athlete.logic.WorkoutTextParser.Line>): List<String> {
-        val items = resolveTyped(lines)
+        val typed = resolveTyped(lines)
         val skipped = mutableListOf<String>()
         synchronized(structureLock) {
             val modifier = todaysModifier()
-            var next = (repo.setsFor(workoutId).maxOfOrNull { it.blockIndex } ?: -1) + 1
+            val existing = repo.setsFor(workoutId)
+            // Typed circuits get keys the open training does not use yet, so they stay circuits of their own.
+            val offset = existing.mapNotNull { it.circuit }.maxOrNull() ?: 0
+            val items = Circuits.normalize(typed, catalog).map { it.copy(circuit = it.circuit?.plus(offset)) }
+            var next = (existing.maxOfOrNull { it.blockIndex } ?: -1) + 1
             repo.transaction { items.forEach { item -> if (addItem(workoutId, next, item, modifier)) next++ else skipped += item.slug } }
         }
         return skipped

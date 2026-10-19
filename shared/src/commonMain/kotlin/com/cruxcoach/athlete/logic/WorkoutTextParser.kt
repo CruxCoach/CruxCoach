@@ -47,6 +47,8 @@ object WorkoutTextParser {
         val item: RoutineItem,
     ) {
         val isNew: Boolean get() = match == null
+        /** The circuit the exercise belongs to ([RoutineItem.circuit]); null outside one. */
+        val circuit: Int? get() = item.circuit
     }
 
     data class Result(val title: String?, val lines: List<Line>)
@@ -55,67 +57,246 @@ object WorkoutTextParser {
     const val MAX_CHARS = 3000
     /** Below this a name counts as unknown and becomes a new exercise. */
     const val MATCH_THRESHOLD = 0.72
+    /** A duration from here on is one bout unless sets are given. */
+    private const val LONG_BOUT_S = 120
     private const val LB_IN_KG = 0.45359237
 
     fun parse(text: String, catalog: ExerciseCatalog): Result {
-        val segments = mergeNumbersOnly(split(text.take(MAX_CHARS)), catalog)
+        val session = ExerciseMatcher.session(catalog)
+        val pieces = WorkoutTextLayout.pieces(text.take(MAX_CHARS), session)
         var title: String? = null
-        var warmupSection = false
         val lines = mutableListOf<Line>()
-        for ((index, raw) in segments.withIndex()) {
+        val explicitSets = mutableListOf<Int?>()
+        val lineSentence = mutableListOf<Int>()
+        val hadNumbers = mutableListOf<Boolean>()
+        val drafts = mutableListOf<CircuitDraft>()
+        val inCircuit = mutableSetOf<Int>()
+        var circuit: CircuitDraft? = null
+        var warmupSection = false
+        var warmupSentence = -1
+        var block = -1
+        fun close() {
+            circuit?.let { c -> if (c.members.isNotEmpty()) { drafts += c; inCircuit += c.members } }
+            circuit = null
+        }
+        for ((index, piece) in pieces.withIndex()) {
             if (lines.size >= MAX_LINES) break
-            val heading = raw.endsWith(":")
-            val segment = raw.trimEnd(':').trim()
-            if (segment.isEmpty()) continue
-            val numbers = Numbers.extract(segment)
-            if (heading && !numbers.any) {
-                val isWarmup = WARMUP_WORDS.containsMatchIn(segment.lowercase())
-                if (isWarmup) warmupSection = true
+            if (piece.block != block) { close(); warmupSection = false; block = piece.block }
+            val (ended, afterEnd) = WorkoutTextLayout.sectionEnd(piece)
+            if (ended) { close(); warmupSection = false }
+            // How far an open circuit reaches: its sentence; with "Zirkel:" and exercises on the line, that line;
+            // a header alone ("Zirkel, 3 Runden") reaches over the lines below until a blank line or a heading.
+            circuit?.let { c ->
+                val stillIn = piece.sentence == c.sentence || !c.membersInHeaderSentence || (c.heading && piece.line == c.line)
+                if (!stillIn) close()
+            }
+            var t = afterEnd
+            if (NEXT_STEP.containsMatchIn(t.lowercase())) warmupSentence = -1
+            if (t.isBlank()) continue
+            val words = WorkoutTextLayout.circuit(t, inCircuit = circuit != null, heading = piece.heading)
+            val opensCircuit = words.header
+            if (opensCircuit) {
+                close()
+                warmupSection = false
+                val c = CircuitDraft(piece.sentence, piece.line, piece.heading, words.rounds, words.circuitRestS, words.roundRestS)
+                if (words.retro) {
+                    // "A, B und C als Zirkel": the exercises named before in the sentence belong to it.
+                    var i = lines.lastIndex
+                    while (i >= 0 && lineSentence[i] == piece.sentence && i !in inCircuit && !lines[i].item.warmup) { c.members.add(0, i); i-- }
+                    if (c.members.isNotEmpty()) c.membersInHeaderSentence = true
+                }
+                circuit = c
+                t = words.text
+            } else circuit?.let { c ->
+                if (words.settings) {
+                    c.rounds = c.rounds ?: words.rounds
+                    c.circuitRestS = c.circuitRestS ?: words.circuitRestS
+                    c.roundRestS = c.roundRestS ?: words.roundRestS
+                    t = words.text
+                }
+            }
+            if (t.isBlank()) continue
+            val pieceNumbers = Numbers.extract(t)
+            // "Pause 90 s" on a line of its own: after a circuit list the rest after each round, else the exercise's rest.
+            if (pieceNumbers.restS != null && !pieceNumbers.complete && pieceNumbers.loadKg == null && pieceNumbers.rest.isBlank()) {
+                val c = circuit
+                if (c != null) c.roundRestS = c.roundRestS ?: pieceNumbers.restS
+                else if (lines.isNotEmpty()) lines[lines.lastIndex] = lines.last().let { it.copy(item = it.item.copy(restS = pieceNumbers.restS)) }
+                continue
+            }
+            if (piece.heading && !pieceNumbers.any) {
+                if (opensCircuit) {
+                    // "Zirkel Oberkörper:": the rest of a circuit heading names it at most.
+                    if (title == null && lines.isEmpty()) title = t
+                    continue
+                }
+                if (WARMUP_WORDS.containsMatchIn(t.lowercase())) { close(); warmupSection = true }
                 else {
+                    close()
                     warmupSection = false
-                    if (title == null && lines.isEmpty()) title = segment
+                    if (title == null && lines.isEmpty()) title = t
                 }
                 continue
             }
-            val whole = ExerciseMatcher.wholeMatch(catalog, segment)
-            // Only numbers and nothing before them to belong to: nothing to add.
-            if (numbers.rest.isBlank() && whole == null) continue
-            val name = if (whole != null) segment else numbers.rest
-            val match = whole ?: ExerciseMatcher.best(catalog, name, numbers)
-            // A first line without numbers that names no exercise is the workout's name.
-            if (match == null && !numbers.any && index == 0 && segments.size > 1 && title == null) {
-                title = segment
+            // "Zum Aufwärmen 5 min Seilspringen und Armkreisen": the sentence warms up – until "dann", "then", "danach".
+            if (WARMUP_WORDS.containsMatchIn(t.lowercase())) warmupSentence = piece.sentence
+            for (unit in WorkoutTextLayout.units(t, session)) {
+                if (lines.size >= MAX_LINES) break
+                if (lines.isNotEmpty() && NEXT_STEP.containsMatchIn(unit.text.lowercase()) && !WARMUP_WORDS.containsMatchIn(unit.text.lowercase())) {
+                    warmupSentence = -1
+                }
+                val numbers = Numbers.extract(unit.text)
+                val whole = session.wholeMatch(WorkoutTextLayout.trimGlue(unit.text))
+                val rest = afterLabel(WorkoutTextLayout.trimGlue(numbers.rest))
+                val primary = unit.primaryName?.let { afterLabel(WorkoutTextLayout.trimGlue(stripWarmup(it))) }?.takeIf { it.isNotBlank() }
+                val name = if (whole != null) WorkoutTextLayout.trimGlue(unit.text) else primary ?: rest
+                if (name.isBlank()) continue
+                val parts = if (whole != null) listOf(name) else splitNames(name, numbers, session)
+                // A first line without numbers that names no exercise is the workout's name.
+                if (index == 0 && lines.isEmpty() && title == null && !numbers.any && pieces.size > 1 && parts.size == 1 &&
+                    !opensCircuit && whole == null && matchFor(name, rest, numbers, session) == null) {
+                    title = name
+                    continue
+                }
+                val warm = warmupSection || numbers.warmup || warmupSentence == piece.sentence
+                for (part in parts) {
+                    if (lines.size >= MAX_LINES) break
+                    val match = whole ?: matchFor(part, if (parts.size == 1) rest else part, numbers, session)
+                    val guess = ExerciseGuess.from(part, numbers)
+                    val item = itemFor(match, guess, numbers, warmup = warm)
+                    lines += Line(unit.text, capitalize(part), match, guess, item)
+                    explicitSets += numbers.sets
+                    lineSentence += piece.sentence
+                    hadNumbers += numbers.complete
+                    circuit?.let { c ->
+                        if (!warm) {
+                            c.members += lines.lastIndex
+                            if (piece.sentence == c.sentence) c.membersInHeaderSentence = true
+                        }
+                    }
+                }
+                // "Klimmzüge, Liegestütze und Dips je 3x8": "je" gives the numbers to the names listed before as well.
+                if (numbers.distributed && numbers.complete) {
+                    var i = lines.lastIndex - parts.size
+                    while (i >= 0 && lineSentence[i] == piece.sentence && !hadNumbers[i]) {
+                        val l = lines[i]
+                        val updated = itemFor(l.match, l.guess, numbers, warmup = l.item.warmup)
+                        lines[i] = l.copy(item = updated.copy(slug = l.item.slug))
+                        explicitSets[i] = numbers.sets
+                        hadNumbers[i] = true
+                        i--
+                    }
+                }
+            }
+        }
+        close()
+        return Result(title?.let(::capitalize), withCircuits(lines, explicitSets, drafts, catalog))
+    }
+
+    /** A circuit while it is read; [members] are line indices. */
+    private class CircuitDraft(
+        val sentence: Int, val line: Int, val heading: Boolean,
+        var rounds: Int?, var circuitRestS: Int?, var roundRestS: Int?,
+    ) {
+        val members = mutableListOf<Int>()
+        var membersInHeaderSentence = false
+    }
+
+    /** Rounds when the text names none and no exercise says how many sets. */
+    const val DEFAULT_ROUNDS = 3
+
+    /**
+     * The circuits written into the items: every member gets the circuit key, the rests and, unless it said
+     * its own sets, the rounds as sets; warm-ups and climbing stay out; a circuit needs two members.
+     */
+    private fun withCircuits(lines: List<Line>, explicitSets: List<Int?>, drafts: List<CircuitDraft>, catalog: ExerciseCatalog): List<Line> {
+        if (drafts.isEmpty()) return lines
+        val out = lines.toMutableList()
+        var key = 0
+        for (d in drafts) {
+            val members = d.members.filter { i ->
+                val l = out[i]
+                !l.item.warmup && (l.match?.kind ?: l.guess.kind) != ExerciseKind.CLIMB &&
+                    (l.match?.category ?: l.guess.category) != ExerciseCategoryV2.WARMUP
+            }
+            if (members.size < 2) {
+                // "3 Runden: Klimmzüge 8": one exercise, the rounds are its sets.
+                members.singleOrNull()?.let { i ->
+                    d.rounds?.let { r -> if (explicitSets[i] == null) out[i] = out[i].copy(item = out[i].item.copy(sets = r.coerceIn(1, 20))) }
+                }
                 continue
             }
-            val guess = ExerciseGuess.from(name, numbers)
-            val item = itemFor(match, guess, numbers, warmup = warmupSection || numbers.warmup)
-            lines += Line(segment, capitalize(name), match, guess, item)
+            key++
+            val rounds = d.rounds ?: members.mapNotNull { explicitSets[it] }.maxOrNull() ?: DEFAULT_ROUNDS
+            for (i in members) {
+                out[i] = out[i].copy(item = out[i].item.copy(
+                    sets = (explicitSets[i] ?: rounds).coerceIn(1, 20), circuit = key,
+                    circuitRestS = d.circuitRestS, roundRestS = d.roundRestS,
+                ))
+            }
         }
-        return Result(title?.let(::capitalize), lines)
+        val normalized = Circuits.normalize(out.map { it.item }, catalog)
+        return out.mapIndexed { i, l -> if (l.item == normalized[i]) l else l.copy(item = normalized[i]) }
     }
 
-    /** "Klimmzüge" and "5x5 +20 kg" on the next line are one exercise. */
-    private fun mergeNumbersOnly(segments: List<String>, catalog: ExerciseCatalog): List<String> {
-        val merged = mutableListOf<String>()
-        for (segment in segments) {
-            val previous = merged.lastOrNull()
-            val numbers = Numbers.extract(segment.trimEnd(':'))
-            // "…, Pause 2 min" and a line with nothing but numbers belong to the exercise before.
-            val numbersOnly = numbers.any && (numbers.rest.isBlank() || REST_FIRST.containsMatchIn(segment.lowercase())) &&
-                ExerciseMatcher.wholeMatch(catalog, segment) == null
-            if (numbersOnly && previous != null && !previous.endsWith(":")) merged[merged.lastIndex] = "$previous $segment"
-            else merged += segment
+    /** The name as written first ([name]); when that names nothing, everything that was not numbers ([rest]). */
+    private fun matchFor(name: String, rest: String, numbers: Numbers, session: ExerciseMatcher.Session): ExerciseDefinition? =
+        session.best(WorkoutTextLayout.withoutDescriptors(name), numbers)
+            ?: rest.takeIf { it.isNotBlank() && it != name }?.let { session.best(WorkoutTextLayout.withoutDescriptors(it), numbers) }
+
+    /** "dann", "then", "danach" at the start: the next step, after the warm-up. */
+    private val NEXT_STEP = Regex("^\\s*(?:und\\s+)?(?:dann|danach|anschließend|anschliessend|then|after\\s+that|afterwards|hauptteil|main)(?![\\p{L}])")
+
+    private val CONNECTOR = Regex("\\s+(?:und|and|&|sowie|plus|\\+|dann|then|danach)\\s+", RegexOption.IGNORE_CASE)
+
+    /**
+     * One name or several: "Klimmzüge und Dips" are two (with the same numbers, as "je 3x8" says), "Plank Hollow
+     * Hold" too when both parts are clearly exercises; a catalogue name stays whole.
+     */
+    private fun splitNames(name: String, numbers: Numbers, session: ExerciseMatcher.Session): List<String> {
+        val words = name.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.size < 2) return listOf(name)
+        if (session.scored(WorkoutTextLayout.withoutDescriptors(name), numbers).base >= 0.9) return listOf(name)
+        val byConnector = name.split(CONNECTOR).map { WorkoutTextLayout.trimGlue(it) }.filter { it.isNotBlank() }
+        if (byConnector.size > 1) {
+            val known = byConnector.count { session.best(WorkoutTextLayout.withoutDescriptors(it), numbers) != null }
+            if (known >= 1 && byConnector.all { p -> p.count { it.isLetter() } >= 3 }) return byConnector
+            return listOf(name)
         }
-        return merged
+        if (words.size <= 8) lexicon(words, numbers, session)?.let { return it }
+        return listOf(name)
     }
 
-    /** Lines, ";" and commas that are not decimal commas; list bullets and numbering go. */
-    internal fun split(text: String): List<String> =
-        text.replace('\r', '\n')
-            .split('\n', ';')
-            .flatMap { it.split(Regex(",(?!\\d)|(?<!\\d),")) }
-            .map { it.trim().replace(Regex("^(?:[-•*·]+|\\d{1,2}[.)])\\s+"), "").trim() }
-            .filter { it.isNotEmpty() }
+    /** Names written one after another without separators: the split where every part is clearly an exercise. */
+    private fun lexicon(words: List<String>, numbers: Numbers, session: ExerciseMatcher.Session): List<String>? {
+        val n = words.size
+        val best = DoubleArray(n + 1) { -1.0 }
+        val from = IntArray(n + 1) { -1 }
+        best[0] = 0.0
+        for (i in 1..n) for (j in max(0, i - 5) until i) {
+            if (best[j] < 0) continue
+            val part = words.subList(j, i).joinToString(" ")
+            val query = WorkoutTextLayout.withoutDescriptors(part)
+            if (WorkoutTextLayout.trimGlue(part).isBlank()) continue
+            val sc = session.scored(query, numbers).base
+            if (sc < 0.85) continue
+            // A little less for every part: one longer name beats two short ones of the same quality.
+            val total = best[j] + sc - 0.05
+            if (total > best[i]) { best[i] = total; from[i] = j }
+        }
+        if (best[n] < 0) return null
+        val parts = mutableListOf<String>()
+        var i = n
+        while (i > 0) { val j = from[i]; parts.add(0, words.subList(j, i).joinToString(" ")); i = j }
+        return parts.takeIf { it.size >= 2 }
+    }
+
+    /** "Bauch: Hanging Leg Raises" → "Hanging Leg Raises": a label before a colon is no part of the name. */
+    private fun afterLabel(name: String): String = name.substringAfterLast(':').trim().ifEmpty { name }
+
+    private val WARMUP_ANY_CASE by lazy { Regex(WARMUP_WORDS.pattern, RegexOption.IGNORE_CASE) }
+
+    private fun stripWarmup(name: String): String = WARMUP_ANY_CASE.replace(name, " ").replace(Regex("\\s+"), " ").trim()
 
     private fun itemFor(match: ExerciseDefinition?, guess: ExerciseGuess, n: Numbers, warmup: Boolean): RoutineItem {
         val kind = match?.kind ?: guess.kind
@@ -152,7 +333,8 @@ object WorkoutTextParser {
                 durationS = seconds?.roundToInt() ?: base.durationS,
             )
         }.copy(
-            sets = (n.sets ?: base.sets).coerceIn(1, 20),
+            // "Seilspringen 5 min", "Bouldern 30 min": one long bout, not three.
+            sets = (n.sets ?: if (n.seconds != null && n.seconds >= LONG_BOUT_S && n.reps == null && n.rounds == null) 1 else base.sets).coerceIn(1, 20),
             loadKg = load ?: base.loadKg,
             restS = n.restS ?: base.restS,
             edgeMm = n.edgeMm?.roundToInt()?.takeIf { kind == ExerciseKind.HANG || kind == ExerciseKind.INTERVAL } ?: base.edgeMm,
@@ -165,6 +347,9 @@ object WorkoutTextParser {
     private fun capitalize(s: String): String = s.trim().replaceFirstChar { it.uppercase() }
 
     // ── Numbers ──────────────────────────────────────────────────────
+
+    /** Characters [start] until [end] (exclusive) of a segment were read as numbers or their words. */
+    data class Span(val start: Int, val end: Int, val complete: Boolean)
 
     /** What a segment says besides the name; [rest] is the name part. */
     class Numbers(
@@ -186,9 +371,16 @@ object WorkoutTextParser {
         val unilateral: Boolean,
         val warmup: Boolean,
         val rest: String,
+        /** Where in the segment the numbers and their words stand; [Span.complete] for an amount (sets, reps, time). */
+        val spans: List<Span> = emptyList(),
+        /** "je", "jeweils", "each": the numbers hold for every exercise named with them. */
+        val distributed: Boolean = false,
     ) {
         val any: Boolean get() = sets != null || reps != null || seconds != null || loadKg != null || edgeMm != null ||
             restS != null || workS != null || perSet != null || rounds != null
+
+        /** Says how much to do (sets, reps, time, rounds or a rhythm), not only a load or a rest. */
+        val complete: Boolean get() = sets != null || reps != null || seconds != null || rounds != null || workS != null
 
         companion object {
             private const val B = "(?<![\\p{L}\\p{N}])"
@@ -205,12 +397,19 @@ object WorkoutTextParser {
             private val TRAILING_X = Regex("$B[x×]\\s*(\\d{1,3})$E")
             private val SETS_WORD = Regex("$B(\\d{1,2})\\s*(sätze|saetze|satze|satz|sets?|serien|serie|durchgänge|durchgaenge|durchgang|runden|runde|rounds?)$E")
             private val REPS_WORD = Regex("$B(\\d{1,3})(?:\\s*-\\s*(\\d{1,3}))?\\s*(?:wdh\\.?|wh\\.?|wiederholungen|wiederholung|reps?|repetitions|mal)(?![\\p{L}])")
+            /** "2x16 kg": a pair of dumbbells, 16 kg each. */
+            private val LOAD_PAIR = Regex("$B([1-4])\\s*x\\s*$NUM\\s*(kg|kilo|kilogramm|lbs?|pfund)$E")
             private val LOAD = Regex("$B(?:(plus|minus)\\s+)?([+-])?\\s*$NUM\\s*(kg|kilo|kilogramm|lbs?|pfund)$E")
             private val EDGE = Regex("$B$NUM\\s*mm$E")
             private val DURATION = Regex("$B$NUM\\s*($SEC|$MIN)$E")
             private val BARE = Regex("$B(\\d{1,3})$E")
             private val ADDED = Regex("$B(?:mit\\s+)?(?:zusatzgewicht|zusatz|extra|added|additional|weighted|gewichtet\\w*)$E")
             private val ASSISTED = Regex("$B(?:entlastet|entlastung|assisted|assistiert|unterstützt|unterstuetzt)$E")
+            // "Pause 2 min zwischen den Sätzen", "nach jeder Runde": where the rest goes, not part of a name.
+            private val REST_CONTEXT = Regex(
+                "$B(?:(?:nach|after)\\s+(?:jedem|jeder|jede|each|every|dem|der|the)?\\s*(?:satz|set|runde|round|übung|uebung|exercise)|" +
+                    "zwischen\\s+(?:den\\s+)?(?:sätzen|saetzen|satzen|sets|runden|rounds|übungen|uebungen|exercises)|between\\s+(?:sets|rounds|exercises))$E")
+            private val DISTRIBUTED = Regex("$B(?:jeweils|je|each|alle|all|beide|both)$E(?!\\s+(?:seiten?|sides?|arme?|hände|haende|hands?|arms?|beine?|legs?)(?![\\p{L}]))")
             private val UNIT_FRAGMENTS = setOf("m", "mi", "mn", "s", "se", "sek", "k", "kg", "ki", "l", "lb", "w", "wd", "wdh", "r", "re", "rep", "mm")
             private val FILLER = Regex("(?:à|a|je|mit|with|of|at|@|für|fuer|for|und|and|x|ca\\.?|circa|about|bei|an|on|-|/)")
             private val SIDE_LEFT = Regex("$B(?:nur\\s+)?(?:links|left|linke|linker|linken)(?:\\s+(?:hand|arm|bein|seite|side|only))?$E")
@@ -228,14 +427,30 @@ object WorkoutTextParser {
             )
 
             fun extract(segment: String): Numbers {
-                var t = " " + segment.lowercase().replace('×', 'x').replace('–', '-').replace('—', '-').replace('−', '-') + " "
+                val lower = segment.lowercase()
+                var t = " " + lower.replace('×', 'x').replace('–', '-').replace('—', '-').replace('−', '-') + " "
+                // Positions map back to the segment only when lower-casing kept every character in place.
+                val aligned = lower.length == segment.length
+                val spans = mutableListOf<Span>()
+                fun record(range: IntRange, complete: Boolean) {
+                    if (!aligned) return
+                    val start = (range.first - 1).coerceIn(0, segment.length)
+                    val end = range.last.coerceIn(start, segment.length)
+                    if (end > start) spans += Span(start, end, complete)
+                }
                 /** Reads every match of [regex]; the ones [onMatch] accepts leave the name. */
-                fun take(regex: Regex, onMatch: (MatchResult) -> Boolean) {
+                fun take(regex: Regex, complete: Boolean = false, onMatch: (MatchResult) -> Boolean) {
                     val consumed = regex.findAll(t).toList().filter(onMatch)
                     if (consumed.isEmpty()) return
                     val chars = t.toCharArray()
-                    consumed.forEach { m -> for (i in m.range) chars[i] = ' ' }
+                    consumed.forEach { m -> for (i in m.range) chars[i] = ' '; record(m.range, complete) }
                     t = chars.concatToString()
+                }
+                /** Blanks every match of [regex] (same length, so positions stay); true when there was one. */
+                fun blank(regex: Regex): Boolean {
+                    var found = false
+                    take(regex) { found = true; true }
+                    return found
                 }
                 fun num(s: String) = s.replace(',', '.').toDoubleOrNull()
                 fun secondsOf(value: Double, unit: String?) = if (unit != null && unit.startsWith("min")) value * 60 else value
@@ -254,6 +469,11 @@ object WorkoutTextParser {
                     true
                 }
                 take(REST2) { m -> num(m.groupValues[1])?.let { restS = secondsOf(it, m.groupValues[2]).roundToInt() }; true }
+                take(LOAD_PAIR) { m ->
+                    val v = num(m.groupValues[2]) ?: return@take false
+                    if (load == null) load = if (m.groupValues[3].startsWith("lb") || m.groupValues[3] == "pfund") v * LB_IN_KG else v
+                    true
+                }
                 take(LOAD) { m ->
                     val v = num(m.groupValues[3]) ?: return@take false
                     val kg = if (m.groupValues[4].startsWith("lb") || m.groupValues[4] == "pfund") v * LB_IN_KG else v
@@ -262,16 +482,16 @@ object WorkoutTextParser {
                     if (load == null) load = if (negative) -kg else kg
                     true
                 }
-                if (ADDED.containsMatchIn(t)) { signed = true; t = ADDED.replace(t, " ") }
-                if (ASSISTED.containsMatchIn(t)) { signed = true; load = load?.let { -abs(it) }; t = ASSISTED.replace(t, " ") }
+                if (blank(ADDED)) signed = true
+                if (blank(ASSISTED)) { signed = true; load = load?.let { -abs(it) } }
                 take(EDGE) { m -> if (edge == null) edge = num(m.groupValues[1]); true }
-                take(INTERVAL) { m ->
+                take(INTERVAL, complete = true) { m ->
                     val a = m.groupValues[1].toInt()
                     val b = m.groupValues[2].toInt()
                     // "90/90" is a name, not a rhythm.
                     (a in 1..60 && b in 1..60 && workS == null).also { ok -> if (ok) { workS = a; restBetween = b } }
                 }
-                take(SETS_X) { m ->
+                take(SETS_X, complete = true) { m ->
                     if (sets != null) return@take true
                     sets = m.groupValues[1].toInt()
                     val v = num(m.groupValues[2]) ?: return@take true
@@ -283,12 +503,12 @@ object WorkoutTextParser {
                     }
                     true
                 }
-                take(SETS_WORD) { m ->
+                take(SETS_WORD, complete = true) { m ->
                     val v = m.groupValues[1].toInt()
                     if (m.groupValues[2].startsWith("r")) { if (rounds == null) rounds = v } else if (sets == null) sets = v
                     true
                 }
-                take(REPS_WORD) { m ->
+                take(REPS_WORD, complete = true) { m ->
                     if (reps == null) {
                         val r = m.groupValues[1].toInt()
                         reps = r
@@ -296,22 +516,27 @@ object WorkoutTextParser {
                     }
                     true
                 }
-                take(LEADING_X) { m -> if (sets == null) sets = m.groupValues[1].toInt(); true }
-                take(TRAILING_X) { m ->
+                take(LEADING_X, complete = true) { m -> if (sets == null) sets = m.groupValues[1].toInt(); true }
+                take(TRAILING_X, complete = true) { m ->
                     val v = m.groupValues[1].toInt()
                     // "7/3 x6": repeats per set; otherwise reps.
                     if (workS != null) { if (perSet == null) perSet = v } else if (reps == null) reps = v
                     true
                 }
-                take(DURATION) { m -> if (seconds == null) num(m.groupValues[1])?.let { seconds = secondsOf(it, m.groupValues[2]) }; true }
-                GRIPS.forEach { (regex, g) -> if (grip == null && regex.containsMatchIn(t)) grip = g }
-                if (SIDE_PAIR.containsMatchIn(t)) { sides = SideMode.BOTH; unilateral = true; t = SIDE_PAIR.replace(t, " ") }
-                if (SIDE_BOTH.containsMatchIn(t)) { sides = SideMode.BOTH; unilateral = true; t = SIDE_BOTH.replace(t, " ") }
-                if (SIDE_LEFT.containsMatchIn(t)) { sides = SideMode.LEFT_ONLY; unilateral = true; t = SIDE_LEFT.replace(t, " ") }
-                else if (SIDE_RIGHT.containsMatchIn(t)) { sides = SideMode.RIGHT_ONLY; unilateral = true; t = SIDE_RIGHT.replace(t, " ") }
+                take(DURATION, complete = true) { m -> if (seconds == null) num(m.groupValues[1])?.let { seconds = secondsOf(it, m.groupValues[2]) }; true }
+                GRIPS.forEach { (regex, g) ->
+                    regex.findAll(t).forEach { m -> record(m.range, false) }
+                    if (grip == null && regex.containsMatchIn(t)) grip = g
+                }
+                if (blank(SIDE_PAIR)) { sides = SideMode.BOTH; unilateral = true }
+                if (blank(SIDE_BOTH)) { sides = SideMode.BOTH; unilateral = true }
+                if (blank(SIDE_LEFT)) { sides = SideMode.LEFT_ONLY; unilateral = true }
+                else if (blank(SIDE_RIGHT)) { sides = SideMode.RIGHT_ONLY; unilateral = true }
+                if (restS != null) blank(REST_CONTEXT)
+                val distributed = blank(DISTRIBUTED)
                 val warmup = WARMUP_WORDS.containsMatchIn(t)
                 // A count left on its own: "Klimmzüge 8", "Plank 60".
-                take(BARE) { m -> if (reps == null && seconds == null) reps = m.groupValues[1].toInt(); true }
+                take(BARE, complete = true) { m -> if (reps == null && seconds == null) reps = m.groupValues[1].toInt(); true }
                 var rest = t.replace(Regex("[^\\p{L}\\p{N}'/&()-]+"), " ").replace(Regex("\\s+"), " ").trim()
                 // Words left over around the numbers: "à", "mit", "x", "je" …
                 var words = rest.split(' ').filter { it.isNotEmpty() }
@@ -325,7 +550,7 @@ object WorkoutTextParser {
                     if (stripped.isNotEmpty()) rest = stripped
                 }
                 return Numbers(sets, reps, repsMax, seconds, load, signed, edge, restS, workS, restBetween, perSet, rounds,
-                    grip, sides, unilateral, warmup, restoreCase(segment, rest))
+                    grip, sides, unilateral, warmup, restoreCase(segment, rest), spans.sortedBy { it.start }, distributed)
             }
 
             /** The name as the athlete wrote it, not lower-cased. */
@@ -339,24 +564,30 @@ object WorkoutTextParser {
 
     private val REST_FIRST = Regex("^(?:pause|rest|ruhe|erholung)(?![\\p{L}])")
 
-    internal val WARMUP_WORDS = Regex("(?<![\\p{L}])(?:aufw(?:ä|ae|a)rm\\p{L}*|einw(?:ä|ae|a)rm\\p{L}*|warm[\\s-]?ups?)(?![\\p{L}])")
+    internal val WARMUP_WORDS = Regex("(?<![\\p{L}])(?:aufw(?:ä|ae|a)rm\\p{L}*|einw(?:ä|ae|a)rm\\p{L}*|warm[\\s-]?ups?|warm[\\s-]?(?:machen|werden)|" +
+        "warmmachen|warmlaufen|einlaufen|einfahren|einrudern)(?![\\p{L}])")
 }
 
 /**
  * Finds the catalogue exercise a typed name means: names and aliases in every
  * language, folded (umlauts, ß, ae/oe/ue, punctuation) and with plural
  * endings cut, then scored by shared words, containment and edit distance.
- * Numbers in the text break ties: a load prefers loaded work, seconds prefer
- * holds ("Klimmzüge +20 kg" is the weighted pull-up, "Kniebeuge 60 kg" the
- * barbell squat).
+ * Typos count little: a loose spelling key (double letters, ck/k, tz/z, ie/i,
+ * ph/f …) and swapped neighbours are tolerated. Numbers in the text break ties:
+ * a load prefers loaded work, seconds prefer holds ("Klimmzüge +20 kg" is the
+ * weighted pull-up, "Kniebeuge 60 kg" the barbell squat).
+ *
+ * Fast enough to run on every keystroke of a long text: the catalogue's names
+ * are folded once per catalogue ([Index]), a query only scores the names that
+ * share letter triples with it, and a [Session] remembers what it already looked up.
  */
 object ExerciseMatcher {
 
-    /** Generic words that mean one exercise, by whether a load was given. */
-    private class Generic(val words: Set<String>, val loaded: String, val unloaded: String)
+    /** Generic words that mean one exercise, by whether a load was given (and a rhythm, for the hangboard). */
+    private class Generic(val words: Set<String>, val loaded: String, val unloaded: String, val interval: String? = null)
 
     private val GENERICS = listOf(
-        Generic(setOf("hangboard", "fingerboard", "griffbrett", "fingerbrett"), "finger.max_hang", "finger.max_hang"),
+        Generic(setOf("hangboard", "fingerboard", "griffbrett", "fingerbrett"), "finger.max_hang", "finger.max_hang", interval = "finger.repeaters"),
         Generic(setOf("squat", "squats", "kniebeuge", "kniebeugen"), "legs.back_squat", "legs.air_squat"),
         Generic(setOf("row", "rows", "rudern"), "pull.dumbbell_row", "pull.inverted_row"),
         Generic(setOf("pullup", "pullups", "pull up", "pull ups", "klimmzug", "klimmzuge", "klimmzuege"), "pull.weighted_pull_up", "pull.pull_up"),
@@ -366,34 +597,140 @@ object ExerciseMatcher {
         Generic(setOf("campus", "campusboard", "campus board"), "power.campus_ladders", "power.campus_ladders"),
     )
 
-    /** A whole line that is a catalogue name ("4x4", "90/90 Hip Switches"), before numbers are read out of it. */
-    fun wholeMatch(catalog: ExerciseCatalog, segment: String): ExerciseDefinition? {
-        val compact = tokens(segment).joinToString("")
-        if (compact.isEmpty()) return null
-        return catalog.all.firstOrNull { def -> texts(def).any { tokens(it).joinToString("") == compact } }
+    /** One name or alias of an exercise, folded once. */
+    private class Variant(val def: ExerciseDefinition, val tokens: List<String>, val loose: List<String>, val looseCompact: String, val grams: Int)
+
+    /** The catalogue's names, folded and indexed by letter triples. */
+    private class Index(val catalog: ExerciseCatalog) {
+        val variants: List<Variant>
+        /** A whole line that is a name, folded without spaces → the first exercise with it. */
+        val byCompact: Map<String, ExerciseDefinition>
+        val byGram: Map<String, IntArray>
+        /** Generic words, folded loosely → the generic. */
+        val generics: Map<String, Generic>
+
+        init {
+            val list = mutableListOf<Variant>()
+            val compact = HashMap<String, ExerciseDefinition>()
+            for (def in catalog.all) {
+                for (text in texts(def)) {
+                    val tokens = tokens(text)
+                    if (tokens.isEmpty()) continue
+                    compact.getOrPut(tokens.joinToString("")) { def }
+                    val loose = tokens.map(::loosen)
+                    val lc = loose.joinToString("")
+                    list += Variant(def, tokens, loose, lc, grams(lc).size)
+                }
+            }
+            variants = list
+            byCompact = compact
+            val postings = HashMap<String, MutableList<Int>>()
+            list.forEachIndexed { i, v -> grams(v.looseCompact).forEach { g -> postings.getOrPut(g) { mutableListOf() } += i } }
+            byGram = postings.mapValues { (_, ids) -> ids.distinct().toIntArray() }
+            generics = GENERICS.flatMap { g -> g.words.map { w -> tokens(w).map(::loosen).joinToString(" ") to g } }.toMap()
+        }
     }
 
-    fun best(catalog: ExerciseCatalog, name: String, numbers: WorkoutTextParser.Numbers? = null): ExerciseDefinition? {
-        if (catalog.all.isEmpty()) return null
-        val query = tokens(name)
-        if (query.isEmpty()) return null
-        val loaded = numbers?.loadKg?.let { abs(it) > 0 } == true || numbers?.signedLoad == true
-        val compactQuery = query.joinToString(" ")
-        GENERICS.firstOrNull { g -> g.words.any { tokens(it).joinToString(" ") == compactQuery } }?.let { g ->
-            catalog[if (loaded) g.loaded else g.unloaded]?.let { return it }
+    @Volatile private var lastIndex: Index? = null
+
+    private fun indexFor(catalog: ExerciseCatalog): Index =
+        lastIndex?.takeIf { it.catalog === catalog } ?: Index(catalog).also { lastIndex = it }
+
+    /**
+     * Look-ups for one text: the same name with the same kind of numbers is
+     * scored once, however often the parser asks while it splits the text.
+     */
+    class Session internal constructor(val catalog: ExerciseCatalog) {
+        private val index = indexFor(catalog)
+        private val memo = HashMap<String, Scored>()
+
+        fun wholeMatch(segment: String): ExerciseDefinition? {
+            val compact = tokens(segment).joinToString("")
+            return if (compact.isEmpty()) null else index.byCompact[compact]
         }
-        var bestDef: ExerciseDefinition? = null
-        var bestScore = 0.0
-        // One short word ("Push", "Pull", "Legs") names a day, not the push-up: only an exact name counts.
-        val shortWord = query.size == 1 && query.single().length <= 4
-        for (def in catalog.all) {
-            val base = texts(def).maxOf { score(query, tokens(it)) }
-            if (base < 0.55 || (shortWord && base < 1.0)) continue
-            val total = base + fit(def, numbers, loaded)
-            if (total > bestScore) { bestScore = total; bestDef = def }
+
+        /** The match, if the name is close enough – the fit to the numbers breaks ties, it never makes a weak name a match. */
+        fun best(name: String, numbers: WorkoutTextParser.Numbers? = null): ExerciseDefinition? {
+            val s = scored(name, numbers)
+            return s.def?.takeIf { s.score >= WorkoutTextParser.MATCH_THRESHOLD && s.base >= MIN_NAME_SCORE }
         }
-        return bestDef?.takeIf { bestScore >= WorkoutTextParser.MATCH_THRESHOLD }
+
+        /** The best exercise for [name] and its score (shared words, typos, the fit to the numbers). */
+        fun scored(name: String, numbers: WorkoutTextParser.Numbers? = null): Scored {
+            val key = name.lowercase() + "|" + signature(numbers)
+            memo[key]?.let { return it }
+            return compute(name, numbers).also { memo[key] = it }
+        }
+
+        private fun compute(name: String, numbers: WorkoutTextParser.Numbers?): Scored {
+            if (index.variants.isEmpty()) return Scored.NONE
+            val query = tokens(name)
+            if (query.isEmpty()) return Scored.NONE
+            val loaded = numbers?.loadKg?.let { abs(it) > 0 } == true || numbers?.signedLoad == true
+            val looseQuery = query.map(::loosen)
+            genericFor(looseQuery.joinToString(" "))?.let { g ->
+                val slug = if (numbers?.workS != null && g.interval != null) g.interval else if (loaded) g.loaded else g.unloaded
+                catalog[slug]?.let { return Scored(it, 1.0, 1.0) }
+            }
+            // One short word ("Push", "Pull", "Legs") names a day, not the push-up: only an exact name counts.
+            val shortWord = query.size == 1 && query.single().length <= 4
+            val qGrams = grams(looseQuery.joinToString(""))
+            val counts = HashMap<Int, Int>()
+            for (g in qGrams) index.byGram[g]?.forEach { id -> counts[id] = (counts[id] ?: 0) + 1 }
+            var bestDef: ExerciseDefinition? = null
+            var bestScore = 0.0
+            var bestBase = 0.0
+            var bestId = Int.MAX_VALUE
+            for ((id, shared) in counts) {
+                val v = index.variants[id]
+                // Too few shared letter triples to be the same name, even with a typo.
+                if (shared * 10 < 3 * min(qGrams.size, v.grams).coerceAtLeast(1)) continue
+                val base = score(query, v.tokens, looseQuery, v.loose)
+                if (base < 0.55 || (shortWord && base < 1.0)) continue
+                val total = base + fit(v.def, numbers, loaded)
+                // Equal scores: the exercise earlier in the catalogue, as before the index.
+                if (total > bestScore || (total == bestScore && id < bestId)) {
+                    bestScore = total; bestDef = v.def; bestId = id; bestBase = base
+                }
+            }
+            return if (bestDef == null) Scored.NONE else Scored(bestDef, bestScore, bestBase)
+        }
+
+        /** A generic word, also with a typo ("Kniebäugen" is still "Kniebeugen"). */
+        private fun genericFor(looseQuery: String): Generic? {
+            index.generics[looseQuery]?.let { return it }
+            if (looseQuery.length < 5) return null
+            return index.generics.entries.firstOrNull { (word, _) ->
+                abs(word.length - looseQuery.length) <= 1 && damerau(word, looseQuery) <= (if (looseQuery.length >= 8) 2 else 1)
+            }?.value
+        }
+
+        private fun signature(n: WorkoutTextParser.Numbers?): String {
+            if (n == null) return "-"
+            val loaded = n.loadKg?.let { abs(it) > 0 } == true || n.signedLoad
+            return buildString {
+                append(if (loaded) 'L' else 'l'); append(if (n.seconds != null && n.reps == null) 'S' else 's')
+                append(if (n.reps != null && n.seconds == null) 'R' else 'r'); append(if (n.workS != null) 'W' else 'w')
+                append(if (n.edgeMm != null) 'E' else 'e'); append(if (n.unilateral) 'U' else 'u')
+            }
+        }
     }
+
+    /** [score] with the fit to the numbers; [base] is the name alone (1.0 = the same name). */
+    /** Below this the name alone is too far from any exercise, whatever the numbers say ("rowing" is no forearm massage). */
+    const val MIN_NAME_SCORE = 0.66
+
+    data class Scored(val def: ExerciseDefinition?, val score: Double, val base: Double) {
+        companion object { val NONE = Scored(null, 0.0, 0.0) }
+    }
+
+    fun session(catalog: ExerciseCatalog): Session = Session(catalog)
+
+    /** A whole line that is a catalogue name ("4x4", "90/90 Hip Switches"), before numbers are read out of it. */
+    fun wholeMatch(catalog: ExerciseCatalog, segment: String): ExerciseDefinition? = Session(catalog).wholeMatch(segment)
+
+    fun best(catalog: ExerciseCatalog, name: String, numbers: WorkoutTextParser.Numbers? = null): ExerciseDefinition? =
+        Session(catalog).best(name, numbers)
 
     private fun texts(def: ExerciseDefinition): List<String> = def.i18n.values.flatMap { listOf(it.name) + it.aliases }
 
@@ -414,33 +751,46 @@ object ExerciseMatcher {
     }
 
     /** 1.0 for the same words; shared words weigh coverage of the query over coverage of the name. */
-    internal fun score(query: List<String>, candidate: List<String>): Double {
-        val cand = candidate.filterNot { it.all(Char::isDigit) }.ifEmpty { candidate }
-        if (cand.isEmpty()) return 0.0
+    internal fun score(query: List<String>, candidate: List<String>): Double =
+        score(query, candidate, query.map(::loosen), candidate.map(::loosen))
+
+    private fun score(query: List<String>, candidate: List<String>, looseQ: List<String>, looseC: List<String>): Double {
+        val digitsOnly = candidate.map { it.all(Char::isDigit) }
+        val keep = if (digitsOnly.all { it }) candidate.indices.toList() else candidate.indices.filter { !digitsOnly[it] }
+        if (keep.isEmpty()) return 0.0
+        val cand = keep.map { candidate[it] }
+        val candLoose = keep.map { looseC[it] }
         val q = query.joinToString("")
         val c = cand.joinToString("")
         if (q == c) return 1.0
-        val matchedQ = query.count { a -> cand.any { b -> same(a, b) } }
-        val matchedC = cand.count { b -> query.any { a -> same(a, b) } }
+        val lq = looseQ.joinToString("")
+        val lc = candLoose.joinToString("")
+        // The same name spelt a little differently: "Planck", "Klimzüge", "Liegestüze".
+        if (lq == lc) return 0.97
+        // A word matched only through a typo counts a little less than the same word ("rowing" is not "rolling").
+        val matchedQ = query.indices.sumOf { i -> cand.indices.maxOfOrNull { j -> same(query[i], cand[j], looseQ[i], candLoose[j]) } ?: 0.0 }
+        val matchedC = cand.indices.sumOf { j -> query.indices.maxOfOrNull { i -> same(query[i], cand[j], looseQ[i], candLoose[j]) } ?: 0.0 }
         var s = 0.65 * matchedQ / query.size + 0.35 * matchedC / cand.size
         if (q.length >= 4 && c.length >= 4 && (c.contains(q) || q.contains(c))) {
             s = max(s, 0.55 + 0.3 * min(q.length, c.length) / max(q.length, c.length))
         }
-        if (q.length >= 5) {
-            val sim = 1.0 - levenshtein(q, c).toDouble() / max(q.length, c.length)
-            if (sim >= 0.8) s = max(s, 0.95 * sim)
+        if (lq.length >= 5 && abs(lq.length - lc.length) * 5 <= max(lq.length, lc.length)) {
+            val sim = 1.0 - damerau(lq, lc).toDouble() / max(lq.length, lc.length)
+            // Short words need to be closer: one wrong letter in six is another word as often as a typo.
+            if (sim >= (if (max(lq.length, lc.length) < 8) 0.86 else 0.8)) s = max(s, 0.95 * sim)
         }
         return s
     }
 
-    private fun same(a: String, b: String): Boolean {
-        if (a == b) return true
+    /** 1.0 for the same word (also spelt loosely or with another ending), 0.8 for a typo, 0.0 otherwise. */
+    private fun same(a: String, b: String, la: String, lb: String): Double {
+        if (a == b || la == lb) return 1.0
         // A word and its ending ("Liegestütz"/"Liegestützen"), but not a compound and its first part: "Schrägbank" is
         // not "Schrägbankdrücken" (owner 2026-10-19: the incline press became "I-Y-T on the incline bench").
-        if (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a)) && abs(a.length - b.length) <= 2) return true
-        val longest = max(a.length, b.length)
-        if (longest >= 5) return levenshtein(a, b) <= (if (longest >= 8) 2 else 1)
-        return false
+        if (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a)) && abs(a.length - b.length) <= 2) return 1.0
+        val longest = max(la.length, lb.length)
+        if (longest >= 5 && abs(la.length - lb.length) <= 2 && damerau(la, lb) <= (if (longest >= 8) 2 else 1)) return 0.8
+        return 0.0
     }
 
     private val STOP = setOf("der", "die", "das", "den", "dem", "mit", "an", "am", "auf", "im", "in", "the", "of", "with", "on", "a", "und", "and")
@@ -457,16 +807,45 @@ object ExerciseMatcher {
         else -> t
     }
 
-    private fun levenshtein(a: String, b: String): Int {
+    /**
+     * A spelling key that typos rarely change: double letters single, ck/k, tz/z, ph/f, th/t, dt/t, ie/i, y/i,
+     * c/k, v/f – "Klimmzüge"/"Klimzüge", "Planck"/"Plank" meet.
+     */
+    internal fun loosen(t: String): String {
+        if (t.all(Char::isDigit)) return t
+        val s = t.replace("sch", "\u0001").replace("ck", "k").replace("tz", "z").replace("ph", "f").replace("th", "t")
+            .replace("dt", "t").replace("ie", "i").replace('y', 'i').replace("ch", "\u0002").replace('c', 'k')
+            .replace('v', 'f').replace("\u0001", "s").replace("\u0002", "h")
+        val out = StringBuilder(s.length)
+        for (ch in s) if (out.isEmpty() || out[out.length - 1] != ch) out.append(ch)
+        return out.toString()
+    }
+
+    /** Letter triples of [s] with word boundary marks; a short word is its own triple. */
+    private fun grams(s: String): Set<String> {
+        if (s.isEmpty()) return emptySet()
+        val padded = "^$s$"
+        if (padded.length <= 3) return setOf(padded)
+        return (0..padded.length - 3).mapTo(HashSet()) { padded.substring(it, it + 3) }
+    }
+
+    /** Edit distance where swapping two neighbouring letters counts once ("Liegestüzte"). */
+    private fun damerau(a: String, b: String): Int {
         if (a == b) return 0
+        if (a.isEmpty()) return b.length
+        if (b.isEmpty()) return a.length
+        var twoBack = IntArray(b.length + 1)
         var prev = IntArray(b.length + 1) { it }
         var cur = IntArray(b.length + 1)
         for (i in 1..a.length) {
             cur[0] = i
             for (j in 1..b.length) {
-                cur[j] = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1)
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                var v = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+                if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) v = min(v, twoBack[j - 2] + 1)
+                cur[j] = v
             }
-            val t = prev; prev = cur; cur = t
+            val t = twoBack; twoBack = prev; prev = cur; cur = t
         }
         return prev[b.length]
     }
