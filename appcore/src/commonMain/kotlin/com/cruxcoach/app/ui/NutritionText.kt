@@ -153,9 +153,15 @@ internal object NutritionTexts {
         },
     )
 
-    /** "board 60 min" / "training 45 min": today's planned training in the day's header and the carbohydrate info. */
-    fun plannedTraining(p: PlannedTraining.Planned): NutriText =
-        t(if (p.kind == PlannedTraining.Kind.BOARD) "trf_planned_board" else "trf_planned_training", int(p.minutes))
+    /** "board 60 min" / "climbing 90 min" / "training 45 min": today's planned training in the day's header and the carbohydrate info. */
+    fun plannedTraining(p: PlannedTraining.Planned): NutriText = t(
+        when (p.kind) {
+            PlannedTraining.Kind.BOARD -> "trf_planned_board"
+            PlannedTraining.Kind.CLIMB -> "trf_planned_climb"
+            PlannedTraining.Kind.OFF_WALL -> "trf_planned_training"
+        },
+        int(p.minutes),
+    )
 
     // ── Energy (EnergyCareCard.kt, EnergySheets.kt) ──────────────────
 

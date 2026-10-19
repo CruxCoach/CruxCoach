@@ -289,6 +289,11 @@ internal object Tx {
         SuggestionReason.KEPT_CHOICE -> "tre_reason_kept"
         SuggestionReason.LEVEL_EASIER_KEPT -> "tre_reason_level_easier_kept"
         SuggestionReason.LEVEL_HARDER_KEPT -> "tre_reason_level_harder_kept"
+        SuggestionReason.PLANNED_CLIMB -> "trdp_reason_planned_climb"
+        SuggestionReason.CLIMB_LIGHTER_ADVISED -> "trdp_reason_lighter"
+        SuggestionReason.LIMIT_TOMORROW -> "trdp_reason_limit_tomorrow"
+        SuggestionReason.PLANNED_CLIMB_NOT_LOGGED -> "trdp_reason_not_logged"
+        SuggestionReason.FINGERS_BEFORE_HARD_DAY -> "trdp_reason_fingers_before"
     }
 
     /** The kinds of training the athlete can choose, in their words (`kindLabel`). */
