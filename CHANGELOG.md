@@ -349,6 +349,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   targets count the climbing.
 
 ### Changed
+- Typed workouts are read as free text: several exercises per line or in
+  sentences ("Klimmzüge 5x5 +20 kg Liegestütze 3x15, dann Plank 3x60 s"),
+  numbers before or after the name, "and"/"then"/"je" lists, "left and right",
+  dumbbell pairs ("2x16 kg"), labels ("Bauch: …") and warm-ups written in a
+  sentence. Circuits can be written freely – "Zirkel 3 Runden: …", "3 Runden:"
+  over a list, "… als Zirkel", "5 rounds of …", "3x ( … )", "im Wechsel mit",
+  "Supersatz" – with their rests ("between exercises", "after each round", a
+  "Pause 90 s" line under the list); the preview shows them grouped. Typos
+  matter little (double letters, ck/k, swapped letters), while a weak name is
+  no longer matched just because the numbers fit. The catalogue gained sit-ups
+  with and without weight, incline dumbbell press, single-arm lat pulldown,
+  seated cable row, triceps pushdown and reverse flys; "Schrägbankdrücken" no
+  longer becomes the I-Y-T raise. Reading runs off the main thread and reuses
+  a catalogue index, so long texts stay smooth.
 - The review after a photo or a typed meal corrects amounts in one tap:
   ×½, ×¾, ×1¼ and ×1½ for any food, whole pieces (−1 / +1, "≈ 2 pcs, 120 g
   each") for foods people count – the photo model is about a quarter off per

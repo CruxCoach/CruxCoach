@@ -196,11 +196,16 @@ class RoutineEditorViewModel @Inject constructor(private val service: AthleteSer
         if (result.lines.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            val items = service.resolveTyped(result.lines)
+            val typed = service.resolveTyped(result.lines)
             val catalog = service.catalogStore.catalog.value
             _state.update { s ->
+                // Typed circuits get keys of their own, so they never merge with a circuit already in the editor.
+                val offset = s.items.mapNotNull { it.item.circuit }.maxOrNull() ?: 0
+                val all = com.cruxcoach.athlete.logic.Circuits.normalize(
+                    s.items.map { it.item } + typed.map { it.copy(circuit = it.circuit?.plus(offset)) }, catalog)
+                val kept = s.items.mapIndexed { i, e -> e.copy(item = all[i]) }
                 s.copy(
-                    items = s.items + items.map { EditorItem(nextKey++, it) },
+                    items = kept + all.drop(s.items.size).map { EditorItem(nextKey++, it) },
                     catalog = catalog,
                     name = s.name.ifBlank { result.title ?: fallbackName },
                     dirty = true,
