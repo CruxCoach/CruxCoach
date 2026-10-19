@@ -216,6 +216,10 @@ object WorkoutTextParser {
             private val SIDE_LEFT = Regex("$B(?:nur\\s+)?(?:links|left|linke|linker|linken)(?:\\s+(?:hand|arm|bein|seite|side|only))?$E")
             private val SIDE_RIGHT = Regex("$B(?:nur\\s+)?(?:rechts|right|rechte|rechter|rechten)(?:\\s+(?:hand|arm|bein|seite|side|only))?$E")
             private val SIDE_BOTH = Regex("$B(?:pro|je|each|per)\\s+(?:seite|side|arm|hand|bein|leg)$E")
+            // "links und rechts", "rechts/links", "li+re", "beidseitig", "beide Seiten": each side in turn (owner 2026-10-19).
+            private val SIDE_PAIR = Regex(
+                "$B(?:(?:links|li|left)\\s*(?:und|and|&|/|\\+|,)?\\s*(?:rechts|re|right)|(?:rechts|re|right)\\s*(?:und|and|&|/|\\+|,)?\\s*(?:links|li|left)|" +
+                    "beidseitig\\p{L}*|beide\\s+seiten|both\\s+sides|jede\\s+seite|each\\s+side)$E")
             private val GRIPS = listOf(
                 Regex("$B(?:halb[\\s-]*(?:aufgestellt|crimp)|half[\\s-]*crimp|halfcrimp)$E") to Grip.HALF_CRIMP,
                 Regex("$B(?:voll[\\s-]*aufgestellt|aufgestellt|full[\\s-]*crimp|fullcrimp)$E") to Grip.FULL_CRIMP,
@@ -301,6 +305,7 @@ object WorkoutTextParser {
                 }
                 take(DURATION) { m -> if (seconds == null) num(m.groupValues[1])?.let { seconds = secondsOf(it, m.groupValues[2]) }; true }
                 GRIPS.forEach { (regex, g) -> if (grip == null && regex.containsMatchIn(t)) grip = g }
+                if (SIDE_PAIR.containsMatchIn(t)) { sides = SideMode.BOTH; unilateral = true; t = SIDE_PAIR.replace(t, " ") }
                 if (SIDE_BOTH.containsMatchIn(t)) { sides = SideMode.BOTH; unilateral = true; t = SIDE_BOTH.replace(t, " ") }
                 if (SIDE_LEFT.containsMatchIn(t)) { sides = SideMode.LEFT_ONLY; unilateral = true; t = SIDE_LEFT.replace(t, " ") }
                 else if (SIDE_RIGHT.containsMatchIn(t)) { sides = SideMode.RIGHT_ONLY; unilateral = true; t = SIDE_RIGHT.replace(t, " ") }
@@ -357,6 +362,7 @@ object ExerciseMatcher {
         Generic(setOf("pullup", "pullups", "pull up", "pull ups", "klimmzug", "klimmzuge", "klimmzuege"), "pull.weighted_pull_up", "pull.pull_up"),
         Generic(setOf("lunge", "lunges", "ausfallschritt", "ausfallschritte"), "legs.reverse_lunge", "legs.reverse_lunge"),
         Generic(setOf("plank", "planks"), "core.front_plank", "core.front_plank"),
+        Generic(setOf("situp", "situps", "sit up", "sit ups"), "core.weighted_sit_up", "core.sit_up"),
         Generic(setOf("campus", "campusboard", "campus board"), "power.campus_ladders", "power.campus_ladders"),
     )
 
@@ -429,7 +435,9 @@ object ExerciseMatcher {
 
     private fun same(a: String, b: String): Boolean {
         if (a == b) return true
-        if (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a))) return true
+        // A word and its ending ("Liegestütz"/"Liegestützen"), but not a compound and its first part: "Schrägbank" is
+        // not "Schrägbankdrücken" (owner 2026-10-19: the incline press became "I-Y-T on the incline bench").
+        if (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a)) && abs(a.length - b.length) <= 2) return true
         val longest = max(a.length, b.length)
         if (longest >= 5) return levenshtein(a, b) <= (if (longest >= 8) 2 else 1)
         return false

@@ -210,6 +210,53 @@ class WorkoutTextParserTest {
     }
 
     @Test
+    fun `the incline press is the incline press, not the I-Y-T on the incline bench`() {
+        // Owner 2026-10-19: "Schrägbankdrücken" became "I-Y-T auf der Schrägbank".
+        for (text in listOf("Kurzhantelschrägbankdrücken 3x10 20kg", "Schrägbankdrücken 3x10 20 kg", "Kurzhantel Schrägbankdrücken 3x10 20kg",
+            "Incline Dumbbell Press 3x10 45 lbs")) {
+            val line = one(text)
+            assertEquals("push.dumbbell_incline_press", line.item.slug, text)
+            assertTrue(line.item.loadKg!! > 19.0, text)
+        }
+        assertEquals("antagonist.prone_iyt_bench", one("I-Y-T auf der Schrägbank 3x10 2kg").item.slug)
+        // A compound that only starts like a catalogue word is a new exercise, not that one.
+        assertTrue(one("Schrägbankrudern 3x10 20kg").match?.slug != "antagonist.prone_iyt_bench")
+    }
+
+    @Test
+    fun `sit-ups with added weight keep the weight`() {
+        val weighted = one("Situps mit Zusatzgewicht 3x15 10kg")
+        assertEquals("core.weighted_sit_up", weighted.item.slug)
+        assertEquals(10.0, weighted.item.loadKg)
+        assertEquals(15, weighted.item.repsMin)
+        assertEquals("core.weighted_sit_up", one("Sit-ups 3x12 +5 kg").item.slug)
+        assertEquals("core.sit_up", one("Sit-ups 3x20").item.slug)
+    }
+
+    @Test
+    fun `left and right together mean each side in turn`() {
+        // Owner 2026-10-19: "rechts" landed in the new exercise's name and "links" became its only side.
+        val line = one("Einarmiger Latzug links und rechts 3x10 30kg")
+        assertEquals("pull.single_arm_lat_pulldown", line.item.slug)
+        assertEquals(SideMode.BOTH, line.item.sides)
+        assertEquals(30.0, line.item.loadKg)
+        for (text in listOf("Latzug einarmig rechts und links 3x10", "Einarmiger Latzug li/re 3x10", "Einarmiger Latzug beidseitig 3x10",
+            "Einarmiger Latzug beide Seiten 3x10", "Single-arm lat pulldown left and right 3x10")) {
+            val l = one(text)
+            assertEquals("pull.single_arm_lat_pulldown", l.item.slug, text)
+            assertEquals(SideMode.BOTH, l.item.sides, text)
+        }
+        // A new exercise: the sides go to the setting, not into its name.
+        val kickbacks = one("Seilzug-Kickbacks links und rechts 3x12")
+        assertNull(kickbacks.match)
+        assertEquals("Seilzug-Kickbacks", kickbacks.name)
+        assertEquals(SideMode.BOTH, kickbacks.item.sides)
+        assertTrue(kickbacks.guess.unilateral)
+        // One side alone stays that side.
+        assertEquals(SideMode.LEFT_ONLY, one("Einarmiger Latzug links 3x10").item.sides)
+    }
+
+    @Test
     fun `empty and number-only text gives nothing`() {
         assertTrue(WorkoutTextParser.parse("", catalog).lines.isEmpty())
         assertTrue(WorkoutTextParser.parse("5x5", catalog).lines.isEmpty())
