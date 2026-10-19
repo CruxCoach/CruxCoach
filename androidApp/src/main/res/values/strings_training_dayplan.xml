@@ -6,6 +6,7 @@
     <string name="trdp_today">Today</string>
     <string name="trdp_tomorrow">Tomorrow</string>
     <string name="trdp_free">Free – the coach decides</string>
+    <string name="trdp_free_short">Free</string>
     <string name="trdp_usual_climb">Usual climbing day</string>
     <string name="trdp_only_this_day">this day only</string>
     <string name="trdp_standard">As in the standard week: %1$s</string>
@@ -22,7 +23,6 @@
     <string name="trdp_hint_after_hard">Coach: recovery after the hard day, no maximal finger work</string>
     <string name="trdp_hint_before_limit">Coach: legs and core, fingers and pulling stay fresh for the limit day</string>
     <string name="trdp_hint_before_hard">Coach: no finger training, fresh for the next day</string>
-    <string name="trdp_hint_open">The coach decides on the day</string>
     <string name="trdp_hint_paused">Pause</string>
     <string name="trdp_hint_climb">Warm-up before, a short block after</string>
     <string name="trdp_hint_climb_only">Warm-up before</string>
@@ -38,4 +38,8 @@
     <string name="trt_rest_today_done">Today is now a rest day.</string>
     <string name="trf_planned_climb">climbing %1$d min</string>
     <string name="trw_notify_climb">Climbing day</string>
+    <string name="trdp_reason_day_rest">A rest day is planned for today. Light mobility is optional.</string>
+    <string name="trdp_reason_day_plan">This is what you planned for today.</string>
+    <string name="trdp_reason_day_board">A board day is planned for today – warm up properly, a short antagonist block afterwards.</string>
+    <string name="trdp_training">Training</string>
 </resources>
