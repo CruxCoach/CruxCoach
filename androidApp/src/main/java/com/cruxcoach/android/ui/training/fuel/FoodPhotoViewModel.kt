@@ -447,7 +447,8 @@ class FoodPhotoViewModel @Inject constructor(
     suspend fun searchWithProducts(query: String): List<BlsFood> {
         val foods = search(query)
         val found = runCatching { products.search(query) }.getOrDefault(emptyList()).take(15).map(::productChoice)
-        return foods.take(15) + found
+        // "Whey" finds sweet whey in the table; what is meant is a product (device test 2026-10-19).
+        return if (FoodMatcher.lacksCounterpart(query)) found + foods.take(15) else foods.take(15) + found
     }
 
     /** USDA generic foods (English names, household measures). */

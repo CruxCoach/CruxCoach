@@ -129,7 +129,8 @@ class FoodPhotoTest : AthleteScreenTest() {
         assertNull(whey.choice)
         var found: com.cruxcoach.athlete.logic.BlsFood? = null
         compose.waitUntil(WAIT_MS) {
-            found = runBlocking { photo.searchWithProducts("whey") }.firstOrNull { FoodPhotoViewModel.isProduct(it) }
+            // A word the table has no counterpart for lists the products first.
+            found = runBlocking { photo.searchWithProducts("whey") }.firstOrNull()?.takeIf { FoodPhotoViewModel.isProduct(it) }
             found != null
         }
         assertEquals("off:4000000000017", found!!.code)

@@ -342,6 +342,9 @@ class FoodMatcher(foods: List<BlsFood>) {
             "protein shake", "protein powder", "protein bar", "whey protein", "proteindrink", "eiweissdrink",
         )
 
+        /** The food table has no counterpart for [name] (a protein shake, whey, a protein bar): look at products first. */
+        fun lacksCounterpart(name: String): Boolean = hasNoCounterpart(Words(normalize(name)))
+
         private fun hasNoCounterpart(words: Words): Boolean {
             val c = words.content
             return c.any { it in NO_COUNTERPART } || c.zipWithNext { a, b -> "$a $b" }.any { it in NO_COUNTERPART }
