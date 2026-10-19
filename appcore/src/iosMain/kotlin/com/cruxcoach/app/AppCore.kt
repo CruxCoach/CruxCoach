@@ -2438,4 +2438,14 @@ class AppCore private constructor(
         com.cruxcoach.app.sync.IosBatteryStatus(onNotLow = { refreshCataloguesIfDue() }).also { it.start() }
     }
 
+    // ── Plan days and climbing days (dayplan, sync 2026-10-19; Android 570820eee + e2bc7c731) ──
+
+    /** "Plan days" (Android `DayPlannerSheet`): one presenter per presentation of the sheet; null without the athlete stack. */
+    fun makeDayPlannerScreen(): com.cruxcoach.app.ui.DayPlannerScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.DayPlannerScreenModel(
+            com.cruxcoach.app.dayplan.DayPlannerPresenter(service, MainScope(), Dispatchers.IO),
+        )
+    }
+
 }

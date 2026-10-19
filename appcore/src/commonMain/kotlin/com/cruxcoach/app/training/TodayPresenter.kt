@@ -40,7 +40,13 @@ import kotlinx.datetime.toLocalDateTime
 internal data class LevelKept(val offer: PreferenceLearning.LevelOffer, val before: Int?, val todayShift: Int, val eventIds: List<String>)
 
 /** One day in the week strip. */
-internal data class TodayWeekDay(val date: LocalDate, val climbed: Boolean, val trained: Boolean, val paused: Boolean, val isToday: Boolean)
+internal data class TodayWeekDay(
+    val date: LocalDate, val climbed: Boolean, val trained: Boolean, val paused: Boolean, val isToday: Boolean,
+    /** What is planned on the day ([DayPlans.entry]); null = free. */
+    val planned: String? = null,
+    /** A climbing or board day is planned (also a usual climbing weekday). */
+    val climbPlanned: Boolean = false,
+)
 
 /**
  * Gentle nudges on the hub, each with one action. What to train today is the
@@ -138,6 +144,8 @@ internal data class TodayState(
     val gradeOffer: String? = null,
     /** A logbook grade just taken over (new, before), for the snackbar and "Rückgängig". */
     val gradeTaken: Pair<String, String?>? = null,
+    /** The date plans before "Heute Ruhetag", for the snackbar and "Rückgängig" (owner 2026-10-19). */
+    val restTodayUndo: Map<String, String>? = null,
 ) {
     /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
     val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
@@ -269,6 +277,8 @@ internal class TodayPresenter(
                 trained = a != null && a.workoutMinutes > 0,
                 paused = i.pauses.any { p -> covers(p, date, today) },
                 isToday = date == today,
+                planned = DayPlans.entry(i.profile, date),
+                climbPlanned = DayPlans.climbingPlanned(i.profile, date),
             )
         }
         val repo = service.repo
@@ -503,8 +513,12 @@ internal class TodayPresenter(
             val usualMinutes = usual?.minutes?.takeIf { minutesToday == null }
             val parsedActivities = activities.mapNotNull { (day, a) -> runCatching { LocalDate.parse(day) }.getOrNull()?.let { it to a } }.toMap()
             val todayActivity = parsedActivities[today]
+            // Logged, or planned for the date (its own entry first, then the standard week and the usual climbing days).
             val climbingToday = (todayActivity != null && (todayActivity.climbingMinutes > 0 || todayActivity.climbingEfforts > 0)) ||
-                today.dayOfWeek.isoDayNumber in i.profile.coach.climbingDays
+                DayPlans.climbingPlanned(i.profile, today)
+            val yesterday = today.minus(DatePeriod(days = 1))
+            val plannedYesterday = DayPlans.climbIntensity(i.profile, yesterday)
+                ?.takeIf { DayPlans.climbingPlanned(i.profile, yesterday) && i.pauses.none { p -> covers(p, yesterday, today) } }
             val benchmarks = repo.allBenchmarks().groupBy { it.exerciseSlug }.mapNotNull { (_, list) -> list.maxByOrNull { it.measuredAt } }
             val historyWeeks = parsedActivities.filterValues { it.trained }.keys.map { ConsistencyStreak.weekStart(it) }.distinct().size
             // Back after a break or a healed finger injury: a conservative ramp on top of every other rule.
@@ -536,6 +550,7 @@ internal class TodayPresenter(
                 excluded = i.profile.excludedExercises,
                 block = block,
                 climbingToday = climbingToday,
+                plannedYesterday = plannedYesterday,
                 benchmarks = benchmarks,
                 levelShift = levelShift,
                 budgetFactor = budgetFactor,
@@ -745,6 +760,24 @@ internal class TodayPresenter(
             } else service.declineGrade(grade)
         }
     }
+
+    /**
+     * "Heute keine Zeit – Ruhetag" (owner 2026-10-19): today is planned as a rest day, this day only; the days
+     * around it follow on their own. Snackbar with "Rückgängig".
+     */
+    fun restToday() = io {
+        val today = service.today()
+        var before: Map<String, String>? = null
+        service.repo.updateProfile { p ->
+            before = p.datePlan
+            DayPlans.withDay(p, today, PLAN_REST, today)
+        }
+        _state.update { it.copy(restTodayUndo = before) }
+    }
+
+    fun consumeRestTodayUndo() = _state.update { it.copy(restTodayUndo = null) }
+
+    fun undoRestToday(before: Map<String, String>) = io { service.repo.updateProfile { it.copy(datePlan = before) } }
 
     /** "Rückgängig" after taking a logbook grade over: the grade before is back. */
     fun undoGradeTaken(taken: Pair<String, String?>) {

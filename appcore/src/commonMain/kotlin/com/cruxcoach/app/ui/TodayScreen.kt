@@ -21,6 +21,12 @@ class TodayWeekDayUi(
     val trained: Boolean,
     val paused: Boolean,
     val isToday: Boolean,
+    /** Today or later: the strip shows what is planned there. */
+    val ahead: Boolean,
+    /** What is planned (Android week strip): climb | rest | training | "" (nothing, or the day is done or past). */
+    val planCode: String,
+    /** "Planned: Climbing day" for screen readers on a day ahead; empty when [planCode] is "". */
+    val plannedText: TrText,
 )
 
 /** One exercise of today's card. */
@@ -104,6 +110,12 @@ class TodayScreenState(
     val mainCount: Int,
     val totalMinutes: Int,
     val timeAdjustable: Boolean,
+    /** A planned climbing day: the card holds its warm-up, the button says so (Android `climbDay`). */
+    val climbDay: Boolean,
+    /** "Rest day today" is offered unless today already plans rest. */
+    val canRestToday: Boolean,
+    /** Today was just planned as a rest day: one line with "Undo"; take it with [TodayScreenModel.takeRestTodayUndo]. */
+    val hasRestTodayUndo: Boolean,
     /** Minutes chosen for today, 0 = the preferred duration. */
     val minutesToday: Int,
     val preferredMinutes: Int,
@@ -251,6 +263,17 @@ class TodayScreenModel internal constructor(
     fun consumeLevelKept() = presenter.consumeLevelKept()
     fun dismissSetupDone() = presenter.dismissSetupDone()
 
+    // ── Plan days (owner 2026-10-19) ──
+    /** "Heute keine Zeit – Ruhetag": today is planned as a rest day, this date only. */
+    fun restToday() = presenter.restToday()
+
+    /** The pending "Undo" of [restToday], once: null when there is none (already taken). */
+    fun takeRestTodayUndo(): DayPlanUndo? {
+        val before = presenter.state.value.restTodayUndo ?: return null
+        presenter.consumeRestTodayUndo()
+        return DayPlanUndo { presenter.undoRestToday(before) }
+    }
+
     fun alternatives(slug: String): List<TodayAlternativeUi> = try {
         presenter.alternatives(slug).map { alternativeUi(it, language) }
     } catch (e: Exception) {
@@ -387,7 +410,7 @@ private class TodayMapper(val s: TodayState, val language: String, val pending: 
                 else -> Tx.t("trt_streak_start")
             },
             jokers = streak?.jokers ?: 0,
-            week = s.week.map { TodayWeekDayUi(it.date.toString(), it.date.dayOfWeek.ordinal + 1, it.climbed, it.trained, it.paused, it.isToday) },
+            week = s.week.map { weekDay(it) },
             openPause = s.openPause != null,
             hasInjuries = s.injuries.isNotEmpty(),
             injuryClimbingPaused = s.injuries.any { it.climbingPaused },
@@ -418,6 +441,9 @@ private class TodayMapper(val s: TodayState, val language: String, val pending: 
             mainCount = main.size,
             totalMinutes = suggestion?.totalMinutes ?: 0,
             timeAdjustable = suggestion?.timeAdjustable ?: false,
+            climbDay = suggestion != null && !suggestion.addOn && DayPlans.isClimb(suggestion.plannedEntry),
+            canRestToday = suggestion?.plannedEntry != PLAN_REST,
+            hasRestTodayUndo = s.restTodayUndo != null,
             minutesToday = s.minutesToday ?: 0,
             preferredMinutes = s.profile.sessionMinutes,
             durationOptions = TodayPresenter.DURATION_OPTIONS,
@@ -529,10 +555,36 @@ private class TodayMapper(val s: TodayState, val language: String, val pending: 
     private fun TrText.sameAs(other: TrText): Boolean = key == other.key && key.isNotEmpty() &&
         args.map { it.number to it.text } == other.args.map { it.number to it.text }
 
-    /** `suggestionTitle`: the add-on, the own or built-in planned routine, else the focus. */
+    /**
+     * One day of the week strip (Android `WeekHeader`): what is still ahead this week – planned climbing, a rest
+     * day, a planned training – once the day is neither done nor paused.
+     */
+    private fun weekDay(d: com.cruxcoach.app.training.TodayWeekDay): TodayWeekDayUi {
+        val today = s.today
+        val ahead = today != null && d.date >= today
+        val code = when {
+            d.climbed || d.trained || d.paused || !ahead -> ""
+            d.climbPlanned -> "climb"
+            d.planned == PLAN_REST -> "rest"
+            d.planned != null -> "training"
+            else -> ""
+        }
+        val what = when (code) {
+            "climb" -> "trdp_climb"
+            "rest" -> "trwo_plan_rest"
+            "training" -> "trdp_training"
+            else -> null
+        }
+        return TodayWeekDayUi(d.date.toString(), d.date.dayOfWeek.ordinal + 1, d.climbed, d.trained, d.paused, d.isToday,
+            ahead, code, what?.let { Tx.t("trw_day_planned", Tx.k(it)) } ?: Tx.EMPTY)
+    }
+
+    /** `suggestionTitle`: the add-on, a planned climbing day, the own or built-in planned routine, else the focus. */
     private fun suggestionTitle(): TrText {
         val sg = s.suggestion ?: return Tx.EMPTY
         if (sg.addOn) return Tx.t("tre_focus_addon")
+        // A planned climbing day is called what it is: "Gym bouldering · Limit".
+        DayPlans.climbOf(sg.plannedEntry)?.let { return Tx.climbPlanLabel(it) }
         if (sg.focus == SuggestionFocus.PLANNED) {
             s.plannedName?.let { return Tx.plain(it) }
             sg.plannedEntry?.takeIf { it.startsWith("builtin:") }
@@ -553,6 +605,15 @@ private class TodayMapper(val s: TodayState, val language: String, val pending: 
         }
         if (reason == SuggestionReason.USUAL_MINUTES && usualMinutes != null && weekday != null) {
             return Tx.t("trt_reason_usual_minutes", Tx.weekday(weekday), Tx.i(usualMinutes))
+        }
+        // Planned for this date only ("Heute Ruhetag", a moved day): not the standard week's doing (device check 2026-10-19).
+        if (s.today?.let { DayPlans.isOverridden(s.profile, it) } == true) {
+            when (reason) {
+                SuggestionReason.WEEK_PLAN_REST -> return Tx.t("trdp_reason_day_rest")
+                SuggestionReason.WEEK_PLAN -> return Tx.t("trdp_reason_day_plan")
+                SuggestionReason.WEEK_PLAN_BOARD -> return Tx.t("trdp_reason_day_board")
+                else -> Unit
+            }
         }
         // The weekly plan names the area it means (device test 2026-10-17: "this area" on a finger day meant pull).
         if (reason == SuggestionReason.WEEKLY_TARGET) {

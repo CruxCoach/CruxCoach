@@ -354,6 +354,26 @@ internal object Tx {
         null -> "tre_int_unknown"
     }
 
+    /** Where a climbing day is (Android `climbingDayKindLabel`). */
+    fun climbKindKey(k: ClimbingDayKind) = when (k) {
+        ClimbingDayKind.GYM_BOULDER -> "trl_kind_gym_boulder"
+        ClimbingDayKind.GYM_ROPE -> "trl_kind_gym_rope"
+        ClimbingDayKind.OUTDOOR -> "trl_kind_outdoor"
+        ClimbingDayKind.OTHER_BOARD -> "trl_kind_other_board"
+        ClimbingDayKind.OTHER -> "trl_kind_other"
+    }
+
+    /** How hard a climbing day is (Android `climbIntensityLabel`; "Volume" since 2026-10-19). */
+    fun climbLevelKey(i: ClimbIntensity) = when (i) {
+        ClimbIntensity.LIGHT -> "trl_intensity_light"
+        ClimbIntensity.VOLUME -> "trl_intensity_volume"
+        ClimbIntensity.HARD -> "trl_intensity_hard"
+        ClimbIntensity.LIMIT -> "trl_intensity_limit"
+    }
+
+    /** A planned climbing day as the plan shows it: "Gym bouldering · Limit" (Android `climbPlanLabel`). */
+    fun climbPlanLabel(c: DayPlans.Climb): TrText = join(listOf(t(climbKindKey(c.kind)), t(climbLevelKey(c.intensity))))
+
     fun structureKey(s: LoadStructure) = when (s) {
         LoadStructure.FINGER -> "tre_struct_finger"
         LoadStructure.SKIN -> "tre_struct_skin"
