@@ -599,6 +599,21 @@ class TrainingUiReviewTest : AthleteScreenTest() {
 
     @Test
     @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun editorTypedFree() {
+        seedActive()
+        val vm = com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel(service).tracked()
+        shoot("editor-typed-free", {
+            click("routine_editor_type")
+            compose.onNodeWithTag("workout_text_input").performTextReplacement(
+                "Klimmzüge 5x5 +10kg Schrägbankdrücken 4x8 22kg, dann Zirkel 3 Runden: Face Pulls 15, Dips 10, Hollow Hold 30s, " +
+                    "90 s Pause nach jeder Runde")
+            waitForTag("workout_text_circuit_1")
+            waitForTag("workout_text_line_4")
+        }) { com.cruxcoach.android.ui.training.workouts.RoutineEditorScreen(null, null, {}, {}, viewModel = vm) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
     fun editorTyped() {
         seedActive()
         val vm = com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel(service).tracked()
