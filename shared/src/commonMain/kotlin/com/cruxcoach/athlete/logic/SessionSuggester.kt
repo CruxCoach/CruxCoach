@@ -310,7 +310,9 @@ object SessionSuggester {
     fun suggest(input: SuggestionInput): SessionSuggestion {
         var s = suggestByRules(input).let {
             it.copy(
-                timeAdjustable = it.focus != SuggestionFocus.REST && SuggestionReason.BLOCK_EVENT !in it.reasons,
+                // A planned climbing day's card is its warm-up: a chosen time would change nothing there.
+                timeAdjustable = it.focus != SuggestionFocus.REST && SuggestionReason.BLOCK_EVENT !in it.reasons &&
+                    (it.addOn || !DayPlans.isClimb(it.plannedEntry)),
                 // The same condition as the time cut for fatigue in suggestByRules.
                 shortenedForFatigue = SuggestionReason.LOW_ENERGY in it.reasons && (input.minutesToday == null || input.minutesLearned),
             )

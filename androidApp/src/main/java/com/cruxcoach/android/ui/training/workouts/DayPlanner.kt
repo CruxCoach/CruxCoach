@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.daysUntil
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
@@ -191,7 +192,8 @@ private fun hintText(day: DayPlans.Day, profile: AthleteProfile): String? = when
     DayPlans.Hint.AFTER_HARD -> stringResource(R.string.trdp_hint_after_hard)
     DayPlans.Hint.BEFORE_LIMIT -> stringResource(R.string.trdp_hint_before_limit)
     DayPlans.Hint.BEFORE_HARD -> stringResource(R.string.trdp_hint_before_hard)
-    DayPlans.Hint.OPEN -> stringResource(R.string.trdp_hint_open)
+    // A free day without anything around it needs no second line ("Frei" says it).
+    DayPlans.Hint.OPEN -> null
     DayPlans.Hint.PAUSED -> stringResource(R.string.trdp_hint_paused)
     DayPlans.Hint.CLIMB, DayPlans.Hint.BOARD -> stringResource(
         if (profile.coach.addOnAfterClimbing == false) R.string.trdp_hint_climb_only else R.string.trdp_hint_climb)
@@ -265,7 +267,7 @@ fun DayPlannerSheet(onDismiss: () -> Unit, viewModel: DayPlannerViewModel = hilt
                         val label = when {
                             day.entry != null -> planEntryLabel(day.entry, state.routines)
                             day.hint == DayPlans.Hint.CLIMB -> stringResource(R.string.trdp_usual_climb)
-                            else -> stringResource(R.string.trdp_free)
+                            else -> stringResource(R.string.trdp_free_short)
                         }
                         Text(label, style = MaterialTheme.typography.bodyLarge,
                             fontWeight = if (day.entry != null || day.hint == DayPlans.Hint.CLIMB) FontWeight.SemiBold else FontWeight.Normal,
@@ -296,7 +298,8 @@ fun DayPlannerSheet(onDismiss: () -> Unit, viewModel: DayPlannerViewModel = hilt
             freeLabel = stringResource(R.string.trdp_free),
             standardLabel = if (day?.overridden == true) stringResource(R.string.trdp_standard, planEntryLabel(standard, state.routines)) else null,
             onStandard = { viewModel.set(date, null); choosing = null },
-            swapTargets = state.days.map { it.date }.filter { it != date },
+            // Swaps within a week either way: the chooser stays short.
+            swapTargets = state.days.map { it.date }.filter { it != date && kotlin.math.abs(date.daysUntil(it)) <= 6 },
             swapLabel = { plannerDayLabel(it, today) },
             onSwap = { other -> viewModel.swap(date, other); choosing = null },
         )
@@ -367,9 +370,6 @@ internal fun PlanChooserDialog(
                     }
                 }
                 item(key = PLAN_BOARD) { ChooserRow(planEntryLabel(PLAN_BOARD, routines), current == PLAN_BOARD, "week_plan_option_$PLAN_BOARD") { onChoose(PLAN_BOARD) } }
-                items(trainings, key = { it }) { entry ->
-                    ChooserRow(planEntryLabel(entry, routines), entry == current, "week_plan_option_$entry") { onChoose(entry) }
-                }
                 if (swapTargets.isNotEmpty()) {
                     item(key = "swap") {
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("week_plan_swap")) {
@@ -385,6 +385,9 @@ internal fun PlanChooserDialog(
                             }
                         }
                     }
+                }
+                items(trainings, key = { it }) { entry ->
+                    ChooserRow(planEntryLabel(entry, routines), entry == current, "week_plan_option_$entry") { onChoose(entry) }
                 }
             }
         },

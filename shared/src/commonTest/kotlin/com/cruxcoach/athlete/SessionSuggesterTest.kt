@@ -835,6 +835,7 @@ class SessionSuggesterTest {
         assertEquals(climb(ClimbIntensity.LIMIT), s.plannedEntry)
         assertEquals(null, s.boardPlan, "a gym day has no board session")
         assertTrue(s.routine.items.any { it.warmup }, "${slugs(s)}")
+        assertTrue(!s.timeAdjustable, "a chosen time changes nothing on the warm-up card")
         // Climbed already: only the short block after it.
         val done = SessionSuggester.suggest(input(profile = p, activities = mapOf(monday to DayActivity(monday.toString(), climbingMinutes = 90))))
         assertTrue(done.addOn, "${done.reasons}")
