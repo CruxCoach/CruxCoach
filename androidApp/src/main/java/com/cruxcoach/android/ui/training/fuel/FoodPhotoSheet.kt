@@ -353,7 +353,9 @@ internal fun ReviewPane(phase: PhotoPhase.Review, initialMeal: Meal, viewModel: 
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     choosingFor?.let { item ->
-        ChooseFoodDialog(item.candidates.map { it.food }, viewModel, allowNone = true,
+        // Nothing in the food table ("Whey"): the search starts with the name, so products show at once.
+        val start = if (item.candidates.isEmpty()) item.detected?.let { FoodPhotoViewModel.displayName(it) }.orEmpty() else ""
+        ChooseFoodDialog(item.candidates.map { it.food }, viewModel, allowNone = true, initialQuery = start,
             onDismiss = { choosingFor = null }, onPick = { viewModel.choose(item.key, it); choosingFor = null })
     }
     if (adding) {
@@ -405,6 +407,7 @@ private fun ReviewRow(item: ReviewItem, viewModel: FoodPhotoViewModel, onChoose:
                     else -> macros?.let { Text(it) }
                 }
                 detectedLine?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (grams != null) QuickAmounts(item, grams, viewModel)
             }
         },
         trailingContent = {
@@ -423,6 +426,44 @@ private fun ReviewRow(item: ReviewItem, viewModel: FoodPhotoViewModel, onChoose:
     )
 }
 
+/**
+ * One tap to correct an estimate (owner 2026-10-19: the photo model is about a quarter off per food): pieces for a
+ * food people count, otherwise ½, ¾, 1¼ and 1½ of the amount. The field stays for any other number.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun QuickAmounts(item: ReviewItem, grams: Double, viewModel: FoodPhotoViewModel) {
+    val piece = FoodPhotoViewModel.pieceOf(item)
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier.padding(top = 4.dp).testTag("fuel_photo_quick_${item.key}"),
+    ) {
+        if (piece != null) {
+            val pieces = kotlin.math.round(grams / piece).toInt().coerceAtLeast(1)
+            val less = stringResource(R.string.fvp_piece_less)
+            val more = stringResource(R.string.fvp_piece_more)
+            AssistChip(onClick = { viewModel.stepPieces(item.key, -1) }, label = { Text("−1") }, enabled = pieces > 1,
+                modifier = Modifier.semantics { contentDescription = less }.testTag("fuel_photo_piece_less_${item.key}"))
+            Text(stringResource(R.string.fvp_pieces_about, pieces.toString(), formatNumber(piece)),
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.align(Alignment.CenterVertically))
+            AssistChip(onClick = { viewModel.stepPieces(item.key, +1) }, label = { Text("+1") },
+                modifier = Modifier.semantics { contentDescription = more }.testTag("fuel_photo_piece_more_${item.key}"))
+        } else {
+            listOf(
+                Triple("½", 0.5, R.string.fvp_amount_scale_half),
+                Triple("¾", 0.75, R.string.fvp_amount_scale_three_quarters),
+                Triple("1¼", 1.25, R.string.fvp_amount_scale_more_quarter),
+                Triple("1½", 1.5, R.string.fvp_amount_scale_more_half),
+            ).forEach { (label, factor, description) ->
+                val desc = stringResource(description)
+                AssistChip(onClick = { viewModel.scaleAmount(item.key, factor) }, label = { Text("×$label") },
+                    modifier = Modifier.semantics { contentDescription = desc }.testTag("fuel_photo_scale_${factor}_${item.key}"))
+            }
+        }
+    }
+}
+
 @Composable
 private fun ChooseFoodDialog(
     suggestions: List<BlsFood>,
@@ -430,13 +471,15 @@ private fun ChooseFoodDialog(
     allowNone: Boolean,
     onDismiss: () -> Unit,
     onPick: (BlsFood?) -> Unit,
+    initialQuery: String = "",
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf(initialQuery) }
     var results by remember { mutableStateOf(suggestions) }
     LaunchedEffect(query) {
         if (query.isBlank()) { results = suggestions; return@LaunchedEffect }
         delay(250)
-        results = viewModel.search(query)
+        // Products too: a protein powder or a branded bar is in the product database, not in the food table.
+        results = viewModel.searchWithProducts(query)
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -452,7 +495,8 @@ private fun ChooseFoodDialog(
                 )
                 LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     items(results, key = { it.code }) { food ->
-                        val desc = FoodPhotoViewModel.blsName(food)
+                        val name = FoodPhotoViewModel.blsName(food)
+                        val desc = if (FoodPhotoViewModel.isProduct(food)) stringResource(R.string.fvp_product_label, name) else name
                         ListItem(
                             headlineContent = { Text(desc) },
                             supportingContent = { Text(stringResource(R.string.fvp_per_100, formatNumber(food.kcal),

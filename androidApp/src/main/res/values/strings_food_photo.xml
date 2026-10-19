@@ -55,6 +55,14 @@
     <string name="fvp_choose_title">Choose a food</string>
     <string name="fvp_choose_search">Search the food database</string>
     <string name="fvp_choose_none">Without nutrients</string>
+    <string name="fvp_product_label">Product · %1$s</string>
+    <string name="fvp_amount_scale_half">Half the amount</string>
+    <string name="fvp_amount_scale_three_quarters">Three quarters of the amount</string>
+    <string name="fvp_amount_scale_more_quarter">A quarter more</string>
+    <string name="fvp_amount_scale_more_half">Half as much again</string>
+    <string name="fvp_pieces_about">≈ %1$s pcs (%2$s g each)</string>
+    <string name="fvp_piece_less">One piece less</string>
+    <string name="fvp_piece_more">One piece more</string>
     <string name="fvp_per_100">per 100 g: %1$s kcal · P %2$s · C %3$s · F %4$s</string>
 
     <string name="fvp_error_memory">The phone ran out of memory during recognition. Close other apps and try again.</string>

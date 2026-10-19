@@ -22,6 +22,7 @@ import com.cruxcoach.athlete.logic.VisionTier
 import com.cruxcoach.athlete.model.Meal
 import com.cruxcoach.athlete.model.UnitSystem
 import kotlinx.coroutines.runBlocking
+import com.cruxcoach.android.foodvision.OffRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -93,6 +94,59 @@ class FoodPhotoTest : AthleteScreenTest() {
         waitForTag("fuel_photo_setup")
         waitForText("Qwen3.5 2B")
         waitForTag("fuel_photo_download")
+    }
+
+    @Test
+    fun `one tap corrects an estimate - a share of the amount, or whole pieces for a counted food`() {
+        val photo = photoViewModel(pixel6a)
+        runBlocking { photo.showReview(null, listOf(DetectedFood("Reis gekocht", "Boiled rice", 200.0), DetectedFood("Banane", "Banana", 100.0)), 9) }
+        val (rice, banana) = (photo.state.value.phase as PhotoPhase.Review).items
+        fun grams(key: Int) = FoodPhotoViewModel.amountOf((photo.state.value.phase as PhotoPhase.Review).items.single { it.key == key })
+        assertNull(FoodPhotoViewModel.pieceOf(rice))
+        photo.scaleAmount(rice.key, 1.25)
+        assertEquals(250.0, grams(rice.key)!!, 0.0)
+        photo.scaleAmount(rice.key, 0.5)
+        assertEquals(125.0, grams(rice.key)!!, 0.0)
+        // A banana is counted: 100 g rounds to one piece, one more makes two whole ones.
+        assertEquals(120.0, FoodPhotoViewModel.pieceOf(banana)!!, 0.0)
+        photo.stepPieces(banana.key, +1)
+        assertEquals(240.0, grams(banana.key)!!, 0.0)
+        photo.stepPieces(banana.key, -1)
+        photo.stepPieces(banana.key, -1)
+        assertEquals(120.0, grams(banana.key)!!, 0.0)
+    }
+
+    @Test
+    fun `a food the table lacks can be chosen from the products and is logged as that product`() {
+        val products = OffRepository(context).apply {
+            source = { "# version: t\n4000000000017\tWhey Protein Vanille\t\tTestmarke\t380\t75\t6\t5\t30\t1\n".reader().buffered() }
+            assetVersion = { "t" }
+        }
+        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), facts(pixel6a), products).tracked()
+        runBlocking { photo.showReview(null, listOf(DetectedFood("Whey", "Whey", 30.0)), 0, source = ReviewSource.TEXT_RULES) }
+        val whey = (photo.state.value.phase as PhotoPhase.Review).items.single()
+        // No counterpart in the food table: no wrong match.
+        assertNull(whey.choice)
+        var found: com.cruxcoach.athlete.logic.BlsFood? = null
+        compose.waitUntil(WAIT_MS) {
+            found = runBlocking { photo.searchWithProducts("whey") }.firstOrNull { FoodPhotoViewModel.isProduct(it) }
+            found != null
+        }
+        assertEquals("off:4000000000017", found!!.code)
+        assertTrue(found!!.nameDe.contains("Testmarke"))
+        photo.choose(whey.key, found)
+        val day = service.today().toString()
+        photo.save(day, Meal.SNACK)
+        compose.waitUntil(WAIT_MS) { photo.state.value.phase is PhotoPhase.Saved }
+        val entry = repo.foodLog(day).single()
+        assertEquals("off:4000000000017", entry.foodItemId)
+        assertEquals(22.5, entry.proteinG!!, 0.001)
+        assertEquals(30.0, entry.amountG!!, 0.0)
+        val item = repo.foodItem("off:4000000000017")!!
+        assertEquals("off", item.source)
+        assertEquals("4000000000017", item.barcode)
+        // The one-product test database must not stay for the next test (it would rebuild the real one from the APK).
+        runBlocking { products.remove() }
     }
 
     @Test

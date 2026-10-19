@@ -54,6 +54,14 @@
 
     <string name="fvp_choose_title">Lebensmittel wählen</string>
     <string name="fvp_choose_search">In der Lebensmitteldatenbank suchen</string>
+    <string name="fvp_product_label">Produkt · %1$s</string>
+    <string name="fvp_amount_scale_half">Menge halbieren</string>
+    <string name="fvp_amount_scale_three_quarters">Drei Viertel der Menge</string>
+    <string name="fvp_amount_scale_more_quarter">Ein Viertel mehr</string>
+    <string name="fvp_amount_scale_more_half">Die Hälfte mehr</string>
+    <string name="fvp_pieces_about">≈ %1$s Stück (je %2$s g)</string>
+    <string name="fvp_piece_less">Ein Stück weniger</string>
+    <string name="fvp_piece_more">Ein Stück mehr</string>
     <string name="fvp_choose_none">Ohne Nährwerte</string>
     <string name="fvp_per_100">pro 100 g: %1$s kcal · P %2$s · K %3$s · F %4$s</string>
 

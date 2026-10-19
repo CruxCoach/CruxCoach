@@ -499,6 +499,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   collection; an active-mode button keeps the controls accessible.
 
 ### Changed
+- The review after a photo or a typed meal corrects amounts in one tap:
+  ×½, ×¾, ×1¼ and ×1½ for any food, whole pieces (−1 / +1, "≈ 2 pcs, 120 g
+  each") for foods people count – the photo model is about a quarter off per
+  food, measured on a benchmark. A food the table lacks can now be chosen
+  from the product database in the review (protein powders, bars, branded
+  foods); an unmatched line starts that search with its own name.
 - Typed meals need fewer format rules: "2 eier 1 banane 200ml milch" or
   "Banane Apfel Birne" are split into their foods without commas, "1/2",
   "eine halbe" and "2 x" are understood, "Käsebrot" becomes bread and cheese,
