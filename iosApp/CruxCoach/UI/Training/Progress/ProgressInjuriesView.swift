@@ -24,7 +24,7 @@ struct ProgressInjuriesView: View {
         .navigationTitle(L("tra_injuries_title"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            guard host == nil, let model = core.makeInjuriesScreen() else { return }
+            guard host == nil, let model = core.makeInjuriesScreen(language: TrainingStyle.catalogLanguage) else { return }
             host = ScreenHost(model: model, initial: model.currentState,
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
@@ -84,6 +84,7 @@ private struct InjuriesContent: View {
                     }
                 }
             }
+            healthBackupSection
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -92,6 +93,20 @@ private struct InjuriesContent: View {
         }
         .sheet(isPresented: $adding) {
             InjuryAddSheet(model: model, ui: ui) { adding = false }
+        }
+    }
+
+    /// Injuries and the comeback diary in the automatic encrypted backup (Android, owner 2026-10-20); off by default.
+    private var healthBackupSection: some View {
+        let on: Bool = ui.healthInBackup
+        return Section {
+            Toggle(isOn: Binding(get: { on }, set: { model.setHealthInBackup(on: $0) })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("cb_backup_cloud"))
+                    Text(L("cb_backup_cloud_hint")).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("injury_health_backup")
         }
     }
 }
@@ -119,6 +134,9 @@ private struct InjuryCardRows: View {
         }
         Toggle(L("tra_injury_pause_climbing"), isOn: Binding(get: { injury.climbingPaused },
                                                              set: { model.setClimbingPaused(id: injury.id, paused: $0) }))
+        if injury.comebackAvailable {
+            InjuryComebackRows(injury: injury)
+        }
         HStack {
             Button(L("tra_injury_resolve")) { model.resolve(id: injury.id) }
                 .buttonStyle(.borderedProminent)
@@ -128,6 +146,25 @@ private struct InjuryCardRows: View {
         }
         .onAppear { severity = Double(injury.severity) }
         .onChange(of: injury.severity) { _, now in severity = Double(now) }
+    }
+}
+
+/// The comeback plan of this injury (Android `InjuryCard`, owner 2026-10-20): the running stage, "start" or "open"
+/// the plan (`ComebackView`, pushed on this navigation stack), and the notice it always carries.
+private struct InjuryComebackRows: View {
+    let injury: InjuryUi
+
+    var body: some View {
+        if let line = TrRender.optional(injury.comebackLine) {
+            Text(line).font(.subheadline)
+        }
+        NavigationLink {
+            ComebackView(injuryId: injury.id)
+        } label: {
+            Label(L(injury.comebackRunning ? "cb_open_plan" : "cb_start_plan"), systemImage: "chart.line.uptrend.xyaxis")
+        }
+        .accessibilityIdentifier("injury_comeback_\(injury.id)")
+        ComebackNoticeLine()
     }
 }
 
