@@ -229,4 +229,8 @@
     <string name="cb_review_stay_last">You are at the last stage. Check the return criteria above with your doctor or physio – met criteria don\'t show that the injury has healed.</string>
     <string name="cb_sources_more">%1$d more</string>
     <string name="cb_sources_less">Fewer</string>
+    <string name="cb_reference_label">Reference value</string>
+    <string name="cb_reference_none">None yet – the percentages of the strength sessions need one.</string>
+    <string name="cb_reference_values">Half crimp %1$s kg · open hand %2$s kg</string>
+    <string name="cb_reference_edit">Enter reference value</string>
 </resources>

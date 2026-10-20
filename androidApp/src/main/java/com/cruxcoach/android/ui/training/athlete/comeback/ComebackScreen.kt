@@ -76,6 +76,10 @@ fun ComebackScreen(onBack: () -> Unit, onOpenPlayer: () -> Unit, viewModel: Come
     var showCheck by rememberSaveable { mutableStateOf(false) }
     var alertOpen by rememberSaveable { mutableStateOf(false) }
     val injury = state.injury
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // A plan that just started opens at its top (device run 2026-10-20: the view stayed at "Stufe ändern").
+    val started = injury?.activePlan?.history?.size
+    LaunchedEffect(started) { if (started != null) listState.scrollToItem(0) }
     TrainingScaffold(title = stringResource(R.string.cb_title), onBack = onBack) { padding ->
         if (injury == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -85,7 +89,7 @@ fun ComebackScreen(onBack: () -> Unit, onOpenPlayer: () -> Unit, viewModel: Come
         }
         val plan = injury.activePlan
         LazyColumn(
-            Modifier.fillMaxSize().padding(padding).testTag("comeback_list"),
+            Modifier.fillMaxSize().padding(padding).testTag("comeback_list"), state = listState,
             contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { ComebackNotice(onSigns = { showCheck = true }) }
@@ -340,6 +344,7 @@ private fun LazyListScope.planItems(state: ComebackUiState, injury: Injury, plan
 @Composable
 private fun StageCard(injury: Injury, plan: ComebackPlan, ladder: Ladder, stage: StageSpec, state: ComebackUiState, vm: ComebackViewModel) {
     var picking by rememberSaveable { mutableStateOf(false) }
+    var editingRefs by rememberSaveable { mutableStateOf(false) }
     val rule = Comeback.painRule(injury, stage)
     Card(Modifier.fillMaxWidth().testTag("comeback_stage_card")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -360,8 +365,47 @@ private fun StageCard(injury: Injury, plan: ComebackPlan, ladder: Ladder, stage:
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("comeback_pain_rule"))
             Label(stringResource(R.string.cb_next_when))
             stage.nextWhen.forEach { Bullet(txt(it)) }
+            if (injury.region == InjuryRegion.FINGER) {
+                Label(stringResource(R.string.cb_reference_label))
+                val half = plan.referenceKg[Grip.HALF_CRIMP.name]
+                val open = plan.referenceKg[Grip.OPEN_HAND.name]
+                Text(if (half == null && open == null) stringResource(R.string.cb_reference_none)
+                    else stringResource(R.string.cb_reference_values, half?.let { "%.1f".format(it) } ?: "–", open?.let { "%.1f".format(it) } ?: "–"),
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("comeback_reference"))
+                TextButton(onClick = { editingRefs = true }, modifier = Modifier.testTag("comeback_reference_edit")) {
+                    Text(stringResource(R.string.cb_reference_edit))
+                }
+            }
             OutlinedButton(onClick = { picking = true }, modifier = Modifier.testTag("comeback_change_stage")) { Text(stringResource(R.string.cb_change_stage)) }
         }
+    }
+    if (editingRefs) {
+        var half by remember { mutableStateOf(plan.referenceKg[Grip.HALF_CRIMP.name]?.let { "%.1f".format(it) }.orEmpty()) }
+        var open by remember { mutableStateOf(plan.referenceKg[Grip.OPEN_HAND.name]?.let { "%.1f".format(it) }.orEmpty()) }
+        var dominant by remember { mutableStateOf(plan.injuredDominant == true) }
+        AlertDialog(
+            onDismissRequest = { editingRefs = false },
+            modifier = Modifier.testTag("comeback_reference_dialog"),
+            title = { Text(stringResource(R.string.cb_reference_label)) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(stringResource(R.string.cb_reference_hint), style = MaterialTheme.typography.bodySmall)
+                    ReferenceField(stringResource(R.string.cb_reference_half), half, "comeback_ref_half", state.suggestedRefs[Grip.HALF_CRIMP.name]) { half = it }
+                    ReferenceField(stringResource(R.string.cb_reference_open), open, "comeback_ref_open", state.suggestedRefs[Grip.OPEN_HAND.name]) { open = it }
+                    CheckRow(stringResource(R.string.cb_dominant), dominant, "comeback_dominant") { dominant = it }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    editingRefs = false
+                    vm.setReferences(buildMap {
+                        half.toKgOrNull()?.let { put(Grip.HALF_CRIMP.name, it) }
+                        open.toKgOrNull()?.let { put(Grip.OPEN_HAND.name, it) }
+                    }, dominant)
+                }, modifier = Modifier.testTag("comeback_reference_save")) { Text(stringResource(R.string.tr_action_save)) }
+            },
+            dismissButton = { TextButton(onClick = { editingRefs = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
     }
     if (picking) {
         var chosen by remember { mutableIntStateOf(plan.stage) }

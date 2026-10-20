@@ -13,7 +13,7 @@
 
     <!-- Bevor du startest -->
     <string name="cb_before_title">Bevor du startest</string>
-    <string name="cb_before_text">Dieser Plan hilft dir, Belastung Schritt für Schritt wieder aufzubauen. Er ist kein Ersatz für den Arztbesuch und kann nicht sagen, ob deine Verletzung verheilt ist – nutz ihn nur in Absprache mit Ärztin, Arzt oder Physio.\n\n• Noch nicht abklären lassen? Wir empfehlen Ärztin, Arzt oder Physiotherapie – besonders nach einem Knall, Schwellung oder Bluterguss.\n• Du wählst die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast, und kannst sie jederzeit ändern. Hast du einen Plan von einer Fachperson, gilt der.\n• Deine Einträge bleiben auf diesem Handy.</string>
+    <string name="cb_before_text">Dieser Plan hilft dir, Belastung Schritt für Schritt wieder aufzubauen. Er ist kein Ersatz für den Arztbesuch und kann nicht sagen, ob deine Verletzung verheilt ist – nutz ihn nur in Absprache mit Ärztin, Arzt oder Physio.\n\n• Noch nicht abgeklärt? Wir empfehlen Ärztin, Arzt oder Physiotherapie – besonders nach einem Knall, Schwellung oder Bluterguss.\n• Du wählst die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast, und kannst sie jederzeit ändern. Hast du einen Plan von einer Fachperson, gilt der.\n• Deine Einträge bleiben auf diesem Handy.</string>
     <string name="cb_understood">Verstanden – in Absprache mit Ärztin, Arzt oder Physio</string>
 
     <!-- Fragen -->
@@ -229,4 +229,8 @@
     <string name="cb_review_stay_last">Du bist auf der letzten Stufe. Prüf die Rückkehr-Kriterien oben mit Ärztin, Arzt oder Physio – erfüllte Kriterien zeigen nicht, dass die Verletzung verheilt ist.</string>
     <string name="cb_sources_more">%1$d weitere</string>
     <string name="cb_sources_less">Weniger</string>
+    <string name="cb_reference_label">Referenzwert</string>
+    <string name="cb_reference_none">Noch keiner – die Prozentangaben der Kraft-Einheiten brauchen ihn.</string>
+    <string name="cb_reference_values">Halb aufgestellt %1$s kg · offen %2$s kg</string>
+    <string name="cb_reference_edit">Referenzwert eintragen</string>
 </resources>

@@ -169,4 +169,20 @@ class ComebackScreenTest : AthleteScreenTest() {
         assertTrue(text.lines().any { it.startsWith(service.today().toString()) && it.contains("2\t3") })
         assertNotNull(vm.state.value.todayEntry)
     }
+
+    @Test
+    fun `a reference value can be entered later and the strength targets follow it`() {
+        repo.saveInjury(Comeback.start(injury(), PlanSource.CRUXCOACH, 3, service.today(), true, false, emptyMap(), 1))
+        screen()
+        scrollTo("comeback_list", "comeback_reference")
+        waitForText("None yet")
+        click("comeback_reference_edit")
+        waitForTag("comeback_reference_dialog")
+        compose.onNodeWithTag("comeback_ref_half").performTextInput("28")
+        click("comeback_reference_save")
+        compose.waitUntil(WAIT_MS) { repo.injury("i1")?.plan?.referenceKg?.get(Grip.HALF_CRIMP.name) == 28.0 }
+        // Stage 3 strength: half crimp at 40–60 % of 28 kg.
+        scrollTo("comeback_list", "comeback_session_1")
+        waitForText("11.0–17.0 kg")
+    }
 }
