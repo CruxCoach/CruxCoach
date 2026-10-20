@@ -229,6 +229,9 @@ internal object Tx {
     }
 
     fun suggestionReasonKey(reason: SuggestionReason) = when (reason) {
+        SuggestionReason.COMEBACK_PLAN -> "cb_reason_plan"
+        SuggestionReason.COMEBACK_CLIMBING -> "cb_reason_climbing_generic"
+        SuggestionReason.COMEBACK_NO_BOARD -> "cb_reason_no_board"
         SuggestionReason.SICK -> "trsg_reason_sick"
         SuggestionReason.REST_READINESS -> "trsg_reason_rest_readiness"
         SuggestionReason.WEEK_PLAN -> "trsg_reason_week_plan"

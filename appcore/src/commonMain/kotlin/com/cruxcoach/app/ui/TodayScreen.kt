@@ -649,6 +649,17 @@ private class TodayMapper(val s: TodayState, val language: String, val pending: 
                 return Tx.t("trv_reason_weekly_area", Tx.k(Tx.volumeAreaKey(w.area)))
             }
         }
+        // A comeback stage says how to climb (Android, owner 2026-10-20): its own words, and why lighter.
+        val comebackStage = s.injuries.firstNotNullOfOrNull { i ->
+            i.activePlan?.takeIf { it.source == com.cruxcoach.athlete.model.PlanSource.CRUXCOACH }
+                ?.let { com.cruxcoach.athlete.logic.Comeback.stage(i, it) }
+        }
+        if (reason == SuggestionReason.COMEBACK_CLIMBING && comebackStage != null) {
+            return Tx.t("cb_reason_climbing", Tx.s(comebackStage.climbingText.of(language)))
+        }
+        if (reason == SuggestionReason.CLIMB_LIGHTER_ADVISED && SuggestionReason.COMEBACK_CLIMBING in s.suggestion?.reasons.orEmpty()) {
+            return Tx.t("cb_reason_lighter")
+        }
         val sore = s.checkin?.sore.orEmpty()
         if (reason != SuggestionReason.SPARED_TODAY || sore.isEmpty()) return Tx.t(Tx.suggestionReasonKey(reason))
         return Tx.t("trt_reason_spared", Tx.x(Tx.join(sore.map { Tx.t(Tx.regionKey(it)) }, ", ")))
