@@ -17,9 +17,14 @@ class DataExchangeCategoriesTest {
                 Category.TRAINING,
                 Category.BODY_STATS,
                 Category.FUEL,
+                // FEAT-072: injuries and the comeback diary, health data that is exported only when ticked.
+                Category.HEALTH,
             ),
             VISIBLE_CATEGORIES,
         )
+        assertEquals(setOf(Category.HEALTH), OPT_IN_CATEGORIES)
+        assertFalse(Category.HEALTH in DataExchangeState().exportCategories)
+        assertFalse(Category.HEALTH in Category.DEFAULTS)
     }
 
     @Test

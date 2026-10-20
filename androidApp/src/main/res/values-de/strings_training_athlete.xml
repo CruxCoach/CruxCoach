@@ -2,7 +2,7 @@
 <resources>
     <string name="tra_injuries_title">Verletzungen &amp; Pausen</string>
     <string name="tra_injuries_info_title">So funktioniert der Verletzungsmodus</string>
-    <string name="tra_injuries_info_text">Trag eine Verletzung ein, dann passt sich CruxCoach an: Übungen, die die verletzte Stelle belasten, werden ausgeblendet oder markiert, einseitige Übungen bleiben für die gesunde Seite verfügbar (zum Beispiel einarmiges Blockheben rechts, während ein Finger links heilt), und das Klettern an der Wand kann pausieren. Das ist ein Filter, kein Behandlungsplan. Steig schrittweise und mit fachlichem Rat wieder ein.</string>
+    <string name="tra_injuries_info_text">Trag eine Verletzung ein, dann passt sich CruxCoach an: Übungen, die die verletzte Stelle belasten, werden ausgeblendet oder markiert, einseitige Übungen bleiben für die gesunde Seite verfügbar (zum Beispiel einarmiges Blockheben rechts, während ein Finger links heilt), und das Klettern an der Wand kann pausieren. Das ist ein Filter, kein Behandlungsplan. Für den Wiedereinstieg gibt es pro Verletzung einen Comeback-Plan: übliche Belastungsstufen und ein Tagebuch – kein Ersatz für den Arztbesuch, nur in Absprache mit Ärztin, Arzt oder Physio.</string>
     <string name="tra_injury_add">Verletzung eintragen</string>
     <string name="tra_injuries_none">Keine offene Verletzung. Gut so.</string>
     <string name="tra_injury_train_around">Ohne Wand trainieren</string>

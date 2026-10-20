@@ -88,8 +88,11 @@ fun TodayScreen(
     onOpenClimbingDays: () -> Unit = {},
     /** What the coach learned from the athlete's choices (settings page, forgettable). */
     onOpenLearned: () -> Unit = {},
+    /** An injury's comeback plan (owner 2026-10-20). */
+    onOpenComeback: (injuryId: String) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val comebacks by viewModel.comebacks.collectAsStateWithLifecycle()
     var askWhy by rememberSaveable { mutableStateOf(false) }
     var showWhy by rememberSaveable { mutableStateOf(false) }
     // After a finished training the hero says so; another session only on request.
@@ -170,6 +173,13 @@ fun TodayScreen(
             item { WeekHeader(state, onPlanDays = { planDays = true }) }
             state.openPause?.let { item(key = "pause") { PauseBanner(onEndPause = viewModel::endPause) } }
             if (state.injuries.isNotEmpty()) item(key = "injury") { InjuryBanner(state, onOpenInjuries) }
+            comebacks.forEach { c ->
+                item(key = "comeback-${c.injury.id}") {
+                    ComebackTodayCard(c, onOpen = { onOpenComeback(c.injury.id) },
+                        onMorning = { v -> viewModel.comebackToday(c.injury.id) { it.copy(morningPain = v) } },
+                        onStart = { index, name -> viewModel.startComebackSession(c.injury.id, index, name) })
+                }
+            }
             val steps = setupSteps(state)
             if (steps.any { !it.done } || setupJustDone) {
                 item(key = "setup") {
@@ -1194,6 +1204,9 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.PLANNED_CLIMB_NOT_LOGGED -> R.string.trdp_reason_not_logged
     SuggestionReason.FINGERS_BEFORE_HARD_DAY -> R.string.trdp_reason_fingers_before
     SuggestionReason.USUAL_ROUTINE_WEEKDAY, SuggestionReason.USUAL_ROUTINE -> R.string.trhb_reason_generic
+    SuggestionReason.COMEBACK_PLAN -> R.string.cb_reason_plan
+    SuggestionReason.COMEBACK_CLIMBING -> R.string.cb_reason_climbing_generic
+    SuggestionReason.COMEBACK_NO_BOARD -> R.string.cb_reason_no_board
 })
 
 /** A reason with today's details where it has them ("Heute geschont: Schulter …", "Wie meist am Montag: …"). */
@@ -1226,6 +1239,16 @@ private fun suggestionReasonText(reason: SuggestionReason, state: TodayState): S
         state.suggestion?.basedOn?.filterIsInstance<com.cruxcoach.athlete.logic.Evidence.WeeklyTarget>()?.firstOrNull()?.let { w ->
             return stringResource(R.string.trv_reason_weekly_area, com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(w.area))
         }
+    }
+    // A comeback stage says how to climb (owner 2026-10-20): its own words, and why lighter.
+    val comebackStage = state.injuries.firstNotNullOfOrNull { i ->
+        i.activePlan?.takeIf { it.source == com.cruxcoach.athlete.model.PlanSource.CRUXCOACH }?.let { com.cruxcoach.athlete.logic.Comeback.stage(i, it) }
+    }
+    if (reason == SuggestionReason.COMEBACK_CLIMBING && comebackStage != null) {
+        return stringResource(R.string.cb_reason_climbing, comebackStage.climbingText.of(catalogLanguage()))
+    }
+    if (reason == SuggestionReason.CLIMB_LIGHTER_ADVISED && SuggestionReason.COMEBACK_CLIMBING in state.suggestion?.reasons.orEmpty()) {
+        return stringResource(R.string.cb_reason_lighter)
     }
     val sore = state.checkin?.sore.orEmpty()
     if (reason != SuggestionReason.SPARED_TODAY || sore.isEmpty()) return suggestionReasonText(reason)
@@ -1960,6 +1983,47 @@ private fun CircuitSheet(
                     Text(stringResource(R.string.tr_action_done))
                 }
             }
+        }
+    }
+}
+
+/**
+ * A running comeback plan on Today (owner 2026-10-20): the morning value in one tap, the sessions due now, a hint when
+ * the plan has a note, and the notice it always carries.
+ */
+@Composable
+private fun ComebackTodayCard(c: ComebackToday, onOpen: () -> Unit, onMorning: (Int?) -> Unit, onStart: (Int, String) -> Unit) {
+    val injury = c.injury
+    val plan = injury.activePlan ?: return
+    val language = catalogLanguage()
+    Card(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("today_comeback_${injury.id}")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.cb_today_title,
+                listOfNotNull(regionLabel(injury.region), injury.side?.let { injurySideLabel(it) }).joinToString(" · ")),
+                style = MaterialTheme.typography.titleMedium)
+            if (plan.source == com.cruxcoach.athlete.model.PlanSource.OWN) Text(stringResource(R.string.cb_card_own), style = MaterialTheme.typography.bodySmall)
+            else {
+                val ladder = com.cruxcoach.athlete.logic.Comeback.ladder(injury)
+                val stage = com.cruxcoach.athlete.logic.Comeback.stage(injury, plan)
+                Text(stringResource(R.string.cb_stage_header, stage.index, ladder.stages.lastIndex, stage.title.of(language)),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+            if (c.prompts > 0) Text(stringResource(R.string.cb_today_prompt), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("today_comeback_prompt"))
+            com.cruxcoach.android.ui.training.athlete.comeback.PainScale(stringResource(R.string.cb_today_question), c.entry?.morningPain,
+                "today_comeback_morning", onMorning)
+            c.due.forEach { d ->
+                val title = com.cruxcoach.android.ui.training.athlete.comeback.sessionTitle(d.spec.kind)
+                val name = stringResource(R.string.cb_session_name, title)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    FilledTonalButton(onClick = { onStart(d.index, name) }, modifier = Modifier.testTag("today_comeback_start_${d.index}")) {
+                        Text(stringResource(R.string.cb_session_start))
+                    }
+                }
+            }
+            Text(stringResource(R.string.cb_not_a_substitute), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

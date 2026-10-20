@@ -407,11 +407,14 @@ class AthleteService @Inject constructor(
         val id = repo.newId()
         repo.transaction {
             repo.saveWorkout(Workout(id, now, null, today().toString(), title ?: routine?.name, routine?.id, updatedAt = now))
-            val modifier = todaysModifier().let { if (trimSets) it else it.copy(setsDelta = 0) }
+            // A comeback session loads the injured side on purpose, with the plan's loads: today's form and the
+            // warm-up ramp stay out of it, and its own injury does not filter it (owner 2026-10-20).
+            val comeback = com.cruxcoach.athlete.logic.Comeback.parseRoutineId(routine?.id)?.first
+            val modifier = if (comeback != null) ReadinessModifier.NONE else todaysModifier().let { if (trimSets) it else it.copy(setsDelta = 0) }
             // Circuits in their canonical form, every member with the circuit's rests (the round rest needs all members).
             val items = routine?.items?.let { Circuits.resolveRests(Circuits.normalize(it, catalog), catalog) }
-            items?.forEachIndexed { index, item -> addItem(id, index, item, modifier) }
-            if (items?.any { it.warmup } == true) addSpecificWarmups(id)
+            items?.forEachIndexed { index, item -> addItem(id, index, item, modifier, ownInjury = comeback) }
+            if (comeback == null && items?.any { it.warmup } == true) addSpecificWarmups(id)
         }
         id
     }
@@ -598,6 +601,8 @@ class AthleteService @Inject constructor(
         item: RoutineItem,
         modifier: ReadinessModifier = ReadinessModifier.NONE,
         setIndexOf: (Int) -> Int = { it },
+        /** A comeback session's injury: its sessions train that spot. */
+        ownInjury: String? = null,
     ): Boolean {
         val def = catalog.fallbackFor(item.slug)
         val bodyweight = currentBodyweight()
@@ -607,7 +612,7 @@ class AthleteService @Inject constructor(
         val planned = WorkoutPlanner.plan(
             // Real injuries only: what the check-in says hurts today shapes the suggestion, but never
             // takes exercises out of a workout the athlete chose (device test 2026-10-16).
-            workoutId, blockIndex, adjusted, catalog, history, repo.activeInjuries(),
+            workoutId, blockIndex, adjusted, catalog, history, repo.activeInjuries().filter { it.id != ownInjury },
             bodyweight,
             capacityFor = { side ->
                 capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, bodyweight)
@@ -976,6 +981,8 @@ class AthleteService @Inject constructor(
      * stands for [done], or null when nothing changes.
      */
     fun adjustUpcomingSets(workoutId: String, done: ExerciseSet, previous: SetAdjustment? = null): SetAdjustment? = synchronized(structureLock) {
+        // A comeback session keeps its loads: steps up come week by week, by the athlete (owner 2026-10-20).
+        if (com.cruxcoach.athlete.logic.Comeback.parseRoutineId(repo.workout(workoutId)?.routineId) != null) return null
         val def = catalog[done.exerciseSlug] ?: return null
         val open = repo.setsFor(workoutId)
             .filter {
@@ -1137,7 +1144,8 @@ class AthleteService @Inject constructor(
             repo.setsFor(id).filter { !it.isCompleted }.forEach { repo.deleteSet(it.id) }
             repo.finishWorkout(id, end, sessionRpe, notes?.takeIf { it.isNotBlank() })
         }
-        runCatching { learnOwnLoads(id) }
+        // The light loads of a comeback session are no values for normal training.
+        if (com.cruxcoach.athlete.logic.Comeback.parseRoutineId(workout?.routineId) == null) runCatching { learnOwnLoads(id) }
         // The rest after the last set ends with the training (device test 2026-10-17: it ran on over the summary).
         runCatching { sessionManager.cancelRestTimer() }
         return summarize(id, workout?.let { ((end - it.startedAt) / 60_000L).toInt() })

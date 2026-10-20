@@ -955,4 +955,30 @@ class SessionSuggesterTest {
             assertTrue("core.hollow_hold" in slugs(s) && "core.dead_bug" !in slugs(s), "variant $v: ${slugs(s)}")
         }
     }
+
+    /** Owner 2026-10-20: a running comeback plan shapes climbing and board days and keeps two-hand finger work out. */
+    @Test
+    fun aComebackStageShapesBoardAndClimbingDays() {
+        val gym = profile.copy(equipment = home + EquipmentV2.BOARD + EquipmentV2.WALL, weekPlan = mapOf(1 to PLAN_BOARD))
+        fun plan(stage: Int) = com.cruxcoach.athlete.logic.Comeback.start(
+            Injury("i", com.cruxcoach.athlete.model.InjuryRegion.FINGER, com.cruxcoach.athlete.model.InjurySide.LEFT, null, 3, startedOn = "2026-09-20"),
+            com.cruxcoach.athlete.model.PlanSource.CRUXCOACH, stage, monday, true, false, emptyMap(), 1)
+        val easy = SessionSuggester.suggest(input(profile = gym, injuries = listOf(plan(2))))
+        assertTrue(SuggestionReason.COMEBACK_NO_BOARD in easy.reasons, "${easy.reasons}")
+        assertTrue(SuggestionReason.COMEBACK_PLAN in easy.reasons, "${easy.reasons}")
+        assertTrue(easy.focus != SuggestionFocus.BOARD_DAY)
+        assertTrue(easy.routine.items.none { it.slug == "finger.max_hang" }, "${slugs(easy)}")
+        val hard = SessionSuggester.suggest(input(profile = gym, injuries = listOf(plan(4))))
+        assertEquals(SuggestionFocus.BOARD_DAY, hard.focus)
+        assertTrue(SuggestionReason.BOARD_LIGHT in hard.reasons && SuggestionReason.COMEBACK_CLIMBING in hard.reasons, "${hard.reasons}")
+        val paused = SessionSuggester.suggest(input(profile = gym, injuries = listOf(plan(1))))
+        assertTrue(SuggestionReason.PLAN_REPLACED_FOR_INJURY in paused.reasons, "${paused.reasons}")
+        // A planned limit day before the last stage: climb as the stage says, lighter.
+        val limitDay = profile.copy(datePlan = mapOf(monday.toString() to
+            com.cruxcoach.athlete.logic.DayPlans.Climb(com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER, com.cruxcoach.athlete.model.ClimbIntensity.LIMIT).entry))
+        val climb = SessionSuggester.suggest(input(profile = limitDay, injuries = listOf(plan(3))))
+        assertTrue(SuggestionReason.COMEBACK_CLIMBING in climb.reasons && SuggestionReason.CLIMB_LIGHTER_ADVISED in climb.reasons, "${climb.reasons}")
+        val full = SessionSuggester.suggest(input(profile = limitDay, injuries = listOf(plan(5))))
+        assertTrue(SuggestionReason.CLIMB_LIGHTER_ADVISED !in full.reasons, "${full.reasons}")
+    }
 }

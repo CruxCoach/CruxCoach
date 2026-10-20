@@ -50,6 +50,8 @@ data class ExerciseDefinition(
         const val TAG_WARMUP = "warmup"
         const val TAG_ANTAGONIST = "antagonist"
         const val TAG_PREHAB = "prehab"
+        /** Made for the comeback plan: never picked by the suggestion, still in the catalogue to add by hand. */
+        const val TAG_COMEBACK = "comeback"
         const val TAG_HOME = "home"
     }
 }

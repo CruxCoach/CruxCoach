@@ -355,13 +355,40 @@ class AthleteRepository(
     fun saveInjury(i: Injury) = wellbeing.upsertInjury(
         i.id, i.region.name, i.side?.name, i.detail, i.severity.toLong(), if (i.climbingPaused) 1 else 0,
         i.startedOn, i.resolvedOn, i.note, i.updatedAt,
+        i.check?.let { json.encodeToString(InjuryCheck.serializer(), it) },
+        i.plan?.let { json.encodeToString(ComebackPlan.serializer(), it) },
     )
 
-    fun activeInjuries(): List<Injury> = wellbeing.getActiveInjuries().executeAsList().mapNotNull { it.toModel() }
+    fun injury(id: String): Injury? = wellbeing.getInjury(id).executeAsOneOrNull()?.toModel(json)
+
+    fun activeInjuries(): List<Injury> = wellbeing.getActiveInjuries().executeAsList().mapNotNull { it.toModel(json) }
     fun observeActiveInjuries(): Flow<List<Injury>> =
-        wellbeing.getActiveInjuries().asFlow().mapToList(dispatcher).map { rows -> rows.mapNotNull { it.toModel() } }
-    fun allInjuries(): List<Injury> = wellbeing.getAllInjuries().executeAsList().mapNotNull { it.toModel() }
-    fun deleteInjury(id: String) = wellbeing.deleteInjury(id)
+        wellbeing.getActiveInjuries().asFlow().mapToList(dispatcher).map { rows -> rows.mapNotNull { it.toModel(json) } }
+    fun allInjuries(): List<Injury> = wellbeing.getAllInjuries().executeAsList().mapNotNull { it.toModel(json) }
+    fun observeInjury(id: String): Flow<Injury?> =
+        wellbeing.getInjury(id).asFlow().mapToOneOrNull(dispatcher).map { it?.toModel(json) }
+    /** The injury with its comeback diary. */
+    fun deleteInjury(id: String) = transaction { wellbeing.deleteComebackEntries(id); wellbeing.deleteInjury(id) }
+
+    // ── Comeback diary ───────────────────────────────────────────────
+
+    fun saveComebackEntry(e: ComebackEntry) = wellbeing.upsertComebackEntry(
+        e.injuryId, e.day, e.morningPain?.toLong(), e.pressurePain?.toLong(), e.swelling?.let { if (it) 1L else 0L },
+        if (e.newSign) 1 else 0, e.sessions.takeIf { it.isNotEmpty() }?.let { json.encodeToString(SESSION_LOGS, it) },
+        e.note, e.updatedAt,
+    )
+
+    fun comebackEntry(injuryId: String, day: String): ComebackEntry? =
+        wellbeing.getComebackEntry(injuryId, day).executeAsOneOrNull()?.toModel(json)
+    fun comebackEntries(injuryId: String): List<ComebackEntry> =
+        wellbeing.getComebackEntries(injuryId).executeAsList().map { it.toModel(json) }
+    fun observeComebackEntries(injuryId: String): Flow<List<ComebackEntry>> =
+        wellbeing.getComebackEntries(injuryId).asFlow().mapToList(dispatcher).map { rows -> rows.map { it.toModel(json) } }
+    fun allComebackEntries(): List<ComebackEntry> = wellbeing.getAllComebackEntries().executeAsList().map { it.toModel(json) }
+    fun observeAllComebackEntries(): Flow<List<ComebackEntry>> =
+        wellbeing.getAllComebackEntries().asFlow().mapToList(dispatcher).map { rows -> rows.map { it.toModel(json) } }
+    /** "Alle Comeback-Daten löschen": the diary of one injury. */
+    fun deleteComebackEntries(injuryId: String) = wellbeing.deleteComebackEntries(injuryId)
 
     fun savePause(p: PausePeriod) = wellbeing.upsertPause(p.id, p.reason.name, p.startDay, p.endDay, p.note)
     fun pauses(): List<PausePeriod> = wellbeing.getPauses().executeAsList().mapNotNull { it.toModel() }
@@ -384,6 +411,7 @@ class AthleteRepository(
         hydration = fuel.getAllHydration().executeAsList().map { it.toModel() },
         checkins = wellbeing.getAllCheckins().executeAsList().map { it.toModel() },
         injuries = allInjuries(),
+        comebackEntries = allComebackEntries(),
         pauses = pauses(),
         benchmarks = allBenchmarks(),
         climbingDays = allClimbingDays(),
@@ -448,6 +476,10 @@ class AthleteRepository(
             val local = wellbeing.getInjury(i.id).executeAsOneOrNull()
             if (local == null || local.updated_at <= i.updatedAt) { saveInjury(i); rows++ }
         }
+        snapshot.comebackEntries.forEach { e ->
+            val local = wellbeing.getComebackEntry(e.injuryId, e.day).executeAsOneOrNull()
+            if (local == null || local.updated_at <= e.updatedAt) { saveComebackEntry(e); rows++ }
+        }
         snapshot.benchmarks.forEach { b ->
             if (benchmarkQueries.getBenchmark(b.id).executeAsOneOrNull() == null) { saveBenchmark(b); rows++ }
         }
@@ -469,6 +501,7 @@ class AthleteRepository(
 
     companion object {
         const val KEY_PROFILE = "profile"
+        private val SESSION_LOGS = ListSerializer(ComebackSessionLog.serializer())
     }
 }
 
@@ -507,11 +540,24 @@ private fun CheckinRow.toModel() = Checkin(
     sore = sore.orEmpty().split(',').mapNotNull { enumOrNull<InjuryRegion>(it.trim()) }.toSet(),
 )
 
-private fun InjuryRow.toModel(): Injury? {
+private fun InjuryRow.toModel(json: Json): Injury? {
     val region = enumOrNull<InjuryRegion>(region) ?: return null
+    // A value this build cannot read (newer app, damaged row) leaves the injury itself usable.
     return Injury(id, region, enumOrNull<InjurySide>(side), detail, severity.toInt(), climbing_paused != 0L,
-        started_on, resolved_on, note, updated_at)
+        started_on, resolved_on, note, updated_at,
+        check = check_json?.let { runCatching { json.decodeFromString(InjuryCheck.serializer(), it) }.getOrNull() },
+        plan = plan_json?.let { runCatching { json.decodeFromString(ComebackPlan.serializer(), it) }.getOrNull() },
+    )
 }
+
+private fun com.cruxcoach.db.athlete.Comeback_entry.toModel(json: Json) = ComebackEntry(
+    injuryId = injury_id, day = day, morningPain = morning_pain?.toInt(), pressurePain = pressure_pain?.toInt(),
+    swelling = swelling?.let { it != 0L }, newSign = new_sign != 0L,
+    sessions = sessions_json?.let {
+        runCatching { json.decodeFromString(ListSerializer(ComebackSessionLog.serializer()), it) }.getOrNull()
+    }.orEmpty(),
+    note = note, updatedAt = updated_at,
+)
 
 private fun com.cruxcoach.db.athlete.Climbing_day.toModel(): ClimbingDayEntry? = ClimbingDayEntry(
     id = id, day = day,

@@ -1,6 +1,8 @@
 -- Readiness check-ins, injuries and pauses. A check-in is optional and at most
 -- one per day; an open injury (resolved_on IS NULL) drives the injury mode.
 -- checkin.sore: InjuryRegion names, comma-separated – what hurts today.
+-- injury.check_json / plan_json (schema 6): answers to the injury questions and the comeback plan (JSON, see
+-- ComebackModels.kt); comeback_entry is the comeback diary.
 
 CREATE TABLE checkin (
     day TEXT NOT NULL PRIMARY KEY,
@@ -25,7 +27,24 @@ CREATE TABLE injury (
     started_on TEXT NOT NULL,
     resolved_on TEXT,
     note TEXT,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    check_json TEXT,
+    plan_json TEXT
+);
+
+-- Comeback diary (schema 6): one row per injury and day. Pain values 0–10 at the injured spot;
+-- sessions_json lists the comeback sessions of the day with their highest pain.
+CREATE TABLE comeback_entry (
+    injury_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    morning_pain INTEGER,
+    pressure_pain INTEGER,
+    swelling INTEGER,
+    new_sign INTEGER NOT NULL DEFAULT 0,
+    sessions_json TEXT,
+    note TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (injury_id, day)
 );
 
 CREATE TABLE pause_period (
@@ -53,8 +72,8 @@ getAllCheckins:
 SELECT * FROM checkin ORDER BY day;
 
 upsertInjury:
-INSERT OR REPLACE INTO injury(id, region, side, detail, severity, climbing_paused, started_on, resolved_on, note, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO injury(id, region, side, detail, severity, climbing_paused, started_on, resolved_on, note, updated_at, check_json, plan_json)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getInjury:
 SELECT * FROM injury WHERE id = ?;
@@ -79,3 +98,19 @@ SELECT * FROM pause_period WHERE end_day IS NULL ORDER BY start_day DESC LIMIT 1
 
 deletePause:
 DELETE FROM pause_period WHERE id = ?;
+
+upsertComebackEntry:
+INSERT OR REPLACE INTO comeback_entry(injury_id, day, morning_pain, pressure_pain, swelling, new_sign, sessions_json, note, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getComebackEntry:
+SELECT * FROM comeback_entry WHERE injury_id = ? AND day = ?;
+
+getComebackEntries:
+SELECT * FROM comeback_entry WHERE injury_id = ? ORDER BY day;
+
+getAllComebackEntries:
+SELECT * FROM comeback_entry ORDER BY injury_id, day;
+
+deleteComebackEntries:
+DELETE FROM comeback_entry WHERE injury_id = ?;

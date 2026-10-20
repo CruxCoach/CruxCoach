@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Comeback plan after an injury (owner 2026-10-20): a training aid used together with a doctor or physio.
+     Wording rules (research/safety-regulation.md §4.7): no diagnosis, therapy, healing or promises. -->
+<resources>
+    <string name="cb_title">Comeback plan</string>
+    <string name="cb_not_a_substitute">Not a substitute for seeing a doctor – use it only in agreement with your doctor or physio.</string>
+    <string name="cb_warning_signs">Warning signs</string>
+    <string name="cb_open_plan">Comeback plan</string>
+    <string name="cb_start_plan">Start comeback plan</string>
+    <string name="cb_questions">Questions about the injury</string>
+    <string name="cb_card_stage">Comeback plan: stage %1$d of %2$d · %3$s</string>
+    <string name="cb_card_own">Comeback plan: my physio\'s plan</string>
+
+    <!-- Before you start -->
+    <string name="cb_before_title">Before you start</string>
+    <string name="cb_before_text">This plan helps you build load back up step by step. It is not a substitute for seeing a doctor and it can\'t tell whether your injury has healed – use it only in agreement with your doctor or physio.\n\n• Not checked yet? We recommend a doctor or physio – especially after a pop, swelling or bruising.\n• You choose the stage you agreed with your doctor or physio and can change it anytime. If a professional gave you a plan, follow theirs.\n• Your entries stay on this phone.</string>
+    <string name="cb_understood">Got it – in agreement with my doctor or physio</string>
+
+    <!-- Questions -->
+    <string name="cb_q_intro">The answers help you and your doctor or physio – CruxCoach does not diagnose and picks no stage from them.</string>
+    <string name="cb_q_onset">How did it start?</string>
+    <string name="cb_onset_sudden">Suddenly during a move</string>
+    <string name="cb_onset_gradual">Gradually over days or weeks</string>
+    <string name="cb_onset_twist">Twisted, jammed or hit</string>
+    <string name="cb_onset_fall">A fall or landing</string>
+    <string name="cb_onset_unsure">Not sure</string>
+    <string name="cb_q_pop">Did you hear or feel a pop?</string>
+    <string name="cb_pop_none">No</string>
+    <string name="cb_pop_felt">Felt something</string>
+    <string name="cb_pop_audible">A clear pop</string>
+    <string name="cb_q_swelling">Swelling or bruising?</string>
+    <string name="cb_swelling_none">None</string>
+    <string name="cb_swelling_mild">Mild, local</string>
+    <string name="cb_swelling_moderate">Moderate</string>
+    <string name="cb_swelling_marked">Marked or bruised</string>
+    <string name="cb_q_fingers">Which fingers?</string>
+    <string name="cb_finger_thumb">Thumb</string>
+    <string name="cb_finger_index">Index</string>
+    <string name="cb_finger_middle">Middle</string>
+    <string name="cb_finger_ring">Ring</string>
+    <string name="cb_finger_little">Little</string>
+    <string name="cb_q_signs">Does any of this apply? Tick what fits.</string>
+    <string name="cb_q_checked">Has a doctor or physio looked at it?</string>
+    <string name="cb_checked_not_yet">Not yet</string>
+    <string name="cb_checked_examined">Examined</string>
+    <string name="cb_checked_imaging">Ultrasound or MRI</string>
+    <string name="cb_checked_surgery">Surgery</string>
+    <string name="cb_q_finding">What did they tell you?</string>
+    <string name="cb_finding_none">No name for it yet</string>
+    <string name="cb_q_checked_on">Checked on</string>
+    <string name="cb_checked_today">Today</string>
+    <string name="cb_checked_pick">Pick a day</string>
+    <string name="cb_save_answers">Save answers</string>
+
+    <!-- Alerts -->
+    <string name="cb_call_112">Call 112</string>
+    <string name="cb_out_of_hours">In Germany out of hours: on-call doctors at 116117.</string>
+    <string name="cb_has_been_checked">It has been checked</string>
+    <string name="cb_continue_anyway">Continue anyway</string>
+    <string name="cb_banner_signs">You ticked warning signs: %1$s</string>
+    <string name="cb_banner_signs_checked">You ticked warning signs and noted they were checked.</string>
+    <string name="cb_banner_not_checked">Not checked yet? We recommend having it looked at by a doctor or physio.</string>
+    <string name="cb_banner_not_agreed">Talk the stage through with your doctor or physio before you train it.</string>
+    <string name="cb_mark_agreed">Agreed now</string>
+
+    <!-- Setup -->
+    <string name="cb_step_questions">1 · About the injury</string>
+    <string name="cb_step_questions_done">Answered on %1$s</string>
+    <string name="cb_step_questions_open">Not answered yet</string>
+    <string name="cb_step_source">2 · Whose plan</string>
+    <string name="cb_source_cruxcoach">CruxCoach stages</string>
+    <string name="cb_source_cruxcoach_hint">Usual stages from studies and climbing physios.</string>
+    <string name="cb_source_own">My physio\'s plan</string>
+    <string name="cb_source_own_hint">You use your physio\'s exercises; CruxCoach keeps the diary and the reminders.</string>
+    <string name="cb_own_routine">Sessions from your routine</string>
+    <string name="cb_own_routine_none">No routine chosen – you can start any training and the diary still counts.</string>
+    <string name="cb_step_stage">3 · Your stage</string>
+    <string name="cb_stage_pick_hint">Pick the stage you agreed with your doctor or physio.</string>
+    <string name="cb_agreed">Agreed with my doctor or physio</string>
+    <string name="cb_step_reference">4 · Reference value (optional)</string>
+    <string name="cb_reference_hint">One-arm pick-up, 10 s, about 20 mm, total weight. Best: your value from before the injury. Otherwise test the healthy hand once if it\'s fit: after warming up, add 2.5 kg per step, one 10-s hold per step, 3 minutes rest – the last weight you just hold for 10 s. Never max-test the injured hand.</string>
+    <string name="cb_reference_half">Half crimp (kg)</string>
+    <string name="cb_reference_open">Open hand (kg)</string>
+    <string name="cb_reference_before">Before the injury: %1$s kg</string>
+    <string name="cb_reference_other">Other hand: %1$s kg</string>
+    <string name="cb_reference_use">Use</string>
+    <string name="cb_dominant">The injured hand is my stronger one</string>
+    <string name="cb_start">Start plan</string>
+    <string name="cb_restart">Start a new plan</string>
+
+    <!-- Plan -->
+    <string name="cb_stage_header">Stage %1$d of %2$d · %3$s</string>
+    <string name="cb_stage_day">Day %1$d on this stage</string>
+    <string name="cb_do_this">What to do</string>
+    <string name="cb_climbing">Climbing</string>
+    <string name="cb_avoid">Avoid for now</string>
+    <string name="cb_pain_rule">Your pain rule</string>
+    <string name="cb_pain_rule_acute">At most %1$d of 10 at the injured spot during the session, the next morning not worse.</string>
+    <string name="cb_pain_rule_overuse">Up to %1$d of 10 that settles by the next morning; not rising week to week.</string>
+    <string name="cb_next_when">Usually before the next stage</string>
+    <string name="cb_change_stage">Change stage</string>
+    <string name="cb_choose_stage">Choose the stage</string>
+    <string name="cb_today_sessions">Today</string>
+    <string name="cb_session_mobility">Movement</string>
+    <string name="cb_session_tendon">Tendon session</string>
+    <string name="cb_session_strength">Strength session</string>
+    <string name="cb_session_region">Exercises</string>
+    <string name="cb_session_climb">Climbing</string>
+    <string name="cb_session_own">My session</string>
+    <string name="cb_session_per_day">%1$d min · up to %2$d× a day, %3$d h apart</string>
+    <string name="cb_session_per_week">%1$d min · %2$d× a week, %3$d h apart</string>
+    <string name="cb_session_due">Due</string>
+    <string name="cb_session_done">Done today</string>
+    <string name="cb_session_later">Next from %1$s</string>
+    <string name="cb_session_not_today">Not today</string>
+    <string name="cb_session_optional">Optional</string>
+    <string name="cb_session_start">Start</string>
+    <string name="cb_item_injured">injured hand</string>
+    <string name="cb_item_healthy">healthy hand</string>
+    <string name="cb_item_target">%1$s–%2$s kg</string>
+    <string name="cb_item_effort">effort %1$d–%2$d of 10</string>
+    <string name="cb_item_percent">%1$d–%2$d %% of your reference</string>
+    <string name="cb_session_name">Comeback · %1$s</string>
+
+    <!-- Diary -->
+    <string name="cb_diary">Diary today</string>
+    <string name="cb_morning_pain">Pain on getting up (0–10)</string>
+    <string name="cb_pressure_pain">Pressure pain (0–10)</string>
+    <string name="cb_pressure_hint">Press the same spot with your thumb until the nail turns white.</string>
+    <string name="cb_swelling_today">Swollen today</string>
+    <string name="cb_new_sign">Something new from the warning signs</string>
+    <string name="cb_note">Note</string>
+    <string name="cb_chart_title">Last 14 days</string>
+    <string name="cb_chart_morning">Morning</string>
+    <string name="cb_chart_pressure">Pressure</string>
+    <string name="cb_chart_session">Session</string>
+    <string name="cb_chart_empty">Your entries appear here.</string>
+    <string name="cb_finish_pain">Highest pain at the injured spot during the session (0–10)</string>
+
+    <!-- Prompts -->
+    <string name="cb_review_up_title">Ready for the next stage?</string>
+    <string name="cb_review_up_text">This week %1$d of %2$d logged days stayed within your rule, and the mornings were never worse. Next: %3$s. Move up, or stay another week? Both are fine.</string>
+    <string name="cb_review_up_check">Before limit climbing it\'s best to have it looked at again.</string>
+    <string name="cb_move_up">Move up</string>
+    <string name="cb_stay_week">Stay this week</string>
+    <string name="cb_review_repeat_title">Stay at this stage for now</string>
+    <string name="cb_review_repeat_text">On %1$s you logged %2$d of 10, above your rule of %3$d. The usual approach is to repeat the week. You can still change the stage yourself.</string>
+    <string name="cb_review_repeat_text_generic">Some days were above your rule this week. The usual approach is to repeat the week. You can still change the stage yourself.</string>
+    <string name="cb_repeat_week">Repeat week</string>
+    <string name="cb_review_back_title">Your pain has gone up</string>
+    <string name="cb_review_back_text">This week had days clearly above your rule. That usually means the load is too much right now. Suggestion: go back one stage for 3–4 days. If it keeps rising, or you notice swelling, numbness or a new pop, get it checked.</string>
+    <string name="cb_step_back">Step back one stage</string>
+    <string name="cb_keep_stage">Keep my stage</string>
+    <string name="cb_review_stay_text">Not enough entries this week to say more – keep logging and stay at your stage.</string>
+    <string name="cb_worse_title">Your pain has gone up</string>
+    <string name="cb_worse_text">Over the last days your morning value went from %1$d to %2$d. That usually means the load is too much right now. Suggestion: go back one stage for 3–4 days. If it keeps rising, or you notice swelling, numbness or a new pop, get it checked.</string>
+    <string name="cb_nb14_title">Two weeks – the pain hasn\'t gone down</string>
+    <string name="cb_nb14_text">Your entries are about where they were at the start. Most strains feel better after about two weeks, so this is a good time to have it looked at – a doctor or physio can check whether something else is going on. Meanwhile you can stay at your stage or step back one.</string>
+    <string name="cb_nb21_title">Three weeks without improvement: please get it checked</string>
+    <string name="cb_nb21_text">Your pain has stayed about the same for three weeks. An ultrasound can show what\'s going on, and the plan may need to change.</string>
+    <string name="cb_sign_title">Something new?</string>
+    <string name="cb_sign_text">You noted something new from the warning signs. Have a look at the list and tick what fits.</string>
+    <string name="cb_open_signs">Open warning signs</string>
+    <string name="cb_ok">OK</string>
+    <string name="cb_remind_week">Remind me in a week</string>
+
+    <!-- Information -->
+    <string name="cb_typical">Typical course</string>
+    <string name="cb_typical_hint">Guide values from studies, not a schedule. Your course can be faster or slower.</string>
+    <string name="cb_notes_finding">For what you were told</string>
+    <string name="cb_evidence">Where the numbers come from</string>
+    <string name="cb_sources">Sources</string>
+    <string name="cb_source_sr">systematic review</string>
+    <string name="cb_source_trial">trial</string>
+    <string name="cb_source_guideline">guideline</string>
+    <string name="cb_source_cohort">cohort study</string>
+    <string name="cb_source_case_series">case series</string>
+    <string name="cb_source_review">review</string>
+    <string name="cb_source_consensus">consensus</string>
+    <string name="cb_source_lab">lab study</string>
+    <string name="cb_source_practitioner">practitioner</string>
+    <string name="cb_nutrition">Nutrition (optional)</string>
+
+    <!-- Actions -->
+    <string name="cb_export">Summary for my appointment</string>
+    <string name="cb_export_title">Comeback plan – summary</string>
+    <string name="cb_export_injury">Injury</string>
+    <string name="cb_export_since">Since</string>
+    <string name="cb_export_finding">What I was told</string>
+    <string name="cb_export_signs">Warning signs ticked</string>
+    <string name="cb_export_plan">Plan</string>
+    <string name="cb_export_stage">Stage</string>
+    <string name="cb_export_reference">Reference</string>
+    <string name="cb_export_diary">Day\tmorning\tpressure\tsession\tswollen\tnote</string>
+    <string name="cb_export_yes">yes</string>
+    <string name="cb_end">End plan</string>
+    <string name="cb_end_title">End the comeback plan?</string>
+    <string name="cb_end_text">Your diary stays. If the injury is over, CruxCoach eases finger training back in for a few weeks.</string>
+    <string name="cb_end_resolved">End – injury is over</string>
+    <string name="cb_end_keep">End plan only</string>
+    <string name="cb_delete_all">Delete all comeback data</string>
+    <string name="cb_delete_title">Delete all comeback data?</string>
+    <string name="cb_delete_text">The answers, the plan and the diary of this injury are deleted from this phone. The injury entry itself stays.</string>
+    <string name="cb_privacy">Your entries stay on this phone. They go into a backup only if you pick \"Injuries &amp; comeback diary\".</string>
+
+    <!-- Today card -->
+    <string name="cb_today_title">Comeback plan · %1$s</string>
+    <string name="cb_today_question">How is it this morning?</string>
+    <string name="cb_today_open">Open plan</string>
+    <string name="cb_today_prompt">The plan has a note for you.</string>
+
+    <!-- Coach reasons -->
+    <string name="cb_reason_plan">Your comeback plan is running: the injured spot is trained in its sessions.</string>
+    <string name="cb_reason_climbing">Climbing as your comeback stage says: %1$s</string>
+    <string name="cb_reason_climbing_generic">Climbing as your comeback stage says.</string>
+    <string name="cb_reason_no_board">Your comeback stage keeps the board out for now.</string>
+    <string name="cb_reason_lighter">Your comeback stage: rather easy climbing than hard or limit today.</string>
+
+    <!-- Backup -->
+    <string name="cb_backup_category">Injuries &amp; comeback diary</string>
+    <string name="cb_backup_category_hint">Health data: only exported when you tick it.</string>
+    <string name="cb_backup_cloud">Injuries and comeback diary in the encrypted backup</string>
+    <string name="cb_backup_cloud_hint">Off: they stay on this phone only.</string>
+    <plurals name="import_result_health">
+        <item quantity="one">%d injury or diary entry</item>
+        <item quantity="other">%d injury and diary entries</item>
+    </plurals>
+    <string name="cb_review_stay_rising">Pressure pain went up this week compared with the week before. The usual approach is to stay at this stage until it falls again; if it keeps rising, get it checked.</string>
+    <string name="cb_review_stay_last">You are at the last stage. Check the return criteria above with your doctor or physio – met criteria don\'t show that the injury has healed.</string>
+    <string name="cb_sources_more">%1$d more</string>
+    <string name="cb_sources_less">Fewer</string>
+</resources>

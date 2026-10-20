@@ -54,6 +54,8 @@ object TrainingRoutes {
     const val BODY = "body"
     const val FUEL = "fuel"
     const val INJURIES = "injuries"
+    const val COMEBACK = "comeback/{injuryId}"
+    fun comeback(injuryId: String) = "comeback/$injuryId"
     const val WEEKLY_REVIEW = "weekly_review"
     const val ATHLETE_SETTINGS = "athlete_settings"
     /** One page of the settings (overview → page). */
