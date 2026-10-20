@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -286,10 +287,16 @@ private fun ReferenceField(label: String, value: String, tag: String, suggestion
     }
 }
 
+/** The whole row toggles, the text too (device run 2026-10-20: a tap on the text left the box empty). */
 @Composable
-private fun CheckRow(label: String, checked: Boolean, tag: String, onChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Checkbox(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag(tag))
+internal fun CheckRow(label: String, checked: Boolean, tag: String, onChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().toggleable(value = checked, role = Role.Checkbox, onValueChange = onChange)
+            .padding(vertical = 4.dp).testTag(tag),
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null)
+        Spacer(Modifier.width(12.dp))
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
     }
 }
