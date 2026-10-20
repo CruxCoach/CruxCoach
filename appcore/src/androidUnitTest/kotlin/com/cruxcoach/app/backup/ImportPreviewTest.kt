@@ -34,6 +34,8 @@ class ImportPreviewTest {
                 Category.TRAINING,
                 Category.BODY_STATS,
                 Category.FUEL,
+                // Injuries and the comeback diary (FEAT-072): offered on import, opt-in on export.
+                Category.HEALTH,
             ),
             ManualImportCategories.VISIBLE,
         )

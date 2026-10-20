@@ -106,7 +106,16 @@ class FakePayloadStore(private val exportJson: String? = null) : BackupPayloadSt
         listsInBackup = 1,
     )
 
-    override fun exportJson(exportedAt: String, nostrPubkey: String, categories: Set<com.cruxcoach.data.CruxCoachBackup.Category>): String? = exportJson
+    /** What the automatic backup asks for (the athlete's health switch, FEAT-072). */
+    var cloud: Set<com.cruxcoach.data.CruxCoachBackup.Category> = com.cruxcoach.data.CruxCoachBackup.Category.DEFAULTS
+    var exportedCategories: Set<com.cruxcoach.data.CruxCoachBackup.Category>? = null
+
+    override fun cloudCategories(): Set<com.cruxcoach.data.CruxCoachBackup.Category> = cloud
+
+    override fun exportJson(exportedAt: String, nostrPubkey: String, categories: Set<com.cruxcoach.data.CruxCoachBackup.Category>): String? {
+        exportedCategories = categories
+        return exportJson
+    }
 
     override fun importJson(json: String, expectedNostrPubkey: String): BackupImportSummary? {
         importedJson = json
