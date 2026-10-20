@@ -316,8 +316,8 @@ final class MainScreensUITests: XCTestCase {
         let edit = app.buttons["comeback_reference_edit"]
         XCTAssertTrue(scrollTo(edit), "No \"Enter reference value\":\n\(screenTail())")
         edit.tap()
-        let save = app.buttons["comeback_reference_save"]
-        XCTAssertTrue(save.waitForExistence(timeout: 10), "No reference dialog:\n\(screenTail())")
+        let saveReference = app.buttons["comeback_reference_save"]
+        XCTAssertTrue(saveReference.waitForExistence(timeout: 10), "No reference dialog:\n\(screenTail())")
         // The sheet covers the plan, so a notice that can be tapped is the dialog's own.
         let notices = app.staticTexts.matching(NSPredicate(format: "label == %@", noticeText))
         XCTAssertTrue(notices.allElementsBoundByIndex.contains { $0.isHittable }, "The reference dialog has no notice:\n\(screenTail())")
@@ -327,7 +327,7 @@ final class MainScreensUITests: XCTestCase {
         half.tap()
         half.typeText("28")
         shot("12e-comeback-reference")
-        save.tap()
+        saveReference.tap()
         XCTAssertTrue(waitFor(reference, "label CONTAINS '28'"), "The stage card does not show 28 kg:\n\(screenTail())")
         shot("12f-comeback-reference-saved")
 
