@@ -189,6 +189,9 @@ internal class ComebackPresenter(
 
     fun dismissPrompt(key: String) = io { comebacks.markPrompt(injuryId, key) }
     fun markAgreed() = io { comebacks.updatePlan(injuryId) { it.copy(agreedWithProfessional = true) } }
+    /** "Enter reference value" on a running finger plan (Android d4d050bee): the strength targets follow it. */
+    fun setReferences(referenceKg: Map<String, Double>, injuredDominant: Boolean?) =
+        io { comebacks.updatePlan(injuryId) { it.copy(referenceKg = referenceKg, injuredDominant = injuredDominant) } }
     fun setOwnRoutine(routineId: String?) = io { comebacks.updatePlan(injuryId) { it.copy(ownRoutineId = routineId) } }
 
     /** Saves today's diary values as they are entered. */

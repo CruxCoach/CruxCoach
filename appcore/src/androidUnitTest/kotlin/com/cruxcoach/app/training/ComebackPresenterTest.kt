@@ -22,6 +22,7 @@ import com.cruxcoach.athlete.model.SetType
 import com.cruxcoach.athlete.model.Side
 import com.cruxcoach.athlete.model.StageChangeReason
 import com.cruxcoach.athlete.model.WarningSign
+import com.cruxcoach.util.formatDecimal
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.minus
 import java.io.File
@@ -354,6 +355,77 @@ class ComebackPresenterTest {
     }
 
     @Test
+    fun `a reference value can be entered later and the strength targets follow it`() {
+        // Android d4d050bee (device run 2026-10-20): a finger plan started without a reference value.
+        kit.db { repo.saveInjury(Comeback.start(injury(), PlanSource.CRUXCOACH, 3, today, true, false, emptyMap(), 1)) }
+        val (p, model) = screen()
+        val before = model.currentState
+        assertTrue(before.plan.showReference)
+        assertEquals("cb_reference_none", before.plan.reference.key)
+        assertEquals("", before.plan.refHalf)
+        assertFalse(before.plan.dominant)
+        // Without a reference the strength session shows percentages only.
+        assertTrue(targets(before).isEmpty())
+        assertTrue(before.plan.sessions.flatMap { it.items }.any { line -> line.args.any { it.nested?.key == "cb_item_percent" } })
+        val changes = before.planChanges
+        texts(before, model)
+
+        // Saved from the stage card's dialog: an impossible open-hand value is no value.
+        model.setReferences(half = "28", open = "abc", dominant = true)
+        kit.until("reference") { repo.injury("i1")?.plan?.referenceKg?.get(Grip.HALF_CRIMP.name) == 28.0 }
+        val plan = kit.db { repo.injury("i1")!!.activePlan!! }
+        assertEquals(mapOf(Grip.HALF_CRIMP.name to 28.0), plan.referenceKg)
+        assertEquals(true, plan.injuredDominant)
+        // The stage stays: no stage change, so the screen does not jump.
+        assertEquals(3, plan.stage)
+        kit.until("shown") { p.state.value.injury?.activePlan?.referenceKg?.isNotEmpty() == true }
+        val after = model.currentState
+        assertEquals(changes, after.planChanges)
+        assertEquals("cb_reference_values", after.plan.reference.key)
+        assertEquals(listOf(formatDecimal(28.0, 1), "–"), after.plan.reference.args.map { it.text })
+        assertEquals(formatDecimal(28.0, 1), after.plan.refHalf)
+        assertEquals("", after.plan.refOpen)
+        assertTrue(after.plan.dominant)
+        // Stage 3 strength: half crimp at 40–60 % of 28 kg (Android's "11.0–17.0 kg").
+        assertTrue(listOf(formatDecimal(11.0, 1), formatDecimal(17.0, 1)) in targets(after), "${targets(after)}")
+        texts(after, model)
+    }
+
+    @Test
+    fun `the plan opens at its top on start and on every stage change`() {
+        kit.db { repo.saveInjury(injury()) }
+        val (p, model) = screen()
+        // No plan yet: nothing to scroll to.
+        assertEquals(-1, model.currentState.planChanges)
+        model.chooseStage(1)
+        model.setAgreed(true)
+        model.startPlan()
+        kit.until("plan") { p.state.value.injury?.activePlan != null }
+        val started = model.currentState.planChanges
+        assertEquals(1, started)
+        model.moveToStage(2)
+        kit.until("stage 2") { p.state.value.injury?.activePlan?.stage == 2 }
+        assertEquals(started + 1, model.currentState.planChanges)
+        // Picking the current stage again is no change.
+        model.moveToStage(2)
+        model.markAgreed()
+        kit.until("agreed") { p.state.value.injury?.activePlan?.agreedWithProfessional == true }
+        assertEquals(started + 1, model.currentState.planChanges)
+        // References only on a running finger plan: a closed plan takes none.
+        model.end(resolved = false)
+        kit.until("ended") { p.state.value.injury?.activePlan == null }
+        assertEquals(-1, model.currentState.planChanges)
+        model.setReferences(half = "30", open = "", dominant = false)
+        kit.until("still none") { repo.injury("i1")?.plan?.endedOn != null }
+        assertTrue(kit.db { repo.injury("i1")!!.plan!!.referenceKg }.isEmpty())
+    }
+
+    /** The kg targets (from, to) of all of today's session lines. */
+    private fun targets(s: ComebackScreenState): List<List<String>> =
+        s.plan.sessions.flatMap { it.items }.flatMap { line -> line.args.mapNotNull { it.nested } }
+            .filter { it.key == "cb_item_target" }.map { t -> t.args.map { it.text } }
+
+    @Test
     fun `every comeback surface on iOS carries the notice in the owner's words`() {
         // Swift is compiled on CI only: this pins the owner's hard rule to the sources and the strings here.
         val root = generateSequence(File("").absoluteFile) { it.parentFile }.first { File(it, "iosApp/CruxCoach").isDirectory }
@@ -372,5 +444,11 @@ class ComebackPresenterTest {
         // "Call 112" comes first in the urgent alert.
         assertTrue(alert.indexOf("cb_call_112") in 0 until alert.indexOf("cb_continue_anyway"))
         assertTrue(screen.contains("L(\"cb_before_text\")"))
+        // The sheets over the running plan: "Choose the stage" and "Enter reference value" (Android d4d050bee).
+        val sections = File(dir, "ComebackPlanSections.swift").readText()
+        listOf("ComebackReferenceSheet", "ComebackStagePickerSheet").forEach { name ->
+            val body = sections.substringAfter("struct $name").substringBefore("\nprivate struct ").substringBefore("\nstruct ")
+            assertTrue(body.contains("ComebackNotice()"), "$name has no notice")
+        }
     }
 }

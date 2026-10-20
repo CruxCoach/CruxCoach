@@ -170,6 +170,19 @@ class ComebackPlanUi(
     val avoid: List<String>,
     val painRule: TrText,
     val nextWhen: List<String>,
+    /** A finger plan: the stage card shows the reference with "Enter reference value" (Android d4d050bee). */
+    val showReference: Boolean,
+    /** "Half crimp 28.0 kg · open hand – kg", or "None yet – …". */
+    val reference: TrText,
+    /** The reference dialog starts from these: the plan's values ("" for none) and its stronger hand. */
+    val refHalf: String,
+    val refOpen: String,
+    val dominant: Boolean,
+    /** The suggestions from the logged history, as in the setup. */
+    val refHalfHint: TrText,
+    val refHalfValue: String,
+    val refOpenHint: TrText,
+    val refOpenValue: String,
     val sessions: List<ComebackSessionUi>,
     val ownRoutines: List<ComebackRoutineUi>,
     val ownRoutineChosen: Boolean,
@@ -202,6 +215,11 @@ class ComebackScreenState(
     val found: Boolean,
     /** A plan is running: [plan] applies, else [setup]. */
     val hasPlan: Boolean,
+    /**
+     * The running plan's stage changes so far (-1 without a plan): when it changes, Swift scrolls to the top, so a
+     * plan opens at its top on start and on every stage change (Android d4d050bee, device run 2026-10-20).
+     */
+    val planChanges: Int,
     /** "Finger · Left · Ring A2". */
     val title: TrText,
     val since: TrText,
@@ -378,6 +396,19 @@ class ComebackScreenModel internal constructor(
 
     fun markAgreed() = presenter.markAgreed()
 
+    /**
+     * "Enter reference value" saved (Android's reference dialog): both grips as typed (an empty or impossible
+     * value is none) and the stronger hand. Only for a running finger plan.
+     */
+    fun setReferences(half: String, open: String, dominant: Boolean) {
+        val injury = presenter.state.value.injury ?: return
+        if (injury.activePlan == null || injury.region != InjuryRegion.FINGER) return
+        presenter.setReferences(buildMap {
+            ComebackPresenter.toKgOrNull(half)?.let { put(Grip.HALF_CRIMP.name, it) }
+            ComebackPresenter.toKgOrNull(open)?.let { put(Grip.OPEN_HAND.name, it) }
+        }, dominant)
+    }
+
     /** "My physio's plan": tapping the chosen routine again clears it. */
     fun chooseOwnRoutine(id: String) {
         val plan = presenter.state.value.injury?.activePlan ?: return
@@ -459,6 +490,7 @@ class ComebackScreenModel internal constructor(
             loading = s.loading,
             found = injury != null,
             hasPlan = plan != null,
+            planChanges = plan?.history?.size ?: -1,
             title = injury?.let { i ->
                 Tx.join(listOfNotNull(Tx.t(Tx.regionKey(i.region)), i.side?.let { Tx.t(Tx.injurySideKey(it)) }, i.detail?.let { Tx.plain(it) }))
             } ?: Tx.EMPTY,
@@ -558,6 +590,10 @@ class ComebackScreenModel internal constructor(
         val finding = injury.check?.finding
         val course = finding?.let { ComebackTexts.typicalCourse(it) }
         val sources = ladder.sources + if (injury.region == InjuryRegion.FINGER) ComebackTexts.GELATIN_SOURCES else emptyList()
+        val half = plan.referenceKg[Grip.HALF_CRIMP.name]
+        val open = plan.referenceKg[Grip.OPEN_HAND.name]
+        val halfHint = s.suggestedRefs[Grip.HALF_CRIMP.name]
+        val openHint = s.suggestedRefs[Grip.OPEN_HAND.name]
         val chart = s.readings.map { r ->
             ComebackChartPointUi(r.day.toString(), r.morningPain ?: -1, r.pressurePain ?: -1, r.sessionPain ?: -1)
         }
@@ -575,6 +611,16 @@ class ComebackScreenModel internal constructor(
             avoid = stage.avoid.map(::txt),
             painRule = Tx.t(if (rule.overuse) "cb_pain_rule_overuse" else "cb_pain_rule_acute", Tx.i(rule.greenMax)),
             nextWhen = stage.nextWhen.map(::txt),
+            showReference = injury.region == InjuryRegion.FINGER,
+            reference = if (half == null && open == null) Tx.t("cb_reference_none")
+            else Tx.t("cb_reference_values", Tx.s(half?.let { formatDecimal(it, 1) } ?: "–"), Tx.s(open?.let { formatDecimal(it, 1) } ?: "–")),
+            refHalf = half?.let { formatDecimal(it, 1) } ?: "",
+            refOpen = open?.let { formatDecimal(it, 1) } ?: "",
+            dominant = plan.injuredDominant == true,
+            refHalfHint = halfHint?.let { referenceHint(it) } ?: Tx.EMPTY,
+            refHalfValue = halfHint?.let { formatDecimal(it.first, 1) } ?: "",
+            refOpenHint = openHint?.let { referenceHint(it) } ?: Tx.EMPTY,
+            refOpenValue = openHint?.let { formatDecimal(it.first, 1) } ?: "",
             sessions = if (plan.source == PlanSource.CRUXCOACH) {
                 s.due.filter { it.spec.items.isNotEmpty() }.map { sessionUi(it, plan, injury, s) }
             } else emptyList(),
@@ -725,6 +771,7 @@ class ComebackScreenModel internal constructor(
 
         val EMPTY_PLAN = ComebackPlanUi(
             "", emptyList(), false, false, 0, Tx.EMPTY, Tx.EMPTY, "", emptyList(), "", emptyList(), Tx.EMPTY, emptyList(),
+            false, Tx.EMPTY, "", "", false, Tx.EMPTY, "", Tx.EMPTY, "",
             emptyList(), emptyList(), false, Tx.EMPTY, "", -1, -1, false, false, "", emptyList(), emptyList(), true, "",
             emptyList(), "", "", emptyList(),
         )
