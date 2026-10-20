@@ -2463,4 +2463,17 @@ class AppCore private constructor(
         )
     }
 
+    // ── Comeback plan screen (cbscreen, sync 2026-10-20; Android c5a2665fb, FEAT-072) ──
+
+    /**
+     * One injury's comeback plan (Android `ComebackScreen`): one presenter per presentation; null without the
+     * athlete stack. [language] is the device language ("de"/"en") for the shared comeback texts.
+     */
+    fun makeComebackScreen(injuryId: String, language: String): com.cruxcoach.app.ui.ComebackScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.ComebackScreenModel(
+            com.cruxcoach.app.training.ComebackPresenter(service, injuryId, MainScope(), Dispatchers.IO), language,
+        )
+    }
+
 }
