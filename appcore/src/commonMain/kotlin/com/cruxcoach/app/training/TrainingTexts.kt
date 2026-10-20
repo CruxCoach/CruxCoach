@@ -294,6 +294,7 @@ internal object Tx {
         SuggestionReason.LIMIT_TOMORROW -> "trdp_reason_limit_tomorrow"
         SuggestionReason.PLANNED_CLIMB_NOT_LOGGED -> "trdp_reason_not_logged"
         SuggestionReason.FINGERS_BEFORE_HARD_DAY -> "trdp_reason_fingers_before"
+        SuggestionReason.USUAL_ROUTINE_WEEKDAY, SuggestionReason.USUAL_ROUTINE -> "trhb_reason_generic"
     }
 
     /** The kinds of training the athlete can choose, in their words (`kindLabel`). */
