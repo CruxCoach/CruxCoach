@@ -8,8 +8,14 @@ import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.logic.PreferenceLearning
 import com.cruxcoach.athlete.logic.TrainingPlaces
 import com.cruxcoach.athlete.model.PlaceKind
+import com.cruxcoach.athlete.model.Routine
+import com.cruxcoach.athlete.model.RoutineItem
+import com.cruxcoach.athlete.model.Workout
 import com.cruxcoach.athlete.model.Sex
 import com.cruxcoach.athlete.model.UnitSystem
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.minus
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -138,6 +144,59 @@ class AthleteSettingsPresenterTest {
         model.forgetAll()
         kit.until("all") { repo.profile().learningResets.containsKey(PreferenceLearning.RESET_ALL) }
         kit.until("nothing") { p.state.value.learned.isEmpty }
+    }
+
+    @Test
+    fun `usual workouts are listed with their day and times and can be forgotten`() {
+        val dayMs = 86_400_000L
+        val routine = Routine("push-day", "Push-Tag", items = listOf(RoutineItem("push.push_up", sets = 4, repsMin = 12, repsMax = 12)))
+        val gone = Routine("gone", "Deleted", items = listOf(RoutineItem("push.push_up", sets = 3, repsMin = 10, repsMax = 10)))
+        val iso = kit.db {
+            repo.saveRoutine(routine)
+            val today = service.today()
+            // On this weekday one and two weeks ago, and three days ago: the weekday's usual one and the usual one lately.
+            listOf(3, 7, 14).forEach { ago ->
+                val start = System.currentTimeMillis() - ago * dayMs
+                repo.saveWorkout(Workout("w$ago", start, start + 3_600_000L, today.minus(DatePeriod(days = ago)).toString(),
+                    "Push-Tag", routine.id, updatedAt = start))
+            }
+            // A deleted routine is no habit, however often it was done.
+            listOf(20, 27, 34).forEach { ago ->
+                val start = System.currentTimeMillis() - ago * dayMs
+                repo.saveWorkout(Workout("g$ago", start, start + 3_600_000L, today.minus(DatePeriod(days = ago)).toString(),
+                    "Deleted", gone.id, updatedAt = start))
+            }
+            today.minus(DatePeriod(days = 7)).dayOfWeek.isoDayNumber
+        }
+        val (p, model) = screen()
+        kit.until("habits") { p.state.value.learned.habits.size == 2 }
+        assertEquals(listOf(PreferenceLearning.Habit(routine.id, PreferenceLearning.HabitKind.WEEKDAY, iso, 2)),
+            p.state.value.learned.habits.filter { it.kind == PreferenceLearning.HabitKind.WEEKDAY })
+        assertTrue(p.state.value.learned.habits.none { it.entry == gone.id })
+        val s = model.currentState
+        assertFalse(s.learnedEmpty)
+        val rows = s.learned.filter { it.kind == "habit" }
+        assertEquals(listOf("$iso:${routine.id}", "0:${routine.id}"), rows.map { it.key })
+        assertEquals(listOf("Push-Tag", "Push-Tag"), rows.map { it.title.args.single().text })
+        assertEquals("trlr_habit_times", rows[0].detail.key)
+        assertEquals("weekday", rows[0].detail.args[0].kind)
+        assertEquals(iso.toDouble(), rows[0].detail.args[0].number)
+        assertEquals(2.0, rows[0].detail.args[1].number)
+        // "In most trainings lately": three of the last four.
+        assertEquals("trlr_habit_usual", rows[1].detail.args[0].text)
+        assertEquals(3.0, rows[1].detail.args[1].number)
+        checkTexts(s)
+        // Counted on the overview row like everything else learned.
+        val summary = s.rows.single { it.code == "excluded" }.summary.args.first().nested!!
+        assertEquals("trlr_summary_learned", summary.key)
+        assertEquals(p.state.value.learned.count, summary.pluralCount)
+        // An unknown entry is ignored; "Forget" forgets the workout as usual on every day.
+        model.forget("habit", "1:nonsense")
+        model.forget("habit", rows[0].key)
+        kit.until("forgotten") { repo.profile().learningResets.containsKey(PreferenceLearning.habitKey(routine.id)) }
+        assertFalse(kit.db { repo.profile().learningResets.containsKey(PreferenceLearning.habitKey("nonsense")) })
+        kit.until("gone") { p.state.value.learned.habits.isEmpty() }
+        assertTrue(model.currentState.learned.none { it.kind == "habit" })
     }
 
     @Test

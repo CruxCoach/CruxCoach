@@ -9,6 +9,7 @@ import com.cruxcoach.app.athlete.nowMs
 import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
+import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.logic.CoachLogic
 import com.cruxcoach.athlete.logic.Completeness
 import com.cruxcoach.athlete.logic.LogbookSummary
@@ -20,6 +21,7 @@ import com.cruxcoach.athlete.model.BenchmarkSource
 import com.cruxcoach.athlete.model.BodyMeasurement
 import com.cruxcoach.athlete.model.BodyMetric
 import com.cruxcoach.athlete.model.PlaceKind
+import com.cruxcoach.athlete.model.Routine
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
@@ -70,10 +72,14 @@ internal data class LearnedChoices(
     val kept: List<PreferenceLearning.Kept> = emptyList(),
     /** Level steps kept per kind of training (comparison review #10). */
     val levels: List<Pair<SuggestionFocus, Int>> = emptyList(),
+    /** The workouts the athlete keeps doing ([PreferenceLearning.habits]), with the routines to name them. */
+    val habits: List<PreferenceLearning.Habit> = emptyList(),
+    val routines: List<Routine> = emptyList(),
 ) {
     val isEmpty: Boolean get() = liked.isEmpty() && less.isEmpty() && weekdays.isEmpty() && ownLoads.isEmpty() && minutes == null &&
-        kept.isEmpty() && levels.isEmpty()
-    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size + (if (minutes != null) 1 else 0) + kept.size + levels.size
+        kept.isEmpty() && levels.isEmpty() && habits.isEmpty()
+    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size + (if (minutes != null) 1 else 0) + kept.size + levels.size +
+        habits.size
 }
 
 internal class AthleteSettingsPresenter(
@@ -153,8 +159,25 @@ internal class AthleteSettingsPresenter(
             minutes = PreferenceLearning.suggestedSessionMinutes(
                 repo.workoutsBetween(today.minus(DatePeriod(days = PreferenceLearning.WINDOW_DAYS)).toString(), today.toString()),
                 profile.sessionMinutes, today),
+            habits = habits(profile, today),
+            routines = repo.routines(),
         )
     }
+
+    /** The usual workouts, as Today sees them (owner 2026-10-19). */
+    private fun habits(profile: AthleteProfile, today: LocalDate): List<PreferenceLearning.Habit> {
+        val routines = service.repo.routines()
+        val isRoutine: (String) -> Boolean = { id ->
+            if (id.startsWith("builtin:")) BuiltinRoutines.byKey(id.removePrefix("builtin:")) != null
+            else routines.any { it.id == id }
+        }
+        val from = today.minus(DatePeriod(days = PreferenceLearning.WINDOW_DAYS))
+        return PreferenceLearning.habits(service.repo.workoutsBetween(from.toString(), today.toString()), today,
+            isRoutine, profile.learningResets)
+    }
+
+    /** The coach forgets that [entry] is a usual workout; it is learned again only from trainings after now. */
+    fun forgetHabit(entry: String) = forget(PreferenceLearning.habitKey(entry))
 
     private fun forget(key: String) = update { it.copy(learningResets = it.learningResets + (key to nowMs())) }
 

@@ -28,9 +28,12 @@ class SettingsRowUi(
 
 /** One thing the coach learned, with what "Forget" needs. */
 class LearnedRowUi(
-    /** weekday | level | kept | liked | less | ownLoad */
+    /** weekday | habit | level | kept | liked | less | ownLoad */
     val kind: String,
-    /** The ISO weekday, the focus name, the event id, the exercise slug or the value id. */
+    /**
+     * The ISO weekday, "<ISO weekday or 0>:<entry>" for a usual workout (unique per row: one workout can be the usual
+     * one on several days), the focus name, the event id, the exercise slug or the value id.
+     */
     val key: String,
     val title: TrText,
     /** Empty without. */
@@ -196,6 +199,8 @@ class AthleteSettingsScreenModel internal constructor(
         val learned = presenter.state.value.learned
         when (kind) {
             "weekday" -> key.toIntOrNull()?.takeIf { d -> learned.weekdays.any { it.isoDay == d } }?.let { presenter.forgetWeekday(it) }
+            // Forgets the workout as usual on every day, as Android's "Vergessen" does.
+            "habit" -> key.substringAfter(':', "").takeIf { e -> learned.habits.any { it.entry == e } }?.let { presenter.forgetHabit(it) }
             "level" -> SuggestionFocus.entries.firstOrNull { it.name == key }?.let { presenter.forgetLevel(it) }
             "kept" -> if (learned.kept.any { it.eventId == key }) presenter.forgetKept(key)
             "liked", "less" -> if (key.isNotEmpty()) presenter.forgetExercise(key)
@@ -323,6 +328,12 @@ class AthleteSettingsScreenModel internal constructor(
             learned.weekdays.forEach { u ->
                 add(LearnedRowUi("weekday", u.isoDay.toString(), TrText("", listOf(Tx.weekday(u.isoDay)), -1, ""),
                     Tx.join(listOfNotNull(u.focus?.let { Tx.t(focusChoiceKey(it)) }, u.minutes?.let { Tx.t("trt_duration_value", Tx.i(it)) }))))
+            }
+            // "Always the same training": the coach suggests it on its day, with each exercise's progression.
+            learned.habits.forEach { h ->
+                val day = h.isoDay?.let { Tx.weekday(it) } ?: Tx.k("trlr_habit_usual")
+                add(LearnedRowUi("habit", "${h.isoDay ?: 0}:${h.entry}", DayPlanTexts.entryLabel(h.entry, learned.routines),
+                    Tx.t("trlr_habit_times", day, Tx.i(h.times))))
             }
             learned.levels.forEach { (focus, step) ->
                 add(LearnedRowUi("level", focus.name, Tx.t(Tx.levelKindKey(focus)),
