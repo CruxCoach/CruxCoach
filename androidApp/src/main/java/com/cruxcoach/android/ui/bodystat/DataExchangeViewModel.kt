@@ -52,10 +52,14 @@ val VISIBLE_CATEGORIES: Set<Category> = setOf(
     Category.TRAINING,
     Category.BODY_STATS,
     Category.FUEL,
+    Category.HEALTH,
 )
 
-/** Athlete data (training, body, fueling) is nested; only the JSON backup carries it. */
-val JSON_ONLY_CATEGORIES: Set<Category> = setOf(Category.TRAINING, Category.BODY_STATS, Category.FUEL)
+/** Athlete data (training, body, fueling, injuries) is nested; only the JSON backup carries it. */
+val JSON_ONLY_CATEGORIES: Set<Category> = setOf(Category.TRAINING, Category.BODY_STATS, Category.FUEL, Category.HEALTH)
+
+/** Health data is exported only when the athlete ticks it (research/safety-regulation.md §3.6). */
+val OPT_IN_CATEGORIES: Set<Category> = setOf(Category.HEALTH)
 
 /** Categories a manual export in [format] can actually write. */
 fun categoriesFor(format: DataExchangeFormat): Set<Category> =
@@ -74,7 +78,7 @@ internal fun Set<Category>.toManualCategories(): Set<Category> = buildSet {
 data class DataExchangeState(
     // Export
     val exportFormat: DataExchangeFormat = DataExchangeFormat.JSON,
-    val exportCategories: Set<Category> = VISIBLE_CATEGORIES,
+    val exportCategories: Set<Category> = VISIBLE_CATEGORIES - OPT_IN_CATEGORIES,
     val isExporting: Boolean = false,
     val pendingShare: ExportShare? = null,
 
@@ -168,7 +172,7 @@ class DataExchangeViewModel @Inject constructor(
     }
 
     fun selectAllExportCategories() {
-        _state.update { it.copy(exportCategories = categoriesFor(it.exportFormat)) }
+        _state.update { it.copy(exportCategories = categoriesFor(it.exportFormat) - OPT_IN_CATEGORIES) }
     }
 
     fun deselectAllExportCategories() {

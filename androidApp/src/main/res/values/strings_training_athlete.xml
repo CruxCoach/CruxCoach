@@ -3,7 +3,7 @@
     <!-- Injuries and pauses -->
     <string name="tra_injuries_title">Injuries &amp; pauses</string>
     <string name="tra_injuries_info_title">How injury mode works</string>
-    <string name="tra_injuries_info_text">Note an injury and CruxCoach adapts: exercises that load the injured area are hidden or marked, one-sided exercises stay available for the healthy side (for example one-arm pick-ups on the right hand while a left finger heals), and wall climbing can be paused. This is a filter, not a treatment plan. Return to load step by step and with professional advice.</string>
+    <string name="tra_injuries_info_text">Note an injury and CruxCoach adapts: exercises that load the injured area are hidden or marked, one-sided exercises stay available for the healthy side (for example one-arm pick-ups on the right hand while a left finger heals), and wall climbing can be paused. This is a filter, not a treatment plan. For getting back, each injury has a comeback plan: usual load stages and a diary – not a substitute for seeing a doctor, only in agreement with your doctor or physio.</string>
     <string name="tra_injury_add">Report injury</string>
     <string name="tra_injuries_none">No open injury. Good.</string>
     <string name="tra_injury_train_around">Train without the wall</string>

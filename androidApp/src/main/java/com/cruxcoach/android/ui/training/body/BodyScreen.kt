@@ -575,7 +575,7 @@ private fun MeasurementDialog(
 /** Date picker that offers today and earlier days only (readings can be back-dated, never pre-dated). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PastDatePickerDialog(day: LocalDate, today: LocalDate, onPick: (LocalDate) -> Unit, onDismiss: () -> Unit) {
+internal fun PastDatePickerDialog(day: LocalDate, today: LocalDate, onPick: (LocalDate) -> Unit, onDismiss: () -> Unit) {
     val todayMillis = today.utcMillis()
     val pickerState = rememberDatePickerState(
         initialSelectedDateMillis = day.utcMillis(),

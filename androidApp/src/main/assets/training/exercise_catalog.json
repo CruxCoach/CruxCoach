@@ -17212,6 +17212,598 @@
      ]
     }
    }
+  },
+  {
+   "slug": "antagonist.isometric_wrist_extension",
+   "category": "ANTAGONIST",
+   "kind": "TIME",
+   "load": "EXTERNAL",
+   "unilateral": true,
+   "equipment": [
+    "DUMBBELL"
+   ],
+   "domains": [
+    "WRIST",
+    "ELBOW"
+   ],
+   "muscles": {
+    "primary": [
+     "forearm_extensors"
+    ],
+    "secondary": [
+     "wrist_stabilizers"
+    ]
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 5,
+    "durationS": 45,
+    "restS": 60
+   },
+   "contraindications": [
+    "wrist",
+    "elbow"
+   ],
+   "tags": [
+    "comeback",
+    "prehab",
+    "no_climbing",
+    "home",
+    "beginner_friendly",
+    "finger_free"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Handgelenkstrecker halten",
+     "aliases": [
+      "Isometrisches Handgelenkstrecken",
+      "Isometrie Unterarmstrecker"
+     ],
+     "why": "Belastet die Unterarmstrecker ohne Bewegung – ein sanfter Einstieg bei Schmerzen außen am Ellenbogen oder am Handgelenk.",
+     "steps": [
+      "Leg den Unterarm auf Tisch oder Oberschenkel, Handfläche nach unten, die Hand über der Kante, eine leichte Hantel in der Hand.",
+      "Halte das Handgelenk gerade oder leicht gestreckt, ohne es zu bewegen.",
+      "Halte 30–45 s bei mittlerer Anstrengung, dann ablegen und pausieren."
+     ],
+     "cues": [
+      "Ruhig halten, nicht zittern lassen",
+      "Schmerz höchstens so viel, wie deine Regel erlaubt"
+     ],
+     "mistakes": [
+      "Zu schwere Hantel",
+      "Den Ellenbogen mitbewegen"
+     ]
+    },
+    "en": {
+     "name": "Isometric Wrist Extension",
+     "aliases": [
+      "Wrist extensor hold",
+      "Extensor isometric"
+     ],
+     "why": "Loads the forearm extensors without movement – a gentle start for pain on the outside of the elbow or at the wrist.",
+     "steps": [
+      "Rest your forearm on a table or your thigh, palm down, hand past the edge, a light dumbbell in hand.",
+      "Keep the wrist straight or slightly extended without moving it.",
+      "Hold 30–45 s at medium effort, then put it down and rest."
+     ],
+     "cues": [
+      "Hold still, no shaking",
+      "Pain at most what your rule allows"
+     ],
+     "mistakes": [
+      "Dumbbell too heavy",
+      "Moving the elbow along"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "antagonist.isometric_wrist_flexion",
+   "category": "ANTAGONIST",
+   "kind": "TIME",
+   "load": "EXTERNAL",
+   "unilateral": true,
+   "equipment": [
+    "DUMBBELL"
+   ],
+   "domains": [
+    "WRIST",
+    "ELBOW"
+   ],
+   "muscles": {
+    "primary": [
+     "finger_flexors",
+     "wrist_stabilizers"
+    ],
+    "secondary": [
+     "forearm_extensors"
+    ]
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 5,
+    "durationS": 45,
+    "restS": 60
+   },
+   "contraindications": [
+    "wrist",
+    "elbow"
+   ],
+   "tags": [
+    "comeback",
+    "prehab",
+    "no_climbing",
+    "home",
+    "beginner_friendly",
+    "finger_free"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Handgelenkbeuger halten",
+     "aliases": [
+      "Isometrisches Handgelenkbeugen",
+      "Isometrie Unterarmbeuger"
+     ],
+     "why": "Belastet die Unterarmbeuger ohne Bewegung – ein sanfter Einstieg bei Schmerzen innen am Ellenbogen oder am Handgelenk.",
+     "steps": [
+      "Leg den Unterarm auf Tisch oder Oberschenkel, Handfläche nach oben, die Hand über der Kante, eine leichte Hantel in der Hand.",
+      "Halte das Handgelenk gerade, ohne es zu bewegen.",
+      "Halte 30–45 s bei mittlerer Anstrengung, dann ablegen und pausieren."
+     ],
+     "cues": [
+      "Ruhig halten, Finger locker um die Hantel"
+     ],
+     "mistakes": [
+      "Zu schwere Hantel",
+      "Die Hantel mit den Fingern zusammenquetschen"
+     ]
+    },
+    "en": {
+     "name": "Isometric Wrist Flexion",
+     "aliases": [
+      "Wrist flexor hold",
+      "Flexor isometric"
+     ],
+     "why": "Loads the forearm flexors without movement – a gentle start for pain on the inside of the elbow or at the wrist.",
+     "steps": [
+      "Rest your forearm on a table or your thigh, palm up, hand past the edge, a light dumbbell in hand.",
+      "Keep the wrist straight without moving it.",
+      "Hold 30–45 s at medium effort, then put it down and rest."
+     ],
+     "cues": [
+      "Hold still, fingers relaxed around the dumbbell"
+     ],
+     "mistakes": [
+      "Dumbbell too heavy",
+      "Squeezing the dumbbell hard"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "antagonist.isometric_external_rotation",
+   "category": "ANTAGONIST",
+   "kind": "TIME",
+   "load": "NONE",
+   "unilateral": true,
+   "equipment": [
+    "NONE"
+   ],
+   "domains": [
+    "SHOULDER"
+   ],
+   "muscles": {
+    "primary": [
+     "rotator_cuff"
+    ],
+    "secondary": [
+     "rear_delts"
+    ]
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 5,
+    "durationS": 30,
+    "restS": 60
+   },
+   "contraindications": [
+    "shoulder"
+   ],
+   "tags": [
+    "comeback",
+    "prehab",
+    "no_climbing",
+    "home",
+    "beginner_friendly",
+    "finger_free"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Außenrotation gegen die Wand halten",
+     "aliases": [
+      "Isometrische Außenrotation",
+      "Isometrie Rotatorenmanschette"
+     ],
+     "why": "Belastet die Außenrotatoren der Schulter ohne Bewegung – ein sanfter Einstieg, wenn Bewegen noch weh tut.",
+     "steps": [
+      "Stell dich seitlich an eine Wand oder einen Türrahmen, der Ellenbogen 90° gebeugt am Körper, ein gefaltetes Handtuch dazwischen.",
+      "Drück den Handrücken nach außen gegen die Wand, ohne dass sich der Arm bewegt.",
+      "Halte 30 s bei mittlerer Anstrengung und lass langsam locker."
+     ],
+     "cues": [
+      "Ellenbogen bleibt am Körper",
+      "Schulter tief"
+     ],
+     "mistakes": [
+      "Zu fest drücken",
+      "Den Oberkörper wegdrehen"
+     ]
+    },
+    "en": {
+     "name": "Isometric External Rotation",
+     "aliases": [
+      "Wall external rotation hold",
+      "Rotator cuff isometric"
+     ],
+     "why": "Loads the shoulder's external rotators without movement – a gentle start while moving still hurts.",
+     "steps": [
+      "Stand side-on to a wall or door frame, elbow bent 90° at your side, a folded towel between.",
+      "Press the back of your hand outwards into the wall without the arm moving.",
+      "Hold 30 s at medium effort and release slowly."
+     ],
+     "cues": [
+      "Elbow stays at your side",
+      "Shoulder down"
+     ],
+     "mistakes": [
+      "Pressing too hard",
+      "Turning the upper body away"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "antagonist.isometric_elbow_flexion",
+   "category": "ANTAGONIST",
+   "kind": "TIME",
+   "load": "NONE",
+   "unilateral": true,
+   "equipment": [
+    "NONE"
+   ],
+   "domains": [
+    "ELBOW"
+   ],
+   "muscles": {
+    "primary": [
+     "biceps",
+     "brachialis"
+    ],
+    "secondary": [
+     "forearm_extensors"
+    ]
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 5,
+    "durationS": 30,
+    "restS": 60
+   },
+   "contraindications": [
+    "elbow"
+   ],
+   "tags": [
+    "comeback",
+    "prehab",
+    "no_climbing",
+    "home",
+    "beginner_friendly",
+    "finger_free"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Ellenbogenbeugen gegen Widerstand halten",
+     "aliases": [
+      "Isometrisches Bizepshalten",
+      "Isometrie Brachialis"
+     ],
+     "why": "Belastet die Beuger vorne am Ellenbogen ohne Bewegung – ein sanfter Einstieg bei Schmerzen in der Ellenbeuge.",
+     "steps": [
+      "Setz dich an einen Tisch, Ellenbogen 90° gebeugt, Handfläche nach oben unter der Tischplatte.",
+      "Drück die Hand nach oben gegen die Platte, ohne dass sich der Arm bewegt.",
+      "Halte 30 s bei mittlerer Anstrengung und lass langsam locker."
+     ],
+     "cues": [
+      "Schulter tief, Handgelenk gerade"
+     ],
+     "mistakes": [
+      "Ruckartig drücken",
+      "Mit dem Rücken nachhelfen"
+     ]
+    },
+    "en": {
+     "name": "Isometric Elbow Flexion",
+     "aliases": [
+      "Isometric biceps hold",
+      "Brachialis isometric"
+     ],
+     "why": "Loads the flexors at the front of the elbow without movement – a gentle start for pain in the elbow crease.",
+     "steps": [
+      "Sit at a table, elbow bent 90°, palm up under the tabletop.",
+      "Press the hand up against the top without the arm moving.",
+      "Hold 30 s at medium effort and release slowly."
+     ],
+     "cues": [
+      "Shoulder down, wrist straight"
+     ],
+     "mistakes": [
+      "Pressing with a jerk",
+      "Helping with your back"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "pull.hammer_curl",
+   "category": "PULL",
+   "kind": "LOAD_REPS",
+   "load": "EXTERNAL",
+   "unilateral": true,
+   "equipment": [
+    "DUMBBELL"
+   ],
+   "domains": [
+    "ELBOW"
+   ],
+   "muscles": {
+    "primary": [
+     "brachialis",
+     "biceps"
+    ],
+    "secondary": [
+     "forearm_extensors"
+    ]
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 3,
+    "repsMin": 10,
+    "repsMax": 15,
+    "restS": 60
+   },
+   "contraindications": [
+    "elbow"
+   ],
+   "tags": [
+    "comeback",
+    "prehab",
+    "no_climbing",
+    "home",
+    "finger_free",
+    "beginner_friendly"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Hammercurls",
+     "aliases": [
+      "Hammer Curl",
+      "Neutralgriff-Curls"
+     ],
+     "why": "Kräftigt Brachialis und Bizeps im neutralen Griff, langsam und gut dosierbar – für die Vorderseite des Ellenbogens.",
+     "steps": [
+      "Steh aufrecht, eine Hantel im Neutralgriff (Daumen nach vorne), der Arm hängt.",
+      "Beug den Ellenbogen in 2–3 s, ohne den Oberarm nach vorne zu nehmen.",
+      "Senk die Hantel in 3 s ab."
+     ],
+     "cues": [
+      "Oberarm bleibt am Körper",
+      "Langsam absenken"
+     ],
+     "mistakes": [
+      "Mit Schwung arbeiten",
+      "Zu schweres Gewicht"
+     ]
+    },
+    "en": {
+     "name": "Hammer Curl",
+     "aliases": [
+      "Neutral-grip curl"
+     ],
+     "why": "Strengthens brachialis and biceps in a neutral grip, slowly and in small steps – for the front of the elbow.",
+     "steps": [
+      "Stand tall, a dumbbell in a neutral grip (thumb forward), arm hanging.",
+      "Bend the elbow over 2–3 s without bringing the upper arm forward.",
+      "Lower the dumbbell over 3 s."
+     ],
+     "cues": [
+      "Upper arm stays at your side",
+      "Lower slowly"
+     ],
+     "mistakes": [
+      "Swinging",
+      "Weight too heavy"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "legs.single_leg_balance",
+   "category": "LEGS",
+   "kind": "TIME",
+   "load": "NONE",
+   "unilateral": true,
+   "equipment": [
+    "NONE"
+   ],
+   "domains": [
+    "LOWER_BODY"
+   ],
+   "muscles": {
+    "primary": [
+     "calves"
+    ],
+    "secondary": [
+     "glutes",
+     "quads"
+    ]
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 4,
+    "durationS": 30,
+    "restS": 30
+   },
+   "contraindications": [
+    "ankle"
+   ],
+   "tags": [
+    "comeback",
+    "prehab",
+    "no_climbing",
+    "home",
+    "beginner_friendly",
+    "finger_free"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Einbeinstand",
+     "aliases": [
+      "Balance auf einem Bein",
+      "Gleichgewichtstraining"
+     ],
+     "why": "Schult Gleichgewicht und Stabilität im Sprunggelenk – Gleichgewichtstraining senkt das Risiko, wieder umzuknicken.",
+     "steps": [
+      "Stell dich barfuß auf ein Bein, das Knie leicht gebeugt, eine Wand in Reichweite.",
+      "Halte 30 s ruhig.",
+      "Steigern: Augen zu, dann auf einem Kissen oder einer gefalteten Matte."
+     ],
+     "cues": [
+      "Fuß bleibt ganz am Boden",
+      "Blick auf einen festen Punkt"
+     ],
+     "mistakes": [
+      "Hüfte seitlich wegknicken lassen",
+      "Zu früh auf weichem Untergrund"
+     ]
+    },
+    "en": {
+     "name": "Single-Leg Balance",
+     "aliases": [
+      "One-leg stand",
+      "Balance training"
+     ],
+     "why": "Trains balance and ankle stability – balance training lowers the risk of spraining it again.",
+     "steps": [
+      "Stand barefoot on one leg, knee slightly bent, a wall within reach.",
+      "Hold 30 s steadily.",
+      "Progress: eyes closed, then on a cushion or folded mat."
+     ],
+     "cues": [
+      "Whole foot stays on the floor",
+      "Look at a fixed point"
+     ],
+     "mistakes": [
+      "Letting the hip drop sideways",
+      "Going to soft ground too early"
+     ]
+    }
+   }
+  },
+  {
+   "slug": "legs.hamstring_bridge_isometric",
+   "category": "LEGS",
+   "kind": "TIME",
+   "load": "NONE",
+   "unilateral": false,
+   "equipment": [
+    "BENCH"
+   ],
+   "domains": [
+    "LOWER_BODY"
+   ],
+   "muscles": {
+    "primary": [
+     "hamstrings"
+    ],
+    "secondary": [
+     "glutes",
+     "lower_back"
+    ]
+   },
+   "difficulty": 1,
+   "easier": null,
+   "harder": null,
+   "defaults": {
+    "sets": 4,
+    "durationS": 30,
+    "restS": 60
+   },
+   "contraindications": [
+    "hip",
+    "knee"
+   ],
+   "tags": [
+    "comeback",
+    "prehab",
+    "no_climbing",
+    "home",
+    "beginner_friendly",
+    "finger_free"
+   ],
+   "i18n": {
+    "de": {
+     "name": "Brücke halten, Fersen auf der Bank",
+     "aliases": [
+      "Isometrische Brücke für die Oberschenkel-Rückseite",
+      "Hamstring-Brücke halten"
+     ],
+     "why": "Belastet die Oberschenkel-Rückseite ohne Bewegung – ein sanfter Einstieg nach einer Zerrung, zum Beispiel aus dem Heel Hook.",
+     "steps": [
+      "Leg dich auf den Rücken, die Fersen auf einer Bank oder einem Stuhl, die Knie leicht gebeugt.",
+      "Drück die Fersen nach unten und heb das Becken an, bis Schultern, Hüfte und Knie eine Linie bilden.",
+      "Halte 30 s und senk langsam ab."
+     ],
+     "cues": [
+      "Fersen nach unten drücken, nicht nur das Becken heben"
+     ],
+     "mistakes": [
+      "Ins Hohlkreuz gehen",
+      "Mit Krampf weitermachen"
+     ]
+    },
+    "en": {
+     "name": "Isometric Hamstring Bridge",
+     "aliases": [
+      "Heels-on-bench bridge hold",
+      "Hamstring bridge hold"
+     ],
+     "why": "Loads the back of the thigh without movement – a gentle start after a strain, for example from a heel hook.",
+     "steps": [
+      "Lie on your back, heels on a bench or chair, knees slightly bent.",
+      "Press the heels down and lift the hips until shoulders, hips and knees form a line.",
+      "Hold 30 s and lower slowly."
+     ],
+     "cues": [
+      "Press the heels down, don't just lift the hips"
+     ],
+     "mistakes": [
+      "Arching the lower back",
+      "Carrying on with a cramp"
+     ]
+    }
+   }
   }
  ],
  "renamed": {}

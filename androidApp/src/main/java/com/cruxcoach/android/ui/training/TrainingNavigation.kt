@@ -95,6 +95,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onEditClimbing = { climbingSheet = it },
             onOpenClimbingDays = { go(TrainingRoutes.CLIMBING_DAYS) },
             onOpenLearned = { go(TrainingRoutes.athleteSettings(com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED.key)) },
+            onOpenComeback = { go(TrainingRoutes.comeback(it)) },
         )
         if (showEstimate) com.cruxcoach.android.ui.training.coach.QuickEstimateSheet(onDismiss = { showEstimate = false })
         climbingSheet?.let { id ->
@@ -271,7 +272,12 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
         FuelScreen(onBack = leave, onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS_NUTRITION) }, tabBar = tabBar(TrainingTab.FUEL))
     }
     screen(TrainingRoutes.INJURIES, "Injuries", back) {
-        InjuriesScreen(onBack = back, onOpenRoutines = { goTab(TrainingTab.WORKOUTS) })
+        InjuriesScreen(onBack = back, onOpenRoutines = { goTab(TrainingTab.WORKOUTS) }, onOpenComeback = { go(TrainingRoutes.comeback(it)) })
+    }
+    composable(TrainingRoutes.COMEBACK, arguments = listOf(navArgument("injuryId") { type = NavType.StringType })) {
+        ScreenErrorBoundary(screenName = "Comeback", onNavigateBack = back) {
+            com.cruxcoach.android.ui.training.athlete.comeback.ComebackScreen(onBack = back, onOpenPlayer = { go(TrainingRoutes.WORKOUT_PLAYER) })
+        }
     }
     screen(TrainingRoutes.WEEKLY_REVIEW, "WeeklyReview", back) { WeeklyReviewScreen(onBack = back) }
     @Composable

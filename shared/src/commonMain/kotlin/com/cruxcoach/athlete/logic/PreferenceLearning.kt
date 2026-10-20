@@ -453,7 +453,9 @@ object PreferenceLearning {
      */
     fun habits(workouts: List<Workout>, today: LocalDate, isRoutine: (String) -> Boolean, resets: Map<String, Long> = emptyMap()): List<Habit> {
         val from = today.minus(DatePeriod(days = WINDOW_DAYS)).toString()
-        val done = workouts.filter { !it.isOpen && it.day < today.toString() && it.day >= from }.sortedByDescending { it.startedAt }
+        // Comeback sessions (up to twice a day for weeks) are the plan's, never the usual workout (owner 2026-10-20).
+        val done = workouts.filter { !it.isOpen && it.day < today.toString() && it.day >= from && it.routineId?.startsWith(Comeback.ROUTINE_PREFIX) != true }
+            .sortedByDescending { it.startedAt }
         fun counts(w: Workout, entry: String, iso: Int?) =
             w.startedAt > since(resets, habitKey(entry)) && (iso == null || w.startedAt > since(resets, weekdayKey(iso)))
         val out = mutableListOf<Habit>()

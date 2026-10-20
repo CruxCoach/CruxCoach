@@ -3,6 +3,7 @@ package com.cruxcoach.athlete.logic
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.model.Checkin
 import com.cruxcoach.athlete.model.Injury
+import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.InjurySide
 import com.cruxcoach.athlete.model.Side
 
@@ -121,6 +122,19 @@ object InjuryAdvisor {
         val hits = def.contraindications.any { it in region.bodyRegions } || def.domains.any { it in region.domains }
         if (!hits) return InjuryAdvice(InjuryVerdict.OK)
         val oneSided = injury.side == InjurySide.LEFT || injury.side == InjurySide.RIGHT
+        // A running CruxCoach comeback plan: the injured spot is loaded inside the plan's sessions; outside them
+        // the stage decides (owner 2026-10-20). Climbing follows the stage's climbing.
+        Comeback.climbingLevel(injury)?.let { level ->
+            if (def.needsClimbingWall) return InjuryAdvice(if (level == ClimbingLevel.NONE) InjuryVerdict.AVOID else InjuryVerdict.CAUTION, injury = injury)
+            val stage = injury.plan?.stage ?: 0
+            val open = stage >= if (region == InjuryRegion.FINGER) FINGER_OPEN_STAGE else REGION_OPEN_STAGE
+            if (open) return InjuryAdvice(InjuryVerdict.CAUTION, injury = injury)
+            if (def.unilateral && region.limb && oneSided) {
+                val healthy = if (injury.side == InjurySide.LEFT) Side.RIGHT else Side.LEFT
+                return InjuryAdvice(InjuryVerdict.ONE_SIDE_ONLY, allowedSide = healthy, injury = injury)
+            }
+            return InjuryAdvice(InjuryVerdict.AVOID, injury = injury)
+        }
         if (def.unilateral && region.limb && oneSided) {
             val healthy = if (injury.side == InjurySide.LEFT) Side.RIGHT else Side.LEFT
             return InjuryAdvice(InjuryVerdict.ONE_SIDE_ONLY, allowedSide = healthy, injury = injury)
@@ -128,4 +142,8 @@ object InjuryAdvisor {
         return if (injury.severity >= AVOID_SEVERITY) InjuryAdvice(InjuryVerdict.AVOID, injury = injury)
         else InjuryAdvice(InjuryVerdict.CAUTION, injury = injury)
     }
+
+    /** From this comeback stage on, training outside the plan may load the injured spot again (marked). */
+    const val FINGER_OPEN_STAGE = 5
+    const val REGION_OPEN_STAGE = 3
 }

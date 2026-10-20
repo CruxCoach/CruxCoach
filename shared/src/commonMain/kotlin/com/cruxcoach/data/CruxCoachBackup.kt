@@ -459,6 +459,26 @@ object CruxCoachBackup {
         for (i in a.injuries) {
             requireLen("injury.detail", i.detail, MAX_NAME_LEN); requireLen("injury.note", i.note, MAX_NOTES_LEN)
             requireIntRange("injury.severity", i.severity, 0..9)
+            i.check?.let { c ->
+                require(c.signs.size <= 64 && c.fingers.size <= 5) { "invalid backup: injury.check too large" }
+                requireLen("injury.check.checkedOn", c.checkedOn, MAX_DATE_LEN)
+            }
+            i.plan?.let { p ->
+                requireIntRange("injury.plan.stage", p.stage, 0..20)
+                require(p.history.size <= MAX_SET_COLLECTION_SIZE && p.prompts.size <= 64 && p.referenceKg.size <= 16) {
+                    "invalid backup: injury.plan too large"
+                }
+                p.referenceKg.values.forEach { requireFinite("injury.plan.referenceKg", it) }
+                requireLen("injury.plan.ownRoutineId", p.ownRoutineId, MAX_EXTERNAL_ID_LEN)
+            }
+        }
+        require(a.comebackEntries.size <= MAX_SET_COLLECTION_SIZE) { "invalid backup: athlete.comebackEntries too large (${a.comebackEntries.size})" }
+        for (e in a.comebackEntries) {
+            requireLen("comeback.injuryId", e.injuryId, MAX_EXTERNAL_ID_LEN); requireLen("comeback.day", e.day, MAX_DATE_LEN)
+            requireIntRange("comeback.morningPain", e.morningPain, 0..10); requireIntRange("comeback.pressurePain", e.pressurePain, 0..10)
+            requireLen("comeback.note", e.note, MAX_COMMENT_LEN)
+            require(e.sessions.size <= 32) { "invalid backup: comeback.sessions too large" }
+            e.sessions.forEach { requireIntRange("comeback.session.painMax", it.painMax, 0..10) }
         }
         for (pp in a.pauses) requireLen("pause.note", pp.note, MAX_COMMENT_LEN)
     }
@@ -487,6 +507,16 @@ object CruxCoachBackup {
         TRAINING("Training & Wohlbefinden"),
         /** Opt-in fueling log (FEAT-068). */
         FUEL("Fueling"),
+        /** Injuries with their questions and comeback plan, and the comeback diary: health data, so its own
+         *  category that is off unless the athlete picks it (research/safety-regulation.md §3.6, GDPR Art. 9).
+         *  Before 0.2.4 shipped, injuries travelled with [TRAINING]. */
+        HEALTH("Verletzungen & Comeback-Tagebuch"),
+        ;
+
+        companion object {
+            /** What a backup carries unless the athlete also picks the opt-in categories. */
+            val DEFAULTS: Set<Category> = entries.toSet() - HEALTH
+        }
     }
 
     // ── Serializable backup envelope ────────────────────────────
@@ -745,6 +775,7 @@ object CruxCoachBackup {
         val trainingRows: Int = 0,
         val athleteBodyRows: Int = 0,
         val fuelRows: Int = 0,
+        val healthRows: Int = 0,
     ) {
         /** Which categories have data in this backup? */
         fun detectedCategories(): Set<Category> {
@@ -762,6 +793,7 @@ object CruxCoachBackup {
             if (climbNotes > 0) cats.add(Category.CLIMB_NOTES)
             if (trainingRows > 0) cats.add(Category.TRAINING)
             if (fuelRows > 0) cats.add(Category.FUEL)
+            if (healthRows > 0) cats.add(Category.HEALTH)
             return cats
         }
 
@@ -779,6 +811,7 @@ object CruxCoachBackup {
             Category.CLIMB_NOTES -> "$climbNotes Notizen"
             Category.TRAINING -> "$trainingRows Trainingseinträge"
             Category.FUEL -> "$fuelRows Fueling-Einträge"
+            Category.HEALTH -> "$healthRows Verletzungs- und Tagebucheinträge"
         }
     }
 
@@ -802,6 +835,7 @@ object CruxCoachBackup {
             trainingRows = backup.athlete?.let { it.trainingRows + it.wellbeingRows } ?: 0,
             athleteBodyRows = backup.athlete?.bodyRows ?: 0,
             fuelRows = backup.athlete?.fuelRows ?: 0,
+            healthRows = backup.athlete?.healthRows ?: 0,
         )
     }
 
@@ -1022,6 +1056,7 @@ object CruxCoachBackup {
         if (Category.TRAINING in categories) out += full.onlyTraining()
         if (Category.BODY_STATS in categories) out += full.onlyBody()
         if (Category.FUEL in categories) out += full.onlyFuel()
+        if (Category.HEALTH in categories) out += full.onlyHealth()
         return out.takeUnless { it.isEmpty }
     }
 

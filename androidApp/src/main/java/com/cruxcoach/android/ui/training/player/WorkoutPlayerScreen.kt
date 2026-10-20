@@ -314,8 +314,9 @@ fun WorkoutPlayerScreen(
         PlayerFinishDialog(
             hasOpenSets = state.sets.any { !it.isCompleted },
             onDismiss = { finishing = false },
-            onFinish = { rpe, notes -> finishing = false; viewModel.finish(rpe, notes) },
+            onFinish = { rpe, notes, pain -> finishing = false; viewModel.finish(rpe, notes, pain) },
             onDiscard = { finishing = false; viewModel.discard() },
+            comeback = com.cruxcoach.athlete.logic.Comeback.parseRoutineId(state.workout?.routineId) != null,
         )
     }
 }
@@ -525,8 +526,10 @@ private fun OverviewSheet(
 /** All sets done: how much it was, how hard it felt (right here, not in a dialog), finish. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CompletePage(state: PlayerState, onFinish: (Int?, String?) -> Unit, onOverview: () -> Unit) {
+private fun CompletePage(state: PlayerState, onFinish: (Int?, String?, Int?) -> Unit, onOverview: () -> Unit) {
     var rpe by rememberSaveable { mutableStateOf<Int?>(null) }
+    var pain by rememberSaveable { mutableStateOf<Int?>(null) }
+    val comeback = com.cruxcoach.athlete.logic.Comeback.parseRoutineId(state.workout?.routineId) != null
     var notes by rememberSaveable { mutableStateOf("") }
     val doneSets = state.sets.count { it.isCompleted && it.setType != SetType.WARMUP }
     val exercises = state.sets.filter { it.isCompleted }.map { it.blockIndex }.distinct().size
@@ -555,13 +558,26 @@ private fun CompletePage(state: PlayerState, onFinish: (Int?, String?) -> Unit, 
                 }
             }
         }
+        // A comeback session: the highest pain at the injured spot goes into the plan's diary (owner 2026-10-20).
+        if (comeback) {
+            Text(stringResource(R.string.cb_finish_pain), style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp))
+            listOf(0..5, 6..10).forEach { range ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    range.forEach { v ->
+                        NumberChip(v.toString(), "player_comeback_pain_$v", Modifier.weight(1f), selected = pain == v) { pain = if (pain == v) null else v }
+                    }
+                    if (range.last == 10) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
         OutlinedTextField(
             value = notes, onValueChange = { notes = it.take(2000) },
             label = { Text(stringResource(R.string.trw_notes_label)) },
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("player_finish_notes"),
         )
         Spacer(Modifier.height(20.dp))
-        Button(onClick = { onFinish(rpe, notes.trim().ifBlank { null }) },
+        Button(onClick = { onFinish(rpe, notes.trim().ifBlank { null }, pain) },
             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("player_complete_finish")) {
             Text(stringResource(R.string.trp_finish_training))
         }
@@ -778,10 +794,13 @@ private fun TimerPhaseContent(
 private fun PlayerFinishDialog(
     hasOpenSets: Boolean,
     onDismiss: () -> Unit,
-    onFinish: (Int?, String?) -> Unit,
+    onFinish: (Int?, String?, Int?) -> Unit,
     onDiscard: () -> Unit,
+    /** A comeback session: it asks for the highest pain at the injured spot for the plan's diary (owner 2026-10-20). */
+    comeback: Boolean = false,
 ) {
     var rpe by rememberSaveable { mutableStateOf<Int?>(null) }
+    var pain by rememberSaveable { mutableStateOf<Int?>(null) }
     var notes by rememberSaveable { mutableStateOf("") }
     var confirmDiscard by remember { mutableStateOf(false) }
     AlertDialog(
@@ -800,6 +819,15 @@ private fun PlayerFinishDialog(
                             label = { Text(v.toString()) }, modifier = Modifier.testTag("player_rpe_$v"))
                     }
                 }
+                if (comeback) {
+                    Text(stringResource(R.string.cb_finish_pain), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (0..10).forEach { v ->
+                            FilterChip(selected = pain == v, onClick = { pain = if (pain == v) null else v },
+                                label = { Text(v.toString()) }, modifier = Modifier.testTag("player_comeback_pain_$v"))
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = notes, onValueChange = { notes = it.take(2000) },
                     label = { Text(stringResource(R.string.trw_notes_label)) },
@@ -812,7 +840,7 @@ private fun PlayerFinishDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onFinish(rpe, notes) }, modifier = Modifier.testTag("player_finish_confirm")) {
+            TextButton(onClick = { onFinish(rpe, notes, pain) }, modifier = Modifier.testTag("player_finish_confirm")) {
                 Text(stringResource(R.string.trw_finish_confirm))
             }
         },

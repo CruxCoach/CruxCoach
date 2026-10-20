@@ -23,6 +23,8 @@ data class AthleteSnapshot(
     val hydration: List<HydrationEntry> = emptyList(),
     val checkins: List<Checkin> = emptyList(),
     val injuries: List<Injury> = emptyList(),
+    /** Comeback diary (health data): travels only with the opt-in category "Verletzungen & Comeback-Tagebuch". */
+    val comebackEntries: List<ComebackEntry> = emptyList(),
     val pauses: List<PausePeriod> = emptyList(),
     val benchmarks: List<Benchmark> = emptyList(),
     val climbingDays: List<ClimbingDayEntry> = emptyList(),
@@ -34,12 +36,15 @@ data class AthleteSnapshot(
         climbingDays.size + suggestionEvents.size
     val bodyRows: Int get() = measurements.size
     val fuelRows: Int get() = foodItems.size + foodLog.size + hydration.size
-    val wellbeingRows: Int get() = checkins.size + injuries.size + pauses.size
-    val isEmpty: Boolean get() = profile == null && trainingRows + bodyRows + fuelRows + wellbeingRows + favorites.size == 0
+    val wellbeingRows: Int get() = checkins.size + pauses.size
+    /** Injuries and the comeback diary. */
+    val healthRows: Int get() = injuries.size + comebackEntries.size
+    val isEmpty: Boolean get() = profile == null && trainingRows + bodyRows + fuelRows + wellbeingRows + healthRows + favorites.size == 0
 
     fun onlyTraining() = AthleteSnapshot(profile = profile, workouts = workouts, sets = sets, routines = routines,
-        customExercises = customExercises, favorites = favorites, checkins = checkins, injuries = injuries, pauses = pauses,
+        customExercises = customExercises, favorites = favorites, checkins = checkins, pauses = pauses,
         benchmarks = benchmarks, climbingDays = climbingDays, suggestionEvents = suggestionEvents)
+    fun onlyHealth() = AthleteSnapshot(injuries = injuries, comebackEntries = comebackEntries)
     fun onlyBody() = AthleteSnapshot(measurements = measurements)
     fun onlyFuel() = AthleteSnapshot(foodItems = foodItems, foodLog = foodLog, hydration = hydration, recipes = recipes)
 
@@ -49,7 +54,8 @@ data class AthleteSnapshot(
         customExercises = customExercises + other.customExercises, favorites = (favorites + other.favorites).distinct(),
         measurements = measurements + other.measurements, foodItems = foodItems + other.foodItems,
         foodLog = foodLog + other.foodLog, hydration = hydration + other.hydration, checkins = checkins + other.checkins,
-        injuries = injuries + other.injuries, pauses = pauses + other.pauses,
+        injuries = injuries + other.injuries, comebackEntries = comebackEntries + other.comebackEntries,
+        pauses = pauses + other.pauses,
         benchmarks = benchmarks + other.benchmarks,
         climbingDays = climbingDays + other.climbingDays,
         suggestionEvents = suggestionEvents + other.suggestionEvents,

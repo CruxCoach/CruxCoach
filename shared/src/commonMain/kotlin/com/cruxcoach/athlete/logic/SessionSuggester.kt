@@ -135,6 +135,12 @@ enum class SuggestionReason {
     USUAL_ROUTINE_WEEKDAY,
     /** The athlete's own workout they did in most trainings lately. */
     USUAL_ROUTINE,
+    /** A comeback plan runs ([Comeback]): the injured spot is trained in its sessions (a note, owner 2026-10-20). */
+    COMEBACK_PLAN,
+    /** Climbing today follows the comeback stage the athlete chose (its climbing text is on the plan). */
+    COMEBACK_CLIMBING,
+    /** The comeback stage keeps the board out for now: no board session today. */
+    COMEBACK_NO_BOARD,
 }
 
 /** How much the suggestion knows about the athlete. */
@@ -385,6 +391,11 @@ object SessionSuggester {
             -1 -> reasons += SuggestionReason.LEVEL_EASIER
         }
         val climbingPaused = input.injuries.any { it.isActive && it.climbingPaused }
+        // A running comeback plan (owner 2026-10-20): the most careful stage's climbing shapes climbing and board days.
+        val comebackLevel = input.injuries.mapNotNull { Comeback.climbingLevel(it) }.minOrNull()
+        val comebackNoBoard = comebackLevel != null && comebackLevel < ClimbingLevel.HARD
+        val comebackLightBoard = comebackLevel == ClimbingLevel.HARD
+        if (input.injuries.any { it.activePlan != null }) ctx.notes += SuggestionReason.COMEBACK_PLAN
         val guard = guardrails(input)
         guard.reason?.let { reasons += it; ctx.evidence += Evidence.Guardrail(guard.kind!!) }
 
@@ -413,7 +424,7 @@ object SessionSuggester {
         val habit = input.habit?.takeIf { planned == null && !input.climbingToday }
         input.wish?.takeIf { !input.wishLearned || (planned == null && !input.climbingToday && habit == null) }?.let { wish ->
             val why = if (input.wishLearned) SuggestionReason.USUAL_KIND else SuggestionReason.CHOSEN_TODAY
-            chosen(ctx, wish, planned, budget, fingerBlock, climbingPaused, readiness, trend.skinSpike, why)?.let { return it }
+            chosen(ctx, wish, planned, budget, fingerBlock, climbingPaused, readiness, trend.skinSpike, why, comebackLevel)?.let { return it }
         }
 
         // Climbing already done today on a climbing day: a short block after it instead of a
@@ -436,8 +447,11 @@ object SessionSuggester {
             plannedClimb != null -> {
                 reasons.add(0, SuggestionReason.PLANNED_CLIMB)
                 val hard = plannedClimb.intensity == ClimbIntensity.HARD || plannedClimb.intensity == ClimbIntensity.LIMIT
+                // The comeback stage says how to climb; a hard or limit day before the last stage is advised lighter.
+                val comebackLimits = comebackLevel != null && comebackLevel < ClimbingLevel.FULL
+                if (comebackLimits) reasons += SuggestionReason.COMEBACK_CLIMBING
                 // Advice, never a lock: the athlete climbs anyway, the card says what the fingers tell.
-                if ((hard && (fingerBlock != null || trend.skinSpike)) || readiness.avoidClimbing) {
+                if ((hard && (fingerBlock != null || trend.skinSpike || comebackLimits)) || readiness.avoidClimbing) {
                     reasons += SuggestionReason.CLIMB_LIGHTER_ADVISED
                     (fingerBlock ?: if (trend.skinSpike) SuggestionReason.SKIN_LOAD_RISING else null)?.let { if (it !in reasons) reasons += it }
                 }
@@ -448,9 +462,18 @@ object SessionSuggester {
                 return build(ctx, SuggestionFocus.REST, listOf(Slot.MOBILITY, Slot.MOBILITY, Slot.MOBILITY), REST_MINUTES, planned, grow = false)
             }
             planned == PLAN_BOARD || usualClimbingDay -> {
-                if (climbingPaused || readiness.avoidClimbing || fingersTired || trend.skinSpike) {
-                    reasons += if (climbingPaused) SuggestionReason.PLAN_REPLACED_FOR_INJURY else SuggestionReason.BOARD_SKIPPED_TODAY
+                if (climbingPaused || readiness.avoidClimbing || fingersTired || trend.skinSpike || comebackNoBoard) {
+                    reasons += when {
+                        climbingPaused -> SuggestionReason.PLAN_REPLACED_FOR_INJURY
+                        comebackNoBoard -> SuggestionReason.COMEBACK_NO_BOARD
+                        else -> SuggestionReason.BOARD_SKIPPED_TODAY
+                    }
                     if (trend.skinSpike && !climbingPaused) reasons += SuggestionReason.SKIN_LOAD_RISING
+                } else if (comebackLightBoard) {
+                    reasons.add(0, if (planned == PLAN_BOARD) SuggestionReason.WEEK_PLAN_BOARD else SuggestionReason.CLIMBING_DAY)
+                    reasons += SuggestionReason.BOARD_LIGHT
+                    reasons += SuggestionReason.COMEBACK_CLIMBING
+                    return boardDay(ctx, planned, fresh = false, light = true)
                 } else if (fingerBlock != null) {
                     // Audit W6: still recovering – the board day runs as a light session and says why (it ran
                     // silently as a pyramid before, while a chosen board day was refused).
@@ -634,6 +657,7 @@ object SessionSuggester {
         ctx: Ctx, wish: SuggestionFocus, planned: String?, budget: Int, fingerBlock: SuggestionReason?,
         climbingPaused: Boolean, readiness: Readiness, skinSpike: Boolean,
         why: SuggestionReason = SuggestionReason.CHOSEN_TODAY,
+        comebackLevel: ClimbingLevel? = null,
     ): SessionSuggestion? {
         val reasons = ctx.reasons
         val areas = ctx.input.coach.focus
@@ -651,6 +675,16 @@ object SessionSuggester {
                 readiness.avoidClimbing || skinSpike || fingerBlock == SuggestionReason.FINGERS_TIRED -> {
                     reasons.add(0, fingerBlock ?: if (skinSpike) SuggestionReason.SKIN_LOAD_RISING else SuggestionReason.BOARD_SKIPPED_TODAY)
                     pullPush()
+                }
+                // The comeback stage keeps the board out: the wish turns into pull and push, with why.
+                comebackLevel != null && comebackLevel < ClimbingLevel.HARD -> {
+                    reasons.add(0, SuggestionReason.COMEBACK_NO_BOARD)
+                    pullPush()
+                }
+                comebackLevel == ClimbingLevel.HARD -> {
+                    reasons.add(0, SuggestionReason.BOARD_LIGHT)
+                    reasons += SuggestionReason.COMEBACK_CLIMBING
+                    boardDay(ctx, planned, fresh = false, light = true)
                 }
                 // Chosen while the fingers recover from climbing: the board day as a light session, the same rule
                 // as a planned one (audit W6) – the wish counts, the recovery decides how hard.
@@ -1284,6 +1318,7 @@ object SessionSuggester {
     }
 
     private fun fits(slot: Slot, def: ExerciseDefinition, fingerFocus: Boolean): Boolean {
+        if (ExerciseDefinition.TAG_COMEBACK in def.tags) return false
         val loadsFingers = LoadDomain.FINGER in def.domains
         return when (slot) {
             Slot.WARMUP -> def.category == ExerciseCategoryV2.WARMUP && def.kind != ExerciseKind.CLIMB &&
