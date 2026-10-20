@@ -19,6 +19,7 @@ import com.cruxcoach.athlete.model.SideMode
 import com.cruxcoach.athlete.model.UnitSystem
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +53,8 @@ data class RoutineEditorState(
     // "Type a workout" (Android `WorkoutTextSheet`).
     val typedText: String = "",
     val typed: WorkoutTextParser.Result = WorkoutTextParser.Result(null, emptyList()),
+    /** The text [typed] was read from; null before the first read. Differs from [typedText] while a read is due. */
+    val typedRead: String? = null,
     val failed: Boolean = false,
 )
 
@@ -64,9 +67,15 @@ class RoutineEditorPresenter(
     private val service: AthleteService,
     private val io: CoroutineDispatcher,
     private val scope: CoroutineScope = libraryScope(),
+    /** Where typed text is read: off the main thread, like Android's `Dispatchers.Default`. */
+    reader: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val _state = MutableStateFlow(RoutineEditorState())
     val state: StateFlow<RoutineEditorState> = _state.asStateFlow()
+    private val typedReader = TypedWorkoutReader(scope, reader, { _state.value.catalog }) { read ->
+        // A read of a text that is no longer in the field (cleared, or typed on) is never shown.
+        _state.update { s -> if (s.typedText == read.text) s.copy(typed = read.result, typedRead = read.text) else s }
+    }
     private var loaded = false
     private var nextKey = 0L
     private val fail: (Throwable) -> Unit = { _state.update { s -> s.copy(loading = false, saving = false, failed = true) } }
@@ -193,16 +202,25 @@ class RoutineEditorPresenter(
 
     // ── Typed workouts ("Klimmzüge 5x5 +20 kg, Plank 3x60s") ──
 
-    fun setTypedText(text: String) = _state.update { s ->
+    /**
+     * The field's text; it is read off the main thread, at once the first time and then a moment after the last
+     * keystroke (Android `WorkoutTextSheet`), so [RoutineEditorState.typed] follows [RoutineEditorState.typedText].
+     */
+    fun setTypedText(text: String) {
         val t = text.take(WorkoutTextParser.MAX_CHARS)
-        s.copy(typedText = t, typed = WorkoutTextParser.parse(t, s.catalog))
+        _state.update { it.copy(typedText = t) }
+        typedReader.read(t)
     }
 
-    fun clearTyped() = _state.update { it.copy(typedText = "", typed = WorkoutTextParser.Result(null, emptyList())) }
+    fun clearTyped() {
+        typedReader.reset()
+        _state.update { it.copy(typedText = "", typed = WorkoutTextParser.Result(null, emptyList()), typedRead = null) }
+    }
 
     /** Applies the typed text; [joiner] is the localized " & " between the first two names that name a nameless workout. */
     fun applyTyped(lang: String, joiner: String) {
-        val result = _state.value.typed
+        // Typed a moment ago and not read yet: read it now, so "Add" takes exactly what is in the field.
+        val result = typedReader.resultFor(_state.value.typedText)
         val fallback = result.lines.map { it.match?.name(lang) ?: it.name }.distinct().take(2).joinToString(joiner)
         clearTyped()
         addFromText(result, fallback)
@@ -218,11 +236,16 @@ class RoutineEditorPresenter(
         scope.launchGuarded(fail) {
             withContext(io) {
                 service.ensureReady()
-                val items = service.resolveTyped(result.lines)
+                val typed = service.resolveTyped(result.lines)
                 val catalog = service.catalogStore.catalog.value
                 _state.update { s ->
+                    // Typed circuits get keys of their own, so they never merge with a circuit already in the editor.
+                    val offset = s.items.mapNotNull { it.item.circuit }.maxOrNull() ?: 0
+                    val all = Circuits.normalize(
+                        s.items.map { it.item } + typed.map { it.copy(circuit = it.circuit?.plus(offset)) }, catalog)
+                    val kept = s.items.mapIndexed { i, e -> e.copy(item = all[i]) }
                     s.copy(
-                        items = s.items + items.map { LibraryEditorItem(nextKey++, it) },
+                        items = kept + all.drop(s.items.size).map { LibraryEditorItem(nextKey++, it) },
                         catalog = catalog,
                         name = s.name.ifBlank { result.title ?: fallbackName },
                         dirty = true,

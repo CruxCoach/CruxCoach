@@ -188,9 +188,12 @@ class LibraryPresentersTest {
         val p = editor()
         p.load(null, null, null)
         p.state.await { !it.loading }
-        p.setTypedText("Oberkörper\nKlimmzüge 5x5 +20 kg\nPlank 3x60s\nRussian Twists 3x20 8kg")
-        assertEquals("Oberkörper", p.state.value.typed.title)
-        assertEquals(3, p.state.value.typed.lines.size)
+        val text = "Oberkörper\nKlimmzüge 5x5 +20 kg\nPlank 3x60s\nRussian Twists 3x20 8kg"
+        p.setTypedText(text)
+        // Read off the main thread (Android's WorkoutTextSheet): the preview follows once the field is read.
+        val read = p.state.await { it.typedRead == text }
+        assertEquals("Oberkörper", read.typed.title)
+        assertEquals(3, read.typed.lines.size)
         p.applyTyped("de", " & ")
         val s = p.state.await { it.items.size == 3 }
         val items = s.items.map { it.item }
