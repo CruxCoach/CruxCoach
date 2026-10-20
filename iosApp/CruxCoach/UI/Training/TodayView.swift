@@ -73,6 +73,8 @@ private struct TodayContent: View {
     @State private var snackAction: (() -> Void)?
     /// "Plan days" (Android `DayPlannerSheet`, owner 2026-10-19).
     @State private var planDays = false
+    /// The comeback plan a Today card opens (owner 2026-10-20).
+    @State private var comebackId: String?
 
     var body: some View {
         withAlerts(withSheets(withEvents(withDayPlans(page))))
@@ -88,6 +90,9 @@ private struct TodayContent: View {
                         TodayWeekHeader(ui: ui, onPlanDays: { planDays = true })
                         if ui.openPause { pauseBanner }
                         if ui.hasInjuries { injuryBanner }
+                        ForEach(ui.comebacks, id: \.injuryId) { card in
+                            comebackCard(card)
+                        }
                         if ui.showSetup { setupChecklist }
                         hero
                         if !ui.gradeOffer.isEmpty {
@@ -178,6 +183,7 @@ private struct TodayContent: View {
             show(text, action: L("trf_undo")) { undo.restore() }
         }
         .modifier(TodayDayPlannerSheet(core: core, isPresented: $planDays))
+        .modifier(TodayComebackDestination(injuryId: $comebackId))
     }
 
     private func withSheets<V: View>(_ view: V) -> some View {
@@ -362,6 +368,17 @@ private struct TodayContent: View {
             .background(TrainingStyle.caution.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+    }
+
+    /// A running comeback plan (Android `ComebackTodayCard`, owner 2026-10-20).
+    private func comebackCard(_ card: TodayComebackUi) -> some View {
+        let injuryId: String = card.injuryId
+        return TodayComebackCard(card: card, onOpen: { comebackId = injuryId }, onMorning: { value in
+            let pain: Int32 = Int32(value ?? -1)
+            model.setComebackMorning(injuryId: injuryId, value: pain)
+        }, onStart: { index, name in
+            model.startComebackSession(injuryId: injuryId, index: index, name: name)
+        })
     }
 
     // ── "Set up in 3 steps" ──────────────────────────────────────────
