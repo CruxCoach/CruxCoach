@@ -91,10 +91,8 @@ internal fun InjuryCheckSheet(injury: Injury, today: LocalDate, onDismiss: () ->
             }
             item { Question(stringResource(R.string.cb_q_signs)) }
             items(Comeback.signsFor(region), key = { it.name }) { s ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Checkbox(checked = s in signs, onCheckedChange = { on -> signs = if (on) signs + s else signs - s },
-                        modifier = Modifier.testTag("comeback_sign_${s.name.lowercase()}"))
-                    Text(txt(ComebackTexts.sign(s)), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                CheckRow(txt(ComebackTexts.sign(s)), s in signs, "comeback_sign_${s.name.lowercase()}") { on ->
+                    signs = if (on) signs + s else signs - s
                 }
             }
             if (signs.isEmpty()) item {
