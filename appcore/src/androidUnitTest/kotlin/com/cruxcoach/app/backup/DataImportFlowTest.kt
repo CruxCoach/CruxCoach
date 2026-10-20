@@ -50,7 +50,7 @@ class DataImportFlowTest {
     }
 
     private class NoExport : BackupPayloadStore {
-        override fun exportJson(exportedAt: String, nostrPubkey: String): String? = null
+        override fun exportJson(exportedAt: String, nostrPubkey: String, categories: Set<com.cruxcoach.data.CruxCoachBackup.Category>): String? = null
         override fun importJson(json: String, expectedNostrPubkey: String): BackupImportSummary? =
             error("the manual import never takes the all-categories cloud path")
     }

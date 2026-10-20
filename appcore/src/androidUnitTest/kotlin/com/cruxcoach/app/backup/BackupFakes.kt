@@ -106,7 +106,7 @@ class FakePayloadStore(private val exportJson: String? = null) : BackupPayloadSt
         listsInBackup = 1,
     )
 
-    override fun exportJson(exportedAt: String, nostrPubkey: String): String? = exportJson
+    override fun exportJson(exportedAt: String, nostrPubkey: String, categories: Set<com.cruxcoach.data.CruxCoachBackup.Category>): String? = exportJson
 
     override fun importJson(json: String, expectedNostrPubkey: String): BackupImportSummary? {
         importedJson = json

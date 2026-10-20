@@ -62,8 +62,14 @@ class BackupImportSummary(
  * is not reimplemented here.
  */
 interface BackupPayloadStore {
-    /** Serialised backup of every category, or null when export failed. */
-    fun exportJson(exportedAt: String, nostrPubkey: String): String?
+    /** Serialised backup of [categories], or null when export failed. */
+    fun exportJson(exportedAt: String, nostrPubkey: String, categories: Set<com.cruxcoach.data.CruxCoachBackup.Category>): String?
+
+    /**
+     * What the automatic encrypted backup carries (Android `backupCategories`): every category but health data
+     * (injuries, comeback diary), which only goes along when the athlete switched it on (FEAT-072).
+     */
+    fun cloudCategories(): Set<com.cruxcoach.data.CruxCoachBackup.Category> = com.cruxcoach.data.CruxCoachBackup.Category.DEFAULTS
 
     /** Writes the payload. [expectedNostrPubkey] binds it to the active identity. */
     fun importJson(json: String, expectedNostrPubkey: String): BackupImportSummary?

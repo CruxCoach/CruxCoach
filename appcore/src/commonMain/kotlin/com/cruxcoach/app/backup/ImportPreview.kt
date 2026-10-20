@@ -40,6 +40,7 @@ object ManualImportCategories {
         Category.TRAINING,
         Category.BODY_STATS,
         Category.FUEL,
+        Category.HEALTH,
     )
 
     /** The manual selection on the wire: the board logbook brings its private climb notes. */

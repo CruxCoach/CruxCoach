@@ -112,7 +112,7 @@ class PendingOwnClimbsTest {
                 kilterSyncedAt = null, kilterPublishVia = null, kilterError = null,
             ),
         )
-        return assertNotNull(source.payloads.exportJson("2026-09-20T08:00:00Z", owner))
+        return assertNotNull(source.payloads.exportJson("2026-09-20T08:00:00Z", owner, com.cruxcoach.data.CruxCoachBackup.Category.DEFAULTS))
     }
 
     private fun ownClimbsOnTarget(): Int = target.board.getOwnClimbsForBackup(owner).size

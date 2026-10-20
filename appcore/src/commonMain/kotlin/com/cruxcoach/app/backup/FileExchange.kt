@@ -40,6 +40,11 @@ data class FileExchangeState(
     /** Path of the file just written; empty when there is nothing to share. */
     val exportPath: String = "",
     val exportBytes: Long = 0,
+    /**
+     * Android's export checkbox "Verletzungen & Comeback-Tagebuch": health data goes into the JSON file only when
+     * ticked (off by default, FEAT-072). CSV and Excel never carry it (Android: JSON only).
+     */
+    val exportHealth: Boolean = false,
 
     // Import, two-phase as on Android: preview → category choice → import.
     val isLoadingPreview: Boolean = false,
@@ -108,6 +113,9 @@ class FileExchangePresenter(
     fun watch(onState: (FileExchangeState) -> Unit) =
         com.cruxcoach.app.logbook.StateWatch(scope.launch { state.collect { onState(it) } })
 
+    /** Ticks or clears health data (injuries, comeback diary) for the next JSON export. */
+    fun setExportHealth(on: Boolean) = _state.update { it.copy(exportHealth = on) }
+
     /** Writes the JSON export and leaves its path in the state for a share sheet. */
     fun export() = export(ExportKind.JSON)
 
@@ -130,12 +138,18 @@ class FileExchangePresenter(
             _state.update { it.copy(error = FileExchangeError.NO_IDENTITY) }
             return
         }
+        val withHealth = kind == ExportKind.JSON && _state.value.exportHealth
         _state.update { it.copy(isBusy = true, exportPath = "", exportBytes = 0, error = FileExchangeError.NONE) }
         scope.launch {
             val result = try {
                 withContext(ioDispatcher) {
                     val exportedAt = isoSeconds(clock.epochSeconds())
-                    val json = payloads.exportJson(exportedAt, pubkey)
+                    val categories = if (withHealth) {
+                        com.cruxcoach.data.CruxCoachBackup.Category.entries.toSet()
+                    } else {
+                        com.cruxcoach.data.CruxCoachBackup.Category.DEFAULTS
+                    }
+                    val json = payloads.exportJson(exportedAt, pubkey, categories)
                         ?: return@withContext null
                     val bytes = when (kind) {
                         ExportKind.JSON -> json.encodeToByteArray()

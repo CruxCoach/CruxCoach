@@ -172,7 +172,7 @@ class ImportPreviewTest {
             difficultyAverage = 17.4, climbFrames = "p1100r12", framesCount = 1,
         )
         source.personal.addClimbToList(source.personal.ensureFavoritesListExists(), favouriteUuid)
-        return assertNotNull(source.payloads.exportJson("2026-09-20T08:00:00Z", owner))
+        return assertNotNull(source.payloads.exportJson("2026-09-20T08:00:00Z", owner, com.cruxcoach.data.CruxCoachBackup.Category.DEFAULTS))
     }
 
     @Test

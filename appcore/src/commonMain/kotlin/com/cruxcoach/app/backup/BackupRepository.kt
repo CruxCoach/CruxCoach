@@ -250,7 +250,9 @@ class BackupRepository(
                 is DataKey.Failed -> return BackupOutcome.Failed(resolved.failure)
             }
             try {
-                val json = payloads.exportJson(exportedAt, pubkey)
+                // Health data (injuries, comeback diary) only when the athlete switched it on (Android, FEAT-072).
+                val categories = payloads.cloudCategories()
+                val json = payloads.exportJson(exportedAt, pubkey, categories)
                     ?: return BackupOutcome.Failed(BackupFailure.EXPORT_FAILED)
                 val compressed = gzip.compress(json.encodeToByteArray())
                     ?: return BackupOutcome.Failed(BackupFailure.COMPRESS_FAILED)
@@ -281,7 +283,7 @@ class BackupRepository(
                     previousSha256 = previousSha,
                     updatedAt = clock.epochSeconds(),
                     deviceId = deviceId,
-                    categories = com.cruxcoach.data.CruxCoachBackup.Category.entries.map { it.name },
+                    categories = categories.map { it.name },
                 )
                 if (!publishPointerEvent(secret, pointer)) {
                     return BackupOutcome.Failed(BackupFailure.POINTER_EVENT_NOT_DURABLE)

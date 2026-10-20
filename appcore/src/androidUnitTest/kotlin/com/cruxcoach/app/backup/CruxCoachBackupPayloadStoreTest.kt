@@ -95,7 +95,7 @@ class CruxCoachBackupPayloadStoreTest {
     @Test
     fun `a backup exported on one device restores on another through the real crypto`() {
         seed(source)
-        val json = assertNotNull(source.store.exportJson("2026-09-20T08:00:00Z", pubkey))
+        val json = assertNotNull(source.store.exportJson("2026-09-20T08:00:00Z", pubkey, com.cruxcoach.data.CruxCoachBackup.Category.DEFAULTS))
         assertTrue(json.contains(ascentUuid))
 
         // Through the same gzip + AES-256-GCM the pipeline uses.
@@ -132,7 +132,7 @@ class CruxCoachBackupPayloadStoreTest {
     @Test
     fun `a payload from another identity is refused before any write`() {
         seed(source)
-        val json = assertNotNull(source.store.exportJson("2026-09-20T08:00:00Z", stranger))
+        val json = assertNotNull(source.store.exportJson("2026-09-20T08:00:00Z", stranger, com.cruxcoach.data.CruxCoachBackup.Category.DEFAULTS))
         assertNull(target.store.importJson(json, pubkey), "the identity binding refuses it")
         assertEquals(0, target.personal.countUserLogbook())
         assertEquals(emptySet(), target.personal.getUserSentClimbUuids())
@@ -153,7 +153,7 @@ class CruxCoachBackupPayloadStoreTest {
 
     @Test
     fun `an empty account still exports a payload that carries its identity`() {
-        val json = assertNotNull(source.store.exportJson("2026-09-20T08:00:00Z", pubkey))
+        val json = assertNotNull(source.store.exportJson("2026-09-20T08:00:00Z", pubkey, com.cruxcoach.data.CruxCoachBackup.Category.DEFAULTS))
         assertTrue(json.contains(pubkey))
         val summary = assertNotNull(target.store.importJson(json, pubkey))
         assertEquals(0, summary.ascentsInBackup)

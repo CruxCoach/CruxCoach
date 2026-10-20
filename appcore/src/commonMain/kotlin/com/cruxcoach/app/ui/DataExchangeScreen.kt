@@ -27,6 +27,8 @@ class DataExchangeScreenState(
     /** Absolute path of the file to share; empty when there is none. */
     val exportPath: String,
     val exportBytes: Long,
+    /** Android's opt-in export row "Verletzungen & Comeback-Tagebuch" (`cb_backup_category`, hint `cb_backup_category_hint`). */
+    val exportHealth: Boolean,
 
     /** The picked file is being read and analysed (Android: "Analyzing file…"). */
     val isLoadingPreview: Boolean,
@@ -70,6 +72,9 @@ class DataExchangeScreenModel(private val presenter: FileExchangePresenter) {
     }
 
     fun export() = presenter.export()
+
+    /** Ticks health data for the JSON export; off by default (FEAT-072). */
+    fun setExportHealth(on: Boolean) = presenter.setExportHealth(on)
 
     /** Android's CSV ZIP (spreadsheet tables of the board data); shared like the JSON file. */
     fun exportCsvZip() = presenter.exportCsvZip()
@@ -120,6 +125,7 @@ class DataExchangeScreenModel(private val presenter: FileExchangePresenter) {
             isBusy = state.isBusy,
             exportPath = state.exportPath,
             exportBytes = state.exportBytes,
+            exportHealth = state.exportHealth,
             isLoadingPreview = state.isLoadingPreview,
             hasPreview = preview != null,
             categories = rows,
@@ -162,6 +168,7 @@ internal object DataExchangeTexts {
         Category.CLIMB_NOTES -> "export_category_climb_notes"
         Category.TRAINING -> "export_category_training"
         Category.FUEL -> "export_category_fuel"
+        Category.HEALTH -> "cb_backup_category"
     }
 
     private fun plural(key: String, count: Int) = Tx.p(key, count, Tx.i(count))
@@ -187,6 +194,7 @@ internal object DataExchangeTexts {
         Category.CLIMB_NOTES -> plural("import_result_notes", p.climbNotes)
         Category.TRAINING -> plural("import_result_training", p.trainingRows)
         Category.FUEL -> plural("import_result_fuel", p.fuelRows)
+        Category.HEALTH -> plural("import_result_health", p.healthRows)
     }
 
     /**

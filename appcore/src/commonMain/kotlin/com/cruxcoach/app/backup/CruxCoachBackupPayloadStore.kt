@@ -24,9 +24,11 @@ import com.cruxcoach.db.secure.SecureDatabase
  * Android's, so it is reused rather than reimplemented — this class only wires
  * the repositories and turns exceptions into values.
  *
- * Every category is exported and imported, matching Android's
- * `BackupRepository`: the cloud backup is the user's whole account, and a
- * partial one would silently drop data on the next device.
+ * Every category is imported, and every category but the opt-in health data
+ * is exported, matching Android's `BackupRepository`: the cloud backup is the
+ * user's whole account, and a partial one would silently drop data on the next
+ * device. Injuries and the comeback diary go along only when the athlete
+ * switched them on (FEAT-072, research/safety-regulation.md §3.6).
  */
 class CruxCoachBackupPayloadStore(
     private val userRepository: UserRepository,
@@ -69,9 +71,14 @@ class CruxCoachBackupPayloadStore(
         athlete = athlete,
     )
 
-    override fun exportJson(exportedAt: String, nostrPubkey: String): String? = try {
+    override fun cloudCategories(): Set<CruxCoachBackup.Category> {
+        val health = runCatching { athlete?.healthInCloudBackup() == true }.getOrDefault(false)
+        return if (health) CruxCoachBackup.Category.entries.toSet() else CruxCoachBackup.Category.DEFAULTS
+    }
+
+    override fun exportJson(exportedAt: String, nostrPubkey: String, categories: Set<CruxCoachBackup.Category>): String? = try {
         CruxCoachBackup.export(
-            categories = CruxCoachBackup.Category.entries.toSet(),
+            categories = categories,
             userRepository = userRepository,
             bodyStatRepository = bodyStatRepository,
             workoutRepository = workoutRepository,
@@ -136,4 +143,6 @@ interface AthleteBackupHooks {
     fun snapshot(): com.cruxcoach.athlete.data.AthleteSnapshot
     fun restore(snapshot: com.cruxcoach.athlete.data.AthleteSnapshot, includeProfile: Boolean): Int
     fun importLegacyBodyStats(rows: List<com.cruxcoach.domain.model.BodyStat>): Int
+    /** The athlete's switch "Verletzungen und Comeback-Tagebuch im verschlüsselten Backup" (off unless set). */
+    fun healthInCloudBackup(): Boolean = false
 }

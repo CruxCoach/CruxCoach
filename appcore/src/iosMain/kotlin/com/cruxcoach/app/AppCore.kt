@@ -605,6 +605,8 @@ class AppCore private constructor(
             athleteStack?.service?.restoreBackup(snapshot, includeProfile) ?: 0
         override fun importLegacyBodyStats(rows: List<com.cruxcoach.domain.model.BodyStat>): Int =
             athleteStack?.service?.importBackupBodyStats(rows) ?: 0
+        override fun healthInCloudBackup(): Boolean =
+            runCatching { athleteStack?.service?.repo?.profile()?.healthInCloudBackup == true }.getOrDefault(false)
     }
 
     /**
