@@ -145,6 +145,8 @@ private struct ComebackStagePickerSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
+                    // The sheet covers the plan, so it carries the notice itself (owner rule: every comeback surface).
+                    ComebackNotice()
                     Text(L("cb_stage_pick_hint")).font(.caption)
                     ComebackStageChoices(stages: stages, selected: selected) { index in chosen = index }
                 }
@@ -391,13 +393,13 @@ private struct ComebackActions: View {
             Button(L("cb_end_keep")) { model.end(resolved: false) }
             Button(L("tr_action_cancel"), role: .cancel) {}
         } message: {
-            Text(L("cb_end_text"))
+            Text(L("cb_end_text") + "\n\n" + L("cb_not_a_substitute"))
         }
         .alert(L("cb_delete_title"), isPresented: $deleting) {
             Button(L("tr_action_delete"), role: .destructive) { model.deleteAll() }
             Button(L("tr_action_cancel"), role: .cancel) {}
         } message: {
-            Text(L("cb_delete_text"))
+            Text(L("cb_delete_text") + "\n\n" + L("cb_not_a_substitute"))
         }
     }
 

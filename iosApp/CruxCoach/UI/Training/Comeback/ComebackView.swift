@@ -208,6 +208,8 @@ struct ComebackBeforeStartSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // The text says it too; the notice in its usual form keeps every comeback surface alike.
+                    ComebackNotice()
                     Text(L("cb_before_text"))
                         .fixedSize(horizontal: false, vertical: true)
                     Button(action: onConfirm) {
