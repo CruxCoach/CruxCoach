@@ -150,6 +150,8 @@ class TodayScreenState(
     /** The question "one step easier/harder from now on?"; empty without. */
     val levelOffer: TrText,
     val gradeOffer: TrText,
+    /** "You usually do … on Monday. Put it into your standard week?"; empty without (owner 2026-10-19). */
+    val habitOffer: TrText,
     val neverOfferSlug: String,
     val neverOfferText: TrText,
     // ── One-shot results ──
@@ -158,6 +160,10 @@ class TodayScreenState(
     val suggestionSaved: Boolean,
     val gradeTakenText: TrText,
     val levelKeptText: TrText,
+    /** The usual workout was just put into the standard week: one line with "Undo"; take it with [TodayScreenModel.takeHabitTakenUndo]. */
+    val hasHabitTaken: Boolean,
+    /** "In your standard week: Monday – Push day"; empty without. */
+    val habitTakenText: TrText,
     // ── Open training conflict ──
     val hasPendingStart: Boolean,
     val pendingTitle: TrText,
@@ -272,6 +278,20 @@ class TodayScreenModel internal constructor(
         val before = presenter.state.value.restTodayUndo ?: return null
         presenter.consumeRestTodayUndo()
         return DayPlanUndo { presenter.undoRestToday(before) }
+    }
+
+    // ── The usual workout (owner 2026-10-19) ──
+    /** "Add to week": the usual workout goes into the standard week on its weekday. */
+    fun acceptHabitOffer() = presenter.acceptHabitOffer()
+
+    /** "No thanks": not asked again for this weekday and workout for six weeks. */
+    fun declineHabitOffer() = presenter.declineHabitOffer()
+
+    /** The pending "Undo" of [acceptHabitOffer], once: null when there is none (already taken). */
+    fun takeHabitTakenUndo(): DayPlanUndo? {
+        val taken = presenter.state.value.habitTaken ?: return null
+        presenter.consumeHabitTaken()
+        return DayPlanUndo { presenter.undoHabitTaken(taken) }
     }
 
     fun alternatives(slug: String): List<TodayAlternativeUi> = try {
@@ -476,6 +496,7 @@ private class TodayMapper(val s: TodayState, val language: String, val pending: 
                 Tx.t(if (it.direction < 0) "trt_level_offer_easier" else "trt_level_offer_harder", Tx.k(Tx.levelKindKey(it.focus)))
             } ?: Tx.EMPTY,
             gradeOffer = s.gradeOffer?.let { Tx.t("trt_grade_offer", Tx.s(Tx.gradeWithV(it))) } ?: Tx.EMPTY,
+            habitOffer = s.habitOffer?.let { Tx.t("trhb_offer", Tx.weekday(it.isoDay), Tx.x(suggestionTitle())) } ?: Tx.EMPTY,
             neverOfferSlug = s.neverOffer ?: "",
             neverOfferText = s.neverOffer?.let { Tx.t("trt_never_offer", Tx.s(s.catalog.fallbackFor(it).name(language))) } ?: Tx.EMPTY,
             startedWorkout = s.startedWorkout,
@@ -490,6 +511,8 @@ private class TodayMapper(val s: TodayState, val language: String, val pending: 
                     else -> "trt_level_kept_normal"
                 }, Tx.k(Tx.levelKindKey(kept.offer.focus)))
             } ?: Tx.EMPTY,
+            hasHabitTaken = s.habitTaken != null,
+            habitTakenText = s.habitTaken?.let { Tx.t("trhb_taken", Tx.weekday(it.isoDay), Tx.x(suggestionTitle())) } ?: Tx.EMPTY,
             hasPendingStart = pending != null,
             pendingTitle = pending?.let { Tx.t("trw_open_title", Tx.x(openTitle(it))) } ?: Tx.EMPTY,
             pendingText = pending?.let { pnd ->
@@ -606,6 +629,11 @@ private class TodayMapper(val s: TodayState, val language: String, val pending: 
         if (reason == SuggestionReason.USUAL_MINUTES && usualMinutes != null && weekday != null) {
             return Tx.t("trt_reason_usual_minutes", Tx.weekday(weekday), Tx.i(usualMinutes))
         }
+        // The usual workout says which and why: "Wie meist am Montag: „Push-Tag“, jede Übung mit ihrem nächsten Schritt."
+        if (reason == SuggestionReason.USUAL_ROUTINE_WEEKDAY && weekday != null) {
+            return Tx.t("trhb_reason_weekday", Tx.weekday(weekday), Tx.x(suggestionTitle()))
+        }
+        if (reason == SuggestionReason.USUAL_ROUTINE) return Tx.t("trhb_reason_usual", Tx.x(suggestionTitle()))
         // Planned for this date only ("Heute Ruhetag", a moved day): not the standard week's doing (device check 2026-10-19).
         if (s.today?.let { DayPlans.isOverridden(s.profile, it) } == true) {
             when (reason) {

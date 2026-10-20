@@ -39,6 +39,11 @@ import kotlinx.datetime.toLocalDateTime
 /** A level step kept from [offer]: [before] the kept step for the kind, [todayShift] today's choice, [eventIds] the ledger entries. */
 internal data class LevelKept(val offer: PreferenceLearning.LevelOffer, val before: Int?, val todayShift: Int, val eventIds: List<String>)
 
+/** The weekday's usual workout ([entry]) that could go into the standard week. */
+internal data class HabitOffer(val isoDay: Int, val entry: String)
+
+internal data class HabitTaken(val isoDay: Int, val before: Map<Int, String>)
+
 /** One day in the week strip. */
 internal data class TodayWeekDay(
     val date: LocalDate, val climbed: Boolean, val trained: Boolean, val paused: Boolean, val isToday: Boolean,
@@ -146,6 +151,10 @@ internal data class TodayState(
     val gradeTaken: Pair<String, String?>? = null,
     /** The date plans before "Heute Ruhetag", for the snackbar and "Rückgängig" (owner 2026-10-19). */
     val restTodayUndo: Map<String, String>? = null,
+    /** "Montags machst du meist …": take the usual workout into the standard week (owner 2026-10-19). */
+    val habitOffer: HabitOffer? = null,
+    /** The standard week before the offer was taken, for the snackbar and "Rückgängig". */
+    val habitTaken: HabitTaken? = null,
 ) {
     /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
     val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
@@ -229,7 +238,11 @@ internal class TodayPresenter(
     @Volatile private var lastLevelOffers: List<PreferenceLearning.LevelOffer> = emptyList()
     /** Today's weekday habit; "the coach decides" for today sets [ignoreUsualKind]. */
     private var lastUsual: PreferenceLearning.UsualChoice? = null
+    /** The usual workout at the last suggestion ([PreferenceLearning.habit]). */
+    @Volatile private var lastHabit: PreferenceLearning.Habit? = null
     private var ignoreUsualKind = false
+    /** "Another suggestion" or "the coach decides" on the usual workout: something else today. */
+    private var ignoreHabit = false
     /** Today's plan as this screen last stored it for nutrition ([AthleteService.rememberPlannedToday]). */
     private var plannedWritten: String? = null
     /** Suggestions already in the ledger as SHOWN today (focus + slugs). */
@@ -249,7 +262,7 @@ internal class TodayPresenter(
         lastInputs = i
         if (variantDay != today) {
             variant = 0; variantDay = today
-            budgetFactor = 1.0; levelShift = 0; wish = null; minutesToday = null; dislikedToday.clear(); shownToday.clear(); swapsToday.clear(); ignoreUsualKind = false
+            budgetFactor = 1.0; levelShift = 0; wish = null; minutesToday = null; dislikedToday.clear(); shownToday.clear(); swapsToday.clear(); ignoreUsualKind = false; ignoreHabit = false
             circuitToday = false; circuitRounds = null; circuitRestS = null; circuitRoundRestS = null
             runCatching {
                 val todays = service.repo.suggestionEventsForDay(today.toString()).sortedBy { it.createdAt }
@@ -325,6 +338,16 @@ internal class TodayPresenter(
         lastOpenSteps = openSteps
         val dayForm = service.todaysModifier().let { m -> if (daily?.shortenedForFatigue == true) m.copy(setsDelta = 0) else m }
             .takeIf { !it.isNeutral }
+        // The weekday's usual workout on a weekday the standard week leaves free: offered once, "Nein danke" holds for weeks.
+        val habitOffer = runCatching {
+            val h = lastHabit
+            val iso = today.dayOfWeek.isoDayNumber
+            val declined = h?.let { repo.setting(PreferenceLearning.habitOfferKey(iso, it.entry))?.toLongOrNull() }
+            val fresh = declined == null || nowMs() - declined > PreferenceLearning.WINDOW_DAYS * 86_400_000L
+            if (h != null && h.kind == PreferenceLearning.HabitKind.WEEKDAY && h.isoDay == iso && fresh &&
+                daily?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE_WEEKDAY &&
+                i.profile.weekPlan[iso] == null && !DayPlans.isOverridden(i.profile, today)) HabitOffer(iso, h.entry) else null
+        }.getOrNull()
         _state.update {
             it.copy(
                 loading = false,
@@ -332,6 +355,7 @@ internal class TodayPresenter(
                 suggestion = daily,
                 dayForm = dayForm,
                 plannedName = plannedName,
+                habitOffer = habitOffer,
                 block = block,
                 durationHint = durationHint,
                 bodyweightKg = service.currentBodyweight(),
@@ -491,6 +515,15 @@ internal class TodayPresenter(
             val routines = repo.routines()
             val sinceMs = nowMs() - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
             val resets = i.profile.learningResets
+            // The workout the athlete keeps doing: today's suggestion on a free day, progression per exercise (owner 2026-10-19).
+            val isRoutine: (String) -> Boolean = { id ->
+                if (id.startsWith("builtin:")) BuiltinRoutines.byKey(id.removePrefix("builtin:")) != null else routines.any { it.id == id }
+            }
+            val habit = PreferenceLearning.habit(
+                repo.workoutsBetween(today.minus(DatePeriod(days = PreferenceLearning.WINDOW_DAYS)).toString(), today.toString()),
+                today, isRoutine, resets)
+            lastHabit = habit
+            val habitToday = habit.takeIf { !ignoreHabit }
             val events = repo.suggestionEventsSince(sinceMs)
             // Today's swaps are learned for the days to come; today's card keeps the rest of its picks
             // (device test 2026-10-17: one swap moved the other exercises around).
@@ -551,6 +584,7 @@ internal class TodayPresenter(
                 block = block,
                 climbingToday = climbingToday,
                 plannedYesterday = plannedYesterday,
+                habit = habitToday,
                 benchmarks = benchmarks,
                 levelShift = levelShift,
                 budgetFactor = budgetFactor,
@@ -600,6 +634,10 @@ internal class TodayPresenter(
                 else -> Unit
             }
             variant++
+            // Another suggestion than the usual workout: the coach builds one today (owner 2026-10-19: always possible).
+            if (s?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE_WEEKDAY || s?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE) {
+                ignoreHabit = true
+            }
             lastInputs?.let { refreshUnlocked(it) }
         }
     }
@@ -615,6 +653,7 @@ internal class TodayPresenter(
             // The coach learns the athlete's usual choice per weekday from this ([PreferenceLearning.usualChoices]).
             service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_KIND + (focus?.name ?: ""), emptyList())
             ignoreUsualKind = focus == null
+            if (focus == null) ignoreHabit = true
             wish = focus
             lastInputs?.let { refreshUnlocked(it) }
         }
@@ -777,6 +816,32 @@ internal class TodayPresenter(
 
     fun consumeRestTodayUndo() = _state.update { it.copy(restTodayUndo = null) }
 
+    /** "Übernehmen": the usual workout goes into the standard week on its weekday. Snackbar with "Rückgängig". */
+    fun acceptHabitOffer() {
+        val offer = _state.value.habitOffer ?: return
+        _state.update { it.copy(habitOffer = null) }
+        io {
+            var before: Map<Int, String> = emptyMap()
+            service.repo.updateProfile { p -> before = p.weekPlan; p.copy(weekPlan = p.weekPlan + (offer.isoDay to offer.entry)) }
+            _state.update { it.copy(habitTaken = HabitTaken(offer.isoDay, before)) }
+        }
+    }
+
+    /** "Nein danke": not asked again for this weekday and workout for [PreferenceLearning.WINDOW_DAYS] days. */
+    fun declineHabitOffer() {
+        val offer = _state.value.habitOffer ?: return
+        _state.update { it.copy(habitOffer = null) }
+        io {
+            service.repo.putSetting(PreferenceLearning.habitOfferKey(offer.isoDay, offer.entry), nowMs().toString())
+            // A refresh that ran before the answer was stored cannot bring the question back (settings are not observed).
+            refreshLock.withLock { _state.update { s -> if (s.habitOffer == offer) s.copy(habitOffer = null) else s } }
+        }
+    }
+
+    fun consumeHabitTaken() = _state.update { it.copy(habitTaken = null) }
+
+    fun undoHabitTaken(taken: HabitTaken) = io { service.repo.updateProfile { it.copy(weekPlan = taken.before) } }
+
     fun undoRestToday(before: Map<String, String>) = io { service.repo.updateProfile { it.copy(datePlan = before) } }
 
     /** "Rückgängig" after taking a logbook grade over: the grade before is back. */
@@ -918,7 +983,12 @@ internal class TodayPresenter(
     /** Starts today's suggestion in the guided player; [title] is the localized focus title. */
     fun startSuggestion(title: String) {
         val suggestion = _state.value.suggestion ?: return
-        val routine = suggestion.routine.copy(id = "suggestion:${service.today()}", name = title)
+        // A planned or usual workout keeps its name in the training's id, so the coach still sees what was done.
+        val of = suggestion.plannedEntry?.takeIf {
+            suggestion.focus == SuggestionFocus.PLANNED && it != PLAN_BOARD && it != PLAN_REST && !DayPlans.isClimb(it)
+        }
+        val routine = suggestion.routine.copy(id = "suggestion:${service.today()}" + (of?.let { "${PreferenceLearning.SUGGESTION_OF}$it" } ?: ""),
+            name = title)
         guardedStart(routine.id, title) { replace ->
             if (replace) service.closeOpenWorkout()
             startSuggestionNow(suggestion, routine, title)
