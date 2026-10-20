@@ -60,6 +60,8 @@ private struct WorkoutPlayerContent: View {
     @State private var rpe = 0
     @State private var learningInfo = false
     @State private var notes = ""
+    /// A comeback session's highest pain at the injured spot, 0–10; nil = not answered (owner 2026-10-20).
+    @State private var comebackPain: Int?
 
     var body: some View {
         withSheets(withEvents(page))
@@ -451,17 +453,34 @@ private struct WorkoutPlayerContent: View {
                 Text(L("trp_complete_title")).font(.title2.weight(.semibold))
                 Text(tr: ui.completeSummary).font(.body)
                 rpeChooser
+                if ui.comeback { comebackPainQuestion }
                 TextField(L("trw_notes_label"), text: $notes, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .onChange(of: notes) { _, v in if v.count > 2000 { notes = String(v.prefix(2000)) } }
                 Button {
-                    model.finish(rpe: Int32(rpe), notes: notes)
+                    finishTraining()
                 } label: { Text(L("trp_finish_training")).frame(maxWidth: .infinity, minHeight: 48) }
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("player_complete_finish")
                 Button(L("trp_overview")) { overview = true }
             }
             .padding(24)
+        }
+    }
+
+    /// The end of a training; a comeback session also hands over the pain question's answer (-1 = not answered).
+    private func finishTraining() {
+        let pain: Int32 = Int32(comebackPain ?? -1)
+        model.finish(rpe: Int32(rpe), notes: notes, comebackPain: pain)
+    }
+
+    /// A comeback session: the highest pain at the injured spot goes into the plan's diary (Android `cb_finish_pain`,
+    /// owner 2026-10-20). iOS also shows the notice here, as on every comeback surface.
+    private var comebackPainQuestion: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ComebackPainScale(label: L("cb_finish_pain"), value: comebackPain, tag: "player_comeback_pain",
+                              onChange: { (value: Int?) in comebackPain = value })
+            ComebackNoticeLine()
         }
     }
 
@@ -527,6 +546,9 @@ private struct WorkoutPlayerContent: View {
                     } header: { Text(L("trw_nothing_done_title")) }
                 } else {
                     Section { rpeChooser }
+                    if ui.comeback {
+                        Section { comebackPainQuestion }
+                    }
                     Section {
                         TextField(L("trw_notes_label"), text: $notes, axis: .vertical)
                         if ui.hasOpenSets { Text(L("trw_unfinished_hint")).font(.caption).foregroundStyle(.secondary) }
@@ -534,7 +556,7 @@ private struct WorkoutPlayerContent: View {
                     Section {
                         Button(L("trw_finish_confirm")) {
                             finishing = false
-                            model.finish(rpe: Int32(rpe), notes: notes)
+                            finishTraining()
                         }
                         Button(L("trw_discard"), role: .destructive) { confirmDiscard = true }
                     }
