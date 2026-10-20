@@ -79,6 +79,9 @@ struct DataExchangeView: View {
         Section(header: Text(L("bodystat_export"))) {
             if ui.exportPath.isEmpty {
                 formatPicker()
+                if format == "json" {
+                    healthToggle(model: model, ui: ui)
+                }
                 Button(L("export_save_file")) { startExport(model: model) }
                     .disabled(ui.isBusy || ui.isImporting)
             } else {
@@ -103,6 +106,20 @@ struct DataExchangeView: View {
         if format == "excel" {
             Text(L("export_excel_not_backup")).font(.footnote).foregroundStyle(.secondary)
         }
+    }
+
+    /// Android's opt-in export row "Verletzungen & Comeback-Tagebuch" (FEAT-072): health data goes into the JSON file
+    /// only when ticked, off by default. CSV and Excel never carry it, so the row shows with JSON only.
+    private func healthToggle(model: DataExchangeScreenModel, ui: DataExchangeScreenState) -> some View {
+        let on: Bool = ui.exportHealth
+        return Toggle(isOn: Binding(get: { on }, set: { model.setExportHealth(on: $0) })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("cb_backup_category"))
+                Text(L("cb_backup_category_hint")).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .disabled(ui.isBusy || ui.isImporting)
+        .accessibilityIdentifier("export_health")
     }
 
     private func startExport(model: DataExchangeScreenModel) {
