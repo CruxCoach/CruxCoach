@@ -19,15 +19,15 @@ final class WorkoutFreeTextTests: XCTestCase {
         return c
     }
 
-    private func parse(_ text: String) throws -> WorkoutTextParserResult {
+    private func parse(_ text: String) throws -> WorkoutTextParser.Result {
         WorkoutTextParser.shared.parse(text: text, catalog: try catalog())
     }
 
-    private func slugs(_ r: WorkoutTextParserResult) -> [String] {
+    private func slugs(_ r: WorkoutTextParser.Result) -> [String] {
         r.lines.map { $0.item.slug.isEmpty ? "new:" + $0.name : $0.item.slug }
     }
 
-    private func items(_ r: WorkoutTextParserResult) -> String {
+    private func items(_ r: WorkoutTextParser.Result) -> String {
         r.lines.map { l in
             "\(l.item.slug) sets \(l.item.sets) reps \(l.item.repsMax?.intValue ?? -1) circuit \(l.circuit?.intValue ?? -1)"
         }.joined(separator: "; ")
@@ -116,6 +116,13 @@ final class WorkoutFreeTextTests: XCTestCase {
         XCTAssertTrue(r.lines[0].item.warmup && r.lines[1].item.warmup)
         XCTAssertTrue(r.lines[4..<7].allSatisfy { $0.circuit?.intValue == 1 && $0.item.roundRestS?.intValue == 90 }, items(r))
         XCTAssertNil(r.lines[7].circuit)
+    }
+
+    /// The text MainScreensUITests.test11 types on the simulator.
+    func testTheUiFlowsEnglishCircuit() throws {
+        let r = try parse("Circuit 3 rounds: pull-ups 8, push-ups 15")
+        XCTAssertEqual(slugs(r), ["pull.pull_up", "push.push_up"])
+        XCTAssertTrue(r.lines.allSatisfy { $0.circuit?.intValue == 1 && $0.item.sets == 3 }, items(r))
     }
 
     func testOneLinePerExerciseReadsAsBefore() throws {
