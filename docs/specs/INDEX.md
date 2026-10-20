@@ -94,6 +94,7 @@ spec file so other branches see the reservation.
 | FEAT-069 | Food photo recognition, food search, barcode, US units, Health Connect export | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-069-food-photo-recognition.md` |
 | FEAT-070 | Training organisation, stats, own workouts, daily suggestion | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-070-training-organisation-stats-suggestions.md` |
 | FEAT-071 | Coach profile, start values, data-driven recommendations | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-071-coach-profile-data-driven-recommendations.md` |
+| FEAT-072 | Comeback plan after an injury (training aid with doctor/physio) | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-072-comeback-plan.md` |
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
@@ -169,7 +170,7 @@ renumbering those is likely cheaper than renumbering the shipped side.
 
 ## Next free
 
-**FEAT-072** is the next unallocated ID (FEAT-066–071 together on `feat/0.2.4-training-nutrition`, which merges the training line `feat/0.2.4-training-body` and the nutrition line `feat/0.2.4-food-photo` and, as the 0.2.4 release line since 2026-10-10, the Kilter logbook upload fixes of `feat/0.2.4-kilter-upload` – see `docs/research/2026-09-29-kilter-upload-500.md` – and the hold cleaning of `feat/0.2.4-board-cleaning` – see `docs/releases/0.2.4-board-cleaning.md`; neither has a FEAT number). FEAT-060 and FEAT-061 are reserved in
+**FEAT-073** is the next unallocated ID (FEAT-072 on `feat/0.2.4-training-nutrition-ux-review`; FEAT-066–071 together on `feat/0.2.4-training-nutrition`, which merges the training line `feat/0.2.4-training-body` and the nutrition line `feat/0.2.4-food-photo` and, as the 0.2.4 release line since 2026-10-10, the Kilter logbook upload fixes of `feat/0.2.4-kilter-upload` – see `docs/research/2026-09-29-kilter-upload-500.md` – and the hold cleaning of `feat/0.2.4-board-cleaning` – see `docs/releases/0.2.4-board-cleaning.md`; neither has a FEAT number). FEAT-060 and FEAT-061 are reserved in
 the parallel `social-layer-specs` worktree; FEAT-062 is reserved by the
 personal-sharing worktrees. Verify against unmerged branches before allocating
 — a branch this worktree cannot see may still hold the next apparent gap.
