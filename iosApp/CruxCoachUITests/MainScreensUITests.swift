@@ -288,7 +288,9 @@ final class MainScreensUITests: XCTestCase {
         stage.tap()
         let agreed = app.descendants(matching: .any).matching(identifier: "comeback_agreed").firstMatch
         XCTAssertTrue(scrollTo(agreed), "No \"agreed with my doctor or physio\":\n\(screenTail())")
-        agreed.tap()
+        // The whole row toggles, its text too (Android f871a82f1, device recheck 2026-10-20): a tap far right of the box.
+        agreed.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+        XCTAssertTrue(waitFor(agreed, "isSelected == true"), "A tap on the text did not tick \"agreed\":\n\(screenTail())")
         let start = app.buttons["comeback_start"]
         XCTAssertTrue(scrollTo(start), "No start button:\n\(screenTail())")
         start.tap()
@@ -300,14 +302,47 @@ final class MainScreensUITests: XCTestCase {
         understood.tap()
 
         let card = app.descendants(matching: .any).matching(identifier: "comeback_stage_card").firstMatch
-        XCTAssertTrue(scrollTo(card, timeout: 20), "The plan did not start (no stage card):\n\(screenTail())")
+        XCTAssertTrue(card.waitForExistence(timeout: 20), "The plan did not start (no stage card):\n\(screenTail())")
+        // The started plan opens at its top, not at the setup's scroll position (Android d4d050bee): the notice with
+        // its "Warning signs" button is on screen without scrolling back.
+        let signs = app.buttons["comeback_notice_signs"]
+        XCTAssertTrue(waitFor(signs, "isHittable == true"), "The plan did not open at its top:\n\(screenTail())")
         shot("12d-comeback-running")
+
+        // A plan started without a reference value: it can be entered later on the stage card (Android d4d050bee).
+        let reference = app.staticTexts["comeback_reference"]
+        XCTAssertTrue(scrollTo(reference, timeout: 20), "The finger plan's stage card shows no reference:\n\(screenTail())")
+        XCTAssertFalse(reference.label.contains("28"), "A reference before one was entered:\n\(screenTail())")
+        let edit = app.buttons["comeback_reference_edit"]
+        XCTAssertTrue(scrollTo(edit), "No \"Enter reference value\":\n\(screenTail())")
+        edit.tap()
+        let save = app.buttons["comeback_reference_save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10), "No reference dialog:\n\(screenTail())")
+        // The sheet covers the plan, so a notice that can be tapped is the dialog's own.
+        let notices = app.staticTexts.matching(NSPredicate(format: "label == %@", noticeText))
+        XCTAssertTrue(notices.allElementsBoundByIndex.contains { $0.isHittable }, "The reference dialog has no notice:\n\(screenTail())")
+        // The setup's field is gone with the running plan: this one is the dialog's.
+        let half = app.textFields["comeback_ref_half"]
+        XCTAssertTrue(half.waitForExistence(timeout: 5), "No half-crimp field:\n\(screenTail())")
+        half.tap()
+        half.typeText("28")
+        shot("12e-comeback-reference")
+        save.tap()
+        XCTAssertTrue(waitFor(reference, "label CONTAINS '28'"), "The stage card does not show 28 kg:\n\(screenTail())")
+        shot("12f-comeback-reference-saved")
+
         // The notice stays at the top of the running plan.
-        for _ in 0..<6 where !notice.isHittable { app.swipeDown() }
-        XCTAssertTrue(notice.exists, "The running plan lost its notice:\n\(screenTail())")
+        for _ in 0..<8 where !signs.isHittable { app.swipeDown() }
+        XCTAssertTrue(notice.exists && signs.isHittable, "The running plan lost its notice:\n\(screenTail())")
     }
 
     // MARK: - Helpers
+
+    /// Waits up to [timeout] seconds until [element] matches [predicate] (an XCUIElement attribute check).
+    private func waitFor(_ element: XCUIElement, _ predicate: String, timeout: TimeInterval = 10) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: predicate), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
 
     /// Swipes up until [element] can be tapped (a long scrolling form), for up to [timeout] seconds.
     private func scrollTo(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
