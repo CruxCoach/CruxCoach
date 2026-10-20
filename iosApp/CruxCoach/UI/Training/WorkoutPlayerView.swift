@@ -972,15 +972,16 @@ extension WorkoutPainSheet {
     }
 }
 
-/// "Type exercises" (Android `WorkoutTextSheet`): one per line, read while typing, with a preview of what
-/// each line becomes — a catalogue exercise, or a new one the app creates on "Add".
+/// "Type exercises" (Android `WorkoutTextSheet`): free text, circuits included, read off the main thread a
+/// moment after typing (`WorkoutTypedReaderModel`), with a preview of what each exercise becomes — a catalogue
+/// exercise, or a new one the app creates on "Add" — and of the circuits. "Add" takes exactly what is in the field.
 private struct WorkoutTypedSheet: View {
     let model: WorkoutPlayerScreenModel
     let onDone: () -> Void
     @State private var text = ""
+    @State private var reader: ScreenHost<WorkoutTypedReaderModel, WorkoutTypedPreviewUi>?
 
     var body: some View {
-        let preview = model.previewTyped(text: text)
         NavigationStack {
             Form {
                 Section {
@@ -992,29 +993,80 @@ private struct WorkoutTypedSheet: View {
                 } footer: {
                     Text(L("trwo_text_hint"))
                 }
-                if let title = TrRender.optional(preview.title) {
-                    Text(title).font(.subheadline.weight(.semibold))
+                if let reader {
+                    previewRows(reader.state)
+                    applyButton(reader)
                 }
-                ForEach(Array(preview.lines.enumerated()), id: \.offset) { _, line in
-                    HStack(alignment: .top) {
-                        Image(systemName: line.isNew ? "plus.circle.fill" : "checkmark.circle.fill")
-                            .foregroundStyle(line.isNew ? Color.accentColor : TrainingStyle.positive)
-                        VStack(alignment: .leading) {
-                            Text(line.name).font(.subheadline.weight(.semibold))
-                            Text(tr: line.summary).font(.subheadline)
-                            if let newHint = TrRender.optional(line.creationHint) { Text(newHint).font(.caption).foregroundStyle(.secondary) }
-                        }
-                    }
-                }
-                Button(TrRender.text(preview.applyLabel)) {
-                    model.addTyped(text: text)
-                    onDone()
-                }
-                .disabled(preview.lines.isEmpty)
             }
             .navigationTitle(L("trw_typed_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L("tr_action_cancel"), action: onDone) } }
+        }
+        .task {
+            guard reader == nil else { return }
+            let typed: WorkoutTypedReaderModel = model.typedReader()
+            reader = ScreenHost(model: typed, initial: typed.currentState,
+                                subscribe: { typed, onState in typed.watch(onState: onState) },
+                                onClose: { typed in typed.close() })
+            // Typed before the reader was there: read it now.
+            if !text.isEmpty { typed.setText(text: text) }
+        }
+        .onChange(of: text) { _, next in
+            reader?.model.setText(text: next)
+        }
+    }
+
+    @ViewBuilder
+    private func previewRows(_ preview: WorkoutTypedPreviewUi) -> some View {
+        if let title = TrRender.optional(preview.title) {
+            Text(title).font(.subheadline.weight(.semibold))
+        }
+        ForEach(Array(preview.lines.enumerated()), id: \.offset) { _, line in
+            typedRow(line)
+        }
+    }
+
+    private func applyButton(_ host: ScreenHost<WorkoutTypedReaderModel, WorkoutTypedPreviewUi>) -> some View {
+        let label: String = TrRender.text(host.state.applyLabel)
+        let empty: Bool = host.state.lines.isEmpty
+        return Button(label) {
+            host.model.add(text: text)
+            onDone()
+        }
+        .disabled(empty)
+    }
+
+    /// A circuit's first member carries the circuit's line above it; members are indented under it.
+    private func typedRow(_ line: WorkoutTypedLineUi) -> some View {
+        let indent: CGFloat = line.inCircuit ? 12 : 0
+        let starts: Bool = line.startsCircuit
+        return VStack(alignment: .leading, spacing: 6) {
+            if starts {
+                circuitHeader(line)
+            }
+            typedLine(line)
+                .padding(.leading, indent)
+        }
+    }
+
+    private func circuitHeader(_ line: WorkoutTypedLineUi) -> some View {
+        let header: String = TrRender.text(line.circuitHeader)
+        return HStack(spacing: 6) {
+            Image(systemName: "repeat").font(.footnote.weight(.semibold))
+            Text(header).font(.subheadline.weight(.semibold))
+        }
+        .foregroundStyle(Color.accentColor)
+    }
+
+    private func typedLine(_ line: WorkoutTypedLineUi) -> some View {
+        HStack(alignment: .top) {
+            Image(systemName: line.isNew ? "plus.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(line.isNew ? Color.accentColor : TrainingStyle.positive)
+            VStack(alignment: .leading) {
+                Text(line.name).font(.subheadline.weight(.semibold))
+                Text(tr: line.summary).font(.subheadline)
+                if let newHint = TrRender.optional(line.creationHint) { Text(newHint).font(.caption).foregroundStyle(.secondary) }
+            }
         }
     }
 }

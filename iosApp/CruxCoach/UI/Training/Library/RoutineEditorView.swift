@@ -292,8 +292,9 @@ struct ExercisePickerSheet: View {
     }
 }
 
-/// "Type a workout" (Android `WorkoutTextSheet`): one exercise per line, read while typing, with a
-/// preview of what each line becomes — a catalogue exercise, or a new one created on "Add".
+/// "Type a workout" (Android `WorkoutTextSheet`): free text, circuits included, read off the main thread a
+/// moment after typing, with a preview of what each exercise becomes — a catalogue exercise, or a new one
+/// created on "Add" — and of the circuits. "Add" takes exactly what is in the field.
 struct WorkoutTextSheet: View {
     let model: RoutineEditorScreenModel
     let ui: RoutineEditorScreenState
@@ -315,17 +316,7 @@ struct WorkoutTextSheet: View {
                     Text(L("trwo_text_name", ui.typedTitle)).font(.subheadline.weight(.semibold))
                 }
                 ForEach(Array(ui.typedLines.enumerated()), id: \.offset) { _, line in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: line.isNew ? "plus.circle.fill" : "checkmark.circle.fill")
-                            .foregroundStyle(line.isNew ? Color.accentColor : Color.green)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(line.name).font(.subheadline.weight(.semibold))
-                            Text(LibraryRender.text(line.summary)).font(.subheadline)
-                            if line.isNew {
-                                Text(LibraryRender.text(line.creationHint)).font(.footnote).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
+                    typedRow(line)
                 }
             }
             .navigationTitle(L("trwo_text_title"))
@@ -340,6 +331,42 @@ struct WorkoutTextSheet: View {
                         onDone()
                     }
                     .disabled(ui.typedLines.isEmpty)
+                }
+            }
+        }
+    }
+
+    /// A circuit's first member carries the circuit's line above it; members are indented under it.
+    private func typedRow(_ line: TypedLineUi) -> some View {
+        let indent: CGFloat = line.inCircuit ? 12 : 0
+        let starts: Bool = line.startsCircuit
+        return VStack(alignment: .leading, spacing: 6) {
+            if starts {
+                typedCircuitHeader(line)
+            }
+            typedLine(line)
+                .padding(.leading, indent)
+        }
+    }
+
+    private func typedCircuitHeader(_ line: TypedLineUi) -> some View {
+        let header: String = LibraryRender.text(line.circuitHeader)
+        return HStack(spacing: 6) {
+            Image(systemName: "repeat").font(.footnote.weight(.semibold))
+            Text(header).font(.subheadline.weight(.semibold))
+        }
+        .foregroundStyle(Color.accentColor)
+    }
+
+    private func typedLine(_ line: TypedLineUi) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: line.isNew ? "plus.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(line.isNew ? Color.accentColor : Color.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(line.name).font(.subheadline.weight(.semibold))
+                Text(LibraryRender.text(line.summary)).font(.subheadline)
+                if line.isNew {
+                    Text(LibraryRender.text(line.creationHint)).font(.footnote).foregroundStyle(.secondary)
                 }
             }
         }

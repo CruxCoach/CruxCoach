@@ -26,7 +26,15 @@ import com.cruxcoach.athlete.model.InjurySide
 import com.cruxcoach.athlete.model.SetType
 import com.cruxcoach.athlete.model.Side
 import com.cruxcoach.athlete.model.UnitSystem
+import com.cruxcoach.app.library.TypedWorkoutReader
+import com.cruxcoach.app.util.watch
+import com.cruxcoach.athlete.catalog.ExerciseCatalog
+import com.cruxcoach.athlete.logic.Circuits
+import com.cruxcoach.athlete.model.RoutineItem
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
@@ -48,9 +56,101 @@ class WorkoutPageUi(
 )
 
 /** One typed line as it will be added (Android `WorkoutTextSheet`): a catalogue exercise or a new one. */
-class WorkoutTypedLineUi(val name: String, val summary: TrText, val isNew: Boolean, val creationHint: TrText)
+class WorkoutTypedLineUi(
+    val name: String,
+    val summary: TrText,
+    val isNew: Boolean,
+    val creationHint: TrText,
+    /** A circuit member: shown indented under its circuit's line. */
+    val inCircuit: Boolean,
+    /** The circuit's first member: [circuitHeader] stands above it. */
+    val startsCircuit: Boolean,
+    /** "Circuit · 3 rounds · 0:15 / 1:30"; empty unless [startsCircuit]. */
+    val circuitHeader: TrText,
+)
 
 class WorkoutTypedPreviewUi(val title: TrText, val lines: List<WorkoutTypedLineUi>, val applyLabel: TrText)
+
+/**
+ * "Type exercises" into the open training (Android `WorkoutTextSheet`): the field's text is read off the main
+ * thread, at once the first time and then a moment after the last keystroke; [add] takes exactly what is in
+ * the field. Swift makes one per sheet (in `.task`, via [WorkoutPlayerScreenModel.typedReader]) and closes it.
+ */
+class WorkoutTypedReaderModel internal constructor(
+    private val presenter: WorkoutPlayerPresenter,
+    private val language: String,
+    private val scope: CoroutineScope,
+    reader: CoroutineDispatcher,
+) {
+    private val typed = TypedWorkoutReader(scope, reader, { presenter.catalog() })
+
+    val currentState: WorkoutTypedPreviewUi get() = preview(typed.state.value.result)
+
+    fun watch(onState: (WorkoutTypedPreviewUi) -> Unit): Subscription {
+        val watch = typed.state.watch { onState(preview(it.result)) }
+        return Subscription { watch.cancel() }
+    }
+
+    /** Every change of the field. */
+    fun setText(text: String) = typed.read(text)
+
+    /** Adds what is in the field: typed a moment ago and not read yet, it is read now (new names become own exercises). */
+    fun add(text: String) = presenter.addTyped(typed.resultFor(text))
+
+    fun close() = scope.cancel()
+
+    private fun preview(result: com.cruxcoach.athlete.logic.WorkoutTextParser.Result): WorkoutTypedPreviewUi = try {
+        WorkoutTypedPreviews.preview(result, language, presenter.state.value.profile.units, presenter.catalog())
+    } catch (e: Exception) {
+        WorkoutTypedPreviews.preview(TypedWorkoutReader.EMPTY, language, UnitSystem.METRIC, presenter.catalog())
+    }
+}
+
+/** What typed lines become (Android `WorkoutTextSheet`): rows, circuits grouped under one line with rounds and rests. */
+internal object WorkoutTypedPreviews {
+    fun preview(
+        result: com.cruxcoach.athlete.logic.WorkoutTextParser.Result,
+        language: String,
+        units: UnitSystem,
+        catalog: ExerciseCatalog,
+    ): WorkoutTypedPreviewUi {
+        val items = result.lines.map { it.item }
+        return WorkoutTypedPreviewUi(
+            title = result.title?.let { Tx.t("trwo_text_name", Tx.s(it)) } ?: Tx.EMPTY,
+            lines = result.lines.mapIndexed { i, line ->
+                val kind = line.match?.kind ?: line.guess.kind
+                val load = line.match?.load ?: line.guess.load
+                val circuit = line.circuit
+                val starts = circuit != null && result.lines.getOrNull(i - 1)?.circuit != circuit
+                WorkoutTypedLineUi(line.match?.name(language) ?: line.name, Tx.routineItemSummary(line.item, kind, load, units),
+                    line.isNew, if (line.isNew) Tx.t("trwo_text_new", Tx.k(exerciseKindKey(kind))) else Tx.EMPTY,
+                    inCircuit = circuit != null,
+                    startsCircuit = starts,
+                    circuitHeader = if (circuit != null && starts) circuitHeader(items, circuit, catalog) else Tx.EMPTY)
+            },
+            applyLabel = if (result.lines.isEmpty()) Tx.t("trwo_text_apply_none") else Tx.p("trwo_text_apply", result.lines.size, Tx.i(result.lines.size)),
+        )
+    }
+
+    /** Rounds, the rest between the exercises and the rest after a round; the defaults where the text said none. */
+    private fun circuitHeader(items: List<RoutineItem>, circuit: Int, catalog: ExerciseCatalog): TrText {
+        val members = items.filter { it.circuit == circuit }
+        val rounds = Circuits.rounds(items, circuit)
+        val between = members.first().circuitRestS ?: Circuits.DEFAULT_CIRCUIT_REST_S
+        val round = members.first().roundRestS ?: Circuits.defaultRoundRest(members, catalog)
+        return Tx.t("trcirc_group", Tx.x(Tx.p("trcirc_rounds", rounds, Tx.i(rounds))),
+            Tx.s(TodayClock.clock(between)), Tx.s(TodayClock.clock(round)))
+    }
+
+    private fun exerciseKindKey(k: ExerciseKind) = when (k) {
+        ExerciseKind.REPS -> "trx_kind_reps"
+        ExerciseKind.LOAD_REPS -> "trx_kind_load_reps"
+        ExerciseKind.TIME -> "trx_kind_time"
+        ExerciseKind.HANG -> "trx_kind_hang"
+        ExerciseKind.INTERVAL -> "trx_kind_interval"
+        ExerciseKind.CLIMB -> "trx_kind_climb"
+    }
+}
 
 /** One exercise of the "add exercise" list. */
 class WorkoutExerciseChoiceUi(val slug: String, val name: String, val category: TrText)
@@ -375,21 +475,18 @@ class WorkoutPlayerScreenModel internal constructor(
     fun consumeFinished() { finished = ""; discarded = false }
     fun consumeSkipped() { skipped = emptyList(); stateListener?.invoke() }
 
-    /** What typed lines become (Android `WorkoutTextSheet`), read while typing. */
-    fun previewTyped(text: String): WorkoutTypedPreviewUi {
-        val result = parseTyped(text)
-        val units = presenter.state.value.profile.units
-        return WorkoutTypedPreviewUi(
-            title = result.title?.let { Tx.t("trwo_text_name", Tx.s(it)) } ?: Tx.EMPTY,
-            lines = result.lines.map { line ->
-                val kind = line.match?.kind ?: line.guess.kind
-                val load = line.match?.load ?: line.guess.load
-                WorkoutTypedLineUi(line.match?.name(language) ?: line.name, Tx.routineItemSummary(line.item, kind, load, units),
-                    line.isNew, if (line.isNew) Tx.t("trwo_text_new", Tx.k(exerciseKindKey(kind))) else Tx.EMPTY)
-            },
-            applyLabel = if (result.lines.isEmpty()) Tx.t("trwo_text_apply_none") else Tx.p("trwo_text_apply", result.lines.size, Tx.i(result.lines.size)),
-        )
-    }
+    /**
+     * The typed-entry sheet's reader: off the main thread with Android's debounce (one per sheet; Swift closes it).
+     * Nothing a preview shows is read on the main thread any more, except the text "Add" finds unread.
+     */
+    fun typedReader(): WorkoutTypedReaderModel = typedReaderOn(MainScope(), Dispatchers.Default)
+
+    internal fun typedReaderOn(scope: CoroutineScope, reader: CoroutineDispatcher): WorkoutTypedReaderModel =
+        WorkoutTypedReaderModel(presenter, language, scope, reader)
+
+    /** What typed lines become, read at once (tests; the sheet uses [typedReader]). */
+    fun previewTyped(text: String): WorkoutTypedPreviewUi =
+        WorkoutTypedPreviews.preview(parseTyped(text), language, presenter.state.value.profile.units, presenter.catalog())
 
     /** Adds the typed exercises (new names become own exercises); one an injury rules out is reported in [WorkoutPlayerState.skippedText]. */
     fun addTyped(text: String) = presenter.addTyped(parseTyped(text))
@@ -398,15 +495,6 @@ class WorkoutPlayerScreenModel internal constructor(
         com.cruxcoach.athlete.logic.WorkoutTextParser.parse(text.take(com.cruxcoach.athlete.logic.WorkoutTextParser.MAX_CHARS), presenter.catalog())
     } catch (e: Exception) {
         com.cruxcoach.athlete.logic.WorkoutTextParser.Result(null, emptyList())
-    }
-
-    private fun exerciseKindKey(k: ExerciseKind) = when (k) {
-        ExerciseKind.REPS -> "trx_kind_reps"
-        ExerciseKind.LOAD_REPS -> "trx_kind_load_reps"
-        ExerciseKind.TIME -> "trx_kind_time"
-        ExerciseKind.HANG -> "trx_kind_hang"
-        ExerciseKind.INTERVAL -> "trx_kind_interval"
-        ExerciseKind.CLIMB -> "trx_kind_climb"
     }
 
     private fun activeOnPage(): ExerciseSet? {

@@ -115,7 +115,18 @@ class EditorItemUi(
 
 class PickerRowUi(val slug: String, val name: String, val categoryKey: String, val selected: Boolean, val favorite: Boolean)
 
-class TypedLineUi(val name: String, val summary: LibraryText, val isNew: Boolean, val creationHint: LibraryText)
+class TypedLineUi(
+    val name: String,
+    val summary: LibraryText,
+    val isNew: Boolean,
+    val creationHint: LibraryText,
+    /** A circuit member: shown indented under its circuit's line. */
+    val inCircuit: Boolean,
+    /** The circuit's first member: [circuitHeader] stands above it. */
+    val startsCircuit: Boolean,
+    /** "Circuit · 3 rounds · 0:15 / 1:30"; empty unless [startsCircuit]. */
+    val circuitHeader: LibraryText,
+)
 
 class RoutineEditorScreenState(
     val isLoading: Boolean,
@@ -367,6 +378,37 @@ class RoutineEditorScreenModel internal constructor(
         favorite = def.slug in s.favorites,
     )
 
+    /** Android `WorkoutTextSheet`'s rows: a circuit's members under one line with its rounds and rests, indented. */
+    private fun typedLines(s: RoutineEditorState): List<TypedLineUi> {
+        val lines = s.typed.lines
+        val items = lines.map { it.item }
+        return lines.mapIndexed { i, line ->
+            val kind = line.match?.kind ?: line.guess.kind
+            val load = line.match?.load ?: line.guess.load
+            val circuit = line.circuit
+            val starts = circuit != null && lines.getOrNull(i - 1)?.circuit != circuit
+            TypedLineUi(
+                name = line.match?.name(lang) ?: line.name,
+                summary = LibraryItemTexts.summary(line.item, kind, load, s.units),
+                isNew = line.isNew,
+                creationHint = LibraryTexts.key("trwo_text_new", LibraryTexts.ref(LibraryKeys.kind(kind))),
+                inCircuit = circuit != null,
+                startsCircuit = starts,
+                circuitHeader = if (circuit != null && starts) typedCircuitHeader(items, circuit, s) else LibraryTexts.EMPTY,
+            )
+        }
+    }
+
+    private fun typedCircuitHeader(items: List<RoutineItem>, circuit: Int, s: RoutineEditorState): LibraryText {
+        val members = items.filter { it.circuit == circuit }
+        val rounds = Circuits.rounds(items, circuit)
+        val between = members.first().circuitRestS ?: Circuits.DEFAULT_CIRCUIT_REST_S
+        val round = members.first().roundRestS ?: Circuits.defaultRoundRest(members, s.catalog)
+        return LibraryTexts.key("trcirc_group",
+            LibraryTexts.nested(LibraryTexts.plural("trcirc_rounds", rounds, LibraryTexts.int(rounds))),
+            LibraryTexts.text(TodayClock.clock(between)), LibraryTexts.text(TodayClock.clock(round)))
+    }
+
     private fun map(s: RoutineEditorState): RoutineEditorScreenState {
         val (favs, results) = RoutineEditorPresenter.pickerRows(s, lang)
         val lines = s.typed.lines
@@ -390,16 +432,7 @@ class RoutineEditorScreenModel internal constructor(
             typedText = s.typedText,
             typedHasTitle = s.typed.title != null,
             typedTitle = s.typed.title ?: "",
-            typedLines = lines.map { line ->
-                val kind = line.match?.kind ?: line.guess.kind
-                val load = line.match?.load ?: line.guess.load
-                TypedLineUi(
-                    name = line.match?.name(lang) ?: line.name,
-                    summary = LibraryItemTexts.summary(line.item, kind, load, s.units),
-                    isNew = line.isNew,
-                    creationHint = LibraryTexts.key("trwo_text_new", LibraryTexts.ref(LibraryKeys.kind(kind))),
-                )
-            },
+            typedLines = typedLines(s),
             typedApplyLabel = if (lines.isEmpty()) LibraryTexts.key("trwo_text_apply_none")
             else LibraryTexts.plural("trwo_text_apply", lines.size, LibraryTexts.int(lines.size)),
         )
