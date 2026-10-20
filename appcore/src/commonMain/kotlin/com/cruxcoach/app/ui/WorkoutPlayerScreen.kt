@@ -287,6 +287,11 @@ class WorkoutPlayerState(
     val discarded: Boolean,
     /** Typed exercises an open injury ruled out, or empty. */
     val skippedText: TrText,
+    /**
+     * A comeback session (its training id names an injury's plan): the end page and the finish dialog ask
+     * `cb_finish_pain` 0–10 (`player_comeback_pain_<n>`) and show the notice (owner 2026-10-20).
+     */
+    val comeback: Boolean,
 )
 
 /**
@@ -470,7 +475,10 @@ class WorkoutPlayerScreenModel internal constructor(
 
     // ── Finish ──
     /** rpe 0 = not answered. */
-    fun finish(rpe: Int, notes: String) = presenter.finish(rpe.takeIf { it in 1..10 }, notes.trim().take(2000).ifBlank { null })
+    fun finish(rpe: Int, notes: String) = finish(rpe, notes, -1)
+    /** A comeback session's end: [comebackPain] 0–10 is the highest pain at the injured spot, -1 = not answered. */
+    fun finish(rpe: Int, notes: String, comebackPain: Int) = presenter.finish(rpe.takeIf { it in 1..10 },
+        notes.trim().take(2000).ifBlank { null }, comebackPain.takeIf { it in 0..10 })
     fun discard() = presenter.discard()
     fun consumeFinished() { finished = ""; discarded = false }
     fun consumeSkipped() { skipped = emptyList(); stateListener?.invoke() }
@@ -630,6 +638,7 @@ private class PlayerMapper(
             finishedWorkoutId = finished,
             discarded = discarded,
             skippedText = if (skippedNames.isEmpty()) Tx.EMPTY else Tx.t("trw_typed_skipped", Tx.s(skippedNames)),
+            comeback = com.cruxcoach.athlete.logic.Comeback.parseRoutineId(st.workout?.routineId) != null,
         )
     }
 

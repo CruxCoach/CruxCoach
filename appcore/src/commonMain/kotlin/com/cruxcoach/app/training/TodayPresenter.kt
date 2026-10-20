@@ -59,6 +59,14 @@ internal data class TodayWeekDay(
  */
 internal enum class TodaySuggestion { CONFIGURE_EQUIPMENT, SET_BENCHMARKS, BASELINE_TEST, LOG_WEIGHT }
 
+/** A running comeback plan on today's card (Android `ComebackToday`, owner 2026-10-20). */
+internal data class ComebackToday(
+    val injury: Injury,
+    val entry: ComebackEntry?,
+    val due: List<DueSession>,
+    val prompts: Int,
+)
+
 /** A start that waits for "continue the open training or end it" ([AthleteService.openConflict]). */
 internal class TrainingPendingStart(
     val conflict: AthleteService.OpenConflict,
@@ -1094,6 +1102,44 @@ internal class TodayPresenter(
 
     fun consumeStartedWorkout() = _state.update { it.copy(startedWorkout = false, startedGuided = false) }
 
+    // ── Comeback plans (Android, owner 2026-10-20) ───────────────────
+
+    private val _comebacks = MutableStateFlow<List<ComebackToday>>(emptyList())
+    /** Running comeback plans for today's card; separate from the hub so a diary tap does not re-derive the suggestion. */
+    val comebacks: StateFlow<List<ComebackToday>> = _comebacks.asStateFlow()
+
+    private fun collectComebacks() {
+        scope.launch(io) {
+            service.ensureReady()
+            combine(service.repo.observeActiveInjuries(), service.repo.observeAllComebackEntries()) { injuries, entries ->
+                val today = service.today()
+                val now = nowMs()
+                injuries.filter { it.activePlan != null }.map { injury ->
+                    val mine = entries.filter { it.injuryId == injury.id }
+                    ComebackToday(
+                        injury = injury,
+                        entry = mine.firstOrNull { it.day == today.toString() },
+                        due = Comeback.due(injury, mine, today, now)
+                            .filter { it.status == DueStatus.DUE && it.spec.items.isNotEmpty() },
+                        prompts = Comeback.prompts(injury, mine, today).size,
+                    )
+                }
+            }.collect { _comebacks.value = it }
+        }
+    }
+
+    fun comebackToday(injuryId: String, change: (ComebackEntry) -> ComebackEntry) = io {
+        val comebacks = com.cruxcoach.app.athlete.ComebackService(service)
+        comebacks.saveEntry(change(comebacks.entry(injuryId)))
+    }
+
+    fun startComebackSession(injuryId: String, index: Int, name: String) =
+        guardedStart(null, name) { replace ->
+            if (replace) service.closeOpenWorkout()
+            com.cruxcoach.app.athlete.ComebackService(service).startSession(injuryId, index, name)
+            _state.update { it.copy(startedWorkout = true, startedGuided = true) }
+        }
+
     fun addWater(ml: Int) = io { service.repo.addHydration(service.today().toString(), ml) }
 
     /** Undo for the water tile: the newest glass of today goes again. */
@@ -1126,6 +1172,7 @@ internal class TodayPresenter(
 
     init {
         startCollecting()
+        collectComebacks()
     }
 
     companion object {

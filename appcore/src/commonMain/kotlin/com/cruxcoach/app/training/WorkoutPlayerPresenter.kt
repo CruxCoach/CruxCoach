@@ -897,7 +897,7 @@ internal class WorkoutPlayerPresenter(
 
     // ── Finish ───────────────────────────────────────────────────────
 
-    fun finish(sessionRpe: Int?, notes: String?) {
+    fun finish(sessionRpe: Int?, notes: String?, comebackPain: Int? = null) {
         val workout = _state.value.workout ?: return
         val id = workout.id
         val sets = _state.value.sets
@@ -913,6 +913,10 @@ internal class WorkoutPlayerPresenter(
                 sessionRpe?.let { service.logSuggestion(SuggestionEventKind.FEEDBACK, "session_rpe", emptyList(), workoutId = id, value = it.toDouble()) }
             }
             service.finishWorkout(id, sessionRpe, notes)
+            // A comeback session goes into the plan's diary with its highest pain (Android, owner 2026-10-20).
+            if (com.cruxcoach.athlete.logic.Comeback.parseRoutineId(workout.routineId) != null) {
+                runCatching { com.cruxcoach.app.athlete.ComebackService(service).logSession(id, comebackPain) }
+            }
             _events.emit(WorkoutPlayerEvent.Finished(id))
         }
     }

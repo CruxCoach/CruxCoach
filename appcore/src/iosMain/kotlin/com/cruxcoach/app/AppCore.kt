@@ -2450,4 +2450,17 @@ class AppCore private constructor(
         )
     }
 
+    // ── Ways into the comeback plan (cbentry, sync 2026-10-20; Android c5a2665fb) ──
+
+    /**
+     * Injuries and pauses with each injury's comeback plan line and the health-backup switch. [language] ("de"/"en")
+     * picks a comeback stage's title; the no-argument [makeInjuriesScreen] stays for older callers.
+     */
+    fun makeInjuriesScreen(language: String): com.cruxcoach.app.ui.InjuriesScreenModel? {
+        val service = athlete ?: return null
+        return com.cruxcoach.app.ui.InjuriesScreenModel(
+            com.cruxcoach.app.progress.InjuriesPresenter(service, MainScope(), Dispatchers.IO), language,
+        )
+    }
+
 }

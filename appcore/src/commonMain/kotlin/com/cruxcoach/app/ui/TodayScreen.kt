@@ -73,6 +73,34 @@ class TodayTileUi(
     val hasTrailingAction: Boolean,
 )
 
+/** A session of a running comeback plan that is due now (Android `ComebackTodayCard`). */
+class TodayComebackSessionUi(
+    /** The session's index in its stage: `today_comeback_start_<index>`. */
+    val index: Int,
+    /** mobility | tendon | strength | region | climb | own */
+    val kindCode: String,
+    /** "Tendon session": Swift names the training `cb_session_name` with it. */
+    val title: TrText,
+)
+
+/**
+ * A running comeback plan on Today (Android `ComebackTodayCard`, owner 2026-10-20): its title, the stage, a hint when
+ * the plan has a note, the morning value in one tap, the sessions due now, and the notice it always carries
+ * (`ComebackNoticeLine` in Swift). The card opens the plan (`ComebackView(injuryId:)`).
+ */
+class TodayComebackUi(
+    val injuryId: String,
+    /** "Comeback plan · Finger / pulley · Left". */
+    val title: TrText,
+    /** "Stage 1 of 5 · …" or "Comeback plan: my physio's plan". */
+    val stageLine: TrText,
+    /** The plan has a note (a prompt): `cb_today_prompt`. */
+    val hasPrompt: Boolean,
+    /** Today's morning pain 0–10, -1 = not answered yet. */
+    val morningPain: Int,
+    val sessions: List<TodayComebackSessionUi>,
+)
+
 class TodayScreenState(
     val loading: Boolean,
     val language: String,
@@ -203,6 +231,9 @@ class TodayScreenState(
     val equipmentCodes: List<String>,
     val equipmentConfigured: Boolean,
     val todaysPlaceName: TrText,
+    // ── Comeback plans (owner 2026-10-20) ──
+    /** One card per running comeback plan, under the injury banner. */
+    val comebacks: List<TodayComebackUi>,
 )
 
 /**
@@ -219,7 +250,7 @@ class TodayScreenModel internal constructor(
     fun watch(onState: (TodayScreenState) -> Unit): Subscription {
         val scope = MainScope()
         scope.launch {
-            combine(presenter.state, presenter.pendingStart) { s, _ -> s }
+            combine(presenter.state, presenter.pendingStart, presenter.comebacks) { s, _, _ -> s }
                 .collect { onState(map(it)) }
         }
         return Subscription { scope.cancel() }
@@ -323,6 +354,22 @@ class TodayScreenModel internal constructor(
     fun resolveStart(choice: Int) = presenter.resolveStart(when (choice) { 1 -> true; 0 -> false; else -> null })
     fun consumeStartedWorkout() = presenter.consumeStartedWorkout()
 
+    // ── Comeback plans (owner 2026-10-20) ──
+    /** The morning value of a running plan's card: 0–10, anything else clears it (tapping the chosen value again). */
+    fun setComebackMorning(injuryId: String, value: Int) {
+        val pain = value.takeIf { it in 0..10 }
+        presenter.comebackToday(injuryId) { it.copy(morningPain = pain) }
+    }
+
+    /**
+     * Starts session [index] of the plan as a training (through the same "open training?" question as every start);
+     * [name] is `cb_session_name` with the session's title as Swift rendered it.
+     */
+    fun startComebackSession(injuryId: String, index: Int, name: String) {
+        if (presenter.comebacks.value.none { c -> c.injury.id == injuryId && c.due.any { it.index == index } }) return
+        presenter.startComebackSession(injuryId, index, name.trim().take(120))
+    }
+
     // ── Your day ──
     fun addWater(ml: Int) = presenter.addWater(ml)
     fun removeLastWater() = presenter.removeLastWater()
@@ -355,7 +402,8 @@ class TodayScreenModel internal constructor(
         lastGood ?: mapUnsafe(TodayState())
     }
 
-    private fun mapUnsafe(s: TodayState): TodayScreenState = TodayMapper(s, language, presenter.pendingStart.value).build()
+    private fun mapUnsafe(s: TodayState): TodayScreenState =
+        TodayMapper(s, language, presenter.pendingStart.value, presenter.comebacks.value).build()
 
     companion object {
         /** Plausible body weights (Android `PLAUSIBLE_WEIGHT_KG`). */
@@ -385,7 +433,12 @@ class TodayScreenModel internal constructor(
 }
 
 /** The plain values for Swift; one instance per state. */
-private class TodayMapper(val s: TodayState, val language: String, val pending: com.cruxcoach.app.training.TrainingPendingStart?) {
+private class TodayMapper(
+    val s: TodayState,
+    val language: String,
+    val pending: com.cruxcoach.app.training.TrainingPendingStart?,
+    val comebacks: List<com.cruxcoach.app.training.ComebackToday> = emptyList(),
+) {
     val units = s.profile.units
 
     fun build(): TodayScreenState {
@@ -569,7 +622,40 @@ private class TodayMapper(val s: TodayState, val language: String, val pending: 
             equipmentCodes = (s.profile.equipment.takeIf { s.profile.equipmentConfigured } ?: emptySet()).map { it.name }.sorted(),
             equipmentConfigured = s.profile.equipmentConfigured,
             todaysPlaceName = if (ownPlaces.size < 2) Tx.EMPTY else TrainingPlaces.current(s.profile, day)?.let { Tx.placeLabel(it) } ?: Tx.EMPTY,
+            comebacks = comebacks.mapNotNull { comebackCard(it) },
         )
+    }
+
+    /** Android `ComebackTodayCard`: title (region · side), the stage or the own plan, the note hint, morning value, sessions due. */
+    private fun comebackCard(c: com.cruxcoach.app.training.ComebackToday): TodayComebackUi? {
+        val injury = c.injury
+        val plan = injury.activePlan ?: return null
+        val where = Tx.join(listOfNotNull(Tx.t(Tx.regionKey(injury.region)), injury.side?.let { Tx.t(Tx.injurySideKey(it)) }), " · ")
+        val stageLine = if (plan.source == PlanSource.OWN) Tx.t("cb_card_own") else {
+            val ladder = Comeback.ladder(injury)
+            val stage = Comeback.stage(injury, plan)
+            Tx.t("cb_stage_header", Tx.i(stage.index), Tx.i(ladder.stages.lastIndex), Tx.s(stage.title.of(language)))
+        }
+        return TodayComebackUi(
+            injuryId = injury.id,
+            title = Tx.t("cb_today_title", Tx.x(where)),
+            stageLine = stageLine,
+            hasPrompt = c.prompts > 0,
+            morningPain = c.entry?.morningPain ?: -1,
+            sessions = c.due.map { d ->
+                TodayComebackSessionUi(d.index, d.spec.kind.name.lowercase(), Tx.t(comebackSessionKey(d.spec.kind)))
+            },
+        )
+    }
+
+    /** Android `sessionTitle`. */
+    private fun comebackSessionKey(kind: ComebackSessionKind) = when (kind) {
+        ComebackSessionKind.MOBILITY -> "cb_session_mobility"
+        ComebackSessionKind.TENDON -> "cb_session_tendon"
+        ComebackSessionKind.STRENGTH -> "cb_session_strength"
+        ComebackSessionKind.REGION -> "cb_session_region"
+        ComebackSessionKind.CLIMB -> "cb_session_climb"
+        ComebackSessionKind.OWN -> "cb_session_own"
     }
 
     private fun openTitle(p: com.cruxcoach.app.training.TrainingPendingStart): TrText =

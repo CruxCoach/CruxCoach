@@ -24,6 +24,8 @@ internal data class InjuriesRunState(
     val active: List<Injury> = emptyList(),
     val past: List<Injury> = emptyList(),
     val pauses: List<PausePeriod> = emptyList(),
+    /** Injuries and the comeback diary go into the automatic encrypted backup too (Android, owner 2026-10-20). */
+    val healthInBackup: Boolean = false,
 )
 
 internal class InjuriesPresenter(
@@ -37,8 +39,8 @@ internal class InjuriesPresenter(
     init {
         scope.launch(io) {
             service.ensureReady()
-            combine(service.repo.observeActiveInjuries(), service.repo.observePauses()) { active, pauses ->
-                InjuriesRunState(false, active, service.repo.allInjuries().filter { !it.isActive }, pauses)
+            combine(service.repo.observeActiveInjuries(), service.repo.observePauses(), service.repo.observeProfile()) { active, pauses, profile ->
+                InjuriesRunState(false, active, service.repo.allInjuries().filter { !it.isActive }, pauses, profile.healthInCloudBackup)
             }.collect { _state.value = it }
         }
     }
@@ -64,6 +66,8 @@ internal class InjuriesPresenter(
     }
 
     fun delete(injury: Injury) = io { service.repo.deleteInjury(injury.id) }
+
+    fun setHealthInBackup(on: Boolean) = io { service.repo.updateProfile { it.copy(healthInCloudBackup = on) } }
 
     fun startHoliday() = io {
         val repo = service.repo

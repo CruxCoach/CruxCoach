@@ -6,11 +6,15 @@ import com.cruxcoach.app.bodymap.toInjuryRegion
 import com.cruxcoach.app.progress.InjuriesPresenter
 import com.cruxcoach.app.progress.InjuriesRunState
 import com.cruxcoach.app.training.Tx
+import com.cruxcoach.athlete.logic.Comeback
+import com.cruxcoach.athlete.logic.ComebackContent
+import com.cruxcoach.athlete.model.ComebackPlan
 import com.cruxcoach.athlete.model.Injury
 import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.InjurySide
 import com.cruxcoach.athlete.model.PausePeriod
 import com.cruxcoach.athlete.model.PauseReason
+import com.cruxcoach.athlete.model.PlanSource
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -26,6 +30,15 @@ class InjuryUi(
     /** Pain 0–9. */
     val severity: Int,
     val climbingPaused: Boolean,
+    /**
+     * An open injury whose region has a comeback plan (every region but skin, Android `ComebackContent.hasPlan`):
+     * the card offers the plan (`cb_start_plan` / `cb_open_plan`, identifier `injury_comeback_<id>`) and the notice.
+     */
+    val comebackAvailable: Boolean,
+    /** A comeback plan is running: the button says `cb_open_plan`. */
+    val comebackRunning: Boolean,
+    /** "Comeback plan: stage 2 of 5 · …" or "Comeback plan: my physio's plan"; empty without a running plan. */
+    val comebackLine: TrText,
 )
 
 class InjuryPauseUi(
@@ -72,6 +85,8 @@ class InjuriesScreenState(
     val pauses: List<InjuryPauseUi>,
     val regions: List<InjuryRegionUi>,
     val sides: List<InjurySideUi>,
+    /** Injuries and the comeback diary go into the automatic encrypted backup too (`cb_backup_cloud`); off by default. */
+    val healthInBackup: Boolean,
 )
 
 /**
@@ -79,7 +94,11 @@ class InjuriesScreenState(
  * climbing paused, streak paused), change pain and the climbing pause, mark it healed (which also
  * ends an injury pause once nothing else is open), delete; start and end a holiday pause.
  */
-class InjuriesScreenModel internal constructor(private val presenter: InjuriesPresenter) {
+class InjuriesScreenModel internal constructor(
+    private val presenter: InjuriesPresenter,
+    /** The catalogue language ("de"/"en") of a comeback stage's title. */
+    private val language: String = "en",
+) {
     val currentState: InjuriesScreenState get() = map(presenter.state.value)
 
     fun watch(onState: (InjuriesScreenState) -> Unit): Subscription {
@@ -115,6 +134,9 @@ class InjuriesScreenModel internal constructor(private val presenter: InjuriesPr
     fun delete(id: String) { active(id)?.let { presenter.delete(it) } }
 
     fun startHoliday() = presenter.startHoliday()
+
+    /** The switch "Injuries and comeback diary in the encrypted backup" (Android `setHealthInBackup`). */
+    fun setHealthInBackup(on: Boolean) = presenter.setHealthInBackup(on)
 
     /** The body map drawn in the form. */
     val bodyMap: BodyMapKit = BodyMapKit.KIT
@@ -163,8 +185,8 @@ class InjuriesScreenModel internal constructor(private val presenter: InjuriesPr
         val open = s.pauses.firstOrNull { it.endDay == null }
         return InjuriesScreenState(
             loading = s.loading,
-            active = s.active.map { i -> injury(i, Tx.t("tra_injury_since", Tx.s(i.startedOn))) },
-            past = s.past.take(20).map { i -> injury(i, Tx.plain("${i.startedOn} – ${i.resolvedOn}")) },
+            active = s.active.map { i -> injury(i, Tx.t("tra_injury_since", Tx.s(i.startedOn)), open = true) },
+            past = s.past.take(20).map { i -> injury(i, Tx.plain("${i.startedOn} – ${i.resolvedOn}"), open = false) },
             hasOpenPause = open != null,
             openPause = open?.let { p ->
                 InjuryPauseUi(p.id, Tx.t(pauseKey(p.reason)), Tx.t("tra_pause_open", Tx.k(pauseKey(p.reason)), Tx.s(p.startDay)))
@@ -176,17 +198,32 @@ class InjuriesScreenModel internal constructor(private val presenter: InjuriesPr
                 InjuryRegionUi(r.name, Tx.t(Tx.regionKey(r)), r.limb, r in PAUSING_REGIONS)
             },
             sides = InjurySide.entries.map { InjurySideUi(it.name, Tx.t(Tx.injurySideKey(it))) },
+            healthInBackup = s.healthInBackup,
         )
     }
 
-    private fun injury(i: Injury, since: TrText) = InjuryUi(
-        id = i.id,
-        title = Tx.join(listOfNotNull(Tx.t(Tx.regionKey(i.region)), i.side?.let { Tx.t(Tx.injurySideKey(it)) })),
-        detail = i.detail ?: "",
-        since = since,
-        severity = i.severity,
-        climbingPaused = i.climbingPaused,
-    )
+    private fun injury(i: Injury, since: TrText, open: Boolean): InjuryUi {
+        // The comeback plan of an open injury (Android `InjuryCard`, owner 2026-10-20).
+        val offers = open && ComebackContent.hasPlan(i.region)
+        val plan = if (offers) i.activePlan else null
+        return InjuryUi(
+            id = i.id,
+            title = Tx.join(listOfNotNull(Tx.t(Tx.regionKey(i.region)), i.side?.let { Tx.t(Tx.injurySideKey(it)) })),
+            detail = i.detail ?: "",
+            since = since,
+            severity = i.severity,
+            climbingPaused = i.climbingPaused,
+            comebackAvailable = offers,
+            comebackRunning = plan != null,
+            comebackLine = plan?.let { comebackLine(i, it) } ?: Tx.EMPTY,
+        )
+    }
+
+    /** Android: `cb_card_own` for the athlete's own plan, else `cb_card_stage` (stage, last stage, the stage's title). */
+    private fun comebackLine(i: Injury, p: ComebackPlan): TrText =
+        if (p.source == PlanSource.OWN) Tx.t("cb_card_own")
+        else Tx.t("cb_card_stage", Tx.i(p.stage), Tx.i(Comeback.ladder(i).stages.lastIndex),
+            Tx.s(Comeback.stage(i, p).title.of(language)))
 
     internal companion object {
         const val MAX_DETAIL = 120
