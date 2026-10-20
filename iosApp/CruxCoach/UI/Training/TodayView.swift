@@ -172,6 +172,11 @@ private struct TodayContent: View {
             guard pending, let undo = model.takeRestTodayUndo() else { return }
             show(L("trt_rest_today_done"), action: L("trf_undo")) { undo.restore() }
         }
+        .onChange(of: TrRender.text(ui.habitTakenText)) { _, text in
+            // The usual workout taken into the standard week: one line with "Undo" (owner 2026-10-19).
+            guard !text.isEmpty, let undo = model.takeHabitTakenUndo() else { return }
+            show(text, action: L("trf_undo")) { undo.restore() }
+        }
         .modifier(TodayDayPlannerSheet(core: core, isPresented: $planDays))
     }
 
@@ -471,6 +476,18 @@ private struct TodayContent: View {
                 TodayQuestionCard(text: TrRender.text(ui.levelOffer), no: L("trc_no"), yes: L("trc_yes")) { keep in
                     model.answerLevelOffer(keep: keep)
                 }
+            }
+            if !ui.habitOffer.isEmpty { habitOfferCard }
+        }
+    }
+
+    /// "You usually do … on Monday. Put it into your standard week?" (Android `HabitOfferCard`, owner 2026-10-19).
+    private var habitOfferCard: some View {
+        TodayQuestionCard(text: TrRender.text(ui.habitOffer), no: L("trhb_offer_no"), yes: L("trhb_offer_yes")) { yes in
+            if yes {
+                model.acceptHabitOffer()
+            } else {
+                model.declineHabitOffer()
             }
         }
     }

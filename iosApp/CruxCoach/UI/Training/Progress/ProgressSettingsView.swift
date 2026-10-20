@@ -431,7 +431,7 @@ private struct SettingsLearnedPage: View {
     private var model: AthleteSettingsScreenModel { host.model }
 
     private static let groups: [(String, String)] = [
-        ("weekday", "trlr_weekdays"), ("level", "trlr_levels"), ("kept", "trlr_kept"),
+        ("weekday", "trlr_weekdays"), ("habit", "trlr_habits"), ("level", "trlr_levels"), ("kept", "trlr_kept"),
         ("liked", "trlr_liked"), ("less", "trlr_less"), ("ownLoad", "trlr_own_loads"),
     ]
 
