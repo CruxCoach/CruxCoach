@@ -245,7 +245,79 @@ final class MainScreensUITests: XCTestCase {
         shot("11b-typed-workout-added")
     }
 
+    /// The comeback plan (Android c5a2665fb, FEAT-072): an injury → "Start comeback plan" → the notice heads the screen →
+    /// a stage agreed with a doctor or physio → "Before you start" confirmed → the running stage, the notice still on top.
+    func test12ComebackPlanFromAnInjury() throws {
+        try openTraining()
+        let more = app.buttons[Strings.l("trt_more_actions")]
+        XCTAssertTrue(more.waitForExistence(timeout: 30), "Today has no more-actions menu:\n\(screenTail())")
+        more.tap()
+        let report = app.buttons[Strings.l("trt_report_injury")]
+        XCTAssertTrue(report.waitForExistence(timeout: 10), "The menu has no \"Report injury\":\n\(screenTail())")
+        report.tap()
+        let add = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", Strings.l("tra_injury_add"))).firstMatch
+        XCTAssertTrue(add.waitForExistence(timeout: 15), "The injuries page has no add button:\n\(screenTail())")
+        add.tap()
+        // A finger injury (the sheet's default region) on the left hand.
+        let left = app.buttons[Strings.l("tr_side_left")]
+        if left.waitForExistence(timeout: 10) {
+            if !left.isHittable { app.swipeUp() }
+            left.tap()
+        }
+        let save = app.buttons[Strings.l("tr_action_save")]
+        XCTAssertTrue(save.waitForExistence(timeout: 10), "The injury sheet has no save button:\n\(screenTail())")
+        save.tap()
+
+        let startPlan = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", Strings.l("cb_start_plan"))).firstMatch
+        XCTAssertTrue(startPlan.waitForExistence(timeout: 15), "The injury card offers no comeback plan:\n\(screenTail())")
+        // The card carries the notice too.
+        let noticeText = Strings.l("cb_not_a_substitute")
+        XCTAssertTrue(app.staticTexts[noticeText].waitForExistence(timeout: 5), "The injury card has no notice:\n\(screenTail())")
+        shot("12a-injury-comeback-button")
+        if !startPlan.isHittable { app.swipeUp() }
+        startPlan.tap()
+
+        // The notice heads the comeback screen before anything else.
+        let notice = app.descendants(matching: .any).matching(identifier: "comeback_notice").firstMatch
+        XCTAssertTrue(notice.waitForExistence(timeout: 15), "The comeback screen has no notice:\n\(screenTail())")
+        XCTAssertTrue(app.staticTexts[noticeText].exists, "The notice text is missing:\n\(screenTail())")
+        shot("12b-comeback-setup")
+
+        let stage = app.descendants(matching: .any).matching(identifier: "comeback_stage_1").firstMatch
+        XCTAssertTrue(scrollTo(stage), "No stage 1 to pick:\n\(screenTail())")
+        stage.tap()
+        let agreed = app.descendants(matching: .any).matching(identifier: "comeback_agreed").firstMatch
+        XCTAssertTrue(scrollTo(agreed), "No \"agreed with my doctor or physio\":\n\(screenTail())")
+        agreed.tap()
+        let start = app.buttons["comeback_start"]
+        XCTAssertTrue(scrollTo(start), "No start button:\n\(screenTail())")
+        start.tap()
+
+        // "Before you start": confirmed with "in agreement with my doctor or physio".
+        let understood = app.buttons["comeback_understood"]
+        XCTAssertTrue(understood.waitForExistence(timeout: 10), "No \"Before you start\" confirmation:\n\(screenTail())")
+        shot("12c-comeback-before-start")
+        understood.tap()
+
+        let card = app.descendants(matching: .any).matching(identifier: "comeback_stage_card").firstMatch
+        XCTAssertTrue(scrollTo(card, timeout: 20), "The plan did not start (no stage card):\n\(screenTail())")
+        shot("12d-comeback-running")
+        // The notice stays at the top of the running plan.
+        for _ in 0..<6 where !notice.isHittable { app.swipeDown() }
+        XCTAssertTrue(notice.exists, "The running plan lost its notice:\n\(screenTail())")
+    }
+
     // MARK: - Helpers
+
+    /// Swipes up until [element] can be tapped (a long scrolling form), for up to [timeout] seconds.
+    private func scrollTo(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && element.isHittable { return true }
+            if element.exists { app.swipeUp() } else { _ = element.waitForExistence(timeout: 1); if !element.exists { app.swipeUp() } }
+        }
+        return element.exists && element.isHittable
+    }
 
     /// Browser → menu → training area, past the quick start.
     private func openTraining() throws {
