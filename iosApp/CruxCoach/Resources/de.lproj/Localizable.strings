@@ -902,7 +902,7 @@
 "cb_banner_not_checked" = "Noch nicht abgeklärt? Wir empfehlen, es von Ärztin, Arzt oder Physio anschauen zu lassen.";
 "cb_banner_signs" = "Du hast Warnzeichen angekreuzt: %1$@";
 "cb_banner_signs_checked" = "Du hast Warnzeichen angekreuzt und vermerkt, dass sie abgeklärt wurden.";
-"cb_before_text" = "Dieser Plan hilft dir, Belastung Schritt für Schritt wieder aufzubauen. Er ist kein Ersatz für den Arztbesuch und kann nicht sagen, ob deine Verletzung verheilt ist – nutz ihn nur in Absprache mit Ärztin, Arzt oder Physio.\n\n• Noch nicht abklären lassen? Wir empfehlen Ärztin, Arzt oder Physiotherapie – besonders nach einem Knall, Schwellung oder Bluterguss.\n• Du wählst die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast, und kannst sie jederzeit ändern. Hast du einen Plan von einer Fachperson, gilt der.\n• Deine Einträge bleiben auf diesem Handy.";
+"cb_before_text" = "Dieser Plan hilft dir, Belastung Schritt für Schritt wieder aufzubauen. Er ist kein Ersatz für den Arztbesuch und kann nicht sagen, ob deine Verletzung verheilt ist – nutz ihn nur in Absprache mit Ärztin, Arzt oder Physio.\n\n• Noch nicht abgeklärt? Wir empfehlen Ärztin, Arzt oder Physiotherapie – besonders nach einem Knall, Schwellung oder Bluterguss.\n• Du wählst die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast, und kannst sie jederzeit ändern. Hast du einen Plan von einer Fachperson, gilt der.\n• Deine Einträge bleiben auf diesem Handy.";
 "cb_before_title" = "Bevor du startest";
 "cb_call_112" = "112 anrufen";
 "cb_card_own" = "Comeback-Plan: Plan meiner Physio";
@@ -1008,11 +1008,15 @@
 "cb_reason_no_board" = "Deine Comeback-Stufe lässt das Board vorerst weg.";
 "cb_reason_plan" = "Dein Comeback-Plan läuft: Die verletzte Stelle trainierst du in seinen Einheiten.";
 "cb_reference_before" = "Vor der Verletzung: %1$@ kg";
+"cb_reference_edit" = "Referenzwert eintragen";
 "cb_reference_half" = "Halb aufgestellt (kg)";
 "cb_reference_hint" = "Einarmig am Blockheber, 10 s, etwa 20 mm, Gesamtgewicht. Am besten dein Wert von vor der Verletzung. Sonst die gesunde Hand einmal testen, wenn sie fit ist: nach dem Aufwärmen in 2,5-kg-Schritten steigern, ein 10-s-Halteversuch pro Stufe, 3 Minuten Pause – das letzte Gewicht, das du gerade noch 10 s hältst. Die verletzte Hand nie maximal testen.";
+"cb_reference_label" = "Referenzwert";
+"cb_reference_none" = "Noch keiner – die Prozentangaben der Kraft-Einheiten brauchen ihn.";
 "cb_reference_open" = "Offen (kg)";
 "cb_reference_other" = "Andere Hand: %1$@ kg";
 "cb_reference_use" = "Übernehmen";
+"cb_reference_values" = "Halb aufgestellt %1$@ kg · offen %2$@ kg";
 "cb_remind_week" = "In einer Woche erinnern";
 "cb_repeat_week" = "Woche wiederholen";
 "cb_restart" = "Neuen Plan starten";

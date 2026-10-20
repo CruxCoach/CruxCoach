@@ -1008,11 +1008,15 @@
 "cb_reason_no_board" = "Your comeback stage keeps the board out for now.";
 "cb_reason_plan" = "Your comeback plan is running: the injured spot is trained in its sessions.";
 "cb_reference_before" = "Before the injury: %1$@ kg";
+"cb_reference_edit" = "Enter reference value";
 "cb_reference_half" = "Half crimp (kg)";
 "cb_reference_hint" = "One-arm pick-up, 10 s, about 20 mm, total weight. Best: your value from before the injury. Otherwise test the healthy hand once if it's fit: after warming up, add 2.5 kg per step, one 10-s hold per step, 3 minutes rest – the last weight you just hold for 10 s. Never max-test the injured hand.";
+"cb_reference_label" = "Reference value";
+"cb_reference_none" = "None yet – the percentages of the strength sessions need one.";
 "cb_reference_open" = "Open hand (kg)";
 "cb_reference_other" = "Other hand: %1$@ kg";
 "cb_reference_use" = "Use";
+"cb_reference_values" = "Half crimp %1$@ kg · open hand %2$@ kg";
 "cb_remind_week" = "Remind me in a week";
 "cb_repeat_week" = "Repeat week";
 "cb_restart" = "Start a new plan";
