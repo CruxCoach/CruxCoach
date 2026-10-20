@@ -208,6 +208,43 @@ final class MainScreensUITests: XCTestCase {
         shot("10b-meal-review-half")
     }
 
+    /// A workout typed as free text with a circuit (Android 8d98b494f): the preview groups the circuit under one line
+    /// and "Add" puts both exercises into the new workout.
+    func test11TypedWorkoutWithACircuit() throws {
+        try openTraining()
+        let training = app.tabBars.buttons[Strings.l("tr_tab_training")]
+        XCTAssertTrue(training.waitForExistence(timeout: 10), "No training tab:\n\(screenTail())")
+        training.tap()
+        let new = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", Strings.l("trwo_new"))).firstMatch
+        XCTAssertTrue(new.waitForExistence(timeout: 20), "No \"New workout\":\n\(screenTail())")
+        new.tap()
+        let open = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", Strings.l("trwo_text_open"))).firstMatch
+        XCTAssertTrue(open.waitForExistence(timeout: 15), "The editor offers no typed entry:\n\(screenTail())")
+        if !open.isHittable { app.swipeUp() }
+        open.tap()
+        let field = app.descendants(matching: .any).matching(identifier: "workout_text_field").firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "No workout text field:\n\(screenTail())")
+        field.tap()
+        // English words: the simulator keyboard autocorrects in English (the same text is a JVM and a K/N test case).
+        field.typeText("Circuit 3 rounds: pull-ups 8, push-ups 15")
+
+        // "Circuit · 3 rounds · 0:15 / 1:30": the start of Android's circuit line (`trcirc_group`, `trcirc_rounds`).
+        let groupStart = (Strings.l("trcirc_group").components(separatedBy: "%1$@").first ?? "")
+            + Strings.l("trcirc_rounds.other").replacingOccurrences(of: "%ld", with: "3")
+        let header = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", groupStart)).firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 15), "No circuit line \"\(groupStart)\":\n\(screenTail())")
+        let add = app.buttons[Strings.l("trwo_text_apply.other").replacingOccurrences(of: "%ld", with: "2")]
+        XCTAssertTrue(add.waitForExistence(timeout: 10), "Not two exercises to add:\n\(screenTail())")
+        shot("11a-typed-workout-circuit")
+        add.tap()
+
+        XCTAssertTrue(eventually { !field.exists }, "The typed sheet stayed open:\n\(screenTail())")
+        // The catalogue's English name of pull.pull_up (exercise_catalog.json).
+        let pullUp = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Pull-Up")).firstMatch
+        XCTAssertTrue(pullUp.waitForExistence(timeout: 10), "The new workout has no pull-ups:\n\(screenTail())")
+        shot("11b-typed-workout-added")
+    }
+
     // MARK: - Helpers
 
     /// Browser → menu → training area, past the quick start.

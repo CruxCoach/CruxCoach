@@ -307,6 +307,7 @@ struct WorkoutTextSheet: View {
                     TextField(L("trwo_text_placeholder"), text: Binding(get: { ui.typedText }, set: { model.setTypedText(text: $0) }),
                               axis: .vertical)
                         .lineLimit(4...12)
+                        .accessibilityIdentifier("workout_text_field")
                 } header: {
                     Text(L("trwo_text_label"))
                 } footer: {

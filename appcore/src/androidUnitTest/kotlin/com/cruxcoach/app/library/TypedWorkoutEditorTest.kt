@@ -203,6 +203,24 @@ class TypedWorkoutEditorTest {
     }
 
     @Test
+    fun `the UI flow's English circuit reads as one circuit of two and adds both`() {
+        // The text MainScreensUITests.test11 types on the simulator (English keyboard).
+        val p = editor()
+        val read = p.type("Circuit 3 rounds: pull-ups 8, push-ups 15")
+        assertEquals(listOf("pull.pull_up", "push.push_up"), read.typed.lines.map { it.item.slug })
+        assertTrue(read.typed.lines.all { it.circuit == 1 && it.item.sets == 3 }, "${read.typed.lines.map { it.item }}")
+        val ui = RoutineEditorScreenModel(p, "en").currentState
+        assertEquals(listOf(true, false), ui.typedLines.map { it.startsCircuit })
+        assertEquals(3L, ui.typedLines[0].circuitHeader.args[0].nested!!.count)
+        assertEquals("trwo_text_apply", ui.typedApplyLabel.key)
+        assertEquals(2L, ui.typedApplyLabel.count)
+        p.applyTyped("en", " & ")
+        val s = p.state.await { it.items.size == 2 }
+        assertEquals(listOf(1, 1), s.items.map { it.item.circuit })
+        assertEquals("Pull-Up", s.catalog["pull.pull_up"]?.name("en"))
+    }
+
+    @Test
     fun `a text longer than the limit is cut like Android's`() {
         val p = editor()
         val long = "Klimmzüge 5x5 ".repeat(WorkoutTextParser.MAX_CHARS)
