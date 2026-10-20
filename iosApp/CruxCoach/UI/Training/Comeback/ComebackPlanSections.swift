@@ -76,12 +76,14 @@ private struct ComebackPromptCard: View {
     }
 }
 
-/// The stage the athlete agreed on: rules, pain rule, what to avoid, climbing, and "Change stage" (Android `StageCard`).
+/// The stage the athlete agreed on: rules, pain rule, what to avoid, climbing, the reference of a finger plan, and
+/// "Change stage" (Android `StageCard`).
 private struct ComebackStageCard: View {
     let model: ComebackScreenModel
     let ui: ComebackScreenState
 
-    @State private var picking = false
+    /// One sheet at a time: "Choose the stage" or "Enter reference value".
+    @State private var sheet: StageCardSheet?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -91,19 +93,43 @@ private struct ComebackStageCard: View {
             ComebackLabel(text: L("cb_climbing"))
             Text(ui.plan.climbing).font(.subheadline).fixedSize(horizontal: false, vertical: true)
             rules
-            Button(L("cb_change_stage")) { picking = true }
+            if ui.plan.showReference {
+                reference
+            }
+            Button(L("cb_change_stage")) { sheet = .stage }
                 .buttonStyle(.bordered)
                 .accessibilityIdentifier("comeback_change_stage")
         }
         .modifier(ComebackCard())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("comeback_stage_card")
-        .sheet(isPresented: $picking) {
-            ComebackStagePickerSheet(stages: ui.stages, current: ui.plan.stage, onCancel: { picking = false }) { index in
-                picking = false
-                model.moveToStage(index: index)
+        .sheet(item: $sheet) { which in
+            switch which {
+            case .stage:
+                ComebackStagePickerSheet(stages: ui.stages, current: ui.plan.stage, onCancel: { sheet = nil }) { index in
+                    sheet = nil
+                    model.moveToStage(index: index)
+                }
+            case .reference:
+                ComebackReferenceSheet(plan: ui.plan, onCancel: { sheet = nil }) { half, openHand, dominant in
+                    sheet = nil
+                    model.setReferences(half: half, open: openHand, dominant: dominant)
+                }
             }
         }
+    }
+
+    /// A finger plan started without a reference shows only percentages; it can be entered here later
+    /// (Android d4d050bee, device run 2026-10-20).
+    @ViewBuilder
+    private var reference: some View {
+        ComebackLabel(text: L("cb_reference_label"))
+        Text(tr: ui.plan.reference)
+            .font(.subheadline)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("comeback_reference")
+        Button(L("cb_reference_edit")) { sheet = .reference }
+            .accessibilityIdentifier("comeback_reference_edit")
     }
 
     private var heading: some View {
@@ -127,6 +153,66 @@ private struct ComebackStageCard: View {
             .accessibilityIdentifier("comeback_pain_rule")
         ComebackLabel(text: L("cb_next_when"))
         ComebackBullets(lines: ui.plan.nextWhen)
+    }
+}
+
+private enum StageCardSheet: String, Identifiable {
+    case stage
+    case reference
+
+    var id: String { rawValue }
+}
+
+/// "Enter reference value" (Android's reference dialog, d4d050bee): both grips with the suggestions from the
+/// logged history and the stronger hand; saved only with Save. An empty field is no value.
+private struct ComebackReferenceSheet: View {
+    let plan: ComebackPlanUi
+    let onCancel: () -> Void
+    let onSave: (String, String, Bool) -> Void
+
+    @State private var half: String
+    @State private var openHand: String
+    @State private var dominant: Bool
+
+    init(plan: ComebackPlanUi, onCancel: @escaping () -> Void, onSave: @escaping (String, String, Bool) -> Void) {
+        self.plan = plan
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _half = State(initialValue: plan.refHalf)
+        _openHand = State(initialValue: plan.refOpen)
+        _dominant = State(initialValue: plan.dominant)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    // The sheet covers the plan, so it carries the notice itself (owner rule: every comeback surface).
+                    ComebackNotice()
+                    Text(L("cb_reference_hint")).font(.caption).fixedSize(horizontal: false, vertical: true)
+                    ComebackReferenceField(label: L("cb_reference_half"), text: $half, tag: "comeback_ref_half",
+                                           hint: TrRender.text(plan.refHalfHint), value: plan.refHalfValue) { _ in }
+                    ComebackReferenceField(label: L("cb_reference_open"), text: $openHand, tag: "comeback_ref_open",
+                                           hint: TrRender.text(plan.refOpenHint), value: plan.refOpenValue) { _ in }
+                    ComebackCheckRow(label: L("cb_dominant"), checked: dominant, tag: "comeback_dominant") { on in
+                        dominant = on
+                    }
+                }
+                .padding(16)
+            }
+            .accessibilityIdentifier("comeback_reference_dialog")
+            .navigationTitle(L("cb_reference_label"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L("tr_action_cancel"), action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("tr_action_save")) { onSave(half, openHand, dominant) }
+                        .accessibilityIdentifier("comeback_reference_save")
+                }
+            }
+        }
     }
 }
 

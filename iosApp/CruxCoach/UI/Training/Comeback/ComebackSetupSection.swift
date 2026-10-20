@@ -130,8 +130,9 @@ struct ComebackSetupSection: View {
     }
 }
 
-/// A reference value in kg with the suggestion from the logged history ("Before the injury: 30.0 kg · Use").
-private struct ComebackReferenceField: View {
+/// A reference value in kg with the suggestion from the logged history ("Before the injury: 30.0 kg · Use"); in the
+/// setup and in "Enter reference value" of a running plan.
+struct ComebackReferenceField: View {
     let label: String
     @Binding var text: String
     let tag: String

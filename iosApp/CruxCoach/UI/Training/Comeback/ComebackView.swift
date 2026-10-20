@@ -59,30 +59,45 @@ private struct ComebackContent: View {
     }
 
     private var page: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                // The notice heads every state of the screen (owner rule).
-                ComebackNotice(onSigns: { model.openCheck() })
-                if ui.found {
-                    ComebackHeader(ui: ui)
-                    if ui.hasSigns {
-                        ComebackSignsBanner(text: TrRender.text(ui.signsBanner)) { alertOpen = true }
-                    }
-                    if !ui.under18.isEmpty {
-                        ComebackHintCard(title: "", text: ui.under18, tag: "comeback_under18", caution: true)
-                    }
-                    if ui.hasPlan {
-                        ComebackPlanSections(model: model, ui: ui, onShare: { share() }, onQuestions: { model.openCheck() })
-                    } else {
-                        ComebackSetupSection(model: model, ui: ui)
-                    }
-                } else if ui.loading {
-                    ProgressView().frame(maxWidth: .infinity)
-                }
+        ScrollViewReader { proxy in
+            ScrollView {
+                content
             }
-            .padding(16)
+            .accessibilityIdentifier("comeback_list")
+            .onChange(of: ui.planChanges) { _, now in
+                // A plan that just started or changed its stage opens at its top (Android d4d050bee: on the device
+                // the view stayed at "Change stage"). After the layout of the new content.
+                guard now >= 0 else { return }
+                DispatchQueue.main.async { proxy.scrollTo(Self.top, anchor: .top) }
+            }
         }
-        .accessibilityIdentifier("comeback_list")
+    }
+
+    private static let top = "comeback_top"
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // The notice heads every state of the screen (owner rule).
+            ComebackNotice(onSigns: { model.openCheck() })
+                .id(Self.top)
+            if ui.found {
+                ComebackHeader(ui: ui)
+                if ui.hasSigns {
+                    ComebackSignsBanner(text: TrRender.text(ui.signsBanner)) { alertOpen = true }
+                }
+                if !ui.under18.isEmpty {
+                    ComebackHintCard(title: "", text: ui.under18, tag: "comeback_under18", caution: true)
+                }
+                if ui.hasPlan {
+                    ComebackPlanSections(model: model, ui: ui, onShare: { share() }, onQuestions: { model.openCheck() })
+                } else {
+                    ComebackSetupSection(model: model, ui: ui)
+                }
+            } else if ui.loading {
+                ProgressView().frame(maxWidth: .infinity)
+            }
+        }
+        .padding(16)
     }
 
     /// "Summary for my appointment": Kotlin writes it with these words (it holds no user-visible strings).

@@ -144,7 +144,8 @@ struct ComebackCard: ViewModifier {
     }
 }
 
-/// A check box row (Android `CheckRow` / the questions' checkboxes).
+/// A check box row (Android `CheckRow` / the questions' checkboxes). The whole row is the button, so a tap on the
+/// text toggles it too (Android f871a82f1 made its rows do the same after the device recheck of 2026-10-20).
 struct ComebackCheckRow: View {
     let label: String
     let checked: Bool
