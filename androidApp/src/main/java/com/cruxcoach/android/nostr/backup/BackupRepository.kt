@@ -113,6 +113,11 @@ class BackupRepository @Inject constructor(
      * cannot guarantee the blob-before-pointer invariant; the worker
      * translates this into a retry.
      */
+    private fun backupCategories(): Set<CruxCoachBackup.Category> {
+        val health = runCatching { athleteService?.get()?.repo?.profile()?.healthInCloudBackup == true }.getOrDefault(false)
+        return if (health) CruxCoachBackup.Category.entries.toSet() else CruxCoachBackup.Category.DEFAULTS
+    }
+
     suspend fun performFullBackup(trigger: String = "manual") = pipelineMutex.withLock {
         val pubkey = nostrSigner.getPublicKeyHex()
         val deviceId = preferences.getOrCreateDeviceId()
@@ -123,8 +128,10 @@ class BackupRepository @Inject constructor(
 
         // 1-3 — serialize + compress + encrypt
         val dataKey = getOrCreateDataKey()
+        // Health data (injuries, comeback diary) only when the athlete switched it on (research/safety-regulation.md §3.6).
+        val categories = backupCategories()
         val json = CruxCoachBackup.export(
-            categories = CruxCoachBackup.Category.entries.toSet(),
+            categories = categories,
             userRepository = userRepository,
             bodyStatRepository = bodyStatRepository,
             workoutRepository = workoutRepository,
@@ -210,7 +217,7 @@ class BackupRepository @Inject constructor(
             previousSha256 = previousSha,
             updatedAt = System.currentTimeMillis() / 1000,
             deviceId = deviceId,
-            categories = CruxCoachBackup.Category.entries.map { it.name },
+            categories = categories.map { it.name },
         )
         publishPointerEvent(pointer, pubkey)
         preferences.setPreviousBlobSha256(sha256)

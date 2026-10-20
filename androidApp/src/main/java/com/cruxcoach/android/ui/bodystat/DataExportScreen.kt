@@ -215,6 +215,10 @@ fun DataExportScreen(
                                 checked = category in state.exportCategories,
                                 onCheckedChange = { viewModel.toggleExportCategory(category) }
                             )
+                            if (category in OPT_IN_CATEGORIES) {
+                                Text(stringResource(R.string.cb_backup_category_hint), style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 52.dp, bottom = 4.dp))
+                            }
                         }
                     }
                 }

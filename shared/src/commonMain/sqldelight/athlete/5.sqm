@@ -1,0 +1,20 @@
+-- Migration 5 → 6: comeback plan after an injury (owner 2026-10-20). The injury keeps the answers to the
+-- injury questions and its comeback plan as JSON; the diary gets its own table. Every build before the
+-- comeback plan shipped schema 5. Columns are appended in the order Wellbeing.sq lists them.
+
+ALTER TABLE injury ADD COLUMN check_json TEXT;
+
+ALTER TABLE injury ADD COLUMN plan_json TEXT;
+
+CREATE TABLE comeback_entry (
+    injury_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    morning_pain INTEGER,
+    pressure_pain INTEGER,
+    swelling INTEGER,
+    new_sign INTEGER NOT NULL DEFAULT 0,
+    sessions_json TEXT,
+    note TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (injury_id, day)
+);

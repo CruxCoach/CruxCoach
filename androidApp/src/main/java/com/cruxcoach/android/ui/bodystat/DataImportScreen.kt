@@ -368,4 +368,5 @@ private fun com.cruxcoach.data.CruxCoachBackup.ImportPreview.countLine(category:
         Category.CLIMB_NOTES -> pluralStringResource(R.plurals.import_result_notes, climbNotes, climbNotes)
         Category.TRAINING -> pluralStringResource(R.plurals.import_result_training, trainingRows, trainingRows)
         Category.FUEL -> pluralStringResource(R.plurals.import_result_fuel, fuelRows, fuelRows)
+        Category.HEALTH -> pluralStringResource(R.plurals.import_result_health, healthRows, healthRows)
     }

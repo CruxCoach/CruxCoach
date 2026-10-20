@@ -750,4 +750,66 @@ class TrainingUiReviewTest : AthleteScreenTest() {
             com.cruxcoach.android.ui.training.exercises.CustomExerciseScreen({}, {}, viewModel = vm)
         }
     }
+
+    // ── Comeback plan (owner 2026-10-20) ─────────────────────────────
+
+    private fun comebackInjury(stage: Int?): com.cruxcoach.athlete.model.Injury {
+        val today = service.today()
+        val base = com.cruxcoach.athlete.model.Injury("cb1", com.cruxcoach.athlete.model.InjuryRegion.FINGER,
+            com.cruxcoach.athlete.model.InjurySide.LEFT, "Ringfinger A2", 3, startedOn = today.minus(kotlinx.datetime.DatePeriod(days = 16)).toString(),
+            updatedAt = 1, check = com.cruxcoach.athlete.model.InjuryCheck(
+                onset = com.cruxcoach.athlete.model.InjuryOnset.SUDDEN, pop = com.cruxcoach.athlete.model.InjuryPop.FELT,
+                swelling = com.cruxcoach.athlete.model.InjurySwelling.MILD, fingers = setOf(com.cruxcoach.athlete.model.Finger.RING),
+                checked = com.cruxcoach.athlete.model.ProfessionalCheck.IMAGING, finding = com.cruxcoach.athlete.model.InjuryFinding.PULLEY_PARTIAL,
+                checkedOn = today.minus(kotlinx.datetime.DatePeriod(days = 14)).toString(), answeredOn = today.toString()))
+        val injury = if (stage == null) base else com.cruxcoach.athlete.logic.Comeback.start(base,
+            com.cruxcoach.athlete.model.PlanSource.CRUXCOACH, stage, today.minus(kotlinx.datetime.DatePeriod(days = 8)), true, false,
+            mapOf(com.cruxcoach.athlete.model.Grip.HALF_CRIMP.name to 30.0, com.cruxcoach.athlete.model.Grip.OPEN_HAND.name to 32.0), 1)
+        repo.saveInjury(injury)
+        if (stage != null) (0..9).forEach { d ->
+            repo.saveComebackEntry(com.cruxcoach.athlete.model.ComebackEntry("cb1", today.minus(kotlinx.datetime.DatePeriod(days = d)).toString(),
+                morningPain = if (d > 6) 3 else 1, pressurePain = (2 + d / 2).coerceAtMost(5),
+                sessions = listOf(com.cruxcoach.athlete.model.ComebackSessionLog(com.cruxcoach.athlete.model.ComebackSessionKind.TENDON, 1, at = 1)), updatedAt = 1))
+        }
+        return injury
+    }
+
+    private fun comebackScreen(name: String, stage: Int?, scrollTag: String? = null) {
+        comebackInjury(stage)
+        val vm = loaded(com.cruxcoach.android.ui.training.athlete.comeback.ComebackViewModel(service,
+            androidx.lifecycle.SavedStateHandle(mapOf(com.cruxcoach.android.ui.training.athlete.comeback.ComebackViewModel.ARG_INJURY to "cb1"))))
+        shoot(name, {
+            waitForTag("comeback_notice")
+            scrollTag?.let { scrollTo("comeback_list", it) }
+        }) {
+            com.cruxcoach.android.ui.training.athlete.comeback.ComebackScreen(onBack = {}, onOpenPlayer = {}, viewModel = vm)
+        }
+    }
+
+    @Test fun comebackSetup() = comebackScreen("comeback-setup", null)
+    @Test fun comebackSetupStages() = comebackScreen("comeback-setup-stages", null, "comeback_start")
+    @Test fun comebackPlan() = comebackScreen("comeback-plan", 2)
+    @Test fun comebackPlanSessions() = comebackScreen("comeback-plan-sessions", 2, "comeback_session_1")
+    @Test fun comebackPlanDiary() = comebackScreen("comeback-plan-diary", 2, "comeback_chart")
+    @Test fun comebackPlanInfo() = comebackScreen("comeback-plan-info", 2, "comeback_export")
+
+    @Test
+    fun comebackQuestions() {
+        val injury = comebackInjury(null)
+        shoot("comeback-questions", { waitForTag("comeback_check_list") }) {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                com.cruxcoach.android.ui.training.athlete.comeback.InjuryCheckSheet(injury, service.today(), onDismiss = {}, onSave = {})
+            }
+        }
+    }
+
+    @Test
+    fun comebackToday() {
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, checkinEnabled = false) }
+        comebackInjury(2)
+        val vm = loaded(com.cruxcoach.android.ui.training.today.TodayViewModel(service))
+        shoot("comeback-today", { waitForTag("today_comeback_cb1") }) {
+            com.cruxcoach.android.ui.training.today.TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm)
+        }
+    }
 }

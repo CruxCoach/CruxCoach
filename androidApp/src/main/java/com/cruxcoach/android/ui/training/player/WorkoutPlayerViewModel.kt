@@ -837,7 +837,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
 
     // ── Finish ───────────────────────────────────────────────────────
 
-    fun finish(sessionRpe: Int?, notes: String?) {
+    fun finish(sessionRpe: Int?, notes: String?, comebackPain: Int? = null) {
         val workout = _state.value.workout ?: return
         val id = workout.id
         val sets = _state.value.sets
@@ -853,6 +853,10 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
                 sessionRpe?.let { service.logSuggestion(SuggestionEventKind.FEEDBACK, "session_rpe", emptyList(), workoutId = id, value = it.toDouble()) }
             }
             service.finishWorkout(id, sessionRpe, notes)
+            // A comeback session goes into the plan's diary with its highest pain (owner 2026-10-20).
+            if (com.cruxcoach.athlete.logic.Comeback.parseRoutineId(workout.routineId) != null) {
+                runCatching { com.cruxcoach.android.athlete.ComebackService(service).logSession(id, comebackPain) }
+            }
             _events.emit(PlayerEvent.Finished(id))
         }
     }

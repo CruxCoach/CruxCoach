@@ -46,6 +46,7 @@ class ClimbingTileTest : AthleteScreenTest() {
 
         service.saveClimbingDay(entry("gym", 60))
         compose.waitUntil(WAIT_MS) { vm.state.value.climbingEntriesToday == listOf("gym") }
+        compose.waitForIdle()
         scrollTo("today_list", hasTestTag("today_log_climbing"))
         click("today_log_climbing")
         compose.waitUntil(WAIT_MS) { taps.size == 2 }
@@ -53,6 +54,8 @@ class ClimbingTileTest : AthleteScreenTest() {
 
         service.saveClimbingDay(entry("evening", 45))
         compose.waitUntil(WAIT_MS) { vm.state.value.climbingEntriesToday.size == 2 }
+        // The tile reads the new state only after the next composition (full-suite run 2026-10-20 clicked the old one).
+        compose.waitForIdle()
         scrollTo("today_list", hasTestTag("today_log_climbing"))
         click("today_log_climbing")
         compose.waitUntil(WAIT_MS) { taps.size == 3 }

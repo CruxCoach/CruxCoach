@@ -288,8 +288,14 @@ data class Injury(
     val resolvedOn: String? = null,
     val note: String? = null,
     val updatedAt: Long = 0,
+    /** Answers to "Fragen zur Verletzung" ([InjuryCheck]): what the athlete entered, never a diagnosis. */
+    val check: InjuryCheck? = null,
+    /** The comeback plan for this injury, if one was started. */
+    val plan: ComebackPlan? = null,
 ) {
     val isActive: Boolean get() = resolvedOn == null
+    /** A comeback plan that is running. */
+    val activePlan: ComebackPlan? get() = plan?.takeIf { it.isActive && isActive }
 }
 
 @Serializable
@@ -348,6 +354,8 @@ data class AthleteProfile(
     val showCalories: Boolean = true,
     /** Write logged meals and water to Health Connect (FEAT-069); needs its two write permissions. */
     val healthConnectExport: Boolean = false,
+    /** Injuries and the comeback diary also go into the automatic encrypted backup (off: this phone only). */
+    val healthInCloudBackup: Boolean = false,
     val proteinPerKg: Double = 1.6,
     val timerSound: Boolean = true,
     val timerVibration: Boolean = true,

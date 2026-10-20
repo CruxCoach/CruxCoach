@@ -48,6 +48,8 @@ data class InjuriesState(
     val active: List<Injury> = emptyList(),
     val past: List<Injury> = emptyList(),
     val pauses: List<PausePeriod> = emptyList(),
+    /** Injuries and the comeback diary go into the automatic encrypted backup too. */
+    val healthInBackup: Boolean = false,
 )
 
 @HiltViewModel
@@ -58,8 +60,8 @@ class InjuriesViewModel @Inject constructor(private val service: AthleteService)
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            combine(service.repo.observeActiveInjuries(), service.repo.observePauses()) { active, pauses ->
-                InjuriesState(active, service.repo.allInjuries().filter { !it.isActive }, pauses)
+            combine(service.repo.observeActiveInjuries(), service.repo.observePauses(), service.repo.observeProfile()) { active, pauses, profile ->
+                InjuriesState(active, service.repo.allInjuries().filter { !it.isActive }, pauses, profile.healthInCloudBackup)
             }.collect { _state.value = it }
         }
     }
@@ -86,6 +88,8 @@ class InjuriesViewModel @Inject constructor(private val service: AthleteService)
 
     fun delete(injury: Injury) = io { service.repo.deleteInjury(injury.id) }
 
+    fun setHealthInBackup(on: Boolean) = io { service.repo.updateProfile { it.copy(healthInCloudBackup = on) } }
+
     fun startHoliday() = io {
         val repo = service.repo
         if (repo.openPause() == null) repo.savePause(PausePeriod(repo.newId(), PauseReason.HOLIDAY, service.today().toString()))
@@ -98,7 +102,12 @@ class InjuriesViewModel @Inject constructor(private val service: AthleteService)
 }
 
 @Composable
-fun InjuriesScreen(onBack: () -> Unit, onOpenRoutines: () -> Unit, viewModel: InjuriesViewModel = hiltViewModel()) {
+fun InjuriesScreen(
+    onBack: () -> Unit,
+    onOpenRoutines: () -> Unit,
+    viewModel: InjuriesViewModel = hiltViewModel(),
+    onOpenComeback: (String) -> Unit = {},
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var adding by rememberSaveable { mutableStateOf(false) }
     TrainingScaffold(
@@ -124,7 +133,7 @@ fun InjuriesScreen(onBack: () -> Unit, onOpenRoutines: () -> Unit, viewModel: In
             if (state.active.isEmpty()) item { EmptyHint(stringResource(R.string.tra_injuries_none)) }
             items(state.active, key = { it.id }) { injury ->
                 InjuryCard(injury, onUpdate = viewModel::update, onResolve = { viewModel.resolve(injury) },
-                    onDelete = { viewModel.delete(injury) })
+                    onDelete = { viewModel.delete(injury) }, onOpenComeback = { onOpenComeback(injury.id) })
             }
             if (state.active.isNotEmpty()) {
                 item {
@@ -166,6 +175,17 @@ fun InjuriesScreen(onBack: () -> Unit, onOpenRoutines: () -> Unit, viewModel: In
                     )
                 }
             }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.cb_backup_cloud), style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.cb_backup_cloud_hint), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = state.healthInBackup, onCheckedChange = viewModel::setHealthInBackup,
+                        modifier = Modifier.testTag("injury_health_backup"))
+                }
+            }
             item { Spacer(Modifier.height(80.dp)) }
         }
     }
@@ -184,7 +204,7 @@ private fun pauseReasonLabel(r: PauseReason): String = stringResource(when (r) {
 })
 
 @Composable
-private fun InjuryCard(injury: Injury, onUpdate: (Injury) -> Unit, onResolve: () -> Unit, onDelete: () -> Unit) {
+private fun InjuryCard(injury: Injury, onUpdate: (Injury) -> Unit, onResolve: () -> Unit, onDelete: () -> Unit, onOpenComeback: () -> Unit) {
     var severity by remember(injury.id, injury.severity) { mutableFloatStateOf(injury.severity.toFloat()) }
     Card(
         colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.cautionContainer,
@@ -207,6 +227,24 @@ private fun InjuryCard(injury: Injury, onUpdate: (Injury) -> Unit, onResolve: ()
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.tra_injury_pause_climbing), modifier = Modifier.weight(1f))
                 Switch(checked = injury.climbingPaused, onCheckedChange = { onUpdate(injury.copy(climbingPaused = it)) })
+            }
+            // The comeback plan of this injury (owner 2026-10-20), with the notice it always carries.
+            if (com.cruxcoach.athlete.logic.ComebackContent.hasPlan(injury.region)) {
+                val plan = injury.activePlan
+                plan?.let { p ->
+                    Text(
+                        if (p.source == com.cruxcoach.athlete.model.PlanSource.OWN) stringResource(R.string.cb_card_own)
+                        else com.cruxcoach.athlete.logic.Comeback.ladder(injury).let { l ->
+                            stringResource(R.string.cb_card_stage, p.stage, l.stages.lastIndex,
+                                com.cruxcoach.athlete.logic.Comeback.stage(injury, p).title.of(com.cruxcoach.android.ui.training.catalogLanguage()))
+                        },
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                FilledTonalButton(onClick = onOpenComeback, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("injury_comeback_${injury.id}")) {
+                    Text(stringResource(if (plan != null) R.string.cb_open_plan else R.string.cb_start_plan))
+                }
+                Text(stringResource(R.string.cb_not_a_substitute), style = MaterialTheme.typography.bodySmall)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onResolve, modifier = Modifier.testTag("injury_resolve_${injury.id}")) {
