@@ -916,7 +916,7 @@ class SessionSuggesterTest {
     private val weekdayHabit = PreferenceLearning.Habit("push", PreferenceLearning.HabitKind.WEEKDAY, 1, 3)
 
     @Test
-    fun `the usual workout is today's suggestion on a free day, as the athlete does it`() {
+    fun `the usual workout is today's suggestion on a free day as the athlete does it`() {
         val s = SessionSuggester.suggest(input(routines = listOf(pushRoutine)).copy(habit = weekdayHabit))
         assertEquals(SuggestionFocus.PLANNED, s.focus, "${s.reasons}")
         assertEquals(SuggestionReason.USUAL_ROUTINE_WEEKDAY, s.reasons.first())
@@ -929,7 +929,7 @@ class SessionSuggesterTest {
     }
 
     @Test
-    fun `the plan and today's own choice come first, a learned kind does not`() {
+    fun `the plan and today's own choice come first a learned kind does not`() {
         val planned = profile.copy(weekPlan = mapOf(1 to "builtin:" + BuiltinRoutines.FINGER_BASICS))
         val withPlan = SessionSuggester.suggest(input(profile = planned, routines = listOf(pushRoutine)).copy(habit = weekdayHabit))
         assertEquals(SuggestionReason.WEEK_PLAN, withPlan.reasons.first())

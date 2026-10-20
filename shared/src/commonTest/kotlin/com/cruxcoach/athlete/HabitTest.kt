@@ -33,7 +33,7 @@ class HabitTest {
     }
 
     @Test
-    fun `once is no habit, and the last monday must have been that workout`() {
+    fun `once is no habit and the last monday must have been that workout`() {
         assertNull(PreferenceLearning.habit(listOf(w(7, "push"), w(3, "pull")), monday, isRoutine))
         assertNull(PreferenceLearning.habit(listOf(w(7, "suggestion:2026-10-12"), w(14, "push"), w(21, "push")), monday, isRoutine),
             "last Monday the athlete followed the coach")
@@ -58,7 +58,7 @@ class HabitTest {
     }
 
     @Test
-    fun `forgetting the habit, the weekday or everything starts afresh`() {
+    fun `forgetting the habit the weekday or everything starts afresh`() {
         val list = listOf(w(7, "push"), w(14, "push"))
         val after = list.maxOf { it.startedAt } + 1
         assertNull(PreferenceLearning.habit(list, monday, isRoutine, mapOf(PreferenceLearning.habitKey("push") to after)))
