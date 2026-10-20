@@ -68,7 +68,15 @@ class HabitOfferTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) { repo.profile().weekPlan[iso] == null }
         compose.waitUntil(WAIT_MS) { vm.state.value.suggestion?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE_WEEKDAY }
         // "Another suggestion" is always possible: the coach builds something else today.
+        // The Undo's own refresh can still be on its way under load (publisher run 2026-10-20 timed out here): let the
+        // screen settle first, and ask once more if the card did not change.
+        compose.waitForIdle()
         vm.nextSuggestion()
+        val changed = runCatching { compose.waitUntil(15_000) { vm.state.value.suggestion?.plannedEntry != routine.id } }.isSuccess
+        if (!changed) {
+            compose.waitUntil(WAIT_MS) { vm.state.value.suggestion?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE_WEEKDAY }
+            vm.nextSuggestion()
+        }
         compose.waitUntil(WAIT_MS) { vm.state.value.suggestion?.plannedEntry != routine.id }
         assertTrue(vm.state.value.suggestion!!.reasons.none { it == SuggestionReason.USUAL_ROUTINE_WEEKDAY })
     }
