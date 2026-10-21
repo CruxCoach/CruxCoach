@@ -1,72 +1,32 @@
-# CruxCoach 0.2.3 — 2026-09-26
+# CruxCoach 0.2.4 — Unreleased
 
-This release brings beta videos, quicker board navigation, a searchable board map, clearer statistics and more reliable browsing.
+This release connects the newest Kilter boards, gets the Kilter logbook upload working again, and brings a reworked board map and hold cleaning.
 
 ## Highlights
-- **A guided first session.** Connect your board during setup, choose catalogue
-  downloads and optionally import your logbook. A skippable tour then highlights
-  the real app controls, Quicklog and your saved logbook entry. Replay is available
-  from the app menu behind the logo.
-- **Angle selection at hand.** Change the board angle directly in the single-row
-  browser header. The filter screen keeps difficulty, status and sorting together,
-  with additional restrictions available when needed.
-- **Exclude sent problems directly.** The filter switch selects unsent problems;
-  status chips stay synchronized and show checkmarks for your selection.
-- **Clearer MoonBoard markings.** Light and dark outlines make the coloured rings
-  easier to see, including on the blue holds of the MoonBoard 2024.
-- **Statistics count problems.** Flash, Sent and Attempt each count distinct problems
-  using the best outcome in the selected period. Ten unsuccessful tries on one
-  problem count as one attempted problem. Sending it moves it into Sent; a true
-  flash takes priority. Total attempts remain available as training volume.
-- **Filter totals match the list.** Counts follow the same board, status, source,
-  hold and visibility restrictions as browsing. Matching problems beyond the first
-  50 remain available.
-- **More reliable random browsing.** Random search keeps one shuffled result set
-  while you scroll, fixing crashes caused by repeated problem IDs.
-- **Compact board navigation.** Switch boards from the header, open the main menu
-  from the app logo and reach extra actions through an overflow menu on narrow screens.
-- **Beta videos close at hand.** Open videos from the climb detail card. Optional
-  beta media synchronizes separately from the board catalogue; previews are verified
-  before caching and fall back gracefully when a mirror is unavailable.
-- **A Kilter logbook that matches Kilter.** Imported entries now find their problem
-  whatever spelling the catalogue stores it under, show the grade of the angle they
-  were climbed at, render on their own board and keep their sequence. Deleting an
-  entry removes it on Kilter too, and a deletion made offline is carried out later.
-  Existing entries are corrected on the next sync.
-
-- **Find boards on the map.** Search the board map for gyms, cities and boards and
-  open a venue to see every board installed there.
-- **Download only what you climb.** Choose which board catalogues to keep on your
-  phone during setup or later in Settings → Board catalogs.
-- **Community climbs on every board.** CruxCoach community climbs show their holds,
-  fit your board size and light the wall even for boards whose catalogue you did
-  not download.
-- **Training lists play their plan.** Generated lists start with their tries and
-  rests; the generator plans from one grade range with a rising warm-up.
-- **Share boards nearby, your choice.** The receiver picks which of the sender's
-  boards to take, right on the first setup screen if needed.
+- **Newer Kilter boards connect.** Kilter boards with the controller Kilter has
+  shipped since mid-2025 appear only as “Kilter Board”. CruxCoach now finds and
+  lights them; before, the Bluetooth search kept spinning. A search that stays
+  empty now says what to check.
+- **The Kilter logbook upload works again.** It no longer stalls on one entry,
+  sends each climb under the id Kilter stores, never uploads an entry twice and
+  tries again by itself after a timeout or a lost connection. Entries from an
+  Aurora export stay local unless you choose to upload them. Settings → Kilter →
+  “Show entries” lists every entry Kilter did not take, with the reason.
+- **A board map that is easier to use.** Every place shows its board families,
+  a list at the bottom shows the places in view, and “My location” frames you
+  with the nearest boards. “Gyms near me” finds your gym without typing its
+  name. Location is asked for only when you tap one of them and stays on the
+  phone.
+- **Clean holds.** The logbook menu lights the holds of today's problems on the
+  connected board, so you can brush them before you leave.
 
 ## Other improvements
-- Board-aware quick logging and playlist generation, with candidate pools for each
-  planned grade band and a usable initial plan while the logbook profile loads.
-- More consistent MoonBoard links and logged status across legacy problem IDs.
-- Extra space below playlists keeps the add button clear of the last card's actions.
-- Stronger validation and resource limits for local sharing, relay messages and
-  downloaded app updates.
-- About lists the open-source licenses and links the privacy notice and source code.
-- Developer replies show unread badges and name their thread in notifications.
-- Logs of CruxCoach community climbs stay out of the Kilter upload.
+- A board switch takes effect at once, even while a catalogue downloads.
+- A board session continues after a rest timer runs out instead of staying paused.
+- Climbs set on a larger board (for example 16 x 12) are shown on their own size
+  instead of with clipped holds.
+- A confirmed catalogue download starts for every board family.
+- The updater's built-in fallback also checks GitHub.
 
 ## Android compatibility
-CruxCoach 0.2.3 requires **Android 9 or newer**. As announced in the previous release,
-0.2.2 is the last version for Android 8.0 and 8.1.
-
-On Android 8, CruxCoach 0.2.2 already knows this. Its updater stops before it even
-checks and tells you once that this device keeps the version it has. Nothing is
-downloaded and nothing changes: the app stays fully usable and your data is untouched.
-
-If you are on Android 8 and still running 0.2.1 or older, update to **0.2.2** rather
-than to this release — 0.2.3 cannot install there. An older updater may offer it
-anyway; Android then refuses the package before installing it, which leaves your
-existing app and its data exactly as they were. Moving to a newer device: install
-CruxCoach there and restore your backup.
+CruxCoach 0.2.4 requires **Android 9 or newer**, like 0.2.3.
