@@ -56,7 +56,8 @@ data class DiscoveredBoard(
 /**
  * Scans for Aurora Climbing boards + MoonBoard via BLE.
  * Scans without a UUID filter; identifies boards by advertising name —
- * Aurora boards as "BoardName#serial@apiLevel" / "BoardName@apiLevel",
+ * Aurora boards as "BoardName#serial@apiLevel" / "BoardName@apiLevel" or,
+ * for Kilter-built boxes, a bare "Kilter Board" (see [parseAuroraName]);
  * MoonBoard as a bare "MoonBoard…" name (FEAT-027).
  */
 class BoardBleScanner(private val context: Context) {
@@ -152,7 +153,9 @@ class BoardBleScanner(private val context: Context) {
                     isCruxRelay = isRelay,
                 )
             } else {
-                val parsed = parseBoardName(boardName) ?: return
+                val advertisesAuroraService = result.scanRecord?.serviceUuids
+                    ?.any { it.uuid == BoardBleUuids.ADVERTISING_SERVICE } == true
+                val parsed = parseAuroraName(boardName, advertisesAuroraService) ?: return
                 DiscoveredBoard(
                     displayName = parsed.first,
                     serial = parsed.second,
@@ -379,16 +382,45 @@ class BoardBleScanner(private val context: Context) {
      * default; the Aurora BLE transport is identical across the family, so a
      * misread only mis-selects the LED map/colour table, never the protocol).
      */
-    fun auroraBrandFromName(displayName: String): BoardBrand {
-        val n = displayName.lowercase().replace(" ", "").replace("-", "")
+    fun auroraBrandFromName(displayName: String): BoardBrand =
+        auroraFamilyOrNull(displayName) ?: BoardBrand.KILTER
+
+    /** The Aurora family a name starts with, or null for any other name. */
+    private fun auroraFamilyOrNull(name: String): BoardBrand? {
+        val n = name.lowercase().replace(" ", "").replace("-", "")
         return when {
             n.startsWith("tension") -> BoardBrand.TENSION
             n.startsWith("grasshopper") -> BoardBrand.GRASSHOPPER
             n.startsWith("decoy") -> BoardBrand.DECOY
             n.startsWith("soill") -> BoardBrand.SOILL
             n.startsWith("touchstone") -> BoardBrand.TOUCHSTONE
-            else -> BoardBrand.KILTER
+            n.startsWith("kilter") -> BoardBrand.KILTER
+            else -> null
         }
+    }
+
+    /**
+     * Parse an Aurora-protocol board name, including the bare form.
+     *
+     * Kilter-built LED boxes (shipped since mid-2025) advertise only
+     * "Kilter Board", with no #serial and no @apiLevel. [parseBoardName]
+     * cannot read that, so such boards never showed up and the scan spun
+     * forever. Because the scan has no UUID filter, a bare name counts only
+     * with evidence that it is a board: it starts with an Aurora family name,
+     * or the advertisement carries the Aurora board service.
+     *
+     * Without "@apiLevel" the board speaks API 2, the default of both the
+     * Aurora and the Kilter app.
+     */
+    fun parseAuroraName(
+        name: String,
+        advertisesAuroraService: Boolean,
+    ): Triple<String, String, Int>? {
+        parseBoardName(name)?.let { return it }
+        if (!advertisesAuroraService && auroraFamilyOrNull(name) == null) return null
+        val displayName = name.substringBefore('@').trim()
+        if (displayName.isEmpty()) return null
+        return Triple(displayName, "", 2)
     }
 
     /**

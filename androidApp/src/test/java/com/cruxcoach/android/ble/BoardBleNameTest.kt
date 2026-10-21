@@ -6,6 +6,7 @@ import io.mockk.mockk
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -49,5 +50,37 @@ class BoardBleNameTest {
     fun auroraBrandFromName_defaults_to_kilter_for_kilter_and_unknown_names() {
         assertEquals(BoardBrand.KILTER, scanner.auroraBrandFromName("Kilter Board"))
         assertEquals(BoardBrand.KILTER, scanner.auroraBrandFromName("Some Unknown Board"))
+    }
+
+    @Test
+    fun parseAuroraName_accepts_the_bare_name_of_kilter_built_boxes_as_api_2() {
+        // Kilter-built boxes (since mid-2025) advertise no #serial and no @apiLevel.
+        assertEquals(Triple("Kilter Board", "", 2), scanner.parseAuroraName("Kilter Board", false))
+        assertEquals(Triple("Tension Board", "", 2), scanner.parseAuroraName("Tension Board", false))
+        assertEquals(Triple("So iLL Board", "", 2), scanner.parseAuroraName("So iLL Board ", false))
+        assertEquals(BoardBrand.KILTER, scanner.auroraBrandFromName("Kilter Board"))
+    }
+
+    @Test
+    fun parseAuroraName_keeps_the_suffixed_formats_unchanged() {
+        assertEquals(Triple("Kilter Board", "751737", 3), scanner.parseAuroraName("Kilter Board#751737@3", false))
+        assertEquals(Triple("Kilter Board", "751737", 2), scanner.parseAuroraName("Kilter Board#751737", false))
+        assertEquals(Triple("Kilter Board", "", 3), scanner.parseAuroraName("Kilter Board@3", false))
+    }
+
+    @Test
+    fun parseAuroraName_needs_a_family_name_or_the_aurora_service_for_a_bare_name() {
+        // The scan has no UUID filter: headphones and watches must not become boards.
+        assertNull(scanner.parseAuroraName("Galaxy Buds2", false))
+        assertNull(scanner.parseAuroraName("Kilt", false))
+        assertEquals(Triple("LED Box", "", 2), scanner.parseAuroraName("LED Box", true))
+        assertNull(scanner.parseAuroraName("   ", true))
+    }
+
+    @Test
+    fun parseAuroraName_falls_back_to_api_2_for_an_unreadable_api_level() {
+        assertNull(scanner.parseBoardName("Kilter Board@x"))
+        assertEquals(Triple("Kilter Board", "", 2), scanner.parseAuroraName("Kilter Board@x", false))
+        assertNull(scanner.parseAuroraName("Headset@x", false))
     }
 }

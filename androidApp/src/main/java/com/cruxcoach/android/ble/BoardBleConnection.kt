@@ -383,6 +383,30 @@ internal fun quantumRefreshFailureRequiresDisconnect(
     connectedBrand: BoardBrand?,
 ): Boolean = currentGattMatches && connectedBrand == BoardBrand.QUANTUM
 
+/** Gap the Kilter app leaves between chunks to a write-only LED box. */
+internal const val AURORA_WRITE_ONLY_CHUNK_DELAY_MS = 100L
+
+/**
+ * Pause between Aurora chunks, decided by the controller's RX characteristic.
+ *
+ * The Kilter-built LED box (since mid-2025, advertised as a bare "Kilter
+ * Board") accepts write-with-response only, and the Kilter app writes it in
+ * 20-byte chunks 100 ms apart. A write ack says the radio got the chunk, not
+ * that the box's parser has consumed it (the MoonBoard UART bridge drops
+ * fragments that arrive too fast, see MOONBOARD_UART_INTER_CHUNK_DELAY_MS).
+ * Boxes that offer write-without-response keep the unpaced path.
+ */
+internal fun auroraWritePacingMs(connectedBrand: BoardBrand?, characteristicProperties: Int): Long =
+    if (connectedBrand != null &&
+        connectedBrand != BoardBrand.QUANTUM &&
+        connectedBrand != BoardBrand.MOONBOARD &&
+        (characteristicProperties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) == 0
+    ) {
+        AURORA_WRITE_ONLY_CHUNK_DELAY_MS
+    } else {
+        0L
+    }
+
 internal fun isQuantumProjectionConfirmed(
     state: QuantumControllerState,
     playersBefore: List<QuantumActivePlayer>,
@@ -505,6 +529,8 @@ class BoardBleConnection(
     private var quantumMtuGatt: BluetoothGatt? = null
     private var quantumMtu: Int = DEFAULT_ATT_MTU
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
+    /** Default gap between chunks for this link; see [auroraWritePacingMs]. */
+    private var writePacingMs = 0L
     private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -1147,6 +1173,12 @@ class BoardBleConnection(
                         it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
                     }
                 } else service?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
+                writePacingMs = writeCharacteristic?.let {
+                    auroraWritePacingMs(_connectedBoardBrand.value, it.properties)
+                } ?: 0L
+                if (writePacingMs > 0L) {
+                    Log.i(TAG, "RX characteristic is write-only (properties=${writeCharacteristic?.properties}); pacing chunks by ${writePacingMs}ms")
+                }
                 if (writeCharacteristic != null) {
                     if (_connectedBoardBrand.value == BoardBrand.QUANTUM && Build.VERSION.SDK_INT >= 21) {
                         // Match eWalls 2.0.14: finish service retrieval first,
@@ -1415,6 +1447,7 @@ class BoardBleConnection(
         _connectedBoardDescriptor.value = null
         gatt = null
         writeCharacteristic = null
+        writePacingMs = 0L
     }
 
     /**
@@ -1566,6 +1599,7 @@ class BoardBleConnection(
         }
         gatt = null
         writeCharacteristic = null
+        writePacingMs = 0L
         val board = currentBoard ?: run { finalizeDisconnect(BluetoothGatt.GATT_FAILURE); return }
         connectJob = scope.launch {
             delay(CONNECT_RETRY_DELAY_MS)
@@ -1704,7 +1738,7 @@ class BoardBleConnection(
     @SuppressLint("MissingPermission")
     private suspend fun writeChunks(
         chunks: List<ByteArray>,
-        interChunkDelayMs: Long = 0L,
+        interChunkDelayMs: Long = writePacingMs,
     ): Boolean {
         val characteristic = writeCharacteristic ?: return false
         val currentGatt = gatt ?: return false
@@ -2319,6 +2353,7 @@ class BoardBleConnection(
         gatt = null
         if (activeGatt != null) userDisconnectGatt = activeGatt
         writeCharacteristic = null
+        writePacingMs = 0L
         currentBoard = null
         _connectedBoardDescriptor.value = null
         _connectionState.value = ConnectionState.DISCONNECTED
