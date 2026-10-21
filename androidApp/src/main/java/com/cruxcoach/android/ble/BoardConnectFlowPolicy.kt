@@ -57,4 +57,27 @@ internal object BoardConnectFlowPolicy {
      * marks it as "last used" and leaves the tap to them.
      */
     fun <T> autoConnectTarget(candidates: List<T>): T? = candidates.singleOrNull()
+
+    /**
+     * The board an automatic flow (session host, disconnect request) may take
+     * without asking. These flows used to connect to whatever the scan listed
+     * first — hash order — so with two walls of one brand in range the
+     * climber got the neighbouring wall (a released box re-advertises only
+     * after several seconds while the other one already advertises).
+     *
+     * The active brand's remembered controller wins when it is in range;
+     * otherwise only an unambiguous single board of that brand that is not
+     * another phone's relay. Anything else stays a choice for the list.
+     */
+    fun automaticTarget(
+        boards: List<DiscoveredBoard>,
+        activeBrand: com.cruxcoach.domain.board.BoardBrand,
+        rememberedAddress: String?,
+    ): DiscoveredBoard? {
+        if (rememberedAddress != null) {
+            boards.firstOrNull { it.address.equals(rememberedAddress, ignoreCase = true) && !it.isCruxRelay }
+                ?.let { return it }
+        }
+        return autoConnectTarget(boards.filter { it.boardBrand == activeBrand && !it.isCruxRelay })
+    }
 }
