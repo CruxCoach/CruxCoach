@@ -20,8 +20,12 @@ actual class BoardDriverFactory(private val context: Context) {
             context = context,
             name = "cruxcoach.db",
             callback = object : AndroidSqliteDriver.Callback(BoardDatabase.Schema) {
-                // Android framework SQLite requires PRAGMAs via query(), not execSQL()
-                fun SupportSQLiteDatabase.pragma(stmt: String) { query(stmt).close() }
+                // Android framework SQLite requires PRAGMAs via query(), not execSQL(). The cursor must be
+                // stepped: a closed, never-read cursor only prepares the statement. Setting pragmas such as
+                // busy_timeout take effect while preparing, but journal_mode changes only when the statement
+                // runs – so the board DB stayed in rollback-journal mode, and while a catalogue import wrote,
+                // every browse read waited behind it (device 2026-10-21: a board switch hung for minutes).
+                fun SupportSQLiteDatabase.pragma(stmt: String) { query(stmt).use { it.moveToFirst() } }
 
                 override fun onConfigure(db: SupportSQLiteDatabase) {
                     super.onConfigure(db)
@@ -29,7 +33,13 @@ actual class BoardDriverFactory(private val context: Context) {
                 }
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
-                    db.pragma("PRAGMA journal_mode = WAL")
+                    // WAL: readers keep reading while the importer's own connection writes.
+                    val mode = db.query("PRAGMA journal_mode = WAL").use { if (it.moveToFirst()) it.getString(0) else null }
+                    if (!mode.equals("wal", ignoreCase = true)) {
+                        Log.w("DatabaseFactory", "Board DB journal mode stays '$mode': another connection holds the file")
+                    }
+                    // After a big import's checkpoint the WAL file shrinks back to 64 MiB instead of keeping its size.
+                    db.pragma("PRAGMA journal_size_limit = 67108864")
                     db.pragma("PRAGMA synchronous = NORMAL")
                     db.pragma("PRAGMA mmap_size = 268435456")
                     db.pragma("PRAGMA cache_size = -8000")
