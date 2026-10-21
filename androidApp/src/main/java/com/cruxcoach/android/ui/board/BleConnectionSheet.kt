@@ -1,7 +1,13 @@
 package com.cruxcoach.android.ui.board
 
 import android.bluetooth.BluetoothAdapter
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.core.app.ActivityCompat
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,6 +65,25 @@ private enum class PendingScanStart {
 /** How long a scan may run empty before the sheet explains what usually helps. */
 internal const val NO_BOARD_HINT_DELAY_MS = 15_000L
 
+/**
+ * After a refusal Android asks again only while it still wants a rationale.
+ * Once that is false it answers every request at once, without a dialog, so
+ * "Allow board search" did nothing and the climber had no way forward.
+ */
+internal fun permissionPermanentlyDenied(
+    results: Map<String, Boolean>,
+    shouldShowRationale: (String) -> Boolean,
+): Boolean {
+    val denied = results.filterValues { granted -> !granted }.keys
+    return denied.isNotEmpty() && denied.none(shouldShowRationale)
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BleConnectionSheet(
@@ -78,6 +103,16 @@ fun BleConnectionSheet(
     )
     val rememberedBoard = if (neutralDiscovery) null else state.rememberedBoardControllers[state.activeBoardBrand]
     var discoveryRequested by remember(state.activeBoardBrand) { mutableStateOf(false) }
+    val sheetContext = LocalContext.current
+    var permissionBlocked by remember { mutableStateOf(false) }
+    val onPermissionResult: (Map<String, Boolean>) -> Boolean = { results ->
+        val granted = results.values.all { it }
+        val activity = sheetContext.findActivity()
+        permissionBlocked = !granted && activity != null && permissionPermanentlyDenied(results) {
+            ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
+        }
+        granted
+    }
     var pendingScanStart by remember(state.activeBoardBrand) {
         mutableStateOf<PendingScanStart?>(null)
     }
@@ -187,7 +222,7 @@ fun BleConnectionSheet(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        if (permissions.values.all { it }) {
+        if (onPermissionResult(permissions)) {
             viewModel.onPermissionsGranted()
         }
     }
@@ -195,7 +230,7 @@ fun BleConnectionSheet(
     val connectionPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        if (permissions.values.all { it }) {
+        if (onPermissionResult(permissions)) {
             viewModel.tryRememberedControllerFirst()
         }
     }
@@ -413,8 +448,19 @@ fun BleConnectionSheet(
                 !state.hasPermissions -> {
                     PermissionContent(
                         isLegacyAndroid = Build.VERSION.SDK_INT < Build.VERSION_CODES.S,
+                        blocked = permissionBlocked,
                         onRequestPermissions = {
                             permissionLauncher.launch(BlePermissionHelper.getRequiredPermissions())
+                        },
+                        onOpenAppSettings = {
+                            runCatching {
+                                sheetContext.startActivity(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.fromParts("package", sheetContext.packageName, null),
+                                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
                         },
                         onUseRememberedBoard = rememberedBoard?.let {
                             reconnectRememberedBoard
@@ -595,7 +641,9 @@ private fun RememberedBoardContent(
 @Composable
 private fun PermissionContent(
     isLegacyAndroid: Boolean,
+    blocked: Boolean,
     onRequestPermissions: () -> Unit,
+    onOpenAppSettings: () -> Unit,
     onUseRememberedBoard: (() -> Unit)?,
 ) {
     Icon(
@@ -611,24 +659,29 @@ private fun PermissionContent(
     )
     Text(
         stringResource(
-            if (isLegacyAndroid) {
-                R.string.board_ble_scan_permission_message_legacy
-            } else {
-                R.string.board_ble_scan_permission_message_modern
+            when {
+                blocked && isLegacyAndroid -> R.string.board_ble_permission_blocked_legacy
+                blocked -> R.string.board_ble_permission_blocked_modern
+                isLegacyAndroid -> R.string.board_ble_scan_permission_message_legacy
+                else -> R.string.board_ble_scan_permission_message_modern
             }
         ),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Button(
-        onClick = onRequestPermissions,
+        // Android no longer shows the dialog: only the app settings can grant it.
+        onClick = if (blocked) onOpenAppSettings else onRequestPermissions,
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("ble_request_permissions"),
+            .testTag(if (blocked) "ble_open_app_settings" else "ble_request_permissions"),
         colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Text(stringResource(R.string.board_ble_allow_search), fontWeight = FontWeight.Bold)
+        Text(
+            stringResource(if (blocked) R.string.board_ble_open_app_settings else R.string.board_ble_allow_search),
+            fontWeight = FontWeight.Bold,
+        )
     }
     if (onUseRememberedBoard != null) {
         TextButton(

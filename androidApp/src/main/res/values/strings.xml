@@ -997,6 +997,9 @@
     <string name="board_ble_scan_permission_message_legacy">On this Android version, nearby Bluetooth devices can only be found with location permission. CruxCoach does not use your location for the board connection.</string>
     <string name="board_ble_scan_permission_message_modern">Allow access to nearby Bluetooth devices to search for and connect to boards.</string>
     <string name="board_ble_allow_search">Allow board search</string>
+    <string name="board_ble_permission_blocked_modern">Android no longer asks for this permission. Allow “Nearby devices” for CruxCoach in the app settings to search for boards.</string>
+    <string name="board_ble_permission_blocked_legacy">Android no longer asks for this permission. Allow “Location” for CruxCoach in the app settings to search for boards; CruxCoach does not use your location for the board connection.</string>
+    <string name="board_ble_open_app_settings">Open app settings</string>
     <string name="board_ble_loading_connection_options">Loading connection options…</string>
     <string name="board_ble_direct_reconnect_privacy_hint">Direct reconnect does not access your location.</string>
     <string name="board_ble_reconnect">Reconnect</string>
