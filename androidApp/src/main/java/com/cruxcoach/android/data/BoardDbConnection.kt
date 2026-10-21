@@ -31,4 +31,20 @@ internal object BoardDbConnection {
         }
         return db
     }
+
+    /**
+     * Closes a connection that just imported a whole catalogue in one transaction. In WAL mode all of it sits in
+     * the WAL first (Tension: ~180 MB on the Nokia, 2026-10-21) and the file only shrinks at the next write, so
+     * fold it back and truncate it now. Best effort: a reader mid-query can leave it partial, and
+     * [WAL_SIZE_LIMIT_BYTES] caps the file at the next write anyway.
+     */
+    fun closeAfterImport(db: SQLiteDatabase) {
+        try {
+            if (!db.inTransaction()) db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+        } catch (_: Exception) {
+            // Never fail an import that already committed over its cleanup.
+        } finally {
+            db.close()
+        }
+    }
 }

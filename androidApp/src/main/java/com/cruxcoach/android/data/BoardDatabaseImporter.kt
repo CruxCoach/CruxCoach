@@ -569,7 +569,7 @@ class BoardDatabaseImporter(
                 onProgress?.invoke(ImportStep.ImportStats(statTotal, statTotal, statTotal))
             } finally {
                 runCatching { targetDb.execSQL("DETACH DATABASE mb") }
-                targetDb.close()
+                BoardDbConnection.closeAfterImport(targetDb)
             }
         }
         // Older snapshots ship no move_count column — compute it from
@@ -695,7 +695,7 @@ class BoardDatabaseImporter(
             return imported
         } finally {
             if (attached) runCatching { targetDb.execSQL("DETACH DATABASE mb_beta") }
-            targetDb.close()
+            BoardDbConnection.closeAfterImport(targetDb)
         }
     }
 
@@ -884,7 +884,7 @@ class BoardDatabaseImporter(
             } finally {
                 if (targetDb.inTransaction()) targetDb.endTransaction()
                 runCatching { targetDb.execSQL("DETACH DATABASE ab") }
-                targetDb.close()
+                BoardDbConnection.closeAfterImport(targetDb)
             }
         }
         if (!snapshotHasMoveCount) backfillMoveCounts()
@@ -1104,7 +1104,7 @@ class BoardDatabaseImporter(
             replaceEmbeddedBetaLinks(db, "qb", "quantum")
         } finally {
             runCatching { db.execSQL("DETACH DATABASE qb") }
-            db.close()
+            BoardDbConnection.closeAfterImport(db)
         }
         backfillMoveCounts()
         val count = boardRepository.getClimbCountsByBrand()["quantum"] ?: 0L
