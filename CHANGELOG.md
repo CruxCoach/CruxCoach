@@ -60,6 +60,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   controllers in packets 100 ms apart, as in the Kilter app.
 - A Bluetooth search that has found no board after 15 seconds explains what to
   check instead of only showing the spinner.
+- Switching to another board (size, layout or brand) while connected now
+  disconnects from the previous board, so a climb never lights the holds of the
+  newly chosen board on the old wall. The Kilter app does the same.
+- Turning Bluetooth off and on during a search no longer leaves the search
+  spinning without results; it resumes once Bluetooth is back.
+- When Android no longer asks for the Bluetooth permission, the board search
+  offers to open the app settings instead of a button that does nothing.
+- In a group session and after asking another climber to disconnect, CruxCoach
+  connects to your remembered board, or to the only matching board in range,
+  instead of whichever board advertised first — with two walls of one brand that
+  could be the neighbouring wall.
+- Boards that advertise no serial number are always written the way the Kilter
+  app does it: acknowledged packets 100 ms apart.
+- Hold cleaning on API-level-2 controllers lights at most 127 holds per section,
+  in one packet, as the Kilter app sends them.
+- A climb with more holds than an API-level-2 controller's power budget can show
+  is refused instead of being reported as sent while the wall stays dark.
+- Devices whose name merely contains "#" or "@" (a printer, a speaker) are no
+  longer listed as Kilter boards.
 - Switching boards while a catalogue import runs takes effect at once. Before,
   the browser kept showing the previous board until the import had finished,
   which could take minutes; its first database read waited behind the import.
