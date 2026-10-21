@@ -78,6 +78,28 @@ class BoardBleNameTest {
     }
 
     @Test
+    fun parseAuroraName_needs_a_family_name_or_the_service_for_a_suffixed_name() {
+        assertNull(scanner.parseAuroraName("Printer #751737", false))
+        assertNull(scanner.parseAuroraName("Foo#bar", false))
+        assertNull(scanner.parseAuroraName("Speaker@3", false))
+        assertEquals(Triple("Printer ", "751737", 2), scanner.parseAuroraName("Printer #751737", true))
+        // Relays and real boxes keep working.
+        assertEquals(Triple("Kilter Board", "CR-1", 3), scanner.parseAuroraName("Kilter Board#CR-1@3", false))
+        assertEquals(Triple("So iLL Board", "9", 3), scanner.parseAuroraName("So iLL Board#9@3", false))
+        assertEquals(Triple("KilterBoard", "ABC123", 3), scanner.parseAuroraName("KilterBoard#ABC123@3", false))
+    }
+
+    @Test
+    fun parseAuroraName_needs_family_board_for_a_bare_name_without_the_service() {
+        assertNull(scanner.parseAuroraName("Tensioner", false))
+        assertNull(scanner.parseAuroraName("Decoy", false))
+        assertNull(scanner.parseAuroraName("Kilter-anything", false))
+        assertEquals(Triple("Decoy", "", 2), scanner.parseAuroraName("Decoy", true))
+        assertEquals(Triple("Kilter Board 2", "", 2), scanner.parseAuroraName("Kilter Board 2", false))
+        assertEquals(Triple("Grasshopper Board", "", 2), scanner.parseAuroraName("Grasshopper Board", false))
+    }
+
+    @Test
     fun parseAuroraName_falls_back_to_api_2_for_an_unreadable_api_level() {
         assertNull(scanner.parseBoardName("Kilter Board@x"))
         assertEquals(Triple("Kilter Board", "", 2), scanner.parseAuroraName("Kilter Board@x", false))
