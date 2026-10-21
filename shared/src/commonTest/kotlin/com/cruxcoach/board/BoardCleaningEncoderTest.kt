@@ -49,7 +49,8 @@ class BoardCleaningEncoderTest {
     @Test fun legacyCleaningLimitKeepsEveryHoldVisibleAtMinimumBrightness() {
         for (ledsPerHold in listOf(1, 2)) {
             val count = BoardPacketEncoder.cleaningHoldLimit(2, ledsPerHold)
-            assertEquals(500 / ledsPerHold, count)
+            // One API-2 packet at most, like the official Kilter app sends.
+            assertEquals(127, count)
             val encoder = BoardPacketEncoder(2, ledsPerHold)
             val stream = encoder.encodeClimb((0 until count).map { it to BoardPacketEncoder.COLOR_CLEANING })
                 .flatMap { it.toList() }
@@ -64,6 +65,9 @@ class BoardCleaningEncoderTest {
                 offset += length + 5
             }
             assertEquals(count, lit)
+            val packets = encoder.encodeClimb((0 until count).map { it to BoardPacketEncoder.COLOR_CLEANING })
+                .flatMap { it.toList() }
+            assertEquals(BoardPacketEncoder.API2_ONLY, packets[4], "a full section is a single P packet")
         }
         assertEquals(Int.MAX_VALUE, BoardPacketEncoder.cleaningHoldLimit(3, 2))
     }

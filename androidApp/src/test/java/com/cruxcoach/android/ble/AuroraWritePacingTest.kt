@@ -25,6 +25,13 @@ class AuroraWritePacingTest {
     }
 
     @Test
+    fun `a box without serial is paced even when it offers write-without-response`() {
+        assertEquals(AURORA_WRITE_ONLY_CHUNK_DELAY_MS, auroraWritePacingMs(BoardBrand.KILTER, 12, advertisesSerial = false))
+        assertEquals(0L, auroraWritePacingMs(BoardBrand.KILTER, 12, advertisesSerial = true))
+        assertEquals(0L, auroraWritePacingMs(BoardBrand.MOONBOARD, 12, advertisesSerial = false))
+    }
+
+    @Test
     fun `Quantum, MoonBoard and an unknown brand are never paced here`() {
         // Quantum frames are single writes; MoonBoard passes its own UART gap.
         assertEquals(0L, auroraWritePacingMs(BoardBrand.QUANTUM, 8))

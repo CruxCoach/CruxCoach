@@ -387,20 +387,29 @@ internal fun quantumRefreshFailureRequiresDisconnect(
 internal const val AURORA_WRITE_ONLY_CHUNK_DELAY_MS = 100L
 
 /**
- * Pause between Aurora chunks, decided by the controller's RX characteristic.
+ * Pause between Aurora chunks, decided by the controller's RX characteristic
+ * and its advertised identity.
  *
  * The Kilter-built LED box (since mid-2025, advertised as a bare "Kilter
  * Board") accepts write-with-response only, and the Kilter app writes it in
  * 20-byte chunks 100 ms apart. A write ack says the radio got the chunk, not
  * that the box's parser has consumed it (the MoonBoard UART bridge drops
  * fragments that arrive too fast, see MOONBOARD_UART_INTER_CHUNK_DELAY_MS).
- * Boxes that offer write-without-response keep the unpaced path.
+ * A box that advertises no serial gets the same treatment even if its RX
+ * offers write-without-response: the property bit of these boxes is known
+ * only from field telemetry, and the official app paces every box.
+ * Boxes with a serial that offer write-without-response keep the fast path.
  */
-internal fun auroraWritePacingMs(connectedBrand: BoardBrand?, characteristicProperties: Int): Long =
+internal fun auroraWritePacingMs(
+    connectedBrand: BoardBrand?,
+    characteristicProperties: Int,
+    advertisesSerial: Boolean = true,
+): Long =
     if (connectedBrand != null &&
         connectedBrand != BoardBrand.QUANTUM &&
         connectedBrand != BoardBrand.MOONBOARD &&
-        (characteristicProperties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) == 0
+        ((characteristicProperties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) == 0 ||
+            !advertisesSerial)
     ) {
         AURORA_WRITE_ONLY_CHUNK_DELAY_MS
     } else {
@@ -1179,10 +1188,19 @@ class BoardBleConnection(
                     }
                 } else service?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
                 writePacingMs = writeCharacteristic?.let {
-                    auroraWritePacingMs(_connectedBoardBrand.value, it.properties)
+                    auroraWritePacingMs(
+                        _connectedBoardBrand.value,
+                        it.properties,
+                        advertisesSerial = currentBoard?.serial?.isNotBlank() == true,
+                    )
                 } ?: 0L
                 if (writePacingMs > 0L) {
-                    Log.i(TAG, "RX characteristic is write-only (properties=${writeCharacteristic?.properties}); pacing chunks by ${writePacingMs}ms")
+                    // Paced links write with response, like the Kilter app,
+                    // whenever the characteristic allows it.
+                    writeCharacteristic?.takeIf {
+                        (it.properties and BluetoothGattCharacteristic.PROPERTY_WRITE) != 0
+                    }?.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    Log.i(TAG, "Pacing chunks by ${writePacingMs}ms with response (properties=${writeCharacteristic?.properties}, serial=${currentBoard?.serial?.isNotBlank() == true})")
                 }
                 if (writeCharacteristic != null) {
                     if (_connectedBoardBrand.value == BoardBrand.QUANTUM && Build.VERSION.SDK_INT >= 21) {
@@ -1898,7 +1916,7 @@ class BoardBleConnection(
                     color = quantumColor,
                 )
             }
-            val chunks = if (roleColors != null) {
+            val holdPairs = if (roleColors != null) {
                 // Resolve each hold's colour by canonical role CLASS, not raw
                 // code. A climb authored on an Aurora board carries the editor's
                 // Kilter-style codes (12-15) while the board's colour map is
@@ -1907,14 +1925,18 @@ class BoardBleConnection(
                 // 12-15 / 42-44 onto the same role, so authored and catalogue
                 // climbs light identically in the board's own colours.
                 val byClass = roleColors.entries.associate { HoldRole.roleClass(it.key) to it.value }
-                val holdPairs = holds.mapNotNull { hold ->
+                holds.mapNotNull { hold ->
                     val led = placementToLed[hold.placementId] ?: return@mapNotNull null
                     led to (byClass[HoldRole.roleClass(hold.roleId)] ?: BoardPacketEncoder.roleToColor(hold.roleId))
                 }
-                encoder.encodeClimb(holdPairs)
             } else {
-                encoder.encodeClimbFromHolds(holds, placementToLed)
+                encoder.holdPairs(holds, placementToLed)
             }
+            if (encoder.litNothing(holdPairs)) {
+                Log.w(TAG, "Refusing an API-2 frame of ${holdPairs.size} holds: the 18 W budget would light none of them")
+                return false
+            }
+            val chunks = encoder.encodeClimb(holdPairs)
 
             val success = writeChunks(chunks)
             if (success) cleaning.projected(
@@ -2263,6 +2285,10 @@ class BoardBleConnection(
             _connectedBoardBrand.value == BoardBrand.QUANTUM ||
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
         ) return false
+        if (encoder.litNothing(leds)) {
+            Log.w(TAG, "Refusing an API-2 frame of ${leds.size} LEDs: the 18 W budget would light none of them")
+            return false
+        }
         val chunks = encoder.encodeClimb(leds)
         val success = writeChunks(chunks)
         if (success) cleaning.projected(ticket, emptySet(), chunks)
