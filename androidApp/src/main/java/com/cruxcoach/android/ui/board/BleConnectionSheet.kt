@@ -56,6 +56,9 @@ private enum class PendingScanStart {
     AUTO_CONNECT,
 }
 
+/** How long a scan may run empty before the sheet explains what usually helps. */
+internal const val NO_BOARD_HINT_DELAY_MS = 15_000L
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BleConnectionSheet(
@@ -900,6 +903,7 @@ private fun ScanContent(
             )
             Text(stringResource(R.string.board_ble_scanning), style = MaterialTheme.typography.bodyMedium)
         }
+        NoBoardYetHint(noBoardsFound = boards.isEmpty())
     }
 
     if (boards.isNotEmpty() || nearbySessions.isNotEmpty()) {
@@ -964,6 +968,31 @@ private fun ScanContent(
         Text(
             stringResource(if (isScanning) R.string.board_ble_stop_scan else R.string.board_ble_start_scan),
             fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+/**
+ * The scan does not end on its own. Once it has found nothing for
+ * [NO_BOARD_HINT_DELAY_MS], say what usually helps instead of leaving only the
+ * spinner. Shown under the spinner, so it leaves with it when the scan stops.
+ */
+@Composable
+internal fun NoBoardYetHint(noBoardsFound: Boolean) {
+    var show by remember { mutableStateOf(false) }
+    LaunchedEffect(noBoardsFound) {
+        show = false
+        if (noBoardsFound) {
+            kotlinx.coroutines.delay(NO_BOARD_HINT_DELAY_MS)
+            show = true
+        }
+    }
+    if (show && noBoardsFound) {
+        Text(
+            stringResource(R.string.board_ble_no_board_yet_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("ble_no_board_yet_hint"),
         )
     }
 }

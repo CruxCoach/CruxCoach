@@ -1072,6 +1072,7 @@
     <string name="board_ble_connecting">Verbinde\u2026</string>
     <string name="board_ble_scanning">Suche Boards…</string>
     <string name="board_ble_no_boards">Keine Boards gefunden. Starte einen Scan, um Boards in der Nähe zu finden.</string>
+    <string name="board_ble_no_board_yet_hint">Noch kein Board gefunden. Stell dich nah ans Board und prüfe, ob es eingeschaltet ist. Ist ein anderes Handy verbunden, bleibt das Board unsichtbar, bis es getrennt wird.</string>
     <!-- FEAT-027: Board-Marken-Labels in der BLE-Kopplungs-UI -->
     <string name="board_ble_brand_kilter">Kilter Board</string>
     <string name="board_ble_brand_moonboard">MoonBoard</string>

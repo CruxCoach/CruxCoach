@@ -4,6 +4,16 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- Newer Kilter boards whose controller advertises only “Kilter Board”, without
+  a serial number or API level, now appear in the Bluetooth search and connect.
+  Before, the search kept spinning without ever listing them. Climbs reach these
+  controllers in packets 100 ms apart, as in the Kilter app.
+- A Bluetooth search that has found no board after 15 seconds explains what to
+  check instead of only showing the spinner.
+
 ## [0.2.3] - 2026-09-26
 
 ### Changed
