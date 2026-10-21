@@ -92,6 +92,9 @@ class BoardConnectFlowPolicyTest {
         val relay = discovered("RR:RR", relay = true)
         val moon = discovered("MM:MM", BoardBrand.MOONBOARD)
         assertSame(wall, BoardConnectFlowPolicy.automaticTarget(listOf(relay, moon, wall), BoardBrand.KILTER, null))
-        assertNull(BoardConnectFlowPolicy.automaticTarget(listOf(relay), BoardBrand.KILTER, "RR:RR"))
+        // With no direct board, a single relay is still taken, as in 0.2.3.
+        assertSame(relay, BoardConnectFlowPolicy.automaticTarget(listOf(relay, moon), BoardBrand.KILTER, null))
+        assertNull(BoardConnectFlowPolicy.automaticTarget(
+            listOf(relay, discovered("SS:SS", relay = true)), BoardBrand.KILTER, null))
     }
 }

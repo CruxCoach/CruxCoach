@@ -39,8 +39,11 @@ class BoardSwitchLinkPolicyTest {
         val policy = BoardSwitchLinkPolicy()
         policy.onLinkUp(kilter12x12, BoardBrand.KILTER, onboarded = false)
         assertFalse(policy.onSelectionChanged(kilter16x12, BoardBrand.KILTER, onboarded = true))
-        // From then on the chosen board is the link's board.
-        assertTrue(policy.onSelectionChanged(kilter12x12, BoardBrand.KILTER, onboarded = true))
+        assertFalse(policy.onSelectionChanged(kilter12x12, BoardBrand.KILTER, onboarded = true))
+        // The next connection is bound normally.
+        policy.onLinkDown()
+        policy.onLinkUp(kilter12x12, BoardBrand.KILTER, onboarded = true)
+        assertTrue(policy.onSelectionChanged(kilter16x12, BoardBrand.KILTER, onboarded = true))
     }
 
     @Test
@@ -50,8 +53,8 @@ class BoardSwitchLinkPolicyTest {
         val policy = BoardSwitchLinkPolicy()
         policy.onLinkUp(kilter12x12, BoardBrand.TENSION, onboarded = true)
         assertFalse(policy.onSelectionChanged(tension, BoardBrand.TENSION, onboarded = true))
-        // Now matched: a later switch away releases the link.
-        assertTrue(policy.onSelectionChanged(kilter16x12, BoardBrand.TENSION, onboarded = true))
+        // A catalogue download may rewrite the corrected selection: keep the link.
+        assertFalse(policy.onSelectionChanged(tension.copy(productSizeId = 2), BoardBrand.TENSION, onboarded = true))
     }
 
     @Test

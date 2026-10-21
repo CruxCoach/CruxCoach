@@ -1191,7 +1191,9 @@ class BoardBleConnection(
                     auroraWritePacingMs(
                         _connectedBoardBrand.value,
                         it.properties,
-                        advertisesSerial = currentBoard?.serial?.isNotBlank() == true,
+                        // A CruxRelay phone advertises "Name@api" without a
+                        // serial but is no Kilter-built box; it keeps the fast path.
+                        advertisesSerial = currentBoard?.let { it.serial.isNotBlank() || it.isCruxRelay } == true,
                     )
                 } ?: 0L
                 if (writePacingMs > 0L) {
