@@ -39,9 +39,13 @@ class BoardPacketEncoder(
         // budget. Cyan consumes two channels and can quantize entirely to black
         // for a large day. At minimum nonzero brightness each LED costs 1/30 W;
         // cap at 500 physical LEDs (16.67 W) to leave budget/rounding headroom.
+        // API 2 also stays within ONE packet (127 LEDs): the official Kilter
+        // app never sends a multi-packet frame, and Kilter-built boxes (API 2)
+        // have never been shown to accept one. Larger days go in sections.
         const val COLOR_CLEANING: Int = 0x03
         fun cleaningHoldLimit(apiLevel: Int, ledsPerHold: Int): Int =
-            if (apiLevel >= 3) Int.MAX_VALUE else 500 / ledsPerHold.coerceAtLeast(1)
+            if (apiLevel >= 3) Int.MAX_VALUE
+            else minOf(500 / ledsPerHold.coerceAtLeast(1), MAX_HOLDS_PER_PACKET_V2)
 
         // Max hold data bytes per packet payload (254 = 255 max - 1 type byte)
         // 254 / 3 bytes per hold = 84 holds per packet
@@ -266,12 +270,29 @@ class BoardPacketEncoder(
     fun encodeClimbFromHolds(
         holds: List<BoardHold>,
         placementToLed: Map<Int, Int>
-    ): List<ByteArray> {
-        val holdPairs = holds.mapNotNull { hold ->
+    ): List<ByteArray> = encodeClimb(holdPairs(holds, placementToLed))
+
+    /** (ledPosition, colorByte) pairs of [holds] in the default role colours. */
+    fun holdPairs(holds: List<BoardHold>, placementToLed: Map<Int, Int>): List<Pair<Int, Int>> =
+        holds.mapNotNull { hold ->
             val led = placementToLed[hold.placementId] ?: return@mapNotNull null
             led to roleToColor(hold.roleId)
         }
-        return encodeClimb(holdPairs)
+
+    /**
+     * True when an API-2 frame of [holds] would light nothing although the
+     * box accepts it: the 18 W budget scales colours down until saturated
+     * channels round to zero (Kilter, 2 LEDs per hold: beyond ~135 cyan or
+     * ~90 white holds). Callers refuse such a send instead of reporting
+     * success on a dark wall. API 3 has no client-side budget.
+     */
+    fun litNothing(holds: List<Pair<Int, Int>>): Boolean {
+        if (apiLevel >= 3 || holds.isEmpty()) return false
+        val scale = computeV2Scale(holds.map { it.second }, ledsPerHold)
+        return holds.none { (position, color) ->
+            val encoded = encodePositionAndColorV2(position, color, scale) ?: return@none false
+            (encoded.second.toInt() and 0xFC) != 0
+        }
     }
 
     /**
