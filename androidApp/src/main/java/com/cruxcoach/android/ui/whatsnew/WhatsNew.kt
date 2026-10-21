@@ -71,6 +71,9 @@ object WhatsNewItems {
     /** 0.2.3: reliable browsing, distinct-problem statistics and compact navigation. */
     val RELEASE_023 = WhatsNewItem(id = "release-0.2.3", sinceVersionCode = 9)
 
+    /** 0.2.4: Kilter-built boards connect, the Kilter upload works, board map and hold cleaning. */
+    val RELEASE_024 = WhatsNewItem(id = "release-0.2.4", sinceVersionCode = 10)
+
     /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
      *  upgrading from 0.1.4 have no other entry point to discover the
      *  new map icon in the BoardBrowser search header. */
@@ -103,6 +106,7 @@ object WhatsNewItems {
         RELEASE_021,
         RELEASE_022,
         RELEASE_023,
+        RELEASE_024,
     )
 }
 
@@ -199,6 +203,8 @@ fun WhatsNewHost(
             )
         WhatsNewItems.RELEASE_023.id ->
             Release023WhatsNewDialog(onDismiss = { vm.dismissCurrent() })
+        WhatsNewItems.RELEASE_024.id ->
+            Release024WhatsNewDialog(onDismiss = { vm.dismissCurrent() })
         WhatsNewItems.RELEASE_022.id ->
             Release022WhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
