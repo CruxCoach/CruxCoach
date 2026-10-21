@@ -14,7 +14,11 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.ble.ActiveBoardSelection
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardSwitchLinkPolicy
+import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.android.notification.NostrPushCoordinator
 import com.cruxcoach.android.notification.NotificationPollWorker
@@ -27,7 +31,10 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -76,6 +83,37 @@ class CruxCoachApp : Application(), Configuration.Provider {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+
+    /** See [BoardSwitchLinkPolicy]. Runs on Main: disconnect() drives the GATT. */
+    private suspend fun releaseBoardLinkOnBoardSwitch() {
+        val connection = boardBleConnection.get()
+        val policy = BoardSwitchLinkPolicy()
+        var linkWasUp = false
+        val selection = combine(
+            userPreferences.boardBrand,
+            userPreferences.boardLayoutId,
+            userPreferences.boardProductSizeId,
+        ) { brand, layout, size -> ActiveBoardSelection(BoardBrand.fromWire(brand), layout, size) }
+            .distinctUntilChanged()
+        val linkUp = connection.connectionState
+            .map { it == ConnectionState.CONNECTED || it == ConnectionState.SENDING }
+            .distinctUntilChanged()
+        combine(selection, linkUp) { board, up -> board to up }.collect { (board, up) ->
+            val connectedBrand = connection.connectedBoardBrand.value
+            when {
+                up && !linkWasUp ->
+                    policy.onLinkUp(board, connectedBrand, userPreferences.isOnboardingCompleted())
+                !up && linkWasUp -> policy.onLinkDown()
+                up && policy.onSelectionChanged(
+                    board, connectedBrand, userPreferences.isOnboardingCompleted(),
+                ) -> {
+                    Log.i("CruxCoachApp", "Active board switched to $board while connected — releasing the link")
+                    connection.disconnect()
+                }
+            }
+            linkWasUp = up
+        }
+    }
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -192,6 +230,11 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 }
             }
         })
+
+        // A send uses the ACTIVE board's LED map. Switching to another board
+        // while connected must release the old wall, or the next climb lights
+        // the wrong holds there (the Kilter app does the same since 2.11.3).
+        appScope.launch(Dispatchers.Main) { releaseBoardLinkOnBoardSwitch() }
 
         // Pre-warm board bitmap cache in background — ready before first navigation
         appScope.launch {
