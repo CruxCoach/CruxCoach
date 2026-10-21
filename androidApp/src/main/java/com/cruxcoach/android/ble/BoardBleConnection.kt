@@ -2215,10 +2215,12 @@ class BoardBleConnection(
         }
     }
 
+    // Aurora keeps the link's pacing: a cleaning frame is the longest write a
+    // write-only Kilter-built box gets.
     private suspend fun writeCleaningChunks(chunks: List<ByteArray>): Boolean = writeChunks(
         chunks,
         interChunkDelayMs = if (_connectedBoardBrand.value == BoardBrand.MOONBOARD)
-            MOONBOARD_UART_INTER_CHUNK_DELAY_MS else 0L,
+            MOONBOARD_UART_INTER_CHUNK_DELAY_MS else writePacingMs,
     )
 
     suspend fun resendWithColors(roleColors: Map<Int, Int>): Boolean {
