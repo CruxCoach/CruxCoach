@@ -547,6 +547,32 @@ internal fun BoardBrowserState.onBoardSwitch(
 )
 }
 
+/**
+ * A board switch shown before the browser's first database read: the new board's name and angle with an empty,
+ * loading list. Its climbs, holds, size and catalogue angles follow from the next refresh once the database
+ * answers. During a catalogue import that took minutes (device 2026-10-21), and meanwhile the old board stayed
+ * on screen as if the switch had failed.
+ */
+internal fun BoardBrowserState.showPendingBoard(boardBrand: String, layoutId: Int, angle: Int): BoardBrowserState {
+    // Catalogue angles need the database; MoonBoard's come from its variant.
+    val chips = BoardAnglePicker.chipsFor(BoardBrand.fromWire(boardBrand), layoutId, emptyList())
+    return onBoardSwitch(
+        angle = BoardAnglePicker.clampAngle(angle, chips),
+        layoutId = layoutId,
+        boardBrand = boardBrand,
+        angleChips = chips,
+    ).copy(
+        climbs = emptyList(),
+        isLoading = true,
+        isLoadingMore = false,
+        canLoadMore = false,
+        placements = emptyMap(),
+        boardSize = null,
+        boardImages = emptyList(),
+        holdSearch = HoldSearchState(),
+    )
+}
+
 @HiltViewModel
 class BoardBrowserViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
@@ -605,6 +631,8 @@ class BoardBrowserViewModel @Inject constructor(
     // EXISTS could wait 10s+ behind a cold searchClimbs. Cancelling the prior
     // refresh means only the newest board's queries run to completion.
     private var refreshJob: Job? = null
+    /** A board switch is on screen ([showPendingBoard]) but its catalogue angles are not read yet. */
+    private var boardSwitchPending = false
 
     // RANDOM sort, browse mode. SQL ORDER BY RANDOM() re-shuffles per page →
     // duplicates and gaps when scrolling. Instead: page 1 is a fast SQL
@@ -751,16 +779,27 @@ class BoardBrowserViewModel @Inject constructor(
                     ) { brand, layout, size, angle -> Pair(Triple(brand, layout, size), angle) }
                         .drop(1)
                         .distinctUntilChanged()
-                        .collect { (_, prefAngle) ->
-                            // Re-seed the in-memory angle from prefs on an external
-                            // write: setMoonBoardSelection pins 40° and a fixed-angle
-                            // gym pick seeds the wall's angle. Without this the
-                            // browser keeps querying the previous board's angle
-                            // (climb_browse matches angle exactly → empty list) and
-                            // the next persistFilters writes the stale angle back
-                            // over the seed. persistFilters' own write is a no-op
-                            // here (the pref already equals the in-memory angle).
-                            if (_state.value.filter.angle != prefAngle) {
+                        .collect { (board, prefAngle) ->
+                            val (prefBrand, prefLayout, _) = board
+                            val shown = _state.value.filter
+                            if (shown.boardBrand != prefBrand || shown.layoutId != prefLayout) {
+                                // A new board: show it at once, before any database read, and drop the old
+                                // board's in-flight searches. Its climbs follow when the database answers.
+                                browseRequestGate.invalidate()
+                                searchJob?.cancel()
+                                countJob?.cancel()
+                                holdMatchCacheKey = null
+                                boardSwitchPending = true
+                                _state.update { it.showPendingBoard(prefBrand, prefLayout, prefAngle) }
+                            } else if (_state.value.filter.angle != prefAngle) {
+                                // Same board: re-seed the in-memory angle from prefs on an external
+                                // write: setMoonBoardSelection pins 40° and a fixed-angle
+                                // gym pick seeds the wall's angle. Without this the
+                                // browser keeps querying the previous board's angle
+                                // (climb_browse matches angle exactly → empty list) and
+                                // the next persistFilters writes the stale angle back
+                                // over the seed. persistFilters' own write is a no-op
+                                // here (the pref already equals the in-memory angle).
                                 _state.update { it.copy(filter = it.filter.copy(angle = prefAngle)) }
                             }
                             refreshBoardData(force = true)
@@ -972,6 +1011,8 @@ class BoardBrowserViewModel @Inject constructor(
                 // hasBoardData transition (false → true after the first
                 // chunk lands), not a delta-by-row-count.
                 val hasData = PerfLogger.traceQuery("hasAnyClimbs") { boardRepository.hasAnyClimbs() }
+                // A newer refresh (board switch) replaced this one while the probe waited: its board wins.
+                ensureActive()
                 val count = if (hasData) _state.value.climbCount.coerceAtLeast(1) else 0L
                 val countChanged = hasData != _state.value.hasBoardData
                 val prefSizeId = userPreferences.boardProductSizeId.first()
@@ -1008,6 +1049,7 @@ class BoardBrowserViewModel @Inject constructor(
                     // Keep layout filter + brand in sync with preferences.
                     if (_state.value.filter.layoutId != prefLayoutId
                         || _state.value.filter.boardBrand != prefBoardBrand
+                        || boardSwitchPending
                     ) {
                         // FEAT-033: recompute the board's angle chips on a
                         // switch (already on Dispatchers.IO here). Aurora-family
@@ -1030,6 +1072,7 @@ class BoardBrowserViewModel @Inject constructor(
                             boardBrand = prefBoardBrand,
                             angleChips = angleChips,
                         ) }
+                        boardSwitchPending = false
                     }
                     // FEAT-031: placements are namespaced by board_brand; reload
                     // them (with the active brand) on a board change, not just
