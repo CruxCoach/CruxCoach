@@ -95,14 +95,46 @@ class BoardBleScanner(private val context: Context) {
     /** Tracks the number of consecutive errorCode=2 failures for retry logic. */
     private var registrationRetryCount = 0
 
+    /** A board scan was running when Bluetooth went off and resumes when it is back. */
+    @Volatile private var resumeScanWhenBluetoothOn = false
+
     private val btStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
-                val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
-                _bluetoothEnabled.value = state == BluetoothAdapter.STATE_ON
+                onBluetoothStateChanged(
+                    intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+                )
+            }
+        }
+    }
+
+    /**
+     * Android ends a scan without onScanFailed when the adapter goes off, and
+     * bluetoothLeScanner is null until it is back, so stopScan() cannot clear
+     * the flag either. A stale isScanning made every later startScan() return
+     * early: the sheet spun forever without listing a board. Mirror
+     * NearbyClimbScanner: mark the scan stopped, drop what it found, and
+     * resume a scan that was running once Bluetooth is on again.
+     */
+    internal fun onBluetoothStateChanged(state: Int) {
+        _bluetoothEnabled.value = state == BluetoothAdapter.STATE_ON
+        when (state) {
+            BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> {
+                if (_isScanning.value) {
+                    Log.d(TAG, "Bluetooth turning off — board scan stopped, resumes when it is back")
+                    resumeScanWhenBluetoothOn = true
+                    _isScanning.value = false
+                }
+                boardMap.clear()
+                _discoveredBoards.value = emptyList()
+            }
+            BluetoothAdapter.STATE_ON -> {
                 // BT toggle clears leaked scan registrations — reset retry counter
-                if (state == BluetoothAdapter.STATE_ON) {
-                    registrationRetryCount = 0
+                registrationRetryCount = 0
+                if (resumeScanWhenBluetoothOn) {
+                    resumeScanWhenBluetoothOn = false
+                    Log.d(TAG, "Bluetooth on again — resuming the board scan")
+                    startScan()
                 }
             }
         }
@@ -245,8 +277,13 @@ class BoardBleScanner(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun stopScan() {
+        // An explicit stop also cancels a resume pending from a Bluetooth toggle.
+        resumeScanWhenBluetoothOn = false
         if (!_isScanning.value) return
-        val s = scanner ?: return
+        val s = scanner ?: run {
+            _isScanning.value = false
+            return
+        }
         try {
             s.stopScan(scanCallback)
         } catch (e: Exception) {
@@ -385,9 +422,12 @@ class BoardBleScanner(private val context: Context) {
     fun auroraBrandFromName(displayName: String): BoardBrand =
         auroraFamilyOrNull(displayName) ?: BoardBrand.KILTER
 
+    private fun normalizedName(name: String): String =
+        name.lowercase().replace(" ", "").replace("-", "")
+
     /** The Aurora family a name starts with, or null for any other name. */
     private fun auroraFamilyOrNull(name: String): BoardBrand? {
-        val n = name.lowercase().replace(" ", "").replace("-", "")
+        val n = normalizedName(name)
         return when {
             n.startsWith("tension") -> BoardBrand.TENSION
             n.startsWith("grasshopper") -> BoardBrand.GRASSHOPPER
@@ -405,9 +445,13 @@ class BoardBleScanner(private val context: Context) {
      * Kilter-built LED boxes (shipped since mid-2025) advertise only
      * "Kilter Board", with no #serial and no @apiLevel. [parseBoardName]
      * cannot read that, so such boards never showed up and the scan spun
-     * forever. Because the scan has no UUID filter, a bare name counts only
-     * with evidence that it is a board: it starts with an Aurora family name,
-     * or the advertisement carries the Aurora board service.
+     * forever.
+     *
+     * The scan has no UUID filter, so a name counts only with evidence that
+     * it is a board. The advertised Aurora board service is always enough.
+     * Without it, a suffixed name must start with an Aurora family name
+     * ("Printer #751737" is no Kilter), and a bare name with
+     * "<family> Board" ("Tensioner" is no Tension board).
      *
      * Without "@apiLevel" the board speaks API 2, the default of both the
      * Aurora and the Kilter app.
@@ -416,11 +460,25 @@ class BoardBleScanner(private val context: Context) {
         name: String,
         advertisesAuroraService: Boolean,
     ): Triple<String, String, Int>? {
-        parseBoardName(name)?.let { return it }
-        if (!advertisesAuroraService && auroraFamilyOrNull(name) == null) return null
+        val family = auroraFamilyOrNull(name)
+        parseBoardName(name)?.let { parsed ->
+            return parsed.takeIf { advertisesAuroraService || family != null }
+        }
+        val boardNamed = family != null &&
+            normalizedName(name).startsWith(family.auroraNamePrefix() + "board")
+        if (!advertisesAuroraService && !boardNamed) return null
         val displayName = name.substringBefore('@').trim()
         if (displayName.isEmpty()) return null
         return Triple(displayName, "", 2)
+    }
+
+    private fun BoardBrand.auroraNamePrefix(): String = when (this) {
+        BoardBrand.TENSION -> "tension"
+        BoardBrand.GRASSHOPPER -> "grasshopper"
+        BoardBrand.DECOY -> "decoy"
+        BoardBrand.SOILL -> "soill"
+        BoardBrand.TOUCHSTONE -> "touchstone"
+        else -> "kilter"
     }
 
     /**
