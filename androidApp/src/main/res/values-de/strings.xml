@@ -1041,6 +1041,9 @@
     <string name="board_ble_scan_permission_message_legacy">Auf dieser Android-Version können Bluetooth-Geräte in der Nähe nur mit Standortberechtigung gefunden werden. CruxCoach verwendet deinen Standort nicht für die Board-Verbindung.</string>
     <string name="board_ble_scan_permission_message_modern">Erlaube den Zugriff auf Bluetooth-Geräte in der Nähe, um Boards zu suchen und zu verbinden.</string>
     <string name="board_ble_allow_search">Board-Suche erlauben</string>
+    <string name="board_ble_permission_blocked_modern">Android fragt nicht mehr nach dieser Berechtigung. Erlaube CruxCoach in den App-Einstellungen „Geräte in der Nähe“, um Boards zu suchen.</string>
+    <string name="board_ble_permission_blocked_legacy">Android fragt nicht mehr nach dieser Berechtigung. Erlaube CruxCoach in den App-Einstellungen „Standort“, um Boards zu suchen; CruxCoach verwendet deinen Standort nicht für die Board-Verbindung.</string>
+    <string name="board_ble_open_app_settings">App-Einstellungen öffnen</string>
     <string name="board_ble_loading_connection_options">Verbindungsoptionen werden geladen…</string>
     <string name="board_ble_direct_reconnect_privacy_hint">Die direkte Wiederverbindung greift nicht auf deinen Standort zu.</string>
     <string name="board_ble_reconnect">Wiederverbinden</string>
