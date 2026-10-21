@@ -18,18 +18,21 @@ internal data class ActiveBoardSelection(
  * The official Kilter app fixed the same in 2.11.3 by disconnecting on a wall
  * switch; this does the same.
  *
- * Not every change is a switch away from the connected board:
+ * Only a link whose board matched the selection when it came up is released:
  * - a link made during onboarding is made before the board is chosen;
  * - a link to a board of another brand than the selected one (the mismatch
- *   prompt) is corrected by changing the selection TOWARD the connected board.
- * In both cases the selection is followed and becomes the link's board.
+ *   prompt) is corrected by changing the selection TOWARD the connected board,
+ *   and a catalogue download may write that selection twice.
+ * Such a link follows every change and is never released by this policy; the
+ * next connection is bound normally.
  */
 internal class BoardSwitchLinkPolicy {
     private var bound: ActiveBoardSelection? = null
     private var boundToLink = false
 
     fun onLinkUp(selection: ActiveBoardSelection, connectedBrand: BoardBrand?, onboarded: Boolean) {
-        bind(selection, connectedBrand, onboarded)
+        bound = selection
+        boundToLink = onboarded && connectedBrand != null && selection.brand == connectedBrand
     }
 
     fun onLinkDown() {
@@ -46,12 +49,7 @@ internal class BoardSwitchLinkPolicy {
         val previous = bound ?: return false
         if (selection == previous) return false
         if (boundToLink) return true
-        bind(selection, connectedBrand, onboarded)
-        return false
-    }
-
-    private fun bind(selection: ActiveBoardSelection, connectedBrand: BoardBrand?, onboarded: Boolean) {
         bound = selection
-        boundToLink = onboarded && connectedBrand != null && selection.brand == connectedBrand
+        return false
     }
 }

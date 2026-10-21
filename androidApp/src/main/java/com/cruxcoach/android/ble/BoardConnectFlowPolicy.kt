@@ -67,7 +67,8 @@ internal object BoardConnectFlowPolicy {
      *
      * The active brand's remembered controller wins when it is in range;
      * otherwise only an unambiguous single board of that brand that is not
-     * another phone's relay. Anything else stays a choice for the list.
+     * another phone's relay; with no such board, a single relay of that brand
+     * (as 0.2.3 took it). Anything else stays a choice for the list.
      */
     fun automaticTarget(
         boards: List<DiscoveredBoard>,
@@ -78,6 +79,8 @@ internal object BoardConnectFlowPolicy {
             boards.firstOrNull { it.address.equals(rememberedAddress, ignoreCase = true) && !it.isCruxRelay }
                 ?.let { return it }
         }
-        return autoConnectTarget(boards.filter { it.boardBrand == activeBrand && !it.isCruxRelay })
+        val ofBrand = boards.filter { it.boardBrand == activeBrand }
+        val direct = ofBrand.filterNot { it.isCruxRelay }
+        return if (direct.isNotEmpty()) autoConnectTarget(direct) else autoConnectTarget(ofBrand)
     }
 }

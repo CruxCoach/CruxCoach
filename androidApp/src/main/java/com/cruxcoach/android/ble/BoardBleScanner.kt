@@ -449,9 +449,10 @@ class BoardBleScanner(private val context: Context) {
      *
      * The scan has no UUID filter, so a name counts only with evidence that
      * it is a board. The advertised Aurora board service is always enough.
-     * Without it, a suffixed name must start with an Aurora family name
-     * ("Printer #751737" is no Kilter), and a bare name with
-     * "<family> Board" ("Tensioner" is no Tension board).
+     * Without it, a suffixed name must contain an Aurora family name, as the
+     * official apps require ("Printer #751737" is no Kilter, "Boulderhalle
+     * Kilter#12@3" is), and a bare name must start with "<family> Board"
+     * ("Tensioner" is no Tension board).
      *
      * Without "@apiLevel" the board speaks API 2, the default of both the
      * Aurora and the Kilter app.
@@ -462,7 +463,8 @@ class BoardBleScanner(private val context: Context) {
     ): Triple<String, String, Int>? {
         val family = auroraFamilyOrNull(name)
         parseBoardName(name)?.let { parsed ->
-            return parsed.takeIf { advertisesAuroraService || family != null }
+            val namesFamily = family != null || AURORA_NAME_PREFIXES.any { it in normalizedName(name) }
+            return parsed.takeIf { advertisesAuroraService || namesFamily }
         }
         val boardNamed = family != null &&
             normalizedName(name).startsWith(family.auroraNamePrefix() + "board")
@@ -471,6 +473,9 @@ class BoardBleScanner(private val context: Context) {
         if (displayName.isEmpty()) return null
         return Triple(displayName, "", 2)
     }
+
+    private val AURORA_NAME_PREFIXES =
+        listOf("kilter", "tension", "grasshopper", "decoy", "soill", "touchstone")
 
     private fun BoardBrand.auroraNamePrefix(): String = when (this) {
         BoardBrand.TENSION -> "tension"

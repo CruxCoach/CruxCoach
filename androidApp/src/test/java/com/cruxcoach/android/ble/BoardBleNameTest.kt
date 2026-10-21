@@ -87,6 +87,8 @@ class BoardBleNameTest {
         assertEquals(Triple("Kilter Board", "CR-1", 3), scanner.parseAuroraName("Kilter Board#CR-1@3", false))
         assertEquals(Triple("So iLL Board", "9", 3), scanner.parseAuroraName("So iLL Board#9@3", false))
         assertEquals(Triple("KilterBoard", "ABC123", 3), scanner.parseAuroraName("KilterBoard#ABC123@3", false))
+        // The official apps accept the brand anywhere in a suffixed name.
+        assertEquals(Triple("Boulderhalle Kilter", "12", 3), scanner.parseAuroraName("Boulderhalle Kilter#12@3", false))
     }
 
     @Test
