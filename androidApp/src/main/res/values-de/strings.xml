@@ -2876,6 +2876,9 @@
     <string name="whatsnew_023_title">Neu in 0.2.3</string>
     <string name="whatsnew_023_body">• Beta-Videos – Play-Symbol in den Boulder-Details.\n• Neue Kopfzeile – Board, Winkel, Bluetooth und Filter direkt erreichbar.\n• Filter – übersichtlicher, mit „Geschaffte ausschließen“.\n• Board-Karte – Hallen und Boards nach Ort oder Name suchen.\n• Kataloge wählen – nur die Boards laden, die du brauchst.\n• Statistik – jeder Boulder zählt einmal: Flash, geschafft oder versucht.</string>
     <string name="whatsnew_023_hint">Außerdem: MoonBoard-Griffsets in der Board-Auswahl, klareres Konto &amp; Backup, Einführung im Logo-Menü.</string>
+    <string name="whatsnew_024_title">Neu in 0.2.4</string>
+    <string name="whatsnew_024_body">• Neuere Kilter-Boards – Boards, die nur als „Kilter Board“ erscheinen, verbinden sich jetzt.\n• Kilter-Logbuch-Upload – funktioniert wieder, ohne Doppelte, und versucht es selbst erneut.\n• Board-Karte – klarere Markierungen, eine Liste der Orte im Ausschnitt, „Mein Standort“ und Hallen in deiner Nähe.\n• Griffe putzen – das Logbuch-Menü leuchtet die heutigen Griffe zum Bürsten.</string>
+    <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 
