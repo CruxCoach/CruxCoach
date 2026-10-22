@@ -68,8 +68,10 @@ internal fun BoardCleaningContent(
     onFinish: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
+    // The sheet draws behind the navigation bar: without its inset "Schließen" sat on the Home button of a
+    // three-button bar (Nokia 6.1, 2026-10-23) and a tap there left the app.
     Column(
-        Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+        Modifier.fillMaxWidth().navigationBarsPadding().verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp).padding(bottom = 24.dp)
             .testTag("board_cleaning_sheet"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
