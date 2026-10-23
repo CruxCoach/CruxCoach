@@ -39,7 +39,11 @@ fun BoardCleaningSheet(onDismiss: () -> Unit, viewModel: BoardCleaningViewModel 
         BleConnectionSheet(onDismiss = { showConnection = false })
         return
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // Fully open: the content is taller than half the screen, so a half-open sheet cut it off at the screen edge
+    // and "Schließen" sat on the Home button of a three-button bar (Nokia 6.1, 2026-10-23); a tap there left the
+    // app. The sheet's own window insets keep the expanded content above the navigation bar.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         BoardCleaningContent(
             state = state,
             boardName = board?.displayName,
@@ -68,10 +72,8 @@ internal fun BoardCleaningContent(
     onFinish: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
-    // The sheet draws behind the navigation bar: without its inset "Schließen" sat on the Home button of a
-    // three-button bar (Nokia 6.1, 2026-10-23) and a tap there left the app.
     Column(
-        Modifier.fillMaxWidth().navigationBarsPadding().verticalScroll(rememberScrollState())
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp).padding(bottom = 24.dp)
             .testTag("board_cleaning_sheet"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
