@@ -67,6 +67,8 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 
 **Custom LED Colors** — Choose your own hold colors on the Kilter Board. Different colors for start, hand, foot, and top holds. Visible to everyone around you.
 
+**LED Animations** — Make the lit holds of a Kilter Board climb move: pulse, strobe, or a slow rainbow wave. Flashing options change color at most three times a second.
+
 **Nearby Sharing** — Share the current climb or active playlist state with nearby CruxCoach users over Bluetooth. No internet is required.
 
 **Your Data, Your Device** — Logbook and other personal records use an encrypted local database; local climb drafts also exist in the unencrypted board database. Decentralized identity via [Nostr](https://nostr.com) — no email, no password, no central account server. No user tracking, no ads. Official builds can send an identifier-free aggregate update count only after an APK has been fully downloaded and cryptographically verified; it is disclosed and can be disabled under *Settings → Updates*.

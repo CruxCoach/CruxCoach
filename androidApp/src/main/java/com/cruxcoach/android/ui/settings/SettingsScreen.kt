@@ -229,6 +229,12 @@ internal fun SettingsScreen(
                             onResetColors = { viewModel.resetLedColors() },
                             onKilterColors = { viewModel.setKilterColors() }
                         )
+                        HorizontalDivider()
+                        LedAnimationSection(
+                            selectedId = state.ledAnimation,
+                            kilterBoardConnected = state.ledAnimationsAvailable,
+                            onSelect = { viewModel.setLedAnimation(it) }
+                        )
                     }
                 }
             }

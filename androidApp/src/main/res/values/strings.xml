@@ -443,6 +443,26 @@
     <string name="settings_led_reset_cruxcoach">CruxCoach Standard</string>
     <string name="settings_led_reset_kilter">Kilter Standard</string>
 
+    <!-- Settings: LED Animations -->
+    <string name="settings_led_anim_title">LED animations</string>
+    <string name="settings_led_anim_change">Change</string>
+    <string name="settings_led_anim_none">None</string>
+    <string name="settings_led_anim_none_hint">Static colors, as set in LED colors.</string>
+    <string name="settings_led_anim_pulse">Pulse</string>
+    <string name="settings_led_anim_pulse_hint">Holds breathe brighter and dimmer in their own colors.</string>
+    <string name="settings_led_anim_two_phase">Two-phase strobe</string>
+    <string name="settings_led_anim_two_phase_hint">Alternates between the CruxCoach and Kilter color schemes.</string>
+    <string name="settings_led_anim_chaotic">Chaotic strobe</string>
+    <string name="settings_led_anim_chaotic_hint">Colors jump around. Role colors stay distinguishable.</string>
+    <string name="settings_led_anim_rainbow">Rainbow wave</string>
+    <string name="settings_led_anim_rainbow_hint">All colors rotate slowly around the color wheel.</string>
+    <string name="settings_led_anim_kilter_only">LED animations only work with a Kilter Board.</string>
+    <string name="led_anim_notification_channel">LED animations</string>
+    <string name="led_anim_notification_channel_desc">Shown while a lit climb keeps animating in another app.</string>
+    <string name="led_anim_notification_title">LED animation running</string>
+    <string name="led_anim_notification_text">Animating the lit climb on your board.</string>
+    <string name="led_anim_notification_stop">Stop</string>
+
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Rest timer</string>
     <string name="settings_timer_desc">Your rest duration between attempts. Start the timer in the app’s climb view, or enable automatic start after logging below.</string>

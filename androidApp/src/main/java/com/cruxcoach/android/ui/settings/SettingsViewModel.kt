@@ -12,6 +12,9 @@ import com.cruxcoach.android.data.kilter.localized
 import com.cruxcoach.android.data.kilter.localizeKilterImportError
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
+import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.led.AnimationPauseOwner
+import com.cruxcoach.android.led.LedAnimationEngine
 import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.GradeScale
@@ -104,6 +107,10 @@ data class SettingsState(
     val lastSyncTimestamp: String? = null,
     val hasAssessment: Boolean = false,
     val ledColors: LedHoldColors = LedHoldColors(),
+    /** Selected LED animation id; "none" = static colors. */
+    val ledAnimation: String = "none",
+    /** A Kilter is connected, so an animation would actually run. Note only. */
+    val ledAnimationsAvailable: Boolean = false,
     val bleAutoDisconnectSeconds: Int = 0,
     val singleConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
     /** Mirrors UserPreferences.multiConnectionBoardSendMode's default — a
@@ -167,6 +174,7 @@ class SettingsViewModel @Inject constructor(
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
     private val kilterApiClient: com.cruxcoach.android.data.kilter.KilterApiClient,
     private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
+    private val ledAnimationEngine: LedAnimationEngine,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -374,6 +382,21 @@ class SettingsViewModel @Inject constructor(
                 userPreferences.moonBoardLedMode.collect { mode ->
                     _state.update { it.copy(moonBoardLedMode = mode) }
                 }
+            }
+            launch { userPreferences.ledAnimation.collect { id -> _state.update { it.copy(ledAnimation = id) } } }
+            // Kilter-only, on the same brand rule as BoardBleLedSink.canAnimate.
+            // Drives the informational note under the row and nothing else — the
+            // options stay freely selectable so the setting can be settled away from
+            // the wall, and the engine is what refuses to push frames to a board that
+            // cannot take them.
+            launch {
+                combine(bleConnection.connectionState, bleConnection.connectedBoardBrand) { conn, brand ->
+                    // Only a link that is gone takes the note away. A board that is
+                    // mid-send is still the Kilter board the animation uses the moment
+                    // the write lands, so flicking the note on every climb send would
+                    // read as a broken setting.
+                    conn != ConnectionState.DISCONNECTED && brand == BoardBrand.KILTER
+                }.collect { ok -> _state.update { it.copy(ledAnimationsAvailable = ok) } }
             }
             launch { userPreferences.routeFrameSpeed.collect { speed -> _state.update { it.copy(routePlayback = it.routePlayback.copy(frameSpeed = speed)) } } }
             launch { userPreferences.routeUseSetterSpeed.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(useSetterSpeed = v)) } } }
@@ -655,6 +678,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Pick the LED animation. Persisting is the whole job: `LedAnimationEngine`
+     * collects the preference, so switching while a climb is lit takes effect on
+     * the next frame — no resend, and switching back to "none" restores the
+     * static colors on its own.
+     */
+    fun setLedAnimation(id: String) {
+        if (id == _state.value.ledAnimation) return
+        _state.update { it.copy(ledAnimation = id) }
+        viewModelScope.launch { userPreferences.setLedAnimation(id) }
+    }
+
     fun updateRouteFrameSpeed(seconds: Float) {
         viewModelScope.launch { userPreferences.setRouteFrameSpeed(seconds) }
     }
@@ -781,6 +816,9 @@ class SettingsViewModel @Inject constructor(
             // parse Aurora packets at all. Gate on the CONNECTED board's
             // brand so a stale active-board pref can't hit another board.
             if (bleConnection.connectedBoardBrand.value != BoardBrand.KILTER) return@launch
+            // The Easter animation paints whole-board frames on its own timing;
+            // the LED animation must not interleave with it.
+            ledAnimationEngine.pause(AnimationPauseOwner.EASTER_ANIMATION)
             _state.update { it.copy(isAnimating = true) }
             try {
                 val grid = withContext(Dispatchers.IO) {
@@ -810,6 +848,7 @@ class SettingsViewModel @Inject constructor(
                 // try/finally's catch arm and poisoned the parent scope.
                 Log.w(TAG, "easter animation failed", e)
             } finally {
+                ledAnimationEngine.resume(AnimationPauseOwner.EASTER_ANIMATION)
                 _state.update { it.copy(isAnimating = false) }
             }
         }

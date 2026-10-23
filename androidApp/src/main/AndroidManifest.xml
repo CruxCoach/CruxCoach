@@ -200,6 +200,14 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
+        <!-- Keeps a running LED animation writing while the app is
+             backgrounded (filming the climb, say); the effect stops with the
+             service. -->
+        <service
+            android:name=".led.LedAnimationService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
         <!-- Rest timer alarm receiver (fires in Doze mode) -->
         <receiver
             android:name=".notification.RestTimerAlarmReceiver"
