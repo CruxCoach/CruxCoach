@@ -158,7 +158,10 @@ jobs:
 
   publish:
     needs: [reserve, build]
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: from 2026-10-19 that label moves to Ubuntu 26 with Python 3.14, and the
+    # APKTrack wheel's coincurve<22 has no cp314 wheel, so `pip install` below has to build it and fails
+    # (feature publish run 39935384174, 2026-10-23). Ubuntu 24.04 has Python 3.12, as the wheel was built for.
+    runs-on: ubuntu-24.04
     environment: apktrack-feature-publishing
     steps:
       # Never execute code or files from the feature checkout in this job.
