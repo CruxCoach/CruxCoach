@@ -354,13 +354,17 @@ private fun gymSubtitle(g: BoardLocation, brands: List<BoardBrand>, distance: St
     return listOf(boards, place, distance.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
 }
 
-/** "Gyms near me" — the location prompt appears only after this tap. */
+/**
+ * "Gyms near me" — the location prompt appears only after this tap. It stays
+ * tappable while a lookup runs: a tap during the silent lookup on open (up to
+ * 45 s for a cold GPS start) makes that lookup's outcome visible instead of
+ * waiting for it to end without a word.
+ */
 @Composable
-private fun NearbyButton(locating: Boolean, onClick: () -> Unit) {
+internal fun NearbyButton(locating: Boolean, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         FilledTonalButton(
             onClick = onClick,
-            enabled = !locating,
             modifier = Modifier.fillMaxWidth().testTag("gym_nearby"),
         ) {
             if (locating) {
