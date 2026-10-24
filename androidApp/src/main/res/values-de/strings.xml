@@ -2880,7 +2880,7 @@
     <string name="whatsnew_023_body">• Beta-Videos – Play-Symbol in den Boulder-Details.\n• Neue Kopfzeile – Board, Winkel, Bluetooth und Filter direkt erreichbar.\n• Filter – übersichtlicher, mit „Geschaffte ausschließen“.\n• Board-Karte – Hallen und Boards nach Ort oder Name suchen.\n• Kataloge wählen – nur die Boards laden, die du brauchst.\n• Statistik – jeder Boulder zählt einmal: Flash, geschafft oder versucht.</string>
     <string name="whatsnew_023_hint">Außerdem: MoonBoard-Griffsets in der Board-Auswahl, klareres Konto &amp; Backup, Einführung im Logo-Menü.</string>
     <string name="whatsnew_024_title">Neu in 0.2.4</string>
-    <string name="whatsnew_024_body">• Neuere Kilter-Boards – Boards, die nur als „Kilter Board“ erscheinen, verbinden sich jetzt.\n• Kilter-Logbuch-Upload – funktioniert wieder, ohne Doppelte, und versucht es selbst erneut.\n• Board-Karte – klarere Markierungen, eine Liste der Orte im Ausschnitt, „Mein Standort“ und Hallen in deiner Nähe.\n• Griffe putzen – das Logbuch-Menü leuchtet die heutigen Griffe zum Bürsten.</string>
+    <string name="whatsnew_024_body">• Neuere Kilter-Boards – Boards, die nur als „Kilter Board“ erscheinen, verbinden sich jetzt.\n• Kilter-Logbuch-Upload – funktioniert wieder, ohne Doppelte, und versucht es selbst erneut.\n• Board-Karte – klarere Markierungen, eine Liste der Orte im Ausschnitt, „Mein Standort“ und Hallen in deiner Nähe.\n• Griffe putzen – das Logbuch-Menü leuchtet die Griffe deiner heute geloggten Probleme zum Bürsten.</string>
     <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
@@ -3192,13 +3192,14 @@
     <!-- Board cleaning (0.2.4) -->
     <string name="board_cleaning_title">Griffe putzen</string>
     <string name="board_cleaning_logbook_options">Logbuch-Optionen</string>
-    <string name="board_cleaning_description">Markiert die Griffe der heute mit CruxCoach auf diesem Handy ans Board gesendeten Probleme, auch ohne Top. Gruppen-Sessions zählen mit, wenn dieses Handy das Board steuert.</string>
+    <string name="board_cleaning_description">Markiert die Griffe der Probleme, die du heute für dieses Board geloggt hast (Versuch oder Top). In Gruppen putzt jeder nacheinander seine eigenen.</string>
     <string name="board_cleaning_connect_hint">Verbinde dich mit dem Board, das du putzen möchtest.</string>
     <string name="board_cleaning_connect">Board verbinden</string>
     <string name="board_cleaning_unsupported">Der Putzmodus benötigt eine direkte Verbindung zu Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone oder MoonBoard.</string>
-    <string name="board_cleaning_empty">Für dieses Board sind heute keine Griffe gesammelt. Sende ein Problem ans Board, um Griffe zu sammeln.</string>
-    <string name="board_cleaning_relay">Beende die Board-Freigabe, bevor du den Putzmodus startest. Probleme aus anderen Apps werden nicht mitgezählt.</string>
-    <string name="board_cleaning_active_hint">Problemwechsel von diesem Handy sind pausiert. Beim Schließen des Dialogs bleibt die Markierung an. Beenden stellt die letzte bekannte Anzeige wieder her oder schaltet die LEDs aus, falls sie nicht mehr bekannt ist. „Geputzt“ setzt zusätzlich diese Sammlung zurück.</string>
+    <string name="board_cleaning_empty">Heute hast du für dieses Board noch nichts geloggt.</string>
+    <string name="board_cleaning_all_clean">Alles geputzt. Was du ab jetzt loggst, kommt neu dazu.</string>
+    <string name="board_cleaning_relay">Beende die Board-Freigabe, bevor du den Putzmodus startest.</string>
+    <string name="board_cleaning_active_hint">Problemwechsel von diesem Handy sind pausiert. Beim Schließen des Dialogs bleibt die Markierung an. Beenden stellt die letzte bekannte Anzeige wieder her oder schaltet die LEDs aus, falls sie nicht mehr bekannt ist. „Geputzt“ setzt zusätzlich diese Sammlung zurück: Danach zählt nur, was du neu loggst.</string>
     <string name="board_cleaning_done">Geputzt · Sammlung zurücksetzen</string>
     <string name="board_cleaning_stop">Beenden · Sammlung behalten</string>
     <string name="board_cleaning_start">Griffe am Board markieren</string>
@@ -3206,8 +3207,8 @@
     <string name="board_cleaning_active">Putzmodus aktiv · Steuerung öffnen</string>
     <string name="board_cleaning_error">Das Board konnte nicht aktualisiert werden. Prüfe die Verbindung und versuche es erneut. Die Sammlung bleibt erhalten.</string>
     <plurals name="board_cleaning_count">
-        <item quantity="one">%d Griff heute gesammelt</item>
-        <item quantity="other">%d Griffe heute gesammelt</item>
+        <item quantity="one">%d Griff zu putzen</item>
+        <item quantity="other">%d Griffe zu putzen</item>
     </plurals>
     <string name="board_cleaning_sections">Dieser ältere Controller markiert bis zu %d Griffe pro Abschnitt. Bestätige jeden Abschnitt als geputzt, um den nächsten anzuzeigen.</string>
     <string name="board_cleaning_section_count">%1$d von %2$d verbleibenden Griffen in diesem Abschnitt</string>

@@ -545,7 +545,11 @@ class BoardBleConnection(
     private val cleaningStorage = BoardCleaningStorage(context)
     private val cleaning = BoardCleaningSession(cleaningStorage.load(), cleaningStorage::save)
     val cleaningState: StateFlow<BoardCleaningState> = cleaning.state
-    fun refreshCleaningDay() = cleaning.refresh()
+    /** Fences a logbook read for hold cleaning to the connection it started on. */
+    fun cleaningTicket(): Long = cleaning.ticket()
+    /** Today's logged holds for the board that was attached at [ticket]. */
+    fun updateCleaningLog(ticket: Long, date: String, entries: List<LoggedHolds>) =
+        cleaning.logged(ticket, date, entries)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -1807,7 +1811,6 @@ class BoardBleConnection(
         expectedQuantumPlayers: List<QuantumActivePlayer>? = null,
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
         expectedBrand: BoardBrand? = null,
-        collectForCleaning: Boolean = true,
     ): Boolean = writeMutex.withLock {
         if (cleaningState.value.active) return false
         val cleaningTicket = cleaning.ticket()
@@ -1941,13 +1944,7 @@ class BoardBleConnection(
             val chunks = encoder.encodeClimb(holdPairs)
 
             val success = writeChunks(chunks)
-            if (success) cleaning.projected(
-                cleaningTicket,
-                if (collectForCleaning) holds.mapNotNull { placementToLed[it.placementId] }
-                    .filter { it >= 0 && it <= if ((currentBoard?.apiLevel ?: 3) < 3) 1023 else 65535 }.toSet()
-                else emptySet(),
-                chunks,
-            )
+            if (success) cleaning.projected(cleaningTicket, chunks)
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
@@ -2201,7 +2198,8 @@ class BoardBleConnection(
 
     /** Cleaning owns the projection until explicitly finished. Both operations
      * share the ordinary send mutex and are fenced to the UI's physical board.
-     * They never enter projection history or the daily hold collection. */
+     * They never enter projection history; the holds come from today's logbook
+     * ([updateCleaningLog]), not from what was sent. */
     suspend fun startCleaning(expectedAddress: String): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED ||
             currentBoard?.address != expectedAddress || !cleaningState.value.available) return false
@@ -2253,7 +2251,7 @@ class BoardBleConnection(
         if (lastSendBoardBrand != _connectedBoardBrand.value ||
             lastSendBoardAddress?.equals(currentBoard?.address, ignoreCase = true) != true
         ) return false
-        return sendClimb(holds, ledMap, roleColors, collectForCleaning = false)
+        return sendClimb(holds, ledMap, roleColors)
     }
 
     suspend fun sendRawChunks(
@@ -2293,7 +2291,7 @@ class BoardBleConnection(
         }
         val chunks = encoder.encodeClimb(leds)
         val success = writeChunks(chunks)
-        if (success) cleaning.projected(ticket, emptySet(), chunks)
+        if (success) cleaning.projected(ticket, chunks)
         return success
     }
 
@@ -2317,7 +2315,6 @@ class BoardBleConnection(
         frames: String,
         variant: com.cruxcoach.domain.board.MoonBoardVariant,
         ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
-        collectForCleaning: Boolean = true,
     ): Boolean = writeMutex.withLock {
         if (cleaningState.value.active) return false
         val cleaningTicket = cleaning.ticket()
@@ -2338,11 +2335,7 @@ class BoardBleConnection(
                 chunks,
                 interChunkDelayMs = MOONBOARD_UART_INTER_CHUNK_DELAY_MS,
             )
-            if (success) cleaning.projected(
-                cleaningTicket,
-                if (collectForCleaning) MoonBoardFrameEncoder.cleaningPositions(frames, variant) else emptySet(),
-                chunks,
-            )
+            if (success) cleaning.projected(cleaningTicket, chunks)
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
@@ -2426,7 +2419,7 @@ class BoardBleConnection(
                 listOf(MoonBoardFrameEncoder.encodeCleaning(emptySet()))
             } else encoder.encodeClear()
             val success = writeChunks(chunks)
-            if (success) cleaning.projected(ticket, emptySet(), chunks)
+            if (success) cleaning.projected(ticket, chunks)
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {

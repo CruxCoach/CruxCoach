@@ -1299,7 +1299,6 @@ class ClimbEditorViewModel @Inject constructor(
                     frames,
                     variant,
                     userPreferences.moonBoardLedMode.first(),
-                    collectForCleaning = false,
                 )
             }
             result.fold(
@@ -1331,7 +1330,6 @@ class ClimbEditorViewModel @Inject constructor(
                 ledMap,
                 roleColors,
                 expectedBrand = cur.editor.brand,
-                collectForCleaning = false,
             )
         }
         result.fold(

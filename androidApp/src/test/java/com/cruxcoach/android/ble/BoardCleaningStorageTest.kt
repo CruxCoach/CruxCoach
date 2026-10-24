@@ -26,13 +26,30 @@ class BoardCleaningStorageTest {
         assertFalse(key!!.contains(board.address, ignoreCase = true))
     }
 
-    @Test fun `daily collection survives storage reconstruction and corrupt cache degrades to empty`() {
+    @Test fun `cleaned marks survive storage reconstruction and a corrupt cache degrades to empty`() {
         val context = RuntimeEnvironment.getApplication()
-        val cache = mapOf(BoardCleaningStorage.key(board)!! to CleaningDay("2026-10-10", setOf(0, 84, 198)))
-        BoardCleaningStorage(context).save(cache)
-        assertEquals(cache, BoardCleaningStorage(context).load())
+        val marks = mapOf(BoardCleaningStorage.key(board)!! to CleaningMark("2026-10-10", "2026-10-10T18:00", setOf(0, 84, 198)))
+        BoardCleaningStorage(context).save(marks)
+        assertEquals(marks, BoardCleaningStorage(context).load())
         context.getSharedPreferences("board_cleaning", Context.MODE_PRIVATE).edit()
-            .putString("days", "broken").commit()
+            .putString("marks", "broken").commit()
         assertTrue(BoardCleaningStorage(context).load().isEmpty())
+    }
+
+    @Test fun `the sent-climb day collection of earlier builds is removed`() {
+        val context = RuntimeEnvironment.getApplication()
+        val preferences = context.getSharedPreferences("board_cleaning", Context.MODE_PRIVATE)
+        preferences.edit().putString("days", """{"abc":{"date":"2026-10-10","positions":[1,2]}}""").commit()
+        assertTrue(BoardCleaningStorage(context).load().isEmpty())
+        assertFalse(preferences.contains("days"))
+    }
+
+    @Test fun `stored marks hold only a date, a time and LED positions per hashed controller`() {
+        val context = RuntimeEnvironment.getApplication()
+        val key = BoardCleaningStorage.key(board)!!
+        BoardCleaningStorage(context).save(mapOf(key to CleaningMark("2026-10-10", "2026-10-10T18:00", setOf(5))))
+        val stored = context.getSharedPreferences("board_cleaning", Context.MODE_PRIVATE).all
+        assertEquals(setOf("marks"), stored.keys)
+        assertEquals("""{"$key":{"date":"2026-10-10","until":"2026-10-10T18:00","cleaned":[5]}}""", stored["marks"])
     }
 }

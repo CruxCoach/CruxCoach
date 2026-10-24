@@ -1,5 +1,6 @@
 package com.cruxcoach.board
 
+import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardVariant
@@ -70,5 +71,14 @@ class BoardCleaningEncoderTest {
             assertEquals(BoardPacketEncoder.API2_ONLY, packets[4], "a full section is a single P packet")
         }
         assertEquals(Int.MAX_VALUE, BoardPacketEncoder.cleaningHoldLimit(3, 2))
+    }
+
+    @Test fun ledPositionsAreTheDistinctMappedAddressesEachProtocolCarries() {
+        // Roles and repeats do not matter; unmapped holds are skipped like a send skips them.
+        val holds = listOf(BoardHold(1, 12), BoardHold(2, 13), BoardHold(3, 14), BoardHold(1, 15), BoardHold(4, 12))
+        val map = mapOf(1 to 5, 2 to 1500, 3 to 70_000)
+        assertEquals(setOf(5, 1500), BoardPacketEncoder(3).ledPositions(holds, map))
+        assertEquals(setOf(5), BoardPacketEncoder(2, 2).ledPositions(holds, map))
+        assertEquals(emptySet<Int>(), BoardPacketEncoder(3).ledPositions(holds, emptyMap()))
     }
 }

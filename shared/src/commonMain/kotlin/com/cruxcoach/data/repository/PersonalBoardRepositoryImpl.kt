@@ -254,6 +254,19 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
+    override fun getUserLogbookForDay(day: String): List<LogbookDayEntry> =
+        database.ascentsQueries.getUserLogbookForDay(day).executeAsList().map { row ->
+            LogbookDayEntry(
+                climbUuid = row.climb_uuid,
+                angle = row.angle,
+                isMirror = row.is_mirror != 0L,
+                climbedAt = row.climbed_at,
+                climbFrames = row.climb_frames,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
+            )
+        }
+
     override fun countUserLogbook(): Long {
         return database.ascentsQueries.countUserLogbook().executeAsOne()
     }

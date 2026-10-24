@@ -1,5 +1,8 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.data.repository.BoardPlacement
+import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.domain.board.BoardHold
 import kotlin.math.abs
 
 /**
@@ -37,6 +40,21 @@ import kotlin.math.abs
 object MirrorMapDeriver {
 
     data class Hold(val placementId: Int, val x: Int, val y: Int, val setId: Int)
+
+    /** The mirror map of a board size: its placements reflected across the
+     *  size's horizontal centre. Shared by the detail screen and hold cleaning. */
+    fun forBoard(placements: Collection<BoardPlacement>, boardSize: BoardSize?): Map<Int, Int> {
+        if (boardSize == null || placements.isEmpty()) return emptyMap()
+        val centerX2 = (boardSize.edgeLeft + boardSize.edgeRight).toInt()
+        return derive(
+            placements.map { Hold(it.placementId.toInt(), it.x.toInt(), it.y.toInt(), it.setId.toInt()) },
+            centerX2,
+        )
+    }
+
+    /** [holds] with every placement replaced by its partner; on-axis holds stay. */
+    fun mirror(holds: List<BoardHold>, map: Map<Int, Int>): List<BoardHold> =
+        holds.map { hold -> map[hold.placementId]?.let { hold.copy(placementId = it) } ?: hold }
 
     fun derive(holds: List<Hold>, centerX2: Int): Map<Int, Int> {
         if (holds.isEmpty()) return emptyMap()

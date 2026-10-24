@@ -279,6 +279,15 @@ class BoardPacketEncoder(
             led to roleToColor(hold.roleId)
         }
 
+    /** The distinct LED positions a send of [holds] addresses on this
+     *  protocol: mapped holds whose position fits its field (10 bits on
+     *  API 2, 16 bits on API 3). Hold cleaning lights exactly these. */
+    fun ledPositions(holds: List<BoardHold>, placementToLed: Map<Int, Int>): Set<Int> {
+        val maxPosition = if (apiLevel < 3) V2_MAX_POSITION else 0xFFFF
+        return holds.mapNotNull { placementToLed[it.placementId] }
+            .filterTo(mutableSetOf()) { it in 0..maxPosition }
+    }
+
     /**
      * True when an API-2 frame of [holds] would light nothing although the
      * box accepts it: the 18 W budget scales colours down until saturated
