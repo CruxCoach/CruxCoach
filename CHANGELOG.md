@@ -9,11 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Settings → Kilter: "Show entries" lists every entry Kilter did not take, with
   climb, angle, date and reason, and sends the list as a bug report in one tap.
-- “Clean holds” in the logbook menu lights the combined holds of today's
-  problems sent from this phone to the connected Kilter/Aurora or MoonBoard.
-  Collections survive app restarts and stay separate per physical board.
-  Finish cleaning to restore the previous display and optionally reset the
-  collection; an active-mode button keeps the controls accessible.
+- “Clean holds” in the logbook menu lights the holds of the problems logged
+  today on this phone, sends and attempts, that fit the connected Kilter/Aurora
+  board or MoonBoard, worked out like sending each climb (frames, mirroring,
+  the board size's LED map). Sending a problem without logging it does not
+  count, so in a group everyone cleans their own logged problems in turn with
+  their own phone. “Cleaned · reset collection” leaves only what is logged
+  afterwards; that mark is kept per physical board and survives app restarts.
+  Finish cleaning to restore the previous display; an active-mode button keeps
+  the controls accessible.
 
 ### Changed
 - The in-app updater's built-in fallback list now includes GitHub next to
