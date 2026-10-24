@@ -17,8 +17,9 @@ This release connects the newest Kilter boards, gets the Kilter logbook upload w
   with the nearest boards. “Gyms near me” finds your gym without typing its
   name. Location is asked for only when you tap one of them and stays on the
   phone.
-- **Clean holds.** The logbook menu lights the holds of today's problems on the
-  connected board, so you can brush them before you leave.
+- **Clean holds.** The logbook menu lights the holds of the problems you logged
+  today, tops and attempts, on the connected board, so you can brush them before
+  you leave. In a group, everyone cleans their own in turn.
 
 ## Other improvements
 - A board switch takes effect at once, even while a catalogue downloads.
