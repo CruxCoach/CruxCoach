@@ -10,6 +10,15 @@
     <string name="locate_me_open_settings">Einstellungen</string>
     <string name="locate_me_turn_on">Einschalten</string>
     <string name="locate_me_private">Dein Standort bleibt auf diesem Telefon.</string>
+    <!-- Zweite Zeile unter „ließ sich nicht ermitteln“: was versucht wurde. Anbieternamen (fused, gps, network, passive) bleiben wie bei Android. Nie eine Position. -->
+    <string name="locate_me_detail">Details: %1$s</string>
+    <string name="locate_me_detail_precise">genauer Standort</string>
+    <string name="locate_me_detail_approximate">ungefährer Standort</string>
+    <string name="locate_me_detail_on">aktiv: %1$s</string>
+    <string name="locate_me_detail_asked">gefragt: %1$s</string>
+    <string name="locate_me_detail_refused">nicht verfügbar: %1$s</string>
+    <string name="locate_me_detail_waited">keine Antwort in %1$d s</string>
+    <string name="locate_me_detail_none">keine</string>
     <string name="distance_m">%1$s m</string>
     <string name="distance_km">%1$s km</string>
 

@@ -10,6 +10,15 @@
     <string name="locate_me_open_settings">Settings</string>
     <string name="locate_me_turn_on">Turn on</string>
     <string name="locate_me_private">Your location stays on this phone.</string>
+    <!-- Second line under "could not be found": what was tried. Provider names (fused, gps, network, passive) stay as Android names them. Never a position. -->
+    <string name="locate_me_detail">Details: %1$s</string>
+    <string name="locate_me_detail_precise">precise location</string>
+    <string name="locate_me_detail_approximate">approximate location</string>
+    <string name="locate_me_detail_on">on: %1$s</string>
+    <string name="locate_me_detail_asked">asked: %1$s</string>
+    <string name="locate_me_detail_refused">not available: %1$s</string>
+    <string name="locate_me_detail_waited">no answer in %1$d s</string>
+    <string name="locate_me_detail_none">none</string>
     <string name="distance_m">%1$s m</string>
     <string name="distance_km">%1$s km</string>
 
