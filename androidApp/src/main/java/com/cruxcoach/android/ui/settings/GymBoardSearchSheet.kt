@@ -76,10 +76,12 @@ internal fun GymBoardSearchSheet(
             else -> if (nearbyAsked) locateFailure = result
         }
     }
-    // Asked for explicitly by the host, or already allowed earlier: no prompt
-    // appears unless the user just chose "near me".
+    // Asked for explicitly by the host: a full search, prompt included.
+    // Otherwise, only when already allowed, a short quiet lookup without a
+    // prompt or a long GPS search; a tap on "near me" turns it into a full one.
     LaunchedEffect(Unit) {
-        if (startGym == null && (startNearby || locateMe.hasPermission)) locateMe.locate()
+        if (startGym != null) return@LaunchedEffect
+        if (startNearby) locateMe.locate() else locateMe.locateQuietly()
     }
     BoardDownloadRequestHost(boardPickerViewModel, deferDownloads, onSelected = { brand ->
         vm.clearGymSelection()
@@ -166,6 +168,9 @@ internal fun GymBoardSearchSheet(
                             locateMe.locate()
                         },
                     )
+                    if (nearbyAsked && locateMe.slow) {
+                        StillLookingNote(onCancel = locateMe::cancel)
+                    }
                     locateFailure?.let { failure ->
                         LocateFailureNote(failure) { locateFailure = null; locateMe.openFix(failure) }
                     }
@@ -381,6 +386,21 @@ internal fun NearbyButton(locating: Boolean, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp, start = 4.dp),
         )
+    }
+}
+
+/** A tap's search has found nothing for a while (GPS indoors may need minutes). */
+@Composable
+private fun StillLookingNote(onCancel: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Text(
+            stringResource(R.string.locate_me_still_looking),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = onCancel, contentPadding = PaddingValues(horizontal = 0.dp)) {
+            Text(stringResource(R.string.action_cancel), color = OrangeAccent)
+        }
     }
 }
 

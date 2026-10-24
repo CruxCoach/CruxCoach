@@ -19,6 +19,9 @@
     <string name="locate_me_detail_refused">not available: %1$s</string>
     <string name="locate_me_detail_waited">no answer in %1$d s</string>
     <string name="locate_me_detail_none">none</string>
+    <string name="locate_me_detail_satellites">satellites: %1$d seen, %2$d used</string>
+    <!-- While a tap keeps looking (up to 5 min) without any position yet. -->
+    <string name="locate_me_still_looking">Still looking for your location. Outdoors or at a window, GPS finds it faster.</string>
     <string name="distance_m">%1$s m</string>
     <string name="distance_km">%1$s km</string>
 

@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.location.GnssStatusCompat
 import androidx.core.location.LocationListenerCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.location.LocationRequestCompat
@@ -40,6 +41,11 @@ object DeviceLocation {
      *  network help often takes 30 s or more. */
     const val TIMEOUT_MS = 45_000L
 
+    /** How long a tap keeps looking, like a map app that listens while it is
+     *  open: indoors without a network location service (GrapheneOS by
+     *  default) GPS may need minutes (owner test 2026-10-24). */
+    const val SEARCH_MS = 5 * 60_000L
+
     /** `LocationManager.FUSED_PROVIDER` (named in API 31; older releases may have it too). */
     private const val FUSED = "fused"
 
@@ -65,6 +71,10 @@ object DeviceLocation {
         /** The providers that refused it: missing on this phone or not allowed. */
         val refused: List<String>,
         val waitedMs: Long,
+        /** Most satellites GPS reported while it looked, and most used in a fix;
+         *  null without the precise permission (Android shows the status only then). */
+        val satellitesSeen: Int? = null,
+        val satellitesUsed: Int? = null,
     )
 
     /** A position (or none) together with what was tried to get it. */
@@ -88,6 +98,28 @@ object DeviceLocation {
     suspend fun current(context: Context, timeoutMs: Long = TIMEOUT_MS): Location? =
         locate(context, timeoutMs).location
 
+    /** The newest fix any provider still holds ("passive" includes other apps' fixes), of any age. */
+    @SuppressLint("MissingPermission") // checked by hasPermission() first
+    fun lastKnown(context: Context): Location? {
+        if (!hasPermission(context)) return null
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+        return lastKnown(manager, runCatching { manager.getProviders(true) }.getOrDefault(emptyList()))
+    }
+
+    /** True for a fix young enough to stand for "here, now". */
+    fun isFresh(location: Location): Boolean = ageMs(location) < FRESH_MS
+
+    /** True for a fix from the last half hour: good enough to show while a live one is refined. */
+    fun isRecent(location: Location): Boolean = ageMs(location) < RECENT_MS
+
+    @SuppressLint("MissingPermission")
+    private fun lastKnown(manager: LocationManager, enabled: List<String>): Location? {
+        val known = runCatching { manager.allProviders }.getOrDefault(emptyList())
+        return (enabled + known + LocationManager.PASSIVE_PROVIDER).distinct()
+            .mapNotNull { runCatching { manager.getLastKnownLocation(it) }.getOrNull() }
+            .maxByOrNull { it.elapsedRealtimeNanos }
+    }
+
     /**
      * The current position, or null when none arrives within [timeoutMs] (no
      * permission, location off, no provider with a fix), with what was tried.
@@ -96,22 +128,20 @@ object DeviceLocation {
      * fix wins, so one silent provider (fused without a network location
      * service, GPS indoors) never keeps the others from answering. A cached
      * fix from the last half hour answers after a short wait; an older one
-     * only when no live fix arrived at all.
+     * only when no live fix arrived at all. With [useCache] false only a live
+     * fix counts (the caller has shown the cached one already).
      */
     @SuppressLint("MissingPermission") // checked by hasPermission() first
-    suspend fun locate(context: Context, timeoutMs: Long = TIMEOUT_MS): Lookup {
+    suspend fun locate(context: Context, timeoutMs: Long = TIMEOUT_MS, useCache: Boolean = true): Lookup {
         val precise = hasFine(context)
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         if (!hasPermission(context) || manager == null) {
             return Lookup(null, Attempt(precise, emptyList(), emptyList(), emptyList(), 0L))
         }
         val enabled = runCatching { manager.getProviders(true) }.getOrDefault(emptyList())
-        val known = runCatching { manager.allProviders }.getOrDefault(emptyList())
 
         // Every provider, "passive" too: it holds the newest fix any app received.
-        val cached = (enabled + known + LocationManager.PASSIVE_PROVIDER).distinct()
-            .mapNotNull { runCatching { manager.getLastKnownLocation(it) }.getOrNull() }
-            .maxByOrNull { it.elapsedRealtimeNanos }
+        val cached = if (useCache) lastKnown(manager, enabled) else null
         val cachedAge = cached?.let(::ageMs) ?: Long.MAX_VALUE
         if (cachedAge < FRESH_MS) {
             Log.i(TAG, "cached fix (${cached?.provider}, ${cachedAge / 1000} s old)")
@@ -122,10 +152,22 @@ object DeviceLocation {
         val asked = mutableListOf<String>()
         val refused = mutableListOf<String>()
         val started = SystemClock.elapsedRealtime()
-        val fresh = withTimeoutOrNull(wait) {
-            firstFix(context, manager, candidates(precise), wait, asked, refused)
+        // Android shows the satellite status only with the precise permission.
+        val satellites = if (precise) SatelliteWatch(manager) else null
+        val fresh = try {
+            withTimeoutOrNull(wait) {
+                firstFix(context, manager, candidates(precise), wait, asked, refused) {
+                    if (LocationManager.GPS_PROVIDER in asked) satellites?.start(context)
+                }
+            }
+        } finally {
+            satellites?.stop()
         }
-        val attempt = Attempt(precise, enabled, asked.toList(), refused.toList(), SystemClock.elapsedRealtime() - started)
+        val watched = satellites?.takeIf { it.started }
+        val attempt = Attempt(
+            precise, enabled, asked.toList(), refused.toList(), SystemClock.elapsedRealtime() - started,
+            satellitesSeen = watched?.seen, satellitesUsed = watched?.used,
+        )
         // Never the coordinates: the position stays out of the log too.
         if (fresh != null) {
             Log.i(TAG, "live fix from ${fresh.provider} (±${fresh.accuracy.toInt()} m): $attempt")
@@ -159,7 +201,8 @@ object DeviceLocation {
 
     /**
      * Listens on all [providers] at once and returns the first fix; every
-     * request ends with it. Fills [asked] and [refused] before it waits.
+     * request ends with it. Fills [asked] and [refused], then calls
+     * [onAsked], before it waits.
      */
     @SuppressLint("MissingPermission")
     private suspend fun firstFix(
@@ -169,6 +212,7 @@ object DeviceLocation {
         durationMs: Long,
         asked: MutableList<String>,
         refused: MutableList<String>,
+        onAsked: () -> Unit,
     ): Location? = suspendCancellableCoroutine { cont ->
         val request = LocationRequestCompat.Builder(1_000L)
             // Lets fused use GPS with the precise permission; Android lowers it for approximate.
@@ -198,11 +242,43 @@ object DeviceLocation {
                 refused += provider
             }
         }
+        if (asked.isNotEmpty()) onAsked()
         when {
             asked.isEmpty() -> cont.resume(null)
             // A fix that came in while later providers were still being asked.
             !cont.isActive -> stopAll()
             else -> cont.invokeOnCancellation { stopAll() }
+        }
+    }
+
+    /**
+     * GPS satellite status while a lookup runs, as Organic Maps does: the
+     * counts go into the detail line, and an active status listener lets
+     * Android show that the app uses location even before the first fix
+     * (an access is otherwise noted only when a fix is delivered).
+     */
+    private class SatelliteWatch(private val manager: LocationManager) : GnssStatusCompat.Callback() {
+        var seen = 0
+            private set
+        var used = 0
+            private set
+        var started = false
+            private set
+
+        @SuppressLint("MissingPermission") // only with the precise permission
+        fun start(context: Context) {
+            started = runCatching {
+                LocationManagerCompat.registerGnssStatusCallback(manager, ContextCompat.getMainExecutor(context), this)
+            }.getOrDefault(false)
+        }
+
+        fun stop() {
+            if (started) runCatching { LocationManagerCompat.unregisterGnssStatusCallback(manager, this) }
+        }
+
+        override fun onSatelliteStatusChanged(status: GnssStatusCompat) {
+            seen = maxOf(seen, status.satelliteCount)
+            used = maxOf(used, (0 until status.satelliteCount).count(status::usedInFix))
         }
     }
 

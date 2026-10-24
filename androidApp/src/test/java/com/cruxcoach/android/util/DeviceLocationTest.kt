@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
+import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -246,6 +247,45 @@ class DeviceLocationTest {
             lookup.attempt.refused,
         )
         assertEquals(listOf(LocationManager.PASSIVE_PROVIDER), lookup.attempt.enabled)
+    }
+
+    @Test
+    fun `gps satellites seen and used go into the attempt`() = runTest {
+        val result = lookup()
+        val status = GnssStatus.Builder()
+            .addSatellite(GnssStatus.CONSTELLATION_GPS, 5, 18f, 30f, 120f, true, true, false, false, 0f, false, 0f)
+            .addSatellite(GnssStatus.CONSTELLATION_GALILEO, 11, 22f, 45f, 200f, true, true, true, false, 0f, false, 0f)
+            .addSatellite(GnssStatus.CONSTELLATION_GPS, 9, 12f, 10f, 80f, false, true, false, false, 0f, false, 0f)
+            .build()
+        locations.simulateGnssStatus(status)
+        shadowOf(Looper.getMainLooper()).idle()
+        advanceTimeBy(DeviceLocation.TIMEOUT_MS + 1_000)
+        runCurrent()
+
+        val attempt = result.getCompleted().attempt
+        assertEquals(3, attempt.satellitesSeen)
+        assertEquals(1, attempt.satellitesUsed)
+    }
+
+    @Test
+    fun `approximate location has no satellite counts`() = runTest {
+        shadowOf(app).denyPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        val result = lookup()
+        advanceTimeBy(DeviceLocation.TIMEOUT_MS + 1_000)
+        runCurrent()
+
+        assertNull(result.getCompleted().attempt.satellitesSeen)
+    }
+
+    @Test
+    fun `without the cache only a live fix counts`() = runTest {
+        locations.simulateLocation(fix(LocationManager.NETWORK_PROVIDER, ageMs = 30_000))
+        val result = async { DeviceLocation.locate(app, useCache = false) }.also { runCurrent() }
+        assertFalse("a fresh cache would have answered at once", result.isCompleted)
+
+        advanceTimeBy(2_000)
+        deliver(fix(LocationManager.GPS_PROVIDER, lat = 50.80))
+        assertEquals(50.80, result.getCompleted().location!!.latitude, 1e-6)
     }
 
     @Test
