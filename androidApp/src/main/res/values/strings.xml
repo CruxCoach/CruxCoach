@@ -2881,7 +2881,7 @@
     <string name="whatsnew_023_body">• Beta videos – play icon in the problem details.\n• New header – board, angle, Bluetooth and filters one tap away.\n• Filters – easier to scan, with “Exclude sent”.\n• Board map – search gyms and boards by place or name.\n• Choose catalogues – download only the boards you need.\n• Statistics – each problem counts once: flash, sent or attempted.</string>
     <string name="whatsnew_023_hint">Also: MoonBoard hold sets in the board picker, clearer account &amp; backup, introduction in the logo menu.</string>
     <string name="whatsnew_024_title">New in 0.2.4</string>
-    <string name="whatsnew_024_body">• Newer Kilter boards – boards that show up only as “Kilter Board” now connect.\n• Kilter logbook upload – works again, without duplicates, and retries by itself.\n• Board map – clearer markers, a list of the places in view, “My location” and gyms near you.\n• Clean holds – the logbook menu lights today’s holds for brushing.</string>
+    <string name="whatsnew_024_body">• Newer Kilter boards – boards that show up only as “Kilter Board” now connect.\n• Kilter logbook upload – works again, without duplicates, and retries by itself.\n• Board map – clearer markers, a list of the places in view, “My location” and gyms near you.\n• Clean holds – the logbook menu lights the holds of the problems you logged today, for brushing.</string>
     <string name="whatsnew_024_hint">Also: a board switch shows at once during a catalogue download, and a session resumes after a rest.</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
@@ -3193,13 +3193,14 @@
     <!-- Board cleaning (0.2.4) -->
     <string name="board_cleaning_title">Clean holds</string>
     <string name="board_cleaning_logbook_options">Logbook options</string>
-    <string name="board_cleaning_description">Highlights the holds from problems sent to this board today using CruxCoach on this phone, including attempts without a top. Group sessions count when this phone controls the board.</string>
+    <string name="board_cleaning_description">Highlights the holds of the problems you logged today for this board (attempt or top). In a group, everyone cleans their own in turn.</string>
     <string name="board_cleaning_connect_hint">Connect to the board you want to clean.</string>
     <string name="board_cleaning_connect">Connect board</string>
     <string name="board_cleaning_unsupported">Cleaning mode requires a direct connection to Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone or MoonBoard.</string>
-    <string name="board_cleaning_empty">No holds collected for this board today. Send a problem to the board to start collecting.</string>
-    <string name="board_cleaning_relay">Stop board sharing before starting cleaning mode. Problems sent through other apps are not included.</string>
-    <string name="board_cleaning_active_hint">Problem changes from this phone are paused. Closing this dialog keeps the lights on. Finish to restore the last known display, or turn off the LEDs if it is no longer known. “Cleaned” also resets this collection.</string>
+    <string name="board_cleaning_empty">You haven’t logged anything for this board today.</string>
+    <string name="board_cleaning_all_clean">All clean. What you log from now on is added.</string>
+    <string name="board_cleaning_relay">Stop board sharing before starting cleaning mode.</string>
+    <string name="board_cleaning_active_hint">Problem changes from this phone are paused. Closing this dialog keeps the lights on. Finish to restore the last known display, or turn off the LEDs if it is no longer known. “Cleaned” also resets this collection: after that, only what you log anew counts.</string>
     <string name="board_cleaning_done">Cleaned · reset collection</string>
     <string name="board_cleaning_stop">Stop · keep collection</string>
     <string name="board_cleaning_start">Highlight holds on board</string>
@@ -3207,8 +3208,8 @@
     <string name="board_cleaning_active">Cleaning mode active · open controls</string>
     <string name="board_cleaning_error">The board could not be updated. Check the connection and try again. The collection has been kept.</string>
     <plurals name="board_cleaning_count">
-        <item quantity="one">%d hold collected today</item>
-        <item quantity="other">%d holds collected today</item>
+        <item quantity="one">%d hold to clean</item>
+        <item quantity="other">%d holds to clean</item>
     </plurals>
     <string name="board_cleaning_sections">This older controller lights up to %d holds per section. Mark each section as cleaned to show the next one.</string>
     <string name="board_cleaning_section_count">%1$d of %2$d remaining holds in this section</string>

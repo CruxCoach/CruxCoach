@@ -128,6 +128,17 @@ SELECT uuid, climb_uuid, angle, is_mirror,
 FROM bids WHERE climb_uuid = :climbUuid
 ORDER BY climbed_at DESC;
 
+-- Hold cleaning: one day's sends and attempts, by the logbook's own day key
+-- (the first ten characters of climbed_at, the local date). Only what the
+-- holds need: no grades, ratings or comments.
+getUserLogbookForDay:
+SELECT climb_uuid, angle, is_mirror, climbed_at, climb_frames, board_brand, layout_id
+FROM ascents WHERE substr(climbed_at, 1, 10) = :day
+UNION ALL
+SELECT climb_uuid, angle, is_mirror, climbed_at, '' AS climb_frames, board_brand, layout_id
+FROM bids WHERE substr(climbed_at, 1, 10) = :day
+ORDER BY climbed_at ASC;
+
 -- Combined count
 countUserLogbook:
 SELECT (SELECT COUNT(*) FROM ascents) + (SELECT COUNT(*) FROM bids);

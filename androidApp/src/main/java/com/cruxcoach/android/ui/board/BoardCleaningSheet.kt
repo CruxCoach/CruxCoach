@@ -14,7 +14,10 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardCleaningState
 import com.cruxcoach.android.ble.ConnectionState
@@ -29,10 +32,15 @@ fun BoardCleaningSheet(onDismiss: () -> Unit, viewModel: BoardCleaningViewModel 
     val relay by viewModel.relayState.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     var showConnection by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            viewModel.refresh()
-            delay(30_000) // Refresh an open sheet across the local date boundary.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    // Read today's logbook on opening, on every (re)connection and on return
+    // to the app, then every 30 s so the local date boundary is crossed too.
+    LaunchedEffect(board, connection == ConnectionState.DISCONNECTED) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                viewModel.refresh()
+                delay(30_000)
+            }
         }
     }
     if (showConnection) {
@@ -97,7 +105,11 @@ internal fun BoardCleaningContent(
                     ),
                     style = MaterialTheme.typography.titleMedium,
                 )
-                if (state.holdCount == 0) Text(stringResource(R.string.board_cleaning_empty))
+                if (state.holdCount == 0 && !state.loading) {
+                    Text(stringResource(
+                        if (state.allCleaned) R.string.board_cleaning_all_clean else R.string.board_cleaning_empty,
+                    ))
+                }
                 if (relayEnabled) Text(stringResource(R.string.board_cleaning_relay))
                 if (state.holdCount > state.holdLimit) {
                     Text(stringResource(R.string.board_cleaning_sections, state.holdLimit))

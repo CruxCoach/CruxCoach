@@ -1672,12 +1672,8 @@ class BoardClimbDetailViewModel @Inject constructor(
         }
     }
 
-    private fun mirrorHolds(holds: List<BoardHold>): List<BoardHold> {
-        return holds.map { hold ->
-            val mirroredId = mirrorPlacementMap[hold.placementId]
-            if (mirroredId != null) hold.copy(placementId = mirroredId) else hold
-        }
-    }
+    private fun mirrorHolds(holds: List<BoardHold>): List<BoardHold> =
+        MirrorMapDeriver.mirror(holds, mirrorPlacementMap)
 
     /**
      * Resolve which (productSize, layout) pair to render this specific
@@ -1744,19 +1740,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private fun computeMirrorMapFromPlacements(
         placements: Map<Int, BoardPlacement>,
         boardSize: BoardSize?
-    ): Map<Int, Int> {
-        if (boardSize == null || placements.isEmpty()) return emptyMap()
-        val centerX2 = (boardSize.edgeLeft + boardSize.edgeRight).toInt()
-        val holds = placements.values.map {
-            MirrorMapDeriver.Hold(
-                placementId = it.placementId.toInt(),
-                x = it.x.toInt(),
-                y = it.y.toInt(),
-                setId = it.setId.toInt(),
-            )
-        }
-        return MirrorMapDeriver.derive(holds, centerX2)
-    }
+    ): Map<Int, Int> = MirrorMapDeriver.forBoard(placements.values, boardSize)
 
     fun showAddToListDialog() {
         // Content is loaded by AddToListDialogHost's own ViewModel — the
