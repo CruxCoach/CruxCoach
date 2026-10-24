@@ -4,8 +4,10 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.res.Resources
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,8 +36,8 @@ sealed interface LocateResult {
     data object DeniedPermanently : LocateResult
     /** Location is switched off for the whole phone. */
     data object Disabled : LocateResult
-    /** Permission and location are on, but no position arrived in time. */
-    data object Unavailable : LocateResult
+    /** Permission and location are on, but no position arrived in time; [attempt] says what was tried. */
+    data class Unavailable(val attempt: DeviceLocation.Attempt? = null) : LocateResult
 }
 
 @Stable
@@ -79,14 +81,14 @@ class LocateMeState internal constructor(
         }
         locating = true
         scope.launch {
-            val location = try {
-                DeviceLocation.current(context)
+            val lookup = try {
+                DeviceLocation.locate(context)
             } finally {
                 locating = false
             }
             onResult()(
-                location?.let { LocateResult.Found(it.latitude, it.longitude, it.accuracy.takeIf { _ -> it.hasAccuracy() }) }
-                    ?: LocateResult.Unavailable
+                lookup.location?.let { LocateResult.Found(it.latitude, it.longitude, it.accuracy.takeIf { _ -> it.hasAccuracy() }) }
+                    ?: LocateResult.Unavailable(lookup.attempt)
             )
         }
     }
@@ -129,14 +131,47 @@ fun rememberLocateMe(onResult: (LocateResult) -> Unit): LocateMeState {
     return state
 }
 
-/** The message for a failed "my location" tap, or null for a found position. */
+/**
+ * The message for a failed "my location" tap, or null for a found position.
+ * "Could not be found" carries a second line with what was tried, so a
+ * phone without ADB still tells why (owner test on GrapheneOS, 2026-10-24).
+ */
 @Composable
 fun locateFailureText(result: LocateResult): String? = when (result) {
     is LocateResult.Found -> null
     LocateResult.Denied -> stringResource(R.string.locate_me_denied)
     LocateResult.DeniedPermanently -> stringResource(R.string.locate_me_denied_settings)
     LocateResult.Disabled -> stringResource(R.string.locate_me_disabled)
-    LocateResult.Unavailable -> stringResource(R.string.locate_me_unavailable)
+    is LocateResult.Unavailable -> {
+        val message = stringResource(R.string.locate_me_unavailable)
+        val resources = LocalContext.current.resources
+        result.attempt?.let { message + "\n" + locateDetail(resources, it) } ?: message
+    }
+}
+
+/**
+ * The detail line for a lookup without a position: Android version,
+ * precise or approximate, the providers that are on, asked and refused,
+ * and how long it waited. Provider names stay as Android calls them.
+ */
+fun locateDetail(resources: Resources, attempt: DeviceLocation.Attempt): String {
+    val none = resources.getString(R.string.locate_me_detail_none)
+    fun names(providers: List<String>) = providers.joinToString(", ").ifEmpty { none }
+    val parts = buildList {
+        add("Android ${Build.VERSION.RELEASE}")
+        add(
+            resources.getString(
+                if (attempt.precise) R.string.locate_me_detail_precise else R.string.locate_me_detail_approximate,
+            ),
+        )
+        add(resources.getString(R.string.locate_me_detail_on, names(attempt.enabled)))
+        add(resources.getString(R.string.locate_me_detail_asked, names(attempt.asked)))
+        if (attempt.refused.isNotEmpty()) {
+            add(resources.getString(R.string.locate_me_detail_refused, names(attempt.refused)))
+        }
+        add(resources.getString(R.string.locate_me_detail_waited, ((attempt.waitedMs + 500) / 1000).toInt()))
+    }
+    return resources.getString(R.string.locate_me_detail, parts.joinToString(" · "))
 }
 
 /** The label of the button that fixes [result], or null when there is nothing to open. */

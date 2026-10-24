@@ -3,10 +3,15 @@ package com.cruxcoach.android.util
 import android.Manifest
 import android.app.Application
 import android.content.Context
+import android.content.ContextWrapper
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
+import android.location.LocationRequest
 import android.os.Looper
 import android.os.SystemClock
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -27,6 +32,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.time.Duration
+import java.util.concurrent.Executor
 
 /**
  * "My location" on the board map and in the gym picker (owner report
@@ -172,6 +178,77 @@ class DeviceLocationTest {
     }
 
     @Test
+    fun `a provider Android lists as off is still asked and answers once it comes on`() = runTest {
+        // GrapheneOS owner test 2026-10-24: no request seemed to reach the phone at all.
+        locations.setProviderEnabled(LocationManager.GPS_PROVIDER, false)
+        val result = lookup()
+        assertTrue(locations.getLocationRequests(LocationManager.GPS_PROVIDER).isNotEmpty())
+
+        advanceTimeBy(3_000)
+        locations.setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        deliver(fix(LocationManager.GPS_PROVIDER))
+
+        assertTrue(result.isCompleted)
+        assertEquals(FULDA_LAT, result.getCompleted().location!!.latitude, 1e-6)
+        assertNoListenersLeft()
+    }
+
+    @Test
+    fun `the attempt says what was tried and how long it waited`() = runTest {
+        shadowOf(app).denyPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        locations.setProviderEnabled(LocationManager.NETWORK_PROVIDER, false)
+        val result = lookup()
+        // The detail line reports real elapsed time, so move the phone's clock as well.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(46))
+        advanceTimeBy(46_000)
+        runCurrent()
+
+        val lookup = result.getCompleted()
+        assertNull(lookup.location)
+        val attempt = lookup.attempt
+        assertFalse(attempt.precise)
+        assertFalse(LocationManager.NETWORK_PROVIDER in attempt.enabled)
+        assertTrue(LocationManager.GPS_PROVIDER in attempt.enabled)
+        assertEquals(listOf(FUSED, LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER, LocationManager.PASSIVE_PROVIDER), attempt.asked)
+        assertTrue(attempt.refused.isEmpty())
+        assertEquals(46_000L, attempt.waitedMs)
+        assertNoListenersLeft()
+    }
+
+    @Test
+    fun `when every provider refuses the answer comes at once and names them`() = runTest {
+        // As Android does it: a missing provider throws IllegalArgumentException, a forbidden one
+        // SecurityException (LocationManagerService.registerLocationListener). Robolectric's
+        // shadow re-creates removed providers instead, hence the mock.
+        val refusing = mockk<LocationManager>(relaxed = true)
+        every { refusing.getProviders(true) } returns listOf(LocationManager.PASSIVE_PROVIDER)
+        every { refusing.allProviders } returns listOf(LocationManager.PASSIVE_PROVIDER)
+        every { refusing.getLastKnownLocation(any()) } returns null
+        every {
+            refusing.requestLocationUpdates(any<String>(), any<LocationRequest>(), any<Executor>(), any<LocationListener>())
+        } answers {
+            val provider = firstArg<String>()
+            if (provider == LocationManager.PASSIVE_PROVIDER) throw SecurityException("not allowed")
+            throw IllegalArgumentException("provider \"$provider\" does not exist")
+        }
+        val context = object : ContextWrapper(app) {
+            override fun getSystemService(name: String): Any? =
+                if (name == Context.LOCATION_SERVICE) refusing else super.getSystemService(name)
+        }
+        val result = async { DeviceLocation.locate(context) }.also { runCurrent() }
+
+        assertTrue("no waiting when nothing could be asked", result.isCompleted)
+        val lookup = result.getCompleted()
+        assertNull(lookup.location)
+        assertTrue(lookup.attempt.asked.isEmpty())
+        assertEquals(
+            listOf(FUSED, LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER, LocationManager.PASSIVE_PROVIDER),
+            lookup.attempt.refused,
+        )
+        assertEquals(listOf(LocationManager.PASSIVE_PROVIDER), lookup.attempt.enabled)
+    }
+
+    @Test
     @Config(sdk = [28])
     fun `android 9 gps answers while network has no fix`() = runTest {
         val result = locate()
@@ -184,6 +261,9 @@ class DeviceLocationTest {
 
     private fun TestScope.locate(): Deferred<Location?> =
         async { DeviceLocation.current(app) }.also { runCurrent() }
+
+    private fun TestScope.lookup(): Deferred<DeviceLocation.Lookup> =
+        async { DeviceLocation.locate(app) }.also { runCurrent() }
 
     /** A fix arrives; the location manager posts it to the main thread. */
     private fun TestScope.deliver(location: Location) {
@@ -201,7 +281,7 @@ class DeviceLocationTest {
     }
 
     private fun assertNoListenersLeft() {
-        for (provider in listOf(FUSED, LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)) {
+        for (provider in listOf(FUSED, LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER, LocationManager.PASSIVE_PROVIDER)) {
             assertTrue("$provider still listening", locations.getLocationRequests(provider).isEmpty())
         }
     }
