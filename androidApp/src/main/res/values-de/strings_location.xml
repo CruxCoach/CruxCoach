@@ -19,6 +19,9 @@
     <string name="locate_me_detail_refused">nicht verfügbar: %1$s</string>
     <string name="locate_me_detail_waited">keine Antwort in %1$d s</string>
     <string name="locate_me_detail_none">keine</string>
+    <string name="locate_me_detail_satellites">Satelliten: %1$d gesehen, %2$d genutzt</string>
+    <!-- Während ein Antippen weitersucht (bis 5 min) und noch keine Position da ist. -->
+    <string name="locate_me_still_looking">Dein Standort wird noch gesucht. Draußen oder am Fenster findet GPS ihn schneller.</string>
     <string name="distance_m">%1$s m</string>
     <string name="distance_km">%1$s km</string>
 

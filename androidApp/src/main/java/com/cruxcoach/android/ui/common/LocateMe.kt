@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.Resources
+import android.location.Location
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -25,6 +26,8 @@ import androidx.core.app.ActivityCompat
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.DeviceLocation
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** What a "my location" tap produced. */
@@ -46,13 +49,22 @@ class LocateMeState internal constructor(
     private val scope: CoroutineScope,
     private val onResult: () -> (LocateResult) -> Unit,
 ) {
+    /** A lookup runs: a tap's, or the quiet one on opening a screen. */
     var locating by mutableStateOf(false)
+        private set
+
+    /** A tap's lookup has found nothing for a while: time for the hint with "Cancel". */
+    var slow by mutableStateOf(false)
         private set
 
     internal var requestPermission: () -> Unit = {}
 
     /** "Turn on" / "settings" was opened: coming back tries again (device test 2026-10-17: the note stayed "off"). */
     private var retryOnResume = false
+
+    private var job: Job? = null
+    private var quiet = false
+    private var run = 0
 
     fun openFix(result: LocateResult) {
         retryOnResume = true
@@ -68,29 +80,84 @@ class LocateMeState internal constructor(
     /** True when a tap would locate without a permission prompt. */
     val hasPermission: Boolean get() = DeviceLocation.hasPermission(context)
 
-    /** The tap: asks for the permission only now, then fetches one position. */
+    /**
+     * The tap: asks for the permission only now, then looks until a fix
+     * arrives, for up to [DeviceLocation.SEARCH_MS]. A quiet lookup that is
+     * already running gives way to it.
+     */
     fun locate() {
-        if (locating) return
+        if (locating && !quiet) return
         if (DeviceLocation.hasPermission(context)) fetch() else requestPermission()
     }
 
-    internal fun fetch() {
+    /** On opening a screen, only with the permission already given: short, no hint, no prompt. */
+    fun locateQuietly() {
+        if (locating || !DeviceLocation.hasPermission(context)) return
+        fetch(quiet = true)
+    }
+
+    /** Stops a running lookup; nothing more is reported for it. */
+    fun cancel() {
+        job?.cancel()
+    }
+
+    /**
+     * Shows what the phone already knows at once ("passive" includes other
+     * apps' fixes, as a map app shows its last position), then keeps looking
+     * for a live fix like a map app that listens while it is open (owner test
+     * on GrapheneOS, 2026-10-24: requests were fine, but 45 s indoors were not
+     * enough). A cached fix from the last half hour only gets refined for a
+     * short while; without one, the search runs long, with a hint after
+     * [HINT_AFTER_MS], and "could not be found" comes only at its end.
+     */
+    internal fun fetch(quiet: Boolean = false) {
         if (!DeviceLocation.isEnabled(context)) {
             onResult()(LocateResult.Disabled)
             return
         }
+        job?.cancel()
+        val thisRun = ++run
+        this.quiet = quiet
         locating = true
-        scope.launch {
-            val lookup = try {
-                DeviceLocation.locate(context)
+        slow = false
+        job = scope.launch {
+            try {
+                val cached = DeviceLocation.lastKnown(context)
+                if (cached != null) {
+                    onResult()(found(cached))
+                    if (DeviceLocation.isFresh(cached)) return@launch
+                }
+                val good = cached != null && DeviceLocation.isRecent(cached)
+                val hint = if (quiet || good) null else launch { delay(HINT_AFTER_MS); slow = true }
+                val lookup = DeviceLocation.locate(
+                    context,
+                    timeoutMs = if (quiet || good) DeviceLocation.TIMEOUT_MS else DeviceLocation.SEARCH_MS,
+                    useCache = false,
+                )
+                hint?.cancel()
+                val location = lookup.location
+                when {
+                    location != null -> onResult()(found(location))
+                    // An old cached position on screen is no answer to "where am I now".
+                    !good -> onResult()(LocateResult.Unavailable(lookup.attempt))
+                }
             } finally {
-                locating = false
+                // A newer run may have replaced this one; its state stays.
+                if (run == thisRun) {
+                    locating = false
+                    slow = false
+                    job = null
+                }
             }
-            onResult()(
-                lookup.location?.let { LocateResult.Found(it.latitude, it.longitude, it.accuracy.takeIf { _ -> it.hasAccuracy() }) }
-                    ?: LocateResult.Unavailable(lookup.attempt)
-            )
         }
+    }
+
+    private fun found(location: Location) =
+        LocateResult.Found(location.latitude, location.longitude, location.accuracy.takeIf { location.hasAccuracy() })
+
+    companion object {
+        /** When a tap's search without any position shows "still looking" with "Cancel". */
+        const val HINT_AFTER_MS = 10_000L
     }
 }
 
@@ -168,6 +235,9 @@ fun locateDetail(resources: Resources, attempt: DeviceLocation.Attempt): String 
         add(resources.getString(R.string.locate_me_detail_asked, names(attempt.asked)))
         if (attempt.refused.isNotEmpty()) {
             add(resources.getString(R.string.locate_me_detail_refused, names(attempt.refused)))
+        }
+        if (attempt.satellitesSeen != null && attempt.satellitesUsed != null) {
+            add(resources.getString(R.string.locate_me_detail_satellites, attempt.satellitesSeen, attempt.satellitesUsed))
         }
         add(resources.getString(R.string.locate_me_detail_waited, ((attempt.waitedMs + 500) / 1000).toInt()))
     }

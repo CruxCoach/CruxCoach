@@ -33,6 +33,27 @@ class LocateDetailTest {
         waitedMs = 3,
     )
 
+    private val withSatellites = timedOut.copy(precise = true, waitedMs = 300_000, satellitesSeen = 7, satellitesUsed = 0)
+
+    @Test
+    fun `satellite counts follow the sources`() {
+        assertEquals(
+            "Details: $android · precise location · on: passive, gps, fused · " +
+                "asked: fused, network, gps, passive · satellites: 7 seen, 0 used · no answer in 300 s",
+            locateDetail(resources, withSatellites),
+        )
+    }
+
+    @Test
+    @Config(qualifiers = "de")
+    fun `satellite counts in german`() {
+        assertEquals(
+            "Details: $android · genauer Standort · aktiv: passive, gps, fused · " +
+                "gefragt: fused, network, gps, passive · Satelliten: 7 gesehen, 0 genutzt · keine Antwort in 300 s",
+            locateDetail(resources, withSatellites),
+        )
+    }
+
     @Test
     fun `english names permission, sources and wait`() {
         assertEquals(
