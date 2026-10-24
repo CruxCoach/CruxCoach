@@ -147,7 +147,12 @@ fun locateFixLabel(result: LocateResult): String? = when (result) {
     else -> null
 }
 
-/** Opens the screen where the user can fix [result]: app permissions or the location switch. */
+/**
+ * Opens the screen where the user can fix [result]: app permissions or the
+ * location switch. Started from the activity, the screen joins CruxCoach's
+ * task, so Back returns here (device test 2026-10-23: in a task of its own,
+ * Back from the location settings landed on the home screen).
+ */
 fun openLocateFix(context: Context, result: LocateResult) {
     val intent = when (result) {
         LocateResult.DeniedPermanently -> Intent(
@@ -158,7 +163,12 @@ fun openLocateFix(context: Context, result: LocateResult) {
         else -> return
     }
     try {
-        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val activity = context.findActivity()
+        if (activity != null) {
+            activity.startActivity(intent)
+        } else {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
     } catch (_: ActivityNotFoundException) {
         // Some ROMs lack the screen; the message already says what to do.
     }
