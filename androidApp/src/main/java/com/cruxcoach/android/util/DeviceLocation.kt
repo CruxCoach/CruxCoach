@@ -50,6 +50,26 @@ object DeviceLocation {
         Manifest.permission.ACCESS_COARSE_LOCATION,
     )
 
+    /**
+     * What one lookup tried, for the detail line under "could not be found"
+     * (the owner's phone was not on ADB, 2026-10-24). Provider names and
+     * times only, never a position.
+     */
+    data class Attempt(
+        /** The precise permission was granted (else approximate only). */
+        val precise: Boolean,
+        /** The providers Android listed as switched on. */
+        val enabled: List<String>,
+        /** The providers that took the request. */
+        val asked: List<String>,
+        /** The providers that refused it: missing on this phone or not allowed. */
+        val refused: List<String>,
+        val waitedMs: Long,
+    )
+
+    /** A position (or none) together with what was tried to get it. */
+    data class Lookup(val location: Location?, val attempt: Attempt)
+
     fun hasPermission(context: Context): Boolean = PERMISSIONS.any {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
@@ -64,69 +84,91 @@ object DeviceLocation {
         return LocationManagerCompat.isLocationEnabled(manager)
     }
 
+    /** The current position, or null; see [locate]. */
+    suspend fun current(context: Context, timeoutMs: Long = TIMEOUT_MS): Location? =
+        locate(context, timeoutMs).location
+
     /**
      * The current position, or null when none arrives within [timeoutMs] (no
-     * permission, location off, no provider with a fix). A fix from the last
-     * two minutes answers at once. Otherwise every allowed provider is asked
-     * at the same time and the first fix wins, so one silent provider (fused
-     * without a network location service, GPS indoors) never keeps the others
-     * from answering. A cached fix from the last half hour answers after a
-     * short wait; an older one only when no live fix arrived at all.
+     * permission, location off, no provider with a fix), with what was tried.
+     * A fix from the last two minutes answers at once. Otherwise every
+     * provider the permission allows is asked at the same time and the first
+     * fix wins, so one silent provider (fused without a network location
+     * service, GPS indoors) never keeps the others from answering. A cached
+     * fix from the last half hour answers after a short wait; an older one
+     * only when no live fix arrived at all.
      */
     @SuppressLint("MissingPermission") // checked by hasPermission() first
-    suspend fun current(context: Context, timeoutMs: Long = TIMEOUT_MS): Location? {
-        if (!hasPermission(context)) return null
-        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+    suspend fun locate(context: Context, timeoutMs: Long = TIMEOUT_MS): Lookup {
+        val precise = hasFine(context)
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        if (!hasPermission(context) || manager == null) {
+            return Lookup(null, Attempt(precise, emptyList(), emptyList(), emptyList(), 0L))
+        }
         val enabled = runCatching { manager.getProviders(true) }.getOrDefault(emptyList())
+        val known = runCatching { manager.allProviders }.getOrDefault(emptyList())
 
-        // Every enabled provider, "passive" too: it holds the newest fix any app received.
-        val cached = enabled
+        // Every provider, "passive" too: it holds the newest fix any app received.
+        val cached = (enabled + known + LocationManager.PASSIVE_PROVIDER).distinct()
             .mapNotNull { runCatching { manager.getLastKnownLocation(it) }.getOrNull() }
             .maxByOrNull { it.elapsedRealtimeNanos }
         val cachedAge = cached?.let(::ageMs) ?: Long.MAX_VALUE
         if (cachedAge < FRESH_MS) {
             Log.i(TAG, "cached fix (${cached?.provider}, ${cachedAge / 1000} s old)")
-            return cached
+            return Lookup(cached, Attempt(precise, enabled, emptyList(), emptyList(), 0L))
         }
 
-        val live = liveProviders(enabled, hasFine(context))
         val wait = if (cachedAge < RECENT_MS) minOf(RECENT_WAIT_MS, timeoutMs) else timeoutMs
+        val asked = mutableListOf<String>()
+        val refused = mutableListOf<String>()
         val started = SystemClock.elapsedRealtime()
-        val fresh = if (live.isEmpty()) null else withTimeoutOrNull(wait) { firstFix(context, manager, live, wait) }
-        val tookMs = SystemClock.elapsedRealtime() - started
+        val fresh = withTimeoutOrNull(wait) {
+            firstFix(context, manager, candidates(precise), wait, asked, refused)
+        }
+        val attempt = Attempt(precise, enabled, asked.toList(), refused.toList(), SystemClock.elapsedRealtime() - started)
         // Never the coordinates: the position stays out of the log too.
         if (fresh != null) {
-            Log.i(TAG, "live fix from ${fresh.provider} after $tookMs ms (±${fresh.accuracy.toInt()} m), asked $live")
+            Log.i(TAG, "live fix from ${fresh.provider} (±${fresh.accuracy.toInt()} m): $attempt")
         } else {
-            Log.i(TAG, "no live fix within $wait ms from $live (enabled $enabled); cached: ${cached != null}")
+            Log.i(TAG, "no live fix; cached: ${cached != null}; $attempt")
         }
         // An older cached fix still beats nothing: the gym list only needs the town.
-        return fresh ?: cached
+        return Lookup(fresh ?: cached, attempt)
     }
 
     /**
-     * The providers to ask for a live fix. GPS needs the precise permission
-     * before Android 12; from Android 12 on, approximate is enough and Android
-     * coarsens the fix itself. This matters: with approximate only, Android
-     * runs fused in low-power mode, which never turns on GPS while a network
-     * location service is installed, and such a service may have no answer.
+     * The providers to ask, whether or not Android lists them as switched
+     * on: a registration on a provider that is off is accepted and starts
+     * once it comes on, and a missing one refuses with an exception, which is
+     * recorded. GPS needs the precise permission before Android 12; from
+     * Android 12 on, approximate is enough and Android coarsens the fix
+     * itself. This matters: with approximate only, Android runs fused in
+     * low-power mode, which never turns on GPS while a network location
+     * service is installed, and such a service may have no answer. "passive"
+     * costs nothing and catches a fix another app causes meanwhile.
      */
-    private fun liveProviders(enabled: List<String>, fine: Boolean): List<String> {
-        val wanted = buildList {
-            add(FUSED)
-            add(LocationManager.NETWORK_PROVIDER)
-            if (fine || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(LocationManager.GPS_PROVIDER)
+    private fun candidates(precise: Boolean): List<String> = buildList {
+        add(FUSED)
+        add(LocationManager.NETWORK_PROVIDER)
+        // Before Android 12, gps and passive need the precise permission.
+        if (precise || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            add(LocationManager.GPS_PROVIDER)
+            add(LocationManager.PASSIVE_PROVIDER)
         }
-        return wanted.filter { it in enabled }
     }
 
-    /** Listens on all [providers] at once and returns the first fix; every request ends with it. */
+    /**
+     * Listens on all [providers] at once and returns the first fix; every
+     * request ends with it. Fills [asked] and [refused] before it waits.
+     */
     @SuppressLint("MissingPermission")
     private suspend fun firstFix(
         context: Context,
         manager: LocationManager,
         providers: List<String>,
         durationMs: Long,
+        asked: MutableList<String>,
+        refused: MutableList<String>,
     ): Location? = suspendCancellableCoroutine { cont ->
         val request = LocationRequestCompat.Builder(1_000L)
             // Lets fused use GPS with the precise permission; Android lowers it for approximate.
@@ -144,19 +186,20 @@ object DeviceLocation {
             }
         }
         val executor = ContextCompat.getMainExecutor(context)
-        var asked = 0
         providers.zip(listeners).forEach { (provider, listener) ->
             try {
                 LocationManagerCompat.requestLocationUpdates(manager, provider, request, executor, listener)
-                asked++
+                asked += provider
             } catch (e: SecurityException) {
-                Log.w(TAG, "no permission for $provider", e)
+                Log.i(TAG, "$provider: not allowed (${e.message})")
+                refused += provider
             } catch (e: IllegalArgumentException) {
-                Log.w(TAG, "provider $provider unavailable", e)
+                Log.i(TAG, "$provider: not available (${e.message})")
+                refused += provider
             }
         }
         when {
-            asked == 0 -> cont.resume(null)
+            asked.isEmpty() -> cont.resume(null)
             // A fix that came in while later providers were still being asked.
             !cont.isActive -> stopAll()
             else -> cont.invokeOnCancellation { stopAll() }
