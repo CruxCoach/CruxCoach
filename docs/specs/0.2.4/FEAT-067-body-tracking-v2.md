@@ -1,13 +1,14 @@
 ---
 status: implemented-on-branch
 queue: active
+target: 0.2.5 (moved from 0.2.4 on 2026-10-25; 0.2.4 shipped without training and nutrition)
 base: main@b5bef5163 (0.2.3)
-branch: feat/0.2.4-training-nutrition (training line feat/0.2.4-training-body, merged with nutrition on 2026-10-07)
+branch: feat/0.2.5-training-nutrition (rebased onto v0.2.4 on 2026-10-25; before: feat/0.2.4-training-nutrition (training line feat/0.2.4-training-body, merged with nutrition on 2026-10-07))
 depends_on: [FEAT-066]
 created: 2026-10-04
 ---
 
-# Feature Spec: Body tracking v2 (0.2.4)
+# Feature Spec: Body tracking v2 (0.2.5)
 
 - `body_measurement` in the AthleteDatabase: primary key (day, metric), so one
   value per metric and day; canonical metric units, display in kg/lb, cm/in.

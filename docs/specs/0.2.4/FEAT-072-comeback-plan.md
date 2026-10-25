@@ -1,13 +1,14 @@
 ---
 status: implemented-on-branch
 queue: active
+target: 0.2.5 (moved from 0.2.4 on 2026-10-25; 0.2.4 shipped without training and nutrition)
 base: feat/0.2.4-training-nutrition-ux-review@df233f06b
-branch: feat/0.2.4-training-nutrition-ux-review
+branch: feat/0.2.5-training-nutrition (rebased onto v0.2.4 on 2026-10-25; before: feat/0.2.4-training-nutrition-ux-review)
 depends_on: [FEAT-066, FEAT-070, FEAT-071]
 created: 2026-10-20
 ---
 
-# Feature Spec: Comeback plan after an injury (0.2.4)
+# Feature Spec: Comeback plan after an injury (0.2.5)
 
 > Owner request 2026-10-20: "bitte baue mal so eine art trainingsprogramm zur regeneration von verletzungen ein. mache
 > aber vorab ausführliche recherche zu empfehlungen von ärzten und forschung etc … wenn fingerverletzungen angegeben
@@ -33,11 +34,13 @@ device (≥ class IIa). Therefore:
 - the questions point one way only: warning signs → "get it checked" (now / within days / soon); nothing ticked never
   means "all good";
 - the weekly look back shows the athlete's values next to the stage's rule and asks; a stage only changes on a tap;
-- no "healed", "cleared", "allowed", "Reha", "Therapie" (a test checks every text).
+- no "healed", "cleared", "allowed", "Reha", "Therapie", no healing or treatment words in any training, nutrition or
+  comeback text, the exercise catalogue, the changelog's unreleased section, the release notes and the store text
+  (`HealthWordingTest`; negated forms and professions pass).
 
 Store, README and marketing texts must keep to this wording (HWG §3: no promise of success).
 
-## 1. Data (local, SQLCipher, no cloud backup; schema 6, migration `5.sqm`)
+## 1. Data (local, SQLCipher; export and the encrypted cloud backup only with their own switch, off by default; schema 6, migration `5.sqm`)
 
 - `injury.check_json` → `InjuryCheck`: onset, pop, swelling, fingers, ticked `WarningSign`s, `ProfessionalCheck`,
   `InjuryFinding`, checked on, signs acknowledged on.

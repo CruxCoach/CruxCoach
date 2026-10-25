@@ -1,13 +1,14 @@
 ---
 status: implemented-on-branch
 queue: active
+target: 0.2.5 (moved from 0.2.4 on 2026-10-25; 0.2.4 shipped without training and nutrition)
 base: feat/0.2.4-training-body@bdcdd90c9
-branch: feat/0.2.4-training-nutrition (nutrition line feat/0.2.4-food-photo@eaaa405b1, merged with training on 2026-10-07)
+branch: feat/0.2.5-training-nutrition (rebased onto v0.2.4 on 2026-10-25; before: feat/0.2.4-training-nutrition (nutrition line feat/0.2.4-food-photo@eaaa405b1, merged with training on 2026-10-07))
 depends_on: [FEAT-068]
 created: 2026-10-04
 ---
 
-# Feature Spec: Food photo recognition on the device (0.2.4)
+# Feature Spec: Food photo recognition on the device (0.2.5)
 
 Owner request 2026-10-04: offer what paid food APIs do
 (photo → foods → nutrition estimate) without a paid API and without sending
