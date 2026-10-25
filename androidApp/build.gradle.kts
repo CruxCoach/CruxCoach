@@ -580,6 +580,9 @@ dependencies {
 
 // Owner review: pinned Marmot JNI source build. No publisher/signing credentials.
 // Hook only packaging; ordinary focused JVM compilation does not rebuild an APK.
+// Personal-data sharing is unfinished and gated to debug builds (SharingFeature),
+// so only debug APKs (feature and test builds) carry the library and its
+// notices; release APKs stay exactly as without it.
 val buildMarmotNative by tasks.registering(Exec::class) {
     val nativeRoot = rootProject.layout.projectDirectory.dir("native/marmot")
     inputs.files(fileTree(nativeRoot) { exclude(".mdk/**", "target/**") })
@@ -588,12 +591,12 @@ val buildMarmotNative by tasks.registering(Exec::class) {
         "--android-ndk", android.ndkDirectory.absolutePath,
         "--output", layout.buildDirectory.dir("generated/marmot/jniLibs").get().asFile.absolutePath)
 }
-android.sourceSets.getByName("main").jniLibs.srcDir(layout.buildDirectory.dir("generated/marmot/jniLibs"))
-android.sourceSets.getByName("main").assets.srcDir(rootProject.file("native/marmot/licenses"))
+android.sourceSets.getByName("debug").jniLibs.srcDir(layout.buildDirectory.dir("generated/marmot/jniLibs"))
+android.sourceSets.getByName("debug").assets.srcDir(rootProject.file("native/marmot/licenses"))
 tasks.configureEach {
     // Source-set folder merging also consumes the generated directory. An edge
     // only on merge*NativeLibs leaves this earlier consumer unordered in Gradle.
-    if (name.matches(Regex("merge.*(?:JniLibFolders|NativeLibs)"))) dependsOn(buildMarmotNative)
+    if (name.matches(Regex("merge.*Debug.*(?:JniLibFolders|NativeLibs)"))) dependsOn(buildMarmotNative)
 }
 
 // Local synthetic JNI integration runs the same MDK/SQLCipher code on the host.

@@ -2672,6 +2672,8 @@
     <string name="sharing_title">Persönliche Daten teilen</string>
     <string name="sharing_settings_entry">Persönliche Daten teilen</string>
     <string name="sharing_settings_summary">Voreinstellungen, Kategorien und Ausnahmen für Freunde</string>
+    <string name="sharing_feature_preview_title">Vorschau: Persönliche Daten teilen</string>
+    <string name="sharing_feature_preview_summary">Nur in Testversionen. Unfertig; bleibt aus, bis du es einschaltest. Noch nicht für echte Daten gedacht.</string>
     <string name="sharing_reachable_title">Freundschaftsanfragen empfangen</string>
     <string name="sharing_reachable_info">Veröffentlicht deine öffentliche Relay-Liste und einen einmaligen Verschlüsselungsschlüssel auf deinen Relays, damit Freunde dir eine Anfrage schicken können. Von deinen Daten wird nichts veröffentlicht.</string>
     <string name="sharing_connection_title">Verbindung</string>

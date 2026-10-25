@@ -22,6 +22,7 @@ import com.cruxcoach.android.sharing.SharingPersonDetail
 import com.cruxcoach.android.sharing.SharingPreset
 import com.cruxcoach.android.sharing.SharingRecord
 import com.cruxcoach.android.sharing.VisibleState
+import com.cruxcoach.android.ui.settings.SharingSettingsContent
 import com.cruxcoach.domain.sharing.AccessEffect
 import com.cruxcoach.domain.sharing.SharingCategory
 import com.cruxcoach.domain.sharing.SharingCircle
@@ -193,5 +194,22 @@ class SharingScreenTest {
         compose.onNodeWithText("Von Freunden").assertExists()
         compose.onNodeWithText("Ben: „Toe hook“").assertExists()
         compose.onNodeWithText("Ben: Crimp Line · 2026-09-20 · 4 Versuche").assertExists()
+    }
+
+    @Test fun `the unfinished feature shows only its switch until it is turned on`() {
+        val enabled = mutableStateOf(false)
+        val toggles = mutableListOf<Boolean>()
+        compose.setContent {
+            MaterialTheme {
+                SharingSettingsContent(enabled.value, onEnabledChange = { toggles += it; enabled.value = it },
+                    onNavigateToSharing = { calls += "open" })
+            }
+        }
+        compose.onNodeWithTag("settings_sharing_preview").assertExists()
+        compose.onNodeWithTag("settings_open_personal_sharing").assertDoesNotExist()
+        compose.onNodeWithText("Vorschau: Persönliche Daten teilen").performClick()
+        assertEquals(listOf(true), toggles)
+        compose.onNodeWithTag("settings_open_personal_sharing").assertExists().performClick()
+        assertEquals(listOf("open"), calls)
     }
 }

@@ -26,10 +26,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -80,41 +82,80 @@ internal class SharingPass(
  * app is in the foreground and during background passes; nothing starts for an
  * account that never used sharing on this installation. Android Doze,
  * force-stop and offline periods delay but never widen what is shared.
+ *
+ * Everything here waits for [SharingFeature]: while it is off (always in release
+ * builds) no observer, network callback or worker exists and the native host is
+ * never created.
  */
 @Singleton
 class SharingAutomation @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val native: AndroidMarmotHost,
-    private val step: SharingStep,
+    private val nativeHost: dagger.Lazy<AndroidMarmotHost>,
+    private val sharingStep: dagger.Lazy<SharingStep>,
     private val database: com.cruxcoach.db.secure.SecureDatabase,
+    private val feature: SharingFeature,
 ) : DefaultLifecycleObserver {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val serial = Mutex()
     @Volatile private var foreground = false
+    @Volatile private var active = false
     private var loop: Job? = null
     private var started = false
     private var sourceChanges: SharingSourceChanges? = null
+    private val native: AndroidMarmotHost get() = nativeHost.get()
     private val network = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) { nudge() }
     }
 
+    /** Called once at app start, on the main thread. */
     fun start() {
         if (started) return
         started = true
-        sourceChanges = SharingSourceChanges(database) { nudge() }
         SharingWork.retireVersionOne(context)
+        scope.launch {
+            feature.enabled.distinctUntilChanged().collect { enabled ->
+                withContext(Dispatchers.Main) { if (enabled) activate() else deactivate() }
+            }
+        }
+    }
+
+    private fun activate() {
+        if (active) return
+        active = true
+        sourceChanges = SharingSourceChanges(database) { nudge() }
+        // Dispatches onStart at once when the app is already in the foreground.
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         runCatching { context.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(network) }
     }
 
+    private fun deactivate() {
+        if (!active) {
+            SharingWork.cancel(context)
+            return
+        }
+        active = false
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
+        foreground = false
+        loop?.cancel()
+        loop = null
+        runCatching { context.getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(network) }
+        sourceChanges?.close()
+        sourceChanges = null
+        SharingWork.cancel(context)
+        scope.launch { serial.withLock { if (native.exists()) runCatching { native.host.setOnline(false) } } }
+    }
+
     /** Something changed locally (a source row, a policy, a request). */
     fun nudge() {
-        if (!native.exists()) return
+        if (!active || !native.exists()) return
         scope.launch { pass() }
         if (!foreground) SharingWork.wake(context)
     }
 
-    suspend fun pass(): Boolean = serial.withLock { SharingPass(native.host, step).run(stayOnline = foreground) }
+    suspend fun pass(): Boolean = serial.withLock {
+        if (!feature.isEnabled()) return@withLock true
+        SharingPass(native.host, sharingStep.get()).run(stayOnline = foreground)
+    }
 
     override fun onStart(owner: LifecycleOwner) {
         foreground = true
@@ -150,11 +191,15 @@ class SharingAutomation @Inject constructor(
 class SharingWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted parameters: WorkerParameters,
-    private val native: AndroidMarmotHost,
+    private val native: dagger.Lazy<AndroidMarmotHost>,
     private val automation: SharingAutomation,
+    private val feature: SharingFeature,
 ) : CoroutineWorker(appContext, parameters) {
-    override suspend fun doWork(): Result =
-        if (!native.exists() || automation.pass()) Result.success() else Result.retry()
+    override suspend fun doWork(): Result = when {
+        !feature.isEnabled() -> Result.success().also { SharingWork.cancel(applicationContext) }
+        !native.get().exists() || automation.pass() -> Result.success()
+        else -> Result.retry()
+    }
 }
 
 object SharingWork {
@@ -167,6 +212,13 @@ object SharingWork {
         val manager = WorkManager.getInstance(context)
         manager.cancelUniqueWork("private-continuous-sharing-periodic-v1")
         manager.cancelUniqueWork("private-continuous-sharing-change-v1")
+    }
+
+    /** The feature was turned off: no background pass may run any more. */
+    fun cancel(context: Context) {
+        val manager = WorkManager.getInstance(context)
+        manager.cancelUniqueWork(PERIODIC)
+        manager.cancelUniqueWork(CHANGE)
     }
 
     fun periodic(context: Context) {

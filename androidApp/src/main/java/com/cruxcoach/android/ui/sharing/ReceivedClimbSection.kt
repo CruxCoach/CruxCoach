@@ -41,16 +41,19 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class ReceivedClimbViewModel @Inject constructor(
-    private val service: SharingService,
+    private val service: dagger.Lazy<SharingService>,
     private val boards: BoardRepository,
+    private val feature: com.cruxcoach.android.sharing.SharingFeature,
 ) : ViewModel() {
     private val _received = MutableStateFlow<List<ReceivedOnClimb>>(emptyList())
     val received: StateFlow<List<ReceivedOnClimb>> = _received.asStateFlow()
 
     fun load(climbUuid: String) {
         viewModelScope.launch {
+            // Unfinished feature: off (always in release builds) means not even a query.
+            if (!feature.isEnabled()) return@launch
             _received.value = withContext(Dispatchers.IO) {
-                runCatching { service.receivedOnClimb(boards.equivalentClimbUuids(climbUuid) + climbUuid) }.getOrDefault(emptyList())
+                runCatching { service.get().receivedOnClimb(boards.equivalentClimbUuids(climbUuid) + climbUuid) }.getOrDefault(emptyList())
             }
         }
     }

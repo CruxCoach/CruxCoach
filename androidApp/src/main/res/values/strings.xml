@@ -2673,6 +2673,8 @@
     <string name="sharing_title">Personal data sharing</string>
     <string name="sharing_settings_entry">Share personal data</string>
     <string name="sharing_settings_summary">Presets, categories and per-person exceptions for friends</string>
+    <string name="sharing_feature_preview_title">Preview: share personal data</string>
+    <string name="sharing_feature_preview_summary">Test builds only. Unfinished; off until you turn it on. Do not rely on it for real data yet.</string>
     <string name="sharing_reachable_title">Receive friend requests</string>
     <string name="sharing_reachable_info">Publishes your public relay list and a one-time encryption key on your relays, so friends can send you a request. Nothing about your data is published.</string>
     <string name="sharing_connection_title">Connection</string>

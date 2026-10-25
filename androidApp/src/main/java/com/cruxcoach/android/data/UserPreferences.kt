@@ -425,6 +425,8 @@ object PreferenceKeys {
     val NEARBY_CLIMB_SHARING = booleanPreferencesKey("nearby_climb_sharing")
     val ALLOW_REMOTE_DISCONNECT = booleanPreferencesKey("allow_remote_disconnect")
     val EASTER_ANIMATIONS_UNLOCKED = booleanPreferencesKey("easter_animations_unlocked")
+    /** Unfinished personal-data sharing; only debug builds read it (SharingFeature). */
+    val SHARING_PREVIEW_ENABLED = booleanPreferencesKey("sharing_preview_enabled")
     val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
     val DARK_MODE = stringPreferencesKey("dark_mode")
     val SESSION_DISPLAY_NAME = stringPreferencesKey("session_display_name")
@@ -1596,6 +1598,15 @@ class UserPreferences(
 
     suspend fun setEasterAnimationsUnlocked(unlocked: Boolean) {
         dataStore.edit { it[PreferenceKeys.EASTER_ANIMATIONS_UNLOCKED] = unlocked }
+    }
+
+    /** Raw value; [com.cruxcoach.android.sharing.SharingFeature] adds the debug-build gate. */
+    val sharingPreviewEnabled: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.SHARING_PREVIEW_ENABLED] ?: false
+    }
+
+    suspend fun setSharingPreviewEnabled(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.SHARING_PREVIEW_ENABLED] = enabled }
     }
 
     /** null = user has never been asked yet, true/false = user's explicit choice */
