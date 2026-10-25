@@ -372,21 +372,71 @@ jobs:
           set -euo pipefail
           TAG="${{ steps.version.outputs.tag }}"
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
+          APK_NAME="CruxCoach-${TAG}.apk"
           # Release assets are served from github.com, not api.github.com, and
           # need no token on a public repository.
           BASE="https://github.com/${REPO_SLUG}/releases/download/${TAG}"
           mkdir -p "$(dirname "$APK")"
 
-          curl --fail --location --retry 4 --retry-all-errors \
-            --connect-timeout 10 --max-time 180 \
-            "${BASE}/CruxCoach-${TAG}.apk" --output "$APK"
-          EXPECTED_SHA=$(curl --fail --location --retry 4 --retry-all-errors \
-            --connect-timeout 10 --max-time 30 \
-            "${BASE}/CruxCoach-${TAG}.apk.sha256" | awk '/^[0-9a-fA-F]{64}/ { print tolower($1); exit }')
-          ACTUAL_SHA=$(sha256sum "$APK" | awk '{ print $1 }')
-          if [ -z "$EXPECTED_SHA" ] || [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
-            echo "::error::Existing GitHub release APK does not match its SHA-256 sidecar"
-            exit 1
+          # Every download of a release asset is counted, and those counters are
+          # the download statistic — the old repair path added one fake install
+          # per run. So the expected digest and size come from the API, which
+          # counts nothing; the sidecar is read only for an asset GitHub has no
+          # digest for, and that counts against the sidecar, not the APK.
+          META="$(curl --fail --silent --show-error --retry 4 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${REPO_SLUG}/releases/tags/${TAG}")"
+          read -r EXPECTED_SHA EXPECTED_SIZE < <(python3 -c '
+          import json, sys
+          for asset in json.load(sys.stdin).get("assets", []):
+              if asset.get("name") == sys.argv[1]:
+                  digest = asset.get("digest") or ""
+                  print(digest[7:].lower() if digest.startswith("sha256:") else "-", asset["size"])
+          ' "$APK_NAME" <<<"$META") || true
+          [ -n "${EXPECTED_SIZE:-}" ] || { echo "::error::$APK_NAME is not attached to the GitHub release"; exit 1; }
+          if [ "$EXPECTED_SHA" = "-" ]; then
+            EXPECTED_SHA=$(curl --fail --location --retry 4 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 \
+              "${BASE}/${APK_NAME}.sha256" | awk '/^[0-9a-fA-F]{64}/ { print tolower($1); exit }')
+          fi
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::No SHA-256 for $APK_NAME"; exit 1; }
+
+          # The bytes come from a copy that counts nothing — our own, then the
+          # content-addressed Blossom servers APKTrack stable fills — and from
+          # GitHub only when none of them has them. Each candidate must match
+          # the digest and size before it is used.
+          fetch_verified() {  # <label> <command…>; leaves $APK on a match
+            local label="$1"
+            shift
+            rm -f "$APK.part"
+            if "$@" > "$APK.part" 2>/dev/null \
+               && [ "$(stat -c '%s' "$APK.part")" = "$EXPECTED_SIZE" ] \
+               && [ "$(sha256sum "$APK.part" | awk '{ print $1 }')" = "$EXPECTED_SHA" ]; then
+              mv -f "$APK.part" "$APK"
+              echo "Existing $APK_NAME taken from $label"
+              return 0
+            fi
+            rm -f "$APK.part"
+            return 1
+          }
+          LOCAL_COPY="${CRUXCOACH_APK_LOCAL_DIR:-$HOME/cruxcoach-dlstats/apk}/${APK_NAME}"
+          FOUND=false
+          if fetch_verified "the local copy" cat "$LOCAL_COPY"; then
+            FOUND=true
+          else
+            for SERVER in https://blossom.primal.net https://nostr.download https://cdn.hzrd149.com; do
+              if fetch_verified "$SERVER" curl --fail --silent --location --connect-timeout 10 \
+                   --max-time 180 "$SERVER/$EXPECTED_SHA"; then
+                FOUND=true
+                break
+              fi
+            done
+          fi
+          if [ "$FOUND" = false ]; then
+            echo "::warning::No counter-free copy of $APK_NAME matched; downloading it from GitHub, which counts as one download"
+            fetch_verified "GitHub" curl --fail --silent --location --retry 4 --retry-all-errors \
+              --connect-timeout 10 --max-time 180 "${BASE}/${APK_NAME}" \
+              || { echo "::error::Existing GitHub release APK does not match its digest"; exit 1; }
           fi
 
           # zsp reads these files from the checkout. Use the tagged metadata,
