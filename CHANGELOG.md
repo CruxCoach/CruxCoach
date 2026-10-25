@@ -269,9 +269,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   other side, a diary with a 14-day chart and a summary to share at the
   appointment. Warning signs point you to a check (112 in an emergency); the
   stage changes only when you tap. CruxCoach does not diagnose and does not
-  decide when an injury is over. Injuries and the comeback diary stay on this
-  phone and go into an export or the encrypted backup only when you switch
-  them on.
+  decide when an injury is over. Injuries, their pauses and the comeback diary
+  stay on this phone and go into an export or the encrypted backup only when
+  you switch them on.
 - Optional morning check-in (sleep, energy, skin, fingers, ill) that only ever
   makes the day gentler and names the deciding reason; illness, injury and
   holiday pauses; a weekly consistency streak in which rest days never count
@@ -345,7 +345,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   or an older processor the button stays greyed out and says why.
 - Training, body and nutrition data live in a separate encrypted database per
   account and are included in the cloud backup and the manual export –
-  injuries and the comeback diary only when you switch them on. When that
+  injuries, illness and injury pauses and the comeback diary only when you
+  switch them on. When that
   database cannot be read, the logbook still exports and restores, and the
   message says what is missing; a backup from a newer version restores too,
   without the values this version does not know.

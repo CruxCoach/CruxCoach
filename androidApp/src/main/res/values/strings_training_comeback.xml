@@ -217,9 +217,9 @@
     <string name="cb_reason_lighter">Your comeback stage: rather easy climbing than hard or limit today.</string>
 
     <!-- Backup -->
-    <string name="cb_backup_category">Injuries &amp; comeback diary</string>
+    <string name="cb_backup_category">Injuries, illness pauses &amp; comeback diary</string>
     <string name="cb_backup_category_hint">Health data: only exported when you tick it.</string>
-    <string name="cb_backup_cloud">Injuries and comeback diary in the encrypted backup</string>
+    <string name="cb_backup_cloud">Injuries, illness pauses and comeback diary in the encrypted backup</string>
     <string name="cb_backup_cloud_hint">Off: they stay on this phone only.</string>
     <plurals name="import_result_health">
         <item quantity="one">%d injury or diary entry</item>

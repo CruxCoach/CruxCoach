@@ -507,7 +507,7 @@ object CruxCoachBackup {
         TRAINING("Training & Wohlbefinden"),
         /** Fueling log (FEAT-068), on by default like the other categories. */
         FUEL("Fueling"),
-        /** Injuries with their questions and comeback plan, and the comeback diary: health data, so its own
+        /** Injuries with their questions and comeback plan, the comeback diary and injury or illness pauses: health data, so its own
          *  category that is off unless the athlete picks it (research/safety-regulation.md §3.6, GDPR Art. 9).
          *  Before FEAT-072 (feature builds of the training line only), injuries travelled with [TRAINING]. */
         HEALTH("Verletzungen & Comeback-Tagebuch"),
@@ -817,7 +817,7 @@ object CruxCoachBackup {
             Category.CLIMB_NOTES -> "$climbNotes Notizen"
             Category.TRAINING -> "$trainingRows Trainingseinträge"
             Category.FUEL -> "$fuelRows Fueling-Einträge"
-            Category.HEALTH -> "$healthRows Verletzungs- und Tagebucheinträge"
+            Category.HEALTH -> "$healthRows Verletzungs-, Pausen- und Tagebucheinträge"
         }
     }
 
