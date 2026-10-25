@@ -827,4 +827,33 @@ class TrainingUiReviewTest : AthleteScreenTest() {
             com.cruxcoach.android.ui.training.today.TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm)
         }
     }
+
+    /** F1 (owner 2026-10-25): an own workout with exercises the open injury rules out asks first. */
+    @Test
+    fun injuryStartDialog() {
+        val defs = listOf("finger.max_hang", "finger.density_hang").mapNotNull { service.catalog[it] }
+        shoot("injury-start-dialog", { waitForTag("injury_start_dialog") }) {
+            // A full-size screen behind it: a dialog alone leaves the root view without a size.
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                com.cruxcoach.android.ui.training.workout.InjuryStartDialog(
+                    com.cruxcoach.android.ui.training.workout.PendingInjuryStart(defs) {}, {})
+            }
+        }
+    }
+
+    /** F4 (owner 2026-10-25): "Before you start" opens with the intended purpose. */
+    @Test
+    fun comebackBeforeStart() {
+        comebackInjury(null)
+        val vm = loaded(com.cruxcoach.android.ui.training.athlete.comeback.ComebackViewModel(service,
+            androidx.lifecycle.SavedStateHandle(mapOf(com.cruxcoach.android.ui.training.athlete.comeback.ComebackViewModel.ARG_INJURY to "cb1"))))
+        shoot("comeback-before-start", {
+            scrollTo("comeback_list", "comeback_stage_1"); click("comeback_stage_1")
+            scrollTo("comeback_list", "comeback_agreed"); click("comeback_agreed")
+            scrollTo("comeback_list", "comeback_start"); click("comeback_start")
+            waitForTag("comeback_purpose")
+        }) {
+            com.cruxcoach.android.ui.training.athlete.comeback.ComebackScreen(onBack = {}, onOpenPlayer = {}, viewModel = vm)
+        }
+    }
 }
