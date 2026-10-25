@@ -457,10 +457,13 @@
     <string name="settings_led_anim_rainbow">Rainbow wave</string>
     <string name="settings_led_anim_rainbow_hint">All colors rotate slowly around the color wheel.</string>
     <string name="settings_led_anim_kilter_only">LED animations only work with a Kilter Board.</string>
-    <string name="led_anim_notification_channel">LED animations</string>
-    <string name="led_anim_notification_channel_desc">Shown while a lit climb keeps animating in another app.</string>
-    <string name="led_anim_notification_title">LED animation running</string>
-    <string name="led_anim_notification_text">Animating the lit climb on your board.</string>
+    <string name="led_anim_notification_channel">LED effects</string>
+    <string name="led_anim_notification_channel_desc">Shown while an LED effect keeps running in another app.</string>
+    <string name="led_anim_notification_title">LED effect running</string>
+    <plurals name="led_anim_notification_text">
+        <item quantity="one">Ends after %1$d minute on this climb. Stop shows its normal colors.</item>
+        <item quantity="other">Ends after %1$d minutes on this climb. Stop shows its normal colors.</item>
+    </plurals>
     <string name="led_anim_notification_stop">Stop</string>
 
     <!-- Settings: Timer -->
