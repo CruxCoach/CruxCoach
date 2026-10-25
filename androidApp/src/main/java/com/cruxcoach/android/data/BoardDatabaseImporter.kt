@@ -1905,31 +1905,39 @@ class BoardDatabaseImporter(
             val stmt = db.compileStatement(
                 "UPDATE climbs SET move_count = ? WHERE uuid = ?"
             )
-            // Process in batches to avoid CursorWindow overflow on older APIs
+            // Process in batches. Each batch is read completely before any row
+            // is updated: the query filters on move_count = 0, so updating
+            // while the cursor is still open shrinks its result. Once a batch
+            // outgrows one CursorWindow (~2 MB, e.g. the longer variant-
+            // prefixed placement ids of Shiny Wall frames), the window refill
+            // re-runs that query from a row position that no longer exists and
+            // the read fails ("Couldn't read row N").
             var lastUuid = ""
             while (true) {
-                val cursor = db.rawQuery(
+                val batch = ArrayList<Pair<String, Long>>()
+                db.rawQuery(
                     """SELECT uuid, frames, board_brand FROM climbs
                        WHERE move_count = 0 AND frames_count = 1 AND uuid > ?
                        ORDER BY uuid LIMIT $BULK_BATCH_SIZE""",
                     arrayOf(lastUuid)
-                )
-                if (cursor.count == 0) { cursor.close(); break }
+                ).use {
+                    while (it.moveToNext()) {
+                        lastUuid = it.getString(0)
+                        val frames = FramesBinaryCodec.decode(it.getBlob(1) ?: ByteArray(0))
+                        val sem = roleSem[it.getString(2)]
+                        val moves = if (sem != null) computeMoveCount(frames, sem)
+                                    else computeMoveCount(frames)
+                        if (moves > 0) batch += lastUuid to moves.toLong()
+                    }
+                    if (it.count == 0) return
+                }
+                if (batch.isEmpty()) continue
                 db.beginTransaction()
                 try {
-                    cursor.use {
-                        while (it.moveToNext()) {
-                            lastUuid = it.getString(0)
-                            val frames = FramesBinaryCodec.decode(it.getBlob(1) ?: ByteArray(0))
-                            val sem = roleSem[it.getString(2)]
-                            val moves = if (sem != null) computeMoveCount(frames, sem)
-                                        else computeMoveCount(frames)
-                            if (moves > 0) {
-                                stmt.bindLong(1, moves)
-                                stmt.bindString(2, lastUuid)
-                                stmt.executeUpdateDelete()
-                            }
-                        }
+                    for ((uuid, moves) in batch) {
+                        stmt.bindLong(1, moves)
+                        stmt.bindString(2, uuid)
+                        stmt.executeUpdateDelete()
                     }
                     db.setTransactionSuccessful()
                 } finally {
