@@ -2,10 +2,16 @@ package com.cruxcoach.android.data
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertisingSetCallback
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
@@ -41,6 +47,11 @@ enum class RelayError {
     /** The phone already carries a CruxCoach sharing name this app did not set
      *  (another CruxCoach app shares, or an earlier name never came back). */
     NAME_IN_USE,
+
+    /** The phone connected to a car, so sharing ended (see [RelayCarPolicy]).
+     *  Not a failure: shown as the reason, and sharing does not restart on its
+     *  own while that car stays connected. */
+    STOPPED_FOR_CAR,
     BOARD_LOST,
     UNSUPPORTED_BOARD,
 
@@ -132,7 +143,42 @@ class CruxRelayManager(
     private var pendingDisclosureIsAutomatic = false
     /** Set when the caller showed the disclosure inline, so the deliberate tap is the consent. */
     private var disclosureShownInline = false
+    /** A car this process saw connect and not yet disconnect. */
+    private var connectedCar: String? = null
+    private val carReceiver = object : BroadcastReceiver() {
+        @SuppressLint("MissingPermission")
+        override fun onReceive(receiverContext: Context?, intent: Intent?) {
+            val action = intent?.action ?: return
+            val device = IntentCompat.getParcelableExtra(
+                intent,
+                BluetoothDevice.EXTRA_DEVICE,
+                BluetoothDevice::class.java,
+            ) ?: return
+            val address = runCatching { device.address }.getOrNull() ?: return
+            when (action) {
+                BluetoothDevice.ACTION_ACL_CONNECTED -> onBluetoothDevice(
+                    address,
+                    // Unknown without the permission: then nothing happens.
+                    runCatching { device.bluetoothClass?.deviceClass }.getOrNull(),
+                    connected = true,
+                )
+                BluetoothDevice.ACTION_ACL_DISCONNECTED ->
+                    onBluetoothDevice(address, null, connected = false)
+            }
+        }
+    }
     init {
+        // Exported on purpose: these come from the Bluetooth process, which a
+        // not-exported receiver never hears; both are protected broadcasts.
+        ContextCompat.registerReceiver(
+            context,
+            carReceiver,
+            IntentFilter().apply {
+                addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+                addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            },
+            ContextCompat.RECEIVER_EXPORTED,
+        )
         // The phone carries the sharing name only while the relay runs on a
         // connected board. Whenever sharing is off or the board link is not up,
         // whatever the reason, the name goes back: also one a previous run left
@@ -248,6 +294,9 @@ class CruxRelayManager(
         val board = bleConnection.connectedBoard ?: return
         val address = board.address
         if (autoDisclosureDismissedBoardAddress == address) return
+        // Sharing ended because the phone is in a car: not again on its own while
+        // that car is connected. A deliberate "share" by the user still works.
+        if (connectedCar != null) return
         // When scanning is available, BoardCapacityProbe will shortly replace
         // UNKNOWN with authoritative true/false evidence. Waiting prevents a
         // multi-connect wall from showing a consent dialog whose confirm action
@@ -366,6 +415,24 @@ class CruxRelayManager(
 
     fun clearError() {
         _state.update { it.copy(error = null, errorDetail = null) }
+    }
+
+    /**
+     * A Bluetooth device connected or disconnected. A car ends sharing at once
+     * and with it the borrowed name; headphones, speakers and devices of
+     * unknown class change nothing ([RelayCarPolicy]).
+     */
+    internal fun onBluetoothDevice(address: String, deviceClass: Int?, connected: Boolean) {
+        if (!connected) {
+            if (connectedCar.equals(address, ignoreCase = true)) connectedCar = null
+            return
+        }
+        if (!RelayCarPolicy.isCar(deviceClass)) return
+        connectedCar = address
+        if (!enabledFlow.value && !running) return
+        Log.i(TAG, "Phone connected to a car: sharing ends")
+        disable()
+        _state.update { it.copy(error = RelayError.STOPPED_FOR_CAR, errorDetail = null) }
     }
 
     private suspend fun reconcile(

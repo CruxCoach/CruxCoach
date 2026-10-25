@@ -2609,6 +2609,9 @@
     <string name="relay_host_title">Shared CruxCoach session</string>
     <string name="relay_host_join_subtitle">%1$d in session · Tap to join</string>
     <string name="relay_error_name_in_use">Your phone already has a CruxCoach Bluetooth name. Is another CruxCoach app sharing? More under Settings → Sharing nearby.</string>
+    <string name="relay_error_stopped_for_car">Sharing stopped: your phone connected to a car.</string>
+    <string name="relay_status_stopped_for_car">Sharing starts again with your next board connection.</string>
+    <string name="relay_share_again">Share again</string>
     <string name="relay_bt_name_title">Your phone\'s Bluetooth name</string>
     <string name="relay_bt_name_notice">While sharing, your phone\'s Bluetooth name is “CruxCoach…” – for cars and headphones too. When sharing ends, CruxCoach gives the phone its own name back.</string>
     <string name="relay_bt_name_lent">Sharing is on: over Bluetooth your phone is called “CruxCoach…” right now. Afterwards it is “%1$s” again.</string>

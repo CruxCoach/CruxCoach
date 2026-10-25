@@ -427,12 +427,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Your phone no longer keeps the name "CruxCoach…" in your car or headphones after
   sharing a board with other apps. The phone carries that name only while sharing runs
   on a connected board; when either ends, for whatever reason, its own Bluetooth name
-  comes back at once. If CruxCoach was closed, crashed or updated, or the phone
-  restarted while sharing, the name now comes back on its own – right after the restart
+  comes back at once. If CruxCoach crashed, was ended by the system or was updated, or
+  the phone restarted while sharing, the name now comes back on its own – right after the restart
   or update, at the next Bluetooth connection, or the next time CruxCoach starts –
   instead of only when you open CruxCoach again. The phone's own name can no longer be
   lost when sharing fails to start, or when two CruxCoach apps are installed. Swiping
-  CruxCoach away from the recent apps now ends sharing. Settings → Sharing nearby says
+  CruxCoach away from the recent apps now ends sharing, and so does connecting the phone
+  to a car (car audio or hands-free; headphones and speakers do not): the sharing card
+  then says "Sharing stopped: your phone connected to a car" and sharing does not start
+  again on its own while the car stays connected. Settings → Sharing nearby says
   that the phone is called "CruxCoach…" over Bluetooth while sharing; if its name has
   not come back yet, it offers "Restore name now". When CruxCoach does not know the
   earlier name, it suggests the device name from the phone settings, lets you change

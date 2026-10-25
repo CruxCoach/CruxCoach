@@ -32,6 +32,9 @@ class RelayShareViewModel @Inject constructor(
 
     fun setSharing(enabled: Boolean) = relayManager.setSharingEnabled(enabled)
 
+    /** Deliberate restart after sharing ended because the phone connected to a car. */
+    fun shareAgain() = relayManager.requestEnable()
+
     fun clearError() {
         relayManager.clearError()
     }

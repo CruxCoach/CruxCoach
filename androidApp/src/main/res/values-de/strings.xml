@@ -2608,6 +2608,9 @@
     <string name="relay_host_title">Geteilte CruxCoach-Session</string>
     <string name="relay_host_join_subtitle">%1$d in der Session · Antippen zum Beitreten</string>
     <string name="relay_error_name_in_use">Dein Handy hat schon einen CruxCoach-Bluetooth-Namen. Teilt gerade eine andere CruxCoach-App? Mehr unter Einstellungen → Teilen in der Nähe.</string>
+    <string name="relay_error_stopped_for_car">Teilen beendet: Handy mit Auto verbunden.</string>
+    <string name="relay_status_stopped_for_car">Das Teilen startet wieder mit der nächsten Board-Verbindung.</string>
+    <string name="relay_share_again">Wieder teilen</string>
     <string name="relay_bt_name_title">Bluetooth-Name deines Handys</string>
     <string name="relay_bt_name_notice">Während des Teilens heißt dein Handy über Bluetooth „CruxCoach…“ – auch für Auto und Kopfhörer. Endet das Teilen, gibt CruxCoach ihm seinen Namen zurück.</string>
     <string name="relay_bt_name_lent">Das Teilen läuft: Über Bluetooth heißt dein Handy gerade „CruxCoach…“. Danach heißt es wieder „%1$s“.</string>
