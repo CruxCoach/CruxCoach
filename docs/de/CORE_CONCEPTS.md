@@ -5,6 +5,7 @@
 **Geltungsbereich:** implementierter Code bei `4fc067e87`, Vorbereitung von
 0.2.3. Veröffentlicht ist weiterhin 0.2.2. Die unten beschriebenen Korrekturen
 an Ergebnisstatistik und Trefferzahlen gehören zur Vorbereitungslinie.
+Der Abschnitt „Training und Ernährung“ beschreibt `feat/0.2.5-training-nutrition` (Ziel 0.2.5).
 
 ## Board, Layout, Winkel und Problem
 
@@ -222,11 +223,47 @@ Auf der Karte öffnet ein Board mit bekanntem Layout seine Climbs direkt („Cli
 
 Die Kartenstatistik zählt alle erfassten Boards im geladenen Kartendatensatz, unabhängig von den Kartenfiltern. Ein Standort kann mehrere Boards enthalten. Marken- und Layout-Verteilung berücksichtigen alle Board-Familien; Layouts werden je Marke gruppiert und fehlende Angaben als unbekannt angezeigt. Zugang, Verstellbarkeit, Länder und bekannte Größen verwenden denselben Datensatz.
 
+## Training und Ernährung (0.2.5)
+
+Der Trainingsbereich („Training & Ernährung“ im Hauptmenü) hat vier Tabs:
+Heute, Training (Workouts und Übungsbibliothek), Ernährung und Fortschritt.
+**Heute** schlägt ein Training vor – aus Wochenplan, Klettertagen, Check-in,
+Fingerlast der letzten Tage, Ausrüstung des gewählten Orts und dem, was der
+Coach gelernt hat; jede Übung auf der Karte lässt sich tauschen, weglassen oder
+nie mehr vorschlagen, die Gründe stehen hinter „Warum?“. Vorschläge sind nie ein
+Zwang: Der Nutzer kann immer selbst anpassen, und Sicherheitsregeln
+(Verletzungen, Schutz für junge Kletternde und Einsteiger, Fingerlast) gehen
+vor Vorlieben. Der Coach lernt mit Maß aus Tausch und Änderungen – abgelehnte
+Übungen ruhen Tage bis Wochen und kommen nicht ständig wieder –, und „Was der
+Coach gelernt hat“ zeigt jeden Punkt und vergisst ihn auf Wunsch.
+
+**Ernährung** folgt dem Trainingstag mit offenen Zielen und warnt mit Zahlen,
+statt etwas zu sperren („warnen statt sperren“). Lebensmittel kommen aus den
+mitgelieferten Daten von BLS 4.0, USDA und Open Food Facts, per Barcode,
+Beschreibung oder einem optionalen Fotomodell auf dem Gerät (nur auf Anfrage
+geladen).
+
+**Comeback-Plan** nach einer Verletzung ist eine Trainingshilfe, kein
+Medizinprodukt: Der Nutzer trägt ein, was Ärztin, Arzt oder Physio gesagt haben,
+und wählt die Stufe; die App stellt keine Diagnose, wählt oder wechselt nie
+selbst eine Stufe und sagt auf jeder Comeback-Fläche, dass sie kein Ersatz für
+den Arztbesuch ist. Heil- und Behandlungswörter kommen nicht vor
+(`HealthWordingTest`).
+
+**Daten:** alles in einer eigenen SQLCipher-Datenbank je Konto
+(`cruxcoach_athlete_<Pubkey-Präfix>.db`, Schema in `sqldelight/athlete`), erst
+bei Bedarf geöffnet, nie beim App-Start. Sicherungen tragen sie als zusätzlichen
+Teil `athlete` (Umschlag Version 3, vorwärtskompatibel gelesen); Training, Körper
+und Ernährung sind standardmäßig dabei, Verletzungen und Comeback-Tagebuch
+(`HEALTH`) nur mit Schalter. Health Connect ist optional, ein Schalter je
+Richtung.
+
 ## Orientierung im Quellcode
 
 Die [Quellcode-Tabelle der englischen Fassung](../en/CORE_CONCEPTS.md#source-map)
 verlinkt Board-Fähigkeiten, Repository-Modelle, SQL-Schemata, Filter,
-Statistik samt Tests, Player, Community-Publishing, Backup und Update-Prüfung.
+Statistik samt Tests, Player, Community-Publishing, Backup, Update-Prüfung sowie
+Training, Coach, Comeback-Plan, Ernährung und Health Connect.
 Sie ist die gemeinsame Pfadreferenz für beide Fassungen.
 
 Android-UI, BLE, Hintergrundarbeit und Dependency Injection liegen unter

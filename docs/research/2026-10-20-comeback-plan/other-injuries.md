@@ -1,7 +1,7 @@
 # Non-finger climbing injuries: shoulder, elbow, wrist, lower limb, trunk
 ## Triage, conservative rehabilitation and return to climbing: an evidence review for CruxCoach
 
-*Research input for the CruxCoach injury-rehabilitation feature (run `injury-rehab-20261020`). Compiled 2026-10-20.
+*Research input for the CruxCoach comeback plan after an injury (agent run `injury-rehab-20261020`). Compiled 2026-10-20.
 This is a literature synthesis for product design. It is not medical advice and does not replace clinical assessment.
 Finger injuries (pulleys, tenosynovitis, growth-plate injuries) are covered in a separate report. Red-flag wording, escalation
 UX and the EU MDR boundary are covered in `research/safety-regulation.md`; this report adds the region-specific detail.*

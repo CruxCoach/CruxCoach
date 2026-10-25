@@ -1,6 +1,6 @@
 # Rehabilitative loading of connective tissue (tendon, ligament, pulley): principles for app logic
 
-Research report for the CruxCoach injury-rehabilitation feature. Prepared 2026-10-20. English.
+Research report for the CruxCoach comeback plan after an injury (a training aid, not a medical device). Prepared 2026-10-20. English.
 Scope: general loading principles that program logic can rely on. Finger-injury specifics (diagnosis, grading, red flags) and
 regulation are covered in depth by sibling reports; here they appear only where they affect loading rules.
 
