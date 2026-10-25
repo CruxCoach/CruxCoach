@@ -62,7 +62,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   sit behind "Why?", and the check-in is one line until you open it. Whenever something is
   missing, it is asked right there – a hint never sends you looking for it in
   the settings. The training settings are an overview with the current value of
-  each topic. Settings in Training and Nutrition save themselves – a typed
+  each topic; Settings → "Training & nutrition" opens them too. Settings in Training and Nutrition save themselves – a typed
   value once typing pauses, a tap at once – without save buttons; the weight
   goal and the equipment sheet keep every change and only close with "Done".
 - Stats: training days and minutes per week (board and off-board), a calendar

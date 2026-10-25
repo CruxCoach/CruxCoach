@@ -964,6 +964,9 @@ fun CruxCoachNavHost(
                         onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
                         onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
                         onNavigateToNostrProfile = { navController.navigate(Routes.NOSTR_PROFILE) },
+                        onNavigateToTrainingSettings = {
+                            navController.navigate(com.cruxcoach.android.ui.training.TrainingRoutes.ATHLETE_SETTINGS) { launchSingleTop = true }
+                        },
                         onDonateClick = {
                             paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
                             showPaymentSheet = true

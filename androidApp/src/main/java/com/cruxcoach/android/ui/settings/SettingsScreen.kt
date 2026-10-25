@@ -58,6 +58,8 @@ internal fun SettingsScreen(
     onNavigateToKeyManagement: () -> Unit = {},
     onNavigateToNostrProfile: () -> Unit = {},
     onDonateClick: () -> Unit = {},
+    /** The training area's settings; null hides the row. */
+    onNavigateToTrainingSettings: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
     backupViewModel: BackupSettingsViewModel = hiltViewModel(),
     // Created on their own pages only: opening the settings must not open the
@@ -139,8 +141,11 @@ internal fun SettingsScreen(
             SyncStatusBannerSlot()
             BleStatusArea()
         },
+        externalPages = listOfNotNull(onNavigateToTrainingSettings?.let { SettingsPage.TRAINING to it }).toMap(),
     ) { page ->
         when (page) {
+            // Opens the training area's settings screen; never a page here.
+            SettingsPage.TRAINING -> Unit
             SettingsPage.DISPLAY -> {
                 SettingsSectionCard {
                     LanguageSection()

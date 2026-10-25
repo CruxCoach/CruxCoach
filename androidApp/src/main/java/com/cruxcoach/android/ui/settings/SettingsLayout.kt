@@ -36,12 +36,16 @@ internal enum class SettingsPage(
     @param:StringRes val summary: Int,
     @param:StringRes val group: Int,
     val icon: ImageVector,
+    /** Opens another screen instead of a page here; shown only when the caller passes where to go. */
+    val external: Boolean = false,
 ) {
     DISPLAY(R.string.settings_page_display, R.string.settings_summary_display, R.string.settings_group_climbing, Icons.Outlined.Palette),
     BOARD(R.string.settings_page_board, R.string.settings_summary_board, R.string.settings_group_climbing, Icons.Outlined.Bluetooth),
     CATALOGUES(R.string.settings_group_board_catalogs, R.string.settings_summary_catalogues, R.string.settings_group_climbing, Icons.Outlined.CloudDownload),
     TIMERS(R.string.settings_page_timers, R.string.settings_summary_timers, R.string.settings_group_climbing, Icons.Outlined.Timer),
     SHARING(R.string.settings_page_sharing, R.string.settings_summary_sharing, R.string.settings_group_climbing, Icons.Outlined.PeopleOutline),
+    /** The training area's own settings (coach, equipment, Health Connect, reminders), so they can be found from here too. */
+    TRAINING(R.string.settings_page_training, R.string.settings_summary_training, R.string.settings_group_climbing, Icons.Outlined.FitnessCenter, external = true),
     ACCOUNT(R.string.settings_page_account, R.string.settings_summary_account, R.string.settings_section_accounts_data, Icons.Outlined.Person),
     IMPORTS(R.string.settings_page_imports, R.string.settings_summary_imports, R.string.settings_section_accounts_data, Icons.Outlined.MoveToInbox),
     BACKUP(R.string.settings_page_backup, R.string.settings_summary_backup, R.string.settings_section_accounts_data, Icons.Outlined.Backup),
@@ -62,6 +66,8 @@ internal fun SettingsLayout(
     onNavigateBack: () -> Unit,
     onNavigateToAppShare: () -> Unit,
     banners: @Composable () -> Unit = {},
+    /** Where the [SettingsPage.external] rows lead; a row without an entry here is not shown. */
+    externalPages: Map<SettingsPage, () -> Unit> = emptyMap(),
     content: @Composable ColumnScope.(SettingsPage) -> Unit,
 ) {
     var page by rememberSaveable { mutableStateOf<SettingsPage?>(startPage) }
@@ -111,7 +117,7 @@ internal fun SettingsLayout(
                 ) {
                     val currentPage = page
                     if (currentPage == null) {
-                        SettingsPage.entries.groupBy { it.group }.forEach { (group, pages) ->
+                        SettingsPage.entries.filter { !it.external || it in externalPages }.groupBy { it.group }.forEach { (group, pages) ->
                             SettingsGroupHeader(stringResource(group))
                             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                 pages.forEachIndexed { index, item ->
@@ -120,7 +126,7 @@ internal fun SettingsLayout(
                                         summary = stringResource(item.summary),
                                         icon = item.icon,
                                         modifier = Modifier.testTag("settings_open_${item.name}"),
-                                        onClick = { page = item },
+                                        onClick = { externalPages[item]?.invoke() ?: run { page = item } },
                                     )
                                     if (index < pages.lastIndex) {
                                         HorizontalDivider(Modifier.padding(start = 56.dp, end = 16.dp))

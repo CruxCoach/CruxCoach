@@ -2911,6 +2911,8 @@
     <string name="settings_summary_timers">Set the app’s rest timer and how route sections are displayed in sequence.</string>
     <string name="settings_page_sharing">Sharing nearby</string>
     <string name="settings_summary_sharing">Share climbs with people nearby. CruxRelay lets them control the board LEDs through your phone.</string>
+    <string name="settings_page_training">Training &amp; nutrition</string>
+    <string name="settings_summary_training">Profile, equipment and places, nutrition, reminders and Health Connect for training.</string>
     <string name="settings_page_account">CruxCoach account</string>
     <string name="settings_summary_account">Edit your public profile and manage your account key, including with Amber.</string>
     <string name="settings_page_imports">Board accounts &amp; imports</string>

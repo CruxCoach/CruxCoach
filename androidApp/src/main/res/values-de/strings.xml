@@ -2910,6 +2910,8 @@
     <string name="settings_summary_timers">Pausentimer in der App und das schrittweise Anzeigen von Routen einstellen.</string>
     <string name="settings_page_sharing">Teilen in der Nähe</string>
     <string name="settings_summary_sharing">Boulder mit anderen in der Nähe teilen. Mit CruxRelay können sie über dein Handy die Board-LEDs steuern.</string>
+    <string name="settings_page_training">Training &amp; Ernährung</string>
+    <string name="settings_summary_training">Profil, Ausrüstung und Orte, Ernährung, Erinnerungen und Health Connect fürs Training.</string>
     <string name="settings_page_account">CruxCoach-Konto</string>
     <string name="settings_summary_account">Öffentliches Profil bearbeiten und Kontoschlüssel verwalten, auch mit Amber.</string>
     <string name="settings_page_imports">Board-Konten &amp; Importe</string>
