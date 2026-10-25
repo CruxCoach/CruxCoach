@@ -1112,6 +1112,103 @@ class BoardDatabaseImporter(
         Log.i(TAG, "importQuantumSnapshot done: climbs=$count")
     }
 
+    /**
+     * Import the Shiny Wall catalogue snapshot ([ShinyWallSnapshot]). Reads
+     * and plans the whole snapshot before touching the database, then
+     * replaces only Shiny Wall catalogue rows in one transaction; own and
+     * community climbs (origin cruxcoach, source local/nostr) stay. Hold
+     * geometry is not part of this snapshot: it ships in the APK
+     * ([BundledBoardGeometry]).
+     */
+    @Synchronized
+    fun importShinyWallSnapshot(
+        snapshotFile: File,
+        onProgress: ((step: ImportStep) -> Unit)? = null,
+    ) {
+        val db = openTargetDb()
+        val plan: ShinyWallSnapshot.Plan
+        try {
+            db.execSQL("ATTACH DATABASE ? AS sw", arrayOf(snapshotFile.absolutePath))
+            plan = ShinyWallSnapshot.plan(ShinyWallSnapshot.read(db, "sw"))
+            require(plan.climbs.isNotEmpty()) { "Shiny Wall snapshot has no importable routes" }
+            runCatching { db.execSQL("DETACH DATABASE sw") }
+            val total = plan.climbs.size
+            onProgress?.invoke(ImportStep.ImportClimbs(0, 0, total))
+            db.beginTransaction()
+            try {
+                db.execSQL(
+                    "DELETE FROM climb_stats WHERE climb_uuid IN (SELECT uuid FROM climbs " +
+                        "WHERE board_brand='shinywall' AND origin='kilter' AND source='kilter')"
+                )
+                db.execSQL("DELETE FROM climbs WHERE board_brand='shinywall' AND origin='kilter' AND source='kilter'")
+                db.execSQL("DELETE FROM placement_roles WHERE board_brand='shinywall'")
+                db.execSQL(
+                    """
+                    INSERT INTO placement_roles(board_brand,id,name,led_color,screen_color) VALUES
+                    ('shinywall',12,'Start','#00ff00','#00ff00'),
+                    ('shinywall',13,'Hand','#00b4ff','#00b4ff'),
+                    ('shinywall',14,'Top','#ff00ff','#ff00ff'),
+                    ('shinywall',15,'Foot','#ffa000','#ffa000')
+                    """.trimIndent()
+                )
+                val climbInsert = db.compileStatement(
+                    """
+                    INSERT OR REPLACE INTO climbs(
+                        uuid,layout_id,setter_username,name,frames_count,is_listed,created_at,description,
+                        frames,is_nomatch,method,hsm,move_count,board_brand,origin,source,sync_status)
+                    VALUES (?,?,NULL,?,1,1,?,'',?,?,?,0,0,'shinywall','kilter','kilter','synced')
+                    """.trimIndent()
+                )
+                for ((index, climb) in plan.climbs.withIndex()) {
+                    climbInsert.clearBindings()
+                    climbInsert.bindString(1, climb.uuid)
+                    climbInsert.bindLong(2, climb.layoutId)
+                    climbInsert.bindString(3, climb.name)
+                    climb.createdAt?.let { climbInsert.bindString(4, it) } ?: climbInsert.bindNull(4)
+                    climbInsert.bindBlob(5, climb.frames.encodeToByteArray())
+                    climbInsert.bindLong(6, if (climb.isNomatch) 1 else 0)
+                    climb.method?.let { climbInsert.bindString(7, it) } ?: climbInsert.bindNull(7)
+                    climbInsert.executeInsert()
+                    if ((index + 1) % BATCH_SIZE == 0) {
+                        onProgress?.invoke(ImportStep.ImportClimbs(index + 1, index + 1, total))
+                    }
+                }
+                val statInsert = db.compileStatement(
+                    """
+                    INSERT OR REPLACE INTO climb_stats(
+                        climb_uuid,angle,display_difficulty,difficulty_average,quality_average,
+                        ascensionist_count,benchmark_difficulty,fa_username,fa_at,
+                        official_kilter_difficulty,layout_id)
+                    VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?)
+                    """.trimIndent()
+                )
+                for (stat in plan.stats) {
+                    statInsert.clearBindings()
+                    statInsert.bindString(1, stat.climbUuid)
+                    statInsert.bindLong(2, stat.angle.toLong())
+                    stat.displayDifficulty?.let { statInsert.bindDouble(3, it) } ?: statInsert.bindNull(3)
+                    stat.difficultyAverage?.let { statInsert.bindDouble(4, it) } ?: statInsert.bindNull(4)
+                    stat.qualityAverage?.let { statInsert.bindDouble(5, it) } ?: statInsert.bindNull(5)
+                    statInsert.bindLong(6, stat.ascensionistCount)
+                    stat.benchmarkDifficulty?.let { statInsert.bindDouble(7, it) } ?: statInsert.bindNull(7)
+                    statInsert.bindLong(8, stat.layoutId)
+                    statInsert.executeInsert()
+                }
+                db.setTransactionSuccessful()
+                onProgress?.invoke(ImportStep.ImportClimbs(total, total, total))
+            } finally {
+                db.endTransaction()
+            }
+        } finally {
+            runCatching { db.execSQL("DETACH DATABASE sw") }
+            db.close()
+        }
+        backfillMoveCounts()
+        val count = boardRepository.getClimbCountsByBrand()["shinywall"] ?: 0L
+        onProgress?.invoke(ImportStep.Done(count.toInt(), count.toInt(), 0, 0))
+        Log.i(TAG, "importShinyWallSnapshot done: climbs=$count skippedHoldLists=${plan.skippedHoldLists}")
+    }
+
     /** Standalone beta-media import: validate first; never touch catalogue/user rows. */
     @Synchronized
     fun importBoardBetaMediaSnapshot(snapshotFile: File, board: String): Int {
@@ -2556,6 +2653,16 @@ class BoardDatabaseImporter(
         val db = openTargetDb()
         try {
             return BundledBoardGeometry.seed(db, source, brand)
+        } finally {
+            db.close()
+        }
+    }
+
+    /** Replaces a bundle-owned board's geometry; see [BundledBoardGeometry.replace]. */
+    fun replaceBundledGeometry(source: File, brand: String): Int {
+        val db = openTargetDb()
+        try {
+            return BundledBoardGeometry.replace(db, source, brand)
         } finally {
             db.close()
         }
