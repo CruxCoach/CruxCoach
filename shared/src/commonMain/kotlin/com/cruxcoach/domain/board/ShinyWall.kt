@@ -180,6 +180,35 @@ object ShinyWallFrameEncoder {
     fun encodeRoute(holds: List<BoardHold>, variant: ShinyWallVariant): String? =
         stateVector(holds, variant)?.joinToString(separator = "", prefix = ROUTE_PREFIX, postfix = MESSAGE_END)
 
+    /** Role digit of a single-hold change (`*<role><hold>.`): 0 off, 1 start,
+     *  2 hand, 3 foot, 4 top — unlike the state vector's 0/2/4/6/8. */
+    fun changeRole(code: Int): Int = when (code) {
+        CODE_START -> 1
+        CODE_HAND -> 2
+        CODE_FOOT -> 3
+        CODE_TOP -> 4
+        else -> 0
+    }
+
+    /**
+     * The holds that differ between two state vectors of one wall, as one
+     * change message `*<role><hold>/<role><hold>/….` (a hold going dark is
+     * sent with role 0). The rest of the wall stays as it is, so nothing goes
+     * dark in between — the controller's own app updates its editor and games
+     * this way. Null when nothing changed or the vectors do not match.
+     */
+    fun encodeChanges(shown: IntArray, target: IntArray): String? {
+        if (shown.size != target.size) return null
+        val changes = target.indices.filter { shown[it] != target[it] }
+        if (changes.isEmpty()) return null
+        return changes.joinToString(separator = "/", prefix = "*", postfix = MESSAGE_END) {
+            "${changeRole(target[it])}$it"
+        }
+    }
+
+    /** Above this many changed holds a full route is shorter and resets any drift. */
+    const val MAX_CHANGES_PER_MESSAGE = 48
+
     /** True when [chunk] starts a new message (clear, route, single hold, foot init),
      *  as opposed to continuing a route's digits. */
     fun startsMessage(chunk: ByteArray): Boolean =

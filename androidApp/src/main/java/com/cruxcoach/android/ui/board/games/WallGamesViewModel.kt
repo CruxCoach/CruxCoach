@@ -374,7 +374,8 @@ class WallGamesViewModel @Inject constructor(
 internal suspend fun sendToBoard(ble: BoardBleConnection, board: WallGameBoard, holds: List<BoardHold>): Boolean {
     if (holds.isEmpty()) return ble.clearBoard(expectedBrand = board.brand)
     return when (board.brand) {
-        BoardBrand.SHINYWALL -> board.shinyVariant?.let { ble.sendShinyWallClimb(holds, it) } ?: false
+        // Only the holds that change go out, so the wall does not flash dark per step.
+        BoardBrand.SHINYWALL -> board.shinyVariant?.let { ble.updateShinyWallHolds(holds, it) } ?: false
         BoardBrand.MOONBOARD -> board.moonVariant?.let {
             ble.sendMoonBoardClimb(WallGameHolds.moonBoardFrames(holds), it, board.moonLedMode)
         } ?: false

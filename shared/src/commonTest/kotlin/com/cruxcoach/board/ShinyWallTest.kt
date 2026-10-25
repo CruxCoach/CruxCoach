@@ -182,6 +182,21 @@ class ShinyWallTest {
     }
 
     @Test
+    fun changesListOnlyHoldsThatDifferWithChangeRoles() {
+        val v = ShinyWallVariant.ST1
+        val shown = ShinyWallFrameEncoder.stateVector(listOf(hold(v, 3, HoldRole.START), hold(v, 7, HoldRole.HAND)), v)!!
+        val target = ShinyWallFrameEncoder.stateVector(
+            listOf(hold(v, 3, HoldRole.START), hold(v, 9, HoldRole.FOOT), hold(v, 310, HoldRole.FINISH)), v,
+        )!!
+        // 7 goes dark, 9 becomes a foot (3), 310 a top (4); 3 is unchanged.
+        assertEquals("*07/39/4310.", ShinyWallFrameEncoder.encodeChanges(shown, target))
+        assertNull(ShinyWallFrameEncoder.encodeChanges(target, target))
+        assertNull(ShinyWallFrameEncoder.encodeChanges(IntArray(3), target))
+        assertEquals(listOf(0, 1, 2, 3, 4), listOf(0, 2, 4, 6, 8).map(ShinyWallFrameEncoder::changeRole))
+        assertTrue(ShinyWallFrameEncoder.startsMessage("*07.".encodeToByteArray()))
+    }
+
+    @Test
     fun advertisedNamesGiveAVariantHint() {
         assertEquals(ShinyWallVariant.ST1, ShinyWallName.parse("ShinyWall_STP_A1B2C3")?.variantHint)
         assertEquals("A1B2C3", ShinyWallName.parse("ShinyWall_STP_A1B2C3")?.serial)

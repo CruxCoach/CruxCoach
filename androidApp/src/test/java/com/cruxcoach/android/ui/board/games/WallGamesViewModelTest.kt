@@ -68,7 +68,7 @@ class WallGamesViewModelTest {
             every { connectionState } returns connection
             every { connectedBoardBrand } returns connectedBrand
             every { cleaningState } returns cleaning
-            coEvery { sendShinyWallClimb(any(), any()) } returns true
+            coEvery { updateShinyWallHolds(any(), any()) } returns true
             coEvery { clearBoard(any()) } returns true
         }
         repository = mockk(relaxed = true)
@@ -99,17 +99,17 @@ class WallGamesViewModelTest {
         vm.selectGame(WallGame.THIEF)
         val route = vm.state.value.thiefRoute
         assertEquals(2, route.count { it.roleId == HoldRole.START })
-        coVerify(exactly = 0) { ble.sendShinyWallClimb(any(), any()) }
+        coVerify(exactly = 0) { ble.updateShinyWallHolds(any(), any()) }
 
         vm.start()
-        coVerify(exactly = 1) { ble.sendShinyWallClimb(route, variant) }
+        coVerify(exactly = 1) { ble.updateShinyWallHolds(route, variant) }
         assertTrue(vm.state.value.thiefLive)
 
         vm.setStealCount(4)
         vm.stealHolds()
         val after = vm.state.value.thiefRoute
         assertEquals(HoldsThief.handCount(route) - 4, HoldsThief.handCount(after))
-        coVerify(exactly = 1) { ble.sendShinyWallClimb(after, variant) }
+        coVerify(exactly = 1) { ble.updateShinyWallHolds(after, variant) }
     }
 
     @Test
@@ -119,7 +119,7 @@ class WallGamesViewModelTest {
         vm.selectGame(WallGame.THIEF)
         vm.start()
         assertEquals(WallSendProblem.NOT_CONNECTED, awaitState(vm) { it.sendProblem != null }.sendProblem)
-        coVerify(exactly = 0) { ble.sendShinyWallClimb(any(), any()) }
+        coVerify(exactly = 0) { ble.updateShinyWallHolds(any(), any()) }
     }
 
     @Test
@@ -134,7 +134,7 @@ class WallGamesViewModelTest {
         connectedBrand.value = BoardBrand.KILTER
         vm.lightThiefClimb()
         assertEquals(WallSendProblem.OTHER_BOARD, vm.state.value.sendProblem)
-        coVerify(exactly = 0) { ble.sendShinyWallClimb(any(), any()) }
+        coVerify(exactly = 0) { ble.updateShinyWallHolds(any(), any()) }
         coVerify(exactly = 0) { ble.sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
