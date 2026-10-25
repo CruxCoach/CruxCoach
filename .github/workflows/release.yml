@@ -536,7 +536,7 @@ jobs:
             sleep 10
           done
           echo "::error::Zapstore CDN did not serve the verified release APK"
-          echo "zsp exited 0 but ${CDN_URL} still answers 404. Either the upload went to another Blossom server (see 'zsp targets' above), or zsp found an asset for this version on one of its relays and silently did nothing — a re-run with 'zsp publish --overwrite-release' publishes anyway."
+          echo "zsp exited 0 but ${CDN_URL} still answers 404. relay.zapstore.dev answers OK even for an asset whose blob it does not hold and keeps it pending for up to 5 hours, so an OK above is not proof of publication. If no 'relay: OK' lines appear, zsp found an asset for this version on its relays and did nothing ('zsp publish --overwrite-release' publishes anyway)."
           exit 1
 
       # Until now a release reached the website only at the next nightly cron:
