@@ -390,4 +390,25 @@ class SharingSyncTest {
         assertEquals(listOf(HistoryEvent.AGE, HistoryEvent.TEMPLATE_EDITED, HistoryEvent.ACCEPTED),
             bob.service.history().reversed().map { it.event }.take(3))
     }
+
+    @Test fun who_sees_a_climb_is_exactly_what_the_sync_sends() = runBlocking {
+        alice.note("c1", "beta")
+        alice.training("t1", "2026-09-20")
+        assertTrue(alice.service.whoSeesClimb(setOf("c1")).isEmpty(), "nobody connected: nothing to say")
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        val note = alice.service.whoSeesClimb(setOf("c1")).single()
+        assertEquals("note:c1", note.record.id)
+        assertEquals(listOf("Bob"), note.audience)
+        val attempt = alice.service.whoSeesClimb(setOf("climb-t1")).single()
+        assertEquals(emptyList(), attempt.audience, "attempts are not in Alice's template")
+        alice.service.setNeverShare("note:c1", true)
+        val never = alice.service.whoSeesClimb(setOf("c1")).single()
+        assertTrue(never.never && never.audience.isEmpty())
+        val overview = alice.service.whoSeesWhat().associate { it.category to it.entries }
+        assertEquals(listOf("Bob"), overview.getValue(CLIMB_NOTES).map { it.name })
+        assertEquals(com.cruxcoach.domain.sharing.ShareDecisionSource.TEMPLATE, overview.getValue(CLIMB_NOTES).single().source)
+        assertTrue(overview.getValue(ATTEMPTS).isEmpty())
+        alice.service.setOutgoing(bob.account, false)
+        assertTrue(alice.service.whoSeesWhat().all { it.entries.isEmpty() }, "switched off: nobody")
+    }
 }

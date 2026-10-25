@@ -25,9 +25,37 @@ class SharingSource(private val database: SecureDatabase) {
     fun project(scope: SharingScope): SharingProjection = database.transactionWithResult {
         require(SharingRecords.valid(scope))
         val q = database.shareSourceQueries
+        build(scope,
+            ascents = { q.sourceAscents(scope.since).executeAsList().map { Ascent(it.uuid, it.climb_uuid, it.climb_name, it.board_brand, it.angle, it.bid_count, it.difficulty, it.climbed_at) } },
+            bids = { q.sourceBids(scope.since).executeAsList().map { Bid(it.uuid, it.climb_uuid, it.climb_name, it.board_brand, it.angle, it.bid_count, it.climbed_at) } },
+            notes = { q.sourceNotes().executeAsList().map { it.climb_uuid to it.note } },
+        )
+    }
+
+    /** The owner's records about these climbs only, every period (the climb sheet asks
+     * who sees them). Same fields and checks as [project]. */
+    fun projectClimbs(climbUuids: Collection<String>): SharingProjection = database.transactionWithResult {
+        val q = database.shareSourceQueries
+        val ids = climbUuids.distinct()
+        if (ids.isEmpty()) return@transactionWithResult SharingProjection(emptyList(), emptyList(), false)
+        build(SharingScope(SharingRecords.supported, ShareScope.ALL_HISTORY),
+            ascents = { q.sourceAscentsForClimbs(ids).executeAsList().map { Ascent(it.uuid, it.climb_uuid, it.climb_name, it.board_brand, it.angle, it.bid_count, it.difficulty, it.climbed_at) } },
+            bids = { q.sourceBidsForClimbs(ids).executeAsList().map { Bid(it.uuid, it.climb_uuid, it.climb_name, it.board_brand, it.angle, it.bid_count, it.climbed_at) } },
+            notes = { q.sourceNotesForClimbs(ids).executeAsList().map { it.climb_uuid to it.note } },
+        )
+    }
+
+    private data class Ascent(val uuid: String, val climb: String, val name: String, val board: String, val angle: Long, val bids: Long?, val grade: Long?, val at: String)
+    private data class Bid(val uuid: String, val climb: String, val name: String, val board: String, val angle: Long, val bids: Long?, val at: String)
+
+    private fun build(
+        scope: SharingScope,
+        ascents: () -> List<Ascent>,
+        bids: () -> List<Bid>,
+        notes: () -> List<Pair<String, String>>,
+    ): SharingProjection {
         var truncated = false
-        fun <T : Any> rows(query: app.cash.sqldelight.Query<T>): List<T> =
-            query.executeAsList().also { if (it.size > SharingRecords.MAX_RECORDS) truncated = true }
+        fun <T> rows(read: () -> List<T>): List<T> = read().also { if (it.size > SharingRecords.MAX_RECORDS) truncated = true }
         val records = mutableListOf<SharingRecord>()
         fun add(id: String, category: ShareCategory, fields: Map<String, String>) {
             records += SharingRecord(id, category, SharingRecords.revision(id, category, fields), fields)
@@ -42,27 +70,27 @@ class SharingSource(private val database: SecureDatabase) {
             }
         }
         if (ShareCategory.SENDS in scope.categories) {
-            rows(q.sourceAscents(scope.since)).forEach { row ->
-                add("ascent:${row.uuid}", ShareCategory.SENDS, linkedMapOf("climbId" to row.climb_uuid,
-                    "name" to row.climb_name, "board" to row.board_brand, "angle" to row.angle.toString(),
-                    "attempts" to (row.bid_count ?: 0).coerceAtLeast(1).toString(), "grade" to (row.difficulty?.toString() ?: ""),
-                    "date" to row.climbed_at.take(10)))
+            rows(ascents).forEach { row ->
+                add("ascent:${row.uuid}", ShareCategory.SENDS, linkedMapOf("climbId" to row.climb,
+                    "name" to row.name, "board" to row.board, "angle" to row.angle.toString(),
+                    "attempts" to (row.bids ?: 0).coerceAtLeast(1).toString(), "grade" to (row.grade?.toString() ?: ""),
+                    "date" to row.at.take(10)))
             }
         }
         if (ShareCategory.ATTEMPTS in scope.categories) {
-            rows(q.sourceBids(scope.since)).forEach { row ->
-                add("bid:${row.uuid}", ShareCategory.ATTEMPTS, linkedMapOf("climbId" to row.climb_uuid,
-                    "name" to row.climb_name, "board" to row.board_brand, "angle" to row.angle.toString(),
-                    "attempts" to (row.bid_count ?: 0).coerceAtLeast(1).toString(), "date" to row.climbed_at.take(10)))
+            rows(bids).forEach { row ->
+                add("bid:${row.uuid}", ShareCategory.ATTEMPTS, linkedMapOf("climbId" to row.climb,
+                    "name" to row.name, "board" to row.board, "angle" to row.angle.toString(),
+                    "attempts" to (row.bids ?: 0).coerceAtLeast(1).toString(), "date" to row.at.take(10)))
             }
         }
         if (ShareCategory.CLIMB_NOTES in scope.categories) {
-            rows(q.sourceNotes()).forEach { row ->
-                add("note:${row.climb_uuid}", ShareCategory.CLIMB_NOTES, linkedMapOf("climbId" to row.climb_uuid, "note" to row.note))
+            rows(notes).forEach { (climb, note) ->
+                add("note:$climb", ShareCategory.CLIMB_NOTES, linkedMapOf("climbId" to climb, "note" to note))
             }
         }
         val (sendable, skipped) = records.sortedBy { it.id }.partition { SharingRecords.valid(it, scope) }
-        SharingProjection(sendable, skipped.map { it.id }, truncated)
+        return SharingProjection(sendable, skipped.map { it.id }, truncated)
     }
 }
 

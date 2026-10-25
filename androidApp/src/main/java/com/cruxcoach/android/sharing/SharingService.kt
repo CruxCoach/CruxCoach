@@ -45,6 +45,14 @@ object SharingNames {
 /** A friend's record about one climb, with the friend's display name. */
 data class ReceivedOnClimb(val peer: String, val name: String, val record: SharingRecord)
 
+/** One own record about a climb and who receives it now ("who sees this?"). */
+data class OwnOnClimb(val record: SharingRecord, val audience: List<String>, val never: Boolean)
+
+/** Who receives one category now, and why (template, exception, single records; until when). */
+data class CategoryAudience(val category: ShareCategory, val entries: List<AudienceEntry>)
+
+data class AudienceEntry(val peer: String, val name: String, val source: ShareDecisionSource?, val expiresAt: Long?)
+
 /** A friendship request from someone without a local person entry yet. */
 data class SharingInvitation(val peer: String, val receivedAt: Long)
 
@@ -87,6 +95,8 @@ data class SharingOverview(
     val allTemplates: List<ShareTemplate> = templates,
     /** The local history of own decisions, newest first. */
     val history: List<HistoryEntry> = emptyList(),
+    /** Who receives which category now. */
+    val whoSees: List<CategoryAudience> = emptyList(),
 )
 
 /**
@@ -132,7 +142,7 @@ class SharingService(
             .map { SharingInvitation(it.account, it.createdAt) }
         val templates = store.templates()
         return SharingOverview(status, templates.filterNot { it.hidden }, friends, invitations,
-            ageAnswered = store.ageAnswered(), ageConfirmed = store.ageConfirmed(), allTemplates = templates, history = store.history())
+            ageAnswered = store.ageAnswered(), ageConfirmed = store.ageConfirmed(), allTemplates = templates, history = store.history(), whoSees = whoSeesWhat())
     }
 
     private fun visible(person: SharingPerson, native: MarmotPeer?): VisibleState = when {
@@ -324,6 +334,58 @@ class SharingService(
         }
         return SharingPersonDetail(friend, template, categories, days, items, store.records(peer),
             overLimit = overLimit, skipped = projection?.skipped?.size ?: 0)
+    }
+
+    /**
+     * "Who sees this?" for the own records about these climbs (a climb and its
+     * equivalent identities): for each, the people it goes to now, exactly as the
+     * sync selects (template, exceptions, period, limits), and whether it is never
+     * shared. Empty while nobody is connected with sharing on.
+     */
+    fun whoSeesClimb(climbUuids: Set<String>): List<OwnOnClimb> {
+        val persons = store.persons().filter { it.state == PersonState.CONNECTED && it.outgoing }
+        if (persons.isEmpty()) return emptyList()
+        val own = runCatching { source.projectClimbs(climbUuids).records }.getOrDefault(emptyList())
+        if (own.isEmpty()) return emptyList()
+        val policy = store.policy()
+        val now = clock()
+        val projections = mutableMapOf<SharingScope, SharingProjection>()
+        val receiving = persons.associateWith { person ->
+            val scope = store.scope(person, policy, now, today())
+            runCatching { store.selected(person, scope, policy, now) { s -> projections.getOrPut(s) { source.project(s) } } }
+                .getOrDefault(emptyList()).map { it.id }.toSet()
+        }
+        return own.map { record ->
+            OwnOnClimb(record, persons.filter { record.id in receiving.getValue(it) }.map { name(it) },
+                ObjectId(record.id) in policy.neverShare)
+        }
+    }
+
+    /** The overview of who receives which category now, with the reason. */
+    fun whoSeesWhat(): List<CategoryAudience> {
+        val persons = store.persons().filter { it.state == PersonState.CONNECTED && it.outgoing }
+        val policy = store.policy()
+        val now = clock()
+        return SharingRecords.supported.sortedBy { it.ordinal }.map { category ->
+            CategoryAudience(category, persons.mapNotNull { person ->
+                val audience = Audience.Person(PeerId(person.peer))
+                val decision = AudienceResolver.resolve(policy, audience, category, null, now)
+                val bySingleRecords = !decision.isAllowed && policy.persons[audience.peer]?.recordRules.orEmpty().any { (key, rule) ->
+                    key.category == category && rule.effect == AccessEffect.ALLOW && rule.activeAt(now) &&
+                        AudienceResolver.resolve(policy, audience, category, key.record, now).isAllowed
+                }
+                when {
+                    decision.isAllowed -> AudienceEntry(person.peer, name(person), decision.source, decision.expiresAt)
+                    bySingleRecords -> AudienceEntry(person.peer, name(person), null, null)
+                    else -> null
+                }
+            })
+        }
+    }
+
+    private fun name(person: SharingPerson): String {
+        val profile = store.records(person.peer).firstOrNull { it.category == ShareCategory.CLIMBING_PROFILE }?.fields?.get("name")
+        return SharingNames.display(person.label, profile, person.peer)
     }
 
     fun received(peer: String): List<SharingRecord> = store.records(peer)

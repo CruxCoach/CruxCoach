@@ -238,6 +238,38 @@ class SharingScreenTest {
         compose.onNodeWithText("Ben: Begehungen geteilt").assertExists()
     }
 
+    @Test fun `the climb page says who sees own records and offers never share`() {
+        val toggles = mutableListOf<String>()
+        val note = SharingRecord("note:c1", ShareCategory.CLIMB_NOTES, 1, mapOf("climbId" to "c1", "note" to "Heel hook"))
+        val send = SharingRecord("ascent:a", ShareCategory.SENDS, 1, mapOf("climbId" to "c1", "name" to "Crimp Line", "board" to "kilter",
+            "angle" to "40", "attempts" to "2", "grade" to "18", "date" to "2026-09-20"))
+        compose.setContent {
+            MaterialTheme {
+                OwnClimbContent(listOf(
+                    com.cruxcoach.android.sharing.OwnOnClimb(note, listOf("Ben", "Cleo"), never = false),
+                    com.cruxcoach.android.sharing.OwnOnClimb(send, emptyList(), never = true),
+                )) { id, never -> toggles += "$id:$never" }
+            }
+        }
+        compose.onNodeWithText("Wer sieht deine Daten zu diesem Boulder?").assertExists()
+        compose.onNodeWithText("Sichtbar für: Ben, Cleo").assertExists()
+        compose.onNodeWithText("Wird nie geteilt").assertExists()
+        compose.onNodeWithTag("boarddetail_never_note:c1").assertIsOff().performClick()
+        assertEquals(listOf("note:c1:true"), toggles)
+    }
+
+    @Test fun `who sees what lists people per category with the reason`() {
+        val ben = "b".repeat(64)
+        val whoSees = listOf(
+            com.cruxcoach.android.sharing.CategoryAudience(ShareCategory.CLIMB_NOTES, listOf(
+                com.cruxcoach.android.sharing.AudienceEntry(ben, "Ben", ShareDecisionSource.TEMPLATE, null))),
+            com.cruxcoach.android.sharing.CategoryAudience(ShareCategory.SENDS, emptyList()),
+        )
+        render(SharingUiState(loading = false, overview = overview().copy(whoSees = whoSees)), SharingPage.WhoSees)
+        compose.onNodeWithText("Ben (Vorlage)").assertExists()
+        compose.onNodeWithTag("sharing_whosees_nobody_SENDS").assertExists()
+    }
+
     @Test fun `the climb page lists what friends shared about it and nothing otherwise`() {
         val shown = mutableStateOf(emptyList<ReceivedOnClimb>())
         compose.setContent { MaterialTheme { ReceivedClimbContent(shown.value) } }

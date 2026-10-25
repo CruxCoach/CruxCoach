@@ -17,6 +17,18 @@ FROM bids WHERE climbed_at >= ? ORDER BY uuid LIMIT 1001;
 sourceNotes:
 SELECT climb_uuid, note FROM climb_notes ORDER BY climb_uuid LIMIT 1001;
 
+-- One climb and its equivalent identities ("who sees this?" on the climb sheet).
+sourceAscentsForClimbs:
+SELECT uuid, climb_uuid, climb_name, board_brand, angle, bid_count, difficulty, climbed_at
+FROM ascents WHERE climb_uuid IN ? ORDER BY uuid LIMIT 1001;
+
+sourceBidsForClimbs:
+SELECT uuid, climb_uuid, climb_name, board_brand, angle, bid_count, climbed_at
+FROM bids WHERE climb_uuid IN ? ORDER BY uuid LIMIT 1001;
+
+sourceNotesForClimbs:
+SELECT climb_uuid, note FROM climb_notes WHERE climb_uuid IN ? ORDER BY climb_uuid LIMIT 1001;
+
 -- Never executed. A listener on it hears every committed write to a source
 -- table (SharingSourceChanges) and wakes the sync.
 sourceTouched:

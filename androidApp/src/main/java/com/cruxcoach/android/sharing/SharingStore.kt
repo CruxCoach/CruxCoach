@@ -232,11 +232,21 @@ class SharingStore(private val database: SecureDatabase) {
      * carrying the expiry of the rule that lets it out. Throws when that set is
      * incomplete or larger than one generation may carry: then nothing is sent,
      * and the person page says so ([SharingPersonDetail.overLimit]). */
-    fun selected(person: SharingPerson, scope: ShareScope, policy: SharePolicy, source: SharingSource, now: Long): List<SharingRecord> {
+    fun selected(person: SharingPerson, scope: ShareScope, policy: SharePolicy, source: SharingSource, now: Long): List<SharingRecord> =
+        selected(person, scope, policy, now, source::project)
+
+    /** As above with the projection supplied (several people with one scope read it once). */
+    fun selected(
+        person: SharingPerson,
+        scope: ShareScope,
+        policy: SharePolicy,
+        now: Long,
+        project: (SharingScope) -> SharingProjection,
+    ): List<SharingRecord> {
         if (scope.categories.isEmpty()) return emptyList()
         val audience = Audience.Person(PeerId(person.peer))
         val sourceScope = scope.asSourceScope()
-        val projection = source.project(sourceScope)
+        val projection = project(sourceScope)
         require(!projection.truncated) { "over_limit" }
         return projection.records.mapNotNull { record ->
             val decision = AudienceResolver.resolve(policy, audience, record.category, ObjectId(record.id), now)

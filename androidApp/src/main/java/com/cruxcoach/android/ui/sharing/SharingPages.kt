@@ -296,6 +296,34 @@ internal fun TemplatePage(templates: List<ShareTemplate>, id: TemplateId, busy: 
         color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+/** Who receives which category now, and why (FEAT-073 U2 overview). */
+@Composable
+internal fun WhoSeesPage(overview: com.cruxcoach.android.sharing.SharingOverview) {
+    SettingsSectionCard {
+        InfoHeading(stringResource(R.string.sharing_whosees_title), stringResource(R.string.sharing_whosees_info))
+        overview.whoSees.forEach { group ->
+            CategoryHeader(group.category, group.entries.size.toString())
+            if (group.entries.isEmpty()) {
+                Text(stringResource(R.string.sharing_whosees_nobody), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("sharing_whosees_nobody_${group.category.name}"))
+            }
+            group.entries.forEach { entry ->
+                val reason = when (entry.source) {
+                    com.cruxcoach.domain.sharing.ShareDecisionSource.TEMPLATE -> stringResource(R.string.sharing_reason_template, entry.name)
+                    com.cruxcoach.domain.sharing.ShareDecisionSource.PERSON_ALLOW -> stringResource(R.string.sharing_reason_exception, entry.name)
+                    null -> stringResource(R.string.sharing_reason_records, entry.name)
+                    else -> entry.name
+                }
+                val line = entry.expiresAt?.let { until ->
+                    stringResource(R.string.sharing_reason_until, reason,
+                        java.time.Instant.ofEpochMilli(until).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString())
+                } ?: reason
+                Text(line, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
 /** The local history of own decisions (FEAT-073 U2); kept only on this device. */
 @Composable
 internal fun HistoryPage(overview: com.cruxcoach.android.sharing.SharingOverview) {
