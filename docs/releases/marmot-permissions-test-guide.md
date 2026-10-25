@@ -61,7 +61,14 @@ Einrichtung), **Aktiv** (du teilst), **Gestoppt** (dein Schalter ist aus), **Bee
   Notiz speichern. Für P-04 an **demselben** Boulder auf beiden Geräten.
 - Das Nokia der 0.2.3-QA nicht verwenden.
 
-**Upgrade von einem v1-Build:** Die Datenbankmigration (SecureDB 33 → 34) löscht alle
+**Auf der 0.2.4-Linie (`feat/permission-foundations`):** Das Teilen ist nur in Testversionen
+(Debug-Builds) sichtbar und zuerst aus. Einstellungen → CruxCoach-Konto → „Vorschau: Persönliche
+Daten teilen“ einschalten; erst dann erscheint die Zeile „Persönliche Daten teilen“. Der Schalter
+ändert die Datenbank nicht: Die Tabellen kommen mit dem Update (SecureDB 16 → 17) für jede
+Installation dieses Builds und bleiben leer, solange niemand eingeladen wird; an bestehenden
+Tabellen ändert sich nichts (keine Trigger).
+
+**Upgrade von einem v1-Build (nur der alte Branch):** Die Datenbankmigration (SecureDB 33 → 34) löscht alle
 v1-Freigaben, -Geräte und -Snapshots; der alte native Ordner wird entfernt. Bestehende
 Freundschaften aus v1 sind danach weg und müssen neu angefragt werden. Das ist gewollt.
 

@@ -519,3 +519,59 @@ building, or that differ from the text above:
 * **Climb detail join**: the climb info sheet lists friends' notes and
   attempts/sends for the climb and its equivalent identities through a
   separate small view model; nothing enters the own logbook or notes.
+
+## 14. On the 0.2.4 release line (`feat/permission-foundations`, 2026-10-25)
+
+The v2 head, the eMudhra lock fix and the Olm spike were carried onto release
+0.2.4 linearly. What differs from the sections above:
+
+* **Schema.** The release line is secure schema 16 (its own `14.sqm`
+  `pending_import` and `15.sqm` `pending_log_deletion`). The branch's
+  unpublished 14–33 are not carried over and no v1 table ever existed there.
+  One additive `16.sqm` (16 → 17) creates exactly the seven `share_*` tables of
+  `Share.sq` with the default presets. `SecureSchemaLineage` refuses any
+  `sharing_*` (v1) table and `share_*` tables without the release tables 14/15
+  before any DDL. §6.2 above describes the branch.
+* **No triggers, no revision tables.** v1/v2 kept a source revision per record
+  with twelve triggers on profiles, ascents, bids and notes. On the release
+  line a record's revision is a hash of exactly the fields that are sent
+  (`SharingRecords.revision`), computed when the projection is read; the
+  sender compares it with what it sent, deletions fall out of the comparison,
+  and the receiver applies deltas in (generation, sequence) order without
+  ordering by revision. Nothing is written for sharing on release tables, on
+  or off, and the Kilter sync (which since 0.2.4 rewrites the denormalised
+  names of every ascent and bid) causes no delta. `ShareSource.sq` holds only
+  the read queries; a never-executed query over the four source tables lets
+  `SharingSourceChanges` hear committed writes.
+* **Foreign keys stay off.** The release tables declare references the app
+  never enforced (assessments, training plans/sessions, workout and climb logs);
+  enforcing them for everyone would change their behaviour. Removing a person
+  deletes rules, directions and received records explicitly in one
+  transaction (`SharingStore.deletePerson`); a new request to the same person
+  starts from the preset only.
+* **Limits are visible.** A single record that can never be sent (over 8 KiB,
+  malformed) is left out on its own and counted on the person page. A set over
+  1,000 records or 1 MiB is still refused as a whole (never truncated), and the
+  person page now says so instead of showing nothing.
+* **No relay lists.** The host no longer publishes NIP-65 (10002) or NIP-17
+  inbox (10050) lists: both are account-wide and maintained by the person's
+  other Nostr apps, and publishing ours replaced them. KeyPackages are
+  published to, looked up on and invitations delivered to the configured pool.
+* **Day, not time of day.** Training records carry `date` as the day only;
+  the time of day is never sent (no movement profile).
+* **Heartbeat at most daily** by the stored manifest time, no longer once per
+  process start (Android restarts processes often; every manifest is a relay
+  event whose timing is visible).
+* **A failing remote event cannot block ingest.** The native host commits a
+  processing attempt before each remote event; after three attempts (failed,
+  rolled back or crashed) the event is skipped and counted. A skipped group
+  message is a gap the sync layer repairs with a resync; a skipped invitation
+  can be sent again.
+* **Hidden until finished.** `SharingFeature`: only debug builds (feature and
+  test APKs) show the preview switch in Settings → account, and it starts off.
+  While off no observer, network callback or worker exists and the native host
+  is never created. Release APKs neither package the native library nor show
+  anything.
+* **Engines.** The app uses the MLS host (relays) as on v2. The Olm engine and
+  the direct LAN/BLE transports of the spike are present and tested natively,
+  but not bound in DI (`OlmShareWiring`).

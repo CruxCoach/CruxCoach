@@ -73,6 +73,8 @@ Storage-Migrationen. Der Bump folgt getrennt.
 
 ## Daten und Migration
 
+Auf der 0.2.4-Linie: eine additive Migration SecureDB 16 → 17 legt nur die v2-Tabellen an (die
+alten Nummern 14–33 werden nicht übernommen, siehe §14 im Zieldokument). Auf dem alten Branch:
 SecureDB 33 → 34: Alle v1-Sharing-Tabellen werden entfernt, neue Tabellen
 starten leer bis auf die zwei Standard-Voreinstellungen; kein `VACUUM`; keine v1-Zustimmung wird als v2-Freigabe gedeutet. Ältere Builds
 verweigern Schema 34 (kein Reset). Der alte native Zustand `marmot-v1/` wird
