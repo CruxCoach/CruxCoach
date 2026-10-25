@@ -84,7 +84,7 @@ internal object BoardControllerProfiles {
             } else {
                 BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT
             },
-            relaySupported = brand?.isInteractive == true &&
+            relaySupported = brand?.isInteractive == true && brand != BoardBrand.SHINYWALL &&
                 capacity == BoardConnectionCapacity.SINGLE,
         )
     }

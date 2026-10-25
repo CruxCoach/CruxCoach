@@ -4,6 +4,7 @@ import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.QuantumBoardModel
+import com.cruxcoach.domain.board.ShinyWallVariant
 
 /** Information used to guide mismatch recovery. Exact controller evidence is
  * preferred; brands whose BLE identity cannot expose a physical variant use a
@@ -152,11 +153,15 @@ private fun controllerPrefill(
         BoardBrand.KILTER -> BoardConstants.KILTER_ORIGINAL_LAYOUT.toLong()
         BoardBrand.MOONBOARD -> MoonBoardVariant.MOONBOARD_2016.layoutId
         BoardBrand.QUANTUM -> quantumModel?.layoutId
+        // The advertised name only hints at the variant; Standard is the most
+        // common Shiny Wall and stays a user-editable default.
+        BoardBrand.SHINYWALL -> ShinyWallVariant.ST1.layoutId
         else -> null
     }
     val productSizeId = when (brand) {
         BoardBrand.KILTER -> BoardConstants.KILTER_DEFAULT_SIZE
         BoardBrand.QUANTUM -> quantumModel?.productSizeId?.toInt()
+        BoardBrand.SHINYWALL -> ShinyWallVariant.ST1.productSizeId.toInt()
         else -> null
     }
     return BoardPickerPrefill(
