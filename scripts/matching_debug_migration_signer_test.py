@@ -1,4 +1,4 @@
-"""Signer checks of flows/run-matching-debug-migration.sh across apksigner output formats."""
+"""Signer checks of the migration flows (flows/lib/apk_signer.sh) across apksigner output formats."""
 
 from pathlib import Path
 import os
@@ -100,6 +100,14 @@ class MatchingDebugMigrationSignerTest(unittest.TestCase):
         unknown = BUILD_TOOLS_37 + f"V4 Signer [1]: certificate SHA-256 digest: {KEY}\n"
         for certs in (rotated, two_signers, stamp_only, unknown):
             self.assert_fails(certs, BUILD_TOOLS_37, "old APK needs exactly one readable public signer")
+
+
+    def test_flows_share_the_one_signer_parser(self):
+        for name in ("run-matching-debug-migration.sh", "build-matching-migration-fixtures.sh"):
+            script = (ROOT / "flows" / name).read_text(encoding="utf-8")
+            self.assertIn('source "$repo_root/flows/lib/apk_signer.sh"', script)
+            self.assertIn("apk_signer_digest", script)
+            self.assertNotIn("SHA-256 digest", script)
 
 
 if __name__ == "__main__":

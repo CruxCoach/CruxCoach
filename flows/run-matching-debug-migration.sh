@@ -8,6 +8,8 @@ umask 077
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 readonly repo_root
+# shellcheck source=flows/lib/apk_signer.sh
+source "$repo_root/flows/lib/apk_signer.sh"
 readonly package_name="com.cruxcoach.android"
 
 usage() {
@@ -97,29 +99,6 @@ verify_signature() {
     "$apksigner_bin" verify --verbose "$1" >/dev/null
 }
 
-# Prints the one public signer digest; fails for zero, several, or unknown output lines.
-# apksigner up to build-tools 36 prints "Signer #1 certificate SHA-256 digest: …" (with key
-# rotation "Signer (minSdkVersion=…, maxSdkVersion=…) certificate …"). Build-tools 37 names the
-# scheme instead: "V3.0 Signer: certificate …", "V2 Signer #1: certificate …",
-# "V3.1 Signer: (minSdkVersion=…, maxSdkVersion=…) certificate …".
-signer_digest() {
-    local apk="$1" output line digest="" found
-    local signer_re='^(V[0-9]+(\.[0-9]+)? )?Signer( #[0-9]+)?:? (\(minSdkVersion=[0-9]+, maxSdkVersion=[0-9]+\) )?certificate SHA-256 digest: ([0-9a-fA-F]{64})$'
-    # The source stamp records the distributing store; it is not an app signer.
-    local stamp_re='^Source Stamp Signer:? certificate SHA-256 digest: [0-9a-fA-F]{64}$'
-    output="$("$apksigner_bin" verify --print-certs "$apk")" || return 1
-    while IFS= read -r line; do
-        [[ "$line" == *"certificate SHA-256 digest:"* ]] || continue
-        [[ "$line" =~ $stamp_re ]] && continue
-        [[ "$line" =~ $signer_re ]] || return 1
-        found="${BASH_REMATCH[5],,}"
-        [[ -z "$digest" || "$digest" == "$found" ]] || return 1
-        digest="$found"
-    done <<< "$output"
-    [[ -n "$digest" ]] || return 1
-    printf '%s' "$digest"
-}
-
 old_identity="$(apk_identity "$old_apk")" || die "old APK package identity is invalid"
 IFS=$'\t' read -r old_code old_name <<< "$old_identity"
 case "$old_code:$old_name" in
@@ -136,8 +115,8 @@ if apk_is_debuggable "$new_apk"; then
 fi
 verify_signature "$old_apk" || die "old APK signature verification failed"
 verify_signature "$new_apk" || die "new APK signature verification failed"
-old_signer="$(signer_digest "$old_apk")" || die "old APK needs exactly one readable public signer certificate"
-new_signer="$(signer_digest "$new_apk")" || die "new APK needs exactly one readable public signer certificate"
+old_signer="$(apk_signer_digest "$apksigner_bin" "$old_apk")" || die "old APK needs exactly one readable public signer certificate"
+new_signer="$(apk_signer_digest "$apksigner_bin" "$new_apk")" || die "new APK needs exactly one readable public signer certificate"
 [[ "$old_signer" == "$new_signer" ]] || die "APK public signers differ; in-place migration is impossible"
 old_hash="$(sha256sum "$old_apk" | awk '{print $1}')"
 new_hash="$(sha256sum "$new_apk" | awk '{print $1}')"
