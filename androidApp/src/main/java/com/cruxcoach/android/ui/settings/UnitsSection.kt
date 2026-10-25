@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.settings
 
+import android.util.Log
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,6 +17,7 @@ import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.athlete.logic.Units
 import com.cruxcoach.athlete.model.UnitSystem
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,16 +32,29 @@ class UnitsSettingsViewModel @Inject constructor(private val service: AthleteSer
     val units: StateFlow<UnitSystem?> = _units.asStateFlow()
 
     init {
-        viewModelScope.launch(Dispatchers.IO) {
+        guarded {
             service.ensureReady()
             service.repo.observeProfile().collect { _units.value = it.units }
         }
     }
 
     fun select(system: UnitSystem) {
-        viewModelScope.launch(Dispatchers.IO) {
+        guarded {
             service.ensureReady()
             service.repo.updateProfile { Units.withUnits(it, system) }
+        }
+    }
+
+    /** The settings stay usable when the training database cannot open (full storage, damaged file): no units row then. */
+    private fun guarded(block: suspend () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("UnitsSettings", "Training database unavailable: ${e.javaClass.simpleName}")
+            }
         }
     }
 }

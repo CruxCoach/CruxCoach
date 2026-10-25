@@ -196,6 +196,12 @@ class AthleteService @Inject constructor(
     /** The phone's region for first-start defaults; unset when a test builds the service by hand. */
     @Inject lateinit var systemRegion: SystemRegion
 
+    /** Set by Hilt; a service built by hand in a test has none and counts as "database there". */
+    @Inject lateinit var databaseProbe: AthleteDatabaseProbe
+
+    /** Whether this identity has an athlete database yet – checked without opening or creating it. */
+    fun hasDatabase(): Boolean = !::databaseProbe.isInitialized || databaseProbe.exists()
+
     /** Opens the database, loads the catalogue and imports 0.2.3 body stats once. */
     suspend fun ensureReady() = withContext(Dispatchers.IO) {
         catalogStore.ensureLoaded()

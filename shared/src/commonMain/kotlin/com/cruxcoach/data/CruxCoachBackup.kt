@@ -516,6 +516,9 @@ object CruxCoachBackup {
         companion object {
             /** What a backup carries unless the athlete also picks the opt-in categories. */
             val DEFAULTS: Set<Category> = entries.toSet() - HEALTH
+
+            /** Categories with a part in the athlete database. */
+            val ATHLETE: Set<Category> = setOf(TRAINING, BODY_STATS, FUEL, HEALTH)
         }
     }
 
@@ -1089,6 +1092,9 @@ object CruxCoachBackup {
         val pendingOwnClimbs: Int = 0,
         /** Rows merged into the athlete database (training, body, fueling). */
         val athleteRows: Int = 0,
+        /** The athlete part could not be written (its database would not open or write). Everything
+         *  before it – the logbook and the rest of the secure part – is already in; own climbs follow. */
+        val athleteFailed: Boolean = false,
     )
 
     fun import(
@@ -1507,12 +1513,20 @@ object CruxCoachBackup {
         // 11. Athlete database (separate file, own transaction). A merge by
         // id, so a re-run changes nothing. Legacy `bodyStats` rows written
         // above are copied into it as well (never overwriting newer values).
+        // The secure part is committed by now: a failing athlete database must not turn
+        // this into "import failed" (and must not keep the own climbs below from coming in).
         val athletePart = backup.athlete?.let { selectAthlete(it, selectedCategories) }
-        val athleteRows = if (athletePart != null && athleteRestore != null)
-            athleteRestore(athletePart, Category.TRAINING in selectedCategories) else 0
-        val legacyBodyRows = if (Category.BODY_STATS in selectedCategories && backup.bodyStats.isNotEmpty())
-            athleteLegacyBodyStats?.invoke(backup.bodyStats) ?: 0 else 0
-        val withAthlete = secureResult.copy(athleteRows = athleteRows + legacyBodyRows)
+        val withAthlete = try {
+            val athleteRows = if (athletePart != null && athleteRestore != null)
+                athleteRestore(athletePart, Category.TRAINING in selectedCategories) else 0
+            val legacyBodyRows = if (Category.BODY_STATS in selectedCategories && backup.bodyStats.isNotEmpty())
+                athleteLegacyBodyStats?.invoke(backup.bodyStats) ?: 0 else 0
+            secureResult.copy(athleteRows = athleteRows + legacyBodyRows)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            secureResult.copy(athleteFailed = true)
+        }
 
         // 12. Own climbs + per-angle stats — see [restoreOwnClimbRows].
         if (Category.OWN_CLIMBS !in selectedCategories) return withAthlete

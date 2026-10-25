@@ -14,7 +14,28 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.Dispatchers
+import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * Whether this identity already has an athlete database, without opening or
+ * creating it: a backup of a board-only user must not create one, and a
+ * missing file means there is nothing to back up.
+ */
+@Singleton
+class AthleteDatabaseProbe @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val nostrSigner: NostrSigner,
+) {
+    /** True when in doubt, so callers behave as before and read the database. */
+    fun exists(): Boolean = runCatching {
+        context.getDatabasePath(fileName(nostrSigner.getPublicKeyHex())).exists()
+    }.getOrDefault(true)
+
+    companion object {
+        fun fileName(pubkeyHex: String): String = "cruxcoach_athlete_${pubkeyHex.take(16)}.db"
+    }
+}
 
 /**
  * The athlete database is opened on first use (the training screens or a
@@ -35,7 +56,7 @@ object AthleteModule {
         val pubkeyHex = nostrSigner.getPublicKeyHex()
         val key = keyManager.getDerivedAthleteKeyForPubkey(pubkeyHex)
         try {
-            createAthleteDatabase(AthleteDriverFactory(context, key), "cruxcoach_athlete_${pubkeyHex.take(16)}.db")
+            createAthleteDatabase(AthleteDriverFactory(context, key), AthleteDatabaseProbe.fileName(pubkeyHex))
         } finally {
             key.fill(0)
         }

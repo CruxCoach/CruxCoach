@@ -49,7 +49,10 @@ class FoodDataStorageViewModel @Inject constructor(
     init { refresh() }
 
     fun refresh() {
-        viewModelScope.launch(Dispatchers.IO) { _sizes.value = Sizes(products.bytesOnDisk(), models.bytesOnDisk()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            // File sizes only; a storage error must not take the settings down.
+            runCatching { _sizes.value = Sizes(products.bytesOnDisk(), models.bytesOnDisk()) }
+        }
     }
 
     fun removeProducts() {

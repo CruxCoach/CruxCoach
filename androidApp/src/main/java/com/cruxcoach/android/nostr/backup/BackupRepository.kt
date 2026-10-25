@@ -114,7 +114,9 @@ class BackupRepository @Inject constructor(
      * translates this into a retry.
      */
     private fun backupCategories(): Set<CruxCoachBackup.Category> {
-        val health = runCatching { athleteService?.get()?.repo?.profile()?.healthInCloudBackup == true }.getOrDefault(false)
+        val health = runCatching {
+            athleteService?.get()?.takeIf { it.hasDatabase() }?.repo?.profile()?.healthInCloudBackup == true
+        }.getOrDefault(false)
         return if (health) CruxCoachBackup.Category.entries.toSet() else CruxCoachBackup.Category.DEFAULTS
     }
 
@@ -141,7 +143,10 @@ class BackupRepository @Inject constructor(
             boardRepository = boardRepository,
             exportedAt = Instant.now().toString(),
             nostrPubkey = pubkey,
-            athleteSnapshot = athleteService?.let { athlete -> { athlete.get().backupSnapshot() } },
+            // No athlete database yet (a board-only user): nothing to read, and none is created
+            // here. One that exists but cannot be read fails the run as before, so the last
+            // complete backup in the cloud is not replaced by one without the training data.
+            athleteSnapshot = athleteService?.get()?.takeIf { it.hasDatabase() }?.let { athlete -> { athlete.backupSnapshot() } },
         )
         val plaintext = json.toByteArray(Charsets.UTF_8)
         val compressed = BackupCompression.compress(plaintext)
