@@ -34,11 +34,13 @@ import com.cruxcoach.android.ui.settings.boardSizeMismatch
 import com.cruxcoach.android.ui.settings.resolveBoardConfigurationMismatch
 import com.cruxcoach.util.DateTimeUtil
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.ShinyWallVariant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -258,6 +260,10 @@ internal class BoardSendController(
         // string and route through the dedicated MoonBoard transport.
         if (state.value.climb?.brand == BoardBrand.MOONBOARD) {
             sendMoonBoardToBoard(privatePlaylistOverride)
+            return
+        }
+        if (state.value.climb?.brand == BoardBrand.SHINYWALL) {
+            sendShinyWallToBoard(privatePlaylistOverride)
             return
         }
         if (state.value.climb?.brand == BoardBrand.QUANTUM) {
@@ -968,7 +974,48 @@ internal class BoardSendController(
      * Drives the same [BoardSendState] connect/send UI state machine so the
      * detail screen's send-status row behaves identically across brands.
      */
-    private fun sendMoonBoardToBoard(privatePlaylistOverride: Boolean = false) {
+    private fun sendMoonBoardToBoard(privatePlaylistOverride: Boolean = false) =
+        sendFramesToBoard("moonboard", privatePlaylistOverride) { climb, frames ->
+            // Resolve the MoonBoard variant from the CLIMB being sent,
+            // not the active-board pref — the encoder's per-column-height
+            // serpentine differs (18 for standard 11×18 boards, 12 for
+            // Mini 2020), and a list / deep-link can surface a climb of a
+            // different variant than the one currently configured. Using
+            // the climb's own layout_id guarantees the wire frame matches
+            // the holds we're rendering. A stale/corrupt layout id falls
+            // back to MOONBOARD_2016 in the variant lookup below.
+            val variant = com.cruxcoach.domain.board.MoonBoardVariant
+                .fromLayoutId(climb.layoutId)
+                ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
+            val ledMode = userPreferences.moonBoardLedMode.first()
+            bleConnection.sendMoonBoardClimb(frames, variant, ledMode).also {
+                Log.i(TAG, "sendMoonBoardToBoard: variant=$variant")
+            }
+        }
+
+    /**
+     * Shiny Wall branch of [sendToBoard]: the climb's own layout names its
+     * variant (never the active-board pref, which a list or deep link can
+     * contradict), and the holds go out as one state vector for that variant.
+     * An unknown layout fails the send instead of guessing a variant.
+     */
+    private fun sendShinyWallToBoard(privatePlaylistOverride: Boolean = false) =
+        sendFramesToBoard("shinywall", privatePlaylistOverride) { climb, frames ->
+            val variant = ShinyWallVariant.fromLayoutId(climb.layoutId) ?: return@sendFramesToBoard false
+            bleConnection.sendShinyWallClimb(BoardClimbParser.parseFrames(frames), variant)
+        }
+
+    /**
+     * Shared send flow for boards whose climbs go out as their `frames`
+     * string (MoonBoard, Shiny Wall): gates on non-blank frames instead of an
+     * Aurora `holds` list, skips the LED-map load, and drives the same
+     * [BoardSendState] UI state machine as the Aurora path.
+     */
+    private fun sendFramesToBoard(
+        kind: String,
+        privatePlaylistOverride: Boolean,
+        transmit: suspend (climb: ClimbWithStats, frames: String) -> Boolean,
+    ) {
         val s = state.value
         val climb = s.climb ?: return
         val frames = climb.frames
@@ -991,45 +1038,28 @@ internal class BoardSendController(
                 warning = null,
                 mismatch = null,
             ),
-            nearby = it.nearby.copy(debugInfo = "sending (moonboard)...")
+            nearby = it.nearby.copy(debugInfo = "sending ($kind)...")
         ) }
-        Log.i(TAG, "sendMoonBoardToBoard: start frames=${frames.length}")
+        Log.i(TAG, "send $kind: start frames=${frames.length}")
         val sendVariant = beginSendFence(s)
         sendJob = scope.launch {
             try {
-                // Board-match guard, part 1: the CONNECTED board must be a
-                // MoonBoard. Switching the active board in Settings never
-                // disconnects, so the pref check below alone would let a
-                // MoonBoard ASCII frame go to a still-connected Aurora board.
+                // Board-match guard, part 1: the CONNECTED board must be of
+                // the climb's brand. Switching the active board in Settings
+                // never disconnects, so the pref check below alone would let an
+                // ASCII frame go to a still-connected Aurora board.
                 val identity = sendIdentity(s) ?: return@launch
+                // Board-match guard, part 2: the climb can only go to a
+                // connected board of the same variant. A cross-board list
+                // / deep link can surface it while another board (or variant)
+                // is configured; sending it would light wrong/garbled holds.
+                // Refuse with a clear message.
                 resolveBoardConfigurationMismatch(identity)?.let {
                     updateMismatch(sendVariant, it)
                     return@launch
                 }
-                // Board-match guard, part 2: a MoonBoard climb can only go to a
-                // connected MoonBoard of the same variant. A cross-board list
-                // / deep link can surface a MoonBoard climb while a Kilter (or
-                // a different MoonBoard variant) is configured; sending it
-                // would light wrong/garbled holds. Refuse with a clear message.
-                // Resolve the MoonBoard variant from the CLIMB being sent,
-                // not the active-board pref — the encoder's per-column-height
-                // serpentine differs (18 for standard 11×18 boards, 12 for
-                // Mini 2020), and a list / deep-link can surface a climb of a
-                // different variant than the one currently configured. Using
-                // the climb's own layout_id guarantees the wire frame matches
-                // the holds we're rendering. A stale/corrupt layout id falls
-                // back to MOONBOARD_2016 in the variant lookup below.
-                val layoutId = climb.layoutId
-                val variant = com.cruxcoach.domain.board.MoonBoardVariant
-                    .fromLayoutId(layoutId)
-                    ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                val ledMode = userPreferences.moonBoardLedMode.first()
-                val success = bleConnection.sendMoonBoardClimb(
-                    frames,
-                    variant,
-                    ledMode,
-                )
-                Log.i(TAG, "sendMoonBoardToBoard: writes done success=$success variant=$variant")
+                val success = transmit(climb, frames)
+                Log.i(TAG, "send $kind: writes done success=$success")
                 updateForVariant(sendVariant) { it.copy(
                     ble = it.ble.copy(
                         isSending = false,
@@ -1057,7 +1087,7 @@ internal class BoardSendController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "sendMoonBoardToBoard failed", e)
+                Log.e(TAG, "send $kind failed", e)
                 updateForVariant(sendVariant) { it.copy(
                     ble = it.ble.copy(isSending = false, error = R.string.board_send_error_generic),
                     nearby = it.nearby.copy(debugInfo = "exception: ${e.message?.take(50)}")

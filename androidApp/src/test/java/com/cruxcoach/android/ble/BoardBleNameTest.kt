@@ -28,6 +28,27 @@ class BoardBleNameTest {
     }
 
     @Test
+    fun shinyWallStandardControllersAreOfferedAsShinyWall() {
+        val board = scanner.shinyWallBoardOrNull("ShinyWall_STP_A1B2C3", isRelay = false, address = "AA:BB", rssi = -60)
+        assertEquals(BoardBrand.SHINYWALL, board?.boardBrand)
+        assertEquals("A1B2C3", board?.serial)
+        assertEquals("ShinyWall_STP_A1B2C3", board?.displayName)
+        assertEquals(0, board?.apiLevel)
+        assertEquals(
+            BoardBrand.SHINYWALL,
+            scanner.shinyWallBoardOrNull("Shiny Wall ST0 (ShinyMini)", false, "AA:BB", -60)?.boardBrand,
+        )
+    }
+
+    @Test
+    fun shinyWallCustomRelayedAndLookalikeNamesAreNotOffered() {
+        assertNull(scanner.shinyWallBoardOrNull("ShinyWall_CTM_1234", false, "AA:BB", -60))
+        assertNull(scanner.shinyWallBoardOrNull("ShinyWall_STP_1234", isRelay = true, address = "AA:BB", rssi = -60))
+        assertNull(scanner.shinyWallBoardOrNull("ESP32", false, "AA:BB", -60))
+        assertNull(scanner.shinyWallBoardOrNull("Kilter Board#123@3", false, "AA:BB", -60))
+    }
+
+    @Test
     fun isMoonBoardName_matches_both_casings_and_rejects_aurora_names() {
         assertTrue(scanner.isMoonBoardName("MoonBoard Masters 2019"))
         assertTrue(scanner.isMoonBoardName("Moonboard"))

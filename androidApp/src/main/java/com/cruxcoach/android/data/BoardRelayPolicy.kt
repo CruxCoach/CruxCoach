@@ -27,6 +27,10 @@ internal object BoardRelayPolicy {
         // to fff2. Keep it unavailable until the relay protocol can carry the
         // complete Quantum transaction.
         board.boardBrand == BoardBrand.QUANTUM -> BoardRelayAvailability.UNSUPPORTED_PROTOCOL
+        // The relay forwards Aurora/Nordic-UART chunks to the board's UART
+        // characteristic. A Shiny Wall's text vector goes to a different
+        // characteristic the relay does not expose.
+        board.boardBrand == BoardBrand.SHINYWALL -> BoardRelayAvailability.UNSUPPORTED_PROTOCOL
         // Capacity is inferred at runtime for every physical controller. A
         // controller that remains connectably visible does not need a relay;
         // an exclusive or not-yet-probed controller can still be shared.

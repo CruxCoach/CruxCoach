@@ -159,6 +159,8 @@ object CreatorAnglePicker {
         when (brand) {
             BoardBrand.MOONBOARD ->
                 MoonBoardVariant.fromLayoutId(layoutId)?.angles ?: listOf(40)
+            // Every Shiny Wall variant is set from 0 to 60 degrees.
+            BoardBrand.SHINYWALL -> com.cruxcoach.domain.board.ShinyWallVariant.ANGLES
             else -> supportedAngles.ifEmpty { GENERIC }
         }
 
@@ -1304,6 +1306,18 @@ class ClimbEditorViewModel @Inject constructor(
             result.fold(
                 onSuccess = { Log.i(TAG, "syncLeds(moonboard): sendMoonBoardClimb ok=$it holds=${cur.editor.selectedHolds.size}") },
                 onFailure = { Log.w(TAG, "syncLeds(moonboard): sendMoonBoardClimb threw", it) },
+            )
+            return
+        }
+        if (cur.editor.brand == BoardBrand.SHINYWALL) {
+            // Shiny Wall lights the whole wall from one state vector; the
+            // editor's placement ids carry the variant. An empty selection
+            // sends an all-off vector, which clears the wall.
+            val variant = com.cruxcoach.domain.board.ShinyWallVariant.fromLayoutId(cur.layoutId) ?: return
+            val holds = cur.editor.selectedHolds.map { (pid, role) -> BoardHold(pid, role) }
+            runCatching { bleConnection.sendShinyWallClimb(holds, variant) }.fold(
+                onSuccess = { Log.i(TAG, "syncLeds(shinywall): ok=$it holds=${holds.size}") },
+                onFailure = { Log.w(TAG, "syncLeds(shinywall) threw", it) },
             )
             return
         }

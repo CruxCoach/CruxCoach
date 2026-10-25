@@ -17,6 +17,8 @@ import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
+import com.cruxcoach.domain.board.ShinyWallFrameEncoder
+import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.QuantumBoardPacketEncoder
 import com.cruxcoach.domain.board.QuantumBoardModel
@@ -378,6 +380,30 @@ internal fun genericBoardClearAllowed(connectedBrand: BoardBrand?): Boolean =
 internal fun moonBoardCommandAllowed(connectedBrand: BoardBrand?): Boolean =
     connectedBrand == BoardBrand.MOONBOARD
 
+internal fun shinyWallCommandAllowed(connectedBrand: BoardBrand?): Boolean =
+    connectedBrand == BoardBrand.SHINYWALL
+
+/** Aurora packets (climbs, raw chunks, animations) only go to links that can
+ *  take them. A Shiny Wall would read them as garbage text. */
+internal fun auroraPacketsAllowed(connectedBrand: BoardBrand?): Boolean =
+    connectedBrand != BoardBrand.QUANTUM && connectedBrand != BoardBrand.SHINYWALL
+
+/** First characteristic with [uuid] in any of [services] (Shiny Wall has no fixed service). */
+internal fun findCharacteristicInServices(
+    services: List<BluetoothGattService>,
+    uuid: java.util.UUID,
+): BluetoothGattCharacteristic? = services.firstNotNullOfOrNull { it.getCharacteristic(uuid) }
+
+/** Pause before a Shiny Wall write that starts a message (clear, route), and
+ *  between the chunks of one message: the controller's own app waits 100 ms
+ *  before a message's first chunk and 50 ms between chunks, always writing
+ *  with response. */
+internal const val SHINY_WALL_MESSAGE_GAP_MS = 100L
+internal const val SHINY_WALL_CHUNK_GAP_MS = 50L
+
+internal fun shinyWallGapBeforeMs(chunk: ByteArray): Long =
+    if (ShinyWallFrameEncoder.startsMessage(chunk)) SHINY_WALL_MESSAGE_GAP_MS else SHINY_WALL_CHUNK_GAP_MS
+
 internal fun quantumRefreshFailureRequiresDisconnect(
     currentGattMatches: Boolean,
     connectedBrand: BoardBrand?,
@@ -408,6 +434,7 @@ internal fun auroraWritePacingMs(
     if (connectedBrand != null &&
         connectedBrand != BoardBrand.QUANTUM &&
         connectedBrand != BoardBrand.MOONBOARD &&
+        connectedBrand != BoardBrand.SHINYWALL &&
         ((characteristicProperties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) == 0 ||
             !advertisesSerial)
     ) {
@@ -535,8 +562,8 @@ class BoardBleConnection(
     private var gatt: BluetoothGatt? = null
     private var serviceDiscoveryGatt: BluetoothGatt? = null
     private var serviceDiscoveryHandledGatt: BluetoothGatt? = null
-    private var quantumMtuGatt: BluetoothGatt? = null
-    private var quantumMtu: Int = DEFAULT_ATT_MTU
+    private var mtuRequestGatt: BluetoothGatt? = null
+    private var negotiatedMtu: Int = DEFAULT_ATT_MTU
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     /** Default gap between chunks for this link; see [auroraWritePacingMs]. */
     private var writePacingMs = 0L
@@ -881,6 +908,8 @@ class BoardBleConnection(
                 (currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
                     ?: currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD))
                     ?.getCharacteristic(BoardBleUuids.QUANTUM_WRITE_CHAR)
+            } else if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+                findCharacteristicInServices(currentGatt.services, BoardBleUuids.SHINY_WALL_WRITE_CHAR)
             } else {
                 currentGatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
                     ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
@@ -897,7 +926,7 @@ class BoardBleConnection(
         if (_connectionState.value != ConnectionState.CONNECTING ||
             gatt !== currentGatt || isGattClosed(currentGatt) || writeCharacteristic == null
         ) return
-        quantumMtuGatt = null
+        mtuRequestGatt = null
         if (_connectedBoardBrand.value != BoardBrand.QUANTUM) {
             markGattReady(currentGatt)
             return
@@ -1148,11 +1177,15 @@ class BoardBleConnection(
             if (serviceRecheckGatt === gatt) {
                 serviceRecheckGatt = null
                 if (this@BoardBleConnection.gatt !== gatt || isGattClosed(gatt)) return
+                val shinyWrite = if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+                    findCharacteristicInServices(gatt.services, BoardBleUuids.SHINY_WALL_WRITE_CHAR)
+                } else null
                 val stillThere = status == BluetoothGatt.GATT_SUCCESS && (
                     gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
                         ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR) != null ||
                         gatt.getService(BoardBleUuids.QUANTUM_SERVICE) != null ||
-                        gatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD) != null
+                        gatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD) != null ||
+                        shinyWrite != null
                     )
                 if (stillThere) {
                     Log.i(TAG, "Service change re-check: board service still present")
@@ -1160,6 +1193,10 @@ class BoardBleConnection(
                     gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
                         ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
                         ?.let { writeCharacteristic = it }
+                    shinyWrite?.let {
+                        it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                        writeCharacteristic = it
+                    }
                 } else {
                     dropAfterServiceLoss("status=$status")
                 }
@@ -1190,6 +1227,12 @@ class BoardBleConnection(
                         // discards those partial protocol frames.
                         it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
                     }
+                } else if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+                    findCharacteristicInServices(gatt.services, BoardBleUuids.SHINY_WALL_WRITE_CHAR)?.also {
+                        // Always with response, like the controller's own app.
+                        it.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                        Log.i(TAG, "Shiny Wall write characteristic in ${it.service?.uuid} properties=${it.properties}")
+                    }
                 } else service?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
                 writePacingMs = writeCharacteristic?.let {
                     auroraWritePacingMs(
@@ -1209,18 +1252,23 @@ class BoardBleConnection(
                     Log.i(TAG, "Pacing chunks by ${writePacingMs}ms with response (properties=${writeCharacteristic?.properties}, serial=${currentBoard?.serial?.isNotBlank() == true})")
                 }
                 if (writeCharacteristic != null) {
-                    if (_connectedBoardBrand.value == BoardBrand.QUANTUM && Build.VERSION.SDK_INT >= 21) {
+                    // Shiny Wall negotiates a larger MTU too, so a state vector
+                    // goes out in a few writes instead of dozens.
+                    if ((_connectedBoardBrand.value == BoardBrand.QUANTUM ||
+                            _connectedBoardBrand.value == BoardBrand.SHINYWALL) &&
+                        Build.VERSION.SDK_INT >= 21
+                    ) {
                         // Match eWalls 2.0.14: finish service retrieval first,
                         // then negotiate MTU, then register notifications. The
                         // previous concurrent discoverServices/requestMtu pair
                         // made Nokia Android 10 populate services internally
                         // without delivering onServicesDiscovered.
-                        quantumMtuGatt = gatt
+                        mtuRequestGatt = gatt
                         val queued = gatt.requestMtu(512)
                         Log.d(TAG, "requestMtu after services queued=$queued")
                         if (queued) {
                             mainHandler.postDelayed({
-                                if (quantumMtuGatt === gatt) {
+                                if (mtuRequestGatt === gatt) {
                                     Log.w(TAG, "MTU callback timeout; continuing with negotiated/default MTU")
                                     finishGattSetup(gatt)
                                 }
@@ -1232,7 +1280,7 @@ class BoardBleConnection(
                         finishGattSetup(gatt)
                     }
                 } else {
-                    Log.w(TAG, "DATA_TRANSFER_CHAR not found in service")
+                    Log.w(TAG, "Write characteristic not found (brand=${_connectedBoardBrand.value})")
                     // Pre-2017 MoonBoard LED kits speak the RedBear UART
                     // service instead of the Nordic UART we implement. Flag
                     // it so the UI can show an honest "this MoonBoard
@@ -1275,8 +1323,8 @@ class BoardBleConnection(
 
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             Log.d(TAG, "onMtuChanged mtu=$mtu status=$status")
-            if (quantumMtuGatt === gatt) {
-                quantumMtu = if (status == BluetoothGatt.GATT_SUCCESS) mtu else DEFAULT_ATT_MTU
+            if (mtuRequestGatt === gatt) {
+                negotiatedMtu = if (status == BluetoothGatt.GATT_SUCCESS) mtu else DEFAULT_ATT_MTU
                 finishGattSetup(gatt)
             }
         }
@@ -1649,7 +1697,7 @@ class BoardBleConnection(
     @SuppressLint("MissingPermission")
     private fun startGattAttempt(board: DiscoveredBoard) {
         _connectedQuantumModel.value = null
-        quantumMtu = DEFAULT_ATT_MTU
+        negotiatedMtu = DEFAULT_ATT_MTU
 
         // Abort if state changed during the wait
         if (_connectionState.value != ConnectionState.CONNECTING) {
@@ -1712,7 +1760,7 @@ class BoardBleConnection(
         gatt = newGatt
         serviceDiscoveryGatt = null
         serviceDiscoveryHandledGatt = null
-        quantumMtuGatt = null
+        mtuRequestGatt = null
 
         // Per-attempt timeout: a hung CONNECTING is torn down and retried
         // quietly; only the final attempt surfaces the failure.
@@ -1774,7 +1822,9 @@ class BoardBleConnection(
 
     /**
      * Write multiple BLE chunks with flow control.
-     * Each chunk waits for the previous write to complete.
+     * Each chunk waits for the previous write to complete. A Shiny Wall link
+     * paces its writes like the controller's own app ([shinyWallGapBeforeMs])
+     * instead of [interChunkDelayMs].
      */
     @SuppressLint("MissingPermission")
     private suspend fun writeChunks(
@@ -1783,6 +1833,16 @@ class BoardBleConnection(
     ): Boolean {
         val characteristic = writeCharacteristic ?: return false
         val currentGatt = gatt ?: return false
+        if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+            for ((i, chunk) in chunks.withIndex()) {
+                delay(shinyWallGapBeforeMs(chunk))
+                if (!writeChunk(currentGatt, characteristic, chunk)) {
+                    Log.w(TAG, "Shiny Wall write failed at chunk $i/${chunks.size}")
+                    return false
+                }
+            }
+            return true
+        }
 
         for ((i, chunk) in chunks.withIndex()) {
             val success = writeChunk(currentGatt, characteristic, chunk)
@@ -1817,6 +1877,12 @@ class BoardBleConnection(
         if (_connectionState.value != ConnectionState.CONNECTED) return false
         if (!boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)) {
             Log.w(TAG, "Refusing projection for $expectedBrand on ${_connectedBoardBrand.value}")
+            return false
+        }
+        if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+            // Shiny Wall climbs go through sendShinyWallClimb; Aurora LED packets
+            // would reach its text parser as garbage.
+            Log.w(TAG, "Refusing an LED-map projection on a Shiny Wall")
             return false
         }
         val quantumPlayersBefore = if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
@@ -1967,12 +2033,12 @@ class BoardBleConnection(
                     expectedQuantumBoard,
                 )
             ) return false
-            val writes = quantumGattWrites(frame, quantumMtu)
+            val writes = quantumGattWrites(frame, negotiatedMtu)
             if (writes == null) {
                 Log.w(
                     TAG,
                     "Quantum frame does not fit negotiated ATT payload: " +
-                        "frame=${frame.size} mtu=$quantumMtu",
+                        "frame=${frame.size} mtu=$negotiatedMtu",
                 )
                 return false
             }
@@ -2210,6 +2276,10 @@ class BoardBleConnection(
                     if (_connectedBoardBrand.value == BoardBrand.MOONBOARD) {
                         MoonBoardFrameEncoder.encodeCleaning(positions).toList()
                             .chunked(BoardPacketEncoder.BLE_MTU).map { it.toByteArray() }
+                    } else if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
+                        // Shiny Wall cleaning positions are placement ids, which
+                        // carry the variant; the holds light in the hand colour.
+                        ShinyWallFrameEncoder.highlightWrites(positions, negotiatedMtu).orEmpty()
                     } else {
                         encoder.encodeClimb(positions.sorted().map { it to BoardPacketEncoder.COLOR_CLEANING })
                     }
@@ -2227,8 +2297,11 @@ class BoardBleConnection(
             cleaning.finish(
                 markCleaned = markCleaned,
                 clear = {
-                    if (_connectedBoardBrand.value == BoardBrand.MOONBOARD) listOf("l##".encodeToByteArray())
-                    else encoder.encodeClear()
+                    when (_connectedBoardBrand.value) {
+                        BoardBrand.MOONBOARD -> listOf("l##".encodeToByteArray())
+                        BoardBrand.SHINYWALL -> ShinyWallFrameEncoder.clearWrites(negotiatedMtu)
+                        else -> encoder.encodeClear()
+                    }
                 },
                 write = { writeCleaningChunks(it) },
             )
@@ -2241,8 +2314,10 @@ class BoardBleConnection(
     // write-only Kilter-built box gets.
     private suspend fun writeCleaningChunks(chunks: List<ByteArray>): Boolean = writeChunks(
         chunks,
-        interChunkDelayMs = if (_connectedBoardBrand.value == BoardBrand.MOONBOARD)
-            MOONBOARD_UART_INTER_CHUNK_DELAY_MS else writePacingMs,
+        interChunkDelayMs = when (_connectedBoardBrand.value) {
+            BoardBrand.MOONBOARD -> MOONBOARD_UART_INTER_CHUNK_DELAY_MS
+            else -> writePacingMs
+        },
     )
 
     suspend fun resendWithColors(roleColors: Map<Int, Int>): Boolean {
@@ -2261,7 +2336,7 @@ class BoardBleConnection(
         if (cleaningState.value.active) return false
         val ticket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED ||
-            _connectedBoardBrand.value == BoardBrand.QUANTUM ||
+            !auroraPacketsAllowed(_connectedBoardBrand.value) ||
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
         ) return false
         val success = writeChunks(chunks)
@@ -2282,7 +2357,7 @@ class BoardBleConnection(
         if (cleaningState.value.active) return false
         val ticket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED ||
-            _connectedBoardBrand.value == BoardBrand.QUANTUM ||
+            !auroraPacketsAllowed(_connectedBoardBrand.value) ||
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
         ) return false
         if (encoder.litNothing(leds)) {
@@ -2344,6 +2419,47 @@ class BoardBleConnection(
             // Arm the idle-disconnect timer with the post-send state —
             // resetIdleTimer() only arms while CONNECTED, so it must run
             // AFTER the state flip above (mirrors clearBoard / sendClimb).
+            resetIdleTimer()
+        }
+    }
+
+    /**
+     * Shows a climb on the connected Shiny Wall: the clear, then one state
+     * vector with a code for every physical hold of [variant], as the
+     * controller's own app sends it. Refuses holds that do not belong to
+     * [variant] instead of lighting a shifted or partial route.
+     *
+     * @param holds the climb's holds; placement ids carry the variant
+     *   ([ShinyWallVariant.placementId]).
+     */
+    suspend fun sendShinyWallClimb(
+        holds: List<BoardHold>,
+        variant: ShinyWallVariant,
+    ): Boolean = writeMutex.withLock {
+        if (cleaningState.value.active) return false
+        val cleaningTicket = cleaning.ticket()
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            !shinyWallCommandAllowed(_connectedBoardBrand.value)
+        ) return false
+        val writes = ShinyWallFrameEncoder.routeWrites(holds, variant, negotiatedMtu)
+        if (writes == null) {
+            Log.w(TAG, "Refusing Shiny Wall route: ${holds.size} holds do not all belong to ${variant.code}")
+            return false
+        }
+
+        _connectionState.value = ConnectionState.SENDING
+        // Park any pending idle-disconnect so it can't fire mid-send.
+        // Re-armed from the finally below once we flip back to CONNECTED.
+        disconnectJob?.cancel()
+        try {
+            val success = writeChunks(writes)
+            Log.i(TAG, "Shiny Wall route ${variant.code}: ${holds.size} holds, ${writes.size} writes, mtu=$negotiatedMtu ok=$success")
+            if (success) cleaning.projected(cleaningTicket, writes)
+            return success
+        } finally {
+            if (_connectionState.value == ConnectionState.SENDING) {
+                _connectionState.value = ConnectionState.CONNECTED
+            }
             resetIdleTimer()
         }
     }
@@ -2415,9 +2531,11 @@ class BoardBleConnection(
                 return _quantumControllerState.value.players.isEmpty()
             }
             val ticket = cleaning.ticket()
-            val chunks = if (_connectedBoardBrand.value == BoardBrand.MOONBOARD) {
-                listOf(MoonBoardFrameEncoder.encodeCleaning(emptySet()))
-            } else encoder.encodeClear()
+            val chunks = when (_connectedBoardBrand.value) {
+                BoardBrand.MOONBOARD -> listOf(MoonBoardFrameEncoder.encodeCleaning(emptySet()))
+                BoardBrand.SHINYWALL -> ShinyWallFrameEncoder.clearWrites(negotiatedMtu)
+                else -> encoder.encodeClear()
+            }
             val success = writeChunks(chunks)
             if (success) cleaning.projected(ticket, chunks)
             return success
@@ -2484,8 +2602,8 @@ class BoardBleConnection(
         _connectedQuantumModel.value = null
         serviceDiscoveryGatt = null
         serviceDiscoveryHandledGatt = null
-        quantumMtuGatt = null
-        quantumMtu = DEFAULT_ATT_MTU
+        mtuRequestGatt = null
+        negotiatedMtu = DEFAULT_ATT_MTU
 
         if (activeGatt != null) {
             userDisconnecting = true

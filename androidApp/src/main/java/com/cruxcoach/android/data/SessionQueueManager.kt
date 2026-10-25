@@ -899,6 +899,12 @@ class SessionQueueManager(
                 if (holds.isEmpty()) return@withLock
                 val sent = if (climb.brand == BoardBrand.QUANTUM) {
                     sendQuantumPlaylistLayer(climb, item, holds)
+                } else if (climb.brand == BoardBrand.SHINYWALL) {
+                    // One state vector for the climb's own variant; an unknown
+                    // layout is skipped rather than sent to a guessed variant.
+                    val variant = com.cruxcoach.domain.board.ShinyWallVariant.fromLayoutId(climb.layoutId)
+                        ?: return@withLock
+                    bleConnection.sendShinyWallClimb(holds, variant)
                 } else {
                     val productSizeId = userPreferences.boardProductSizeId.first()
                     // Brand-scope the LED map + colours, keyed off the CLIMB's own
