@@ -285,6 +285,50 @@ class RelayAdapterNameGuardTest {
         )
     }
 
+    @Test
+    fun `a name the user confirms is set and the hint goes away`() = runTest {
+        // Earlier name unknown: the phone still carries a sharing name, no record.
+        val fake = FakeAdapter(sharingName)
+        val wakeups = FakeWakeups()
+        val guard = guard(fake, wakeups)
+        guard.refreshStatus().join()
+        assertEquals(RelayNameIssue.ORIGINAL_UNKNOWN, guard.status.value.issue)
+
+        assertTrue(guard.renameConfirmed("  Chosen name  "))
+
+        assertEquals("Chosen name", fake.name)
+        assertEquals(RelayNameIssue.NONE, guard.status.value.issue)
+        assertFalse(hasRecord())
+        assertFalse(wakeups.armedNow)
+    }
+
+    @Test
+    fun `no unchecked name, and never while sharing uses the name`() = runTest {
+        val fake = FakeAdapter("My phone")
+        val guard = guard(fake)
+
+        assertFalse(guard.renameConfirmed("   "))
+        assertFalse(guard.renameConfirmed("CruxCoach·MoonBoard"))
+        assertFalse(guard.renameConfirmed("x".repeat(BluetoothNameInput.MAX_BYTES + 1)))
+        assertTrue(fake.sent.isEmpty())
+
+        assertEquals(RelayNameLend.LENT, guard.lend(sharingName))
+        assertFalse(guard.renameConfirmed("Other name"))
+        assertEquals(sharingName, fake.name)
+        assertTrue(hasRecord())
+    }
+
+    @Test
+    fun `a rename Bluetooth refuses reports failure and changes nothing`() = runTest {
+        val fake = FakeAdapter(sharingName).apply { accept = false }
+        val guard = guard(fake)
+
+        assertFalse(guard.renameConfirmed("Chosen name"))
+
+        assertEquals(sharingName, fake.name)
+        assertEquals(RelayNameIssue.ORIGINAL_UNKNOWN, guard.status.value.issue)
+    }
+
     private fun systemAdapter(): BluetoothAdapter {
         org.robolectric.Shadows.shadowOf(context as Application)
             .grantPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
