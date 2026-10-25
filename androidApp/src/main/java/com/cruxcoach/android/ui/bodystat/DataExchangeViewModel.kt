@@ -190,14 +190,16 @@ class DataExchangeViewModel @Inject constructor(
         _state.update { it.copy(isExporting = true, error = null, message = null) }
         viewModelScope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    val content = buildExport(s)
-                    context.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
-                        stream.write(content)
-                    } ?: throw Exception(context.getString(R.string.error_cannot_open_file))
+                val export = withContext(Dispatchers.IO) {
+                    buildExport(s).also { content ->
+                        context.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
+                            stream.write(content.bytes)
+                        } ?: throw Exception(context.getString(R.string.error_cannot_open_file))
+                    }
                 }
                 val count = s.exportCategories.size
-                val label = context.resources.getQuantityString(R.plurals.export_categories_exported, count, count)
+                val label = context.resources.getQuantityString(R.plurals.export_categories_exported, count, count) +
+                    trainingMissingNote(export)
                 _state.update { it.copy(isExporting = false, message = label) }
             } catch (e: Exception) {
                 _state.update { it.copy(isExporting = false, error = context.getString(R.string.error_export_failed, e.message ?: "")) }
@@ -214,9 +216,10 @@ class DataExchangeViewModel @Inject constructor(
         _state.update { it.copy(isExporting = true, error = null, message = null) }
         viewModelScope.launch {
             try {
+                var export: ExportBytes? = null
                 val share = withContext(Dispatchers.IO) {
                     val file = File(context.cacheDir, exportFilename(s.exportFormat))
-                    file.writeBytes(buildExport(s))
+                    file.writeBytes(buildExport(s).also { export = it }.bytes)
                     val uri = androidx.core.content.FileProvider.getUriForFile(
                         context,
                         "${context.packageName}.fileprovider",
@@ -224,7 +227,8 @@ class DataExchangeViewModel @Inject constructor(
                     )
                     ExportShare(uri, exportMimeType(s.exportFormat))
                 }
-                _state.update { it.copy(isExporting = false, pendingShare = share) }
+                val note = export?.let { trainingMissingNote(it).trim() }?.takeIf { it.isNotEmpty() }
+                _state.update { it.copy(isExporting = false, pendingShare = share, message = note) }
             } catch (e: Exception) {
                 _state.update {
                     it.copy(
@@ -240,9 +244,31 @@ class DataExchangeViewModel @Inject constructor(
         _state.update { it.copy(pendingShare = null) }
     }
 
-    private fun buildExport(state: DataExchangeState): ByteArray {
+    /** An export file; [trainingMissing] = its training, body and nutrition part could not be read. */
+    private class ExportBytes(val bytes: ByteArray, val trainingMissing: Boolean)
+
+    private fun trainingMissingNote(export: ExportBytes): String =
+        if (export.trainingMissing) " " + context.getString(R.string.export_training_part_missing) else ""
+
+    private fun buildExport(state: DataExchangeState): ExportBytes {
+        val categories = state.exportCategories.intersect(categoriesFor(state.exportFormat)).withBundledClimbNotes()
+        // The logbook must still export when the athlete database will not open: the file then
+        // carries everything else and the message says what is missing. Without a database
+        // there is nothing to read, and a board-only user does not get one created here.
+        val athlete = athleteService.get()
+        var trainingMissing = false
+        val readAthlete: (() -> com.cruxcoach.athlete.data.AthleteSnapshot)? = if (!athlete.hasDatabase()) null else {
+            {
+                try {
+                    athlete.backupSnapshot()
+                } catch (e: Exception) {
+                    trainingMissing = categories.any { it in Category.ATHLETE }
+                    com.cruxcoach.athlete.data.AthleteSnapshot()
+                }
+            }
+        }
         val json = CruxCoachBackup.export(
-            categories = state.exportCategories.intersect(categoriesFor(state.exportFormat)).withBundledClimbNotes(),
+            categories = categories,
             userRepository = userRepository,
             bodyStatRepository = bodyStatRepository,
             workoutRepository = workoutRepository,
@@ -252,9 +278,9 @@ class DataExchangeViewModel @Inject constructor(
             boardRepository = boardRepository,
             exportedAt = DateTimeUtil.nowIso(),
             nostrPubkey = nostrSigner.getPublicKeyHex(),
-            athleteSnapshot = { athleteService.get().backupSnapshot() },
+            athleteSnapshot = readAthlete,
         )
-        return when (state.exportFormat) {
+        val bytes = when (state.exportFormat) {
             DataExchangeFormat.JSON -> json.toByteArray(Charsets.UTF_8)
             DataExchangeFormat.CSV_ZIP -> CruxCoachCsvArchive.fromJson(
                 json,
@@ -265,6 +291,7 @@ class DataExchangeViewModel @Inject constructor(
                 state.exportCategories.withBundledClimbNotes(),
             )
         }
+        return ExportBytes(bytes, trainingMissing)
     }
 
     /** Suggested filename for the selected CruxCoach export format. */
@@ -434,6 +461,7 @@ class DataExchangeViewModel @Inject constructor(
                 // Training, body and nutrition rows (athlete database): imported, but missing from the message
                 // (device test 2026-10-09: "Importiert: 160 Board-Sends, …" after 22 body values and 2 workouts).
                 if (result.athleteRows > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_athlete, result.athleteRows, result.athleteRows))
+                val athleteNote = if (result.athleteFailed) " " + context.getString(R.string.import_training_part_failed) else ""
 
                 val summary = if (parts.isNotEmpty()) parts.joinToString(", ") else context.getString(R.string.import_result_no_data)
                 val skipped = result.skippedDuplicates + own.skipped
@@ -449,7 +477,7 @@ class DataExchangeViewModel @Inject constructor(
                     importCategories = emptySet(),
                     importMismatchAccepted = false,
                     importSourcePubkey = null,
-                    message = context.getString(R.string.import_result_summary, "$summary$dupNote$pendingNote")
+                    message = context.getString(R.string.import_result_summary, "$summary$dupNote$pendingNote") + athleteNote
                 ) }
             } catch (e: Exception) {
                 _state.update {

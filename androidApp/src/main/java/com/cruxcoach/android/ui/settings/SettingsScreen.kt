@@ -60,8 +60,10 @@ internal fun SettingsScreen(
     onDonateClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     backupViewModel: BackupSettingsViewModel = hiltViewModel(),
-    unitsViewModel: UnitsSettingsViewModel = hiltViewModel(),
-    foodDataViewModel: FoodDataStorageViewModel = hiltViewModel(),
+    // Created on their own pages only: opening the settings must not open the
+    // training database or the food files (a board-only user never needs them).
+    unitsViewModel: UnitsSettingsViewModel? = null,
+    foodDataViewModel: FoodDataStorageViewModel? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val backupState by backupViewModel.state.collectAsStateWithLifecycle()
@@ -144,7 +146,7 @@ internal fun SettingsScreen(
                     LanguageSection()
                 }
                 SettingsSectionCard {
-                    UnitsSection(unitsViewModel)
+                    UnitsSection(unitsViewModel ?: hiltViewModel())
                 }
                 SettingsSectionCard {
                     DisplaySection(
@@ -350,7 +352,7 @@ internal fun SettingsScreen(
             }
             SettingsPage.DELETE -> {
                 SettingsSectionCard {
-                    FoodDataStorageSection(foodDataViewModel)
+                    FoodDataStorageSection(foodDataViewModel ?: hiltViewModel())
                 }
                 SettingsSectionCard {
                     DataDeletionSection(
@@ -480,7 +482,8 @@ internal fun SettingsScreen(
                     R.string.settings_backup_restored,
                     snackbar.logbookEntries,
                     snackbar.lists,
-                ) + if (snackbar.linksPending) " " + stringResource(R.string.restore_links_pending) else ""
+                ) + (if (snackbar.linksPending) " " + stringResource(R.string.restore_links_pending) else "") +
+                    if (snackbar.trainingFailed) " " + stringResource(R.string.import_training_part_failed) else ""
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->
