@@ -46,7 +46,10 @@ class CruxCoachApp : Application(), Configuration.Provider {
     lateinit var workerFactory: HiltWorkerFactory
 
     @Inject
-    lateinit var userPreferences: UserPreferences
+    lateinit var userPreferencesLazy: dagger.Lazy<UserPreferences>
+
+    /** Lazy so the photo model's process never builds it: that would open the account key store. */
+    private val userPreferences: UserPreferences get() = userPreferencesLazy.get()
 
     @Inject
     lateinit var syncManager: dagger.Lazy<BoardSyncManager>
@@ -133,9 +136,11 @@ class CruxCoachApp : Application(), Configuration.Provider {
     }
 
     override fun onCreate() {
-        if (Application.getProcessName().endsWith(":vision")) {
+        if (Application.getProcessName().endsWith(com.cruxcoach.android.foodvision.VisionProtocol.PROCESS_SUFFIX)) {
             // FEAT-069: the food photo process only runs FoodVisionService. It
             // must not open databases, connect to relays or schedule work.
+            // super.onCreate() still injects the fields above; they are Lazy
+            // (or, for the worker factory, only providers), so nothing opens.
             super.onCreate()
             return
         }
