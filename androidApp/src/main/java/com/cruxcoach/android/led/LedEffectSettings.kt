@@ -10,28 +10,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-/** How fast an effect runs. Flashing effects never go below [PHOTOSENSITIVE_MIN_FRAME_MS]. */
-enum class LedEffectTempo(val id: String, val factor: Double) {
-    CALM("calm", 1.6),
-    NORMAL("normal", 1.0),
-    FAST("fast", 0.7);
-
-    companion object {
-        fun byId(id: String?): LedEffectTempo = entries.firstOrNull { it.id == id } ?: NORMAL
-    }
-}
-
-/**
- * Everything the user decides about LED effects, as the engine reads it.
- *
- * [flashingAllowed] is not a preference: it is false while Android's "Remove
- * animations" is on, and then the two strobes stay off.
- */
+/** Everything the user decides about LED effects, as the engine reads it. */
 data class LedEffectSettings(
     val effectId: String = NoneAnimation.id,
-    val tempo: LedEffectTempo = LedEffectTempo.NORMAL,
     val keepRunningInBackground: Boolean = false,
-    val flashingAllowed: Boolean = true,
 )
 
 /** What the board on the link means for an effect right now. */
@@ -54,8 +36,6 @@ enum class LedEffectStatus {
     /** "None" is chosen. */
     OFF,
 
-    /** A strobe is chosen while Android's "Remove animations" is on. */
-    FLASHING_BLOCKED,
     NO_BOARD,
     UNSUPPORTED_BOARD,
 
@@ -76,7 +56,8 @@ enum class LedEffectStatus {
 /**
  * Android's "Remove animations" (developer and accessibility settings) sets the
  * animator duration scale to 0. People turn it on because motion or flashing
- * bothers them, so the strobes respect it too.
+ * bothers them, so choosing a strobe while it is on asks for a confirmation
+ * (warn, don't block).
  */
 object SystemAnimations {
 

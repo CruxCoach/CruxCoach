@@ -338,8 +338,6 @@ object PreferenceKeys {
      * Unknown or absent means "none": static colours, existing behaviour.
      */
     val LED_ANIMATION = stringPreferencesKey("led_animation")
-    /** [com.cruxcoach.android.led.LedEffectTempo] id of the LED effect. */
-    val LED_ANIMATION_TEMPO = stringPreferencesKey("led_animation_tempo")
     /** Keep a running LED effect going while another app is open. Off by default. */
     val LED_ANIMATION_IN_BACKGROUND = booleanPreferencesKey("led_animation_in_background")
     /** The flashing-light notice was confirmed once; it is not asked again. */
@@ -1169,15 +1167,6 @@ class UserPreferences(
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.LED_ANIMATION] = id
         }
-    }
-
-    /** The LED effect's tempo id; unknown or absent means normal. */
-    val ledAnimationTempo: Flow<String> = dataStore.data.map { prefs ->
-        prefs[PreferenceKeys.LED_ANIMATION_TEMPO] ?: "normal"
-    }
-
-    suspend fun setLedAnimationTempo(id: String) {
-        dataStore.edit { prefs -> prefs[PreferenceKeys.LED_ANIMATION_TEMPO] = id }
     }
 
     /**

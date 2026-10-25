@@ -6,15 +6,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 
 /**
- * The limits put on the contributed effects for the 0.2.5 line: a time limit per
- * climb, Stop from the notification, a strobe that keeps its distance from the
- * write before, a slow link that slows the effect instead of filling up, the
- * tempo, Android's "Remove animations", hold cleaning, and the status the
- * settings show.
+ * How the contributed effects fit into the 0.2.5 line: a time limit per climb,
+ * Stop from the notification, the contributed rhythm kept on slow writes, hold
+ * cleaning, the status the settings show, and the keep-alive choice.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class LedEffectLimitsTest : LedEngineTestBase() {
@@ -61,69 +57,28 @@ internal class LedEffectLimitsTest : LedEngineTestBase() {
     }
 
     @Test
-    fun aStrobeWaitsItsWholeIntervalAfterTheWriteHasFinished() = runEngineTest(
+    fun aStrobeKeepsTheContributedRhythmWhenWritesTakeTime() = runEngineTest(
         frame = fourRoleFrame(),
         selected = "two_phase_strobe",
     ) { h ->
-        // The first frame went out instantly at 0; from then on writes take
-        // 200 ms. Starts at 0, 333, 866, 1399 — each 333 ms after the previous
-        // write ended, so two colour changes on the wall are never closer than
-        // that, however long a write takes (counted from the start: 0, 333, 666, 999).
+        // The contributed rhythm, kept on purpose: frames start every 333 ms,
+        // counted from the start of the previous frame (0, 333, 666, 999), also
+        // when each write takes 200 ms.
         h.sink.writeMillis = 200
         h.advance(1_000)
-        assertEquals(3, h.sink.attempts.size)
-        h.advance(300)
-        assertEquals(3, h.sink.attempts.size)
-        h.advance(100)
         assertEquals(4, h.sink.attempts.size)
     }
 
     @Test
-    fun aSlowLinkGetsASlowerEffectInsteadOfAFullOne() = runEngineTest(
+    fun aSlowLinkRunsTheEffectAsFastAsItsWritesAllowAsContributed() = runEngineTest(
         frame = fourRoleFrame(),
         selected = "pulse",
     ) { h ->
-        // A write-only box paced at 100 ms per chunk: 300 ms a frame (the first one
-        // at 0 went out instantly). The loop then waits as long again, so the link
-        // stays free half the time for the user's own sends — frames at 0, 180,
-        // 780, 1380 instead of 0, 180, 500, 800, 1100.
+        // Writes of 300 ms (a write-only box paced at 100 ms per chunk) leave the
+        // shortest gap after each frame: starts at 0, 180, 500, 820.
         h.sink.writeMillis = 300
         h.advance(1_000)
-        assertEquals(3, h.sink.attempts.size)
-        h.advance(300)
-        assertEquals(3, h.sink.attempts.size)
-        h.advance(100)
         assertEquals(4, h.sink.attempts.size)
-    }
-
-    @Test
-    fun theTempoScalesTheEffectButNeverAStrobeBelowItsFloor() {
-        val engine = LedAnimationEngine(FakeLedFrameSink(), MutableStateFlow(LedEffectSettings()), UnconfinedTestDispatcher())
-        assertEquals(288L, engine.frameIntervalMillis(PulseAnimation, 4, LedEffectTempo.CALM))
-        assertEquals(126L, engine.frameIntervalMillis(PulseAnimation, 4, LedEffectTempo.FAST))
-        assertEquals(533L, engine.frameIntervalMillis(TwoPhaseStrobeAnimation, 4, LedEffectTempo.CALM))
-        assertEquals(
-            PHOTOSENSITIVE_MIN_FRAME_MS,
-            engine.frameIntervalMillis(TwoPhaseStrobeAnimation, 4, LedEffectTempo.FAST),
-            "fast never means more than three colour changes a second",
-        )
-        assertEquals(LedEffectTempo.NORMAL, LedEffectTempo.byId("unknown"))
-    }
-
-    @Test
-    fun androidsRemoveAnimationsKeepsTheStrobesOff() = runEngineTest(
-        frame = fourRoleFrame(),
-        selected = "chaotic_strobe",
-        settings = LedEffectSettings(flashingAllowed = false),
-    ) { h ->
-        h.advance(2_000)
-        assertTrue(h.sink.attempts.isEmpty())
-        assertEquals(LedEffectStatus.FLASHING_BLOCKED, h.engine.status.value)
-
-        h.selectedId.value = "pulse"
-        h.advance(300)
-        assertTrue(h.sink.sent.isNotEmpty(), "gradual effects stay available")
-        assertEquals(LedEffectStatus.RUNNING, h.engine.status.value)
     }
 
     @Test
