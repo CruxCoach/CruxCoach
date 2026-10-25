@@ -1,4 +1,4 @@
-# CruxCoach 0.2.4 — Unreleased
+# CruxCoach 0.2.4 — 2026-10-25
 
 This release connects the newest Kilter boards, gets the Kilter logbook upload working again, and brings a reworked board map and hold cleaning.
 
@@ -22,6 +22,11 @@ This release connects the newest Kilter boards, gets the Kilter logbook upload w
   you leave. In a group, everyone cleans their own in turn.
 
 ## Other improvements
+- Bluetooth: switching to another board disconnects from the old one, a search
+  continues after Bluetooth was turned off and on, and a blocked permission
+  leads to the app settings.
+- “My location” also works without Google services and keeps looking until it
+  has a position.
 - A board switch takes effect at once, even while a catalogue downloads.
 - A board session continues after a rest timer runs out instead of staying paused.
 - Climbs set on a larger board (for example 16 x 12) are shown on their own size

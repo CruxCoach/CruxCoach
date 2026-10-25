@@ -4,7 +4,7 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.4] - Unreleased
+## [0.2.4] - 2026-10-25
 
 ### Added
 - Settings → Kilter: "Show entries" lists every entry Kilter did not take, with
@@ -44,7 +44,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   gets a dark map instead of a light grey one.
 - "My location" on the board map shows where you are, frames you with the
   nearest boards and lists places by distance. The location permission is
-  asked for only when you tap it; the position stays on the phone.
+  asked for only when you tap it; the position stays on the phone. It works
+  without Google services too: every location source is asked at once, a
+  recent position another app found answers at once, and the search goes on
+  until a position arrives, Cancel ends it or the screen is left (it pauses
+  while the app is in the background). A message appears only for a reason you
+  can act on (no permission, location off, no location source), with a detail
+  line of what was tried. Back from the location settings returns to the app.
 - Finding your board via your gym no longer needs the gym's name: "Gyms near
   me" in the gym search (and "Find a gym near you" in the board dialog, in
   onboarding, the board browser, settings and the sync card) lists the closest
