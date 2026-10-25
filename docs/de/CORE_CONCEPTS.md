@@ -205,34 +205,43 @@ Konto bleibt die bestehende Trennung der Daten erhalten. Ohne lokale Schlüsselk
 wird ein Import angeboten, statt beim Trennen eine neue Identität zu erzeugen.
 Private Schlüssel bleiben beim Import zunächst verdeckt; der Screenshot-Schutz bleibt aktiv.
 
-## LED-Animationen
+## LED-Effekte
 
-In den Kilter-Board-Einstellungen folgt unter „Kilter: Farben für Griffe und
-Tritte“ der Punkt **LED-Animationen**. Standard ist **Keine**: Das beleuchtete
-Problem behält seine
-statischen Rollenfarben. Die übrigen Optionen bewegen dasselbe Problem weiter.
-**Puls** atmet in der Farbe jedes Griffs heller und dunkler,
-**Zwei-Phasen-Stroboskop** wechselt zwischen dem CruxCoach- und dem
-Kilter-Farbschema, **Chaotisches Stroboskop** lässt die Farben springen, wobei
-die Rollen unterscheidbar bleiben, und **Regenbogen-Welle** dreht alle Farben
-langsam um den Farbkreis. Die Auswahl wird auch ohne verbundenes Board
-gespeichert. Animiert wird aber nur auf einem verbundenen Kilter Board und nur
-bei Problemen bis 120 leuchtenden LEDs; alles andere bleibt statisch.
+*Einstellungen → Board & Bluetooth → LED-Effekte* (und das Menü eines Boulders,
+solange ein Board mit Effekten verbunden ist) bringen den leuchtenden Boulder in
+Bewegung. Standard ist **Keine**: Der Boulder behält seine normalen Farben.
+Bei **Puls** wird jeder Griff in seiner Farbe heller und dunkler, **Regenbogen**
+lässt alle Farben langsam durch den Farbkreis wandern, **Zwei-Phasen-Stroboskop**
+wechselt blinkend zwischen den CruxCoach- und den Kilter-Farben, und beim
+**Chaos-Stroboskop** springen die Farben, wobei Startgriffe, Zwischengriffe,
+Topgriffe und Tritte unterscheidbar bleiben. Eine Auswahl wirkt sofort an der
+Wand, die Wand ist also die Vorschau. Eine Statuszeile sagt, was der Effekt gerade
+tut (läuft, wartet auf einen Boulder, pausiert, beendet, kein Board). Die Effekte
+sehen aus und laufen genau wie beigetragen; einen Tempo-Regler gibt es nicht.
 
-Die beiden Stroboskope wechseln die Farben des gesamten Boards und sind auf drei
-Farbwechsel pro Sekunde begrenzt. Wer empfindlich auf blinkendes Licht reagiert,
-nutzt besser Puls oder die Regenbogen-Welle, deren Farben sich allmählich
-verändern.
+Effekte zeigt ein verbundenes Kilter Board, bei Bouldern mit bis zu 120
+leuchtenden LEDs; andere Boards behalten ihre normalen Farben (eine Liste,
+`LedEffectSupport`, legt die Boards fest). Die übrigen Aurora-Boards würden über
+dieselben Pakete funktionieren und warten auf einen Gerätetest.
 
-Eine Animation konkurriert nie mit dem, was du selbst ans Board sendest: Sie
-weicht allem, was du beleuchtest, und pausiert für die automatische
-Routenwiedergabe und die Oster-Animation, bis diese beendet sind. Der Wechsel in
-eine andere App, zum Beispiel um das Problem zu filmen, kann die Animation mit
-einer Benachrichtigung samt Aktion **Stopp** am Laufen halten. Diese Fortsetzung
-ist nicht garantiert: Sie hält keinen Wake Lock. Tiefenschlaf oder eine strenge
-Akku-Strategie beenden die Animation, und die Wand behält den letzten Frame.
-Zurück in der App verschwindet die Benachrichtigung. Während die Animation läuft,
-verbraucht sie etwas mehr Akku.
+Blinken: Die beiden Stroboskope beginnen höchstens alle 333 ms einen neuen Frame
+und wechseln die Farbe damit höchstens dreimal pro Sekunde (WCAG 2.3.1 erlaubt
+drei Blitze, also sechs Wechsel, pro Sekunde). Vor dem ersten Einschalten fragen
+sie einmal nach, und solange in Android „Animationen entfernen“ an ist, jedes Mal –
+ein Hinweis, keine Sperre. Puls und Regenbogen ändern sich allmählich.
+
+Andere zuerst: Was du sendest, die Routenwiedergabe, die Oster-Animation,
+Wand-Spiele und Griffe putzen haben immer Vorrang; der Effekt wartet oder
+pausiert. Effekt-Frames zählen nicht als Aktivität: Das automatische Trennen gibt
+ein Board, das nur ein Handy zulässt, weiterhin pünktlich frei, und vorher werden
+die normalen Farben des Boulders zurückgeschrieben. Nach 15 Minuten auf demselben
+Boulder endet ein Effekt (erneut senden startet ihn neu). Beim Verlassen der App
+endet er mit den normalen Farben, außer *In anderen Apps weiterlaufen* ist an
+(Standard: aus): Dann hält eine Benachrichtigung mit **Stopp** ihn für diese
+15 Minuten am Laufen, nur solange Benachrichtigungen sichtbar sind. Das Handy
+bleibt so lange mit dem Board verbunden, und es gibt keinen Wake Lock – hält
+Android die App an, endet der Effekt. Idee und erste Fassung stammen von dapeebb
+(PR #21); Spec `docs/specs/0.2.5/FEAT-074-led-animations.md`.
 
 ## Boardkarte
 
@@ -292,7 +301,7 @@ Richtung.
 Die [Quellcode-Tabelle der englischen Fassung](../en/CORE_CONCEPTS.md#source-map)
 verlinkt Board-Fähigkeiten, Repository-Modelle, SQL-Schemata, Filter,
 Statistik samt Tests, Player, Community-Publishing, Backup, Update-Prüfung sowie
-Training, Coach, Comeback-Plan, Ernährung und Health Connect.
+Training, Coach, Comeback-Plan, Ernährung, Health Connect und LED-Effekte.
 Sie ist die gemeinsame Pfadreferenz für beide Fassungen.
 
 Android-UI, BLE, Hintergrundarbeit und Dependency Injection liegen unter

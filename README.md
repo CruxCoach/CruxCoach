@@ -67,7 +67,7 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 
 **Custom LED Colors** — Choose your own hold colors on the Kilter Board. Different colors for start, hand, foot, and top holds. Visible to everyone around you.
 
-**LED Animations** — Make the lit holds of a Kilter Board climb move: pulse, strobe, or a slow rainbow wave. Flashing options change color at most three times a second.
+**LED Effects** — Make the lit holds of a Kilter Board climb move: pulse, strobe, or a slow rainbow. Flashing options change color at most three times a second. Contributed by dapeebb.
 
 **Nearby Sharing** — Share the current climb or active playlist state with nearby CruxCoach users over Bluetooth. No internet is required.
 
