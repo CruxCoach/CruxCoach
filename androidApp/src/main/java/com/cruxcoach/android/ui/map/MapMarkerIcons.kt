@@ -32,6 +32,7 @@ fun BoardBrand.markerStyle(): BrandMarkerStyle = when (this) {
     BoardBrand.SOILL -> BrandMarkerStyle(0xFF5E8F6E.toInt(), WHITE, "S")
     BoardBrand.TOUCHSTONE -> BrandMarkerStyle(0xFF3F7FC1.toInt(), WHITE, "Ts")
     BoardBrand.QUANTUM -> BrandMarkerStyle(0xFF00897B.toInt(), WHITE, "Q")
+    BoardBrand.SHINYWALL -> BrandMarkerStyle(0xFFEF6C00.toInt(), WHITE, "Sw")
     BoardBrand.AURORA -> BrandMarkerStyle(0xFFB93655.toInt(), WHITE, "A")
     BoardBrand.TWELVECLIMB -> BrandMarkerStyle(0xFFE0185F.toInt(), WHITE, "12")
 }

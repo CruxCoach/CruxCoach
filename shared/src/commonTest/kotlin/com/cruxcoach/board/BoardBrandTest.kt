@@ -1,6 +1,7 @@
 package com.cruxcoach.board
 
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.BoardTransport
 import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -102,7 +103,9 @@ class BoardBrandTest {
         assertEquals(true, BoardBrand.QUANTUM.supportsAuthoring)
         assertEquals(false, BoardBrand.AURORA.supportsAuthoring)
         assertEquals(false, BoardBrand.TWELVECLIMB.supportsAuthoring)
-        BoardBrand.entries.forEach {
+        // Shiny Wall is browse-and-light only until its geometry is verified.
+        assertEquals(false, BoardBrand.SHINYWALL.supportsAuthoring)
+        BoardBrand.entries.filter { it != BoardBrand.SHINYWALL }.forEach {
             assertEquals(it.isInteractive, it.supportsAuthoring)
         }
         // Official-app publish (push to the vendor's own app) remains
@@ -128,6 +131,64 @@ class BoardBrandTest {
         assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(1L))
         assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(8L))
         assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(999L))
+        // Shiny Wall layouts have their own unambiguous range.
+        assertEquals(BoardBrand.SHINYWALL, BoardBrand.fromLayoutId(9302L))
+        assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(9300L))
+    }
+
+    @Test
+    fun shinyWallCapabilities() {
+        val shiny = BoardBrand.SHINYWALL
+        assertEquals(shiny, BoardBrand.fromWire("shinywall"))
+        assertEquals("Shiny Wall", shiny.displayName)
+        assertEquals(true, shiny.isInteractive)
+        assertEquals(false, shiny.isInfoLayer)
+        assertEquals(false, shiny in BoardBrand.INFO_LAYER)
+        assertEquals(BoardTransport.SHINY_WALL, shiny.transport)
+        assertEquals(false, shiny.usesAuroraProtocol)
+        assertEquals(true, shiny.usesAuroraPlacements)
+        assertEquals(false, shiny.usesLedPreview)
+        assertEquals(false, shiny.hasHeatmap)
+        assertEquals(true, shiny.usesCatalogueAngles)
+        assertEquals(false, shiny.supportsClimbTypeFilter)
+        assertEquals(true, shiny.supportsBenchmarkFilter)
+        assertEquals(false, shiny.supportsBoardSeshOrigin)
+        assertEquals(false, shiny.usesProductSizeEdgeFit)
+        assertEquals(1, shiny.maxSimultaneousClimbs)
+        assertEquals(false, shiny.supportsOfficialAppPublish)
+    }
+
+    @Test
+    fun transportFollowsTheControllerProtocol() {
+        for (b in listOf(
+            BoardBrand.KILTER, BoardBrand.TENSION, BoardBrand.GRASSHOPPER,
+            BoardBrand.DECOY, BoardBrand.SOILL, BoardBrand.TOUCHSTONE,
+        )) {
+            assertEquals(BoardTransport.AURORA, b.transport, "$b")
+        }
+        assertEquals(BoardTransport.MOONBOARD_UART, BoardBrand.MOONBOARD.transport)
+        assertEquals(BoardTransport.QUANTUM, BoardBrand.QUANTUM.transport)
+        assertEquals(BoardTransport.NONE, BoardBrand.AURORA.transport)
+        assertEquals(BoardTransport.NONE, BoardBrand.TWELVECLIMB.transport)
+        BoardBrand.entries.forEach {
+            assertEquals(it.transport == BoardTransport.AURORA, it.usesAuroraProtocol, "$it")
+            assertEquals(it.transport != BoardTransport.NONE, it.isInteractive, "$it")
+        }
+    }
+
+    @Test
+    fun laterFamiliesAreNotDownloadedByDefault() {
+        // Installs that never chose catalogues keep exactly the families they
+        // downloaded before; Shiny Wall needs an explicit choice.
+        assertEquals(false, BoardBrand.SHINYWALL.downloadedByDefault)
+        for (b in listOf(
+            BoardBrand.KILTER, BoardBrand.MOONBOARD, BoardBrand.TENSION,
+            BoardBrand.GRASSHOPPER, BoardBrand.DECOY, BoardBrand.SOILL,
+            BoardBrand.TOUCHSTONE, BoardBrand.QUANTUM,
+        )) {
+            assertEquals(true, b.downloadedByDefault, "$b")
+        }
+        assertEquals(false, BoardBrand.AURORA.downloadedByDefault)
     }
 
     @Test
