@@ -75,11 +75,12 @@ interface LedFrameSink {
     val canAnimate: Boolean
 
     /**
-     * Push one frame. Implementations give way to user-initiated traffic instead of
-     * queueing behind it, so [FrameSendResult.DEFERRED] is an ordinary answer and
-     * only [FrameSendResult.FAILED] means the link is going bad.
+     * Push one [frame] made from [basedOn]. Implementations give way to
+     * user-initiated traffic instead of queueing behind it and refuse a frame whose
+     * climb is no longer lit, so [FrameSendResult.DEFERRED] is an ordinary answer
+     * and only [FrameSendResult.FAILED] means the link is going bad.
      */
-    suspend fun sendFrame(frame: List<Pair<Int, Int>>): FrameSendResult
+    suspend fun sendFrame(basedOn: LitFrame, frame: List<Pair<Int, Int>>): FrameSendResult
 }
 
 /**

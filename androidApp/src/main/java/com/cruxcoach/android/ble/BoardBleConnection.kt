@@ -30,6 +30,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +40,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 enum class ConnectionState {
@@ -484,7 +486,11 @@ enum class FrameSendResult {
     /** Written. */
     SENT,
 
-    /** Not written and nothing is wrong: someone else is mid-send, or the link is not up. */
+    /**
+     * Not written and nothing is wrong: someone else is mid-send, the link is not
+     * up, hold cleaning owns the wall, the wall no longer shows the climb the frame
+     * was made from, or an API-2 box would show the frame dark.
+     */
     DEFERRED,
 
     /** The write itself failed. */
@@ -547,6 +553,8 @@ class BoardBleConnection(
          * UART bridge one short connection interval between fragments.
          */
         const val MOONBOARD_UART_INTER_CHUNK_DELAY_MS = 100L
+        /** How long an idle release may wait to put the static colours back. */
+        const val IDLE_RESTORE_TIMEOUT_MS = 3_000L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -592,6 +600,11 @@ class BoardBleConnection(
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     /** Default gap between chunks for this link; see [auroraWritePacingMs]. */
     private var writePacingMs = 0L
+    /** Completed [writeChunks] calls; with [animationFrameWrite] it tells whether
+     *  the wall shows an LED-animation frame. Written under [writeMutex]. */
+    private var writeCount = 0L
+    /** [writeCount] right after the last animation frame went out. */
+    private var animationFrameWrite = -1L
     private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
 
     private val cleaningStorage = BoardCleaningStorage(context)
@@ -875,8 +888,9 @@ class BoardBleConnection(
 
     /**
      * What is lit on the wall right now, resolved to (LED, role, colour) —
-     * updated by every successful [sendClimb] and nulled by [clearBoard] and
-     * disconnect.
+     * updated by every successful [sendClimb], and nulled by a failed one, by
+     * [clearBoard], by disconnect and by every send whose content the LED
+     * animations do not know (relayed or easter frames, MoonBoard, Shiny Wall).
      *
      * [lastHolds] exists to re-send a climb with new colours; this exists so the
      * LED animations can derive frames without re-resolving role colours, and so
@@ -916,7 +930,30 @@ class BoardBleConnection(
         if (arm) {
             disconnectJob = scope.launch {
                 delay(seconds * 1_000L)
+                restoreStaticBeforeIdleRelease()
                 disconnect()
+            }
+        }
+    }
+
+    /**
+     * An Aurora controller keeps showing the last frame after the link drops. When
+     * that frame is an LED-animation frame (dimmed, or in shifted colours), put the
+     * climb's own colours back first, so the next climber does not find a wall
+     * frozen mid-effect. A send that comes in meanwhile cancels the idle release
+     * as usual.
+     */
+    internal suspend fun restoreStaticBeforeIdleRelease() {
+        withTimeoutOrNull(IDLE_RESTORE_TIMEOUT_MS) {
+            writeMutex.withLock {
+                val frame = _litFrame.value ?: return@withLock
+                if (animationFrameWrite != writeCount ||
+                    _connectionState.value != ConnectionState.CONNECTED ||
+                    cleaningState.value.active
+                ) return@withLock
+                withContext(NonCancellable) {
+                    writeChunks(encoder.encodeClimb(frame.staticFrame()))
+                }
             }
         }
     }
@@ -1887,6 +1924,7 @@ class BoardBleConnection(
                     return false
                 }
             }
+            writeCount++
             return true
         }
 
@@ -1900,6 +1938,7 @@ class BoardBleConnection(
                 delay(interChunkDelayMs)
             }
         }
+        writeCount++
         return true
     }
 
@@ -2063,10 +2102,10 @@ class BoardBleConnection(
             val chunks = encoder.encodeClimb(holdPairs)
 
             val success = writeChunks(chunks)
-            if (success) {
-                cleaning.projected(cleaningTicket, chunks)
-                _litFrame.value = litLeds.ifEmpty { null }?.let { LitFrame(it) }
-            }
+            // After a failed write the wall's state is unknown; animating the
+            // previous climb on top of it would only add to the confusion.
+            _litFrame.value = if (success) litLeds.ifEmpty { null }?.let { LitFrame(it) } else null
+            if (success) cleaning.projected(cleaningTicket, chunks)
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
@@ -2398,6 +2437,8 @@ class BoardBleConnection(
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
         ) return false
         val success = writeChunks(chunks)
+        // Relayed bytes are not a climb the LED animation knows.
+        _litFrame.value = null
         if (success) cleaning.forgetProjection(ticket)
         return success
     }
@@ -2424,48 +2465,60 @@ class BoardBleConnection(
         }
         val chunks = encoder.encodeClimb(leds)
         val success = writeChunks(chunks)
+        // The easter frames replace whatever climb was lit.
+        _litFrame.value = null
         if (success) cleaning.projected(ticket, chunks)
         return success
     }
 
     /**
-     * Push one LED-animation frame, with the two rules an animation needs and
-     * [sendRawChunks] deliberately goes without.
+     * Push one LED-animation frame made from [basedOn], the lit frame the caller
+     * read. Background traffic, so it gives way instead of fighting:
      *
-     * First, it gives way instead of queueing. If anything else is mid-send — a
-     * climb from the editor, the next climb of a session — the caller gets
-     * [FrameSendResult.DEFERRED] straight away. Waiting on [writeMutex] instead
-     * would let a frame computed from the *previous* climb land after the new one
-     * and repaint a climb the user has already moved on from.
+     * - [FrameSendResult.DEFERRED] instead of a write when the link is busy with a
+     *   user send ([ConnectionState.SENDING]), when hold cleaning owns the wall,
+     *   when the connected board is not [expectedBrand] or speaks no Aurora
+     *   packets, when [basedOn] is no longer what the wall shows (a climb sent or
+     *   the wall cleared while this frame waited for [writeMutex] — writing it
+     *   would repaint a climb the user has moved on from), or when an API-2 box
+     *   would show the frame dark under its 18 W budget.
+     * - The idle-disconnect timer is left alone: an animation frame is not a
+     *   climb, so the board is still released on schedule after the last real
+     *   send. [restoreStaticBeforeIdleRelease] puts the climb's own colours back
+     *   before it goes.
+     * - A frame that has started is finished even if the caller is cancelled: a
+     *   torn Aurora packet, or a write callback arriving after its waiter left,
+     *   would garble the next send.
      *
-     * Second, an animation counts as activity: the idle-disconnect timer is parked
-     * for the write and re-armed afterwards, so a board the user is watching does
-     * not go quiet in the middle of an effect. The timer is armed from the last
-     * frame, so once the animation stops — backgrounded, cleared, or set to none —
-     * the link still drops on schedule.
-     *
-     * The connection state is left alone: no [ConnectionState.SENDING] here, because
-     * an animation frame is not a user-visible send and flicking the state would make
-     * every other `isConnected()` reader see a board that is still perfectly there.
+     * The connection state is left alone: an animation frame is not a
+     * user-visible send.
      */
-    suspend fun sendAnimationLeds(leds: List<Pair<Int, Int>>): FrameSendResult {
-        if (_connectionState.value != ConnectionState.CONNECTED) return FrameSendResult.DEFERRED
+    suspend fun sendAnimationLeds(
+        basedOn: LitFrame,
+        leds: List<Pair<Int, Int>>,
+        expectedBrand: BoardBrand? = null,
+    ): FrameSendResult {
+        if (!animationFrameAllowed(basedOn, expectedBrand)) return FrameSendResult.DEFERRED
         return writeMutex.withLock {
-            // Re-checked under the lock. A climb send that was already waiting when
-            // we got here has run by now, and its climb is the one on the wall.
-            if (_connectionState.value != ConnectionState.CONNECTED) return@withLock FrameSendResult.DEFERRED
-            disconnectJob?.cancel()
-            try {
-                val written = writeChunks(encoder.encodeClimb(leds))
-                if (written) FrameSendResult.SENT else FrameSendResult.FAILED
-            } finally {
-                // Even when the frame was cancelled mid-write — an animation
-                // stopped by a pause or a background with no claim — the timer this
-                // call parked has to be re-armed, or the link would never
-                // idle-disconnect again.
-                resetIdleTimer()
+            if (!animationFrameAllowed(basedOn, expectedBrand)) return@withLock FrameSendResult.DEFERRED
+            if (encoder.litNothing(leds)) return@withLock FrameSendResult.DEFERRED
+            val written = withContext(NonCancellable) { writeChunks(encoder.encodeClimb(leds)) }
+            if (written) {
+                animationFrameWrite = writeCount
+                FrameSendResult.SENT
+            } else {
+                FrameSendResult.FAILED
             }
         }
+    }
+
+    private fun animationFrameAllowed(basedOn: LitFrame, expectedBrand: BoardBrand?): Boolean {
+        val brand = _connectedBoardBrand.value
+        return _connectionState.value == ConnectionState.CONNECTED &&
+            !cleaningState.value.active &&
+            _litFrame.value === basedOn &&
+            brand?.usesAuroraProtocol == true &&
+            boardScopedCommandAllowed(brand, expectedBrand)
     }
 
     /**
@@ -2508,6 +2561,7 @@ class BoardBleConnection(
                 chunks,
                 interChunkDelayMs = MOONBOARD_UART_INTER_CHUNK_DELAY_MS,
             )
+            _litFrame.value = null
             if (success) cleaning.projected(cleaningTicket, chunks)
             return success
         } finally {
@@ -2580,6 +2634,7 @@ class BoardBleConnection(
             val success = writeChunks(writes)
             Log.i(TAG, "Shiny Wall ${if (writes === fullWrites) "route" else "changes"} ${variant.code}: ${holds.size} holds, ${writes.size} writes, mtu=$negotiatedMtu ok=$success")
             shinyWallShown = if (success) variant to target else null
+            _litFrame.value = null
             // Restoring after hold cleaning always replays the complete route.
             if (success) cleaning.projected(cleaningTicket, fullWrites)
             return success

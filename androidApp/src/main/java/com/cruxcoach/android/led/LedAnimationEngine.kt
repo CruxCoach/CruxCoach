@@ -316,7 +316,7 @@ class LedAnimationEngine internal constructor(
         scope.launch {
             val frame = sink.litFrame.value ?: return@launch
             if (frame.leds.isEmpty() || !sink.canAnimate) return@launch
-            sink.sendFrame(frame.staticFrame())
+            sink.sendFrame(frame, frame.staticFrame())
         }
     }
 
@@ -385,7 +385,7 @@ class LedAnimationEngine internal constructor(
                 // RGB332 is coarse, so pulse and hue-cycle frames repeat often.
                 // Skipping identical frames is where the traffic budget lives.
                 if (frame != lastSent) {
-                    when (sink.sendFrame(frame)) {
+                    when (sink.sendFrame(base, frame)) {
                         FrameSendResult.SENT -> {
                             lastSent = frame
                             failures = 0
