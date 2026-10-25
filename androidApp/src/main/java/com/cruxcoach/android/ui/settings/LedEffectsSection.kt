@@ -248,11 +248,21 @@ private fun LedEffectBackgroundRow(checked: Boolean, onCheckedChange: (Boolean) 
         )
         TextButton(
             onClick = {
-                context.startActivity(
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
+                // Some builds lack the per-app notification page; the app's own
+                // settings page is the next best place, and neither may crash.
+                runCatching {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }.recoverCatching {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                            .setData(android.net.Uri.fromParts("package", context.packageName, null))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
             },
             modifier = Modifier.testTag("led_effects_allow_notifications"),
         ) { Text(stringResource(R.string.settings_led_effects_allow_notifications)) }
