@@ -88,6 +88,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
     @Inject
     lateinit var ledAnimationEngine: dagger.Lazy<com.cruxcoach.android.led.LedAnimationEngine>
 
+    @Inject
+    lateinit var relayAdapterNameGuard: dagger.Lazy<com.cruxcoach.android.data.RelayAdapterNameGuard>
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 
@@ -163,6 +166,13 @@ class CruxCoachApp : Application(), Configuration.Provider {
         PerfLogger.trace("CrashHandler setup") {
             val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
             Thread.setDefaultUncaughtExceptionHandler(CruxCoachCrashHandler(this, defaultHandler))
+        }
+        // Board sharing borrows the phone's Bluetooth name. A run that ended
+        // abruptly (killed, crashed, updated, phone restarted) may have left it
+        // renamed; every process start gives it back, also one for background
+        // work, so this never waits for the user to open the app.
+        PerfLogger.trace("RelayAdapterNameGuard.restoreIfStale") {
+            relayAdapterNameGuard.get().restoreIfStale()
         }
         PerfLogger.trace("ApkShareHelper.cleanupCache") { ApkShareHelper.cleanupCache(this) }
         PerfLogger.trace("TrainingReminderWorker.schedule") { TrainingReminderWorker.schedule(this) }
@@ -251,6 +261,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 // changes to the device's primary language without a full restart.
                 applySystemLocaleIfNeeded()
                 boardBleConnection.get().refreshQuantumStateOnForeground()
+                // A give-back that Android refused earlier (other user profile
+                // active, permission missing) gets another chance.
+                relayAdapterNameGuard.get().restoreIfStale()
 
                 // Kick the Nostr relay pool back to life on every
                 // foreground. Pre-fix, the pool only auto-reconnected on

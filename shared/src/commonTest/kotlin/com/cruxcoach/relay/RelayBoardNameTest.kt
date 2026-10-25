@@ -48,6 +48,27 @@ class RelayBoardNameTest {
     }
 
     @Test
+    fun isOwnAdapterName_coversEveryNameSharingGivesThePhone() {
+        assertTrue(RelayBoardName.isOwnAdapterName(RelayBoardName.transparentBoard("Kilter Board", 3)))
+        assertTrue(RelayBoardName.isOwnAdapterName(RelayBoardName.transparent("MoonBoard")))
+        // Degenerate budget: the product is dropped and the dot goes with it.
+        val degenerate = RelayBoardName.transparent("Kilter Board@3", maxBytes = 12)
+        assertEquals("CruxCoach@3", degenerate)
+        assertTrue(RelayBoardName.isOwnAdapterName(degenerate))
+        assertTrue(RelayBoardName.isOwnAdapterName("CruxRelay"))
+        assertTrue(RelayBoardName.isOwnAdapterName("CruxRelay·Kilter Board@3"))
+    }
+
+    @Test
+    fun isOwnAdapterName_leavesPhonesTheirOwnNames() {
+        assertTrue(!RelayBoardName.isOwnAdapterName("Galaxy S21 Ultra"))
+        assertTrue(!RelayBoardName.isOwnAdapterName("CruxCoach test phone"))
+        assertTrue(!RelayBoardName.isOwnAdapterName("CruxCoach@home"))
+        assertTrue(!RelayBoardName.isOwnAdapterName("Kilter Board@3"))
+        assertTrue(!RelayBoardName.isOwnAdapterName(""))
+    }
+
+    @Test
     fun unwrap_restoresBoardName_forNormalScannerParsing() {
         assertEquals(
             "Kilter Board@2",

@@ -65,6 +65,24 @@ object RelayBoardName {
         return trimmed.startsWith("CruxCoach") || trimmed.startsWith(LEGACY_PREFIX)
     }
 
+    /**
+     * True if [name] is a name CruxCoach itself gives the phone while sharing:
+     * the [transparent] form, its degenerate "CruxCoach@<api>" and the pre-0.2.2
+     * marker. Such a name is never the phone's own one, so it must never be
+     * recorded as the name to give back.
+     *
+     * Deliberately narrower than [isRelayName]: a phone its owner named
+     * "CruxCoach test" is not one of ours.
+     */
+    fun isOwnAdapterName(name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.startsWith(PREFIX) || trimmed.startsWith(LEGACY_PREFIX)) return true
+        val bare = PREFIX.trimEnd('·')
+        if (!trimmed.startsWith("$bare@")) return false
+        val api = trimmed.removePrefix("$bare@")
+        return api.isNotEmpty() && api.all { it.isDigit() }
+    }
+
     /** Restores the protocol-relevant board name for normal scanner parsing. */
     fun unwrap(name: String): String {
         val trimmed = name.trimStart()

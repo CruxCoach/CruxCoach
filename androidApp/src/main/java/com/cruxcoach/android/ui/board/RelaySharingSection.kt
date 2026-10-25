@@ -178,6 +178,7 @@ internal fun relayErrorText(error: RelayError, detail: String?): String {
         RelayError.SERVER_START_FAILED -> stringResource(R.string.relay_error_server)
         RelayError.ADVERTISE_FAILED -> stringResource(R.string.relay_error_advertise)
         RelayError.NAME_SET_FAILED -> stringResource(R.string.relay_error_name)
+        RelayError.NAME_IN_USE -> stringResource(R.string.relay_error_name_in_use)
         RelayError.BOARD_LOST -> stringResource(R.string.relay_error_board_lost)
         RelayError.UNSUPPORTED_BOARD -> stringResource(R.string.relay_error_unsupported_board)
         RelayError.FORWARD_FAILED -> stringResource(R.string.relay_error_forward_failed)

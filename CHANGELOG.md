@@ -438,6 +438,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - After a catalogue import the app frees the temporary database file at once. A Tension
   import left about 180 MB in it until the next write, on a phone with little space left.
+- Your phone no longer keeps the name "CruxCoach…" in your car or headphones after
+  sharing a board with other apps. The phone carries that name only while sharing runs
+  on a connected board; when either ends, for whatever reason, its own Bluetooth name
+  comes back at once. If CruxCoach was closed, crashed or updated, or the phone
+  restarted while sharing, the name now comes back on its own – right after the restart
+  or update, at the next Bluetooth connection, or the next time CruxCoach starts –
+  instead of only when you open CruxCoach again. The phone's own name can no longer be
+  lost when sharing fails to start, or when two CruxCoach apps are installed. Swiping
+  CruxCoach away from the recent apps now ends sharing.
 
 ## [0.2.4] - 2026-10-25
 

@@ -2656,6 +2656,7 @@
     <string name="relay_chip_stop">Stop</string>
     <string name="relay_host_title">Shared CruxCoach session</string>
     <string name="relay_host_join_subtitle">%1$d in session · Tap to join</string>
+    <string name="relay_error_name_in_use">Your phone already has a CruxCoach Bluetooth name. Is another CruxCoach app sharing? More under Settings → Sharing nearby.</string>
     <string name="board_ble_via_cruxcoach">via CruxCoach</string>
     <string name="board_ble_connection_via_relay">Connected via CruxCoach Relay</string>
     <string name="board_ble_connection_multi">Multiple devices can stay connected</string>
