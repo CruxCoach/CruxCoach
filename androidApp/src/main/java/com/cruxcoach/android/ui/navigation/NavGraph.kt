@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.*
 import android.Manifest
 import android.content.pm.PackageManager
@@ -152,6 +153,7 @@ object Routes {
     const val PLAYLIST_IMPORT = "playlist_import/{payload}"
     const val PLAYLIST_PLAYER = "playlist_player"
     const val BOARD_MAP = "board_map"
+    const val BOARD_GAMES = "board_games?climbUuid={climbUuid}&angle={angle}"
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
     const val DATA_EXPORT = "data_export"
@@ -186,6 +188,10 @@ object Routes {
         "post_workout/$sessionId/$durationMin/$completedCount"
     fun boardClimbDetail(climbUuid: String, angle: Int) = "board_climb_detail/$climbUuid/$angle"
     fun boardListDetail(listId: Long) = "board_list_detail/$listId"
+    /** Wall games; with a climb, endurance and traverse start from it. */
+    fun boardGames(climbUuid: String? = null, angle: Int? = null): String =
+        if (climbUuid == null) "board_games"
+        else "board_games?climbUuid=${android.net.Uri.encode(climbUuid)}&angle=${angle ?: -1}"
     fun playlistDetail(listId: Long) = "playlist_detail/$listId"
     fun messageThread(eventId: String) = "message_thread/$eventId"
     fun bugReport(title: String = "", description: String = "", attachKilterDiagnostics: Boolean = false): String {
@@ -217,7 +223,7 @@ private val bottomBarRoutes = emptySet<String>()
 private val wakeLockRoutes = setOf(
     Routes.BOARD_BROWSER, Routes.BOARD_CLIMB_DETAIL, Routes.BOARD_LOGBOOK,
     Routes.BOARD_LISTS, Routes.BOARD_LIST_DETAIL, Routes.BOARD_SYNC,
-    Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER,
+    Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER, Routes.BOARD_GAMES,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -591,6 +597,30 @@ fun CruxCoachNavHost(
                 }
             }
 
+            composable(
+                Routes.BOARD_GAMES,
+                arguments = listOf(
+                    navArgument("climbUuid") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("angle") {
+                        type = NavType.IntType
+                        defaultValue = -1
+                    },
+                ),
+            ) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "WallGames",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.board.games.WallGamesScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                    )
+                }
+            }
+
             composable(Routes.BOARD_MAP) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "BoardMap",
@@ -708,6 +738,9 @@ fun CruxCoachNavHost(
                     },
                     onNavigateToSetter = { pubkey ->
                         navController.navigate(Routes.setterDetail(pubkey))
+                    },
+                    onNavigateToGames = { uuid, angle ->
+                        navController.navigate(Routes.boardGames(uuid, angle))
                     },
                 )
             }
@@ -1143,10 +1176,20 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
             val entries = listOf(
                 Triple(Routes.BOARD_BROWSER, com.cruxcoach.android.R.string.board_browser_nav_board, "menu_board"),
                 Triple(Routes.BOARD_MAP, com.cruxcoach.android.R.string.main_menu_board_map, "menu_board_map"),
+                Triple(Routes.boardGames(), com.cruxcoach.android.R.string.wall_games_title, "menu_wall_games"),
             )
             entries.forEach { (route, label, tag) ->
                 NavigationDrawerItem(
-                    icon = { Icon(if (route == Routes.BOARD_MAP) Icons.Default.Map else Icons.Default.DeveloperBoard, null) },
+                    icon = {
+                        Icon(
+                            when (route) {
+                                Routes.BOARD_MAP -> Icons.Default.Map
+                                Routes.BOARD_BROWSER -> Icons.Default.DeveloperBoard
+                                else -> Icons.Default.SportsEsports
+                            },
+                            null,
+                        )
+                    },
                     label = { Text(stringResource(label)) }, selected = route == Routes.BOARD_BROWSER,
                     onClick = { onSelect(route) },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag(tag),

@@ -3230,4 +3230,76 @@
         <item quantity="one">%d hold left in this cleaning round</item>
         <item quantity="other">%d holds left in this cleaning round</item>
     </plurals>
+
+    <!-- Wall games -->
+    <string name="wall_games_title">Wall games</string>
+    <string name="wall_games_play_climb">Play as a game</string>
+    <string name="wall_games_lava">Floor is lava</string>
+    <string name="wall_games_endurance">Endurance</string>
+    <string name="wall_games_thief">Hold thief</string>
+    <string name="wall_games_traverse">Traverse</string>
+    <string name="wall_games_lava_desc">The lava rises one row of holds at a time from the bottom. Touch a lit hold and you are out.</string>
+    <string name="wall_games_endurance_desc">A climb appears from the bottom, one row at a time. Hang on until the next holds light up.</string>
+    <string name="wall_games_thief_desc">A random climb across the whole wall. Steal holds to make it harder.</string>
+    <string name="wall_games_traverse_desc">A climb lights up move by move, from its start towards its top. Only the last seven moves stay lit, so keep moving.</string>
+    <string name="wall_games_level">Level</string>
+    <string name="wall_games_level_1">Very easy</string>
+    <string name="wall_games_level_2">Easy</string>
+    <string name="wall_games_level_3">Medium</string>
+    <string name="wall_games_level_4">Hard</string>
+    <string name="wall_games_level_5">Very hard</string>
+    <string name="wall_games_lava_interval">The lava rises every %1$s s</string>
+    <string name="wall_games_endurance_interval">New holds every %1$s s</string>
+    <string name="wall_games_tempo">Tempo</string>
+    <string name="wall_games_traverse_interval">Next move every %1$s s</string>
+    <string name="wall_games_density">Hand holds</string>
+    <string name="wall_games_density_value">%1$d %%</string>
+    <string name="wall_games_new_climb">New climb</string>
+    <string name="wall_games_steal_count">Holds to steal</string>
+    <string name="wall_games_steal_less">Steal fewer holds</string>
+    <string name="wall_games_steal_more">Steal more holds</string>
+    <plurals name="wall_games_steal">
+        <item quantity="one">Steal %d hold</item>
+        <item quantity="other">Steal %d holds</item>
+    </plurals>
+    <plurals name="wall_games_hands_left">
+        <item quantity="one">%d hand hold</item>
+        <item quantity="other">%d hand holds</item>
+    </plurals>
+    <string name="wall_games_light">Light on the wall</string>
+    <string name="wall_games_light_again">Light again</string>
+    <string name="wall_games_start">Start</string>
+    <string name="wall_games_stop">Stop</string>
+    <string name="wall_games_play_again">Play again</string>
+    <string name="wall_games_go">Go!</string>
+    <string name="wall_games_your_time">Your time: %1$s</string>
+    <string name="wall_games_lava_top">The lava reached the top.</string>
+    <string name="wall_games_all_lit">The whole climb is lit. Stop when you are done.</string>
+    <string name="wall_games_progress_rows">Row %1$d of %2$d</string>
+    <string name="wall_games_progress_steps">Step %1$d of %2$d</string>
+    <string name="wall_games_progress_moves">Move %1$d of %2$d</string>
+    <string name="wall_games_climb">Climb</string>
+    <string name="wall_games_choose_climb">Choose a climb</string>
+    <string name="wall_games_change_climb">Change</string>
+    <string name="wall_games_climb_at_angle">%1$s · %2$d°</string>
+    <string name="wall_games_no_climb">No climb chosen yet.</string>
+    <string name="wall_games_recent_title">Recently lit on this board</string>
+    <string name="wall_games_recent_empty">No climb has been lit on this board yet. Open a climb and choose “Play as a game” in its menu.</string>
+    <string name="wall_games_climb_hint">Any climb works: open it and choose “Play as a game” in its menu.</string>
+    <string name="wall_games_climb_not_found">This climb is not on the device.</string>
+    <string name="wall_games_climb_other_board">This climb belongs to another board. Choose a climb of your active board.</string>
+    <string name="wall_games_climb_no_holds">None of this climb\'s holds are on your board size.</string>
+    <plurals name="wall_games_climb_off_board">
+        <item quantity="one">%d hold of this climb is not on your board size and stays dark.</item>
+        <item quantity="other">%d holds of this climb are not on your board size and stay dark.</item>
+    </plurals>
+    <string name="wall_games_not_connected">Not connected: the game runs on this screen only.</string>
+    <string name="wall_games_other_board">The connected board is not your active board, so it stays dark.</string>
+    <string name="wall_games_session">A shared session controls the board, so the game is not lit.</string>
+    <string name="wall_games_cleaning">Hold cleaning is running on the board. Finish it to light the game.</string>
+    <string name="wall_games_send_failed">The board did not take the last step.</string>
+    <string name="wall_games_unsupported">Wall games are not available for this board.</string>
+    <string name="wall_games_no_holds">The hold positions of this board are not on the device yet. Download its catalogue first.</string>
+    <string name="wall_games_sound_turn_off">Turn countdown sound off</string>
+    <string name="wall_games_sound_turn_on">Turn countdown sound on</string>
 </resources>
