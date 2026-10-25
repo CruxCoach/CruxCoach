@@ -1,0 +1,377 @@
+{
+  "board_config_id": "4dc81ed591f36e3b69f85482356cb267d86881d687481fdf8abdd764a3bcb6c2",
+  "bootstrap": {
+    "component_data_hex": "1943727578436f61636820707269766174652073686172696e6741127b22617474656d70745f6964223a2239663663326438312d346237652d346133632d396432662d313662383361376335653430222c22656e64706f696e745f68696768223a2263363034376639343431656437643664333034353430366539356330376364383563373738653462386365663363613761626163303962393563373039656535222c22656e64706f696e745f6c6f77223a2237396265363637656639646362626163353561303632393563653837306230373032396266636462326463653238643935396632383135623136663831373938222c2270726f746f636f6c223a22636f6d2e63727578636f6163682e707269766174652d73686172696e672f626f6f7473747261702f7631227d",
+    "component_data_sha256": "0f81dfbcd0f7efea4b7df7d8a9fe879b61ef0fe46fa76b8e9d7bb4637c0a006c",
+    "component_data_size": 302,
+    "description": "{\"attempt_id\":\"9f6c2d81-4b7e-4a3c-9d2f-16b83a7c5e40\",\"endpoint_high\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"endpoint_low\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"protocol\":\"com.cruxcoach.private-sharing/bootstrap/v1\"}",
+    "description_sha256": "12c58e6819fd87b7ab0f5d9dae1c0202638e43e76511ed66b8ba9abc683b3db6",
+    "description_size": 274,
+    "name": "CruxCoach private sharing",
+    "name_size": 25
+  },
+  "derivations": [
+    {
+      "kind": "uuid8",
+      "name": "generation_group1",
+      "preimage_hex": "63632d70732d67656e65726174696f6e2d76310000203f1c9d7e5b204a6c8e0f1d2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "sha256": "4026ec6e92d14da99520555f4c674a704e3e806d12dc8cbc97e472060839f269",
+      "value": "4026ec6e-92d1-8da9-9520-555f4c674a70"
+    },
+    {
+      "kind": "uuid8",
+      "name": "generation_group2",
+      "preimage_hex": "63632d70732d67656e65726174696f6e2d76310000200a2b4c6d8e0f10213243546576879809a1b2c3d4e5f60718293a4b5c6d7e8f9079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "sha256": "fdda72600a816f789a32872a8e555719d1f3c4de0fdbe3a59c19affeecd35af1",
+      "value": "fdda7260-0a81-8f78-9a32-872a8e555719"
+    },
+    {
+      "kind": "sha256",
+      "name": "endpoint_pair_id",
+      "preimage_hex": "63632d70732d656e64706f696e74732d76310079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "sha256": "0343ca43030fd27cb945cf4e105b2c999e636815b41f84ccba0fc0e96f137a25",
+      "value": "0343ca43030fd27cb945cf4e105b2c999e636815b41f84ccba0fc0e96f137a25"
+    },
+    {
+      "kind": "uuid8",
+      "name": "acceptance_slot",
+      "preimage_hex": "63632d70732d616363657074616e63652d736c6f742d7631004026ec6e92d18da99520555f4c674a70c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "sha256": "7403ba8b3fffbdf157beb3fd83d21a7dd3fbe20413926f48667f6f916bcb0f29",
+      "value": "7403ba8b-3fff-8df1-97be-b3fd83d21a7d"
+    },
+    {
+      "kind": "uuid8",
+      "name": "offer_A",
+      "preimage_hex": "63632d70732d6f666665722d736c6f742d7631004026ec6e92d18da99520555f4c674a7079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "sha256": "f84a6a07c1a50abe6c514526d1f132186b6cd2b865e281b1f7c852b9a5374a8f",
+      "value": "f84a6a07-c1a5-8abe-ac51-4526d1f13218"
+    },
+    {
+      "kind": "uuid8",
+      "name": "offer_B",
+      "preimage_hex": "63632d70732d6f666665722d736c6f742d7631004026ec6e92d18da99520555f4c674a70c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "sha256": "9d5218dd000fe57a319a6354657542834a8de0ade496ede867d12f50aa987d04",
+      "value": "9d5218dd-000f-857a-b19a-635465754283"
+    },
+    {
+      "kind": "uuid8",
+      "name": "session_uuid_1",
+      "preimage_hex": "63632d70732d73657373696f6e2d7631004026ec6e92d18da99520555f4c674a70c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5018bcfe56800700080000000000000aa4dc81ed591f36e3b69f85482356cb267d86881d687481fdf8abdd764a3bcb6c2",
+      "sha256": "d9b59d245e26a369c1533cc2dce339763a81e11d061121354bbc242299388bb9",
+      "value": "d9b59d24-5e26-8369-8153-3cc2dce33976"
+    },
+    {
+      "kind": "uuid8",
+      "name": "session_uuid_2",
+      "preimage_hex": "63632d70732d73657373696f6e2d7631004026ec6e92d18da99520555f4c674a70c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5018bcfe56800700080000000000000ab4dc81ed591f36e3b69f85482356cb267d86881d687481fdf8abdd764a3bcb6c2",
+      "sha256": "33b26755ca712401ca756b1379d04c35cb9ddbd3cbff2b806b8f01ba4744bbf4",
+      "value": "33b26755-ca71-8401-8a75-6b1379d04c35"
+    },
+    {
+      "kind": "uuid8",
+      "name": "plan_uuid",
+      "preimage_hex": "63632d70732d706c616e2d7631004026ec6e92d18da99520555f4c674a70c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5018bcfe56800700080000000000000bb",
+      "sha256": "16147ec98d19d88623b88b3011f592846daefa6e0d16bc381232bce865a6057f",
+      "value": "16147ec9-8d19-8886-a3b8-8b3011f59284"
+    },
+    {
+      "kind": "uuid8",
+      "name": "grant_slot_LOGBOOK_SUMMARY",
+      "preimage_hex": "63632d70732d6772616e742d736c6f742d7631004026ec6e92d18da99520555f4c674a7079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179801",
+      "sha256": "c937169b5edcc3a4253c14c6eef4cf189ea8ebf2c05eb3ca6f297b62821aa5e1",
+      "value": "c937169b-5edc-83a4-a53c-14c6eef4cf18"
+    },
+    {
+      "kind": "uuid8",
+      "name": "grant_slot_LOGBOOK_DETAIL",
+      "preimage_hex": "63632d70732d6772616e742d736c6f742d7631004026ec6e92d18da99520555f4c674a7079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179803",
+      "sha256": "5c05ca0c3d1058626dd4f3cb6b97d23741b7bdf1c7a0afe484b03589ed8cff45",
+      "value": "5c05ca0c-3d10-8862-add4-f3cb6b97d237"
+    },
+    {
+      "kind": "uuid8",
+      "name": "grant_slot_PLAN_DETAIL",
+      "preimage_hex": "63632d70732d6772616e742d736c6f742d7631004026ec6e92d18da99520555f4c674a7079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980416147ec98d198886a3b88b3011f59284",
+      "sha256": "946d69f83c45ce6f31d8836217d357620459ca47afcf6dffb3d993d7515a4c82",
+      "value": "946d69f8-3c45-8e6f-b1d8-836217d35762"
+    },
+    {
+      "kind": "uuid8",
+      "name": "projection_slot_019fd5e9-d7e0-700a-8000-00000000000a",
+      "preimage_hex": "63632d70732d70726f6a656374696f6e2d736c6f742d7631004026ec6e92d18da99520555f4c674a7079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798019fd5e9d7e0700a800000000000000a",
+      "sha256": "ccbf0acc55a78f3a32b65142176bf06d9b559c120de716d696bd74a03e28b250",
+      "value": "ccbf0acc-55a7-8f3a-b2b6-5142176bf06d"
+    },
+    {
+      "kind": "uuid8",
+      "name": "projection_slot_019fd5e8-0320-700b-8000-00000000000b",
+      "preimage_hex": "63632d70732d70726f6a656374696f6e2d736c6f742d7631004026ec6e92d18da99520555f4c674a7079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798019fd5e80320700b800000000000000b",
+      "sha256": "ff8f4248995538b35b85f9fd9108e024abe0ba78cf47395074466995312f419c",
+      "value": "ff8f4248-9955-88b3-9b85-f9fd9108e024"
+    },
+    {
+      "kind": "uuid8",
+      "name": "projection_slot_019fd5f2-ffa0-700d-8000-00000000000d",
+      "preimage_hex": "63632d70732d70726f6a656374696f6e2d736c6f742d7631004026ec6e92d18da99520555f4c674a7079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798019fd5f2ffa0700d800000000000000d",
+      "sha256": "ecf57e21dc71985fd4d423e3d2ac4d7ad19cc0b6f936251393d5e64220ef7631",
+      "value": "ecf57e21-dc71-885f-94d4-23e3d2ac4d7a"
+    },
+    {
+      "kind": "uuid8",
+      "name": "projection_slot_cross_publisher_019fd5e8-0320-700b-8000-00000000000b",
+      "preimage_hex": "63632d70732d70726f6a656374696f6e2d736c6f742d7631004026ec6e92d18da99520555f4c674a70c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5019fd5e80320700b800000000000000b",
+      "sha256": "dfb7a3e366144f3efd8fe6b4e150085783a0aaca2f2d94f60dee438bae154d8a",
+      "value": "dfb7a3e3-6614-8f3e-bd8f-e6b4e1500857"
+    }
+  ],
+  "events": {
+    "A1": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"offer\":\"ACQUAINTANCE\",\"type\":\"cc.relationship.offer.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000100,\"object_id\":\"f84a6a07-c1a5-8abe-ac51-4526d1f13218\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "1d32b8590404f21262c416cd43ec1db680171f6a5c5181a2406c7c0faab1f77b",
+      "content_size": 464,
+      "full_event": "{\"id\":\"aedf77229c731ee55dc59d9bacd49259a788ad71bc81d29f3ba3558d23b13240\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1786000100,\"kind\":1220,\"tags\":[[\"L\",\"com.cruxcoach.private-sharing\"],[\"l\",\"v1\",\"com.cruxcoach.private-sharing\"]],\"content\":\"{\\\"author\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"body\\\":{\\\"offer\\\":\\\"ACQUAINTANCE\\\",\\\"type\\\":\\\"cc.relationship.offer.v1\\\",\\\"v\\\":1},\\\"endpoints\\\":[\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\\\"],\\\"generation_id\\\":\\\"4026ec6e-92d1-8da9-9520-555f4c674a70\\\",\\\"issued_at\\\":1786000100,\\\"object_id\\\":\\\"f84a6a07-c1a5-8abe-ac51-4526d1f13218\\\",\\\"seq\\\":1,\\\"type\\\":\\\"cc.envelope.v1\\\",\\\"v\\\":1}\"}",
+      "full_event_sha256": "aa93bfdc0a2ee34e684e6b190fb9ab07e027e8046df288f6dce39825abc4809b",
+      "full_event_size": 792,
+      "inner_event_id": "aedf77229c731ee55dc59d9bacd49259a788ad71bc81d29f3ba3558d23b13240",
+      "issued_at": 1786000100,
+      "name": "A1"
+    },
+    "A2": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"offer\":\"FRIEND\",\"type\":\"cc.relationship.offer.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000150,\"object_id\":\"f84a6a07-c1a5-8abe-ac51-4526d1f13218\",\"previous_event_id\":\"aedf77229c731ee55dc59d9bacd49259a788ad71bc81d29f3ba3558d23b13240\",\"seq\":2,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "7f8cbbc79d3c2f88c84d51e00f99fadf67264c59be704524ac3fff13c0a41702",
+      "content_size": 545,
+      "inner_event_id": "886def636941f4d7eca4dbd618919a5c7f42b8b4a13d2ea9363fa30d24f21a44",
+      "issued_at": 1786000150,
+      "name": "A2"
+    },
+    "A2_conflict": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"offer\":\"ACQUAINTANCE\",\"type\":\"cc.relationship.offer.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000160,\"object_id\":\"f84a6a07-c1a5-8abe-ac51-4526d1f13218\",\"previous_event_id\":\"aedf77229c731ee55dc59d9bacd49259a788ad71bc81d29f3ba3558d23b13240\",\"seq\":2,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "75db2459d7f2de4f398e9152dbc4d5fe638e831a11f388ec52ee3a4ea9e19493",
+      "content_size": 551,
+      "inner_event_id": "68d1ace634fba5e9412332cb61e45766c1891bf6f481aff34067b4282770c939",
+      "issued_at": 1786000160,
+      "name": "A2_conflict"
+    },
+    "A3": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"offer\":\"ACQUAINTANCE\",\"type\":\"cc.relationship.offer.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786001100,\"object_id\":\"f84a6a07-c1a5-8abe-ac51-4526d1f13218\",\"previous_event_id\":\"886def636941f4d7eca4dbd618919a5c7f42b8b4a13d2ea9363fa30d24f21a44\",\"seq\":3,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "14e37065816c77152f7f9ab9c6f1f022d7578be21e696d92c6ca7c7e12a64806",
+      "content_size": 551,
+      "inner_event_id": "12754e995446966ee29aa268efcc319031d54d94310f9a3a8839d568cb715b68",
+      "issued_at": 1786001100,
+      "name": "A3"
+    },
+    "A4": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"offer\":\"FRIEND\",\"type\":\"cc.relationship.offer.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786001200,\"object_id\":\"f84a6a07-c1a5-8abe-ac51-4526d1f13218\",\"previous_event_id\":\"12754e995446966ee29aa268efcc319031d54d94310f9a3a8839d568cb715b68\",\"seq\":4,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "91eb20006dfea322b6f5e31548b9837a2bb616a869019fa6c69172d33efc8955",
+      "content_size": 545,
+      "inner_event_id": "8386f0532fd20931fb5a109e07a990bd2a74f59c22a044299941e7356295475b",
+      "issued_at": 1786001200,
+      "name": "A4"
+    },
+    "A5": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"offer\":\"NONE\",\"type\":\"cc.relationship.offer.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786001300,\"object_id\":\"f84a6a07-c1a5-8abe-ac51-4526d1f13218\",\"previous_event_id\":\"8386f0532fd20931fb5a109e07a990bd2a74f59c22a044299941e7356295475b\",\"seq\":5,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "fdcc8d399057a2b5eb1be0e2045e7885281c5a1ffe1437ed2309ab10d77653f0",
+      "content_size": 543,
+      "inner_event_id": "b74db1a09317df4a52306a2291c26828cc346b9bfe3166ef7db6f327defedf8d",
+      "issued_at": 1786001300,
+      "name": "A5"
+    },
+    "B1": {
+      "author": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "content": "{\"author\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"body\":{\"offer\":\"FRIEND\",\"type\":\"cc.relationship.offer.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000200,\"object_id\":\"9d5218dd-000f-857a-b19a-635465754283\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "af8e81541dfdaa713980aa707eaa9df3e217ad010ce9cc57a4f53a0eb14113b1",
+      "content_size": 458,
+      "inner_event_id": "ae06df73c4717b0e84077429514ca4044bdf04c35a4c322595ca44613d5b3823",
+      "issued_at": 1786000200,
+      "name": "B1"
+    },
+    "acceptance": {
+      "author": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "content": "{\"author\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"body\":{\"acceptance_revision\":1,\"type\":\"cc.generation.accept.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000050,\"object_id\":\"7403ba8b-3fff-8df1-97be-b3fd83d21a7d\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "bec39b1d75e190e48365a6144d1b91b70d74e15c921c3036639898ac812caa37",
+      "content_size": 464,
+      "full_event": "{\"id\":\"782511be311ffcfe9d94d1a7b1b5d247ba89cddd4b9ef253adba61d6539f5688\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1786000050,\"kind\":1220,\"tags\":[[\"L\",\"com.cruxcoach.private-sharing\"],[\"l\",\"v1\",\"com.cruxcoach.private-sharing\"]],\"content\":\"{\\\"author\\\":\\\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\\\",\\\"body\\\":{\\\"acceptance_revision\\\":1,\\\"type\\\":\\\"cc.generation.accept.v1\\\",\\\"v\\\":1},\\\"endpoints\\\":[\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\\\"],\\\"generation_id\\\":\\\"4026ec6e-92d1-8da9-9520-555f4c674a70\\\",\\\"issued_at\\\":1786000050,\\\"object_id\\\":\\\"7403ba8b-3fff-8df1-97be-b3fd83d21a7d\\\",\\\"seq\\\":1,\\\"type\\\":\\\"cc.envelope.v1\\\",\\\"v\\\":1}\"}",
+      "full_event_sha256": "7a4fb55ae54b1046f6070845462023fa2f19147b69eebbf8d4b82813b8fc29c7",
+      "full_event_size": 790,
+      "inner_event_id": "782511be311ffcfe9d94d1a7b1b5d247ba89cddd4b9ef253adba61d6539f5688",
+      "issued_at": 1786000050,
+      "name": "acceptance"
+    },
+    "acceptance_conflict": {
+      "author": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "content": "{\"author\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"body\":{\"acceptance_revision\":2,\"type\":\"cc.generation.accept.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000060,\"object_id\":\"7403ba8b-3fff-8df1-97be-b3fd83d21a7d\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "1e0830453f2dc1b404db177f21e7a8056768ee5e0749f2429b1db174e46508cd",
+      "content_size": 464,
+      "inner_event_id": "db7d81263dba68c587be0b972eff078bd973a47336db817d5865157aebe85d65",
+      "issued_at": 1786000060,
+      "name": "acceptance_conflict"
+    },
+    "grant_detail_backdated": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"expires_at\":1793776180,\"fields\":[\"board_config_id\",\"duration_minutes\",\"sends\",\"started_at_utc\"],\"grant_id\":\"019fd5e8-0320-700b-8000-00000000000b\",\"issued_at\":1786000180,\"not_before\":1786000200,\"offer_heads\":[\"886def636941f4d7eca4dbd618919a5c7f42b8b4a13d2ea9363fa30d24f21a44\",\"ae06df73c4717b0e84077429514ca4044bdf04c35a4c322595ca44613d5b3823\"],\"publisher\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"recipient\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"scope\":\"LOGBOOK_DETAIL\",\"type\":\"cc.grant.set.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000180,\"object_id\":\"5c05ca0c-3d10-8862-add4-f3cb6b97d237\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "a2634899186aa486270e5b97ad36715ae286d9f8c7744642be9bd08f20578cd4",
+      "content_size": 959,
+      "inner_event_id": "55f74965758ef045362d067ef481cfb7d4fc6169063eeca8532412ef64136324",
+      "issued_at": 1786000180,
+      "name": "grant_detail_backdated"
+    },
+    "grant_plan_detail": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"expires_at\":1793776900,\"fields\":[\"focus_areas\",\"phase\",\"sessions\",\"sessions_per_week\"],\"grant_id\":\"019fd5f2-ffa0-700d-8000-00000000000d\",\"issued_at\":1786000900,\"not_before\":1786000900,\"offer_heads\":[\"886def636941f4d7eca4dbd618919a5c7f42b8b4a13d2ea9363fa30d24f21a44\",\"ae06df73c4717b0e84077429514ca4044bdf04c35a4c322595ca44613d5b3823\"],\"publisher\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"recipient\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"resource_id\":\"16147ec9-8d19-8886-a3b8-8b3011f59284\",\"scope\":\"PLAN_DETAIL\",\"type\":\"cc.grant.set.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000900,\"object_id\":\"946d69f8-3c45-8e6f-b1d8-836217d35762\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "85cba44d83d0002eababcd71dcaca60457bc8ed5718c30712bf083c0ea376ca5",
+      "content_size": 1000,
+      "inner_event_id": "c0c75c501a66b2e20c193b6ef209fd72d84b5ce1678c85d48e935756eff626ae",
+      "issued_at": 1786000900,
+      "name": "grant_plan_detail"
+    },
+    "grant_summary_narrowing": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"expires_at\":1793776400,\"fields\":[\"all_time_send_count\"],\"grant_id\":\"019fd5eb-5e80-700c-8000-00000000000c\",\"issued_at\":1786000400,\"offer_heads\":[\"886def636941f4d7eca4dbd618919a5c7f42b8b4a13d2ea9363fa30d24f21a44\",\"ae06df73c4717b0e84077429514ca4044bdf04c35a4c322595ca44613d5b3823\"],\"publisher\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"recipient\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"scope\":\"LOGBOOK_SUMMARY\",\"supersedes_grant_id\":\"019fd5e9-d7e0-700a-8000-00000000000a\",\"type\":\"cc.grant.set.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000400,\"object_id\":\"c937169b-5edc-83a4-a53c-14c6eef4cf18\",\"previous_event_id\":\"678cf7729571aadc3ba2a51d99af7a2993b2035fe7dce79cd62b3c9dcfe1e443\",\"seq\":2,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "6ff5f924f034f66d87da3f53302467ef28c729acd1c48f03546823b6250ee86a",
+      "content_size": 1044,
+      "inner_event_id": "78d8e4e50f872e0b176fcc5a6cb6e7eaa858b0600fee7f979f75b3ee24253609",
+      "issued_at": 1786000400,
+      "name": "grant_summary_narrowing"
+    },
+    "grant_summary_revoke": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"grant_id\":\"019fd5eb-5e80-700c-8000-00000000000c\",\"publisher\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"reason\":\"REVOKED_BY_USER\",\"recipient\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"scope\":\"LOGBOOK_SUMMARY\",\"type\":\"cc.grant.revoke.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000500,\"object_id\":\"c937169b-5edc-83a4-a53c-14c6eef4cf18\",\"previous_event_id\":\"78d8e4e50f872e0b176fcc5a6cb6e7eaa858b0600fee7f979f75b3ee24253609\",\"seq\":3,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "783202c0173202890cab6dc231aef3d8d17ffe8d9787f4914cf30d05c6ee6f3b",
+      "content_size": 783,
+      "inner_event_id": "09e82a30f7ba564a478dc9f25691fe6f993867a837e54ca5a0d02b8a0414eb6d",
+      "issued_at": 1786000500,
+      "name": "grant_summary_revoke"
+    },
+    "grant_summary_set": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"expires_at\":1793776300,\"fields\":[\"all_time_send_count\",\"hardest_grade_milli\"],\"grant_id\":\"019fd5e9-d7e0-700a-8000-00000000000a\",\"issued_at\":1786000300,\"offer_heads\":[\"886def636941f4d7eca4dbd618919a5c7f42b8b4a13d2ea9363fa30d24f21a44\",\"ae06df73c4717b0e84077429514ca4044bdf04c35a4c322595ca44613d5b3823\"],\"publisher\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"recipient\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"scope\":\"LOGBOOK_SUMMARY\",\"type\":\"cc.grant.set.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000300,\"object_id\":\"c937169b-5edc-83a4-a53c-14c6eef4cf18\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "d0b453777b9d51c0715bc82fa8c28cecf55cbab6a3a4c8d7705c5e8d2a1b6c07",
+      "content_size": 918,
+      "inner_event_id": "678cf7729571aadc3ba2a51d99af7a2993b2035fe7dce79cd62b3c9dcfe1e443",
+      "issued_at": 1786000300,
+      "name": "grant_summary_set"
+    },
+    "projection_detail_delta": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"as_of\":1786000800,\"fields\":[\"board_config_id\",\"duration_minutes\",\"sends\",\"started_at_utc\"],\"grant_event_id\":\"55f74965758ef045362d067ef481cfb7d4fc6169063eeca8532412ef64136324\",\"grant_id\":\"019fd5e8-0320-700b-8000-00000000000b\",\"ops\":[{\"op\":\"UPSERT_SESSION\",\"row\":{\"board_config_id\":\"4dc81ed591f36e3b69f85482356cb267d86881d687481fdf8abdd764a3bcb6c2\",\"duration_minutes\":90,\"sends\":[{\"grade_milli\":21000,\"problem_hash\":\"1351a2b3db68c914b4812b281cb069531c8e463be73b20c74bb719317a6ddf02\"}],\"session_uuid\":\"d9b59d24-5e26-8369-8153-3cc2dce33976\",\"started_at_utc\":1786003200}}],\"prospective_from\":1786000200,\"scope\":\"LOGBOOK_DETAIL\",\"type\":\"cc.projection.delta.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000800,\"object_id\":\"ff8f4248-9955-88b3-9b85-f9fd9108e024\",\"previous_event_id\":\"d622c46d83336c82aea53532c1b103da031dc27af81666c4c241118bf93b9e56\",\"seq\":2,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "c4b78219fce9e409cd8e6f2a09dd2312194f383068a23e7bf3729a2aaf3ae919",
+      "content_size": 1150,
+      "inner_event_id": "93debe85e9f8186975d6984963fe41eae0e403556688b0a0f12271eebd07687d",
+      "issued_at": 1786000800,
+      "name": "projection_detail_delta"
+    },
+    "projection_detail_delta_boundary": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"as_of\":1786001050,\"fields\":[\"board_config_id\",\"duration_minutes\",\"sends\",\"started_at_utc\"],\"grant_event_id\":\"55f74965758ef045362d067ef481cfb7d4fc6169063eeca8532412ef64136324\",\"grant_id\":\"019fd5e8-0320-700b-8000-00000000000b\",\"ops\":[{\"op\":\"UPSERT_SESSION\",\"row\":{\"board_config_id\":\"4dc81ed591f36e3b69f85482356cb267d86881d687481fdf8abdd764a3bcb6c2\",\"duration_minutes\":60,\"sends\":[],\"session_uuid\":\"33b26755-ca71-8401-8a75-6b1379d04c35\",\"started_at_utc\":1786000500}}],\"prospective_from\":1786000200,\"scope\":\"LOGBOOK_DETAIL\",\"type\":\"cc.projection.delta.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786001050,\"object_id\":\"ff8f4248-9955-88b3-9b85-f9fd9108e024\",\"previous_event_id\":\"93debe85e9f8186975d6984963fe41eae0e403556688b0a0f12271eebd07687d\",\"seq\":3,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "0c35e9782f32d0ca0d155a1cd29858ecc710ef8b55b766ddb18e06231a31db1e",
+      "content_size": 1047,
+      "inner_event_id": "bf98dfd812eabac44e717faf84407a3a573b44e364b37362c015b6ad1318432b",
+      "issued_at": 1786001050,
+      "name": "projection_detail_delta_boundary"
+    },
+    "projection_detail_snapshot": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"as_of\":1786000700,\"fields\":[\"board_config_id\",\"duration_minutes\",\"sends\",\"started_at_utc\"],\"grant_event_id\":\"55f74965758ef045362d067ef481cfb7d4fc6169063eeca8532412ef64136324\",\"grant_id\":\"019fd5e8-0320-700b-8000-00000000000b\",\"payload\":{\"prospective_from\":1786000200,\"sessions\":[{\"board_config_id\":\"4dc81ed591f36e3b69f85482356cb267d86881d687481fdf8abdd764a3bcb6c2\",\"duration_minutes\":75,\"sends\":[{\"grade_milli\":21000,\"problem_hash\":\"1351a2b3db68c914b4812b281cb069531c8e463be73b20c74bb719317a6ddf02\"}],\"session_uuid\":\"d9b59d24-5e26-8369-8153-3cc2dce33976\",\"started_at_utc\":1786003200}],\"type\":\"cc.logbook_detail\",\"v\":1},\"prospective_from\":1786000200,\"scope\":\"LOGBOOK_DETAIL\",\"type\":\"cc.projection.snapshot.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000700,\"object_id\":\"ff8f4248-9955-88b3-9b85-f9fd9108e024\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "e6348f033031bcc1ef064f461708eb33e7898001efea7b670669022ae0110507",
+      "content_size": 1116,
+      "inner_event_id": "d622c46d83336c82aea53532c1b103da031dc27af81666c4c241118bf93b9e56",
+      "issued_at": 1786000700,
+      "name": "projection_detail_snapshot"
+    },
+    "projection_plan_snapshot": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"as_of\":1786001000,\"fields\":[\"focus_areas\",\"phase\",\"sessions\",\"sessions_per_week\"],\"grant_event_id\":\"c0c75c501a66b2e20c193b6ef209fd72d84b5ce1678c85d48e935756eff626ae\",\"grant_id\":\"019fd5f2-ffa0-700d-8000-00000000000d\",\"payload\":{\"plan\":{\"focus_areas\":[\"finger_strength\",\"power\"],\"phase\":\"POWER\",\"sessions\":[{\"day_of_week\":1,\"session_type\":\"POWER\",\"target_duration_min\":90,\"target_rpe_deci\":80}],\"sessions_per_week\":3},\"prospective_from\":1786000900,\"type\":\"cc.plan_detail\",\"v\":1},\"prospective_from\":1786000900,\"resource_id\":\"16147ec9-8d19-8886-a3b8-8b3011f59284\",\"scope\":\"PLAN_DETAIL\",\"type\":\"cc.projection.snapshot.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786001000,\"object_id\":\"ecf57e21-dc71-885f-94d4-23e3d2ac4d7a\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "c8bb1841401674de65a562c7eaad43b705087fc5778285afa51dea4f694da4fb",
+      "content_size": 1025,
+      "inner_event_id": "123ca12dfd42c469a47a31fe0e012cbd4b6bc0c84b57b89f45abc0b8783de34e",
+      "issued_at": 1786001000,
+      "name": "projection_plan_snapshot"
+    },
+    "projection_summary_snapshot": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"as_of\":1786000600,\"fields\":[\"all_time_send_count\",\"hardest_grade_milli\"],\"grant_event_id\":\"678cf7729571aadc3ba2a51d99af7a2993b2035fe7dce79cd62b3c9dcfe1e443\",\"grant_id\":\"019fd5e9-d7e0-700a-8000-00000000000a\",\"payload\":{\"all_time_send_count\":128,\"hardest_grade_milli\":21000,\"type\":\"cc.logbook_summary\",\"v\":1},\"scope\":\"LOGBOOK_SUMMARY\",\"type\":\"cc.projection.snapshot.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000600,\"object_id\":\"ccbf0acc-55a7-8f3a-b2b6-5142176bf06d\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "109bb3ab57161631643d109c39f44e7aa045e66095feca4d433c1c6bff3e8e2b",
+      "content_size": 776,
+      "inner_event_id": "254536297d591fc7ae426e7867906b32c1d9befe73dfe3298006c85a6dd8a146",
+      "issued_at": 1786000600,
+      "name": "projection_summary_snapshot"
+    },
+    "wrong_generation": {
+      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"offer\":\"ACQUAINTANCE\",\"type\":\"cc.relationship.offer.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"fdda7260-0a81-8f78-9a32-872a8e555719\",\"issued_at\":1786000100,\"object_id\":\"f84a6a07-c1a5-8abe-ac51-4526d1f13218\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "226639b9c27f03c38b1b8e3c5d576a8895c117c07b3f69fc65f2dee0a3175181",
+      "content_size": 464,
+      "inner_event_id": "90ebf173edfaf34c62ebe2daf8c36073f8ab4ab199f8fb53c7d4d63bddc7765c",
+      "issued_at": 1786000100,
+      "name": "wrong_generation"
+    },
+    "wrong_sender": {
+      "author": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+      "content": "{\"author\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"body\":{\"offer\":\"ACQUAINTANCE\",\"type\":\"cc.relationship.offer.v1\",\"v\":1},\"endpoints\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"generation_id\":\"4026ec6e-92d1-8da9-9520-555f4c674a70\",\"issued_at\":1786000100,\"object_id\":\"f84a6a07-c1a5-8abe-ac51-4526d1f13218\",\"seq\":1,\"type\":\"cc.envelope.v1\",\"v\":1}",
+      "content_sha256": "1d32b8590404f21262c416cd43ec1db680171f6a5c5181a2406c7c0faab1f77b",
+      "content_size": 464,
+      "full_event": "{\"id\":\"ac415bda9c41e0a1e02631f6525663e7d56521749dfd2930856d93f1a9d722b7\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1786000100,\"kind\":1220,\"tags\":[[\"L\",\"com.cruxcoach.private-sharing\"],[\"l\",\"v1\",\"com.cruxcoach.private-sharing\"]],\"content\":\"{\\\"author\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"body\\\":{\\\"offer\\\":\\\"ACQUAINTANCE\\\",\\\"type\\\":\\\"cc.relationship.offer.v1\\\",\\\"v\\\":1},\\\"endpoints\\\":[\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\\\"],\\\"generation_id\\\":\\\"4026ec6e-92d1-8da9-9520-555f4c674a70\\\",\\\"issued_at\\\":1786000100,\\\"object_id\\\":\\\"f84a6a07-c1a5-8abe-ac51-4526d1f13218\\\",\\\"seq\\\":1,\\\"type\\\":\\\"cc.envelope.v1\\\",\\\"v\\\":1}\"}",
+      "full_event_sha256": "284ec0d016e6036c84066ab94b11aec51a39383379e08d839bb291ac4a9137ad",
+      "full_event_size": 792,
+      "inner_event_id": "ac415bda9c41e0a1e02631f6525663e7d56521749dfd2930856d93f1a9d722b7",
+      "issued_at": 1786000100,
+      "name": "wrong_sender"
+    }
+  },
+  "hold_fingerprint": "53db6294f8a7569860457bd81893b03def8ba623bedd8aefef90536a7e0847c3",
+  "hold_preimage_hex": "63632d686f6c64732d76310001000100030000048c000c000004d1000d00000570000e",
+  "inputs": {
+    "account_a": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "account_b": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+    "attempt_id": "9f6c2d81-4b7e-4a3c-9d2f-16b83a7c5e40",
+    "board": {
+      "angle_mdeg": 40000,
+      "ecosystem": "KILTER",
+      "layout_id": 1,
+      "product_id": 1,
+      "size_id": 7,
+      "type": "cc.board",
+      "v": 1
+    },
+    "endpoint_high": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+    "endpoint_low": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "grant_ids": {
+      "LOGBOOK_DETAIL": "019fd5e8-0320-700b-8000-00000000000b",
+      "LOGBOOK_SUMMARY": "019fd5e9-d7e0-700a-8000-00000000000a",
+      "LOGBOOK_SUMMARY_narrowed": "019fd5eb-5e80-700c-8000-00000000000c",
+      "PLAN_DETAIL": "019fd5f2-ffa0-700d-8000-00000000000d"
+    },
+    "group_1_id_hex": "3f1c9d7e5b204a6c8e0f1d2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e",
+    "group_2_id_hex": "0a2b4c6d8e0f10213243546576879809a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    "hold_frames": [
+      [
+        [
+          1164,
+          12
+        ],
+        [
+          1233,
+          13
+        ],
+        [
+          1392,
+          14
+        ]
+      ]
+    ],
+    "local_plan_uuid": "018bcfe5-6800-7000-8000-0000000000bb",
+    "local_session_uuid_1": "018bcfe5-6800-7000-8000-0000000000aa",
+    "local_session_uuid_2": "018bcfe5-6800-7000-8000-0000000000ab",
+    "provider_problem_id": "123"
+  },
+  "note": "Spec oracle fixtures. Reproduced by scripts/verify_private_sharing.py. No product code is executed.",
+  "problem_hash": "1351a2b3db68c914b4812b281cb069531c8e463be73b20c74bb719317a6ddf02",
+  "protocol": "com.cruxcoach.private-sharing/v1",
+  "schema": "cc.fixture.positive.v1"
+}

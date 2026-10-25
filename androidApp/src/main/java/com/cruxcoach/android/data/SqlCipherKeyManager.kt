@@ -67,9 +67,17 @@ class SqlCipherKeyManager(private val prefs: SharedPreferences) {
      * all derived from the single Android Keystore-backed master DB key.
      */
     fun getDerivedKeyForPubkey(pubkeyHex: String): ByteArray {
+        return deriveDatabaseKey(pubkeyHex, INFO_SECURE_DB)
+    }
+
+    /** Separate HKDF domain: native MLS state never reuses SecureDB's key. */
+    fun getDerivedMarmotKeyForPubkey(pubkeyHex: String): ByteArray =
+        deriveDatabaseKey(pubkeyHex, "cruxcoach-marmot-db-v1".toByteArray())
+
+    private fun deriveDatabaseKey(pubkeyHex: String, domain: ByteArray): ByteArray {
         val masterKey = getDecryptedDbKey()
         try {
-            return hkdfSha256(masterKey, pubkeyHex.toByteArray(), INFO_SECURE_DB, 32)
+            return hkdfSha256(masterKey, pubkeyHex.toByteArray(), domain, 32)
         } finally {
             masterKey.fill(0)
         }

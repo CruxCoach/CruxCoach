@@ -114,6 +114,51 @@ object AppModule {
         }
     }
 
+    // ── Personal data sharing (Marmot v2) ─────────────────────────────
+    //
+    // One native host per account behind a single Kotlin chokepoint. The
+    // database key is domain-separated from SecureDB's; account signing stays
+    // behind the existing signer (local key or Amber).
+
+    @Provides
+    @Singleton
+    fun provideMarmotHost(
+        @ApplicationContext context: Context,
+        keyManager: com.cruxcoach.android.data.SqlCipherKeyManager,
+        nostrSigner: NostrSigner,
+        eventSigner: com.cruxcoach.android.sharing.QuartzNip01EventSigner,
+    ): com.cruxcoach.android.sharing.AndroidMarmotHost =
+        com.cruxcoach.android.sharing.AndroidMarmotHost(context, keyManager::getDerivedMarmotKeyForPubkey, nostrSigner, eventSigner)
+
+    @Provides
+    @Singleton
+    fun provideSharingStore(database: SecureDatabase) = com.cruxcoach.android.sharing.SharingStore(database)
+
+    @Provides
+    @Singleton
+    fun provideSharingSource(database: SecureDatabase) = com.cruxcoach.android.sharing.SharingSource(database)
+
+    @Provides
+    @Singleton
+    fun provideSharingSync(
+        store: com.cruxcoach.android.sharing.SharingStore,
+        source: com.cruxcoach.android.sharing.SharingSource,
+    ) = com.cruxcoach.android.sharing.SharingSync(store, source)
+
+    @Provides
+    @Singleton
+    fun provideSharingStep(sync: com.cruxcoach.android.sharing.SharingSync): com.cruxcoach.android.sharing.SharingStep = sync
+
+    @Provides
+    @Singleton
+    fun provideSharingService(
+        host: com.cruxcoach.android.sharing.AndroidMarmotHost,
+        store: com.cruxcoach.android.sharing.SharingStore,
+        sync: com.cruxcoach.android.sharing.SharingSync,
+        source: com.cruxcoach.android.sharing.SharingSource,
+        automation: dagger.Lazy<com.cruxcoach.android.sharing.SharingAutomation>,
+    ) = com.cruxcoach.android.sharing.SharingService(host, store, sync, source, onChanged = { automation.get().nudge() })
+
     @Provides
     @Singleton
     fun provideBoardDatabaseHandle(

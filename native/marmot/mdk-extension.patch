@@ -1,0 +1,39 @@
+--- a/crates/cgka-session/src/lib.rs
++++ b/crates/cgka-session/src/lib.rs
+@@ -589,6 +589,10 @@
+         Ok(self.engine.put_group_evolution(record)?)
+     }
+ 
++    /// CruxCoach host tables share the engine SQLCipher transaction rail.
++    /// Never expose this handle over FFI or to untrusted application payloads.
++    pub fn cruxcoach_storage(&self) -> SqliteAccountStorage { self.storage.clone() }
++
+     pub fn own_leaf_hash(&self, group_id: &GroupId) -> SessionResult<Vec<u8>> {
+         Ok(self.engine.own_leaf_hash(group_id)?)
+     }
+--- a/crates/storage-sqlite/src/lib.rs
++++ b/crates/storage-sqlite/src/lib.rs
+@@ -91,3 +91,5 @@
+     optional_u64_to_i64, serialize, tags_from_json, u64_to_i64, unix_now_ms, unix_now_seconds,
+     unix_now_seconds_i64, usize_to_i64,
+ };
++
++mod cruxcoach_host;
+--- /dev/null
++++ b/crates/storage-sqlite/src/cruxcoach_host.rs
+@@ -0,0 +1,15 @@
++//! CruxCoach host tables on the engine's SQLCipher connection and transaction
++//! rail. MDK neither reads nor migrates them; the host owns their schema and
++//! bounds. Runs inside an enclosing `with_transaction` on the same thread.
++use crate::{SqliteAccountStorage, SqliteResultExt};
++use cgka_traits::storage::StorageResult;
++
++impl SqliteAccountStorage {
++    pub fn cruxcoach_sql<R>(
++        &self,
++        f: impl FnOnce(&rusqlite::Connection) -> rusqlite::Result<R>,
++    ) -> StorageResult<R> {
++        let connection = self.lock()?;
++        f(&connection).storage()
++    }
++}

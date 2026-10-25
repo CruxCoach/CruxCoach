@@ -2,6 +2,39 @@
 
 Start with [the app overview](../README.md), then choose a guide below.
 
+## Permission system v2 (`feat/marmot-permissions-v2`, 2026-09-23)
+
+The [v2 target architecture](architecture/marmot-permissions-v2-target.md)
+([German summary](architecture/marmot-permissions-v2-target-overview.de.md))
+keeps Marmot/MLS as the confidentiality layer and simplifies transport (native
+nostr-sdk pool, in-process relay, replicator), sync (manifest, deltas, resync)
+and policy (local presets and exceptions). This branch implements it; the German
+[tester guide](releases/marmot-permissions-test-guide.md) now describes v2.
+Sections below describe v1.
+
+## Permission feature branch overlay (2026-09-11)
+
+`feat/marmot-permissions-v023` retains the integrated release source and native
+MDK/JNI permission work in the owner's linearized base `4fd3ed337`. The current
+product adds mutually confirmed friendships with independently chosen outgoing
+profile/goals, training log and climb notes, automatic changes/deletions and
+read-only current-data views. Friendship needs one explicit mutual confirmation;
+later owner-chosen scopes need no new recipient acceptance. Ending friendship
+removes both received directions. Legacy consent remains separate. The same
+six relays and optional synthetic server endpoint remain; no backend is required.
+The subsequent [dependency review](architecture/marmot-dependencies.md) retains
+the native host and consolidates Quartz signing. The owner authorized feature
+push/CI/APKTrack publication for that pass; actual publication requires its receipt
+evidence. Main/stable and Android device qualification remain separate.
+Start with the German [permission-system overview and architecture decisions](architecture/marmot-permissions-overview.de.md).
+See [Marmot permissions architecture](architecture/marmot-permissions.md) for
+current behavior, migration rules, threat model, measured relay compatibility and
+remaining CI/device qualification.
+The v1 German tester guide is in the git history of
+[the tester guide](releases/marmot-permissions-test-guide.md), which now covers v2.
+The release-line inventory below describes the imported release source, before
+this feature overlay. It is not evidence of publication or production activation.
+
 ## What state does this describe?
 
 This audit describes source at `4fc067e87` on the **0.2.3 preparation line**,

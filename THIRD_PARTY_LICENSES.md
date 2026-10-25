@@ -287,3 +287,20 @@ When bundling a third-party asset (image, font, model, dataset):
    restrictions on redistribution.
 2. If the license requires it, surface the attribution in the app's about /
    credits screen (a JSON under `androidApp/aboutlibraries/`, as above).
+
+## Source-built Marmot native library
+
+The account-device JNI host builds a hash-pinned MDK/OpenMLS dependency tree.
+Its exact sources, license expressions and notice hashes are recorded in
+[`native/marmot/licenses/dependencies.json`](native/marmot/licenses/dependencies.json).
+The consolidated [notices](native/marmot/licenses/THIRD-PARTY-NOTICES.txt), including
+MDK's MIT notice, are packaged as Android assets. CruxCoach's local adapter follows
+the repository GPL-3.0 license. See the [native build documentation](native/marmot/README.md)
+for source reproduction. No prebuilt third-party binary is committed.
+
+Since the v2 host (2026-09-23) the same inventory also covers the exact-pinned
+rust-nostr crates that carry transport: `nostr-sdk` 0.44.1, `nostr-relay-pool`
+0.44.3, `nostr-relay-builder` 0.44.0 and `nostr-database` 0.44.0 (MIT, copyright
+Yuki Kishimoto), plus their transitive dependencies such as `async-wsocket` 0.13.2
+and `negentropy` 0.5.0 (MIT, same author). `native/marmot/collect_licenses.py`
+regenerates the inventory for the Android target from `Cargo.lock`.
