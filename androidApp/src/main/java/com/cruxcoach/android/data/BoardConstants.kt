@@ -470,6 +470,18 @@ object BoardConstants {
             }
         }
 
+        // Shiny Wall variants are distinct walls, like MoonBoard variants.
+        com.cruxcoach.domain.board.ShinyWallVariant.SUPPORTED.forEach { v ->
+            if (Pair(BoardBrand.SHINYWALL.wireValue, v.layoutId.toInt()) in loggedBoards) {
+                options += HeatmapBoardOption(
+                    brandWire = BoardBrand.SHINYWALL.wireValue,
+                    layoutId = v.layoutId.toInt(),
+                    sizeId = v.productSizeId.toInt(),
+                    displayName = "${BoardBrand.SHINYWALL.displayName} ${v.displayName}",
+                )
+            }
+        }
+
         // MoonBoard variants the user has logged on — only when MoonBoard can
         // actually render a heatmap. Today it can't (hasHeatmap = false: the
         // canvas overlays Aurora hole coordinates, which MoonBoard lacks — its

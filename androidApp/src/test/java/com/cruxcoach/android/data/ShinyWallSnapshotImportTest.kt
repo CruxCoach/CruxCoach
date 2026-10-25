@@ -75,7 +75,7 @@ class ShinyWallSnapshotImportTest {
             shiny_count INTEGER, benchmark INTEGER, PRIMARY KEY (route_id, angle))""")
         db.execSQL("INSERT INTO meta VALUES ('schema','shinywall_snapshot_v1')")
         db.execSQL("""INSERT INTO routes VALUES
-            ('route-a','Test Arete','6B+',30,'st1',1,0,NULL,0,12,'2026-07-25T09:22:23Z'),
+            ('route-a','Test Arete','6B+',30,'st1',1,0,NULL,5,12,'2026-07-25T09:22:23Z'),
             ('route-b','Test Project','PROJECT',45,'st5',0,1,NULL,0,3,'2026-07-26T10:00:00Z')""")
         db.execSQL("""INSERT INTO route_holds VALUES
             ('route-a','st1',0,'start'),('route-a','st1',12,'hand'),('route-a','st1',40,'foot'),('route-a','st1',310,'top'),
@@ -98,7 +98,7 @@ class ShinyWallSnapshotImportTest {
             assertEquals(1, count(db, "SELECT COUNT(*) FROM climbs WHERE uuid='$ownUuid'"))
             assertEquals(4, count(db, "SELECT COUNT(*) FROM placement_roles WHERE board_brand='shinywall'"))
             val st1Uuid = ShinyWallSnapshot.climbUuid("route-a", ShinyWallVariant.ST1)
-            db.rawQuery("SELECT layout_id,frames,is_nomatch,method,name FROM climbs WHERE uuid=?", arrayOf(st1Uuid)).use { c ->
+            db.rawQuery("SELECT layout_id,frames,is_nomatch,method,name,hsm FROM climbs WHERE uuid=?", arrayOf(st1Uuid)).use { c ->
                 assertTrue(c.moveToFirst())
                 assertEquals(9302, c.getInt(0))
                 val frames = c.getBlob(1).decodeToString()
@@ -106,6 +106,11 @@ class ShinyWallSnapshotImportTest {
                 assertEquals(1, c.getInt(2))
                 assertTrue(c.isNull(3))
                 assertEquals("Test Arete", c.getString(4))
+                // style 5 = Technical + Crimpy; neither foot rule.
+                assertEquals(
+                    setOf(com.cruxcoach.domain.board.ShinyWallTag.TECHNICAL, com.cruxcoach.domain.board.ShinyWallTag.CRIMPY),
+                    com.cruxcoach.domain.board.ShinyWallTag.presentTags(c.getLong(5)),
+                )
             }
             db.rawQuery(
                 "SELECT angle,display_difficulty,difficulty_average,quality_average,ascensionist_count,benchmark_difficulty,layout_id " +
@@ -127,9 +132,13 @@ class ShinyWallSnapshotImportTest {
                 assertTrue(c.isNull(5))
             }
             val projectUuid = ShinyWallSnapshot.climbUuid("route-b", ShinyWallVariant.ST5)
-            db.rawQuery("SELECT method FROM climbs WHERE uuid=?", arrayOf(projectUuid)).use { c ->
+            db.rawQuery("SELECT method, hsm FROM climbs WHERE uuid=?", arrayOf(projectUuid)).use { c ->
                 assertTrue(c.moveToFirst())
-                assertEquals("method_footless", c.getString(0))
+                assertTrue(c.isNull(0))
+                assertEquals(
+                    setOf(com.cruxcoach.domain.board.ShinyWallTag.ONLY_HANDS),
+                    com.cruxcoach.domain.board.ShinyWallTag.presentTags(c.getLong(1)),
+                )
             }
             db.rawQuery("SELECT angle, display_difficulty FROM climb_stats WHERE climb_uuid=?", arrayOf(projectUuid)).use { c ->
                 assertTrue(c.moveToFirst())

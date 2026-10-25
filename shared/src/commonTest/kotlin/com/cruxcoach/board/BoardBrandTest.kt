@@ -103,9 +103,8 @@ class BoardBrandTest {
         assertEquals(true, BoardBrand.QUANTUM.supportsAuthoring)
         assertEquals(false, BoardBrand.AURORA.supportsAuthoring)
         assertEquals(false, BoardBrand.TWELVECLIMB.supportsAuthoring)
-        // Shiny Wall is browse-and-light only until its geometry is verified.
-        assertEquals(false, BoardBrand.SHINYWALL.supportsAuthoring)
-        BoardBrand.entries.filter { it != BoardBrand.SHINYWALL }.forEach {
+        assertEquals(true, BoardBrand.SHINYWALL.supportsAuthoring)
+        BoardBrand.entries.forEach {
             assertEquals(it.isInteractive, it.supportsAuthoring)
         }
         // Official-app publish (push to the vendor's own app) remains
@@ -148,7 +147,7 @@ class BoardBrandTest {
         assertEquals(false, shiny.usesAuroraProtocol)
         assertEquals(true, shiny.usesAuroraPlacements)
         assertEquals(false, shiny.usesLedPreview)
-        assertEquals(false, shiny.hasHeatmap)
+        assertEquals(true, shiny.hasHeatmap)
         assertEquals(true, shiny.usesCatalogueAngles)
         assertEquals(false, shiny.supportsClimbTypeFilter)
         assertEquals(true, shiny.supportsBenchmarkFilter)

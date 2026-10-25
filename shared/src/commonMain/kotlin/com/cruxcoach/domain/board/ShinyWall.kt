@@ -15,12 +15,14 @@ package com.cruxcoach.domain.board
  * `placements` table is keyed by (brand, placement_id) without a layout, so a
  * hold's placement id carries its variant: `slot * 1_000_000 + index`.
  *
- * [holdCount] is the number of physical holds the controller expects in a
- * state vector. Until the official geometry is available these are the
- * highest hold numbers used by the catalogue plus one — a lower bound, which
- * is the safe side: the wall is cleared before every route, so a short vector
- * leaves the remaining holds dark instead of addressing holds that do not
- * exist. [holdCountVerified] records that.
+ * [holdCount] is the length of the controller's state vector, from the
+ * derived hold table that also ships as the bundled geometry
+ * (scripts/build_shinywall_geometry.py): it includes placeholder indices
+ * without a hold (always sent as off). Standard, Full and Max Full are
+ * certain; Max may be one longer than the catalogue proves (475 used); the
+ * Mini's small-hold rows are inferred. The wall is cleared before every
+ * route, so a length that differs slightly leaves holds dark rather than
+ * lighting wrong ones.
  */
 enum class ShinyWallVariant(
     val code: String,
@@ -35,9 +37,9 @@ enum class ShinyWallVariant(
     /** False while the variant has no catalogue content or verified layout. */
     val supported: Boolean,
 ) {
-    ST0("st0", "Standard Mini", 9301, 9401, 12, 29, 239, "ST0", supported = true),
+    ST0("st0", "Standard Mini", 9301, 9401, 12, 29, 249, "ST0", supported = true),
     ST1("st1", "Standard", 9302, 9402, 12, 35, 311, "STP", supported = true),
-    ST2("st2", "Standard Max", 9303, 9403, 18, 35, 475, "STM", supported = true),
+    ST2("st2", "Standard Max", 9303, 9403, 18, 35, 476, "STM", supported = true),
     // No catalogue problem uses st3 and its layout is unconfirmed.
     ST3("st3", "Standard Mini Full", 9304, 9404, 12, 29, 0, null, supported = false),
     ST4("st4", "Standard Full", 9305, 9405, 12, 35, 401, "STF", supported = true),
@@ -45,8 +47,6 @@ enum class ShinyWallVariant(
 
     /** Wall angles the catalogue sets problems at: 0..60 degrees in 5 degree steps. */
     val angles: List<Int> get() = ANGLES
-
-    val holdCountVerified: Boolean get() = false
 
     private val slot: Int get() = (layoutId - LAYOUT_BASE).toInt()
 
@@ -292,5 +292,50 @@ object ShinyWallCatalogue {
         return parsed.distinctBy { it.second }
             .sortedWith(compareBy({ it.first.ordinal }, { it.second }))
             .joinToString("") { (role, index) -> "p${variant.placementId(index)}r${role.roleId}" }
+    }
+}
+
+/**
+ * Categories and rules a Shiny Wall catalogue route carries: the five style
+ * categories (in the catalogue's `style` order) and the two foot rules.
+ *
+ * Stored in `climbs.hsm` as the bits of the tags a route LACKS, so the
+ * browser's existing `(hsm & mask) = 0` predicate keeps exactly the routes
+ * that have every selected tag (Quantum stores its rules the same way). The
+ * bits sit above Quantum's, so a filter mask carried over from the other
+ * family can never exclude a route here. A catalogue route always lacks one
+ * of the two contradictory foot rules, so an all-clear tag field means "no
+ * tag information" (own and community climbs), not "every tag".
+ */
+enum class ShinyWallTag(val bit: Long) {
+    TECHNICAL(1L shl 8),
+    PHYSICAL(1L shl 9),
+    CRIMPY(1L shl 10),
+    ENDURANCE(1L shl 11),
+    CRUXY(1L shl 12),
+
+    /** Hand holds may not be used as footholds. */
+    ONLY_HANDS(1L shl 13),
+
+    /** Any hold on the wall may be used as a foothold. */
+    OPEN_FEET(1L shl 14);
+
+    companion object {
+        /** Style categories in the catalogue's `style` flag order. */
+        val STYLES: List<ShinyWallTag> = listOf(TECHNICAL, PHYSICAL, CRIMPY, ENDURANCE, CRUXY)
+
+        val ALL_BITS: Long = entries.fold(0L) { acc, tag -> acc or tag.bit }
+
+        fun fromStyleMask(styleMask: Int): Set<ShinyWallTag> =
+            STYLES.filterIndexedTo(mutableSetOf()) { index, _ -> (styleMask shr index) and 1 == 1 }
+
+        /** The `hsm` value for a catalogue route with [present] tags. */
+        fun missingMask(present: Set<ShinyWallTag>): Long =
+            entries.filter { it !in present }.fold(0L) { acc, tag -> acc or tag.bit }
+
+        /** Tags of a stored climb; empty when it carries no tag information. */
+        fun presentTags(hsm: Long): Set<ShinyWallTag> =
+            if (hsm and ALL_BITS == 0L) emptySet()
+            else entries.filterTo(mutableSetOf()) { hsm and it.bit == 0L }
     }
 }

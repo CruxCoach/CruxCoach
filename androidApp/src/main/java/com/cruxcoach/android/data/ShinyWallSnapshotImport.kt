@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.database.sqlite.SQLiteDatabase
 import com.cruxcoach.domain.board.ShinyWallCatalogue
+import com.cruxcoach.domain.board.ShinyWallTag
 import com.cruxcoach.domain.board.ShinyWallVariant
 import java.util.UUID
 
@@ -28,7 +29,17 @@ internal object ShinyWallSnapshot {
         val noMatching: Boolean,
         val onlyHands: Boolean,
         val updatedAt: String?,
-    )
+        val styleMask: Int = 0,
+        val openFeet: Boolean = false,
+    ) {
+        /** Categories and foot rules of this route ([ShinyWallTag]). */
+        val tags: Set<ShinyWallTag>
+            get() = ShinyWallTag.fromStyleMask(styleMask) +
+                listOfNotNull(
+                    ShinyWallTag.ONLY_HANDS.takeIf { onlyHands },
+                    ShinyWallTag.OPEN_FEET.takeIf { openFeet },
+                )
+    }
 
     data class Stat(
         val routeId: String,
@@ -54,7 +65,8 @@ internal object ShinyWallSnapshot {
         val frames: String,
         val createdAt: String?,
         val isNomatch: Boolean,
-        val method: String?,
+        /** Missing-tag bits ([ShinyWallTag.missingMask]) for the browser's tag filter. */
+        val hsm: Long,
     )
 
     data class StatRow(
@@ -103,7 +115,7 @@ internal object ShinyWallSnapshot {
                     frames = frames,
                     createdAt = route.updatedAt,
                     isNomatch = route.noMatching,
-                    method = if (route.onlyHands) "method_footless" else null,
+                    hsm = ShinyWallTag.missingMask(route.tags),
                 )
                 val published = ShinyWallCatalogue.difficultyForGrade(route.grade)?.toDouble()
                 val routeStats = statsByRoute[route.id].orEmpty().associateBy { it.angle }
@@ -144,7 +156,7 @@ internal object ShinyWallSnapshot {
 
         val routes = mutableListOf<Route>()
         db.rawQuery(
-            "SELECT id, name, grade, angle, no_matching, only_hands, updated_at FROM $alias.routes",
+            "SELECT id, name, grade, angle, no_matching, only_hands, updated_at, style_mask, open_feet FROM $alias.routes",
             null,
         ).use { c ->
             while (c.moveToNext()) {
@@ -156,6 +168,8 @@ internal object ShinyWallSnapshot {
                     noMatching = !c.isNull(4) && c.getInt(4) != 0,
                     onlyHands = !c.isNull(5) && c.getInt(5) != 0,
                     updatedAt = if (c.isNull(6)) null else c.getString(6),
+                    styleMask = if (c.isNull(7)) 0 else c.getInt(7),
+                    openFeet = !c.isNull(8) && c.getInt(8) != 0,
                 )
             }
         }

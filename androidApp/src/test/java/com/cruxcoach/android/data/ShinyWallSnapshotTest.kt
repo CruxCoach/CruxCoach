@@ -4,6 +4,7 @@ import com.cruxcoach.android.data.blossom.BlossomChunk
 import com.cruxcoach.android.data.blossom.BlossomManifest
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.ShinyWallTag
 import com.cruxcoach.domain.board.ShinyWallVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,7 +21,9 @@ class ShinyWallSnapshotTest {
         angle: Int? = 30,
         noMatching: Boolean = false,
         onlyHands: Boolean = false,
-    ) = ShinyWallSnapshot.Route(id, "Route $id", grade, angle, noMatching, onlyHands, "2026-07-25T09:22:23Z")
+        styleMask: Int = 0,
+        openFeet: Boolean = false,
+    ) = ShinyWallSnapshot.Route(id, "Route $id", grade, angle, noMatching, onlyHands, "2026-07-25T09:22:23Z", styleMask, openFeet)
 
     private val holds = listOf(0 to "start", 5 to "hand", 7 to "foot", 300 to "top")
 
@@ -47,17 +50,28 @@ class ShinyWallSnapshotTest {
     }
 
     @Test
-    fun `route flags become no-match and footless`() {
+    fun `route flags become no-match and filterable tags`() {
         val plan = ShinyWallSnapshot.plan(
             ShinyWallSnapshot.Contents(
-                routes = listOf(route("a", noMatching = true), route("b", onlyHands = true)),
-                holds = mapOf("a" to mapOf("st1" to holds), "b" to mapOf("st1" to holds)),
+                routes = listOf(
+                    route("a", noMatching = true),
+                    route("b", onlyHands = true, styleMask = 0b00110),
+                    route("c", openFeet = true),
+                ),
+                holds = mapOf("a" to mapOf("st1" to holds), "b" to mapOf("st1" to holds), "c" to mapOf("st1" to holds)),
                 stats = emptyList(),
             ),
         )
-        assertEquals(true, plan.climbs.first { it.name == "Route a" }.isNomatch)
-        assertNull(plan.climbs.first { it.name == "Route a" }.method)
-        assertEquals("method_footless", plan.climbs.first { it.name == "Route b" }.method)
+        val byName = plan.climbs.associateBy { it.name }
+        assertEquals(true, byName.getValue("Route a").isNomatch)
+        assertEquals(false, byName.getValue("Route b").isNomatch)
+        assertEquals(
+            setOf(ShinyWallTag.PHYSICAL, ShinyWallTag.CRIMPY, ShinyWallTag.ONLY_HANDS),
+            ShinyWallTag.presentTags(byName.getValue("Route b").hsm),
+        )
+        assertEquals(setOf(ShinyWallTag.OPEN_FEET), ShinyWallTag.presentTags(byName.getValue("Route c").hsm))
+        assertEquals(emptySet(), ShinyWallTag.presentTags(byName.getValue("Route a").hsm))
+        assertNotEquals(0L, byName.getValue("Route a").hsm)
     }
 
     @Test

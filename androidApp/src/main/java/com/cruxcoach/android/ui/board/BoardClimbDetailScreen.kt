@@ -2522,6 +2522,18 @@ private fun ClimbDetailInfoSheet(
                 climb.method?.let { MethodBadge(it) }
                 if (climb.benchmarkDifficulty > 0.0) BenchmarkBadge()
             }
+            if (climb.brand == BoardBrand.SHINYWALL) {
+                // Categories and foot rules of a Shiny Wall catalogue route.
+                val tags = com.cruxcoach.domain.board.ShinyWallTag.presentTags(climb.hsm)
+                if (tags.isNotEmpty()) {
+                    Text(
+                        tags.sortedBy { it.ordinal }.map { stringResource(shinyWallTagLabel(it)) }.joinToString(" · "),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = OrangeAccent,
+                    )
+                }
+            }
             climb.faUsername?.let { username ->
                 val date = climb.faAt?.let(::formatAscentDate)
                 Text(

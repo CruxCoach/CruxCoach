@@ -98,7 +98,12 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
         if (state.filter.ungradedOnly) add(stringResource(R.string.board_filter_ungraded_only))
         if (state.filter.originFilter != OriginFilter.ALL) add(stringResource(R.string.board_filter_origin))
         if (state.filter.climbTypeFilter != ClimbTypeFilter.BOULDER) add(stringResource(R.string.board_filter_type))
-        if (state.filter.quantumRuleMask != 0L) add(stringResource(R.string.board_filter_quantum_rules))
+        if (state.filter.quantumRuleMask != 0L) {
+            add(stringResource(
+                if (activeBrand == BoardBrand.SHINYWALL) R.string.board_filter_shinywall_tags
+                else R.string.board_filter_quantum_rules
+            ))
+        }
         if (state.filter.quantumOverlapFilter.active) add(stringResource(R.string.board_filter_quantum_overlap_title))
     }
     val compactReset = LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale > 1.3f
@@ -333,6 +338,29 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                         modifier = Modifier.testTag("board_filter_quantum_overlap_hint"),
                     )
                 }
+                if (activeBrand == BoardBrand.SHINYWALL) {
+                    Text(
+                        stringResource(R.string.board_filter_shinywall_tags),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        com.cruxcoach.domain.board.ShinyWallTag.entries.forEach { tag ->
+                            FilterChip(
+                                selected = (state.filter.quantumRuleMask and tag.bit) != 0L,
+                                onClick = { viewModel.toggleShinyWallTagFilter(tag) },
+                                label = { Text(stringResource(shinyWallTagLabel(tag)), style = MaterialTheme.typography.bodyLarge) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                                    selectedLabelColor = OrangeAccent
+                                ),
+                            )
+                        }
+                    }
+                }
 
 
             }
@@ -407,4 +435,15 @@ private fun FilterTermInfoDialog(onDismiss: () -> Unit) {
 @Composable
 private fun FilterTermEntry(termRes: Int, descriptionRes: Int) {
     InfoText(stringResource(termRes) + "\n" + stringResource(descriptionRes))
+}
+
+/** Label of a Shiny Wall category or foot rule (shared by the filter and the detail screen). */
+internal fun shinyWallTagLabel(tag: com.cruxcoach.domain.board.ShinyWallTag): Int = when (tag) {
+    com.cruxcoach.domain.board.ShinyWallTag.TECHNICAL -> R.string.board_shinywall_tag_technical
+    com.cruxcoach.domain.board.ShinyWallTag.PHYSICAL -> R.string.board_shinywall_tag_physical
+    com.cruxcoach.domain.board.ShinyWallTag.CRIMPY -> R.string.board_shinywall_tag_crimpy
+    com.cruxcoach.domain.board.ShinyWallTag.ENDURANCE -> R.string.board_shinywall_tag_endurance
+    com.cruxcoach.domain.board.ShinyWallTag.CRUXY -> R.string.board_shinywall_tag_cruxy
+    com.cruxcoach.domain.board.ShinyWallTag.ONLY_HANDS -> R.string.board_shinywall_tag_only_hands
+    com.cruxcoach.domain.board.ShinyWallTag.OPEN_FEET -> R.string.board_shinywall_tag_open_feet
 }
