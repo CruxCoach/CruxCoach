@@ -60,6 +60,8 @@ data class BleConnectionState(
     val lastUsedBoardAddresses: Map<BoardBrand, String> = emptyMap(),
     val rememberedBoardControllers: Map<BoardBrand, RememberedBoardController> = emptyMap(),
     val activeBoardBrand: BoardBrand = BoardBrand.KILTER,
+    /** The active board's layout; with a Shiny Wall it names the chosen variant. */
+    val activeLayoutId: Long? = null,
     val rememberedBoardControllersLoaded: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val connectedBoardName: String? = null,
@@ -283,12 +285,14 @@ class BleConnectionViewModel @Inject constructor(
                 userPreferences.boardBrand,
                 userPreferences.lastUsedBoardAddresses,
                 userPreferences.rememberedBoardControllers,
-            ) { brandWire, addresses, controllers ->
-                Triple(BoardBrand.fromWire(brandWire), addresses, controllers)
-            }.collect { (activeBrand, addresses, controllers) ->
+                userPreferences.boardLayoutId,
+            ) { brandWire, addresses, controllers, layoutId ->
+                ActiveBoardPrefs(BoardBrand.fromWire(brandWire), addresses, controllers, layoutId.toLong())
+            }.collect { (activeBrand, addresses, controllers, layoutId) ->
                 _state.update {
                     it.copy(
                         activeBoardBrand = activeBrand,
+                        activeLayoutId = layoutId,
                         lastUsedBoardAddresses = addresses,
                         rememberedBoardControllers = controllers,
                         rememberedBoardControllersLoaded = true,
@@ -802,3 +806,10 @@ class BleConnectionViewModel @Inject constructor(
     }
 
 }
+
+private data class ActiveBoardPrefs(
+    val brand: BoardBrand,
+    val addresses: Map<BoardBrand, String>,
+    val controllers: Map<BoardBrand, com.cruxcoach.android.data.RememberedBoardController>,
+    val layoutId: Long,
+)

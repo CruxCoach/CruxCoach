@@ -665,7 +665,13 @@ private fun BoardMismatchExplanation(mismatch: BoardConfigurationMismatch) {
             mismatch.activeBrand?.displayName ?: mismatch.expectedBrand.displayName,
             mismatch.expectedBrand.displayName,
         )
-        BoardMismatchKind.CONNECTED_MODEL -> stringResource(R.string.board_mismatch_connected_model)
+        BoardMismatchKind.CONNECTED_MODEL -> if (mismatch.expectedBrand == BoardBrand.SHINYWALL) {
+            stringResource(
+                R.string.board_mismatch_shinywall_variant,
+                mismatch.climbLayoutId?.let(ShinyWallVariant::fromLayoutId)?.displayName.orEmpty(),
+                mismatch.activeLayoutId?.let(ShinyWallVariant::fromLayoutId)?.displayName.orEmpty(),
+            )
+        } else stringResource(R.string.board_mismatch_connected_model)
         BoardMismatchKind.ACTIVE_LAYOUT -> stringResource(R.string.board_mismatch_active_layout)
         BoardMismatchKind.ACTIVE_SIZE -> stringResource(R.string.board_mismatch_active_size)
     }
@@ -717,13 +723,18 @@ internal fun BoardImageChoiceRow(
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val shinyVariant = layoutId?.let { ShinyWallVariant.fromBoardSelection(it, brand) }
             ZoomableBoardPreview(
                 brand = brand, sizeId = sizeId, layoutId = layoutId,
                 modifier = Modifier.width(104.dp).height(144.dp),
                 imageLabel = label,
                 fallback = {
-                    Box(Modifier.width(104.dp).height(144.dp), contentAlignment = Alignment.Center) {
-                        Text(stringResource(R.string.board_preview_unavailable), style = MaterialTheme.typography.bodySmall)
+                    if (shinyVariant != null) {
+                        ShinyWallSchematic(shinyVariant, Modifier.width(104.dp).height(144.dp).padding(6.dp))
+                    } else {
+                        Box(Modifier.width(104.dp).height(144.dp), contentAlignment = Alignment.Center) {
+                            Text(stringResource(R.string.board_preview_unavailable), style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 },
             )
@@ -745,4 +756,37 @@ internal fun BoardImageChoiceRow(
 sealed interface BluetoothFamilyResult {
     data class Detected(val brand: BoardBrand) : BluetoothFamilyResult
     data object None : BluetoothFamilyResult
+}
+
+/**
+ * Schematic Shiny Wall variant for the picker: the big-hold rows (every second
+ * one shifted by half a hold) and, on Full walls, the small holds between
+ * them. Drawn from the variant's proportions; there is no wall photo.
+ */
+@Composable
+private fun ShinyWallSchematic(variant: ShinyWallVariant, modifier: Modifier = Modifier) {
+    val big = MaterialTheme.colorScheme.onSurfaceVariant
+    val small = big.copy(alpha = 0.45f)
+    val bigRows = if (variant == ShinyWallVariant.ST0 || variant == ShinyWallVariant.ST3) 14 else 18
+    val withSmallHolds = variant == ShinyWallVariant.ST4 || variant == ShinyWallVariant.ST5
+    androidx.compose.foundation.Canvas(modifier) {
+        val columns = variant.columns
+        val cell = minOf(size.width / columns, size.height / bigRows)
+        val left = (size.width - cell * columns) / 2f + cell / 2f
+        val bottom = size.height - (size.height - cell * bigRows) / 2f - cell / 2f
+        for (row in 0 until bigRows) {
+            val shifted = row % 2 == 1
+            val y = bottom - row * cell
+            for (column in 0 until if (shifted) columns - 1 else columns) {
+                val x = left + (column + if (shifted) 0.5f else 0f) * cell
+                drawCircle(big, radius = cell * 0.24f, center = androidx.compose.ui.geometry.Offset(x, y))
+            }
+            if (withSmallHolds && row < bigRows - 1) {
+                for (column in 0 until columns - 1) {
+                    val x = left + (column + 0.5f) * cell
+                    drawCircle(small, radius = cell * 0.12f, center = androidx.compose.ui.geometry.Offset(x, y - cell / 2f))
+                }
+            }
+        }
+    }
 }
