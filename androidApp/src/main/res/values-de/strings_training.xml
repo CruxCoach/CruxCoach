@@ -154,6 +154,7 @@
     </plurals>
     <string name="export_training_part_missing">Trainings-, Körper- und Ernährungsdaten ließen sich nicht lesen und fehlen in dieser Datei.</string>
     <string name="import_training_part_failed">Trainings-, Körper- und Ernährungsdaten ließen sich nicht wiederherstellen; alles andere ist da.</string>
+    <string name="export_select_all_but_health">Alle außer Gesundheitsdaten</string>
     <string name="export_json_only_hint">Training, Körper, Ernährung und Verletzungen sind nur im JSON-Backup enthalten.</string>
     <string name="tr_tab_today">Heute</string>
     <string name="tr_tab_workouts">Workouts</string>

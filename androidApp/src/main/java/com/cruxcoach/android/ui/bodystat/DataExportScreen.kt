@@ -193,8 +193,11 @@ fun DataExportScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    TextButton(onClick = { viewModel.selectAllExportCategories() }) {
-                        Text(stringResource(R.string.bodystat_all), style = MaterialTheme.typography.labelSmall)
+                    // "All" leaves the opt-in health data out; the button says so (device test 2026-10-25).
+                    val healthListed = categoriesFor(state.exportFormat).any { it in OPT_IN_CATEGORIES }
+                    TextButton(onClick = { viewModel.selectAllExportCategories() }, modifier = Modifier.testTag("export_select_all")) {
+                        Text(stringResource(if (healthListed) R.string.export_select_all_but_health else R.string.bodystat_all),
+                            style = MaterialTheme.typography.labelSmall)
                     }
                     TextButton(onClick = { viewModel.deselectAllExportCategories() }) {
                         Text(stringResource(R.string.bodystat_none), style = MaterialTheme.typography.labelSmall)
