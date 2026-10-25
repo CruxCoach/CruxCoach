@@ -117,6 +117,9 @@ internal fun GymBoardSearchSheet(
                     BoardBrand.MOONBOARD ->
                         MoonBoardVariant.fromLayoutId(opt.layoutId.toLong())
                             ?.let { boardPickerViewModel.selectMoonBoard(it) }
+                    BoardBrand.SHINYWALL ->
+                        com.cruxcoach.domain.board.ShinyWallVariant.fromLayoutId(opt.layoutId.toLong())
+                            ?.let { boardPickerViewModel.selectShinyWall(it, deferDownloads) }
                     BoardBrand.KILTER ->
                         // fixedAngle is non-null only for a fixed-angle wall → seeds the
                         // browse angle; adjustable walls leave it to the user.

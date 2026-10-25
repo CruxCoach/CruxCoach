@@ -56,6 +56,9 @@ internal fun boardBrowserHeaderContext(
         }
         BoardBrand.MOONBOARD ->
             MoonBoardVariant.fromLayoutId(layoutId.toLong())?.displayName ?: brand.displayName
+        BoardBrand.SHINYWALL ->
+            com.cruxcoach.domain.board.ShinyWallVariant.fromLayoutId(layoutId.toLong())
+                ?.let { "${brand.displayName} ${it.displayName}" } ?: brand.displayName
         else -> BoardConstants.auroraVariant(brand, layoutId)?.displayName ?: brand.displayName
     }
     val size = boardSize

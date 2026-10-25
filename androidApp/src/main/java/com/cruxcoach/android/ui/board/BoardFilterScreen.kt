@@ -240,7 +240,11 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 val originOptions = buildList {
                     add(OriginFilter.ALL to stringResource(R.string.board_filter_all))
                     add(OriginFilter.CRUXCOACH to stringResource(R.string.board_filter_origin_cruxcoach))
-                    add(OriginFilter.KILTER to stringResource(if (activeBrand == BoardBrand.QUANTUM) R.string.board_filter_origin_quantum else R.string.board_filter_origin_kilter))
+                    add(OriginFilter.KILTER to stringResource(when (activeBrand) {
+                        BoardBrand.QUANTUM -> R.string.board_filter_origin_quantum
+                        BoardBrand.SHINYWALL -> R.string.board_filter_origin_shinywall
+                        else -> R.string.board_filter_origin_kilter
+                    }))
                     if (activeBrand.supportsBoardSeshOrigin) add(OriginFilter.BOARDSESH to stringResource(R.string.board_filter_origin_boardsesh))
                 }
                 FilterChoiceRow(stringResource(R.string.board_filter_origin), state.filter.originFilter, originOptions, "board_filter_origin", viewModel::updateOriginFilter)

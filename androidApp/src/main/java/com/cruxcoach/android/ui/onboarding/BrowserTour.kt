@@ -66,6 +66,7 @@ internal fun onboardingBoardSuggestion(board: com.cruxcoach.android.ble.Discover
         name.startsWith("soill") -> com.cruxcoach.domain.board.BoardBrand.SOILL
         name.startsWith("touchstone") -> com.cruxcoach.domain.board.BoardBrand.TOUCHSTONE
         name.startsWith("quantum") -> com.cruxcoach.domain.board.BoardBrand.QUANTUM
+        board.boardBrand == com.cruxcoach.domain.board.BoardBrand.SHINYWALL -> com.cruxcoach.domain.board.BoardBrand.SHINYWALL
         else -> null
     }
 }
