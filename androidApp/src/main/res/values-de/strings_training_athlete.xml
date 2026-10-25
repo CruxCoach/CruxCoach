@@ -17,6 +17,8 @@
     <string name="tra_injury_pain">Schmerz: %1$d von 9</string>
     <string name="tra_injury_pause_climbing">Klettern pausieren</string>
     <string name="tra_injury_resolve">Ist vorbei</string>
+    <string name="tra_injury_reopen">Wieder öffnen</string>
+    <string name="tra_injury_deleted">Verletzung gelöscht</string>
     <string name="tra_injury_where">Wo?</string>
     <string name="tra_injury_side">Seite</string>
     <string name="tra_injury_detail">Details (z. B. Ringfinger A2)</string>

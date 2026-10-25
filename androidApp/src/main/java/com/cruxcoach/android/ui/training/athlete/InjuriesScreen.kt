@@ -27,6 +27,7 @@ import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
+import com.cruxcoach.athlete.model.ComebackEntry
 import com.cruxcoach.athlete.model.Injury
 import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.InjurySide
@@ -86,7 +87,30 @@ class InjuriesViewModel @Inject constructor(private val service: AthleteService)
         }
     }
 
-    fun delete(injury: Injury) = io { service.repo.deleteInjury(injury.id) }
+    /** A deleted injury with its comeback diary, kept for "Undo". */
+    data class Deleted(val injury: Injury, val diary: List<ComebackEntry>)
+
+    private val _deleted = MutableSharedFlow<Deleted>(extraBufferCapacity = 1)
+    val deleted: SharedFlow<Deleted> = _deleted.asSharedFlow()
+
+    /** Deletes the injury with its comeback diary; [undoDelete] brings both back. */
+    fun delete(injury: Injury) = io {
+        val repo = service.repo
+        val diary = repo.comebackEntries(injury.id)
+        repo.deleteInjury(injury.id)
+        _deleted.emit(Deleted(injury, diary))
+    }
+
+    fun undoDelete(deleted: Deleted) = io {
+        val repo = service.repo
+        repo.transaction {
+            repo.saveInjury(deleted.injury)
+            deleted.diary.forEach { repo.saveComebackEntry(it) }
+        }
+    }
+
+    /** A past injury that is back: open again, with its plan and diary as they were. */
+    fun reopen(injury: Injury) = io { service.repo.saveInjury(injury.copy(resolvedOn = null, updatedAt = System.currentTimeMillis())) }
 
     fun setHealthInBackup(on: Boolean) = io { service.repo.updateProfile { it.copy(healthInCloudBackup = on) } }
 
@@ -110,9 +134,21 @@ fun InjuriesScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var adding by rememberSaveable { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    val deletedText = stringResource(R.string.tra_injury_deleted)
+    val undoText = stringResource(R.string.trb_undo)
+    // A newer deletion replaces the snackbar of the one before.
+    LaunchedEffect(viewModel) {
+        viewModel.deleted.collectLatest { d ->
+            if (snackbar.showSnackbar(deletedText, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                viewModel.undoDelete(d)
+            }
+        }
+    }
     TrainingScaffold(
         title = stringResource(R.string.tra_injuries_title),
         onBack = onBack,
+        snackbarHost = { SnackbarHost(snackbar) },
         actions = { InfoButton(stringResource(R.string.tra_injuries_info_title), stringResource(R.string.tra_injuries_info_text)) },
         floatingActionButton = {
             // The FAB's merged node carries no text of its own (device dump 2026-10-19): TalkBack needs the label.
@@ -169,9 +205,23 @@ fun InjuriesScreen(
             if (state.past.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.tra_injuries_past)) }
                 items(state.past.take(20), key = { "past-" + it.id }) { i ->
+                    // Own health data: a past injury can come back or go, with Undo (device test 2026-10-25).
                     ListItem(
                         headlineContent = { Text(listOfNotNull(regionLabel(i.region), i.side?.let { injurySideLabel(it) }, i.detail).joinToString(" · ")) },
-                        supportingContent = { Text("${i.startedOn} – ${i.resolvedOn}") },
+                        supportingContent = {
+                            Column {
+                                Text("${i.startedOn} – ${i.resolvedOn}")
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick = { viewModel.reopen(i) }, modifier = Modifier.testTag("injury_reopen_${i.id}")) {
+                                        Text(stringResource(R.string.tra_injury_reopen))
+                                    }
+                                    TextButton(onClick = { viewModel.delete(i) }, modifier = Modifier.testTag("injury_delete_${i.id}")) {
+                                        Text(stringResource(R.string.tr_action_delete))
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.testTag("injury_past_${i.id}"),
                     )
                 }
             }
@@ -250,7 +300,7 @@ private fun InjuryCard(injury: Injury, onUpdate: (Injury) -> Unit, onResolve: ()
                 Button(onClick = onResolve, modifier = Modifier.testTag("injury_resolve_${injury.id}")) {
                     Text(stringResource(R.string.tra_injury_resolve))
                 }
-                TextButton(onClick = onDelete) { Text(stringResource(R.string.tr_action_delete)) }
+                TextButton(onClick = onDelete, modifier = Modifier.testTag("injury_delete_${injury.id}")) { Text(stringResource(R.string.tr_action_delete)) }
             }
         }
     }
