@@ -62,6 +62,20 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     /** Waits with the main looper running: the player's writes come back on Main. */
+    /**
+     * Picks [option] from the card's duration menu and waits until that menu has gone, so the next pick never opens
+     * a menu while the last one is still leaving (feature CI 2026-10-25: CalledFromWrongThreadException in the
+     * duration test, not reproducible locally).
+     */
+    private fun chooseDuration(option: String) {
+        click("today_duration")
+        click("today_duration_$option")
+        compose.waitUntil(WAIT_MS) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            compose.onAllNodesWithTag("today_duration_menu", useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
+        }
+    }
+
     private fun until(condition: () -> Boolean) = compose.waitUntil(WAIT_MS) {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         condition()
@@ -371,15 +385,12 @@ class OverridesTest : AthleteScreenTest() {
         val preferred = repo.profile().sessionMinutes
         render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
         scrollTo("today_list", hasTestTag("today_duration"))
-        click("today_duration")
-        click("today_duration_90")
+        chooseDuration("90")
         until { vm.state.value.minutesToday == 90 && (vm.state.value.suggestion?.totalMinutes ?: 0) > usual.totalMinutes + 15 }
         assertTrue(SuggestionReason.MORE_TIME_TODAY in vm.state.value.suggestion!!.reasons, "${vm.state.value.suggestion!!.reasons}")
-        click("today_duration")
-        click("today_duration_20")
+        chooseDuration("20")
         until { vm.state.value.minutesToday == 20 && vm.state.value.suggestion!!.totalMinutes <= 24 }
-        click("today_duration")
-        click("today_duration_usual")
+        chooseDuration("usual")
         until { vm.state.value.minutesToday == null && vm.state.value.suggestion!!.totalMinutes == usual.totalMinutes }
         // Today only: the preferred duration stays.
         assertEquals(preferred, repo.profile().sessionMinutes)
@@ -481,7 +492,7 @@ class OverridesTest : AthleteScreenTest() {
         render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
         vm.dropExercise(slug)
         until { vm.state.value.neverOffer == slug }
-        compose.onNode(androidx.compose.ui.test.hasText(context.getString(com.cruxcoach.android.R.string.trt_never_offer_yes))).performClick()
+        clickText(context.getString(com.cruxcoach.android.R.string.trt_never_offer_yes))
         until { slug in repo.profile().excludedExercises && vm.state.value.neverOffer == null }
         assertEquals("never", repo.setting("never.offered.$slug"))
         // Asked once: another rejection does not ask again.

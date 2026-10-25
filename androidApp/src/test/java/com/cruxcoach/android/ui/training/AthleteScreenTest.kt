@@ -139,6 +139,17 @@ abstract class AthleteScreenTest {
 
     protected fun scrollTo(listTag: String, tag: String) = scrollTo(listTag, hasTestTag(tag))
 
+    /**
+     * Clicks the one clickable node showing [text] – a snackbar action, a dialog button – once it alone is shown,
+     * through its semantics action. Waiting for any text containing it can end before the node is there, and
+     * Material's snackbar host keeps a fading snackbar next to the new one for a moment (feature CI flakes 2026-10-25).
+     */
+    protected fun clickText(text: String) {
+        val matcher = androidx.compose.ui.test.hasText(text) and androidx.compose.ui.test.hasClickAction()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(matcher).fetchSemanticsNodes().size == 1 }
+        compose.onNode(matcher).performSemanticsAction(SemanticsActions.OnClick)
+    }
+
     /** Waits for [tag] and clicks it through its semantics action. */
     protected fun click(tag: String) {
         waitForTag(tag)

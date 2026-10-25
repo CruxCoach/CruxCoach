@@ -106,7 +106,7 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         click("fuel_carbs")
         waitForTag("fuel_explain_carbs")
         waitForText("Hard training day: deficit 50 instead of 550 kcal")
-        compose.onNodeWithText("Close").performClick()
+        clickText("Close")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("fuel_explain_carbs").fetchSemanticsNodes().isEmpty() }
         // … and the energy sheet too, with the pace the last seven days really add up to (6 × 500 + 50 kcal).
         click("fuel_energy")

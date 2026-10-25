@@ -2,9 +2,8 @@ package com.cruxcoach.android.ui.training.athlete
 
 import android.app.Application
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import com.cruxcoach.android.ui.training.AthleteScreenTest
 import com.cruxcoach.athlete.model.ComebackEntry
 import com.cruxcoach.athlete.model.Injury
@@ -44,7 +43,7 @@ class PastInjuriesTest : AthleteScreenTest() {
         pastInjury()
         show()
 
-        compose.onNodeWithTag("injury_reopen_old", useUnmergedTree = true).performScrollTo().performClick()
+        compose.onNodeWithTag("injury_reopen_old", useUnmergedTree = true).performScrollTo().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
 
         compose.waitUntil(WAIT_MS) { repo.injury("old")?.isActive == true }
         waitForTag("injury_old")
@@ -57,12 +56,12 @@ class PastInjuriesTest : AthleteScreenTest() {
         pastInjury()
         show()
 
-        compose.onNodeWithTag("injury_delete_old", useUnmergedTree = true).performScrollTo().performClick()
+        compose.onNodeWithTag("injury_delete_old", useUnmergedTree = true).performScrollTo().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         compose.waitUntil(WAIT_MS) { repo.injury("old") == null }
         assertEquals(0, repo.comebackEntries("old").size)
 
         waitForText("Undo")
-        compose.onNodeWithText("Undo").performClick()
+        clickText("Undo")
         compose.waitUntil(WAIT_MS) { repo.injury("old") != null }
         assertEquals("2026-09-15", repo.injury("old")!!.resolvedOn)
         compose.waitUntil(WAIT_MS) { repo.comebackEntries("old").size == 1 }

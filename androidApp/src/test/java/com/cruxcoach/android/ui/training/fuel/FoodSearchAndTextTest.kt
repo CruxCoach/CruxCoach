@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -63,6 +64,19 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         waitForTag("fuel_list")
     }
 
+    /**
+     * Scrolls [list] to [item] and clicks it in one step, retried until both work. The search's three sources answer
+     * independently: a later one (BLS above USDA, say) can push an item out of the list's composed window between a
+     * scroll and a separate click (feature CI run 40222916345).
+     */
+    private fun scrollToAndClick(list: String, item: String) = compose.waitUntil(WAIT_MS) {
+        runCatching {
+            compose.onNodeWithTag(list).performScrollToNode(hasTestTag(item))
+            compose.onNodeWithTag(item).performSemanticsAction(SemanticsActions.OnClick)
+            true
+        }.getOrDefault(false)
+    }
+
     @Test
     fun `search finds a BLS food and logs it by grams`() {
         render()
@@ -70,11 +84,7 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_foods_search")
         compose.onNodeWithTag("fuel_foods_search").performTextInput("haferflocken")
-        compose.waitUntil(WAIT_MS) {
-            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_bls_C133000")); true }
-                .getOrDefault(false)
-        }
-        compose.onNodeWithTag("fuel_bls_C133000").performSemanticsAction(SemanticsActions.OnClick)
+        scrollToAndClick("fuel_foods_list", "fuel_bls_C133000")
         waitForTag("fuel_amount_dialog")
         compose.onNodeWithTag("fuel_amount_grams").performTextReplacement("80")
         compose.onNodeWithTag("fuel_amount_confirm").performSemanticsAction(SemanticsActions.OnClick)
@@ -97,11 +107,7 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_foods_search")
         compose.onNodeWithTag("fuel_foods_search").performTextInput("banane")
-        compose.waitUntil(WAIT_MS) {
-            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_bls_F503100")); true }
-                .getOrDefault(false)
-        }
-        compose.onNodeWithTag("fuel_bls_F503100").performSemanticsAction(SemanticsActions.OnClick)
+        scrollToAndClick("fuel_foods_list", "fuel_bls_F503100")
         waitForTag("fuel_amount_dialog")
         // It opens on pieces, one banana, and says what a piece weighs; grams stay one tap away.
         waitForTag("fuel_amount_portions")
@@ -124,11 +130,7 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         render()
         waitForTag("fuel_my_foods")
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitUntil(WAIT_MS) {
-            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_food_bls:F503100")); true }
-                .getOrDefault(false)
-        }
-        compose.onNodeWithTag("fuel_food_bls:F503100").performSemanticsAction(SemanticsActions.OnClick)
+        scrollToAndClick("fuel_foods_list", "fuel_food_bls:F503100")
         waitForTag("fuel_amount_dialog")
         waitForTag("fuel_amount_portions")
         waitForText("(120 g)")
@@ -152,13 +154,7 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         compose.onNodeWithTag("fuel_foods_search").performTextInput("skyr")
         // BLS, USDA and products answer in any order and can re-sort the list after the scroll:
         // scroll and tap in one attempt until the tap lands (failed on a loaded CI runner, 2026-10-09).
-        compose.waitUntil(WAIT_MS) {
-            runCatching {
-                compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_off_4025500000001"))
-                compose.onNodeWithTag("fuel_off_4025500000001").performSemanticsAction(SemanticsActions.OnClick)
-                true
-            }.getOrDefault(false)
-        }
+        scrollToAndClick("fuel_foods_list", "fuel_off_4025500000001")
         waitForTag("fuel_amount_dialog")
         // A product with a serving size starts on "1 portion".
         compose.onNodeWithTag("fuel_amount_confirm").performSemanticsAction(SemanticsActions.OnClick)
@@ -180,10 +176,7 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_foods_search")
         compose.onNodeWithTag("fuel_foods_search").performTextInput("oats regular quick")
-        compose.waitUntil(WAIT_MS) {
-            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_usda_173904")); true }.getOrDefault(false)
-        }
-        compose.onNodeWithTag("fuel_usda_173904").performSemanticsAction(SemanticsActions.OnClick)
+        scrollToAndClick("fuel_foods_list", "fuel_usda_173904")
         waitForTag("fuel_amount_dialog")
         // USDA weighed a cup of oats: one portion is that cup, shown with its weight in oz.
         compose.onNodeWithText("1 cup · 2.9 oz", substring = true).assertExists()
@@ -199,7 +192,10 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) {
             runCatching { compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_micros")); true }.getOrDefault(false)
         }
-        compose.onNodeWithText("3.4 / 11 mg", substring = true, useUnmergedTree = true).assertExists()
+        // The weekly estimate is computed after the entry is saved: wait for it rather than expect it at once.
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithText("3.4 / 11 mg", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Test

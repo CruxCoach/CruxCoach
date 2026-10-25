@@ -74,7 +74,7 @@ class PlannedDayTargetsTest : AthleteScreenTest() {
         click("fuel_carbs")
         waitForTag("fuel_explain_carbs")
         waitForText("Planned today: board 60 min.")
-        compose.onNodeWithText("Close").performClick()
+        clickText("Close")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("fuel_explain_carbs").fetchSemanticsNodes().isEmpty() }
         // The energy sheet's training line says it is the planned training, not one already done.
         click("fuel_energy")

@@ -1,8 +1,6 @@
 package com.cruxcoach.android.ui.training
 
 import android.app.Application
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.performSemanticsAction
 import com.cruxcoach.android.ui.training.today.TodayViewModel
 import com.cruxcoach.android.ui.training.workout.WorkoutSummaryScreen
 import com.cruxcoach.android.ui.training.workout.WorkoutSummaryViewModel
@@ -45,17 +43,6 @@ class LearningOffersTest : AthleteScreenTest() {
     }
 
     private val day get() = service.today().toString()
-
-    /**
-     * Clicks the snackbar's [action] once it alone is shown. Waiting for any text containing it can return before the
-     * snackbar is there, and Material's snackbar host keeps a fading one next to the new one for a moment (feature CI
-     * run 40220048169 failed on this click). A semantics click needs no settled layout.
-     */
-    private fun clickSnackbarAction(action: String) {
-        val matcher = androidx.compose.ui.test.hasText(action) and androidx.compose.ui.test.hasClickAction()
-        until { compose.onAllNodes(matcher).fetchSemanticsNodes().size == 1 }
-        compose.onNode(matcher).performSemanticsAction(SemanticsActions.OnClick)
-    }
     private fun keptEvents() = repo.suggestionEventsForDay(day).filter { it.focus == PreferenceLearning.KEEP_CHOICE }
 
     @Test
@@ -87,7 +74,7 @@ class LearningOffersTest : AthleteScreenTest() {
 
         // "Rückgängig" in the snackbar: nothing kept, the question is back.
         val undo = context.getString(com.cruxcoach.android.R.string.trpg_undo)
-        clickSnackbarAction(undo)
+        clickText(undo)
         until { keptEvents().isEmpty() && summary.state.value.keep.isNotEmpty() }
         // "Nur heute": answered, nothing kept – and a later look at the summary does not ask again.
         summary.answerKeep(false)
@@ -135,7 +122,7 @@ class LearningOffersTest : AthleteScreenTest() {
         until { SuggestionReason.LEVEL_EASIER_KEPT in vm.state.value.suggestion!!.reasons }
         // "Rückgängig": the step goes, today's "lighter" is back, and so is the question.
         val undo = context.getString(com.cruxcoach.android.R.string.trpg_undo)
-        clickSnackbarAction(undo)
+        clickText(undo)
         until { repo.profile().keptLevels.isEmpty() && vm.state.value.levelShift == -1 && vm.state.value.levelOffer != null }
         // "Nein": not asked again.
         vm.answerLevelOffer(false)
@@ -181,7 +168,7 @@ class LearningOffersTest : AthleteScreenTest() {
         until { repo.profile().coach.currentGrade == "7a" && vm.state.value.gradeOffer == null }
         // "Rückgängig": the grade before is back, and so is the question.
         val undo = context.getString(com.cruxcoach.android.R.string.trpg_undo)
-        clickSnackbarAction(undo)
+        clickText(undo)
         until { repo.profile().coach.currentGrade == "6c" && vm.state.value.gradeOffer == "7a" }
         // "Nein": not asked again for 7a.
         vm.answerGradeOffer(false)

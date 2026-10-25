@@ -108,7 +108,7 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         assert(pickupSides == setOf(Side.RIGHT)) { "sides were $pickupSides" }
         val loadedVm3 = loaded(com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service))
         render { com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = loadedVm3, learningBadge = { _, _ -> }) }
-        compose.onNodeWithTag("player_overview").performClick()
+        click("player_overview")
         waitForText("One-Arm Edge Pick-Up")
     }
 
@@ -117,10 +117,9 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         service.startWorkout(null, null)
         val vm = loaded(com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service))
         render { com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
-        waitForTag("player_finish")
-        compose.onNodeWithTag("player_finish").performClick()
+        click("player_finish")
         waitForTag("workout_nothing_done")
-        compose.onNodeWithTag("nothing_done_discard").performClick()
+        click("nothing_done_discard")
         compose.waitUntil(WAIT_MS) { repo.openWorkout() == null }
     }
 
@@ -190,10 +189,8 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         var left = false
         val vm = loaded(WorkoutSummaryViewModel(service).also { it.load(id) })
         render { WorkoutSummaryScreen(id, { left = true }, {}, viewModel = vm) }
-        waitForTag("summary_delete")
-        compose.onNodeWithTag("summary_delete").performClick()
-        waitForTag("summary_delete_confirm")
-        compose.onNodeWithTag("summary_delete_confirm").performClick()
+        click("summary_delete")
+        click("summary_delete_confirm")
         compose.waitUntil(WAIT_MS) { repo.workout(id) == null && repo.setsFor(id).isEmpty() && left }
     }
 

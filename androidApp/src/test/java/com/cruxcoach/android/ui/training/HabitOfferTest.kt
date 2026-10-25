@@ -64,7 +64,7 @@ class HabitOfferTest : AthleteScreenTest() {
         click("today_habit_offer_yes")
         compose.waitUntil(WAIT_MS) { repo.profile().weekPlan[iso] == routine.id }
         waitForText("In your standard week")
-        compose.onNodeWithText("Undo").performClick()
+        clickText("Undo")
         compose.waitUntil(WAIT_MS) { repo.profile().weekPlan[iso] == null }
         compose.waitUntil(WAIT_MS) { vm.state.value.suggestion?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE_WEEKDAY }
         // "Another suggestion" is always possible: the coach builds something else today.
