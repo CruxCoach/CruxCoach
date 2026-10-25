@@ -302,9 +302,9 @@ fun CruxCoachNavHost(
             route.startsWith("message_thread/") ||
             route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
-            // Training reminder: Today is the training area's start, so a plain single-top visit.
+            // Training reminder: back to the training area's Today, never a second one on the stack.
             route == com.cruxcoach.android.ui.training.TrainingRoutes.TODAY ->
-                navController.navigate(route) { launchSingleTop = true }
+                navController.openTrainingArea(route)
             route == com.cruxcoach.android.ui.training.TrainingRoutes.BODY -> {
                 // Body reminder: the body screen above Today, so Back leads into the training area.
                 val today = com.cruxcoach.android.ui.training.TrainingRoutes.TODAY

@@ -314,7 +314,11 @@ private fun NavGraphBuilder.screen(route: String, name: String, back: () -> Unit
  * Today underneath, so the tab bar's pop-to-Today works and Back leaves the area.
  */
 fun NavHostController.openTrainingArea(route: String) {
-    if (route == TrainingRoutes.TODAY) { navigate(route) { launchSingleTop = true }; return }
+    if (route == TrainingRoutes.TODAY) {
+        // Back to the Today already on the stack (a reminder tapped while Nutrition is open) instead of a second one.
+        if (!popBackStack(TrainingRoutes.TODAY, inclusive = false)) navigate(route) { launchSingleTop = true }
+        return
+    }
     if (runCatching { getBackStackEntry(TrainingRoutes.TODAY) }.isFailure) navigate(TrainingRoutes.TODAY)
     navigate(route) {
         popUpTo(TrainingRoutes.TODAY) { saveState = true }
