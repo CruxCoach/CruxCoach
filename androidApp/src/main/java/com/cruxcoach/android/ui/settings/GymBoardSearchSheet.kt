@@ -362,8 +362,8 @@ private fun gymSubtitle(g: BoardLocation, brands: List<BoardBrand>, distance: St
 /**
  * "Gyms near me" — the location prompt appears only after this tap. It stays
  * tappable while a lookup runs: a tap during the silent lookup on open (up to
- * 45 s for a cold GPS start) makes that lookup's outcome visible instead of
- * waiting for it to end without a word.
+ * 45 s for a cold GPS start) turns it into a search that looks until a
+ * position arrives, instead of letting it end without a word.
  */
 @Composable
 internal fun NearbyButton(locating: Boolean, onClick: () -> Unit) {
@@ -389,7 +389,7 @@ internal fun NearbyButton(locating: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** A tap's search has found nothing for a while (GPS indoors may need minutes). */
+/** A tap's search has found nothing for a while; it looks on until a position arrives (GPS indoors may need minutes). */
 @Composable
 private fun StillLookingNote(onCancel: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
@@ -407,8 +407,10 @@ private fun StillLookingNote(onCancel: () -> Unit) {
 @Composable
 private fun LocateFailureNote(failure: LocateResult, onFix: () -> Unit) {
     val text = locateFailureText(failure) ?: return
+    // Stopping the search was the user's choice, not an error.
+    val color = if (failure is LocateResult.Stopped) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Text(text, style = MaterialTheme.typography.bodySmall, color = color)
         locateFixLabel(failure)?.let { label ->
             TextButton(onClick = onFix, contentPadding = PaddingValues(horizontal = 0.dp)) {
                 Text(label, color = OrangeAccent)
