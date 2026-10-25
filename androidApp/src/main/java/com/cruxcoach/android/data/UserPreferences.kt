@@ -63,6 +63,17 @@ private val boardGradeScaleMigrationV1 = object : DataMigration<Preferences> {
 internal fun remapOldGradeIndexToV1(old: Int): Int =
     (old + if (old >= 2) 2 else 1).coerceIn(0, 24)
 
+/** Bound for [PreferenceKeys.SHINY_VARIANT_HINT_ANSWERED]: past it the set starts
+ *  over, which at worst asks about an old controller once more. */
+internal const val MAX_ANSWERED_SHINY_VARIANT_HINTS = 32
+
+internal fun rememberAnsweredShinyVariantHint(answered: Set<String>, controllerName: String): Set<String> =
+    when {
+        controllerName in answered -> answered
+        answered.size >= MAX_ANSWERED_SHINY_VARIANT_HINTS -> setOf(controllerName)
+        else -> answered + controllerName
+    }
+
 /**
  * Per-key DataStore keys — preferences that belong to a specific Nostr identity.
  * These are stored in a separate DataStore file per pubkey prefix.
@@ -309,6 +320,9 @@ object PreferenceKeys {
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
     val BOARD_DOWNLOAD_BRANDS = stringSetPreferencesKey("board_download_brands")
+    /** Advertised names of Shiny Wall controllers whose variant suggestion the
+     *  user already answered; a name only hints a variant, so it is asked once. */
+    val SHINY_VARIANT_HINT_ANSWERED = stringSetPreferencesKey("shiny_variant_hint_answered")
     val BOARD_BRAND = stringPreferencesKey("board_brand")
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
     val CLIMB_HISTORY_RETENTION_DAYS = intPreferencesKey("climb_history_retention_days")
@@ -584,6 +598,20 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS] =
                 (decodeBoardDownloadBrands(prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS]) - brands)
                     .map { it.wireValue }.toSet()
+        }
+    }
+
+    /** Shiny Wall controllers whose variant suggestion was answered (device-wide). */
+    val shinyVariantHintAnswered: Flow<Set<String>> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.SHINY_VARIANT_HINT_ANSWERED].orEmpty()
+    }
+
+    suspend fun markShinyVariantHintAnswered(controllerName: String) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.SHINY_VARIANT_HINT_ANSWERED] = rememberAnsweredShinyVariantHint(
+                prefs[PreferenceKeys.SHINY_VARIANT_HINT_ANSWERED].orEmpty(),
+                controllerName,
+            )
         }
     }
 
