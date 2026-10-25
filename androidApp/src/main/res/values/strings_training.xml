@@ -168,6 +168,7 @@
     </plurals>
     <string name="export_training_part_missing">Training, body and nutrition data could not be read and are not in this file.</string>
     <string name="import_training_part_failed">Training, body and nutrition data could not be restored; everything else is in.</string>
+    <string name="export_select_all_but_health">All except health data</string>
     <string name="export_json_only_hint">Training, body, nutrition and injury data are only included in the JSON backup.</string>
     <string name="tr_tab_today">Today</string>
     <string name="tr_tab_workouts">Workouts</string>
