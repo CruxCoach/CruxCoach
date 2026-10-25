@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Shiny Wall support: pick your Shiny Wall Standard wall (Mini, Standard, Max,
+  Full or Max Full), browse its problems with the usual filters (grade, angle
+  0–60°, holds, benchmarks, status) plus its categories (technical, physical,
+  crimpy, endurance, cruxy, foot rules) and light them over Bluetooth from the
+  problem page, while browsing, in playlists and in shared sessions. Set your
+  own Shiny Wall problems in the editor, see the hold heatmap and use "Clean
+  holds". The Shiny Wall catalogue is downloaded only once you choose a Shiny
+  Wall; it is not passed on by offline sharing.
 - Training beyond the board. A "Today" hub and an "Exercises"
   library inside the new training area. The library has over 200 exercises written for
   climbers – fingers, pulling, pushing and antagonists, core, legs and hips,
@@ -403,14 +411,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - After a catalogue import the app frees the temporary database file at once. A Tension
   import left about 180 MB in it until the next write, on a phone with little space left.
-- Shiny Wall support: pick your Shiny Wall Standard wall (Mini, Standard, Max,
-  Full or Max Full), browse its problems with the usual filters (grade, angle
-  0–60°, holds, benchmarks, status) plus its categories (technical, physical,
-  crimpy, endurance, cruxy, foot rules) and light them over Bluetooth from the
-  problem page, while browsing, in playlists and in shared sessions. Set your
-  own Shiny Wall problems in the editor, see the hold heatmap and use "Clean
-  holds". The Shiny Wall catalogue is downloaded only once you choose a Shiny
-  Wall; it is not passed on by offline sharing.
 
 ## [0.2.4] - 2026-10-25
 
