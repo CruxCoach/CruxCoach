@@ -84,10 +84,12 @@ data class ReceivedRecord(
 
 /** SQL access for the local policy, both directions and received records. */
 class SharingStore(private val database: SecureDatabase) {
-    private companion object {
-        const val AGE_KEY = "age"
-        const val AGE_CONFIRMED = "16_or_older"
-        const val AGE_UNDER = "under_16"
+    companion object {
+        /** A friend's clock may run a little behind; their next generation usually arrives first. */
+        const val RECEIVED_GRACE_MS = 10 * 60_000L
+        private const val AGE_KEY = "age"
+        private const val AGE_CONFIRMED = "16_or_older"
+        private const val AGE_UNDER = "under_16"
     }
 
     private val q get() = database.shareQueries
@@ -289,4 +291,31 @@ class SharingStore(private val database: SecureDatabase) {
 
     fun deleteRecord(peer: String, id: String) = q.deleteRecord(peer, id)
     fun deleteRecords(peer: String) = q.deleteRecords(peer)
+
+    // ---- expiry ---------------------------------------------------------------------
+
+    /** A received record whose grant ended, allowing [RECEIVED_GRACE_MS] for clock skew. */
+    fun receivedExpired(record: SharingRecord, now: Long): Boolean =
+        record.until != null && record.until + RECEIVED_GRACE_MS <= now
+
+    /** Delete every received record whose grant ended; works without the friend in reach. */
+    fun purgeExpiredRecords(now: Long) { q.deleteExpiredRecords(now - RECEIVED_GRACE_MS) }
+
+    /** Own rules that ended: removed, and the people they concerned returned. Their
+     * resolution already ignores them; the caller withdraws what is still queued. */
+    fun takeExpiredRules(now: Long): Set<String> = transaction {
+        val peers = q.selectExpiredRulePeers(now).executeAsList().toSet()
+        if (peers.isNotEmpty()) {
+            q.deleteExpiredPersonRules(now)
+            q.deleteExpiredObjectRules(now)
+        }
+        peers
+    }
+
+    /** The next moment something here expires (an own rule, or a received record after grace). */
+    fun nextExpiry(now: Long): Long? {
+        val rules = q.selectRuleExpiries().executeAsList().filterNotNull().filter { it > now }
+        val records = q.selectRecordExpiries().executeAsList().filterNotNull().map { it + RECEIVED_GRACE_MS }.filter { it > now }
+        return (rules + records).minOrNull()
+    }
 }

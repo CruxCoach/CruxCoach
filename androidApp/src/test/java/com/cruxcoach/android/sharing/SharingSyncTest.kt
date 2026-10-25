@@ -312,4 +312,52 @@ class SharingSyncTest {
         settle()
         assertEquals(setOf("note:n1"), bob.received(alice).keys)
     }
+
+    @Test fun the_receiver_deletes_an_expired_record_without_hearing_from_the_owner() = runBlocking {
+        alice.note("n1", "until friday")
+        befriend(emptySet(), emptySet())
+        val until = net.now + 60_000
+        alice.service.setPersonRule(bob.account, CLIMB_NOTES, AccessEffect.ALLOW, expiresAt = until)
+        settle()
+        assertEquals(setOf("note:n1"), bob.received(alice).keys)
+        assertEquals(until + SharingStore.RECEIVED_GRACE_MS, bob.store.nextExpiry(net.now), "the receiver wakes for it")
+        assertEquals(until, alice.store.nextExpiry(net.now), "the owner wakes for it")
+        // Alice is out of reach: only Bob's app runs, after the grant ended.
+        net.now = until + SharingStore.RECEIVED_GRACE_MS
+        bob.pass()
+        assertTrue(bob.received(alice).isEmpty(), "deleted although the owner never said so")
+        settle(6)
+        assertEquals(alice.expected(bob), bob.received(alice))
+        assertTrue(bob.received(alice).isEmpty())
+    }
+
+    @Test fun a_record_whose_grant_ended_on_the_way_is_never_stored() = runBlocking {
+        alice.note("n1", "late")
+        befriend(emptySet(), emptySet())
+        val until = net.now + 60_000
+        alice.service.setPersonRule(bob.account, CLIMB_NOTES, AccessEffect.ALLOW, expiresAt = until)
+        alice.pass() // queued with the old grant ...
+        net.now = until + SharingStore.RECEIVED_GRACE_MS // ... and delivered only after it ended
+        net.deliver()
+        bob.pass()
+        assertTrue(bob.received(alice).isEmpty())
+        assertTrue(bob.store.records(alice.account).isEmpty())
+    }
+
+    @Test fun when_a_grant_ends_what_is_still_queued_is_withdrawn() = runBlocking {
+        alice.note("n1", "first")
+        befriend(emptySet(), emptySet())
+        val until = net.now + 60_000
+        alice.service.setPersonRule(bob.account, CLIMB_NOTES, AccessEffect.ALLOW, expiresAt = until)
+        settle()
+        alice.note("n1", "edited before the end")
+        alice.pass()
+        assertTrue(alice.node.outbox.any { it.first == bob.account && "edited before the end" in it.third })
+        net.now = until
+        alice.pass()
+        assertTrue(alice.node.outbox.none { "edited before the end" in it.third }, "withdrawn at the end of the grant")
+        assertTrue(alice.store.takeExpiredRules(net.now).isEmpty(), "the ended rule is gone")
+        settle()
+        assertTrue(bob.received(alice).isEmpty())
+    }
 }

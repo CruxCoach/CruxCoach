@@ -44,6 +44,7 @@ class SharingSync(
     override suspend fun beforeOnline(host: MarmotHost) = mutex.withLock { cancelPending(host) }
 
     override suspend fun run(host: MarmotHost) = mutex.withLock {
+        expire(host)
         cancelPending(host)
         requests(host, host.status())
         receive(host)
@@ -56,6 +57,19 @@ class SharingSync(
     }
 
     // ---- local obligations --------------------------------------------------------
+
+    /** Grants that ended: received records go now (the friend need not be in
+     * reach), and for own rules that ended, what is still queued is withdrawn so
+     * nothing computed under the old grant arrives late. */
+    private suspend fun expire(host: MarmotHost) {
+        val now = clock()
+        store.purgeExpiredRecords(now)
+        for (peer in store.takeExpiredRules(now)) {
+            runCatching { host.cancel(peer) }
+                .onSuccess { withdrawn -> if (withdrawn > 0) store.requireFull(peer) }
+                .onFailure { store.setCancelPending(peer, true) }
+        }
+    }
 
     /** A narrowing whose native withdrawal did not happen yet: withdraw first. */
     private suspend fun cancelPending(host: MarmotHost) {
@@ -213,7 +227,8 @@ class SharingSync(
             return requestResync(state.copy(staging = emptyMap()), now)
         }
         store.deleteRecords(peer)
-        all.forEach { store.putRecord(peer, it) }
+        // A record whose grant already ended is never stored (it may have been delayed).
+        all.filterNot { store.receivedExpired(it, now) }.forEach { store.putRecord(peer, it) }
         return drain(peer, state.copy(sequence = 0, staging = emptyMap(), ackDue = true, receivedAt = now), now)
     }
 
@@ -231,7 +246,9 @@ class SharingSync(
         narrow(peer, scope)
         // Deltas arrive here strictly in (generation, sequence) order, so the
         // newest message wins; a revision is a content hash, not an order.
-        for (record in m.records) store.putRecord(peer, record)
+        for (record in m.records) {
+            if (store.receivedExpired(record, now)) store.deleteRecord(peer, record.id) else store.putRecord(peer, record)
+        }
         m.deletes.forEach { store.deleteRecord(peer, it) }
         val local = store.records(peer)
         val next = state.copy(sequence = m.seq, scope = scope, ackDue = true, receivedAt = now)

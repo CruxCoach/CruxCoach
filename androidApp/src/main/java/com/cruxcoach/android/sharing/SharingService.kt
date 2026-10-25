@@ -107,6 +107,8 @@ class SharingService(
     private val host get() = access.host
 
     suspend fun overview(): SharingOverview {
+        // What a friend shared with an end date is gone at that date, open app or not.
+        store.purgeExpiredRecords(clock())
         val status = host.status()
         val incoming = store.incomingStates()
         val friends = store.persons().map { person ->
@@ -294,6 +296,7 @@ class SharingService(
     /** Records current friends shared about any of [climbUuids] (a climb and
      * its equivalent identities). Reads only the app database. */
     fun receivedOnClimb(climbUuids: Set<String>): List<ReceivedOnClimb> {
+        store.purgeExpiredRecords(clock())
         val persons = store.persons().filter { it.state == PersonState.CONNECTED }.associateBy { it.peer }
         val names = mutableMapOf<String, String>()
         fun name(person: SharingPerson) = names.getOrPut(person.peer) {

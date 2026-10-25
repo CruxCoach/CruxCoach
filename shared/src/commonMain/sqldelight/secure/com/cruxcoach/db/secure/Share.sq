@@ -241,3 +241,25 @@ DELETE FROM share_record WHERE peer = ? AND record_id = ?;
 
 deleteRecords:
 DELETE FROM share_record WHERE peer = ?;
+
+-- Expiry (FEAT-073 AC-6): received records end at their expires_at (plus a
+-- small grace for clock skew), own rules end at theirs.
+deleteExpiredRecords:
+DELETE FROM share_record WHERE expires_at IS NOT NULL AND expires_at <= ?;
+
+selectRecordExpiries:
+SELECT expires_at FROM share_record WHERE expires_at IS NOT NULL;
+
+selectExpiredRulePeers:
+SELECT peer FROM share_person_rule WHERE expires_at IS NOT NULL AND expires_at <= :now
+UNION SELECT peer FROM share_object_rule WHERE expires_at IS NOT NULL AND expires_at <= :now;
+
+deleteExpiredPersonRules:
+DELETE FROM share_person_rule WHERE expires_at IS NOT NULL AND expires_at <= ?;
+
+deleteExpiredObjectRules:
+DELETE FROM share_object_rule WHERE expires_at IS NOT NULL AND expires_at <= ?;
+
+selectRuleExpiries:
+SELECT expires_at FROM share_person_rule WHERE expires_at IS NOT NULL
+UNION ALL SELECT expires_at FROM share_object_rule WHERE expires_at IS NOT NULL;

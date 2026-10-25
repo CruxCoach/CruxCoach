@@ -154,7 +154,19 @@ class SharingAutomation @Inject constructor(
 
     suspend fun pass(): Boolean = serial.withLock {
         if (!feature.isEnabled()) return@withLock true
-        SharingPass(native.host, sharingStep.get()).run(stayOnline = foreground)
+        SharingPass(native.host, sharingStep.get()).run(stayOnline = foreground).also { scheduleExpiry() }
+    }
+
+    private val store by lazy { SharingStore(database) }
+
+    /** Local only: delete received records whose grant ended, without the native host. */
+    fun purgeExpired() = runCatching { store.purgeExpiredRecords(System.currentTimeMillis()) }
+
+    /** Wake when the next grant ends, even with no network (a received record must go then). */
+    private fun scheduleExpiry() {
+        val now = System.currentTimeMillis()
+        val next = runCatching { store.nextExpiry(now) }.getOrNull()
+        if (next == null) SharingWork.cancelExpiry(context) else SharingWork.expiry(context, next - now)
     }
 
     override fun onStart(owner: LifecycleOwner) {
@@ -197,14 +209,18 @@ class SharingWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, parameters) {
     override suspend fun doWork(): Result = when {
         !feature.isEnabled() -> Result.success().also { SharingWork.cancel(applicationContext) }
-        !native.get().exists() || automation.pass() -> Result.success()
-        else -> Result.retry()
+        !native.get().exists() -> Result.success()
+        else -> {
+            automation.purgeExpired()
+            if (automation.pass()) Result.success() else Result.retry()
+        }
     }
 }
 
 object SharingWork {
     const val PERIODIC = "private-sharing-periodic-v2"
     const val CHANGE = "private-sharing-change-v2"
+    const val EXPIRY = "private-sharing-expiry-v3"
     private fun constraints() = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
     /** v1 scheduled a worker class that no longer exists; stop its jobs. */
@@ -219,6 +235,19 @@ object SharingWork {
         val manager = WorkManager.getInstance(context)
         manager.cancelUniqueWork(PERIODIC)
         manager.cancelUniqueWork(CHANGE)
+        manager.cancelUniqueWork(EXPIRY)
+    }
+
+    fun cancelExpiry(context: Context) = WorkManager.getInstance(context).cancelUniqueWork(EXPIRY)
+
+    /** One local wake at the next expiry; no network needed to delete received data. */
+    fun expiry(context: Context, delayMs: Long) {
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            EXPIRY, ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<SharingWorker>()
+                .setInitialDelay(delayMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
+                .build(),
+        )
     }
 
     fun periodic(context: Context) {
