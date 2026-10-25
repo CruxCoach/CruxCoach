@@ -916,7 +916,7 @@
     ],
     "repository": "https://github.com/RustCrypto/utils",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
-    "version": "0.4.2"
+    "version": "0.4.5"
   },
   {
     "license": "BSD-3-Clause",
@@ -2582,13 +2582,12 @@
     "notices": [
       {
         "name": "LICENSE",
-        "sha256": "15af40d3405e83dc3274896a59a357cea8750f61ea3c41e62aac2216be7f5822",
-        "source": "https://raw.githubusercontent.com/rust-nostr/negentropy/94742ad2221e8350336fa0a40cf0fdb4a5228520/LICENSE"
+        "sha256": "44b72d4db3e62b02c9747ade1ce31277699d3384f70596103c7788aa5535aa57"
       }
     ],
     "repository": "https://github.com/rust-nostr/negentropy.git",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
-    "version": "0.5.0"
+    "version": "0.5.2"
   },
   {
     "license": "MIT",
@@ -3514,7 +3513,7 @@
     ],
     "repository": "https://github.com/rustls/rustls",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
-    "version": "0.23.40"
+    "version": "0.23.46"
   },
   {
     "license": "MIT OR Apache-2.0",
@@ -3808,7 +3807,7 @@
     ],
     "repository": "https://github.com/RustCrypto/hashes",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
-    "version": "0.11.0"
+    "version": "0.11.1"
   },
   {
     "license": "MIT OR Apache-2.0",
@@ -4268,7 +4267,7 @@
     ],
     "repository": "https://github.com/tokio-rs/tokio",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
-    "version": "1.52.1"
+    "version": "1.54.1"
   },
   {
     "license": "MIT",
@@ -4669,7 +4668,7 @@
     ],
     "repository": "https://github.com/matrix-org/vodozemac",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
-    "version": "0.11.0"
+    "version": "0.11.1"
   },
   {
     "license": "Unlicense/MIT",
@@ -4729,7 +4728,7 @@
     ],
     "repository": "https://github.com/rustls/webpki-roots",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
-    "version": "1.0.10"
+    "version": "1.0.11"
   },
   {
     "license": "MIT",

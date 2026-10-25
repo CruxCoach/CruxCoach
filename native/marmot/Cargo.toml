@@ -32,13 +32,13 @@ transport-nostr-adapter = { path = ".mdk/crates/transport-nostr-adapter", option
 nostr = { version = "=0.44.8", default-features = false, features = ["std", "nip44"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
-tokio = { version = "=1.52.1", features = ["rt", "rt-multi-thread", "time", "net", "macros", "sync", "io-util"], optional = true }
+tokio = { version = "=1.54.1", features = ["rt", "rt-multi-thread", "time", "net", "macros", "sync", "io-util"], optional = true }
 sha2 = { version = "=0.10.9", optional = true }
 hex = "=0.4.3"
 jni = "=0.21.1"
 zeroize = "=1.9.0"
 futures-util = { version = "=0.3.32", optional = true }
-rustls = { version = "=0.23.40", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12"], optional = true }
 webpki-roots = { version = "=0.26.11", optional = true }
 tokio-tungstenite = { version = "=0.26.2", features = ["rustls-tls-webpki-roots"], optional = true }
 nostr-sdk = { version = "=0.44.1", default-features = false, optional = true }
@@ -50,17 +50,17 @@ rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled
 # Olm channel (spike M0): audited Olm implementation, pinned by version and
 # Cargo.lock checksum. The helpers below are the same RustCrypto generation
 # vodozemac already pulls in, so the Olm path adds no second copy.
-vodozemac = { version = "=0.11.0", default-features = false }
+vodozemac = { version = "=0.11.1", default-features = false }
 hmac = "=0.13.0"
 hkdf = "=0.13.0"
-sha2-v11 = { package = "sha2", version = "=0.11.0" }
+sha2-v11 = { package = "sha2", version = "=0.11.1" }
 chacha20poly1305 = "=0.11.0"
 getrandom = "=0.4.3"
 
 [dev-dependencies]
 tempfile = "=3.27.0"
 # Tests read message keys to prove they are gone from stored pickles.
-vodozemac = { version = "=0.11.0", default-features = false, features = ["low-level-api"] }
+vodozemac = { version = "=0.11.1", default-features = false, features = ["low-level-api"] }
 
 [patch.crates-io]
 hax-lib-macros = { git = "https://github.com/cryspen/hax.git", rev = "8f9cb576e58f6cc7e9ed249a7d4439b0f7ed0da7" }

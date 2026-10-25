@@ -158,7 +158,7 @@ crypto-common 0.2.2 (MIT OR Apache-2.0)
 ctr 0.9.2 (MIT OR Apache-2.0)
   notice SHA256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5
   notice SHA256 63af4bea227c94d021e99427f6ca3a4b8efddadcca93ab6130f708cf6138cf68
-ctutils 0.4.2 (Apache-2.0 OR MIT)
+ctutils 0.4.5 (Apache-2.0 OR MIT)
   notice SHA256 cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
   notice SHA256 91585c36e4fb9ab4ca0d3dfac5d66d3c0c62cc51f640a0e1196542daf2267eae
 curve25519-dalek 4.1.3 (BSD-3-Clause)
@@ -435,8 +435,8 @@ ml-kem 0.3.2 (Apache-2.0 OR MIT)
 module-lattice 0.2.3 (Apache-2.0 OR MIT)
   notice SHA256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5
   notice SHA256 d0fb27c23e807f1fc6f506d161984b294a1f05c9888ae31f056d1712685948ad
-negentropy 0.5.0 (MIT)
-  notice SHA256 15af40d3405e83dc3274896a59a357cea8750f61ea3c41e62aac2216be7f5822
+negentropy 0.5.2 (MIT)
+  notice SHA256 44b72d4db3e62b02c9747ade1ce31277699d3384f70596103c7788aa5535aa57
 nostr 0.44.8 (MIT)
   notice SHA256 a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2
 nostr-database 0.44.0 (MIT)
@@ -593,7 +593,7 @@ rusqlite 0.40.1 (MIT)
 rustc_version 0.4.1 (MIT OR Apache-2.0)
   notice SHA256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
   notice SHA256 c9a75f18b9ab2927829a208fc6aa2cf4e63b8420887ba29cdb265d6619ae82d5
-rustls 0.23.40 (Apache-2.0 OR ISC OR MIT)
+rustls 0.23.46 (Apache-2.0 OR ISC OR MIT)
   notice SHA256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
   notice SHA256 7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4
   notice SHA256 709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c
@@ -645,7 +645,7 @@ sha1 0.10.6 (MIT OR Apache-2.0)
 sha2 0.10.9 (MIT OR Apache-2.0)
   notice SHA256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5
   notice SHA256 b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1
-sha2 0.11.0 (MIT OR Apache-2.0)
+sha2 0.11.1 (MIT OR Apache-2.0)
   notice SHA256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5
   notice SHA256 831e0f43ad0bf014c1c4fec5767aae470434c1d66d6e671be2d823e729063e25
 sha3 0.11.0 (MIT OR Apache-2.0)
@@ -726,7 +726,7 @@ tls_codec 0.5.0 (Apache-2.0 OR MIT)
 tls_codec_derive 0.5.0 (Apache-2.0 OR MIT)
   notice SHA256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5
   notice SHA256 ae9baa7beea910273c2f384c2a6b721fb7bd02bda3436074a1072e4ee689f985
-tokio 1.52.1 (MIT)
+tokio 1.54.1 (MIT)
   notice SHA256 253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552
 tokio-macros 2.7.0 (MIT)
   notice SHA256 0b83dc40cba89b9922bb84b0a9c7d2768ce37c1d7e138b7424fd4549915778c9
@@ -795,7 +795,7 @@ vcpkg 0.2.15 (MIT/Apache-2.0)
 version_check 0.9.5 (MIT/Apache-2.0)
   notice SHA256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
   notice SHA256 b7e650f3fce5c53249d1cdc608b54df156a97edd636cf9d23498d0cfe7aec63e
-vodozemac 0.11.0 (Apache-2.0)
+vodozemac 0.11.1 (Apache-2.0)
   notice SHA256 0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594
 walkdir 2.5.0 (Unlicense/MIT)
   notice SHA256 01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f
@@ -805,7 +805,7 @@ web-time 1.1.0 (MIT OR Apache-2.0)
   notice SHA256 f428305bbf2e70fbd807af0f3c7ac1b7acfb95311640f451e9d2e48db6d7e96b
 webpki-roots 0.26.11 (CDLA-Permissive-2.0)
   notice SHA256 e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8
-webpki-roots 1.0.10 (CDLA-Permissive-2.0)
+webpki-roots 1.0.11 (CDLA-Permissive-2.0)
   notice SHA256 e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8
 winnow 1.0.4 (MIT)
   notice SHA256 cb5aedb296c5246d1f22e9099f925a65146f9f0d6b4eebba97fd27a6cdbbab2d
@@ -1902,32 +1902,6 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
-
-
-========================================================================
-NOTICE SHA256 15af40d3405e83dc3274896a59a357cea8750f61ea3c41e62aac2216be7f5822
-========================================================================
-MIT License
-
-Copyright (c) 2023 Yuki Kishimoto
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 
 
 ========================================================================
@@ -4208,6 +4182,32 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+
+========================================================================
+NOTICE SHA256 44b72d4db3e62b02c9747ade1ce31277699d3384f70596103c7788aa5535aa57
+========================================================================
+MIT License
+
+Copyright (c) 2023-2025 Yuki Kishimoto
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 
 ========================================================================
