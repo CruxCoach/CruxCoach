@@ -109,7 +109,7 @@ class DayPlannerTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) { repo.profile().datePlan[today] == PLAN_REST }
         compose.waitUntil(WAIT_MS) { vm.state.value.suggestion?.focus == SuggestionFocus.REST }
         waitForText("Today is now a rest day.")
-        compose.onNodeWithText("Undo").performClick()
+        clickText("Undo")
         compose.waitUntil(WAIT_MS) { repo.profile().datePlan[today] == null }
         compose.waitUntil(WAIT_MS) { vm.state.value.suggestion?.focus != SuggestionFocus.REST }
     }
