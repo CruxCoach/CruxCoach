@@ -201,7 +201,7 @@ internal fun scrubAndCompactBoardDbSnapshot(snapshot: File, includeQuantum: Bool
         db.rawQuery("PRAGMA synchronous=OFF", null).use { it.moveToFirst() }
         db.rawQuery("PRAGMA journal_mode=DELETE", null).use { it.moveToFirst() }
         val statements = if (includeQuantum) {
-            com.cruxcoach.android.data.LocalShareSchema.PRIVACY_SCRUB
+            com.cruxcoach.android.data.LocalShareSchema.V2_SNAPSHOT_SCRUB
         } else {
             // Do not reorder this historical contract: old v1 receivers must
             // continue to receive the byte-equivalent logical scrub view.
@@ -638,6 +638,7 @@ class LocalApkServer(
                 org.json.JSONArray().apply {
                     liveCatalogues
                         .filter { protocolVersion == LocalShareProtocol.VERSION_V2 || it.boardBrand != "quantum" }
+                        .filter { it.boardBrand !in com.cruxcoach.android.data.LocalShareSchema.NON_SHAREABLE_BRANDS }
                         .forEach { catalogue ->
                             put(
                                 org.json.JSONObject()

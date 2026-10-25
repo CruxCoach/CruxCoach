@@ -865,6 +865,7 @@ class BoardSyncManager(
             .filter { it.climbCount > 0 }
             .mapNotNull { BoardBrand.fromWireOrNull(it.boardBrand) }
             .filter { it.isInteractive && (protocolVersion == LocalShareProtocol.VERSION_V2 || it != BoardBrand.QUANTUM) }
+            .filter { it.wireValue !in LocalShareSchema.NON_SHAREABLE_BRANDS }
             .distinct()
 
     private fun updateLocalShareProgress(step: ImportStep, brands: List<BoardBrand>) {

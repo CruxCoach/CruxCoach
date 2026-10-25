@@ -572,6 +572,14 @@ class LocalShareModernSchemaTest {
             db.execSQL("INSERT INTO quantum_route_refs(app_uuid, route_uuid, model) VALUES ('$quantumUuid', '$quantumRouteUuid', 'XL')")
             db.execSQL("INSERT INTO quantum_route_metadata(app_uuid, source_grade, standard) VALUES ('$quantumUuid', '[14]', 1)")
         }
+        val shinyUuid = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+        SQLiteDatabase.openDatabase(snapshot.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("INSERT INTO climbs(uuid, layout_id, name, frames, board_brand) VALUES ('$shinyUuid', 9302, 'Shiny', 'p2000001r12', 'shinywall')")
+            db.execSQL("INSERT INTO climb_stats(climb_uuid, angle, layout_id) VALUES ('$shinyUuid', 30, 9302)")
+            db.execSQL("INSERT INTO placements(board_brand, placement_id, hole_id, set_id, x, y) VALUES ('shinywall', 2000001, 2000001, 2, 1000, 0)")
+            db.execSQL("INSERT INTO product_sizes(board_brand, id, product_id, name, edge_left, edge_right, edge_bottom, edge_top) VALUES ('shinywall', 9402, 93, 'Standard', 990, 1230, -10, 455)")
+            db.execSQL("INSERT INTO placement_roles(board_brand, id, name, led_color, screen_color) VALUES ('shinywall', 12, 'start', '00FF00', '00FF00')")
+        }
         val v2Snapshot = File(srcPath.parentFile, "share_snapshot_v2.db")
         snapshot.copyTo(v2Snapshot, overwrite = true)
 
@@ -591,6 +599,10 @@ class LocalShareModernSchemaTest {
             assertEquals("quantum roles gone", 0, countWhere(db, "placement_roles", "board_brand = 'quantum'"))
             assertEquals("quantum route mapping gone", 0, countWhere(db, "quantum_route_refs", "1=1"))
             assertEquals("quantum route metadata gone", 0, countWhere(db, "quantum_route_metadata", "1=1"))
+            for (table in listOf("climbs", "placements", "product_sizes", "placement_roles")) {
+                assertEquals("v1 shiny $table gone", 0, countWhere(db, table, "board_brand = 'shinywall'"))
+            }
+            assertEquals("v1 shiny stats gone", 0, countWhere(db, "climb_stats", "climb_uuid = '$shinyUuid'"))
             // The sender's Kilter account identity never reaches the wire. No
             // receiver path reads either column, so this is pure leakage.
             assertEquals(
@@ -631,6 +643,10 @@ class LocalShareModernSchemaTest {
             assertEquals("v2 keeps vendor metadata", 1, countWhere(db, "quantum_route_metadata", "app_uuid='$quantumUuid'"))
             assertEquals("v2 still scrubs private draft", 0, countWhere(db, "climbs", "uuid='$draftUuid'"))
             assertEquals("v2 still scrubs publish audit", 0, countWhere(db, "kilter_publish_attempts", "1=1"))
+            for (table in listOf("climbs", "placements", "product_sizes", "placement_roles")) {
+                assertEquals("v2 shiny $table gone", 0, countWhere(db, table, "board_brand = 'shinywall'"))
+            }
+            assertEquals("v2 shiny stats gone", 0, countWhere(db, "climb_stats", "climb_uuid = '$shinyUuid'"))
             assertSenderPublishStateScrubbed(db, "v2")
         }
         v2Snapshot.delete()
