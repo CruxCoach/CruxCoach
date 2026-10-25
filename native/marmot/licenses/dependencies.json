@@ -3544,7 +3544,7 @@
     ],
     "repository": "https://github.com/rustls/webpki",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
-    "version": "0.103.13"
+    "version": "0.103.16"
   },
   {
     "license": "MIT OR Apache-2.0",
@@ -4729,7 +4729,7 @@
     ],
     "repository": "https://github.com/rustls/webpki-roots",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
-    "version": "1.0.7"
+    "version": "1.0.10"
   },
   {
     "license": "MIT",
