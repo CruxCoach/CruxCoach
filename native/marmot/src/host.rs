@@ -734,24 +734,7 @@ impl Host {
         let public = checked(PublicKey::from_hex(peer), "peer")?;
         self.engine()?.add_author_interest(peer);
         let runtime = self.runtime()?;
-        let urls: Vec<RelayUrl> = self
-            .shared
-            .relays()
-            .iter()
-            .filter_map(|r| RelayUrl::parse(r).ok())
-            .collect();
-        let directory = Filter::new()
-            .author(public)
-            .kinds([Kind::Custom(10002), Kind::Custom(10050)])
-            .limit(16);
-        runtime.block_on(async {
-            let _ = tokio::time::timeout(
-                Duration::from_secs(10),
-                self.client
-                    .fetch_events_from(urls, directory, Duration::from_secs(8)),
-            )
-            .await;
-        });
+        // The KeyPackage lives on the configured pool (no relay list is read).
         let (writes, _) = self.engine()?.peer_relays(peer)?;
         if !writes.is_empty() {
             let urls: Vec<RelayUrl> = writes

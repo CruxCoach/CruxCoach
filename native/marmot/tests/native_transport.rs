@@ -404,13 +404,17 @@ fn negentropy_catch_up_and_socketless_local_relay() {
     friendship(&a, &b, &alice, &bob);
     // The in-process relay answers REQ over a duplex stream from the store.
     assert!(
-        call(
-            &alice,
-            json!({"op":"local_query","kinds":[10002, 10050, 30443]})
-        )
-        .as_u64()
-        .unwrap()
-            >= 3
+        call(&alice, json!({"op":"local_query","kinds":[30443]}))
+            .as_u64()
+            .unwrap()
+            >= 2
+    );
+    // The account's relay lists belong to its other Nostr apps: never written.
+    assert_eq!(
+        call(&alice, json!({"op":"local_query","kinds":[10002, 10050]}))
+            .as_u64()
+            .unwrap(),
+        0
     );
     // Bob misses live delivery; NIP-77 reconciliation fetches it later.
     call(&bob, json!({"op":"set_online","online":false}));

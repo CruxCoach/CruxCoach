@@ -264,35 +264,18 @@ impl Engine {
 
     // ---- discovery --------------------------------------------------------
 
-    /// Explicit opt-in: NIP-65, NIP-17 inbox list and a Marmot KeyPackage.
-    /// The KeyPackage private init key stays in SQLCipher.
+    /// Explicit opt-in: a Marmot KeyPackage on the configured pool. The
+    /// KeyPackage private init key stays in SQLCipher.
+    ///
+    /// No NIP-65 (10002) or NIP-17 inbox (10050) list is published: both are
+    /// replaceable account lists that the person's other Nostr apps maintain,
+    /// and publishing ours replaced them. Friends find the KeyPackage and
+    /// deliver invitations on the same pool (`peer_relays`).
     pub fn publish_discovery(&mut self) -> Result<bool> {
         let relays = self.relays()?;
         let pool = sha256_hex(&checked(serde_json::to_vec(&relays), "encode")?);
         self.atomic(|engine| {
             let mut changed = false;
-            for kind in [10002u16, 10050] {
-                let key = format!("discovery/{kind}");
-                let current = engine.store.meta(&key)?;
-                let fresh = current
-                    .as_ref()
-                    .map(|id| engine.store.exists(id))
-                    .transpose()?
-                    .unwrap_or(false)
-                    && engine.store.meta(&format!("{key}/pool"))?.as_deref() == Some(pool.as_str());
-                if !fresh {
-                    let tag = if kind == 10002 { "r" } else { "relay" };
-                    let tags = relays
-                        .iter()
-                        .map(|r| vec![tag.to_string(), r.clone()])
-                        .collect();
-                    let event = engine.sign_event(kind, tags, String::new())?;
-                    engine.stage_own(&event, None, false, &relays, now_ms() + 30 * 86_400_000)?;
-                    engine.store.put_meta(&key, &event.id.to_hex())?;
-                    engine.store.put_meta(&format!("{key}/pool"), &pool)?;
-                    changed = true;
-                }
-            }
             let owned = checked(
                 engine.session.durably_owned_key_packages(),
                 "keypackage_storage",
@@ -381,53 +364,16 @@ impl Engine {
 
     // ---- pairwise groups ------------------------------------------------------
 
-    /// Relay lists advertised by `peer` (from the local store), intersected
-    /// with the locally configured pool.
+    /// Where to look for `peer`'s KeyPackage and where to deliver the
+    /// Welcome: the locally configured pool. CruxCoach reads no relay list of
+    /// the account (it publishes none, see `publish_discovery`); every
+    /// installation publishes its KeyPackage to its pool and listens for
+    /// invitations there.
     pub fn peer_relays(&self, peer: &str) -> Result<(Vec<String>, Vec<String>)> {
-        let public = checked(PublicKey::from_hex(peer), "peer")?;
-        let directory = self.store.query_events(
-            &Filter::new()
-                .author(public)
-                .kinds([Kind::Custom(10002), Kind::Custom(10050)]),
-        )?;
-        let latest = |kind: u16| {
-            directory
-                .iter()
-                .filter(|e| e.kind.as_u16() == kind && e.created_at.as_secs() <= now_s() + 60)
-                .max_by(|a, b| {
-                    a.created_at
-                        .cmp(&b.created_at)
-                        .then_with(|| b.id.cmp(&a.id))
-                })
-        };
+        checked(PublicKey::from_hex(peer), "peer")?;
         let configured = self.relays()?;
-        let writes: Vec<String> = latest(10002)
-            .map(|e| {
-                e.tags
-                    .iter()
-                    .filter_map(|tag| {
-                        let t = tag.as_slice();
-                        (t.len() >= 2 && t[0] == "r" && (t.len() == 2 || t[2] == "write"))
-                            .then(|| t[1].clone())
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        let inbox: Vec<String> = latest(10050)
-            .map(|e| {
-                e.tags
-                    .iter()
-                    .filter_map(|tag| {
-                        let t = tag.as_slice();
-                        (t.len() == 2 && t[0] == "relay").then(|| t[1].clone())
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        Ok((
-            permitted(&configured, &writes, self.local_test),
-            permitted(&configured, &inbox, self.local_test),
-        ))
+        let pool = permitted(&configured, &configured, self.local_test);
+        Ok((pool.clone(), pool))
     }
 
     fn valid_key_package(&self, peer: &str, writes: &[String]) -> Result<KeyPackage> {
