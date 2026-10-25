@@ -282,6 +282,30 @@ class RelayAdapterNameGuard(
         }
     }
 
+    /**
+     * Gives the phone a name the user typed or confirmed in the sharing
+     * settings, for when CruxCoach does not know its earlier one. Never while
+     * sharing uses the name, never an unchecked name ([BluetoothNameInput]).
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun renameConfirmed(name: String): Boolean = mutex.withLock {
+        val wanted = name.trim()
+        if (lent || BluetoothNameInput.problem(wanted) != null) return@withLock false
+        val adapter = adapterProvider() ?: return@withLock false
+        if (send(adapter, wanted) != Sent.OK || !awaitName(wanted)) {
+            publishCurrent()
+            return@withLock false
+        }
+        // The confirmed name is the phone's own one now; nothing is left to give back.
+        if (isDirty() && !clearRecord()) return@withLock false
+        retryJob?.cancel()
+        retryJob = null
+        renameInFlight = false
+        wakeups.setArmed(false)
+        publishCurrent()
+        true
+    }
+
     /** Re-reads the phone's name for the settings card. */
     fun refreshStatus(): Job = scope.launch {
         mutex.withLock { publishCurrent() }
