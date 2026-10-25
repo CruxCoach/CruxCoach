@@ -422,7 +422,7 @@ Specific D variants (short):
 
 ---
 
-## 5. Requirements checklist for the CruxCoach rehab feature
+## 5. Requirements checklist for the CruxCoach comeback plan
 
 ### MUST
 - [ ] **Intended purpose** (§ 2.4) in the README, LEGAL.md, store/Zapstore text and the in-app "About". Add the Google Play sentence to the store description.

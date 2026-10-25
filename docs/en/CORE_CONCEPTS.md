@@ -4,6 +4,7 @@
 
 **Scope:** implemented source at `4fc067e87`, preparing 0.2.3. Published app:
 0.2.2. The outcome/count corrections below belong to this preparation line.
+The section "Training and nutrition" describes `feat/0.2.5-training-nutrition` (target 0.2.5).
 
 ## Board, layout, angle, problem
 
@@ -214,6 +215,38 @@ On the map, a board with a known layout opens its climbs directly ("Browse climb
 
 Map statistics count all recorded boards in the loaded map dataset, independently of map filters. A venue may contain several boards. Brand and layout distributions include every board family; layout names are grouped within their brand, and missing layouts remain visible as unknown. Access, adjustability, country and known size aggregates use the same dataset.
 
+## Training and nutrition (0.2.5)
+
+The training area ("Training & nutrition" in the main menu) has four tabs:
+Today, Training (workouts and the exercise library), Nutrition and Progress.
+**Today** suggests one training from the week plan, climbing days, the
+check-in, finger load of the last days, equipment of the chosen place and what
+the coach learned; every exercise on the card can be swapped, left out or never
+suggested again, and the reasons sit behind "Why?". Suggestions never force
+anything: the athlete can always change them, and safety rules (injuries,
+guardrails for young climbers and beginners, finger load) decide before
+preferences. The coach learns from swaps and changes in moderation – rejected
+exercises rest for days to weeks and are not suggested over and over – and
+"What the coach learned" shows and forgets each item.
+
+**Nutrition** follows the training day with transparent targets and warns
+with its numbers instead of locking anything ("warn, don't block"). Foods come
+from bundled BLS 4.0, USDA and Open Food Facts data, a barcode, a typed
+description or an optional on-device photo model (downloaded only on request).
+
+**Comeback plan** after an injury is a training aid, not a medical device: the
+athlete enters what a doctor or physio said and picks the stage; the app never
+diagnoses, never picks or changes a stage by itself and says on every comeback
+screen that it is not a substitute for seeing a doctor. Healing or treatment
+words are not used (`HealthWordingTest`).
+
+**Data:** everything lives in a separate SQLCipher database per account
+(`cruxcoach_athlete_<pubkey prefix>.db`, schema in `sqldelight/athlete`), opened
+on first use, never at app start. Backups carry it as the additive `athlete`
+part (envelope version 3, read forward-compatibly); categories Training, Body,
+Nutrition are on by default, injuries and the comeback diary (`HEALTH`) only
+when switched on. Health Connect is optional, one switch per direction.
+
 ## Source map
 
 Paths below are relative to the repository, linked for direct navigation.
@@ -232,6 +265,11 @@ Read implementation and focused tests together before changing a concept.
 | Key protection | [SqlCipherKeyManager](../../androidApp/src/main/java/com/cruxcoach/android/data/SqlCipherKeyManager.kt) |
 | Backup envelope and restore | [backup](../../androidApp/src/main/java/com/cruxcoach/android/nostr/backup/) |
 | LAN snapshot exclusions | [LocalShareSchema](../../androidApp/src/main/java/com/cruxcoach/android/data/LocalShareSchema.kt) and [wire contract](LOCAL_SHARE_CONTRACT.md) |
+| Training, coach and comeback logic | [shared athlete](../../shared/src/commonMain/kotlin/com/cruxcoach/athlete/) (`logic/SessionSuggester.kt`, `logic/WorkoutPlanner.kt`, `logic/Comeback*.kt`, `logic/FuelLogic.kt`) |
+| Athlete schema and migrations | [sqldelight/athlete](../../shared/src/commonMain/sqldelight/athlete/) |
+| Training services, Health Connect | [athlete](../../androidApp/src/main/java/com/cruxcoach/android/athlete/) (`AthleteService.kt`, `ComebackService.kt`, `health/`) |
+| Training and nutrition screens | [ui/training](../../androidApp/src/main/java/com/cruxcoach/android/ui/training/) |
+| Exercise catalogue and food data | [assets/training](../../androidApp/src/main/assets/training/), [assets/fuel](../../androidApp/src/main/assets/fuel/), [foodvision](../../androidApp/src/main/java/com/cruxcoach/android/foodvision/) |
 | Update integrity | [IntegrityVerifier](../../androidApp/src/main/java/com/cruxcoach/android/updater/IntegrityVerifier.kt) |
 
 Android-specific UI, BLE, background work and dependency injection live in

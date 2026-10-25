@@ -1,6 +1,6 @@
-# Climbing finger injuries: evidence review for the CruxCoach rehab program
+# Climbing finger injuries: evidence review for the CruxCoach comeback plan
 
-Research report for the CruxCoach injury-rehabilitation feature (run `injury-rehab-20261020`). Date: 2026-10-20.
+Research report for the CruxCoach comeback plan after an injury, a training aid used together with a doctor or physio (agent run `injury-rehab-20261020`). Date: 2026-10-20.
 Scope: diagnosis/triage, conservative treatment, rehab loading, and return-to-climbing for climbing finger injuries,
 plus a critical review of the example plan the owner supplied (`../example-plan.md`).
 
