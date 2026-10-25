@@ -443,28 +443,53 @@
     <string name="settings_led_reset_cruxcoach">CruxCoach Standard</string>
     <string name="settings_led_reset_kilter">Kilter Standard</string>
 
-    <!-- Settings: LED Animations -->
-    <string name="settings_led_anim_title">LED animations</string>
-    <string name="settings_led_anim_change">Change</string>
+    <!-- Settings: LED effects (FEAT-074) -->
+    <string name="settings_led_anim_title">LED effects</string>
     <string name="settings_led_anim_none">None</string>
-    <string name="settings_led_anim_none_hint">Static colors, as set in LED colors.</string>
+    <string name="settings_led_anim_none_hint">The climb shows its normal colors.</string>
     <string name="settings_led_anim_pulse">Pulse</string>
-    <string name="settings_led_anim_pulse_hint">Holds breathe brighter and dimmer in their own colors.</string>
+    <string name="settings_led_anim_pulse_hint">Each hold glows brighter and dimmer in its own color.</string>
     <string name="settings_led_anim_two_phase">Two-phase strobe</string>
-    <string name="settings_led_anim_two_phase_hint">Alternates between the CruxCoach and Kilter color schemes.</string>
+    <string name="settings_led_anim_two_phase_hint">Flashes between the CruxCoach and the Kilter colors.</string>
     <string name="settings_led_anim_chaotic">Chaotic strobe</string>
-    <string name="settings_led_anim_chaotic_hint">Colors jump around. Role colors stay distinguishable.</string>
-    <string name="settings_led_anim_rainbow">Rainbow wave</string>
-    <string name="settings_led_anim_rainbow_hint">All colors rotate slowly around the color wheel.</string>
-    <string name="settings_led_anim_kilter_only">LED animations only work with a Kilter Board.</string>
+    <string name="settings_led_anim_chaotic_hint">The colors jump around; start, hand, top and foot holds stay apart.</string>
+    <string name="settings_led_anim_rainbow">Rainbow</string>
+    <string name="settings_led_anim_rainbow_hint">All colors travel slowly around the color wheel.</string>
+    <string name="settings_led_effects_flashing">Flashes</string>
+    <string name="settings_led_effects_remove_animations_note">“Remove animations” is on in Android’s settings. This effect flashes anyway.</string>
+    <string name="settings_led_effects_background">Keep running in other apps</string>
+    <string name="settings_led_effects_needs_notifications">Needs notifications, so that you can stop the effect from there.</string>
+    <string name="settings_led_effects_allow_notifications">Allow notifications</string>
+    <string name="led_effect_status_running">Running on the board now.</string>
+    <string name="led_effect_status_waiting">Send a climb to the board to see it.</string>
+    <string name="led_effect_status_no_board">Connect a Kilter Board to see it.</string>
+    <string name="led_effect_status_unsupported">This board shows no LED effects and keeps its normal colors.</string>
+    <string name="led_effect_status_paused">Paused while route playback, a wall game or hold cleaning uses the board.</string>
+    <string name="led_effect_status_ended">Ended on this climb. Send it again to restart.</string>
+    <string name="led_effect_status_background">Paused outside the app.</string>
+    <string name="led_strobe_notice_title">Flashing light</string>
+    <string name="led_strobe_notice_text">This effect flashes the lit holds up to three times a second. Flashing light can trigger seizures in people with photosensitive epilepsy, also in others at the wall. Pulse and Rainbow change gently.</string>
+    <string name="led_strobe_notice_remove_animations">“Remove animations” is on in Android’s settings, often a sign that motion or flashing is unwelcome. Turn this effect on anyway?</string>
+    <string name="led_strobe_notice_confirm">Turn on</string>
+    <string name="led_strobe_notice_cancel">Cancel</string>
+    <string name="led_effect_menu">LED effect: %1$s</string>
+    <string name="led_effect_sheet_done">Done</string>
     <string name="led_anim_notification_channel">LED effects</string>
     <string name="led_anim_notification_channel_desc">Shown while an LED effect keeps running in another app.</string>
     <string name="led_anim_notification_title">LED effect running</string>
+    <string name="led_anim_notification_stop">Stop</string>
+    <plurals name="settings_led_effects_info">
+        <item quantity="one">On the board\nThe holds of the lit climb move. Works with a Kilter Board; other boards keep their normal colors. Changes show at once, so you can try them while looking at the wall.\n\nOthers first\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minute on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.</item>
+        <item quantity="other">On the board\nThe holds of the lit climb move. Works with a Kilter Board; other boards keep their normal colors. Changes show at once, so you can try them while looking at the wall.\n\nOthers first\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minutes on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.</item>
+    </plurals>
+    <plurals name="settings_led_effects_background_info">
+        <item quantity="one">For filming: the effect keeps going while another app is open, for up to %1$d minute on the same climb, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
+        <item quantity="other">For filming: the effect keeps going while another app is open, for up to %1$d minutes on the same climb, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
+    </plurals>
     <plurals name="led_anim_notification_text">
         <item quantity="one">Ends after %1$d minute on this climb. Stop shows its normal colors.</item>
         <item quantity="other">Ends after %1$d minutes on this climb. Stop shows its normal colors.</item>
     </plurals>
-    <string name="led_anim_notification_stop">Stop</string>
 
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Rest timer</string>

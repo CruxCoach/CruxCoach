@@ -355,8 +355,21 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val ownClimbPublisher: com.cruxcoach.android.community.OwnKilterClimbPublisher,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
     private val ledAnimationEngine: com.cruxcoach.android.led.LedAnimationEngine,
+    private val ledEffectsController: com.cruxcoach.android.led.LedEffectsController,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    /** The LED effects quick pick in the climb menu; collected by the screen. */
+    val ledEffects: kotlinx.coroutines.flow.Flow<com.cruxcoach.android.led.LedEffectsState>
+        get() = ledEffectsController.state
+
+    fun selectLedEffect(id: String) {
+        viewModelScope.launch { ledEffectsController.select(id) }
+    }
+
+    fun confirmLedStrobeNotice() {
+        viewModelScope.launch { ledEffectsController.strobeNoticeSeen() }
+    }
 
     /** Exposed for the pager to compute its initial page synchronously (before async load). */
     val initialClimbUuid: String = savedStateHandle["climbUuid"] ?: ""

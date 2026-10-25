@@ -444,28 +444,53 @@
     <string name="settings_led_reset_cruxcoach">CruxCoach Standard</string>
     <string name="settings_led_reset_kilter">Kilter Standard</string>
 
-    <!-- Settings: LED Animations -->
-    <string name="settings_led_anim_title">LED-Animationen</string>
-    <string name="settings_led_anim_change">Ändern</string>
+    <!-- Settings: LED effects (FEAT-074) -->
+    <string name="settings_led_anim_title">LED-Effekte</string>
     <string name="settings_led_anim_none">Keine</string>
-    <string name="settings_led_anim_none_hint">Statische Farben wie in den LED-Farben eingestellt.</string>
+    <string name="settings_led_anim_none_hint">Der Boulder leuchtet in seinen normalen Farben.</string>
     <string name="settings_led_anim_pulse">Puls</string>
-    <string name="settings_led_anim_pulse_hint">Griffe atmen in ihrer eigenen Farbe heller und dunkler.</string>
+    <string name="settings_led_anim_pulse_hint">Jeder Griff wird in seiner Farbe heller und wieder dunkler.</string>
     <string name="settings_led_anim_two_phase">Zwei-Phasen-Stroboskop</string>
-    <string name="settings_led_anim_two_phase_hint">Wechselt zwischen dem CruxCoach- und dem Kilter-Farbschema.</string>
-    <string name="settings_led_anim_chaotic">Chaotisches Stroboskop</string>
-    <string name="settings_led_anim_chaotic_hint">Die Farben springen umher. Roll-Farben bleiben unterscheidbar.</string>
-    <string name="settings_led_anim_rainbow">Regenbogen-Welle</string>
-    <string name="settings_led_anim_rainbow_hint">Alle Farben wandern langsam um den Farbkreis.</string>
-    <string name="settings_led_anim_kilter_only">LED-Animationen funktionieren nur mit einem Kilter Board.</string>
+    <string name="settings_led_anim_two_phase_hint">Wechselt blinkend zwischen den CruxCoach- und den Kilter-Farben.</string>
+    <string name="settings_led_anim_chaotic">Chaos-Stroboskop</string>
+    <string name="settings_led_anim_chaotic_hint">Die Farben springen; Startgriffe, Zwischengriffe, Topgriffe und Tritte bleiben unterscheidbar.</string>
+    <string name="settings_led_anim_rainbow">Regenbogen</string>
+    <string name="settings_led_anim_rainbow_hint">Alle Farben wandern langsam durch den Farbkreis.</string>
+    <string name="settings_led_effects_flashing">Blinkt</string>
+    <string name="settings_led_effects_remove_animations_note">In den Android-Einstellungen ist „Animationen entfernen“ an. Dieser Effekt blinkt trotzdem.</string>
+    <string name="settings_led_effects_background">In anderen Apps weiterlaufen</string>
+    <string name="settings_led_effects_needs_notifications">Braucht Benachrichtigungen, damit du den Effekt von dort stoppen kannst.</string>
+    <string name="settings_led_effects_allow_notifications">Benachrichtigungen erlauben</string>
+    <string name="led_effect_status_running">Läuft gerade am Board.</string>
+    <string name="led_effect_status_waiting">Sende einen Boulder ans Board, um den Effekt zu sehen.</string>
+    <string name="led_effect_status_no_board">Verbinde ein Kilter Board, um den Effekt zu sehen.</string>
+    <string name="led_effect_status_unsupported">Dieses Board zeigt keine LED-Effekte und bleibt in seinen normalen Farben.</string>
+    <string name="led_effect_status_paused">Pausiert, solange Routenwiedergabe, ein Wand-Spiel oder Griffe putzen das Board nutzt.</string>
+    <string name="led_effect_status_ended">Auf diesem Boulder beendet. Sende ihn erneut, um neu zu starten.</string>
+    <string name="led_effect_status_background">Pausiert, solange die App im Hintergrund ist.</string>
+    <string name="led_strobe_notice_title">Blinkendes Licht</string>
+    <string name="led_strobe_notice_text">Dieser Effekt lässt die leuchtenden Griffe bis zu dreimal pro Sekunde blinken. Blinkendes Licht kann bei Menschen mit fotosensitiver Epilepsie Anfälle auslösen, auch bei anderen an der Wand. Puls und Regenbogen wechseln sanft.</string>
+    <string name="led_strobe_notice_remove_animations">In den Android-Einstellungen ist „Animationen entfernen“ an, oft ein Zeichen, dass Bewegung oder Blinken stört. Den Effekt trotzdem einschalten?</string>
+    <string name="led_strobe_notice_confirm">Einschalten</string>
+    <string name="led_strobe_notice_cancel">Abbrechen</string>
+    <string name="led_effect_menu">LED-Effekt: %1$s</string>
+    <string name="led_effect_sheet_done">Fertig</string>
     <string name="led_anim_notification_channel">LED-Effekte</string>
     <string name="led_anim_notification_channel_desc">Wird angezeigt, solange ein LED-Effekt in einer anderen App weiterläuft.</string>
     <string name="led_anim_notification_title">LED-Effekt läuft</string>
+    <string name="led_anim_notification_stop">Stopp</string>
+    <plurals name="settings_led_effects_info">
+        <item quantity="one">Am Board\nDie Griffe des leuchtenden Boulders bewegen sich. Funktioniert mit einem Kilter Board; andere Boards behalten ihre normalen Farben. Änderungen wirken sofort, du kannst sie also mit Blick auf die Wand ausprobieren.\n\nAndere zuerst\nWas du sendest, hat Vorrang. Routenwiedergabe, Wand-Spiele und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minute auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.</item>
+        <item quantity="other">Am Board\nDie Griffe des leuchtenden Boulders bewegen sich. Funktioniert mit einem Kilter Board; andere Boards behalten ihre normalen Farben. Änderungen wirken sofort, du kannst sie also mit Blick auf die Wand ausprobieren.\n\nAndere zuerst\nWas du sendest, hat Vorrang. Routenwiedergabe, Wand-Spiele und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minuten auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.</item>
+    </plurals>
+    <plurals name="settings_led_effects_background_info">
+        <item quantity="one">Zum Filmen: Der Effekt läuft weiter, während eine andere App offen ist, höchstens %1$d Minute auf demselben Boulder, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
+        <item quantity="other">Zum Filmen: Der Effekt läuft weiter, während eine andere App offen ist, höchstens %1$d Minuten auf demselben Boulder, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
+    </plurals>
     <plurals name="led_anim_notification_text">
         <item quantity="one">Endet nach %1$d Minute auf diesem Boulder. „Stopp“ zeigt die normalen Farben.</item>
         <item quantity="other">Endet nach %1$d Minuten auf diesem Boulder. „Stopp“ zeigt die normalen Farben.</item>
     </plurals>
-    <string name="led_anim_notification_stop">Stopp</string>
 
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Pausentimer</string>

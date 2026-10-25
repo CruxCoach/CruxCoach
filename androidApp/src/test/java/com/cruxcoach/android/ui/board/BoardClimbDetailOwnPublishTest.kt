@@ -155,6 +155,7 @@ class BoardClimbDetailOwnPublishTest {
             ownClimbPublisher = ownClimbPublisher,
             climbNavState = mockk(relaxed = true),
             ledAnimationEngine = mockk(relaxed = true),
+            ledEffectsController = mockk(relaxed = true),
             context = context,
         )
     }

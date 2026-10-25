@@ -212,6 +212,16 @@ internal fun SettingsScreen(
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
                     )
                 }
+                // Board-wide by design: LedEffectSupport says which boards show
+                // effects, so the card stays put when more boards join.
+                SettingsSectionCard {
+                    LedEffectsSection(
+                        state = state.ledEffects,
+                        onSelect = viewModel::setLedAnimation,
+                        onKeepRunningChange = viewModel::setLedEffectsInBackground,
+                        onStrobeNoticeSeen = viewModel::confirmLedStrobeNotice,
+                    )
+                }
                 SettingsSectionCard {
                     SettingsInfoHeading(
                         title = stringResource(R.string.settings_group_selected_board),
@@ -248,12 +258,6 @@ internal fun SettingsScreen(
                             onColorChange = { roleId, colorByte -> viewModel.updateLedColor(roleId, colorByte) },
                             onResetColors = { viewModel.resetLedColors() },
                             onKilterColors = { viewModel.setKilterColors() }
-                        )
-                        HorizontalDivider()
-                        LedAnimationSection(
-                            selectedId = state.ledAnimation,
-                            kilterBoardConnected = state.ledAnimationsAvailable,
-                            onSelect = { viewModel.setLedAnimation(it) }
                         )
                     }
                 }
