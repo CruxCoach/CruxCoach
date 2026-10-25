@@ -31,9 +31,14 @@ internal class FakeLedFrameSink(
     fun reset() {
         sent.clear()
         attempts.clear()
+        bases.clear()
     }
 
-    override suspend fun sendFrame(frame: List<Pair<Int, Int>>): FrameSendResult {
+    /** The lit frame each attempt was made from, in order. */
+    val bases = mutableListOf<LitFrame>()
+
+    override suspend fun sendFrame(basedOn: LitFrame, frame: List<Pair<Int, Int>>): FrameSendResult {
+        bases += basedOn
         attempts += frame
         if (result != FrameSendResult.SENT) return result
         sent += frame
