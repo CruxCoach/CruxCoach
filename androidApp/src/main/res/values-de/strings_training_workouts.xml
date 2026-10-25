@@ -91,7 +91,7 @@ Zirkel 3 Runden: Dips 10, Sit-ups 20, Plank 30 s</string>
     <string name="trwo_add_start_new">Training damit starten</string>
     <string name="trwo_add_to_routine">Zu einem Workout hinzufügen</string>
     <string name="trwo_add_new_routine">Neues Workout mit dieser Übung</string>
-    <string name="trwo_add_rejected">Nicht hinzugefügt: Sie belastet die verletzte Stelle. Prüf den Verletzungsmodus oder wähl eine andere Übung.</string>
+    <string name="trwo_add_rejected">Nicht hinzugefügt: Die Übung belastet die verletzte Stelle. Prüf den Verletzungsmodus oder wähl eine andere Übung.</string>
     <string name="trwo_add_added_to">Zu „%1$s“ hinzugefügt.</string>
     <string name="trwo_week_applied">Vorschlag für deine Woche übernommen</string>
 </resources>

@@ -501,15 +501,15 @@ object CruxCoachBackup {
          *  re-derived, but nothing anywhere can reconstruct what the user
          *  wrote, so it must be selectable — and visible — on its own. */
         CLIMB_NOTES("Private Climb-Notizen"),
-        /** Off-board training log, routines, own exercises, check-ins,
-         *  injuries and pauses (athlete database, FEAT-066). Body
-         *  measurements of the athlete database travel with [BODY_STATS]. */
+        /** Off-board training log, routines, own exercises, check-ins and
+         *  pauses (athlete database, FEAT-066). Body measurements of the
+         *  athlete database travel with [BODY_STATS], injuries with [HEALTH]. */
         TRAINING("Training & Wohlbefinden"),
-        /** Opt-in fueling log (FEAT-068). */
+        /** Fueling log (FEAT-068), on by default like the other categories. */
         FUEL("Fueling"),
         /** Injuries with their questions and comeback plan, and the comeback diary: health data, so its own
          *  category that is off unless the athlete picks it (research/safety-regulation.md §3.6, GDPR Art. 9).
-         *  Before 0.2.4 shipped, injuries travelled with [TRAINING]. */
+         *  Before FEAT-072 (feature builds of the training line only), injuries travelled with [TRAINING]. */
         HEALTH("Verletzungen & Comeback-Tagebuch"),
         ;
 

@@ -2119,7 +2119,7 @@
 
     <!-- FEAT-002: Verschlüsseltes Cloud-Backup (Nostr + Blossom unter der Haube) -->
     <string name="settings_backup_title">Daten-Backup</string>
-    <string name="settings_backup_description">Inhalt und Schutz\nSichert Logbuch, Versuche, Listen, Notizen, eigene Boulder und Trainingsdaten. Die App verschlüsselt die Sicherung vor dem Hochladen auf öffentliche Server. Zum Wiederherstellen brauchst du denselben Kontoschlüssel.\n\nSichern und Wiederherstellen\nAktiviere Backups für geplante Sicherungen oder „Jetzt sichern“. Wiederherstellen geht auch bei ausgeschalteter Automatik.</string>
+    <string name="settings_backup_description">Inhalt und Schutz\nSichert Logbuch, Versuche, Listen, Notizen, eigene Boulder sowie Trainings-, Körper- und Ernährungsdaten (Verletzungen und Comeback-Tagebuch nur, wenn du sie unter „Verletzungen &amp; Pausen“ einschaltest). Die App verschlüsselt die Sicherung vor dem Hochladen auf öffentliche Server. Zum Wiederherstellen brauchst du denselben Kontoschlüssel.\n\nSichern und Wiederherstellen\nAktiviere Backups für geplante Sicherungen oder „Jetzt sichern“. Wiederherstellen geht auch bei ausgeschalteter Automatik.</string>
     <string name="settings_backup_device_local_note">Nicht enthalten\nDie Board-Auswahl und Filter für Boulderliste und Karte bleiben auf diesem Gerät. Öffentliche Board-Kataloge lädst du bei Bedarf erneut herunter.</string>
     <string name="settings_backup_enable">Backup aktivieren</string>
     <string name="settings_backup_needs_key">Richte zuerst deinen Kontozugang ein.</string>

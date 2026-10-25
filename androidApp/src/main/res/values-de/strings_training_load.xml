@@ -71,8 +71,8 @@
     <string name="trl_attempts_sub">letzte 12 Wochen</string>
     <string name="trl_angle_tile">Häufigster Winkel</string>
 
-    <string name="trl_pickup_title">Pick-up einarmig je Hand</string>
-    <string name="trl_pickup_cd">Pick-up einarmig je Hand in Prozent des Körpergewichts im Verlauf.</string>
+    <string name="trl_pickup_title">Blockheben einarmig je Hand</string>
+    <string name="trl_pickup_cd">Blockheben einarmig je Hand in Prozent des Körpergewichts im Verlauf.</string>
     <string name="trl_pickup_balanced">Beide Hände liegen innerhalb von fünf Prozent.</string>
     <string name="trl_pickup_imbalance">Die Hand %1$s ist %2$d %% stärker.</string>
 

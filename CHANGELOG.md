@@ -242,8 +242,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Nutrition: "Log again" in the add sheet offers what the chosen meal usually
   holds, with its usual amount – also quick entries and described meals – in
   one tap, and a saved food's amount starts where it was last time.
-- Back after a break (10+ days, illness, a healed finger injury): one or two
-  shorter weeks without maximal finger load, automatically.
+- Back after a break (10+ days or illness): one or two shorter weeks without
+  maximal finger load, automatically; after a finger injury you marked as
+  over, the fingers stay below their limit for four weeks.
 - Training reminders on planned days; a body map and grip pictograms for every
   exercise; a reward screen with new bests after each training.
 - Optional Health Connect link (Android 9 and newer; on Android 9–13 with the
@@ -255,7 +256,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Injury mode: note an injury with region, side and pain, and exercises that
   load it are hidden or marked, wall climbing can be paused, and one-sided work
   stays available for the healthy side – e.g. one-arm pick-ups on the right
-  hand plus bar pull-ups while a left finger heals.
+  hand plus bar pull-ups while a left finger is injured.
 - Optional morning check-in (sleep, energy, skin, fingers, ill) that only ever
   makes the day gentler and names the deciding reason; illness, injury and
   holiday pauses; a weekly consistency streak in which rest days never count

@@ -37,5 +37,5 @@
     <string name="trw_return_detail">Shorter sessions (%1$d %%).</string>
     <string name="trw_return_detail_finger">Only light finger work, no max hangs – everything else as usual.</string>
     <string name="trw_return_info_title">Why ease back in?</string>
-    <string name="trw_return_info">After a break, tendons and pulleys need a few sessions to get used to load again, more than muscles do. The ramp ends after one or two weeks, or as soon as you have trained on four days. After a healed finger injury, only the fingers stay off the limit for four weeks. This is not medical advice; if something hurts, stop and get it checked.</string>
+    <string name="trw_return_info">After a break, tendons and pulleys need a few sessions to get used to load again, more than muscles do. The ramp ends after one or two weeks, or as soon as you have trained on four days. After a finger injury you marked as over, only the fingers stay off the limit for four weeks. This is not medical advice; if something hurts, stop and get it checked.</string>
 </resources>

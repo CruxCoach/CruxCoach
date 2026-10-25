@@ -13,7 +13,7 @@
 
     <!-- Bevor du startest -->
     <string name="cb_before_title">Bevor du startest</string>
-    <string name="cb_before_text">Dieser Plan hilft dir, Belastung Schritt für Schritt wieder aufzubauen. Er ist kein Ersatz für den Arztbesuch und kann nicht sagen, ob deine Verletzung verheilt ist – nutz ihn nur in Absprache mit Ärztin, Arzt oder Physio.\n\n• Noch nicht abgeklärt? Wir empfehlen Ärztin, Arzt oder Physiotherapie – besonders nach einem Knall, Schwellung oder Bluterguss.\n• Du wählst die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast, und kannst sie jederzeit ändern. Hast du einen Plan von einer Fachperson, gilt der.\n• Deine Einträge bleiben auf diesem Handy.</string>
+    <string name="cb_before_text">Dieser Plan hilft dir, Belastung Schritt für Schritt wieder aufzubauen. Er ist kein Ersatz für den Arztbesuch und kann nicht sagen, ob deine Verletzung verheilt ist – nutz ihn nur in Absprache mit Ärztin, Arzt oder Physio.\n\n• Noch nicht abgeklärt? Wir empfehlen Ärztin, Arzt oder Physio – besonders nach einem Knall, Schwellung oder Bluterguss.\n• Du wählst die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast, und kannst sie jederzeit ändern. Hast du einen Plan von einer Fachperson, gilt der.\n• Deine Einträge bleiben auf diesem Handy, außer du nimmst sie selbst in die Sicherung.</string>
     <string name="cb_understood">Verstanden – in Absprache mit Ärztin, Arzt oder Physio</string>
 
     <!-- Fragen -->
@@ -78,7 +78,7 @@
     <string name="cb_stage_pick_hint">Wähl die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast.</string>
     <string name="cb_agreed">Mit Ärztin, Arzt oder Physio abgesprochen</string>
     <string name="cb_step_reference">4 · Referenzwert (optional)</string>
-    <string name="cb_reference_hint">Einarmig am Blockheber, 10 s, etwa 20 mm, Gesamtgewicht. Am besten dein Wert von vor der Verletzung. Sonst die gesunde Hand einmal testen, wenn sie fit ist: nach dem Aufwärmen in 2,5-kg-Schritten steigern, ein 10-s-Halteversuch pro Stufe, 3 Minuten Pause – das letzte Gewicht, das du gerade noch 10 s hältst. Die verletzte Hand nie maximal testen.</string>
+    <string name="cb_reference_hint">Einarmig am Pick-up-Block, 10 s, etwa 20 mm, Gesamtgewicht. Am besten dein Wert von vor der Verletzung. Sonst die gesunde Hand einmal testen, wenn sie fit ist: nach dem Aufwärmen in 2,5-kg-Schritten steigern, ein 10-s-Halteversuch pro Stufe, 3 Minuten Pause – das letzte Gewicht, das du gerade noch 10 s hältst. Die verletzte Hand nie maximal testen.</string>
     <string name="cb_reference_half">Halb aufgestellt (kg)</string>
     <string name="cb_reference_open">Offen (kg)</string>
     <string name="cb_reference_before">Vor der Verletzung: %1$s kg</string>

@@ -2120,7 +2120,7 @@
 
     <!-- FEAT-002: Encrypted cloud backup (technically Nostr + Blossom underneath) -->
     <string name="settings_backup_title">Data backup</string>
-    <string name="settings_backup_description">Contents and protection\nBacks up your logbook, attempts, lists, notes, own climbs and training data. The app encrypts the backup before uploading it to public servers. Restore with the same account key.\n\nBack up and restore\nEnable backups for scheduled backups or “Back up now”. Restore works even with automatic backups off.</string>
+    <string name="settings_backup_description">Contents and protection\nBacks up your logbook, attempts, lists, notes, own climbs and your training, body and nutrition data (injuries and the comeback diary only if you switch them on under Injuries &amp; pauses). The app encrypts the backup before uploading it to public servers. Restore with the same account key.\n\nBack up and restore\nEnable backups for scheduled backups or “Back up now”. Restore works even with automatic backups off.</string>
     <string name="settings_backup_device_local_note">Not included\nBoard selection and climb-list/map filters stay on this device. Download public board catalogues again as needed.</string>
     <string name="settings_backup_enable">Enable backup</string>
     <string name="settings_backup_needs_key">Set up your account access first.</string>

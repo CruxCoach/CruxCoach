@@ -156,7 +156,7 @@
     <string name="tr_not_medical_advice">CruxCoach does not diagnose or treat injuries. If pain is sharp, swelling or lasts, see a doctor or physiotherapist.</string>
 
     <!-- Backup categories -->
-    <string name="export_category_training">Training, check-ins &amp; injuries</string>
+    <string name="export_category_training">Training &amp; check-ins</string>
     <string name="export_category_fuel">Nutrition</string>
     <plurals name="import_result_training">
         <item quantity="one">%d training entry</item>
@@ -166,7 +166,7 @@
         <item quantity="one">%d nutrition entry</item>
         <item quantity="other">%d nutrition entries</item>
     </plurals>
-    <string name="export_json_only_hint">Training, body and nutrition data are only included in the JSON backup.</string>
+    <string name="export_json_only_hint">Training, body, nutrition and injury data are only included in the JSON backup.</string>
     <string name="tr_tab_today">Today</string>
     <string name="tr_tab_workouts">Workouts</string>
     <string name="tr_tab_exercises">Exercises</string>

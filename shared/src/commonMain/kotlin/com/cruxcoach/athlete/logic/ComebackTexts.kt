@@ -87,8 +87,8 @@ object ComebackTexts {
             "A tendon that lifts away from the bone usually means more than one pulley is torn. A hand specialist should look at it soon.",
             "Wenn sich die Sehne vom Knochen abhebt, sind meist mehrere Ringbänder gerissen. Das sollte sich bald jemand aus der Handchirurgie ansehen.")
         WarningSign.POP_WITH_SWELLING -> Txt(
-            "After a pop with swelling or bruising, an ultrasound shows how much is injured. Some injuries heal better when treated early – best within the first week.",
-            "Nach einem Knall mit Schwellung oder Bluterguss zeigt ein Ultraschall, wie viel verletzt ist. Manche Verletzungen heilen besser, wenn sie früh behandelt werden – am besten in der ersten Woche.")
+            "After a pop with swelling or bruising, an ultrasound shows how much is injured. For some injuries an early doctor's visit matters – best within the first week.",
+            "Nach einem Knall mit Schwellung oder Bluterguss zeigt ein Ultraschall, wie viel verletzt ist. Bei manchen Verletzungen zählt ein früher Arztbesuch – am besten in der ersten Woche.")
         WarningSign.HEEL_OF_PALM -> Txt(
             "Pain there can come from a small wrist bone (hamate) that an X-ray or MRI shows.",
             "Schmerz dort kann von einem kleinen Handwurzelknochen (Hamulus) kommen, das zeigt ein Röntgen- oder MRT-Bild.")
@@ -126,11 +126,11 @@ object ComebackTexts {
 
     fun alertText(u: Urgency): Txt = when (u) {
         Urgency.EMERGENCY -> Txt(
-            "What you ticked can mean an injury that needs quick treatment, like a fracture, a dislocation, an infection or a nerve injury. Call 112 or go to an emergency department, and let someone else drive. Don't train this area until it's been checked.",
-            "Was du angekreuzt hast, kann auf eine Verletzung hindeuten, die schnell behandelt werden sollte – etwa einen Bruch, eine Ausrenkung, eine Entzündung oder einen Nervenschaden. Ruf 112 an oder fahr in eine Notaufnahme, am besten nicht selbst. Trainiere diese Stelle erst, wenn sie angeschaut wurde.")
+            "What you ticked can mean an injury a doctor should see quickly, like a fracture, a dislocation, an infection or a nerve injury. Call 112 or go to an emergency department, and let someone else drive. Don't train this area until it's been checked.",
+            "Was du angekreuzt hast, kann auf eine Verletzung hindeuten, die schnell ärztlich angeschaut werden sollte – etwa einen Bruch, eine Ausrenkung, eine Entzündung oder einen Nervenschaden. Ruf 112 an oder fahr in eine Notaufnahme, am besten nicht selbst. Trainiere diese Stelle erst, wenn sie angeschaut wurde.")
         Urgency.DAYS -> Txt(
-            "What you ticked is best looked at by a doctor in the next few days – some injuries heal better when treated early. Until then keep it easy and pain-free, and don't start loading it.",
-            "Was du angekreuzt hast, sollte sich am besten in den nächsten Tagen eine Ärztin oder ein Arzt ansehen – manche Verletzungen heilen besser, wenn sie früh behandelt werden. Bis dahin: locker und schmerzfrei bleiben und noch nicht belasten.")
+            "What you ticked is best looked at by a doctor in the next few days – for some injuries an early look matters. Until then keep it easy and pain-free, and don't start loading it.",
+            "Was du angekreuzt hast, sollte sich am besten in den nächsten Tagen eine Ärztin oder ein Arzt ansehen – bei manchen Verletzungen zählt ein früher Blick. Bis dahin: locker und schmerzfrei bleiben und noch nicht belasten.")
         Urgency.ROUTINE -> Txt(
             "What you ticked doesn't need an emergency visit, but a doctor or physio should have a look soon. Your plan can wait for that.",
             "Was du angekreuzt hast, ist kein Notfall, aber eine Ärztin, ein Arzt oder eine Physio sollte es bald anschauen. Dein Plan kann so lange warten.")
@@ -249,7 +249,7 @@ object ComebackTexts {
             "About 10 days of rest, then 2–4 weeks of careful loading; full climbing usually after 6–10 weeks; tape for about 3 months.",
             "Etwa 10 Tage Ruhe, dann 2–4 Wochen vorsichtig belasten; volles Klettern meist nach 6–10 Wochen; etwa 3 Monate tapen.")
         InjuryFinding.PULLEY_RUPTURE -> Txt(
-            "10–14 days of rest, then a ring for about 2 months; easy climbing after 6–8 weeks at the earliest, full climbing around 3 months; tape for about 6 months. Getting back to the old level took 8.8 months on average after complete tears (47 climbers treated with a ring).",
+            "10–14 days of rest, then a ring for about 2 months; easy climbing after 6–8 weeks at the earliest, full climbing around 3 months; tape for about 6 months. Getting back to the old level took 8.8 months on average after complete tears (47 climbers who wore a ring).",
             "10–14 Tage Ruhe, dann etwa 2 Monate Ring; leichtes Klettern frühestens nach 6–8 Wochen, volles Klettern um 3 Monate; etwa 6 Monate tapen. Zurück aufs alte Niveau dauerte es nach kompletten Rissen im Schnitt 8,8 Monate (47 Kletternde mit Ring).")
         InjuryFinding.PULLEY_MULTIPLE -> Txt(
             "Usually surgery or a ring started within days; full climbing around 6 months after surgery; tape for 12 months or more.",
@@ -276,8 +276,8 @@ object ComebackTexts {
             "Exercise is the first choice here (strong evidence); surgery did no better than placebo surgery. Usual are 6–12 weeks of strengthening; no progress after 12 weeks: see a specialist. MRI findings are common in climbers without any pain.",
             "Training ist hier die erste Wahl (starke Evidenz); eine OP war nicht besser als eine Schein-OP. Üblich sind 6–12 Wochen Kräftigung; ohne Fortschritt nach 12 Wochen: fachärztlich abklären. MRT-Befunde sind bei Kletternden auch ohne Schmerzen häufig.")
         InjuryFinding.SLAP_BICEPS -> Txt(
-            "Conservative treatment worked for about 78 % of athletes who completed it, usually within 6 months.",
-            "Konservativ klappte es bei etwa 78 % der Sportler, die es durchzogen, meist innerhalb von 6 Monaten.")
+            "Without surgery it worked for about 78 % of athletes who kept at it, usually within 6 months.",
+            "Ohne OP klappte es bei etwa 78 % der Sportler, die es durchzogen, meist innerhalb von 6 Monaten.")
         InjuryFinding.SHOULDER_INSTABILITY -> Txt(
             "After a first dislocation in young people it happens again in about half without surgery and in about 6 % after stabilisation; 93 % of climbers got back to climbing after surgery.",
             "Nach einer ersten Ausrenkung in jungen Jahren passiert es ohne OP bei etwa der Hälfte wieder, nach einer Stabilisierung bei etwa 6 %; 93 % der Kletternden kamen nach der OP zurück ans Klettern.")
@@ -308,8 +308,8 @@ object ComebackTexts {
 
     /** Optional nutrition note (owner's plan), with its weak evidence and the safety questions (loading-principles.md F1–F3). */
     val GELATIN = Txt(
-        "Optional: 15 g gelatin with about 50 mg vitamin C, about 60 minutes before the first session of the day. In a small study (8 men) it raised a blood marker of collagen production; whether it helps a finger heal is not known. It's no reason to load more or sooner. Leave it out with a gelatin or meat allergy (alpha-gal) and ask your doctor first if you've had kidney stones.",
-        "Optional: 15 g Gelatine mit etwa 50 mg Vitamin C, etwa 60 Minuten vor der ersten Einheit des Tages. In einer kleinen Studie (8 Männer) stieg damit ein Blutwert der Kollagenbildung; ob es beim Heilen eines Fingers hilft, ist nicht bekannt. Es ist kein Grund, mehr oder früher zu belasten. Bei Gelatine- oder Fleischallergie (Alpha-Gal) weglassen, nach Nierensteinen vorher ärztlich fragen.",
+        "Optional: 15 g gelatin with about 50 mg vitamin C, about 60 minutes before the first session of the day. In a small study (8 men) it raised a blood marker of collagen production; whether it helps an injured finger is not known. It's no reason to load more or sooner. Leave it out with a gelatin or meat allergy (alpha-gal) and ask your doctor first if you've had kidney stones.",
+        "Optional: 15 g Gelatine mit etwa 50 mg Vitamin C, etwa 60 Minuten vor der ersten Einheit des Tages. In einer kleinen Studie (8 Männer) stieg damit ein Blutwert der Kollagenbildung; ob es einem verletzten Finger hilft, ist nicht bekannt. Es ist kein Grund, mehr oder früher zu belasten. Bei Gelatine- oder Fleischallergie (Alpha-Gal) weglassen, nach Nierensteinen vorher ärztlich fragen.",
     )
     val GELATIN_SOURCES = listOf(
         Source("Shaw G et al. Vitamin C–enriched gelatin supplementation before intermittent activity augments collagen synthesis. Am J Clin Nutr 2017;105:136–143", SourceKind.TRIAL),

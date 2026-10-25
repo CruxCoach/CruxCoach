@@ -15,7 +15,7 @@
 
     <string name="fvp_setup_text">Recognition runs only on your device; your photo never leaves the phone. For that, CruxCoach downloads an AI model once (%1$s, %2$s).</string>
     <string name="fvp_setup_estimate">It recognises foods and estimates grams. Nutrients come from the German food composition database BLS 4.0. Check the suggestions before you log them.</string>
-    <string name="fvp_setup_source">Source: Hugging Face (Qwen3.5, Apache-2.0). During the download the server only learns that this model is being fetched.</string>
+    <string name="fvp_setup_source">Source: CruxCoach mirror (blossom.cruxcoach.org) if it has the files, otherwise Hugging Face (Qwen3.5, Apache-2.0). During the download the server only learns that this model is being fetched.</string>
     <string name="fvp_allow_mobile">Also download over mobile data</string>
     <string name="fvp_download">Download (%s)</string>
     <string name="fvp_download_title">CruxCoach photo recognition (%1$d/%2$d)</string>

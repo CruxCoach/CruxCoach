@@ -47,7 +47,7 @@
     <string name="tre_focus_addon">Nach dem Klettern</string>
     <string name="tre_focus_core">Körperspannung</string>
     <string name="tre_focus_finger">Fingerkraft</string>
-    <string name="tre_focus_mobility">Beweglichkeit</string>
+    <string name="tre_focus_mobility">Mobilität</string>
     <string name="tre_focus_pe">Kraftausdauer</string>
     <string name="tre_focus_power">Power</string>
     <string name="tre_focus_prevention">Prävention</string>
@@ -74,7 +74,7 @@
     <string name="tre_more_actions">Weitere Aktionen</string>
     <string name="tre_reason_addon">Du kletterst heute – danach ein kurzer Block Antagonisten und Rumpf, keine zweite Einheit.</string>
     <string name="tre_reason_block_deload">Entlastungswoche: weniger Sätze, gleiche Übungen – Erholung gehört zum Plan.</string>
-    <string name="tre_reason_block_event">Heute ist dein Trip oder Wettkampf – nur leichte Mobility, komm frisch an.</string>
+    <string name="tre_reason_block_event">Heute ist dein Trip oder Wettkampf – nur etwas Mobilität, komm frisch an.</string>
     <string name="tre_reason_block_intro">Einstiegswoche: etwas weniger Umfang zum Reinkommen.</string>
     <string name="tre_reason_block_taper">Taper vor deinem Termin: weniger Umfang, die Intensität bleibt.</string>
     <string name="tre_reason_climbing_day">Heute kletterst du meistens – gut aufwärmen, das Board ist die Haupteinheit.</string>
@@ -82,7 +82,7 @@
     <string name="tre_reason_finger_rising">Deine Fingerlast steigt deutlich schneller als in deinen üblichen Wochen – heute keine maximale Fingerlast.</string>
     <string name="tre_reason_focus">Deine Schwerpunkte haben die Einheit geprägt.</string>
     <string name="tre_reason_goal_comeback">Comeback: erst leichtere Varianten, dein Niveau kommt Schritt für Schritt zurück.</string>
-    <string name="tre_reason_goal_healthy">Dein Ziel ist fit und verletzungsfrei – Prävention und Beweglichkeit bekommen mehr Gewicht.</string>
+    <string name="tre_reason_goal_healthy">Dein Ziel ist fit und verletzungsfrei – Prävention und Mobilität bekommen mehr Gewicht.</string>
     <string name="tre_reason_goal_project">Dein Ziel ist ein Projekt oder Grad – Finger- und Zugkraft zuerst.</string>
     <string name="tre_reason_guard_masters">Ab 40 bekommen die Finger einen Erholungstag mehr.</string>
     <string name="tre_reason_guard_novice">In den ersten Kletterjahren noch keine Max-Hangs, einarmige Übungen oder Campus – die Finger passen sich langsamer an als die Muskeln.</string>
@@ -117,7 +117,7 @@
     <string name="tre_trend_stall_try">Variation: %1$s</string>
     <string name="tre_trend_title">Über mehrere Einheiten</string>
     <string name="tre_reason_return_break">Zurück nach einer Pause: weniger Sätze und vorerst keine maximale Fingerlast – der Körper braucht einen kurzen Anlauf.</string>
-    <string name="tre_reason_return_finger">Deine Fingerverletzung ist erst kürzlich verheilt: Fingertraining bleibt noch ein paar Wochen leicht.</string>
+    <string name="tre_reason_return_finger">Du hast deine Fingerverletzung erst kürzlich als vorbei eingetragen: Fingertraining bleibt noch ein paar Wochen leicht.</string>
     <string name="tre_ev_return">Wiedereinstieg nach %1$d Tagen (Woche %2$d von %3$d)</string>
     <string name="tre_after_title">Nach dem Training</string>
     <string name="tre_after_fingers">Fingerkraft wieder voll belastbar ab %1$s</string>

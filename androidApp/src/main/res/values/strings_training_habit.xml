@@ -9,6 +9,6 @@
     <string name="trhb_offer_no">No thanks</string>
     <string name="trhb_taken">In your standard week: %1$s – %2$s</string>
     <string name="trlr_habits">Usual workouts</string>
-    <string name="trlr_habit_usual">in most trainings lately</string>
+    <string name="trlr_habit_usual">in most sessions lately</string>
     <string name="trlr_habit_times">%1$s · %2$d times</string>
 </resources>

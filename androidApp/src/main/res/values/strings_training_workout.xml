@@ -138,7 +138,7 @@
 
     <!-- History -->
     <string name="trw_history_title">Training history</string>
-    <string name="trw_history_empty">No finished trainings yet.</string>
+    <string name="trw_history_empty">No finished training sessions yet.</string>
     <string name="trw_workout_default">Training</string>
     <plurals name="trw_sets_done">
         <item quantity="one">%d set</item>

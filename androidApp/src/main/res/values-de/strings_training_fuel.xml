@@ -4,7 +4,7 @@
     <string name="trf_intro_title">Ernährung: Energie fürs Training</string>
     <string name="trf_intro_p1">Genug Energie ist die Grundlage für Kraft, Haut und Erholung. CruxCoach zeigt dir, was dein Training braucht – auch wenn du abnimmst.</string>
     <string name="trf_intro_protein">Protein richtet sich nach deinem Körpergewicht (etwa 1,4–2,0 g pro kg).</string>
-    <string name="trf_intro_carbs">Kohlenhydrate folgen deinem Training: an Board- und Krafttagen mehr, an Ruhetagen weniger – automatisch aus deinen Sessions.</string>
+    <string name="trf_intro_carbs">Kohlenhydrate folgen deinem Training: an Board- und Krafttagen mehr, an Ruhetagen weniger – automatisch aus deinen Board-Sessions und Trainings.</string>
     <string name="trf_intro_no_budget" formatted="false">Alle Werte offen: dein geschätzter Energiebedarf, was du gegessen hast und beim Abnehmen dein Kalorienziel. CruxCoach warnt, wenn du schneller als 1 % deines Gewichts pro Woche abnimmst oder dein Defizit groß wird. Keine guten oder schlechten Lebensmittel.</string>
     <string name="trf_intro_hidden">Kalorien stehen bei allen Werten dabei; in den Einstellungen kannst du sie ausblenden.</string>
     <string name="trf_intro_private">Alles bleibt verschlüsselt auf deinem Gerät – außer du schaltest selbst das Backup oder Health Connect ein.</string>
@@ -28,7 +28,7 @@
     <string name="trf_carbs_planned">Heute geplant: %1$s. Bis es erledigt ist, rechnen die heutigen Ziele schon damit – was du vor der Einheit isst, ist ihr Treibstoff. Frühere Tage und die Energiekarte zählen nur, was du eingetragen hast.</string>
     <string name="trf_water">Wasser</string>
     <string name="trf_hc_switch">Mahlzeiten und Wasser an Health Connect senden</string>
-    <string name="trf_hc_hint">Jedes eingetragene Lebensmittel und jedes Glas Wasser wird in Health Connect geschrieben; geänderte oder gelöschte Einträge werden dort angepasst, sobald du Ernährung öffnest.</string>
+    <string name="trf_hc_hint">Jedes eingetragene Lebensmittel und jedes Glas Wasser wird in Health Connect geschrieben; geänderte oder gelöschte Einträge werden dort angepasst, sobald du Ernährung öffnest. Schaltest du das aus, bleibt schon Geschriebenes in Health Connect; lösch es dort, wenn du willst.</string>
     <string name="trf_recipe_new">Rezept</string>
     <string name="trf_recipe_title">Rezept</string>
     <string name="trf_recipe_edit">Rezept bearbeiten</string>
@@ -133,7 +133,7 @@
     <string name="trf_food_unfavorite">Aus Favoriten entfernen</string>
     <string name="trf_food_delete">Lebensmittel löschen</string>
     <string name="trf_food_delete_confirm_title">„%1$s“ löschen?</string>
-    <string name="trf_food_delete_confirm_text">Es verschwindet aus deinen Lebensmitteln; schon eingetragene Einträge bleiben, wie sie sind.</string>
+    <string name="trf_food_delete_confirm_text">Es verschwindet aus deinen Lebensmitteln; was du schon eingetragen hast, bleibt, wie es ist.</string>
 
     <string name="trf_amount_title">Wie viel?</string>
     <string name="trf_amount_portions">Portionen</string>

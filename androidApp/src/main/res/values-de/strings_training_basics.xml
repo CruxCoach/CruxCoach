@@ -15,7 +15,7 @@
     <string name="trq_sex_none">Keine Angabe</string>
     <string name="trq_private">Alles, was du hier eingibst, bleibt verschlüsselt auf deinem Handy.</string>
     <string name="trq_climb_title">Dein Klettern</string>
-    <string name="trq_climb_why">Damit passen die Startlasten, und das Fingertraining bleibt sicher: keine Max-Hangs und kein Campus in den ersten Kletterjahren.</string>
+    <string name="trq_climb_why">Damit passen die Startlasten, und die Fingerlast bleibt vorsichtig: keine Max-Hangs und kein Campus in den ersten Kletterjahren.</string>
     <string name="trq_grade">Wie schwer boulderst du (übliche harte Tops)?</string>
     <string name="trq_grade_from_logbook">Vorschlag aus deinem Board-Logbuch.</string>
 </resources>
