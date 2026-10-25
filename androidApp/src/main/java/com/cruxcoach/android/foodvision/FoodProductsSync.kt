@@ -1,6 +1,7 @@
 package com.cruxcoach.android.foodvision
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.util.Log
 import androidx.core.content.edit
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
@@ -22,9 +23,10 @@ import javax.inject.Singleton
  * Blossom, SHA-256 and size checked, then [OffRepository.installUpdate] –
  * which takes it only when it is newer than what the phone has.
  *
- * Runs with the background board sync (so it follows the user's sync setting
- * and only on unmetered networks) and only for people who use the product
- * search, i.e. when the product database exists.
+ * Runs with the background board sync (so it follows the user's sync setting),
+ * only for people who use the product search (the product database exists),
+ * only on unmetered networks – a board sync confirmed on mobile data does not
+ * pull the product data along – and at most every [CHECK_INTERVAL_MS].
  */
 @Singleton
 class FoodProductsSync @Inject constructor(
@@ -46,6 +48,9 @@ class FoodProductsSync @Inject constructor(
     suspend fun sync(): Result = lock.withLock {
         withContext(Dispatchers.IO) {
             if (products.bytesOnDisk() == 0L) return@withContext Result.Skipped
+            val now = System.currentTimeMillis()
+            if (!shouldCheck(now, prefs.getLong(KEY_LAST_CHECK, 0L), isMetered())) return@withContext Result.Skipped
+            prefs.edit { putLong(KEY_LAST_CHECK, now) }
             try {
                 val manifest = blossom.fetchManifest()
                 require(manifest.v == 1) { "Unsupported food products manifest version ${manifest.v}" }
@@ -88,6 +93,10 @@ class FoodProductsSync @Inject constructor(
         }
     }
 
+    /** Unknown counts as metered: no product download when the phone cannot tell. */
+    private fun isMetered(): Boolean =
+        runCatching { context.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered }.getOrNull() ?: true
+
     companion object {
         private const val TAG = "FoodProductsSync"
         const val D_TAG = "cruxcoach/food-products"
@@ -95,5 +104,13 @@ class FoodProductsSync @Inject constructor(
         private const val PREFS_NAME = "blossom_sync_food_products"
         private const val STATE_PREFS = "food_products_update"
         private const val KEY_INSTALLED = "installed_version"
+        private const val KEY_LAST_CHECK = "last_check_ms"
+
+        /** The product data changes between app releases; a look every few days is plenty. */
+        const val CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000L
+
+        /** Whether to look for newer product data now (a clock set back counts as due). */
+        internal fun shouldCheck(nowMs: Long, lastCheckMs: Long, metered: Boolean): Boolean =
+            !metered && (lastCheckMs <= 0L || nowMs < lastCheckMs || nowMs - lastCheckMs >= CHECK_INTERVAL_MS)
     }
 }
