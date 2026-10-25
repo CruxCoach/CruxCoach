@@ -4,167 +4,6 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.4] - 2026-10-25
-
-### Added
-- Settings → Kilter: "Show entries" lists every entry Kilter did not take, with
-  climb, angle, date and reason, and sends the list as a bug report in one tap.
-- “Clean holds” in the logbook menu lights the holds of the problems logged
-  today on this phone, sends and attempts, that fit the connected Kilter/Aurora
-  board or MoonBoard, worked out like sending each climb (frames, mirroring,
-  the board size's LED map). Sending a problem without logging it does not
-  count, so in a group everyone cleans their own logged problems in turn with
-  their own phone. “Cleaned · reset collection” leaves only what is logged
-  afterwards; that mark is kept per physical board and survives app restarts.
-  Finish cleaning to restore the previous display; an active-mode button keeps
-  the controls accessible.
-
-### Changed
-- The in-app updater's built-in fallback list now includes GitHub next to
-  Codeberg, matching the published source list. A device that cannot reach
-  cruxcoach.org or its mirror still checks both forges every release is
-  published on.
-- The board map is easier to read and to use. Every place shows the colour
-  and letter of its board family (Kilter "K", MoonBoard "M", Tension "T", …),
-  places with several families a pie of them, gym names appear from city zoom
-  on, and the count bubbles are readable in light and dark. A floating search
-  bar replaces the title bar; below it, "All boards" opens a list of all
-  families with marker and count (the map's legend) and "Filters" shows how
-  many filters are active.
-- A sheet at the bottom lists the places in the visible part of the map,
-  nearest to the centre first. Tapping a place shows name, place, its boards
-  and the buttons for directions, website and phone; pulling it up shows per
-  board size, angle range ("adjustable 0–70° in 5° steps"), setup and LEDs,
-  the opening hours as the venue published them, and address and contact.
-  Rows without data are left out instead of showing "—". The map stays usable
-  while a place is open; a tap on the empty map or Back closes it.
-- The map reopens where it was left; on the first visit it shows the boards of
-  your country (from the timezone, without location permission) instead of
-  the whole world. Rotating and tilting by accident is off, and the dark theme
-  gets a dark map instead of a light grey one.
-- "My location" on the board map shows where you are, frames you with the
-  nearest boards and lists places by distance. The location permission is
-  asked for only when you tap it; the position stays on the phone. It works
-  without Google services too: every location source is asked at once, a
-  recent position another app found answers at once, and the search goes on
-  until a position arrives, Cancel ends it or the screen is left (it pauses
-  while the app is in the background). A message appears only for a reason you
-  can act on (no permission, location off, no location source), with a detail
-  line of what was tried. Back from the location settings returns to the app.
-- Finding your board via your gym no longer needs the gym's name: "Gyms near
-  me" in the gym search (and "Find a gym near you" in the board dialog, in
-  onboarding, the board browser, settings and the sync card) lists the closest
-  gyms with their boards and distance. Before the gym data has synced, search
-  and "near me" use the board map's bundled gym list, so they work on the
-  first start too.
-- A board the map cannot open directly — Tension, Grasshopper, Decoy, So iLL,
-  Touchstone, Quantum, a MoonBoard of unknown variant — now has "Choose this
-  board": it opens the gym search with that place already picked, and the
-  chosen board goes straight to the board browser. The gym search also offers
-  the Quantum models.
-
-### Fixed
-- Newer Kilter boards whose controller advertises only “Kilter Board”, without
-  a serial number or API level, now appear in the Bluetooth search and connect.
-  Before, the search kept spinning without ever listing them. Climbs reach these
-  controllers in packets 100 ms apart, as in the Kilter app.
-- A Bluetooth search that has found no board after 15 seconds explains what to
-  check instead of only showing the spinner.
-- Switching to another board (size, layout or brand) while connected now
-  disconnects from the previous board, so a climb never lights the holds of the
-  newly chosen board on the old wall. The Kilter app does the same.
-- Turning Bluetooth off and on during a search no longer leaves the search
-  spinning without results; it resumes once Bluetooth is back.
-- When Android no longer asks for the Bluetooth permission, the board search
-  offers to open the app settings instead of a button that does nothing.
-- In a group session and after asking another climber to disconnect, CruxCoach
-  connects to your remembered board, or to the only matching board in range,
-  instead of whichever board advertised first — with two walls of one brand that
-  could be the neighbouring wall.
-- Boards that advertise no serial number are always written the way the Kilter
-  app does it: acknowledged packets 100 ms apart.
-- Hold cleaning on API-level-2 controllers lights at most 127 holds per section,
-  in one packet, as the Kilter app sends them.
-- A climb with more holds than an API-level-2 controller's power budget can show
-  is refused instead of being reported as sent while the wall stays dark.
-- Devices whose name merely contains "#" or "@" (a printer, a speaker) are no
-  longer listed as Kilter boards.
-- Switching boards while a catalogue import runs takes effect at once. Before,
-  the browser kept showing the previous board until the import had finished,
-  which could take minutes; its first database read waited behind the import.
-- A confirmed catalogue download starts for every board family, for example a
-  Tension board chosen from the map, not only for Kilter and MoonBoard.
-- A board session no longer stays "paused" after a rest timer runs out
-  (M-097, since 0.2.2); the time after the rest is counted as training again.
-- Uploading the logbook to Kilter no longer stalls on one entry. Kilter refuses
-  a bulk upload as a whole when a single row names a climb it does not know, and
-  0.2.3 retried the same first 200 entries forever ("Kilter rejected the
-  upload"). A refused request is now split until the row is alone; everything
-  else uploads, and the row is held back until it is edited or the app is
-  updated, instead of blocking the queue. A row is held back only with proof
-  that Kilter takes uploads: another request accepted after it in the same run,
-  the same climb refused with proof before, or three refusals hours apart. An
-  outage, also one that begins halfway through an upload, holds nothing back.
-- Logs of climbs Kilter keeps under a new id now reach Kilter. CruxCoach's
-  catalogue still carries the old id of 793 Kilter climbs (455 it lists, 338
-  Kilter no longer lists, typical of older logs such as an Aurora export; most
-  moved to a new id in Kilter's migration of March 2026); Kilter refuses a log
-  naming the old id. A bundled table of these climbs, matched by identical holds and name,
-  sends such a log under the id Kilter lists, and falls back to the old one if
-  Kilter refuses the new.
-- Climbs keep the id Kilter stores for them. About a quarter of the legacy
-  Kilter climbs have a lowercase id, and Kilter compares ids case-sensitively;
-  0.2.3 uppercased every compact id, so every log of such a climb was refused.
-  A bundled index of these ids, CruxCoach's own climbs and the spellings in the
-  account's own logbook now decide the case; a dashed spelling of a legacy climb
-  the board catalogue holds is sent compact, so it counts towards the climb's
-  own statistics.
-- Entries Kilter already has are not uploaded twice: an entry restored under a
-  new uuid, or re-sent after a lost response, is recognised in Kilter's copy of
-  the logbook, which is now read once per upload instead of once per 200 entries.
-- Entries imported from an Aurora export stay local by default. Kilter usually
-  has them already, and uploading them duplicated the logbook there. They can be
-  uploaded on request; entries Kilter has for the same climb, angle and send
-  state at most a day apart are skipped. A copy CruxCoach uploaded for one
-  imported entry never counts as Kilter's copy of another.
-- A quick-log sequence ("Try", "Try", "Top") and any edit of an entry already
-  on Kilter now reach Kilter. Kilter takes no updates and refuses a log it
-  holds; 0.2.3 sent such an entry again and the upload failed, and the send
-  stayed local. The app now deletes Kilter's copy and uploads the entry again,
-  also for sends logged this way with an earlier version. An entry Kilter holds
-  with other content that was not changed in CruxCoach stays local as a
-  conflict and no longer stops the upload of every other entry.
-- An entry imported from an Aurora export is no longer uploaded twice when the
-  same climb was sent on two consecutive late evenings: it is matched to the
-  nearest of Kilter's logs in time, not to the first one of the day.
-- A slow Kilter no longer ends the upload with "Cannot reach Kilter". Under
-  load Kilter took longer than the 30 seconds the app waited for a 200-entry
-  request (field report on the 0.2.4 test build). Uploads now go in requests of
-  100 entries and wait up to 90 seconds for an answer; "Kilter is answering too
-  slowly right now" is told apart from a missing connection.
-- After a timeout, a lost connection or a Kilter error the app tries again by
-  itself (after 2, 5, 15, 30, 60 and 120 minutes, once online), and also
-  continues a large backlog that one run did not finish. Starting the upload in
-  the settings no longer stops when the screen is left.
-- A request whose answer was lost no longer turns into "Kilter does not know
-  this climb". Kilter writes a request as a whole or not at all and refuses a
-  log it already holds; the app notes each request before sending it and
-  settles a request without an answer against Kilter's logbook, or, for
-  attempts Kilter leaves out of it, by asking Kilter to delete one of its rows
-  (Kilter tells whether it held it; the row goes up again). The HTTP client no
-  longer resends an upload by itself when the connection breaks mid-request.
-- Offline with an expired Kilter session token, the upload no longer asks for a
-  new login: it waits for the connection and tries again by itself. An app
-  start or a new entry no longer restarts the back-off of these retries, and an
-  entry Kilter refused without proof is retried when its pause ends.
-- The climb detail no longer clips holds at the board's edge. A climb set on a
-  larger board (e.g. 16 x 12) whose holds reach one hole column beyond your board
-  was drawn on your board anyway; it is now shown on the size it was set on, as
-  the climb list already treated it.
-- The map no longer draws a place's sheet under the navigation bar, where
-  "Choose this board" sat behind the buttons and a tap hit Back.
-- Picking a place from the map's list while a search is typed ends the
-  search, so the keyboard and results no longer cover the place.
 ## [Unreleased]
 
 ### Added
@@ -490,13 +329,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   or an older processor the button stays greyed out and says why.
 - Training, body and nutrition data live in a separate encrypted database per
   account and are included in the cloud backup and the manual export.
-- Settings → Kilter: "Show entries" lists every entry Kilter did not take, with
-  climb, angle, date and reason, and sends the list as a bug report in one tap.
-- “Clean holds” in the logbook menu lights the combined holds of today's
-  problems sent from this phone to the connected Kilter/Aurora or MoonBoard.
-  Collections survive app restarts and stay separate per physical board.
-  Finish cleaning to restore the previous display and optionally reset the
-  collection; an active-mode button keeps the controls accessible.
 - Plan days: today and the next two weeks, one tap per day – rest day, a
   climbing day (gym bouldering, gym rope, rock or other; easy, volume, hard or
   limit), a board session, a training, or swap two days. A change holds for
@@ -564,6 +396,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The rest screen names a first value "Starting value learned" and maxima in
   words ("max. 1 rep at +35 kg", "10 s at 74 kg") instead of "e1RM +35 kg",
   which read like an increase of 35 kg.
+- Performance values are harder to throw off: one set raises a value by at
+  most 10 % (a second set of the same training that shows as much confirms
+  more), so a typo such as "50 reps" no longer jumps the next plan; a quick
+  self-estimate is replaced by the best set of the first training with the
+  exercise, also when that is lower; and on holds the seconds answered as
+  "how many more?" count as time held. Loads planned from an existing value
+  do not change.
+
+### Fixed
+- After a catalogue import the app frees the temporary database file at once. A Tension
+  import left about 180 MB in it until the next write, on a phone with little space left.
+- Deleting a climbing day offers "Undo" (on Today and in the list of climbing
+  days); the entry comes back with its board-overlap choice.
+- The nutrition page left open over midnight moves to the new day by itself
+  instead of showing "Yesterday" with the old day's food; a day picked with
+  the arrows stays picked.
+- A water target of more than ten glasses wraps into even rows (6 + 5)
+  instead of one lonely glass in a second row.
+
+## [0.2.4] - 2026-10-25
+
+### Added
+- Settings → Kilter: "Show entries" lists every entry Kilter did not take, with
+  climb, angle, date and reason, and sends the list as a bug report in one tap.
+- “Clean holds” in the logbook menu lights the holds of the problems logged
+  today on this phone, sends and attempts, that fit the connected Kilter/Aurora
+  board or MoonBoard, worked out like sending each climb (frames, mirroring,
+  the board size's LED map). Sending a problem without logging it does not
+  count, so in a group everyone cleans their own logged problems in turn with
+  their own phone. “Cleaned · reset collection” leaves only what is logged
+  afterwards; that mark is kept per physical board and survives app restarts.
+  Finish cleaning to restore the previous display; an active-mode button keeps
+  the controls accessible.
+
+### Changed
 - The in-app updater's built-in fallback list now includes GitHub next to
   Codeberg, matching the published source list. A device that cannot reach
   cruxcoach.org or its mirror still checks both forges every release is
@@ -588,7 +455,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   gets a dark map instead of a light grey one.
 - "My location" on the board map shows where you are, frames you with the
   nearest boards and lists places by distance. The location permission is
-  asked for only when you tap it; the position stays on the phone.
+  asked for only when you tap it; the position stays on the phone. It works
+  without Google services too: every location source is asked at once, a
+  recent position another app found answers at once, and the search goes on
+  until a position arrives, Cancel ends it or the screen is left (it pauses
+  while the app is in the background). A message appears only for a reason you
+  can act on (no permission, location off, no location source), with a detail
+  line of what was tried. Back from the location settings returns to the app.
 - Finding your board via your gym no longer needs the gym's name: "Gyms near
   me" in the gym search (and "Find a gym near you" in the board dialog, in
   onboarding, the board browser, settings and the sync card) lists the closest
@@ -600,26 +473,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   board": it opens the gym search with that place already picked, and the
   chosen board goes straight to the board browser. The gym search also offers
   the Quantum models.
-- Performance values are harder to throw off: one set raises a value by at
-  most 10 % (a second set of the same training that shows as much confirms
-  more), so a typo such as "50 reps" no longer jumps the next plan; a quick
-  self-estimate is replaced by the best set of the first training with the
-  exercise, also when that is lower; and on holds the seconds answered as
-  "how many more?" count as time held. Loads planned from an existing value
-  do not change.
 
 ### Fixed
-- Deleting a climbing day offers "Undo" (on Today and in the list of climbing
-  days); the entry comes back with its board-overlap choice.
-- The map no longer draws a place's sheet under the navigation bar, where
-  "Choose this board" sat behind the buttons and a tap hit Back.
-- Picking a place from the map's list while a search is typed ends the
-  search, so the keyboard and results no longer cover the place.
-- The nutrition page left open over midnight moves to the new day by itself
-  instead of showing "Yesterday" with the old day's food; a day picked with
-  the arrows stays picked.
-- A water target of more than ten glasses wraps into even rows (6 + 5)
-  instead of one lonely glass in a second row.
+- Newer Kilter boards whose controller advertises only “Kilter Board”, without
+  a serial number or API level, now appear in the Bluetooth search and connect.
+  Before, the search kept spinning without ever listing them. Climbs reach these
+  controllers in packets 100 ms apart, as in the Kilter app.
+- A Bluetooth search that has found no board after 15 seconds explains what to
+  check instead of only showing the spinner.
+- Switching to another board (size, layout or brand) while connected now
+  disconnects from the previous board, so a climb never lights the holds of the
+  newly chosen board on the old wall. The Kilter app does the same.
+- Turning Bluetooth off and on during a search no longer leaves the search
+  spinning without results; it resumes once Bluetooth is back.
+- When Android no longer asks for the Bluetooth permission, the board search
+  offers to open the app settings instead of a button that does nothing.
+- In a group session and after asking another climber to disconnect, CruxCoach
+  connects to your remembered board, or to the only matching board in range,
+  instead of whichever board advertised first — with two walls of one brand that
+  could be the neighbouring wall.
+- Boards that advertise no serial number are always written the way the Kilter
+  app does it: acknowledged packets 100 ms apart.
+- Hold cleaning on API-level-2 controllers lights at most 127 holds per section,
+  in one packet, as the Kilter app sends them.
+- A climb with more holds than an API-level-2 controller's power budget can show
+  is refused instead of being reported as sent while the wall stays dark.
+- Devices whose name merely contains "#" or "@" (a printer, a speaker) are no
+  longer listed as Kilter boards.
+- Switching boards while a catalogue import runs takes effect at once. Before,
+  the browser kept showing the previous board until the import had finished,
+  which could take minutes; its first database read waited behind the import.
+- A confirmed catalogue download starts for every board family, for example a
+  Tension board chosen from the map, not only for Kilter and MoonBoard.
 - A board session no longer stays "paused" after a rest timer runs out
   (M-097, since 0.2.2); the time after the rest is counted as training again.
 - Uploading the logbook to Kilter no longer stalls on one entry. Kilter refuses
@@ -663,7 +548,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - An entry imported from an Aurora export is no longer uploaded twice when the
   same climb was sent on two consecutive late evenings: it is matched to the
   nearest of Kilter's logs in time, not to the first one of the day.
-
 - A slow Kilter no longer ends the upload with "Cannot reach Kilter". Under
   load Kilter took longer than the 30 seconds the app waited for a 200-entry
   request (field report on the 0.2.4 test build). Uploads now go in requests of
@@ -684,11 +568,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   new login: it waits for the connection and tries again by itself. An app
   start or a new entry no longer restarts the back-off of these retries, and an
   entry Kilter refused without proof is retried when its pause ends.
-
 - The climb detail no longer clips holds at the board's edge. A climb set on a
   larger board (e.g. 16 x 12) whose holds reach one hole column beyond your board
   was drawn on your board anyway; it is now shown on the size it was set on, as
   the climb list already treated it.
+- The map no longer draws a place's sheet under the navigation bar, where
+  "Choose this board" sat behind the buttons and a tap hit Back.
+- Picking a place from the map's list while a search is typed ends the
+  search, so the keyboard and results no longer cover the place.
 
 ## [0.2.3] - 2026-09-26
 
