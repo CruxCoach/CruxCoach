@@ -390,6 +390,68 @@ fn ending_purges_pending_plaintext_and_refuses_further_messages() {
     assert_eq!(peer_state(&bob, &a.account()).as_deref(), Some("ended"));
 }
 
+/// Calls like the Kotlin chokepoint: a rolled-back engine is closed, then reopened.
+fn sync_reopening(p: &Participant, host: &mut Option<Host>) {
+    if let Err(e) = try_call(host.as_ref().unwrap(), json!({"op":"sync"}))
+        && (e == "reopen_required" || e == "native_ingest_failed")
+    {
+        host.take().unwrap().close();
+        *host = Some(p.open());
+    }
+}
+
+#[test]
+fn an_event_that_keeps_failing_is_skipped_and_later_messages_arrive() {
+    let relay = Relay::start();
+    let a = Participant::new(vec![relay.url.clone()]);
+    let b = Participant::new(a.relays.clone());
+    let alice = a.open();
+    let bob = b.open();
+    friendship(&a, &b, &alice, &bob);
+    call(&bob, json!({"op":"set_online","online":false}));
+    let poisoned = send(&alice, &b.account(), "q1", "synthetic poisoned").unwrap()["event"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    call(&bob, json!({"op":"fail_ingest","event":poisoned}));
+    call(&bob, json!({"op":"set_online","online":true}));
+    let mut bob = Some(bob);
+    let quarantined = |bob: &Option<Host>| {
+        try_call(bob.as_ref().unwrap(), json!({"op":"quarantined"}))
+            .ok()
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+    };
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while quarantined(&bob) == 0 {
+        assert!(
+            Instant::now() < deadline,
+            "a failing event must not block ingest forever"
+        );
+        settle(&[&alice]);
+        sync_reopening(&b, &mut bob);
+    }
+    send(&alice, &b.account(), "q2", "synthetic after quarantine").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        settle(&[&alice]);
+        sync_reopening(&b, &mut bob);
+        let texts: Vec<Value> = inbox(bob.as_ref().unwrap())
+            .iter()
+            .map(|m| m["content"].clone())
+            .collect();
+        if texts.contains(&json!("synthetic after quarantine")) {
+            assert!(!texts.contains(&json!("synthetic poisoned")));
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "later messages arrive after the skipped one"
+        );
+    }
+    assert_eq!(quarantined(&bob), 1);
+}
+
 #[test]
 fn negentropy_catch_up_and_socketless_local_relay() {
     let runtime = tokio::runtime::Runtime::new().unwrap();

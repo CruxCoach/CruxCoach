@@ -212,6 +212,11 @@ impl Store {
         Ok(())
     }
 
+    pub fn delete_meta(&self, key: &str) -> Result<()> {
+        self.sql(|c| c.execute("DELETE FROM cc2_meta WHERE key=?1", [key]))?;
+        Ok(())
+    }
+
     // ---- events -----------------------------------------------------------
 
     /// Insert a verified event. Replaceable/addressable kinds keep only the

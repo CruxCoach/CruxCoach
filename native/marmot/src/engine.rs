@@ -878,6 +878,9 @@ impl Engine {
     // ---- ingest, convergence, confirmations -----------------------------------------
 
     pub fn ingest(&mut self, budget: usize) -> Result<Changes> {
+        if self.poisoned {
+            return Err(Error("reopen_required"));
+        }
         let mut changes = Changes::default();
         let mut cursor: i64 = self
             .store
@@ -886,12 +889,44 @@ impl Engine {
             .unwrap_or(0);
         let batch = self.store.remote_after(cursor, budget)?;
         for (seq, event) in batch {
+            // One event that keeps failing (an unclassified engine error, a
+            // resource limit, a crash of the process) must not stop every
+            // later one. The attempt is committed before processing, so it
+            // survives the rollback and a crash; after the last attempt the
+            // event is skipped and counted. A skipped group message shows up
+            // as a gap the sync layer repairs; a skipped invitation can be
+            // sent again.
+            let attempts = ingest_attempts(self.store.meta(INGEST_ATTEMPT)?.as_deref(), seq);
+            if attempts >= MAX_INGEST_ATTEMPTS {
+                self.store.transaction(|| {
+                    self.store.put_meta("ingest", &seq.to_string())?;
+                    self.store.delete_meta(INGEST_ATTEMPT)?;
+                    let skipped: u64 = self
+                        .store
+                        .meta(INGEST_QUARANTINED)?
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0);
+                    self.store
+                        .put_meta(INGEST_QUARANTINED, &(skipped + 1).to_string())
+                })?;
+                cursor = seq;
+                continue;
+            }
+            self.store
+                .put_meta(INGEST_ATTEMPT, &format!("{seq}:{}", attempts + 1))?;
+            #[cfg(feature = "local-harness")]
+            let injected =
+                self.store.meta(TEST_FAIL_INGEST)?.as_deref() == Some(event.id.to_hex().as_str());
             let live = checked(self.session.live_group_ids(), "groups")?.len();
             let message = NostrTransportEvent::from_nostr_event(&event)
                 .and_then(|e| e.to_transport_message())
                 .ok();
             let step = self.atomic(|engine| {
                 let mut step = Changes::default();
+                #[cfg(feature = "local-harness")]
+                if injected {
+                    return Err(Error("native_ingest_failed"));
+                }
                 if let Some(message) = message
                     && !(event.kind.as_u16() == 1059 && live >= MAX_LIVE_GROUPS)
                 {
@@ -920,6 +955,7 @@ impl Engine {
                 }
                 step.merge(engine.reconcile()?);
                 engine.store.put_meta("ingest", &seq.to_string())?;
+                engine.store.delete_meta(INGEST_ATTEMPT)?;
                 Ok(step)
             })?;
             cursor = seq;
@@ -1300,4 +1336,36 @@ pub fn archive_storage(path: &Path) -> Result<()> {
         "archive_failed",
     )?;
     Ok(())
+}
+
+/// Committed processing attempts of the next remote event: `"<seq>:<count>"`.
+const INGEST_ATTEMPT: &str = "ingest/attempt";
+/// Remote events skipped after [`MAX_INGEST_ATTEMPTS`].
+pub(crate) const INGEST_QUARANTINED: &str = "ingest/quarantined";
+/// Harness only: the id of a remote event whose processing fails on purpose.
+#[cfg(feature = "local-harness")]
+pub(crate) const TEST_FAIL_INGEST: &str = "test/fail_ingest";
+const MAX_INGEST_ATTEMPTS: u32 = 3;
+
+/// Attempts already made for the event at `seq`; another event resets the count.
+fn ingest_attempts(stored: Option<&str>, seq: i64) -> u32 {
+    stored
+        .and_then(|v| v.split_once(':'))
+        .filter(|(s, _)| s.parse::<i64>().ok() == Some(seq))
+        .and_then(|(_, n)| n.parse().ok())
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod ingest_attempt_tests {
+    use super::ingest_attempts;
+
+    #[test]
+    fn attempts_belong_to_one_event_and_reset_for_the_next() {
+        assert_eq!(ingest_attempts(None, 7), 0);
+        assert_eq!(ingest_attempts(Some("7:2"), 7), 2);
+        assert_eq!(ingest_attempts(Some("7:2"), 8), 0);
+        assert_eq!(ingest_attempts(Some("garbage"), 7), 0);
+        assert_eq!(ingest_attempts(Some("7:x"), 7), 0);
+    }
 }

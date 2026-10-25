@@ -164,6 +164,12 @@ enum Command {
         peer: String,
     },
     #[cfg(feature = "local-harness")]
+    FailIngest {
+        event: String,
+    },
+    #[cfg(feature = "local-harness")]
+    Quarantined,
+    #[cfg(feature = "local-harness")]
     LocalQuery {
         kinds: Vec<u16>,
     },
@@ -966,6 +972,21 @@ impl Host {
             }
             #[cfg(feature = "local-harness")]
             Command::Epoch { peer } => json!(self.engine()?.epoch(&peer)?),
+            #[cfg(feature = "local-harness")]
+            Command::FailIngest { event } => {
+                self.engine()?
+                    .store()
+                    .put_meta(crate::engine::TEST_FAIL_INGEST, &event)?;
+                json!(true)
+            }
+            #[cfg(feature = "local-harness")]
+            Command::Quarantined => json!(
+                self.engine()?
+                    .store()
+                    .meta(crate::engine::INGEST_QUARANTINED)?
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(0)
+            ),
             #[cfg(feature = "local-harness")]
             Command::LocalQuery { kinds } => {
                 let filter = Filter::new().kinds(kinds.into_iter().map(Kind::Custom));

@@ -913,11 +913,11 @@ fn two_stage_qr_fetches_exactly_the_scanned_package() {
     c.e().set_discovery(false).unwrap();
     c.e().import_hint(&forged).unwrap();
     let target = c.e().identify(&beacons);
-    if let Ok(Some(target)) = target {
-        if let Ok(Some(request)) = c.e().exchange_begin(Some(&target), false, MAX) {
-            let (response, _) = a.e().exchange_serve(&request, MAX).unwrap();
-            c.e().exchange_end(&response, MAX).unwrap();
-        }
+    if let Ok(Some(target)) = target
+        && let Ok(Some(request)) = c.e().exchange_begin(Some(&target), false, MAX)
+    {
+        let (response, _) = a.e().exchange_serve(&request, MAX).unwrap();
+        c.e().exchange_end(&response, MAX).unwrap();
     }
     assert_eq!(
         c.state(&a.id()),
