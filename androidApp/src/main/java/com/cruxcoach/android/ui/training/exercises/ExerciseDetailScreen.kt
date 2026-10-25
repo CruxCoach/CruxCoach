@@ -160,17 +160,20 @@ class ExerciseDetailViewModel @Inject constructor(private val service: AthleteSe
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); service.setExcluded(slug, excluded) }
     }
 
-    /** Adds the exercise to the running training, or starts one with it. */
-    fun addToTraining(title: String) {
+    /**
+     * Adds the exercise to the running training, or starts one with it. What the open injury rules out
+     * is warned about first; [despiteInjury]: "add anyway" (owner 2026-10-25: warn, never block).
+     */
+    fun addToTraining(title: String, despiteInjury: Boolean = false) {
         val slug = loadedSlug ?: return
-        if (_state.value.advice.verdict == InjuryVerdict.AVOID) {
+        if (!despiteInjury && _state.value.advice.verdict == InjuryVerdict.AVOID) {
             _state.update { it.copy(addRejected = true) }
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val workoutId = service.repo.openWorkout()?.id ?: service.startWorkout(null, title)
-            val ok = service.addExercise(workoutId, slug)
+            val ok = service.addExercise(workoutId, slug, despiteInjury)
             _state.update { if (ok) it.copy(navigateToWorkout = true) else it.copy(addRejected = true) }
         }
     }
@@ -208,15 +211,25 @@ fun ExerciseDetailScreen(
     val language = catalogLanguage()
     val snackbar = remember { SnackbarHostState() }
     val rejectedText = stringResource(R.string.trx_pick_rejected)
+    val anywayText = stringResource(R.string.trwo_add_anyway)
+    val def = state.definition
+    val title = def?.name(language).orEmpty()
+    // The snackbar runs in its own scope: consuming the event restarts the effect below, which would cancel it.
+    val snackbarScope = rememberCoroutineScope()
 
     LaunchedEffect(state.navigateToWorkout, state.addRejected) {
         when {
             state.navigateToWorkout -> { viewModel.consumeEvents(); onOpenWorkout() }
-            state.addRejected -> { viewModel.consumeEvents(); snackbar.showSnackbar(rejectedText) }
+            state.addRejected -> {
+                viewModel.consumeEvents()
+                snackbarScope.launch {
+                    val result = snackbar.showSnackbar(rejectedText, actionLabel = anywayText, duration = SnackbarDuration.Long)
+                    if (result == SnackbarResult.ActionPerformed) viewModel.addToTraining(title, despiteInjury = true)
+                }
+            }
         }
     }
 
-    val def = state.definition
     TrainingScaffold(
         title = def?.name(language) ?: stringResource(R.string.tr_nav_exercises),
         onBack = onBack,
@@ -296,7 +309,6 @@ fun ExerciseDetailScreen(
                     item { History(def, state.sessions, state.profile) }
                     item { Spacer(Modifier.height(16.dp)) }
                 }
-                val title = def.name(language)
                 Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         onClick = { addSheet = true },
@@ -307,8 +319,8 @@ fun ExerciseDetailScreen(
                         Text(stringResource(R.string.trx_to_workout))
                     }
                     Button(
+                        // Enabled while the injury rules it out: the tap warns and offers "add anyway".
                         onClick = { viewModel.addToTraining(title) },
-                        enabled = state.advice.verdict != InjuryVerdict.AVOID,
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("exercise_detail_add"),
                     ) {
                         Icon(if (state.openWorkout != null) Icons.Default.Add else Icons.Default.PlayArrow, contentDescription = null)

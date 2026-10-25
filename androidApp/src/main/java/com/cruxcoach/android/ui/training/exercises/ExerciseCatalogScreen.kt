@@ -78,7 +78,8 @@ data class CatalogState(
     val injuryDefaultsApplied: Boolean = false,
     /** One-shot events for the screen. */
     val picked: Boolean = false,
-    val pickRejected: Boolean = false,
+    /** The picked exercise the open injury rules out; the snackbar offers "add anyway". */
+    val pickRejected: String? = null,
 ) {
     val filter: CatalogFilter get() = CatalogFilter(
         categories = categories,
@@ -181,15 +182,16 @@ class ExerciseCatalogViewModel @Inject constructor(private val service: AthleteS
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); service.setExcluded(slug, excluded) }
     }
 
-    fun pick(workoutId: String, slug: String) {
+    /** [despiteInjury]: "add anyway" after the injury warning (owner 2026-10-25: warn, never block). */
+    fun pick(workoutId: String, slug: String, despiteInjury: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            val ok = service.addExercise(workoutId, slug)
-            _state.update { if (ok) it.copy(picked = true) else it.copy(pickRejected = true) }
+            val ok = service.addExercise(workoutId, slug, despiteInjury)
+            _state.update { if (ok) it.copy(picked = true) else it.copy(pickRejected = slug) }
         }
     }
 
-    fun consumeEvents() = _state.update { it.copy(picked = false, pickRejected = false) }
+    fun consumeEvents() = _state.update { it.copy(picked = false, pickRejected = null) }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -217,10 +219,19 @@ fun ExerciseCatalogScreen(
     val mineHint = stringResource(R.string.trx_filter_mine_hint)
     val scope = rememberCoroutineScope()
 
+    val anywayText = stringResource(R.string.trwo_add_anyway)
     LaunchedEffect(state.picked, state.pickRejected) {
+        val rejected = state.pickRejected
         when {
             state.picked -> { viewModel.consumeEvents(); onExercisePicked() }
-            state.pickRejected -> { viewModel.consumeEvents(); snackbar.showSnackbar(rejectedText) }
+            rejected != null -> {
+                viewModel.consumeEvents()
+                // Its own scope: consuming the event restarts this effect, which would cancel the snackbar.
+                scope.launch {
+                    val result = snackbar.showSnackbar(rejectedText, actionLabel = anywayText, duration = SnackbarDuration.Long)
+                    if (result == SnackbarResult.ActionPerformed && pickForWorkout != null) viewModel.pick(pickForWorkout, rejected, despiteInjury = true)
+                }
+            }
         }
     }
 

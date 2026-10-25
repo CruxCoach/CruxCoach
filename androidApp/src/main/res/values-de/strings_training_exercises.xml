@@ -25,7 +25,7 @@
     <string name="trx_badge_caution">vorsichtig</string>
     <string name="trx_badge_only_left">nur links</string>
     <string name="trx_badge_only_right">nur rechts</string>
-    <string name="trx_pick_rejected">Deine aktuelle Verletzung schließt diese Übung aus.</string>
+    <string name="trx_pick_rejected">Diese Übung belastet deine verletzte Stelle.</string>
     <string name="trx_custom_badge">eigene</string>
 
     <string name="trx_why">Warum für Kletterer</string>
@@ -51,7 +51,7 @@
     <string name="trx_reps_short">%d×</string>
     <string name="trx_add_to_running">Zum Training</string>
     <string name="trx_start_with">Damit starten</string>
-    <string name="trx_injury_avoid">Deine Verletzung (%1$s) schließt diese Übung im Moment aus.</string>
+    <string name="trx_injury_avoid">Deine Verletzung (%1$s): Der Coach lässt diese Übung im Moment weg. Selbst hinzufügen kannst du sie trotzdem.</string>
     <string name="trx_injury_caution">Deine Verletzung (%1$s): nur schmerzfrei und mit weniger Last.</string>
     <string name="trx_injury_one_side">Deine Verletzung (%1$s): trainiere nur die %2$s Seite.</string>
     <string name="trx_not_found">Diese Übung gibt es nicht mehr.</string>

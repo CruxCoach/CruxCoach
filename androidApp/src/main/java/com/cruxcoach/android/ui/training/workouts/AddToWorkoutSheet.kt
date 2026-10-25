@@ -45,7 +45,7 @@ data class AddToWorkoutState(
 
 sealed interface AddToWorkoutEvent {
     data object TrainingStarted : AddToWorkoutEvent
-    /** The open injury rules the exercise out. */
+    /** The open injury rules the exercise out; the athlete may still add it ("add anyway"). */
     data object Rejected : AddToWorkoutEvent
     data class AddedToRoutine(val name: String) : AddToWorkoutEvent
 }
@@ -70,23 +70,24 @@ class AddToWorkoutViewModel @Inject constructor(private val service: AthleteServ
         }
     }
 
-    fun addToOpen() = io { slug ->
+    /** [despiteInjury]: "add anyway" after the injury warning (owner 2026-10-25: warn, never block). */
+    fun addToOpen(despiteInjury: Boolean = false) = io { slug ->
         val open = service.repo.openWorkout() ?: return@io
-        if (service.addExercise(open.id, slug)) _events.send(AddToWorkoutEvent.TrainingStarted)
+        if (service.addExercise(open.id, slug, despiteInjury)) _events.send(AddToWorkoutEvent.TrainingStarted)
         else _events.send(AddToWorkoutEvent.Rejected)
     }
 
-    fun startNew(title: String) = io { slug ->
+    fun startNew(title: String, despiteInjury: Boolean = false) = io { slug ->
         // Check first: a rejected exercise must not leave an empty training behind.
         val def = service.catalog[slug] ?: return@io
-        if (com.cruxcoach.athlete.logic.InjuryAdvisor.assess(def, service.repo.activeInjuries()).verdict ==
+        if (!despiteInjury && com.cruxcoach.athlete.logic.InjuryAdvisor.assess(def, service.repo.activeInjuries()).verdict ==
             com.cruxcoach.athlete.logic.InjuryVerdict.AVOID) {
             _events.send(AddToWorkoutEvent.Rejected)
             return@io
         }
         val hadOpen = service.repo.openWorkout() != null
         val id = service.startWorkout(null, title)
-        if (service.addExercise(id, slug)) _events.send(AddToWorkoutEvent.TrainingStarted)
+        if (service.addExercise(id, slug, despiteInjury)) _events.send(AddToWorkoutEvent.TrainingStarted)
         else {
             if (!hadOpen) service.discardWorkout(id)
             _events.send(AddToWorkoutEvent.Rejected)
@@ -124,14 +125,15 @@ fun AddToWorkoutSheet(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lang = catalogLanguage()
     var message by remember { mutableStateOf<String?>(null) }
+    var rejectedShown by remember { mutableStateOf(false) }
     val rejected = stringResource(R.string.trwo_add_rejected)
     val addedTemplate = stringResource(R.string.trwo_add_added_to)
     LaunchedEffect(Unit) {
         viewModel.events.collect { e ->
             when (e) {
                 AddToWorkoutEvent.TrainingStarted -> onTrainingStarted()
-                AddToWorkoutEvent.Rejected -> message = rejected
-                is AddToWorkoutEvent.AddedToRoutine -> message = addedTemplate.format(e.name)
+                AddToWorkoutEvent.Rejected -> { message = rejected; rejectedShown = true }
+                is AddToWorkoutEvent.AddedToRoutine -> { message = addedTemplate.format(e.name); rejectedShown = false }
             }
         }
     }
@@ -141,8 +143,21 @@ fun AddToWorkoutSheet(
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             Text(name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
             message?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = CruxCoachDesign.colors.positive,
+                Text(it, style = MaterialTheme.typography.bodyMedium,
+                    color = if (rejectedShown) CruxCoachDesign.colors.caution else CruxCoachDesign.colors.positive,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("add_to_workout_message"))
+            }
+            if (rejectedShown) {
+                // Warn, never block (owner 2026-10-25): the athlete may train it anyway.
+                TextButton(
+                    onClick = {
+                        rejectedShown = false
+                        message = null
+                        if (state.openWorkout != null) viewModel.addToOpen(despiteInjury = true)
+                        else viewModel.startNew(name, despiteInjury = true)
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp).testTag("add_to_workout_anyway"),
+                ) { Text(stringResource(R.string.trwo_add_anyway)) }
             }
             ListItem(
                 headlineContent = { Text(stringResource(if (state.favorite) R.string.trwo_fav_remove else R.string.trwo_fav_add)) },
