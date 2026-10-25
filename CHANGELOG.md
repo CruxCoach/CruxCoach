@@ -432,7 +432,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   or update, at the next Bluetooth connection, or the next time CruxCoach starts –
   instead of only when you open CruxCoach again. The phone's own name can no longer be
   lost when sharing fails to start, or when two CruxCoach apps are installed. Swiping
-  CruxCoach away from the recent apps now ends sharing.
+  CruxCoach away from the recent apps now ends sharing. Settings → Sharing nearby says
+  that the phone is called "CruxCoach…" over Bluetooth while sharing; if its name has
+  not come back yet, it offers "Restore name now", or shows where to rename the phone
+  when CruxCoach does not know its earlier name.
 
 ## [0.2.4] - 2026-10-25
 
