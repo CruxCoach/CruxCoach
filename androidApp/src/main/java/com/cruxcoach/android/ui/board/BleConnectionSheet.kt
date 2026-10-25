@@ -56,6 +56,8 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
 import com.cruxcoach.android.ui.settings.connectedBoardConfigurationMismatch
+import com.cruxcoach.android.ui.settings.isShinyWallVariantSuggestion
+import com.cruxcoach.android.ui.settings.shinyWallVariantHint
 
 private enum class PendingScanStart {
     MANUAL,
@@ -101,9 +103,8 @@ fun BleConnectionSheet(
         connectedBrand = state.connectedBoardBrand,
         connectedQuantumModel = state.connectedQuantumModel,
         activeLayoutId = state.activeLayoutId,
-        connectedShinyVariantHint = state.connectedBoardName
-            ?.takeIf { state.connectedBoardBrand == BoardBrand.SHINYWALL }
-            ?.let { com.cruxcoach.domain.board.ShinyWallName.parse(it)?.variantHint },
+        connectedShinyVariantHint = shinyWallVariantHint(state.connectedBoardBrand, state.connectedBoardName),
+        shinyVariantSuggestionAnswered = state.connectedBoardName in state.shinyVariantHintAnswered,
     )
     val rememberedBoard = if (neutralDiscovery) null else state.rememberedBoardControllers[state.activeBoardBrand]
     var discoveryRequested by remember(state.activeBoardBrand) { mutableStateOf(false) }
@@ -333,10 +334,12 @@ fun BleConnectionSheet(
             prefill = connectionMismatch.prefill,
             mismatch = connectionMismatch,
             onSelected = {
+                if (connectionMismatch.isShinyWallVariantSuggestion) viewModel.answerShinyVariantSuggestion()
                 onDismiss()
                 onBoardMismatchExit()
             },
             onDismiss = {
+                if (connectionMismatch.isShinyWallVariantSuggestion) viewModel.answerShinyVariantSuggestion()
                 viewModel.dismissConnectionMismatchPrompt()
                 onDismiss()
                 onBoardMismatchExit()

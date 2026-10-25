@@ -4,6 +4,7 @@ import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.QuantumBoardModel
+import com.cruxcoach.domain.board.ShinyWallName
 import com.cruxcoach.domain.board.ShinyWallVariant
 
 /** Information used to guide mismatch recovery. Exact controller evidence is
@@ -48,6 +49,15 @@ data class BoardSendIdentity(
     val connectedQuantumModel: QuantumBoardModel? = null,
 )
 
+/** The variant a connected Shiny Wall's advertised name suggests, if any. */
+fun shinyWallVariantHint(connectedBrand: BoardBrand?, connectedName: String?): ShinyWallVariant? =
+    connectedName?.takeIf { connectedBrand == BoardBrand.SHINYWALL }
+        ?.let { ShinyWallName.parse(it)?.variantHint }
+
+/** True for the suggestion raised only by a Shiny Wall controller's name. */
+val BoardConfigurationMismatch.isShinyWallVariantSuggestion: Boolean
+    get() = kind == BoardMismatchKind.CONNECTED_MODEL && connectedBrand == BoardBrand.SHINYWALL
+
 /** Build the guided correction shown as soon as a controller connects under
  * a different active board. Quantum proves its exact model over BLE; Kilter
  * and MoonBoard land on their most useful common configurations. */
@@ -59,9 +69,15 @@ fun connectedBoardConfigurationMismatch(
     /** Variant a Shiny Wall controller's advertised name suggests; a hint only,
      *  so a mismatch it raises is an editable, dismissible suggestion. */
     connectedShinyVariantHint: ShinyWallVariant? = null,
+    /** The user already answered this controller's variant suggestion. Gyms
+     *  name their controllers and the name does not always match the wall (Max
+     *  walls named `STP_` exist), so it is asked once per controller, not on
+     *  every connect. A brand switch still uses the hint as its prefill. */
+    shinyVariantSuggestionAnswered: Boolean = false,
 ): BoardConfigurationMismatch? {
     val controllerBrand = connectedBrand ?: return null
     if (controllerBrand == activeBrand) {
+        if (shinyVariantSuggestionAnswered) return null
         val hint = connectedShinyVariantHint?.takeIf { controllerBrand == BoardBrand.SHINYWALL }
             ?: return null
         if (activeLayoutId == null || hint.layoutId == activeLayoutId) return null
