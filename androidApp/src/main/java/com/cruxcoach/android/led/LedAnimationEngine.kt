@@ -1,6 +1,5 @@
 package com.cruxcoach.android.led
 
-import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -9,7 +8,6 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.cruxcoach.android.ble.FrameSendResult
 import com.cruxcoach.android.ble.LitFrame
 import com.cruxcoach.android.data.UserPreferences
-import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -27,7 +25,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import kotlin.math.roundToLong
 
 /**
  * Runs the user's chosen LED effect on the currently lit climb.
@@ -44,11 +41,11 @@ import kotlin.math.roundToLong
  * Traffic shape, which is the whole design constraint: a frame carries only the
  * LEDs of the lit climb, each write is acknowledged before the next goes out,
  * frames identical to the previous one are never sent, a frame gives way to a
- * user-initiated send rather than queueing behind it, and the loop waits at least
- * as long as a frame took to write, so the link is never busier than half the
- * time — a write-only controller paced at 100 ms per chunk simply gets a slower
- * effect. Animation frames do not count as activity: the idle disconnect still
- * releases the board on schedule after the last real send.
+ * user-initiated send rather than queueing behind it, and a large climb slows the
+ * loop down instead of flooding the link. The look and the rhythm of the effects
+ * are exactly the contributed ones (PR #21, pinned by `LedPr21GoldenTest`); what
+ * changed is how they fit in. Animation frames do not count as activity: the
+ * idle disconnect still releases the board on schedule after the last real send.
  *
  * Limits: an effect runs for at most [MAX_EFFECT_MS] on one lit climb; then, or
  * when it is stopped from the notification, the climb's own colours come back
@@ -68,21 +65,10 @@ class LedAnimationEngine internal constructor(
     constructor(
         sink: LedFrameSink,
         userPreferences: UserPreferences,
-        @ApplicationContext context: Context,
     ) : this(
         sink,
-        combine(
-            userPreferences.ledAnimation,
-            userPreferences.ledAnimationTempo,
-            userPreferences.ledAnimationInBackground,
-            SystemAnimations.observe(context),
-        ) { id, tempo, background, animations ->
-            LedEffectSettings(
-                effectId = id,
-                tempo = LedEffectTempo.byId(tempo),
-                keepRunningInBackground = background,
-                flashingAllowed = animations,
-            )
+        combine(userPreferences.ledAnimation, userPreferences.ledAnimationInBackground) { id, background ->
+            LedEffectSettings(effectId = id, keepRunningInBackground = background)
         },
         Dispatchers.Default,
     )
@@ -91,9 +77,10 @@ class LedAnimationEngine internal constructor(
         const val TAG = "LedAnimationEngine"
 
         /**
-         * Lit LEDs per extra slice of pacing — a floor under the frame interval for
-         * large climbs. The real cost of a frame is measured on every write (see
-         * [runLoop]); this only keeps a big climb from asking for a fast tempo.
+         * Lit LEDs per extra slice of pacing. An LED costs 2 bytes on API 2 and 3 on
+         * API 3, and `BoardPacketEncoder` splits its output into 20-byte writes, so
+         * each further group of 16 lit LEDs adds roughly one round trip, hence
+         * [PACE_GROUP_MS].
          */
         const val LEDS_PER_PACE_GROUP = 16
         const val PACE_GROUP_MS = 45L
@@ -206,7 +193,7 @@ class LedAnimationEngine internal constructor(
      * one, so no lock-order cycle exists between the two. */
     private val loopLock = Any()
 
-    /** The latest settings, for the loop's tempo and its own exit path. */
+    /** The latest settings, for the loop's own exit path. */
     @Volatile
     private var lastSettings = LedEffectSettings()
 
@@ -265,9 +252,7 @@ class LedAnimationEngine internal constructor(
         front: Boolean,
         background: Boolean,
     ): RunDecision {
-        val chosen = LedAnimationRegistry.byId(current.effectId)
-        val flashingBlocked = chosen.photosensitive && !current.flashingAllowed
-        val effect = if (flashingBlocked) NoneAnimation else chosen
+        val effect = LedAnimationRegistry.byId(current.effectId)
         val frame = input.frame
         val ready = input.availability == LedBoardAvailability.READY
         val ended = frame != null && frame === input.ended
@@ -276,8 +261,7 @@ class LedAnimationEngine internal constructor(
         // act on it right now.
         val live = frame != null && ready && paused.isEmpty() && effect !== NoneAnimation && !ended
         val status = when {
-            chosen === NoneAnimation -> LedEffectStatus.OFF
-            flashingBlocked -> LedEffectStatus.FLASHING_BLOCKED
+            effect === NoneAnimation -> LedEffectStatus.OFF
             input.availability == LedBoardAvailability.NO_BOARD -> LedEffectStatus.NO_BOARD
             input.availability == LedBoardAvailability.UNSUPPORTED -> LedEffectStatus.UNSUPPORTED_BOARD
             input.availability == LedBoardAvailability.CLEANING || paused.isNotEmpty() -> LedEffectStatus.PAUSED
@@ -386,8 +370,8 @@ class LedAnimationEngine internal constructor(
             return
         }
         synchronized(loopLock) {
-            // Already looping this animation: the loop re-reads the lit board and
-            // the tempo itself, so a new climb or an edited colour needs no restart.
+            // Already looping this animation: the loop re-reads the lit board
+            // itself, so a new climb or an edited colour needs no restart.
             // Under the lock this cannot catch a loop that has just walked out — its
             // exit path clears `runningId` behind the same lock first.
             if (animation.id == runningId && loopJob?.isActive == true) return
@@ -462,7 +446,7 @@ class LedAnimationEngine internal constructor(
                     delay(IDLE_POLL_MS)
                     continue
                 }
-                val interval = frameIntervalMillis(animation, base.leds.size, lastSettings.tempo)
+                val interval = frameIntervalMillis(animation, base.leds.size)
                 if (interval <= 0L) {
                     Log.w(
                         TAG,
@@ -473,19 +457,13 @@ class LedAnimationEngine internal constructor(
                 }
 
                 val frame = animation.frameAt(base, tick)
-                var wrote = false
-                var writeMillis = 0L
                 // RGB332 is coarse, so pulse and hue-cycle frames repeat often.
                 // Skipping identical frames is where the traffic budget lives.
                 if (frame != lastSent) {
-                    val writeStartedAt = clock()
-                    val result = sink.sendFrame(base, frame)
-                    writeMillis = clock() - writeStartedAt
-                    when (result) {
+                    when (sink.sendFrame(base, frame)) {
                         FrameSendResult.SENT -> {
                             lastSent = frame
                             failures = 0
-                            wrote = true
                         }
                         // Somebody else is mid-send on the link, or the frame's climb
                         // is no longer lit. Dropping this frame costs one beat.
@@ -505,7 +483,12 @@ class LedAnimationEngine internal constructor(
                 }
                 tick++
 
-                delay(gapAfterFrame(animation, interval, clock() - frameStartedAt, if (wrote) writeMillis else 0L))
+                // Spend what the send took, and never fall behind by queueing:
+                // a slow radio drops frames rather than building a backlog. This
+                // is the contributed rhythm, measured from the start of a frame;
+                // FEAT-074 §3 and §10 say why it is kept.
+                val elapsed = clock() - frameStartedAt
+                delay((interval - elapsed).coerceAtLeast(MIN_FRAME_GAP_MS))
             }
             endedOnPurpose = true
         } catch (e: CancellationException) {
@@ -536,44 +519,24 @@ class LedAnimationEngine internal constructor(
     }
 
     /**
-     * Milliseconds to wait after a frame, given how long the frame took and how long
-     * its write took.
+     * Milliseconds to wait after a frame, given how many LEDs it carries — the
+     * contributed rule, unchanged.
      *
-     * A flashing effect waits its full [interval] after the write has *finished*:
-     * the wall shows a frame once its last chunk is in, so measuring from the start
-     * would let a slow write followed by a fast one put two colour changes closer
-     * than [PHOTOSENSITIVE_MIN_FRAME_MS]. Everything else keeps its tempo but waits
-     * at least as long as the write took, so the link stays free half the time —
-     * on a controller paced at 100 ms per chunk the effect slows down instead of
-     * crowding out the user's own sends.
-     */
-    internal fun gapAfterFrame(animation: LedAnimation, interval: Long, frameMillis: Long, writeMillis: Long): Long =
-        if (animation.photosensitive) {
-            interval
-        } else {
-            maxOf(interval - frameMillis, writeMillis, MIN_FRAME_GAP_MS)
-        }
-
-    /**
-     * Milliseconds between frames for a climb of [ledCount] lit LEDs.
-     *
-     * The animation's own tempo scaled by [tempo] is the starting point, raised to
-     * [PACE_GROUP_MS] per [LEDS_PER_PACE_GROUP] lit LEDs for big climbs.
+     * One BLE write is acknowledged before the next is issued, so a frame's cost
+     * grows with its LED count: the animation's own tempo is the starting point,
+     * stretched by [PACE_GROUP_MS] per [LEDS_PER_PACE_GROUP] lit LEDs. The
+     * [MAX_ANIMATED_LEDS] cutoff keeps that stretch under half a second.
      *
      * Last, and never negotiable: [PHOTOSENSITIVE_MIN_FRAME_MS] wins over all of
-     * it for a [LedAnimation.photosensitive] effect, so neither an animation nor the
-     * tempo can pace a strobe into a hazard. 0 means the frame is too big to animate.
+     * it for a [LedAnimation.photosensitive] effect, so an animation cannot pace
+     * itself into a hazard. 0 means the frame is too big to animate at all.
      */
-    internal fun frameIntervalMillis(
-        animation: LedAnimation,
-        ledCount: Int,
-        tempo: LedEffectTempo = LedEffectTempo.NORMAL,
-    ): Long {
+    internal fun frameIntervalMillis(animation: LedAnimation, ledCount: Int): Long {
         if (ledCount <= 0 || ledCount > MAX_ANIMATED_LEDS) return 0L
         val groups = (ledCount + LEDS_PER_PACE_GROUP - 1) / LEDS_PER_PACE_GROUP
         val floor = if (animation.photosensitive) PHOTOSENSITIVE_MIN_FRAME_MS else MIN_FRAME_GAP_MS
-        val own = (animation.frameIntervalMillis * tempo.factor).roundToLong()
-        return maxOf(own, groups.toLong() * PACE_GROUP_MS).coerceAtLeast(floor)
+        return maxOf(animation.frameIntervalMillis, groups.toLong() * PACE_GROUP_MS)
+            .coerceAtLeast(floor)
     }
 
     private data class BoardInput(
