@@ -29,6 +29,11 @@ enum class BoardBrand(val wireValue: String) {
     // adapter, while still using the shared coordinate/placement renderer.
     QUANTUM("quantum"),
 
+    // Shiny Wall Standard family (st0..st5). Its own text BLE protocol (one
+    // ASCII state vector per wall), its own catalogue manifest and a
+    // coordinate geometry rendered by the shared placement renderer.
+    SHINYWALL("shinywall"),
+
     // Map-only "info layer" families (FEAT-015 Phase 2). CruxCoach ships no
     // climb catalogue or BLE send for these, so they appear on the
     // board-locations map only — never in the browser, picker, or active-
@@ -40,9 +45,30 @@ enum class BoardBrand(val wireValue: String) {
     TWELVECLIMB("12climb");
 
     /** True for families CruxCoach actually drives (catalogue + BLE): Kilter,
-     *  MoonBoard, and the five Aurora-family boards (FEAT-031). AURORA and
-     *  12climb remain map-only info-layer brands. */
-    val isInteractive: Boolean get() = usesAuroraProtocol || this == MOONBOARD || this == QUANTUM
+     *  MoonBoard, the five Aurora-family boards (FEAT-031), Quantum and Shiny
+     *  Wall. AURORA and 12climb remain map-only info-layer brands. */
+    val isInteractive: Boolean get() = transport != BoardTransport.NONE
+
+    /** Map-only family: shown on the board-locations map, never in the
+     *  browser, picker or download lists. */
+    val isInfoLayer: Boolean get() = !isInteractive
+
+    /** How the app talks to this family's controller. Exhaustive on purpose:
+     *  a new family must decide its transport instead of silently inheriting
+     *  the Aurora send path. */
+    val transport: BoardTransport
+        get() = when (this) {
+            KILTER, TENSION, GRASSHOPPER, DECOY, SOILL, TOUCHSTONE -> BoardTransport.AURORA
+            MOONBOARD -> BoardTransport.MOONBOARD_UART
+            QUANTUM -> BoardTransport.QUANTUM
+            SHINYWALL -> BoardTransport.SHINY_WALL
+            AURORA, TWELVECLIMB -> BoardTransport.NONE
+        }
+
+    /** Installations that never chose their catalogues download every
+     *  interactive family by default. A family added later must not join
+     *  that default unasked, so it is downloaded only once the user picks it. */
+    val downloadedByDefault: Boolean get() = isInteractive && this != SHINYWALL
 
     /** Kilter + the Aurora-family boards (Tension, Grasshopper, Decoy, So iLL,
      *  Touchstone): climbs are Aurora placement-id frames, holes are lit from
@@ -50,11 +76,7 @@ enum class BoardBrand(val wireValue: String) {
      *  is interactive too but photo / coordinate-map based, so it is NOT
      *  Aurora-protocol. This is the single predicate the placement-geometry,
      *  LED and heatmap capabilities below delegate to. */
-    val usesAuroraProtocol: Boolean
-        get() = when (this) {
-            KILTER, TENSION, GRASSHOPPER, DECOY, SOILL, TOUCHSTONE -> true
-            else -> false
-        }
+    val usesAuroraProtocol: Boolean get() = transport == BoardTransport.AURORA
 
     // ── Capability model ────────────────────────────────────────────────
     // The single, typed answer to "what can this board family do?". Call
@@ -73,7 +95,8 @@ enum class BoardBrand(val wireValue: String) {
      *  that resolves placement geometry (board images, edge bounds, the
      *  co-occurrence heatmap, the LED map) must be skipped when this is
      *  false. */
-    val usesAuroraPlacements: Boolean get() = usesAuroraProtocol || this == QUANTUM
+    val usesAuroraPlacements: Boolean
+        get() = usesAuroraProtocol || this == QUANTUM || this == SHINYWALL
 
     /** The connected board lights individual holds from a placement→LED
      *  address map (Kilter + the Aurora-family boards, which share the Aurora
@@ -92,17 +115,20 @@ enum class BoardBrand(val wireValue: String) {
      *  have different sparse angle sets, so treating the controller protocol
      *  as the angle capability produces selectable, permanently empty angles. */
     val usesCatalogueAngles: Boolean
-        get() = (usesAuroraProtocol && this != KILTER) || this == QUANTUM
+        get() = (usesAuroraProtocol && this != KILTER) || this == QUANTUM || this == SHINYWALL
 
     /** Quantum's vendor catalogue is single-frame. "Route" in CruxCoach means
-     *  a multi-frame circuit, not the Quantum model/size classification. */
-    val supportsClimbTypeFilter: Boolean get() = this != QUANTUM
+     *  a multi-frame circuit, not the Quantum model/size classification. The
+     *  Shiny Wall standard catalogue holds single-frame boulders only. */
+    val supportsClimbTypeFilter: Boolean get() = this != QUANTUM && this != SHINYWALL
 
-    /** The mirrored Quantum API does not define an official benchmark flag. */
+    /** The mirrored Quantum API does not define an official benchmark flag.
+     *  The Shiny Wall catalogue flags benchmarks per angle. */
     val supportsBenchmarkFilter: Boolean get() = this != QUANTUM
 
-    /** BoardSesh is a Kilter-side provenance and has no Quantum catalogue. */
-    val supportsBoardSeshOrigin: Boolean get() = this != QUANTUM
+    /** BoardSesh is a Kilter-side provenance and has no Quantum or Shiny Wall
+     *  catalogue. */
+    val supportsBoardSeshOrigin: Boolean get() = this != QUANTUM && this != SHINYWALL
 
     /** The product-size edge predicate is an Aurora compatibility rule.
      *  MoonBoard variants are represented by layouts and hold-set masks and
@@ -130,8 +156,10 @@ enum class BoardBrand(val wireValue: String) {
      *  thread the active board's brand explicitly — not [fromLayoutId], which
      *  can't disambiguate the Aurora-family layout-ids from Kilter's — so each
      *  authored climb is tagged with, and stays on, its own board. Info-layer
-     *  brands (aurora, 12climb) aren't interactive: no catalogue, no editor. */
-    val supportsAuthoring: Boolean get() = isInteractive
+     *  brands (aurora, 12climb) aren't interactive: no catalogue, no editor.
+     *  Shiny Wall stays browse-and-light only until its hold geometry and
+     *  role semantics are verified on a real wall. */
+    val supportsAuthoring: Boolean get() = isInteractive && this != SHINYWALL
 
     /** Authored climbs can be mirrored to the board vendor's own app
      *  (Kilter → the user's Kilter account). MoonBoard is CruxCoach-community
@@ -152,6 +180,7 @@ enum class BoardBrand(val wireValue: String) {
             SOILL -> "So iLL"
             TOUCHSTONE -> "Touchstone"
             QUANTUM -> "Quantum Board"
+            SHINYWALL -> "Shiny Wall"
             AURORA -> "Aurora"
             TWELVECLIMB -> "12 Climb"
         }
@@ -160,7 +189,7 @@ enum class BoardBrand(val wireValue: String) {
         /** The map-only info-layer families, as a group (drives the map's
          *  "other boards" filter chip). */
         val INFO_LAYER: List<BoardBrand>
-            get() = entries.filter { !it.isInteractive }
+            get() = entries.filter { it.isInfoLayer }
 
         /**
          * Parse a `board_brand` column value. Defaults to [KILTER] for
@@ -194,11 +223,29 @@ enum class BoardBrand(val wireValue: String) {
          * low layout ids overlap Kilter. Prefer explicit [BoardBrand] at every
          * persistence and wire boundary; this helper exists for old defaults.
          */
-        fun fromLayoutId(layoutId: Long): BoardBrand =
-            if (layoutId != 1L && MoonBoardVariant.fromLayoutId(layoutId) != null) {
-                MOONBOARD
-            } else {
-                KILTER
-            }
+        fun fromLayoutId(layoutId: Long): BoardBrand = when {
+            layoutId != 1L && MoonBoardVariant.fromLayoutId(layoutId) != null -> MOONBOARD
+            // Shiny Wall layouts live in their own 93xx range, so they are unambiguous.
+            ShinyWallVariant.fromLayoutId(layoutId) != null -> SHINYWALL
+            else -> KILTER
+        }
     }
+}
+
+/** Controller protocol a board family speaks. */
+enum class BoardTransport {
+    /** Aurora binary packets over the Nordic UART service (Kilter + Aurora family). */
+    AURORA,
+
+    /** MoonBoard ASCII `l#…#` frames over the Nordic UART service. */
+    MOONBOARD_UART,
+
+    /** Walltopia Quantum MODBUS-framed commands with readback. */
+    QUANTUM,
+
+    /** Shiny Wall ASCII state vector on one characteristic, found across all services. */
+    SHINY_WALL,
+
+    /** Map-only family: no controller. */
+    NONE,
 }

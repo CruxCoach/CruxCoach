@@ -10,7 +10,17 @@ import kotlin.test.assertEquals
 class BoardDownloadSelectionTest {
     @Test fun `missing preference preserves all existing boards`() = runTest {
         val prefs = createTestUserPreferences(backgroundScope)
-        assertEquals(BoardBrand.entries.filter { it.isInteractive }.toSet(), prefs.boardDownloadBrands.first())
+        assertEquals(BoardBrand.entries.filter { it.downloadedByDefault }.toSet(), prefs.boardDownloadBrands.first())
+    }
+
+    @Test fun `a later family joins only by explicit choice`() = runTest {
+        val prefs = createTestUserPreferences(backgroundScope)
+        assertEquals(false, BoardBrand.SHINYWALL in prefs.boardDownloadBrands.first())
+        prefs.includeBoardDownload(BoardBrand.SHINYWALL)
+        val selected = prefs.boardDownloadBrands.first()
+        assertEquals(true, BoardBrand.SHINYWALL in selected)
+        // Opting in keeps everything the installation already downloaded.
+        assertEquals(true, selected.containsAll(BoardBrand.entries.filter { it.downloadedByDefault }))
     }
 
     @Test fun `selection persists independently of active board and can disable all downloads`() = runTest {
