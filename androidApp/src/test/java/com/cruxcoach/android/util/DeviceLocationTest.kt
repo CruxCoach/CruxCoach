@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationListener
@@ -286,6 +287,52 @@ class DeviceLocationTest {
         advanceTimeBy(2_000)
         deliver(fix(LocationManager.GPS_PROVIDER, lat = 50.80))
         assertEquals(50.80, result.getCompleted().location!!.latitude, 1e-6)
+    }
+
+    @Test
+    fun `without a time limit it listens until a fix arrives`() = runTest {
+        var progress: DeviceLocation.Progress? = null
+        val result = async { DeviceLocation.locate(app, timeoutMs = null) { progress = it } }.also { runCurrent() }
+        advanceTimeBy(3 * 3_600_000L)
+        runCurrent()
+
+        assertFalse(result.isCompleted)
+        val request = locations.getLocationRequests(LocationManager.GPS_PROVIDER).single()
+        assertEquals("no end on the platform side either", Long.MAX_VALUE, request.durationMillis)
+        assertTrue(LocationManager.GPS_PROVIDER in progress!!.attempt().asked)
+
+        deliver(fix(LocationManager.GPS_PROVIDER))
+        assertFulda(async { result.await().location }.also { runCurrent() })
+        assertNoListenersLeft()
+    }
+
+    @Test
+    fun `a search without a limit ends cleanly when its caller goes away`() = runTest {
+        val result = async { DeviceLocation.locate(app, timeoutMs = null) }.also { runCurrent() }
+        advanceTimeBy(60_000)
+        assertFalse(locations.getLocationRequests(LocationManager.GPS_PROVIDER).isEmpty())
+        result.cancel()
+        runCurrent()
+
+        assertNoListenersLeft()
+    }
+
+    @Test
+    fun `switching location off ends the wait for it`() = runTest {
+        val off = async { DeviceLocation.awaitSwitchedOff(app) }.also { runCurrent() }
+        app.sendBroadcast(Intent(LocationManager.PROVIDERS_CHANGED_ACTION))
+        shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
+        assertFalse("still on", off.isCompleted)
+
+        locations.setLocationEnabled(false)
+        app.sendBroadcast(Intent(LocationManager.MODE_CHANGED_ACTION))
+        shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
+        assertTrue(off.isCompleted)
+
+        val already = async { DeviceLocation.awaitSwitchedOff(app) }.also { runCurrent() }
+        assertTrue("off already", already.isCompleted)
     }
 
     @Test

@@ -6,7 +6,7 @@
     <string name="locate_me_denied">Ohne Standortfreigabe kann CruxCoach nicht zeigen, was in deiner Nähe ist.</string>
     <string name="locate_me_denied_settings">Der Standortzugriff ist für CruxCoach ausgeschaltet. Du kannst ihn in den App-Einstellungen erlauben.</string>
     <string name="locate_me_disabled">Der Standort ist auf diesem Telefon ausgeschaltet.</string>
-    <string name="locate_me_unavailable">Dein Standort ließ sich nicht ermitteln. Versuch es noch einmal oder such nach dem Namen.</string>
+    <string name="locate_me_unavailable">Dieses Telefon bietet CruxCoach keine Standortquelle. Such stattdessen nach dem Namen.</string>
     <string name="locate_me_open_settings">Einstellungen</string>
     <string name="locate_me_turn_on">Einschalten</string>
     <string name="locate_me_private">Dein Standort bleibt auf diesem Telefon.</string>
@@ -20,8 +20,9 @@
     <string name="locate_me_detail_waited">keine Antwort in %1$d s</string>
     <string name="locate_me_detail_none">keine</string>
     <string name="locate_me_detail_satellites">Satelliten: %1$d gesehen, %2$d genutzt</string>
-    <!-- Während ein Antippen weitersucht (bis 5 min) und noch keine Position da ist. -->
+    <!-- Während ein Antippen weitersucht und noch keine Position da ist; es sucht, bis eine kommt. „Abbrechen“ beendet es und zeigt „abgebrochen“ mit der Detailzeile. -->
     <string name="locate_me_still_looking">Dein Standort wird noch gesucht. Draußen oder am Fenster findet GPS ihn schneller.</string>
+    <string name="locate_me_stopped">Standortsuche abgebrochen.</string>
     <string name="distance_m">%1$s m</string>
     <string name="distance_km">%1$s km</string>
 
