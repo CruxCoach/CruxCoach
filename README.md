@@ -86,6 +86,7 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 - **Playable playlists** *(0.2.2+)* — turn favourites or custom lists into guided sessions with ordering, repeats, rests, one-tap logging and a final summary, or generate a session from your logbook
 - **CruxRelay** *(0.2.2+)* — keep CruxCoach connected to the physical board while compatible board apps send climbs through it
 - **Log ascents** with grade opinions, attempts, and notes
+- **Training & nutrition** *(0.2.5+)* — a suggestion for today from your week plan, morning check-in and recent climbing; guided workouts with an exercise library, performance values and progression; an injury mode and a comeback plan ([intended purpose](#training-aid-not-a-medical-device)); body values and a food diary with barcode, search and on-device photo logging. The data lives in an encrypted database on the phone; injuries, illness pauses and the comeback diary go into an export or backup only when you switch them on
 - **History (*Verlauf*)** *(0.2.0+)* — the climbs you sent to the board, recorded automatically when you push one over Bluetooth; each entry shows which board it was sent on, mirrored sends are flagged, and you can multi-select and delete entries
 - **Hold Search** — tap holds on the Kilter Board to find climbs that use them
 - **Heatmap** — visualize hold popularity by type, sends, or all climbs, with a per-board selector to read the hold heatmap for each board you have logged on
@@ -97,6 +98,10 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 - **Reliable notifications** — guided setup for Android battery and autostart restrictions to improve delivery of dev-DMs and sync updates
 - **In-app auto-updater** — verifiable APK updates with TOFU certificate pinning (auto-disabled on Zapstore installs)
 - **In-app developer contact** via encrypted Nostr DMs
+
+### Training aid, not a medical device
+
+The plan is a training aid, not a medical device. CruxCoach's comeback plans are training aids for climbers. They help you plan and log a gradual return to climbing load after a break or an injury, using general load stages published in climbing-medicine literature. They do not diagnose, assess, treat or monitor injuries, do not decide when an injury has healed, and are not a medical device. If you have warning signs, or are unsure what the injury is, see a doctor or physiotherapist. If a professional has given you a plan, follow theirs.
 
 ---
 
