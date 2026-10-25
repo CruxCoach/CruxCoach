@@ -2644,7 +2644,7 @@
     <string name="settings_relay_manual_start_desc">Andere lassen über dein Handy Boulder am Board leuchten – für Boards mit nur einer Verbindung. Läuft, solange ein Board verbunden ist.</string>
     <string name="relay_status_waiting">Startet, sobald ein Board verbunden ist.</string>
     <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
-    <string name="relay_disclosure_text">Dein Handy heißt währenddessen „CruxCoach…“ und nimmt Boulder anderer Board-Apps an. Der zuletzt gesendete Boulder leuchtet. Danach heißt dein Handy wieder wie vorher.</string>
+    <string name="relay_disclosure_text">Dein Handy heißt währenddessen über Bluetooth „CruxCoach…“ – auch Auto und Kopfhörer zeigen diesen Namen – und nimmt Boulder anderer Board-Apps an. Der zuletzt gesendete Boulder leuchtet. Danach heißt dein Handy wieder wie vorher.</string>
     <string name="relay_disclosure_confirm">Board-Apps zulassen</string>
     <string name="relay_error_server">Teilen konnte nicht starten. Bitte erneut versuchen.</string>
     <string name="relay_error_advertise">Board konnte nicht sichtbar gemacht werden.</string>
@@ -2656,6 +2656,15 @@
     <string name="relay_host_title">Geteilte CruxCoach-Session</string>
     <string name="relay_host_join_subtitle">%1$d in der Session · Antippen zum Beitreten</string>
     <string name="relay_error_name_in_use">Dein Handy hat schon einen CruxCoach-Bluetooth-Namen. Teilt gerade eine andere CruxCoach-App? Mehr unter Einstellungen → Teilen in der Nähe.</string>
+    <string name="relay_bt_name_title">Bluetooth-Name deines Handys</string>
+    <string name="relay_bt_name_notice">Während des Teilens heißt dein Handy über Bluetooth „CruxCoach…“ – auch für Auto und Kopfhörer. Endet das Teilen, gibt CruxCoach ihm seinen Namen zurück.</string>
+    <string name="relay_bt_name_lent">Das Teilen läuft: Über Bluetooth heißt dein Handy gerade „CruxCoach…“. Danach heißt es wieder „%1$s“.</string>
+    <string name="relay_bt_name_pending">Das Teilen ist beendet, aber über Bluetooth heißt dein Handy vielleicht noch „CruxCoach…“. CruxCoach versucht weiter, ihm seinen Namen „%1$s“ zurückzugeben.</string>
+    <string name="relay_bt_name_restore">Namen jetzt zurücksetzen</string>
+    <string name="relay_bt_name_permission">Damit dein Handy über Bluetooth wieder „%1$s“ heißt, braucht CruxCoach die Berechtigung „Geräte in der Nähe“.</string>
+    <string name="relay_bt_name_permission_action">Erlauben</string>
+    <string name="relay_bt_name_unknown">Über Bluetooth heißt dein Handy „%1$s“, und CruxCoach kennt seinen früheren Namen nicht. Teilt gerade keine CruxCoach-App ein Board, gib deinem Handy in den Telefoneinstellungen unter „Gerätename“ (Telefoninfo) wieder seinen Namen.</string>
+    <string name="relay_bt_name_open_settings">Telefoneinstellungen öffnen</string>
     <string name="board_ble_via_cruxcoach">via CruxCoach</string>
     <string name="board_ble_connection_via_relay">Über CruxCoach Relay verbunden</string>
     <string name="board_ble_connection_multi">Mehrere Geräte können verbunden bleiben</string>

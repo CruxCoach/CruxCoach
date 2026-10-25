@@ -289,6 +289,10 @@ internal fun SettingsScreen(
                         relayManualStart = state.relayManualStart,
                         onRelayManualStartChange = { viewModel.updateRelayManualStart(it) },
                     )
+                    // Phones that cannot advertise never share, so never get renamed.
+                    if (state.climbSharing.advertisingSupported != false) {
+                        RelayBluetoothNameSection()
+                    }
                 }
             }
             SettingsPage.ACCOUNT -> {
