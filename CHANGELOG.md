@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   own Shiny Wall problems in the editor, see the hold heatmap and use "Clean
   holds". The Shiny Wall catalogue is downloaded only once you choose a Shiny
   Wall; it is not passed on by offline sharing.
+- Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
+  data is refreshed (2,933 venues).
 
 ## [0.2.4] - 2026-10-25
 
