@@ -414,6 +414,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - After a catalogue import the app frees the temporary database file at once. A Tension
   import left about 180 MB in it until the next write, on a phone with little space left.
+- Wall games, from the main menu or a problem's menu ("Play as a game"):
+  "Floor is lava" (lit rows rise from the bottom, five speeds), "Endurance" (a
+  problem appears row by row, five waiting times), "Hold thief" (a random
+  problem across the whole wall at 60 % down to 10 % hand holds; steal holds
+  to make it harder) and "Traverse" (a problem lights move by move from its
+  start to its top, only the last seven moves stay lit, adjustable tempo).
+  Countdown with beeps and a stopwatch; for Shiny Wall, Kilter, the other
+  Aurora boards and MoonBoard (not Quantum). Without a connected board the
+  game runs on the screen; games are never logged.
 
 ## [0.2.4] - 2026-10-25
 

@@ -3245,4 +3245,76 @@
         <item quantity="one">%d Griff in diesem Putzgang übrig</item>
         <item quantity="other">%d Griffe in diesem Putzgang übrig</item>
     </plurals>
+
+    <!-- Wall games -->
+    <string name="wall_games_title">Wand-Spiele</string>
+    <string name="wall_games_play_climb">Als Spiel spielen</string>
+    <string name="wall_games_lava">Der Boden ist Lava</string>
+    <string name="wall_games_endurance">Ausdauer</string>
+    <string name="wall_games_thief">Griffdieb</string>
+    <string name="wall_games_traverse">Quergang</string>
+    <string name="wall_games_lava_desc">Die Lava steigt von unten Reihe für Reihe. Wer einen leuchtenden Griff berührt, ist raus.</string>
+    <string name="wall_games_endurance_desc">Ein Boulder erscheint von unten, Reihe für Reihe. Halte durch, bis die nächsten Griffe leuchten.</string>
+    <string name="wall_games_thief_desc">Ein zufälliger Boulder über die ganze Wand. Stiehl Griffe, um ihn schwerer zu machen.</string>
+    <string name="wall_games_traverse_desc">Ein Boulder leuchtet Zug um Zug auf, vom Start zum Top. Nur die letzten sieben Züge bleiben an – bleib in Bewegung.</string>
+    <string name="wall_games_level">Stufe</string>
+    <string name="wall_games_level_1">Sehr leicht</string>
+    <string name="wall_games_level_2">Leicht</string>
+    <string name="wall_games_level_3">Mittel</string>
+    <string name="wall_games_level_4">Schwer</string>
+    <string name="wall_games_level_5">Sehr schwer</string>
+    <string name="wall_games_lava_interval">Die Lava steigt alle %1$s s</string>
+    <string name="wall_games_endurance_interval">Neue Griffe alle %1$s s</string>
+    <string name="wall_games_tempo">Tempo</string>
+    <string name="wall_games_traverse_interval">Nächster Zug alle %1$s s</string>
+    <string name="wall_games_density">Handgriffe</string>
+    <string name="wall_games_density_value">%1$d %%</string>
+    <string name="wall_games_new_climb">Neuer Boulder</string>
+    <string name="wall_games_steal_count">Griffe zum Stehlen</string>
+    <string name="wall_games_steal_less">Weniger Griffe stehlen</string>
+    <string name="wall_games_steal_more">Mehr Griffe stehlen</string>
+    <plurals name="wall_games_steal">
+        <item quantity="one">%d Griff stehlen</item>
+        <item quantity="other">%d Griffe stehlen</item>
+    </plurals>
+    <plurals name="wall_games_hands_left">
+        <item quantity="one">%d Handgriff</item>
+        <item quantity="other">%d Handgriffe</item>
+    </plurals>
+    <string name="wall_games_light">An der Wand zeigen</string>
+    <string name="wall_games_light_again">Erneut zeigen</string>
+    <string name="wall_games_start">Start</string>
+    <string name="wall_games_stop">Stopp</string>
+    <string name="wall_games_play_again">Nochmal</string>
+    <string name="wall_games_go">Los!</string>
+    <string name="wall_games_your_time">Deine Zeit: %1$s</string>
+    <string name="wall_games_lava_top">Die Lava hat das Top erreicht.</string>
+    <string name="wall_games_all_lit">Der ganze Boulder leuchtet. Stoppe, wenn du fertig bist.</string>
+    <string name="wall_games_progress_rows">Reihe %1$d von %2$d</string>
+    <string name="wall_games_progress_steps">Schritt %1$d von %2$d</string>
+    <string name="wall_games_progress_moves">Zug %1$d von %2$d</string>
+    <string name="wall_games_climb">Boulder</string>
+    <string name="wall_games_choose_climb">Boulder wählen</string>
+    <string name="wall_games_change_climb">Ändern</string>
+    <string name="wall_games_climb_at_angle">%1$s · %2$d°</string>
+    <string name="wall_games_no_climb">Noch kein Boulder gewählt.</string>
+    <string name="wall_games_recent_title">Zuletzt an diesem Board gezeigt</string>
+    <string name="wall_games_recent_empty">An diesem Board wurde noch kein Boulder gezeigt. Öffne einen Boulder und wähle in seinem Menü „Als Spiel spielen“.</string>
+    <string name="wall_games_climb_hint">Jeder Boulder geht: Öffne ihn und wähle in seinem Menü „Als Spiel spielen“.</string>
+    <string name="wall_games_climb_not_found">Dieser Boulder ist nicht auf dem Gerät.</string>
+    <string name="wall_games_climb_other_board">Dieser Boulder gehört zu einem anderen Board. Wähle einen Boulder deines aktiven Boards.</string>
+    <string name="wall_games_climb_no_holds">Keiner der Griffe dieses Boulders ist auf deiner Board-Größe.</string>
+    <plurals name="wall_games_climb_off_board">
+        <item quantity="one">%d Griff dieses Boulders ist nicht auf deiner Board-Größe und bleibt dunkel.</item>
+        <item quantity="other">%d Griffe dieses Boulders sind nicht auf deiner Board-Größe und bleiben dunkel.</item>
+    </plurals>
+    <string name="wall_games_not_connected">Nicht verbunden: Das Spiel läuft nur auf diesem Bildschirm.</string>
+    <string name="wall_games_other_board">Das verbundene Board ist nicht dein aktives Board und bleibt deshalb dunkel.</string>
+    <string name="wall_games_session">Eine gemeinsame Sitzung steuert das Board, deshalb wird das Spiel nicht angezeigt.</string>
+    <string name="wall_games_cleaning">Am Board läuft das Griffeputzen. Beende es, um das Spiel anzuzeigen.</string>
+    <string name="wall_games_send_failed">Das Board hat den letzten Schritt nicht übernommen.</string>
+    <string name="wall_games_unsupported">Für dieses Board gibt es keine Wand-Spiele.</string>
+    <string name="wall_games_no_holds">Die Griffpositionen dieses Boards sind noch nicht auf dem Gerät. Lade zuerst seinen Katalog.</string>
+    <string name="wall_games_sound_turn_off">Countdown-Ton ausschalten</string>
+    <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
 </resources>

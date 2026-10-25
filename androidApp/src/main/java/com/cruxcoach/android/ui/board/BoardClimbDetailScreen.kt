@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.PanTool
@@ -117,6 +118,7 @@ fun BoardClimbDetailScreen(
     onNavigateToFork: (climbUuid: String) -> Unit = {},
     onNavigateToEdit: (climbUuid: String) -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
+    onNavigateToGames: (climbUuid: String, angle: Int) -> Unit = { _, _ -> },
     viewModel: BoardClimbDetailViewModel = hiltViewModel()
 ) {
     PerfLogger.navMilestone("BoardClimbDetailScreen composing")
@@ -682,6 +684,28 @@ fun BoardClimbDetailScreen(
                                     }
                                 }
                                 HorizontalDivider()
+                                // Wall games play this climb (endurance,
+                                // traverse) on the active board. Quantum
+                                // shares its lights, so it has no games.
+                                val gameClimb = state.climb
+                                if (gameClimb != null && gameClimb.brand != BoardBrand.QUANTUM) {
+                                    DropdownMenuItem(
+                                        enabled = tourTargets.active == null,
+                                        text = { Text(stringResource(R.string.wall_games_play_climb)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.SportsEsports,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            onNavigateToGames(gameClimb.uuid, state.angle)
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_wall_games"),
+                                    )
+                                }
                                 // Mirror toggle — a display-only left/right flip
                                 // of the climb. Only shown for layouts that are
                                 // actually mirrorable (Aurora `is_mirrored`):
