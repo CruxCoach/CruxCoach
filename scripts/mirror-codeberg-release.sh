@@ -3,8 +3,16 @@
 #
 # This script never builds or signs. The GitHub release publisher owns those
 # checks; this second publisher receives the very same APK, recreates the same
-# sha256sum sidecar, uploads sidecar first and APK last, and downloads both
-# assets again to prove that Codeberg stored byte-identical files.
+# sha256sum sidecar, uploads sidecar first and APK last, and reads the release
+# back through the API to check that both assets are stored at their exact size.
+#
+# It never downloads a release asset. Codeberg counts every download of one,
+# and that counter is the download statistic: the old
+# byte-for-byte read-back added one fake install per run. It also never
+# replaces an asset that is already stored at the right size — deleting and
+# re-uploading resets Codeberg's counter to zero, so every repair run wiped the
+# release's real download count. A wrong upload is still caught on install: the
+# updater checks the APK against the release digest and the certificate pin.
 #
 # Authentication is read from CODEBERG_TOKEN, CODEBERG_TOKEN_FILE, or the
 # runner-local ~/.config/cruxcoach/codeberg-release-token (mode 600). The token
@@ -114,7 +122,7 @@ HTTP_CODE="$(cb_curl -o "$RELEASE_JSON" -w '%{http_code}' \
   "$API/repos/$REPO/releases/tags/$TAG")"
 if [ "$HTTP_CODE" = "200" ]; then
   RELEASE_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RELEASE_JSON")"
-  note "Codeberg release already exists (id $RELEASE_ID); replacing its matching assets"
+  note "Codeberg release already exists (id $RELEASE_ID); keeping assets stored at the right size"
 elif [ "$HTTP_CODE" = "404" ]; then
   CREATE_JSON="$WORK/create.json"
   for ATTEMPT in 1 2 3; do
@@ -150,18 +158,25 @@ HTTP_CODE="$(cb_curl -o "$WORK/patch-response.json" -w '%{http_code}' \
 [ "$HTTP_CODE" = "200" ] || die "Codeberg release metadata update failed: HTTP $HTTP_CODE"
 
 replace_asset() {
-  local FILE="$1" NAME="$2" ASSET_ID CODE
+  local FILE="$1" NAME="$2" ASSET_ID STORED_SIZE CODE
   HTTP_CODE="$(cb_curl -o "$RELEASE_JSON" -w '%{http_code}' \
     "$API/repos/$REPO/releases/$RELEASE_ID")"
   [ "$HTTP_CODE" = "200" ] || return 1
-  ASSET_ID="$(python3 -c '
+  # "<id> <size>" of the stored asset with this name, if any.
+  read -r ASSET_ID STORED_SIZE < <(python3 -c '
 import json, sys
 for asset in json.load(open(sys.argv[1])).get("assets", []):
     if asset.get("name") == sys.argv[2]:
-        print(asset["id"])
+        print(asset["id"], asset.get("size", -1))
         break
-' "$RELEASE_JSON" "$NAME")"
-  if [ -n "$ASSET_ID" ]; then
+' "$RELEASE_JSON" "$NAME") || true
+  if [ -n "${ASSET_ID:-}" ] && [ "${STORED_SIZE:-}" = "$(stat -c '%s' "$FILE")" ]; then
+    # Same name, same size: an earlier run of this script stored it. Replacing
+    # it would only reset its download counter.
+    note "Codeberg already holds $NAME at the expected size; keeping it"
+    return 0
+  fi
+  if [ -n "${ASSET_ID:-}" ]; then
     note "replacing existing Codeberg asset $NAME"
     CODE="$(cb_curl -o /dev/null -w '%{http_code}' -X DELETE \
       "$API/repos/$REPO/releases/$RELEASE_ID/assets/$ASSET_ID")"
@@ -187,24 +202,21 @@ replace_asset "$WORK/$APK_NAME" "$APK_NAME" || die "Codeberg APK upload failed"
 HTTP_CODE="$(cb_curl -o "$RELEASE_JSON" -w '%{http_code}' \
   "$API/repos/$REPO/releases/$RELEASE_ID")"
 [ "$HTTP_CODE" = "200" ] || die "Codeberg post-verification lookup failed: HTTP $HTTP_CODE"
+# Read back through the API only — see the header for why nothing is downloaded.
 python3 -c '
 import json, sys
-release, apk_name, sha_name, apk_size = json.load(open(sys.argv[1])), sys.argv[2], sys.argv[3], int(sys.argv[4])
+release, apk_name, sha_name = json.load(open(sys.argv[1])), sys.argv[2], sys.argv[3]
+apk_size, sha_size = int(sys.argv[4]), int(sys.argv[5])
 assets = {asset["name"]: asset for asset in release.get("assets", [])}
 missing = [name for name in (apk_name, sha_name) if name not in assets]
 if missing:
     raise SystemExit("missing Codeberg asset(s): " + ", ".join(missing))
 if int(assets[apk_name].get("size", -1)) != apk_size:
     raise SystemExit("Codeberg APK size mismatch")
-' "$RELEASE_JSON" "$APK_NAME" "$SHA_NAME" "$APK_SIZE"
-
-BASE="https://codeberg.org/$REPO/releases/download/$TAG"
-curl --fail --location --retry 4 --retry-all-errors --connect-timeout 10 --max-time 300 \
-  "$BASE/$SHA_NAME" --output "$WORK/stored.sha256"
-curl --fail --location --retry 4 --retry-all-errors --connect-timeout 10 --max-time 300 \
-  "$BASE/$APK_NAME" --output "$WORK/stored.apk"
-cmp -s "$WORK/$SHA_NAME" "$WORK/stored.sha256" || die "Codeberg sidecar is not byte-identical"
-cmp -s "$WORK/$APK_NAME" "$WORK/stored.apk" || die "Codeberg APK is not byte-identical"
+if int(assets[sha_name].get("size", -1)) != sha_size:
+    raise SystemExit("Codeberg sidecar size mismatch")
+' "$RELEASE_JSON" "$APK_NAME" "$SHA_NAME" "$APK_SIZE" "$(stat -c '%s' "$WORK/$SHA_NAME")" \
+  || die "Codeberg did not store the release as uploaded"
 
 echo
 echo "Mirrored $TAG to https://codeberg.org/$REPO/releases/tag/$TAG"

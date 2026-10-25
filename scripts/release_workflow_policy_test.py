@@ -131,9 +131,32 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
         apk = script.index('replace_asset "$WORK/$APK_NAME"')
 
         self.assertLess(sidecar, apk)
-        self.assertIn('cmp -s "$WORK/$SHA_NAME" "$WORK/stored.sha256"', script)
-        self.assertIn('cmp -s "$WORK/$APK_NAME" "$WORK/stored.apk"', script)
+        # Read back through the API: both assets present at their exact size.
+        self.assertIn('raise SystemExit("Codeberg APK size mismatch")', script)
+        self.assertIn('raise SystemExit("Codeberg sidecar size mismatch")', script)
         self.assertNotIn("x-access-token:${", script)
+
+    def test_release_runs_never_inflate_the_forge_download_counters(self):
+        # Forge download counters ARE the download statistic. Reading an asset
+        # back added a fake install per run, and deleting + re-uploading an
+        # asset that was already there reset the release's real count to zero.
+        mirror = (ROOT / "scripts/mirror-codeberg-release.sh").read_text()
+        self.assertNotIn("releases/download", mirror)
+        self.assertNotIn("stored.apk", mirror)
+        self.assertIn("already holds $NAME at the expected size; keeping it", mirror)
+
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        step = workflow[workflow.index("- name: Prepare existing release for Zapstore repair"):]
+        step = step[: step.index("- name: Mirror release to Codeberg")]
+        self.assertIn("https://api.github.com/repos/${REPO_SLUG}/releases/tags/${TAG}", step)
+        local = step.index('fetch_verified "the local copy"')
+        blossom = step.index("https://blossom.primal.net")
+        github = step.index('fetch_verified "GitHub"')
+        self.assertLess(local, blossom)
+        self.assertLess(blossom, github)
+        # The only APK download from GitHub is the last resort, and it says so.
+        self.assertEqual(step.count('"${BASE}/${APK_NAME}"'), 1)
+        self.assertIn("counts as one download", step)
 
 
 if __name__ == "__main__":
