@@ -1,13 +1,14 @@
 ---
 status: implemented-on-branch
 queue: active
+target: 0.2.5 (moved from 0.2.4 on 2026-10-25; 0.2.4 shipped without training and nutrition)
 base: main@b5bef5163 (0.2.3)
-branch: feat/0.2.4-training-nutrition (training line feat/0.2.4-training-body, merged with nutrition on 2026-10-07)
+branch: feat/0.2.5-training-nutrition (rebased onto v0.2.4 on 2026-10-25; before: feat/0.2.4-training-nutrition (training line feat/0.2.4-training-body, merged with nutrition on 2026-10-07))
 depends_on: []
 created: 2026-10-04
 ---
 
-# Feature Spec: Off-board training, exercise catalogue v2, injury mode (0.2.4)
+# Feature Spec: Off-board training, exercise catalogue v2, injury mode (0.2.5)
 
 > Owner request 2026-10-03/04: "many basic exercises" for 0.2.4, everything
 > from strength-training apps that is cool for CruxCoach — redesigned for climbers — and the case

@@ -7,16 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Training beyond the board (FEAT-066). A "Today" hub and an "Exercises"
-  library inside the new training area. The library has 200 exercises written for
+- Training beyond the board. A "Today" hub and an "Exercises"
+  library inside the new training area. The library has over 200 exercises written for
   climbers – fingers, pulling, pushing and antagonists, core, legs and hips,
   mobility, warm-up, power, endurance and technique – in German and English,
   with "why it matters", steps, cues, typical mistakes, progression chains
   ("easier / harder"), load areas and an equipment filter ("what do you have?").
   Own exercises can be added.
 - A training logger: start from nine starter routines (board warm-up, finger
-  basics, antagonist 15 min, legs, core, mobility, a baseline test and an
-  injury routine) or an empty training. Every set is prefilled with last
+  basics, pull & antagonist, antagonist 15 min, legs, core, mobility, a
+  baseline test and an injury routine) or an empty training. Every set is prefilled with last
   time's values, one tap logs it, the rest timer starts by itself (the same
   timer as the board player), and a full-screen hang/repeater timer counts
   7:3 intervals with sound, vibration and optional voice. One-sided exercises
@@ -53,15 +53,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   – hanging on a hangboard or bar, pull-up, block lift, push-up, squat,
   hollow body, climbing on a wall … – with its equipment on a tile in its
   category's colour, instead of a body map shrunk to 48 dp.
-- Guided training mode, the default for routines: one big set view with the
-  target, % body weight and an inline hang/repeater timer, and a separate rest
-  screen with a countdown ring, ±15 s, a side-switch pause, the next set and a
-  reps-in-reserve question. The list view stays available as the overview.
 - A simple training area: four tabs – Today, Training (workouts and exercises),
   Nutrition and Progress (statistics, body, weekly review, start values). Today
   shows what to do at least ("Set up in 3 steps": goal and week, equipment, body
   weight), today's training with a one-line check-in, and "Your day" tiles that
-  log climbing, weight, food and water with one tap. Whenever something is
+  log climbing, weight, food and water with one tap. Today's training is the
+  big card at the top with one start button; reasons, evidence and confidence
+  sit behind "Why?", and the check-in is one line until you open it. Whenever something is
   missing, it is asked right there – a hint never sends you looking for it in
   the settings. The training settings are an overview with the current value of
   each topic. Settings in Training and Nutrition save themselves – a typed
@@ -79,11 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   plan, the check-in, injuries, finger load of the last two days, equipment,
   favourites, performance values and the preferred duration, with the reasons
   shown; start it, ask for another one, adapt it or save it as a workout.
-- Today is calmer: today's training is the big card at the top with one start
-  button; reasons, evidence and confidence sit behind "Why?"; the check-in is
-  one line until you open it; climbing day, weight, water, food, free training
-  and workouts are always in the same quick-action row.
-- Coach setup on the first visit: four optional cards (goal, week, climbing
+- Coach setup, a step of Today's checklist: four optional cards (goal, week, climbing
   and experience, what suits you), prefilled from your board logbook and your
   profile; start values are learned during training, estimated in two
   questions, or measured in a guided test; a week plan proposed from your real
@@ -112,17 +106,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reserve make them lighter, a big reserve heavier; "let go" in a hang records
   the time actually held. "It hurts" swaps, lightens or ends the exercise.
 - Your word wins: a load changed during a training carries over to the
-  remaining sets, ⏮/⏭ go back to a done set to correct or reopen it, and the
-  rest screen sets the next set's load. A load written into a workout wins over
+  remaining sets, a done set opens again for a correction, and the next
+  set's load can be changed during the rest. A load written into a workout wins over
   the plan. Workouts and exercises can be typed ("pull-ups 5×5 +20 kg, plank
   3×60 s"); unknown names become own exercises. Own exercises and performance
   values can be deleted, and a value can be entered as working sets ("5×5 at
   +20 kg") instead of a maximum.
 - Today asks first how strong you feel and whether anything hurts; what hurts
   is spared today without becoming an injury. "Another suggestion" picks the
-  kind of training and the place (also "no equipment" for one day), and the
-  time on the card sets today's duration: shorter cuts sets and exercises,
-  longer adds sets and exercises of the same kind – never more finger load,
+  kind of training, the place on the card changes for the day (also "no
+  equipment"), and the time on the card sets today's duration: shorter cuts
+  sets and exercises, longer adds exercises of the same kind (eight at most),
+  then sets – never more finger load,
   and a deload week keeps its fewer sets.
 - Favourite exercises are chosen right next to "routine or variety" in the
   coach setup: with a routine they are in almost every suggestion they fit,
@@ -175,7 +170,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   circuits. In the training a circuit is one page with its rounds ("Next:
   push-ups", "Rest after round 1", "+ round", "end circuit").
 - The coach learns from what you change without overfitting: following a
-  suggestion counts as no preference (the coach no longer suggests its own
+  suggestion counts as no preference (so the coach does not suggest its own
   picks over and over), choosing an exercise does; an exercise you turn down
   rests for 3 days, after repeated rejections 10 or 21 days, and gets no
   "not done for a while" bonus while it is disliked – then the coach may
@@ -187,7 +182,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   teaches the coach nothing: a swap, "leave out today" and "never suggest"
   on Today's card, skipping or removing an exercise in the training, "as
   planned", "lighter week" and "swap in your workouts" in the summary, a
-  pain stop saved as an injury. The third time the same exercise is turned
+  pain stop saved as an injury, a deleted climbing day. The third time the same exercise is turned
   down, the card asks once "stop suggesting it?".
 - "Suggest it like this from now on?" after a training: when exercises of
   today's suggestion were swapped or left out (on the card or in the
@@ -202,7 +197,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   more demanding). "Yes" keeps the step for that kind – today's chips still
   move one step from there – with Undo, listed under "What the coach
   learned" with "Forget"; "No" is not asked again for three weeks. "Back to
-  normal" on the chip now survives a restart too.
+  normal" on the chip survives a restart too.
 - The weekly targets show where exercises are left out or edited, as a hint
   and never a lock: "leave out today" on the card and removing or skipping
   an exercise in the training say "Pulling this week: 4/6 sets", and the
@@ -257,13 +252,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   load it are hidden or marked, wall climbing can be paused, and one-sided work
   stays available for the healthy side – e.g. one-arm pick-ups on the right
   hand plus bar pull-ups while a left finger is injured.
+- Comeback plan after an injury: a training aid for building load back up
+  together with your doctor or physio – not a substitute for seeing a doctor.
+  Enter what you were told (onset, pop, swelling, warning signs, what was
+  checked, the finding) and pick the stage you agreed on; the plan shows the
+  usual stages for fingers, shoulder, elbow, wrist, ankle, knee, hamstring and
+  back with their sources, your pain rule, sessions for the injured and the
+  other side, a diary with a 14-day chart and a summary to share at the
+  appointment. Warning signs point you to a check (112 in an emergency); the
+  stage changes only when you tap. CruxCoach does not diagnose and does not
+  decide when an injury is over. Injuries and the comeback diary stay on this
+  phone and go into an export or the encrypted backup only when you switch
+  them on.
 - Optional morning check-in (sleep, energy, skin, fingers, ill) that only ever
   makes the day gentler and names the deciding reason; illness, injury and
   holiday pauses; a weekly consistency streak in which rest days never count
   against you; a weekly review with bests, load per structure, trends and
   nutrition (logged days, protein and carbohydrate against the targets of the
   week's training, iron, calcium and vitamin D).
-- Body tracking (FEAT-067): back-dated entries, one value per day, a smoothed
+- Body tracking: back-dated entries, one value per day, a smoothed
   trend weight instead of noisy daily numbers, circumferences, ape index,
   strength-to-weight progress, and a "hide numbers" mode. Body stats from older
   versions are taken over automatically. A "measurement round" enters weight,
@@ -273,7 +280,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (any language, comma or dot decimals, kg/lb/st, cm/in), with a preview,
   keep-or-overwrite for existing days and a day/month choice when dates are
   ambiguous.
-- Nutrition (FEAT-068), a tab next to training under one main-menu entry "Training & nutrition": protein by body weight and carbohydrate
+- Nutrition, a tab next to training under one main-menu entry "Training & nutrition": protein by body weight and carbohydrate
   targets that follow the training day – board sessions and logged climbing
   days count automatically, a light day less than a limit session – and a fat
   target that fills the energy left, kept within 20–35 % of it (1 g per kg
@@ -295,7 +302,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   always on; a card explains the guard rails once on the first visit. Every
   entry, meal and day shows protein, carbohydrate, fat and calories (calories
   can be hidden; without logged kcal they are estimated from the macros, "≈").
-- Food photos (FEAT-069): photograph a meal, and a model running only on the
+- Food photos: photograph a meal, and a model running only on the
   phone lists the foods with estimated grams. Nutrients come from the German
   food database BLS 4.0 (Max Rubner-Institut, CC BY 4.0, bundled offline);
   every line can be checked, changed, searched or dropped before it is
@@ -329,7 +336,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   hash; the photo never leaves the device. On phones with too little memory
   or an older processor the button stays greyed out and says why.
 - Training, body and nutrition data live in a separate encrypted database per
-  account and are included in the cloud backup and the manual export.
+  account and are included in the cloud backup and the manual export –
+  injuries and the comeback diary only when you switch them on. When that
+  database cannot be read, the logbook still exports and restores, and the
+  message says what is missing; a backup from a newer version restores too,
+  without the values this version does not know.
 - Plan days: today and the next two weeks, one tap per day – rest day, a
   climbing day (gym bouldering, gym rope, rock or other; easy, volume, hard or
   limit), a board session, a training, or swap two days. A change holds for
@@ -341,8 +352,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   today" sits in "Another suggestion", with Undo. On a planned climbing day
   Today shows its warm-up and a short block for afterwards, and the nutrition
   targets count the climbing.
-
-### Changed
 - The coach notices the usual workout: one of your own workouts done on two
   of the same weekday (or in three of the last four trainings) becomes that
   day's suggestion – as you do it, each exercise with its next step – on days
@@ -350,7 +359,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   standard week leaves empty it offers once to put the workout there ("No
   thanks" holds for six weeks), and the learned page lists usual workouts with
   "Forget". A usual workout started from Today stays recognisable. Variety 0
-  now means no pull towards new exercises at all.
+  means no pull towards new exercises at all.
 - Typed workouts are read as free text: several exercises per line or in
   sentences ("Klimmzüge 5x5 +20 kg Liegestütze 3x15, dann Plank 3x60 s"),
   numbers before or after the name, "and"/"then"/"je" lists, "left and right",
@@ -359,47 +368,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   over a list, "… als Zirkel", "5 rounds of …", "3x ( … )", "im Wechsel mit",
   "Supersatz" – with their rests ("between exercises", "after each round", a
   "Pause 90 s" line under the list); the preview shows them grouped. Typos
-  matter little (double letters, ck/k, swapped letters), while a weak name is
-  no longer matched just because the numbers fit. The catalogue gained sit-ups
+  matter little (double letters, ck/k, swapped letters), and a weak name is
+  not matched just because the numbers fit. The catalogue gained sit-ups
   with and without weight, incline dumbbell press, single-arm lat pulldown,
-  seated cable row, triceps pushdown and reverse flys; "Schrägbankdrücken" no
-  longer becomes the I-Y-T raise. Reading runs off the main thread and reuses
-  a catalogue index, so long texts stay smooth.
+  seated cable row, triceps pushdown and reverse flys. Long texts stay
+  smooth.
 - The review after a photo or a typed meal corrects amounts in one tap:
   ×½, ×¾, ×1¼ and ×1½ for any food, whole pieces (−1 / +1, "≈ 2 pcs, 120 g
   each") for foods people count – the photo model is about a quarter off per
-  food, measured on a benchmark. A food the table lacks can now be chosen
+  food, measured on a benchmark. A food the table lacks can be chosen
   from the product database in the review (protein powders, bars, branded
   foods); an unmatched line starts that search with its own name.
-- Typed meals need fewer format rules: "2 eier 1 banane 200ml milch" or
+- Typed meals need few format rules: "2 eier 1 banane 200ml milch" or
   "Banane Apfel Birne" are split into their foods without commas, "1/2",
   "eine halbe" and "2 x" are understood, "Käsebrot" becomes bread and cheese,
   and what goes into a coffee or onto bread gets a realistic amount (a splash
-  of milk, a spoon of sugar or honey, 10 g of oil) instead of 150 g. Plain
+  of milk, a spoon of sugar or honey, 10 g of oil). Plain
   words find the plain food (bananas, berries, cucumber, cake, sugar); protein
   shakes and bars, which the food table does not have, are left unmatched
   rather than matched to protein bread.
 - Foods people count – a banana, an apple, an egg, a roll – offer pieces
   next to grams when picked from the food database ("1 piece (120 g)"),
   also when they were saved to my foods before; grams stay one tap away.
-- "Another suggestion" is shorter: the kind of training, "lighter" or
-  "harder" today, and one "Another mix" button. Time, place and single
-  exercises are changed on the card itself (time and place now share one row);
-  "Something hurts" opens today's check-in, so it is spared today instead of
-  opening the injury mode, and "Equipment" the equipment sheet.
-- More time on Today's card adds at most eight exercises; after that the sets
-  grow. A 90-minute day listed 14 exercises before.
-- The range chips on Progress and the exercise filters wrap instead of
-  scrolling sideways (the categories sit behind one "All categories" chip with
-  a menu), the add tiles in Nutrition fit a 360-dp phone ("Describe" was cut
-  off), and the week plan, the coach setup and Today's card offer the same
-  durations.
-- The rest screen names a first value "Starting value learned" and maxima in
-  words ("max. 1 rep at +35 kg", "10 s at 74 kg") instead of "e1RM +35 kg",
-  which read like an increase of 35 kg.
-- Performance values are harder to throw off: one set raises a value by at
+- After a first set the training says "Starting value learned" and names
+  maxima in words ("max. 1 rep at +35 kg", "10 s at 74 kg").
+- Performance values are hard to throw off: one set raises a value by at
   most 10 % (a second set of the same training that shows as much confirms
-  more), so a typo such as "50 reps" no longer jumps the next plan; a quick
+  more), so a typo such as "50 reps" does not jump the next plan; a quick
   self-estimate is replaced by the best set of the first training with the
   exercise, also when that is lower; and on holds the seconds answered as
   "how many more?" count as time held. Loads planned from an existing value
@@ -408,13 +403,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - After a catalogue import the app frees the temporary database file at once. A Tension
   import left about 180 MB in it until the next write, on a phone with little space left.
-- Deleting a climbing day offers "Undo" (on Today and in the list of climbing
-  days); the entry comes back with its board-overlap choice.
-- The nutrition page left open over midnight moves to the new day by itself
-  instead of showing "Yesterday" with the old day's food; a day picked with
-  the arrows stays picked.
-- A water target of more than ten glasses wraps into even rows (6 + 5)
-  instead of one lonely glass in a second row.
 
 ## [0.2.4] - 2026-10-25
 

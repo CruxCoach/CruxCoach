@@ -1,13 +1,14 @@
 ---
 status: implemented-on-branch
 queue: active
+target: 0.2.5 (moved from 0.2.4 on 2026-10-25; 0.2.4 shipped without training and nutrition)
 base: main@b5bef5163 (0.2.3)
-branch: feat/0.2.4-training-nutrition (training line feat/0.2.4-training-body, merged with nutrition on 2026-10-07)
+branch: feat/0.2.5-training-nutrition (rebased onto v0.2.4 on 2026-10-25; before: feat/0.2.4-training-nutrition (training line feat/0.2.4-training-body, merged with nutrition on 2026-10-07))
 depends_on: [FEAT-066, FEAT-067]
 created: 2026-10-04
 ---
 
-# Feature Spec: Training organisation, stats, own workouts, daily suggestion (0.2.4)
+# Feature Spec: Training organisation, stats, own workouts, daily suggestion (0.2.5)
 
 > Owner request 2026-10-04: "Where do I see my stats? Charts per exercise and
 > for body weight, better organisation, favourites that are easy to plan into

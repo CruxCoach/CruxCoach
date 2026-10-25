@@ -88,13 +88,13 @@ spec file so other branches see the reservation.
 | FEAT-063 | Nostr Background Privacy Control | v0.2.3 | planned | `0.2.3/FEAT-063-nostr-background-privacy-control.md` |
 | FEAT-064 | Quantum multi-layer Nearby banner | backlog | backlog | `backlog/FEAT-064-quantum-nearby-layer-banner.md` |
 | FEAT-065 | Database Process Performance | v0.2.4 | skeleton | `0.2.4/FEAT-065-database-process-performance.md` |
-| FEAT-066 | Off-board training, exercise catalogue v2, injury mode | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-066-training-logger-exercise-catalogue.md` |
-| FEAT-067 | Body tracking v2 | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-067-body-tracking-v2.md` |
-| FEAT-068 | Fueling, not dieting | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-068-fueling.md` |
-| FEAT-069 | Food photo recognition, food search, barcode, US units, Health Connect export | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-069-food-photo-recognition.md` |
-| FEAT-070 | Training organisation, stats, own workouts, daily suggestion | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-070-training-organisation-stats-suggestions.md` |
-| FEAT-071 | Coach profile, start values, data-driven recommendations | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-071-coach-profile-data-driven-recommendations.md` |
-| FEAT-072 | Comeback plan after an injury (training aid with doctor/physio) | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-072-comeback-plan.md` |
+| FEAT-066 | Off-board training, exercise catalogue v2, injury mode | v0.2.5 | implemented-on-branch | `0.2.4/FEAT-066-training-logger-exercise-catalogue.md` |
+| FEAT-067 | Body tracking v2 | v0.2.5 | implemented-on-branch | `0.2.4/FEAT-067-body-tracking-v2.md` |
+| FEAT-068 | Fueling, not dieting | v0.2.5 | implemented-on-branch | `0.2.4/FEAT-068-fueling.md` |
+| FEAT-069 | Food photo recognition, food search, barcode, US units, Health Connect export | v0.2.5 | implemented-on-branch | `0.2.4/FEAT-069-food-photo-recognition.md` |
+| FEAT-070 | Training organisation, stats, own workouts, daily suggestion | v0.2.5 | implemented-on-branch | `0.2.4/FEAT-070-training-organisation-stats-suggestions.md` |
+| FEAT-071 | Coach profile, start values, data-driven recommendations | v0.2.5 | implemented-on-branch | `0.2.4/FEAT-071-coach-profile-data-driven-recommendations.md` |
+| FEAT-072 | Comeback plan after an injury (training aid with doctor/physio) | v0.2.5 | implemented-on-branch | `0.2.4/FEAT-072-comeback-plan.md` |
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
@@ -170,7 +170,7 @@ renumbering those is likely cheaper than renumbering the shipped side.
 
 ## Next free
 
-**FEAT-073** is the next unallocated ID (FEAT-072 on `feat/0.2.4-training-nutrition-ux-review`; FEAT-066–071 together on `feat/0.2.4-training-nutrition`, which merges the training line `feat/0.2.4-training-body` and the nutrition line `feat/0.2.4-food-photo` and, as the 0.2.4 release line since 2026-10-10, the Kilter logbook upload fixes of `feat/0.2.4-kilter-upload` – see `docs/research/2026-09-29-kilter-upload-500.md` – and the hold cleaning of `feat/0.2.4-board-cleaning` – see `docs/releases/0.2.4-board-cleaning.md`; neither has a FEAT number). FEAT-060 and FEAT-061 are reserved in
+**FEAT-073** is the next unallocated ID. FEAT-066–072 (training, body, nutrition, food photos, coach, comeback plan) target 0.2.5 on `feat/0.2.5-training-nutrition`, rebased onto v0.2.4 on 2026-10-25 (they first targeted 0.2.4 on `feat/0.2.4-training-nutrition` and `feat/0.2.4-training-nutrition-ux-review`). The Kilter logbook upload fixes and hold cleaning shipped in 0.2.4 without a FEAT number (see `docs/research/2026-09-29-kilter-upload-500.md` and `docs/releases/0.2.4-board-cleaning.md`). FEAT-060 and FEAT-061 are reserved in
 the parallel `social-layer-specs` worktree; FEAT-062 is reserved by the
 personal-sharing worktrees. Verify against unmerged branches before allocating
 — a branch this worktree cannot see may still hold the next apparent gap.
