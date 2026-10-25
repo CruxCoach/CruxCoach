@@ -55,18 +55,36 @@ fun connectedBoardConfigurationMismatch(
     activeBrand: BoardBrand,
     connectedBrand: BoardBrand?,
     connectedQuantumModel: QuantumBoardModel? = null,
+    activeLayoutId: Long? = null,
+    /** Variant a Shiny Wall controller's advertised name suggests; a hint only,
+     *  so a mismatch it raises is an editable, dismissible suggestion. */
+    connectedShinyVariantHint: ShinyWallVariant? = null,
 ): BoardConfigurationMismatch? {
     val controllerBrand = connectedBrand ?: return null
-    if (controllerBrand == activeBrand) return null
+    if (controllerBrand == activeBrand) {
+        val hint = connectedShinyVariantHint?.takeIf { controllerBrand == BoardBrand.SHINYWALL }
+            ?: return null
+        if (activeLayoutId == null || hint.layoutId == activeLayoutId) return null
+        return BoardConfigurationMismatch(
+            kind = BoardMismatchKind.CONNECTED_MODEL,
+            climbBrand = controllerBrand,
+            expectedBrand = controllerBrand,
+            activeBrand = activeBrand,
+            connectedBrand = controllerBrand,
+            climbLayoutId = hint.layoutId,
+            activeLayoutId = activeLayoutId,
+            prefill = controllerPrefill(controllerBrand, null, hint),
+        )
+    }
     return BoardConfigurationMismatch(
         kind = BoardMismatchKind.ACTIVE_BRAND,
         climbBrand = controllerBrand,
         expectedBrand = controllerBrand,
         activeBrand = activeBrand,
         connectedBrand = controllerBrand,
-        climbLayoutId = connectedQuantumModel?.layoutId,
+        climbLayoutId = connectedQuantumModel?.layoutId ?: connectedShinyVariantHint?.layoutId,
         activeLayoutId = null,
-        prefill = controllerPrefill(controllerBrand, connectedQuantumModel),
+        prefill = controllerPrefill(controllerBrand, connectedQuantumModel, connectedShinyVariantHint),
     )
 }
 
@@ -148,20 +166,21 @@ fun boardSizeMismatch(identity: BoardSendIdentity): BoardConfigurationMismatch =
 private fun controllerPrefill(
     brand: BoardBrand,
     quantumModel: QuantumBoardModel?,
+    shinyVariantHint: ShinyWallVariant? = null,
 ): BoardPickerPrefill {
     val layoutId = when (brand) {
         BoardBrand.KILTER -> BoardConstants.KILTER_ORIGINAL_LAYOUT.toLong()
         BoardBrand.MOONBOARD -> MoonBoardVariant.MOONBOARD_2016.layoutId
         BoardBrand.QUANTUM -> quantumModel?.layoutId
-        // The advertised name only hints at the variant; Standard is the most
-        // common Shiny Wall and stays a user-editable default.
-        BoardBrand.SHINYWALL -> ShinyWallVariant.ST1.layoutId
+        // The advertised name only hints at the variant; without a hint
+        // Standard, the most common Shiny Wall, is the editable default.
+        BoardBrand.SHINYWALL -> (shinyVariantHint ?: ShinyWallVariant.ST1).layoutId
         else -> null
     }
     val productSizeId = when (brand) {
         BoardBrand.KILTER -> BoardConstants.KILTER_DEFAULT_SIZE
         BoardBrand.QUANTUM -> quantumModel?.productSizeId?.toInt()
-        BoardBrand.SHINYWALL -> ShinyWallVariant.ST1.productSizeId.toInt()
+        BoardBrand.SHINYWALL -> (shinyVariantHint ?: ShinyWallVariant.ST1).productSizeId.toInt()
         else -> null
     }
     return BoardPickerPrefill(

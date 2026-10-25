@@ -2311,6 +2311,7 @@
     <string name="board_mismatch_connected_brand">Verbunden ist ein %1$s, dieser Climb gehört aber zu %2$s.</string>
     <string name="board_mismatch_active_brand">CruxCoach ist auf %1$s eingestellt, während Board oder Climb %2$s benötigen.</string>
     <string name="board_mismatch_connected_model">Das verbundene Quantum-Modell und dieser Climb verwenden unterschiedliche Layouts.</string>
+    <string name="board_mismatch_shinywall_variant">Der Name der verbundenen Shiny Wall deutet auf %1$s hin, CruxCoach ist aber auf %2$s eingestellt. Wähle die Variante, als die deine Wand eingerichtet ist.</string>
     <string name="board_mismatch_active_layout">Das gewählte Layout oder die Generation passt nicht zum Climb oder Controller.</string>
     <string name="board_mismatch_active_size">Kein Griff dieses Climbs lässt sich der eingestellten Board-Größe zuordnen.</string>
     <string name="board_mismatch_detected_controller">Über BLE sicher erkannt und vorausgewählt: %1$s. Unbekanntes Modell, Layout oder Größe musst du noch wählen.</string>

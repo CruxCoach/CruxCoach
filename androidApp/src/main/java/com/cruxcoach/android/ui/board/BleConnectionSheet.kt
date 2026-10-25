@@ -100,6 +100,10 @@ fun BleConnectionSheet(
         activeBrand = state.activeBoardBrand,
         connectedBrand = state.connectedBoardBrand,
         connectedQuantumModel = state.connectedQuantumModel,
+        activeLayoutId = state.activeLayoutId,
+        connectedShinyVariantHint = state.connectedBoardName
+            ?.takeIf { state.connectedBoardBrand == BoardBrand.SHINYWALL }
+            ?.let { com.cruxcoach.domain.board.ShinyWallName.parse(it)?.variantHint },
     )
     val rememberedBoard = if (neutralDiscovery) null else state.rememberedBoardControllers[state.activeBoardBrand]
     var discoveryRequested by remember(state.activeBoardBrand) { mutableStateOf(false) }
