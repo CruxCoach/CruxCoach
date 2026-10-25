@@ -20,6 +20,7 @@ import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.QuantumBoardModel
+import com.cruxcoach.domain.board.ShinyWallVariant
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -237,6 +238,22 @@ class BoardPickerViewModel @Inject constructor(
         }
     }
 
+    fun selectShinyWall(variant: ShinyWallVariant, deferDownload: Boolean = false) {
+        viewModelScope.launch {
+            userPreferences.setBoardSelection(
+                BoardBrand.SHINYWALL.wireValue,
+                variant.layoutId.toInt(),
+                variant.productSizeId.toInt(),
+                null,
+            )
+            // The catalogue holds every variant, so one download serves any
+            // later variant switch; a cached catalogue stays usable offline.
+            if (deferDownload || BoardBrand.SHINYWALL !in userPreferences.boardDownloadBrands.first()) return@launch
+            if (withContext(Dispatchers.IO) { boardRepository.hasClimbsForBrand(BoardBrand.SHINYWALL.wireValue) }) return@launch
+            syncManager.loadBoardCatalogue(BoardBrand.SHINYWALL)
+        }
+    }
+
     fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?, productSizeId: Int? = null, deferDownload: Boolean = false) {
         viewModelScope.launch {
             val status = try {
@@ -314,6 +331,7 @@ internal fun BoardPickerDialog(
             onConfirmKilter = { size -> request(BoardBrand.KILTER) { viewModel.selectKilter(size) } },
             onConfirmMoonBoard = { variant, holds -> request(BoardBrand.MOONBOARD) { viewModel.selectMoonBoard(variant, holds) } },
             onConfirmQuantum = { model -> request(BoardBrand.QUANTUM) { viewModel.selectQuantum(model, deferDownloads) } },
+            onConfirmShinyWall = { variant -> request(BoardBrand.SHINYWALL) { viewModel.selectShinyWall(variant, deferDownloads) } },
             onConfirmAurora = { brand, variant, sizeId -> request(brand) { viewModel.selectAurora(brand, variant, sizeId, deferDownloads) } },
             onFindViaGym = onFindViaGym,
             onFindNearbyGym = onFindNearbyGym,

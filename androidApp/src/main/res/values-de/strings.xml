@@ -793,6 +793,7 @@
     <string name="board_filter_origin_cruxcoach">CruxCoach-Setter</string>
     <string name="board_filter_origin_kilter">Kilter (offiziell)</string>
     <string name="board_filter_origin_quantum">eWalls / Quantum (offiziell)</string>
+    <string name="board_filter_origin_shinywall">Shiny Wall (offiziell)</string>
     <string name="board_filter_quantum_rules">Quantum-Regeln</string>
     <string name="board_filter_quantum_standard">Standard</string>
     <string name="board_filter_quantum_campusing">Campusing</string>
@@ -2765,6 +2766,8 @@
     <string name="fips_mesh_join_mode_description">Gilt für dieses Board, solange jemand daran ist. Alle am Board dürfen es ändern.</string>
     <string name="board_selection_quantum_model_label">Quantum-Modell</string>
     <string name="board_selection_quantum_schematic_hint">Das Originalbild des ausgewählten Quantum-Modells ist enthalten.</string>
+    <string name="board_selection_shinywall_variant_label">Shiny-Wall-Variante</string>
+    <string name="board_selection_shinywall_variant_hint">Wähle die Variante, als die deine Wand eingerichtet ist. Full-Wände haben zusätzlich die kleinen Griffe zwischen den Reihen.</string>
     <string name="quantum_sync_failed_generic">Der Quantum-Katalog konnte nicht aktualisiert werden. Vorhandene Offline-Daten bleiben verfügbar.</string>
     <string name="board_layers_title">Board-Layer</string>
     <string name="board_layers_occupied">%1$d von %2$d aktiv</string>

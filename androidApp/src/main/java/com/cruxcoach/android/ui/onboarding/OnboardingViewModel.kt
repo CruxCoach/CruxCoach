@@ -193,6 +193,9 @@ class OnboardingViewModel @Inject constructor(
                     )
                     val name = when {
                         parsed == BoardBrand.MOONBOARD -> variant?.displayName ?: ""
+                        parsed == BoardBrand.SHINYWALL ->
+                            com.cruxcoach.domain.board.ShinyWallVariant.fromLayoutId(layoutId.toLong())
+                                ?.let { "${parsed.displayName} ${it.displayName}" } ?: parsed.displayName
                         parsed.usesAuroraProtocol && parsed != BoardBrand.KILTER -> parsed.displayName
                         else -> com.cruxcoach.android.data.BoardConstants.sizeLabel(
                             com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES, sizeId,

@@ -400,6 +400,9 @@ private fun boardFilterLabel(brandWire: String, layoutKey: Long): String {
         brand == BoardBrand.MOONBOARD ->
             com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(layoutKey)?.displayName
                 ?: brand.displayName
+        brand == BoardBrand.SHINYWALL ->
+            com.cruxcoach.domain.board.ShinyWallVariant.fromLayoutId(layoutKey)
+                ?.let { "${brand.displayName} ${it.displayName}" } ?: brand.displayName
         else -> brand.displayName
     }
 }

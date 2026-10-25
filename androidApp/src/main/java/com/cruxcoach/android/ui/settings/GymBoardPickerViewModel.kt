@@ -279,6 +279,16 @@ class GymBoardPickerViewModel internal constructor(
                         brand == BoardBrand.MOONBOARD -> opts += moonBoardOptions(row)
                         // Quantum: the model is not in the location data, so
                         // every model is an equal choice.
+                        // Shiny Wall: the variant is not in the location data
+                        // either, so every supported variant is offered.
+                        brand == BoardBrand.SHINYWALL -> opts += com.cruxcoach.domain.board.ShinyWallVariant.SUPPORTED.map { variant ->
+                            GymWallOption(
+                                layoutId = variant.layoutId.toInt(),
+                                productSizeId = variant.productSizeId.toInt(),
+                                label = "${BoardBrand.SHINYWALL.displayName} ${variant.displayName}",
+                                boardBrand = BoardBrand.SHINYWALL,
+                            )
+                        }
                         brand == BoardBrand.QUANTUM -> opts += QuantumBoardModel.entries.map { model ->
                             GymWallOption(
                                 layoutId = model.layoutId.toInt(),
