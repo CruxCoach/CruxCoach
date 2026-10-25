@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.board.games
 
+import com.cruxcoach.android.led.AnimationPauseOwner
+import com.cruxcoach.android.led.LedAnimationEngine
 import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
@@ -120,6 +122,7 @@ class WallGamesViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val ble: BoardBleConnection,
     private val sessionQueueManager: SessionQueueManager,
+    private val ledEffects: LedAnimationEngine,
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(WallGamesState())
@@ -140,6 +143,9 @@ class WallGamesViewModel @Inject constructor(
     )
 
     init {
+        // Every game step is a frame of its own: while this screen is open the
+        // wall belongs to the game, not to a chosen LED effect.
+        ledEffects.pause(AnimationPauseOwner.WALL_GAME)
         val climbUuid: String? = savedStateHandle["climbUuid"]
         val angle: Int = savedStateHandle["angle"] ?: -1
         viewModelScope.launch {
@@ -362,6 +368,7 @@ class WallGamesViewModel @Inject constructor(
             }
         }
         sounds.release()
+        ledEffects.resume(AnimationPauseOwner.WALL_GAME)
         super.onCleared()
     }
 

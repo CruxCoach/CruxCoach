@@ -173,6 +173,17 @@ class BoardBleAnimationFrameTest {
         assertTrue("once restored, nothing more to do", link.writes.isEmpty())
     }
 
+    @Test fun `sending the same climb again is a new lit frame`() = runTest {
+        val link = Link()
+        val connection = link.connection
+        assertTrue(connection.sendClimb(holds, ledMap))
+        val first = assertNotNullFrame(connection)
+        assertTrue(connection.sendClimb(holds, ledMap))
+        val second = assertNotNullFrame(connection)
+        assertTrue("an effect that ended on the first send starts again", first != second)
+        assertEquals(first.leds, second.leds)
+    }
+
     private fun assertNotNullFrame(connection: BoardBleConnection): LitFrame {
         val frame = connection.litFrame.value
         assertNotNull(frame)

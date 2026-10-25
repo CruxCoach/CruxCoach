@@ -22,8 +22,12 @@ data class LitLed(val position: Int, val roleClass: Int, val baseColor: Int)
  * carries *all* lit LEDs, because an Aurora packet is the complete new board
  * state (`encodeClear()` is an empty `encodeClimb`) — a frame that omitted an LED
  * would switch it off.
+ *
+ * [sendId] numbers the sends on a connection. Two sends of the same climb are two
+ * frames — a state flow would otherwise swallow the second as equal — so sending
+ * a climb again restarts an effect that had ended on it.
  */
-data class LitFrame(val leds: List<LitLed>) {
+data class LitFrame(val leds: List<LitLed>, val sendId: Long = 0) {
 
     /** The frame with no animation applied — the static "LED colors" look. */
     fun staticFrame(): List<Pair<Int, Int>> = leds.map { it.position to it.baseColor }

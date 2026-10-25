@@ -3,6 +3,7 @@ package com.cruxcoach.android.led
 import androidx.annotation.StringRes
 import com.cruxcoach.android.ble.FrameSendResult
 import com.cruxcoach.android.ble.LitFrame
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -63,6 +64,13 @@ interface LedFrameSink {
     val litFrame: StateFlow<LitFrame?>
 
     /**
+     * What the connected board means for an effect, observed so the engine starts
+     * and ends its loop with it: no board, a board without effects, hold cleaning
+     * in progress, or ready. A link busy with a user send stays ready.
+     */
+    val availability: Flow<LedBoardAvailability>
+
+    /**
      * True while frames can actually be pushed — connected, and to a board whose
      * protocol carries a colour per LED. Checked every frame, not just on start.
      *
@@ -92,7 +100,8 @@ interface LedFrameSink {
  * session — or a manual step through a route's frames — is *not* an owner: it
  * lights one climb and leaves it alone, so the animation has nothing to collide
  * with, and a queued session is exactly when a lit-up wall is worth having. Only
- * things that write frames on their own timer are here.
+ * things that write frames on their own timer are here. Hold cleaning is not in
+ * the list either: the link reports it ([LedBoardAvailability.CLEANING]).
  */
 enum class AnimationPauseOwner {
     /** Automatic multi-frame route playback — it drives its own frame timing. */
@@ -100,4 +109,7 @@ enum class AnimationPauseOwner {
 
     /** The Easter animation, which paints its own full-board frames. */
     EASTER_ANIMATION,
+
+    /** A wall game, whose every step is a frame of its own, while its screen is open. */
+    WALL_GAME,
 }

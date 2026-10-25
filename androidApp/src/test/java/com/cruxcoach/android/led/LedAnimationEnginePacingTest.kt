@@ -103,7 +103,7 @@ internal class LedAnimationEnginePacingTest : LedEngineTestBase() {
     }
 
     private fun engineOn(selected: String): LedAnimationEngine =
-        LedAnimationEngine(FakeLedFrameSink(), MutableStateFlow(selected), UnconfinedTestDispatcher())
+        LedAnimationEngine(FakeLedFrameSink(), MutableStateFlow(LedEffectSettings(effectId = selected)), UnconfinedTestDispatcher())
 
     /** Not marked photosensitive, and asks for far less than one write group per frame. */
     private object EagerAnimation : LedAnimation {

@@ -338,6 +338,12 @@ object PreferenceKeys {
      * Unknown or absent means "none": static colours, existing behaviour.
      */
     val LED_ANIMATION = stringPreferencesKey("led_animation")
+    /** [com.cruxcoach.android.led.LedEffectTempo] id of the LED effect. */
+    val LED_ANIMATION_TEMPO = stringPreferencesKey("led_animation_tempo")
+    /** Keep a running LED effect going while another app is open. Off by default. */
+    val LED_ANIMATION_IN_BACKGROUND = booleanPreferencesKey("led_animation_in_background")
+    /** The flashing-light notice was confirmed once; it is not asked again. */
+    val LED_STROBE_NOTICE_SEEN = booleanPreferencesKey("led_strobe_notice_seen")
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
     // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
     // by bleAutoDisconnectSeconds, which transparently migrates the
@@ -1163,6 +1169,35 @@ class UserPreferences(
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.LED_ANIMATION] = id
         }
+    }
+
+    /** The LED effect's tempo id; unknown or absent means normal. */
+    val ledAnimationTempo: Flow<String> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.LED_ANIMATION_TEMPO] ?: "normal"
+    }
+
+    suspend fun setLedAnimationTempo(id: String) {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.LED_ANIMATION_TEMPO] = id }
+    }
+
+    /**
+     * Keep a running LED effect going in other apps (to film the climb). Off by
+     * default: it keeps the board connection while the phone is in a pocket.
+     */
+    val ledAnimationInBackground: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.LED_ANIMATION_IN_BACKGROUND] ?: false
+    }
+
+    suspend fun setLedAnimationInBackground(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.LED_ANIMATION_IN_BACKGROUND] = enabled }
+    }
+
+    val ledStrobeNoticeSeen: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.LED_STROBE_NOTICE_SEEN] ?: false
+    }
+
+    suspend fun setLedStrobeNoticeSeen() {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.LED_STROBE_NOTICE_SEEN] = true }
     }
 
     /**

@@ -17,6 +17,7 @@ import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.domain.board.games.HoldsThief
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
+import com.cruxcoach.android.led.LedAnimationEngine
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -85,7 +86,8 @@ class WallGamesViewModelTest {
             every { observeClimbHistory() } returns flowOf(emptyList())
         }
         val queue = mockk<SessionQueueManager>(relaxed = true) { every { state } returns session }
-        val vm = WallGamesViewModel(SavedStateHandle(args), loader, repository, personal, ble, queue)
+        val ledEffects = mockk<LedAnimationEngine>(relaxed = true)
+        val vm = WallGamesViewModel(SavedStateHandle(args), loader, repository, personal, ble, queue, ledEffects)
         runBlocking { withTimeout(5_000) { vm.state.first { !it.loading } } }
         return vm
     }

@@ -885,6 +885,8 @@ class BoardBleConnection(
     }
 
     private val _litFrame = MutableStateFlow<LitFrame?>(null)
+    /** Numbers [LitFrame.sendId]; written under [writeMutex]. */
+    private var litFrameSends = 0L
 
     /**
      * What is lit on the wall right now, resolved to (LED, role, colour) —
@@ -2104,7 +2106,7 @@ class BoardBleConnection(
             val success = writeChunks(chunks)
             // After a failed write the wall's state is unknown; animating the
             // previous climb on top of it would only add to the confusion.
-            _litFrame.value = if (success) litLeds.ifEmpty { null }?.let { LitFrame(it) } else null
+            _litFrame.value = if (success) litLeds.ifEmpty { null }?.let { LitFrame(it, ++litFrameSends) } else null
             if (success) cleaning.projected(cleaningTicket, chunks)
             return success
         } finally {

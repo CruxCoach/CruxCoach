@@ -2,6 +2,8 @@ package com.cruxcoach.android.led
 
 import com.cruxcoach.android.ble.FrameSendResult
 import com.cruxcoach.android.ble.LitFrame
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -10,10 +12,26 @@ import kotlinx.coroutines.flow.MutableStateFlow
  */
 internal class FakeLedFrameSink(
     frame: LitFrame? = null,
-    override var canAnimate: Boolean = true,
+    canAnimate: Boolean = true,
 ) : LedFrameSink {
 
     override val litFrame = MutableStateFlow(frame)
+
+    /** What the board means for an effect; [canAnimate] reads and writes it. */
+    val availabilityState = MutableStateFlow(
+        if (canAnimate) LedBoardAvailability.READY else LedBoardAvailability.UNSUPPORTED,
+    )
+
+    override val availability: Flow<LedBoardAvailability> get() = availabilityState
+
+    override var canAnimate: Boolean
+        get() = availabilityState.value == LedBoardAvailability.READY
+        set(value) {
+            availabilityState.value = if (value) LedBoardAvailability.READY else LedBoardAvailability.UNSUPPORTED
+        }
+
+    /** Virtual milliseconds each accepted write takes. */
+    var writeMillis = 0L
 
     /** Frames the sink accepted, in order. */
     val sent = mutableListOf<List<Pair<Int, Int>>>()
@@ -41,6 +59,7 @@ internal class FakeLedFrameSink(
         bases += basedOn
         attempts += frame
         if (result != FrameSendResult.SENT) return result
+        if (writeMillis > 0) delay(writeMillis)
         sent += frame
         return FrameSendResult.SENT
     }
