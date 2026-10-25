@@ -211,6 +211,18 @@ CruxCoach is an independent, community-developed open-source project. It is not 
 
 ---
 
+## Training Aid, Not a Medical Device
+
+Training & nutrition, the injury mode and the comeback plan support the user's own training decisions. The comeback plan is a training aid, not a medical device (Regulation (EU) 2017/745):
+
+> CruxCoach's comeback plans are training aids for climbers. They help you plan and log a gradual return to climbing load after a break or an injury, using general load stages published in climbing-medicine literature. They do not diagnose, assess, treat or monitor injuries, do not decide when an injury has healed, and are not a medical device. If you have warning signs, or are unsure what the injury is, see a doctor or physiotherapist. If a professional has given you a plan, follow theirs.
+
+> Die Comeback-Pläne in CruxCoach sind Trainingshilfen für Kletternde. Sie helfen dir, die Rückkehr zur Kletterbelastung nach einer Pause oder Verletzung schrittweise zu planen und zu protokollieren – mit allgemeinen Belastungsstufen aus der klettermedizinischen Literatur. Sie stellen keine Diagnose, beurteilen oder behandeln keine Verletzungen, entscheiden nicht, wann etwas verheilt ist, und sind kein Medizinprodukt. Bei Warnzeichen oder wenn du nicht weißt, was du hast: ärztlich oder physiotherapeutisch abklären lassen. Hast du einen Plan von einer Fachperson, gilt der.
+
+The app does not choose a stage from symptoms and does not move a plan on by itself; the user picks the stage agreed with their doctor or physio, and warning signs only ever point to a medical check. Injuries, illness pauses and the comeback diary stay on the phone unless the user includes them in an export or the encrypted backup.
+
+---
+
 ## Copyright Concerns
 
 If you believe any material in this project infringes your copyright, please contact us:
@@ -222,4 +234,4 @@ We will review all concerns in good faith.
 
 ---
 
-*This document is provided for informational purposes and does not constitute legal advice. Last updated: 2026-09-24.*
+*This document is provided for informational purposes and does not constitute legal advice. Last updated: 2026-10-25.*
