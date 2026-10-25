@@ -35,14 +35,21 @@ class OlmP2pIntegrationTest {
 
     private fun received(endpoint: SyntheticMarmotEndpoint) = endpoint.blocking { next(0, 0, 0, 64).items }
 
+    private fun contactCode(endpoint: SyntheticMarmotEndpoint) =
+        endpoint.harness("contact_code").jsonObject["payload"]!!.jsonPrimitive.content
+
+    private fun scan(endpoint: SyntheticMarmotEndpoint, code: String) =
+        endpoint.harness("import_contact") { put("payload", code) }.jsonObject["peer"]!!.jsonPrimitive.content
+
     @Test fun lan_invitation_acceptance_and_messages_without_any_relay() {
         val alice = endpoint()
         val bob = endpoint()
-        for (e in listOf(alice, bob)) e.blocking { setOnline(true); setDiscovery(true) }
+        for (e in listOf(alice, bob)) e.blocking { setOnline(true) }
         alice.discovery.endpoints = listOf("http://127.0.0.1:${bob.lan.port}")
         bob.discovery.endpoints = listOf("http://127.0.0.1:${alice.lan.port}")
 
-        alice.blocking { invite(bob.account) }
+        // Bob shows his contact code, Alice scans it.
+        assertEquals(bob.account, scan(alice, contactCode(bob)))
         assertTrue(waitFor(alice, bob) { bob.blocking { status() }.peers.any { it.account == alice.account && it.state == "invited" } })
         assertTrue(received(bob).isEmpty(), "an unaccepted invitation delivers nothing")
         bob.blocking { accept(alice.account); send(alice.account, "hello", "synthetic hello") }
@@ -72,32 +79,26 @@ class OlmP2pIntegrationTest {
         assertEquals(1, bob.harness("signer_ops").jsonPrimitive.content.toInt())
     }
 
-    /** QR hand-over, both forms, with the measured QR size for the spike report. */
-    @Test fun invitation_qr_single_and_two_stage() {
+    /** The contact code: its QR size, and a stranger in reach gets nothing. */
+    @Test fun contact_code_reaches_only_the_device_that_showed_it() {
         val alice = endpoint()
         val bob = endpoint()
-        alice.blocking { invite(bob.account) }
-        fun payload(op: String) = alice.harness(op) { put("peer", bob.account) }.jsonObject["payload"]!!.jsonPrimitive.content
-        val single = payload("invitation")
-        val twoStage = payload("invitation_hint")
+        val carol = endpoint()
+        val code = contactCode(bob)
         fun version(content: String, level: ErrorCorrectionLevel) =
             Encoder.encode(content, level, mapOf(EncodeHintType.CHARACTER_SET to "ISO-8859-1")).version.versionNumber
-        val lines = listOf(
-            "single-stage chars=${single.length} L=${version(single, ErrorCorrectionLevel.L)} M=${version(single, ErrorCorrectionLevel.M)} Q=${version(single, ErrorCorrectionLevel.Q)}",
-            "two-stage chars=${twoStage.length} L=${version(twoStage, ErrorCorrectionLevel.L)} M=${version(twoStage, ErrorCorrectionLevel.M)} Q=${version(twoStage, ErrorCorrectionLevel.Q)}",
-        )
-        println(lines.joinToString("\n"))
-        assertEquals("cruxcoach:i1:".length + 519, single.length, "389-byte package, base64url")
-        assertEquals("cruxcoach:i2:".length + 70, twoStage.length, "52-byte hint, base64url")
+        println("contact-code chars=${code.length} L=${version(code, ErrorCorrectionLevel.L)} M=${version(code, ErrorCorrectionLevel.M)} Q=${version(code, ErrorCorrectionLevel.Q)}")
+        assertEquals("cruxcoach:c1:".length + 91, code.length, "68-byte code, base64url")
+        assertTrue(version(code, ErrorCorrectionLevel.M) <= 6)
 
-        // Two-stage: Bob scans the short code with "accept invitations" off;
-        // his device finds Alice's by its beacon and fetches the package.
-        for (e in listOf(alice, bob)) e.blocking { setOnline(true) }
-        bob.blocking { setDiscovery(false) }
-        alice.discovery.endpoints = listOf("http://127.0.0.1:${bob.lan.port}")
+        for (e in listOf(alice, bob, carol)) e.blocking { setOnline(true) }
+        // Alice sees both devices; Bob and Carol see Alice.
+        alice.discovery.endpoints = listOf("http://127.0.0.1:${carol.lan.port}", "http://127.0.0.1:${bob.lan.port}")
         bob.discovery.endpoints = listOf("http://127.0.0.1:${alice.lan.port}")
-        bob.harness("import_invitation") { put("payload", twoStage) }
-        assertTrue(waitFor(alice, bob) { bob.blocking { status() }.peers.any { it.account == alice.account && it.state == "invited" } })
+        carol.discovery.endpoints = listOf("http://127.0.0.1:${alice.lan.port}")
+        scan(alice, code)
+        assertTrue(waitFor(alice, bob, carol) { bob.blocking { status() }.peers.any { it.account == alice.account && it.state == "invited" } })
+        assertTrue(carol.blocking { status() }.peers.isEmpty(), "a stranger in reach learns of no invitation")
         bob.blocking { accept(alice.account) }
         assertTrue(waitFor(alice, bob) { alice.blocking { status() }.peers.single().state == "active" })
     }

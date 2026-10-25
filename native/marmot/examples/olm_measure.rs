@@ -85,14 +85,7 @@ fn serve(listener: TcpListener, mut b: Node) -> std::thread::JoinHandle<Node> {
 /// Exchange steps until A has nothing left; returns (steps, bytes on the wire).
 fn drain(a: &mut Node, peer: &str, stream: &mut TcpStream) -> (usize, usize) {
     let (mut steps, mut bytes) = (0, 0);
-    loop {
-        let Some(request) = a
-            .engine
-            .exchange_begin(Some(peer), false, MAX_OUTBOUND_BYTES)
-            .unwrap()
-        else {
-            break;
-        };
+    while let Some(request) = a.engine.exchange_begin(peer, MAX_OUTBOUND_BYTES).unwrap() {
         let response = roundtrip(stream, &request);
         steps += 1;
         bytes += request.len() + response.len();
@@ -153,7 +146,7 @@ fn main() {
     // B delivers its acceptance first (B initiates once), then A drives.
     let request = b
         .engine
-        .exchange_begin(Some(&a_id), false, MAX_OUTBOUND_BYTES)
+        .exchange_begin(&a_id, MAX_OUTBOUND_BYTES)
         .unwrap()
         .unwrap();
     let (response, _) = a
@@ -183,7 +176,7 @@ fn main() {
         assert_eq!(queued, 1);
         let request = a
             .engine
-            .exchange_begin(Some(&b_id), false, MAX_OUTBOUND_BYTES)
+            .exchange_begin(&b_id, MAX_OUTBOUND_BYTES)
             .unwrap()
             .unwrap();
         let container = p2p::Container::decode(&request).unwrap();
@@ -232,7 +225,7 @@ fn main() {
     let seal_ms = started.elapsed().as_secs_f64() * 1000.0;
     stream.write_all(&3u32.to_be_bytes()).unwrap();
     stream.write_all(b"bye").unwrap();
-    let mut b = server.join().unwrap();
+    let b = server.join().unwrap();
     // A second socket carries the blob (the LAN path streams it).
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let blob_address = listener.local_addr().unwrap();

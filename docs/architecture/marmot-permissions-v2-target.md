@@ -575,3 +575,13 @@ The v2 head, the eMudhra lock fix and the Olm spike were carried onto release
 * **Engines.** The app uses the MLS host (relays) as on v2. The Olm engine and
   the direct LAN/BLE transports of the spike are present and tested natively,
   but not bound in DI (`OlmShareWiring`).
+* **Direct invitations only through a contact code.** The spike offered
+  invitation packages to every unidentified device that accepted invitations
+  and served a two-stage QR fetch, both in the clear with both npubs and the
+  binding (anyone in reach learned who invites whom). Now the invited person
+  shows a contact code (`cruxcoach:c1:`, npub and a fresh secret, one hour,
+  used once); the inviter scans it, finds exactly that device by the code's
+  rotating beacon and hands over the package sealed with a key from the
+  secret (`SECTION_OFFER`, ChaCha20-Poly1305). Unidentified endpoints receive
+  nothing, the hello no longer says whether a device accepts invitations, and
+  the process test checks that no account crosses the wire.

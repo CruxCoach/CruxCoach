@@ -21,7 +21,6 @@ object ShareBleFraming {
     const val ATT_OVERHEAD = 3
     const val COMPANY_ID = 0xFFFF
     val MAGIC = byteArrayOf(0x43, 0x43, 0x53, 0x31) // "CCS1"
-    private const val FLAG_INVITES = 0x01
 
     fun fragments(message: ByteArray, mtu: Int): List<ByteArray> {
         val size = (mtu - ATT_OVERHEAD - HEADER).coerceAtLeast(8)
@@ -63,12 +62,12 @@ object ShareBleFraming {
         }
     }
 
-    /** Manufacturer data: magic, flags, up to two beacons (device, one invitation). */
+    /** Manufacturer data: magic, a reserved flags byte (0), up to two beacons (device, then contact code or invitation). */
     fun advertisement(hello: ShareHello): ByteArray {
         val beacons = hello.beacons.take(2).map { hex -> ByteArray(8) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() } }
         val out = ByteArrayOutputStream()
         out.write(MAGIC)
-        out.write(if (hello.invites) FLAG_INVITES else 0)
+        out.write(0)
         beacons.forEach { out.write(it) }
         return out.toByteArray()
     }
@@ -76,10 +75,9 @@ object ShareBleFraming {
     fun parseAdvertisement(data: ByteArray?): ShareHello? {
         if (data == null || data.size < MAGIC.size + 1 + 8 || data.size > MAGIC.size + 1 + 16) return null
         if (!data.copyOfRange(0, MAGIC.size).contentEquals(MAGIC)) return null
-        val flags = data[MAGIC.size].toInt()
         val beacons = data.copyOfRange(MAGIC.size + 1, data.size).toList().chunked(8)
             .filter { it.size == 8 }
             .map { chunk -> chunk.joinToString("") { "%02x".format(it) } }
-        return ShareHello(beacons, flags and FLAG_INVITES != 0)
+        return ShareHello(beacons)
     }
 }

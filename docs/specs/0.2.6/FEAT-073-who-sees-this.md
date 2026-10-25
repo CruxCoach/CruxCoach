@@ -210,9 +210,10 @@ Switching profile MUST show the resulting changes before applying them.
 
 ### 3.3 Invitations
 
-- QR code when meeting (two-stage, as in the Olm spike; 0.2.6). The invitation package goes only to the device that
-  proves knowledge of the QR tag and is encrypted with a key derived from it; unknown devices in reach receive
-  nothing, so neighbours cannot learn who invites whom.
+- Contact code when meeting (0.2.6): the person to be invited shows a QR with their npub and a fresh secret (valid
+  for an hour, used once); the inviter scans it. The inviter's device finds exactly that device by the code's
+  rotating beacon and hands it the invitation package sealed with a key derived from the secret. No package is
+  offered to an unidentified device, so neighbours in reach cannot learn who invites whom, and nobody types an npub.
 - Invitation link (0.2.7, needs the mailbox): carries only a one-time admission token and the mailbox address, never
   secrets; expiry (default 7 days), use limit (1/10/100 for groups), revocation; the issuing device confirms each
   admission.

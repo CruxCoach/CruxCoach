@@ -2,7 +2,6 @@ package com.cruxcoach.android.sharing.p2p
 
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -50,11 +49,10 @@ interface ShareExchangeServer {
     fun exchange(request: ByteArray, maxBytes: Int): ByteArray?
 }
 
-/** An endpoint's advertisement: rotating beacons and whether it accepts invitations. */
-data class ShareHello(val beacons: List<String>, val invites: Boolean) {
+/** An endpoint's advertisement: rotating beacons only (device, contact code, invitations). */
+data class ShareHello(val beacons: List<String>) {
     fun toJson(): String = buildJsonObject {
         put("beacons", buildJsonArray { beacons.forEach { add(JsonPrimitive(it)) } })
-        put("invites", invites)
     }.toString()
 
     companion object {
@@ -64,7 +62,7 @@ data class ShareHello(val beacons: List<String>, val invites: Boolean) {
             val o = value.jsonObject
             val beacons = o["beacons"]!!.jsonArray.map { it.jsonPrimitive.content }
             require(beacons.size in 1..4 && beacons.all { beacon.matches(it) })
-            ShareHello(beacons, o["invites"]!!.jsonPrimitive.boolean)
+            ShareHello(beacons)
         }.getOrNull()
 
         fun parse(raw: String): ShareHello? =

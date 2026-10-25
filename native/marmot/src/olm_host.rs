@@ -26,6 +26,7 @@ enum Command {
         online: bool,
     },
     SetDiscovery {
+        #[allow(dead_code)]
         enabled: bool,
     },
     Invite {
@@ -64,8 +65,7 @@ enum Command {
         beacons: Vec<String>,
     },
     ExchangeBegin {
-        peer: Option<String>,
-        invites: bool,
+        peer: String,
         #[serde(default)]
         max_bytes: Option<usize>,
     },
@@ -79,13 +79,8 @@ enum Command {
         #[serde(default)]
         max_bytes: Option<usize>,
     },
-    Invitation {
-        peer: String,
-    },
-    InvitationHint {
-        peer: String,
-    },
-    ImportInvitation {
+    ContactCode,
+    ImportContact {
         payload: String,
     },
     #[cfg(feature = "local-harness")]
@@ -105,10 +100,8 @@ enum Command {
     SignerOps,
 }
 
-/// The QR form of an invitation package (single stage).
-pub const INVITATION_PREFIX: &str = "cruxcoach:i1:";
-/// The QR form of a two-stage invitation (fingerprint and tag only).
-pub const HINT_PREFIX: &str = "cruxcoach:i2:";
+/// The QR form of a contact code (npub and a fresh secret).
+pub const CONTACT_PREFIX: &str = "cruxcoach:c1:";
 
 pub struct OlmHost {
     pub account: String,
@@ -210,11 +203,9 @@ impl OlmHost {
                 self.online.store(online, Ordering::SeqCst);
                 json!(true)
             }
-            Command::SetDiscovery { enabled } => {
-                self.engine()?.set_discovery(enabled)?;
-                self.bump();
-                json!(true)
-            }
+            // Invitations are never offered to or taken from unknown devices,
+            // so there is nothing to switch; kept for the shared host API.
+            Command::SetDiscovery { .. } => json!(false),
             Command::Invite { peer } => {
                 let rel = self.engine()?.invite(&peer)?;
                 self.bump();
@@ -267,15 +258,9 @@ impl OlmHost {
             }
             Command::Hello => self.engine()?.hello()?,
             Command::Identify { beacons } => json!({"peer": self.engine()?.identify(&beacons)?}),
-            Command::ExchangeBegin {
-                peer,
-                invites,
-                max_bytes,
-            } => {
+            Command::ExchangeBegin { peer, max_bytes } => {
                 let budget = max_bytes.unwrap_or(MAX_OUTBOUND_BYTES);
-                let container = self
-                    .engine()?
-                    .exchange_begin(peer.as_deref(), invites, budget)?;
+                let container = self.engine()?.exchange_begin(&peer, budget)?;
                 json!({"container": container.map(|c| STANDARD.encode(c))})
             }
             Command::ExchangeEnd {
@@ -300,32 +285,20 @@ impl OlmHost {
                 self.after(served.changes);
                 json!({"container": STANDARD.encode(response), "peers": served.peers})
             }
-            Command::Invitation { peer } => {
-                let package = self.engine()?.invitation(&peer)?;
-                json!({"payload": format!("{INVITATION_PREFIX}{}", URL_SAFE_NO_PAD.encode(package))})
+            Command::ContactCode => {
+                let code = self.engine()?.contact_code()?;
+                self.bump();
+                json!({"payload": format!("{CONTACT_PREFIX}{}", URL_SAFE_NO_PAD.encode(code))})
             }
-            Command::InvitationHint { peer } => {
-                let hint = self.engine()?.invitation_hint(&peer)?;
-                json!({"payload": format!("{HINT_PREFIX}{}", URL_SAFE_NO_PAD.encode(hint))})
-            }
-            Command::ImportInvitation { payload } if payload.starts_with(HINT_PREFIX) => {
-                let encoded = &payload[HINT_PREFIX.len()..];
-                if encoded.len() > 256 {
-                    return Err(Error("invitation_format"));
-                }
-                let hint = checked(URL_SAFE_NO_PAD.decode(encoded), "invitation_format")?;
-                self.engine()?.import_hint(&hint)?;
-                json!({"peer": null})
-            }
-            Command::ImportInvitation { payload } => {
+            Command::ImportContact { payload } => {
                 let encoded = payload
-                    .strip_prefix(INVITATION_PREFIX)
-                    .ok_or(Error("invitation_format"))?;
-                if encoded.len() > 1_024 {
-                    return Err(Error("invitation_format"));
+                    .strip_prefix(CONTACT_PREFIX)
+                    .ok_or(Error("contact_format"))?;
+                if encoded.len() > 128 {
+                    return Err(Error("contact_format"));
                 }
-                let package = checked(URL_SAFE_NO_PAD.decode(encoded), "invitation_format")?;
-                let peer = self.engine()?.import_invitation(&package)?;
+                let code = checked(URL_SAFE_NO_PAD.decode(encoded), "contact_format")?;
+                let peer = self.engine()?.import_contact(&code)?;
                 self.bump();
                 json!({"peer": peer})
             }

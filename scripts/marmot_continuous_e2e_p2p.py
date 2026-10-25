@@ -102,9 +102,13 @@ def run():
         for p in (a, b, c):
             p.call('automatic', enabled='true')
 
-        # Both apps open near each other: the invitation travels over the LAN.
+        # B and C show a contact code, A scans both: each sealed invitation
+        # travels over the LAN to exactly the device that showed the code.
+        code_b, code_c = b.call('contact_code')['payload'], c.call('contact_code')['payload']
         a.call('request', peer=friend_b, circle='FRIENDS')
+        a.call('import_contact', payload=code_b)
         a.call('request', peer=friend_c, circle='ACQUAINTANCES')
+        a.call('import_contact', payload=code_c)
         wait(lambda: owner in b.call('friends')['invitations'] and owner in c.call('friends')['invitations'], 'invitations received')
         assert friend(b, owner) is None, 'an invitation is not a friendship'
         b.call('accept', peer=owner, circle='ACQUAINTANCES', outgoing='true')
@@ -167,6 +171,7 @@ def run():
 
         a.call('remove', peer=friend_b)
         a.call('request', peer=friend_b, circle='FRIENDS')
+        a.call('import_contact', payload=b.call('contact_code')['payload'])
         wait(lambda: owner in b.call('friends')['invitations'], 'new request after end')
         b.call('remove', peer=owner)
         b.call('accept', peer=owner, circle='ACQUAINTANCES', outgoing='false')

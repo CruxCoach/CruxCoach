@@ -45,13 +45,13 @@ class ShareTransportTest {
     }
 
     @Test fun ble_advertisement_carries_only_rotating_beacons() {
-        val hello = ShareHello(listOf("0123456789abcdef", "fedcba9876543210"), invites = true)
+        val hello = ShareHello(listOf("0123456789abcdef", "fedcba9876543210"))
         val data = ShareBleFraming.advertisement(hello)
         assertEquals(4 + 1 + 16, data.size, "fits legacy advertising with flags and manufacturer header")
         assertEquals(hello, ShareBleFraming.parseAdvertisement(data))
         assertNull(ShareBleFraming.parseAdvertisement(byteArrayOf(0x43, 0x52, 0x55, 0x58, 0) + ByteArray(8)))
         assertNull(ShareBleFraming.parseAdvertisement(data + ByteArray(8)))
-        assertNull(ShareHello.parse("""{"beacons":["not-hex"],"invites":true}"""))
+        assertNull(ShareHello.parse("""{"beacons":["not-hex"]}"""))
     }
 
     /** Native stand-in: a status with one friend in reach and one not. */
@@ -66,7 +66,7 @@ class ShareTransportTest {
                     {"account":"near","group":"g","state":"active","invited_by_me":true,"created_at":1,"last_seen":1,"cancelled_at":0,"ended_at":0,"reason":"","outbound_pending":2},
                     {"account":"far","group":"h","state":"active","invited_by_me":true,"created_at":1,"last_seen":1,"cancelled_at":0,"ended_at":0,"reason":"","outbound_pending":3}],
                     "relays":[],"local_relay":false,"generation":1}}"""
-                "hello" -> """{"ok":true,"value":{"beacons":["00000000000000aa"],"invites":false}}"""
+                "hello" -> """{"ok":true,"value":{"beacons":["00000000000000aa"]}}"""
                 "identify" -> """{"ok":true,"value":{"peer":"near"}}"""
                 "exchange_begin" -> """{"ok":true,"value":{"container":"AQID"}}"""
                 "exchange_end" -> """{"ok":true,"value":{"more":false,"peers":["near"]}}"""
@@ -83,7 +83,7 @@ class ShareTransportTest {
         var exchanged = 0
         override fun start(server: ShareExchangeServer) { running = true }
         override fun stop() { running = false }
-        override fun endpoints() = listOf(ShareEndpoint("lan", "http://x", ShareHello(listOf("00000000000000bb"), false)))
+        override fun endpoints() = listOf(ShareEndpoint("lan", "http://x", ShareHello(listOf("00000000000000bb"))))
         override fun exchange(endpoint: ShareEndpoint, request: ByteArray): ByteArray? { exchanged++; return byteArrayOf(4, 5, 6) }
     }
 
@@ -109,7 +109,7 @@ class ShareTransportTest {
 
     @Test fun http_routes_serve_hello_and_bounded_exchange() {
         val server = object : ShareExchangeServer {
-            override fun hello() = ShareHello(listOf("0123456789abcdef"), invites = false)
+            override fun hello() = ShareHello(listOf("0123456789abcdef"))
             override fun exchange(request: ByteArray, maxBytes: Int) = request.reversedArray()
         }
         val http = ShareHttpServer(InetAddress.getLoopbackAddress())

@@ -26,8 +26,9 @@ import java.util.concurrent.locks.ReentrantLock
  *
  * * `set_online` starts or stops listening and advertising on every transport.
  * * `sync` runs the native upkeep, then exchange steps with every endpoint in
- *   reach: identified friends (by beacon) and, for pending invitations,
- *   unidentified endpoints that accept invitations.
+ *   reach that the native side identifies by a beacon: a friend, an inviter,
+ *   or the device of a scanned contact code. Unidentified endpoints get
+ *   nothing.
  * * `status` reports the transports where v2 reported relays, and counts as
  *   "pending" only messages for friends in reach right now: a friend who is
  *   not nearby is not a delivery failure, so a pass does not wait for them.
@@ -136,8 +137,8 @@ class P2pMarmotBinding(
                     if (hello.beacons.any { it in own }) continue // our own advertisement
                     val peer = value("identify") { put("beacons", buildJsonArray { hello.beacons.forEach { add(JsonPrimitive(it)) } }) }
                         ?.jsonObject?.get("peer")?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
-                    if (peer != null) reachable[peer] = clock()
-                    if (peer == null && !hello.invites) continue
+                    if (peer == null) continue
+                    reachable[peer] = clock()
                     steps(transport, endpoint, peer, deadline)
                 }
             }
@@ -146,12 +147,11 @@ class P2pMarmotBinding(
         }
     }
 
-    private fun steps(transport: ShareTransport, endpoint: ShareEndpoint, peer: String?, deadline: Long) {
+    private fun steps(transport: ShareTransport, endpoint: ShareEndpoint, peer: String, deadline: Long) {
         repeat(MAX_STEPS) {
             if (clock() > deadline) return
             val begin = value("exchange_begin") {
-                put("peer", peer?.let(::JsonPrimitive) ?: JsonNull)
-                put("invites", peer == null)
+                put("peer", peer)
                 put("max_bytes", transport.maxContainer)
             } ?: return
             val container = begin.jsonObject["container"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content ?: return
@@ -159,7 +159,7 @@ class P2pMarmotBinding(
             if (response == null) {
                 // Not in reach any more: its queue no longer counts as deliverable.
                 lastResult = "unavailable"
-                peer?.let(reachable::remove)
+                reachable.remove(peer)
                 return
             }
             lastResult = "accepted"

@@ -32,6 +32,7 @@ class HostileProxy:
         self.rng = random.Random(seed)
         self.lock = threading.Lock()
         self.stash = []
+        self.wire = []
         self.stats = Counter()
         proxy = self
 
@@ -64,6 +65,7 @@ class HostileProxy:
                 status, body, kind = proxy.forward("GET", self.path, None)
                 if status is None:
                     return self.refuse()
+                proxy.capture(body)
                 self.reply(status, body, kind)
 
             def do_POST(self):
@@ -89,6 +91,7 @@ class HostileProxy:
                     if stale is not None:
                         proxy.forward("POST", self.path, stale)
                 proxy.remember(body)
+                proxy.capture(body, response)
                 if status is None or fault == "drop_response":
                     return self.refuse()
                 self.reply(status, response, kind)
@@ -124,6 +127,15 @@ class HostileProxy:
         with self.lock:
             self.stash.append(body)
             del self.stash[:-24]
+
+    def capture(self, *bodies):
+        with self.lock:
+            self.wire.extend(b for b in bodies if b)
+
+    def reveals(self, markers):
+        """Markers (bytes) that appear in anything that crossed this proxy."""
+        with self.lock:
+            return sorted({m.hex() for m in markers for body in self.wire if m in body})
 
     def old_request(self):
         with self.lock:

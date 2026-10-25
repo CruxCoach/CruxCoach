@@ -4,7 +4,8 @@
 Port of marmot_network_e2e.py to the peer-to-peer transport: each participant
 runs the native Olm engine behind the production Kotlin chokepoint and serves
 the direct channel over loopback HTTP; a hostile proxy (marmot_p2p_proxy.py)
-sits in front of each one. The invitation is handed over as a QR payload.
+sits in front of each one. The invitation starts from a contact code (QR) that
+B shows and A scans; the package then travels sealed to B's device only.
 
 Only synthetic identities/content. Requires the prepared endpoint classpath
 (./gradlew :androidApp:writeMarmotEndpointClasspath). No network beyond
@@ -74,15 +75,13 @@ def roundtrip():
         connect(a, pa, [pb])
         connect(b, pb, [pa])
 
-        # Hand-over by two-stage QR: the short code pins the package, which
-        # B's device then fetches directly from A's (B does not accept
-        # unsolicited invitations; the scan is the consent).
-        a.call("invite", peer=friend)
-        payload = a.call("invitation_hint", peer=friend)["payload"]
-        assert payload.startswith("cruxcoach:i2:")
-        b.call("discovery", enabled="false")
-        b.call("import_invitation", payload=payload)
-        wait([a, b], lambda: peer_state(b, owner) == "invited", "two-stage QR package fetched")
+        # Hand-over by contact code: B shows its code, A scans it; A's device
+        # finds exactly B's device by the code's beacon and hands it the
+        # sealed package. Nothing is offered to an unidentified device.
+        payload = b.call("contact_code")["payload"]
+        assert payload.startswith("cruxcoach:c1:")
+        assert a.call("import_contact", payload=payload)["peer"] == friend
+        wait([a, b], lambda: peer_state(b, owner) == "invited", "sealed invitation delivered")
         assert b.call("received") == [], "an unaccepted invitation delivers nothing"
         b.call("accept_invitation", peer=owner)
         b.call("send", peer=owner, text="synthetic hello", token="hello")
@@ -145,9 +144,13 @@ def roundtrip():
         for _ in range(5):
             a.call("sync"); b.call("sync")
         assert b.call("received") == [] and peer_state(b, owner) == "ended"
+        # Nothing that crossed either proxy names an account, in raw or hex form.
+        markers = [bytes.fromhex(x) for x in (owner, friend)] + [x.encode() for x in (owner, friend)]
+        assert pa.reveals(markers) == [] and pb.reveals(markers) == [], "an account on the wire"
         faults = dict(pa.stats + pb.stats)
         print(json.dumps(dict(path="P2P-TWO", seed=SEED, independent_processes=True, native_crypto="olm/vodozemac",
-                              relay=False, blossom=False, two_stage_qr_invitation=True, qr_payload_chars=len(payload),
+                              relay=False, blossom=False, contact_code_invitation=True, qr_payload_chars=len(payload),
+                              no_account_on_wire=True,
                               invitation_acceptance=True, encrypted_delivery=True, process_kill_restart=True,
                               encrypted_identity_recovery=True, out_of_reach_then_delivered=True,
                               unwedge_gap=True, unwedge_state_loss=True, signer_ops_per_installation=1,

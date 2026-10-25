@@ -13,9 +13,11 @@
 //!
 //! `addr` is an HMAC over the container nonce, so a section names its
 //! relationship without a stable identifier on the wire. Channel sections are
-//! authenticated with the relationship's link key; invitation sections carry a
-//! self-authenticating, signed invitation package. Olm messages are opaque
-//! frames here; Olm authenticates and decrypts them.
+//! authenticated with the relationship's link key. An offer section carries an
+//! invitation package sealed with a key from the contact code the invited
+//! person showed: only the device that showed the code can address, verify or
+//! open it, so nobody else in reach learns who invites whom. Olm messages are
+//! opaque frames here; Olm authenticates and decrypts them.
 use crate::error::{Error, Result};
 use chacha20poly1305::aead::Aead;
 use chacha20poly1305::{ChaCha20Poly1305, KeyInit};
@@ -27,10 +29,10 @@ pub const KIND_REQUEST: u8 = 1;
 pub const KIND_RESPONSE: u8 = 2;
 /// A channel section: an established or pre-acceptance relationship.
 pub const SECTION_CHANNEL: u8 = 1;
-/// An invitation offered to a not-yet-identified endpoint.
-pub const SECTION_INVITE: u8 = 2;
-/// Two-stage QR: the scanner asks the inviter's device for the package.
-pub const SECTION_FETCH: u8 = 3;
+/// An invitation package sealed to the contact code the invited person
+/// showed. (2 and 3 were the spike's open invitation offer and two-stage
+/// fetch, both readable by anyone in reach; retired, never reused.)
+pub const SECTION_OFFER: u8 = 4;
 /// One exchange step in either direction (fits a 512 KiB JNI command as base64).
 pub const MAX_CONTAINER: usize = 262_144;
 pub const MAX_SECTIONS: usize = 40;
@@ -97,8 +99,45 @@ pub fn channel_addr(key: &[u8], nonce: &[u8; 16]) -> [u8; 16] {
     hmac16(key, &[b"cc-hint-v1", nonce])
 }
 
-pub fn invite_addr(invited: &[u8; 32], nonce: &[u8; 16]) -> [u8; 16] {
-    hmac16(invited, &[b"cc-invite-v1", nonce])
+/// Where an offer sealed to contact code `tag` sits in a container.
+pub fn offer_addr(tag: &[u8; 32], nonce: &[u8; 16]) -> [u8; 16] {
+    hmac16(tag, &[b"cc-offer-v1", nonce])
+}
+
+fn offer_cipher(tag: &[u8; 32]) -> ChaCha20Poly1305 {
+    let hkdf = hkdf::Hkdf::<Sha256>::new(Some(b"cc-offer-v1"), tag);
+    let mut key = [0u8; 32];
+    hkdf.expand(b"cruxcoach share offer", &mut key)
+        .expect("32 bytes is a valid HKDF output length");
+    ChaCha20Poly1305::new((&key).into())
+}
+
+/// Seal an invitation package to contact code `tag`. The container nonce is
+/// random per container, so its first 12 bytes are a fresh AEAD nonce.
+pub fn seal_offer(tag: &[u8; 32], nonce: &[u8; 16], package: &[u8]) -> Result<Vec<u8>> {
+    let aead_nonce: [u8; 12] = nonce[..12].try_into().expect("16-byte nonce");
+    offer_cipher(tag)
+        .encrypt(
+            &aead_nonce.into(),
+            chacha20poly1305::aead::Payload {
+                msg: package,
+                aad: b"cc-offer-v1",
+            },
+        )
+        .map_err(|_| Error("offer_seal"))
+}
+
+pub fn open_offer(tag: &[u8; 32], nonce: &[u8; 16], sealed: &[u8]) -> Result<Vec<u8>> {
+    let aead_nonce: [u8; 12] = nonce[..12].try_into().expect("16-byte nonce");
+    offer_cipher(tag)
+        .decrypt(
+            &aead_nonce.into(),
+            chacha20poly1305::aead::Payload {
+                msg: sealed,
+                aad: b"cc-offer-v1",
+            },
+        )
+        .map_err(|_| Error("offer_open"))
 }
 
 /// A rotating advertisement tag (BLE service data, NSD TXT). Only holders of
@@ -454,6 +493,21 @@ mod tests {
             }
         }
         assert!(stream_open(&random::<32>().unwrap(), &stream_seal(&key, b"x").unwrap()).is_err());
+    }
+
+    #[test]
+    fn offers_open_only_with_their_contact_code() {
+        let tag = random::<32>().unwrap();
+        let nonce = random::<16>().unwrap();
+        let sealed = seal_offer(&tag, &nonce, b"package bytes").unwrap();
+        assert!(!sealed.windows(7).any(|w| w == b"package"));
+        assert_eq!(open_offer(&tag, &nonce, &sealed).unwrap(), b"package bytes");
+        assert!(open_offer(&random::<32>().unwrap(), &nonce, &sealed).is_err());
+        assert!(open_offer(&tag, &random::<16>().unwrap(), &sealed).is_err());
+        let mut tampered = sealed.clone();
+        tampered[0] ^= 1;
+        assert!(open_offer(&tag, &nonce, &tampered).is_err());
+        assert_ne!(offer_addr(&tag, &nonce), channel_addr(&tag, &nonce));
     }
 
     #[test]

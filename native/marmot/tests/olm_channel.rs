@@ -81,7 +81,7 @@ struct Wire(Vec<Vec<u8>>);
 fn exchange(a: &mut Node, b: &mut Node, wire: &mut Wire) {
     let peer = b.id();
     for _ in 0..16 {
-        let Some(request) = a.e().exchange_begin(Some(&peer), false, MAX).unwrap() else {
+        let Some(request) = a.e().exchange_begin(&peer, MAX).unwrap() else {
             return;
         };
         wire.0.push(request.clone());
@@ -573,11 +573,7 @@ fn forward_secrecy_consumed_message_keys_leave_the_stored_pickle() {
     }
     // Deliver 0..3 in order, and 5, but hold 3 and 4 back.
     let peer = b.id();
-    let request = a
-        .e()
-        .exchange_begin(Some(&peer), false, MAX)
-        .unwrap()
-        .unwrap();
+    let request = a.e().exchange_begin(&peer, MAX).unwrap().unwrap();
     let mut c = Container::decode(&request).unwrap();
     let key_bytes = {
         // Rebuild the section with frames 3 and 4 removed, re-MACed like A would.
@@ -645,11 +641,7 @@ fn crash_windows_roll_back_ratchet_and_rows_together() {
     // R2: the receiving transaction fails; nothing is applied, the frame is
     // retransmitted and applied exactly once.
     let peer = b.id();
-    let request = a
-        .e()
-        .exchange_begin(Some(&peer), false, MAX)
-        .unwrap()
-        .unwrap();
+    let request = a.e().exchange_begin(&peer, MAX).unwrap().unwrap();
     let b_before = b.e().session_pickles(&a.id()).unwrap();
     FAIL_COMMITS.set(1);
     assert!(b.e().exchange_serve(&request, MAX).is_err());
@@ -679,11 +671,7 @@ fn crash_windows_roll_back_ratchet_and_rows_together() {
             .unwrap();
     }
     b.drain();
-    let request = a
-        .e()
-        .exchange_begin(Some(&peer), false, MAX)
-        .unwrap()
-        .unwrap();
+    let request = a.e().exchange_begin(&peer, MAX).unwrap().unwrap();
     let mut c = Container::decode(&request).unwrap();
     let mut body = ChannelBody::decode(&c.sections[0].body).unwrap();
     body.frames.reverse();
@@ -707,11 +695,7 @@ fn crash_windows_roll_back_ratchet_and_rows_together() {
     );
     // A tampered section is ignored entirely.
     a.e().send(&b.id(), "x", "synthetic x").unwrap();
-    let request = a
-        .e()
-        .exchange_begin(Some(&peer), false, MAX)
-        .unwrap()
-        .unwrap();
+    let request = a.e().exchange_begin(&peer, MAX).unwrap().unwrap();
     let mut tampered = request.clone();
     let last = tampered.len() - 1;
     tampered[last] ^= 1;
@@ -770,33 +754,48 @@ fn unwedge_after_a_gap_beyond_the_window_and_after_state_loss() {
     assert_eq!(a.e().signer_ops() + b.e().signer_ops(), 2);
 }
 
-#[test]
-fn lan_invitation_ending_and_a_new_friendship() {
-    let (mut a, mut b, mut wire) = (Node::new(), Node::new(), Wire::default());
-    a.e().invite(&b.id()).unwrap();
-    // B does not accept invitations: the offer is ignored.
-    let offer = a.e().exchange_begin(None, true, MAX).unwrap().unwrap();
-    b.e().exchange_serve(&offer, MAX).unwrap();
-    assert_eq!(b.state(&a.id()), None);
-    b.e().set_discovery(true).unwrap();
-    let offer = a.e().exchange_begin(None, true, MAX).unwrap().unwrap();
-    b.e().exchange_serve(&offer, MAX).unwrap();
+fn beacons_of(node: &mut Node) -> Vec<String> {
+    serde_json::from_value(node.e().hello().unwrap()["beacons"].clone()).unwrap()
+}
+
+/// B shows a contact code, A scans it and hands B the sealed invitation once
+/// B's device is in reach. Returns what crossed the wire.
+fn invite_by_code(a: &mut Node, b: &mut Node) -> Vec<u8> {
+    let code = b.e().contact_code().unwrap();
+    assert_eq!(code.len(), cruxcoach_marmot::olm::CONTACT_BYTES);
+    assert_eq!(a.e().import_contact(&code).unwrap(), b.id());
+    let beacons = beacons_of(b);
+    let target = a.e().identify(&beacons).unwrap().unwrap();
+    assert_eq!(
+        target,
+        format!("{}{}", cruxcoach_marmot::olm::OFFER_PREFIX, b.id())
+    );
+    let request = a.e().exchange_begin(&target, MAX).unwrap().unwrap();
+    let (response, _) = b.e().exchange_serve(&request, MAX).unwrap();
+    a.e().exchange_end(&response, MAX).unwrap();
     assert_eq!(b.state(&a.id()).as_deref(), Some("invited"));
+    request
+}
+
+#[test]
+fn contact_code_invitation_ending_and_a_new_friendship() {
+    let (mut a, mut b, mut wire) = (Node::new(), Node::new(), Wire::default());
+    let offer = invite_by_code(&mut a, &mut b);
+    wire.0.push(offer);
+    // The code is used up: B no longer advertises it and A stops offering.
+    assert_eq!(beacons_of(&mut b).len(), 1);
+    assert_eq!(a.e().identify(&beacons_of(&mut b)).unwrap(), None);
     // B finds A by the invitation beacon A advertises.
-    let hello = a.e().hello().unwrap();
-    let beacons: Vec<String> = serde_json::from_value(hello["beacons"].clone()).unwrap();
-    assert_eq!(b.e().identify(&beacons).unwrap(), Some(a.id()));
+    assert_eq!(b.e().identify(&beacons_of(&mut a)).unwrap(), Some(a.id()));
     b.e().accept(&a.id()).unwrap();
     exchange(&mut b, &mut a, &mut wire);
     exchange(&mut a, &mut b, &mut wire);
+    assert_eq!(a.state(&b.id()).as_deref(), Some("active"));
     // After the keys message both sides recognise the other's device beacon.
-    let beacons: Vec<String> =
-        serde_json::from_value(a.e().hello().unwrap()["beacons"].clone()).unwrap();
+    let beacons = beacons_of(&mut a);
     assert_eq!(beacons.len(), 1);
     assert_eq!(b.e().identify(&beacons).unwrap(), Some(a.id()));
-    let beacons: Vec<String> =
-        serde_json::from_value(b.e().hello().unwrap()["beacons"].clone()).unwrap();
-    assert_eq!(a.e().identify(&beacons).unwrap(), Some(b.id()));
+    assert_eq!(a.e().identify(&beacons_of(&mut b)).unwrap(), Some(b.id()));
     // End: the queued `end` still reaches B, then A forgets the secrets and
     // a new invitation starts a new relationship.
     a.e().send(&b.id(), "end", "synthetic end").unwrap();
@@ -807,15 +806,25 @@ fn lan_invitation_ending_and_a_new_friendship() {
     b.e().end(&a.id(), "local").unwrap();
     assert!(a.e().session_pickles(&b.id()).unwrap().is_empty());
     // A's device beacon rotated: B can no longer recognise it.
-    let beacons: Vec<String> =
-        serde_json::from_value(a.e().hello().unwrap()["beacons"].clone()).unwrap();
-    assert_eq!(b.e().identify(&beacons).unwrap(), None);
-    befriend(&mut a, &mut b, &mut wire);
+    assert_eq!(b.e().identify(&beacons_of(&mut a)).unwrap(), None);
+    invite_by_code(&mut a, &mut b);
+    b.e().accept(&a.id()).unwrap();
+    exchange(&mut b, &mut a, &mut wire);
+    exchange(&mut b, &mut a, &mut wire);
     a.e()
         .send(&b.id(), "n", "synthetic new friendship")
         .unwrap();
     exchange(&mut a, &mut b, &mut wire);
     assert_eq!(b.drain(), vec!["synthetic new friendship"]);
+    // Nothing on the wire names an account.
+    for container in &wire.0 {
+        for marker in [a.id(), b.id()] {
+            assert!(
+                !container.windows(32).any(|w| hex::encode(w) == marker),
+                "npub on the wire"
+            );
+        }
+    }
 }
 
 #[test]
@@ -876,52 +885,49 @@ fn stored_state_holds_ciphertext_only() {
 }
 
 #[test]
-fn two_stage_qr_fetches_exactly_the_scanned_package() {
-    let (mut a, mut b, mut c, mut wire) = (Node::new(), Node::new(), Node::new(), Wire::default());
-    a.e().invite(&b.id()).unwrap();
-    a.e().invite(&c.id()).unwrap();
-    let hint = a.e().invitation_hint(&b.id()).unwrap();
-    assert_eq!(hint.len(), cruxcoach_marmot::olm::HINT_BYTES);
-    // B does not accept unsolicited invitations; the scan is the consent.
-    b.e().set_discovery(false).unwrap();
-    b.e().import_hint(&hint).unwrap();
-    let beacons: Vec<String> =
-        serde_json::from_value(a.e().hello().unwrap()["beacons"].clone()).unwrap();
-    let target = b.e().identify(&beacons).unwrap().unwrap();
-    assert!(target.starts_with(cruxcoach_marmot::olm::HINT_PREFIX));
-    let request = b
-        .e()
-        .exchange_begin(Some(&target), false, MAX)
-        .unwrap()
-        .unwrap();
-    wire.0.push(request.clone());
-    let (response, _) = a.e().exchange_serve(&request, MAX).unwrap();
-    b.e().exchange_end(&response, MAX).unwrap();
-    assert_eq!(b.state(&a.id()).as_deref(), Some("invited"));
-    // The hint is used up; the normal acceptance follows.
-    assert_ne!(
-        b.e().identify(&beacons).unwrap().as_deref(),
-        Some(target.as_str())
-    );
-    b.e().accept(&a.id()).unwrap();
-    exchange(&mut b, &mut a, &mut wire);
-    assert_eq!(a.state(&b.id()).as_deref(), Some("active"));
-    // A hint for C's package never makes B import it, nor C import B's.
-    let c_hint = a.e().invitation_hint(&c.id()).unwrap();
-    let mut forged = c_hint.clone();
-    forged[4] ^= 1;
-    c.e().set_discovery(false).unwrap();
-    c.e().import_hint(&forged).unwrap();
-    let target = c.e().identify(&beacons);
-    if let Ok(Some(target)) = target
-        && let Ok(Some(request)) = c.e().exchange_begin(Some(&target), false, MAX)
-    {
-        let (response, _) = a.e().exchange_serve(&request, MAX).unwrap();
-        c.e().exchange_end(&response, MAX).unwrap();
+fn invitations_reach_only_the_device_that_showed_the_code() {
+    let (mut a, mut b, mut c) = (Node::new(), Node::new(), Node::new());
+    let code = b.e().contact_code().unwrap();
+    a.e().import_contact(&code).unwrap();
+    // A stranger in reach is never offered anything, with or without a code
+    // of its own, and A cannot be made to seal B's invitation for it.
+    assert_eq!(a.e().identify(&beacons_of(&mut c)).unwrap(), None);
+    c.e().contact_code().unwrap();
+    assert_eq!(a.e().identify(&beacons_of(&mut c)).unwrap(), None);
+    let to_c = format!("{}{}", cruxcoach_marmot::olm::OFFER_PREFIX, c.id());
+    assert_eq!(a.e().exchange_begin(&to_c, MAX).unwrap(), None);
+    // The offer for B neither names an account nor carries the package or
+    // the binding in the clear.
+    let target = a.e().identify(&beacons_of(&mut b)).unwrap().unwrap();
+    let offer = a.e().exchange_begin(&target, MAX).unwrap().unwrap();
+    let package = Package::decode(&a.e().invitation(&b.id()).unwrap()).unwrap();
+    for marker in [a.id(), b.id()] {
+        assert!(!offer.windows(32).any(|w| hex::encode(w) == marker));
     }
+    assert!(!offer.windows(64).any(|w| w == package.binding_sig));
+    assert!(!offer.windows(4).any(|w| w == b"cci1"));
+    // Someone who captured it can neither open nor use it.
+    c.e().exchange_serve(&offer, MAX).unwrap();
+    assert_eq!(c.state(&a.id()), None);
+    // A tampered offer is ignored and leaves B's code valid.
+    let mut tampered = Container::decode(&offer).unwrap();
+    let last = tampered.sections[0].body.len() - 1;
+    tampered.sections[0].body[last] ^= 1;
+    b.e()
+        .exchange_serve(&tampered.encode().unwrap(), MAX)
+        .unwrap();
+    assert_eq!(b.state(&a.id()), None);
+    b.e().exchange_serve(&offer, MAX).unwrap();
+    assert_eq!(b.state(&a.id()).as_deref(), Some("invited"));
+    // Used once: a replay changes nothing, and B can decline.
+    b.e().decline(&a.id()).unwrap();
+    b.e().exchange_serve(&offer, MAX).unwrap();
+    assert_eq!(b.state(&a.id()), None);
+    // Malformed codes and one's own code are refused.
     assert_eq!(
-        c.state(&a.id()),
-        None,
-        "a wrong fingerprint fetches nothing"
+        a.e().import_contact(&code[..60]).unwrap_err().0,
+        "contact_format"
     );
+    let own = a.e().contact_code().unwrap();
+    assert_eq!(a.e().import_contact(&own).unwrap_err().0, "self_invite");
 }

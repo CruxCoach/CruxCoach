@@ -35,11 +35,11 @@ class LocalApkServerShareRouteTest {
         assertEquals(true, landing.contentType?.startsWith("text/html"))
         landing.disconnect()
         local.shareExchange = object : ShareExchangeServer {
-            override fun hello() = ShareHello(listOf("0123456789abcdef"), invites = true)
+            override fun hello() = ShareHello(listOf("0123456789abcdef"))
             override fun exchange(request: ByteArray, maxBytes: Int) = request + byteArrayOf(9)
         }
         val client = ShareHttpClient()
-        assertEquals(ShareHello(listOf("0123456789abcdef"), true), client.hello(base))
+        assertEquals(ShareHello(listOf("0123456789abcdef")), client.hello(base))
         assertContentEquals(byteArrayOf(1, 2, 9), client.exchange(base, byteArrayOf(1, 2)))
         // The APK share keeps working next to the channel.
         val manifest = URL(base + LocalShareProtocol.MANIFEST_PATH).openConnection() as HttpURLConnection

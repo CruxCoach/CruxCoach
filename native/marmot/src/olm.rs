@@ -11,6 +11,10 @@
 //! * An invitation carries the inviter's binding, one fresh one-time key, the
 //!   fallback key and an invitation tag, all signed by the Olm Ed25519 key
 //!   together with both npubs and the invitation id (ownership proof).
+//! * Invitations start from a contact code the invited person shows as a QR
+//!   (their npub and a fresh secret). The inviter's device finds exactly that
+//!   device by the code's beacon and hands it the package sealed with the
+//!   code's secret. No package is ever offered to an unidentified device.
 //! * Acceptance is the first Olm pre-key message; its plaintext names both
 //!   npubs and both Olm identities (unknown-key-share check) and carries the
 //!   acceptor's binding.
@@ -24,7 +28,7 @@
 use crate::error::{Error, Result, checked};
 use crate::p2p::{
     self, BEACON_BYTES, ChannelBody, Container, FrameId, KIND_REQUEST, KIND_RESPONSE, MAX_FRAMES,
-    MAX_SKEW_S, SECTION_CHANNEL, SECTION_FETCH, SECTION_INVITE,
+    MAX_SKEW_S, SECTION_CHANNEL, SECTION_OFFER,
 };
 use crate::protocol::{MAX_APP_CONTENT, MAX_PEERS, is_hex64, now_ms, now_s};
 use nostr::{Event, EventId, Kind, NostrSigner, PublicKey, Tag, Timestamp, UnsignedEvent};
@@ -47,10 +51,12 @@ pub const BINDING_KIND: u16 = 27777;
 pub const BINDING_PURPOSE: &str = "cc-share-bind-v1";
 const PACKAGE_MAGIC: &[u8; 4] = b"cci1";
 pub const PACKAGE_BYTES: usize = 389;
-/// Two-stage QR: magic, SHA-256 prefix of the package, invitation tag.
-const HINT_MAGIC: &[u8; 4] = b"cci2";
-pub const HINT_BYTES: usize = 4 + 16 + 32;
-const HINT_TTL_MS: u64 = 86_400_000;
+/// Contact code (QR shown by the person to be invited): magic, their npub,
+/// a fresh secret. Valid for an hour, used once.
+const CONTACT_MAGIC: &[u8; 4] = b"ccc1";
+pub const CONTACT_BYTES: usize = 4 + 32 + 32;
+const CONTACT_TTL_MS: u64 = 3_600_000;
+const MAX_CONTACT_CODES: usize = 2;
 const INVITATION_TTL_S: u64 = 7 * 86_400;
 const SEEN_RETENTION_MS: u64 = 30 * 86_400_000;
 const ENDED_RETENTION_MS: u64 = 14 * 86_400_000;
@@ -60,8 +66,9 @@ const SPARE_KEYS: usize = 2;
 const MAX_INBOX: i64 = 4_096;
 /// Default frame budget of one exchange step (LAN). BLE passes a smaller one.
 pub const MAX_OUTBOUND_BYTES: usize = 196_608;
-/// `identify` names a scanned-but-not-fetched invitation with this prefix.
-pub const HINT_PREFIX: &str = "hint:";
+/// `identify` names the device of a scanned contact code with this prefix:
+/// the endpoint to hand the sealed invitation to.
+pub const OFFER_PREFIX: &str = "offer:";
 const ENVELOPE_APP: u8 = 1;
 const ENVELOPE_CONTROL: u8 = 2;
 
@@ -113,7 +120,9 @@ CREATE TABLE IF NOT EXISTS olm_inbox(
 CREATE TABLE IF NOT EXISTS olm_seen(hash BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS olm_reply(peer TEXT NOT NULL, id BLOB NOT NULL, nack INTEGER NOT NULL, PRIMARY KEY(peer, id));
 CREATE TABLE IF NOT EXISTS olm_base(base_key TEXT PRIMARY KEY NOT NULL, at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS olm_hint(fingerprint BLOB PRIMARY KEY NOT NULL, tag BLOB NOT NULL, created_at INTEGER NOT NULL);
+DROP TABLE IF EXISTS olm_hint;
+CREATE TABLE IF NOT EXISTS olm_contact(tag BLOB PRIMARY KEY NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS olm_offer(peer TEXT PRIMARY KEY NOT NULL, tag BLOB NOT NULL, created_at INTEGER NOT NULL);
 ";
 
 #[cfg(feature = "local-harness")]
@@ -482,8 +491,6 @@ pub struct Served {
 struct Absorbed {
     changes: Changes,
     peers: Vec<(String, [u8; 32])>,
-    /// Two-stage QR: (invited account, package) the scanner asked for.
-    fetched: Vec<([u8; 32], Vec<u8>)>,
 }
 
 pub struct OlmEngine {
@@ -625,14 +632,6 @@ impl OlmEngine {
             )
         })?;
         Ok(())
-    }
-
-    pub fn discovery_enabled(&self) -> Result<bool> {
-        Ok(self.meta("discovery")?.as_deref() == Some("1"))
-    }
-
-    pub fn set_discovery(&self, enabled: bool) -> Result<()> {
-        self.put_meta("discovery", if enabled { "1" } else { "0" })
     }
 
     fn load_account(&self) -> Result<Account> {
@@ -800,8 +799,9 @@ impl OlmEngine {
 
     // ---- invitations -------------------------------------------------------------
 
-    /// Create (or return) the invitation for `peer`. Nothing is sent: the
-    /// package is handed over directly (QR or LAN/BLE when both apps are open).
+    /// Create (or return) the invitation for `peer`. Nothing is sent here:
+    /// the package travels only to the device of a scanned contact code
+    /// ([Self::import_contact]).
     pub fn invite(&mut self, peer: &str) -> Result<String> {
         if !is_hex64(peer) || checked(PublicKey::from_hex(peer), "peer").is_err() {
             return Err(Error("peer"));
@@ -882,7 +882,7 @@ impl OlmEngine {
         })
     }
 
-    /// The package of a pending own invitation, for a QR code.
+    /// The package of a pending own invitation.
     pub fn invitation(&self, peer: &str) -> Result<Vec<u8>> {
         let row = self.peer(peer)?.ok_or(Error("no_invitation"))?;
         if row.state != "pending" || !row.inviter {
@@ -891,41 +891,79 @@ impl OlmEngine {
         row.package.ok_or(Error("no_invitation"))
     }
 
-    /// Two-stage QR (short): the package fingerprint and the invitation tag.
-    /// The scanner finds this device by the invitation beacon and fetches
-    /// the package directly; the fingerprint pins exactly this package.
-    pub fn invitation_hint(&self, peer: &str) -> Result<Vec<u8>> {
-        let package = self.invitation(peer)?;
-        let row = self.peer(peer)?.ok_or(Error("no_invitation"))?;
-        let tag = row.inviter_tag.ok_or(Error("no_invitation"))?;
-        Ok([HINT_MAGIC.as_slice(), &p2p::sha256(&package)[..16], &tag].concat())
-    }
-
-    pub fn import_hint(&mut self, bytes: &[u8]) -> Result<()> {
-        if bytes.len() != HINT_BYTES || &bytes[..4] != HINT_MAGIC {
-            return Err(Error("invitation_format"));
-        }
+    /// Show this account as a QR: npub and a fresh secret. While the code is
+    /// valid this device advertises its beacon; an invitation sealed to it is
+    /// taken once, then the code is used up.
+    pub fn contact_code(&mut self) -> Result<Vec<u8>> {
+        let tag = p2p::random::<32>()?;
+        let account = arr32(&checked(hex::decode(&self.account), "account")?)?;
         self.sql(|c| {
             c.execute(
-                "DELETE FROM olm_hint WHERE created_at<?1",
-                [i64_of(now_ms().saturating_sub(HINT_TTL_MS))],
+                "DELETE FROM olm_contact WHERE created_at<?1",
+                [i64_of(now_ms().saturating_sub(CONTACT_TTL_MS))],
+            )?;
+            // Keep the newest codes only: an old screenshot stops working.
+            c.execute(
+                "DELETE FROM olm_contact WHERE tag NOT IN
+                   (SELECT tag FROM olm_contact ORDER BY created_at DESC LIMIT ?1)",
+                [(MAX_CONTACT_CODES - 1) as i64],
             )?;
             c.execute(
-                "INSERT OR REPLACE INTO olm_hint(fingerprint, tag, created_at) VALUES(?1,?2,?3)",
-                params![&bytes[4..20], &bytes[20..], i64_of(now_ms())],
+                "INSERT INTO olm_contact(tag, created_at) VALUES(?1,?2)",
+                params![tag.as_slice(), i64_of(now_ms())],
             )
         })?;
-        Ok(())
+        Ok([CONTACT_MAGIC.as_slice(), &account, &tag].concat())
     }
 
-    fn hints(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
-        self.sql(|c| {
-            let mut q = c.prepare("SELECT fingerprint, tag FROM olm_hint WHERE created_at>=?1")?;
-            q.query_map([i64_of(now_ms().saturating_sub(HINT_TTL_MS))], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })?
+    /// Valid contact codes this device shows.
+    fn contact_tags(&self) -> Result<Vec<[u8; 32]>> {
+        let tags: Vec<Vec<u8>> = self.sql(|c| {
+            let mut q = c.prepare(
+                "SELECT tag FROM olm_contact WHERE created_at>=?1 ORDER BY created_at DESC LIMIT ?2",
+            )?;
+            q.query_map(
+                params![
+                    i64_of(now_ms().saturating_sub(CONTACT_TTL_MS)),
+                    MAX_CONTACT_CODES as i64
+                ],
+                |r| r.get(0),
+            )?
             .collect()
-        })
+        })?;
+        tags.iter().map(|t| arr32(t)).collect()
+    }
+
+    /// A scanned contact code: invite that account and hand the package to
+    /// the device that shows the code once it is in reach. Returns the peer.
+    pub fn import_contact(&mut self, bytes: &[u8]) -> Result<String> {
+        if bytes.len() != CONTACT_BYTES || &bytes[..4] != CONTACT_MAGIC {
+            return Err(Error("contact_format"));
+        }
+        let peer = hex::encode(&bytes[4..36]);
+        self.invite(&peer)?;
+        self.sql(|c| {
+            c.execute(
+                "INSERT INTO olm_offer(peer, tag, created_at) VALUES(?1,?2,?3)
+                   ON CONFLICT(peer) DO UPDATE SET tag=excluded.tag, created_at=excluded.created_at",
+                params![peer, &bytes[36..], i64_of(now_ms())],
+            )
+        })?;
+        Ok(peer)
+    }
+
+    /// The contact secret to hand `peer`'s pending invitation to, if any.
+    fn offer_tag(&self, peer: &str) -> Result<Option<[u8; 32]>> {
+        let tag: Option<Vec<u8>> = self.sql(|c| {
+            c.query_row(
+                "SELECT o.tag FROM olm_offer o JOIN olm_peer p ON p.account=o.peer
+                   WHERE o.peer=?1 AND o.created_at>=?2 AND p.state='pending' AND p.inviter=1",
+                params![peer, i64_of(now_ms().saturating_sub(CONTACT_TTL_MS))],
+                |r| r.get(0),
+            )
+            .optional()
+        })?;
+        tag.map(|t| arr32(&t)).transpose()
     }
 
     /// Store a verified invitation addressed to this account. Returns the
@@ -1396,9 +1434,16 @@ impl OlmEngine {
                 engine.housekeeping_peer(&row.account)?;
             }
             let horizon = i64_of(now_ms().saturating_sub(SEEN_RETENTION_MS));
+            let codes = i64_of(now_ms().saturating_sub(CONTACT_TTL_MS));
             engine.sql(|c| {
                 c.execute("DELETE FROM olm_seen WHERE at<?1", [horizon])?;
-                c.execute("DELETE FROM olm_token WHERE created_at<?1", [horizon])
+                c.execute("DELETE FROM olm_token WHERE created_at<?1", [horizon])?;
+                c.execute("DELETE FROM olm_contact WHERE created_at<?1", [codes])?;
+                c.execute(
+                    "DELETE FROM olm_offer WHERE created_at<?1 OR peer NOT IN
+                       (SELECT account FROM olm_peer WHERE state='pending' AND inviter=1)",
+                    [codes],
+                )
             })?;
             Ok(())
         })?;
@@ -1408,22 +1453,26 @@ impl OlmEngine {
     // ---- discovery -----------------------------------------------------------------
 
     /// What this device advertises now (NSD TXT, BLE service data, hello):
-    /// the device beacon plus one beacon per pending own invitation.
+    /// the device beacon, then the newest contact code shown (BLE carries
+    /// only the first two), then pending own invitations; at most four. Only
+    /// holders of a secret can link a beacon.
     pub fn hello(&self) -> Result<Value> {
         let (_, beacon, _, _) = self.account_row()?;
         let period = p2p::period(now_s());
-        let mut beacons = vec![hex::encode(p2p::beacon(&beacon, period))];
-        for row in self
-            .peers()?
-            .into_iter()
-            .filter(|p| p.state == "pending" && p.inviter)
-            .take(3)
-        {
-            if let Some(tag) = row.inviter_tag {
-                beacons.push(hex::encode(p2p::beacon(&tag, period)));
-            }
-        }
-        Ok(json!({"beacons": beacons, "invites": self.discovery_enabled()?}))
+        let mut secrets: Vec<Vec<u8>> = vec![beacon];
+        secrets.extend(self.contact_tags()?.iter().map(|t| t.to_vec()));
+        secrets.extend(
+            self.peers()?
+                .into_iter()
+                .filter(|p| p.state == "pending" && p.inviter)
+                .filter_map(|p| p.inviter_tag),
+        );
+        let beacons: Vec<String> = secrets
+            .iter()
+            .take(4)
+            .map(|secret| hex::encode(p2p::beacon(secret, period)))
+            .collect();
+        Ok(json!({"beacons": beacons}))
     }
 
     /// Which relationship (if any) advertises one of `beacons`.
@@ -1451,12 +1500,19 @@ impl OlmEngine {
                 }
             }
         }
-        // A scanned two-stage QR: the endpoint to fetch the package from.
-        for (fingerprint, tag) in self.hints()? {
+        // The device of a scanned contact code: hand it the invitation.
+        for row in self
+            .peers()?
+            .into_iter()
+            .filter(|p| p.state == "pending" && p.inviter)
+        {
+            let Some(tag) = self.offer_tag(&row.account)? else {
+                continue;
+            };
             for p in [period.saturating_sub(1), period, period + 1] {
                 let expected = p2p::beacon(&tag, p);
                 if wanted.iter().any(|w| p2p::same(w, &expected)) {
-                    return Ok(Some(format!("{HINT_PREFIX}{}", hex::encode(fingerprint))));
+                    return Ok(Some(format!("{OFFER_PREFIX}{}", row.account)));
                 }
             }
         }
@@ -1529,57 +1585,26 @@ impl OlmEngine {
         Ok(body)
     }
 
-    /// Build a request to one identified peer, or invitation offers for an
-    /// unidentified endpoint that accepts invitations.
-    pub fn exchange_begin(
-        &mut self,
-        peer: Option<&str>,
-        invites: bool,
-        budget: usize,
-    ) -> Result<Option<Vec<u8>>> {
+    /// Build a request to one identified peer, or the sealed invitation for
+    /// the device of a scanned contact code (`offer:<peer>`).
+    pub fn exchange_begin(&mut self, peer: &str, budget: usize) -> Result<Option<Vec<u8>>> {
         let mut container = Container::new(KIND_REQUEST, [0; 16], now_s())?;
-        match peer {
-            Some(hint) if hint.starts_with(HINT_PREFIX) => {
-                let fingerprint = checked(hex::decode(&hint[HINT_PREFIX.len()..]), "peer")?;
-                let (_, tag) = self
-                    .hints()?
-                    .into_iter()
-                    .find(|(f, _)| *f == fingerprint)
-                    .ok_or(Error("no_invitation"))?;
-                let tag = arr32(&tag)?;
-                let addr = p2p::channel_addr(&tag, &container.nonce);
-                container.push(&tag, addr, SECTION_FETCH, fingerprint);
-            }
-            Some(peer) => {
-                let row = self.peer(peer)?.ok_or(Error("no_session"))?;
-                let Some(key) = self.section_key(&row) else {
-                    return Ok(None);
-                };
-                let body = self.channel_body(peer, budget)?;
-                let addr = p2p::channel_addr(&key, &container.nonce);
-                container.push(&key, addr, SECTION_CHANNEL, body.encode());
-            }
-            None if invites => {
-                for row in self
-                    .peers()?
-                    .into_iter()
-                    .filter(|p| p.state == "pending" && p.inviter)
-                    .take(4)
-                {
-                    let invited = arr32(&checked(hex::decode(&row.account), "peer")?)?;
-                    let addr = p2p::invite_addr(&invited, &container.nonce);
-                    container.push(
-                        &invited,
-                        addr,
-                        SECTION_INVITE,
-                        row.package.clone().unwrap_or_default(),
-                    );
-                }
-                if container.sections.is_empty() {
-                    return Ok(None);
-                }
-            }
-            None => return Ok(None),
+        if let Some(invited) = peer.strip_prefix(OFFER_PREFIX) {
+            let Some(tag) = self.offer_tag(invited)? else {
+                return Ok(None);
+            };
+            let package = self.invitation(invited)?;
+            let sealed = p2p::seal_offer(&tag, &container.nonce, &package)?;
+            let addr = p2p::offer_addr(&tag, &container.nonce);
+            container.push(&tag, addr, SECTION_OFFER, sealed);
+        } else {
+            let row = self.peer(peer)?.ok_or(Error("no_session"))?;
+            let Some(key) = self.section_key(&row) else {
+                return Ok(None);
+            };
+            let body = self.channel_body(peer, budget)?;
+            let addr = p2p::channel_addr(&key, &container.nonce);
+            container.push(&key, addr, SECTION_CHANNEL, body.encode());
         }
         self.requests.retain(|_, at| now_ms() < *at + 120_000);
         self.requests.insert(container.nonce, now_ms());
@@ -1609,10 +1634,6 @@ impl OlmEngine {
             let body = self.channel_body(&peer, budget)?;
             let addr = p2p::channel_addr(&key, &response.nonce);
             response.push(&key, addr, SECTION_CHANNEL, body.encode());
-        }
-        for (invited, package) in absorbed.fetched {
-            let addr = p2p::invite_addr(&invited, &response.nonce);
-            response.push(&invited, addr, SECTION_INVITE, package);
         }
         Ok((response.encode()?, served))
     }
@@ -1686,52 +1707,29 @@ impl OlmEngine {
 
     fn absorb(&mut self, container: &Container) -> Result<Absorbed> {
         let mut absorbed = Absorbed::default();
-        let me = arr32(&checked(hex::decode(&self.account), "account")?)?;
         for section in &container.sections {
             match section.flags {
-                SECTION_INVITE => {
-                    // Without "accept invitations" only a package this person
-                    // scanned (two-stage QR fingerprint) is taken.
-                    let scanned = self
-                        .hints()?
-                        .iter()
-                        .any(|(f, _)| *f == p2p::sha256(&section.body)[..16]);
-                    if !(self.discovery_enabled()? || scanned)
-                        || !p2p::same(&p2p::invite_addr(&me, &container.nonce), &section.addr)
-                        || !container.verify(section, &me)
-                    {
-                        continue;
-                    }
-                    if scanned {
-                        let fingerprint = p2p::sha256(&section.body)[..16].to_vec();
-                        self.sql(|c| {
-                            c.execute("DELETE FROM olm_hint WHERE fingerprint=?1", [fingerprint])
-                        })?;
-                    }
-                    // Each invitation is checked on its own; a bad one never
-                    // blocks the rest of the container.
-                    if let Ok(Some(_)) = self.import_invitation(&section.body) {
-                        absorbed.changes.peers = true;
-                    }
-                }
-                SECTION_FETCH => {
-                    for row in self
-                        .peers()?
-                        .into_iter()
-                        .filter(|p| p.state == "pending" && p.inviter)
-                    {
-                        let (Some(tag), Some(package)) =
-                            (row.inviter_tag.as_deref(), row.package.as_ref())
+                SECTION_OFFER => {
+                    // Only an offer sealed to a contact code this device shows
+                    // is taken; the code is then used up.
+                    for tag in self.contact_tags()? {
+                        if !p2p::same(&p2p::offer_addr(&tag, &container.nonce), &section.addr)
+                            || !container.verify(section, &tag)
+                        {
+                            continue;
+                        }
+                        let Ok(package) = p2p::open_offer(&tag, &container.nonce, &section.body)
                         else {
                             continue;
                         };
-                        if p2p::same(&p2p::channel_addr(tag, &container.nonce), &section.addr)
-                            && container.verify(section, tag)
-                            && p2p::same(&section.body, &p2p::sha256(package)[..16])
-                        {
-                            let invited = arr32(&checked(hex::decode(&row.account), "peer")?)?;
-                            absorbed.fetched.push((invited, package.clone()));
+                        // A bad package never blocks the rest of the container.
+                        if let Ok(Some(_)) = self.import_invitation(&package) {
+                            self.sql(|c| {
+                                c.execute("DELETE FROM olm_contact WHERE tag=?1", [tag.as_slice()])
+                            })?;
+                            absorbed.changes.peers = true;
                         }
+                        break;
                     }
                 }
                 SECTION_CHANNEL => {
@@ -2282,7 +2280,8 @@ impl OlmEngine {
             .collect();
         Ok(json!({
             "account": self.account,
-            "discovery": {"enabled": self.discovery_enabled()?, "key_package_until": 0},
+            // Direct sharing never offers invitations to unknown devices.
+            "discovery": {"enabled": false, "key_package_until": 0},
             "local": {"events": outbound, "inbox": inbox, "outbound_pending": outbound},
             "peers": peers,
             "relays": [],

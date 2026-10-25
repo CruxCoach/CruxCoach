@@ -112,17 +112,15 @@ open class EndpointCommands(protected val endpoint: SyntheticMarmotEndpoint) {
             "native_storage_matches" -> endpoint.harness("private_storage_matches") { put("marker", field("marker")) }
             "rotate" -> endpoint.harness("rotate") { put("peer", field("peer")) }
             "epoch" -> endpoint.harness("epoch") { put("peer", field("peer")) }
-            // Spike M0 (direct Olm channel): discovery, QR hand-over and fault injection.
+            // Direct Olm channel: discovery, contact-code hand-over and fault injection.
             "port" -> JsonPrimitive(endpoint.lan.port)
             "discover" -> {
                 endpoint.discovery.endpoints = request["urls"]!!.jsonArray.map { it.jsonPrimitive.content }
                 JsonPrimitive(true)
             }
             "hello" -> endpoint.harness("hello")
-            "invitation" -> endpoint.harness("invitation") { put("peer", field("peer")) }
-            "invitation_hint" -> endpoint.harness("invitation_hint") { put("peer", field("peer")) }
-            "discovery" -> endpoint.blocking { setDiscovery(field("enabled").toBooleanStrict()); JsonPrimitive(true) }
-            "import_invitation" -> endpoint.harness("import_invitation") { put("payload", field("payload")) }
+            "contact_code" -> endpoint.harness("contact_code")
+            "import_contact" -> endpoint.harness("import_contact") { put("payload", field("payload")) }
             "burn" -> endpoint.harness("burn") { put("peer", field("peer")); put("count", field("count").toInt()) }
             "forget_sessions" -> endpoint.harness("forget_sessions") { put("peer", field("peer")) }
             "signer_ops" -> endpoint.harness("signer_ops")
