@@ -89,6 +89,7 @@ spec file so other branches see the reservation.
 | FEAT-063 | Nostr Background Privacy Control | v0.2.3 | planned | `0.2.3/FEAT-063-nostr-background-privacy-control.md` |
 | FEAT-064 | Quantum multi-layer Nearby banner | backlog | backlog | `backlog/FEAT-064-quantum-nearby-layer-banner.md` |
 | FEAT-065 | Database Process Performance | v0.2.4 | skeleton | `0.2.4/FEAT-065-database-process-performance.md` |
+| FEAT-073 | Who Sees This (audience levels, sharing engine, groups, public, leaderboards, research) | v0.2.6 | design-locked | `0.2.6/FEAT-073-who-sees-this.md` |
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
