@@ -111,8 +111,34 @@ object LocalShareSchema {
              frames_hash = NULL""",
     ).map { it.trimIndent() }
 
-    /** Historical v1 scrub contract. */
-    val SNAPSHOT_SCRUB: List<String> = V1_QUANTUM_SCRUB + PRIVACY_SCRUB
+    /**
+     * Shiny Wall never crosses the offline share. Receivers released before
+     * the family existed read an unknown `board_brand` as Kilter, and a v2
+     * receiver cannot tell the sender which families it knows, so the rows
+     * would land on their Kilter board. Receivers fetch the small Shiny Wall
+     * catalogue from its own Blossom manifest instead; its geometry ships in
+     * the APK.
+     */
+    val SHINYWALL_SCRUB: List<String> = listOf(
+        """DELETE FROM climb_stats WHERE climb_uuid IN
+           (SELECT uuid FROM climbs WHERE board_brand = 'shinywall')""",
+        """DELETE FROM climbs WHERE board_brand = 'shinywall'""",
+        """DELETE FROM placements WHERE board_brand = 'shinywall'""",
+        """DELETE FROM holes WHERE board_brand = 'shinywall'""",
+        """DELETE FROM product_sizes WHERE board_brand = 'shinywall'""",
+        """DELETE FROM board_images WHERE board_brand = 'shinywall'""",
+        """DELETE FROM leds WHERE board_brand = 'shinywall'""",
+        """DELETE FROM placement_roles WHERE board_brand = 'shinywall'""",
+    ).map { it.trimIndent() }
+
+    /** Historical v1 scrub contract (plus families no peer may receive). */
+    val SNAPSHOT_SCRUB: List<String> = V1_QUANTUM_SCRUB + PRIVACY_SCRUB + SHINYWALL_SCRUB
+
+    /** v2 scrub: Quantum stays, everything else as in [SNAPSHOT_SCRUB]. */
+    val V2_SNAPSHOT_SCRUB: List<String> = PRIVACY_SCRUB + SHINYWALL_SCRUB
+
+    /** Families the offline share never carries (see [SHINYWALL_SCRUB]). */
+    val NON_SHAREABLE_BRANDS: Set<String> = setOf("shinywall")
 
     // ── Peer-share column contract (the drift guard) ────────────────────
 
