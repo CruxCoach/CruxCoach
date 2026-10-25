@@ -183,7 +183,7 @@ personal-sharing worktrees. Verify against unmerged branches before allocating
 (`0.2.5/FEAT-074-led-animations.md`, `feat/0.2.5-led-animations`). The
 contribution first carried FEAT-067 on `feat/led-animations` (PR #21), which
 collided with Body tracking v2; FEAT-073 is reserved for the 0.2.5
-social/privacy concept. **FEAT-075** is the next unallocated ID.
+social/privacy concept. FEAT-075–077 followed as backlog items; **FEAT-078** is the next unallocated ID.
 
 ### Allocation of FEAT-058 (2026-08-09) — and why not FEAT-051
 
