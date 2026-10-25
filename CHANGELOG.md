@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   own Shiny Wall problems in the editor, see the hold heatmap and use "Clean
   holds". The Shiny Wall catalogue is downloaded only once you choose a Shiny
   Wall; it is not passed on by offline sharing.
+- Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
+  data is refreshed (2,933 venues).
 - Training beyond the board. A "Today" hub and an "Exercises"
   library inside the new training area. The library has over 200 exercises written for
   climbers – fingers, pulling, pushing and antagonists, core, legs and hips,
@@ -412,8 +414,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - After a catalogue import the app frees the temporary database file at once. A Tension
   import left about 180 MB in it until the next write, on a phone with little space left.
-- Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
-  data is refreshed (2,933 venues).
 
 ## [0.2.4] - 2026-10-25
 
