@@ -5,6 +5,7 @@ import com.cruxcoach.android.ble.LitFrame
 import kotlin.test.AfterTest
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -17,10 +18,9 @@ import kotlinx.coroutines.test.runTest
  * unconfined dispatcher cannot race a pause, and a guaranteed shutdown so a
  * failing assertion reports itself instead of timing the scheduler out.
  *
- * The clock is virtual. `android.os.SystemClock` returns 0 under
- * `isReturnDefaultValues`, so the loop measures every send as instantaneous and
- * waits exactly the interval it computed — which makes the pacing assertable to
- * the millisecond.
+ * The clock is the test scheduler's virtual time, so pacing and the time limit
+ * are assertable to the millisecond; a send takes no time unless the fake sink
+ * is told to ([FakeLedFrameSink.writeMillis]).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal abstract class LedEngineTestBase {
@@ -37,6 +37,8 @@ internal abstract class LedEngineTestBase {
         private val scope: TestScope,
         val sink: FakeLedFrameSink,
         val selectedId: MutableStateFlow<String>,
+        /** Everything but the effect id, which [selectedId] overrides. */
+        val settings: MutableStateFlow<LedEffectSettings>,
         val engine: LedAnimationEngine,
     ) {
         /** Move virtual time on and let everything it scheduled run. */
@@ -53,6 +55,7 @@ internal abstract class LedEngineTestBase {
         canAnimate: Boolean = true,
         sendResult: FrameSendResult = FrameSendResult.SENT,
         ownedBy: Set<AnimationPauseOwner> = emptySet(),
+        settings: LedEffectSettings = LedEffectSettings(),
         block: suspend TestScope.(Harness) -> Unit,
     ) = runTest {
         // The conditions a test wants already in place are set before the engine
@@ -61,7 +64,13 @@ internal abstract class LedEngineTestBase {
         val sink = FakeLedFrameSink(frame, canAnimate)
         sink.result = sendResult
         val selectedId = MutableStateFlow(selected)
-        val engine = LedAnimationEngine(sink, selectedId, UnconfinedTestDispatcher(testScheduler))
+        val extra = MutableStateFlow(settings)
+        val engine = LedAnimationEngine(
+            sink,
+            combine(selectedId, extra) { id, rest -> rest.copy(effectId = id) },
+            UnconfinedTestDispatcher(testScheduler),
+            clock = { testScheduler.currentTime },
+        )
         running = engine
         try {
             ownedBy.forEach { engine.pause(it) }
@@ -69,7 +78,7 @@ internal abstract class LedEngineTestBase {
             // observer, which a JVM test has no way to drive.
             engine.observeSelection()
             engine.setForeground(foreground)
-            block(Harness(this, sink, selectedId, engine))
+            block(Harness(this, sink, selectedId, extra, engine))
         } finally {
             // Without this the loop delays forever and the scheduler never goes
             // idle, so a failing assertion would be reported as a timeout.

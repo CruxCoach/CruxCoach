@@ -124,14 +124,15 @@ internal class LedAnimationEngineTest : LedEngineTestBase() {
     ) { h ->
         h.advance(2_000)
         assertTrue(h.sink.attempts.isEmpty())
-        // The loop parks rather than ends: the refusal is not observable to the
-        // watcher, and a loop that walked out on a transient one could end the
-        // user's effect on a state change the watcher never saw.
-        assertTrue(h.engine.isRunning.value, "the loop waits for the gate to reopen")
+        // No loop at all: a board that shows no effects must not keep one polling
+        // for ever, nor make an app switch start the keep-alive service.
+        assertFalse(h.engine.isRunning.value, "no loop for a board without effects")
+        assertFalse(h.engine.wantsToRun.value, "nothing to keep running in the background")
+        assertEquals(LedEffectStatus.UNSUPPORTED_BOARD, h.engine.status.value)
     }
 
     @Test
-    fun aBoardThatStopsTakingFramesParksTheLoopUntilItReopens() = runEngineTest(
+    fun aBoardThatStopsTakingFramesEndsTheLoopUntilItIsBack() = runEngineTest(
         frame = fourRoleFrame(),
         selected = "pulse",
     ) { h ->
@@ -145,13 +146,12 @@ internal class LedAnimationEngineTest : LedEngineTestBase() {
         h.sink.canAnimate = false
         h.advance(2_000)
         assertTrue(h.sink.attempts.isEmpty())
-        assertTrue(h.engine.isRunning.value, "a refused board parks the loop, it does not kill it")
+        assertFalse(h.engine.isRunning.value, "the watcher ends the loop with the board")
 
-        // The tick is held while parked, so the first frame after the gate
-        // reopens equals the last sent one and is skipped; the next is new.
         h.sink.canAnimate = true
         h.advance(300)
-        assertTrue(h.sink.sent.isNotEmpty(), "the parked loop resumes on its own")
+        assertTrue(h.sink.sent.isNotEmpty(), "the effect comes back with the board")
+        assertTrue(h.engine.isRunning.value)
     }
 
     @Test
@@ -290,7 +290,7 @@ internal class LedAnimationEngineTest : LedEngineTestBase() {
     }
 
     @Test
-    fun leavingTheForegroundDoesNotRepaintTheStaticColours() = runEngineTest(
+    fun leavingTheForegroundPutsTheClimbsOwnColoursBackOnce() = runEngineTest(
         frame = fourRoleFrame(),
         selected = "pulse",
     ) { h ->
@@ -300,8 +300,13 @@ internal class LedAnimationEngineTest : LedEngineTestBase() {
 
         h.engine.setForeground(false)
         h.advance(2_000)
-        assertTrue(h.sink.attempts.isEmpty(), "going quiet is not the same as putting colours back")
+        assertEquals(
+            listOf(fourRoleFrame().staticFrame()),
+            h.sink.attempts,
+            "the wall must not stay on a dimmed frame, and nothing more is written",
+        )
         assertFalse(h.engine.isRunning.value)
+        assertEquals(LedEffectStatus.BACKGROUND, h.engine.status.value)
     }
 
     // ── When the keep-alive service claims the background ────────
@@ -322,7 +327,7 @@ internal class LedAnimationEngineTest : LedEngineTestBase() {
     }
 
     @Test
-    fun releasingTheClaimSilencesTheBackgroundWithoutRepainting() = runEngineTest(
+    fun releasingTheClaimEndsTheBackgroundEffectOnTheClimbsOwnColours() = runEngineTest(
         frame = fourRoleFrame(),
         selected = "pulse",
         foreground = false,
@@ -335,9 +340,10 @@ internal class LedAnimationEngineTest : LedEngineTestBase() {
         h.engine.releaseBackground()
         h.advance(2_000)
         assertFalse(h.engine.isRunning.value)
-        assertTrue(
-            h.sink.attempts.isEmpty(),
-            "a keep-alive that died must not write — not even the static colours back",
+        assertEquals(
+            listOf(fourRoleFrame().staticFrame()),
+            h.sink.attempts,
+            "one write puts the colours back; then the background stays quiet",
         )
     }
 

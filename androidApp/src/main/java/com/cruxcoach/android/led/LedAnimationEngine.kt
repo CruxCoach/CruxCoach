@@ -1,12 +1,15 @@
 package com.cruxcoach.android.led
 
+import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.cruxcoach.android.ble.FrameSendResult
+import com.cruxcoach.android.ble.LitFrame
 import com.cruxcoach.android.data.UserPreferences
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -24,46 +27,73 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlin.math.roundToLong
 
 /**
- * Runs the user's chosen LED animation on the currently lit climb.
+ * Runs the user's chosen LED effect on the currently lit climb.
  *
- * Everything the engine does is derived from two observable inputs — what is lit
- * on the board ([LedFrameSink.litFrame]) and what the user picked
- * ([UserPreferences.ledAnimation]) — so no caller has to remember to start, stop
- * or refresh it: sending a climb, editing an LED colour, switching the animation,
- * disconnecting or clearing the board all just change an input and the loop
- * follows. [pause] / [resume] cover the one thing that is not observable, namely
- * another feature owning the board's frame timing.
+ * Everything the engine does is derived from observable inputs — what is lit on
+ * the board ([LedFrameSink.litFrame]), whether that board can show effects
+ * ([LedFrameSink.availability]) and what the user picked ([LedEffectSettings]) —
+ * so no caller has to remember to start, stop or refresh it: sending a climb,
+ * editing an LED colour, switching the effect, disconnecting, cleaning holds or
+ * clearing the board all just change an input and the loop follows. [pause] /
+ * [resume] cover the one thing that is not observable, namely another feature
+ * owning the board's frame timing.
  *
  * Traffic shape, which is the whole design constraint: a frame carries only the
- * LEDs of the lit climb (typically 12-40 on a Kilter, i.e. a handful of 20-byte
- * writes), each write is acknowledged before the next goes out, frames identical
- * to the previous one are never sent, a frame gives way to a user-initiated send
- * rather than queueing behind it, and a large climb slows the loop down instead of
- * flooding the link. With the animation on "none" — or nothing lit, or the app in
- * the background without a [claimBackground] from [LedAnimationService], or another
- * feature owning the board — the engine emits nothing at all.
+ * LEDs of the lit climb, each write is acknowledged before the next goes out,
+ * frames identical to the previous one are never sent, a frame gives way to a
+ * user-initiated send rather than queueing behind it, and the loop waits at least
+ * as long as a frame took to write, so the link is never busier than half the
+ * time — a write-only controller paced at 100 ms per chunk simply gets a slower
+ * effect. Animation frames do not count as activity: the idle disconnect still
+ * releases the board on schedule after the last real send.
+ *
+ * Limits: an effect runs for at most [MAX_EFFECT_MS] on one lit climb; then, or
+ * when it is stopped from the notification, the climb's own colours come back
+ * and stay until the next send. Leaving the app ends the effect unless the user
+ * chose to keep it running in other apps ([claimBackground], from
+ * [LedAnimationService]).
  */
 @Singleton
 class LedAnimationEngine internal constructor(
     private val sink: LedFrameSink,
-    private val animationIds: Flow<String>,
+    private val settings: Flow<LedEffectSettings>,
     private val dispatcher: CoroutineDispatcher,
+    private val clock: () -> Long = SystemClock::elapsedRealtime,
 ) : DefaultLifecycleObserver {
 
     @Inject
-    constructor(sink: LedFrameSink, userPreferences: UserPreferences) :
-        this(sink, userPreferences.ledAnimation, Dispatchers.Default)
+    constructor(
+        sink: LedFrameSink,
+        userPreferences: UserPreferences,
+        @ApplicationContext context: Context,
+    ) : this(
+        sink,
+        combine(
+            userPreferences.ledAnimation,
+            userPreferences.ledAnimationTempo,
+            userPreferences.ledAnimationInBackground,
+            SystemAnimations.observe(context),
+        ) { id, tempo, background, animations ->
+            LedEffectSettings(
+                effectId = id,
+                tempo = LedEffectTempo.byId(tempo),
+                keepRunningInBackground = background,
+                flashingAllowed = animations,
+            )
+        },
+        Dispatchers.Default,
+    )
 
-    private companion object {
+    internal companion object {
         const val TAG = "LedAnimationEngine"
 
         /**
-         * Lit LEDs per extra slice of pacing. An LED costs 2 bytes and
-         * `BoardPacketEncoder` splits its output into 20-byte writes, so 16 lit
-         * LEDs are two to three acknowledged writes; each further group of 16 adds
-         * another slice of that round trip, hence [PACE_GROUP_MS].
+         * Lit LEDs per extra slice of pacing — a floor under the frame interval for
+         * large climbs. The real cost of a frame is measured on every write (see
+         * [runLoop]); this only keeps a big climb from asking for a fast tempo.
          */
         const val LEDS_PER_PACE_GROUP = 16
         const val PACE_GROUP_MS = 45L
@@ -73,28 +103,27 @@ class LedAnimationEngine internal constructor(
 
         /**
          * Above this many lit LEDs the animation is refused rather than sent: the
-         * frame would need so many acknowledged writes that a user-initiated
-         * climb send would start queueing behind it. It also bounds the frame
-         * interval from above — [MAX_ANIMATED_LEDS] / [LEDS_PER_PACE_GROUP] ×
-         * [PACE_GROUP_MS], i.e. 360 ms — so no accepted climb can animate so
-         * slowly that it reads as a stuck board.
+         * frame would need so many acknowledged writes that a user-initiated climb
+         * send would start queueing behind it. It also keeps an API-2 frame inside
+         * one packet (127 LEDs), which is all Kilter-built boxes are known to take.
          */
         const val MAX_ANIMATED_LEDS = 120
 
         /**
          * Stay static after this many consecutive failed writes. A link that is only
-         * busy — [FrameSendResult.DEFERRED], someone else mid-send — is not a failure
-         * and never counts here, because an editor sync would otherwise end the
-         * animation.
+         * busy — [FrameSendResult.DEFERRED] — is not a failure and never counts here.
          */
         const val MAX_SEND_FAILURES = 3
 
-        /**
-         * How long an idle loop waits before looking at the board again. Only
-         * reached while the board is briefly not animatable; a board that stays
-         * away is cancelled by the watcher long before this cadence matters.
-         */
+        /** How long a loop waits while the board is briefly not animatable. */
         const val IDLE_POLL_MS = 250L
+
+        /**
+         * An effect ends after this long on the same lit climb, so a phone left on
+         * a wall neither drains its battery nor keeps the radio busy for hours.
+         * Sending the climb again starts it afresh.
+         */
+        const val MAX_EFFECT_MS = 15 * 60 * 1000L
     }
 
     private val scope = CoroutineScope(
@@ -112,24 +141,46 @@ class LedAnimationEngine internal constructor(
      */
     private val pauseCounts = mutableMapOf<AnimationPauseOwner, Int>()
     private val inForeground = MutableStateFlow(false)
-    private val backgroundClaimed = MutableStateFlow(false)
+    private val _backgroundClaimed = MutableStateFlow(false)
+
+    /** True while [LedAnimationService] may keep the effect going outside the app. */
+    val backgroundClaimed: StateFlow<Boolean> = _backgroundClaimed.asStateFlow()
+
+    /** The lit frame whose effect has ended (time limit, or Stop). */
+    private val endedFrame = MutableStateFlow<LitFrame?>(null)
 
     private val _isRunning = MutableStateFlow(false)
 
-    /** True while frames are being pushed. */
+    /** True while a frame loop exists. */
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
     private val mayAnimate = MutableStateFlow(false)
 
     /**
      * True while there is live work an app switch would interrupt — an effect is
-     * selected, a climb is lit, and no board owner has the floor — regardless of
-     * whether the engine may animate at this moment. What the keep-alive decision
-     * in `CruxCoachApp` consults on the way out of the foreground, since a
-     * backgrounded engine that [isRunning] has already stopped says nothing about
-     * whether it was mid-effect.
+     * selected, a climb is lit on a board that shows effects, and no board owner
+     * has the floor — regardless of whether the engine may animate at this moment.
      */
     val wantsToRun: StateFlow<Boolean> = mayAnimate.asStateFlow()
+
+    @Volatile
+    private var keepRunningInBackground = false
+
+    /**
+     * What the keep-alive hook in `CruxCoachApp` asks on the way out of the app:
+     * an effect is live and the user chose to keep it running in other apps.
+     */
+    fun shouldKeepRunningInBackground(): Boolean = wantsToRun.value && keepRunningInBackground
+
+    private val _status = MutableStateFlow(LedEffectStatus.OFF)
+
+    /** What the effect is doing, for the settings and the climb menu. */
+    val status: StateFlow<LedEffectStatus> = _status.asStateFlow()
+
+    private val _availability = MutableStateFlow(LedBoardAvailability.NO_BOARD)
+
+    /** What the connected board means for effects, whichever effect is chosen. */
+    val availability: StateFlow<LedBoardAvailability> = _availability.asStateFlow()
 
     private var started = false
 
@@ -155,19 +206,21 @@ class LedAnimationEngine internal constructor(
      * one, so no lock-order cycle exists between the two. */
     private val loopLock = Any()
 
-    /**
-     * The animation id the watcher last saw, "none" included. A loop that ends by
-     * itself needs it to tell "the user still wants this effect" from "they moved on
-     * to none", and [animationIds] is a cold flow that cannot be read on demand.
-     * Written on the watcher's thread, read on the loop's, hence volatile.
-     */
+    /** The latest settings, for the loop's tempo and its own exit path. */
     @Volatile
-    private var lastRequestedId: String? = null
+    private var lastSettings = LedEffectSettings()
+
+    /** The lit climb the time limit is counting for, and since when. */
+    @Volatile
+    private var timedFrame: LitFrame? = null
+
+    @Volatile
+    private var timedSince = 0L
 
     /**
-     * Called once from `CruxCoachApp.onCreate`: follow the animation setting and
-     * the lit board from then on, and go quiet whenever the app leaves the
-     * foreground — unless [LedAnimationService] has claimed the background.
+     * Called once from `CruxCoachApp.onCreate`: follow the settings and the lit
+     * board from then on, and go quiet whenever the app leaves the foreground —
+     * unless [LedAnimationService] has claimed the background.
      */
     fun start() {
         if (started) return
@@ -182,39 +235,71 @@ class LedAnimationEngine internal constructor(
      */
     internal fun observeSelection() {
         if (watcherJob != null) return
+        val board = combine(sink.litFrame, sink.availability, endedFrame) { frame, availability, ended ->
+            BoardInput(frame, availability, ended)
+        }
         watcherJob = scope.launch {
             combine(
-                sink.litFrame,
-                animationIds,
+                board,
+                settings,
                 pauseOwners,
                 inForeground,
-                backgroundClaimed,
-            ) { frame, id, paused, front, background ->
-                val effect = LedAnimationRegistry.byId(id)
-                // True whenever there is live work an app switch would interrupt,
-                // whether or not the engine may act on it right now.
-                val climbIsAnimatable = frame != null && paused.isEmpty() && effect !== NoneAnimation
-                RunDecision(
-                    requestedId = id,
-                    animation = if (climbIsAnimatable && (front || background)) effect else null,
-                    wouldAnimate = climbIsAnimatable,
-                    // "Switched back to None while the board is still lit" — the
-                    // only case that needs a repaint, because the last animation
-                    // frame would otherwise stay on the wall. A pause (route
-                    // playback, session) must NOT repaint: that feature owns the
-                    // frames now, and a background nobody has claimed must not
-                    // write at all.
-                    restoreStatic = (front || background) && frame != null &&
-                        paused.isEmpty() && effect === NoneAnimation,
-                )
+                _backgroundClaimed,
+            ) { input, current, paused, front, background ->
+                decide(input, current, paused, front, background)
             }.collect { decision ->
-                // Kept for the loop's own exit path, which runs on another thread and
-                // cannot consult [animationIds] itself.
-                lastRequestedId = decision.requestedId
+                lastSettings = decision.settings
+                keepRunningInBackground = decision.settings.keepRunningInBackground
                 mayAnimate.value = decision.wouldAnimate
+                _status.value = decision.status
+                _availability.value = decision.availability
                 applyDecision(decision)
             }
         }
+    }
+
+    private fun decide(
+        input: BoardInput,
+        current: LedEffectSettings,
+        paused: Set<AnimationPauseOwner>,
+        front: Boolean,
+        background: Boolean,
+    ): RunDecision {
+        val chosen = LedAnimationRegistry.byId(current.effectId)
+        val flashingBlocked = chosen.photosensitive && !current.flashingAllowed
+        val effect = if (flashingBlocked) NoneAnimation else chosen
+        val frame = input.frame
+        val ready = input.availability == LedBoardAvailability.READY
+        val ended = frame != null && frame === input.ended
+        val visible = front || background
+        // Live work an app switch would interrupt, whether or not the engine may
+        // act on it right now.
+        val live = frame != null && ready && paused.isEmpty() && effect !== NoneAnimation && !ended
+        val status = when {
+            chosen === NoneAnimation -> LedEffectStatus.OFF
+            flashingBlocked -> LedEffectStatus.FLASHING_BLOCKED
+            input.availability == LedBoardAvailability.NO_BOARD -> LedEffectStatus.NO_BOARD
+            input.availability == LedBoardAvailability.UNSUPPORTED -> LedEffectStatus.UNSUPPORTED_BOARD
+            input.availability == LedBoardAvailability.CLEANING || paused.isNotEmpty() -> LedEffectStatus.PAUSED
+            frame == null -> LedEffectStatus.WAITING_FOR_CLIMB
+            ended -> LedEffectStatus.ENDED
+            !visible -> LedEffectStatus.BACKGROUND
+            else -> LedEffectStatus.RUNNING
+        }
+        return RunDecision(
+            settings = current,
+            availability = input.availability,
+            animation = if (live && visible) effect else null,
+            wouldAnimate = live,
+            status = status,
+            // A loop that stops leaves its last frame on the wall. Put the climb's
+            // own colours back when nothing else is about to paint: the effect was
+            // switched off, it ended, or the app left the foreground. A pause must
+            // NOT repaint (that feature owns the frames now), nor may anything be
+            // written while cleaning owns the wall or the board is gone.
+            restoreStatic = frame != null && ready && paused.isEmpty() &&
+                (effect === NoneAnimation || ended || !visible),
+        )
     }
 
     /** Another feature took the board; the animation stops until it is done. */
@@ -241,17 +326,23 @@ class LedAnimationEngine internal constructor(
 
     /**
      * [LedAnimationService] has taken responsibility for the frame timing while the
-     * app is not visible: the loop runs on as though the app were up, because the
-     * service — not the cached process — is what keeps the link writing. Releasing
-     * the claim, by the service's death or the app's return, closes that permission
-     * again.
+     * app is not visible: the loop runs on as though the app were up. Releasing the
+     * claim, by the service's end or the app's return, closes that permission again.
      */
     fun claimBackground() {
-        backgroundClaimed.value = true
+        _backgroundClaimed.value = true
     }
 
     fun releaseBackground() {
-        backgroundClaimed.value = false
+        _backgroundClaimed.value = false
+    }
+
+    /**
+     * End the effect for the climb that is lit now and put its own colours back
+     * (the notification's Stop). The setting stays: the next climb sent moves again.
+     */
+    fun stopForCurrentClimb() {
+        sink.litFrame.value?.let { endedFrame.value = it }
     }
 
     /**
@@ -295,9 +386,9 @@ class LedAnimationEngine internal constructor(
             return
         }
         synchronized(loopLock) {
-            // Already looping this animation: the loop re-reads the lit board
-            // itself, so a new climb or an edited colour needs no restart. Under
-            // the lock this cannot catch a loop that has just walked out — its
+            // Already looping this animation: the loop re-reads the lit board and
+            // the tempo itself, so a new climb or an edited colour needs no restart.
+            // Under the lock this cannot catch a loop that has just walked out — its
             // exit path clears `runningId` behind the same lock first.
             if (animation.id == runningId && loopJob?.isActive == true) return
             loopJob?.cancel()
@@ -309,8 +400,9 @@ class LedAnimationEngine internal constructor(
     }
 
     /**
-     * Put the static colours back after a live animation was switched off, so the
-     * wall does not freeze on whatever brightness or hue the last frame had.
+     * Put the static colours back after a live animation stopped, so the wall does
+     * not freeze on whatever brightness or hue the last frame had. The link refuses
+     * it if another climb was sent in the meantime.
      */
     private fun restoreStaticFrame() {
         scope.launch {
@@ -322,20 +414,13 @@ class LedAnimationEngine internal constructor(
 
     /**
      * Put the static colours back when a loop that had already written the wall ends
-     * on its own — an over-sized climb, a run of failed writes. Unlike
-     * the switch-to-none case in [applyDecision], nothing else is going to repaint
-     * here, so the wall would otherwise freeze on the last animation frame.
-     *
-     * Everything is re-checked at this moment rather than trusted from earlier: the
-     * loop may have stopped because another feature or the background took over,
-     * and a repaint from here would overwrite them. A loop that
-     * never got a frame out (`lastSent == null`) leaves the static colours it found,
-     * so it is not called for one.
+     * on its own — an over-sized climb, a run of failed writes. Everything is
+     * re-checked at this moment: the loop may have stopped because another feature
+     * or the background took over, and a repaint from here would overwrite them.
      */
     private fun restoreStaticIfStillMine() {
-        val requestedId = lastRequestedId ?: return
-        if (LedAnimationRegistry.byId(requestedId) === NoneAnimation) return
-        if (pauseOwners.value.isNotEmpty() || !(inForeground.value || backgroundClaimed.value)) return
+        if (LedAnimationRegistry.byId(lastSettings.effectId) === NoneAnimation) return
+        if (pauseOwners.value.isNotEmpty() || !(inForeground.value || _backgroundClaimed.value)) return
         restoreStaticFrame()
     }
 
@@ -358,20 +443,26 @@ class LedAnimationEngine internal constructor(
         if (!started) return
         try {
             while (true) {
-                val frameStartedAt = SystemClock.elapsedRealtime()
+                val frameStartedAt = clock()
                 val base = sink.litFrame.value
                 // A board that is briefly not animatable — a lit frame that has not
-                // been republished yet between two climbs, a link whose brand gate
-                // dipped — is waited out, not treated as an ending. The watcher
-                // cancels this loop when the board is really gone; breaking on a
-                // poll here could otherwise end the effect on a `null` the watcher
-                // never even saw (StateFlow conflation), silently leaving a
-                // selected animation with no loop.
+                // been republished yet between two climbs — is waited out; the
+                // watcher ends this loop when the board is really gone.
                 if (base == null || base.leds.isEmpty() || !sink.canAnimate) {
                     delay(IDLE_POLL_MS)
                     continue
                 }
-                val interval = frameIntervalMillis(animation, base.leds.size)
+                if (timedFrame !== base) {
+                    timedFrame = base
+                    timedSince = frameStartedAt
+                } else if (frameStartedAt - timedSince >= MAX_EFFECT_MS) {
+                    Log.i(TAG, "LED animation '${animation.id}' ended after ${MAX_EFFECT_MS / 60_000} min on one climb")
+                    // The watcher stops this loop and puts the static colours back.
+                    endedFrame.value = base
+                    delay(IDLE_POLL_MS)
+                    continue
+                }
+                val interval = frameIntervalMillis(animation, base.leds.size, lastSettings.tempo)
                 if (interval <= 0L) {
                     Log.w(
                         TAG,
@@ -382,18 +473,22 @@ class LedAnimationEngine internal constructor(
                 }
 
                 val frame = animation.frameAt(base, tick)
+                var wrote = false
+                var writeMillis = 0L
                 // RGB332 is coarse, so pulse and hue-cycle frames repeat often.
                 // Skipping identical frames is where the traffic budget lives.
                 if (frame != lastSent) {
-                    when (sink.sendFrame(base, frame)) {
+                    val writeStartedAt = clock()
+                    val result = sink.sendFrame(base, frame)
+                    writeMillis = clock() - writeStartedAt
+                    when (result) {
                         FrameSendResult.SENT -> {
                             lastSent = frame
                             failures = 0
+                            wrote = true
                         }
-                        // Somebody else is mid-send on the link. Dropping this frame
-                        // costs one beat of the effect; counting it as a failure would
-                        // end the animation on an editor sync, and waiting would land
-                        // it after the send it was waiting for.
+                        // Somebody else is mid-send on the link, or the frame's climb
+                        // is no longer lit. Dropping this frame costs one beat.
                         FrameSendResult.DEFERRED -> Unit
                         FrameSendResult.FAILED -> {
                             failures++
@@ -410,10 +505,7 @@ class LedAnimationEngine internal constructor(
                 }
                 tick++
 
-                // Spend what the send took, and never fall behind by queueing:
-                // a slow radio drops frames rather than building a backlog.
-                val elapsed = SystemClock.elapsedRealtime() - frameStartedAt
-                delay((interval - elapsed).coerceAtLeast(MIN_FRAME_GAP_MS))
+                delay(gapAfterFrame(animation, interval, clock() - frameStartedAt, if (wrote) writeMillis else 0L))
             }
             endedOnPurpose = true
         } catch (e: CancellationException) {
@@ -435,39 +527,67 @@ class LedAnimationEngine internal constructor(
                 }
             }
             if (mine) {
-                // A loop that was cancelled was stopped by [applyDecision] (switched
-                // to none) or by a pause — both of which know what the wall should
-                // show. One that walked out on its own leaves a frame of ours on the
-                // wall that nobody else will clear.
+                // A loop that was cancelled was stopped by [applyDecision], which knows
+                // what the wall should show. One that walked out on its own leaves a
+                // frame of ours on the wall that nobody else will clear.
                 if (endedOnPurpose && lastSent != null) restoreStaticIfStillMine()
             }
         }
     }
 
     /**
-     * Milliseconds to wait after a frame, given how many LEDs it carries.
+     * Milliseconds to wait after a frame, given how long the frame took and how long
+     * its write took.
      *
-     * One BLE write is acknowledged before the next is issued, so a frame's cost
-     * grows with its LED count: the animation's own tempo is the starting point,
-     * stretched by [PACE_GROUP_MS] per [LEDS_PER_PACE_GROUP] lit LEDs. The
-     * [MAX_ANIMATED_LEDS] cutoff keeps that stretch under half a second.
+     * A flashing effect waits its full [interval] after the write has *finished*:
+     * the wall shows a frame once its last chunk is in, so measuring from the start
+     * would let a slow write followed by a fast one put two colour changes closer
+     * than [PHOTOSENSITIVE_MIN_FRAME_MS]. Everything else keeps its tempo but waits
+     * at least as long as the write took, so the link stays free half the time —
+     * on a controller paced at 100 ms per chunk the effect slows down instead of
+     * crowding out the user's own sends.
+     */
+    internal fun gapAfterFrame(animation: LedAnimation, interval: Long, frameMillis: Long, writeMillis: Long): Long =
+        if (animation.photosensitive) {
+            interval
+        } else {
+            maxOf(interval - frameMillis, writeMillis, MIN_FRAME_GAP_MS)
+        }
+
+    /**
+     * Milliseconds between frames for a climb of [ledCount] lit LEDs.
+     *
+     * The animation's own tempo scaled by [tempo] is the starting point, raised to
+     * [PACE_GROUP_MS] per [LEDS_PER_PACE_GROUP] lit LEDs for big climbs.
      *
      * Last, and never negotiable: [PHOTOSENSITIVE_MIN_FRAME_MS] wins over all of
-     * it for a [LedAnimation.photosensitive] effect, so an animation cannot pace
-     * itself into a hazard. 0 means the frame is too big to animate at all.
+     * it for a [LedAnimation.photosensitive] effect, so neither an animation nor the
+     * tempo can pace a strobe into a hazard. 0 means the frame is too big to animate.
      */
-    internal fun frameIntervalMillis(animation: LedAnimation, ledCount: Int): Long {
+    internal fun frameIntervalMillis(
+        animation: LedAnimation,
+        ledCount: Int,
+        tempo: LedEffectTempo = LedEffectTempo.NORMAL,
+    ): Long {
         if (ledCount <= 0 || ledCount > MAX_ANIMATED_LEDS) return 0L
         val groups = (ledCount + LEDS_PER_PACE_GROUP - 1) / LEDS_PER_PACE_GROUP
         val floor = if (animation.photosensitive) PHOTOSENSITIVE_MIN_FRAME_MS else MIN_FRAME_GAP_MS
-        return maxOf(animation.frameIntervalMillis, groups.toLong() * PACE_GROUP_MS)
-            .coerceAtLeast(floor)
+        val own = (animation.frameIntervalMillis * tempo.factor).roundToLong()
+        return maxOf(own, groups.toLong() * PACE_GROUP_MS).coerceAtLeast(floor)
     }
 
+    private data class BoardInput(
+        val frame: LitFrame?,
+        val availability: LedBoardAvailability,
+        val ended: LitFrame?,
+    )
+
     private data class RunDecision(
-        val requestedId: String,
+        val settings: LedEffectSettings,
+        val availability: LedBoardAvailability,
         val animation: LedAnimation?,
         val wouldAnimate: Boolean,
+        val status: LedEffectStatus,
         val restoreStatic: Boolean,
     )
 }
