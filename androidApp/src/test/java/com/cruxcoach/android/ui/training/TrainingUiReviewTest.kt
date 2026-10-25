@@ -803,6 +803,21 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         }
     }
 
+    /** The injury card: comeback button with its notice, "It's over" instead of "Healed", past injuries. */
+    @Test
+    fun injuriesCard() {
+        comebackInjury(2)
+        val today = service.today()
+        repo.saveInjury(com.cruxcoach.athlete.model.Injury("past1", com.cruxcoach.athlete.model.InjuryRegion.SHOULDER,
+            com.cruxcoach.athlete.model.InjurySide.RIGHT, severity = 2, climbingPaused = false,
+            startedOn = today.minus(kotlinx.datetime.DatePeriod(days = 90)).toString(),
+            resolvedOn = today.minus(kotlinx.datetime.DatePeriod(days = 60)).toString(), updatedAt = 1))
+        val vm = loaded(com.cruxcoach.android.ui.training.athlete.InjuriesViewModel(service))
+        shoot("injuries-card", { waitForTag("injury_cb1") }) {
+            com.cruxcoach.android.ui.training.athlete.InjuriesScreen(onBack = {}, onOpenRoutines = {}, viewModel = vm)
+        }
+    }
+
     @Test
     fun comebackToday() {
         repo.updateProfile { it.copy(fuelIntroAccepted = true, checkinEnabled = false) }
