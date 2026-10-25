@@ -354,8 +354,14 @@ internal object BoardBrowsePolicy {
     fun productSizeId(brand: BoardBrand, selectedId: Int): Int =
         if (brand.usesProductSizeEdgeFit) selectedId else 0
 
+    /** Families whose catalogue stores route rules/tags as missing bits in
+     *  `hsm` (Quantum rules, Shiny Wall categories); their filter mask rides
+     *  the same exclusion predicate as MoonBoard's hold sets. */
+    fun usesRouteTagMask(brand: BoardBrand): Boolean =
+        brand == BoardBrand.QUANTUM || brand == BoardBrand.SHINYWALL
+
     fun exclusionMask(brand: BoardBrand, holdSetMask: Long, quantumRuleMask: Long): Long =
-        if (brand == BoardBrand.QUANTUM) quantumRuleMask else holdSetMask
+        if (usesRouteTagMask(brand)) quantumRuleMask else holdSetMask
 
     fun overlapFilter(
         brand: BoardBrand,
@@ -539,7 +545,7 @@ internal fun BoardBrowserState.onBoardSwitch(
         climbTypeFilter = BoardBrowsePolicy.climbType(brand, filter.climbTypeFilter),
         benchmarkOnly = BoardBrowsePolicy.benchmarkOnly(brand, filter.benchmarkOnly),
         originFilter = BoardBrowsePolicy.origin(brand, filter.originFilter),
-        quantumRuleMask = if (brand == BoardBrand.QUANTUM) filter.quantumRuleMask else 0L,
+        quantumRuleMask = if (BoardBrowsePolicy.usesRouteTagMask(brand)) filter.quantumRuleMask else 0L,
         quantumOverlapFilter = if (brand == BoardBrand.QUANTUM) filter.quantumOverlapFilter
         else QuantumOverlapFilter.OFF,
     ),
@@ -755,7 +761,7 @@ class BoardBrowserViewModel @Inject constructor(
                         climbTypeFilter = BoardBrowsePolicy.climbType(snapBrand, climbType),
                         benchmarkOnly = BoardBrowsePolicy.benchmarkOnly(snapBrand, snap.benchmarkOnly),
                         originFilter = BoardBrowsePolicy.origin(snapBrand, originFilter),
-                        quantumRuleMask = if (snapBrand == BoardBrand.QUANTUM) snap.quantumRuleMask else 0L,
+                        quantumRuleMask = if (BoardBrowsePolicy.usesRouteTagMask(snapBrand)) snap.quantumRuleMask else 0L,
                         quantumOverlapFilter = if (snapBrand == BoardBrand.QUANTUM) {
                             QuantumOverlapFilter.fromWire(snap.quantumOverlapFilter)
                         } else QuantumOverlapFilter.OFF,
@@ -1303,10 +1309,19 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun toggleQuantumRuleFilter(rule: QuantumRuleFilter) {
         if (BoardBrand.fromWire(_state.value.filter.boardBrand) != BoardBrand.QUANTUM) return
+        toggleRouteTagBit(rule.bit)
+    }
+
+    fun toggleShinyWallTagFilter(tag: com.cruxcoach.domain.board.ShinyWallTag) {
+        if (BoardBrand.fromWire(_state.value.filter.boardBrand) != BoardBrand.SHINYWALL) return
+        toggleRouteTagBit(tag.bit)
+    }
+
+    private fun toggleRouteTagBit(bit: Long) {
         invalidateRandomCache()
         _state.update { state ->
             val current = state.filter.quantumRuleMask
-            state.copy(filter = state.filter.copy(quantumRuleMask = current xor rule.bit))
+            state.copy(filter = state.filter.copy(quantumRuleMask = current xor bit))
         }
         persistFilters()
         searchClimbs()
@@ -1441,7 +1456,7 @@ class BoardBrowserViewModel @Inject constructor(
         BrowserOriginFilter.apply(climbs, filter)
 
     private fun applyQuantumRuleFilter(climbs: List<ClimbWithStats>, f: BrowserFilterState): List<ClimbWithStats> {
-        val mask = if (BoardBrand.fromWire(f.boardBrand) == BoardBrand.QUANTUM) f.quantumRuleMask else 0L
+        val mask = if (BoardBrowsePolicy.usesRouteTagMask(BoardBrand.fromWire(f.boardBrand))) f.quantumRuleMask else 0L
         return if (mask == 0L) climbs else climbs.filter { (it.hsm and mask) == 0L }
     }
 

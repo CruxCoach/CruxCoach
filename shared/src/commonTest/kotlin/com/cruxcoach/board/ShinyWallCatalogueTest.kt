@@ -4,6 +4,7 @@ import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.domain.board.ShinyWallCatalogue
+import com.cruxcoach.domain.board.ShinyWallTag
 import com.cruxcoach.domain.board.ShinyWallVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -78,5 +79,32 @@ class ShinyWallCatalogueTest {
         assertNull(ShinyWallCatalogue.frames(listOf(311 to "hand"), ShinyWallVariant.ST1))
         assertNull(ShinyWallCatalogue.frames(listOf(3 to "middle"), ShinyWallVariant.ST1))
         assertEquals("", ShinyWallCatalogue.frames(emptyList(), ShinyWallVariant.ST1))
+    }
+
+    @Test
+    fun styleFlagsFollowTheCatalogueOrder() {
+        assertEquals(setOf(ShinyWallTag.TECHNICAL, ShinyWallTag.CRIMPY), ShinyWallTag.fromStyleMask(0b00101))
+        assertEquals(setOf(ShinyWallTag.CRUXY), ShinyWallTag.fromStyleMask(0b10000))
+        assertEquals(emptySet(), ShinyWallTag.fromStyleMask(0))
+    }
+
+    @Test
+    fun tagsAreStoredAsMissingBitsAndReadBack() {
+        val present = setOf(ShinyWallTag.PHYSICAL, ShinyWallTag.OPEN_FEET)
+        val hsm = ShinyWallTag.missingMask(present)
+        assertEquals(present, ShinyWallTag.presentTags(hsm))
+        // A filter for Physical keeps it, a filter for Crimpy drops it.
+        assertEquals(0L, hsm and ShinyWallTag.PHYSICAL.bit)
+        assertEquals(ShinyWallTag.CRIMPY.bit, hsm and ShinyWallTag.CRIMPY.bit)
+        // Quantum's rule bits (1..16) never touch Shiny Wall tags.
+        assertEquals(0L, ShinyWallTag.ALL_BITS and 31L)
+    }
+
+    @Test
+    fun climbsWithoutTagInformationShowNoTags() {
+        assertEquals(emptySet(), ShinyWallTag.presentTags(0L))
+        // A catalogue route never has both foot rules, so its field is never all-clear.
+        val untagged = ShinyWallTag.missingMask(emptySet())
+        assertEquals(emptySet(), ShinyWallTag.presentTags(untagged))
     }
 }

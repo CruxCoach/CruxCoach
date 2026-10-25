@@ -1156,7 +1156,7 @@ class BoardDatabaseImporter(
                     INSERT OR REPLACE INTO climbs(
                         uuid,layout_id,setter_username,name,frames_count,is_listed,created_at,description,
                         frames,is_nomatch,method,hsm,move_count,board_brand,origin,source,sync_status)
-                    VALUES (?,?,NULL,?,1,1,?,'',?,?,?,0,0,'shinywall','kilter','kilter','synced')
+                    VALUES (?,?,NULL,?,1,1,?,'',?,?,NULL,?,0,'shinywall','kilter','kilter','synced')
                     """.trimIndent()
                 )
                 for ((index, climb) in plan.climbs.withIndex()) {
@@ -1167,7 +1167,7 @@ class BoardDatabaseImporter(
                     climb.createdAt?.let { climbInsert.bindString(4, it) } ?: climbInsert.bindNull(4)
                     climbInsert.bindBlob(5, climb.frames.encodeToByteArray())
                     climbInsert.bindLong(6, if (climb.isNomatch) 1 else 0)
-                    climb.method?.let { climbInsert.bindString(7, it) } ?: climbInsert.bindNull(7)
+                    climbInsert.bindLong(7, climb.hsm)
                     climbInsert.executeInsert()
                     if ((index + 1) % BATCH_SIZE == 0) {
                         onProgress?.invoke(ImportStep.ImportClimbs(index + 1, index + 1, total))

@@ -108,7 +108,7 @@ enum class BoardBrand(val wireValue: String) {
     /** Supports the popular-co-occurring-holds heatmap, which is keyed on
      *  Aurora placement-ids (Kilter + the Aurora-family boards). MoonBoard
      *  hold-ids aren't placement-ids, so it has no heatmap layer. */
-    val hasHeatmap: Boolean get() = usesAuroraProtocol || this == QUANTUM
+    val hasHeatmap: Boolean get() = usesAuroraProtocol || this == QUANTUM || this == SHINYWALL
 
     /** Browse angles must come from the active layout's catalogue instead of
      *  the historical continuous Kilter 0..70 degree control. Quantum models
@@ -157,9 +157,8 @@ enum class BoardBrand(val wireValue: String) {
      *  can't disambiguate the Aurora-family layout-ids from Kilter's — so each
      *  authored climb is tagged with, and stays on, its own board. Info-layer
      *  brands (aurora, 12climb) aren't interactive: no catalogue, no editor.
-     *  Shiny Wall stays browse-and-light only until its hold geometry and
-     *  role semantics are verified on a real wall. */
-    val supportsAuthoring: Boolean get() = isInteractive && this != SHINYWALL
+     *  Shiny Wall authors on its bundled hold geometry. */
+    val supportsAuthoring: Boolean get() = isInteractive
 
     /** Authored climbs can be mirrored to the board vendor's own app
      *  (Kilter → the user's Kilter account). MoonBoard is CruxCoach-community
