@@ -1310,12 +1310,12 @@ class ClimbEditorViewModel @Inject constructor(
             return
         }
         if (cur.editor.brand == BoardBrand.SHINYWALL) {
-            // Shiny Wall lights the whole wall from one state vector; the
-            // editor's placement ids carry the variant. An empty selection
-            // sends an all-off vector, which clears the wall.
+            // Shiny Wall: only the holds that changed since the last update
+            // go out (no dark flash per tap); the editor's placement ids
+            // carry the variant. An empty selection turns the wall dark.
             val variant = com.cruxcoach.domain.board.ShinyWallVariant.fromLayoutId(cur.layoutId) ?: return
             val holds = cur.editor.selectedHolds.map { (pid, role) -> BoardHold(pid, role) }
-            runCatching { bleConnection.sendShinyWallClimb(holds, variant) }.fold(
+            runCatching { bleConnection.updateShinyWallHolds(holds, variant) }.fold(
                 onSuccess = { Log.i(TAG, "syncLeds(shinywall): ok=$it holds=${holds.size}") },
                 onFailure = { Log.w(TAG, "syncLeds(shinywall) threw", it) },
             )

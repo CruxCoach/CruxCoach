@@ -564,6 +564,11 @@ class BoardBleConnection(
     private var serviceDiscoveryHandledGatt: BluetoothGatt? = null
     private var mtuRequestGatt: BluetoothGatt? = null
     private var negotiatedMtu: Int = DEFAULT_ATT_MTU
+    /** What this link last put on a Shiny Wall (variant + state vector), so
+     *  editor and game updates can send only the holds that change. Null
+     *  whenever the wall's state is unknown: new link, clear, cleaning, or a
+     *  failed write. */
+    @Volatile private var shinyWallShown: Pair<ShinyWallVariant, IntArray>? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     /** Default gap between chunks for this link; see [auroraWritePacingMs]. */
     private var writePacingMs = 0L
@@ -1506,6 +1511,7 @@ class BoardBleConnection(
     private fun finalizeDisconnect(status: Int) {
         val wasQuantum = _connectedBoardBrand.value == BoardBrand.QUANTUM
         cancelQuantumGattOperations()
+        shinyWallShown = null
         if (userDisconnecting) {
             closeSafetyJob?.cancel()
             closeSafetyJob = null
@@ -1586,6 +1592,7 @@ class BoardBleConnection(
         cancelQuantumGattOperations()
         quantumStateReadUsable = true
         _connectedQuantumModel.value = null
+        shinyWallShown = null
         attemptBudget = maxAttempts.coerceIn(1, MAX_CONNECT_ATTEMPTS)
         userDisconnecting = false
         _connectionState.value = ConnectionState.CONNECTING
@@ -2269,6 +2276,7 @@ class BoardBleConnection(
     suspend fun startCleaning(expectedAddress: String): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED ||
             currentBoard?.address != expectedAddress || !cleaningState.value.available) return false
+        shinyWallShown = null
         disconnectJob?.cancel()
         try {
             cleaning.start(
@@ -2293,6 +2301,7 @@ class BoardBleConnection(
 
     suspend fun finishCleaning(expectedAddress: String, markCleaned: Boolean): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED || currentBoard?.address != expectedAddress) return false
+        shinyWallShown = null
         try {
             cleaning.finish(
                 markCleaned = markCleaned,
@@ -2435,17 +2444,44 @@ class BoardBleConnection(
     suspend fun sendShinyWallClimb(
         holds: List<BoardHold>,
         variant: ShinyWallVariant,
-    ): Boolean = writeMutex.withLock {
+    ): Boolean = writeMutex.withLock { writeShinyWallLocked(holds, variant, incremental = false) }
+
+    /**
+     * Updates the connected Shiny Wall to show [holds], sending only the holds
+     * that differ from what this link last showed (`*<role><hold>/….`), so the
+     * wall does not go dark in between — for the editor's live preview and
+     * the wall games. Falls back to the full route when the wall's state is
+     * unknown or many holds change.
+     */
+    suspend fun updateShinyWallHolds(
+        holds: List<BoardHold>,
+        variant: ShinyWallVariant,
+    ): Boolean = writeMutex.withLock { writeShinyWallLocked(holds, variant, incremental = true) }
+
+    private suspend fun writeShinyWallLocked(
+        holds: List<BoardHold>,
+        variant: ShinyWallVariant,
+        incremental: Boolean,
+    ): Boolean {
         if (cleaningState.value.active) return false
         val cleaningTicket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED ||
             !shinyWallCommandAllowed(_connectedBoardBrand.value)
         ) return false
-        val writes = ShinyWallFrameEncoder.routeWrites(holds, variant, negotiatedMtu)
-        if (writes == null) {
+        val target = ShinyWallFrameEncoder.stateVector(holds, variant)
+        val fullWrites = ShinyWallFrameEncoder.routeWrites(holds, variant, negotiatedMtu)
+        if (target == null || fullWrites == null) {
             Log.w(TAG, "Refusing Shiny Wall route: ${holds.size} holds do not all belong to ${variant.code}")
             return false
         }
+        val shown = shinyWallShown?.takeIf { incremental && it.first == variant }?.second
+        val writes = if (shown != null) {
+            val changed = target.indices.count { shown[it] != target[it] }
+            if (changed == 0) return true
+            if (changed <= ShinyWallFrameEncoder.MAX_CHANGES_PER_MESSAGE) {
+                ShinyWallFrameEncoder.chunks(ShinyWallFrameEncoder.encodeChanges(shown, target)!!, negotiatedMtu)
+            } else fullWrites
+        } else fullWrites
 
         _connectionState.value = ConnectionState.SENDING
         // Park any pending idle-disconnect so it can't fire mid-send.
@@ -2453,8 +2489,10 @@ class BoardBleConnection(
         disconnectJob?.cancel()
         try {
             val success = writeChunks(writes)
-            Log.i(TAG, "Shiny Wall route ${variant.code}: ${holds.size} holds, ${writes.size} writes, mtu=$negotiatedMtu ok=$success")
-            if (success) cleaning.projected(cleaningTicket, writes)
+            Log.i(TAG, "Shiny Wall ${if (writes === fullWrites) "route" else "changes"} ${variant.code}: ${holds.size} holds, ${writes.size} writes, mtu=$negotiatedMtu ok=$success")
+            shinyWallShown = if (success) variant to target else null
+            // Restoring after hold cleaning always replays the complete route.
+            if (success) cleaning.projected(cleaningTicket, fullWrites)
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
@@ -2507,6 +2545,7 @@ class BoardBleConnection(
         allowQuantumGlobalClear: Boolean,
         expectedQuantumBoard: BoardLayerBoardIdentity?,
     ): Boolean {
+        shinyWallShown = null
         _connectionState.value = ConnectionState.SENDING
         // Park any pending idle-disconnect so it can't fire mid-send.
         // Re-armed from the finally below once we flip back to CONNECTED.
