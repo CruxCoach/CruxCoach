@@ -167,6 +167,9 @@ class RelayAdapterNameGuard(
     }
 
     init {
+        // Exported on purpose: LOCAL_NAME_CHANGED comes from the Bluetooth
+        // process, not the system, and a not-exported receiver never hears it.
+        // Both actions are protected broadcasts that no other app can send.
         ContextCompat.registerReceiver(
             appContext,
             bluetoothReceiver,
@@ -174,7 +177,7 @@ class RelayAdapterNameGuard(
                 addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
                 addAction(BluetoothAdapter.ACTION_LOCAL_NAME_CHANGED)
             },
-            ContextCompat.RECEIVER_NOT_EXPORTED,
+            ContextCompat.RECEIVER_EXPORTED,
         )
     }
 
