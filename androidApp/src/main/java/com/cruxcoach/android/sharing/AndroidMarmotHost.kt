@@ -56,6 +56,7 @@ class AndroidMarmotHost(
         unattended = { interactive.get() == 0 },
         account = account,
         currentAccount = nostrSigner::getPublicKeyHex,
+        policy = SigningPolicy.forEngine(engine),
         provider = Nip01EventSigner { time, kind, tags, content ->
             val external = nostrSigner.signer as? NostrSignerExternal
             if (external == null) {
@@ -73,6 +74,7 @@ class AndroidMarmotHost(
             check(nostrSigner.getPublicKeyHex() == account) { "native_account_changed" }
             val request = Json.parseToJsonElement(argument).jsonObject
             val external = (nostrSigner.signer as? NostrSignerExternal)?.takeIf { interactive.get() == 0 }
+            val policy = SigningPolicy.forEngine(engine)
             when (operation) {
                 "sign" -> {
                     require(request["pubkey"]!!.jsonPrimitive.content == account)
@@ -83,13 +85,13 @@ class AndroidMarmotHost(
                         request["content"]!!.jsonPrimitive.content,
                     )?.let { json.encodeToString(it) }
                 }
-                "nip44_encrypt" -> {
+                "nip44_encrypt" -> if (!policy.nip44) null else {
                     val content = request["content"]!!.jsonPrimitive.content
                     val peer = request["public"]!!.jsonPrimitive.content
                     if (external != null) runCatching { QuartzBackgroundSigner.encrypt(external, content, peer) }.getOrNull()
                     else nostrSigner.signer.nip44Encrypt(content, peer)
                 }
-                "nip44_decrypt" -> {
+                "nip44_decrypt" -> if (!policy.nip44) null else {
                     val content = request["content"]!!.jsonPrimitive.content
                     val peer = request["public"]!!.jsonPrimitive.content
                     if (external != null) runCatching { QuartzBackgroundSigner.decrypt(external, content, peer) }.getOrNull()

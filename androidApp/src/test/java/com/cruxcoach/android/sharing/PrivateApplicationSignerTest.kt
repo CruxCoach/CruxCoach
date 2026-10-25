@@ -19,6 +19,45 @@ import kotlin.test.fail
 
 class PrivateApplicationSignerTest {
     private val account = "a".repeat(64)
+    /** The routing tests below are about channels, not about the policy. */
+    private val ANY = SigningPolicy { _, _, _ -> true }
+    private val key = "A".repeat(42) + "B"
+    private val binding = listOf(listOf("purpose", SigningPolicy.BINDING_PURPOSE), listOf("curve25519", key), listOf("ed25519", key))
+
+    @Test fun the_olm_engine_may_only_have_its_installation_binding_signed() = runBlocking {
+        var calls = 0
+        val source = Nip01EventSigner { time, kind, tags, content -> calls++; SignedNostrEvent("0".repeat(64), account, time, kind, tags, content, "0".repeat(128)) }
+        val signer = PrivateApplicationSigner(source, { true }, source, account, { account }, SigningPolicy.OLM)
+        assertNotNull(signer.sign(1, SigningPolicy.BINDING_KIND, binding, ""))
+        assertEquals(1, calls)
+        val refused = listOf(
+            Triple(1, emptyList<List<String>>(), "synthetic note"),
+            Triple(0, emptyList(), "{}"),
+            Triple(3, emptyList(), ""),
+            Triple(10002, listOf(listOf("r", "wss://relay.example")), ""),
+            Triple(10050, emptyList(), ""),
+            Triple(13, emptyList(), "sealed"),
+            Triple(PrivateApplicationSigner.RELAY_AUTH_KIND, emptyList(), ""),
+            Triple(30443, emptyList(), "key package"),
+            Triple(SigningPolicy.BINDING_KIND, binding, "content"),
+            Triple(SigningPolicy.BINDING_KIND, binding + listOf(listOf("p", account)), ""),
+            Triple(SigningPolicy.BINDING_KIND, binding.reversed(), ""),
+            Triple(SigningPolicy.BINDING_KIND, listOf(binding[0], listOf("curve25519", "short"), binding[2]), ""),
+            Triple(SigningPolicy.BINDING_KIND, listOf(listOf("purpose", "other"), binding[1], binding[2]), ""),
+        )
+        for ((kind, tags, content) in refused) assertNull(signer.sign(1, kind, tags, content), "kind $kind")
+        assertEquals(1, calls, "a refused request never reaches a signer")
+        assertEquals(refused.size, signer.refused.get())
+        assertEquals(false, SigningPolicy.OLM.nip44)
+    }
+
+    @Test fun the_mls_engine_may_sign_seals_relay_authentication_and_key_packages_only() {
+        for (kind in listOf(13, PrivateApplicationSigner.RELAY_AUTH_KIND, 30443)) assertTrue(SigningPolicy.MLS.allows(kind, emptyList(), ""))
+        for (kind in listOf(0, 1, 3, 5, 443, 1059, 10002, 10050, 10051, SigningPolicy.BINDING_KIND)) assertTrue(!SigningPolicy.MLS.allows(kind, emptyList(), ""), "kind $kind")
+        assertTrue(SigningPolicy.MLS.nip44)
+        assertEquals(SigningPolicy.OLM, SigningPolicy.forEngine("olm"))
+        assertEquals(SigningPolicy.MLS, SigningPolicy.forEngine(null))
+    }
 
     @Test fun unattended_refusal_has_no_interactive_fallback() = runBlocking {
         var foreground = 0
@@ -27,7 +66,7 @@ class PrivateApplicationSignerTest {
             foreground = { _, _, _, _ -> foreground++; error("must not open foreground signer") },
             unattended = { true },
             provider = { _, _, _, _ -> background++; null },
-            account = account, currentAccount = { account },
+            account = account, currentAccount = { account }, policy = ANY,
         )
         assertNull(signer.sign(1, 30443, emptyList(), "synthetic key package"))
         assertEquals(1, background)
@@ -40,7 +79,7 @@ class PrivateApplicationSignerTest {
             foreground = { _, _, _, _ -> foreground++; null },
             unattended = { false },
             provider = { _, _, _, _ -> null },
-            account = account, currentAccount = { account },
+            account = account, currentAccount = { account }, policy = ANY,
         )
         assertNull(signer.sign(1, PrivateApplicationSigner.RELAY_AUTH_KIND, emptyList(), ""))
         assertEquals(0, foreground)
@@ -51,7 +90,7 @@ class PrivateApplicationSignerTest {
     @Test fun a_provider_exception_never_opens_a_second_channel() = runBlocking {
         var foreground = 0
         val signer = PrivateApplicationSigner({ _, _, _, _ -> foreground++; null }, { true },
-            { _, _, _, _ -> error("synthetic provider refusal") }, account, { account })
+            { _, _, _, _ -> error("synthetic provider refusal") }, account, { account }, ANY)
         assertFailsWith<IllegalStateException> { signer.sign(1, 10050, emptyList(), "synthetic") }
         assertEquals(0, foreground)
     }
@@ -59,7 +98,7 @@ class PrivateApplicationSignerTest {
     @Test fun wrong_or_changed_account_discards_the_result() = runBlocking {
         val forbidden = Nip01EventSigner { _, _, _, _ -> fail("unauthorized signer call") }
         assertFailsWith<IllegalStateException> {
-            PrivateApplicationSigner(forbidden, { true }, forbidden, account, { "b".repeat(64) }).sign(1, 1, emptyList(), "")
+            PrivateApplicationSigner(forbidden, { true }, forbidden, account, { "b".repeat(64) }, ANY).sign(1, 1, emptyList(), "")
         }
         var current = account
         val switching = Nip01EventSigner { time, kind, tags, content ->
@@ -67,7 +106,7 @@ class PrivateApplicationSignerTest {
             SignedNostrEvent("0".repeat(64), account, time, kind, tags, content, "0".repeat(128))
         }
         assertFailsWith<IllegalStateException> {
-            PrivateApplicationSigner(switching, { false }, switching, account, { current }).sign(1, 1, emptyList(), "")
+            PrivateApplicationSigner(switching, { false }, switching, account, { current }, ANY).sign(1, 1, emptyList(), "")
         }
         Unit
     }
@@ -78,7 +117,7 @@ class PrivateApplicationSignerTest {
             original.copy(createdAt = 2), original.copy(kind = 10050), original.copy(tags = emptyList()), original.copy(content = "changed"))) {
             var calls = 0
             val source = Nip01EventSigner { _, _, _, _ -> calls++; changed }
-            val signer = PrivateApplicationSigner(source, { background }, source, account, { account })
+            val signer = PrivateApplicationSigner(source, { background }, source, account, { account }, ANY)
             assertFailsWith<IllegalStateException> { signer.sign(original.createdAt, original.kind, original.tags, original.content) }
             assertEquals(1, calls)
         }
@@ -96,7 +135,7 @@ class PrivateApplicationSignerTest {
                 }
                 Json.decodeFromJsonElement(SignedNostrEvent.serializer(), MarmotTestNative.value(MarmotTestNative.signEvent(handle, request.toString())))
             }
-            val signer = PrivateApplicationSigner(source, { true }, source, public, { public })
+            val signer = PrivateApplicationSigner(source, { true }, source, public, { public }, ANY)
             val tags = listOf(listOf("l", "synthetic \"tag\"\nβ"))
             val content = "synthetic callback \"quotes\" \\ newline\n日本語"
             val signed = assertNotNull(signer.sign(123, 1230, tags, content))
