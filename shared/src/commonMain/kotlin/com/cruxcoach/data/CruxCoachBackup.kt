@@ -566,10 +566,13 @@ object CruxCoachBackup {
         // file at `require(version in 1..3)` — strictly less compatible for
         // the sake of a field they can safely ignore.
         val climbNotes: List<ClimbNoteExport> = emptyList(),
-        // ── Additive, still version 3 (0.2.4, FEAT-066..068) ───────────
+        // ── Additive, still version 3 (0.2.5, FEAT-066..072) ───────────
         // The athlete database (training, body measurements, fueling,
         // wellbeing). Same reasoning as climbNotes: unknown to older
         // clients, which ignore it and still restore everything else.
+        // Read forward-compatibly: values a newer version added are left
+        // out instead of failing the whole backup.
+        @Serializable(with = ForwardCompatibleAthleteSnapshotSerializer::class)
         val athlete: AthleteSnapshot? = null,
     )
 
