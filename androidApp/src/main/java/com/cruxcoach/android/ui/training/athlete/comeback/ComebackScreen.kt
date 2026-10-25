@@ -307,7 +307,14 @@ private fun BeforeStartDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("comeback_before_dialog"),
         title = { Text(stringResource(R.string.cb_before_title)) },
-        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(stringResource(R.string.cb_before_text)) } },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                // The intended purpose first (owner 2026-10-25): a training aid, not a medical device.
+                Text(stringResource(R.string.cb_purpose), fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 8.dp).testTag("comeback_purpose"))
+                Text(stringResource(R.string.cb_before_text))
+            }
+        },
         confirmButton = {
             TextButton(onClick = onConfirm, modifier = Modifier.testTag("comeback_understood")) { Text(stringResource(R.string.cb_understood)) }
         },

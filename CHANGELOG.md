@@ -276,8 +276,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   exercises out; when you add one yourself or start your own workout with one,
   the app warns and offers "Add anyway". A past injury can be opened again or
   deleted with its comeback diary, and a deletion has Undo.
-- Comeback plan after an injury: a training aid for building load back up
-  together with your doctor or physio – not a substitute for seeing a doctor.
+- Comeback plan after an injury: a training aid, not a medical device, for
+  building load back up together with your doctor or physio – not a substitute
+  for seeing a doctor.
   Enter what you were told (onset, pop, swelling, warning signs, what was
   checked, the finding) and pick the stage you agreed on; the plan shows the
   usual stages for fingers, shoulder, elbow, wrist, ankle, knee, hamstring and

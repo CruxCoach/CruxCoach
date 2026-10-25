@@ -13,6 +13,8 @@
 
     <!-- Before you start -->
     <string name="cb_before_title">Before you start</string>
+    <!-- Intended purpose (owner 2026-10-25, F4); same sentence in the README, store text and release notes. -->
+    <string name="cb_purpose">The plan is a training aid, not a medical device.</string>
     <string name="cb_before_text">This plan helps you build load back up step by step. It is not a substitute for seeing a doctor and it can\'t tell whether your injury has healed – use it only in agreement with your doctor or physio.\n\n• Not checked yet? We recommend a doctor or physio – especially after a pop, swelling or bruising.\n• You choose the stage you agreed with your doctor or physio and can change it anytime. If a professional gave you a plan, follow theirs.\n• Your entries stay on this phone unless you add them to your backup yourself.</string>
     <string name="cb_understood">Got it – in agreement with my doctor or physio</string>
 

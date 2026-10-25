@@ -86,6 +86,7 @@ class ComebackScreenTest : AthleteScreenTest() {
         click("comeback_start")
         // "Bevor du startest": confirmed with "in agreement with my doctor or physio".
         waitForTag("comeback_before_dialog")
+        waitForText("The plan is a training aid, not a medical device.")
         waitForText("not a substitute for seeing a doctor")
         click("comeback_understood")
         compose.waitUntil(WAIT_MS) { repo.injury("i1")?.activePlan != null }
