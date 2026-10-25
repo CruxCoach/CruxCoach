@@ -5,7 +5,7 @@ import com.cruxcoach.data.repository.PersonalBoardRepositoryImpl
 import com.cruxcoach.data.repository.UserRepositoryImpl
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.model.UserProfile
-import com.cruxcoach.domain.sharing.SharingCategory.*
+import com.cruxcoach.domain.sharing.ShareCategory.*
 import kotlin.test.*
 
 class SharingSourceTest {
@@ -14,7 +14,7 @@ class SharingSourceTest {
     private val source = SharingSource(database)
     private val users = UserRepositoryImpl(database)
     private val personal = PersonalBoardRepositoryImpl(database)
-    private val scope = SharingScope(setOf(PROFILE_AND_GOALS, TRAINING_HISTORY, PRIVATE_NOTES), "2026-09-01")
+    private val scope = SharingScope(setOf(CLIMBING_PROFILE, SENDS, ATTEMPTS, CLIMB_NOTES), "2026-09-01")
     @AfterTest fun close() = driver.close()
     private fun profile() = UserProfile(name = "Synthetic climber", age = 42, weightKg = 77.0, heightCm = 181.0,
         apeIndex = 3.0, maxBoulderGrade = "7A", goals = listOf("Endurance"), injuryHistory = listOf("synthetic excluded health"))
@@ -33,7 +33,7 @@ class SharingSourceTest {
     @Test fun training_date_filter_does_not_disclose_comments_location_or_other_scopes() {
         bid("old", "2026-08-31"); bid("current")
         personal.saveClimbNote("synthetic-climb", "private note")
-        val record = source.read(scope.copy(categories = setOf(TRAINING_HISTORY))).single()
+        val record = source.read(scope.copy(categories = setOf(ATTEMPTS))).single()
         assertEquals("bid:current", record.id)
         assertEquals("3", record.fields["attempts"])
         assertTrue(record.fields.values.none { "excluded" in it || "private" in it })
@@ -50,9 +50,25 @@ class SharingSourceTest {
         bid("log")
         assertEquals(first.revision, source.read(scope).single().revision, "equal content, equal revision")
     }
+    @Test fun sends_and_attempts_are_separate_categories() {
+        bid("tried")
+        personal.insertAscent("sent", "synthetic-climb", 40, false, 1, 2, 3, 18, false, "excluded private comment",
+            "2026-09-12 09:15:00", false, "excluded gym", "excluded wall", "excluded product", "Synthetic route", 5.0,
+            "excluded frames", 0, "kilter", null, "excluded external send")
+        val sends = source.read(scope.copy(categories = setOf(SENDS))).single()
+        assertEquals("ascent:sent", sends.id)
+        assertEquals(setOf("climbId", "name", "board", "angle", "attempts", "grade", "date"), sends.fields.keys)
+        assertEquals("18", sends.fields["grade"])
+        assertEquals("2026-09-12", sends.fields["date"])
+        val attempts = source.read(scope.copy(categories = setOf(ATTEMPTS))).single()
+        assertEquals("bid:tried", attempts.id)
+        assertEquals(setOf("climbId", "name", "board", "angle", "attempts", "date"), attempts.fields.keys)
+        assertTrue((sends.fields.values + attempts.fields.values).none { "excluded" in it })
+        assertEquals(setOf(SENDS, ATTEMPTS), source.read(scope).map { it.category }.toSet())
+    }
     @Test fun training_records_carry_the_day_but_never_the_time_of_day() {
         bid("timed", "2026-09-11 18:42:07")
-        val record = source.read(scope.copy(categories = setOf(TRAINING_HISTORY))).single()
+        val record = source.read(scope.copy(categories = setOf(ATTEMPTS))).single()
         assertEquals("2026-09-11", record.fields["date"])
     }
     @Test fun a_rolled_back_source_write_leaves_no_record_and_no_sharing_rows() {
@@ -83,19 +99,19 @@ class SharingSourceTest {
     }
     @Test fun private_note_editor_and_delete_are_the_real_projection() {
         personal.saveClimbNote("climb", "  latest beta  ")
-        assertEquals("latest beta", source.read(scope.copy(categories = setOf(PRIVATE_NOTES))).single().fields["note"])
+        assertEquals("latest beta", source.read(scope.copy(categories = setOf(CLIMB_NOTES))).single().fields["note"])
         personal.saveClimbNote("climb", "new beta")
         assertEquals("new beta", source.read(scope).single().fields["note"])
         personal.saveClimbNote("climb", " ")
         assertTrue(source.read(scope).isEmpty())
     }
     @Test fun an_invalid_cutoff_fails_closed_and_an_empty_scope_shares_nothing() {
-        assertFails { source.read(scope.copy(trainingSince = "2026-13-01")) }
+        assertFails { source.read(scope.copy(since = "2026-13-01")) }
         assertTrue(source.read(scope.copy(categories = emptySet())).isEmpty(), "friendship may share no own data")
     }
     @Test fun source_limit_refuses_whole_projection_instead_of_truncating_initial_state() {
         database.transaction { repeat(1001) { personal.saveClimbNote("climb-$it", "synthetic") } }
-        assertFails { source.read(scope.copy(categories = setOf(PRIVATE_NOTES))) }
+        assertFails { source.read(scope.copy(categories = setOf(CLIMB_NOTES))) }
         assertEquals(1001, personal.getClimbNotesForBackup().size, "canonical data preserved")
     }
     @Test fun changing_one_resource_leaves_other_versions_unchanged() {
@@ -120,9 +136,9 @@ class SharingSourceTest {
 
     @Test fun extended_year_cutoffs_cannot_invert_lexicographic_history_filtering() {
         bid("current")
-        assertFails { source.read(scope.copy(trainingSince = "+10000-01-01")) }
-        assertFails { source.read(scope.copy(trainingSince = "-0001-01-01")) }
-        assertFails { source.read(scope.copy(trainingSince = "2026-02-30")) }
+        assertFails { source.read(scope.copy(since = "+10000-01-01")) }
+        assertFails { source.read(scope.copy(since = "-0001-01-01")) }
+        assertFails { source.read(scope.copy(since = "2026-02-30")) }
     }
 
     @Test fun active_profile_selection_timestamp_also_versions_the_shared_projection() {

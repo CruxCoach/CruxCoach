@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real MDK/JNI in three independent synthetic JVMs; two hostile local relays.
 
-v2 sync semantics end to end: presets, friendship request/acceptance,
+v3 sync semantics end to end: templates, friendship request/acceptance,
 manifest/full/delta/ack/resync over MLS, narrowing, the per-person switch,
 ending and a new friendship, process kill/restart, total relay outage with a
 withdrawn queued update, and an MLS epoch change that keeps the friendship.
@@ -18,9 +18,9 @@ import tempfile
 import time
 from marmot_network_e2e import ROOT, Process
 
-PROFILE = 'PROFILE_AND_GOALS'
-TRAINING = 'TRAINING_HISTORY'
-NOTES = 'PRIVATE_NOTES'
+PROFILE = 'CLIMBING_PROFILE'
+TRAINING = 'ATTEMPTS'
+NOTES = 'CLIMB_NOTES'
 
 
 def run():
@@ -84,22 +84,25 @@ def run():
         b.call('source_note', id='b-own', text='Synthetic B private original marker')
         c.call('source_profile', name='Synthetic C private original marker')
         # Fresh installs start with the owner-chosen defaults; a choice replaces them.
-        defaults = {'FRIENDS': {'categories': [PROFILE, TRAINING], 'days': 30},
-                    'ACQUAINTANCES': {'categories': [PROFILE], 'days': 30}}
-        assert all(p.call('presets') == defaults for p in (a, b, c)), 'default presets on a fresh install'
-        a.call('preset', circle='FRIENDS', categories=[PROFILE, TRAINING], days=30)
-        a.call('preset', circle='ACQUAINTANCES', categories=[NOTES], days=30)
-        b.call('preset', circle='ACQUAINTANCES', categories=[NOTES])
-        c.call('preset', circle='ACQUAINTANCES', categories=[PROFILE])
+        partner = [PROFILE, 'SENDS', TRAINING, NOTES]
+        defaults = {'TRAINING_PARTNER': {'categories': partner, 'days': 30, 'hidden': False},
+                    'FAMILY': {'categories': [PROFILE, 'WEEKLY_VOLUME'], 'days': 30, 'hidden': True},
+                    'COACH': {'categories': partner, 'days': 365, 'hidden': True}}
+        assert all(p.call('templates') == defaults for p in (a, b, c)), 'shipped templates on a fresh install'
+        # Two own templates; there is no inheritance between templates.
+        a.call('template', id='FRIENDS', categories=[PROFILE, TRAINING, NOTES], days=30)
+        a.call('template', id='ACQUAINTANCES', categories=[NOTES], days=30)
+        b.call('template', id='ACQUAINTANCES', categories=[NOTES])
+        c.call('template', id='ACQUAINTANCES', categories=[PROFILE])
         for p in (a, b, c):
             p.call('automatic', enabled='true')
 
-        a.call('request', peer=friend_b, circle='FRIENDS')
-        a.call('request', peer=friend_c, circle='ACQUAINTANCES')
+        a.call('request', peer=friend_b, template='FRIENDS')
+        a.call('request', peer=friend_c, template='ACQUAINTANCES')
         wait(lambda: owner in b.call('friends')['invitations'] and owner in c.call('friends')['invitations'], 'invitations received')
         assert friend(b, owner) is None, 'an invitation is not a friendship'
-        b.call('accept', peer=owner, circle='ACQUAINTANCES', outgoing='true')
-        c.call('accept', peer=owner, circle='ACQUAINTANCES', outgoing='true')
+        b.call('accept', peer=owner, template='ACQUAINTANCES', outgoing='true')
+        c.call('accept', peer=owner, template='ACQUAINTANCES', outgoing='true')
         wait(lambda: matches(b, a, owner, friend_b) and matches(c, a, owner, friend_c)
              and matches(a, b, friend_b, owner) and matches(a, c, friend_c, owner), 'initial state both ways')
         # Friends also get what acquaintances get (the resolver is monotonic).
@@ -162,10 +165,10 @@ def run():
 
         # A new friendship is a new request and a new acceptance.
         a.call('remove', peer=friend_b)
-        a.call('request', peer=friend_b, circle='FRIENDS')
+        a.call('request', peer=friend_b, template='FRIENDS')
         wait(lambda: owner in b.call('friends')['invitations'], 'new request after end')
         b.call('remove', peer=owner)
-        b.call('accept', peer=owner, circle='ACQUAINTANCES', outgoing='false')
+        b.call('accept', peer=owner, template='ACQUAINTANCES', outgoing='false')
         wait(lambda: matches(b, a, owner, friend_b) and friend(a, friend_b)['records'] == [], 'new friendship generation')
 
         # An MLS self-update keeps the friendship and its data flow.
@@ -180,7 +183,7 @@ def run():
                                    a_sends=sorted(r['id'] + '@' + r['hash'][:8] for r in a.call('source_hashes', peer=friend_b)),
                                    epochs=[a.call('epoch', peer=friend_b), b.call('epoch', peer=owner)],
                                    a_status=a.call('status'), b_status=b.call('status')))
-        print(json.dumps(dict(path='THREE-USERS', independent_processes=3, native_crypto=True, default_presets=True,
+        print(json.dumps(dict(path='THREE-USERS', independent_processes=3, native_crypto=True, default_templates=True,
             actual_profile_training_note_repositories=True, invitation_then_acceptance=True, manifest_full_delta=True,
             receiver_acks=True, training_cutoff=True, offline_receiver_restart=True, owner_restart=True,
             narrowing=True, per_person_switch=True, outage_withdrawal_by_end=True, both_directions_deleted=True,

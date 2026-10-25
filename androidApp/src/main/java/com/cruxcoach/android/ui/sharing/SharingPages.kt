@@ -38,27 +38,33 @@ import com.cruxcoach.android.sharing.MarmotStatus
 import com.cruxcoach.android.sharing.PersonState
 import com.cruxcoach.android.sharing.SharingNames
 import com.cruxcoach.android.sharing.SharingPersonDetail
-import com.cruxcoach.android.sharing.SharingPreset
 import com.cruxcoach.android.sharing.SharingRecord
-import com.cruxcoach.android.sharing.TrainingPeriod
 import com.cruxcoach.android.sharing.VisibleState
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.ui.settings.SettingsChoices
 import com.cruxcoach.android.ui.settings.SettingsSectionCard
 import com.cruxcoach.android.ui.settings.SettingsToggleRow
-import com.cruxcoach.domain.sharing.SharingCategory
-import com.cruxcoach.domain.sharing.SharingCircle
+import com.cruxcoach.domain.sharing.ShareCategory
+import com.cruxcoach.domain.sharing.SharePeriod
+import com.cruxcoach.domain.sharing.ShareTemplate
+import com.cruxcoach.domain.sharing.TemplateId
 
 private const val COLLAPSED_ITEMS = 10
 
 /**
- * One person: the one switch for the own direction, circle, categories and
+ * One person: the one switch for the own direction, template, categories and
  * period with visible exceptions, exactly what they receive (with a switch per
  * record), what they share back, and ending with a single confirmation.
  */
 @Composable
-internal fun PersonPage(detail: SharingPersonDetail, busy: Boolean, actions: SharingActions, onRemoved: () -> Unit) {
+internal fun PersonPage(
+    detail: SharingPersonDetail,
+    templates: List<ShareTemplate>,
+    busy: Boolean,
+    actions: SharingActions,
+    onRemoved: () -> Unit,
+) {
     val friend = detail.friend
     val person = friend.person
     val name = friend.displayName
@@ -84,7 +90,7 @@ internal fun PersonPage(detail: SharingPersonDetail, busy: Boolean, actions: Sha
     }
     if (friend.visible == VisibleState.ENDED) {
         SettingsSectionCard {
-            Button(onClick = { actions.requestAgain(friend.peer, person.circle, person.label) }, enabled = !busy,
+            Button(onClick = { actions.requestAgain(friend.peer, person.template, person.label) }, enabled = !busy,
                 modifier = Modifier.testTag("sharing_request_again")) { Text(stringResource(R.string.sharing_request_again)) }
             OutlinedButton(onClick = { actions.remove(friend.peer, onRemoved) }, enabled = !busy,
                 modifier = Modifier.testTag("sharing_remove")) { Text(stringResource(R.string.sharing_remove)) }
@@ -100,29 +106,31 @@ internal fun PersonPage(detail: SharingPersonDetail, busy: Boolean, actions: Sha
             onCheckedChange = { actions.setOutgoing(friend.peer, it) },
             modifier = Modifier.testTag("sharing_person_switch"),
         )
-        Text(stringResource(R.string.sharing_circle_label), style = MaterialTheme.typography.labelLarge)
-        SettingsChoices(SharingLabels.circles.map { it to stringResource(SharingLabels.circle(it)) }, person.circle,
-            { if (!busy && it != person.circle) actions.setCircle(friend.peer, it) })
+        Text(stringResource(R.string.sharing_template_label), style = MaterialTheme.typography.labelLarge)
+        // A hidden template stays selectable for whoever already has it.
+        val offered = templates.filter { !it.hidden || it.id == person.template }
+        SettingsChoices(offered.map { it.id to stringResource(SharingLabels.template(it.id)) }, person.template,
+            { if (!busy && it != person.template) actions.setTemplate(friend.peer, it) })
         HorizontalDivider()
-        SharingCategory.entries.forEach { category ->
+        SharingLabels.categories.forEach { category ->
             val choice = detail.categories.getValue(category)
             SettingsToggleRow(
                 title = stringResource(SharingLabels.category(category)),
-                description = stringResource(categoryInfo(category)),
+                description = stringResource(SharingLabels.categoryInfo(category)),
                 checked = choice.shared,
                 enabled = !busy,
                 onCheckedChange = { actions.setCategory(detail, category, it) },
                 modifier = Modifier.testTag("sharing_category_${category.name}"),
             )
             if (choice.exception != null) {
-                Text(stringResource(R.string.sharing_exception_marker, stringResource(SharingLabels.circle(person.circle))),
+                Text(stringResource(R.string.sharing_exception_marker, stringResource(SharingLabels.template(person.template))),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        if (detail.items.any { it.record.category == SharingCategory.TRAINING_HISTORY } || detail.categories.getValue(SharingCategory.TRAINING_HISTORY).shared) {
+        if (detail.items.any { it.record.category.dated } || detail.categories.any { (category, choice) -> category.dated && choice.shared }) {
             Text(stringResource(R.string.sharing_period_title), style = MaterialTheme.typography.labelLarge)
-            SettingsChoices(TrainingPeriod.choices.map { it to periodLabel(it) }, detail.trainingDays,
-                { if (!busy && it != detail.trainingDays) actions.setTrainingDays(detail, it) })
+            SettingsChoices(SharePeriod.CHOICES.map { it to periodLabel(it) }, detail.periodDays,
+                { if (!busy && it != detail.periodDays) actions.setPeriod(detail, it) })
         }
     }
     SettingsSectionCard {
@@ -139,7 +147,7 @@ internal fun PersonPage(detail: SharingPersonDetail, busy: Boolean, actions: Sha
         when {
             !person.outgoing -> Text(stringResource(R.string.sharing_preview_stopped), style = MaterialTheme.typography.bodyMedium)
             detail.items.isEmpty() -> Text(stringResource(R.string.sharing_preview_empty), style = MaterialTheme.typography.bodyMedium)
-            else -> SharingCategory.entries.forEach { category ->
+            else -> SharingLabels.categories.forEach { category ->
                 val items = detail.items.filter { it.record.category == category }
                 if (items.isEmpty()) return@forEach
                 CategoryHeader(category, stringResource(R.string.sharing_preview_count, items.count { it.included }, items.size))
@@ -163,7 +171,7 @@ internal fun PersonPage(detail: SharingPersonDetail, busy: Boolean, actions: Sha
             Text(stringResource(R.string.sharing_received_none, name), style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.testTag("sharing_received_none"))
         }
-        SharingCategory.entries.forEach { category ->
+        SharingLabels.categories.forEach { category ->
             val records = detail.received.filter { it.category == category }.sortedByDescending { it.fields["date"].orEmpty() }
             if (records.isEmpty()) return@forEach
             CategoryHeader(category, records.size.toString())
@@ -210,14 +218,8 @@ internal fun PersonPage(detail: SharingPersonDetail, busy: Boolean, actions: Sha
     }
 }
 
-private fun categoryInfo(category: SharingCategory): Int = when (category) {
-    SharingCategory.PROFILE_AND_GOALS -> R.string.sharing_category_profile_info
-    SharingCategory.TRAINING_HISTORY -> R.string.sharing_category_training_info
-    SharingCategory.PRIVATE_NOTES -> R.string.sharing_category_notes_info
-}
-
 @Composable
-private fun CategoryHeader(category: SharingCategory, trailing: String) {
+private fun CategoryHeader(category: ShareCategory, trailing: String) {
     Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(stringResource(SharingLabels.category(category)), style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).semantics { heading() })
@@ -259,7 +261,7 @@ private fun RecordSwitch(label: String, exception: Boolean, checked: Boolean, en
 private fun ReceivedLine(record: SharingRecord) {
     Column(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
         Text(recordLabel(record), style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-        if (record.category == SharingCategory.PROFILE_AND_GOALS) {
+        if (record.category == ShareCategory.CLIMBING_PROFILE) {
             record.fields["goals"]?.takeIf { it.isNotBlank() }?.let {
                 Text(stringResource(R.string.sharing_record_goals, it.replace("\n", ", ")), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -268,37 +270,29 @@ private fun ReceivedLine(record: SharingRecord) {
     }
 }
 
-/** A circle's preset: what everyone in it receives unless they have an exception. */
+/** A template: what everyone on it receives unless they have an exception. */
 @Composable
-internal fun PresetPage(presets: Map<SharingCircle, SharingPreset>, circle: SharingCircle, busy: Boolean, actions: SharingActions) {
-    val preset = presets.getValue(circle)
-    // Friends also receive what acquaintances receive.
-    val inherited = if (circle == SharingCircle.FRIENDS) presets.getValue(SharingCircle.ACQUAINTANCES).categories else emptySet()
+internal fun TemplatePage(templates: List<ShareTemplate>, id: TemplateId, busy: Boolean, actions: SharingActions) {
+    val template = templates.firstOrNull { it.id == id } ?: return
     SettingsSectionCard {
-        Text(stringResource(if (circle == SharingCircle.FRIENDS) R.string.sharing_preset_friends_body else R.string.sharing_preset_acquaintances_body),
-            style = MaterialTheme.typography.bodyMedium)
-        SharingCategory.entries.forEach { category ->
-            val viaAcquaintances = category in inherited
+        Text(stringResource(R.string.sharing_template_body), style = MaterialTheme.typography.bodyMedium)
+        SharingLabels.categories.forEach { category ->
             SettingsToggleRow(
                 title = stringResource(SharingLabels.category(category)),
-                description = stringResource(categoryInfo(category)),
-                checked = category in preset.categories || viaAcquaintances,
-                enabled = !busy && !viaAcquaintances,
+                description = stringResource(SharingLabels.categoryInfo(category)),
+                checked = category in template.categories,
+                enabled = !busy,
                 onCheckedChange = { on ->
-                    actions.setPreset(preset.copy(categories = if (on) preset.categories + category else preset.categories - category))
+                    actions.putTemplate(template.copy(categories = if (on) template.categories + category else template.categories - category))
                 },
-                modifier = Modifier.testTag("sharing_preset_category_${category.name}"),
+                modifier = Modifier.testTag("sharing_template_category_${category.name}"),
             )
-            if (viaAcquaintances) {
-                Text(stringResource(R.string.sharing_preset_inherited), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
         }
         Text(stringResource(R.string.sharing_period_title), style = MaterialTheme.typography.labelLarge)
-        SettingsChoices(TrainingPeriod.choices.map { it to periodLabel(it) }, preset.trainingDays,
-            { if (!busy && it != preset.trainingDays) actions.setPreset(preset.copy(trainingDays = it)) })
+        SettingsChoices(SharePeriod.CHOICES.map { it to periodLabel(it) }, template.periodDays,
+            { if (!busy && it != template.periodDays) actions.putTemplate(template.copy(periodDays = it)) })
     }
-    Text(stringResource(R.string.sharing_preset_applies), style = MaterialTheme.typography.bodySmall,
+    Text(stringResource(R.string.sharing_template_applies), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 

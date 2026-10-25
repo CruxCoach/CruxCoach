@@ -55,16 +55,16 @@ def main():
         for i in range(args.records):
             a.call("source_training", id=f"m{i:05d}", attempts=str(1 + i % 9), date=today)
         fill_s = time.monotonic() - started
-        a.call("preset", circle="FRIENDS", categories=["TRAINING_HISTORY"], days=30)
+        a.call("template", id="FRIENDS", categories=["ATTEMPTS"], days=30)
         for p in (a, b):
             p.call("automatic", enabled="true")
-        a.call("request", peer=friend, circle="FRIENDS")
+        a.call("request", peer=friend, template="FRIENDS")
         deadline = time.monotonic() + 600
         while owner not in b.call("friends")["invitations"]:
             assert time.monotonic() < deadline, "invitation"
             time.sleep(0.2)
         accepted = time.monotonic()
-        b.call("accept", peer=owner, circle="ACQUAINTANCES", outgoing="false")
+        b.call("accept", peer=owner, template="TRAINING_PARTNER", outgoing="false")
         expected = a.call("source_hashes", peer=friend)
         assert len(expected) == args.records, len(expected)
         while True:

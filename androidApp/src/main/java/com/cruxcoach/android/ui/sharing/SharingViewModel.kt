@@ -10,11 +10,11 @@ import com.cruxcoach.android.sharing.PreviewItem
 import com.cruxcoach.android.sharing.SharingOverview
 import com.cruxcoach.android.sharing.SharingPeerIdParser
 import com.cruxcoach.android.sharing.SharingPersonDetail
-import com.cruxcoach.android.sharing.SharingPreset
 import com.cruxcoach.android.sharing.SharingService
 import com.cruxcoach.domain.sharing.AccessEffect
-import com.cruxcoach.domain.sharing.SharingCategory
-import com.cruxcoach.domain.sharing.SharingCircle
+import com.cruxcoach.domain.sharing.ShareCategory
+import com.cruxcoach.domain.sharing.ShareTemplate
+import com.cruxcoach.domain.sharing.TemplateId
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,7 +72,7 @@ class SharingViewModel @Inject constructor(
     fun syncNow() = act { service.syncNow() }
 
     /** Returns through [onSent] only when the request is really recorded. */
-    fun request(typed: String, circle: SharingCircle, label: String, onSent: () -> Unit) {
+    fun request(typed: String, template: TemplateId, label: String, onSent: () -> Unit) {
         when (val parsed = SharingPeerIdParser.parse(typed)) {
             is PeerIdParseResult.Invalid -> _state.update {
                 it.copy(requestError = when (parsed.error) {
@@ -86,31 +86,32 @@ class SharingViewModel @Inject constructor(
                     _state.update { it.copy(requestError = RequestError.SELF) }
                     return
                 }
-                act { service.request(parsed.peer.value, circle, label.trim().ifEmpty { null }); onSent() }
+                act { service.request(parsed.peer.value, template, label.trim().ifEmpty { null }); onSent() }
             }
         }
     }
 
     fun clearRequestError() = _state.update { it.copy(requestError = null) }
-    fun requestAgain(peer: String, circle: SharingCircle, label: String?) = act { service.request(peer, circle, label) }
-    fun accept(peer: String, circle: SharingCircle, outgoing: Boolean) = act { service.accept(peer, circle, outgoing) }
+    fun requestAgain(peer: String, template: TemplateId, label: String?) = act { service.request(peer, template, label) }
+    fun accept(peer: String, template: TemplateId, outgoing: Boolean) = act { service.accept(peer, template, outgoing) }
     fun decline(peer: String) = act { service.decline(peer) }
     fun setOutgoing(peer: String, outgoing: Boolean) = act { service.setOutgoing(peer, outgoing) }
-    fun setCircle(peer: String, circle: SharingCircle) = act { service.setCircle(peer, circle) }
+    fun setTemplate(peer: String, template: TemplateId) = act { service.setTemplate(peer, template) }
     fun setLabel(peer: String, label: String) = act { service.setLabel(peer, label) }
     fun end(peer: String) = act { service.end(peer) }
     fun remove(peer: String, onRemoved: () -> Unit) = act { service.remove(peer); onRemoved() }
-    fun setPreset(preset: SharingPreset) = act { service.setPreset(preset) }
+    fun putTemplate(template: ShareTemplate) = act { service.putTemplate(template) }
+    fun setAge(atLeastSixteen: Boolean) = act { service.setAge(atLeastSixteen) }
 
-    /** A category switch: matching the preset again removes the exception. */
-    fun setCategory(detail: SharingPersonDetail, category: SharingCategory, shared: Boolean) = act {
-        val byPreset = detail.categories.getValue(category).byPreset
-        service.setPersonRule(detail.friend.peer, category, if (shared == byPreset) null else effect(shared))
+    /** A category switch: matching the template again removes the exception. */
+    fun setCategory(detail: SharingPersonDetail, category: ShareCategory, shared: Boolean) = act {
+        val byTemplate = detail.categories.getValue(category).byTemplate
+        service.setPersonRule(detail.friend.peer, category, if (shared == byTemplate) null else effect(shared))
     }
 
-    /** A period choice equal to the preset follows the preset again. */
-    fun setTrainingDays(detail: SharingPersonDetail, days: Int) = act {
-        service.setTrainingDays(detail.friend.peer, days.takeIf { it != detail.preset.trainingDays })
+    /** A period choice equal to the template follows the template again. */
+    fun setPeriod(detail: SharingPersonDetail, days: Int) = act {
+        service.setPeriod(detail.friend.peer, days.takeIf { it != detail.template.periodDays })
     }
 
     /** A record switch: matching its category again removes the exception. */

@@ -1,5 +1,12 @@
 # Testanleitung: Persönliche Daten teilen (Marmot v2)
 
+> **Veraltet seit dem Freigabe-Modell v3 (FEAT-073, `feat/permission-foundations`):** Statt der Kreise
+> „Freunde“ und „Bekannte“ gibt es Vorlagen (heute sichtbar: „Trainingspartner“ = Profil & Ziele,
+> Begehungen und Versuche der letzten 30 Tage, Notizen). „Trainingshistorie“ ist in „Begehungen“ und
+> „Versuche“ geteilt. „Auch meine Daten teilen“ steht beim Annehmen auf aus. Vor dem ersten Teilen fragt
+> die App „Bist du 16 oder älter?“. Die Abläufe unten mit Kreisen und Voreinstellungen gelten so nicht
+> mehr; eine neue Anleitung folgt.
+
 Stand: 23. September 2026, Branch `feat/marmot-permissions-v2` (Zielarchitektur
 [marmot-permissions-v2-target.md](../architecture/marmot-permissions-v2-target.md),
 [deutsche Übersicht](../architecture/marmot-permissions-v2-target-overview.de.md)).

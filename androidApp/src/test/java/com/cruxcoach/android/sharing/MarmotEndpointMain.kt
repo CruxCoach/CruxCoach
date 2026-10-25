@@ -149,7 +149,13 @@ class SharingEndpointCommands(endpoint: SyntheticMarmotEndpoint) : EndpointComma
     }
 
     private fun categories(request: kotlinx.serialization.json.JsonObject) =
-        request["categories"]!!.jsonArray.map { com.cruxcoach.domain.sharing.SharingCategory.valueOf(it.jsonPrimitive.content) }.toSet()
+        request["categories"]!!.jsonArray.map { com.cruxcoach.domain.sharing.ShareCategory.valueOf(it.jsonPrimitive.content) }.toSet()
+
+    private fun template(request: kotlinx.serialization.json.JsonObject) =
+        com.cruxcoach.domain.sharing.TemplateId(request["template"]?.jsonPrimitive?.content ?: "TRAINING_PARTNER")
+
+    // Synthetic participants are adults: the age question is answered once at start.
+    init { kotlinx.coroutines.runBlocking { endpoint.service.setAge(true) } }
 
     override fun run(request: kotlinx.serialization.json.JsonObject): JsonElement {
         endpoint.note("command wait ${request["op"]}")
@@ -183,29 +189,31 @@ class SharingEndpointCommands(endpoint: SyntheticMarmotEndpoint) : EndpointComma
                     }
                     JsonPrimitive(true)
                 }
-                "preset" -> {
-                    service.setPreset(SharingPreset(com.cruxcoach.domain.sharing.SharingCircle.valueOf(field("circle")), categories(request),
-                        request["days"]?.jsonPrimitive?.content?.toInt() ?: TrainingPeriod.DEFAULT))
+                "template" -> {
+                    val id = com.cruxcoach.domain.sharing.TemplateId(field("id"))
+                    val days = request["days"]?.jsonPrimitive?.content?.toInt() ?: com.cruxcoach.domain.sharing.SharePeriod.DEFAULT
+                    service.putTemplate(com.cruxcoach.domain.sharing.ShareTemplate(id, categories(request), days))
                     JsonPrimitive(true)
                 }
-                "presets" -> buildJsonObject {
-                    endpoint.store.presets().forEach { (circle, preset) ->
-                        put(circle.name, buildJsonObject {
-                            put("categories", buildJsonArray { preset.categories.sorted().forEach { add(JsonPrimitive(it.name)) } })
-                            put("days", preset.trainingDays)
+                "templates" -> buildJsonObject {
+                    endpoint.store.templates().forEach { t ->
+                        put(t.id.value, buildJsonObject {
+                            put("categories", buildJsonArray { t.categories.sortedBy { it.ordinal }.forEach { add(JsonPrimitive(it.name)) } })
+                            put("days", t.periodDays)
+                            put("hidden", t.hidden)
                         })
                     }
                 }
-                "request" -> { service.request(field("peer"), com.cruxcoach.domain.sharing.SharingCircle.valueOf(field("circle")), null); JsonPrimitive(true) }
+                "request" -> { service.request(field("peer"), template(request), null); JsonPrimitive(true) }
                 "accept" -> {
-                    service.accept(field("peer"), com.cruxcoach.domain.sharing.SharingCircle.valueOf(field("circle")), field("outgoing").toBooleanStrict())
+                    service.accept(field("peer"), template(request), field("outgoing").toBooleanStrict())
                     JsonPrimitive(true)
                 }
                 "decline" -> { service.decline(field("peer")); JsonPrimitive(true) }
                 "outgoing" -> { service.setOutgoing(field("peer"), field("enabled").toBooleanStrict()); JsonPrimitive(true) }
                 "person_rule" -> {
                     val effect = request["effect"]?.jsonPrimitive?.content?.let { com.cruxcoach.domain.sharing.AccessEffect.valueOf(it) }
-                    service.setPersonRule(field("peer"), com.cruxcoach.domain.sharing.SharingCategory.valueOf(field("category")), effect)
+                    service.setPersonRule(field("peer"), com.cruxcoach.domain.sharing.ShareCategory.valueOf(field("category")), effect)
                     JsonPrimitive(true)
                 }
                 "end_friendship" -> { service.end(field("peer")); JsonPrimitive(true) }

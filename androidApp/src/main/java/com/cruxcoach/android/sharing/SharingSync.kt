@@ -1,6 +1,5 @@
 package com.cruxcoach.android.sharing
 
-import com.cruxcoach.domain.sharing.SharingCategory
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
@@ -262,11 +261,11 @@ class SharingSync(
     }
 
     /** Delete received records outside [scope]: categories no longer shared and
-     * training older than the cutoff. */
+     * dated records older than the cutoff. */
     private fun narrow(peer: String, scope: ShareScope) {
         for (record in store.records(peer)) {
             val outside = record.category !in scope.categories ||
-                record.category == SharingCategory.TRAINING_HISTORY && scope.cutoff != null &&
+                record.category.dated && scope.cutoff != null &&
                 (record.fields["date"]?.take(10) ?: "") < scope.cutoff
             if (outside) store.deleteRecord(peer, record.id)
         }
@@ -308,13 +307,13 @@ class SharingSync(
 
     // ---- sending -----------------------------------------------------------------------------
 
-    private suspend fun send(host: MarmotHost, person: SharingPerson, status: MarmotStatus, policy: com.cruxcoach.domain.sharing.SharingPolicy) {
+    private suspend fun send(host: MarmotHost, person: SharingPerson, status: MarmotStatus, policy: com.cruxcoach.domain.sharing.SharePolicy) {
         if (person.state != PersonState.CONNECTED) return
         val native = status.peers.firstOrNull { it.account == person.peer } ?: return
         if (!native.active) return
         val now = clock()
-        val scope = store.scope(person, policy, today())
-        val target = runCatching { store.selected(person, scope, policy, source) }.getOrElse { return }
+        val scope = store.scope(person, policy, now, today())
+        val target = runCatching { store.selected(person, scope, policy, source, now) }.getOrElse { return }
         val targetMap = target.associate { it.id to it.revision }
         val out = store.outgoing(person.peer)
         // A withdrawal after this generation started (for example one whose app

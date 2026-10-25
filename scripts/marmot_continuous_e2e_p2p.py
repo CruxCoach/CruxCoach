@@ -25,9 +25,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from marmot_network_e2e import ROOT, Process  # noqa: E402
 from marmot_p2p_proxy import HostileProxy  # noqa: E402
 
-PROFILE = 'PROFILE_AND_GOALS'
-TRAINING = 'TRAINING_HISTORY'
-NOTES = 'PRIVATE_NOTES'
+PROFILE = 'CLIMBING_PROFILE'
+TRAINING = 'ATTEMPTS'
+NOTES = 'CLIMB_NOTES'
 SEED = int(os.environ.get('CC_P2P_SEED', secrets.randbelow(1 << 30)))
 
 
@@ -92,27 +92,30 @@ def run():
         a.call('source_training', id='excluded-history', attempts='8', date='2000-01-01')
         b.call('source_note', id='b-own', text='Synthetic B private original marker')
         c.call('source_profile', name='Synthetic C private original marker')
-        defaults = {'FRIENDS': {'categories': [PROFILE, TRAINING], 'days': 30},
-                    'ACQUAINTANCES': {'categories': [PROFILE], 'days': 30}}
-        assert all(p.call('presets') == defaults for p in (a, b, c)), 'default presets on a fresh install'
-        a.call('preset', circle='FRIENDS', categories=[PROFILE, TRAINING], days=30)
-        a.call('preset', circle='ACQUAINTANCES', categories=[NOTES], days=30)
-        b.call('preset', circle='ACQUAINTANCES', categories=[NOTES])
-        c.call('preset', circle='ACQUAINTANCES', categories=[PROFILE])
+        partner = [PROFILE, 'SENDS', TRAINING, NOTES]
+        defaults = {'TRAINING_PARTNER': {'categories': partner, 'days': 30, 'hidden': False},
+                    'FAMILY': {'categories': [PROFILE, 'WEEKLY_VOLUME'], 'days': 30, 'hidden': True},
+                    'COACH': {'categories': partner, 'days': 365, 'hidden': True}}
+        assert all(p.call('templates') == defaults for p in (a, b, c)), 'shipped templates on a fresh install'
+        # Two own templates; there is no inheritance between templates.
+        a.call('template', id='FRIENDS', categories=[PROFILE, TRAINING, NOTES], days=30)
+        a.call('template', id='ACQUAINTANCES', categories=[NOTES], days=30)
+        b.call('template', id='ACQUAINTANCES', categories=[NOTES])
+        c.call('template', id='ACQUAINTANCES', categories=[PROFILE])
         for p in (a, b, c):
             p.call('automatic', enabled='true')
 
         # B and C show a contact code, A scans both: each sealed invitation
         # travels over the LAN to exactly the device that showed the code.
         code_b, code_c = b.call('contact_code')['payload'], c.call('contact_code')['payload']
-        a.call('request', peer=friend_b, circle='FRIENDS')
+        a.call('request', peer=friend_b, template='FRIENDS')
         a.call('import_contact', payload=code_b)
-        a.call('request', peer=friend_c, circle='ACQUAINTANCES')
+        a.call('request', peer=friend_c, template='ACQUAINTANCES')
         a.call('import_contact', payload=code_c)
         wait(lambda: owner in b.call('friends')['invitations'] and owner in c.call('friends')['invitations'], 'invitations received')
         assert friend(b, owner) is None, 'an invitation is not a friendship'
-        b.call('accept', peer=owner, circle='ACQUAINTANCES', outgoing='true')
-        c.call('accept', peer=owner, circle='ACQUAINTANCES', outgoing='true')
+        b.call('accept', peer=owner, template='ACQUAINTANCES', outgoing='true')
+        c.call('accept', peer=owner, template='ACQUAINTANCES', outgoing='true')
         wait(lambda: matches(b, a, owner, friend_b) and matches(c, a, owner, friend_c)
              and matches(a, b, friend_b, owner) and matches(a, c, friend_c, owner), 'initial state both ways',
              describe=lambda: dict(b_sees_a=summary(b, owner), a_sees_b=summary(a, friend_b)))
@@ -170,11 +173,11 @@ def run():
         assert b.call('canonical_counts') == dict(notes=1, profiles=0), 'canonical data untouched'
 
         a.call('remove', peer=friend_b)
-        a.call('request', peer=friend_b, circle='FRIENDS')
+        a.call('request', peer=friend_b, template='FRIENDS')
         a.call('import_contact', payload=b.call('contact_code')['payload'])
         wait(lambda: owner in b.call('friends')['invitations'], 'new request after end')
         b.call('remove', peer=owner)
-        b.call('accept', peer=owner, circle='ACQUAINTANCES', outgoing='false')
+        b.call('accept', peer=owner, template='ACQUAINTANCES', outgoing='false')
         wait(lambda: matches(b, a, owner, friend_b) and friend(a, friend_b)['records'] == [], 'new friendship generation')
 
         # Unwedge: messages lost beyond Olm's window; the session is rebuilt
@@ -191,7 +194,7 @@ def run():
             for k, v in p.stats.items():
                 faults[k] = faults.get(k, 0) + v
         print(json.dumps(dict(path='P2P-THREE', seed=SEED, independent_processes=3, native_crypto='olm/vodozemac',
-            relay=False, blossom=False, default_presets=True, lan_invitation_then_acceptance=True, manifest_full_delta=True,
+            relay=False, blossom=False, default_templates=True, lan_invitation_then_acceptance=True, manifest_full_delta=True,
             receiver_acks=True, training_cutoff=True, offline_receiver_restart=True, owner_restart=True,
             narrowing=True, per_person_switch=True, outage_withdrawal_by_end=True, both_directions_deleted=True,
             new_friendship_generation=True, unwedge_keeps_friendship=True, canonical_data_separate=True,

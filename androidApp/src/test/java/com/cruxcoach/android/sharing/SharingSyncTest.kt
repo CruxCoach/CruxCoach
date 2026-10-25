@@ -6,10 +6,12 @@ import com.cruxcoach.data.repository.UserRepositoryImpl
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.model.UserProfile
 import com.cruxcoach.domain.sharing.AccessEffect
-import com.cruxcoach.domain.sharing.SharingCategory.PRIVATE_NOTES
-import com.cruxcoach.domain.sharing.SharingCategory.PROFILE_AND_GOALS
-import com.cruxcoach.domain.sharing.SharingCategory.TRAINING_HISTORY
-import com.cruxcoach.domain.sharing.SharingCircle
+import com.cruxcoach.domain.sharing.ShareCategory
+import com.cruxcoach.domain.sharing.ShareCategory.ATTEMPTS
+import com.cruxcoach.domain.sharing.ShareCategory.CLIMBING_PROFILE
+import com.cruxcoach.domain.sharing.ShareCategory.CLIMB_NOTES
+import com.cruxcoach.domain.sharing.SharePeriod
+import com.cruxcoach.domain.sharing.ShareTemplates
 import kotlinx.coroutines.runBlocking
 import java.time.LocalDate
 import kotlin.test.AfterTest
@@ -54,7 +56,15 @@ class SharingSyncTest {
         fun expected(to: Endpoint) = service.preview(to.account).associate { it.id to it.fields }
         fun overview() = runBlocking { service.overview() }
         fun friend(of: Endpoint) = overview().friends.single { it.peer == of.account }
+        /** What this person gives a training partner (the template every test uses). */
+        fun shares(categories: Set<ShareCategory>) = runBlocking {
+            service.putTemplate(ShareTemplates.TRAINING_PARTNER.copy(categories = categories, periodDays = SharePeriod.DEFAULT))
+        }
+
+        init { runBlocking { service.setAge(true) } }
     }
+
+    private val partner = ShareTemplates.TRAINING_PARTNER.id
 
     private val alice = Endpoint("a".repeat(64))
     private val bob = Endpoint("b".repeat(64))
@@ -64,13 +74,13 @@ class SharingSyncTest {
     private fun settle(rounds: Int = 4, order: (List<Triple<String, String, String>>) -> List<Triple<String, String, String>> = { it }) =
         repeat(rounds) { alice.pass(); bob.pass(); net.deliver(order) }
 
-    private fun befriend(aliceShares: Set<com.cruxcoach.domain.sharing.SharingCategory>, bobShares: Set<com.cruxcoach.domain.sharing.SharingCategory>) = runBlocking {
-        alice.service.setPreset(SharingPreset(SharingCircle.FRIENDS, aliceShares, TrainingPeriod.DEFAULT))
-        bob.service.setPreset(SharingPreset(SharingCircle.ACQUAINTANCES, bobShares, TrainingPeriod.DEFAULT))
-        alice.service.request(bob.account, SharingCircle.FRIENDS, "Bob")
+    private fun befriend(aliceShares: Set<ShareCategory>, bobShares: Set<ShareCategory>) = runBlocking {
+        alice.shares(aliceShares)
+        bob.shares(bobShares)
+        alice.service.request(bob.account, partner, "Bob")
         assertEquals(VisibleState.PENDING, alice.friend(bob).visible)
         assertEquals(listOf(alice.account), bob.overview().invitations.map { it.peer })
-        bob.service.accept(alice.account, SharingCircle.ACQUAINTANCES, outgoing = true)
+        bob.service.accept(alice.account, partner, outgoing = true)
         settle()
         assertEquals(VisibleState.ACTIVE, alice.friend(bob).visible)
         assertEquals(VisibleState.ACTIVE, bob.friend(alice).visible)
@@ -82,7 +92,7 @@ class SharingSyncTest {
         alice.training("t1", "2026-09-20")
         bob.note("m1", "bob beta")
         bob.profile("Bob private profile")
-        befriend(setOf(PROFILE_AND_GOALS, PRIVATE_NOTES), setOf(PRIVATE_NOTES))
+        befriend(setOf(CLIMBING_PROFILE, CLIMB_NOTES), setOf(CLIMB_NOTES))
         assertEquals(alice.expected(bob), bob.received(alice))
         assertEquals(setOf("profile:active", "note:n1"), bob.received(alice).keys)
         assertEquals(bob.expected(alice), alice.received(bob))
@@ -94,7 +104,7 @@ class SharingSyncTest {
     }
 
     @Test fun edits_and_deletions_are_deltas_and_idempotent_under_duplicate_and_reversed_delivery() {
-        befriend(setOf(PRIVATE_NOTES), emptySet())
+        befriend(setOf(CLIMB_NOTES), emptySet())
         alice.note("n1", "first")
         alice.note("n2", "second")
         settle(order = { it.reversed() + it })
@@ -112,7 +122,7 @@ class SharingSyncTest {
 
     @Test fun many_records_travel_as_pages_in_any_order() {
         repeat(40) { alice.note("n$it", "note $it") }
-        befriend(setOf(PRIVATE_NOTES), emptySet())
+        befriend(setOf(CLIMB_NOTES), emptySet())
         assertEquals(40, bob.received(alice).size)
         repeat(40) { alice.note("n$it", "edited $it") }
         settle(order = { it.shuffled(java.util.Random(7)) + it })
@@ -120,14 +130,14 @@ class SharingSyncTest {
     }
 
     @Test fun narrowing_withdraws_queued_messages_before_the_new_policy_commits() = runBlocking {
-        befriend(setOf(PRIVATE_NOTES, PROFILE_AND_GOALS), emptySet())
+        befriend(setOf(CLIMB_NOTES, CLIMBING_PROFILE), emptySet())
         alice.note("n1", "shared before")
         settle()
         assertTrue("note:n1" in bob.received(alice))
         alice.note("n1", "written just before the narrowing")
         alice.pass() // the delta is queued natively but not delivered yet
         assertTrue(alice.node.outbox.any { it.first == bob.account })
-        alice.service.setPersonRule(bob.account, PRIVATE_NOTES, AccessEffect.DENY)
+        alice.service.setPersonRule(bob.account, CLIMB_NOTES, AccessEffect.DENY)
         assertTrue(alice.node.outbox.none { it.first == bob.account }, "withdrawn before the commit")
         settle()
         assertTrue(bob.received(alice).keys.none { it.startsWith("note:") })
@@ -137,7 +147,7 @@ class SharingSyncTest {
 
     @Test fun switching_off_stops_the_direction_and_leaves_the_friend_with_nothing() = runBlocking {
         alice.note("n1", "beta")
-        befriend(setOf(PRIVATE_NOTES), setOf(PRIVATE_NOTES))
+        befriend(setOf(CLIMB_NOTES), setOf(CLIMB_NOTES))
         alice.service.setOutgoing(bob.account, false)
         settle()
         assertEquals(VisibleState.STOPPED, alice.friend(bob).visible)
@@ -149,7 +159,7 @@ class SharingSyncTest {
     }
 
     @Test fun a_lost_message_is_caught_by_the_digest_and_repaired_by_a_resync() {
-        befriend(setOf(PRIVATE_NOTES), emptySet())
+        befriend(setOf(CLIMB_NOTES), emptySet())
         alice.note("n1", "one")
         settle()
         alice.note("n2", "two")
@@ -164,7 +174,7 @@ class SharingSyncTest {
     }
 
     @Test fun a_crash_between_native_admission_and_the_app_commit_converges() {
-        befriend(setOf(PRIVATE_NOTES), emptySet())
+        befriend(setOf(CLIMB_NOTES), emptySet())
         alice.note("n1", "one")
         settle()
         val committed = alice.store.outgoing(bob.account)!!
@@ -180,7 +190,7 @@ class SharingSyncTest {
     @Test fun ending_deletes_both_directions_and_a_new_request_starts_over() = runBlocking {
         alice.note("n1", "alice")
         bob.note("m1", "bob")
-        befriend(setOf(PRIVATE_NOTES), setOf(PRIVATE_NOTES))
+        befriend(setOf(CLIMB_NOTES), setOf(CLIMB_NOTES))
         bob.service.end(alice.account)
         assertTrue(bob.received(alice).isEmpty(), "local deletion is immediate")
         settle()
@@ -188,26 +198,26 @@ class SharingSyncTest {
         assertEquals(VisibleState.ENDED, alice.friend(bob).visible)
         assertTrue(alice.received(bob).isEmpty())
         alice.service.remove(bob.account)
-        alice.service.request(bob.account, SharingCircle.FRIENDS, null)
+        alice.service.request(bob.account, partner, null)
         bob.service.remove(alice.account)
-        bob.service.accept(alice.account, SharingCircle.ACQUAINTANCES, outgoing = false)
+        bob.service.accept(alice.account, partner, outgoing = false)
         settle()
         assertEquals(alice.expected(bob), bob.received(alice))
         assertTrue(alice.received(bob).isEmpty())
     }
 
-    @Test fun object_exceptions_and_the_training_cutoff_decide_per_record() = runBlocking {
+    @Test fun object_exceptions_and_the_period_cutoff_decide_per_record() = runBlocking {
         alice.note("n1", "private")
         alice.note("n2", "for bob")
         alice.training("recent", "2026-09-20")
         alice.training("old", "2026-01-01")
-        befriend(setOf(TRAINING_HISTORY), emptySet())
+        befriend(setOf(ATTEMPTS), emptySet())
         assertEquals(setOf("bid:recent"), bob.received(alice).keys)
-        alice.service.setObjectRule(bob.account, "note:n2", PRIVATE_NOTES, AccessEffect.ALLOW)
-        alice.service.setTrainingDays(bob.account, TrainingPeriod.ALL)
+        alice.service.setObjectRule(bob.account, "note:n2", CLIMB_NOTES, AccessEffect.ALLOW)
+        alice.service.setPeriod(bob.account, SharePeriod.ALL)
         settle()
         assertEquals(setOf("bid:recent", "bid:old", "note:n2"), bob.received(alice).keys)
-        alice.service.setTrainingDays(bob.account, 30)
+        alice.service.setPeriod(bob.account, 30)
         settle()
         assertEquals(setOf("bid:recent", "note:n2"), bob.received(alice).keys)
         assertEquals(alice.expected(bob), bob.received(alice))
@@ -215,8 +225,8 @@ class SharingSyncTest {
 
     @Test fun an_unaccepted_invitation_delivers_nothing_and_a_declined_one_leaves_no_trace() = runBlocking {
         alice.note("n1", "beta")
-        alice.service.setPreset(SharingPreset(SharingCircle.FRIENDS, setOf(PRIVATE_NOTES), 30))
-        alice.service.request(bob.account, SharingCircle.FRIENDS, null)
+        alice.shares(setOf(CLIMB_NOTES))
+        alice.service.request(bob.account, partner, null)
         settle()
         assertTrue(bob.store.persons().isEmpty())
         assertTrue(alice.node.outbox.isEmpty() && bob.node.inbox.isEmpty(), "the inviter waits for acceptance")
@@ -227,7 +237,7 @@ class SharingSyncTest {
     }
 
     @Test fun a_note_too_long_to_send_is_left_out_alone_and_over_the_limit_the_page_says_so() = runBlocking {
-        befriend(setOf(TRAINING_HISTORY, PRIVATE_NOTES), emptySet())
+        befriend(setOf(ATTEMPTS, CLIMB_NOTES), emptySet())
         // The editor caps notes at 1,000 characters; an oversized row can only come from
         // outside it (an import, an older build), so write it past the repository.
         alice.driver.execute(null, "INSERT INTO climb_notes VALUES ('long', '${"x".repeat(9_000)}', '2026-09-20')", 0)
@@ -245,18 +255,61 @@ class SharingSyncTest {
     @Test fun ending_and_asking_the_same_person_again_inherits_no_old_exception() = runBlocking {
         alice.note("n1", "private")
         alice.training("recent", "2026-09-20")
-        befriend(setOf(TRAINING_HISTORY), emptySet())
-        alice.service.setObjectRule(bob.account, "note:n1", PRIVATE_NOTES, AccessEffect.ALLOW)
-        alice.service.setPersonRule(bob.account, TRAINING_HISTORY, AccessEffect.DENY)
+        befriend(setOf(ATTEMPTS), emptySet())
+        alice.service.setObjectRule(bob.account, "note:n1", CLIMB_NOTES, AccessEffect.ALLOW)
+        alice.service.setPersonRule(bob.account, ATTEMPTS, AccessEffect.DENY)
         settle()
         assertEquals(setOf("note:n1"), bob.received(alice).keys)
         alice.service.end(bob.account)
         settle()
         assertEquals(VisibleState.ENDED, alice.friend(bob).visible)
-        alice.service.request(bob.account, SharingCircle.FRIENDS, null)
-        // The new relationship starts from the preset alone: no old ALLOW, no old DENY.
+        alice.service.request(bob.account, partner, null)
+        // The new relationship starts from the template alone: no old ALLOW, no old DENY.
         assertEquals(setOf("bid:recent"), alice.service.preview(bob.account).map { it.id }.toSet())
         assertTrue(alice.service.detail(bob.account)!!.items.none { it.exception != null })
         assertTrue(alice.service.detail(bob.account)!!.categories.values.none { it.exception != null })
+    }
+
+    @Test fun never_share_takes_a_record_away_from_everyone_and_back() = runBlocking {
+        alice.note("n1", "keep")
+        alice.note("n2", "never")
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        assertEquals(setOf("note:n1", "note:n2"), bob.received(alice).keys)
+        alice.service.setObjectRule(bob.account, "note:n2", CLIMB_NOTES, AccessEffect.ALLOW)
+        alice.service.setNeverShare("note:n2", true)
+        settle()
+        assertEquals(setOf("note:n1"), bob.received(alice).keys, "never share beats an explicit allow")
+        assertTrue(alice.service.detail(bob.account)!!.items.single { it.record.id == "note:n2" }.never)
+        alice.service.setNeverShare("note:n2", false)
+        settle()
+        assertEquals(setOf("note:n1", "note:n2"), bob.received(alice).keys)
+    }
+
+    @Test fun an_expiring_grant_travels_with_the_record_and_ends_by_itself() = runBlocking {
+        alice.note("n1", "for a while")
+        befriend(emptySet(), emptySet())
+        val until = net.now + 60_000
+        alice.service.setPersonRule(bob.account, CLIMB_NOTES, AccessEffect.ALLOW, expiresAt = until)
+        settle()
+        assertEquals(until, bob.store.records(alice.account).single().until, "the receiver knows when it ends")
+        assertEquals(alice.expected(bob), bob.received(alice))
+        net.now = until
+        settle()
+        assertTrue(bob.received(alice).isEmpty(), "expired: the sender's next pass withdraws it")
+        assertTrue(alice.service.preview(bob.account).isEmpty())
+    }
+
+    @Test fun under_sixteen_nothing_is_shared_and_no_one_can_be_added() = runBlocking {
+        alice.note("n1", "beta")
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        alice.service.setAge(false)
+        settle()
+        assertTrue(bob.received(alice).isEmpty())
+        assertTrue(alice.service.preview(bob.account).isEmpty())
+        val refused = runCatching { alice.service.request("c".repeat(64), partner, null) }
+        assertEquals("age_not_confirmed", refused.exceptionOrNull()?.message)
+        alice.service.setAge(true)
+        settle()
+        assertEquals(setOf("note:n1"), bob.received(alice).keys)
     }
 }

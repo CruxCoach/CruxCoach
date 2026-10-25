@@ -1,13 +1,18 @@
 package com.cruxcoach.android.sharing
 
 import com.cruxcoach.domain.sharing.AccessEffect
+import com.cruxcoach.domain.sharing.Audience
+import com.cruxcoach.domain.sharing.AudienceResolver
 import com.cruxcoach.domain.sharing.Bech32
 import com.cruxcoach.domain.sharing.ObjectId
-import com.cruxcoach.domain.sharing.ObjectRuleKey
 import com.cruxcoach.domain.sharing.PeerId
-import com.cruxcoach.domain.sharing.SharingCategory
-import com.cruxcoach.domain.sharing.SharingCircle
-import com.cruxcoach.domain.sharing.SharingPolicyResolver
+import com.cruxcoach.domain.sharing.RecordRuleKey
+import com.cruxcoach.domain.sharing.ShareCategory
+import com.cruxcoach.domain.sharing.ShareDecisionSource
+import com.cruxcoach.domain.sharing.SharePeriod
+import com.cruxcoach.domain.sharing.ShareRule
+import com.cruxcoach.domain.sharing.ShareTemplate
+import com.cruxcoach.domain.sharing.TemplateId
 import java.time.LocalDate
 import java.time.ZoneOffset
 
@@ -43,18 +48,24 @@ data class ReceivedOnClimb(val peer: String, val name: String, val record: Shari
 /** A friendship request from someone without a local person entry yet. */
 data class SharingInvitation(val peer: String, val receivedAt: Long)
 
-/** One category for one person: the outcome and whether it follows the preset. */
-data class CategoryChoice(val shared: Boolean, val byPreset: Boolean, val exception: AccessEffect?)
+/** One category for one person: the outcome, why, and whether it follows the template. */
+data class CategoryChoice(
+    val shared: Boolean,
+    val byTemplate: Boolean,
+    val exception: ShareRule?,
+    val source: ShareDecisionSource,
+)
 
-/** One own record and whether it goes to the person while their switch is on. */
-data class PreviewItem(val record: SharingRecord, val included: Boolean, val exception: AccessEffect?)
+/** One own record, whether it goes to the person while their switch is on, and
+ * whether it is never shared with anyone. */
+data class PreviewItem(val record: SharingRecord, val included: Boolean, val exception: ShareRule?, val never: Boolean = false)
 
 /** Everything the person page shows. [items] ignores the switch; [SharingFriend.visible] says whether it is on. */
 data class SharingPersonDetail(
     val friend: SharingFriend,
-    val preset: SharingPreset,
-    val categories: Map<SharingCategory, CategoryChoice>,
-    val trainingDays: Int,
+    val template: ShareTemplate,
+    val categories: Map<ShareCategory, CategoryChoice>,
+    val periodDays: Int,
     val items: List<PreviewItem>,
     val received: List<SharingRecord>,
     /** What would be sent is larger than one generation may carry: nothing goes out. */
@@ -65,9 +76,15 @@ data class SharingPersonDetail(
 
 data class SharingOverview(
     val status: MarmotStatus,
-    val presets: Map<SharingCircle, SharingPreset>,
+    /** Templates a person can be given now (hidden ones come with their categories). */
+    val templates: List<ShareTemplate>,
     val friends: List<SharingFriend>,
     val invitations: List<SharingInvitation>,
+    /** The self-declared age was asked; [ageConfirmed]: 16 or older. */
+    val ageAnswered: Boolean = true,
+    val ageConfirmed: Boolean = true,
+    /** Every template, hidden ones too: a person may already have one. */
+    val allTemplates: List<ShareTemplate> = templates,
 )
 
 /**
@@ -99,7 +116,7 @@ class SharingService(
                 person = person,
                 native = native,
                 visible = visible(person, native),
-                profileName = received.firstOrNull { it.category == SharingCategory.PROFILE_AND_GOALS }?.fields?.get("name"),
+                profileName = received.firstOrNull { it.category == ShareCategory.CLIMBING_PROFILE }?.fields?.get("name"),
                 incomingScope = incoming[person.peer]?.scope ?: ShareScope.EMPTY,
                 received = received.size,
                 confirmedAt = store.outgoing(person.peer)?.ackedAt ?: 0,
@@ -109,7 +126,9 @@ class SharingService(
         val known = friends.filter { it.person.state != PersonState.ENDED }.map { it.peer }.toSet()
         val invitations = status.peers.filter { it.state == "invited" && it.account !in known }
             .map { SharingInvitation(it.account, it.createdAt) }
-        return SharingOverview(status, store.presets(), friends, invitations)
+        val templates = store.templates()
+        return SharingOverview(status, templates.filterNot { it.hidden }, friends, invitations,
+            ageAnswered = store.ageAnswered(), ageConfirmed = store.ageConfirmed(), allTemplates = templates)
     }
 
     private fun visible(person: SharingPerson, native: MarmotPeer?): VisibleState = when {
@@ -129,7 +148,8 @@ class SharingService(
     suspend fun syncNow(): Boolean = access.interactive { SharingPass(host, sync).run(stayOnline = true) }
 
     /** Ask [peer] for a friendship; the invitation is retried until it can be delivered. */
-    suspend fun request(peer: String, circle: SharingCircle, label: String?) {
+    suspend fun request(peer: String, template: TemplateId, label: String?) {
+        check(store.ageConfirmed()) { "age_not_confirmed" }
         sync.exclusive {
             val existing = store.person(peer)
             store.transaction {
@@ -138,7 +158,7 @@ class SharingService(
                     store.clearExchange(peer)
                     store.deletePerson(peer)
                 }
-                store.insertPerson(peer, circle, outgoing = true, label = label, state = PersonState.REQUESTED, now = clock())
+                store.insertPerson(peer, template, outgoing = true, label = label, state = PersonState.REQUESTED, now = clock())
             }
         }
         sync.retryInvitationNow(peer)
@@ -146,7 +166,8 @@ class SharingService(
         onChanged()
     }
 
-    suspend fun accept(peer: String, circle: SharingCircle, outgoing: Boolean) {
+    suspend fun accept(peer: String, template: TemplateId, outgoing: Boolean) {
+        check(store.ageConfirmed()) { "age_not_confirmed" }
         sync.exclusive {
             store.transaction {
                 store.person(peer)?.let {
@@ -154,7 +175,7 @@ class SharingService(
                     store.clearExchange(peer)
                     store.deletePerson(peer)
                 }
-                store.insertPerson(peer, circle, outgoing, label = null, state = PersonState.CONNECTED, now = clock())
+                store.insertPerson(peer, template, outgoing, label = null, state = PersonState.CONNECTED, now = clock())
             }
             runCatching { host.accept(peer) }.onFailure {
                 store.deletePerson(peer)
@@ -170,21 +191,32 @@ class SharingService(
     }
 
     suspend fun setOutgoing(peer: String, outgoing: Boolean) = narrowing(listOf(peer)) { store.setOutgoing(peer, outgoing) }
-    suspend fun setCircle(peer: String, circle: SharingCircle) = narrowing(listOf(peer)) { store.setCircle(peer, circle) }
-    suspend fun setTrainingDays(peer: String, days: Int?) = narrowing(listOf(peer)) { store.setTrainingDays(peer, days) }
-    suspend fun setPersonRule(peer: String, category: SharingCategory, effect: AccessEffect?) =
-        narrowing(listOf(peer)) { store.setPersonRule(peer, category, effect) }
-    suspend fun setObjectRule(peer: String, recordId: String, category: SharingCategory, effect: AccessEffect?) =
-        narrowing(listOf(peer)) { store.setObjectRule(peer, recordId, category, effect) }
+    suspend fun setTemplate(peer: String, template: TemplateId) = narrowing(listOf(peer)) { store.setTemplate(peer, template) }
+    suspend fun setPeriod(peer: String, days: Int?) = narrowing(listOf(peer)) { store.setPeriod(peer, days) }
+    /** [expiresAt] (epoch ms) ends the rule by itself; health categories need one to be allowed. */
+    suspend fun setPersonRule(peer: String, category: ShareCategory, effect: AccessEffect?, expiresAt: Long? = null) =
+        narrowing(listOf(peer)) { store.setPersonRule(peer, category, effect?.let { ShareRule(it, expiresAt) }) }
+    suspend fun setObjectRule(peer: String, recordId: String, category: ShareCategory, effect: AccessEffect?, expiresAt: Long? = null) =
+        narrowing(listOf(peer)) { store.setObjectRule(peer, recordId, category, effect?.let { ShareRule(it, expiresAt) }) }
+
+    /** "Never share this record" applies to everyone at once. */
+    suspend fun setNeverShare(recordId: String, never: Boolean) =
+        narrowing(connected()) { store.setNeverShare(recordId, never, clock()) }
+
+    /** The self-declared age (FEAT-073 §2.7). Under 16 nothing goes to anyone. */
+    suspend fun setAge(atLeastSixteen: Boolean) = narrowing(connected()) { store.setAge(atLeastSixteen) }
+
+    private fun connected() = store.persons().filter { it.state == PersonState.CONNECTED }.map { it.peer }
 
     suspend fun setLabel(peer: String, label: String?) {
         store.setLabel(peer, label?.trim()?.takeIf { it.isNotEmpty() })
         onChanged()
     }
 
-    suspend fun setPreset(preset: SharingPreset) {
-        val affected = store.persons().filter { it.state == PersonState.CONNECTED }.map { it.peer }
-        narrowing(affected) { store.putPreset(preset) }
+    /** Edit a template; every connected person on it may receive less from now on. */
+    suspend fun putTemplate(template: ShareTemplate) {
+        val affected = store.persons().filter { it.state == PersonState.CONNECTED && it.template == template.id }.map { it.peer }
+        narrowing(affected) { store.putTemplate(template) }
     }
 
     /** End the friendship: both received directions are deleted locally now;
@@ -215,38 +247,44 @@ class SharingService(
         val person = store.person(peer) ?: return emptyList()
         val policy = store.policy()
         val connected = person.copy(state = PersonState.CONNECTED)
-        val scope = store.scope(connected, policy, today())
-        return runCatching { store.selected(connected, scope, policy, source) }.getOrDefault(emptyList())
+        val scope = store.scope(connected, policy, clock(), today())
+        return runCatching { store.selected(connected, scope, policy, source, clock()) }.getOrDefault(emptyList())
     }
 
     fun previewScope(peer: String): ShareScope {
         val person = store.person(peer) ?: return ShareScope.EMPTY
-        return store.scope(person.copy(state = PersonState.CONNECTED), store.policy(), today())
+        return store.scope(person.copy(state = PersonState.CONNECTED), store.policy(), clock(), today())
     }
 
     suspend fun detail(peer: String, overview: SharingOverview? = null): SharingPersonDetail? {
         val friend = (overview ?: overview()).friends.firstOrNull { it.peer == peer } ?: return null
         val person = friend.person
         val policy = store.policy()
-        val id = PeerId(peer)
-        val rules = policy.peers[id]
-        val inPreset = policy.baselines.effectiveFor(person.circle)
-        val categories = SharingCategory.entries.associateWith { category ->
-            CategoryChoice(SharingPolicyResolver.resolve(policy, id, category).isAllowed, category in inPreset, rules?.categoryRules?.get(category))
+        val now = clock()
+        val audience = Audience.Person(PeerId(peer))
+        val rules = policy.persons[audience.peer]
+        val template = store.template(person.template) ?: ShareTemplate(person.template, emptySet())
+        val categories = SharingRecords.supported.sortedBy { it.ordinal }.associateWith { category ->
+            val decision = AudienceResolver.resolve(policy, audience, category, null, now)
+            CategoryChoice(decision.isAllowed, category in template.categories, rules?.categoryRules?.get(category), decision.source)
         }
-        val days = store.trainingDays(person)
-        val cutoff = if (days == TrainingPeriod.ALL) null else today().minusDays(days.toLong()).toString()
-        val projection = runCatching { source.project(ShareScope(SharingCategory.entries, cutoff).asSourceScope()) }.getOrNull()
+        val days = store.periodDays(person, policy)
+        val cutoff = if (days == SharePeriod.ALL) null else today().minusDays(days.toLong()).toString()
+        val projection = runCatching { source.project(ShareScope(SharingRecords.supported.sortedBy { it.ordinal }, cutoff).asSourceScope()) }.getOrNull()
         val candidates = projection?.records.orEmpty()
         // Exactly the selection the sync sends; when it refuses, nothing goes out.
         val connected = person.copy(state = PersonState.CONNECTED)
         val overLimit = person.outgoing &&
-            runCatching { store.selected(connected, store.scope(connected, policy, today()), policy, source) }.isFailure
+            runCatching { store.selected(connected, store.scope(connected, policy, now, today()), policy, source, now) }.isFailure
         val items = candidates.map { record ->
-            PreviewItem(record, rules != null && SharingPolicyResolver.resolve(policy, id, record.category, ObjectId(record.id)).isAllowed,
-                rules?.objectRules?.get(ObjectRuleKey(ObjectId(record.id), record.category)))
+            PreviewItem(
+                record,
+                rules != null && AudienceResolver.resolve(policy, audience, record.category, ObjectId(record.id), now).isAllowed,
+                rules?.recordRules?.get(RecordRuleKey(ObjectId(record.id), record.category)),
+                never = ObjectId(record.id) in policy.neverShare,
+            )
         }
-        return SharingPersonDetail(friend, store.presets().getValue(person.circle), categories, days, items, store.records(peer),
+        return SharingPersonDetail(friend, template, categories, days, items, store.records(peer),
             overLimit = overLimit, skipped = projection?.skipped?.size ?: 0)
     }
 
@@ -259,7 +297,7 @@ class SharingService(
         val persons = store.persons().filter { it.state == PersonState.CONNECTED }.associateBy { it.peer }
         val names = mutableMapOf<String, String>()
         fun name(person: SharingPerson) = names.getOrPut(person.peer) {
-            val profile = store.records(person.peer).firstOrNull { it.category == SharingCategory.PROFILE_AND_GOALS }?.fields?.get("name")
+            val profile = store.records(person.peer).firstOrNull { it.category == ShareCategory.CLIMBING_PROFILE }?.fields?.get("name")
             SharingNames.display(person.label, profile, person.peer)
         }
         return climbUuids.flatMap { store.receivedForClimb(it) }.mapNotNull { received ->

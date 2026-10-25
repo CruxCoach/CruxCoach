@@ -1,7 +1,7 @@
 package com.cruxcoach.android.sharing
 
 import com.cruxcoach.db.secure.SecureDatabase
-import com.cruxcoach.domain.sharing.SharingCategory
+import com.cruxcoach.domain.sharing.ShareCategory
 import kotlinx.serialization.json.*
 
 /** The owner's current, bounded projection: the same code serves preview, full
@@ -29,34 +29,36 @@ class SharingSource(private val database: SecureDatabase) {
         fun <T : Any> rows(query: app.cash.sqldelight.Query<T>): List<T> =
             query.executeAsList().also { if (it.size > SharingRecords.MAX_RECORDS) truncated = true }
         val records = mutableListOf<SharingRecord>()
-        fun add(id: String, category: SharingCategory, fields: Map<String, String>) {
+        fun add(id: String, category: ShareCategory, fields: Map<String, String>) {
             records += SharingRecord(id, category, SharingRecords.revision(id, category, fields), fields)
         }
-        if (SharingCategory.PROFILE_AND_GOALS in scope.categories) {
+        if (ShareCategory.CLIMBING_PROFILE in scope.categories) {
             database.userProfilesQueries.getActive().executeAsOneOrNull()?.let { row ->
                 fun list(raw: String) = Json.parseToJsonElement(raw).jsonArray.joinToString("\n") { require(it.jsonPrimitive.isString); it.jsonPrimitive.content }
-                add("profile:active", SharingCategory.PROFILE_AND_GOALS, linkedMapOf(
+                add("profile:active", ShareCategory.CLIMBING_PROFILE, linkedMapOf(
                     "name" to row.name, "boulderGrade" to row.max_boulder_grade, "sportGrade" to row.max_sport_grade.orEmpty(),
                     "climbingYears" to row.climbing_years.toString(), "sessionsPerWeek" to row.sessions_per_week.toString(),
                     "equipment" to list(row.available_equipment), "goals" to list(row.goals)))
             }
         }
-        if (SharingCategory.TRAINING_HISTORY in scope.categories) {
-            rows(q.sourceAscents(scope.trainingSince)).forEach { row ->
-                add("ascent:${row.uuid}", SharingCategory.TRAINING_HISTORY, linkedMapOf("climbId" to row.climb_uuid,
+        if (ShareCategory.SENDS in scope.categories) {
+            rows(q.sourceAscents(scope.since)).forEach { row ->
+                add("ascent:${row.uuid}", ShareCategory.SENDS, linkedMapOf("climbId" to row.climb_uuid,
                     "name" to row.climb_name, "board" to row.board_brand, "angle" to row.angle.toString(),
                     "attempts" to (row.bid_count ?: 0).coerceAtLeast(1).toString(), "grade" to (row.difficulty?.toString() ?: ""),
-                    "date" to row.climbed_at.take(10), "outcome" to "SEND"))
-            }
-            rows(q.sourceBids(scope.trainingSince)).forEach { row ->
-                add("bid:${row.uuid}", SharingCategory.TRAINING_HISTORY, linkedMapOf("climbId" to row.climb_uuid,
-                    "name" to row.climb_name, "board" to row.board_brand, "angle" to row.angle.toString(),
-                    "attempts" to (row.bid_count ?: 0).coerceAtLeast(1).toString(), "grade" to "", "date" to row.climbed_at.take(10), "outcome" to "ATTEMPT"))
+                    "date" to row.climbed_at.take(10)))
             }
         }
-        if (SharingCategory.PRIVATE_NOTES in scope.categories) {
+        if (ShareCategory.ATTEMPTS in scope.categories) {
+            rows(q.sourceBids(scope.since)).forEach { row ->
+                add("bid:${row.uuid}", ShareCategory.ATTEMPTS, linkedMapOf("climbId" to row.climb_uuid,
+                    "name" to row.climb_name, "board" to row.board_brand, "angle" to row.angle.toString(),
+                    "attempts" to (row.bid_count ?: 0).coerceAtLeast(1).toString(), "date" to row.climbed_at.take(10)))
+            }
+        }
+        if (ShareCategory.CLIMB_NOTES in scope.categories) {
             rows(q.sourceNotes()).forEach { row ->
-                add("note:${row.climb_uuid}", SharingCategory.PRIVATE_NOTES, linkedMapOf("climbId" to row.climb_uuid, "note" to row.note))
+                add("note:${row.climb_uuid}", ShareCategory.CLIMB_NOTES, linkedMapOf("climbId" to row.climb_uuid, "note" to row.note))
             }
         }
         val (sendable, skipped) = records.sortedBy { it.id }.partition { SharingRecords.valid(it, scope) }

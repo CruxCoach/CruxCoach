@@ -6,23 +6,40 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.sharing.MarmotRelay
 import com.cruxcoach.android.sharing.SharingRecord
-import com.cruxcoach.android.sharing.TrainingPeriod
+import com.cruxcoach.android.sharing.SharingRecords
 import com.cruxcoach.android.sharing.VisibleState
-import com.cruxcoach.domain.sharing.SharingCategory
-import com.cruxcoach.domain.sharing.SharingCircle
+import com.cruxcoach.domain.sharing.ShareCategory
+import com.cruxcoach.domain.sharing.SharePeriod
+import com.cruxcoach.domain.sharing.ShareTemplates
+import com.cruxcoach.domain.sharing.TemplateId
 
 /** One place for every label the sharing screens show. */
 internal object SharingLabels {
-    fun circle(circle: SharingCircle): Int = when (circle) {
-        SharingCircle.FRIENDS -> R.string.sharing_circle_friends
-        SharingCircle.ACQUAINTANCES -> R.string.sharing_circle_acquaintances
+    fun template(id: TemplateId): Int = when (id) {
+        ShareTemplates.TRAINING_PARTNER.id -> R.string.sharing_template_training_partner
+        ShareTemplates.FAMILY.id -> R.string.sharing_template_family
+        ShareTemplates.COACH.id -> R.string.sharing_template_coach
+        else -> R.string.sharing_template_custom
     }
 
-    fun category(category: SharingCategory): Int = when (category) {
-        SharingCategory.PROFILE_AND_GOALS -> R.string.sharing_category_profile
-        SharingCategory.TRAINING_HISTORY -> R.string.sharing_category_training
-        SharingCategory.PRIVATE_NOTES -> R.string.sharing_category_notes
+    fun category(category: ShareCategory): Int = when (category) {
+        ShareCategory.CLIMBING_PROFILE -> R.string.sharing_category_profile
+        ShareCategory.SENDS -> R.string.sharing_category_sends
+        ShareCategory.ATTEMPTS -> R.string.sharing_category_attempts
+        ShareCategory.CLIMB_NOTES -> R.string.sharing_category_notes
+        else -> R.string.sharing_category_other
     }
+
+    fun categoryInfo(category: ShareCategory): Int = when (category) {
+        ShareCategory.CLIMBING_PROFILE -> R.string.sharing_category_profile_info
+        ShareCategory.SENDS -> R.string.sharing_category_sends_info
+        ShareCategory.ATTEMPTS -> R.string.sharing_category_attempts_info
+        ShareCategory.CLIMB_NOTES -> R.string.sharing_category_notes_info
+        else -> R.string.sharing_category_other
+    }
+
+    /** The categories the screens offer, in catalogue order. */
+    val categories: List<ShareCategory> = SharingRecords.supported.sortedBy { it.ordinal }
 
     fun state(state: VisibleState): Int = when (state) {
         VisibleState.PENDING -> R.string.sharing_state_pending
@@ -30,36 +47,33 @@ internal object SharingLabels {
         VisibleState.STOPPED -> R.string.sharing_state_stopped
         VisibleState.ENDED -> R.string.sharing_state_ended
     }
-
-    /** Circles as the screens offer them: the closer circle first. */
-    val circles = listOf(SharingCircle.FRIENDS, SharingCircle.ACQUAINTANCES)
 }
 
 @Composable
 internal fun periodLabel(days: Int): String =
-    if (days == TrainingPeriod.ALL) stringResource(R.string.sharing_period_all)
+    if (days == SharePeriod.ALL) stringResource(R.string.sharing_period_all)
     else pluralStringResource(R.plurals.sharing_period_days, days, days)
 
 @Composable
-internal fun categoriesLabel(categories: Collection<SharingCategory>): String =
-    if (categories.isEmpty()) stringResource(R.string.sharing_categories_none)
-    else SharingCategory.entries.filter { it in categories }.map { stringResource(SharingLabels.category(it)) }.joinToString(", ")
+internal fun categoriesLabel(categories: Collection<ShareCategory>): String {
+    val shown = SharingLabels.categories.filter { it in categories }
+    return if (shown.isEmpty()) stringResource(R.string.sharing_categories_none)
+    else shown.map { stringResource(SharingLabels.category(it)) }.joinToString(", ")
+}
 
 /** One line per record; never more than the whitelisted fields. */
 @Composable
 internal fun recordLabel(record: SharingRecord): String {
     val f = record.fields
     return when (record.category) {
-        SharingCategory.PROFILE_AND_GOALS -> stringResource(R.string.sharing_record_profile, f["name"].orEmpty(), f["boulderGrade"].orEmpty())
-        SharingCategory.TRAINING_HISTORY -> {
-            val date = f["date"].orEmpty().take(10)
-            if (f["outcome"] == "SEND") stringResource(R.string.sharing_record_send, f["name"].orEmpty(), date)
-            else {
-                val attempts = f["attempts"]?.toIntOrNull() ?: 1
-                pluralStringResource(R.plurals.sharing_record_attempts, attempts, f["name"].orEmpty(), date, attempts)
-            }
+        ShareCategory.CLIMBING_PROFILE -> stringResource(R.string.sharing_record_profile, f["name"].orEmpty(), f["boulderGrade"].orEmpty())
+        ShareCategory.SENDS -> stringResource(R.string.sharing_record_send, f["name"].orEmpty(), f["date"].orEmpty().take(10))
+        ShareCategory.ATTEMPTS -> {
+            val attempts = f["attempts"]?.toIntOrNull() ?: 1
+            pluralStringResource(R.plurals.sharing_record_attempts, attempts, f["name"].orEmpty(), f["date"].orEmpty().take(10), attempts)
         }
-        SharingCategory.PRIVATE_NOTES -> stringResource(R.string.sharing_record_note, f["note"].orEmpty())
+        ShareCategory.CLIMB_NOTES -> stringResource(R.string.sharing_record_note, f["note"].orEmpty())
+        else -> ""
     }
 }
 

@@ -8,7 +8,7 @@ The [v2 target architecture](architecture/marmot-permissions-v2-target.md)
 ([German summary](architecture/marmot-permissions-v2-target-overview.de.md))
 keeps Marmot/MLS as the confidentiality layer and simplifies transport (native
 nostr-sdk pool, in-process relay, replicator), sync (manifest, deltas, resync)
-and policy (local presets and exceptions). This branch implements it; the German
+and policy (local templates and exceptions). This branch implements it; the German
 [tester guide](releases/marmot-permissions-test-guide.md) now describes v2.
 Sections below describe v1.
 

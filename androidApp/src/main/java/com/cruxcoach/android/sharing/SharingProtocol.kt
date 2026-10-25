@@ -1,16 +1,16 @@
 package com.cruxcoach.android.sharing
 
-import com.cruxcoach.domain.sharing.SharingCategory
+import com.cruxcoach.domain.sharing.ShareCategory
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * What one direction covers on the wire: categories (sorted) and the training
- * cutoff (ISO date; `null` = all history or no training in scope).
+ * What one direction covers on the wire: categories (sorted) and the cutoff of
+ * the dated categories (ISO date; `null` = all history or none in scope).
  */
 @Serializable data class ShareScope(
-    val categories: List<SharingCategory>,
+    val categories: List<ShareCategory>,
     val cutoff: String? = null,
 ) {
     fun asSourceScope() = SharingScope(categories.toSet(), cutoff ?: ALL_HISTORY)
@@ -22,7 +22,8 @@ import kotlinx.serialization.json.Json
 }
 
 /**
- * The inner application message (MLS kind 1230, label `cc.share.v2`). One shape
+ * The application message of sharing v3 (on MLS: inner kind 1230; on the direct
+ * channel: one Olm message). One shape
  * for every type keeps the canonical encoding simple; [ShareProtocol.decode]
  * rejects every field a type does not use.
  *
@@ -48,7 +49,8 @@ import kotlinx.serialization.json.Json
 )
 
 object ShareProtocol {
-    const val VERSION = 2
+    /** 3: categories of FEAT-073 (sends and attempts apart) and per-record expiry. */
+    const val VERSION = 3
     const val MAX_BYTES = 49_152
     const val MAX_PAGE_RECORDS = 16
     const val MAX_PARTS = 128
@@ -67,7 +69,7 @@ object ShareProtocol {
             SharingRecords.supported.containsAll(scope.categories) &&
             (scope.cutoff == null || (date.matches(scope.cutoff) &&
                 runCatching { java.time.LocalDate.parse(scope.cutoff).toString() == scope.cutoff }.getOrDefault(false))) &&
-            (scope.cutoff == null || SharingCategory.TRAINING_HISTORY in scope.categories)
+            (scope.cutoff == null || scope.categories.any { it.dated })
 
     private fun validShape(m: ShareMessage): Boolean = m.v == VERSION && when (m.type) {
         "manifest" -> m.gen >= 1 && m.seq >= 0 && m.scope != null && valid(m.scope) &&

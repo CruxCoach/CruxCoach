@@ -2,15 +2,14 @@ package com.cruxcoach.android.data
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.cruxcoach.android.sharing.SharingPreset
 import com.cruxcoach.android.sharing.SharingScope
 import com.cruxcoach.android.sharing.SharingSource
 import com.cruxcoach.android.sharing.SharingStore
 import com.cruxcoach.data.SecureDatabasePragmas
 import com.cruxcoach.data.SecureSchemaLineage
 import com.cruxcoach.db.secure.SecureDatabase
-import com.cruxcoach.domain.sharing.SharingCategory
-import com.cruxcoach.domain.sharing.SharingCircle
+import com.cruxcoach.domain.sharing.ShareCategory
+import com.cruxcoach.domain.sharing.ShareTemplates
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -66,25 +65,29 @@ class SharingProjectionSchemaTest {
     private fun tables(): Set<String> =
         objects(listOf("")).filter { it.startsWith("table:") }.map { it.removePrefix("table:") }.toSet()
 
-    /** The owner-chosen starting point, seeded only where share_preset is created. */
-    private val defaultPresets = mapOf(
-        "FRIENDS" to ("PROFILE_AND_GOALS,TRAINING_HISTORY" to 30L),
-        "ACQUAINTANCES" to ("PROFILE_AND_GOALS" to 30L),
+    /** The shipped templates (owner decision 2026-10-25), seeded only where share_template is created. */
+    private val defaultTemplates = mapOf(
+        "TRAINING_PARTNER" to Triple("CLIMBING_PROFILE,SENDS,ATTEMPTS,CLIMB_NOTES", 30L, 0L),
+        "FAMILY" to Triple("CLIMBING_PROFILE,WEEKLY_VOLUME", 30L, 1L),
+        "COACH" to Triple("CLIMBING_PROFILE,SENDS,ATTEMPTS,CLIMB_NOTES", 365L, 1L),
     )
 
-    private val sharingTables = listOf("share_preset", "share_person", "share_person_rule", "share_object_rule",
-        "share_outgoing", "share_incoming", "share_record")
+    private val sharingTables = listOf("share_template", "share_setting", "share_person", "share_person_rule", "share_object_rule",
+        "share_never", "share_outgoing", "share_incoming", "share_record")
 
-    private fun presetRows(): Map<String, Pair<String, Long>> =
-        driver.executeQuery(null, "SELECT circle, categories, training_days FROM share_preset", { c ->
-            val rows = mutableMapOf<String, Pair<String, Long>>()
-            while (c.next().value) rows[c.getString(0)!!] = c.getString(1)!! to c.getLong(2)!!
+    /** Tables that hold one row set per person. */
+    private val personTables = listOf("share_person", "share_person_rule", "share_object_rule", "share_outgoing", "share_incoming", "share_record")
+
+    private fun templateRows(): Map<String, Triple<String, Long, Long>> =
+        driver.executeQuery(null, "SELECT id, categories, period_days, hidden FROM share_template", { c ->
+            val rows = mutableMapOf<String, Triple<String, Long, Long>>()
+            while (c.next().value) rows[c.getString(0)!!] = Triple(c.getString(1)!!, c.getLong(2)!!, c.getLong(3)!!)
             QueryResult.Value(rows)
         }, 0).value
 
     private fun assertOnlyDefaults() {
-        assertEquals(defaultPresets, presetRows())
-        sharingTables.filter { it != "share_preset" }.forEach { assertEquals(0L, count(it), "$it starts empty") }
+        assertEquals(defaultTemplates, templateRows())
+        sharingTables.filter { it != "share_template" }.forEach { assertEquals(0L, count(it), "$it starts empty") }
     }
 
     /** Release 0.2.4 (secure schema 16), extracted from the v0.2.4 tag. */
@@ -145,6 +148,8 @@ class SharingProjectionSchemaTest {
         }
         // v1's trigger-maintained source tables are v1 lineage too.
         assertFailsWith<IllegalStateException> { SecureSchemaLineage.requireSupported(release + "sharing_continuous_source") }
+        // The short-lived v2 shape of migration 16 on this line (feature build 0ef1a786).
+        assertFailsWith<IllegalStateException> { SecureSchemaLineage.requireSupported(release + setOf("share_preset", "share_person")) }
         SecureSchemaLineage.requireSupported(emptySet())
         SecureSchemaLineage.requireSupported(release)
         SecureSchemaLineage.requireSupported(release + setOf("share_person", "share_record"))
@@ -155,7 +160,7 @@ class SharingProjectionSchemaTest {
         SecureDatabase.Schema.create(driver)
         insertAscent("a1", "Original")
         val source = SharingSource(SecureDatabase(driver))
-        val scope = SharingScope(setOf(SharingCategory.TRAINING_HISTORY), "2026-01-01")
+        val scope = SharingScope(setOf(ShareCategory.SENDS), "2026-01-01")
         val before = source.read(scope).single()
         // What BoardSyncManager.refreshDenormalizedData does after every Kilter sync.
         driver.exec("UPDATE ascents SET climb_name = 'Original', board_brand = 'kilter', layout_id = NULL WHERE uuid = 'a1'")
@@ -166,15 +171,16 @@ class SharingProjectionSchemaTest {
     }
 
     @Test
-    fun `a chosen preset is kept and never reset to the defaults`() {
+    fun `an edited template is kept and never reset to the defaults`() {
         SecureDatabase.Schema.create(driver)
-        SharingStore(SecureDatabase(driver)).putPreset(SharingPreset(SharingCircle.FRIENDS, emptySet(), 90))
+        SharingStore(SecureDatabase(driver)).putTemplate(ShareTemplates.TRAINING_PARTNER.copy(categories = setOf(ShareCategory.CLIMB_NOTES), periodDays = 90))
         driver.close()
         driver = openDriver()
-        val presets = SharingStore(SecureDatabase(driver)).presets()
-        assertEquals(emptySet(), presets.getValue(SharingCircle.FRIENDS).categories)
-        assertEquals(90, presets.getValue(SharingCircle.FRIENDS).trainingDays)
-        assertEquals(setOf(SharingCategory.PROFILE_AND_GOALS), presets.getValue(SharingCircle.ACQUAINTANCES).categories)
+        val templates = SharingStore(SecureDatabase(driver)).templates().associateBy { it.id }
+        assertEquals(setOf(ShareCategory.CLIMB_NOTES), templates.getValue(ShareTemplates.TRAINING_PARTNER.id).categories)
+        assertEquals(90, templates.getValue(ShareTemplates.TRAINING_PARTNER.id).periodDays)
+        assertEquals(ShareTemplates.COACH, templates.getValue(ShareTemplates.COACH.id))
+        assertEquals(listOf("TRAINING_PARTNER", "FAMILY", "COACH"), templates.keys.map { it.value })
     }
 
     @Test
@@ -183,30 +189,36 @@ class SharingProjectionSchemaTest {
         val peer = "b".repeat(64)
         val other = "e".repeat(64)
         for (p in listOf(peer, other)) {
-            driver.exec("INSERT INTO share_person VALUES ('$p','FRIENDS',1,NULL,NULL,'CONNECTED',0,1,NULL)")
-            driver.exec("INSERT INTO share_person_rule VALUES ('$p','PRIVATE_NOTES','DENY')")
-            driver.exec("INSERT INTO share_object_rule VALUES ('$p','note:x','PRIVATE_NOTES','ALLOW')")
+            driver.exec("INSERT INTO share_person VALUES ('$p','TRAINING_PARTNER',1,NULL,NULL,'CONNECTED',0,1,NULL)")
+            driver.exec("INSERT INTO share_person_rule VALUES ('$p','CLIMB_NOTES','DENY',NULL)")
+            driver.exec("INSERT INTO share_object_rule VALUES ('$p','note:x','CLIMB_NOTES','ALLOW',5)")
             driver.exec("INSERT INTO share_outgoing VALUES ('$p',1,0,1,'{}','{}','d',0,1,0,0,-1,0)")
             driver.exec("INSERT INTO share_incoming VALUES ('$p',1,0,'{}','d',0,'{}','[]',0,0,0,1)")
-            driver.exec("INSERT INTO share_record VALUES ('$p','note:x','PRIVATE_NOTES',1,'x',NULL,'{}')")
+            driver.exec("INSERT INTO share_record VALUES ('$p','note:x','CLIMB_NOTES',1,'x',NULL,'{}',NULL)")
         }
         SharingStore(SecureDatabase(driver)).deletePerson(peer)
-        (sharingTables - "share_preset").forEach { table ->
+        personTables.forEach { table ->
             assertEquals(0L, count(table, "peer = '$peer'"), table)
             assertEquals(1L, count(table, "peer = '$other'"), "$table keeps other people")
         }
     }
 
     @Test
-    fun `unknown presets, categories and states are rejected by the schema`() {
+    fun `malformed periods, states and effects are rejected by the schema and unknown categories never widen`() {
         SecureDatabase.Schema.create(driver)
         val peer = "c".repeat(64)
-        assertFailsWith<Exception> { driver.exec("INSERT INTO share_preset VALUES ('ALL_OTHER_USERS','',30)") }
-        assertFailsWith<Exception> { driver.exec("INSERT INTO share_person VALUES ('$peer','FRIENDS',1,NULL,NULL,'SOMETHING',0,1,NULL)") }
-        assertFailsWith<Exception> { driver.exec("INSERT INTO share_person VALUES ('short','FRIENDS',1,NULL,NULL,'CONNECTED',0,1,NULL)") }
-        driver.exec("INSERT INTO share_person VALUES ('$peer','FRIENDS',1,NULL,NULL,'CONNECTED',0,1,NULL)")
-        assertFailsWith<Exception> { driver.exec("INSERT INTO share_person_rule VALUES ('$peer','VIDEOS','ALLOW')") }
-        assertFailsWith<Exception> { driver.exec("INSERT INTO share_record VALUES ('$peer','note:x','HEALTH',1,NULL,NULL,'{}')") }
+        assertFailsWith<Exception> { driver.exec("INSERT INTO share_template VALUES ('ALL','',0,0)") }
+        assertFailsWith<Exception> { driver.exec("INSERT INTO share_person VALUES ('$peer','TRAINING_PARTNER',1,NULL,NULL,'SOMETHING',0,1,NULL)") }
+        assertFailsWith<Exception> { driver.exec("INSERT INTO share_person VALUES ('short','TRAINING_PARTNER',1,NULL,NULL,'CONNECTED',0,1,NULL)") }
+        assertFailsWith<Exception> { driver.exec("INSERT INTO share_person VALUES ('$peer','TRAINING_PARTNER',1,0,NULL,'CONNECTED',0,1,NULL)") }
+        driver.exec("INSERT INTO share_person VALUES ('$peer','TRAINING_PARTNER',1,NULL,NULL,'CONNECTED',0,1,NULL)")
+        assertFailsWith<Exception> { driver.exec("INSERT INTO share_person_rule VALUES ('$peer','CLIMB_NOTES','MAYBE',NULL)") }
+        // Category names are checked in code: an unknown one is stored but resolves to nothing.
+        driver.exec("INSERT INTO share_person_rule VALUES ('$peer','VIDEOS','ALLOW',NULL)")
+        val store = SharingStore(SecureDatabase(driver))
+        store.setAge(true)
+        val policy = store.policy()
+        assertTrue(policy.persons.values.single().categoryRules.isEmpty(), "an unknown category name is ignored")
     }
 
     @Test

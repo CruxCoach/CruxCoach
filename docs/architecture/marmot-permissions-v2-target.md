@@ -575,6 +575,15 @@ The v2 head, the eMudhra lock fix and the Olm spike were carried onto release
 * **Engines.** The app uses the MLS host (relays) as on v2. The Olm engine and
   the direct LAN/BLE transports of the spike are present and tested natively,
   but not bound in DI (`OlmShareWiring`).
+* **Policy v3 ("who sees this?", FEAT-073).** Before its first release the
+  policy moved from two circles with inheritance to templates (shipped:
+  training partner; family and coach hidden until their categories exist),
+  a closed category catalogue with ceilings (`ShareCategory`: training
+  history split into sends and attempts, notes, profile), rules that
+  expire, "never share this record" and a self-declared age gate. Records
+  carry `until` when the rule that lets them out expires, and the wire
+  protocol is version 3. Migration 16 was rewritten in place (nine tables);
+  the lineage guard refuses the short-lived v2 shape (`share_preset`).
 * **Direct invitations only through a contact code.** The spike offered
   invitation packages to every unidentified device that accepted invitations
   and served a two-stage QR fetch, both in the clear with both npubs and the

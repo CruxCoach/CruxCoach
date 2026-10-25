@@ -1,27 +1,38 @@
--- Personal-data sharing v2: the owner's local, unsigned policy, the state of
--- each direction of the sync protocol, and records received from friends.
--- Protocol data (groups, relays, events, delivery) lives in the native host.
--- Received records never enter canonical tables; they cascade with the person.
+-- Personal-data sharing v3 ("who sees this?", FEAT-073): the owner's local,
+-- unsigned policy, the state of each direction of the sync protocol, and
+-- records received from friends. Protocol data (sessions, keys, delivery)
+-- lives in the native host. Received records never enter canonical tables.
+--
+-- Category names are not CHECKed here: the catalogue is closed in code
+-- (ShareCategory) and unknown names resolve to "not shared", so a later
+-- category needs no table rebuild.
 
-CREATE TABLE share_preset (
-    circle TEXT NOT NULL PRIMARY KEY CHECK (circle IN ('ACQUAINTANCES', 'FRIENDS')),
+-- Templates replace the two circles of v2 (owner decision 2026-10-25). The
+-- shipped rows are a starting point; a later edit is an upsert and is never
+-- reset. Health data is never part of a template.
+CREATE TABLE share_template (
+    id TEXT NOT NULL PRIMARY KEY,
     categories TEXT NOT NULL,
-    training_days INTEGER NOT NULL CHECK (training_days >= -1)
+    period_days INTEGER NOT NULL CHECK (period_days = -1 OR period_days > 0),
+    hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1))
 );
 
--- Starting point for a newly created table only (owner decision 2026-09-23):
--- friends see profile & goals and 30 days of training history, acquaintances
--- profile & goals. Nothing reaches anyone before a person is added and accepts.
--- A later choice is an upsert of the same row and is never reset.
-INSERT INTO share_preset(circle, categories, training_days) VALUES
-    ('FRIENDS', 'PROFILE_AND_GOALS,TRAINING_HISTORY', 30),
-    ('ACQUAINTANCES', 'PROFILE_AND_GOALS', 30);
+INSERT INTO share_template(id, categories, period_days, hidden) VALUES
+    ('TRAINING_PARTNER', 'CLIMBING_PROFILE,SENDS,ATTEMPTS,CLIMB_NOTES', 30, 0),
+    ('FAMILY', 'CLIMBING_PROFILE,WEEKLY_VOLUME', 30, 1),
+    ('COACH', 'CLIMBING_PROFILE,SENDS,ATTEMPTS,CLIMB_NOTES', 365, 1);
+
+-- Local settings of sharing itself (the self-declared age).
+CREATE TABLE share_setting (
+    key TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);
 
 CREATE TABLE share_person (
     peer TEXT NOT NULL PRIMARY KEY CHECK (length(peer) = 64),
-    circle TEXT NOT NULL CHECK (circle IN ('ACQUAINTANCES', 'FRIENDS')),
+    template TEXT NOT NULL,
     outgoing INTEGER NOT NULL CHECK (outgoing IN (0, 1)),
-    training_days INTEGER CHECK (training_days IS NULL OR training_days >= -1),
+    period_days INTEGER CHECK (period_days IS NULL OR period_days = -1 OR period_days > 0),
     label TEXT,
     state TEXT NOT NULL CHECK (state IN ('REQUESTED', 'CONNECTED', 'ENDING', 'ENDED')),
     cancel_pending INTEGER NOT NULL DEFAULT 0 CHECK (cancel_pending IN (0, 1)),
@@ -31,17 +42,25 @@ CREATE TABLE share_person (
 
 CREATE TABLE share_person_rule (
     peer TEXT NOT NULL REFERENCES share_person(peer) ON DELETE CASCADE,
-    category TEXT NOT NULL CHECK (category IN ('PROFILE_AND_GOALS', 'TRAINING_HISTORY', 'PRIVATE_NOTES')),
+    category TEXT NOT NULL,
     effect TEXT NOT NULL CHECK (effect IN ('ALLOW', 'DENY')),
+    expires_at INTEGER,
     PRIMARY KEY (peer, category)
 );
 
 CREATE TABLE share_object_rule (
     peer TEXT NOT NULL REFERENCES share_person(peer) ON DELETE CASCADE,
     record_id TEXT NOT NULL,
-    category TEXT NOT NULL CHECK (category IN ('PROFILE_AND_GOALS', 'TRAINING_HISTORY', 'PRIVATE_NOTES')),
+    category TEXT NOT NULL,
     effect TEXT NOT NULL CHECK (effect IN ('ALLOW', 'DENY')),
+    expires_at INTEGER,
     PRIMARY KEY (peer, record_id)
+);
+
+-- "Never share this record": for every audience.
+CREATE TABLE share_never (
+    record_id TEXT NOT NULL PRIMARY KEY,
+    created_at INTEGER NOT NULL
 );
 
 CREATE TABLE share_outgoing (
@@ -75,24 +94,33 @@ CREATE TABLE share_incoming (
     received_at INTEGER NOT NULL
 );
 
+-- expires_at: the friend's grant for this record ends then; this app deletes
+-- the record at that moment even if the friend is not in reach.
 CREATE TABLE share_record (
     peer TEXT NOT NULL REFERENCES share_person(peer) ON DELETE CASCADE,
     record_id TEXT NOT NULL,
-    category TEXT NOT NULL CHECK (category IN ('PROFILE_AND_GOALS', 'TRAINING_HISTORY', 'PRIVATE_NOTES')),
+    category TEXT NOT NULL,
     revision INTEGER NOT NULL,
     climb_uuid TEXT,
     occurred_on TEXT,
     fields TEXT NOT NULL,
+    expires_at INTEGER,
     PRIMARY KEY (peer, record_id)
 );
 
 CREATE INDEX share_record_climb ON share_record(climb_uuid);
 
-selectPresets:
-SELECT * FROM share_preset;
+selectTemplates:
+SELECT * FROM share_template ORDER BY rowid;
 
-upsertPreset:
-INSERT OR REPLACE INTO share_preset(circle, categories, training_days) VALUES (?, ?, ?);
+upsertTemplate:
+INSERT OR REPLACE INTO share_template(id, categories, period_days, hidden) VALUES (?, ?, ?, ?);
+
+selectSetting:
+SELECT value FROM share_setting WHERE key = ?;
+
+putSetting:
+INSERT OR REPLACE INTO share_setting(key, value) VALUES (?, ?);
 
 selectPersons:
 SELECT * FROM share_person ORDER BY created_at, peer;
@@ -101,17 +129,17 @@ selectPerson:
 SELECT * FROM share_person WHERE peer = ?;
 
 insertPerson:
-INSERT INTO share_person(peer, circle, outgoing, training_days, label, state, cancel_pending, created_at, ended_at)
+INSERT INTO share_person(peer, template, outgoing, period_days, label, state, cancel_pending, created_at, ended_at)
 VALUES (?, ?, ?, ?, ?, ?, 0, ?, NULL);
 
-updatePersonCircle:
-UPDATE share_person SET circle = ? WHERE peer = ?;
+updatePersonTemplate:
+UPDATE share_person SET template = ? WHERE peer = ?;
 
 updatePersonOutgoing:
 UPDATE share_person SET outgoing = ? WHERE peer = ?;
 
-updatePersonTrainingDays:
-UPDATE share_person SET training_days = ? WHERE peer = ?;
+updatePersonPeriod:
+UPDATE share_person SET period_days = ? WHERE peer = ?;
 
 updatePersonLabel:
 UPDATE share_person SET label = ? WHERE peer = ?;
@@ -138,7 +166,7 @@ selectAllPersonRules:
 SELECT * FROM share_person_rule;
 
 upsertPersonRule:
-INSERT OR REPLACE INTO share_person_rule(peer, category, effect) VALUES (?, ?, ?);
+INSERT OR REPLACE INTO share_person_rule(peer, category, effect, expires_at) VALUES (?, ?, ?, ?);
 
 deletePersonRule:
 DELETE FROM share_person_rule WHERE peer = ? AND category = ?;
@@ -147,10 +175,19 @@ selectAllObjectRules:
 SELECT * FROM share_object_rule;
 
 upsertObjectRule:
-INSERT OR REPLACE INTO share_object_rule(peer, record_id, category, effect) VALUES (?, ?, ?, ?);
+INSERT OR REPLACE INTO share_object_rule(peer, record_id, category, effect, expires_at) VALUES (?, ?, ?, ?, ?);
 
 deleteObjectRule:
 DELETE FROM share_object_rule WHERE peer = ? AND record_id = ?;
+
+selectNever:
+SELECT record_id FROM share_never ORDER BY record_id;
+
+insertNever:
+INSERT OR REPLACE INTO share_never(record_id, created_at) VALUES (?, ?);
+
+deleteNever:
+DELETE FROM share_never WHERE record_id = ?;
 
 selectOutgoing:
 SELECT * FROM share_outgoing WHERE peer = ?;
@@ -196,8 +233,8 @@ countRecords:
 SELECT count(*) FROM share_record WHERE peer = ?;
 
 upsertRecord:
-INSERT OR REPLACE INTO share_record(peer, record_id, category, revision, climb_uuid, occurred_on, fields)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO share_record(peer, record_id, category, revision, climb_uuid, occurred_on, fields, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteRecord:
 DELETE FROM share_record WHERE peer = ? AND record_id = ?;

@@ -2,15 +2,19 @@ package com.cruxcoach.android.sharing
 
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.sharing.AccessEffect
-import com.cruxcoach.domain.sharing.CircleBaselines
+import com.cruxcoach.domain.sharing.Audience
+import com.cruxcoach.domain.sharing.AudienceResolver
 import com.cruxcoach.domain.sharing.ObjectId
-import com.cruxcoach.domain.sharing.ObjectRuleKey
 import com.cruxcoach.domain.sharing.PeerId
-import com.cruxcoach.domain.sharing.PeerPolicy
-import com.cruxcoach.domain.sharing.SharingCategory
-import com.cruxcoach.domain.sharing.SharingCircle
-import com.cruxcoach.domain.sharing.SharingPolicy
-import com.cruxcoach.domain.sharing.SharingPolicyResolver
+import com.cruxcoach.domain.sharing.PersonPolicy
+import com.cruxcoach.domain.sharing.RecordRuleKey
+import com.cruxcoach.domain.sharing.ShareCategory
+import com.cruxcoach.domain.sharing.SharePeriod
+import com.cruxcoach.domain.sharing.SharePolicy
+import com.cruxcoach.domain.sharing.ShareRule
+import com.cruxcoach.domain.sharing.ShareTemplate
+import com.cruxcoach.domain.sharing.ShareTemplates
+import com.cruxcoach.domain.sharing.TemplateId
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -19,22 +23,14 @@ import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.ZoneOffset
 
-/** How far back training history reaches; [ALL] means no cutoff. */
-object TrainingPeriod {
-    const val ALL = -1
-    val choices = listOf(30, 90, 365, ALL)
-    const val DEFAULT = 30
-}
-
-data class SharingPreset(val circle: SharingCircle, val categories: Set<SharingCategory>, val trainingDays: Int)
-
 enum class PersonState { REQUESTED, CONNECTED, ENDING, ENDED }
 
 data class SharingPerson(
     val peer: String,
-    val circle: SharingCircle,
+    val template: TemplateId,
     val outgoing: Boolean,
-    val trainingDays: Int?,
+    /** Overrides the template's period for this person; null follows the template. */
+    val periodDays: Int?,
     val label: String?,
     val state: PersonState,
     val cancelPending: Boolean,
@@ -88,6 +84,12 @@ data class ReceivedRecord(
 
 /** SQL access for the local policy, both directions and received records. */
 class SharingStore(private val database: SecureDatabase) {
+    private companion object {
+        const val AGE_KEY = "age"
+        const val AGE_CONFIRMED = "16_or_older"
+        const val AGE_UNDER = "under_16"
+    }
+
     private val q get() = database.shareQueries
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = false }
     private val sentSerializer = MapSerializer(String.serializer(), Long.serializer())
@@ -98,34 +100,48 @@ class SharingStore(private val database: SecureDatabase) {
 
     // ---- policy ---------------------------------------------------------------
 
-    fun presets(): Map<SharingCircle, SharingPreset> {
-        val stored = q.selectPresets().executeAsList().associate { row ->
-            val circle = SharingCircle.valueOf(row.circle)
-            circle to SharingPreset(circle, categories(row.categories), row.training_days.toInt())
-        }
-        // Absent rows mean "never configured": nothing is shared.
-        return SharingCircle.entries.associateWith { stored[it] ?: SharingPreset(it, emptySet(), TrainingPeriod.DEFAULT) }
+    /** Every template, shipped ones first; a missing shipped row falls back to its default. */
+    fun templates(): List<ShareTemplate> {
+        val stored = q.selectTemplates().executeAsList().mapNotNull { row ->
+            runCatching {
+                ShareTemplate(TemplateId(row.id), categories(row.categories), row.period_days.toInt(), row.hidden == 1L)
+            }.getOrNull()
+        }.associateBy { it.id }
+        val shipped = ShareTemplates.SHIPPED.map { stored[it.id] ?: it }
+        return shipped + stored.values.filter { t -> shipped.none { it.id == t.id } }
     }
 
-    fun putPreset(preset: SharingPreset) =
-        q.upsertPreset(preset.circle.name, preset.categories.sorted().joinToString(",") { it.name }, preset.trainingDays.toLong())
+    fun template(id: TemplateId): ShareTemplate? = templates().firstOrNull { it.id == id }
 
-    private fun categories(raw: String): Set<SharingCategory> =
-        raw.split(',').filter { it.isNotEmpty() }.mapNotNull { name -> SharingCategory.entries.firstOrNull { it.name == name } }.toSet()
+    fun putTemplate(template: ShareTemplate) =
+        q.upsertTemplate(template.id.value, template.categories.sortedBy { it.ordinal }.joinToString(",") { it.name },
+            template.periodDays.toLong(), if (template.hidden) 1 else 0)
+
+    private fun categories(raw: String): Set<ShareCategory> =
+        raw.split(',').filter { it.isNotEmpty() }.mapNotNull { name -> category(name) }.toSet()
+
+    private fun category(name: String): ShareCategory? = ShareCategory.entries.firstOrNull { it.name == name }
+
+    /** Self-declared age of 16 or more (FEAT-073 §2.7); stored with the moment of the answer. */
+    fun ageConfirmed(): Boolean = q.selectSetting(AGE_KEY).executeAsOneOrNull() == AGE_CONFIRMED
+
+    fun ageAnswered(): Boolean = q.selectSetting(AGE_KEY).executeAsOneOrNull() != null
+
+    fun setAge(atLeastSixteen: Boolean) = q.putSetting(AGE_KEY, if (atLeastSixteen) AGE_CONFIRMED else AGE_UNDER)
 
     fun persons(): List<SharingPerson> = q.selectPersons().executeAsList().map { row ->
-        SharingPerson(row.peer, SharingCircle.valueOf(row.circle), row.outgoing == 1L, row.training_days?.toInt(),
+        SharingPerson(row.peer, TemplateId(row.template), row.outgoing == 1L, row.period_days?.toInt(),
             row.label, PersonState.valueOf(row.state), row.cancel_pending == 1L, row.created_at, row.ended_at)
     }
 
     fun person(peer: String): SharingPerson? = persons().firstOrNull { it.peer == peer }
 
-    fun insertPerson(peer: String, circle: SharingCircle, outgoing: Boolean, label: String?, state: PersonState, now: Long) =
-        q.insertPerson(peer, circle.name, if (outgoing) 1 else 0, null, label?.take(64), state.name, now)
+    fun insertPerson(peer: String, template: TemplateId, outgoing: Boolean, label: String?, state: PersonState, now: Long) =
+        q.insertPerson(peer, template.value, if (outgoing) 1 else 0, null, label?.take(64), state.name, now)
 
-    fun setCircle(peer: String, circle: SharingCircle) = q.updatePersonCircle(circle.name, peer)
+    fun setTemplate(peer: String, template: TemplateId) = q.updatePersonTemplate(template.value, peer)
     fun setOutgoing(peer: String, outgoing: Boolean) = q.updatePersonOutgoing(if (outgoing) 1 else 0, peer)
-    fun setTrainingDays(peer: String, days: Int?) = q.updatePersonTrainingDays(days?.toLong(), peer)
+    fun setPeriod(peer: String, days: Int?) = q.updatePersonPeriod(days?.toLong(), peer)
     fun setLabel(peer: String, label: String?) = q.updatePersonLabel(label?.take(64), peer)
     fun setState(peer: String, state: PersonState, now: Long) =
         q.updatePersonState(state.name, if (state == PersonState.ENDED || state == PersonState.ENDING) now else null, peer)
@@ -139,61 +155,82 @@ class SharingStore(private val database: SecureDatabase) {
         q.deletePerson(peer)
     }
 
-    fun setPersonRule(peer: String, category: SharingCategory, effect: AccessEffect?) =
-        if (effect == null) q.deletePersonRule(peer, category.name) else q.upsertPersonRule(peer, category.name, effect.name)
+    fun setPersonRule(peer: String, category: ShareCategory, rule: ShareRule?) =
+        if (rule == null) q.deletePersonRule(peer, category.name)
+        else q.upsertPersonRule(peer, category.name, rule.effect.name, rule.expiresAt)
 
-    fun setObjectRule(peer: String, recordId: String, category: SharingCategory, effect: AccessEffect?) =
-        if (effect == null) q.deleteObjectRule(peer, recordId) else q.upsertObjectRule(peer, recordId, category.name, effect.name)
+    fun setObjectRule(peer: String, recordId: String, category: ShareCategory, rule: ShareRule?) =
+        if (rule == null) q.deleteObjectRule(peer, recordId)
+        else q.upsertObjectRule(peer, recordId, category.name, rule.effect.name, rule.expiresAt)
 
-    /** The policy the FEAT-062 resolver evaluates; ended persons are absent. */
-    fun policy(): SharingPolicy {
+    fun neverShared(): Set<String> = q.selectNever().executeAsList().toSet()
+
+    fun setNeverShare(recordId: String, never: Boolean, now: Long) =
+        if (never) q.insertNever(recordId, now) else q.deleteNever(recordId)
+
+    /** The policy the resolver evaluates; ended persons are absent. Unknown
+     * category names in stored rules are ignored (they cannot widen anything). */
+    fun policy(): SharePolicy {
         val persons = persons().filter { it.state != PersonState.ENDED && it.state != PersonState.ENDING }
         val personRules = q.selectAllPersonRules().executeAsList().groupBy { it.peer }
         val objectRules = q.selectAllObjectRules().executeAsList().groupBy { it.peer }
-        return SharingPolicy(
-            baselines = CircleBaselines(presets().mapValues { it.value.categories }),
-            peers = persons.associate { person ->
-                PeerId(person.peer) to PeerPolicy(
-                    circle = person.circle,
-                    categoryRules = personRules[person.peer].orEmpty().associate { SharingCategory.valueOf(it.category) to AccessEffect.valueOf(it.effect) },
-                    objectRules = objectRules[person.peer].orEmpty().associate {
-                        ObjectRuleKey(ObjectId(it.record_id), SharingCategory.valueOf(it.category)) to AccessEffect.valueOf(it.effect)
-                    },
+        return SharePolicy(
+            templates = templates().associateBy { it.id },
+            persons = persons.associate { person ->
+                PeerId(person.peer) to PersonPolicy(
+                    template = person.template,
+                    periodDays = person.periodDays,
+                    categoryRules = personRules[person.peer].orEmpty().mapNotNull { row ->
+                        category(row.category)?.let { it to ShareRule(AccessEffect.valueOf(row.effect), row.expires_at) }
+                    }.toMap(),
+                    recordRules = objectRules[person.peer].orEmpty().mapNotNull { row ->
+                        category(row.category)?.let { RecordRuleKey(ObjectId(row.record_id), it) to ShareRule(AccessEffect.valueOf(row.effect), row.expires_at) }
+                    }.toMap(),
                 )
             },
+            neverShare = neverShared().map(::ObjectId).toSet(),
+            ageConfirmed = ageConfirmed(),
         )
     }
 
-    fun trainingDays(person: SharingPerson): Int = person.trainingDays ?: presets().getValue(person.circle).trainingDays
+    fun periodDays(person: SharingPerson, policy: SharePolicy = policy()): Int =
+        AudienceResolver.periodDays(policy, PeerId(person.peer)) ?: person.periodDays ?: template(person.template)?.periodDays ?: SharePeriod.DEFAULT
 
     /**
-     * What goes to [person] today: nothing when the switch is off; otherwise the
-     * categories the resolver allows plus categories reached only by an object
-     * ALLOW (then only those objects), and a rolling UTC training cutoff.
+     * What goes to [person] now: nothing when the switch is off; otherwise the
+     * categories the resolver allows plus categories reached only by a record
+     * ALLOW (then only those records), and a rolling UTC cutoff for dated ones.
      */
-    fun scope(person: SharingPerson, policy: SharingPolicy, today: LocalDate = LocalDate.now(ZoneOffset.UTC)): ShareScope {
+    fun scope(person: SharingPerson, policy: SharePolicy, now: Long, today: LocalDate = LocalDate.now(ZoneOffset.UTC)): ShareScope {
         if (!person.outgoing || person.state != PersonState.CONNECTED) return ShareScope.EMPTY
         val peer = PeerId(person.peer)
-        val categories = SharingCategory.entries.filter { category ->
-            SharingPolicyResolver.resolve(policy, peer, category).isAllowed ||
-                policy.peers[peer]?.objectRules?.any { (key, effect) -> key.category == category && effect == AccessEffect.ALLOW } == true
-        }
-        val days = trainingDays(person)
-        val cutoff = if (SharingCategory.TRAINING_HISTORY in categories && days != TrainingPeriod.ALL) today.minusDays(days.toLong()).toString() else null
+        val audience = Audience.Person(peer)
+        val rules = policy.persons[peer]?.recordRules.orEmpty()
+        val categories = SharingRecords.supported.filter { category ->
+            AudienceResolver.resolve(policy, audience, category, null, now).isAllowed ||
+                rules.any { (key, rule) ->
+                    key.category == category && rule.effect == AccessEffect.ALLOW && rule.activeAt(now) &&
+                        AudienceResolver.resolve(policy, audience, category, key.record, now).isAllowed
+                }
+        }.sortedBy { it.ordinal }
+        val days = periodDays(person, policy)
+        val cutoff = if (categories.any { it.dated } && days != SharePeriod.ALL) today.minusDays(days.toLong()).toString() else null
         return ShareScope(categories, cutoff)
     }
 
-    /** The exact records of [scope] that pass the per-record resolver. Throws
-     * when that set is incomplete or larger than one generation may carry: then
-     * nothing is sent, and the person page says so ([SharingPersonDetail.overLimit]). */
-    fun selected(person: SharingPerson, scope: ShareScope, policy: SharingPolicy, source: SharingSource): List<SharingRecord> {
+    /** The exact records of [scope] that pass the per-record resolver, each
+     * carrying the expiry of the rule that lets it out. Throws when that set is
+     * incomplete or larger than one generation may carry: then nothing is sent,
+     * and the person page says so ([SharingPersonDetail.overLimit]). */
+    fun selected(person: SharingPerson, scope: ShareScope, policy: SharePolicy, source: SharingSource, now: Long): List<SharingRecord> {
         if (scope.categories.isEmpty()) return emptyList()
-        val peer = PeerId(person.peer)
+        val audience = Audience.Person(PeerId(person.peer))
         val sourceScope = scope.asSourceScope()
         val projection = source.project(sourceScope)
         require(!projection.truncated) { "over_limit" }
-        return projection.records.filter {
-            SharingPolicyResolver.resolve(policy, peer, it.category, ObjectId(it.id)).isAllowed
+        return projection.records.mapNotNull { record ->
+            val decision = AudienceResolver.resolve(policy, audience, record.category, ObjectId(record.id), now)
+            if (decision.isAllowed) SharingRecords.withUntil(record, decision.expiresAt) else null
         }.also { SharingRecords.check(it, sourceScope) }
     }
 
@@ -242,11 +279,13 @@ class SharingStore(private val database: SecureDatabase) {
         q.selectRecordsForClimb(climbUuid).executeAsList().map { ReceivedRecord(it.peer, toRecord(it), it.climb_uuid, it.occurred_on) }
 
     private fun toRecord(row: com.cruxcoach.db.secure.Share_record) = SharingRecord(row.record_id,
-        SharingCategory.valueOf(row.category), row.revision, json.decodeFromString(MapSerializer(String.serializer(), String.serializer()), row.fields))
+        ShareCategory.valueOf(row.category), row.revision,
+        json.decodeFromString(MapSerializer(String.serializer(), String.serializer()), row.fields), row.expires_at)
 
     fun putRecord(peer: String, record: SharingRecord) = q.upsertRecord(peer, record.id, record.category.name, record.revision,
-        record.fields["climbId"]?.takeIf { record.category != SharingCategory.PROFILE_AND_GOALS },
-        record.fields["date"]?.take(10), json.encodeToString(MapSerializer(String.serializer(), String.serializer()), record.fields))
+        record.fields["climbId"]?.takeIf { record.category != ShareCategory.CLIMBING_PROFILE },
+        record.fields["date"]?.take(10), json.encodeToString(MapSerializer(String.serializer(), String.serializer()), record.fields),
+        record.until)
 
     fun deleteRecord(peer: String, id: String) = q.deleteRecord(peer, id)
     fun deleteRecords(peer: String) = q.deleteRecords(peer)

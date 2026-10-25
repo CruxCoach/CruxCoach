@@ -5,6 +5,11 @@
 Stand 23. September 2026, Branch `feat/marmot-permissions-v2` (APKTrack-Track
 `feat-marmot-permissions-v2-0bfee131`). Kein Release.
 
+> **Seit dem Freigabe-Modell v3** (FEAT-073, `docs/specs/0.2.6/FEAT-073-who-sees-this.md`) gilt für
+> Freigaben: Vorlagen statt der zwei Kreise, Kategorien Profil & Ziele, Begehungen, Versuche und Notizen
+> mit festen Obergrenzen, Ablaufdatum je Regel, „nie teilen“ je Eintrag, Teilen erst ab 16. Die
+> Beschreibung von Kreisen und Voreinstellungen unten ist der Stand von v2.
+
 ## Kurz gesagt
 
 Marmot/MLS bleibt die Vertraulichkeitsschicht (Identitätsschlüssel ≠

@@ -64,7 +64,6 @@ import com.cruxcoach.android.sharing.SharingFriend
 import com.cruxcoach.android.sharing.SharingInvitation
 import com.cruxcoach.android.sharing.SharingNames
 import com.cruxcoach.android.sharing.SharingPersonDetail
-import com.cruxcoach.android.sharing.SharingPreset
 import com.cruxcoach.android.sharing.VisibleState
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.common.InfoHeading
@@ -73,9 +72,10 @@ import com.cruxcoach.android.ui.settings.SettingsGroupHeader
 import com.cruxcoach.android.ui.settings.SettingsSectionCard
 import com.cruxcoach.android.ui.settings.SettingsToggleRow
 import com.cruxcoach.domain.sharing.Bech32
-import com.cruxcoach.domain.sharing.CircleBaselines
-import com.cruxcoach.domain.sharing.SharingCategory
-import com.cruxcoach.domain.sharing.SharingCircle
+import com.cruxcoach.domain.sharing.ShareCategory
+import com.cruxcoach.domain.sharing.ShareTemplate
+import com.cruxcoach.domain.sharing.ShareTemplates
+import com.cruxcoach.domain.sharing.TemplateId
 import kotlinx.coroutines.delay
 
 /** The pages of the one sharing destination (same pattern as the settings pages). */
@@ -84,13 +84,13 @@ internal sealed interface SharingPage {
 
     data object Overview : SharingPage { override val key = "" }
     data class Person(val peer: String) : SharingPage { override val key get() = "person:$peer" }
-    data class Preset(val circle: SharingCircle) : SharingPage { override val key get() = "preset:${circle.name}" }
+    data class Template(val id: TemplateId) : SharingPage { override val key get() = "template:${id.value}" }
     data object Connection : SharingPage { override val key = "connection" }
 
     companion object {
         fun parse(key: String): SharingPage = when {
             key.startsWith("person:") -> Person(key.removePrefix("person:"))
-            key.startsWith("preset:") -> SharingCircle.entries.firstOrNull { it.name == key.removePrefix("preset:") }?.let(::Preset) ?: Overview
+            key.startsWith("template:") -> key.removePrefix("template:").takeIf { it.isNotBlank() }?.let { Template(TemplateId(it)) } ?: Overview
             key == Connection.key -> Connection
             else -> Overview
         }
@@ -101,20 +101,21 @@ internal sealed interface SharingPage {
 internal class SharingActions(
     val setReachable: (Boolean) -> Unit = {},
     val syncNow: () -> Unit = {},
-    val request: (String, SharingCircle, String, () -> Unit) -> Unit = { _, _, _, _ -> },
+    val request: (String, TemplateId, String, () -> Unit) -> Unit = { _, _, _, _ -> },
     val clearRequestError: () -> Unit = {},
-    val accept: (String, SharingCircle, Boolean) -> Unit = { _, _, _ -> },
+    val accept: (String, TemplateId, Boolean) -> Unit = { _, _, _ -> },
     val decline: (String) -> Unit = {},
-    val requestAgain: (String, SharingCircle, String?) -> Unit = { _, _, _ -> },
+    val requestAgain: (String, TemplateId, String?) -> Unit = { _, _, _ -> },
     val setOutgoing: (String, Boolean) -> Unit = { _, _ -> },
-    val setCircle: (String, SharingCircle) -> Unit = { _, _ -> },
+    val setTemplate: (String, TemplateId) -> Unit = { _, _ -> },
     val setLabel: (String, String) -> Unit = { _, _ -> },
     val end: (String) -> Unit = {},
     val remove: (String, () -> Unit) -> Unit = { _, _ -> },
-    val setPreset: (SharingPreset) -> Unit = {},
-    val setCategory: (SharingPersonDetail, SharingCategory, Boolean) -> Unit = { _, _, _ -> },
-    val setTrainingDays: (SharingPersonDetail, Int) -> Unit = { _, _ -> },
+    val putTemplate: (ShareTemplate) -> Unit = {},
+    val setCategory: (SharingPersonDetail, ShareCategory, Boolean) -> Unit = { _, _, _ -> },
+    val setPeriod: (SharingPersonDetail, Int) -> Unit = { _, _ -> },
     val setItem: (SharingPersonDetail, PreviewItem, Boolean) -> Unit = { _, _, _ -> },
+    val setAge: (Boolean) -> Unit = {},
 )
 
 private const val REFRESH_MS = 5_000L
@@ -143,20 +144,21 @@ fun SharingScreen(
             decline = viewModel::decline,
             requestAgain = viewModel::requestAgain,
             setOutgoing = viewModel::setOutgoing,
-            setCircle = viewModel::setCircle,
+            setTemplate = viewModel::setTemplate,
             setLabel = viewModel::setLabel,
             end = viewModel::end,
             remove = viewModel::remove,
-            setPreset = viewModel::setPreset,
+            putTemplate = viewModel::putTemplate,
             setCategory = viewModel::setCategory,
-            setTrainingDays = viewModel::setTrainingDays,
+            setPeriod = viewModel::setPeriod,
             setItem = viewModel::setItem,
+            setAge = viewModel::setAge,
         )
     }
     val title = when (page) {
         SharingPage.Overview -> stringResource(R.string.sharing_title)
         is SharingPage.Person -> state.detail?.friend?.displayName ?: SharingNames.shortId(page.peer)
-        is SharingPage.Preset -> stringResource(SharingLabels.circle(page.circle))
+        is SharingPage.Template -> stringResource(SharingLabels.template(page.id))
         SharingPage.Connection -> stringResource(R.string.sharing_connection_title)
     }
     Scaffold(
@@ -210,13 +212,13 @@ internal fun SharingContent(
             is SharingPage.Person -> {
                 val detail = state.detail?.takeIf { it.friend.peer == page.peer }
                 when {
-                    detail != null -> PersonPage(detail, state.busy, actions, onRemoved = { onOpen(SharingPage.Overview) })
+                    detail != null -> PersonPage(detail, overview.allTemplates, state.busy, actions, onRemoved = { onOpen(SharingPage.Overview) })
                     overview.friends.none { it.peer == page.peer } ->
                         Text(stringResource(R.string.sharing_person_missing), modifier = Modifier.testTag("sharing_person_missing"))
                     else -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 }
             }
-            is SharingPage.Preset -> PresetPage(overview.presets, page.circle, state.busy, actions)
+            is SharingPage.Template -> TemplatePage(overview.allTemplates, page.id, state.busy, actions)
             SharingPage.Connection -> ConnectionPage(overview.status, state.busy, actions)
         }
         Spacer(Modifier.height(8.dp))
@@ -227,6 +229,7 @@ internal fun SharingContent(
 private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, actions: SharingActions) {
     val overview = state.overview ?: return
     val status = overview.status
+    if (!overview.ageAnswered || !overview.ageConfirmed) AgeCard(overview.ageAnswered, state.busy, actions)
     SettingsSectionCard {
         SettingsToggleRow(
             title = stringResource(R.string.sharing_reachable_title),
@@ -240,7 +243,7 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
     }
     if (overview.invitations.isNotEmpty()) {
         SettingsGroupHeader(stringResource(R.string.sharing_invitations_title))
-        overview.invitations.forEach { InvitationCard(it, overview.presets, state.busy, actions) }
+        overview.invitations.forEach { InvitationCard(it, overview.templates, overview.ageConfirmed && !state.busy, actions) }
     }
     SettingsGroupHeader(stringResource(R.string.sharing_people_title))
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -261,19 +264,18 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
             if (index < friends.lastIndex) HorizontalDivider(Modifier.padding(start = 56.dp, end = 16.dp))
         }
     }
-    AddPersonCard(state, actions)
-    InfoHeading(stringResource(R.string.sharing_presets_title), stringResource(R.string.sharing_presets_info))
+    if (overview.ageConfirmed) AddPersonCard(state, overview.templates, actions)
+    InfoHeading(stringResource(R.string.sharing_templates_title), stringResource(R.string.sharing_templates_info))
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        SharingLabels.circles.forEachIndexed { index, circle ->
-            val preset = overview.presets.getValue(circle)
+        overview.templates.forEachIndexed { index, template ->
             SharingDestinationRow(
-                title = stringResource(SharingLabels.circle(circle)),
-                summary = categoriesLabel(effectiveCategories(overview.presets, circle)),
-                icon = if (circle == SharingCircle.FRIENDS) Icons.Outlined.Group else Icons.Outlined.PeopleOutline,
-                modifier = Modifier.testTag("sharing_preset_${preset.circle.name}"),
-                onClick = { onOpen(SharingPage.Preset(circle)) },
+                title = stringResource(SharingLabels.template(template.id)),
+                summary = categoriesLabel(template.categories),
+                icon = if (template.id == ShareTemplates.TRAINING_PARTNER.id) Icons.Outlined.Group else Icons.Outlined.PeopleOutline,
+                modifier = Modifier.testTag("sharing_template_${template.id.value}"),
+                onClick = { onOpen(SharingPage.Template(template.id)) },
             )
-            if (index == 0) HorizontalDivider(Modifier.padding(start = 56.dp, end = 16.dp))
+            if (index < overview.templates.lastIndex) HorizontalDivider(Modifier.padding(start = 56.dp, end = 16.dp))
         }
     }
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -294,13 +296,36 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
 
 @Composable
 private fun personSummary(friend: SharingFriend): String {
-    val parts = mutableListOf(stringResource(SharingLabels.state(friend.visible)), stringResource(SharingLabels.circle(friend.person.circle)))
+    val parts = mutableListOf(stringResource(SharingLabels.state(friend.visible)), stringResource(SharingLabels.template(friend.person.template)))
     if (friend.received > 0) parts += pluralStringResource(R.plurals.sharing_received_count, friend.received, friend.received)
     return parts.joinToString(" · ")
 }
 
-internal fun effectiveCategories(presets: Map<SharingCircle, SharingPreset>, circle: SharingCircle): Set<SharingCategory> =
-    CircleBaselines(presets.mapValues { it.value.categories }).effectiveFor(circle)
+/** "Are you 16 or older?" (FEAT-073 §2.7): asked once, before anything can be shared. */
+@Composable
+private fun AgeCard(answered: Boolean, busy: Boolean, actions: SharingActions) {
+    SettingsSectionCard {
+        if (answered) {
+            Text(stringResource(R.string.sharing_age_under), style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("sharing_age_under"))
+            OutlinedButton(onClick = { actions.setAge(true) }, enabled = !busy, modifier = Modifier.testTag("sharing_age_change")) {
+                Text(stringResource(R.string.sharing_age_change))
+            }
+        } else {
+            Text(stringResource(R.string.sharing_age_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                modifier = Modifier.semantics { heading() })
+            Text(stringResource(R.string.sharing_age_body), style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { actions.setAge(true) }, enabled = !busy, modifier = Modifier.testTag("sharing_age_yes")) {
+                    Text(stringResource(R.string.sharing_age_yes))
+                }
+                OutlinedButton(onClick = { actions.setAge(false) }, enabled = !busy, modifier = Modifier.testTag("sharing_age_no")) {
+                    Text(stringResource(R.string.sharing_age_no))
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun OwnIdRow(account: String) {
@@ -322,18 +347,20 @@ private fun OwnIdRow(account: String) {
 @Composable
 private fun InvitationCard(
     invitation: SharingInvitation,
-    presets: Map<SharingCircle, SharingPreset>,
-    busy: Boolean,
+    templates: List<ShareTemplate>,
+    enabled: Boolean,
     actions: SharingActions,
 ) {
-    var circle by rememberSaveable(invitation.peer) { mutableStateOf(SharingCircle.ACQUAINTANCES) }
-    var outgoing by rememberSaveable(invitation.peer) { mutableStateOf(true) }
+    var template by rememberSaveable(invitation.peer) { mutableStateOf(ShareTemplates.TRAINING_PARTNER.id.value) }
+    // Off by default (owner decision 2026-10-25): accepting shares nothing of one's own yet.
+    var outgoing by rememberSaveable(invitation.peer) { mutableStateOf(false) }
+    val chosen = templates.firstOrNull { it.id.value == template } ?: templates.firstOrNull()
     SettingsSectionCard {
         Text(SharingNames.shortId(invitation.peer), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
             modifier = Modifier.semantics { heading() })
         Text(stringResource(R.string.sharing_invitation_body), style = MaterialTheme.typography.bodyMedium)
-        Text(stringResource(R.string.sharing_circle_label), style = MaterialTheme.typography.labelLarge)
-        SettingsChoices(SharingLabels.circles.map { it to stringResource(SharingLabels.circle(it)) }, circle, { circle = it })
+        Text(stringResource(R.string.sharing_template_label), style = MaterialTheme.typography.labelLarge)
+        SettingsChoices(templates.map { it.id.value to stringResource(SharingLabels.template(it.id)) }, template, { template = it })
         SettingsToggleRow(
             title = stringResource(R.string.sharing_invitation_share_title),
             description = stringResource(R.string.sharing_invitation_share_info),
@@ -342,25 +369,26 @@ private fun InvitationCard(
             modifier = Modifier.testTag("sharing_invitation_share"),
         )
         Text(
-            if (outgoing) stringResource(R.string.sharing_invitation_you_share, categoriesLabel(effectiveCategories(presets, circle)))
+            if (outgoing) stringResource(R.string.sharing_invitation_you_share, categoriesLabel(chosen?.categories.orEmpty()))
             else stringResource(R.string.sharing_invitation_you_share_nothing),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { actions.accept(invitation.peer, circle, outgoing) }, enabled = !busy,
+            Button(onClick = { chosen?.let { actions.accept(invitation.peer, it.id, outgoing) } }, enabled = enabled && chosen != null,
                 modifier = Modifier.testTag("sharing_accept")) { Text(stringResource(R.string.sharing_accept)) }
-            OutlinedButton(onClick = { actions.decline(invitation.peer) }, enabled = !busy,
+            OutlinedButton(onClick = { actions.decline(invitation.peer) }, enabled = enabled,
                 modifier = Modifier.testTag("sharing_decline")) { Text(stringResource(R.string.sharing_decline)) }
         }
     }
 }
 
 @Composable
-private fun AddPersonCard(state: SharingUiState, actions: SharingActions) {
+private fun AddPersonCard(state: SharingUiState, templates: List<ShareTemplate>, actions: SharingActions) {
     var typed by rememberSaveable { mutableStateOf("") }
     var label by rememberSaveable { mutableStateOf("") }
-    var circle by rememberSaveable { mutableStateOf(SharingCircle.ACQUAINTANCES) }
+    var template by rememberSaveable { mutableStateOf(ShareTemplates.TRAINING_PARTNER.id.value) }
+    val chosen = templates.firstOrNull { it.id.value == template } ?: templates.firstOrNull()
     SettingsSectionCard {
         InfoHeading(stringResource(R.string.sharing_add_title), stringResource(R.string.sharing_add_info))
         val error = state.requestError?.let {
@@ -387,12 +415,12 @@ private fun AddPersonCard(state: SharingUiState, actions: SharingActions) {
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("sharing_add_name"),
         )
-        Text(stringResource(R.string.sharing_circle_label), style = MaterialTheme.typography.labelLarge)
-        SettingsChoices(SharingLabels.circles.map { it to stringResource(SharingLabels.circle(it)) }, circle, { circle = it })
+        Text(stringResource(R.string.sharing_template_label), style = MaterialTheme.typography.labelLarge)
+        SettingsChoices(templates.map { it.id.value to stringResource(SharingLabels.template(it.id)) }, template, { template = it })
         Button(
             // Cleared only once the request is really recorded.
-            onClick = { actions.request(typed, circle, label) { typed = ""; label = "" } },
-            enabled = !state.busy && typed.isNotBlank(),
+            onClick = { chosen?.let { actions.request(typed, it.id, label) { typed = ""; label = "" } } },
+            enabled = !state.busy && typed.isNotBlank() && chosen != null,
             modifier = Modifier.testTag("sharing_add_send"),
         ) { Text(stringResource(R.string.sharing_add_send)) }
     }
