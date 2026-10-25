@@ -197,29 +197,41 @@ switching accounts keeps the existing isolation/reset behavior. Without a retain
 local key, the UI offers import rather than a disconnect that creates an identity.
 Private keys remain masked during import, and screenshot protection remains active.
 
-## LED animations
+## LED effects
 
-The Kilter board settings offer **LED animations** below “Kilter hold colours”. The
-default is **None**: the lit problem keeps its static role colors. The other
-options keep that same problem moving — **Pulse** breathes brighter and dimmer in
-each hold's own color, **Two-phase strobe** alternates the CruxCoach and Kilter
-color schemes, **Chaotic strobe** jumps colors around while the roles stay
-distinguishable, and **Rainbow wave** rotates every color slowly around the color
-wheel. The choice is stored even with no board connected, but only a connected
-Kilter board animates and only problems up to 120 lit LEDs; everything else keeps
-static colors.
+*Settings → Board & Bluetooth → LED effects* (and a climb's menu, while a board
+that shows effects is connected) keep the lit climb moving. The default is
+**None**: the climb keeps its normal colors. **Pulse** makes each hold glow
+brighter and dimmer in its own color, **Rainbow** moves every color slowly
+around the color wheel, **Two-phase strobe** flashes between the CruxCoach and
+the Kilter colors, and **Chaotic strobe** jumps the colors around while start,
+hand, top and foot holds stay apart. A choice shows on the wall at once, so the
+wall is the preview. A status line says what the effect is doing (running,
+waiting for a climb, paused, ended, no board). The effects look and move exactly
+as contributed; there is no tempo control.
 
-The two strobes change whole-board colors and are capped at three color
-changes per second. If flashing light is a concern, use Pulse or the Rainbow
-wave, which change gradually.
+Effects show on a connected Kilter Board, on climbs of up to 120 lit LEDs; other
+boards keep their normal colors (one list, `LedEffectSupport`, says which
+boards). The other Aurora boards would work through the same packets and wait for
+a device test.
 
-An animation never competes with your own sends: it gives way to whatever you
-light, and it pauses for automatic route playback and the Easter animation until
-those are done. Switching to another app — to film the climb, say — can keep the
-effect running behind a notification with a **Stop** action. That continuation is
-best effort: it holds no wake lock, so deep sleep or an aggressive battery policy
-ends the animation and the wall keeps its last frame, and returning to the app
-removes the notification. Expect some extra battery use while it runs.
+Flashing: the two strobes start a new frame at most every 333 ms, so they change
+color at most three times a second (WCAG 2.3.1 allows three flashes, i.e. six
+changes, a second). They ask once before their first use, and every time while
+Android's "Remove animations" is on — a warning, not a lock. Pulse and Rainbow
+change gradually.
+
+Others first: what you send, route playback, the Easter animation, wall games
+and hold cleaning always go first; the effect waits or pauses. Effect frames do
+not count as activity, so automatic disconnect still releases a board that takes
+one phone at a time on schedule, and the climb's normal colors are written back
+before it goes. An effect ends after 15 minutes on the same climb (send the climb
+again to restart). Leaving the app ends it with the normal colors, unless *Keep
+running in other apps* is on (off by default): then a notification with **Stop**
+keeps it going for those 15 minutes, only while notifications can be seen. The
+phone keeps the board connection meanwhile, and there is no wake lock — if
+Android pauses the app, the effect stops. The idea and the first version were
+contributed by dapeebb (PR #21); spec `docs/specs/0.2.5/FEAT-074-led-animations.md`.
 
 ## Board map
 
@@ -294,6 +306,7 @@ Read implementation and focused tests together before changing a concept.
 | Training services, Health Connect | [athlete](../../androidApp/src/main/java/com/cruxcoach/android/athlete/) (`AthleteService.kt`, `ComebackService.kt`, `health/`) |
 | Training and nutrition screens | [ui/training](../../androidApp/src/main/java/com/cruxcoach/android/ui/training/) |
 | Exercise catalogue and food data | [assets/training](../../androidApp/src/main/assets/training/), [assets/fuel](../../androidApp/src/main/assets/fuel/), [foodvision](../../androidApp/src/main/java/com/cruxcoach/android/foodvision/) |
+| LED effects | [led](../../androidApp/src/main/java/com/cruxcoach/android/led/) (`LedAnimationEngine.kt`, `LedEffectSupport.kt`) and `BoardBleConnection.sendAnimationLeds` |
 | Update integrity | [IntegrityVerifier](../../androidApp/src/main/java/com/cruxcoach/android/updater/IntegrityVerifier.kt) |
 
 Android-specific UI, BLE, background work and dependency injection live in

@@ -420,18 +420,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   exercise, also when that is lower; and on holds the seconds answered as
   "how many more?" count as time held. Loads planned from an existing value
   do not change.
-- **LED animations** — a new option under LED colors in Settings; it
-  animates the holds of whatever climb is lit on a connected Kilter
-  Board: Pulse breathes each hold in its own color, Two-phase strobe
-  alternates the CruxCoach and Kilter color schemes, Chaotic strobe
-  jumps colors around, and Rainbow wave rotates everything slowly
-  around the color wheel. Nothing extra to press — the moment a climb
-  is lit on the board, those holds start moving. The two flashing
-  options change color at most three times a second, and the default is
-  None — static colors, as before — so nothing changes until you opt
-  in. Switching to another app — to film the climb, say — keeps the
-  effect running behind a notification you can stop from; if Android
-  later freezes or closes the app, the animation simply stops with it.
+- LED effects for the Kilter Board, contributed by dapeebb (PR #21): the
+  holds of the lit climb can pulse, flash between the CruxCoach and Kilter
+  colors, jump through the colors or travel through a rainbow. Choose one under
+  Settings → Board & Bluetooth → LED effects or from a climb's menu; a change
+  shows on the wall at once. "None", the default, keeps the normal colors. The
+  two strobes change color at most three times a second, ask once before their
+  first use and ask again while Android's "Remove animations" is on. What you
+  send, route playback, wall games and hold
+  cleaning always come first, automatic disconnect still releases the board on
+  time, and an effect ends after 15 minutes on the same climb. For filming,
+  "Keep running in other apps" (off by default) keeps it going while another
+  app is open, with a notification to stop it.
 
 ### Fixed
 - After a catalogue import the app frees the temporary database file at once. A Tension

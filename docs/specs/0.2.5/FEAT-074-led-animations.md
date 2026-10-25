@@ -1,210 +1,193 @@
 ---
 status: implementation
 queue: done
-base: post-0.2.3
+base: v0.2.4 + 0.2.5 work
 depends_on: []
 created: 2026-10-18
-updated: 2026-10-18
+updated: 2026-10-25
 ---
 
-# Feature Spec: LED animations on the lit climb
+# Feature Spec: LED effects on the lit climb (FEAT-074)
 
-> **Status:** Implementation — complete on `feat/led-animations` with JVM
-> coverage, not merged and in no release artifact; per
-> [the registry legend](../INDEX.md), `implementation` is not delivery. Relates to
-> route playback and the Easter animation, which own the board's frame timing and
-> hand it back when they finish (§4).
+> **Status:** Implementation on `feat/0.2.5-led-animations`, picked from PR #21
+> (`feat/led-animations`, contributed by dapeebb, first numbered FEAT-067, which
+> collided with Body tracking v2) and reworked after review for the 0.2.5 line
+> (§10). Not in a release artifact; per [the registry legend](../INDEX.md),
+> `implementation` is not delivery.
 
 ## 1. Overview
 
-**LED animations** keeps the climb already on the wall moving instead of static:
-the lit holds breathe, alternate colour schemes, jump around, or rotate around the
-colour wheel. Every frame is a pure function of what the board was actually sent
-and the animation's tick, so no caller starts, stops, or refreshes it — sending a
-climb, editing an LED colour, disconnecting or clearing the board just changes an
-input and the loop follows (`led/LedAnimationEngine.kt:28-47`). An effect is one
-`LedAnimation` object, one `LedAnimationRegistry.ALL` entry, and two strings.
+**LED effects** keep the climb already on the wall moving instead of static: the
+lit holds pulse, flash between colour schemes, jump through colours, or travel
+around the colour wheel. Every frame is a pure function of what the board was
+actually sent and the effect's tick, so no caller starts, stops or refreshes it —
+sending a climb, editing an LED colour, disconnecting, cleaning holds or clearing
+the board just changes an input and the loop follows (`led/LedAnimationEngine.kt`).
+An effect is one `LedAnimation` object, one `LedAnimationRegistry.ALL` entry and
+two strings; which boards show effects is one set, `LedEffectSupport.boards`.
 
 ## 2. Behaviour
 
-The section sits directly after the LED colors section, inside the per-board
-settings view that shows Kilter LED colors
-(`ui/settings/SettingsScreen.kt:224-238`, `588-589`). Options render from
-`LedAnimationRegistry.ALL` in a bottom sheet, each with a one-line hint. The
-default is **None** — byte-for-byte the pre-existing static behaviour, and the
-fallback for any id the registry does not know. The id is stored as a raw string
-under the DataStore key `led_animation` (`data/UserPreferences.kt:331, 1093-1104`).
+*Settings → Board & Bluetooth → LED effects* is a card of its own between "All
+boards" and the per-board settings (`ui/settings/LedEffectsSection.kt`): a status
+line, the effects as chips (a tap applies at once, so the wall is the preview),
+the hint of the chosen effect and *Keep running in other apps*. The climb menu
+offers the same choice ("LED effect: Pulse") while a board that shows effects is
+connected. There is no tempo control: the owner's rule is that the effects look
+and move exactly as contributed (`LedPr21GoldenTest`). The default is **None** —
+byte-for-byte the static behaviour and the fallback for any unknown id. Stored in
+DataStore: `led_animation` (raw id), `led_animation_in_background` (default
+false), `led_strobe_notice_seen`.
 
-| Option | id | What it does | Interval | Photosensitive |
+| Option | id | What it does | Interval | Flashing |
 |---|---|---|---|---|
-| None (default) | `none` | Static colours, as set in LED colors | no loop | no |
-| Pulse | `pulse` | Each LED keeps its hue and breathes 100/85/70/55/40/55/70/85 % | 180 ms/frame, 8 steps ≈ 1.4 s per breath | no |
-| Two-phase strobe | `two_phase_strobe` | Whole board alternates the CruxCoach and Kilter Standard schemes | 333 ms | yes |
-| Chaotic strobe | `chaotic_strobe` | Deterministic hue scramble `1 + (tick · 7 mod 29)`: frames land 84° apart, roles stay distinct | 333 ms | yes |
-| Rainbow wave | `rainbow_wave` | One shared hue offset on every colour; static colours return every 30 steps | 150 ms/frame, 4.5 s per revolution | no |
+| None (default) | `none` | Normal colours | no loop | no |
+| Pulse | `pulse` | Each LED keeps its hue and glows 100/85/70/55/40/55/70/85 % | 180 ms | no |
+| Rainbow | `rainbow_wave` | One shared hue offset on every colour; normal colours every 30 steps | 150 ms | no |
+| Two-phase strobe | `two_phase_strobe` | Alternates the CruxCoach and Kilter Standard schemes | 333 ms | yes |
+| Chaotic strobe | `chaotic_strobe` | Hue scramble `1 + (tick · 7 mod 29)`, 84° apart, roles stay distinct | 333 ms | yes |
 
-Gates, re-checked per frame rather than only at start:
-
-- **Kilter only** — `BoardBleLedSink.canAnimate` requires a connected link and
-  `BoardBrand.KILTER` (`led/BoardBleLedSink.kt:39-42`): MoonBoard cannot parse
-  Aurora packets, and the other Aurora-family boards are untested at animation
-  rates.
-- **≤ 120 lit LEDs** — above `MAX_ANIMATED_LEDS` the climb stays static
-  (`led/LedAnimationEngine.kt:74-82`).
-- A climb must be lit, no board owner may hold the floor (§4), and the app must be
-  foreground or the background claimed (§5).
-
-The gates do not hide the options: with no Kilter board connected the row shows the
-informational `settings_led_anim_kilter_only` hint and the choice is still stored,
-so it can be set away from the gym and takes effect at the wall.
+Status (`LedEffectStatus`): off, no board, board without effects, waiting for a
+climb, paused, ended, background, running.
 
 ## 3. Engine and pacing
 
-A frame carries only the lit climb's LEDs (typically 12-40, a handful of
-acknowledged 20-byte writes), and the traffic shape is the design constraint:
+Inputs, all observed: the lit frame, the board's availability (no board, a board
+without effects, hold cleaning, ready — `LedBoardAvailability` from
+`BoardBleLedSink`), the settings, the pause owners (§4), foreground and the
+background claim (§5), and the climb whose effect has ended.
 
-- **Pacing scales with the frame:** the interval is the larger of the effect's
-  tempo and 45 ms per group of 16 lit LEDs, and the 120-LED cutoff bounds it at
-  360 ms
-  (`led/LedAnimationEngine.kt:459-465`).
-- **Photosensitivity floor:** a `photosensitive` effect is clamped to
-  `PHOTOSENSITIVE_MIN_FRAME_MS` = 333 ms — at most three colour changes a second —
-  whatever tempo it declares (`led/LedAnimations.kt:18`); no frame gap ever falls
-  below 20 ms (`led/LedAnimationEngine.kt:72`).
-- **No duplicate frames:** RGB332 is coarse, so pulse and hue-cycle frames repeat;
-  one identical to the previous is never sent. That skip is the traffic budget.
-- **A busy link defers, it does not fail:** anything else mid-send earns
-  `FrameSendResult.DEFERRED` and the frame is dropped, not queued, so an animation
-  can neither interleave half-written packets with a user send nor repaint a climb
-  the user moved on from. Animation frames never enter `ConnectionState.SENDING`
-  (`ble/BoardBleConnection.kt:2207-2245`).
-- **Three consecutive write failures end the loop** (`MAX_SEND_FAILURES`); a
-  deferred frame never counts toward it.
-- **A transiently un-animatable link parks the loop** on a 250 ms poll instead of
-  ending it, because the watcher cannot observe a brief gate dip; a board that is
-  really gone nulls the lit frame and the watcher ends the loop.
+- **Interval (as contributed):** the effect's own interval, at least 45 ms per 16
+  lit LEDs; above 120 lit LEDs the climb stays static (one API-2 packet holds 127).
+  The next frame starts `interval − elapsed` after the start of the previous one,
+  never less than 20 ms after it ended. A controller paced at 100 ms per 20-byte
+  chunk (write-only and bare-name Kilter boxes) therefore runs the effect as fast
+  as its writes allow, keeping the link busy most of the time; a climb send waits
+  for at most one frame. Kept unchanged on purpose (owner: same look), see §10.
+- **Flashing:** a `photosensitive` effect is clamped to
+  `PHOTOSENSITIVE_MIN_FRAME_MS` = 333 ms between frame starts: three colour changes
+  a second on average. The wall shows a frame when its last chunk is in, so uneven
+  write times can bring two changes closer than 333 ms; still, since each start is
+  ≥ 333 ms after the previous one and ≥ 20 ms after the previous write ended, five
+  changes are ≥ 1019 ms apart: any one-second window holds at most four changes,
+  i.e. two flashes. WCAG 2.3.1 allows three.
+  Choosing a strobe asks once (`led_strobe_notice_seen`), and every time while
+  Android's "Remove animations" is on (animator duration scale 0) — warn, don't
+  block.
+- **No duplicate frames**, **DEFERRED is one dropped beat**, **three consecutive
+  failed writes end the loop** — as contributed.
+- **Time limit:** 15 minutes on the same lit climb (`MAX_EFFECT_MS`), then the
+  climb's own colours come back. Lit frames carry a send number, so sending the
+  same climb again is a new frame and restarts the effect.
 
 ## 4. Board ownership
 
-Features with their own frame timing claim the wall through refcounted pause owners
-(`AnimationPauseOwner`, `led/LedAnimation.kt:85-102`): `ROUTE_PLAYBACK`
-(`ui/board/BoardClimbDetailViewModel.kt:448`) and `EASTER_ANIMATION` (browser and
-settings Easter effects). Claims count per call, so two screens or a re-triggered
-effect each hold a claim and the last one out releases the animation; a release
-with no matching claim clamps at zero. A `SessionQueueManager` session or a manual
-step through a route is deliberately *not* an owner: it lights one climb and leaves
-it alone.
+Refcounted pause owners (`AnimationPauseOwner`): `ROUTE_PLAYBACK`,
+`EASTER_ANIMATION` and `WALL_GAME` (while the wall games screen is open). Hold
+cleaning is reported by the link (`CLEANING`). A shared session or a manual step
+through a route is not an owner: it lights one climb and leaves it alone.
 
-Static colours are repainted exactly once when a loop that had already written the
-wall stops being wanted — switching to None while a climb is lit, or a loop that
-ended on its own (over the LED cutoff, or three failed writes). A pause and an
-unclaimed background write nothing at all: the feature that just took the board, or
-a background nobody claimed, must not be overwritten.
+On the link (`BoardBleConnection.sendAnimationLeds`), a frame is refused
+(`DEFERRED`) when a user send is in flight, cleaning owns the wall, the board is
+not the expected one or speaks no Aurora packets, the climb it was made from is no
+longer lit, or an API-2 box would show it dark under the 18 W budget. Relayed and
+easter frames, MoonBoard and Shiny Wall sends and a failed climb send clear the lit
+frame. A started frame is finished even when the loop is cancelled (no torn
+packets, no late write callback for the next send). Frames are handed over on the
+main thread.
 
-## 5. Background continuation
+The normal colours are written back once when a running effect stops and nothing
+else is about to paint: switched to None, ended (time limit or Stop), or the app
+left without keep-alive. A pause writes nothing (its owner paints), nor does
+anything get written while cleaning owns the wall or the board is gone.
 
-While an effect has live work, leaving the foreground claims the engine's background
-half and starts an optional `connectedDevice` foreground service
-(`led/LedAnimationService.kt`, `CruxCoachApp.kt:161-192`): a low-importance
-notification with a **Stop** action, no wake lock, `START_NOT_STICKY`, lifecycle
-slaved to `LedAnimationEngine.isRunning`.
+## 5. Idle disconnect and background
 
-- Returning to the foreground releases the claim and stops the service.
-- **Stop** ends the keep-alive, not the setting: the wall falls silent with the
-  claim and animates again next time the app is up.
-- With no wake lock by design, an Android freeze or kill ends the animation and the
-  wall keeps its last frame; a refused service start is caught the same way — the
-  claim is released and the effect stops with the background, never a crash.
+Effect frames do not count as activity: the idle-disconnect timer runs from the
+last real send, as the setting describes. Before an idle release the normal colours
+are written back if an effect frame is on the wall (`restoreStaticBeforeIdleRelease`).
 
-Animation frames count as activity: the idle-disconnect timer is parked for the
-write and re-armed afterwards, including when the frame is cancelled mid-write, so
-auto-disconnect still holds from the last frame once the animation stops
-(`ble/BoardBleConnection.kt:2217-2244`).
+*Keep running in other apps* (off by default): on leaving the app, with an effect
+live and its notification visible (app notifications allowed, channel not
+blocked), `CruxCoachApp` claims the engine's background half and starts
+`LedAnimationService` (`connectedDevice`, low importance, `START_NOT_STICKY`, no
+wake lock). The service calls `startForeground` first, ends itself when the claim
+is released (the app came back) or the effect stops, and survives a refused start.
+**Stop** ends the effect for the lit climb with its normal colours. The 15-minute
+limit applies here too. While it runs, the phone keeps the board connection; the
+settings text says so.
 
 ## 6. Colour pipeline and power
 
-Animation colours are computed on packed RGB332 bytes — the currency of the BLE
-send path — so an effect cannot produce a colour the LEDs cannot show. Hue rotation
-decodes by bit replication, rotates in 8-bit RGB, and re-quantises with
-`rgb888ToRgb332`, a **round-to-nearest** quantiser matched to the levels the board
-decodes; the shared `BoardPacketEncoder` static path keeps its floor buckets so
-existing static bytes and hex parsing are unchanged (`led/Rgb332Effects.kt:130-145`).
-Rotation preserves the max channel, so colours stay inside the board palette, and
-greys and black keep their hue-free look.
+As contributed: colours are packed RGB332 bytes, hue rotation round-trips through
+8-bit RGB with a round-to-nearest quantiser (`led/Rgb332Effects.kt`), brightness
+never exceeds the static colour and never drops an on-channel to zero, and frames
+derive from the exact lit frame the board was sent. Known limit: on API-2 boxes the
+18 W scale is computed per frame, so a large climb's brightness can step between
+rainbow frames (the @2 encoder is not device-verified and was left alone).
 
-Frames derive from the exact lit frame the board was sent, per-board catalogue
-colours included, because one role-class resolution feeds both the packet and
-`litFrame` (`ble/BoardBleConnection.kt:1886-1896`). Power is bounded by
-construction: brightness scaling never exceeds the static colour and never drops an
-on-channel to zero, only the lit climb's LEDs are addressed, and duplicate frames
-cost no traffic.
+## 7. Board coverage
 
-## 7. Strings
-
-| Key | English | German |
-|---|---|---|
-| `settings_led_anim_title` | LED animations | LED-Animationen |
-| `settings_led_anim_change` | Change | Ändern |
-| `settings_led_anim_none` | None | Keine |
-| `settings_led_anim_none_hint` | Static colors, as set in LED colors. | Statische Farben wie in den LED-Farben eingestellt. |
-| `settings_led_anim_pulse` | Pulse | Puls |
-| `settings_led_anim_pulse_hint` | Holds breathe brighter and dimmer in their own colors. | Griffe atmen in ihrer eigenen Farbe heller und dunkler. |
-| `settings_led_anim_two_phase` | Two-phase strobe | Zwei-Phasen-Stroboskop |
-| `settings_led_anim_two_phase_hint` | Alternates between the CruxCoach and Kilter color schemes. | Wechselt zwischen dem CruxCoach- und dem Kilter-Farbschema. |
-| `settings_led_anim_chaotic` | Chaotic strobe | Chaotisches Stroboskop |
-| `settings_led_anim_chaotic_hint` | Colors jump around. Role colors stay distinguishable. | Die Farben springen umher. Roll-Farben bleiben unterscheidbar. |
-| `settings_led_anim_rainbow` | Rainbow wave | Regenbogen-Welle |
-| `settings_led_anim_rainbow_hint` | All colors rotate slowly around the color wheel. | Alle Farben wandern langsam um den Farbkreis. |
-| `settings_led_anim_kilter_only` | LED animations only work with a Kilter Board. | LED-Animationen funktionieren nur mit einem Kilter Board. |
-| `led_anim_notification_channel` | LED animations | LED-Animationen |
-| `led_anim_notification_channel_desc` | Shown while a lit climb keeps animating in another app. | Wird angezeigt, während ein beleuchteter Kletterzug in einer anderen App weiter animiert wird. |
-| `led_anim_notification_title` | LED animation running | LED-Animation läuft |
-| `led_anim_notification_text` | Animating the lit climb on your board. | Der beleuchtete Kletterzug auf deinem Board wird animiert. |
-| `led_anim_notification_stop` | Stop | Stopp |
+Kilter only (`LedEffectSupport`). Tension, Grasshopper, Decoy, So iLL and
+Touchstone speak the same packets and would work through the same path; they wait
+for a device or simulator check. Shiny Wall has role codes, not a colour per LED
+(effects there would be role changes or blinking over its partial updates);
+MoonBoard has fixed role colours over a slow UART; Quantum is a controller shared
+between climbers. None of these get effects in this version.
 
 ## 8. Acceptance criteria
 
-1. On the default **None** the engine emits nothing; a lit climb keeps exactly the
-   bytes an ordinary send produced.
-2. Options come from `LedAnimationRegistry.ALL`; a stored id the registry does not
-   know resolves to None instead of crashing or lighting nothing.
-3. The choice persists as the raw id under `led_animation`, and switching it while a
-   climb is lit changes the wall without a restart.
-4. Nothing is sent unless the board is Kilter, a climb is lit, no pause owner holds
-   the board, and the app is foreground or the background is claimed.
-5. Above 120 lit LEDs nothing is animated; a climb that grows past the cutoff
-   mid-effect is repainted with its own static colours once.
-6. A photosensitive effect never sends faster than one frame per 333 ms, and no
-   frame gap falls below 20 ms.
-7. A frame identical to the previous one is never sent twice.
-8. `DEFERRED` costs one beat and never counts as a failure; three consecutive
-   `FAILED` writes end the loop and repaint the static colours once.
-9. A link that briefly cannot animate parks the loop on a 250 ms poll and resumes on
-   its own; a disconnected board ends it without repainting.
-10. Switching to None while a climb is lit repaints the static colours exactly once;
-    a pause and an unclaimed background write nothing.
-11. Two claims from one owner need two releases; a stray release is a no-op and does
-    not swallow the next real claim.
-12. Animation frames never enter `SENDING` and never overwrite a user send; the idle
-    timer is parked for the write and re-armed after it, even when cancelled
-    mid-flight.
-13. Animation colours are never brighter than the static colour, and the shared
-    encoder's static bytes and hex parsing are unchanged.
-14. Backgrounding mid-effect starts the `connectedDevice` service; Stop, the engine
-    going idle, or returning to foreground takes it down; a refused start degrades to
-    the effect stopping with the background.
+1. On **None** nothing is sent; a lit climb keeps exactly the bytes its send produced.
+2. Unknown ids resolve to None.
+3. A change of effect or tempo shows on the wall without a resend.
+4. Frames go out only to a connected board in `LedEffectSupport`, with a climb lit,
+   no pause owner, no cleaning, and the app in front or the background claimed.
+5. A board without effects runs no loop and never starts the keep-alive service.
+6. Strobes: ≥ 333 ms between frame starts; a one-time notice before the first use,
+   repeated while "Remove animations" is on, which never locks them.
+7. Every frame and every pacing interval equals the PR #21 commit's output for the
+   golden inputs (`LedPr21GoldenTest`).
+8. Idle disconnect fires on schedule from the last real send while an effect runs,
+   and the normal colours are written back first.
+9. A frame never paints over hold cleaning, a relayed climb or a newer climb.
+10. An effect ends after 15 minutes on one climb, or on Stop, with the normal
+    colours; sending the climb again restarts it.
+11. Leaving the app without keep-alive ends the effect with the normal colours.
+12. Keep-alive only with the setting on and its notification visible.
+13. Wall games, route playback and the Easter animation pause effects; claims count.
 
 ## 9. Testing and device checks
 
-JVM: 67 tests under `androidApp/src/test/java/com/cruxcoach/android/led/` cover
-the engine gates, pacing and the photosensitive floor, defer/failure/park
-handling, refcounted ownership, the static repaint rules, the effects, the RGB332
-quantiser, the Kilter sink gate, and the keep-alive observer ordering. Three
-route-playback ownership tests in `ui/board/RoutePlaybackControllerTest.kt` pin
-that a run which can never start claims nothing and every claim is released once.
+JVM: `androidApp/src/test/java/com/cruxcoach/android/led/` (the golden frames of
+f949f16fd, engine gates, pacing and the flashing floor, time limit, Stop, cleaning,
+status, keep-alive choice, effects, RGB332, sink), the Robolectric link tests in
+`ble/BoardBleAnimationFrameTest.kt` (fences, stale frames, relayed and failed sends,
+API-2 dark frames, idle restore, re-send), `ui/settings/LedEffectsSectionTest.kt`
+and the route-playback ownership tests.
 
-Device checks to retain: both strobes flash at most three colour changes per
-second on a real board; idle auto-disconnect still fires on schedule while an
-animation runs; the keep-alive notification's **Stop** stops the service; and an
-effect selected while the app is backgrounded without keep-alive stops animating,
-with the wall keeping its last frame.
+Device checks (Nokia + BoardSimulator as Kilter, and a real Kilter box if
+available): strobes ≤ 3 changes a second; idle disconnect fires on schedule while an
+effect runs and the wall shows the normal colours afterwards; cleaning, a wall game
+and a relayed climb are not painted over; a write-only Kilter box stays responsive
+to climb sends while an effect runs; keep-alive with and without notifications,
+Stop, return to the app, the 15-minute limit.
+
+## 10. Changes after review (0.2.5)
+
+The contribution was reviewed on 2026-10-25 (`led-025`). Owner rule (22:35): keep
+the idea and the exact look, fit it into the codebase. The frame functions
+(`LedAnimations.kt`, `Rgb332Effects.kt`) and the pacing rule are unchanged and
+pinned by a golden test generated on f949f16fd. Changed around them: the idle
+timer is no longer reset per frame; the background needs its own switch, a visible
+notification and a 15-minute limit per climb (also in the foreground); frames are
+fenced against cleaning, relayed and newer climbs, other boards and dark API-2
+frames, never torn, and handed over on the main thread; wall games pause effects;
+availability is observed instead of polled; the normal colours come back when an
+effect stops; Stop ends the effect for the climb; strobes ask once, and again while
+"Remove animations" is on; the settings moved to a card of their own with a status
+and a quick pick in the climb menu; German texts were reworded.
+
+Considered and not done, because they would change the visible rhythm: timing
+strobes from the end of a write instead of the start (safety is met without it, see
+§3) and halving the link use on 100-ms-paced boxes (a climb send waits at most one
+frame either way).
