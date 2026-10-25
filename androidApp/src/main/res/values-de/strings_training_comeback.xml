@@ -13,6 +13,8 @@
 
     <!-- Bevor du startest -->
     <string name="cb_before_title">Bevor du startest</string>
+    <!-- Zweckbestimmung (Owner 2026-10-25, F4); derselbe Satz in README, Store-Text und Release Notes. -->
+    <string name="cb_purpose">Der Plan ist eine Trainingshilfe und kein Medizinprodukt.</string>
     <string name="cb_before_text">Dieser Plan hilft dir, Belastung Schritt für Schritt wieder aufzubauen. Er ist kein Ersatz für den Arztbesuch und kann nicht sagen, ob deine Verletzung verheilt ist – nutz ihn nur in Absprache mit Ärztin, Arzt oder Physio.\n\n• Noch nicht abgeklärt? Wir empfehlen Ärztin, Arzt oder Physio – besonders nach einem Knall, Schwellung oder Bluterguss.\n• Du wählst die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast, und kannst sie jederzeit ändern. Hast du einen Plan von einer Fachperson, gilt der.\n• Deine Einträge bleiben auf diesem Handy, außer du nimmst sie selbst in die Sicherung.</string>
     <string name="cb_understood">Verstanden – in Absprache mit Ärztin, Arzt oder Physio</string>
 
