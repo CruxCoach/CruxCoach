@@ -251,7 +251,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Injury mode: note an injury with region, side and pain, and exercises that
   load it are hidden or marked, wall climbing can be paused, and one-sided work
   stays available for the healthy side – e.g. one-arm pick-ups on the right
-  hand plus bar pull-ups while a left finger is injured.
+  hand plus bar pull-ups while a left finger is injured. A past injury can be
+  opened again or deleted with its comeback diary, and a deletion has Undo.
 - Comeback plan after an injury: a training aid for building load back up
   together with your doctor or physio – not a substitute for seeing a doctor.
   Enter what you were told (onset, pop, swelling, warning signs, what was

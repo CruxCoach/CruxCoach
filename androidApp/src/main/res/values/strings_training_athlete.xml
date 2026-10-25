@@ -18,6 +18,8 @@
     <string name="tra_injury_pain">Pain: %1$d of 9</string>
     <string name="tra_injury_pause_climbing">Pause climbing</string>
     <string name="tra_injury_resolve">It\'s over</string>
+    <string name="tra_injury_reopen">Open again</string>
+    <string name="tra_injury_deleted">Injury deleted</string>
     <string name="tra_injury_where">Where?</string>
     <string name="tra_injury_side">Side</string>
     <string name="tra_injury_detail">Details (e.g. ring finger A2)</string>
