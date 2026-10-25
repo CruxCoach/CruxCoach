@@ -2,7 +2,10 @@ package com.cruxcoach.android.util
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
@@ -14,6 +17,7 @@ import androidx.core.location.GnssStatusCompat
 import androidx.core.location.LocationListenerCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.location.LocationRequestCompat
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
@@ -37,14 +41,10 @@ object DeviceLocation {
     private const val RECENT_MS = 30 * 60_000L
     private const val RECENT_WAIT_MS = 8_000L
 
-    /** How long to wait for a live fix: a cold GPS start outdoors without
-     *  network help often takes 30 s or more. */
+    /** How long a lookup nobody asked for waits for a live fix: a cold GPS
+     *  start outdoors without network help often takes 30 s or more. A tap
+     *  looks on without a limit instead (see `LocateMeState`). */
     const val TIMEOUT_MS = 45_000L
-
-    /** How long a tap keeps looking, like a map app that listens while it is
-     *  open: indoors without a network location service (GrapheneOS by
-     *  default) GPS may need minutes (owner test 2026-10-24). */
-    const val SEARCH_MS = 5 * 60_000L
 
     /** `LocationManager.FUSED_PROVIDER` (named in API 31; older releases may have it too). */
     private const val FUSED = "fused"
@@ -57,7 +57,7 @@ object DeviceLocation {
     )
 
     /**
-     * What one lookup tried, for the detail line under "could not be found"
+     * What one lookup tried, for the detail line under "search stopped" or "no location source"
      * (the owner's phone was not on ADB, 2026-10-24). Provider names and
      * times only, never a position.
      */
@@ -79,6 +79,11 @@ object DeviceLocation {
 
     /** A position (or none) together with what was tried to get it. */
     data class Lookup(val location: Location?, val attempt: Attempt)
+
+    /** What a running lookup has tried so far, read when the user stops it. */
+    fun interface Progress {
+        fun attempt(): Attempt
+    }
 
     fun hasPermission(context: Context): Boolean = PERMISSIONS.any {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
@@ -130,9 +135,19 @@ object DeviceLocation {
      * fix from the last half hour answers after a short wait; an older one
      * only when no live fix arrived at all. With [useCache] false only a live
      * fix counts (the caller has shown the cached one already).
+     *
+     * With [timeoutMs] null it looks until a fix arrives or the caller is
+     * cancelled; only a phone where no provider takes the request answers
+     * null at once. [onProgress] is called once the providers have been
+     * asked.
      */
     @SuppressLint("MissingPermission") // checked by hasPermission() first
-    suspend fun locate(context: Context, timeoutMs: Long = TIMEOUT_MS, useCache: Boolean = true): Lookup {
+    suspend fun locate(
+        context: Context,
+        timeoutMs: Long? = TIMEOUT_MS,
+        useCache: Boolean = true,
+        onProgress: (Progress) -> Unit = {},
+    ): Lookup {
         val precise = hasFine(context)
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         if (!hasPermission(context) || manager == null) {
@@ -148,26 +163,31 @@ object DeviceLocation {
             return Lookup(cached, Attempt(precise, enabled, emptyList(), emptyList(), 0L))
         }
 
-        val wait = if (cachedAge < RECENT_MS) minOf(RECENT_WAIT_MS, timeoutMs) else timeoutMs
+        val wait = if (cachedAge < RECENT_MS) minOf(RECENT_WAIT_MS, timeoutMs ?: RECENT_WAIT_MS) else timeoutMs
         val asked = mutableListOf<String>()
         val refused = mutableListOf<String>()
         val started = SystemClock.elapsedRealtime()
         // Android shows the satellite status only with the precise permission.
         val satellites = if (precise) SatelliteWatch(manager) else null
+        fun attempt(): Attempt {
+            val watched = satellites?.takeIf { it.started }
+            return Attempt(
+                precise, enabled, asked.toList(), refused.toList(), SystemClock.elapsedRealtime() - started,
+                satellitesSeen = watched?.seen, satellitesUsed = watched?.used,
+            )
+        }
         val fresh = try {
-            withTimeoutOrNull(wait) {
+            val search: suspend () -> Location? = {
                 firstFix(context, manager, candidates(precise), wait, asked, refused) {
                     if (LocationManager.GPS_PROVIDER in asked) satellites?.start(context)
+                    onProgress(Progress { attempt() })
                 }
             }
+            if (wait == null) search() else withTimeoutOrNull(wait) { search() }
         } finally {
             satellites?.stop()
         }
-        val watched = satellites?.takeIf { it.started }
-        val attempt = Attempt(
-            precise, enabled, asked.toList(), refused.toList(), SystemClock.elapsedRealtime() - started,
-            satellitesSeen = watched?.seen, satellitesUsed = watched?.used,
-        )
+        val attempt = attempt()
         // Never the coordinates: the position stays out of the log too.
         if (fresh != null) {
             Log.i(TAG, "live fix from ${fresh.provider} (±${fresh.accuracy.toInt()} m): $attempt")
@@ -202,14 +222,15 @@ object DeviceLocation {
     /**
      * Listens on all [providers] at once and returns the first fix; every
      * request ends with it. Fills [asked] and [refused], then calls
-     * [onAsked], before it waits.
+     * [onAsked], before it waits. Without [durationMs] the requests last
+     * until a fix arrives or the caller is cancelled.
      */
     @SuppressLint("MissingPermission")
     private suspend fun firstFix(
         context: Context,
         manager: LocationManager,
         providers: List<String>,
-        durationMs: Long,
+        durationMs: Long?,
         asked: MutableList<String>,
         refused: MutableList<String>,
         onAsked: () -> Unit,
@@ -218,7 +239,7 @@ object DeviceLocation {
             // Lets fused use GPS with the precise permission; Android lowers it for approximate.
             .setQuality(LocationRequestCompat.QUALITY_HIGH_ACCURACY)
             // Ends on the platform side too, should the cleanup below never run.
-            .setDurationMillis(durationMs)
+            .apply { durationMs?.let { setDurationMillis(it) } }
             .build()
         // One listener per provider: a listener belongs to one provider at a time.
         lateinit var listeners: List<LocationListenerCompat>
@@ -248,6 +269,34 @@ object DeviceLocation {
             // A fix that came in while later providers were still being asked.
             !cont.isActive -> stopAll()
             else -> cont.invokeOnCancellation { stopAll() }
+        }
+    }
+
+    /**
+     * Returns once location is switched off for the whole phone, at once
+     * when it is off already: a search without a time limit would otherwise
+     * wait for a fix that cannot come.
+     */
+    suspend fun awaitSwitchedOff(context: Context) {
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
+        if (!LocationManagerCompat.isLocationEnabled(manager)) return
+        val off = CompletableDeferred<Unit>()
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (!LocationManagerCompat.isLocationEnabled(manager)) off.complete(Unit)
+            }
+        }
+        val filter = IntentFilter(LocationManager.MODE_CHANGED_ACTION).apply {
+            addAction(LocationManager.PROVIDERS_CHANGED_ACTION)
+        }
+        val app = context.applicationContext ?: context
+        // Both are system broadcasts, which reach a receiver that is not exported.
+        ContextCompat.registerReceiver(app, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        try {
+            // It may have gone off between the check above and the registration.
+            if (LocationManagerCompat.isLocationEnabled(manager)) off.await()
+        } finally {
+            runCatching { app.unregisterReceiver(receiver) }
         }
     }
 

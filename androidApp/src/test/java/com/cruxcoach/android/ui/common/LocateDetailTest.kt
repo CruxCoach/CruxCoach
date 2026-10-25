@@ -10,7 +10,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
-/** The detail line under "could not be found" (owner test on GrapheneOS without ADB, 2026-10-24). */
+/** The detail line under "search stopped" and "no location source" (owner test on GrapheneOS without ADB, 2026-10-24). */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 class LocateDetailTest {

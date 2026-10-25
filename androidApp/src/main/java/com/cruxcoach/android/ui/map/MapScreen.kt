@@ -143,8 +143,8 @@ fun MapScreen(
         if (result == SnackbarResult.ActionPerformed) locateMe.openFix(failure)
         locateFailure = null
     }
-    // A tap keeps looking for minutes (GPS indoors): say so, and let the user stop it.
-    // The snackbar goes away by itself once the search ends (this effect restarts).
+    // A tap looks until a position arrives (GPS indoors may need minutes): say so, and let
+    // the user stop it. The snackbar goes away by itself once the search ends (this effect restarts).
     val stillLooking = stringResource(R.string.locate_me_still_looking)
     val cancelLabel = stringResource(R.string.action_cancel)
     LaunchedEffect(locateMe.slow) {
