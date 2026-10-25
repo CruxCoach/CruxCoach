@@ -17,6 +17,9 @@ class CruxCoachCrashHandler(
 ) : Thread.UncaughtExceptionHandler {
 
     override fun uncaughtException(thread: Thread, throwable: Throwable) {
+        // First, while the process can still talk to Bluetooth: if board
+        // sharing had the phone renamed, send its own name back.
+        com.cruxcoach.android.data.RelayAdapterNameGuard.giveBackBeforeProcessEnds(context)
         try {
             val report = buildReport(throwable)
             val crashFile = File(context.filesDir, CRASH_FILE_NAME)

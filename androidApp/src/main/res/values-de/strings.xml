@@ -2607,6 +2607,7 @@
     <string name="relay_chip_stop">Beenden</string>
     <string name="relay_host_title">Geteilte CruxCoach-Session</string>
     <string name="relay_host_join_subtitle">%1$d in der Session · Antippen zum Beitreten</string>
+    <string name="relay_error_name_in_use">Dein Handy hat schon einen CruxCoach-Bluetooth-Namen. Teilt gerade eine andere CruxCoach-App? Mehr unter Einstellungen → Teilen in der Nähe.</string>
     <string name="board_ble_via_cruxcoach">via CruxCoach</string>
     <string name="board_ble_connection_via_relay">Über CruxCoach Relay verbunden</string>
     <string name="board_ble_connection_multi">Mehrere Geräte können verbunden bleiben</string>

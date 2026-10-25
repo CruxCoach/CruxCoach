@@ -25,6 +25,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Already merged in by WorkManager; declared for RelayNameRecoveryReceiver. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Exact alarms for the rest timer. SCHEDULE_EXACT_ALARM (API 31)
          can be revoked on API 33+, silently degrading the timer to an
@@ -236,6 +238,34 @@
             android:name=".data.CruxRelayService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- FEAT-044 CruxRelay: gives the phone its Bluetooth name back after the
+             app ended while sharing. Off by default; RelayAdapterNameGuard
+             switches it on only while a name is lent or not back, so other
+             Bluetooth connections never start the app. ACL_DISCONNECTED also
+             fires when a killed app's board link drops, ACL_CONNECTED when the
+             car connects. Exported because these come from the Bluetooth
+             process; all actions are protected system broadcasts. -->
+        <receiver
+            android:name=".data.RelayNameRecoveryReceiver"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Same, once after every app update: a name the previous version left
+             behind should not wait for the user to open the app. -->
+        <receiver
+            android:name=".data.RelayNameUpdateReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Keeps the sender-side Wi-Fi hotspot and local HTTP server alive
              while the share screen is backgrounded. -->

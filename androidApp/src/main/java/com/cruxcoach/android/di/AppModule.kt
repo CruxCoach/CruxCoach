@@ -522,6 +522,14 @@ object AppModule {
         return RelayGattServer(context)
     }
 
+    /** One per process: CruxCoachApp, the recovery receivers and the relay share it. */
+    @Provides
+    @Singleton
+    fun provideRelayAdapterNameGuard(
+        @ApplicationContext context: Context,
+    ): com.cruxcoach.android.data.RelayAdapterNameGuard =
+        com.cruxcoach.android.data.RelayAdapterNameGuard(context)
+
     @Provides
     @Singleton
     fun provideCruxRelayManager(
@@ -531,6 +539,7 @@ object AppModule {
         bleConnection: BoardBleConnection,
         projectionCoordinator: BoardProjectionCoordinator,
         userPreferences: UserPreferences,
+        nameGuard: com.cruxcoach.android.data.RelayAdapterNameGuard,
     ): CruxRelayManager {
         return CruxRelayManager(
             context,
@@ -539,6 +548,7 @@ object AppModule {
             bleConnection,
             projectionCoordinator,
             userPreferences,
+            nameGuard = nameGuard,
         )
     }
 

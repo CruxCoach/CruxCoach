@@ -52,6 +52,8 @@ class CruxRelayService : android.app.Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var stateJob: Job? = null
+    /** Set right before this service stops itself because sharing ended. */
+    private var stoppingBecauseSharingEnded = false
 
     override fun onCreate() {
         super.onCreate()
@@ -79,6 +81,7 @@ class CruxRelayService : android.app.Service() {
             stateJob = scope.launch {
                 relayManager.state.collect { state ->
                     if (!state.enabled) {
+                        stoppingBecauseSharingEnded = true
                         stopSelf()
                     } else {
                         val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -93,7 +96,23 @@ class CruxRelayService : android.app.Service() {
         return START_NOT_STICKY
     }
 
+    /**
+     * CruxCoach was swiped away from the recent apps. On many phones the
+     * process goes with it, and sharing renamed the whole phone: end sharing
+     * now and give the phone its Bluetooth name back while we still can.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        relayManager.stopBeforeProcessMayEnd()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        // Destroyed while sharing still runs (not by the collector above):
+        // without this service advertising is throttled and nothing shows that
+        // the phone is renamed. End sharing rather than leave it half alive.
+        if (!stoppingBecauseSharingEnded && relayManager.state.value.enabled) {
+            relayManager.disable()
+        }
         stateJob?.cancel()
         scope.cancel()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
