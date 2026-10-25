@@ -276,6 +276,8 @@ internal fun BoardPickerDialog(
     onDismiss: () -> Unit,
     onSelected: () -> Unit = {},
     onFindViaGym: (() -> Unit)? = null,
+    /** "Find a gym near you": opens the gym search straight in near-me mode. */
+    onFindNearbyGym: (() -> Unit)? = null,
     prefill: BoardPickerPrefill? = null,
     mismatch: BoardConfigurationMismatch? = null,
     deferDownloads: Boolean = false,
@@ -314,6 +316,7 @@ internal fun BoardPickerDialog(
             onConfirmQuantum = { model -> request(BoardBrand.QUANTUM) { viewModel.selectQuantum(model, deferDownloads) } },
             onConfirmAurora = { brand, variant, sizeId -> request(brand) { viewModel.selectAurora(brand, variant, sizeId, deferDownloads) } },
             onFindViaGym = onFindViaGym,
+            onFindNearbyGym = onFindNearbyGym,
             onFindViaBluetooth = onFindViaBluetooth,
             bluetoothResult = bluetoothResult,
             onDismiss = onDismiss,
@@ -335,11 +338,11 @@ internal fun BoardDownloadRequestHost(
     var failed by remember { mutableStateOf(false) }
     val complete: (BoardBrand, () -> Unit, Boolean) -> Unit = { brand, apply, enabled ->
         apply()
-        // Aurora/Quantum selection already loads its catalogue. Kilter and
-        // MoonBoard selection only persists hardware preferences.
-        if (enabled && (brand == BoardBrand.KILTER || brand == BoardBrand.MOONBOARD)) {
-            viewModel.downloadSelectedBoard(brand)
-        }
+        // A confirmed download starts the catalogue for every board (device test 2026-10-17: a Tension board chosen
+        // from the map said "not downloaded yet" until "load catalogue" was tapped again). The sync manager queues
+        // it behind a running import and the worker is unique per board, so an Aurora selection that already loads
+        // its catalogue is not loaded twice.
+        if (enabled) viewModel.downloadSelectedBoard(brand)
         onSelected(brand)
     }
     content { brand, apply ->

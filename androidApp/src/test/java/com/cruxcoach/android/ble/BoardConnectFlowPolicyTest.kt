@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ble
 
 import android.os.Build
+import com.cruxcoach.domain.board.BoardBrand
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -65,5 +66,35 @@ class BoardConnectFlowPolicyTest {
     @Test
     fun nothing_in_range_connects_to_nothing() {
         assertNull(BoardConnectFlowPolicy.autoConnectTarget(emptyList<Board>()))
+    }
+
+    private fun discovered(address: String, brand: BoardBrand = BoardBrand.KILTER, relay: Boolean = false) =
+        DiscoveredBoard("Kilter Board", "", 2, address, -50, brand, isCruxRelay = relay)
+
+    @Test
+    fun automatic_flows_take_the_remembered_wall_not_the_first_listed() {
+        // Wall B advertises first (hash order); wall A, just released, comes back later.
+        val wallB = discovered("BB:BB")
+        val wallA = discovered("AA:AA")
+        assertSame(wallA, BoardConnectFlowPolicy.automaticTarget(listOf(wallB, wallA), BoardBrand.KILTER, "aa:aa"))
+    }
+
+    @Test
+    fun automatic_flows_leave_two_unremembered_walls_to_the_climber() {
+        val boards = listOf(discovered("AA:AA"), discovered("BB:BB"))
+        assertNull(BoardConnectFlowPolicy.automaticTarget(boards, BoardBrand.KILTER, null))
+        assertNull(BoardConnectFlowPolicy.automaticTarget(boards, BoardBrand.KILTER, "CC:CC"))
+    }
+
+    @Test
+    fun automatic_flows_skip_relays_and_other_brands() {
+        val wall = discovered("AA:AA")
+        val relay = discovered("RR:RR", relay = true)
+        val moon = discovered("MM:MM", BoardBrand.MOONBOARD)
+        assertSame(wall, BoardConnectFlowPolicy.automaticTarget(listOf(relay, moon, wall), BoardBrand.KILTER, null))
+        // With no direct board, a single relay is still taken, as in 0.2.3.
+        assertSame(relay, BoardConnectFlowPolicy.automaticTarget(listOf(relay, moon), BoardBrand.KILTER, null))
+        assertNull(BoardConnectFlowPolicy.automaticTarget(
+            listOf(relay, discovered("SS:SS", relay = true)), BoardBrand.KILTER, null))
     }
 }

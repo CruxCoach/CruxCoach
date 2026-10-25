@@ -10,6 +10,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
@@ -33,6 +34,10 @@ data class MapPlace(
 data class PagesBoardMapSnapshot(
     val locations: List<BoardLocation>,
     val places: List<MapPlace>,
+    /** Venue-level extras keyed by [venueKey]. */
+    val venueInfo: Map<String, MapVenueInfo> = emptyMap(),
+    /** Board-level extras keyed by [BoardLocation.id]. */
+    val boardInfo: Map<String, MapBoardInfo> = emptyMap(),
 )
 
 /**
@@ -55,19 +60,26 @@ internal object PagesBoardMapParser {
 
     fun parse(boardsJson: String, citiesJson: String): PagesBoardMapSnapshot {
         val root = json.parseToJsonElement(boardsJson).jsonObject
-        val locations = root["features"].asArray().flatMap(::parseFeature)
+        val venueInfo = HashMap<String, MapVenueInfo>()
+        val boardInfo = HashMap<String, MapBoardInfo>()
+        val locations = root["features"].asArray().flatMap { parseFeature(it, venueInfo, boardInfo) }
         val cityRoot = json.parseToJsonElement(citiesJson).jsonObject
         val places = cityRoot["cities"].asArray().mapNotNull(::parsePlace)
-        return PagesBoardMapSnapshot(locations, places)
+        return PagesBoardMapSnapshot(locations, places, venueInfo, boardInfo)
     }
 
-    private fun parseFeature(element: JsonElement): List<BoardLocation> {
+    private fun parseFeature(
+        element: JsonElement,
+        venueInfo: MutableMap<String, MapVenueInfo>,
+        boardInfo: MutableMap<String, MapBoardInfo>,
+    ): List<BoardLocation> {
         val feature = element as? JsonObject ?: return emptyList()
         val coordinates = feature["geometry"].asObject()["coordinates"].asArray()
         val lng = coordinates.getOrNull(0)?.jsonPrimitive?.doubleOrNull ?: return emptyList()
         val lat = coordinates.getOrNull(1)?.jsonPrimitive?.doubleOrNull ?: return emptyList()
         val props = feature["properties"].asObject()
-        val name = props.string("name")?.trim().orEmpty()
+        // A few upstream names arrive wrapped in literal quotes ("\"Gym\"").
+        val name = props.string("name")?.trim()?.removeSurrounding("\"")?.trim().orEmpty()
         if (name.isEmpty()) return emptyList()
         val country = props.string("country")?.uppercase()?.takeIf { it.length == 2 } ?: "??"
         val city = props.string("city") ?: props.string("city_nearest")
@@ -79,6 +91,13 @@ internal object PagesBoardMapParser {
             props.string("city_nearest_de"),
         ).distinct()
         val key = venueKey(lat, lng)
+        val info = MapVenueInfo(
+            hours = VenueHours.parse(props.stringList("hours")),
+            hoursSource = props.string("hours_src"),
+            cityIsNearest = props.string("city") == null && props.string("city_nearest") != null,
+            nearestCityDe = props.string("city_nearest_de").takeIf { props.string("city") == null },
+        )
+        if (info != MapVenueInfo()) venueInfo[key] = info
 
         return props["boards"].asArray().flatMapIndexed { boardIndex, boardElement ->
             val board = boardElement as? JsonObject ?: return@flatMapIndexed emptyList()
@@ -100,14 +119,21 @@ internal object PagesBoardMapParser {
                 instagram = board.string("instagram"),
             )
             when (brand) {
-                BoardBrand.KILTER -> parseKilter(common, board)
-                BoardBrand.MOONBOARD -> listOf(parseMoonBoard(common, board))
-                else -> listOf(common.location())
+                BoardBrand.KILTER -> parseKilter(common, board, boardInfo)
+                BoardBrand.MOONBOARD -> listOf(parseMoonBoard(common, board, boardInfo))
+                else -> listOf(common.location()).onEach { location ->
+                    val models = board["models"].asArray().mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank) }
+                    if (models.isNotEmpty()) boardInfo[location.id] = MapBoardInfo(models = models)
+                }
             }
         }
     }
 
-    private fun parseKilter(common: CommonVenue, board: JsonObject): List<BoardLocation> {
+    private fun parseKilter(
+        common: CommonVenue,
+        board: JsonObject,
+        boardInfo: MutableMap<String, MapBoardInfo>,
+    ): List<BoardLocation> {
         val walls = board["walls"].asArray()
         if (walls.isEmpty()) return listOf(common.location())
         return walls.mapIndexedNotNull { index, element ->
@@ -130,11 +156,24 @@ internal object PagesBoardMapParser {
                 },
                 fixedAngle = if (adjustable == false) wall.int("angle") else null,
                 extraTerms = listOfNotNull(wall.string("wall_name"), wall.string("layout")),
-            )
+            ).also { location ->
+                val extra = MapBoardInfo(
+                    wallName = wall.string("wall_name"),
+                    minAngle = wall.int("min_angle"),
+                    maxAngle = wall.int("max_angle"),
+                    angleStep = wall.int("angle_increments"),
+                    angle = wall.int("angle"),
+                )
+                if (extra != MapBoardInfo()) boardInfo[location.id] = extra
+            }
         }
     }
 
-    private fun parseMoonBoard(common: CommonVenue, board: JsonObject): BoardLocation {
+    private fun parseMoonBoard(
+        common: CommonVenue,
+        board: JsonObject,
+        boardInfo: MutableMap<String, MapBoardInfo>,
+    ): BoardLocation {
         val variant = board.string("variant")
         return common.location(
             layoutName = moonVariantLabel(variant),
@@ -159,7 +198,9 @@ internal object PagesBoardMapParser {
             fixedAngle = board.int("angle"),
             hasLed = board["led"]?.jsonPrimitive?.booleanOrNull,
             extraTerms = listOfNotNull(variant, moonVariantLabel(variant), board.string("username")),
-        )
+        ).also { location ->
+            board.int("angle")?.let { boardInfo[location.id] = MapBoardInfo(angle = it) }
+        }
     }
 
     private fun parsePlace(element: JsonElement): MapPlace? {
@@ -247,5 +288,9 @@ internal object PagesBoardMapParser {
     private fun JsonElement?.asObject(): JsonObject = this as? JsonObject ?: JsonObject(emptyMap())
     private fun JsonObject.string(key: String): String? =
         this[key]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)
-    private fun JsonObject.int(key: String): Int? = this[key]?.jsonPrimitive?.intOrNull
+    private fun JsonObject.int(key: String): Int? = (this[key] as? JsonPrimitive)?.intOrNull
+
+    /** The array's strings, or null as soon as one entry is not a string. */
+    private fun JsonObject.stringList(key: String): List<String>? =
+        (this[key] as? JsonArray)?.map { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: return null }
 }

@@ -20,29 +20,44 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Tests for [GymBoardPickerViewModel].
  *
  * The VM body uses `withContext(Dispatchers.IO) { ... }` for repository
  * reads, which means the work executes on a real IO thread regardless of
- * the test scheduler. Tests therefore use Turbine's `.test {}` to await
+ * the test scheduler. Tests therefore use Turbine's `.test(timeout = IO_WAIT) {}` to await
  * the eventual StateFlow emission rather than asserting eagerly.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class GymBoardPickerViewModelTest {
 
     private val dispatcher = UnconfinedTestDispatcher()
+    private val IO_WAIT = 10.seconds
     private val repo = FakeBoardLocationRepository()
     private lateinit var viewModel: GymBoardPickerViewModel
 
+    /** Every view model a test made, so all of them settle before Main goes (full-suite flake 2026-10-19). */
+    private val created = mutableListOf<GymBoardPickerViewModel>()
+
     @Before fun setUp() { Dispatchers.setMain(dispatcher) }
     @After fun tearDown() {
-        if (::viewModel.isInitialized) viewModel.viewModelScope.cancel()
+        // Cancel, then wait until IO work that was still running has finished: a late resumption on Main after
+        // resetMain threw in the next test ("Dispatchers.Main was accessed when … the test dispatcher was unset").
+        created.forEach { it.viewModelScope.cancel() }
+        kotlinx.coroutines.runBlocking {
+            kotlinx.coroutines.withTimeoutOrNull(5_000) {
+                created.forEach { vm -> vm.viewModelScope.coroutineContext[kotlinx.coroutines.Job]?.join() }
+            }
+        }
         Dispatchers.resetMain()
     }
 
-    private fun createViewModel() = GymBoardPickerViewModel(repo).also { viewModel = it }
+    /** Rows of the bundled map snapshot the picker falls back to. */
+    private val bundled = mutableListOf<BoardLocation>()
+
+    private fun createViewModel() = GymBoardPickerViewModel(repo) { bundled.toList() }.also { viewModel = it; created += it }
 
     private fun loc(
         id: String,
@@ -80,7 +95,7 @@ class GymBoardPickerViewModelTest {
     fun `init disables picker when no locations`() = runTest {
         // No locations synced at all → nothing to search, picker stays off.
         val vm = createViewModel()
-        vm.state.test {
+        vm.state.test(timeout = IO_WAIT) {
             val first = awaitItem()
             assertEquals(false, first.enabled)
             cancelAndIgnoreRemainingEvents()
@@ -93,7 +108,7 @@ class GymBoardPickerViewModelTest {
         // walls) must still enable the "find my gym" path.
         repo.locations += loc("g1")
         val vm = createViewModel()
-        vm.state.test {
+        vm.state.test(timeout = IO_WAIT) {
             // Drain emissions until enabled flips.
             var seen = awaitItem()
             while (!seen.enabled) seen = awaitItem()
@@ -111,7 +126,7 @@ class GymBoardPickerViewModelTest {
             boardBrand = com.cruxcoach.domain.board.BoardBrand.MOONBOARD,
         )
         val vm = createViewModel()
-        vm.state.test {
+        vm.state.test(timeout = IO_WAIT) {
             var seen = awaitItem()
             while (!seen.enabled) seen = awaitItem()
             vm.selectGym(repo.locations.first { it.id == "mb1" })
@@ -133,7 +148,7 @@ class GymBoardPickerViewModelTest {
             boardBrand = com.cruxcoach.domain.board.BoardBrand.MOONBOARD,
         )
         val vm = createViewModel()
-        vm.state.test {
+        vm.state.test(timeout = IO_WAIT) {
             var seen = awaitItem()
             while (!seen.enabled) seen = awaitItem()
             vm.selectGym(repo.locations.first { it.id == "mb2" })
@@ -151,7 +166,7 @@ class GymBoardPickerViewModelTest {
     fun `onQueryChange under 2 chars clears results`() = runTest {
         repo.locations += loc("g1", "Boulderwelt München")
         val vm = createViewModel()
-        vm.state.test {
+        vm.state.test(timeout = IO_WAIT) {
             awaitItem() // initial / init-update
             vm.onQueryChange("B")
             // The state update is synchronous for the <2-chars path
@@ -170,7 +185,7 @@ class GymBoardPickerViewModelTest {
         repo.locations += loc("g1", "Boulderwelt München")
         repo.locations += loc("g2", "Klettercentrum Stuttgart")
         val vm = createViewModel()
-        vm.state.test {
+        vm.state.test(timeout = IO_WAIT) {
             awaitItem()
             vm.onQueryChange("Bo")
             var seen = awaitItem()
@@ -188,7 +203,7 @@ class GymBoardPickerViewModelTest {
         repo.walls += wall(gymUuid = "g1", productSizeId = null)
         repo.walls += wall(gymUuid = "g1", layoutId = null)
         val vm = createViewModel()
-        vm.state.test {
+        vm.state.test(timeout = IO_WAIT) {
             awaitItem()
             vm.selectGym(repo.locations.first())
             var seen = awaitItem()
@@ -211,7 +226,7 @@ class GymBoardPickerViewModelTest {
         repo.walls += wall(gymUuid = "g1", productSizeId = 20)
         repo.walls += wall(gymUuid = "g1", productSizeId = 10)
         val vm = createViewModel()
-        vm.state.test {
+        vm.state.test(timeout = IO_WAIT) {
             // Wait for init to settle (enabled=true) so frequency is populated.
             var seen = awaitItem()
             while (!seen.enabled) seen = awaitItem()
@@ -224,11 +239,79 @@ class GymBoardPickerViewModelTest {
     }
 
     @Test
+    fun `near me falls back to the bundled snapshot and offers its Kilter walls`() = runTest {
+        // Nothing synced yet (first start): the bundled map rows stand in.
+        bundled += com.cruxcoach.android.ui.map.mapBoard(
+            "pages-k0", 48.14, 11.58, name = "City Boulder", productSizeId = 10, sizeLabel = "12x12",
+        )
+        bundled += com.cruxcoach.android.ui.map.mapBoard(
+            "pages-k1", 48.14, 11.58, name = "City Boulder", productSizeId = 26, sizeLabel = "10x12",
+        )
+        bundled += com.cruxcoach.android.ui.map.mapBoard("pages-far", 52.52, 13.40, name = "Berlin Gym")
+        val vm = createViewModel()
+        vm.state.test(timeout = IO_WAIT) {
+            var seen = awaitItem()
+            while (!seen.enabled) seen = awaitItem()
+            vm.showNearby(48.137, 11.575)
+            while (seen.searching || seen.results.isEmpty()) seen = awaitItem()
+            assertEquals(listOf("City Boulder"), seen.results.map { it.name })
+            assertTrue(seen.nearby)
+            assertTrue(seen.distanceById.getValue(seen.results.single().id) < 1_000.0)
+            assertEquals(listOf(com.cruxcoach.domain.board.BoardBrand.KILTER), seen.brandsById[seen.results.single().id])
+
+            vm.selectGym(seen.results.single())
+            while (seen.wallOptions.isEmpty()) seen = awaitItem()
+            assertEquals(setOf(10, 26), seen.wallOptions.map { it.productSizeId }.toSet())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `a place from the map opens with its boards, Tension variants and Quantum models included`() = runTest {
+        val rows = listOf(
+            com.cruxcoach.android.ui.map.mapBoard("pages-t", 48.14, 11.58, name = "Mixed Gym", brand = com.cruxcoach.domain.board.BoardBrand.TENSION),
+            com.cruxcoach.android.ui.map.mapBoard("pages-q", 48.14, 11.58, name = "Mixed Gym", brand = com.cruxcoach.domain.board.BoardBrand.QUANTUM),
+        )
+        val vm = createViewModel()
+        vm.state.test(timeout = IO_WAIT) {
+            var seen = awaitItem()
+            vm.openGym(rows)
+            while (seen.wallOptions.isEmpty()) seen = awaitItem()
+            assertEquals("Mixed Gym", seen.selectedGym?.name)
+            val byBrand = seen.wallOptions.groupBy { it.boardBrand }
+            assertEquals(
+                com.cruxcoach.android.data.BoardConstants.auroraVariants(com.cruxcoach.domain.board.BoardBrand.TENSION).size,
+                byBrand.getValue(com.cruxcoach.domain.board.BoardBrand.TENSION).size,
+            )
+            assertEquals(
+                com.cruxcoach.domain.board.QuantumBoardModel.entries.map { it.layoutId.toInt() },
+                byBrand.getValue(com.cruxcoach.domain.board.BoardBrand.QUANTUM).map { it.layoutId },
+            )
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `typing leaves near-me mode`() = runTest {
+        bundled += com.cruxcoach.android.ui.map.mapBoard("pages-k0", 48.14, 11.58, name = "City Boulder")
+        val vm = createViewModel()
+        vm.state.test(timeout = IO_WAIT) {
+            var seen = awaitItem()
+            while (!seen.enabled) seen = awaitItem()
+            vm.showNearby(48.137, 11.575)
+            while (seen.searching || seen.results.isEmpty()) seen = awaitItem()
+            vm.onQueryChange("Ci")
+            while (seen.nearby || seen.distanceById.isNotEmpty()) seen = awaitItem()
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun `clearGymSelection resets selectedGym and wallOptions`() = runTest {
         repo.locations += loc("g1")
         repo.walls += wall(gymUuid = "g1")
         val vm = createViewModel()
-        vm.state.test {
+        vm.state.test(timeout = IO_WAIT) {
             awaitItem()
             vm.selectGym(repo.locations.first())
             var seen = awaitItem()

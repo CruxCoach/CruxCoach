@@ -6,6 +6,7 @@ import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -221,5 +222,19 @@ class BoardPacketEncoderTest {
         assertEquals(2, BoardPacketEncoder.ledsPerHoldFor(BoardBrand.KILTER))
         assertEquals(1, BoardPacketEncoder.ledsPerHoldFor(BoardBrand.TENSION))
         assertEquals(1, BoardPacketEncoder.ledsPerHoldFor(BoardBrand.MOONBOARD))
+    }
+
+    @Test
+    fun v2FrameBeyondThePowerBudgetIsReportedAsLightingNothing() {
+        // Kilter counts 2 LEDs per hold; cyan (hand) holds go dark beyond 135.
+        val kilter = BoardPacketEncoder(2, BoardPacketEncoder.KILTER_LEDS_PER_HOLD)
+        val cyan = BoardPacketEncoder.COLOR_HAND
+        assertFalse(kilter.litNothing((0 until 135).map { it to cyan }))
+        assertTrue(kilter.litNothing((0 until 136).map { it to cyan }))
+        assertFalse(kilter.litNothing(emptyList()), "a clear is not a dark climb")
+        assertFalse(BoardPacketEncoder(3, BoardPacketEncoder.KILTER_LEDS_PER_HOLD)
+            .litNothing((0 until 500).map { it to cyan }), "API 3 has no client-side budget")
+        val section = BoardPacketEncoder.cleaningHoldLimit(2, BoardPacketEncoder.KILTER_LEDS_PER_HOLD)
+        assertFalse(kilter.litNothing((0 until section).map { it to BoardPacketEncoder.COLOR_CLEANING }))
     }
 }

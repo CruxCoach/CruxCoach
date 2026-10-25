@@ -128,6 +128,17 @@ SELECT uuid, climb_uuid, angle, is_mirror,
 FROM bids WHERE climb_uuid = :climbUuid
 ORDER BY climbed_at DESC;
 
+-- Hold cleaning: one day's sends and attempts, by the logbook's own day key
+-- (the first ten characters of climbed_at, the local date). Only what the
+-- holds need: no grades, ratings or comments.
+getUserLogbookForDay:
+SELECT climb_uuid, angle, is_mirror, climbed_at, climb_frames, board_brand, layout_id
+FROM ascents WHERE substr(climbed_at, 1, 10) = :day
+UNION ALL
+SELECT climb_uuid, angle, is_mirror, climbed_at, '' AS climb_frames, board_brand, layout_id
+FROM bids WHERE substr(climbed_at, 1, 10) = :day
+ORDER BY climbed_at ASC;
+
 -- Combined count
 countUserLogbook:
 SELECT (SELECT COUNT(*) FROM ascents) + (SELECT COUNT(*) FROM bids);
@@ -186,6 +197,18 @@ SELECT DISTINCT climb_uuid, angle FROM ascents;
 -- a fetched log whose log_uuid is already here is a re-import, not new.
 getAllAscentUuids:
 SELECT uuid FROM ascents;
+
+-- The rating is no part of a Kilter log: changing it alone leaves the row as uploaded.
+updateAscentQuality:
+UPDATE ascents SET quality = ? WHERE uuid = ?;
+
+-- See bids.selectBidUploadState.
+selectAscentUploadState:
+SELECT synced, bid_count, comment FROM ascents WHERE uuid = ?;
+
+-- Entries imported from an export (external_id prefix), synced or not.
+getAscentUuidsWithExternalIdPrefix:
+SELECT uuid FROM ascents WHERE external_id LIKE ?;
 
 -- ═══ FEAT-005 Aurora-JSON-import — INSERT-or-skip on external_id ═══
 

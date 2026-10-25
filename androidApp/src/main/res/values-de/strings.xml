@@ -291,8 +291,6 @@
 
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Karte</string>
-    <string name="map_search_open">Karte durchsuchen</string>
-    <string name="map_search_close">Suche schließen</string>
     <string name="map_search_hint">Halle, Ort oder Board</string>
     <string name="map_search_no_results">Keine Hallen oder Orte gefunden</string>
     <string name="map_search_searching">Suche läuft…</string>
@@ -300,17 +298,16 @@
     <string name="map_filter_show_all">Alle</string>
     <string name="map_filter_show_original">Kommerzielle Hallen (Original)</string>
     <string name="map_filter_show_homewalls">Private Homewalls</string>
-    <string name="map_open_filters">Filter öffnen</string>
     <string name="map_open_stats">Statistik öffnen</string>
     <string name="map_filter_sheet_title">Karte filtern</string>
-    <string name="map_filter_section_layout">Layout</string>
+    <string name="map_filter_section_layout">Kilter-Layout</string>
     <string name="map_filter_section_access">Zugang</string>
     <string name="map_filter_section_moon_variant">MoonBoard-Variante</string>
     <string name="map_filter_section_moon_type">MoonBoard-Setup</string>
     <string name="map_filter_section_moon_led">MoonBoard-Hardware</string>
     <string name="map_filter_moon_no_led">Keine LEDs</string>
-    <string name="map_filter_section_adjustability">Verstellbarkeit</string>
-    <string name="map_filter_section_size">Größe</string>
+    <string name="map_filter_section_adjustability">Kilter-Verstellbarkeit</string>
+    <string name="map_filter_section_size">Kilter-Größe</string>
     <string name="map_filter_section_country">Land</string>
     <string name="map_filter_count_template">Zeigt %1$d von %2$d</string>
     <string name="map_filter_reset">Zurücksetzen</string>
@@ -334,11 +331,7 @@
     <string name="map_filter_brand_other">Andere Boards</string>
     <string name="map_filter_section_membership">Mitgliedschaft</string>
     <string name="map_filter_wellpass">egym Wellpass</string>
-    <string name="map_marker_open_in_maps">In Karten-App öffnen</string>
     <string name="map_marker_layout">Layout</string>
-    <string name="map_marker_access">Zugang</string>
-    <string name="map_marker_adjustability">Verstellbarkeit</string>
-    <string name="map_marker_frame">Rahmen</string>
     <string name="map_marker_field_unknown">—</string>
     <string name="map_marker_intent_failed">Keine App für diese Aktion verfügbar.</string>
     <string name="map_offline_dialog_title">Keine Internetverbindung</string>
@@ -357,10 +350,7 @@
 
     <!-- Adjustability enum display values -->
     <string name="map_adjustability_fixed">Fest</string>
-    <string name="map_adjustability_fixed_angle">Fest (%1$d°)</string>
     <string name="map_adjustability_adjustable">Verstellbar</string>
-    <string name="map_adjustability_limited">Eingeschränkt</string>
-    <string name="map_adjustability_full">Voll verstellbar</string>
 
     <string name="action_send">Senden</string>
     <string name="action_retry">Erneut versuchen</string>
@@ -1051,6 +1041,9 @@
     <string name="board_ble_scan_permission_message_legacy">Auf dieser Android-Version können Bluetooth-Geräte in der Nähe nur mit Standortberechtigung gefunden werden. CruxCoach verwendet deinen Standort nicht für die Board-Verbindung.</string>
     <string name="board_ble_scan_permission_message_modern">Erlaube den Zugriff auf Bluetooth-Geräte in der Nähe, um Boards zu suchen und zu verbinden.</string>
     <string name="board_ble_allow_search">Board-Suche erlauben</string>
+    <string name="board_ble_permission_blocked_modern">Android fragt nicht mehr nach dieser Berechtigung. Erlaube CruxCoach in den App-Einstellungen „Geräte in der Nähe“, um Boards zu suchen.</string>
+    <string name="board_ble_permission_blocked_legacy">Android fragt nicht mehr nach dieser Berechtigung. Erlaube CruxCoach in den App-Einstellungen „Standort“, um Boards zu suchen; CruxCoach verwendet deinen Standort nicht für die Board-Verbindung.</string>
+    <string name="board_ble_open_app_settings">App-Einstellungen öffnen</string>
     <string name="board_ble_loading_connection_options">Verbindungsoptionen werden geladen…</string>
     <string name="board_ble_direct_reconnect_privacy_hint">Die direkte Wiederverbindung greift nicht auf deinen Standort zu.</string>
     <string name="board_ble_reconnect">Wiederverbinden</string>
@@ -1072,6 +1065,7 @@
     <string name="board_ble_connecting">Verbinde\u2026</string>
     <string name="board_ble_scanning">Suche Boards…</string>
     <string name="board_ble_no_boards">Keine Boards gefunden. Starte einen Scan, um Boards in der Nähe zu finden.</string>
+    <string name="board_ble_no_board_yet_hint">Noch kein Board gefunden. Stell dich nah ans Board und prüfe, ob es eingeschaltet ist. Ist ein anderes Handy verbunden, bleibt das Board unsichtbar, bis es getrennt wird.</string>
     <!-- FEAT-027: Board-Marken-Labels in der BLE-Kopplungs-UI -->
     <string name="board_ble_brand_kilter">Kilter Board</string>
     <string name="board_ble_brand_moonboard">MoonBoard</string>
@@ -2885,6 +2879,9 @@
     <string name="whatsnew_023_title">Neu in 0.2.3</string>
     <string name="whatsnew_023_body">• Beta-Videos – Play-Symbol in den Boulder-Details.\n• Neue Kopfzeile – Board, Winkel, Bluetooth und Filter direkt erreichbar.\n• Filter – übersichtlicher, mit „Geschaffte ausschließen“.\n• Board-Karte – Hallen und Boards nach Ort oder Name suchen.\n• Kataloge wählen – nur die Boards laden, die du brauchst.\n• Statistik – jeder Boulder zählt einmal: Flash, geschafft oder versucht.</string>
     <string name="whatsnew_023_hint">Außerdem: MoonBoard-Griffsets in der Board-Auswahl, klareres Konto &amp; Backup, Einführung im Logo-Menü.</string>
+    <string name="whatsnew_024_title">Neu in 0.2.4</string>
+    <string name="whatsnew_024_body">• Neuere Kilter-Boards – Boards, die nur als „Kilter Board“ erscheinen, verbinden sich jetzt.\n• Kilter-Logbuch-Upload – funktioniert wieder, ohne Doppelte, und versucht es selbst erneut.\n• Board-Karte – klarere Markierungen, eine Liste der Orte im Ausschnitt, „Mein Standort“ und Hallen in deiner Nähe.\n• Griffe putzen – das Logbuch-Menü leuchtet die Griffe deiner heute geloggten Probleme zum Bürsten.</string>
+    <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 
@@ -3029,6 +3026,8 @@
     <string name="kilter_upload_network">Kilter nicht erreichbar. Bitte Internetverbindung prüfen.</string>
     <string name="kilter_upload_http">Kilter hat den Upload abgelehnt. Bitte erneut versuchen.</string>
     <string name="kilter_upload_internal">Upload fehlgeschlagen. Bitte erneut versuchen.</string>
+    <string name="kilter_upload_timeout">Kilter antwortet gerade zu langsam.</string>
+    <string name="kilter_upload_auto_retry">CruxCoach versucht es automatisch erneut.</string>
     <string name="kilter_upload_retry">Upload wiederholen</string>
     <string name="kilter_upload_report_title">Kilter-Logbuch übertragen</string>
     <string name="kilter_diagnostics_attach">Kilter-Uploaddiagnose anhängen</string>
@@ -3037,6 +3036,45 @@
     <string name="kilter_upload_syncing">Logbuch wird synchronisiert…</string>
     <string name="kilter_upload_unchecked">Synchronisierung noch nicht geprüft</string>
     <string name="kilter_upload_conflict">Dieser Eintrag weicht von Kilter ab. Bitte in der Kilter-App prüfen.</string>
+    <plurals name="kilter_upload_rejected">
+        <item quantity="one">Kilter kennt den Climb von %d Eintrag unter keiner ID. Er bleibt in deinem Logbuch und wird nach einer Änderung oder einem App-Update erneut versucht.</item>
+        <item quantity="other">Kilter kennt die Climbs von %d Einträgen unter keiner ID. Sie bleiben in deinem Logbuch und werden nach einer Änderung oder einem App-Update erneut versucht.</item>
+    </plurals>
+    <plurals name="kilter_upload_conflicts">
+        <item quantity="one">%d Eintrag weicht von seiner Kopie bei Kilter ab und bleibt lokal. Bitte in der Kilter-App prüfen.</item>
+        <item quantity="other">%d Einträge weichen von ihren Kopien bei Kilter ab und bleiben lokal. Bitte in der Kilter-App prüfen.</item>
+    </plurals>
+    <plurals name="kilter_upload_held_imported">
+        <item quantity="one">%d Eintrag aus einem Aurora-Export wird nicht automatisch übertragen: Kilter hat ihn meist schon.</item>
+        <item quantity="other">%d Einträge aus einem Aurora-Export werden nicht automatisch übertragen: Kilter hat sie meist schon.</item>
+    </plurals>
+    <plurals name="kilter_upload_invalid">
+        <item quantity="one">%d Eintrag hat ein Datum, das Kilter nicht annimmt, und bleibt lokal.</item>
+        <item quantity="other">%d Einträge haben ein Datum, das Kilter nicht annimmt, und bleiben lokal.</item>
+    </plurals>
+    <string name="kilter_upload_done_except">Logbuch synchronisiert, bis auf:</string>
+    <plurals name="kilter_upload_unconfirmed">
+        <item quantity="one">Kilter hat %d Eintrag noch nicht angenommen. Er wird automatisch erneut versucht.</item>
+        <item quantity="other">Kilter hat %d Einträge noch nicht angenommen. Sie werden automatisch erneut versucht.</item>
+    </plurals>
+    <string name="kilter_upload_show_entries">Einträge anzeigen</string>
+    <string name="kilter_upload_list_failed">Die Liste konnte nicht geladen werden. Bitte erneut versuchen.</string>
+    <string name="kilter_upload_list_title">Nicht übertragen</string>
+    <string name="kilter_upload_list_intro">Diese Einträge bleiben in deinem Logbuch. Gibt es einen Climb bei Kilter doch, schick die Liste als Fehlerbericht, damit er korrigiert werden kann.</string>
+    <string name="kilter_upload_list_empty">Alle Einträge sind bei Kilter.</string>
+    <string name="kilter_upload_list_report">Als Fehlerbericht senden</string>
+    <string name="kilter_upload_reason_not_on_kilter">Kilter kennt diesen Climb nicht</string>
+    <string name="kilter_upload_reason_retry_later">Noch nicht angenommen, wird erneut versucht</string>
+    <string name="kilter_upload_reason_conflict">Kilter hat diesen Eintrag mit anderem Inhalt</string>
+    <string name="kilter_upload_reason_invalid_date">Datum, das Kilter nicht annimmt</string>
+    <string name="kilter_upload_entry_bid">nur Versuche</string>
+    <string name="kilter_upload_unknown_climb">Unbekannter Climb</string>
+    <string name="kilter_upload_report_list_header">Kilter hat diese Logbuch-Einträge nicht angenommen (App %1$s):</string>
+    <string name="kilter_upload_report_list_more">… und %1$d weitere</string>
+    <string name="kilter_upload_imported_action">Importierte übertragen</string>
+    <string name="kilter_upload_imported_title">Importierte Einträge übertragen?</string>
+    <string name="kilter_upload_imported_message">Diese Einträge stammen aus einem Aurora-Export. Stammt er aus diesem Kilter-Konto, hat Kilter die meisten schon. CruxCoach überspringt jeden Eintrag, den Kilter für denselben Boulder, Winkel und Tag bereits hat, und überträgt den Rest.</string>
+    <string name="kilter_upload_imported_confirm">Übertragen</string>
     <string name="board_angle_change">Winkel ändern, %1$d Grad</string>
     <string name="board_angle_physical_hint">Stelle den Winkel wie am Board ein. Das Board wird dadurch nicht verstellt.</string>
     <string name="board_angle_unavailable">Wähle zuerst ein Board mit verfügbaren Winkelangaben.</string>
@@ -3150,4 +3188,33 @@
     <string name="import_moon_mail_short">Den kopierten Anfragetext in die E-Mail einfügen.</string>
     <string name="account_amber_restore_summary">Wähle in Amber das Konto deines Backups. Dein privater Schlüssel bleibt in Amber.</string>
     <string name="account_restore_key_method">Mit Schlüssel</string>
+
+    <!-- Board cleaning (0.2.4) -->
+    <string name="board_cleaning_title">Griffe putzen</string>
+    <string name="board_cleaning_logbook_options">Logbuch-Optionen</string>
+    <string name="board_cleaning_description">Markiert die Griffe der Probleme, die du heute für dieses Board geloggt hast (Versuch oder Top). In Gruppen putzt jeder nacheinander seine eigenen.</string>
+    <string name="board_cleaning_connect_hint">Verbinde dich mit dem Board, das du putzen möchtest.</string>
+    <string name="board_cleaning_connect">Board verbinden</string>
+    <string name="board_cleaning_unsupported">Der Putzmodus benötigt eine direkte Verbindung zu Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone oder MoonBoard.</string>
+    <string name="board_cleaning_empty">Heute hast du für dieses Board noch nichts geloggt.</string>
+    <string name="board_cleaning_all_clean">Alles geputzt. Was du ab jetzt loggst, kommt neu dazu.</string>
+    <string name="board_cleaning_relay">Beende die Board-Freigabe, bevor du den Putzmodus startest.</string>
+    <string name="board_cleaning_active_hint">Problemwechsel von diesem Handy sind pausiert. Beim Schließen des Dialogs bleibt die Markierung an. Beenden stellt die letzte bekannte Anzeige wieder her oder schaltet die LEDs aus, falls sie nicht mehr bekannt ist. „Geputzt“ setzt zusätzlich diese Sammlung zurück: Danach zählt nur, was du neu loggst.</string>
+    <string name="board_cleaning_done">Geputzt · Sammlung zurücksetzen</string>
+    <string name="board_cleaning_stop">Beenden · Sammlung behalten</string>
+    <string name="board_cleaning_start">Griffe am Board markieren</string>
+    <string name="board_cleaning_retry">Erneut markieren</string>
+    <string name="board_cleaning_active">Putzmodus aktiv · Steuerung öffnen</string>
+    <string name="board_cleaning_error">Das Board konnte nicht aktualisiert werden. Prüfe die Verbindung und versuche es erneut. Die Sammlung bleibt erhalten.</string>
+    <plurals name="board_cleaning_count">
+        <item quantity="one">%d Griff zu putzen</item>
+        <item quantity="other">%d Griffe zu putzen</item>
+    </plurals>
+    <string name="board_cleaning_sections">Dieser ältere Controller markiert bis zu %d Griffe pro Abschnitt. Bestätige jeden Abschnitt als geputzt, um den nächsten anzuzeigen.</string>
+    <string name="board_cleaning_section_count">%1$d von %2$d verbleibenden Griffen in diesem Abschnitt</string>
+    <string name="board_cleaning_next">Diese Griffe geputzt · weiter</string>
+    <plurals name="board_cleaning_remaining">
+        <item quantity="one">%d Griff in diesem Putzgang übrig</item>
+        <item quantity="other">%d Griffe in diesem Putzgang übrig</item>
+    </plurals>
 </resources>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- "My location" on the board map and in the gym picker. The permission is asked for only on tap. -->
+    <string name="locate_me">My location</string>
+    <string name="locate_me_finding">Finding your location…</string>
+    <string name="locate_me_denied">Without location access, CruxCoach cannot show what is near you.</string>
+    <string name="locate_me_denied_settings">Location access is off for CruxCoach. You can allow it in the app settings.</string>
+    <string name="locate_me_disabled">Location is switched off on this phone.</string>
+    <!-- Only when no location provider on the phone takes the request; a tap otherwise looks until a position arrives. -->
+    <string name="locate_me_unavailable">This phone offers CruxCoach no location source. Search by name instead.</string>
+    <string name="locate_me_open_settings">Settings</string>
+    <string name="locate_me_turn_on">Turn on</string>
+    <string name="locate_me_private">Your location stays on this phone.</string>
+    <!-- Second line under "could not be found": what was tried. Provider names (fused, gps, network, passive) stay as Android names them. Never a position. -->
+    <string name="locate_me_detail">Details: %1$s</string>
+    <string name="locate_me_detail_precise">precise location</string>
+    <string name="locate_me_detail_approximate">approximate location</string>
+    <string name="locate_me_detail_on">on: %1$s</string>
+    <string name="locate_me_detail_asked">asked: %1$s</string>
+    <string name="locate_me_detail_refused">not available: %1$s</string>
+    <string name="locate_me_detail_waited">no answer in %1$d s</string>
+    <string name="locate_me_detail_none">none</string>
+    <string name="locate_me_detail_satellites">satellites: %1$d seen, %2$d used</string>
+    <!-- While a tap keeps looking without any position yet; it looks until one arrives. "Cancel" stops it and shows "search stopped" with the detail line. -->
+    <string name="locate_me_still_looking">Still looking for your location. Outdoors or at a window, GPS finds it faster.</string>
+    <string name="locate_me_stopped">Location search stopped.</string>
+    <string name="distance_m">%1$s m</string>
+    <string name="distance_km">%1$s km</string>
+
+    <!-- Board map with a known position -->
+    <string name="map_in_view_nearest_you">Nearest to you first</string>
+
+    <!-- Gym picker -->
+    <string name="gym_nearby_button">Gyms near me</string>
+    <string name="gym_nearby_title">Near you</string>
+    <string name="gym_nearby_none">No gyms with a board CruxCoach supports within 100 km. Search by name instead.</string>
+    <string name="board_find_nearby_gym">Find a gym near you</string>
+</resources>

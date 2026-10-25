@@ -52,7 +52,7 @@ internal fun SettingsScreen(
     onNavigateToChat: () -> Unit = {},
     onNavigateToAnnouncements: () -> Unit = {},
     onNavigateToBugReports: () -> Unit = {},
-    onReportKilterUpload: () -> Unit = {},
+    onReportKilterUpload: (description: String) -> Unit = {},
     onNavigateToFeatureRequests: () -> Unit = {},
     onNavigateToCrashReports: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
@@ -66,6 +66,7 @@ internal fun SettingsScreen(
 
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
+    var gymSearchNearby by rememberSaveable { mutableStateOf(false) }
     var settingsBoardWire by rememberSaveable { mutableStateOf<String?>(null) }
     // The global active-board picker must not inherit the card being inspected.
     var boardPickerWire by rememberSaveable { mutableStateOf<String?>(null) }
@@ -91,6 +92,12 @@ internal fun SettingsScreen(
             },
             onFindViaGym = {
                 showBoardModelDialog = false
+                gymSearchNearby = false
+                showGymSearch = true
+            },
+            onFindNearbyGym = {
+                showBoardModelDialog = false
+                gymSearchNearby = true
                 showGymSearch = true
             },
             prefill = boardPickerWire
@@ -106,6 +113,7 @@ internal fun SettingsScreen(
     }
     if (showGymSearch) {
         GymBoardSearchSheet(
+            startNearby = gymSearchNearby,
             onClose = { showGymSearch = false },
             onFallbackToDirect = {
                 showGymSearch = false
@@ -294,6 +302,8 @@ internal fun SettingsScreen(
                         onRetryPublishQueueNow = { viewModel.retryKilterPublishQueueNow() },
                         onRetryUpload = { viewModel.retryKilterUpload() },
                         onReportUpload = onReportKilterUpload,
+                        onUploadImported = { viewModel.uploadImportedKilterLogs() },
+                        onLoadNotUploaded = { viewModel.loadKilterNotUploaded() },
                     )
                 }
                 SettingsSectionCard {

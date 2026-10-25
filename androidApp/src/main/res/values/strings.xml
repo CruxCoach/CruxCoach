@@ -291,8 +291,6 @@
 
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Map</string>
-    <string name="map_search_open">Search map</string>
-    <string name="map_search_close">Close search</string>
     <string name="map_search_hint">Gym, city or board</string>
     <string name="map_search_no_results">No gyms or places found</string>
     <string name="map_search_searching">Searching…</string>
@@ -308,11 +306,7 @@
     <string name="map_filter_brand_other">Other boards</string>
     <string name="map_filter_section_membership">Membership</string>
     <string name="map_filter_wellpass">egym Wellpass</string>
-    <string name="map_marker_open_in_maps">Open in Maps</string>
     <string name="map_marker_layout">Layout</string>
-    <string name="map_marker_access">Access</string>
-    <string name="map_marker_adjustability">Adjustability</string>
-    <string name="map_marker_frame">Frame</string>
     <string name="map_marker_field_unknown">—</string>
     <string name="map_marker_intent_failed">No app available for this action.</string>
     <string name="map_offline_dialog_title">No internet connection</string>
@@ -323,17 +317,16 @@
     <string name="map_init_error" formatted="false">Map failed to load: %1$s</string>
     <string name="map_init_error_generic">Map failed to load. Please try again.</string>
     <string name="map_tile_provider_unreachable">Map tile service is currently unreachable — check your connection or try again later.</string>
-    <string name="map_open_filters">Open filters</string>
     <string name="map_open_stats">Open stats</string>
     <string name="map_filter_sheet_title">Filter map</string>
-    <string name="map_filter_section_layout">Layout</string>
+    <string name="map_filter_section_layout">Kilter layout</string>
     <string name="map_filter_section_access">Access</string>
     <string name="map_filter_section_moon_variant">MoonBoard variant</string>
     <string name="map_filter_section_moon_type">MoonBoard setup</string>
     <string name="map_filter_section_moon_led">MoonBoard hardware</string>
     <string name="map_filter_moon_no_led">No LED</string>
-    <string name="map_filter_section_adjustability">Adjustability</string>
-    <string name="map_filter_section_size">Size</string>
+    <string name="map_filter_section_adjustability">Kilter adjustability</string>
+    <string name="map_filter_section_size">Kilter size</string>
     <string name="map_filter_section_country">Country</string>
     <string name="map_filter_count_template">Showing %1$d of %2$d</string>
     <string name="map_filter_reset">Reset</string>
@@ -357,10 +350,7 @@
 
     <!-- Adjustability enum display values -->
     <string name="map_adjustability_fixed">Fixed</string>
-    <string name="map_adjustability_fixed_angle">Fixed (%1$d°)</string>
     <string name="map_adjustability_adjustable">Adjustable</string>
-    <string name="map_adjustability_limited">Limited</string>
-    <string name="map_adjustability_full">Fully adjustable</string>
     <string name="action_send">Send</string>
     <string name="action_retry">Retry</string>
     <string name="action_reset">Reset</string>
@@ -1007,6 +997,9 @@
     <string name="board_ble_scan_permission_message_legacy">On this Android version, nearby Bluetooth devices can only be found with location permission. CruxCoach does not use your location for the board connection.</string>
     <string name="board_ble_scan_permission_message_modern">Allow access to nearby Bluetooth devices to search for and connect to boards.</string>
     <string name="board_ble_allow_search">Allow board search</string>
+    <string name="board_ble_permission_blocked_modern">Android no longer asks for this permission. Allow “Nearby devices” for CruxCoach in the app settings to search for boards.</string>
+    <string name="board_ble_permission_blocked_legacy">Android no longer asks for this permission. Allow “Location” for CruxCoach in the app settings to search for boards; CruxCoach does not use your location for the board connection.</string>
+    <string name="board_ble_open_app_settings">Open app settings</string>
     <string name="board_ble_loading_connection_options">Loading connection options…</string>
     <string name="board_ble_direct_reconnect_privacy_hint">Direct reconnect does not access your location.</string>
     <string name="board_ble_reconnect">Reconnect</string>
@@ -1028,6 +1021,7 @@
     <string name="board_ble_connecting">Connecting\u2026</string>
     <string name="board_ble_scanning">Searching boards…</string>
     <string name="board_ble_no_boards">No boards found. Start a scan to find nearby boards.</string>
+    <string name="board_ble_no_board_yet_hint">No board found yet. Stand close to the board and check that it is switched on. A board connected to another phone stays hidden until that phone disconnects.</string>
     <!-- FEAT-027: board brand labels in the BLE pairing UI -->
     <string name="board_ble_brand_kilter">Kilter Board</string>
     <string name="board_ble_brand_moonboard">MoonBoard</string>
@@ -2886,6 +2880,9 @@
     <string name="whatsnew_023_title">New in 0.2.3</string>
     <string name="whatsnew_023_body">• Beta videos – play icon in the problem details.\n• New header – board, angle, Bluetooth and filters one tap away.\n• Filters – easier to scan, with “Exclude sent”.\n• Board map – search gyms and boards by place or name.\n• Choose catalogues – download only the boards you need.\n• Statistics – each problem counts once: flash, sent or attempted.</string>
     <string name="whatsnew_023_hint">Also: MoonBoard hold sets in the board picker, clearer account &amp; backup, introduction in the logo menu.</string>
+    <string name="whatsnew_024_title">New in 0.2.4</string>
+    <string name="whatsnew_024_body">• Newer Kilter boards – boards that show up only as “Kilter Board” now connect.\n• Kilter logbook upload – works again, without duplicates, and retries by itself.\n• Board map – clearer markers, a list of the places in view, “My location” and gyms near you.\n• Clean holds – the logbook menu lights the holds of the problems you logged today, for brushing.</string>
+    <string name="whatsnew_024_hint">Also: a board switch shows at once during a catalogue download, and a session resumes after a rest.</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
 
@@ -3030,6 +3027,8 @@
     <string name="kilter_upload_network">Cannot reach Kilter. Please check your connection.</string>
     <string name="kilter_upload_http">Kilter rejected the upload. Please try again.</string>
     <string name="kilter_upload_internal">Upload failed. Please try again.</string>
+    <string name="kilter_upload_timeout">Kilter is answering too slowly right now.</string>
+    <string name="kilter_upload_auto_retry">CruxCoach will try again automatically.</string>
     <string name="kilter_upload_retry">Retry upload</string>
     <string name="kilter_upload_report_title">Kilter logbook upload</string>
     <string name="kilter_diagnostics_attach">Attach Kilter upload diagnostics</string>
@@ -3038,6 +3037,45 @@
     <string name="kilter_upload_syncing">Syncing logbook…</string>
     <string name="kilter_upload_unchecked">Sync not checked yet</string>
     <string name="kilter_upload_conflict">This entry differs from Kilter. Please check it in the Kilter app.</string>
+    <plurals name="kilter_upload_rejected">
+        <item quantity="one">Kilter does not know the climb of %d entry under any id. It stays in your logbook and is tried again after you edit it or update the app.</item>
+        <item quantity="other">Kilter does not know the climbs of %d entries under any id. They stay in your logbook and are tried again after you edit them or update the app.</item>
+    </plurals>
+    <plurals name="kilter_upload_conflicts">
+        <item quantity="one">%d entry differs from its copy in Kilter and stays local. Please check it in the Kilter app.</item>
+        <item quantity="other">%d entries differ from their copies in Kilter and stay local. Please check them in the Kilter app.</item>
+    </plurals>
+    <plurals name="kilter_upload_held_imported">
+        <item quantity="one">%d entry from an Aurora export is not uploaded automatically: Kilter usually has it already.</item>
+        <item quantity="other">%d entries from an Aurora export are not uploaded automatically: Kilter usually has them already.</item>
+    </plurals>
+    <plurals name="kilter_upload_invalid">
+        <item quantity="one">%d entry has a date Kilter cannot accept and stays local.</item>
+        <item quantity="other">%d entries have a date Kilter cannot accept and stay local.</item>
+    </plurals>
+    <string name="kilter_upload_done_except">Logbook synced, except:</string>
+    <plurals name="kilter_upload_unconfirmed">
+        <item quantity="one">Kilter has not taken %d entry yet. It is tried again automatically.</item>
+        <item quantity="other">Kilter has not taken %d entries yet. They are tried again automatically.</item>
+    </plurals>
+    <string name="kilter_upload_show_entries">Show entries</string>
+    <string name="kilter_upload_list_failed">The list could not be loaded. Please try again.</string>
+    <string name="kilter_upload_list_title">Not uploaded</string>
+    <string name="kilter_upload_list_intro">These entries stay in your logbook. If a climb does exist on Kilter, send the list as a bug report so it can be fixed.</string>
+    <string name="kilter_upload_list_empty">All entries are on Kilter.</string>
+    <string name="kilter_upload_list_report">Send as bug report</string>
+    <string name="kilter_upload_reason_not_on_kilter">Kilter does not know this climb</string>
+    <string name="kilter_upload_reason_retry_later">Not taken yet, tried again automatically</string>
+    <string name="kilter_upload_reason_conflict">Kilter has this entry with different content</string>
+    <string name="kilter_upload_reason_invalid_date">Date Kilter cannot accept</string>
+    <string name="kilter_upload_entry_bid">attempts only</string>
+    <string name="kilter_upload_unknown_climb">Unknown climb</string>
+    <string name="kilter_upload_report_list_header">Kilter did not take these logbook entries (app %1$s):</string>
+    <string name="kilter_upload_report_list_more">… and %1$d more</string>
+    <string name="kilter_upload_imported_action">Upload imported entries</string>
+    <string name="kilter_upload_imported_title">Upload imported entries?</string>
+    <string name="kilter_upload_imported_message">These entries come from an Aurora export. If the export is from this Kilter account, Kilter already has most of them. CruxCoach skips every entry Kilter already has for the same climb, angle and day, and uploads the rest.</string>
+    <string name="kilter_upload_imported_confirm">Upload</string>
     <string name="board_angle_change">Change angle, %1$d degrees</string>
     <string name="board_angle_physical_hint">Match the angle of your physical board. This does not move the board.</string>
     <string name="board_angle_unavailable">Choose a board with available angle information first.</string>
@@ -3151,4 +3189,33 @@
     <string name="import_moon_mail_short">Paste the copied request into the email.</string>
     <string name="account_amber_restore_summary">Choose your backup’s account in Amber. Your private key stays in Amber.</string>
     <string name="account_restore_key_method">With a key</string>
+
+    <!-- Board cleaning (0.2.4) -->
+    <string name="board_cleaning_title">Clean holds</string>
+    <string name="board_cleaning_logbook_options">Logbook options</string>
+    <string name="board_cleaning_description">Highlights the holds of the problems you logged today for this board (attempt or top). In a group, everyone cleans their own in turn.</string>
+    <string name="board_cleaning_connect_hint">Connect to the board you want to clean.</string>
+    <string name="board_cleaning_connect">Connect board</string>
+    <string name="board_cleaning_unsupported">Cleaning mode requires a direct connection to Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone or MoonBoard.</string>
+    <string name="board_cleaning_empty">You haven’t logged anything for this board today.</string>
+    <string name="board_cleaning_all_clean">All clean. What you log from now on is added.</string>
+    <string name="board_cleaning_relay">Stop board sharing before starting cleaning mode.</string>
+    <string name="board_cleaning_active_hint">Problem changes from this phone are paused. Closing this dialog keeps the lights on. Finish to restore the last known display, or turn off the LEDs if it is no longer known. “Cleaned” also resets this collection: after that, only what you log anew counts.</string>
+    <string name="board_cleaning_done">Cleaned · reset collection</string>
+    <string name="board_cleaning_stop">Stop · keep collection</string>
+    <string name="board_cleaning_start">Highlight holds on board</string>
+    <string name="board_cleaning_retry">Highlight again</string>
+    <string name="board_cleaning_active">Cleaning mode active · open controls</string>
+    <string name="board_cleaning_error">The board could not be updated. Check the connection and try again. The collection has been kept.</string>
+    <plurals name="board_cleaning_count">
+        <item quantity="one">%d hold to clean</item>
+        <item quantity="other">%d holds to clean</item>
+    </plurals>
+    <string name="board_cleaning_sections">This older controller lights up to %d holds per section. Mark each section as cleaned to show the next one.</string>
+    <string name="board_cleaning_section_count">%1$d of %2$d remaining holds in this section</string>
+    <string name="board_cleaning_next">These holds are clean · next section</string>
+    <plurals name="board_cleaning_remaining">
+        <item quantity="one">%d hold left in this cleaning round</item>
+        <item quantity="other">%d holds left in this cleaning round</item>
+    </plurals>
 </resources>

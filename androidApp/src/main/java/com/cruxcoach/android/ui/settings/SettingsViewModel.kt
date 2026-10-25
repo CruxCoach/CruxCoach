@@ -1080,7 +1080,8 @@ class SettingsViewModel @Inject constructor(
             // throw (e.g. from the DataStore read) must not strand the
             // spinner with isSyncing = true forever.
             try {
-                val result = kilterSyncEngine.syncBidirectional()
+                // Outlives the screen: leaving it mid-upload would lose Kilter's answer.
+                val result = kilterSyncEngine.syncBidirectionalDetached()
                 val lastSync = userPreferences.kilterLastSync.first()
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
                     isSyncing = false,
@@ -1182,10 +1183,35 @@ class SettingsViewModel @Inject constructor(
             try {
                 // The observed upload status owns the result and retry/report actions.
                 // Do not repeat it in the generic import/sync result card.
-                kilterSyncEngine.uploadPendingLogs(trigger)
+                kilterSyncEngine.uploadPendingLogsDetached(trigger)
             } finally {
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = false)) }
             }
+        }
+    }
+
+    /** Loads the entries Kilter did not take, for the list the user opened. */
+    fun loadKilterNotUploaded() {
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(notUploaded = null, notUploadedFailed = false)) }
+        viewModelScope.launch {
+            val entries = try {
+                kilterSyncEngine.notUploadedEntries()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            _state.update { it.copy(kilterAccount = it.kilterAccount.copy(notUploaded = entries, notUploadedFailed = entries == null)) }
+        }
+    }
+
+    /** Opt in to uploading Aurora-imported entries (they are matched against Kilter first), then upload. */
+    fun uploadImportedKilterLogs() {
+        viewModelScope.launch {
+            kilterSyncEngine.setImportedUploadEnabled(true)
+            // A run already in flight read the opt-in before it was given.
+            state.first { !it.kilterAccount.isSyncing }
+            retryKilterUpload()
         }
     }
 
@@ -1199,6 +1225,7 @@ class SettingsViewModel @Inject constructor(
             kilterApiClient.revokeRefreshToken()
             kilterTokenStore.clear()
             kilterSyncEngine.clearUploadDiagnostics()
+            kilterSyncEngine.clearUploadLedger()
             userPreferences.setKilterSyncEnabled(false)
             _state.update { it.copy(kilterAccount = KilterAccountState()) }
             Log.i(TAG, "destructive: kilterDisconnect() done — token cleared, sync disabled")

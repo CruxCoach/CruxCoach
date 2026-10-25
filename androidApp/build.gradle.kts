@@ -128,8 +128,8 @@ android {
         manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 28
         targetSdk = 35
-        versionCode = featureVersionCode ?: 9
-        versionName = "0.2.3"
+        versionCode = featureVersionCode ?: 10
+        versionName = "0.2.4"
 
         // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
         // to the APK (libmaplibre 8 MB + sqlcipher + secp256k1 + sodium +
@@ -177,6 +177,14 @@ android {
             "\"${localProps.getProperty("UPDATER_REPO_OWNER", "CruxCoach")}\"")
         buildConfigField("String", "UPDATER_REPO_NAME",
             "\"${localProps.getProperty("UPDATER_REPO_NAME", "CruxCoach")}\"")
+        // A second forge for the compiled-in fallback, same owner/repo. Every
+        // release since 0.2.2 is published on GitHub and mirrored to Codeberg
+        // byte for byte, and the runtime list has carried both since then —
+        // but the embedded list knew only UPDATER_API_BASE, so a device that
+        // reached neither manifest host had one forge fewer than it could
+        // have. A fork without a second forge sets this to "".
+        buildConfigField("String", "UPDATER_SECONDARY_API_BASE",
+            "\"${localProps.getProperty("UPDATER_SECONDARY_API_BASE", "https://api.github.com")}\"")
 
         // FEAT-050 runtime source list. Fetched at most daily and cached; the
         // embedded defaults apply whenever it is unreachable or unusable.

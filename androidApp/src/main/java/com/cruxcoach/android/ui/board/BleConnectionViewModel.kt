@@ -140,6 +140,9 @@ class BleConnectionViewModel @Inject constructor(
         private const val DIRECT_RECONNECT_ATTEMPTS = 2
         /** Two 10 s attempts plus legacy settle and retry delays. */
         private const val DIRECT_RECONNECT_TIMEOUT_MS = 24_000L
+        /** How long an automatic flow waits for the remembered controller to
+         *  re-advertise: Aurora boxes often take more than 4 s after a link ends. */
+        private const val REMEMBERED_BOARD_WAIT_MS = 10_000L
     }
 
     private val _state = MutableStateFlow(BleConnectionState())
@@ -435,6 +438,25 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     /**
+     * Waits for the board an automatic flow may connect to — see
+     * [BoardConnectFlowPolicy.automaticTarget]. The remembered controller gets
+     * [REMEMBERED_BOARD_WAIT_MS] to re-advertise; then the settled scan decides.
+     */
+    private suspend fun awaitAutomaticTarget(): DiscoveredBoard? {
+        val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
+        val remembered = _state.value.rememberedBoardControllers[activeBrand]?.address
+        if (remembered != null) {
+            withTimeoutOrNull(REMEMBERED_BOARD_WAIT_MS) {
+                bleScanner.discoveredBoards.first { boards ->
+                    boards.any { it.address.equals(remembered, ignoreCase = true) }
+                }
+            }
+        }
+        val boards = awaitBoardsForAutoConnect()
+        return BoardConnectFlowPolicy.automaticTarget(boards, activeBrand, remembered)
+    }
+
+    /**
      * Narrow [boards] to those matching the ACTIVE board's brand, falling back
      * to the full list when none match. Auto-connect previously took any
      * discovered board by discovery order — in a gym with e.g. a MoonBoard
@@ -666,19 +688,23 @@ class BleConnectionViewModel @Inject constructor(
             nearbyClimbScanner.nearbyClimbs.first { climbs ->
                 climbs.none { !it.isLastClimb } && _state.value.isRequestingDisconnect
             }
-            // Other user disconnected (stopped advertising) — now connect.
-            // Prefer the active board's brand over raw discovery order.
+            // Other user disconnected (stopped advertising) — now connect to
+            // the board we were waiting for, not whatever advertises first.
             disconnectTimeoutJob?.cancel()
             bleScanner.startScan()
-            val board = preferActiveBrand(
-                bleScanner.discoveredBoards.first { it.isNotEmpty() }
-            ).first()
-            bleScanner.stopScan()
-            connectToBoard(board)
+            val board = awaitAutomaticTarget()
             _state.update { it.copy(
                 isRequestingDisconnect = false,
                 disconnectRequestNoResponse = false
             ) }
+            if (board == null) {
+                // Several walls and none remembered: the list stays up, the
+                // climber picks. The scan keeps running for that list.
+                Log.i(TAG, "requestDisconnect: no unambiguous board, leaving the list")
+                return@safeLaunch
+            }
+            bleScanner.stopScan()
+            connectToBoard(board)
         }
 
         // Timeout: no response after 20s
@@ -756,12 +782,12 @@ class BleConnectionViewModel @Inject constructor(
             Log.d(TAG, "startAutoConnectForSession: board vacant, awaiting GATT close then scanning")
             bleConnection.awaitGattClosed()
             bleScanner.startScan()
-            // Prefer the active board's brand over raw discovery order — the
-            // session projects onto the active board, so grabbing whatever
+            // The session projects onto the active board; grabbing whatever
             // advertised first could light a different wall.
-            val board = preferActiveBrand(
-                bleScanner.discoveredBoards.first { it.isNotEmpty() }
-            ).first()
+            val board = awaitAutomaticTarget() ?: run {
+                Log.i(TAG, "startAutoConnectForSession: no unambiguous board, leaving the list")
+                return@safeLaunch
+            }
             bleScanner.stopScan()
             Log.d(TAG, "startAutoConnectForSession: found board '${board.displayName}', connecting")
             connectToBoard(board)

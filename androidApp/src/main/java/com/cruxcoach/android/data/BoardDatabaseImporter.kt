@@ -63,6 +63,8 @@ class BoardDatabaseImporter(
         private const val TAG = "BoardImporter"
         private const val BATCH_SIZE = 500
         private const val BULK_BATCH_SIZE = 10_000
+        /** Auto-checkpoint of the bulk import phases: 10 000 pages ≈ 40 MB of WAL at 4 KiB pages. */
+        internal const val IMPORT_WAL_CHECKPOINT_PAGES = 10_000
 
         /** Per-connection temp table of the peer climbs whose stats may be imported. */
         private const val PEER_STAT_CLIMBS = "peer_stat_climbs"
@@ -205,14 +207,14 @@ class BoardDatabaseImporter(
             // each new connection starts cold and re-faults the same
             // pages we just read in the previous chunk).
             //
-            // wal_autocheckpoint = 0 disables the default 1000-page
-            // ( ~4 MB) auto-checkpoint that otherwise stops the writer
-            // mid-import once the WAL grows past the threshold. We
-            // checkpoint(TRUNCATE) explicitly at end-of-phase to reclaim
-            // the WAL space before starting the next phase.
+            // A larger auto-checkpoint than the default 1000 pages (~4 MB)
+            // stops the writer less often; it stays bounded (~40 MB) so a whole
+            // catalogue never piles up in the WAL next to a ~400 MB database
+            // on a nearly full phone. We checkpoint(TRUNCATE) explicitly at
+            // end-of-phase to reclaim the WAL space before the next phase.
             if (climbsDbFiles.isNotEmpty()) {
                 val sharedDb = openTargetDb()
-                sharedDb.rawQuery("PRAGMA wal_autocheckpoint = 0", null).use { it.moveToFirst() }
+                sharedDb.rawQuery("PRAGMA wal_autocheckpoint = $IMPORT_WAL_CHECKPOINT_PAGES", null).use { it.moveToFirst() }
                 try {
                     var cumInserted = 0; var cumScanned = 0
                     onProgress?.invoke(ImportStep.ImportClimbs(0, 0, grandClimbTotal))
@@ -248,7 +250,7 @@ class BoardDatabaseImporter(
             // the shared connection dominates here.
             if (statsDbFiles.isNotEmpty()) {
                 val sharedDb = openTargetDb()
-                sharedDb.rawQuery("PRAGMA wal_autocheckpoint = 0", null).use { it.moveToFirst() }
+                sharedDb.rawQuery("PRAGMA wal_autocheckpoint = $IMPORT_WAL_CHECKPOINT_PAGES", null).use { it.moveToFirst() }
                 try {
                     var cumInserted = 0; var cumScanned = 0
                     onProgress?.invoke(ImportStep.ImportStats(0, 0, grandStatTotal))
@@ -2561,7 +2563,7 @@ class BoardDatabaseImporter(
 
     private fun openTargetDb(): SQLiteDatabase {
         val dbFile = context.getDatabasePath("cruxcoach.db")
-        val db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+        val db = BoardDbConnection.openForWrite(dbFile)
         // Prevent SQLITE_BUSY when the SQLDelight driver concurrently reads
         // the same DB during an import: wait up to 5s for locks before
         // failing. PRAGMA busy_timeout returns the new value as a row, so

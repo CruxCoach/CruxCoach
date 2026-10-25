@@ -35,9 +35,9 @@ class BoardImageChoiceTest {
             }
         }
         val image = hasContentDescription("Boardbild vergrößern: $label")
-        compose.waitUntil(15_000) { compose.onAllNodes(image).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(image).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(image).performClick()
-        compose.waitUntil(15_000) { compose.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(isDialog()).assertExists()
         assertEquals(0, selections)
         compose.onNodeWithContentDescription("Schließen").performClick()
@@ -64,7 +64,7 @@ class BoardImageChoiceTest {
         assertEquals(1, searches)
         assertNull(confirmed)
         val image = hasContentDescription("Boardbild vergrößern: ${other.displayName}")
-        compose.waitUntil(15_000) { compose.onAllNodes(image).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(image).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(image).performScrollTo()
         System.getenv("CRUXCOACH_UI_REVIEW_DIR")?.let { directory ->
             compose.runOnIdle {
@@ -79,10 +79,14 @@ class BoardImageChoiceTest {
             }
         }
         compose.onNode(image).performClick()
-        compose.waitUntil(15_000) { compose.onAllNodes(hasContentDescription("Schließen")).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasContentDescription("Schließen")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Schließen").performClick()
         compose.onNodeWithText("Bestätigen").performClick()
         assertEquals(initial, confirmed)
     }
 
+    private companion object {
+        /** Generous like the other Compose tests: the zoomed board image decodes slowly on a busy CI runner (publish run 39161597342). */
+        const val WAIT_MS = 60_000L
+    }
 }

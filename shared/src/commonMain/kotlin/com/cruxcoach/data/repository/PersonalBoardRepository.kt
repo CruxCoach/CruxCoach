@@ -50,6 +50,14 @@ interface PersonalBoardRepository {
     fun getUserLogbookPage(limit: Int = 50, offset: Int = 0): List<AscentWithClimb>
     fun getUserLogbookAllLight(): List<AscentWithClimb>
     fun getUserHistoryForClimb(climbUuid: String): List<AscentWithClimb>
+    /** Sends and attempts logged on [day] (`yyyy-MM-dd`, the logbook's day key:
+     *  the first ten characters of `climbed_at`), oldest first. */
+    fun getUserLogbookForDay(day: String): List<LogbookDayEntry> =
+        getUserLogbookAllLight().filter { it.climbedAt.take(10) == day }
+            .sortedBy { it.climbedAt }
+            .map {
+                LogbookDayEntry(it.climbUuid, it.angle, it.isMirror, it.climbedAt, it.climbFrames, it.boardBrand, it.layoutId)
+            }
     fun countUserLogbook(): Long
 
     /** Map of climb_uuid → repeat count (for browse sort-by-repeats). */
@@ -234,6 +242,9 @@ interface PersonalBoardRepository {
      *  count how many fetched logs are genuinely new vs re-imported. */
     fun getExistingLogUuids(): Set<String>
 
+    /** Uuids of the entries whose external_id starts with [prefix] (an import), synced or not. */
+    fun getLogUuidsWithExternalIdPrefix(prefix: String): Set<String> = emptySet()
+
     /** Löschungen, die Kilter noch nicht kennt. Ohne sie holt der nächste
      *  Download einen gelöschten Eintrag zurück: die Dedup-Prüfung kennt nur
      *  die vorhandenen Zeilen. Die Vormerkung verschwindet, sobald Kilter
@@ -291,6 +302,18 @@ interface PersonalBoardRepository {
     fun deleteUserBoardDataForBrands(brands: Set<String>, listEntryClimbUuids: Collection<String>)
     fun runInTransaction(block: () -> Unit)
 }
+
+/** What hold cleaning reads of one logbook entry. [climbFrames] is empty for
+ *  attempts, which do not store the climb's frames. */
+data class LogbookDayEntry(
+    val climbUuid: String,
+    val angle: Long,
+    val isMirror: Boolean,
+    val climbedAt: String,
+    val climbFrames: String,
+    val boardBrand: String,
+    val layoutId: Long?,
+)
 
 /** One private climb note, as the backup carries it. */
 data class ClimbNoteBackupRow(

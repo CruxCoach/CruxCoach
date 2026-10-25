@@ -17,6 +17,7 @@
         <exclude domain="sharedpref" path="startup_prompts.xml"/>
         <exclude domain="sharedpref" path="map_state.xml"/>
         <exclude domain="sharedpref" path="cruxrelay.xml"/>
+        <exclude domain="sharedpref" path="board_cleaning.xml"/>
         <exclude domain="file" path="datastore"/>
         <exclude domain="file" path="crash_log.txt"/>
         <exclude domain="file" path="crash_log_prev.txt"/>
@@ -35,6 +36,7 @@
         <exclude domain="sharedpref" path="startup_prompts.xml"/>
         <exclude domain="sharedpref" path="map_state.xml"/>
         <exclude domain="sharedpref" path="cruxrelay.xml"/>
+        <exclude domain="sharedpref" path="board_cleaning.xml"/>
         <exclude domain="file" path="datastore"/>
         <exclude domain="file" path="crash_log.txt"/>
         <exclude domain="file" path="crash_log_prev.txt"/>

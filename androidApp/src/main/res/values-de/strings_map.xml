@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Board-Karte: schwebende Suchleiste und Schnellfilter -->
+    <string name="map_search_clear">Suche leeren</string>
+    <string name="map_brand_all">Alle Boards</string>
+    <string name="map_brand_chip_more">%1$s + %2$d</string>
+    <string name="map_filters_chip">Filter</string>
+    <string name="map_filters_chip_active">Filter · %1$d</string>
+    <!-- Filter chip for rows whose source says nothing about this property -->
+    <string name="map_filter_unknown">Unbekannt</string>
+
+    <!-- Board-Karte: Liste der Orte im sichtbaren Ausschnitt -->
+    <plurals name="map_in_view_title">
+        <item quantity="one">%d Ort mit Boards im Ausschnitt</item>
+        <item quantity="other">%d Orte mit Boards im Ausschnitt</item>
+    </plurals>
+    <string name="map_in_view_nearest">Die nächsten zur Kartenmitte zuerst</string>
+    <string name="map_in_view_capped">Die %1$d nächsten zur Kartenmitte</string>
+    <string name="map_in_view_more">%1$d weitere – zum Anzeigen hineinzoomen</string>
+    <string name="map_in_view_empty_title">Keine Boards in diesem Kartenausschnitt</string>
+    <string name="map_in_view_empty_hint">Zoome heraus oder suche nach einer Stadt.</string>
+    <string name="map_in_view_show_nearest">Nächste Boards zeigen</string>
+    <string name="map_in_view_filtered_title">Keine Boards passen zu deinen Filtern</string>
+
+    <!-- Board-Karte: ausgewählter Ort -->
+    <string name="map_venue_close">Schließen</string>
+    <string name="map_venue_route">Route</string>
+    <string name="map_venue_website">Website</string>
+    <string name="map_venue_call">Anrufen</string>
+    <string name="map_venue_instagram">Instagram</string>
+    <string name="map_venue_near_city">bei %1$s</string>
+    <string name="map_venue_section_contact">Adresse und Kontakt</string>
+    <string name="map_board_choose">Dieses Board wählen</string>
+
+    <!-- Board-Karte: Öffnungszeiten, wie von der Halle veröffentlicht -->
+    <string name="map_hours_title">Öffnungszeiten</string>
+    <string name="map_hours_note">Wie von der Halle veröffentlicht; Feiertage und kurzfristige Änderungen können abweichen.</string>
+    <string name="map_hours_source">Offizielle Quelle</string>
+    <string name="map_hours_closed">Geschlossen</string>
+    <string name="map_hours_all_day">24 Stunden</string>
+    <string name="map_hours_next_day">Folgetag</string>
+    <string-array name="map_hours_days">
+        <item>Mo</item>
+        <item>Di</item>
+        <item>Mi</item>
+        <item>Do</item>
+        <item>Fr</item>
+        <item>Sa</item>
+        <item>So</item>
+    </string-array>
+
+    <!-- Board-Karte: Angaben zu einem Board -->
+    <string name="map_wall_adjustable_range">verstellbar %1$d–%2$d°</string>
+    <string name="map_wall_adjustable_range_step">verstellbar %1$d–%2$d° in %3$d°-Schritten</string>
+    <string name="map_wall_adjustable_set">verstellbar, eingestellt auf %1$d°</string>
+    <string name="map_wall_adjustable">verstellbar</string>
+    <string name="map_wall_fixed_at">fest auf %1$d°</string>
+    <string name="map_wall_fixed">feste Neigung</string>
+    <string name="map_wall_name">Wand: %1$s</string>
+    <string name="map_board_angle">%1$d°</string>
+    <string name="map_board_commercial">Kommerziell</string>
+    <string name="map_board_home_setup">Privat (Homewall)</string>
+    <string name="map_board_led">LED</string>
+    <string name="map_board_no_led">Keine LEDs</string>
+    <string name="map_board_frame">Rahmen: %1$s</string>
+</resources>

@@ -16,8 +16,9 @@ object MapStyleProvider {
     /** General-purpose light style. */
     const val LIGHT = "https://tiles.openfreemap.org/styles/liberty"
 
-    /** Greyscale minimal style for dark mode. */
-    const val DARK = "https://tiles.openfreemap.org/styles/positron"
+    /** Near-black style for the dark theme (positron, used before, is a light
+     *  grey map and glared inside the dark app). */
+    const val DARK = "https://tiles.openfreemap.org/styles/dark"
 
     /** 4 s HEAD-ping budget — short enough to never delay first render
      *  meaningfully, long enough to clear plausible 3G round-trips. */

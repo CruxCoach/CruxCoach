@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- „Mein Standort“ auf der Board-Karte und in der Hallensuche. Die Berechtigung wird erst beim Antippen abgefragt. -->
+    <string name="locate_me">Mein Standort</string>
+    <string name="locate_me_finding">Standort wird ermittelt …</string>
+    <string name="locate_me_denied">Ohne Standortfreigabe kann CruxCoach nicht zeigen, was in deiner Nähe ist.</string>
+    <string name="locate_me_denied_settings">Der Standortzugriff ist für CruxCoach ausgeschaltet. Du kannst ihn in den App-Einstellungen erlauben.</string>
+    <string name="locate_me_disabled">Der Standort ist auf diesem Telefon ausgeschaltet.</string>
+    <string name="locate_me_unavailable">Dieses Telefon bietet CruxCoach keine Standortquelle. Such stattdessen nach dem Namen.</string>
+    <string name="locate_me_open_settings">Einstellungen</string>
+    <string name="locate_me_turn_on">Einschalten</string>
+    <string name="locate_me_private">Dein Standort bleibt auf diesem Telefon.</string>
+    <!-- Zweite Zeile unter „ließ sich nicht ermitteln“: was versucht wurde. Anbieternamen (fused, gps, network, passive) bleiben wie bei Android. Nie eine Position. -->
+    <string name="locate_me_detail">Details: %1$s</string>
+    <string name="locate_me_detail_precise">genauer Standort</string>
+    <string name="locate_me_detail_approximate">ungefährer Standort</string>
+    <string name="locate_me_detail_on">aktiv: %1$s</string>
+    <string name="locate_me_detail_asked">gefragt: %1$s</string>
+    <string name="locate_me_detail_refused">nicht verfügbar: %1$s</string>
+    <string name="locate_me_detail_waited">keine Antwort in %1$d s</string>
+    <string name="locate_me_detail_none">keine</string>
+    <string name="locate_me_detail_satellites">Satelliten: %1$d gesehen, %2$d genutzt</string>
+    <!-- Während ein Antippen weitersucht und noch keine Position da ist; es sucht, bis eine kommt. „Abbrechen“ beendet es und zeigt „abgebrochen“ mit der Detailzeile. -->
+    <string name="locate_me_still_looking">Dein Standort wird noch gesucht. Draußen oder am Fenster findet GPS ihn schneller.</string>
+    <string name="locate_me_stopped">Standortsuche abgebrochen.</string>
+    <string name="distance_m">%1$s m</string>
+    <string name="distance_km">%1$s km</string>
+
+    <!-- Board-Karte mit bekanntem Standort -->
+    <string name="map_in_view_nearest_you">Die nächsten zu dir zuerst</string>
+
+    <!-- Hallensuche -->
+    <string name="gym_nearby_button">Hallen in meiner Nähe</string>
+    <string name="gym_nearby_title">In deiner Nähe</string>
+    <string name="gym_nearby_none">Im Umkreis von 100 km gibt es keine Halle mit einem Board, das CruxCoach unterstützt. Such stattdessen nach dem Namen.</string>
+    <string name="board_find_nearby_gym">Halle in deiner Nähe finden</string>
+</resources>

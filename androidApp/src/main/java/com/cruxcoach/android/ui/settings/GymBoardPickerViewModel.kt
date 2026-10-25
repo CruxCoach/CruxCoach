@@ -4,11 +4,15 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.ui.map.PagesBoardMapDataSource
+import com.cruxcoach.android.ui.map.distanceMeters
+import com.cruxcoach.android.ui.map.normalizeMapSearchText
 import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.data.repository.BoardLocationRepository
 import com.cruxcoach.data.repository.BoardWall
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumBoardModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -48,14 +52,25 @@ data class GymBoardPickerState(
     /** False while no location data is on the device — drives the sheet's
      *  "no gym data yet" empty state. Snapshot at VM init, self-healed on
      *  every search while false (the VM outlives the sheet, so a chunk that
-     *  lands mid-session must re-enable the picker). */
+     *  lands mid-session must re-enable the picker). The bundled map
+     *  snapshot counts as data, so this is false only if that fails too. */
     val enabled: Boolean = false,
     val query: String = "",
     val results: List<BoardLocation> = emptyList(),
     val selectedGym: BoardLocation? = null,
     val wallOptions: List<GymWallOption> = emptyList(),
     val searching: Boolean = false,
+    /** True while [results] are the gyms near the user, nearest first. */
+    val nearby: Boolean = false,
+    /** Distance from the user per result row id (nearby mode only). */
+    val distanceById: Map<String, Double> = emptyMap(),
+    /** The selectable board families at each result's gym, by result row id. */
+    val brandsById: Map<String, List<BoardBrand>> = emptyMap(),
 )
+
+/** Gyms further away than this are not offered as "near you". */
+internal const val NEARBY_RADIUS_METERS = 100_000.0
+private const val NEARBY_LIMIT = 10
 
 /**
  * FEAT-007 Path B — "find your gym". Local, offline search over the
@@ -65,9 +80,16 @@ data class GymBoardPickerState(
  * the host applies the final pick via its own ViewModel.
  */
 @HiltViewModel
-class GymBoardPickerViewModel @Inject constructor(
+class GymBoardPickerViewModel internal constructor(
     private val repository: BoardLocationRepository,
+    /** The bundled map snapshot's rows; a seam so tests need no Context. */
+    private val loadBundled: () -> List<BoardLocation>,
 ) : ViewModel() {
+
+    @Inject constructor(
+        repository: BoardLocationRepository,
+        bundledMap: PagesBoardMapDataSource,
+    ) : this(repository, { bundledMap.load().locations })
 
     private val _state = MutableStateFlow(GymBoardPickerState())
     val state: StateFlow<GymBoardPickerState> = _state.asStateFlow()
@@ -80,6 +102,23 @@ class GymBoardPickerViewModel @Inject constructor(
     // across every brand present at that gym (FEAT-031).
     private var rowsByGym: Map<String, List<BoardLocation>> = emptyMap()
 
+    // The board map's bundled snapshot (cruxcoach-pages), loaded on first use.
+    // It stands in while the synced locations table is still empty — a first
+    // start in onboarding — so search and "near me" work offline from the start.
+    private var bundledRows: List<BoardLocation>? = null
+
+    private suspend fun bundled(): List<BoardLocation> = bundledRows ?: withContext(Dispatchers.IO) {
+        runCatching { loadBundled() }
+            .onFailure { Log.w(TAG, "bundled map snapshot failed", it) }
+            .getOrDefault(emptyList())
+    }.also { bundledRows = it }
+
+    /** Every gym row the picker can offer: the synced table, else the bundled snapshot. */
+    private suspend fun allRows(): List<BoardLocation> {
+        val synced = withContext(Dispatchers.IO) { repository.getAll() }
+        return synced.ifEmpty { bundled() }
+    }
+
     init {
         viewModelScope.safeLaunch(TAG) {
             try {
@@ -88,7 +127,7 @@ class GymBoardPickerViewModel @Inject constructor(
                 // (no walls) resolves via its variant instead — so gate on
                 // locations, not walls, or MoonBoard-only data would hide
                 // the whole "find my gym" path.
-                val enabled = withContext(Dispatchers.IO) { repository.count() > 0L }
+                val enabled = withContext(Dispatchers.IO) { repository.count() > 0L } || bundled().isNotEmpty()
                 frequency = withContext(Dispatchers.IO) { repository.productSizeFrequency() }
                 _state.update { it.copy(enabled = enabled) }
             } catch (e: CancellationException) {
@@ -101,7 +140,9 @@ class GymBoardPickerViewModel @Inject constructor(
     }
 
     fun onQueryChange(q: String) {
-        _state.update { it.copy(query = q, selectedGym = null, wallOptions = emptyList()) }
+        _state.update {
+            it.copy(query = q, selectedGym = null, wallOptions = emptyList(), nearby = false, distanceById = emptyMap())
+        }
         val trimmed = q.trim()
         if (trimmed.length < 2) {
             _state.update { it.copy(results = emptyList(), searching = false) }
@@ -110,7 +151,12 @@ class GymBoardPickerViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(searching = true) }
             try {
-                val res = withContext(Dispatchers.IO) { repository.searchLocations(trimmed, 60) }
+                val synced = withContext(Dispatchers.IO) { repository.searchLocations(trimmed, 60) }
+                // Nothing synced yet: search the bundled snapshot instead.
+                val res = synced.ifEmpty {
+                    if (withContext(Dispatchers.IO) { repository.count() } > 0L) emptyList()
+                    else searchBundled(trimmed, 60)
+                }
                 // Self-heal the one-shot `enabled` snapshot from init: this VM
                 // outlives the sheet, so a locations chunk that lands mid-session
                 // must re-enable the picker — re-check on every search while
@@ -132,7 +178,9 @@ class GymBoardPickerViewModel @Inject constructor(
                     val grouped = res.groupBy { gymKey(it) }
                     rowsByGym = grouped
                     val deduped = grouped.values.map { it.first() }
-                    _state.update { it.copy(results = deduped, searching = false) }
+                    _state.update {
+                        it.copy(results = deduped, searching = false, brandsById = brandsOf(grouped))
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -143,6 +191,70 @@ class GymBoardPickerViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * "Gyms near me": the gyms within [NEARBY_RADIUS_METERS] of the given
+     * position that have a board CruxCoach can drive, nearest first. The
+     * position is used here only and not kept.
+     */
+    fun showNearby(lat: Double, lng: Double) {
+        _state.update {
+            it.copy(
+                query = "", selectedGym = null, wallOptions = emptyList(),
+                searching = true, nearby = true, results = emptyList(), distanceById = emptyMap(),
+            )
+        }
+        viewModelScope.safeLaunch(TAG) {
+            try {
+                val rows = allRows()
+                val ranked = withContext(Dispatchers.Default) { nearbyGyms(rows, lat, lng) }
+                if (!_state.value.nearby) return@safeLaunch // the user started typing meanwhile
+                rowsByGym = ranked.associate { (key, group, _) -> key to group }
+                _state.update {
+                    it.copy(
+                        results = ranked.map { (_, group, _) -> group.first() },
+                        distanceById = ranked.associate { (_, group, meters) -> group.first().id to meters },
+                        brandsById = brandsOf(ranked.associate { (key, group, _) -> key to group }),
+                        searching = false,
+                        enabled = it.enabled || rows.isNotEmpty(),
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "nearby gyms failed", e)
+                _state.update { it.copy(results = emptyList(), searching = false) }
+            }
+        }
+    }
+
+    private fun brandsOf(groups: Map<String, List<BoardLocation>>): Map<String, List<BoardBrand>> =
+        groups.values.associate { group ->
+            group.first().id to group.map { it.boardBrand }.filter { it.isInteractive }.distinct().sortedBy { it.ordinal }
+        }
+
+    private suspend fun searchBundled(query: String, limit: Int): List<BoardLocation> {
+        val needle = normalizeMapSearchText(query)
+        return withContext(Dispatchers.Default) {
+            bundled().filter { row ->
+                normalizeMapSearchText(row.name).contains(needle) ||
+                    row.city?.let { normalizeMapSearchText(it).contains(needle) } == true ||
+                    row.alternateSearchTerms.any { normalizeMapSearchText(it).contains(needle) }
+            }.take(limit * 3) // several rows per gym; grouped afterwards
+        }
+    }
+
+    /**
+     * Opens one known gym straight away — the board map's "Choose this board"
+     * hands over the rows of the place the user tapped, so the sheet shows
+     * its boards without a search.
+     */
+    fun openGym(rows: List<BoardLocation>) {
+        val first = rows.firstOrNull() ?: return
+        rowsByGym = mapOf(gymKey(first) to rows)
+        _state.update { it.copy(query = "", nearby = false, distanceById = emptyMap(), results = emptyList(), searching = false) }
+        selectGym(first)
     }
 
     fun selectGym(gym: BoardLocation) {
@@ -165,6 +277,16 @@ class GymBoardPickerViewModel @Inject constructor(
                     when {
                         // MoonBoard gyms carry no walls — resolve to variants.
                         brand == BoardBrand.MOONBOARD -> opts += moonBoardOptions(row)
+                        // Quantum: the model is not in the location data, so
+                        // every model is an equal choice.
+                        brand == BoardBrand.QUANTUM -> opts += QuantumBoardModel.entries.map { model ->
+                            GymWallOption(
+                                layoutId = model.layoutId.toInt(),
+                                productSizeId = model.productSizeId.toInt(),
+                                label = "${BoardBrand.QUANTUM.displayName} ${model.displayName}",
+                                boardBrand = BoardBrand.QUANTUM,
+                            )
+                        }
                         // Foreign Aurora gyms are info-only — resolve from the
                         // static variant catalog (multi-layout boards offer one
                         // option per variant; single-layout boards offer one,
@@ -172,6 +294,20 @@ class GymBoardPickerViewModel @Inject constructor(
                         brand.usesAuroraProtocol && brand != BoardBrand.KILTER ->
                             opts += auroraOptions(brand)
                         // Kilter gyms resolve their physical walls.
+                        // A bundled-snapshot row is one Kilter wall already
+                            // (layout + size), with no synced wall rows behind it.
+                        brand == BoardBrand.KILTER && row.productSizeId != null && row.layoutId != null &&
+                            withContext(Dispatchers.IO) { repository.getWallsForGym(row.id) }.isEmpty() -> {
+                            val sizeId = row.productSizeId!!
+                            val size = BoardConstants.sizeLabel(sizeId.toLong(), row.sizeLabel.orEmpty())
+                            opts += GymWallOption(
+                                layoutId = row.layoutId!!,
+                                productSizeId = sizeId,
+                                label = if (multiBrand) "Kilter $size" else size,
+                                boardBrand = BoardBrand.KILTER,
+                                fixedAngle = if (row.adjustability == com.cruxcoach.data.repository.Adjustability.FIXED) row.fixedAngle else null,
+                            )
+                        }
                         else -> {
                             val walls = withContext(Dispatchers.IO) { repository.getWallsForGym(row.id) }
                             opts += walls
@@ -219,8 +355,7 @@ class GymBoardPickerViewModel @Inject constructor(
      *  gym IDENTITY (name across brands → one list entry), the map clusters by
      *  precise geography (one pin). The name component is why two different
      *  gyms at one address don't merge here even though they'd share a map pin. */
-    private fun gymKey(loc: BoardLocation): String =
-        loc.name.trim().lowercase() + "|" + (loc.lat * 100).toInt() + "|" + (loc.lng * 100).toInt()
+    private fun gymKey(loc: BoardLocation): String = pickerGymKey(loc)
 
     /** Board options for a foreign Aurora gym (FEAT-031). A multi-layout board
      *  (Tension, Decoy) yields one option per catalog variant; a single-layout
@@ -303,3 +438,36 @@ class GymBoardPickerViewModel @Inject constructor(
         _state.update { it.copy(selectedGym = null, wallOptions = emptyList()) }
     }
 }
+
+/** One gym near the user: its picker key, all its rows, and the distance in metres. */
+internal data class NearbyGym(val key: String, val rows: List<BoardLocation>, val meters: Double)
+
+/**
+ * Gyms within [NEARBY_RADIUS_METERS] that offer a board CruxCoach can drive,
+ * nearest first, at most [NEARBY_LIMIT]. Rows of one gym (one per brand, one
+ * per Kilter wall) are grouped by [gymKey] like the text search does.
+ */
+internal fun nearbyGyms(
+    rows: List<BoardLocation>,
+    lat: Double,
+    lng: Double,
+    gymKey: (BoardLocation) -> String = ::pickerGymKey,
+    limit: Int = NEARBY_LIMIT,
+): List<NearbyGym> = rows
+    .asSequence()
+    .filter { kotlin.math.abs(it.lat - lat) < 1.5 } // cheap pre-filter: ~165 km of latitude
+    .map { it to distanceMeters(lat, lng, it.lat, it.lng) }
+    .filter { (_, meters) -> meters <= NEARBY_RADIUS_METERS }
+    .groupBy { (row, _) -> gymKey(row) }
+    .mapNotNull { (key, pairs) ->
+        val group = pairs.map { it.first }
+        if (group.none { it.boardBrand.isInteractive }) null
+        else NearbyGym(key, group, pairs.minOf { it.second })
+    }
+    .sortedBy { it.meters }
+    .take(limit)
+    .toList()
+
+/** See [GymBoardPickerViewModel]'s gym key: name + ~1 km coordinates. */
+internal fun pickerGymKey(loc: BoardLocation): String =
+    loc.name.trim().lowercase() + "|" + (loc.lat * 100).toInt() + "|" + (loc.lng * 100).toInt()
