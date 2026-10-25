@@ -83,12 +83,47 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
     def test_release_run_ends_by_checking_every_channel(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
         verify = workflow[workflow.index("- name: Verify every channel carries the release"):]
-        # Still runs after a failed later publish step, so a red run lists
-        # every channel that needs the repair path, not just the first.
-        self.assertIn("if: ${{ !cancelled() && steps.zapstore.outcome == 'success' }}", verify)
-        self.assertIn("id: zapstore", workflow)
+        # Runs after any failed publish step — Zapstore included — as long as
+        # the release itself went out, so a red run lists every channel that
+        # needs the repair path, not just the first.
+        self.assertIn(
+            "if: ${{ !cancelled() && (steps.github_release.outcome == 'success' "
+            "|| steps.repair.outcome == 'success') }}",
+            verify,
+        )
+        self.assertNotIn("steps.zapstore.outcome", verify)
         self.assertIn("--wait 900", verify)
         self.assertNotIn("- name:", verify.split("\n", 1)[1], "the check is the last step")
+
+    def test_a_failed_channel_never_skips_the_other_channels(self):
+        # 2026-10-25: zsp exited 0 without publishing, the Zapstore step failed,
+        # and the implicit success() skipped the website, the download
+        # selector, APKTrack stable and the Blossom fallbacks with it.
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        self.assertIn("id: github_release", workflow)
+        self.assertIn("id: repair", workflow)
+        released = (
+            "if: ${{ !cancelled() && steps.version.outputs.branch == 'main' && "
+            "(steps.github_release.outcome == 'success' || steps.repair.outcome == 'success') }}"
+        )
+        for name in (
+            "Mirror release to Codeberg",
+            "Ensure verified Zapstore APK fallback",
+            "Publish the release to the download server and the website",
+            "Publish the release to APKTrack stable",
+        ):
+            step = workflow[workflow.index(f"- name: {name}"):]
+            header = step.split("run: |", 1)[0]
+            self.assertIn(released, header, name)
+
+    def test_zapstore_step_logs_where_zsp_publishes(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        step = workflow[workflow.index("- name: Ensure verified Zapstore APK fallback"):]
+        step = step[: step.index("- name: Publish the release to the download server")]
+        self.assertIn("zsp targets:", step)
+        self.assertIn("zsp publish --skip-preview --skip-certificate-linking --quiet --verbose", step)
+        # The bunker URL is masked before zsp runs, never echoed.
+        self.assertLess(step.index('echo "::add-mask::$SIGN_WITH"'), step.index("zsp targets:"))
 
     def test_codeberg_mirror_preserves_release_integrity_contract(self):
         script = (ROOT / "scripts/mirror-codeberg-release.sh").read_text()

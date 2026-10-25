@@ -342,6 +342,7 @@ jobs:
       #
       # The token comes from the runner's filesystem; nothing is passed in.
       - name: Create GitHub release
+        id: github_release
         if: steps.version.outputs.skip == 'false'
         env:
           TAG: ${{ steps.version.outputs.tag }}
@@ -363,6 +364,7 @@ jobs:
       # repair Zapstore without rebuilding different bytes under the same
       # version number.
       - name: Prepare existing release for Zapstore repair
+        id: repair
         if: steps.version.outputs.skip == 'true' && steps.version.outputs.branch == 'main'
         env:
           REPO_SLUG: ${{ github.repository }}
@@ -392,6 +394,21 @@ jobs:
           git show "${TAG}:zapstore.yaml" > zapstore.yaml
           git show "${TAG}:RELEASE_NOTES.md" > RELEASE_NOTES.md
 
+      # ---- Distribution channels -------------------------------------------
+      # Once the release is public — created above, or its exact bytes
+      # re-verified on the repair path — every channel below runs on its own.
+      # A failure in one (Zapstore, 2026-10-25: zsp exited 0 and nothing
+      # arrived) no longer skips the others: before, the website, the download
+      # selector, APKTrack stable and the Blossom fallbacks all stayed on the
+      # previous version because Zapstore failed in front of them. A failed
+      # channel still fails the job, and the final check names every channel
+      # that lags, so a re-dispatch of the same version repairs only those.
+      #
+      # `!cancelled()` replaces the implicit success() that made every step
+      # depend on all earlier ones; the outcome test keeps the channels from
+      # running when the build, the signature check or the release itself
+      # failed.
+
       # Publish the exact same signed APK on the secondary forge. This runs for
       # both a new release and the repair path above: if GitHub succeeded but
       # Codeberg failed, the retry downloads the existing verified GitHub bytes
@@ -399,7 +416,7 @@ jobs:
       # The script stores no credentials and verifies both mirrored downloads
       # byte-for-byte before returning success.
       - name: Mirror release to Codeberg
-        if: steps.version.outputs.branch == 'main'
+        if: ${{ !cancelled() && steps.version.outputs.branch == 'main' && (steps.github_release.outcome == 'success' || steps.repair.outcome == 'success') }}
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -412,7 +429,7 @@ jobs:
 
       - name: Ensure verified Zapstore APK fallback
         id: zapstore
-        if: steps.version.outputs.branch == 'main'
+        if: ${{ !cancelled() && steps.version.outputs.branch == 'main' && (steps.github_release.outcome == 'success' || steps.repair.outcome == 'success') }}
         run: |
           set -euo pipefail
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
@@ -484,10 +501,21 @@ jobs:
           # notification, unlocking and tapping. At 120s the request expired
           # while the phone was still being unlocked, and the retry then raised
           # a second prompt for the same release.
+          #
+          # zsp uploads to BLOSSOM_URL and publishes to RELAY_URLS when either
+          # is set — in the environment or in a .env in the working directory —
+          # and otherwise to cdn.zapstore.dev and relay.zapstore.dev. With
+          # --quiet it prints nothing on success AND nothing when it decides
+          # there is nothing to do (an asset for this version already listed on
+          # one of its relays). The 0.2.4 run exited 0 that way while neither
+          # the CDN nor the relay ever saw the release, and the log could not
+          # say why. Name the targets, and let --verbose report the signer and
+          # every relay's answer.
+          echo "zsp targets: relays=${RELAY_URLS:-wss://relay.zapstore.dev (default)}; blossom=${BLOSSOM_URL:-https://cdn.zapstore.dev (default)}"
           PUBLISHED=false
           for ATTEMPT in 1 2 3; do
             echo "Zapstore publish attempt $ATTEMPT/3 (approve the request in Amber)..."
-            if timeout 300 zsp publish --skip-preview --skip-certificate-linking --quiet; then
+            if timeout 300 zsp publish --skip-preview --skip-certificate-linking --quiet --verbose; then
               PUBLISHED=true
               break
             fi
@@ -508,6 +536,7 @@ jobs:
             sleep 10
           done
           echo "::error::Zapstore CDN did not serve the verified release APK"
+          echo "zsp exited 0 but ${CDN_URL} still answers 404. relay.zapstore.dev answers OK even for an asset whose blob it does not hold and keeps it pending for up to 5 hours, so an OK above is not proof of publication. If no 'relay: OK' lines appear, zsp found an asset for this version on its relays and did nothing ('zsp publish --overwrite-release' publishes anyway)."
           exit 1
 
       # Until now a release reached the website only at the next nightly cron:
@@ -526,7 +555,7 @@ jobs:
       # run used ~/cruxcoach-pages, found it on a feature branch, skipped the
       # website and still went green.
       - name: Publish the release to the download server and the website
-        if: steps.version.outputs.branch == 'main'
+        if: ${{ !cancelled() && steps.version.outputs.branch == 'main' && (steps.github_release.outcome == 'success' || steps.repair.outcome == 'success') }}
         run: |
           set -uo pipefail
           VERSION="${{ steps.version.outputs.version }}"
@@ -578,7 +607,7 @@ jobs:
       # receipt_delivered=true, and accepts a job that already published this
       # commit, so the repair path can re-run it.
       - name: Publish the release to APKTrack stable
-        if: steps.version.outputs.branch == 'main'
+        if: ${{ !cancelled() && steps.version.outputs.branch == 'main' && (steps.github_release.outcome == 'success' || steps.repair.outcome == 'success') }}
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -603,13 +632,15 @@ jobs:
       #
       # Runs even when an earlier publish step failed, as long as the release
       # itself went out, so a red run lists everything that needs repair — a
-      # re-dispatch of the same version takes the repair path above.
+      # re-dispatch of the same version takes the repair path above. (It used
+      # to require a successful Zapstore step, which contradicted exactly that:
+      # a Zapstore failure skipped the one step that reports the damage.)
       #
       # The checker is cruxcoach-dlstats/check_release.py, the same code the
       # 6-hourly origin check runs, so drift after a green release surfaces
       # there too.
       - name: Verify every channel carries the release
-        if: ${{ !cancelled() && steps.zapstore.outcome == 'success' }}
+        if: ${{ !cancelled() && (steps.github_release.outcome == 'success' || steps.repair.outcome == 'success') }}
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
