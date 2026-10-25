@@ -89,9 +89,11 @@ class BoardSyncManager(
     private val initialShareRunner: (suspend (LocalShareDiscovery.Found) -> Unit)? = null,
     /** Narrow deterministic test seam; production enqueues [LocalShareKeepAliveWorker]. */
     private val startLocalTransferKeepAlive: (Context) -> Unit = { LocalShareKeepAliveWorker.start(it) },
+    private val shinyWallCatalogueSync: ShinyWallCatalogueSync? = null,
 ) : CatalogueRevisionSource {
     private companion object {
         const val TAG = "BoardSyncManager"
+        const val BUNDLED_GEOMETRY_PREFS = "bundled_geometry"
         /** How long a requested sync may take to actually start before the
          *  user is told the system is holding it back. Long enough for a cold
          *  WorkManager handover, short enough to still read as feedback. */
@@ -281,19 +283,37 @@ class BoardSyncManager(
      * probe per board.
      */
     fun seedBundledGeometry() {
-        scope.safeLaunch(TAG) { seedBundledGeometryNow() }
+        scope.safeLaunch(TAG) {
+            seedBundledGeometryNow()
+            withContext(Dispatchers.IO) { importDevCatalogueSnapshotNow() }
+        }
     }
 
     private suspend fun seedBundledGeometryNow() = withContext(Dispatchers.IO) {
         val bundled = appContext.assets.list(BundledBoardGeometry.ASSET_DIR)?.toSet().orEmpty()
+        val geometryPrefs = appContext.getSharedPreferences(BUNDLED_GEOMETRY_PREFS, Context.MODE_PRIVATE)
         for (brand in BoardBrand.entries) {
             val name = BundledBoardGeometry.assetFileName(brand.wireValue)
             if (name !in bundled) continue
-            if (boardRepository.hasPlacementsForBrand(brand.wireValue)) continue
+            val bundleOwned = brand in BundledBoardGeometry.BUNDLE_OWNED
+            if (!bundleOwned && boardRepository.hasPlacementsForBrand(brand.wireValue)) continue
             val file = File(appContext.cacheDir, "bundled_geometry_$name")
             try {
                 appContext.assets.open("${BundledBoardGeometry.ASSET_DIR}/$name").use { input ->
                     file.outputStream().use { input.copyTo(it) }
+                }
+                if (bundleOwned) {
+                    // The APK is this board's only geometry source: replace the
+                    // stored rows whenever an update ships a different bundle.
+                    val hash = BundledBoardGeometry.sha256(file)
+                    val key = "${brand.wireValue}_sha256"
+                    if (geometryPrefs.getString(key, null) == hash &&
+                        boardRepository.hasPlacementsForBrand(brand.wireValue)
+                    ) continue
+                    val replaced = importer.replaceBundledGeometry(file, brand.wireValue)
+                    geometryPrefs.edit().putString(key, hash).apply()
+                    Log.i(TAG, "Replaced bundled geometry for ${brand.wireValue}: $replaced placements")
+                    continue
                 }
                 val seeded = importer.seedBundledGeometry(file, brand.wireValue)
                 if (seeded > 0) Log.i(TAG, "Seeded bundled geometry for ${brand.wireValue}: $seeded placements")
@@ -306,6 +326,29 @@ class BoardSyncManager(
             } finally {
                 file.delete()
             }
+        }
+    }
+
+    /**
+     * Test builds only: imports a catalogue snapshot dropped into the app's own
+     * storage (`files/dev-import/<chunk>.sqlite3`, reachable only through
+     * `adb shell run-as`) before its signed manifest is published. A release
+     * build is never debuggable, so this path does not exist there; the file
+     * is renamed after a successful import so it runs once.
+     */
+    private suspend fun importDevCatalogueSnapshotNow() {
+        if ((appContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
+        val file = File(appContext.filesDir, "dev-import/${ShinyWallCatalogueSync.CHUNK_NAME}.sqlite3")
+        if (!file.isFile) return
+        Log.w(TAG, "Debuggable build: importing the unsigned Shiny Wall snapshot ${file.name}")
+        try {
+            importer.importShinyWallSnapshot(file)
+            file.renameTo(File(file.parentFile, "${file.name}.imported"))
+            bumpCatalogueRevision()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Unsigned Shiny Wall snapshot not imported", e)
         }
     }
 
@@ -1480,6 +1523,7 @@ class BoardSyncManager(
         return when {
             brand == BoardBrand.MOONBOARD -> syncMoonBoardCatalogue()
             brand == BoardBrand.QUANTUM -> syncQuantumBoard()
+            brand == BoardBrand.SHINYWALL -> syncShinyWallBoard()
             brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> syncAuroraBoard(brand)
             else -> false
         }
@@ -1504,6 +1548,30 @@ class BoardSyncManager(
         reportBoardStep(BoardBrand.QUANTUM, null)
         reportBoardError(BoardBrand.QUANTUM, e.message ?: e.javaClass.simpleName)
         false
+    }
+
+    private suspend fun syncShinyWallBoard(): Boolean {
+        val sync = shinyWallCatalogueSync ?: return false
+        return try {
+            when (val result = sync.sync { step -> reportBoardStep(BoardBrand.SHINYWALL, step) }) {
+                ShinyWallCatalogueSync.Result.AlreadyCurrent -> {
+                    reportBoardStep(BoardBrand.SHINYWALL, ImportStep.Done(0, 0, 0)); false
+                }
+                is ShinyWallCatalogueSync.Result.Imported -> {
+                    bumpCatalogueRevision(); true
+                }
+                is ShinyWallCatalogueSync.Result.Failed -> {
+                    reportBoardStep(BoardBrand.SHINYWALL, null)
+                    reportBoardError(BoardBrand.SHINYWALL, result.message)
+                    false
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Shiny Wall catalogue sync threw; other boards unaffected", e)
+            reportBoardStep(BoardBrand.SHINYWALL, null)
+            reportBoardError(BoardBrand.SHINYWALL, e.message ?: e.javaClass.simpleName)
+            false
+        }
     }
 
     /**
@@ -1575,6 +1643,7 @@ class BoardSyncManager(
             imported = when (brand) {
                 BoardBrand.MOONBOARD -> syncMoonBoardCatalogue()
                 BoardBrand.QUANTUM -> syncQuantumBoard()
+                BoardBrand.SHINYWALL -> syncShinyWallBoard()
                 else -> syncAuroraBoard(brand)
             }
         } finally {
@@ -2335,6 +2404,11 @@ class BoardSyncManager(
         if (BoardBrand.QUANTUM in brands) {
             appContext.getSharedPreferences(
                 QuantumCatalogueSync.PREFS_NAME, Context.MODE_PRIVATE
+            ).edit().clear().apply()
+        }
+        if (BoardBrand.SHINYWALL in brands) {
+            appContext.getSharedPreferences(
+                ShinyWallCatalogueSync.PREFS_NAME, Context.MODE_PRIVATE
             ).edit().clear().apply()
         }
         brands

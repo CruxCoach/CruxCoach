@@ -724,6 +724,7 @@ class BlossomSyncManager(
         const val MOONBOARD_D_TAG = "cruxcoach/moonboard-db"
         const val MOONBOARD_BETA_D_TAG = "cruxcoach/moonboard-beta-links"
         const val QUANTUM_D_TAG = "cruxcoach/quantum-db"
+        const val SHINYWALL_D_TAG = "cruxcoach/shinywall-db"
         // Per-board SharedPreferences files for chunk-hash state. Kilter
         // keeps the historical "blossom_sync" name so existing installs
         // do not lose their incremental-sync state on upgrade.

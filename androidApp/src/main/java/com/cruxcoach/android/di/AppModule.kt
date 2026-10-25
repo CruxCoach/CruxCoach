@@ -50,6 +50,7 @@ import com.cruxcoach.android.data.BoardBetaMediaSync
 import com.cruxcoach.android.data.MoonBoardBetaSync
 import com.cruxcoach.android.moonboard.MoonBoardCsvImporter
 import com.cruxcoach.android.data.QuantumCatalogueSync
+import com.cruxcoach.android.data.ShinyWallCatalogueSync
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.data.NearbyPresenceManager
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
@@ -338,6 +339,7 @@ object AppModule {
         moonBoardCsvImporter: MoonBoardCsvImporter,
         moonBoardBetaSync: MoonBoardBetaSync,
         boardBetaMediaSync: BoardBetaMediaSync,
+        shinyWallCatalogueSync: ShinyWallCatalogueSync,
     ): BoardSyncManager {
         return BoardSyncManager(
             importer,
@@ -354,6 +356,7 @@ object AppModule {
             moonBoardCsvImporter,
             moonBoardBetaSync = moonBoardBetaSync,
             boardBetaMediaSync = boardBetaMediaSync,
+            shinyWallCatalogueSync = shinyWallCatalogueSync,
         )
     }
 
