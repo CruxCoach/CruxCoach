@@ -2743,6 +2743,28 @@
     <string name="sharing_age_no">Ich bin jünger</string>
     <string name="sharing_age_under">Teilen ist aus: Unter 16 bleiben deine Daten auf diesem Gerät.</string>
     <string name="sharing_age_change">Antwort ändern</string>
+    <string name="sharing_history_title">Verlauf</string>
+    <string name="sharing_history_info">Deine eigenen Freigabe-Entscheidungen, die neueste zuerst. Nur auf diesem Gerät, höchstens ein Jahr (1.000 Einträge); wird nie gesendet und ist in keiner Sicherung.</string>
+    <string name="sharing_history_empty">Noch nichts.</string>
+    <string name="sharing_history_requested">%1$s um eine Freundschaft gebeten (%2$s)</string>
+    <string name="sharing_history_accepted_sharing">%1$s angenommen und eigene Daten geteilt</string>
+    <string name="sharing_history_accepted_receiving">%1$s angenommen, nur empfangen</string>
+    <string name="sharing_history_template">%1$s: Vorlage %2$s</string>
+    <string name="sharing_history_category_allow">%1$s: %2$s geteilt</string>
+    <string name="sharing_history_category_deny">%1$s: %2$s nicht geteilt</string>
+    <string name="sharing_history_record_allow">%1$s: ein Eintrag aus %2$s geteilt</string>
+    <string name="sharing_history_record_deny">%1$s: ein Eintrag aus %2$s ausgenommen</string>
+    <string name="sharing_history_follow_template">%1$s: %2$s folgt wieder der Vorlage</string>
+    <string name="sharing_history_never_on">Ein Eintrag wird mit niemandem geteilt</string>
+    <string name="sharing_history_never_off">Ein Eintrag darf wieder geteilt werden</string>
+    <string name="sharing_history_outgoing_on">Teilen mit %1$s eingeschaltet</string>
+    <string name="sharing_history_outgoing_off">Teilen mit %1$s ausgeschaltet</string>
+    <string name="sharing_history_template_edited">Vorlage %1$s geändert</string>
+    <string name="sharing_history_age_on">Alter angegeben: 16 oder älter</string>
+    <string name="sharing_history_age_off">Alter angegeben: unter 16; Teilen aus</string>
+    <string name="sharing_history_expired">%1$s: eine befristete Freigabe ist abgelaufen</string>
+    <string name="sharing_history_ended">Freundschaft mit %1$s beendet</string>
+    <string name="sharing_history_removed">%1$s aus der Liste entfernt</string>
     <string name="sharing_period_title">Zeitraum für Begehungen und Versuche</string>
     <string name="sharing_period_all">Alles</string>
     <string name="sharing_connection_summary">%1$d von %2$d Relays verbunden</string>
@@ -2796,6 +2818,10 @@
     <plurals name="sharing_received_count">
         <item quantity="one">%d erhalten</item>
         <item quantity="other">%d erhalten</item>
+    </plurals>
+    <plurals name="sharing_history_count">
+        <item quantity="one">%d Eintrag</item>
+        <item quantity="other">%d Einträge</item>
     </plurals>
     <plurals name="sharing_record_attempts">
         <item quantity="one">%1$s · %2$s · %3$d Versuch</item>

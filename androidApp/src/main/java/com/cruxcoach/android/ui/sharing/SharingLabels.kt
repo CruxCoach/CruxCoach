@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.sharing.HistoryEntry
+import com.cruxcoach.android.sharing.HistoryEvent
 import com.cruxcoach.android.sharing.MarmotRelay
 import com.cruxcoach.android.sharing.SharingRecord
 import com.cruxcoach.android.sharing.SharingRecords
@@ -74,6 +76,40 @@ internal fun recordLabel(record: SharingRecord): String {
         }
         ShareCategory.CLIMB_NOTES -> stringResource(R.string.sharing_record_note, f["note"].orEmpty())
         else -> ""
+    }
+}
+
+/** One line of the local history. */
+@Composable
+internal fun historyLabel(entry: HistoryEntry, name: String): String {
+    val detail = entry.detail.orEmpty()
+    @Composable fun template(id: String) = stringResource(SharingLabels.template(TemplateId(id.ifBlank { "?" })))
+    @Composable fun category(name: String): String {
+        val known = ShareCategory.entries.firstOrNull { it.name == name } ?: return name
+        return stringResource(SharingLabels.category(known))
+    }
+    return when (entry.event) {
+        HistoryEvent.REQUESTED -> stringResource(R.string.sharing_history_requested, name, template(detail))
+        HistoryEvent.ACCEPTED -> stringResource(
+            if (detail.endsWith(":on")) R.string.sharing_history_accepted_sharing else R.string.sharing_history_accepted_receiving, name)
+        HistoryEvent.TEMPLATE_CHOSEN -> stringResource(R.string.sharing_history_template, name, template(detail))
+        HistoryEvent.CATEGORY_RULE, HistoryEvent.RECORD_RULE -> {
+            val parts = detail.split(':')
+            val what = category(parts.getOrElse(0) { "" })
+            val res = when (parts.getOrElse(1) { "" }) {
+                "ALLOW" -> if (entry.event == HistoryEvent.RECORD_RULE) R.string.sharing_history_record_allow else R.string.sharing_history_category_allow
+                "DENY" -> if (entry.event == HistoryEvent.RECORD_RULE) R.string.sharing_history_record_deny else R.string.sharing_history_category_deny
+                else -> R.string.sharing_history_follow_template
+            }
+            stringResource(res, name, what)
+        }
+        HistoryEvent.NEVER_SHARE -> stringResource(if (detail == "on") R.string.sharing_history_never_on else R.string.sharing_history_never_off)
+        HistoryEvent.OUTGOING -> stringResource(if (detail == "on") R.string.sharing_history_outgoing_on else R.string.sharing_history_outgoing_off, name)
+        HistoryEvent.TEMPLATE_EDITED -> stringResource(R.string.sharing_history_template_edited, template(detail))
+        HistoryEvent.AGE -> stringResource(if (detail == "on") R.string.sharing_history_age_on else R.string.sharing_history_age_off)
+        HistoryEvent.EXPIRED -> stringResource(R.string.sharing_history_expired, name)
+        HistoryEvent.ENDED -> stringResource(R.string.sharing_history_ended, name)
+        HistoryEvent.REMOVED -> stringResource(R.string.sharing_history_removed, name)
     }
 }
 

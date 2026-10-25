@@ -73,7 +73,7 @@ class SharingProjectionSchemaTest {
     )
 
     private val sharingTables = listOf("share_template", "share_setting", "share_person", "share_person_rule", "share_object_rule",
-        "share_never", "share_outgoing", "share_incoming", "share_record")
+        "share_never", "share_outgoing", "share_incoming", "share_record", "share_history")
 
     /** Tables that hold one row set per person. */
     private val personTables = listOf("share_person", "share_person_rule", "share_object_rule", "share_outgoing", "share_incoming", "share_record")
@@ -219,6 +219,20 @@ class SharingProjectionSchemaTest {
         store.setAge(true)
         val policy = store.policy()
         assertTrue(policy.persons.values.single().categoryRules.isEmpty(), "an unknown category name is ignored")
+    }
+
+    @Test
+    fun `the local history keeps at most a year and 1_000 entries`() {
+        SecureDatabase.Schema.create(driver)
+        val store = SharingStore(SecureDatabase(driver))
+        val day = 86_400_000L
+        val start = 400 * day
+        store.addHistory(start - 400 * day, null, com.cruxcoach.android.sharing.HistoryEvent.AGE, "on")
+        repeat(1_005) { store.addHistory(start + it, "b".repeat(64), com.cruxcoach.android.sharing.HistoryEvent.OUTGOING, "on") }
+        val kept = store.history(limit = 5_000)
+        assertEquals(1_000, kept.size)
+        assertTrue(kept.none { it.event == com.cruxcoach.android.sharing.HistoryEvent.AGE }, "older than a year")
+        assertEquals(start + 1_004, kept.first().at, "newest first")
     }
 
     @Test

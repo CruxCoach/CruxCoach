@@ -296,6 +296,27 @@ internal fun TemplatePage(templates: List<ShareTemplate>, id: TemplateId, busy: 
         color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+/** The local history of own decisions (FEAT-073 U2); kept only on this device. */
+@Composable
+internal fun HistoryPage(overview: com.cruxcoach.android.sharing.SharingOverview) {
+    val names = overview.friends.associate { it.peer to it.displayName }
+    SettingsSectionCard {
+        InfoHeading(stringResource(R.string.sharing_history_title), stringResource(R.string.sharing_history_info))
+        if (overview.history.isEmpty()) {
+            Text(stringResource(R.string.sharing_history_empty), style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("sharing_history_empty"))
+        }
+        overview.history.forEach { entry ->
+            val name = entry.peer?.let { names[it] ?: SharingNames.shortId(it) }.orEmpty()
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(java.time.Instant.ofEpochMilli(entry.at).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString(),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(historyLabel(entry, name), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
 @Composable
 internal fun ConnectionPage(status: MarmotStatus, busy: Boolean, actions: SharingActions) {
     SettingsSectionCard {

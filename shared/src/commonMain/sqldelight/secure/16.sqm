@@ -2,7 +2,7 @@
 -- ("who sees this?", FEAT-073), carried from feat/marmot-permissions-v2 onto
 -- the 0.2.4 release line and reshaped before its first release.
 --
--- Purely additive: nine tables, empty except for the shipped templates; no existing
+-- Purely additive: ten tables, empty except for the shipped templates; no existing
 -- table, row or trigger is touched, and nothing writes to these tables until
 -- someone is invited. The release line never carried the unpublished feature
 -- migrations 14–33 of that branch (its 14/15 are different tables), so nothing
@@ -114,3 +114,12 @@ CREATE TABLE share_record (
 
 CREATE INDEX share_record_climb ON share_record(climb_uuid);
 
+-- Local history of one's own sharing decisions (FEAT-073 U2): never sent,
+-- never in a backup, at most a year and 1,000 entries.
+CREATE TABLE share_history (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    at INTEGER NOT NULL,
+    peer TEXT,
+    event TEXT NOT NULL,
+    detail TEXT
+);

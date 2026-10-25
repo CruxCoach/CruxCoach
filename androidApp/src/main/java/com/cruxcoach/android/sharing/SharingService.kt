@@ -85,6 +85,8 @@ data class SharingOverview(
     val ageConfirmed: Boolean = true,
     /** Every template, hidden ones too: a person may already have one. */
     val allTemplates: List<ShareTemplate> = templates,
+    /** The local history of own decisions, newest first. */
+    val history: List<HistoryEntry> = emptyList(),
 )
 
 /**
@@ -130,7 +132,7 @@ class SharingService(
             .map { SharingInvitation(it.account, it.createdAt) }
         val templates = store.templates()
         return SharingOverview(status, templates.filterNot { it.hidden }, friends, invitations,
-            ageAnswered = store.ageAnswered(), ageConfirmed = store.ageConfirmed(), allTemplates = templates)
+            ageAnswered = store.ageAnswered(), ageConfirmed = store.ageConfirmed(), allTemplates = templates, history = store.history())
     }
 
     private fun visible(person: SharingPerson, native: MarmotPeer?): VisibleState = when {
@@ -161,6 +163,7 @@ class SharingService(
                     store.deletePerson(peer)
                 }
                 store.insertPerson(peer, template, outgoing = true, label = label, state = PersonState.REQUESTED, now = clock())
+                store.addHistory(clock(), peer, HistoryEvent.REQUESTED, template.value)
             }
         }
         sync.retryInvitationNow(peer)
@@ -178,6 +181,7 @@ class SharingService(
                     store.deletePerson(peer)
                 }
                 store.insertPerson(peer, template, outgoing, label = null, state = PersonState.CONNECTED, now = clock())
+                store.addHistory(clock(), peer, HistoryEvent.ACCEPTED, "${template.value}:${if (outgoing) "on" else "off"}")
             }
             runCatching { host.accept(peer) }.onFailure {
                 store.deletePerson(peer)
@@ -192,21 +196,45 @@ class SharingService(
         onChanged()
     }
 
-    suspend fun setOutgoing(peer: String, outgoing: Boolean) = narrowing(listOf(peer)) { store.setOutgoing(peer, outgoing) }
-    suspend fun setTemplate(peer: String, template: TemplateId) = narrowing(listOf(peer)) { store.setTemplate(peer, template) }
+    suspend fun setOutgoing(peer: String, outgoing: Boolean) = narrowing(listOf(peer)) {
+        store.setOutgoing(peer, outgoing)
+        store.addHistory(clock(), peer, HistoryEvent.OUTGOING, if (outgoing) "on" else "off")
+    }
+    suspend fun setTemplate(peer: String, template: TemplateId) = narrowing(listOf(peer)) {
+        store.setTemplate(peer, template)
+        store.addHistory(clock(), peer, HistoryEvent.TEMPLATE_CHOSEN, template.value)
+    }
     suspend fun setPeriod(peer: String, days: Int?) = narrowing(listOf(peer)) { store.setPeriod(peer, days) }
     /** [expiresAt] (epoch ms) ends the rule by itself; health categories need one to be allowed. */
     suspend fun setPersonRule(peer: String, category: ShareCategory, effect: AccessEffect?, expiresAt: Long? = null) =
-        narrowing(listOf(peer)) { store.setPersonRule(peer, category, effect?.let { ShareRule(it, expiresAt) }) }
+        narrowing(listOf(peer)) {
+            store.setPersonRule(peer, category, effect?.let { ShareRule(it, expiresAt) })
+            store.addHistory(clock(), peer, HistoryEvent.CATEGORY_RULE, ruleDetail(category, effect, expiresAt))
+        }
     suspend fun setObjectRule(peer: String, recordId: String, category: ShareCategory, effect: AccessEffect?, expiresAt: Long? = null) =
-        narrowing(listOf(peer)) { store.setObjectRule(peer, recordId, category, effect?.let { ShareRule(it, expiresAt) }) }
+        narrowing(listOf(peer)) {
+            store.setObjectRule(peer, recordId, category, effect?.let { ShareRule(it, expiresAt) })
+            store.addHistory(clock(), peer, HistoryEvent.RECORD_RULE, ruleDetail(category, effect, expiresAt))
+        }
+
+    /** `CATEGORY:EFFECT[:until]`; an empty effect means "follows the template again". */
+    private fun ruleDetail(category: ShareCategory, effect: AccessEffect?, expiresAt: Long?) =
+        listOfNotNull(category.name, effect?.name.orEmpty(), expiresAt?.toString()).joinToString(":")
 
     /** "Never share this record" applies to everyone at once. */
-    suspend fun setNeverShare(recordId: String, never: Boolean) =
-        narrowing(connected()) { store.setNeverShare(recordId, never, clock()) }
+    suspend fun setNeverShare(recordId: String, never: Boolean) = narrowing(connected()) {
+        store.setNeverShare(recordId, never, clock())
+        store.addHistory(clock(), null, HistoryEvent.NEVER_SHARE, if (never) "on" else "off")
+    }
 
     /** The self-declared age (FEAT-073 §2.7). Under 16 nothing goes to anyone. */
-    suspend fun setAge(atLeastSixteen: Boolean) = narrowing(connected()) { store.setAge(atLeastSixteen) }
+    suspend fun setAge(atLeastSixteen: Boolean) = narrowing(connected()) {
+        store.setAge(atLeastSixteen)
+        store.addHistory(clock(), null, HistoryEvent.AGE, if (atLeastSixteen) "on" else "off")
+    }
+
+    /** The local history, newest first. */
+    fun history(): List<HistoryEntry> = store.history()
 
     private fun connected() = store.persons().filter { it.state == PersonState.CONNECTED }.map { it.peer }
 
@@ -218,7 +246,10 @@ class SharingService(
     /** Edit a template; every connected person on it may receive less from now on. */
     suspend fun putTemplate(template: ShareTemplate) {
         val affected = store.persons().filter { it.state == PersonState.CONNECTED && it.template == template.id }.map { it.peer }
-        narrowing(affected) { store.putTemplate(template) }
+        narrowing(affected) {
+            store.putTemplate(template)
+            store.addHistory(clock(), null, HistoryEvent.TEMPLATE_EDITED, template.id.value)
+        }
     }
 
     /** End the friendship: both received directions are deleted locally now;
@@ -229,6 +260,7 @@ class SharingService(
             store.transaction {
                 store.clearExchange(peer)
                 store.setState(peer, PersonState.ENDING, clock())
+                store.addHistory(clock(), peer, HistoryEvent.ENDED)
             }
         }
         onChanged()
@@ -239,7 +271,11 @@ class SharingService(
         sync.exclusive {
             val person = store.person(peer) ?: return@exclusive
             check(person.state == PersonState.ENDED || person.state == PersonState.REQUESTED) { "person_active" }
-            store.transaction { store.clearExchange(peer); store.deletePerson(peer) }
+            store.transaction {
+                store.clearExchange(peer)
+                store.deletePerson(peer)
+                store.addHistory(clock(), peer, HistoryEvent.REMOVED)
+            }
         }
         onChanged()
     }

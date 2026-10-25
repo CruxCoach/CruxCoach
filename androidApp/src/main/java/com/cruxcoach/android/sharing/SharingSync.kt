@@ -65,6 +65,7 @@ class SharingSync(
         val now = clock()
         store.purgeExpiredRecords(now)
         for (peer in store.takeExpiredRules(now)) {
+            store.addHistory(now, peer, HistoryEvent.EXPIRED)
             runCatching { host.cancel(peer) }
                 .onSuccess { withdrawn -> if (withdrawn > 0) store.requireFull(peer) }
                 .onFailure { store.setCancelPending(peer, true) }

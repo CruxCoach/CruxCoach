@@ -360,4 +360,34 @@ class SharingSyncTest {
         settle()
         assertTrue(bob.received(alice).isEmpty())
     }
+
+    @Test fun every_own_decision_lands_in_the_local_history_and_nothing_else_does() = runBlocking {
+        alice.note("n1", "beta")
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        alice.service.setOutgoing(bob.account, false)
+        alice.service.setOutgoing(bob.account, true)
+        alice.service.setPersonRule(bob.account, CLIMB_NOTES, AccessEffect.DENY)
+        alice.service.setPersonRule(bob.account, ATTEMPTS, AccessEffect.ALLOW, expiresAt = net.now + 1_000)
+        alice.service.setNeverShare("note:n1", true)
+        net.now += 1_000
+        settle()
+        alice.service.end(bob.account)
+        val events = alice.service.history().reversed().map { it.event to it.detail }
+        assertEquals(listOf(
+            HistoryEvent.AGE to "on",
+            HistoryEvent.TEMPLATE_EDITED to "TRAINING_PARTNER",
+            HistoryEvent.REQUESTED to "TRAINING_PARTNER",
+            HistoryEvent.OUTGOING to "off",
+            HistoryEvent.OUTGOING to "on",
+            HistoryEvent.CATEGORY_RULE to "CLIMB_NOTES:DENY",
+            HistoryEvent.CATEGORY_RULE to "ATTEMPTS:ALLOW:${net.now}",
+            HistoryEvent.NEVER_SHARE to "on",
+            HistoryEvent.EXPIRED to null,
+            HistoryEvent.ENDED to null,
+        ), events)
+        assertTrue(alice.service.history().all { it.peer == null || it.peer == bob.account })
+        // Bob's history knows only his own decisions.
+        assertEquals(listOf(HistoryEvent.AGE, HistoryEvent.TEMPLATE_EDITED, HistoryEvent.ACCEPTED),
+            bob.service.history().reversed().map { it.event }.take(3))
+    }
 }

@@ -2744,6 +2744,28 @@
     <string name="sharing_age_no">I am younger</string>
     <string name="sharing_age_under">Sharing is off: below 16 your data stays on this device.</string>
     <string name="sharing_age_change">Change answer</string>
+    <string name="sharing_history_title">History</string>
+    <string name="sharing_history_info">Your own sharing decisions, newest first. Kept only on this device for at most a year (1,000 entries); never sent and not part of any backup.</string>
+    <string name="sharing_history_empty">Nothing yet.</string>
+    <string name="sharing_history_requested">Asked %1$s for a friendship (%2$s)</string>
+    <string name="sharing_history_accepted_sharing">Accepted %1$s and shared your data</string>
+    <string name="sharing_history_accepted_receiving">Accepted %1$s, only receiving</string>
+    <string name="sharing_history_template">%1$s: template %2$s</string>
+    <string name="sharing_history_category_allow">%1$s: %2$s shared</string>
+    <string name="sharing_history_category_deny">%1$s: %2$s not shared</string>
+    <string name="sharing_history_record_allow">%1$s: one record of %2$s shared</string>
+    <string name="sharing_history_record_deny">%1$s: one record of %2$s left out</string>
+    <string name="sharing_history_follow_template">%1$s: %2$s follows the template again</string>
+    <string name="sharing_history_never_on">One record is never shared with anyone</string>
+    <string name="sharing_history_never_off">One record may be shared again</string>
+    <string name="sharing_history_outgoing_on">Sharing with %1$s switched on</string>
+    <string name="sharing_history_outgoing_off">Sharing with %1$s switched off</string>
+    <string name="sharing_history_template_edited">Template %1$s changed</string>
+    <string name="sharing_history_age_on">Age answered: 16 or older</string>
+    <string name="sharing_history_age_off">Age answered: under 16; sharing off</string>
+    <string name="sharing_history_expired">%1$s: a time-limited grant ended</string>
+    <string name="sharing_history_ended">Friendship with %1$s ended</string>
+    <string name="sharing_history_removed">%1$s removed from the list</string>
     <string name="sharing_period_title">Period for sends and attempts</string>
     <string name="sharing_period_all">All</string>
     <string name="sharing_connection_summary">%1$d of %2$d relays connected</string>
@@ -2797,6 +2819,10 @@
     <plurals name="sharing_received_count">
         <item quantity="one">%d received</item>
         <item quantity="other">%d received</item>
+    </plurals>
+    <plurals name="sharing_history_count">
+        <item quantity="one">%d entry</item>
+        <item quantity="other">%d entries</item>
     </plurals>
     <plurals name="sharing_record_attempts">
         <item quantity="one">%1$s · %2$s · %3$d attempt</item>

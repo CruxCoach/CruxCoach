@@ -226,6 +226,18 @@ class SharingScreenTest {
         assertEquals(listOf("age:true"), calls)
     }
 
+    @Test fun `the history page lists own decisions with names`() {
+        val ben = "b".repeat(64)
+        val history = listOf(
+            com.cruxcoach.android.sharing.HistoryEntry(2, 1_800_000_000_000, ben, com.cruxcoach.android.sharing.HistoryEvent.OUTGOING, "off"),
+            com.cruxcoach.android.sharing.HistoryEntry(1, 1_799_000_000_000, ben, com.cruxcoach.android.sharing.HistoryEvent.CATEGORY_RULE, "SENDS:ALLOW"),
+        )
+        render(SharingUiState(loading = false, overview = overview(listOf(friend(ben, VisibleState.STOPPED, "Ben", outgoing = false))).copy(history = history)),
+            SharingPage.History)
+        compose.onNodeWithText("Teilen mit Ben ausgeschaltet").assertExists()
+        compose.onNodeWithText("Ben: Begehungen geteilt").assertExists()
+    }
+
     @Test fun `the climb page lists what friends shared about it and nothing otherwise`() {
         val shown = mutableStateOf(emptyList<ReceivedOnClimb>())
         compose.setContent { MaterialTheme { ReceivedClimbContent(shown.value) } }

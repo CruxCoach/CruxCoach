@@ -110,6 +110,16 @@ CREATE TABLE share_record (
 
 CREATE INDEX share_record_climb ON share_record(climb_uuid);
 
+-- Local history of one's own sharing decisions (FEAT-073 U2): never sent,
+-- never in a backup, at most a year and 1,000 entries.
+CREATE TABLE share_history (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    at INTEGER NOT NULL,
+    peer TEXT,
+    event TEXT NOT NULL,
+    detail TEXT
+);
+
 selectTemplates:
 SELECT * FROM share_template ORDER BY rowid;
 
@@ -259,6 +269,15 @@ DELETE FROM share_person_rule WHERE expires_at IS NOT NULL AND expires_at <= ?;
 
 deleteExpiredObjectRules:
 DELETE FROM share_object_rule WHERE expires_at IS NOT NULL AND expires_at <= ?;
+
+insertHistory:
+INSERT INTO share_history(at, peer, event, detail) VALUES (?, ?, ?, ?);
+
+pruneHistory:
+DELETE FROM share_history WHERE at < :horizon OR seq <= (SELECT max(seq) FROM share_history) - :keep;
+
+selectHistory:
+SELECT * FROM share_history ORDER BY seq DESC LIMIT :limit;
 
 selectRuleExpiries:
 SELECT expires_at FROM share_person_rule WHERE expires_at IS NOT NULL

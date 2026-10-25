@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PeopleOutline
@@ -86,12 +87,14 @@ internal sealed interface SharingPage {
     data class Person(val peer: String) : SharingPage { override val key get() = "person:$peer" }
     data class Template(val id: TemplateId) : SharingPage { override val key get() = "template:${id.value}" }
     data object Connection : SharingPage { override val key = "connection" }
+    data object History : SharingPage { override val key = "history" }
 
     companion object {
         fun parse(key: String): SharingPage = when {
             key.startsWith("person:") -> Person(key.removePrefix("person:"))
             key.startsWith("template:") -> key.removePrefix("template:").takeIf { it.isNotBlank() }?.let { Template(TemplateId(it)) } ?: Overview
             key == Connection.key -> Connection
+            key == History.key -> History
             else -> Overview
         }
     }
@@ -160,6 +163,7 @@ fun SharingScreen(
         is SharingPage.Person -> state.detail?.friend?.displayName ?: SharingNames.shortId(page.peer)
         is SharingPage.Template -> stringResource(SharingLabels.template(page.id))
         SharingPage.Connection -> stringResource(R.string.sharing_connection_title)
+        SharingPage.History -> stringResource(R.string.sharing_history_title)
     }
     Scaffold(
         topBar = {
@@ -220,6 +224,7 @@ internal fun SharingContent(
             }
             is SharingPage.Template -> TemplatePage(overview.allTemplates, page.id, state.busy, actions)
             SharingPage.Connection -> ConnectionPage(overview.status, state.busy, actions)
+            SharingPage.History -> HistoryPage(overview)
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -290,6 +295,14 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
             icon = Icons.Outlined.Hub,
             modifier = Modifier.testTag("sharing_open_connection"),
             onClick = { onOpen(SharingPage.Connection) },
+        )
+        HorizontalDivider(Modifier.padding(start = 56.dp, end = 16.dp))
+        SharingDestinationRow(
+            title = stringResource(R.string.sharing_history_title),
+            summary = pluralStringResource(R.plurals.sharing_history_count, overview.history.size, overview.history.size),
+            icon = Icons.Outlined.History,
+            modifier = Modifier.testTag("sharing_open_history"),
+            onClick = { onOpen(SharingPage.History) },
         )
     }
 }

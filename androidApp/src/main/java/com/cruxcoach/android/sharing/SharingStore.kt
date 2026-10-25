@@ -25,6 +25,12 @@ import java.time.ZoneOffset
 
 enum class PersonState { REQUESTED, CONNECTED, ENDING, ENDED }
 
+/** What the local history records (FEAT-073 U2). Kept only here, never sent. */
+enum class HistoryEvent { REQUESTED, ACCEPTED, TEMPLATE_CHOSEN, CATEGORY_RULE, RECORD_RULE, NEVER_SHARE, OUTGOING, TEMPLATE_EDITED, AGE, EXPIRED, ENDED, REMOVED }
+
+/** One history line. [detail] is event-specific: a template id, `CATEGORY:EFFECT`, `on`/`off`. */
+data class HistoryEntry(val seq: Long, val at: Long, val peer: String?, val event: HistoryEvent, val detail: String?)
+
 data class SharingPerson(
     val peer: String,
     val template: TemplateId,
@@ -87,6 +93,8 @@ class SharingStore(private val database: SecureDatabase) {
     companion object {
         /** A friend's clock may run a little behind; their next generation usually arrives first. */
         const val RECEIVED_GRACE_MS = 10 * 60_000L
+        const val HISTORY_DAYS = 365L
+        const val HISTORY_KEEP = 1_000L
         private const val AGE_KEY = "age"
         private const val AGE_CONFIRMED = "16_or_older"
         private const val AGE_UNDER = "under_16"
@@ -291,6 +299,18 @@ class SharingStore(private val database: SecureDatabase) {
 
     fun deleteRecord(peer: String, id: String) = q.deleteRecord(peer, id)
     fun deleteRecords(peer: String) = q.deleteRecords(peer)
+
+    // ---- history --------------------------------------------------------------------
+
+    /** Record one own decision; older entries beyond a year or 1,000 lines go. */
+    fun addHistory(at: Long, peer: String?, event: HistoryEvent, detail: String? = null) {
+        q.insertHistory(at, peer, event.name, detail?.take(256))
+        q.pruneHistory(at - HISTORY_DAYS * 86_400_000L, HISTORY_KEEP)
+    }
+
+    fun history(limit: Long = 200): List<HistoryEntry> = q.selectHistory(limit).executeAsList().mapNotNull { row ->
+        HistoryEvent.entries.firstOrNull { it.name == row.event }?.let { HistoryEntry(row.seq, row.at, row.peer, it, row.detail) }
+    }
 
     // ---- expiry ---------------------------------------------------------------------
 
