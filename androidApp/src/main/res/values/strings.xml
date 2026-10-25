@@ -2753,6 +2753,11 @@
     <string name="sharing_preview_count">%1$d of %2$d shared</string>
     <string name="sharing_preview_empty">You have no data in these categories yet.</string>
     <string name="sharing_preview_stopped">Nothing – sharing with this person is switched off.</string>
+    <string name="sharing_limit_over">Too much to send (more than 1,000 records). Nothing goes to this person until you choose a shorter period or turn a category off.</string>
+    <plurals name="sharing_limit_skipped">
+        <item quantity="one">%d record cannot be shared (too long or incomplete).</item>
+        <item quantity="other">%d records cannot be shared (too long or incomplete).</item>
+    </plurals>
     <string name="sharing_record_exception">Exception for this record</string>
     <string name="sharing_record_profile">%1$s · %2$s</string>
     <string name="sharing_record_send">%1$s · %2$s · sent</string>

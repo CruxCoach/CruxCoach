@@ -1,0 +1,23 @@
+-- The owner's shareable rows, read for the sharing projection (SharingSource).
+--
+-- No table and no trigger: a record's revision is a hash of exactly the fields
+-- that are sent, so nothing is written for sharing while it is off or on, and
+-- rewrites that change nothing (Kilter sync refreshing denormalised names on
+-- every ascent and bid since 0.2.4) produce no delta. Deletions are found by
+-- comparing with what was sent.
+
+sourceAscents:
+SELECT uuid, climb_uuid, climb_name, board_brand, angle, bid_count, difficulty, climbed_at
+FROM ascents WHERE climbed_at >= ? ORDER BY uuid LIMIT 1001;
+
+sourceBids:
+SELECT uuid, climb_uuid, climb_name, board_brand, angle, bid_count, climbed_at
+FROM bids WHERE climbed_at >= ? ORDER BY uuid LIMIT 1001;
+
+sourceNotes:
+SELECT climb_uuid, note FROM climb_notes ORDER BY climb_uuid LIMIT 1001;
+
+-- Never executed. A listener on it hears every committed write to a source
+-- table (SharingSourceChanges) and wakes the sync.
+sourceTouched:
+SELECT 1 FROM user_profiles, ascents, bids, climb_notes LIMIT 0;

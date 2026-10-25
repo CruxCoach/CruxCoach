@@ -1,11 +1,22 @@
 package com.cruxcoach.data
 
-/** Version numbers alone cannot distinguish the unpublished permission branch from release 0.2.3. */
+/**
+ * Version numbers alone cannot tell the release line from the unpublished
+ * permission branches. Release 0.2.4 is secure schema 16 (migrations 14 and 15
+ * add pending_import and pending_log_deletion); sharing arrives with migration
+ * 16 -> 17 and creates only `share_*` tables. The feature branches reused 14-33
+ * for other tables (`sharing_*` ledgers in v1, then v2 at 34). Such a database
+ * must never be migrated by number here: it is refused before any DDL and left
+ * untouched, never reset.
+ */
 object SecureSchemaLineage {
-    private val featureTables = setOf("sharing_relationship", "share_person")
+    /** Release tables every database that carries sharing must already have. */
+    private val releaseTables = setOf("climb_notes", "moon_import_staging", "pending_import", "pending_log_deletion")
 
     fun requireSupported(tables: Set<String>) {
-        check(featureTables.none { it in tables } || tables.containsAll(setOf("climb_notes", "moon_import_staging"))) {
+        val foreignV1 = tables.any { it.startsWith("sharing_") }
+        val carriesSharing = tables.any { it.startsWith("share_") }
+        check(!foreignV1 && (!carriesSharing || tables.containsAll(releaseTables))) {
             "Unpublished permission database lineage: preserve this database and use the separate feature installation. " +
                 "Do not apply release migrations by version number or reset personal data."
         }

@@ -110,7 +110,6 @@ class SharingAutomationTest {
             subscription.close()
             repository.saveClimbNote("a", "three")
             assertEquals(1, wakes)
-            assertEquals(3L, db.continuousSharingQueries.sourceVersion().executeAsOne().revision)
         }
     }
 }

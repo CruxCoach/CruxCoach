@@ -151,6 +151,20 @@ class SharingScreenTest {
         assertEquals(listOf("outgoing:bbbb:false", "category:PRIVATE_NOTES:true", "item:note:c1:false"), calls)
     }
 
+    @Test fun `limits are said on the person page instead of silently sending nothing`() {
+        renderPerson(detail().copy(overLimit = true, skipped = 2))
+        compose.onNodeWithTag("sharing_limit_over").performScrollTo()
+            .assertTextEquals("Zu viel zum Senden (mehr als 1.000 Einträge). An diese Person geht nichts, bis du einen kürzeren Zeitraum wählst oder eine Kategorie ausschaltest.")
+        compose.onNodeWithTag("sharing_limit_skipped").performScrollTo()
+            .assertTextEquals("2 Einträge können nicht geteilt werden (zu lang oder unvollständig).")
+    }
+
+    @Test fun `within the limits no limit hint is shown`() {
+        renderPerson(detail())
+        compose.onNodeWithTag("sharing_limit_over").assertDoesNotExist()
+        compose.onNodeWithTag("sharing_limit_skipped").assertDoesNotExist()
+    }
+
     @Test fun `a stopped person receives nothing and the preview says so`() {
         renderPerson(detail(outgoing = false, visible = VisibleState.STOPPED))
         compose.onNodeWithTag("sharing_person_state").assertTextEquals("Gestoppt")

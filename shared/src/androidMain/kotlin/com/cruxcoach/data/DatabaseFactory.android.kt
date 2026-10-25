@@ -176,11 +176,8 @@ actual class SecureDriverFactory(
             context = context,
             name = dbName,
             factory = factory,
-            // FEAT-062: foreign keys are a correctness requirement of the
-            // sharing projection, so they are turned on in onConfigure — per
-            // connection, before any statement runs on it. The PRAGMA below
-            // repeats it for the connection this factory itself opens; setting
-            // it twice is a no-op, missing it once is a silent fail-open.
+            // Refuse a database of an unpublished feature lineage before any
+            // release migration runs on it (SecureSchemaLineage).
             callback = object : AndroidSqliteDriver.Callback(SecureDatabase.Schema) {
                 override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
                     val tables = db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { cursor ->
@@ -192,10 +189,6 @@ actual class SecureDriverFactory(
                     super.onUpgrade(db, oldVersion, newVersion)
                 }
 
-                override fun onConfigure(db: SupportSQLiteDatabase) {
-                    super.onConfigure(db)
-                    db.setForeignKeyConstraintsEnabled(true)
-                }
             },
         )
         // SQLCipher requires PRAGMAs to go through query path, not execute

@@ -130,7 +130,14 @@ class SharingStore(private val database: SecureDatabase) {
     fun setState(peer: String, state: PersonState, now: Long) =
         q.updatePersonState(state.name, if (state == PersonState.ENDED || state == PersonState.ENDING) now else null, peer)
     fun setCancelPending(peer: String, pending: Boolean) = q.setCancelPending(if (pending) 1 else 0, peer)
-    fun deletePerson(peer: String) = q.deletePerson(peer)
+    /** Removes the person and every row that depends on them. Foreign keys are
+     * off on the secure database, so nothing cascades by itself. */
+    fun deletePerson(peer: String) = database.transaction {
+        q.deletePersonRules(peer)
+        q.deletePersonObjectRules(peer)
+        clearExchange(peer)
+        q.deletePerson(peer)
+    }
 
     fun setPersonRule(peer: String, category: SharingCategory, effect: AccessEffect?) =
         if (effect == null) q.deletePersonRule(peer, category.name) else q.upsertPersonRule(peer, category.name, effect.name)
@@ -176,13 +183,18 @@ class SharingStore(private val database: SecureDatabase) {
         return ShareScope(categories, cutoff)
     }
 
-    /** The exact records of [scope] that pass the per-record resolver. */
+    /** The exact records of [scope] that pass the per-record resolver. Throws
+     * when that set is incomplete or larger than one generation may carry: then
+     * nothing is sent, and the person page says so ([SharingPersonDetail.overLimit]). */
     fun selected(person: SharingPerson, scope: ShareScope, policy: SharingPolicy, source: SharingSource): List<SharingRecord> {
         if (scope.categories.isEmpty()) return emptyList()
         val peer = PeerId(person.peer)
-        return source.read(scope.asSourceScope()).filter {
+        val sourceScope = scope.asSourceScope()
+        val projection = source.project(sourceScope)
+        require(!projection.truncated) { "over_limit" }
+        return projection.records.filter {
             SharingPolicyResolver.resolve(policy, peer, it.category, ObjectId(it.id)).isAllowed
-        }
+        }.also { SharingRecords.check(it, sourceScope) }
     }
 
     // ---- directions -------------------------------------------------------------

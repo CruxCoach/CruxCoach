@@ -2752,6 +2752,11 @@
     <string name="sharing_preview_count">%1$d von %2$d geteilt</string>
     <string name="sharing_preview_empty">Du hast in diesen Kategorien noch keine Daten.</string>
     <string name="sharing_preview_stopped">Nichts – das Teilen mit dieser Person ist ausgeschaltet.</string>
+    <string name="sharing_limit_over">Zu viel zum Senden (mehr als 1.000 Einträge). An diese Person geht nichts, bis du einen kürzeren Zeitraum wählst oder eine Kategorie ausschaltest.</string>
+    <plurals name="sharing_limit_skipped">
+        <item quantity="one">%d Eintrag kann nicht geteilt werden (zu lang oder unvollständig).</item>
+        <item quantity="other">%d Einträge können nicht geteilt werden (zu lang oder unvollständig).</item>
+    </plurals>
     <string name="sharing_record_exception">Ausnahme für diesen Eintrag</string>
     <string name="sharing_record_profile">%1$s · %2$s</string>
     <string name="sharing_record_send">%1$s · %2$s · geschafft</string>

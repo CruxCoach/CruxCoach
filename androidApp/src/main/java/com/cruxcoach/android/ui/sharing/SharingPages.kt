@@ -127,6 +127,15 @@ internal fun PersonPage(detail: SharingPersonDetail, busy: Boolean, actions: Sha
     }
     SettingsSectionCard {
         InfoHeading(stringResource(R.string.sharing_preview_title, name), stringResource(R.string.sharing_preview_info))
+        if (person.outgoing && detail.overLimit) {
+            Text(stringResource(R.string.sharing_limit_over), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("sharing_limit_over"))
+        }
+        if (detail.skipped > 0) {
+            Text(pluralStringResource(R.plurals.sharing_limit_skipped, detail.skipped, detail.skipped),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("sharing_limit_skipped"))
+        }
         when {
             !person.outgoing -> Text(stringResource(R.string.sharing_preview_stopped), style = MaterialTheme.typography.bodyMedium)
             detail.items.isEmpty() -> Text(stringResource(R.string.sharing_preview_empty), style = MaterialTheme.typography.bodyMedium)

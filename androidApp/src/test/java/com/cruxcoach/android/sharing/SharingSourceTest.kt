@@ -38,25 +38,35 @@ class SharingSourceTest {
         assertEquals("3", record.fields["attempts"])
         assertTrue(record.fields.values.none { "excluded" in it || "private" in it })
     }
-    @Test fun real_mutations_delete_and_recreate_have_monotonic_resource_versions() {
+    @Test fun revisions_are_content_versions_across_edit_delete_and_recreate() {
         bid("log")
         val first = source.read(scope).single()
         personal.updateBid("log", 4, "new excluded comment")
         val second = source.read(scope).single()
-        assertTrue(second.revision > first.revision)
+        assertNotEquals(first.revision, second.revision)
         assertEquals("4", second.fields["attempts"])
         personal.deleteBid("log")
         assertTrue(source.read(scope).isEmpty())
         bid("log")
-        assertTrue(source.read(scope).single().revision > second.revision)
-        assertEquals(1, database.continuousSharingQueries.sourceVersion().executeAsList().size)
+        assertEquals(first.revision, source.read(scope).single().revision, "equal content, equal revision")
     }
-    @Test fun revision_and_resource_version_rollback_with_source_transaction() {
-        val original = source.version()
+    @Test fun training_records_carry_the_day_but_never_the_time_of_day() {
+        bid("timed", "2026-09-11 18:42:07")
+        val record = source.read(scope.copy(categories = setOf(TRAINING_HISTORY))).single()
+        assertEquals("2026-09-11", record.fields["date"])
+    }
+    @Test fun a_rolled_back_source_write_leaves_no_record_and_no_sharing_rows() {
         assertFails { database.transaction { bid("rollback"); error("synthetic rollback") } }
-        assertEquals(original, source.version())
         assertTrue(source.read(scope).isEmpty())
-        assertNull(database.continuousSharingQueries.resourceVersion("bid:rollback").executeAsOneOrNull())
+    }
+    @Test fun the_kilter_name_refresh_does_not_change_any_revision() {
+        bid("log")
+        val before = source.read(scope).single()
+        // What BoardSyncManager.refreshDenormalizedData issues after every Kilter sync.
+        driver.execute(null, "UPDATE bids SET climb_name = 'Synthetic route', board_brand = 'kilter', layout_id = NULL WHERE uuid = 'log'", 0)
+        assertEquals(before, source.read(scope).single())
+        driver.execute(null, "UPDATE bids SET climb_name = 'Renamed route' WHERE uuid = 'log'", 0)
+        assertNotEquals(before.revision, source.read(scope).single().revision)
     }
     @Test fun unshared_health_only_edits_do_not_dirty_shared_profile() {
         val id = users.insertProfile(profile())
@@ -67,9 +77,9 @@ class SharingSourceTest {
     }
     @Test fun sync_flags_do_not_create_private_data_deltas() {
         bid("log")
-        val before = source.version()
+        val before = source.read(scope)
         driver.execute(null, "UPDATE bids SET synced=1 WHERE uuid='log'", 0)
-        assertEquals(before, source.version())
+        assertEquals(before, source.read(scope))
     }
     @Test fun private_note_editor_and_delete_are_the_real_projection() {
         personal.saveClimbNote("climb", "  latest beta  ")
@@ -94,20 +104,18 @@ class SharingSourceTest {
         personal.saveClimbNote("a", "A2")
         val after = source.read(scope).associateBy { it.id }
         assertEquals(before["note:b"], after["note:b"])
-        assertTrue(after.getValue("note:a").revision > before.getValue("note:a").revision)
+        assertNotEquals(before.getValue("note:a").revision, after.getValue("note:a").revision)
     }
-    @Test fun replacing_an_import_identity_deletes_old_replica_resource_and_gc_preserves_active_versions() {
+    @Test fun replacing_an_import_identity_replaces_the_shared_record() {
         bid("old-uuid")
         val old = source.read(scope).single()
-        // Both have the same external import identity. SQLite REPLACE deletes
-        // the first canonical row even without recursive DELETE triggers.
+        // Both have the same external import identity: SQLite REPLACE deletes the first row.
         bid("replacement-uuid")
-        assertEquals(listOf("bid:replacement-uuid"), source.read(scope).map { it.id })
-        database.continuousSharingQueries.pruneDeletedResourceVersions()
-        assertNull(database.continuousSharingQueries.resourceVersion("bid:old-uuid").executeAsOneOrNull())
-        assertTrue(source.read(scope).single().revision > old.revision)
+        val replacement = source.read(scope).single()
+        assertEquals("bid:replacement-uuid", replacement.id)
+        assertNotEquals(old.revision, replacement.revision)
         bid("old-uuid")
-        assertTrue(source.read(scope).single().revision > old.revision)
+        assertEquals(old, source.read(scope).single())
     }
 
     @Test fun extended_year_cutoffs_cannot_invert_lexicographic_history_filtering() {
@@ -125,14 +133,12 @@ class SharingSourceTest {
         val before=source.read(scope).single();assertEquals("second",before.fields["name"])
         driver.execute(null,"UPDATE user_profiles SET updated_at='2026-03-01' WHERE id=$first",0)
         val after=source.read(scope).single();assertEquals("first",after.fields["name"])
-        assertTrue(after.revision>before.revision)
+        assertNotEquals(before.revision, after.revision)
     }
-    @Test fun resource_identity_updates_are_visible_and_old_versions_can_be_collected() {
+    @Test fun resource_identity_updates_are_visible() {
         bid("old"); val before=source.read(scope).single()
         driver.execute(null,"UPDATE bids SET uuid='new' WHERE uuid='old'",0)
-        val after=source.read(scope).single();assertEquals("bid:new",after.id);assertTrue(after.revision>before.revision)
-        database.continuousSharingQueries.pruneDeletedResourceVersions()
-        assertNull(database.continuousSharingQueries.resourceVersion("bid:old").executeAsOneOrNull())
+        val after=source.read(scope).single();assertEquals("bid:new",after.id);assertNotEquals(before.revision, after.revision)
     }
 
 }

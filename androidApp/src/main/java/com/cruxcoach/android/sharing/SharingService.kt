@@ -57,6 +57,10 @@ data class SharingPersonDetail(
     val trainingDays: Int,
     val items: List<PreviewItem>,
     val received: List<SharingRecord>,
+    /** What would be sent is larger than one generation may carry: nothing goes out. */
+    val overLimit: Boolean = false,
+    /** Own records that can never be sent (too long or incomplete); left out one by one. */
+    val skipped: Int = 0,
 )
 
 data class SharingOverview(
@@ -80,6 +84,8 @@ class SharingService(
     private val source: SharingSource,
     private val onChanged: () -> Unit = {},
     private val clock: () -> Long = System::currentTimeMillis,
+    /** The same day source as [SharingSync], so preview and sending share one cutoff. */
+    private val today: () -> LocalDate = { LocalDate.now(ZoneOffset.UTC) },
 ) {
     private val host get() = access.host
 
@@ -209,13 +215,13 @@ class SharingService(
         val person = store.person(peer) ?: return emptyList()
         val policy = store.policy()
         val connected = person.copy(state = PersonState.CONNECTED)
-        val scope = store.scope(connected, policy)
+        val scope = store.scope(connected, policy, today())
         return runCatching { store.selected(connected, scope, policy, source) }.getOrDefault(emptyList())
     }
 
     fun previewScope(peer: String): ShareScope {
         val person = store.person(peer) ?: return ShareScope.EMPTY
-        return store.scope(person.copy(state = PersonState.CONNECTED), store.policy())
+        return store.scope(person.copy(state = PersonState.CONNECTED), store.policy(), today())
     }
 
     suspend fun detail(peer: String, overview: SharingOverview? = null): SharingPersonDetail? {
@@ -229,13 +235,19 @@ class SharingService(
             CategoryChoice(SharingPolicyResolver.resolve(policy, id, category).isAllowed, category in inPreset, rules?.categoryRules?.get(category))
         }
         val days = store.trainingDays(person)
-        val cutoff = if (days == TrainingPeriod.ALL) null else LocalDate.now(ZoneOffset.UTC).minusDays(days.toLong()).toString()
-        val candidates = runCatching { source.read(ShareScope(SharingCategory.entries, cutoff).asSourceScope()) }.getOrDefault(emptyList())
+        val cutoff = if (days == TrainingPeriod.ALL) null else today().minusDays(days.toLong()).toString()
+        val projection = runCatching { source.project(ShareScope(SharingCategory.entries, cutoff).asSourceScope()) }.getOrNull()
+        val candidates = projection?.records.orEmpty()
+        // Exactly the selection the sync sends; when it refuses, nothing goes out.
+        val connected = person.copy(state = PersonState.CONNECTED)
+        val overLimit = person.outgoing &&
+            runCatching { store.selected(connected, store.scope(connected, policy, today()), policy, source) }.isFailure
         val items = candidates.map { record ->
             PreviewItem(record, rules != null && SharingPolicyResolver.resolve(policy, id, record.category, ObjectId(record.id)).isAllowed,
                 rules?.objectRules?.get(ObjectRuleKey(ObjectId(record.id), record.category)))
         }
-        return SharingPersonDetail(friend, store.presets().getValue(person.circle), categories, days, items, store.records(peer))
+        return SharingPersonDetail(friend, store.presets().getValue(person.circle), categories, days, items, store.records(peer),
+            overLimit = overLimit, skipped = projection?.skipped?.size ?: 0)
     }
 
     fun received(peer: String): List<SharingRecord> = store.records(peer)

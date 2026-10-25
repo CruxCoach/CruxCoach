@@ -34,7 +34,6 @@ class SharingSync(
     private val today: () -> LocalDate = { LocalDate.now(ZoneOffset.UTC) },
 ) : SharingStep {
     private val mutex = Mutex()
-    private val heartbeatSent = mutableSetOf<String>()
     /** Per requested person: when to try the invitation next, and the pause that led there. */
     private val inviteRetry = mutableMapOf<String, Pair<Long, Long>>()
 
@@ -231,11 +230,9 @@ class SharingSync(
         val scope = m.scope ?: return state
         if (!m.records.all { SharingRecords.valid(it, scope.asSourceScope()) }) return requestResync(state.copy(sequence = m.seq), now)
         narrow(peer, scope)
-        val existing = store.records(peer).associateBy { it.id }
-        for (record in m.records) {
-            val old = existing[record.id]
-            if (old == null || old.revision <= record.revision) store.putRecord(peer, record)
-        }
+        // Deltas arrive here strictly in (generation, sequence) order, so the
+        // newest message wins; a revision is a content hash, not an order.
+        for (record in m.records) store.putRecord(peer, record)
         m.deletes.forEach { store.deleteRecord(peer, it) }
         val local = store.records(peer)
         val next = state.copy(sequence = m.seq, scope = scope, ackDue = true, receivedAt = now)
@@ -330,7 +327,10 @@ class SharingSync(
             val deletes = (out.sent.keys - targetMap.keys).toList()
             if (upserts.isEmpty() && deletes.isEmpty() && scope == out.scope) {
                 val hour = now / 3_600_000
-                if (now - out.manifestAt < HEARTBEAT_MS && person.peer in heartbeatSent) return
+                // At most one heartbeat a day by the stored time, not one per
+                // process start: Android restarts processes often, and every
+                // manifest is one more event whose timing a relay sees.
+                if (now - out.manifestAt < HEARTBEAT_MS) return
                 messages += "hb:g${out.generation}:s${out.sequence}:h$hour" to ShareProtocol.manifest(out.generation, out.sequence, scope, target)
                 next = out.copy(manifestAt = now)
             } else {
@@ -366,7 +366,6 @@ class SharingSync(
         }
         next?.let {
             store.putOutgoing(person.peer, it)
-            if (it.manifestAt == now) heartbeatSent += person.peer
         }
     }
 

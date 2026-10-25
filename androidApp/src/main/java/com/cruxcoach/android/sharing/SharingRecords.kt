@@ -38,6 +38,22 @@ internal object SharingRecords {
     fun hash(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.encodeToByteArray()).joinToString("") { "%02x".format(it) }
 
+    /** Content version of one record: the first 56 bits of SHA-256 over its id,
+     * category and fields in key order. It changes exactly when what is sent
+     * changes; equal content always gives the same value. The sender compares it
+     * with what it sent; the receiver applies deltas in sequence order and does
+     * not order by it. */
+    fun revision(id: String, category: SharingCategory, fields: Map<String, String>): Long {
+        val canonical = kotlinx.serialization.json.buildJsonObject {
+            put("id", kotlinx.serialization.json.JsonPrimitive(id))
+            put("category", kotlinx.serialization.json.JsonPrimitive(category.name))
+            put("fields", kotlinx.serialization.json.buildJsonObject {
+                fields.toSortedMap().forEach { (key, value) -> put(key, kotlinx.serialization.json.JsonPrimitive(value)) }
+            })
+        }.toString()
+        return hash(canonical).take(14).toLong(16)
+    }
+
     /** Order-independent digest of a record set; both sides compute it. */
     fun digest(records: Collection<SharingRecord>): String = hash(json.encodeToString(records.sortedBy { it.id }))
 
@@ -65,8 +81,12 @@ internal object SharingRecords {
             }
     }.getOrDefault(false)
 
+    /** One direction's whole set fits a generation (count and size). */
+    fun withinLimits(records: List<SharingRecord>): Boolean =
+        records.size <= MAX_RECORDS && json.encodeToString(records).encodeToByteArray().size <= MAX_BYTES
+
     fun check(records: List<SharingRecord>, scope: SharingScope) {
-        require(records.size <= MAX_RECORDS && records.map { it.id }.distinct().size == records.size)
-        require(records.all { valid(it, scope) } && json.encodeToString(records).encodeToByteArray().size <= MAX_BYTES)
+        require(withinLimits(records) && records.map { it.id }.distinct().size == records.size)
+        require(records.all { valid(it, scope) })
     }
 }

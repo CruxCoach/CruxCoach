@@ -125,6 +125,15 @@ UPDATE share_person SET cancel_pending = ? WHERE peer = ?;
 deletePerson:
 DELETE FROM share_person WHERE peer = ?;
 
+-- Foreign keys stay off on the secure database (release tables declare
+-- references the app never enforced), so removing a person deletes the
+-- dependent rows explicitly in the same transaction (SharingStore.deletePerson).
+deletePersonRules:
+DELETE FROM share_person_rule WHERE peer = ?;
+
+deletePersonObjectRules:
+DELETE FROM share_object_rule WHERE peer = ?;
+
 selectAllPersonRules:
 SELECT * FROM share_person_rule;
 
