@@ -11,7 +11,7 @@
     <string name="trwo_templates">Starter templates</string>
     <string name="trwo_history">History</string>
     <string name="trwo_delete_title">Delete workout?</string>
-    <string name="trwo_delete_text">“%1$s” will be deleted. Trainings you already did with it stay in your history.</string>
+    <string name="trwo_delete_text">“%1$s” will be deleted. Sessions you already did with it stay in your history.</string>
     <plurals name="trwo_exercise_count">
         <item quantity="one">%d exercise</item>
         <item quantity="other">%d exercises</item>

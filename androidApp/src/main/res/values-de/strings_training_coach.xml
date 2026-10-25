@@ -35,7 +35,7 @@
     <string name="trc_preview_goal_none">Ohne Ziel verteilt der Coach alles gleichmäßig.</string>
     <string name="trc_preview_goal_perform">Kletterspezifische Kraft hat Vorrang: Finger, Zug, Power.</string>
     <string name="trc_preview_goal_strength">Kraftübungen haben Vorrang, mit kleinen, stetigen Steigerungen.</string>
-    <string name="trc_preview_goal_healthy">Mehr Antagonisten, Rumpf und Mobility; die Fingerlast bleibt moderat.</string>
+    <string name="trc_preview_goal_healthy">Mehr Antagonisten, Rumpf und Mobilität; die Fingerlast bleibt moderat.</string>
     <string name="trc_preview_goal_comeback">Vorsichtiger Wiedereinstieg: erst leichtere Lasten, Fingerarbeit baut sich langsam auf.</string>
     <string name="trc_preview_goal_event">Das Training baut auf und wird in den letzten Tagen vor deinem Termin leichter.</string>
     <string name="trc_preview_project">Board-Sessions orientieren sich an deinem Projekt (%1$s, %2$d°).</string>
@@ -49,7 +49,7 @@
     <string name="trc_minutes">%1$d min</string>
     <string name="trc_add_on">Nach dem Klettern noch 10–15 min Antagonisten oder Rumpf?</string>
     <string name="trc_experience_title">Klettern und Erfahrung</string>
-    <string name="trc_experience_why">Damit der Coach sicher bleibt: Max-Hangs und Campus erst, wenn die Finger so weit sind, mehr Erholung, wo es hilft.</string>
+    <string name="trc_experience_why">Damit der Coach die Fingerlast passend dosiert: Max-Hangs und Campus erst, wenn die Finger so weit sind, mehr Erholung, wo es hilft.</string>
     <string name="trc_contexts">Wo kletterst du?</string>
     <string name="trc_context_home_board">Board zu Hause</string>
     <string name="trc_context_gym_board">Board in der Halle</string>
@@ -83,7 +83,7 @@
     <string name="trc_focus_power">Power und Dynamik</string>
     <string name="trc_focus_power_endurance">Kraftausdauer</string>
     <string name="trc_focus_core">Körperspannung</string>
-    <string name="trc_focus_mobility">Beweglichkeit (Hüfte, Schulter)</string>
+    <string name="trc_focus_mobility">Mobilität (Hüfte, Schulter)</string>
     <string name="trc_focus_prevention">Schulter- und Ellbogen-Prävention</string>
     <string name="trc_focus_max">Ohne Auswahl leitet der Coach den Fokus aus Logbuch und Tests ab.</string>
     <string name="trc_finger_pref">Fingertraining am liebsten</string>
@@ -148,7 +148,7 @@
     <string name="trc_estimate_hang_easy">Locker</string>
     <string name="trc_estimate_hang_weighted">Mit Zusatzgewicht</string>
     <string name="trc_estimate_hang_cannot">Kein Problem – Fingerarbeit startet dann an einer größeren Leiste oder entlastet.</string>
-    <string name="trc_estimate_pickup">Pick-up einarmig 10 s, je Hand</string>
+    <string name="trc_estimate_pickup">Blockheben einarmig 10 s, je Hand</string>
     <string name="trc_estimate_healthy_side">Nur die gesunde Hand, solange deine Verletzung offen ist.</string>
     <string name="trc_estimate_injury_skip">Übersprungen – deine Verletzung schließt beidarmiges Hängen gerade aus.</string>
     <string name="trc_estimate_no_weight">Trag dein Körpergewicht ein, dann rechnet der Coach auch in Prozent des Körpergewichts.</string>
@@ -171,7 +171,7 @@
     <string name="trc_next_equipment">Als Nächstes: Ausrüstung – damit jeder Vorschlag zu dem passt, was du hast.</string>
     <string name="trc_next_value_pull">Als Nächstes: Leistungswert Klimmzug – dann passen die Lasten ab dem ersten Satz.</string>
     <string name="trc_next_value_finger">Als Nächstes: Leistungswert Finger – für geplante Hangs.</string>
-    <string name="trc_next_experience">Als Nächstes: Erfahrung und Altersgruppe – für sichere Fingerlasten.</string>
+    <string name="trc_next_experience">Als Nächstes: Erfahrung und Altersgruppe – für passende Fingerlasten.</string>
     <string name="trc_next_preferences">Als Nächstes: was dir liegt – Fokus und Stil.</string>
     <string name="trc_next_grade">Als Nächstes: dein Grad – um deine Kraft einzuordnen.</string>
     <string name="trc_learning_none">Erster Durchgang: Der Coach startet vorsichtig. Sag nach dem Satz, wie viele noch gegangen wären.</string>

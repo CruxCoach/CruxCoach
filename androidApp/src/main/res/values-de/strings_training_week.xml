@@ -37,5 +37,5 @@
     <string name="trw_return_detail">Kürzere Einheiten (%1$d %%).</string>
     <string name="trw_return_detail_finger">Nur leichte Fingerarbeit, keine Max-Hangs – alles andere wie gewohnt.</string>
     <string name="trw_return_info_title">Warum ein Wiedereinstieg?</string>
-    <string name="trw_return_info">Nach einer Pause brauchen vor allem Sehnen und Ringbänder ein paar Einheiten, um sich wieder an Last zu gewöhnen – mehr als die Muskeln. Die Rampe endet nach ein bis zwei Wochen oder sobald du an vier Tagen trainiert hast. Nach einer verheilten Fingerverletzung bleiben nur die Finger vier Wochen lang unter dem Limit. Das ist keine medizinische Beratung; wenn etwas wehtut, hör auf und lass es abklären.</string>
+    <string name="trw_return_info">Nach einer Pause brauchen vor allem Sehnen und Ringbänder ein paar Einheiten, um sich wieder an Last zu gewöhnen – mehr als die Muskeln. Die Rampe endet nach ein bis zwei Wochen oder sobald du an vier Tagen trainiert hast. Nach einer Fingerverletzung, die du als vorbei eingetragen hast, bleiben nur die Finger vier Wochen lang unter dem Limit. Das ist keine medizinische Beratung; wenn etwas wehtut, hör auf und lass es abklären.</string>
 </resources>

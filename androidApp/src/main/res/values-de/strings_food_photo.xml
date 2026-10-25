@@ -15,7 +15,7 @@
 
     <string name="fvp_setup_text">Die Erkennung läuft nur auf deinem Gerät, dein Foto verlässt das Handy nicht. Dafür lädt CruxCoach einmalig ein KI-Modell (%1$s, %2$s).</string>
     <string name="fvp_setup_estimate">Es erkennt Lebensmittel und schätzt die Grammzahl. Die Nährwerte kommen aus dem Bundeslebensmittelschlüssel (BLS 4.0). Prüfe die Vorschläge, bevor du sie einträgst.</string>
-    <string name="fvp_setup_source">Quelle: Hugging Face (Qwen3.5, Apache-2.0). Beim Download erfährt der Server nur, dass dieses Modell geladen wird.</string>
+    <string name="fvp_setup_source">Quelle: CruxCoach-Mirror (blossom.cruxcoach.org), falls er die Dateien hat, sonst Hugging Face (Qwen3.5, Apache-2.0). Beim Download erfährt der Server nur, dass dieses Modell geladen wird.</string>
     <string name="fvp_allow_mobile">Auch über mobile Daten laden</string>
     <string name="fvp_download">Herunterladen (%s)</string>
     <string name="fvp_download_title">CruxCoach Foto-Erkennung (%1$d/%2$d)</string>

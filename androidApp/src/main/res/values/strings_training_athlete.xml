@@ -3,21 +3,21 @@
     <!-- Injuries and pauses -->
     <string name="tra_injuries_title">Injuries &amp; pauses</string>
     <string name="tra_injuries_info_title">How injury mode works</string>
-    <string name="tra_injuries_info_text">Note an injury and CruxCoach adapts: exercises that load the injured area are hidden or marked, one-sided exercises stay available for the healthy side (for example one-arm pick-ups on the right hand while a left finger heals), and wall climbing can be paused. This is a filter, not a treatment plan. For getting back, each injury has a comeback plan: usual load stages and a diary – not a substitute for seeing a doctor, only in agreement with your doctor or physio.</string>
+    <string name="tra_injuries_info_text">Note an injury and CruxCoach adapts: exercises that load the injured area are hidden or marked, one-sided exercises stay available for the healthy side (for example one-arm pick-ups on the right hand while a left finger is injured), and wall climbing can be paused. This is a filter, not a treatment plan. For getting back, each injury has a comeback plan: usual load stages and a diary – not a substitute for seeing a doctor, only in agreement with your doctor or physio.</string>
     <string name="tra_injury_add">Report injury</string>
     <string name="tra_injuries_none">No open injury. Good.</string>
     <string name="tra_injury_train_around">Train without the wall</string>
     <string name="tra_pauses_title">Pauses</string>
     <string name="tra_pause_holiday">Start holiday pause</string>
     <string name="tra_pause_open">%1$s since %2$s</string>
-    <string name="tra_injuries_past">Healed</string>
+    <string name="tra_injuries_past">Past injuries</string>
     <string name="tra_pause_illness">Illness</string>
     <string name="tra_pause_injury">Injury</string>
     <string name="tra_pause_holiday_label">Holiday</string>
     <string name="tra_injury_since">Since %1$s</string>
     <string name="tra_injury_pain">Pain: %1$d of 9</string>
     <string name="tra_injury_pause_climbing">Pause climbing</string>
-    <string name="tra_injury_resolve">Healed</string>
+    <string name="tra_injury_resolve">It\'s over</string>
     <string name="tra_injury_where">Where?</string>
     <string name="tra_injury_side">Side</string>
     <string name="tra_injury_detail">Details (e.g. ring finger A2)</string>

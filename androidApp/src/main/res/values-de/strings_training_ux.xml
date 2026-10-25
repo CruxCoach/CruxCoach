@@ -32,7 +32,7 @@
     <string name="tru_setup_done">Erledigt</string>
 
     <!-- Check-in im Training von heute -->
-    <string name="tru_checkin_action">Kurz-Check</string>
+    <string name="tru_checkin_action">Check-in</string>
 
     <!-- Dein Tag -->
     <string name="tru_day_title">Dein Tag</string>

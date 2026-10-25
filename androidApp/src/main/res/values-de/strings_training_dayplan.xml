@@ -38,7 +38,7 @@
     <string name="trt_rest_today_done">Heute ist jetzt Ruhetag.</string>
     <string name="trf_planned_climb">Klettern %1$d min</string>
     <string name="trw_notify_climb">Klettertag</string>
-    <string name="trdp_reason_day_rest">Für heute ist Ruhetag geplant. Leichte Mobility ist freiwillig.</string>
+    <string name="trdp_reason_day_rest">Für heute ist Ruhetag geplant. Etwas Mobilität ist freiwillig.</string>
     <string name="trdp_reason_day_plan">Das hast du für heute geplant.</string>
     <string name="trdp_reason_day_board">Für heute ist ein Board-Tag geplant – gut aufwärmen, danach ein kurzer Antagonist-Block.</string>
     <string name="trdp_training">Training</string>

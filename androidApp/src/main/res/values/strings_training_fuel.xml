@@ -28,7 +28,7 @@
     <string name="trf_carbs_planned">Planned today: %1$s. Until it is done, today\'s targets already count it – what you eat before a session fuels it. Earlier days and the energy card count only what you logged.</string>
     <string name="trf_water">Water</string>
     <string name="trf_hc_switch">Send meals and water to Health Connect</string>
-    <string name="trf_hc_hint">Each logged food and glass of water is written to Health Connect; changed or deleted entries are updated there when you open nutrition.</string>
+    <string name="trf_hc_hint">Each logged food and glass of water is written to Health Connect; changed or deleted entries are updated there when you open nutrition. Switching this off keeps what was already written in Health Connect; delete it there if you want.</string>
     <string name="trf_recipe_new">Recipe</string>
     <string name="trf_recipe_title">Recipe</string>
     <string name="trf_recipe_edit">Edit recipe</string>

@@ -11,7 +11,7 @@
     <string name="trbm_source_manual">entered</string>
     <string name="trbm_source_test">test</string>
     <string name="trbm_source_auto">from your training</string>
-    <string name="trbm_paused_injury">Paused while the injury heals.</string>
+    <string name="trbm_paused_injury">Paused while the injury is open.</string>
     <string name="trbm_enter">Enter</string>
     <string name="trbm_delete">Delete value</string>
     <string name="trbm_delete_title">Delete this value?</string>

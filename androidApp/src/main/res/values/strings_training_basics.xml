@@ -15,7 +15,7 @@
     <string name="trq_sex_none">No answer</string>
     <string name="trq_private">Everything you enter here stays encrypted on your phone.</string>
     <string name="trq_climb_title">Your climbing</string>
-    <string name="trq_climb_why">Sets the start loads and keeps finger training safe: no max hangs or campus in your first climbing years.</string>
+    <string name="trq_climb_why">Sets the start loads and keeps finger loads careful: no max hangs or campus in your first climbing years.</string>
     <string name="trq_grade">How hard do you boulder (usual hard sends)?</string>
     <string name="trq_grade_from_logbook">Suggested from your board logbook.</string>
 </resources>

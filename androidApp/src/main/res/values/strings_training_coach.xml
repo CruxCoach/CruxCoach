@@ -49,7 +49,7 @@
     <string name="trc_minutes">%1$d min</string>
     <string name="trc_add_on">10–15 min antagonists or core after climbing?</string>
     <string name="trc_experience_title">Climbing and experience</string>
-    <string name="trc_experience_why">Keeps the coach safe: max hangs and campus only when your fingers are ready, more recovery where it helps.</string>
+    <string name="trc_experience_why">Lets the coach dose finger load: max hangs and campus only when your fingers are ready, more recovery where it helps.</string>
     <string name="trc_contexts">Where do you climb?</string>
     <string name="trc_context_home_board">Board at home</string>
     <string name="trc_context_gym_board">Board at the gym</string>
@@ -171,7 +171,7 @@
     <string name="trc_next_equipment">Next: equipment – so every suggestion fits what you have.</string>
     <string name="trc_next_value_pull">Next: performance value for pull-ups – loads fit from the first set.</string>
     <string name="trc_next_value_finger">Next: performance value for your fingers – for planned hangs.</string>
-    <string name="trc_next_experience">Next: experience and age group – for safe finger loads.</string>
+    <string name="trc_next_experience">Next: experience and age group – for fitting finger loads.</string>
     <string name="trc_next_preferences">Next: what suits you – focus and style.</string>
     <string name="trc_next_grade">Next: your grade – to place your strength.</string>
     <string name="trc_learning_none">First time: the coach starts careful. After the set, say how many more would have gone.</string>

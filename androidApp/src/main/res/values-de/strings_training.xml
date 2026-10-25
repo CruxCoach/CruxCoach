@@ -117,7 +117,7 @@
     <string name="tr_routine_legs_basics_desc">Kniebeuge, Hüftbeuge, einbeinig, hintere Kette und Adduktoren.</string>
     <string name="tr_routine_core_climber">Rumpf für Kletterer</string>
     <string name="tr_routine_core_climber_desc">Körperspannung vom Dead Bug bis zum L-Sit.</string>
-    <string name="tr_routine_mobility_10">Mobility 10 min</string>
+    <string name="tr_routine_mobility_10">Mobilität 10 min</string>
     <string name="tr_routine_mobility_10_desc">Hüfte für hohe Tritte und Eindrehen, Schultern und Handgelenke.</string>
     <string name="tr_routine_baseline_tests">Leistungstest</string>
     <string name="tr_routine_baseline_tests_desc">Max Hang an 20 mm, maximale Klimmzüge, Hollow Hold – alle 6–8 Wochen wiederholen.</string>
@@ -142,7 +142,7 @@
     <string name="tr_action_settings">Trainingseinstellungen</string>
     <string name="tr_not_medical_advice">CruxCoach stellt keine Diagnosen und behandelt keine Verletzungen. Bei stechendem Schmerz, Schwellung oder anhaltenden Beschwerden: ärztlich oder physiotherapeutisch abklären lassen.</string>
 
-    <string name="export_category_training">Training, Check-ins &amp; Verletzungen</string>
+    <string name="export_category_training">Training &amp; Check-ins</string>
     <string name="export_category_fuel">Ernährung</string>
     <plurals name="import_result_training">
         <item quantity="one">%d Trainingseintrag</item>
@@ -152,7 +152,7 @@
         <item quantity="one">%d Ernährungseintrag</item>
         <item quantity="other">%d Ernährungseinträge</item>
     </plurals>
-    <string name="export_json_only_hint">Training, Körper und Ernährung sind nur im JSON-Backup enthalten.</string>
+    <string name="export_json_only_hint">Training, Körper, Ernährung und Verletzungen sind nur im JSON-Backup enthalten.</string>
     <string name="tr_tab_today">Heute</string>
     <string name="tr_tab_workouts">Workouts</string>
     <string name="tr_tab_exercises">Übungen</string>

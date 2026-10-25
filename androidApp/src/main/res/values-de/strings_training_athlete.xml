@@ -2,26 +2,26 @@
 <resources>
     <string name="tra_injuries_title">Verletzungen &amp; Pausen</string>
     <string name="tra_injuries_info_title">So funktioniert der Verletzungsmodus</string>
-    <string name="tra_injuries_info_text">Trag eine Verletzung ein, dann passt sich CruxCoach an: Übungen, die die verletzte Stelle belasten, werden ausgeblendet oder markiert, einseitige Übungen bleiben für die gesunde Seite verfügbar (zum Beispiel einarmiges Blockheben rechts, während ein Finger links heilt), und das Klettern an der Wand kann pausieren. Das ist ein Filter, kein Behandlungsplan. Für den Wiedereinstieg gibt es pro Verletzung einen Comeback-Plan: übliche Belastungsstufen und ein Tagebuch – kein Ersatz für den Arztbesuch, nur in Absprache mit Ärztin, Arzt oder Physio.</string>
+    <string name="tra_injuries_info_text">Trag eine Verletzung ein, dann passt sich CruxCoach an: Übungen, die die verletzte Stelle belasten, werden ausgeblendet oder markiert, einseitige Übungen bleiben für die gesunde Seite verfügbar (zum Beispiel einarmiges Blockheben rechts, während ein Finger links verletzt ist), und das Klettern an der Wand kann pausieren. Das ist ein Filter, kein Behandlungsplan. Für den Wiedereinstieg gibt es pro Verletzung einen Comeback-Plan: übliche Belastungsstufen und ein Tagebuch – kein Ersatz für den Arztbesuch, nur in Absprache mit Ärztin, Arzt oder Physio.</string>
     <string name="tra_injury_add">Verletzung eintragen</string>
     <string name="tra_injuries_none">Keine offene Verletzung. Gut so.</string>
     <string name="tra_injury_train_around">Ohne Wand trainieren</string>
     <string name="tra_pauses_title">Pausen</string>
     <string name="tra_pause_holiday">Urlaubspause starten</string>
     <string name="tra_pause_open">%1$s seit %2$s</string>
-    <string name="tra_injuries_past">Verheilt</string>
+    <string name="tra_injuries_past">Vergangene Verletzungen</string>
     <string name="tra_pause_illness">Krankheit</string>
     <string name="tra_pause_injury">Verletzung</string>
     <string name="tra_pause_holiday_label">Urlaub</string>
     <string name="tra_injury_since">Seit %1$s</string>
     <string name="tra_injury_pain">Schmerz: %1$d von 9</string>
     <string name="tra_injury_pause_climbing">Klettern pausieren</string>
-    <string name="tra_injury_resolve">Verheilt</string>
+    <string name="tra_injury_resolve">Ist vorbei</string>
     <string name="tra_injury_where">Wo?</string>
     <string name="tra_injury_side">Seite</string>
     <string name="tra_injury_detail">Details (z. B. Ringfinger A2)</string>
     <string name="tra_injury_pause_streak">Meine Serie pausieren</string>
-    <string name="tra_red_flags">Geh zeitnah zum Arzt bei Knall mit Schwellung, Taubheit, sichtbar abstehender Sehne oder starkem Ruheschmerz.</string>
+    <string name="tra_red_flags">Geh zeitnah zu Ärztin oder Arzt bei Knall mit Schwellung, Taubheit, sichtbar abstehender Sehne oder starkem Ruheschmerz.</string>
 
     <string name="tra_equipment_title">Was hast du?</string>
     <string name="tra_equipment_info">Dein Ausrüstungsprofil filtert die Übungsbibliothek und die Vorschläge. Ähnliches zählt mit: Eine Kettlebell belädt den Pick-up-Block wie Scheiben, Bänder ersetzen den Kabelzug, Ringe gehen als Dip-Barren.</string>
