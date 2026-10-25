@@ -36,15 +36,16 @@ data class AthleteSnapshot(
         climbingDays.size + suggestionEvents.size
     val bodyRows: Int get() = measurements.size
     val fuelRows: Int get() = foodItems.size + foodLog.size + hydration.size
-    val wellbeingRows: Int get() = checkins.size + pauses.size
-    /** Injuries and the comeback diary. */
-    val healthRows: Int get() = injuries.size + comebackEntries.size
+    val wellbeingRows: Int get() = checkins.size + pauses.count { !it.isHealth() }
+    /** Injuries, the comeback diary and pauses for an injury or an illness. */
+    val healthRows: Int get() = injuries.size + comebackEntries.size + pauses.count { it.isHealth() }
     val isEmpty: Boolean get() = profile == null && trainingRows + bodyRows + fuelRows + wellbeingRows + healthRows + favorites.size == 0
 
     fun onlyTraining() = AthleteSnapshot(profile = profile, workouts = workouts, sets = sets, routines = routines,
-        customExercises = customExercises, favorites = favorites, checkins = checkins, pauses = pauses,
+        customExercises = customExercises, favorites = favorites, checkins = checkins, pauses = pauses.filterNot { it.isHealth() },
         benchmarks = benchmarks, climbingDays = climbingDays, suggestionEvents = suggestionEvents)
-    fun onlyHealth() = AthleteSnapshot(injuries = injuries, comebackEntries = comebackEntries)
+    /** Health data: injuries, the comeback diary and injury or illness pauses (start, end, note) – opt-in. */
+    fun onlyHealth() = AthleteSnapshot(injuries = injuries, comebackEntries = comebackEntries, pauses = pauses.filter { it.isHealth() })
     fun onlyBody() = AthleteSnapshot(measurements = measurements)
     fun onlyFuel() = AthleteSnapshot(foodItems = foodItems, foodLog = foodLog, hydration = hydration, recipes = recipes)
 
@@ -62,3 +63,6 @@ data class AthleteSnapshot(
         recipes = recipes + other.recipes,
     )
 }
+
+/** A pause for an injury or an illness says something about health; a holiday does not. */
+private fun PausePeriod.isHealth(): Boolean = reason == PauseReason.INJURY || reason == PauseReason.ILLNESS

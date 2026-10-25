@@ -91,12 +91,17 @@ class ComebackDataTest {
         repo.saveInjury(Comeback.start(injury(), PlanSource.CRUXCOACH, 2, today, true, false, emptyMap(), now = 5))
         repo.saveComebackEntry(ComebackEntry("i1", "2026-10-20", morningPain = 2, updatedAt = 10))
         repo.saveWorkout(Workout("w1", 10, 20, "2026-10-20", updatedAt = 10))
+        repo.savePause(PausePeriod("p-injury", PauseReason.INJURY, "2026-10-10", note = "Ring A2"))
+        repo.savePause(PausePeriod("p-ill", PauseReason.ILLNESS, "2026-09-01", "2026-09-05"))
+        repo.savePause(PausePeriod("p-holiday", PauseReason.HOLIDAY, "2026-08-01", "2026-08-14"))
         val full = repo.snapshot()
-        assertEquals(2, full.healthRows)
+        assertEquals(4, full.healthRows)
         val training = full.onlyTraining()
         assertTrue(training.injuries.isEmpty() && training.comebackEntries.isEmpty(), "training carries no health data")
+        assertEquals(listOf("p-holiday"), training.pauses.map { it.id }, "injury and illness pauses are health data")
         val health = full.onlyHealth()
         assertEquals(1, health.injuries.size); assertEquals(1, health.comebackEntries.size)
+        assertEquals(setOf("p-injury", "p-ill"), health.pauses.map { it.id }.toSet())
         assertTrue(CruxCoachBackup.Category.HEALTH !in CruxCoachBackup.Category.DEFAULTS)
 
         // A backup with the category restores plan and diary on another phone, newest row wins.
@@ -107,6 +112,7 @@ class ComebackDataTest {
         other.restore(json.decodeFromString(AthleteSnapshot.serializer(), text), includeProfile = false)
         assertEquals(2, other.injury("i1")!!.plan!!.stage)
         assertEquals(2, other.comebackEntries("i1").single().morningPain)
+        assertEquals(setOf("p-injury", "p-ill"), other.pauses().map { it.id }.toSet())
         otherDriver.close()
     }
 

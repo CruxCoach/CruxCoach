@@ -217,9 +217,9 @@
     <string name="cb_reason_lighter">Deine Comeback-Stufe: Heute lieber leicht klettern als hart oder am Limit.</string>
 
     <!-- Sicherung -->
-    <string name="cb_backup_category">Verletzungen &amp; Comeback-Tagebuch</string>
+    <string name="cb_backup_category">Verletzungen, Krankheitspausen &amp; Comeback-Tagebuch</string>
     <string name="cb_backup_category_hint">Gesundheitsdaten: nur im Export, wenn du sie ankreuzt.</string>
-    <string name="cb_backup_cloud">Verletzungen und Comeback-Tagebuch in die verschlüsselte Sicherung</string>
+    <string name="cb_backup_cloud">Verletzungen, Krankheitspausen und Comeback-Tagebuch in die verschlüsselte Sicherung</string>
     <string name="cb_backup_cloud_hint">Aus: Sie bleiben nur auf diesem Handy.</string>
     <plurals name="import_result_health">
         <item quantity="one">%d Verletzungs- oder Tagebucheintrag</item>
