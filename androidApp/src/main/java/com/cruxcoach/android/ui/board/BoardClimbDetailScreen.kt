@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
@@ -131,6 +132,10 @@ fun BoardClimbDetailScreen(
     val (tour, tourStep) = rememberBrowserTour()
     val tourTargets = remember { TourTargets() }
     val isRestTimerRunning by viewModel.isRestTimerRunning.collectAsStateWithLifecycle()
+    val ledEffects by viewModel.ledEffects.collectAsStateWithLifecycle(
+        initialValue = com.cruxcoach.android.led.LedEffectsState(),
+    )
+    var showLedEffects by remember { mutableStateOf(false) }
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
     val addToListViewModel: AddToListViewModel = hiltViewModel()
@@ -355,6 +360,15 @@ fun BoardClimbDetailScreen(
                 viewModel = addToListViewModel,
             )
         }
+    }
+
+    if (showLedEffects) {
+        com.cruxcoach.android.ui.settings.LedEffectQuickSheet(
+            state = ledEffects,
+            onSelect = viewModel::selectLedEffect,
+            onStrobeNoticeSeen = viewModel::confirmLedStrobeNotice,
+            onDismiss = { showLedEffects = false },
+        )
     }
 
     // Per-use custom rest-timer duration (settings value stays the
@@ -704,6 +718,30 @@ fun BoardClimbDetailScreen(
                                             onNavigateToGames(gameClimb.uuid, state.angle)
                                         },
                                         modifier = Modifier.testTag("boarddetail_wall_games"),
+                                    )
+                                }
+                                // LED effects quick pick: change or turn off the
+                                // effect right where the climb is lit.
+                                if (ledEffects.boardShowsEffects) {
+                                    val effectLabel = stringResource(
+                                        com.cruxcoach.android.led.LedAnimationRegistry
+                                            .byId(ledEffects.effectId).labelResId,
+                                    )
+                                    DropdownMenuItem(
+                                        enabled = tourTargets.active == null,
+                                        text = { Text(stringResource(R.string.led_effect_menu, effectLabel)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Outlined.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            showLedEffects = true
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_led_effect"),
                                     )
                                 }
                                 // Mirror toggle — a display-only left/right flip

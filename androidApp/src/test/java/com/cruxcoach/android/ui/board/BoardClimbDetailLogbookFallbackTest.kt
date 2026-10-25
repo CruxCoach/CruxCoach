@@ -136,6 +136,7 @@ class BoardClimbDetailLogbookFallbackTest {
             ownClimbPublisher = mockk(relaxed = true),
             climbNavState = mockk(relaxed = true),
             ledAnimationEngine = mockk(relaxed = true),
+            ledEffectsController = mockk(relaxed = true),
             context = context,
         )
     }
