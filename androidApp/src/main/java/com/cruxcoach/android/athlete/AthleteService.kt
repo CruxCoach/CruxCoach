@@ -406,8 +406,12 @@ class AthleteService @Inject constructor(
     /** Serialises structural edits so a double tap cannot open two trainings or reuse a block number. */
     private val structureLock = Any()
 
-    /** [trimSets] false: today's form changes loads only (the suggestion is already shorter for fatigue). */
-    fun startWorkout(routine: Routine?, title: String?, trimSets: Boolean = true): String = synchronized(structureLock) {
+    /**
+     * [trimSets] false: today's form changes loads only (the suggestion is already shorter for fatigue).
+     * [despiteInjury]: exercises of the athlete's own workout that stay in although the open injury rules them
+     * out – the athlete said "add anyway" ([ruledOutByInjury]).
+     */
+    fun startWorkout(routine: Routine?, title: String?, trimSets: Boolean = true, despiteInjury: Set<String> = emptySet()): String = synchronized(structureLock) {
         repo.openWorkout()?.let { return it.id }
         val now = System.currentTimeMillis()
         val id = repo.newId()
@@ -419,7 +423,9 @@ class AthleteService @Inject constructor(
             val modifier = if (comeback != null) ReadinessModifier.NONE else todaysModifier().let { if (trimSets) it else it.copy(setsDelta = 0) }
             // Circuits in their canonical form, every member with the circuit's rests (the round rest needs all members).
             val items = routine?.items?.let { Circuits.resolveRests(Circuits.normalize(it, catalog), catalog) }
-            items?.forEachIndexed { index, item -> addItem(id, index, item, modifier, ownInjury = comeback) }
+            items?.forEachIndexed { index, item ->
+                addItem(id, index, item, modifier, ownInjury = comeback, despiteInjury = item.slug in despiteInjury)
+            }
             if (comeback == null && items?.any { it.warmup } == true) addSpecificWarmups(id)
         }
         id
@@ -491,11 +497,28 @@ class AthleteService @Inject constructor(
     fun injuriesToday(): List<Injury> =
         repo.activeInjuries() + com.cruxcoach.athlete.logic.Soreness.injuries(repo.checkin(today().toString()))
 
-    /** Appends an exercise; returns false when the open injury rules it out. */
-    fun addExercise(workoutId: String, slug: String): Boolean = synchronized(structureLock) {
+    /**
+     * Appends an exercise; returns false when the open injury rules it out. [despiteInjury]: the athlete
+     * chose "add anyway" – the coach warns, the athlete decides (owner 2026-10-25).
+     */
+    fun addExercise(workoutId: String, slug: String, despiteInjury: Boolean = false): Boolean = synchronized(structureLock) {
         val def = catalog[slug] ?: return false
         val nextBlock = (repo.setsFor(workoutId).maxOfOrNull { it.blockIndex } ?: -1) + 1
-        addItem(workoutId, nextBlock, WorkoutPlanner.itemFor(def), todaysModifier())
+        addItem(workoutId, nextBlock, WorkoutPlanner.itemFor(def), todaysModifier(), despiteInjury = despiteInjury)
+    }
+
+    /**
+     * The exercises of the athlete's own [routine] that an open injury rules out, in the routine's order.
+     * Starting it asks first: without them, or "add anyway" (owner 2026-10-25: warn, never block; the
+     * coach's suggestions keep leaving them out). Empty for a comeback session and when the open training
+     * is this routine (it simply continues).
+     */
+    fun ruledOutByInjury(routine: Routine): List<com.cruxcoach.athlete.catalog.ExerciseDefinition> {
+        if (Comeback.parseRoutineId(routine.id) != null || repo.openWorkout()?.routineId == routine.id) return emptyList()
+        val injuries = repo.activeInjuries()
+        if (injuries.isEmpty()) return emptyList()
+        return routine.items.map { catalog.fallbackFor(it.slug) }.distinctBy { it.slug }
+            .filter { InjuryAdvisor.assess(it, injuries).verdict == InjuryVerdict.AVOID }
     }
 
     /**
@@ -609,6 +632,8 @@ class AthleteService @Inject constructor(
         setIndexOf: (Int) -> Int = { it },
         /** A comeback session's injury: its sessions train that spot. */
         ownInjury: String? = null,
+        /** The athlete chose it although the open injury rules it out: planned as if nothing hurt. */
+        despiteInjury: Boolean = false,
     ): Boolean {
         val def = catalog.fallbackFor(item.slug)
         val bodyweight = currentBodyweight()
@@ -618,7 +643,8 @@ class AthleteService @Inject constructor(
         val planned = WorkoutPlanner.plan(
             // Real injuries only: what the check-in says hurts today shapes the suggestion, but never
             // takes exercises out of a workout the athlete chose (device test 2026-10-16).
-            workoutId, blockIndex, adjusted, catalog, history, repo.activeInjuries().filter { it.id != ownInjury },
+            workoutId, blockIndex, adjusted, catalog, history,
+            if (despiteInjury) emptyList() else repo.activeInjuries().filter { it.id != ownInjury },
             bodyweight,
             capacityFor = { side ->
                 capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, bodyweight)

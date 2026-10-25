@@ -72,18 +72,30 @@ class RoutinesViewModel @Inject constructor(private val service: AthleteService)
     /** A start waiting for "continue the open training or end it". */
     val pendingStart = MutableStateFlow<PendingStart?>(null)
 
-    /** Starts the routine; with another training open the athlete chooses first (continue or end it). */
+    /** A start waiting for "without them or add anyway" (exercises the open injury rules out). */
+    val pendingInjuryStart = MutableStateFlow<PendingInjuryStart?>(null)
+
+    /**
+     * Starts the routine; exercises the open injury rules out are asked about first, and with another
+     * training open the athlete chooses what happens to it.
+     */
     fun start(routine: Routine, title: String) {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            val begin: suspend (Boolean) -> Unit = { replace ->
-                if (replace) service.closeOpenWorkout()
-                service.startWorkout(routine, title)
-                _started.emit(Unit)
+            startCheckingInjuries(service, routine, pendingInjuryStart) { despite ->
+                val begin: suspend (Boolean) -> Unit = { replace ->
+                    if (replace) service.closeOpenWorkout()
+                    service.startWorkout(routine, title, despiteInjury = despite)
+                    _started.emit(Unit)
+                }
+                val conflict = service.openConflict(routine.id)
+                if (conflict != null) pendingStart.value = PendingStart(conflict, title, begin) else begin(false)
             }
-            val conflict = service.openConflict(routine.id)
-            if (conflict != null) pendingStart.value = PendingStart(conflict, title, begin) else begin(false)
         }
+    }
+
+    fun resolveInjuryStart(despite: Boolean?) {
+        viewModelScope.launch(Dispatchers.IO) { answerInjuryStart(pendingInjuryStart, despite) }
     }
 
     fun resolveStart(replace: Boolean?) {
@@ -108,6 +120,8 @@ fun RoutinesScreen(
     LaunchedEffect(Unit) { viewModel.started.collect { onWorkoutStarted() } }
     val pendingStart by viewModel.pendingStart.collectAsStateWithLifecycle()
     pendingStart?.let { OpenTrainingDialog(it, viewModel::resolveStart) }
+    val pendingInjuryStart by viewModel.pendingInjuryStart.collectAsStateWithLifecycle()
+    pendingInjuryStart?.let { InjuryStartDialog(it, viewModel::resolveInjuryStart) }
     var preview by remember { mutableStateOf<Routine?>(null) }
     var deleting by remember { mutableStateOf<Routine?>(null) }
 

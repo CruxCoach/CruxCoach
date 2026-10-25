@@ -25,7 +25,7 @@
     <string name="trx_badge_caution">careful</string>
     <string name="trx_badge_only_left">left only</string>
     <string name="trx_badge_only_right">right only</string>
-    <string name="trx_pick_rejected">Your current injury rules this exercise out.</string>
+    <string name="trx_pick_rejected">This exercise loads your injured area.</string>
     <string name="trx_custom_badge">own</string>
 
     <!-- Detail -->
@@ -52,7 +52,7 @@
     <string name="trx_reps_short">%d×</string>
     <string name="trx_add_to_running">Add to training</string>
     <string name="trx_start_with">Start with it</string>
-    <string name="trx_injury_avoid">Your injury (%1$s) rules this exercise out for now.</string>
+    <string name="trx_injury_avoid">Your injury (%1$s): the coach leaves this exercise out for now. You can still add it yourself.</string>
     <string name="trx_injury_caution">Your injury (%1$s): only pain-free, with reduced load.</string>
     <string name="trx_injury_one_side">Your injury (%1$s): train the %2$s side only.</string>
     <string name="trx_not_found">This exercise no longer exists.</string>

@@ -139,15 +139,26 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
     /** A start waiting for "continue the open training or end it". */
     val pendingStart = kotlinx.coroutines.flow.MutableStateFlow<com.cruxcoach.android.ui.training.workout.PendingStart?>(null)
 
+    /** A start waiting for "without them or add anyway" (exercises the open injury rules out). */
+    val pendingInjuryStart = kotlinx.coroutines.flow.MutableStateFlow<com.cruxcoach.android.ui.training.workout.PendingInjuryStart?>(null)
+
+    /** The athlete's own workout: what the open injury rules out is asked about first, never dropped silently. */
     fun start(routine: Routine, title: String?) = io {
-        val begin: suspend (Boolean) -> Unit = { replace ->
-            if (replace) service.closeOpenWorkout()
-            service.startWorkout(routine, title)
-            _events.send(WorkoutsEvent.Started)
+        com.cruxcoach.android.ui.training.workout.startCheckingInjuries(service, routine, pendingInjuryStart) { despite ->
+            val begin: suspend (Boolean) -> Unit = { replace ->
+                if (replace) service.closeOpenWorkout()
+                service.startWorkout(routine, title, despiteInjury = despite)
+                _events.send(WorkoutsEvent.Started)
+            }
+            val conflict = service.openConflict(routine.id)
+            if (conflict != null) pendingStart.value = com.cruxcoach.android.ui.training.workout.PendingStart(conflict, title ?: routine.name, begin)
+            else begin(false)
         }
-        val conflict = service.openConflict(routine.id)
-        if (conflict != null) pendingStart.value = com.cruxcoach.android.ui.training.workout.PendingStart(conflict, title ?: routine.name, begin)
-        else begin(false)
+    }
+
+    /** true: add them anyway; false: start without them; null: start nothing. */
+    fun resolveInjuryStart(despite: Boolean?) = io {
+        com.cruxcoach.android.ui.training.workout.answerInjuryStart(pendingInjuryStart, despite)
     }
 
     /** A training without a routine (device test 2026-10-10: it was only in Today's menu). */
@@ -239,6 +250,8 @@ fun WorkoutsScreen(
     val freeTitle = stringResource(R.string.trt_quick_free)
     val pendingStart by viewModel.pendingStart.collectAsStateWithLifecycle()
     pendingStart?.let { com.cruxcoach.android.ui.training.workout.OpenTrainingDialog(it, viewModel::resolveStart) }
+    val pendingInjuryStart by viewModel.pendingInjuryStart.collectAsStateWithLifecycle()
+    pendingInjuryStart?.let { com.cruxcoach.android.ui.training.workout.InjuryStartDialog(it, viewModel::resolveInjuryStart) }
 
     TrainingScaffold(
         title = stringResource(R.string.tr_tab_training),
