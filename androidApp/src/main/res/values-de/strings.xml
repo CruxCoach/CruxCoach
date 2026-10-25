@@ -458,10 +458,13 @@
     <string name="settings_led_anim_rainbow">Regenbogen-Welle</string>
     <string name="settings_led_anim_rainbow_hint">Alle Farben wandern langsam um den Farbkreis.</string>
     <string name="settings_led_anim_kilter_only">LED-Animationen funktionieren nur mit einem Kilter Board.</string>
-    <string name="led_anim_notification_channel">LED-Animationen</string>
-    <string name="led_anim_notification_channel_desc">Wird angezeigt, während ein beleuchteter Kletterzug in einer anderen App weiter animiert wird.</string>
-    <string name="led_anim_notification_title">LED-Animation läuft</string>
-    <string name="led_anim_notification_text">Der beleuchtete Kletterzug auf deinem Board wird animiert.</string>
+    <string name="led_anim_notification_channel">LED-Effekte</string>
+    <string name="led_anim_notification_channel_desc">Wird angezeigt, solange ein LED-Effekt in einer anderen App weiterläuft.</string>
+    <string name="led_anim_notification_title">LED-Effekt läuft</string>
+    <plurals name="led_anim_notification_text">
+        <item quantity="one">Endet nach %1$d Minute auf diesem Boulder. „Stopp“ zeigt die normalen Farben.</item>
+        <item quantity="other">Endet nach %1$d Minuten auf diesem Boulder. „Stopp“ zeigt die normalen Farben.</item>
+    </plurals>
     <string name="led_anim_notification_stop">Stopp</string>
 
     <!-- Settings: Timer -->
