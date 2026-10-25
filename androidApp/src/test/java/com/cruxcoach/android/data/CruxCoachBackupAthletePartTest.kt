@@ -21,6 +21,7 @@ import com.cruxcoach.data.repository.PlanRepository
 import com.cruxcoach.data.repository.UserRepository
 import com.cruxcoach.data.repository.WorkoutRepositoryImpl
 import com.cruxcoach.db.secure.SecureDatabase
+import com.cruxcoach.domain.model.BodyStat
 import com.cruxcoach.domain.model.ClimbLog
 import io.mockk.every
 import io.mockk.mockk
@@ -80,10 +81,10 @@ class CruxCoachBackupAthletePartTest {
 
     private val weight = AthleteSnapshot(measurements = listOf(BodyMeasurement("2026-10-20", BodyMetric.WEIGHT.key, 68.5, "kg", 1L)))
 
-    private fun export(athlete: (() -> AthleteSnapshot)?): String = CruxCoachBackup.export(
+    private fun export(bodyStats: List<BodyStat> = emptyList(), athlete: (() -> AthleteSnapshot)?): String = CruxCoachBackup.export(
         categories = CruxCoachBackup.Category.entries.toSet(),
         userRepository = userRepo,
-        bodyStatRepository = mockk<BodyStatRepository>(relaxed = true) { every { getAll() } returns emptyList() },
+        bodyStatRepository = mockk<BodyStatRepository>(relaxed = true) { every { getAll() } returns bodyStats },
         workoutRepository = source.workouts,
         climbRepository = source.climbs,
         planRepository = mockk<PlanRepository>(relaxed = true),
@@ -94,7 +95,11 @@ class CruxCoachBackupAthletePartTest {
         athleteSnapshot = athlete,
     )
 
-    private fun import(json: String, athleteRestore: (AthleteSnapshot, Boolean) -> Int): CruxCoachBackup.ImportResult =
+    private fun import(
+        json: String,
+        legacyBodyStats: (List<BodyStat>) -> Int = { 0 },
+        athleteRestore: (AthleteSnapshot, Boolean) -> Int,
+    ): CruxCoachBackup.ImportResult =
         CruxCoachBackup.import(
             jsonString = json,
             selectedCategories = CruxCoachBackup.Category.entries.toSet(),
@@ -107,6 +112,7 @@ class CruxCoachBackupAthletePartTest {
             boardRepository = mockk<BoardRepository>(relaxed = true),
             transactionRunner = target.txn,
             athleteRestore = athleteRestore,
+            athleteLegacyBodyStats = legacyBodyStats,
         )
 
     @Test
@@ -137,7 +143,7 @@ class CruxCoachBackupAthletePartTest {
     @Test
     fun `an export without a training database has no athlete part and still carries the logbook`() {
         source.climbs.insertClimb(ClimbLog(date = "2026-10-21", grade = "V3", attempts = 1, notes = "warm-up"))
-        val json = export(null)
+        val json = export(athlete = null)
 
         assertFalse(json.contains("\"athlete\": {"), "no athlete part without a database")
         val result = import(json) { _, _ -> error("nothing to restore") }
@@ -219,6 +225,37 @@ class CruxCoachBackupAthletePartTest {
 
         assertEquals(newer.climbingDays, part?.climbingDays)
         assertEquals(newer.profile, part?.profile)
-        assertNull(Json.parseToJsonElement(export(null)).jsonObject["athlete"]?.let { it as? JsonObject })
+        assertNull(Json.parseToJsonElement(export(athlete = null)).jsonObject["athlete"]?.let { it as? JsonObject })
+    }
+
+    // ── Between 0.2.4 and 0.2.5 ──────────────────────────────────────────────
+
+    /** The envelope fields 0.2.4 (v0.2.4) reads; it ignores keys it does not know. */
+    private val envelope024 = setOf("version", "app", "exportedAt", "nostrPubkey", "profile", "assessments", "bodyStats",
+        "workoutLogs", "climbLogs", "trainingPlans", "boardAscents", "boardBids", "boardSessions", "climbLists",
+        "boardClimbs", "boardClimbStats", "climbNotes")
+
+    @Test
+    fun `a 0_2_5 backup is the 0_2_4 envelope plus the athlete part, so 0_2_4 still restores it`() {
+        val root = Json.parseToJsonElement(export { newer }).jsonObject
+
+        assertEquals(envelope024 + "athlete", root.keys)
+        assertEquals(3, (root.getValue("version") as JsonPrimitive).content.toInt(), "0.2.4 accepts versions 1..3 only")
+    }
+
+    @Test
+    fun `a 0_2_4 backup restores the logbook and copies its body stats into the training database`() {
+        source.climbs.insertClimb(ClimbLog(date = "2026-10-01", grade = "V6", attempts = 4, notes = "kilter"))
+        val stats = listOf(BodyStat(date = "2026-10-01", statName = "weight", value = 70.5))
+        val withAthlete = Json.parseToJsonElement(export(bodyStats = stats, athlete = null)).jsonObject
+        val json024 = JsonObject(withAthlete.filterKeys { it in envelope024 }).toString()
+        var copied: List<BodyStat>? = null
+
+        val result = import(json024, legacyBodyStats = { rows -> copied = rows; rows.size }) { _, _ -> error("no athlete part") }
+
+        assertEquals(1, result.climbLogs)
+        assertEquals(1, result.athleteRows)
+        assertFalse(result.athleteFailed)
+        assertEquals(70.5, copied?.single()?.value)
     }
 }
