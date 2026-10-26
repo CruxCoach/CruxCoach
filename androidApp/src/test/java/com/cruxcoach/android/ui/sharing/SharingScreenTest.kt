@@ -54,6 +54,11 @@ class SharingScreenTest {
         setItem = { _, item, on -> calls += "item:${item.record.id}:$on" },
         putTemplate = { calls += "template:${it.id.value}:${it.categories.sorted()}" },
         setAge = { calls += "age:$it" },
+        createLink = { calls += "create-link" },
+        shareLink = { calls += "share:$it" },
+        revokeLink = { calls += "revoke:$it" },
+        openLink = { template, label -> calls += "open-link:${template.value}:$label" },
+        dismissLink = { calls += "dismiss-link" },
     )
 
     private fun person(peer: String, state: PersonState, outgoing: Boolean = true, label: String? = null) =
@@ -111,6 +116,47 @@ class SharingScreenTest {
         compose.onNodeWithText("Du würdest teilen: Profil & Ziele, Notizen").assertExists()
         compose.onNodeWithTag("sharing_accept").performScrollTo().performClick()
         assertEquals(listOf("accept:ffff:TRAINING_PARTNER:true"), calls)
+    }
+
+    private val linkCode = "Y2NsMQ" + "A".repeat(90)
+    private val linkPayload = com.cruxcoach.android.sharing.ShareLinks.LINK_PREFIX + linkCode
+
+    @Test fun `with links instead of npubs a link is made, shared again and revoked`() {
+        val open = com.cruxcoach.android.sharing.MarmotLink("l1", linkPayload, 1, 4_102_444_800_000)
+        render(SharingUiState(loading = false, overview = overview().copy(linkInvites = true, links = listOf(open))), SharingPage.Overview)
+        compose.onNodeWithTag("sharing_add_id").assertDoesNotExist()
+        compose.onNodeWithText("Offener Link · gültig bis", substring = true).assertExists()
+        compose.onNodeWithTag("sharing_link_create").performScrollTo().performClick()
+        compose.onNodeWithTag("sharing_link_share_l1").performScrollTo().performClick()
+        compose.onNodeWithTag("sharing_link_revoke_l1").performScrollTo().performClick()
+        assertEquals(listOf("create-link", "share:https://cruxcoach.org/f/#$linkCode", "revoke:l1"), calls)
+    }
+
+    @Test fun `an opened link asks first and sends only on a tap`() {
+        val offer = LinkOffer(linkPayload, com.cruxcoach.android.sharing.LinkIssuer("a".repeat(64), 4_102_444_800_000))
+        render(SharingUiState(loading = false, overview = overview().copy(linkInvites = true), linkOffer = offer), SharingPage.Overview)
+        compose.onNodeWithText("verbinden?", substring = true).assertExists()
+        assertEquals("opening a link sends nothing", emptyList<String>(), calls)
+        compose.onNodeWithTag("sharing_link_name").performScrollTo().performTextInput("Anna")
+        compose.onNodeWithTag("sharing_link_send").performScrollTo().performClick()
+        compose.onNodeWithTag("sharing_link_dismiss").performScrollTo().performClick()
+        assertEquals(listOf("open-link:TRAINING_PARTNER:Anna", "dismiss-link"), calls)
+    }
+
+    @Test fun `an ended or refused link says why and cannot be sent`() {
+        val ended = LinkOffer(linkPayload, com.cruxcoach.android.sharing.LinkIssuer("a".repeat(64), 1_000))
+        render(SharingUiState(loading = false, overview = overview().copy(linkInvites = true), linkOffer = ended), SharingPage.Overview)
+        compose.onNodeWithText("Dieser Link ist abgelaufen. Bitte um einen neuen.").assertExists()
+        compose.onNodeWithTag("sharing_link_send").assertIsNotEnabled()
+    }
+
+    @Test fun `using a link twice or the own link is explained`() {
+        val offer = LinkOffer(linkPayload, com.cruxcoach.android.sharing.LinkIssuer("a".repeat(64), 4_102_444_800_000))
+        val state = mutableStateOf(SharingUiState(loading = false, overview = overview().copy(linkInvites = true), linkOffer = offer, linkError = "self_invite"))
+        compose.setContent { MaterialTheme { SharingContent(state.value, SharingPage.Overview, onOpen = {}, actions = actions) } }
+        compose.onNodeWithText("Das ist dein eigener Link.").assertExists()
+        state.value = state.value.copy(linkError = "person_exists")
+        compose.onNodeWithText("Ihr kennt euch hier schon", substring = true).assertExists()
     }
 
     @Test fun `a refused identity is explained and an empty field cannot be sent`() {

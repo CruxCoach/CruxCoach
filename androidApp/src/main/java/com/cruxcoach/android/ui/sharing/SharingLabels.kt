@@ -72,6 +72,17 @@ internal fun momentLabel(at: Long, now: Long = System.currentTimeMillis()): Stri
     }
 }
 
+/** A moment ahead, such as the end of a link: date and time. */
+@Composable
+internal fun untilLabel(at: Long): String {
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val time = java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault())
+    return time.format(
+        java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT)
+            .withLocale(locale),
+    )
+}
+
 /** "today", "yesterday", "Tue" within a week, else a date. */
 @Composable
 internal fun dayLabel(at: Long, now: Long = System.currentTimeMillis()): String {

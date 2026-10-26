@@ -122,7 +122,23 @@ internal class SharingActions(
     val setPeriod: (SharingPersonDetail, Int) -> Unit = { _, _ -> },
     val setItem: (SharingPersonDetail, PreviewItem, Boolean) -> Unit = { _, _, _ -> },
     val setAge: (Boolean) -> Unit = {},
+    /** A new link; the screen hands it to the share sheet once it exists. */
+    val createLink: () -> Unit = {},
+    val shareLink: (String) -> Unit = {},
+    val revokeLink: (String) -> Unit = {},
+    val openLink: (TemplateId, String) -> Unit = { _, _ -> },
+    val dismissLink: () -> Unit = {},
 )
+
+/** Hand an invitation link to whatever the person sends it with. */
+private fun shareLinkUrl(context: android.content.Context, url: String) {
+    val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+        .setType("text/plain")
+        .putExtra(android.content.Intent.EXTRA_TEXT, context.getString(R.string.sharing_link_share_text, url))
+    val chooser = android.content.Intent.createChooser(send, context.getString(R.string.sharing_link_share_title))
+    if (context !is android.app.Activity) chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(chooser)
+}
 
 private const val REFRESH_MS = 5_000L
 
@@ -140,7 +156,8 @@ fun SharingScreen(
     LaunchedEffect(Unit) { while (true) { delay(REFRESH_MS); viewModel.refresh() } }
     val back = { if (page == SharingPage.Overview) onNavigateBack() else key = SharingPage.Overview.key }
     BackHandler(enabled = page != SharingPage.Overview) { back() }
-    val actions = remember(viewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val actions = remember(viewModel, context) {
         SharingActions(
             setReachable = viewModel::setReachable,
             syncNow = viewModel::syncNow,
@@ -159,6 +176,11 @@ fun SharingScreen(
             setPeriod = viewModel::setPeriod,
             setItem = viewModel::setItem,
             setAge = viewModel::setAge,
+            createLink = { viewModel.createLink { url -> shareLinkUrl(context, url) } },
+            shareLink = { url -> shareLinkUrl(context, url) },
+            revokeLink = viewModel::revokeLink,
+            openLink = viewModel::openLink,
+            dismissLink = viewModel::dismissLink,
         )
     }
     val title = when (page) {
@@ -240,6 +262,9 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
     val overview = state.overview ?: return
     val status = overview.status
     if (!overview.ageAnswered || !overview.ageConfirmed) AgeCard(overview.ageAnswered, state.busy, actions)
+    state.linkOffer?.takeIf { overview.linkInvites }?.let {
+        LinkOfferCard(it, overview.templates, overview.ageConfirmed && !state.busy, state.linkError, actions)
+    }
     SettingsSectionCard {
         SettingsToggleRow(
             title = stringResource(R.string.sharing_reachable_title),
@@ -274,7 +299,10 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
             if (index < friends.lastIndex) HorizontalDivider(Modifier.padding(start = 56.dp, end = 16.dp))
         }
     }
-    if (overview.ageConfirmed) AddPersonCard(state, overview.templates, actions)
+    if (overview.ageConfirmed) {
+        if (overview.linkInvites) LinkInviteCard(overview.links, state.busy, actions)
+        else AddPersonCard(state, overview.templates, actions)
+    }
     InfoHeading(stringResource(R.string.sharing_templates_title), stringResource(R.string.sharing_templates_info))
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         overview.templates.forEachIndexed { index, template ->
@@ -405,6 +433,76 @@ private fun InvitationCard(
                 modifier = Modifier.testTag("sharing_accept")) { Text(stringResource(R.string.sharing_accept)) }
             OutlinedButton(onClick = { actions.decline(invitation.peer) }, enabled = enabled,
                 modifier = Modifier.testTag("sharing_decline")) { Text(stringResource(R.string.sharing_decline)) }
+        }
+    }
+}
+
+/** An opened invitation link: who sent it, and a request only on a tap. */
+@Composable
+private fun LinkOfferCard(offer: LinkOffer, templates: List<ShareTemplate>, enabled: Boolean, error: String?, actions: SharingActions) {
+    var label by rememberSaveable(offer.payload) { mutableStateOf("") }
+    var template by rememberSaveable(offer.payload) { mutableStateOf(ShareTemplates.TRAINING_PARTNER.id.value) }
+    val chosen = templates.firstOrNull { it.id.value == template } ?: templates.firstOrNull()
+    val ended = offer.issuer.expiresAt <= System.currentTimeMillis()
+    SettingsSectionCard {
+        Text(stringResource(R.string.sharing_link_offer_title, SharingNames.shortId(offer.issuer.peer)), style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() }.testTag("sharing_link_offer"))
+        Text(stringResource(R.string.sharing_link_offer_body), style = MaterialTheme.typography.bodyMedium)
+        val problem = when {
+            ended -> R.string.sharing_link_error_expired
+            else -> error?.let(::linkErrorText)
+        }
+        problem?.let {
+            Text(stringResource(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("sharing_link_error"))
+        }
+        OutlinedTextField(
+            value = label,
+            onValueChange = { label = it.take(64) },
+            label = { Text(stringResource(R.string.sharing_name_label)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().testTag("sharing_link_name"),
+        )
+        Text(stringResource(R.string.sharing_template_label), style = MaterialTheme.typography.labelLarge)
+        SettingsChoices(templates.map { it.id.value to stringResource(SharingLabels.template(it.id)) }, template, { template = it })
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { chosen?.let { actions.openLink(it.id, label) } }, enabled = enabled && !ended && chosen != null,
+                modifier = Modifier.testTag("sharing_link_send")) { Text(stringResource(R.string.sharing_add_send)) }
+            OutlinedButton(onClick = actions.dismissLink, modifier = Modifier.testTag("sharing_link_dismiss")) {
+                Text(stringResource(R.string.sharing_link_dismiss))
+            }
+        }
+    }
+}
+
+private fun linkErrorText(code: String): Int = when (code) {
+    "link_expired" -> R.string.sharing_link_error_expired
+    "self_invite" -> R.string.sharing_link_error_self
+    "person_exists", "invitation_pending" -> R.string.sharing_link_error_known
+    "peer_quota" -> R.string.sharing_link_error_full
+    "contact_format" -> R.string.sharing_link_error_damaged
+    else -> R.string.sharing_link_error_other
+}
+
+/** Invite by link (Olm): a link to send, the open ones to share again or revoke. */
+@Composable
+private fun LinkInviteCard(links: List<com.cruxcoach.android.sharing.MarmotLink>, busy: Boolean, actions: SharingActions) {
+    SettingsSectionCard {
+        InfoHeading(stringResource(R.string.sharing_add_title), stringResource(R.string.sharing_link_info))
+        Text(stringResource(R.string.sharing_link_body), style = MaterialTheme.typography.bodyMedium)
+        Button(onClick = actions.createLink, enabled = !busy, modifier = Modifier.testTag("sharing_link_create")) {
+            Text(stringResource(R.string.sharing_link_create))
+        }
+        links.forEach { link ->
+            HorizontalDivider()
+            Text(stringResource(R.string.sharing_link_open, untilLabel(link.expiresAt)), style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("sharing_link_${link.id}"))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { actions.shareLink(com.cruxcoach.android.sharing.ShareLinks.url(link.payload)) }, enabled = !busy,
+                    modifier = Modifier.testTag("sharing_link_share_${link.id}")) { Text(stringResource(R.string.sharing_link_share)) }
+                OutlinedButton(onClick = { link.id?.let(actions.revokeLink) }, enabled = !busy && link.id != null,
+                    modifier = Modifier.testTag("sharing_link_revoke_${link.id}")) { Text(stringResource(R.string.sharing_link_revoke)) }
+            }
         }
     }
 }

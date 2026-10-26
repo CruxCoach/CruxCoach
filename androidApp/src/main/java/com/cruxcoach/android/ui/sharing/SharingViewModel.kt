@@ -2,7 +2,10 @@ package com.cruxcoach.android.ui.sharing
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.sharing.LinkIssuer
 import com.cruxcoach.android.sharing.MarmotFailure
+import com.cruxcoach.android.sharing.ShareLinkInbox
+import com.cruxcoach.android.sharing.ShareLinks
 import com.cruxcoach.android.sharing.MarmotNative
 import com.cruxcoach.android.sharing.PeerIdParseError
 import com.cruxcoach.android.sharing.PeerIdParseResult
@@ -32,7 +35,14 @@ data class SharingUiState(
     val detail: SharingPersonDetail? = null,
     val error: String? = null,
     val requestError: RequestError? = null,
+    /** An opened invitation link waiting for the person's decision. */
+    val linkOffer: LinkOffer? = null,
+    /** Why sending the request for [linkOffer] failed (native code). */
+    val linkError: String? = null,
 )
+
+/** An opened link: whose it is and until when it is valid. */
+data class LinkOffer(val payload: String, val issuer: LinkIssuer)
 
 /** Why a typed identity was refused; each maps to one visible message. */
 enum class RequestError { EMPTY, NOT_A_PUBLIC_KEY, MALFORMED, SELF }
@@ -52,6 +62,12 @@ class SharingViewModel @Inject constructor(
 
     init {
         refresh()
+        viewModelScope.launch {
+            ShareLinkInbox.link.collect { payload ->
+                val offer = payload?.let { p -> ShareLinks.issuer(p)?.let { LinkOffer(p, it) } }
+                _state.update { it.copy(linkOffer = offer, linkError = null) }
+            }
+        }
     }
 
     fun refresh() {
@@ -92,6 +108,26 @@ class SharingViewModel @Inject constructor(
     }
 
     fun clearRequestError() = _state.update { it.copy(requestError = null) }
+
+    /** A new link; [onCreated] gets its URL to hand to the share sheet. */
+    fun createLink(onCreated: (String) -> Unit) = act { onCreated(service.createLink()) }
+    fun revokeLink(id: String) = act { service.revokeLink(id) }
+
+    /** Ask the issuer of the opened link; the link is forgotten once the request is recorded. */
+    fun openLink(template: TemplateId, label: String) {
+        val offer = _state.value.linkOffer ?: return
+        if (offer.issuer.peer == _state.value.overview?.status?.account) {
+            _state.update { it.copy(linkError = "self_invite") }
+            return
+        }
+        _state.update { it.copy(linkError = null) }
+        act(onError = { code -> _state.update { it.copy(linkError = code) } }) {
+            service.openLink(offer.payload, template, label.trim().ifEmpty { null })
+            ShareLinkInbox.clear(offer.payload)
+        }
+    }
+
+    fun dismissLink() = ShareLinkInbox.clear(_state.value.linkOffer?.payload)
     fun requestAgain(peer: String, template: TemplateId, label: String?) = act { service.request(peer, template, label) }
     fun accept(peer: String, template: TemplateId, outgoing: Boolean) = act { service.accept(peer, template, outgoing) }
     fun decline(peer: String) = act { service.decline(peer) }
@@ -137,15 +173,23 @@ class SharingViewModel @Inject constructor(
         }
     }
 
-    private fun act(block: suspend () -> Unit) {
+    /** [onError] takes a failure instead of the general error line. */
+    private fun act(onError: ((String) -> Unit)? = null, block: suspend () -> Unit) {
         if (_state.value.busy || !_state.value.available) return
         _state.update { it.copy(busy = true, error = null, requestError = null) }
         viewModelScope.launch {
-            val result = runCatching { block() }
-            _state.update { it.copy(busy = false, error = result.exceptionOrNull()?.let(::code)) }
+            val failure = runCatching { block() }.exceptionOrNull()?.let(::code)
+            _state.update { it.copy(busy = false, error = failure?.takeIf { onError == null }) }
+            if (failure != null) onError?.invoke(failure)
             load()
         }
     }
 
-    private fun code(error: Throwable): String = (error as? MarmotFailure)?.code ?: "unexpected"
+    private fun code(error: Throwable): String = (error as? MarmotFailure)?.code
+        ?: (error as? IllegalStateException)?.message?.takeIf { it in SERVICE_CODES } ?: "unexpected"
+
+    private companion object {
+        /** Refusals of the service itself that the screen explains. */
+        val SERVICE_CODES = setOf("person_exists", "age_not_confirmed")
+    }
 }

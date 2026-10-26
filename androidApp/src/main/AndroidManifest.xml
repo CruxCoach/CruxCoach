@@ -143,6 +143,11 @@
                 <data android:scheme="https"
                       android:host="${appLinkHost}"
                       android:pathPrefix="/l/" />
+                <!-- /f/#<code>: an invitation to share data. The code sits in
+                     the fragment, which never reaches the web server. -->
+                <data android:scheme="https"
+                      android:host="${appLinkHost}"
+                      android:pathPrefix="/f/" />
             </intent-filter>
         </activity>
 

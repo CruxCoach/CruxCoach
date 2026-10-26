@@ -17,6 +17,8 @@ import java.time.ZoneOffset
 interface SharingHost {
     val host: MarmotHost
     suspend fun <T> interactive(block: suspend () -> T): T
+    /** Invitations travel as links and codes (Olm); otherwise by npub (MLS). */
+    val linkInvites: Boolean get() = false
 }
 
 /**

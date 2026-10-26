@@ -114,4 +114,56 @@ class OlmMailboxIntegrationTest {
         assertTrue(waitFor(alice, bob) { drain(bob).contains("synthetic past a closed relay") })
         assertTrue(b.events.isEmpty(), "nothing went to the relay that wants a login")
     }
+
+    @Test fun strangers_become_friends_by_link_through_mailboxes_only() {
+        val issuer = endpoint()
+        val opener = endpoint()
+        for (e in listOf(issuer, opener)) e.blocking { setOnline(true) }
+        kotlinx.coroutines.runBlocking {
+            issuer.service.setAge(true)
+            opener.service.setAge(true)
+        }
+        // No direct path at all: discovery finds nobody.
+        val url = kotlinx.coroutines.runBlocking { issuer.service.createLink() }
+        assertTrue(url.startsWith("https://cruxcoach.org/f/#"), url)
+        val payload = com.cruxcoach.android.sharing.ShareLinks.payload(url)!!
+        assertEquals(issuer.account, com.cruxcoach.android.sharing.ShareLinks.issuer(payload)!!.peer)
+        assertEquals(1, kotlinx.coroutines.runBlocking { issuer.service.overview() }.links.size)
+        val template = com.cruxcoach.domain.sharing.ShareTemplates.TRAINING_PARTNER.id
+        kotlinx.coroutines.runBlocking { opener.service.openLink(payload, template, "Issuer") }
+        assertTrue(waitFor(issuer, opener) {
+            kotlinx.coroutines.runBlocking { issuer.service.overview() }.invitations.any { it.peer == opener.account }
+        }, "the issuer sees the request")
+        assertTrue(kotlinx.coroutines.runBlocking { issuer.service.overview() }.links.isEmpty(), "a link is used once")
+        kotlinx.coroutines.runBlocking { issuer.service.accept(opener.account, template, outgoing = true) }
+        assertTrue(waitFor(issuer, opener) {
+            opener.blocking { status() }.peers.any { it.account == issuer.account && it.state == "active" }
+        }, "the acceptance came back through the mailboxes")
+        opener.blocking { send(issuer.account, "t1", "synthetic after a link") }
+        assertTrue(waitFor(issuer, opener) { drain(issuer).contains("synthetic after a link") })
+        // The offer was withdrawn by its sender, everything taken was deleted.
+        assertTrue(waitFor(issuer, opener, seconds = 45) { relays.all { stored(it, 2437).isEmpty() } }, "nothing waits in a mailbox")
+        val events = relays.flatMap { it.events.values.map(Any::toString) }
+        assertTrue(events.none { issuer.account in it || opener.account in it }, "no npub on any relay")
+    }
+
+    @Test fun a_revoked_link_brings_no_request() {
+        val issuer = endpoint()
+        val opener = endpoint()
+        for (e in listOf(issuer, opener)) e.blocking { setOnline(true) }
+        kotlinx.coroutines.runBlocking {
+            issuer.service.setAge(true)
+            opener.service.setAge(true)
+        }
+        val payload = com.cruxcoach.android.sharing.ShareLinks.payload(kotlinx.coroutines.runBlocking { issuer.service.createLink() })!!
+        val id = kotlinx.coroutines.runBlocking { issuer.service.overview() }.links.single().id!!
+        kotlinx.coroutines.runBlocking { issuer.service.revokeLink(id) }
+        kotlinx.coroutines.runBlocking {
+            opener.service.openLink(payload, com.cruxcoach.domain.sharing.ShareTemplates.TRAINING_PARTNER.id, null)
+        }
+        // The offer reaches the mailboxes, but the issuer no longer reads that address.
+        assertTrue(waitFor(issuer, opener) { relays.any { stored(it, 2437).isNotEmpty() } })
+        repeat(8) { listOf(issuer, opener).forEach { e -> e.blocking { sync() } } }
+        assertTrue(kotlinx.coroutines.runBlocking { issuer.service.overview() }.invitations.isEmpty())
+    }
 }

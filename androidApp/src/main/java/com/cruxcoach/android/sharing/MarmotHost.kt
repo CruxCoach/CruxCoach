@@ -15,6 +15,9 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 
 /** The raw JNI calls behind the chokepoint. Production and the loopback
@@ -97,6 +100,9 @@ class MarmotFailure(val code: String) : IllegalStateException("Marmot operation 
 
 @Serializable data class MarmotSent(val event: String, val duplicate: Boolean)
 
+/** An open invitation link of this installation; [expiresAt] in epoch ms. */
+data class MarmotLink(val id: String?, val payload: String, val createdAt: Long, val expiresAt: Long)
+
 @Serializable private data class NativeResponse(val ok: Boolean, val value: JsonElement? = null, val error: String? = null)
 
 /**
@@ -148,6 +154,28 @@ class MarmotHost(
     suspend fun setRelays(relays: List<String>) {
         io { raw("set_relays") { put("relays", buildJsonArray { relays.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }) } }
     }
+    /** The QR form of a fresh contact code (valid an hour). */
+    suspend fun contactCode(): String = io { raw("contact_code").jsonObject["payload"]!!.jsonPrimitive.content }
+    /** A scanned contact code or an opened link: returns the account invited. */
+    suspend fun importContact(payload: String): String =
+        io { raw("import_contact") { put("payload", payload) }.jsonObject["peer"]!!.jsonPrimitive.content }
+    suspend fun linkCode(): MarmotLink = io {
+        val value = raw("link_code").jsonObject
+        MarmotLink(null, value["payload"]!!.jsonPrimitive.content, System.currentTimeMillis(), value["expires_at"]!!.jsonPrimitive.long * 1000)
+    }
+    suspend fun links(): List<MarmotLink> = io {
+        raw("links").jsonObject["links"]!!.jsonArray.map { element ->
+            val link = element.jsonObject
+            MarmotLink(
+                link["id"]!!.jsonPrimitive.content,
+                link["payload"]!!.jsonPrimitive.content,
+                link["created_at"]!!.jsonPrimitive.long,
+                link["expires_at"]!!.jsonPrimitive.long * 1000,
+            )
+        }
+    }
+    suspend fun revokeLink(id: String): Boolean =
+        io { raw("revoke_link") { put("id", id) }.jsonObject["revoked"]!!.jsonPrimitive.boolean }
     suspend fun invite(peer: String): String = io { raw("invite") { put("peer", peer) }.jsonObject["group"]!!.jsonPrimitive.content }
     suspend fun accept(peer: String) { io { raw("accept") { put("peer", peer) } } }
     suspend fun decline(peer: String) { io { raw("decline") { put("peer", peer) } } }

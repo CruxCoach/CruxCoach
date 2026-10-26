@@ -149,6 +149,7 @@ class MainActivity : AppCompatActivity() {
             pendingDeepLink.value = safeNavigateToRoute(intent)
                 ?: extractOfflineShareDeepLink(intent)
                 ?: extractBoardDbDeepLink(intent)
+                ?: extractFriendLink(intent)
                 ?: extractClimbAppLink(intent)
                 ?: extractPlaylistAppLink(intent)
             handleUpdaterExtras(intent)
@@ -331,6 +332,7 @@ class MainActivity : AppCompatActivity() {
         pendingDeepLink.value = safeNavigateToRoute(intent)
             ?: extractOfflineShareDeepLink(intent)
             ?: extractBoardDbDeepLink(intent)
+            ?: extractFriendLink(intent)
             ?: extractClimbAppLink(intent)
             ?: extractPlaylistAppLink(intent)
         handleUpdaterExtras(intent)
@@ -492,6 +494,23 @@ class MainActivity : AppCompatActivity() {
         return "board_climb_detail/$uuid/$angle?author=${nAddress.author.lowercase()}"
     }
 
+
+    /**
+     * An invitation link `https://<APP_LINK_HOST>/f/#<code>`: the code goes to
+     * the in-memory inbox, never into the route, and the sharing screen asks
+     * the person before anything is sent. A relaunch from recents does not
+     * offer it again.
+     */
+    private fun extractFriendLink(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        // Sharing exists only as the debug preview (SharingFeature.available).
+        if (!BuildConfig.DEBUG) return null
+        if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
+        val payload = com.cruxcoach.android.sharing.ShareLinks.payload(data.toString()) ?: return null
+        com.cruxcoach.android.sharing.ShareLinkInbox.offer(payload)
+        intent.data = null
+        return com.cruxcoach.android.ui.navigation.Routes.SHARING
+    }
 
     /**
      * Extract a playlist share-link from `https://<APP_LINK_HOST>/l/<payload>`.

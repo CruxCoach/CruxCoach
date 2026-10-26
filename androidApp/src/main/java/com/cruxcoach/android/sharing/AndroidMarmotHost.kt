@@ -38,6 +38,8 @@ class AndroidMarmotHost(
     private val interactive = AtomicInteger(0)
     private val json = Json { encodeDefaults = true }
 
+    override val linkInvites: Boolean get() = engine == "olm"
+
     /** Whether this account ever used sharing on this installation. */
     fun exists(): Boolean = database.isFile
 

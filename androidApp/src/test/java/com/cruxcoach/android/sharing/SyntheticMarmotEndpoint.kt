@@ -119,6 +119,7 @@ open class SyntheticMarmotEndpoint(
     val access = object : SharingHost {
         override val host get() = this@SyntheticMarmotEndpoint.host
         override suspend fun <T> interactive(block: suspend () -> T): T = block()
+        override val linkInvites get() = p2p
     }
     val service = SharingService(access, store, sync, source)
 

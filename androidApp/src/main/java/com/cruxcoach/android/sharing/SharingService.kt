@@ -111,6 +111,10 @@ data class SharingOverview(
     val allTemplates: List<ShareTemplate> = templates,
     /** The local history of own decisions, newest first. */
     val history: List<HistoryEntry> = emptyList(),
+    /** People are invited by link (Olm); otherwise by npub. */
+    val linkInvites: Boolean = false,
+    /** Own invitation links still open, newest first. */
+    val links: List<MarmotLink> = emptyList(),
     /** Who receives which category now. */
     val whoSees: List<CategoryAudience> = emptyList(),
 )
@@ -160,8 +164,10 @@ class SharingService(
         val invitations = status.peers.filter { it.state == "invited" && it.account !in known }
             .map { SharingInvitation(it.account, it.createdAt) }
         val templates = store.templates()
+        val links = if (access.linkInvites) runCatching { host.links() }.getOrDefault(emptyList()) else emptyList()
         return SharingOverview(status, templates.filterNot { it.hidden }, friends, invitations,
-            ageAnswered = store.ageAnswered(), ageConfirmed = store.ageConfirmed(), allTemplates = templates, history = store.history(), whoSees = whoSeesWhat())
+            ageAnswered = store.ageAnswered(), ageConfirmed = store.ageConfirmed(), allTemplates = templates, history = store.history(), whoSees = whoSeesWhat(),
+            linkInvites = access.linkInvites, links = links)
     }
 
     private fun completeness(state: IncomingState?): Completeness = when {
@@ -215,6 +221,26 @@ class SharingService(
         sync.retryInvitationNow(peer)
         runCatching { access.interactive { sync.run(host) } }
         onChanged()
+    }
+
+    /** A new invitation link to send; whoever uses it asks, and this side confirms. */
+    suspend fun createLink(): String {
+        check(store.ageConfirmed()) { "age_not_confirmed" }
+        val link = host.linkCode()
+        onChanged()
+        return ShareLinks.url(link.payload)
+    }
+
+    suspend fun revokeLink(id: String) {
+        host.revokeLink(id)
+        onChanged()
+    }
+
+    /** An opened link: ask its issuer for a friendship with [template]. */
+    suspend fun openLink(payload: String, template: TemplateId, label: String?) {
+        check(store.ageConfirmed()) { "age_not_confirmed" }
+        val peer = host.importContact(payload)
+        request(peer, template, label)
     }
 
     suspend fun accept(peer: String, template: TemplateId, outgoing: Boolean) {
