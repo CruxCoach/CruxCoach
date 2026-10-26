@@ -141,4 +141,42 @@ class ShareTransportTest {
             http.stop()
         }
     }
+
+    /** A raw socket that answers [reply] to whatever it is asked, once. */
+    private fun answering(reply: ByteArray): Pair<java.net.ServerSocket, Thread> {
+        val socket = java.net.ServerSocket(0, 1, InetAddress.getLoopbackAddress())
+        val thread = Thread {
+            runCatching {
+                socket.accept().use { client ->
+                    val input = client.getInputStream()
+                    while (ShareHttpRoutes.readLine(input)?.isNotEmpty() == true) Unit
+                    client.getOutputStream().apply { write(reply); flush() }
+                }
+            }
+        }.apply { isDaemon = true; start() }
+        return socket to thread
+    }
+
+    @Test fun the_wifi_client_is_a_plain_bounded_socket_client() {
+        val client = ShareHttpClient()
+        // No HTTP library in between: it reaches any address on the local network.
+        val (ok, t1) = answering("HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc".toByteArray())
+        assertContentEquals("abc".toByteArray(), client.exchange("http://127.0.0.1:${ok.localPort}", byteArrayOf(1)))
+        t1.join(2_000); ok.close()
+        // A peer announcing more than a container may be is refused before reading it.
+        val (big, t2) = answering("HTTP/1.1 200 OK\r\nContent-Length: ${ShareHttpRoutes.MAX_BODY + 1}\r\n\r\n".toByteArray())
+        assertNull(client.exchange("http://127.0.0.1:${big.localPort}", byteArrayOf(1)))
+        t2.join(2_000); big.close()
+        // Endless headers and an endless line end the request, nothing else.
+        val (headers, t3) = answering(("HTTP/1.1 200 OK\r\n" + "X: y\r\n".repeat(100) + "\r\n").toByteArray())
+        assertNull(client.exchange("http://127.0.0.1:${headers.localPort}", byteArrayOf(1)))
+        t3.join(2_000); headers.close()
+        val (line, t4) = answering(("HTTP/1.1 200 " + "x".repeat(20_000)).toByteArray())
+        assertNull(client.exchange("http://127.0.0.1:${line.localPort}", byteArrayOf(1)))
+        t4.join(2_000); line.close()
+        // Only addresses: a name is never looked up, other schemes never used.
+        for (base in listOf("http://example.org:80", "http://cafe:80", "https://127.0.0.1:1", "http://user@127.0.0.1:1", "http://127.0.0.1")) {
+            assertNull(client.hello(base), base)
+        }
+    }
 }

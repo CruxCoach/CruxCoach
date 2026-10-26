@@ -4,12 +4,10 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.URL
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
@@ -47,6 +45,18 @@ object ShareHttpRoutes {
                     ?: Reply(400, "Bad Request", "text/plain", ByteArray(0))
             handles(path) -> Reply(405, "Method Not Allowed", "text/plain", ByteArray(0))
             else -> Reply(404, "Not Found", "text/plain", ByteArray(0))
+        }
+    }
+
+    /** One CRLF line, at most [ShareHttpServer.MAX_LINE_BYTES]; null at the end of the stream. */
+    fun readLine(input: InputStream): String? {
+        val bytes = ByteArrayOutputStream()
+        while (true) {
+            val b = input.read()
+            if (b < 0) return if (bytes.size() == 0) null else bytes.toString(Charsets.US_ASCII.name()).removeSuffix("\r")
+            if (b == '\n'.code) return bytes.toString(Charsets.US_ASCII.name()).removeSuffix("\r")
+            if (bytes.size() >= ShareHttpServer.MAX_LINE_BYTES) throw IOException("line")
+            bytes.write(b)
         }
     }
 
@@ -133,16 +143,7 @@ class ShareHttpServer(private val bind: InetAddress, private val port: Int = 0) 
         ShareHttpRoutes.write(client.getOutputStream(), ShareHttpRoutes.reply(method, path, body, server, maxBytes))
     }
 
-    private fun readLine(input: InputStream): String? {
-        val bytes = ByteArrayOutputStream()
-        while (true) {
-            val b = input.read()
-            if (b < 0) return if (bytes.size() == 0) null else bytes.toString(Charsets.US_ASCII.name()).removeSuffix("\r")
-            if (b == '\n'.code) return bytes.toString(Charsets.US_ASCII.name()).removeSuffix("\r")
-            if (bytes.size() >= MAX_LINE_BYTES) throw IOException("line")
-            bytes.write(b)
-        }
-    }
+    private fun readLine(input: InputStream): String? = ShareHttpRoutes.readLine(input)
 
     companion object {
         const val MAX_CLIENTS = 8
@@ -153,44 +154,66 @@ class ShareHttpServer(private val bind: InetAddress, private val port: Int = 0) 
     }
 }
 
-/** Client side of the two routes. On Android [open] binds to the Wi-Fi network. */
+/**
+ * Client side of the two routes over a plain socket. An HTTP library would
+ * refuse cleartext to an ordinary Wi-Fi address (the network security config
+ * allows only the two hotspot addresses, and stays that way); the channel
+ * carries Olm-encrypted, MAC-checked containers only, so the socket needs no
+ * TLS. Bounded like the server: status line, header count and size, body.
+ * On Android [open] may bind to the Wi-Fi network.
+ */
 class ShareHttpClient(
-    private val open: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
+    private val open: (InetSocketAddress, Int) -> Socket = { address, timeout -> Socket().apply { connect(address, timeout) } },
 ) {
     fun hello(base: String): ShareHello? = runCatching {
-        val connection = open(URL(base.trimEnd('/') + ShareHttpRoutes.HELLO))
-        try {
-            connection.connectTimeout = CONNECT_TIMEOUT_MS
-            connection.readTimeout = READ_TIMEOUT_MS
-            if (connection.responseCode != 200) return@runCatching null
-            ShareHello.parse(connection.inputStream.use { it.readNBytes(1024) }.toString(Charsets.UTF_8))
-        } finally {
-            connection.disconnect()
-        }
+        val (status, body) = request(base, "GET", ShareHttpRoutes.HELLO, null, 1024) ?: return@runCatching null
+        if (status != 200) null else ShareHello.parse(body.toString(Charsets.UTF_8))
     }.getOrNull()
 
     fun exchange(base: String, request: ByteArray): ByteArray? = runCatching {
-        val connection = open(URL(base.trimEnd('/') + ShareHttpRoutes.EXCHANGE))
-        try {
-            connection.connectTimeout = CONNECT_TIMEOUT_MS
-            connection.readTimeout = READ_TIMEOUT_MS
-            connection.requestMethod = "POST"
-            connection.doOutput = true
-            connection.setFixedLengthStreamingMode(request.size)
-            connection.setRequestProperty("Content-Type", "application/octet-stream")
-            connection.outputStream.use { it.write(request) }
-            if (connection.responseCode != 200) return@runCatching null
-            val length = connection.contentLengthLong
-            if (length !in 1..ShareHttpRoutes.MAX_BODY.toLong()) return@runCatching null
-            connection.inputStream.use { it.readNBytes(length.toInt()) }.takeIf { it.size.toLong() == length }
-        } finally {
-            connection.disconnect()
-        }
+        val (status, body) = request(base, "POST", ShareHttpRoutes.EXCHANGE, request, ShareHttpRoutes.MAX_BODY) ?: return@runCatching null
+        body.takeIf { status == 200 && it.isNotEmpty() }
     }.getOrNull()
+
+    private fun request(base: String, method: String, path: String, body: ByteArray?, limit: Int): Pair<Int, ByteArray>? {
+        val uri = java.net.URI(base.trimEnd('/'))
+        if (uri.scheme != "http" || uri.rawQuery != null || uri.rawUserInfo != null) return null
+        val host = uri.host ?: return null
+        // Only addresses found on the local network: never a name to look up.
+        val literal = host.trim('[', ']')
+        if (!IPV4.matches(literal) && ':' !in literal) return null
+        val port = uri.port.takeIf { it in 1..65_535 } ?: return null
+        open(InetSocketAddress(InetAddress.getByName(literal), port), CONNECT_TIMEOUT_MS).use { socket ->
+            socket.soTimeout = READ_TIMEOUT_MS
+            val out = socket.getOutputStream().buffered()
+            val head = buildString {
+                append("$method $path HTTP/1.1\r\nHost: $host:$port\r\nConnection: close\r\n")
+                if (body != null) append("Content-Type: application/octet-stream\r\nContent-Length: ${body.size}\r\n")
+                append("\r\n")
+            }
+            out.write(head.toByteArray(Charsets.US_ASCII))
+            body?.let(out::write)
+            out.flush()
+            val input = socket.getInputStream().buffered()
+            val status = ShareHttpRoutes.readLine(input)?.split(" ")?.getOrNull(1)?.toIntOrNull() ?: return null
+            var length = -1
+            var headers = 0
+            while (true) {
+                val line = ShareHttpRoutes.readLine(input) ?: return null
+                if (line.isEmpty()) break
+                if (++headers > ShareHttpServer.MAX_HEADERS) return null
+                if (line.startsWith("content-length:", ignoreCase = true)) length = line.substringAfter(':').trim().toIntOrNull() ?: return null
+            }
+            if (length !in 0..limit) return null
+            val data = input.readNBytes(length)
+            return if (data.size == length) status to data else null
+        }
+    }
 
     companion object {
         const val CONNECT_TIMEOUT_MS = 4_000
         const val READ_TIMEOUT_MS = 15_000
+        private val IPV4 = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
     }
 }
 
