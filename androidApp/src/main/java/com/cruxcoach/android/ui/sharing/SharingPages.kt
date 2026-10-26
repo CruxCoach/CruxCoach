@@ -320,6 +320,12 @@ internal fun WhoSeesPage(overview: com.cruxcoach.android.sharing.SharingOverview
             )
             Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("sharing_delivery"))
         }
+        if (overview.linkInvites) {
+            // MD9: how what is shared travels, and who could see what.
+            Text(stringResource(if (overview.directOnly) R.string.sharing_whosees_travel_direct else R.string.sharing_whosees_travel),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("sharing_whosees_travel"))
+        }
         overview.whoSees.forEach { group ->
             CategoryHeader(group.category, group.entries.size.toString())
             if (group.entries.isEmpty()) {

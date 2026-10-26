@@ -2805,6 +2805,8 @@
     <string name="sharing_whosees_title">Wer sieht was?</string>
     <string name="sharing_whosees_summary">Jede Kategorie und wer sie gerade bekommt</string>
     <string name="sharing_whosees_info">Für jede Kategorie: wer sie gerade bekommt und warum. Nur Personen, bei denen dein Teilen eingeschaltet ist. Einträge mit „Nie teilen“ gehen an niemanden.</string>
+    <string name="sharing_whosees_travel">Geteilte Daten sind Ende-zu-Ende verschlüsselt. Wenn ihr euch trefft, tauschen die Telefone sie direkt aus. Sonst warten sie in bis zu drei Briefkästen, darunter der von CruxCoach, nur bis die App deines Freundes sie abgeholt hat, höchstens 14 Tage. Briefkästen sehen weder deine Kennung noch den Inhalt; öffentliche Briefkästen können deine IP-Adresse sehen.</string>
+    <string name="sharing_whosees_travel_direct">Geteilte Daten sind Ende-zu-Ende verschlüsselt und gehen nur direkt, wenn ihr euch trefft. Nichts wartet in einem Briefkasten.</string>
     <string name="sharing_whosees_nobody">Niemand</string>
     <string name="sharing_reason_template">%1$s (Vorlage)</string>
     <string name="sharing_reason_exception">%1$s (Ausnahme)</string>

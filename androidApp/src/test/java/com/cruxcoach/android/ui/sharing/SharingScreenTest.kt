@@ -240,6 +240,14 @@ class SharingScreenTest {
         compose.onNodeWithTag("sharing_link_error").assertTextContains("Links brauchen Briefkästen", substring = true)
     }
 
+    @Test fun `who sees this says how shared data travels`() {
+        val state = mutableStateOf(SharingUiState(loading = false, overview = overview().copy(linkInvites = true)))
+        compose.setContent { MaterialTheme { SharingContent(state.value, SharingPage.WhoSees, onOpen = {}, actions = actions) } }
+        compose.onNodeWithTag("sharing_whosees_travel").assertTextContains("höchstens 14 Tage", substring = true)
+        state.value = state.value.copy(overview = state.value.overview!!.copy(directOnly = true))
+        compose.onNodeWithTag("sharing_whosees_travel").assertTextContains("Nichts wartet in einem Briefkasten", substring = true)
+    }
+
     @Test fun `a refused identity is explained and an empty field cannot be sent`() {
         render(SharingUiState(loading = false, overview = overview(), requestError = RequestError.NOT_A_PUBLIC_KEY), SharingPage.Overview)
         compose.onNodeWithText("Das ist keine öffentliche Kennung. Gib niemals eine nsec weiter.").assertExists()

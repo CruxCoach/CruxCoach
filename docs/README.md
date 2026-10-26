@@ -2,6 +2,15 @@
 
 Start with [the app overview](../README.md), then choose a guide below.
 
+## Sharing over mailboxes and links (0.2.6 preview)
+
+[Sharing over mailboxes and invitation links](architecture/sharing-mailboxes-and-links.md)
+([German overview](architecture/sharing-mailboxes-and-links-overview.de.md)) describes what
+`feat/permission-foundations` builds after the owner decision of 2026-10-26: Olm between each pair of
+friends, delivery through up to three mailboxes until fetched, directly when friends meet, invitations by
+QR code and by link, and what each party sees. It is the basis for the external review; the sections
+below describe the earlier MLS designs.
+
 ## Permission system v2 (`feat/marmot-permissions-v2`, 2026-09-23)
 
 The [v2 target architecture](architecture/marmot-permissions-v2-target.md)
