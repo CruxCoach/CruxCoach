@@ -20,6 +20,18 @@ fun interface MailboxNative {
     fun call(op: String, fields: JsonObjectBuilder.() -> Unit): JsonElement?
 }
 
+/**
+ * How fast one relay is written to: [burst] events at once, then [perMinute].
+ * Public relays limit per address (about eight a minute, blocked after ten
+ * refusals); the CruxCoach mailbox limits per event and in total (PV2).
+ */
+data class Pacing(val burst: Int, val perMinute: Int) {
+    companion object {
+        val PUBLIC = Pacing(burst = 6, perMinute = 6)
+        val CRUXCOACH = Pacing(burst = 30, perMinute = 120)
+    }
+}
+
 /** What the transport list in the sharing status shows for one mailbox. */
 data class MailboxState(val url: String, val connected: Boolean, val lastResult: String)
 
@@ -34,7 +46,8 @@ data class MailboxState(val url: String, val connected: Boolean, val lastResult:
  * 2. **Absorb** the events natively (checks, opens, stores, deduplicates).
  * 3. Let the native side queue **deletions** (receipts) and new **events**.
  * 4. **Place** each queued event on its three mailboxes in parallel, paced
- *    per relay (six at once, then six a minute), pausing a relay that says
+ *    per relay (public relays six at once, then six a minute; the CruxCoach
+ *    mailbox, which limits per event and not per address, more), pausing a relay that says
  *    it is rate limiting and never offering an event again to a relay that
  *    refused it.
  *    Placed means accepted by two of three; a dead mailbox (or no quorum after
@@ -54,6 +67,12 @@ class MailboxDelivery(
 ) {
     private val states = ConcurrentHashMap<String, MailboxState>()
     private val pausedUntil = ConcurrentHashMap<String, Long>()
+    /** How fast each known mailbox may be written to; explicit ones count as public. */
+    private val pacing: Map<String, Pacing> = choice.mailboxes().associate { m ->
+        m.url to if (m.tier == MailboxTier.CRUXCOACH) Pacing.CRUXCOACH else Pacing.PUBLIC
+    }
+    private fun pacing(url: String) = pacing[url] ?: Pacing.PUBLIC
+
     /** Per relay: tokens left and when they were counted (pacing). */
     private val tokens = ConcurrentHashMap<String, Pair<Double, Long>>()
     /** Per queued event: the relays that refused it for good (a reserve stands in). */
@@ -272,15 +291,17 @@ class MailboxDelivery(
         return probe + client.place(url, events - first.key)
     }
 
-    /** Whole events [url] may take now: [BURST] at once, refilled at [PER_MINUTE] a minute. */
+    /** Whole events [url] may take now: its burst at once, refilled at its rate a minute. */
     private fun available(url: String, now: Long): Int {
-        val (left, at) = tokens[url] ?: return BURST
-        return minOf(BURST.toDouble(), left + (now - at) * PER_MINUTE / 60_000.0).toInt()
+        val pace = pacing(url)
+        val (left, at) = tokens[url] ?: return pace.burst
+        return minOf(pace.burst.toDouble(), left + (now - at) * pace.perMinute / 60_000.0).toInt()
     }
 
     private fun spend(url: String, count: Int, now: Long) {
-        val (left, at) = tokens[url] ?: (BURST.toDouble() to now)
-        val refilled = minOf(BURST.toDouble(), left + (now - at) * PER_MINUTE / 60_000.0)
+        val pace = pacing(url)
+        val (left, at) = tokens[url] ?: (pace.burst.toDouble() to now)
+        val refilled = minOf(pace.burst.toDouble(), left + (now - at) * pace.perMinute / 60_000.0)
         tokens[url] = (refilled - count).coerceAtLeast(0.0) to now
     }
 
@@ -291,9 +312,6 @@ class MailboxDelivery(
     companion object {
         const val KIND = 2437
         const val QUORUM = 2
-        /** Pacing per relay (NACHTRAG: six at once, then six a minute). */
-        const val BURST = 6
-        const val PER_MINUTE = 6
         const val RATE_PAUSE_MS = 60_000L
         const val BLOCKED_PAUSE_MS = 60 * 60_000L
         /** Without a quorum this long, a reserve joins. */

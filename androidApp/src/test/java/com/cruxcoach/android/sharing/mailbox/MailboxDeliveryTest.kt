@@ -87,17 +87,18 @@ class MailboxDeliveryTest {
         placeEveryMs = 0,
     )
 
-    @Test fun six_at_once_then_six_a_minute_per_relay() {
+    @Test fun public_relays_take_six_at_once_then_six_a_minute_and_the_own_mailbox_more() {
         val native = FakeQueue(20)
         val delivery = delivery()
         delivery.pass(native)
-        assertEquals(listOf(6, 6, 6), listOf(cruxcoach, a, b).map { it.events.size }, "a burst of six")
+        assertEquals(listOf(6, 6), listOf(a, b).map { it.events.size }, "a burst of six")
+        assertEquals(20, cruxcoach.events.size, "the CruxCoach mailbox limits per event, not per address")
         now += 10_000
         delivery.pass(native)
-        assertEquals(listOf(7, 7, 7), listOf(cruxcoach, a, b).map { it.events.size }, "then one every ten seconds")
+        assertEquals(listOf(7, 7), listOf(a, b).map { it.events.size }, "then one every ten seconds")
         now += 60_000
         delivery.pass(native)
-        assertEquals(listOf(13, 13, 13), listOf(cruxcoach, a, b).map { it.events.size })
+        assertEquals(listOf(13, 13), listOf(a, b).map { it.events.size })
         assertEquals(7, native.queue.size, "placed everywhere: done")
     }
 
