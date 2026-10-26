@@ -343,6 +343,7 @@ class BoardSyncManager(
         Log.w(TAG, "Debuggable build: importing the unsigned Shiny Wall snapshot ${file.name}")
         try {
             importer.importShinyWallSnapshot(file)
+            runCatching { ShinyWallCatalogueStore.keep(appContext, file) }
             file.renameTo(File(file.parentFile, "${file.name}.imported"))
             bumpCatalogueRevision()
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -865,7 +866,8 @@ class BoardSyncManager(
             .filter { it.climbCount > 0 }
             .mapNotNull { BoardBrand.fromWireOrNull(it.boardBrand) }
             .filter { it.isInteractive && (protocolVersion == LocalShareProtocol.VERSION_V2 || it != BoardBrand.QUANTUM) }
-            .filter { it.wireValue !in LocalShareSchema.NON_SHAREABLE_BRANDS }
+            // Shiny Wall is declared only next to its own artifact (parseManifest).
+            .filter { protocolVersion == LocalShareProtocol.VERSION_V2 || it.wireValue !in LocalShareSchema.NON_SHAREABLE_BRANDS }
             .distinct()
 
     private fun updateLocalShareProgress(step: ImportStep, brands: List<BoardBrand>) {
@@ -1958,6 +1960,9 @@ class BoardSyncManager(
         var boardDownload: File? = null
         var apkDownload: File? = null
         var boardArtifact: LocalShareProtocol.BoardArtifact? = null
+        var shinyWallDownload: File? = null
+        var shinyWallArtifact: LocalShareProtocol.FamilyArtifact? = null
+        var shinyWallCurrent = false
         val receivedManifest: LocalShareProtocol.Manifest
         try {
             updateLocalShareProgress(ImportStep.FetchingManifest, emptyList())
@@ -2046,6 +2051,36 @@ class BoardSyncManager(
                 throw java.io.IOException("Sender has no board snapshot")
             }
 
+            // The Shiny Wall catalogue travels as its own artifact (never in the board
+            // snapshot, see LocalShareProtocol.V2_SHINYWALL_PATH). Skipped while an APK
+            // update is pending, and when this phone already holds the same snapshot.
+            val shinyWallOffer = receivedManifest.families
+                .firstOrNull { it.boardBrand == BoardBrand.SHINYWALL.wireValue }
+                ?.takeIf { BoardBrand.SHINYWALL in brands && apkDownload == null }
+            shinyWallCurrent = shinyWallOffer != null && shinyWallOffer.uncompressedSha256 == keptShinyWallSha256()
+            if (shinyWallOffer != null && !shinyWallCurrent) {
+                shinyWallArtifact = shinyWallOffer
+                shinyWallDownload = try {
+                    client.downloadResumable(
+                        network = network,
+                        baseUrl = baseUrl,
+                        artifact = shinyWallOffer.artifact,
+                        target = File(appContext.cacheDir, "local_shinywall_${shinyWallOffer.artifact.sha256.take(20)}.gz"),
+                        protocolVersion = receivedManifest.protocolVersion,
+                        expectedSessionId = firstManifest.sessionId,
+                        onVerifying = { updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands) },
+                    ) { downloaded, total ->
+                        updateLocalShareProgress(ImportStep.Download(downloaded, total), brands)
+                    }
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    // The board share stands on its own; Shiny Wall then follows online.
+                    Log.w(TAG, "Shiny Wall catalogue not received from the share", error)
+                    null
+                }
+            }
+
             runCatching {
                 client.notifyDownloadComplete(network, baseUrl, firstManifest.sessionId)
             }
@@ -2101,6 +2136,10 @@ class BoardSyncManager(
             )
             boardImported = true
         }
+        val receivedShinyWall = shinyWallDownload
+        val shinyWallImported = readyUpdate == null && receivedShinyWall != null && shinyWallArtifact != null &&
+            importSharedShinyWallCatalogue(receivedShinyWall, shinyWallArtifact!!)
+        val shinyWallMissing = !shinyWallImported && !shinyWallCurrent
 
         val timestamp = DateTimeUtil.nowIso()
         if (boardImported) userPreferences.setLastSyncTimestamp(timestamp)
@@ -2110,13 +2149,18 @@ class BoardSyncManager(
             // leave non-terminal spinners behind in the old process.
             emptyMap()
         } else {
-            completedLocalShareSteps(resolveShareBrands(sharedBoardBrands(receivedManifest)))
+            completedLocalShareSteps(
+                resolveShareBrands(sharedBoardBrands(receivedManifest))
+                    .filterNot { it == BoardBrand.SHINYWALL && shinyWallMissing },
+            )
         }
         // The families the sender does not have follow the ordinary way, one after the
         // other, as soon as the share has released the sync slot.
         if (chosenShareBrands != null) {
             val savedSelection = userPreferences.boardDownloadBrands.first()
-            val fromShare = sharedBoardBrands(receivedManifest).toSet()
+            // A Shiny Wall catalogue the share did not deliver follows the ordinary way.
+            val fromShare = sharedBoardBrands(receivedManifest).toSet() -
+                setOfNotNull(BoardBrand.SHINYWALL.takeIf { shinyWallMissing })
             // Only what is still missing: a family this install already has is kept current
             // by the regular sync and needs no download of its own here.
             val present = boardRepository.getClimbCountsByBrand()
@@ -2160,6 +2204,48 @@ class BoardSyncManager(
             )
         }
         refreshNetworkAfterLocalShare()
+    }
+
+    /** sha256 of the Shiny Wall snapshot this phone holds, null without one. */
+    private fun keptShinyWallSha256(): String? =
+        ShinyWallCatalogueStore.file(appContext).takeIf { it.isFile }
+            ?.let { runCatching { LocalShareProtocol.sha256(it) }.getOrNull() }
+
+    /**
+     * Verifies and imports a Shiny Wall catalogue received from a share through
+     * the same importer as the Blossom chunk (variants, categories; the
+     * geometry stays this APK's own), then keeps it to pass on. A peer's copy
+     * is not signed: the next online sync replaces it with the published one.
+     * Any failure leaves the current catalogue untouched and returns false.
+     */
+    private suspend fun importSharedShinyWallCatalogue(
+        compressed: File,
+        family: LocalShareProtocol.FamilyArtifact,
+    ): Boolean {
+        val raw = File(appContext.cacheDir, "local_shinywall_${family.uncompressedSha256.take(16)}.sqlite3")
+        return try {
+            if (compressed.length() != family.artifact.sizeBytes ||
+                LocalShareProtocol.sha256(compressed) != family.artifact.sha256
+            ) throw java.io.IOException("Compressed Shiny Wall catalogue failed verification")
+            LocalTransferLimits.requireSpace(appContext.cacheDir, family.uncompressedSizeBytes)
+            ShareCompression.gunzip(compressed, raw, maxOutputBytes = family.uncompressedSizeBytes) {}
+            if (raw.length() != family.uncompressedSizeBytes ||
+                LocalShareProtocol.sha256(raw) != family.uncompressedSha256
+            ) throw java.io.IOException("Shiny Wall catalogue failed verification")
+            withBackgroundThreadPriority { importer.importShinyWallSnapshot(raw) }
+            runCatching { ShinyWallCatalogueStore.keep(appContext, raw) }
+                .onFailure { Log.w(TAG, "Shared Shiny Wall snapshot not kept", it) }
+            bumpCatalogueRevision()
+            true
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.w(TAG, "Shared Shiny Wall catalogue not imported", error)
+            false
+        } finally {
+            raw.delete()
+            compressed.delete()
+        }
     }
 
     private fun refreshNetworkAfterLocalShare() {
@@ -2411,6 +2497,8 @@ class BoardSyncManager(
             appContext.getSharedPreferences(
                 ShinyWallCatalogueSync.PREFS_NAME, Context.MODE_PRIVATE
             ).edit().clear().apply()
+            // A deleted catalogue is no longer offered to share receivers.
+            ShinyWallCatalogueStore.clear(appContext)
         }
         brands
             .filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }

@@ -17,6 +17,16 @@ object LocalShareProtocol {
     const val APK_PATH = "/CruxCoach.apk"
     const val BOARD_PATH = "/board.db.gz"
     const val V2_BOARD_PATH = "/v2/board.db.gz"
+    /**
+     * The Shiny Wall catalogue, offered next to the board snapshot in the v2
+     * manifest's `families` list only. The board snapshot never carries Shiny
+     * Wall: receivers released before the family read an unknown brand as
+     * Kilter. Those receivers do not know `families` and never ask for it.
+     */
+    const val V2_SHINYWALL_PATH = "/v2/shinywall.sqlite3.gz"
+    const val SHINYWALL_BRAND = "shinywall"
+    const val SHINYWALL_FORMAT = "shinywall_snapshot_v1"
+    private const val MAX_FAMILIES = 8
     const val PROTOCOL_HEADER = "X-CruxCoach-Share-Protocol"
     /** Optional continuity proof. Missing remains valid for legacy clients;
      *  once a receiver has seen a manifest, every later request binds to that
@@ -60,6 +70,17 @@ object LocalShareProtocol {
         val climbCount: Long,
     )
 
+    /** A board family's catalogue served as its own artifact (see [V2_SHINYWALL_PATH]). */
+    data class FamilyArtifact(
+        val boardBrand: String,
+        val format: String,
+        val artifact: Artifact,
+        val compression: String,
+        val uncompressedSizeBytes: Long,
+        val uncompressedSha256: String,
+        val climbCount: Long,
+    )
+
     data class Manifest(
         val protocolVersion: Int,
         val sessionId: String,
@@ -76,6 +97,8 @@ object LocalShareProtocol {
          * Empty for an older sender that is still preparing.
          */
         val declaredCatalogues: List<BoardCatalogue> = board?.catalogues.orEmpty(),
+        /** Catalogues served as their own artifact; empty from senders before 0.2.5. */
+        val families: List<FamilyArtifact> = emptyList(),
     )
 
     fun invitationUri(invitation: Invitation): String = Uri.Builder()
@@ -151,8 +174,14 @@ object LocalShareProtocol {
             }
             null
         }
-        val declared = board?.catalogues
-            ?: parseCatalogues(boardJson.optJSONArray("catalogues") ?: JSONArray())
+        val families = if (protocolVersion == VERSION_V2) {
+            parseFamilies(root.optJSONArray("families") ?: JSONArray())
+        } else emptyList()
+        // The board snapshot cannot carry a family that travels on its own.
+        val declared = (board?.catalogues
+            ?: parseCatalogues(boardJson.optJSONArray("catalogues") ?: JSONArray()))
+            .filter { catalogue -> catalogue.boardBrand != SHINYWALL_BRAND } +
+            families.map { BoardCatalogue(it.boardBrand, it.climbCount) }
         return Manifest(
             protocolVersion = protocolVersion,
             sessionId = root.getString("sessionId").also {
@@ -168,6 +197,7 @@ object LocalShareProtocol {
             board = board,
             boardStatus = boardStatus,
             declaredCatalogues = declared,
+            families = families,
         ).also { manifest ->
             require(manifest.apkVersionCode > 0L)
             LocalTransferLimits.requireSize(manifest.apk.sizeBytes, LocalTransferLimits.MAX_APK_BYTES)
@@ -243,6 +273,43 @@ object LocalShareProtocol {
 
     private fun requireSha256(value: String): String = value.lowercase().also {
         require(it.matches(Regex("[0-9a-f]{64}"))) { "Invalid SHA-256" }
+    }
+
+    /**
+     * Known families only: an entry this version cannot import (another
+     * brand, format, path or compression) is skipped, so a later sender can
+     * add families without breaking this receiver. A malformed or oversized
+     * entry is skipped too: the family then follows over the internet, and
+     * the board share itself is never put at risk by it.
+     */
+    private fun parseFamilies(array: JSONArray): List<FamilyArtifact> {
+        return buildList {
+            for (index in 0 until minOf(array.length(), MAX_FAMILIES)) {
+                val item = array.optJSONObject(index) ?: continue
+                if (item.optString("boardBrand") != SHINYWALL_BRAND ||
+                    item.optString("format") != SHINYWALL_FORMAT ||
+                    item.optString("path") != V2_SHINYWALL_PATH ||
+                    item.optString("compression") != "gzip"
+                ) continue
+                val family = runCatching { FamilyArtifact(
+                    boardBrand = SHINYWALL_BRAND,
+                    format = SHINYWALL_FORMAT,
+                    artifact = Artifact(
+                        path = V2_SHINYWALL_PATH,
+                        sizeBytes = item.getLong("sizeBytes"),
+                        sha256 = requireSha256(item.getString("sha256")),
+                    ),
+                    compression = "gzip",
+                    uncompressedSizeBytes = item.getLong("uncompressedSizeBytes"),
+                    uncompressedSha256 = requireSha256(item.getString("uncompressedSha256")),
+                    climbCount = item.optLong("climbCount", 0L).coerceAtLeast(0L),
+                ).also {
+                    LocalTransferLimits.requireSize(it.artifact.sizeBytes, LocalTransferLimits.MAX_COMPRESSED_DB_BYTES)
+                    LocalTransferLimits.requireSize(it.uncompressedSizeBytes, LocalTransferLimits.MAX_DB_BYTES)
+                } }.getOrNull() ?: continue
+                if (none { it.boardBrand == family.boardBrand }) add(family)
+            }
+        }
     }
 
     private fun parseCatalogues(array: JSONArray): List<BoardCatalogue> {

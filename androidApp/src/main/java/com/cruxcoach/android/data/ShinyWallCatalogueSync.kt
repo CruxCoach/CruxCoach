@@ -81,6 +81,9 @@ class ShinyWallCatalogueSync @Inject constructor(
                         }
                     }
                     blossom.saveCompletedManifest(manifest, listOf(chunk), BlossomSyncManager.BETA_IMPORT_VERSION)
+                    // Passed on unchanged by an offline share.
+                    runCatching { ShinyWallCatalogueStore.keep(context, output) }
+                        .onFailure { Log.w(TAG, "Shiny Wall snapshot not kept for sharing", it) }
                     Result.Imported(count)
                 } finally {
                     output.delete()

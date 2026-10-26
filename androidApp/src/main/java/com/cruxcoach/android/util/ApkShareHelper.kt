@@ -123,6 +123,8 @@ object ApkShareHelper {
             LocalApkServer.V2_COMPRESSED_SNAPSHOT_NAME,
             "${LocalApkServer.V2_SNAPSHOT_NAME}-wal",
             "${LocalApkServer.V2_SNAPSHOT_NAME}-shm",
+            LocalApkServer.SHINYWALL_SHARE_NAME,
+            "${LocalApkServer.SHINYWALL_SHARE_NAME}.copy",
         )
         for (name in staleFiles) {
             val file = File(context.cacheDir, name)
@@ -238,6 +240,9 @@ class LocalApkServer(
     private val apkVersionName: String = "unknown",
     /** Fixed lifetime of a share. Requests must never extend this deadline. */
     private val autoShutdownMs: Long = AUTO_SHUTDOWN_MS,
+    /** The last imported Shiny Wall catalogue (ShinyWallCatalogueStore). Offered
+     *  to v2 receivers as a family artifact, never inside the board snapshot. */
+    private val shinyWallCatalogue: File? = null,
 ) {
 
     private var serverSocket: ServerSocket? = null
@@ -290,6 +295,15 @@ class LocalApkServer(
         val metadata: SnapshotMetadata,
         val sourceFingerprint: SourceFingerprint,
     )
+
+    /** The Shiny Wall family artifact once compressed and hashed for this session. */
+    private data class FamilyFile(
+        val compressed: File,
+        val compressedSha256: String,
+        val uncompressedSizeBytes: Long,
+        val uncompressedSha256: String,
+    )
+    @Volatile private var shinyWallFamily: FamilyFile? = null
 
     private val sessionId = UUID.randomUUID().toString()
     private val apkSha256: String by lazy { LocalShareProtocol.sha256(apkFile) }
@@ -352,6 +366,53 @@ class LocalApkServer(
         }
     }
 
+    /**
+     * Compresses a private copy of the kept Shiny Wall snapshot (a catalogue
+     * sync may replace the kept file meanwhile), on its own thread like the
+     * catalogue count. A few MB: ready long before a receiver asks.
+     */
+    private fun prepareShinyWallFamily() {
+        val source = shinyWallCatalogue?.takeIf { it.isFile } ?: return
+        val dir = snapshotDir ?: return
+        thread(isDaemon = true, name = "apk-server-shinywall") {
+            val copy = File(dir, "$SHINYWALL_SHARE_NAME.copy")
+            val compressed = File(dir, SHINYWALL_SHARE_NAME)
+            runCatching {
+                source.copyTo(copy, overwrite = true)
+                ShareCompression.gzip(copy, compressed)
+                FamilyFile(
+                    compressed = compressed,
+                    compressedSha256 = LocalShareProtocol.sha256(compressed),
+                    uncompressedSizeBytes = copy.length(),
+                    uncompressedSha256 = LocalShareProtocol.sha256(copy),
+                )
+            }.onSuccess { family ->
+                synchronized(this) { if (running) shinyWallFamily = family else compressed.delete() }
+            }.onFailure {
+                Log.w("LocalApkServer", "Shiny Wall catalogue not offered", it)
+                compressed.delete()
+            }
+            copy.delete()
+        }
+    }
+
+    /** Offered only while this sender still holds a Shiny Wall catalogue. */
+    private fun shinyWallFamilyJson(): org.json.JSONObject? {
+        val family = shinyWallFamily?.takeIf { it.compressed.isFile } ?: return null
+        val climbs = liveCatalogues.firstOrNull { it.boardBrand == LocalShareProtocol.SHINYWALL_BRAND }
+            ?.climbCount?.takeIf { it > 0 } ?: return null
+        return org.json.JSONObject()
+            .put("boardBrand", LocalShareProtocol.SHINYWALL_BRAND)
+            .put("format", LocalShareProtocol.SHINYWALL_FORMAT)
+            .put("path", LocalShareProtocol.V2_SHINYWALL_PATH)
+            .put("compression", "gzip")
+            .put("sizeBytes", family.compressed.length())
+            .put("sha256", family.compressedSha256)
+            .put("uncompressedSizeBytes", family.uncompressedSizeBytes)
+            .put("uncompressedSha256", family.uncompressedSha256)
+            .put("climbCount", climbs)
+    }
+
     fun start(port: Int = LOCAL_SHARE_PORT, hostIp: String? = null): Int {
         restoreCachedSnapshot()
         countLiveCatalogues()
@@ -375,6 +436,7 @@ class LocalApkServer(
         }
         serverSocket = ss
         running = true
+        prepareShinyWallFamily()
         val ip = hostIp ?: ApkShareHelper.getDeviceIpAddress() ?: "localhost"
         baseUrl = "http://$ip:${ss.localPort}"
         thread(isDaemon = true, name = "apk-server") {
@@ -428,6 +490,8 @@ class LocalApkServer(
             shutdownTimer = null
             try { serverSocket?.close() } catch (_: Exception) { }
             serverSocket = null
+            shinyWallFamily?.compressed?.delete()
+            shinyWallFamily = null
         }
         val clients = synchronized(clientLock) {
             clientSockets.toList().also { clientSockets.clear() }
@@ -553,6 +617,18 @@ class LocalApkServer(
                     path == LocalShareProtocol.V2_BOARD_PATH ->
                         serveBoardDb(out, compressed = true, rangeHeader = headers["range"], headOnly = headOnly,
                             protocolVersion = LocalShareProtocol.VERSION_V2)
+                    path == LocalShareProtocol.V2_SHINYWALL_PATH -> {
+                        // Served exactly while the v2 manifest offers it.
+                        val family = shinyWallFamily?.compressed?.takeIf { shinyWallFamilyJson() != null }
+                        if (family == null) serve404(out) else serveFile(
+                            out = out,
+                            file = family,
+                            contentType = "application/gzip",
+                            downloadName = "cruxcoach-shinywall.sqlite3.gz",
+                            rangeHeader = headers["range"],
+                            headOnly = headOnly,
+                        )
+                    }
                     path == "/board.db" ->
                         serveBoardDb(out, compressed = false, rangeHeader = headers["range"], headOnly = headOnly)
                     path == "/favicon.ico" -> serve404(out)
@@ -652,6 +728,13 @@ class LocalApkServer(
         val json = org.json.JSONObject()
             .put("protocolVersion", protocolVersion)
             .put("sessionId", sessionId)
+            .apply {
+                // v2 only: v1 receivers predate the family entirely. Older v2
+                // receivers ignore the unknown key and never request the path.
+                if (protocolVersion == LocalShareProtocol.VERSION_V2) {
+                    shinyWallFamilyJson()?.let { put("families", org.json.JSONArray().put(it)) }
+                }
+            }
             .put("idleTimeoutSeconds", AUTO_SHUTDOWN_MS / 1000L)
             .put(
                 "apk",
@@ -1289,6 +1372,8 @@ class LocalApkServer(
         const val COMPRESSED_SNAPSHOT_NAME = "board_share_snapshot.db.gz"
         const val V2_SNAPSHOT_NAME = "board_share_snapshot_v2.db"
         const val V2_COMPRESSED_SNAPSHOT_NAME = "board_share_snapshot_v2.db.gz"
+        /** Session-only compressed Shiny Wall family artifact (and its source copy). */
+        const val SHINYWALL_SHARE_NAME = "board_share_shinywall.sqlite3.gz"
         internal const val SNAPSHOT_METADATA_NAME = "board_share_snapshot.meta.json"
         /** Exact generation of the privacy + compatibility scrub contract. */
         internal const val SNAPSHOT_SCRUB_CONTRACT_VERSION = 1
