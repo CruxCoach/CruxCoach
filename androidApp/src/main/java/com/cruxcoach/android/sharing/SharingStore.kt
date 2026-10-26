@@ -198,12 +198,13 @@ class SharingStore(private val database: SecureDatabase) {
 
     fun setLastPass(at: Long) = q.putSetting(LAST_PASS_KEY, at.toString())
 
-    fun persons(): List<SharingPerson> = q.selectPersons().executeAsList().map { row ->
-        SharingPerson(row.peer, TemplateId(row.template), row.outgoing == 1L, row.period_days?.toInt(),
-            row.label, PersonState.valueOf(row.state), row.cancel_pending == 1L, row.created_at, row.ended_at)
-    }
+    fun persons(): List<SharingPerson> = q.selectPersons().executeAsList().map(::toPerson)
 
-    fun person(peer: String): SharingPerson? = persons().firstOrNull { it.peer == peer }
+    fun person(peer: String): SharingPerson? = q.selectPerson(peer).executeAsOneOrNull()?.let(::toPerson)
+
+    private fun toPerson(row: com.cruxcoach.db.secure.Share_person) = SharingPerson(row.peer, TemplateId(row.template),
+        row.outgoing == 1L, row.period_days?.toInt(), row.label, PersonState.valueOf(row.state), row.cancel_pending == 1L,
+        row.created_at, row.ended_at)
 
     fun insertPerson(peer: String, template: TemplateId, outgoing: Boolean, label: String?, state: PersonState, now: Long) =
         q.insertPerson(peer, template.value, if (outgoing) 1 else 0, null, label?.take(64), state.name, now)

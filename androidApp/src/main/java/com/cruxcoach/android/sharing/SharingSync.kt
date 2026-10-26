@@ -80,7 +80,8 @@ class SharingSync(
         endings(host, status)
         val policy = store.policy()
         join(policy, clock())
-        for (stream in store.streams()) send(host, stream, status, policy)
+        val peers = status.peers.associateBy { it.account }
+        for (stream in store.streams()) send(host, stream, peers, policy)
         replies(host, status)
     }
 
@@ -126,8 +127,9 @@ class SharingSync(
 
     private suspend fun requests(host: MarmotHost, status: MarmotStatus) {
         val now = clock()
+        val peers = status.peers.associateBy { it.account }
         for (person in store.persons().filter { it.state == PersonState.REQUESTED }) {
-            val native = status.peers.firstOrNull { it.account == person.peer }
+            val native = peers[person.peer]
             when {
                 native != null && !native.ended && native.invitedByMe -> store.setState(person.peer, PersonState.CONNECTED, now)
                 // Both asked each other: accept theirs instead of a second group.
@@ -149,8 +151,9 @@ class SharingSync(
      * two-account shape): forget what we received. */
     private fun reconcile(host: MarmotHost, status: MarmotStatus) {
         val now = clock()
+        val peers = status.peers.associateBy { it.account }
         for (person in store.persons().filter { it.state == PersonState.CONNECTED }) {
-            val native = status.peers.firstOrNull { it.account == person.peer } ?: continue
+            val native = peers[person.peer] ?: continue
             if (native.ended) store.transaction {
                 store.clearExchange(person.peer)
                 store.setState(person.peer, PersonState.ENDED, now)
@@ -160,8 +163,9 @@ class SharingSync(
 
     private suspend fun endings(host: MarmotHost, status: MarmotStatus) {
         val now = clock()
+        val peers = status.peers.associateBy { it.account }
         for (person in store.persons()) {
-            val native = status.peers.firstOrNull { it.account == person.peer }
+            val native = peers[person.peer]
             when (person.state) {
                 PersonState.ENDING -> {
                     if (native != null && !native.ended) {
@@ -449,9 +453,11 @@ class SharingSync(
 
     private suspend fun replies(host: MarmotHost, status: MarmotStatus) {
         val now = clock()
+        val persons = store.persons().associateBy { it.peer }
+        val active = status.peers.filter { it.active }.map { it.account }.toSet()
         for ((peer, start) in store.incomingStates()) {
-            val person = store.person(peer) ?: continue
-            if (person.state != PersonState.CONNECTED || status.peers.none { it.account == peer && it.active }) continue
+            val person = persons[peer] ?: continue
+            if (person.state != PersonState.CONNECTED || peer !in active) continue
             var state = start
             // A full state that never completes, or buffered messages whose gap
             // does not close, are gaps as well.
@@ -516,24 +522,25 @@ class SharingSync(
     /** Every connected person is in exactly one stream: the one of their audience. */
     private fun join(policy: SharePolicy, now: Long) = store.transaction {
         val connected = store.persons().filter { it.state == PersonState.CONNECTED }.associateBy { it.peer }
+        val members = store.members().associateBy { it.peer }
+        val streams = store.streams().associateBy { it.id }.toMutableMap()
         for (member in store.members()) if (member.peer !in connected) store.clearMember(member.peer)
         for (person in connected.values) {
             val key = ruleKey(person, policy, now)
-            val member = store.member(person.peer)
-            val current = member?.let { store.stream(it.stream) }
+            val member = members[person.peer]
+            val current = member?.let { streams[it.stream] ?: store.stream(it.stream) }
             if (current != null && current.ruleKey == key) continue
             val stream = store.streamByKey(StreamState.RULE, key) ?: StreamState.fresh(newStreamId(), key, now).also { store.putStream(it) }
             // Leaving a stream raises its epoch: from 0.2.7 its group key changes before the next message.
-            if (current != null) store.putStream(current.copy(epoch = current.epoch + 1))
+            if (current != null) current.copy(epoch = current.epoch + 1).also { store.putStream(it); streams[it.id] = it }
             store.putMember(StreamMember(person.peer, stream.id, member?.assign ?: 0, member?.assignedAt ?: 0, snapshotDue = true,
                 ackedGeneration = 0, ackedSequence = -1, ackedAt = member?.ackedAt ?: 0, joinedAt = now))
         }
         store.dropEmptyStreams()
     }
 
-    private suspend fun send(host: MarmotHost, stream: StreamState, status: MarmotStatus, policy: SharePolicy) {
+    private suspend fun send(host: MarmotHost, stream: StreamState, native: Map<String, MarmotPeer>, policy: SharePolicy) {
         val now = clock()
-        val native = status.peers.associateBy { it.account }
         val members = store.members(stream.id)
         val reachable = members.filter { native[it.peer]?.active == true }
         // Nothing moves while no member can be reached.
