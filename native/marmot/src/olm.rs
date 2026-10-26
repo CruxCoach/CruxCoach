@@ -139,6 +139,10 @@ CREATE TABLE IF NOT EXISTS olm_mailbox_ack(peer TEXT PRIMARY KEY NOT NULL, since
 CREATE TABLE IF NOT EXISTS olm_mailbox_sent(
   id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, direction INTEGER NOT NULL, day INTEGER NOT NULL,
   expires INTEGER NOT NULL, at INTEGER NOT NULL, withdrawn INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS olm_mailbox_queue(
+  id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, role TEXT NOT NULL, seed TEXT NOT NULL, event TEXT NOT NULL,
+  items TEXT NOT NULL, created_at INTEGER NOT NULL, accepted TEXT NOT NULL DEFAULT '[]');
+CREATE TABLE IF NOT EXISTS olm_mailbox_list(peer TEXT PRIMARY KEY NOT NULL, relays TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS olm_mailbox_seen(
   id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, direction INTEGER NOT NULL, day INTEGER NOT NULL,
   expires INTEGER NOT NULL, at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0);
@@ -382,6 +386,11 @@ enum Control {
         beacon: String,
         fallback: String,
         spares: Vec<String>,
+        /// The mailboxes a friend wants its frames in (`wss://`). Empty, and
+        /// then left out, until own mailboxes exist; when set it replaces the
+        /// mailboxes derived from the relationship.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        mailboxes: Vec<String>,
     },
     Rekey {
         at: u64,
@@ -478,6 +487,17 @@ fn peer_row(r: &rusqlite::Row) -> rusqlite::Result<PeerRow> {
         rekey_at: r.get::<_, i64>(18)? as u64,
         expires_at: r.get::<_, i64>(19)? as u64,
     })
+}
+
+/// The frame ids (hex) a mailbox container carries.
+fn frames_of(container: &[u8]) -> Result<Vec<String>> {
+    let container = Container::decode(container)?;
+    Ok(container
+        .sections
+        .iter()
+        .filter_map(|s| ChannelBody::decode(&s.body).ok())
+        .flat_map(|b| b.frames.into_iter().map(|(id, _)| hex::encode(id)))
+        .collect())
 }
 
 fn i64_of(value: u64) -> i64 {
@@ -807,6 +827,9 @@ impl OlmEngine {
             c.execute("DELETE FROM olm_out WHERE peer=?1", [peer])?;
             c.execute("DELETE FROM olm_reply WHERE peer=?1", [peer])?;
             c.execute("DELETE FROM olm_inbox WHERE peer=?1", [peer])?;
+            for table in ["olm_mailbox_list", "olm_mailbox_out", "olm_mailbox_ack", "olm_mailbox_queue"] {
+                c.execute(&format!("DELETE FROM {table} WHERE peer=?1"), [peer])?;
+            }
             c.execute(
                 "UPDATE olm_peer SET package=NULL, their_spares='[]', their_beacon=NULL, inviter_tag=NULL,
                    acceptor_tag=NULL, their_fallback='' WHERE account=?1",
@@ -1420,6 +1443,7 @@ impl OlmEngine {
                 beacon: b64(&beacon),
                 fallback: fallback.clone(),
                 spares,
+                mailboxes: Vec::new(),
             };
             self.queue_control(&row.account, &mut session, &control, false)?;
         }
@@ -1476,6 +1500,10 @@ impl OlmEngine {
                 )?;
                 c.execute(
                     "DELETE FROM olm_mailbox_sent WHERE at<?1",
+                    [mailbox_horizon],
+                )?;
+                c.execute(
+                    "DELETE FROM olm_mailbox_queue WHERE created_at<?1",
                     [mailbox_horizon],
                 )?;
                 c.execute(
@@ -1759,9 +1787,16 @@ impl OlmEngine {
                                     i64_of(now_s + mailbox::MAX_AGE_S), i64_of(now_s)],
                         )
                     })?;
-                    let event = nostr::JsonUtil::as_json(&event);
-                    bytes += event.len();
-                    out.push(json!({"peer": row.account, "event": event}));
+                    let entry = engine.enqueue(
+                        &row.account,
+                        "data",
+                        &mailbox::pool_seed(&key, direction),
+                        &event,
+                        &frames_of(&container)?,
+                        now_s,
+                    )?;
+                    bytes += entry["event"].as_str().map_or(0, str::len);
+                    out.push(entry);
                 }
             }
             Ok(out)
@@ -1862,24 +1897,172 @@ impl OlmEngine {
     /// The addresses to fetch: for every established relationship the incoming
     /// direction of today and the `days - 1` days before (no peer is named).
     pub fn mailbox_addresses(&self, now_s: u64, days: u64) -> Result<Vec<String>> {
+        let mut out = BTreeSet::new();
+        for group in self.mailbox_fetch(now_s, days)? {
+            for address in group["addresses"].as_array().into_iter().flatten() {
+                out.insert(address.as_str().unwrap_or_default().to_string());
+            }
+        }
+        Ok(out.into_iter().collect())
+    }
+
+    /// What to fetch, grouped by the mailbox choice (`seed`) of each incoming
+    /// direction: the app asks each chosen mailbox only for its addresses.
+    pub fn mailbox_fetch(&self, now_s: u64, days: u64) -> Result<Vec<Value>> {
         let today = mailbox::day(now_s);
         let days = days.clamp(1, mailbox::MAX_AGE_S / mailbox::DAY_S + 1);
-        let mut out = BTreeSet::new();
+        let mut out = Vec::new();
         for row in self.peers()? {
             let Some(link) = row.link().filter(|_| row.state == "active") else {
                 continue;
             };
             let key = mailbox::mailbox_key(&link);
             let direction = mailbox::Direction::incoming(row.inviter);
-            for back in 0..days {
-                out.insert(mailbox::address(
-                    &key,
-                    direction,
-                    today.saturating_sub(back),
-                ));
-            }
+            let addresses: Vec<String> = (0..days)
+                .map(|back| mailbox::address(&key, direction, today.saturating_sub(back)))
+                .collect();
+            // Own explicit mailboxes come with own mailboxes (0.2.7); until then: derive.
+            out.push(json!({"seed": mailbox::pool_seed(&key, direction), "addresses": addresses, "relays": []}));
         }
-        Ok(out.into_iter().collect())
+        Ok(out)
+    }
+
+    /// The mailboxes `peer` asked for explicitly (empty: derive them).
+    fn explicit_mailboxes(&self, peer: &str) -> Result<Vec<String>> {
+        let relays: Option<String> = self.sql(|c| {
+            c.query_row(
+                "SELECT relays FROM olm_mailbox_list WHERE peer=?1",
+                [peer],
+                |r| r.get(0),
+            )
+            .optional()
+        })?;
+        Ok(relays
+            .and_then(|r| serde_json::from_str(&r).ok())
+            .unwrap_or_default())
+    }
+
+    /// Keep an event until the app reports it placed. `items` are what it
+    /// carries (frame ids, or the ids a deletion names), so a late resend
+    /// can rebuild it from them.
+    fn enqueue(
+        &self,
+        peer: &str,
+        role: &str,
+        seed: &str,
+        event: &Event,
+        items: &[String],
+        now_s: u64,
+    ) -> Result<Value> {
+        let json = nostr::JsonUtil::as_json(event);
+        self.sql(|c| {
+            c.execute(
+                "INSERT OR REPLACE INTO olm_mailbox_queue(id, peer, role, seed, event, items, created_at) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![event.id.to_bytes().as_slice(), peer, role, seed, json, json!(items).to_string(), i64_of(now_s)],
+            )
+        })?;
+        Ok(
+            json!({"id": event.id.to_hex(), "peer": peer, "role": role, "seed": seed, "event": json, "accepted": [],
+                  "relays": self.relays_for(peer, role)?}),
+        )
+    }
+
+    /// Events not placed yet, oldest first. One older than
+    /// [`mailbox::RESIGN_AFTER_S`] is dropped and rebuilt on the next round:
+    /// its frames are published again, its deletions issued again.
+    pub fn mailbox_queue(&mut self, now_s: u64) -> Result<Vec<Value>> {
+        self.atomic(|engine| {
+            let stale = i64_of(now_s.saturating_sub(mailbox::RESIGN_AFTER_S));
+            let expired: Vec<(Vec<u8>, String, String)> = engine.sql(|c| {
+                let mut q = c.prepare("SELECT id, role, items FROM olm_mailbox_queue WHERE created_at < ?1")?;
+                q.query_map([stale], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect()
+            })?;
+            for (id, role, items) in expired {
+                let items: Vec<String> = serde_json::from_str(&items).unwrap_or_default();
+                let reset = match role.as_str() {
+                    "data" => "DELETE FROM olm_mailbox_out WHERE id=?1",
+                    "received" => "UPDATE olm_mailbox_seen SET deleted=0 WHERE id=?1",
+                    _ => "UPDATE olm_mailbox_sent SET deleted=0 WHERE id=?1",
+                };
+                engine.sql(|c| {
+                    for bytes in items.iter().filter_map(|item| hex::decode(item).ok()) {
+                        c.execute(reset, [bytes.as_slice()])?;
+                    }
+                    c.execute("DELETE FROM olm_mailbox_queue WHERE id=?1", [id.as_slice()])
+                })?;
+            }
+            let mut entries: Vec<Value> = engine.sql(|c| {
+                let mut q = c.prepare(
+                    "SELECT id, peer, role, seed, event, accepted FROM olm_mailbox_queue ORDER BY created_at, rowid LIMIT 512",
+                )?;
+                q.query_map([], |r| {
+                    let id: Vec<u8> = r.get(0)?;
+                    let accepted: String = r.get(5)?;
+                    Ok(json!({"id": hex::encode(id), "peer": r.get::<_, String>(1)?, "role": r.get::<_, String>(2)?,
+                              "seed": r.get::<_, String>(3)?, "event": r.get::<_, String>(4)?,
+                              "accepted": serde_json::from_str::<Value>(&accepted).unwrap_or(json!([]))}))
+                })?
+                .collect()
+            })?;
+            for entry in &mut entries {
+                let peer = entry["peer"].as_str().unwrap_or_default().to_string();
+                let role = entry["role"].as_str().unwrap_or_default().to_string();
+                entry["relays"] = json!(engine.relays_for(&peer, &role)?);
+            }
+            Ok(entries)
+        })
+    }
+
+    /// Where an event goes when a list was given: frames and withdrawals to the
+    /// friend's list, receipts to the own (none before own mailboxes exist).
+    fn relays_for(&self, peer: &str, role: &str) -> Result<Vec<String>> {
+        if role == "received" {
+            Ok(Vec::new())
+        } else {
+            self.explicit_mailboxes(peer)
+        }
+    }
+
+    /// A mailbox answered `OK true` for the queued event `id`.
+    pub fn mailbox_accepted(&mut self, id: &str, relay: &str) -> Result<()> {
+        let bytes = hex::decode(id).map_err(|_| Error("mailbox_id"))?;
+        self.atomic(|engine| {
+            let accepted: Option<String> = engine.sql(|c| {
+                c.query_row(
+                    "SELECT accepted FROM olm_mailbox_queue WHERE id=?1",
+                    [bytes.as_slice()],
+                    |r| r.get(0),
+                )
+                .optional()
+            })?;
+            let Some(accepted) = accepted else {
+                return Ok(());
+            };
+            let mut list: Vec<String> = serde_json::from_str(&accepted).unwrap_or_default();
+            if !list.iter().any(|r| r == relay) {
+                list.push(relay.to_string());
+            }
+            engine.sql(|c| {
+                c.execute(
+                    "UPDATE olm_mailbox_queue SET accepted=?1 WHERE id=?2",
+                    params![json!(list).to_string(), bytes.as_slice()],
+                )
+            })?;
+            Ok(())
+        })
+    }
+
+    /// The app placed the queued event `id` well enough (quorum reached and
+    /// the rest tried): forget it.
+    pub fn mailbox_done(&mut self, id: &str) -> Result<()> {
+        let bytes = hex::decode(id).map_err(|_| Error("mailbox_id"))?;
+        self.sql(|c| {
+            c.execute(
+                "DELETE FROM olm_mailbox_queue WHERE id=?1",
+                [bytes.as_slice()],
+            )
+        })?;
+        Ok(())
     }
 
     /// Take mailbox events fetched from relays. Each must be a current event of
@@ -2019,7 +2202,9 @@ impl OlmEngine {
                         &event_ids,
                         expiration,
                     )?;
-                    out.push(json!({"peer": peer, "role": role, "event": nostr::JsonUtil::as_json(&event)}));
+                    let items: Vec<String> = ids.iter().map(|(id, _)| hex::encode(id)).collect();
+                    let seed = mailbox::pool_seed(&mailbox::mailbox_key(&link), direction);
+                    out.push(engine.enqueue(&peer, role, &seed, &event, &items, now_s)?);
                 }
             }
             Ok(out)
@@ -2445,6 +2630,7 @@ impl OlmEngine {
                     beacon: b64(&my_beacon),
                     fallback: my_fallback,
                     spares: self.fresh_spares(&mut account)?,
+                    mailboxes: Vec::new(),
                 };
                 self.save_account(&account)?;
                 self.queue_control(peer, &mut session, &control, true)?;
@@ -2518,6 +2704,7 @@ impl OlmEngine {
                     beacon: b64(&my_beacon),
                     fallback: my_fallback,
                     spares: self.fresh_spares(&mut account)?,
+                    mailboxes: Vec::new(),
                 };
                 self.save_account(&account)?;
                 self.queue_control(peer, &mut session, &control, true)?;
@@ -2536,6 +2723,7 @@ impl OlmEngine {
                                     beacon: b64(&bc),
                                     fallback: fb,
                                     spares: vec![],
+                                    mailboxes: Vec::new(),
                                 },
                                 false,
                             )?;
@@ -2558,7 +2746,23 @@ impl OlmEngine {
                 beacon,
                 fallback,
                 spares,
+                mailboxes,
             } => {
+                if mailboxes.len() > 4
+                    || mailboxes
+                        .iter()
+                        .any(|m| !m.starts_with("wss://") || m.len() > 200)
+                {
+                    return Err(Error("envelope"));
+                }
+                if !mailboxes.is_empty() {
+                    self.sql(|c| {
+                        c.execute(
+                            "INSERT OR REPLACE INTO olm_mailbox_list(peer, relays, at) VALUES(?1, ?2, ?3)",
+                            params![row.account, json!(mailboxes).to_string(), i64_of(now_ms())],
+                        )
+                    })?;
+                }
                 let mut next = row.clone();
                 next.their_beacon = Some(arr32(&unb64(&beacon)?)?.to_vec());
                 curve(&fallback)?;
@@ -2738,5 +2942,33 @@ impl OlmEngine {
                 ))
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod mailbox_list_format {
+    use super::*;
+
+    #[test]
+    fn an_empty_mailbox_list_leaves_the_keys_message_as_it_was_and_a_set_one_travels() {
+        let keys = |mailboxes: Vec<String>| Control::Keys {
+            beacon: "b".into(),
+            fallback: "f".into(),
+            spares: vec![],
+            mailboxes,
+        };
+        let empty = serde_json::to_string(&keys(vec![])).unwrap();
+        assert_eq!(
+            empty, r#"{"t":"keys","beacon":"b","fallback":"f","spares":[]}"#,
+            "unchanged on the wire in 0.2.6"
+        );
+        assert!(
+            matches!(serde_json::from_str::<Control>(&empty).unwrap(), Control::Keys { mailboxes, .. } if mailboxes.is_empty())
+        );
+        let set = serde_json::to_string(&keys(vec!["wss://own.example/post".into()])).unwrap();
+        assert!(set.contains(r#""mailboxes":["wss://own.example/post"]"#));
+        assert!(
+            matches!(serde_json::from_str::<Control>(&set).unwrap(), Control::Keys { mailboxes, .. } if mailboxes.len() == 1)
+        );
     }
 }

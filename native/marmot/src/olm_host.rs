@@ -99,6 +99,18 @@ enum Command {
         events: Vec<String>,
     },
     MailboxDeletions,
+    MailboxFetch {
+        #[serde(default)]
+        days: Option<u64>,
+    },
+    MailboxQueue,
+    MailboxAccepted {
+        id: String,
+        relay: String,
+    },
+    MailboxDone {
+        id: String,
+    },
     #[cfg(feature = "local-harness")]
     PrivateStorageMatches {
         marker: String,
@@ -325,6 +337,21 @@ impl OlmHost {
                     peers: result["peers"].as_bool().unwrap_or(false),
                 });
                 result
+            }
+            Command::MailboxFetch { days } => {
+                json!({"groups": self.engine()?.mailbox_fetch(crate::protocol::now_s(), days.unwrap_or(2))?,
+                       "max_age_s": crate::mailbox::MAX_AGE_S})
+            }
+            Command::MailboxQueue => {
+                json!({"events": self.engine()?.mailbox_queue(crate::protocol::now_s())?})
+            }
+            Command::MailboxAccepted { id, relay } => {
+                self.engine()?.mailbox_accepted(&id, &relay)?;
+                json!(true)
+            }
+            Command::MailboxDone { id } => {
+                self.engine()?.mailbox_done(&id)?;
+                json!(true)
             }
             Command::MailboxDeletions => {
                 json!({"events": self.engine()?.mailbox_deletions(crate::protocol::now_s())?})

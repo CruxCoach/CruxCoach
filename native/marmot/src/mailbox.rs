@@ -100,6 +100,17 @@ pub fn address(key: &[u8; 32], direction: Direction, day: u64) -> String {
     hex::encode(&mac[..8])
 }
 
+/// Which mailboxes one direction of a relationship uses: both friends derive
+/// the same choice from it, nobody else can. Stable across days.
+pub fn pool_seed(key: &[u8; 32], direction: Direction) -> String {
+    let mac = p2p::hmac(key, &[b"cc-mbx-pool-v1", &[direction as u8]]);
+    hex::encode(&mac[..8])
+}
+
+/// An event waiting for mailboxes is signed again after this long: a strict
+/// mailbox refuses events created more than an hour ago.
+pub const RESIGN_AFTER_S: u64 = 50 * 60;
+
 /// The day's signing key of one direction. Both friends can derive it, so the
 /// receiver may delete what it fetched; nobody else can sign under it.
 pub fn signer(key: &[u8; 32], direction: Direction, day: u64) -> Keys {

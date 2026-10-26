@@ -381,3 +381,91 @@ fn a_crash_between_storing_and_deleting_loses_nothing_and_applies_nothing_twice(
     assert_eq!(b.drain(), vec!["survives"]);
     assert_eq!(deletions(&mut b, NOW + 180).len(), 1);
 }
+
+#[test]
+fn both_friends_derive_the_same_mailbox_choice_per_direction() {
+    let (mut a, mut b) = friends();
+    a.engine.send(&b.id(), "t1", "x").unwrap();
+    b.engine.send(&a.id(), "t2", "y").unwrap();
+    let a_out = a.engine.mailbox_outgoing(NOW, 0, 4 << 20).unwrap();
+    let b_out = b.engine.mailbox_outgoing(NOW, 0, 4 << 20).unwrap();
+    let a_in = a.engine.mailbox_fetch(NOW, 2).unwrap();
+    let b_in = b.engine.mailbox_fetch(NOW, 2).unwrap();
+    assert_eq!(
+        a_out[0]["seed"], b_in[0]["seed"],
+        "what a writes is where b reads"
+    );
+    assert_eq!(b_out[0]["seed"], a_in[0]["seed"]);
+    assert_ne!(
+        a_out[0]["seed"], a_in[0]["seed"],
+        "the two directions choose separately"
+    );
+    assert_eq!(
+        a_out[0]["relays"],
+        serde_json::json!([]),
+        "no explicit list in 0.2.6: derive"
+    );
+    assert_eq!(
+        b_in[0]["addresses"].as_array().unwrap().len(),
+        2,
+        "today and yesterday"
+    );
+}
+
+#[test]
+fn the_queue_keeps_an_event_until_it_is_placed_and_rebuilds_it_when_it_is_too_old() {
+    let (mut a, mut b) = friends();
+    a.engine.send(&b.id(), "t1", "placed").unwrap();
+    let entry = a
+        .engine
+        .mailbox_outgoing(NOW, 0, 4 << 20)
+        .unwrap()
+        .remove(0);
+    let id = entry["id"].as_str().unwrap().to_string();
+    let queue = a.engine.mailbox_queue(NOW + 60).unwrap();
+    assert_eq!(queue.len(), 1);
+    assert_eq!(queue[0]["event"], entry["event"]);
+    a.engine.mailbox_accepted(&id, "wss://one.example").unwrap();
+    a.engine.mailbox_accepted(&id, "wss://one.example").unwrap();
+    assert_eq!(
+        a.engine.mailbox_queue(NOW + 120).unwrap()[0]["accepted"],
+        serde_json::json!(["wss://one.example"])
+    );
+    a.engine.mailbox_done(&id).unwrap();
+    assert!(a.engine.mailbox_queue(NOW + 180).unwrap().is_empty());
+    // An event nobody placed for 50 minutes is rebuilt with a fresh signature.
+    a.engine.send(&b.id(), "t2", "late").unwrap();
+    let old = a.outgoing(NOW + 300);
+    let later = NOW + 300 + mailbox::RESIGN_AFTER_S + 60;
+    assert!(
+        a.engine.mailbox_queue(later).unwrap().is_empty(),
+        "the stale event is dropped"
+    );
+    let fresh = a.outgoing(later);
+    assert_eq!(fresh.len(), 1);
+    assert_ne!(fresh[0], old[0]);
+    b.absorb(later, &[old, fresh].concat());
+    assert_eq!(
+        b.drain(),
+        vec!["placed", "late"]
+            .into_iter()
+            .skip(1)
+            .collect::<Vec<_>>(),
+        "the frame once"
+    );
+}
+
+#[test]
+fn a_deletion_nobody_placed_is_issued_again() {
+    let (mut a, mut b) = friends();
+    a.engine.send(&b.id(), "t1", "x").unwrap();
+    b.absorb(NOW, &a.outgoing(NOW));
+    assert_eq!(deletions(&mut b, NOW).len(), 1);
+    let later = NOW + mailbox::RESIGN_AFTER_S + 60;
+    assert!(b.engine.mailbox_queue(later).unwrap().is_empty());
+    assert_eq!(
+        deletions(&mut b, later).len(),
+        1,
+        "issued again with a fresh signature"
+    );
+}
