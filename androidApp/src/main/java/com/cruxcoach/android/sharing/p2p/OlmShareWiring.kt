@@ -22,6 +22,8 @@ object OlmShareWiring {
         databaseKey: (String) -> ByteArray,
         nostrSigner: NostrSigner,
         foregroundSigner: Nip01EventSigner,
+        /** Level "Maximal": no mailboxes at all, only direct exchange. */
+        directOnly: () -> Boolean = { false },
     ): AndroidMarmotHost = AndroidMarmotHost(context, databaseKey, nostrSigner, foregroundSigner, engine = "olm") { native ->
         P2pMarmotBinding(
             native,
@@ -44,6 +46,7 @@ object OlmShareWiring {
                 foreground = ::inFront,
             ),
             direct = ::inFront,
+            mailboxesOn = { !directOnly() },
         )
     }
 }

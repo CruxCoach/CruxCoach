@@ -95,7 +95,8 @@ open class SyntheticMarmotEndpoint(
         )
     }
     private val binding: MarmotBinding =
-        if (p2p) com.cruxcoach.android.sharing.p2p.P2pMarmotBinding(NativeMarmotBinding, listOf(lan), mailboxes = mailboxes) else NativeMarmotBinding
+        if (p2p) com.cruxcoach.android.sharing.p2p.P2pMarmotBinding(NativeMarmotBinding, listOf(lan), mailboxes = mailboxes,
+            mailboxesOn = { !store.directOnly() }) else NativeMarmotBinding
 
     val host = MarmotHost(trace = timing, binding = binding, open = {
         val config = buildJsonObject {

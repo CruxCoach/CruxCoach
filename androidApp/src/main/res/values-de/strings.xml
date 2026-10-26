@@ -2813,6 +2813,12 @@
     <string name="sharing_period_title">Zeitraum für Begehungen und Versuche</string>
     <string name="sharing_period_all">Alles</string>
     <string name="sharing_connection_summary">%1$d von %2$d Relays verbunden</string>
+    <string name="sharing_direct_title">Nur direkt</string>
+    <string name="sharing_direct_info">Stufe „Maximal“: Daten gehen nur, wenn ihr euch trefft, über WLAN oder Bluetooth, mit beiden Apps offen. Nichts wartet in einem Briefkasten, und außer den beiden Telefonen ist niemand beteiligt. Einladen geht dann nur per QR-Code.</string>
+    <string name="sharing_direct_links">Links brauchen Briefkästen. Mit „Nur direkt“ lädst du beim Treffen per QR-Code ein.</string>
+    <string name="sharing_direct_only_sync">Abgleich nur bei direktem Kontakt</string>
+    <string name="sharing_history_direct_on">„Nur direkt“ eingeschaltet</string>
+    <string name="sharing_history_direct_off">„Nur direkt“ ausgeschaltet</string>
     <string name="sharing_conn_connected">Verbunden</string>
     <string name="sharing_conn_offline">Offline</string>
     <string name="sharing_conn_offline_pending">Offline – wird nachgeliefert</string>

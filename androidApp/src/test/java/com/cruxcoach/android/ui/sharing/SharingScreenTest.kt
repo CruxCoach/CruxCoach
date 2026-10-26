@@ -59,6 +59,7 @@ class SharingScreenTest {
         revokeLink = { calls += "revoke:$it" },
         openLink = { template, label -> calls += "open-link:${template.value}:$label" },
         dismissLink = { calls += "dismiss-link" },
+        setDirectOnly = { calls += "direct:$it" },
         showCode = { calls += "show-code" },
         scanned = { text -> calls += "scanned:${text.take(13)}"; text.startsWith("cruxcoach:") },
     )
@@ -224,6 +225,19 @@ class SharingScreenTest {
         page.value = SharingPage.Overview
         compose.onNodeWithText("Offline – wird nachgeliefert").performScrollTo().assertExists()
         compose.onNodeWithTag("sharing_error").assertDoesNotExist()
+    }
+
+    @Test fun `only directly is one switch, and then links are not offered`() {
+        render(SharingUiState(loading = false, overview = overview().copy(linkInvites = true, directOnly = true),
+            linkOffer = LinkOffer(linkPayload, com.cruxcoach.android.sharing.LinkIssuer("a".repeat(64), 4_102_444_800_000))), SharingPage.Overview)
+        compose.onNodeWithTag("sharing_direct_only").performScrollTo().assertIsOn().performClick()
+        assertEquals(listOf("direct:false"), calls)
+        compose.onNodeWithTag("sharing_link_create").assertDoesNotExist()
+        compose.onNodeWithTag("sharing_direct_links").performScrollTo().assertExists()
+        compose.onNodeWithTag("sharing_code_show").performScrollTo().assertIsEnabled()
+        // An opened link cannot go out without mailboxes.
+        compose.onNodeWithTag("sharing_link_send").assertIsNotEnabled()
+        compose.onNodeWithTag("sharing_link_error").assertTextContains("Links brauchen Briefkästen", substring = true)
     }
 
     @Test fun `a refused identity is explained and an empty field cannot be sent`() {

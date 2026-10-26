@@ -113,6 +113,7 @@ internal sealed interface SharingPage {
 /** Everything a page can ask for; tests pass no-op defaults. */
 internal class SharingActions(
     val setReachable: (Boolean) -> Unit = {},
+    val setDirectOnly: (Boolean) -> Unit = {},
     val syncNow: () -> Unit = {},
     val request: (String, TemplateId, String, () -> Unit) -> Unit = { _, _, _, _ -> },
     val clearRequestError: () -> Unit = {},
@@ -171,6 +172,7 @@ fun SharingScreen(
     val actions = remember(viewModel, context) {
         SharingActions(
             setReachable = viewModel::setReachable,
+            setDirectOnly = viewModel::setDirectOnly,
             syncNow = viewModel::syncNow,
             request = viewModel::request,
             clearRequestError = viewModel::clearRequestError,
@@ -285,9 +287,23 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
     val status = overview.status
     if (!overview.ageAnswered || !overview.ageConfirmed) AgeCard(overview.ageAnswered, state.busy, actions)
     state.linkOffer?.takeIf { overview.linkInvites }?.let {
-        LinkOfferCard(it, overview.templates, overview.ageConfirmed && !state.busy, state.linkError, actions)
+        // A link reaches its issuer only through mailboxes; a scanned code also directly.
+        val needsMailbox = overview.directOnly && it.payload.startsWith(com.cruxcoach.android.sharing.ShareLinks.LINK_PREFIX)
+        LinkOfferCard(it, overview.templates, overview.ageConfirmed && !state.busy && !needsMailbox,
+            if (needsMailbox) "direct_only" else state.linkError, actions)
     }
     SettingsSectionCard {
+        if (overview.linkInvites) {
+            // Level "Maximal" (P7): nothing in any mailbox, only when the two meet.
+            SettingsToggleRow(
+                title = stringResource(R.string.sharing_direct_title),
+                description = stringResource(R.string.sharing_direct_info),
+                checked = overview.directOnly,
+                enabled = !state.busy,
+                onCheckedChange = actions.setDirectOnly,
+                modifier = Modifier.testTag("sharing_direct_only"),
+            )
+        }
         // Requests by npub exist only over MLS; with links nobody can ask without one.
         if (!overview.linkInvites) {
             SettingsToggleRow(
@@ -325,7 +341,7 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
         }
     }
     if (overview.ageConfirmed) {
-        if (overview.linkInvites) LinkInviteCard(overview.links, state.busy, actions, onOpen)
+        if (overview.linkInvites) LinkInviteCard(overview.links, state.busy, actions, onOpen, overview.directOnly)
         else AddPersonCard(state, overview.templates, actions)
     }
     InfoHeading(stringResource(R.string.sharing_templates_title), stringResource(R.string.sharing_templates_info))
@@ -516,6 +532,7 @@ private fun linkErrorText(code: String): Int = when (code) {
     "person_exists", "invitation_pending" -> R.string.sharing_link_error_known
     "peer_quota" -> R.string.sharing_link_error_full
     "contact_format" -> R.string.sharing_link_error_damaged
+    "direct_only" -> R.string.sharing_direct_links
     else -> R.string.sharing_link_error_other
 }
 
@@ -526,12 +543,18 @@ private fun LinkInviteCard(
     busy: Boolean,
     actions: SharingActions,
     onOpen: (SharingPage) -> Unit,
+    directOnly: Boolean = false,
 ) {
     SettingsSectionCard {
         InfoHeading(stringResource(R.string.sharing_add_title), stringResource(R.string.sharing_link_info))
-        Text(stringResource(R.string.sharing_link_body), style = MaterialTheme.typography.bodyMedium)
-        Button(onClick = actions.createLink, enabled = !busy, modifier = Modifier.testTag("sharing_link_create")) {
-            Text(stringResource(R.string.sharing_link_create))
+        if (directOnly) {
+            Text(stringResource(R.string.sharing_direct_links), style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("sharing_direct_links"))
+        } else {
+            Text(stringResource(R.string.sharing_link_body), style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = actions.createLink, enabled = !busy, modifier = Modifier.testTag("sharing_link_create")) {
+                Text(stringResource(R.string.sharing_link_create))
+            }
         }
         // Meeting in person: one shows a code, the other scans it.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

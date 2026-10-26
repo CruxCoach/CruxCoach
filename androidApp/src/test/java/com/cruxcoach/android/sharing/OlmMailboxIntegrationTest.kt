@@ -166,4 +166,24 @@ class OlmMailboxIntegrationTest {
         repeat(8) { listOf(issuer, opener).forEach { e -> e.blocking { sync() } } }
         assertTrue(kotlinx.coroutines.runBlocking { issuer.service.overview() }.invitations.isEmpty())
     }
+
+    @Test fun direct_only_puts_nothing_into_any_mailbox_and_still_shares_when_they_meet() {
+        val (alice, bob) = friends()
+        kotlinx.coroutines.runBlocking { alice.service.setDirectOnly(true); bob.service.setDirectOnly(true) }
+        val before = relays.sumOf { it.events.size }
+        val asked = relays.sumOf { it.filters.size }
+        alice.blocking { send(bob.account, "t1", "synthetic only directly") }
+        repeat(8) { listOf(alice, bob).forEach { e -> e.blocking { sync() } }; Thread.sleep(100) }
+        assertEquals(before, relays.sumOf { it.events.size }, "nothing placed")
+        assertEquals(asked, relays.sumOf { it.filters.size }, "nothing fetched either")
+        assertTrue(drain(bob).isEmpty(), "not delivered without meeting")
+        assertTrue(alice.blocking { status() }.relays.all { it.direct }, "only the direct ways are listed")
+        // They meet: it goes directly.
+        alice.discovery.endpoints = listOf("http://127.0.0.1:${bob.lan.port}")
+        bob.discovery.endpoints = listOf("http://127.0.0.1:${alice.lan.port}")
+        assertTrue(waitFor(alice, bob) { drain(bob).contains("synthetic only directly") })
+        kotlinx.coroutines.runBlocking { alice.service.setAge(true) }
+        val failure = runCatching { kotlinx.coroutines.runBlocking { alice.service.createLink() } }.exceptionOrNull()
+        assertEquals("direct_only", failure?.message, "links need mailboxes")
+    }
 }

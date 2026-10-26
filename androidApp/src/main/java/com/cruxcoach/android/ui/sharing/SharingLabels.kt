@@ -175,6 +175,7 @@ internal fun historyLabel(entry: HistoryEntry, name: String): String {
         HistoryEvent.OUTGOING -> stringResource(if (detail == "on") R.string.sharing_history_outgoing_on else R.string.sharing_history_outgoing_off, name)
         HistoryEvent.TEMPLATE_EDITED -> stringResource(R.string.sharing_history_template_edited, template(detail))
         HistoryEvent.AGE -> stringResource(if (detail == "on") R.string.sharing_history_age_on else R.string.sharing_history_age_off)
+        HistoryEvent.DIRECT_ONLY -> stringResource(if (detail == "on") R.string.sharing_history_direct_on else R.string.sharing_history_direct_off)
         HistoryEvent.EXPIRED -> stringResource(R.string.sharing_history_expired, name)
         HistoryEvent.ENDED -> stringResource(R.string.sharing_history_ended, name)
         HistoryEvent.REMOVED -> stringResource(R.string.sharing_history_removed, name)

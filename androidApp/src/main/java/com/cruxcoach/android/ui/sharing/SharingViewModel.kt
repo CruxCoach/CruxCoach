@@ -89,6 +89,7 @@ class SharingViewModel @Inject constructor(
     }
 
     fun setReachable(enabled: Boolean) = act { service.setReachable(enabled) }
+    fun setDirectOnly(on: Boolean) = act { service.setDirectOnly(on) }
     fun syncNow() = act { service.syncNow() }
 
     /** Returns through [onSent] only when the request is really recorded. */
@@ -206,6 +207,6 @@ class SharingViewModel @Inject constructor(
 
     private companion object {
         /** Refusals of the service itself that the screen explains. */
-        val SERVICE_CODES = setOf("person_exists", "age_not_confirmed")
+        val SERVICE_CODES = setOf("person_exists", "age_not_confirmed", "direct_only")
     }
 }

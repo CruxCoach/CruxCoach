@@ -96,6 +96,8 @@ data class SharingPersonDetail(
     val overLimit: Boolean = false,
     /** Own records that can never be sent (too long or incomplete); left out one by one. */
     val skipped: Int = 0,
+    /** Level "Maximal": data comes only when the two meet (VS7). */
+    val directOnly: Boolean = false,
 )
 
 data class SharingOverview(
@@ -115,6 +117,8 @@ data class SharingOverview(
     val linkInvites: Boolean = false,
     /** Own invitation links still open, newest first. */
     val links: List<MarmotLink> = emptyList(),
+    /** Level "Maximal": only direct exchange, no mailboxes (P7). */
+    val directOnly: Boolean = false,
     /** Who receives which category now. */
     val whoSees: List<CategoryAudience> = emptyList(),
 )
@@ -167,7 +171,7 @@ class SharingService(
         val links = if (access.linkInvites) runCatching { host.links() }.getOrDefault(emptyList()) else emptyList()
         return SharingOverview(status, templates.filterNot { it.hidden }, friends, invitations,
             ageAnswered = store.ageAnswered(), ageConfirmed = store.ageConfirmed(), allTemplates = templates, history = store.history(), whoSees = whoSeesWhat(),
-            linkInvites = access.linkInvites, links = links)
+            linkInvites = access.linkInvites, links = links, directOnly = access.linkInvites && store.directOnly())
     }
 
     private fun completeness(state: IncomingState?): Completeness = when {
@@ -223,9 +227,18 @@ class SharingService(
         onChanged()
     }
 
+    /** Only direct exchange, or mailboxes too; withdrawals go first as always. */
+    suspend fun setDirectOnly(on: Boolean) {
+        store.setDirectOnly(on)
+        store.addHistory(clock(), null, HistoryEvent.DIRECT_ONLY, if (on) "on" else "off")
+        onChanged()
+    }
+
     /** A new invitation link to send; whoever uses it asks, and this side confirms. */
     suspend fun createLink(): String {
         check(store.ageConfirmed()) { "age_not_confirmed" }
+        // A link reaches its issuer only through mailboxes.
+        check(!store.directOnly()) { "direct_only" }
         val link = host.linkCode()
         onChanged()
         return ShareLinks.url(link.payload)
@@ -245,6 +258,7 @@ class SharingService(
     /** An opened link: ask its issuer for a friendship with [template]. */
     suspend fun openLink(payload: String, template: TemplateId, label: String?) {
         check(store.ageConfirmed()) { "age_not_confirmed" }
+        check(!(store.directOnly() && payload.startsWith(ShareLinks.LINK_PREFIX))) { "direct_only" }
         val peer = host.importContact(payload)
         request(peer, template, label)
     }
@@ -401,7 +415,7 @@ class SharingService(
             )
         }
         return SharingPersonDetail(friend, template, categories, days, items, store.records(peer),
-            overLimit = overLimit, skipped = projection?.skipped?.size ?: 0)
+            overLimit = overLimit, skipped = projection?.skipped?.size ?: 0, directOnly = access.linkInvites && store.directOnly())
     }
 
     /**

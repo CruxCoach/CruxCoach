@@ -2814,6 +2814,12 @@
     <string name="sharing_period_title">Period for sends and attempts</string>
     <string name="sharing_period_all">All</string>
     <string name="sharing_connection_summary">%1$d of %2$d relays connected</string>
+    <string name="sharing_direct_title">Only directly</string>
+    <string name="sharing_direct_info">Level “Maximal”: data goes only when you meet, over Wi-Fi or Bluetooth with both apps open. Nothing waits in any mailbox, and nobody but the two phones takes part. Invitations then work by QR code only.</string>
+    <string name="sharing_direct_links">Links need mailboxes. With “Only directly” you invite by QR code when you meet.</string>
+    <string name="sharing_direct_only_sync">only syncs when you meet</string>
+    <string name="sharing_history_direct_on">“Only directly” turned on</string>
+    <string name="sharing_history_direct_off">“Only directly” turned off</string>
     <string name="sharing_conn_connected">Connected</string>
     <string name="sharing_conn_offline">Offline</string>
     <string name="sharing_conn_offline_pending">Offline – will be delivered later</string>

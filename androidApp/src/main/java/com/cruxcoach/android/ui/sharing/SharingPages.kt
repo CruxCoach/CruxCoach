@@ -172,7 +172,9 @@ internal fun PersonPage(
     SettingsSectionCard {
         InfoHeading(stringResource(R.string.sharing_received_title, name), stringResource(R.string.sharing_received_info))
         if (friend.visible == VisibleState.ACTIVE || friend.visible == VisibleState.STOPPED) {
-            Text(completenessLabel(friend.completeness, name), style = MaterialTheme.typography.bodySmall,
+            val label = completenessLabel(friend.completeness, name)
+            Text(if (detail.directOnly) "$label · ${stringResource(R.string.sharing_direct_only_sync)}" else label,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("sharing_received_state"))
         }
         if (detail.received.isEmpty()) {

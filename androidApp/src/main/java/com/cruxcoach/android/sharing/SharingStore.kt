@@ -26,7 +26,7 @@ import java.time.ZoneOffset
 enum class PersonState { REQUESTED, CONNECTED, ENDING, ENDED }
 
 /** What the local history records (FEAT-073 U2). Kept only here, never sent. */
-enum class HistoryEvent { REQUESTED, ACCEPTED, TEMPLATE_CHOSEN, CATEGORY_RULE, RECORD_RULE, NEVER_SHARE, OUTGOING, TEMPLATE_EDITED, AGE, EXPIRED, ENDED, REMOVED }
+enum class HistoryEvent { REQUESTED, ACCEPTED, TEMPLATE_CHOSEN, CATEGORY_RULE, RECORD_RULE, NEVER_SHARE, OUTGOING, TEMPLATE_EDITED, AGE, EXPIRED, ENDED, REMOVED, DIRECT_ONLY }
 
 /** One history line. [detail] is event-specific: a template id, `CATEGORY:EFFECT`, `on`/`off`. */
 data class HistoryEntry(val seq: Long, val at: Long, val peer: String?, val event: HistoryEvent, val detail: String?)
@@ -151,6 +151,7 @@ class SharingStore(private val database: SecureDatabase) {
         private const val AGE_CONFIRMED = "16_or_older"
         private const val AGE_UNDER = "under_16"
         private const val LAST_PASS_KEY = "last_pass"
+        private const val DIRECT_ONLY_KEY = "direct_only"
     }
 
     private val q get() = database.shareQueries
@@ -192,6 +193,11 @@ class SharingStore(private val database: SecureDatabase) {
     fun ageAnswered(): Boolean = q.selectSetting(AGE_KEY).executeAsOneOrNull() != null
 
     fun setAge(atLeastSixteen: Boolean) = q.putSetting(AGE_KEY, if (atLeastSixteen) AGE_CONFIRMED else AGE_UNDER)
+
+    /** Level "Maximal": nothing through mailboxes, only when friends meet. */
+    fun directOnly(): Boolean = q.selectSetting(DIRECT_ONLY_KEY).executeAsOneOrNull() == "1"
+
+    fun setDirectOnly(on: Boolean) = q.putSetting(DIRECT_ONLY_KEY, if (on) "1" else "0")
 
     /** When this installation last ran a sharing pass (0: never). */
     fun lastPass(): Long = q.selectSetting(LAST_PASS_KEY).executeAsOneOrNull()?.toLongOrNull() ?: 0
