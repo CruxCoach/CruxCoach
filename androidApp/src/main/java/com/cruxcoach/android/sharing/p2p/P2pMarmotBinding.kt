@@ -46,7 +46,11 @@ class P2pMarmotBinding(
     private val clock: () -> Long = System::currentTimeMillis,
     private val budgetMs: Long = 10_000,
     private val pollMs: Long = 5_000,
+    /** Delivery through mailboxes while online; null: direct transports only. */
+    private val mailboxes: com.cruxcoach.android.sharing.mailbox.MailboxDelivery? = null,
 ) : MarmotBinding {
+    @Volatile private var online = false
+    private val mailboxNative = com.cruxcoach.android.sharing.mailbox.MailboxNative { op, fields -> value(op, fields) }
     @Volatile private var poller: Thread? = null
     @Volatile private var handle = 0L
     @Volatile private var lastResult = "none"
@@ -91,11 +95,13 @@ class P2pMarmotBinding(
             "set_online" -> {
                 val online = runCatching { Json.parseToJsonElement(command).jsonObject["online"]!!.jsonPrimitive.boolean }.getOrDefault(false)
                 transports.forEach { t -> runCatching { if (online && !t.running) t.start(server) else if (!online) t.stop() } }
+                this.online = online
                 if (online) poll() else poller = null
                 response
             }
             "sync" -> {
                 if (transports.any { it.running }) exchangeAll()
+                if (online) runCatching { mailboxes?.pass(mailboxNative) }
                 response
             }
             "status" -> status(response)
@@ -117,6 +123,8 @@ class P2pMarmotBinding(
             while (poller === me) {
                 runCatching { Thread.sleep(pollMs) }
                 if (poller === me && transports.any { it.running }) runCatching { exchangeAll() }
+                // Fetching is paced inside; this keeps an open app close to live.
+                if (poller === me && online) runCatching { mailboxes?.pass(mailboxNative) }
             }
         }
     }
@@ -182,8 +190,17 @@ class P2pMarmotBinding(
             val near = (reachable[peer["account"]!!.jsonPrimitive.content] ?: 0) > now - REACHABLE_MS
             if (near) peer["outbound_pending"]!!.jsonPrimitive.long else 0L
         }
-        val local = JsonObject(value["local"]!!.jsonObject + ("outbound_pending" to JsonPrimitive(deliverable)))
+        val queued = mailboxes?.pending()?.toLong() ?: 0L
+        val local = JsonObject(value["local"]!!.jsonObject + ("outbound_pending" to JsonPrimitive(deliverable + queued)))
         val relays = buildJsonArray {
+            mailboxes?.states()?.forEach { m ->
+                add(buildJsonObject {
+                    put("url", m.url)
+                    put("connection", if (m.connected) "connected" else "offline")
+                    put("last_result", m.lastResult)
+                    put("nip77", false)
+                })
+            }
             transports.forEach { t ->
                 add(buildJsonObject {
                     put("url", "p2p:${t.name}")

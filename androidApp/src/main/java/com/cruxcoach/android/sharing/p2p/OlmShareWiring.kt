@@ -29,6 +29,19 @@ object OlmShareWiring {
                 ),
                 BleShareTransport(context),
             ),
+            mailboxes = com.cruxcoach.android.sharing.mailbox.MailboxDelivery(
+                // Its own client: no interceptor, cookie or header of the app's other traffic.
+                com.cruxcoach.android.sharing.mailbox.MailboxRelayClient(
+                    okhttp3.OkHttpClient.Builder()
+                        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                        .build(),
+                ),
+                foreground = {
+                    androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.currentState
+                        .isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+                },
+            ),
         )
     }
 }

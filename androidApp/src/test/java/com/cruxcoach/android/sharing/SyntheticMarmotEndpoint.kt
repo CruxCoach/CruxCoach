@@ -58,6 +58,8 @@ open class SyntheticMarmotEndpoint(
     private val storage: SyntheticEndpointStorage? = null,
     /** Spike M0: the Olm engine with a direct loopback LAN transport, no relays. */
     val p2p: Boolean = false,
+    /** With [p2p]: also deliver through these mailboxes (local fake relays). */
+    mailboxPool: List<com.cruxcoach.android.sharing.mailbox.Mailbox>? = null,
 ) : AutoCloseable {
     val directory: java.io.File = storage?.directory ?: Files.createTempDirectory("cc-native-e2e-").toFile()
     private val key = storage?.key?.copyOf() ?: ByteArray(32).also(SecureRandom()::nextBytes)
@@ -83,8 +85,17 @@ open class SyntheticMarmotEndpoint(
     /** Spike M0: what "NSD" found; the process harness sets it (proxied URLs). */
     val discovery = com.cruxcoach.android.sharing.p2p.StaticLanDiscovery()
     val lan = com.cruxcoach.android.sharing.p2p.LanShareTransport({ java.net.InetAddress.getLoopbackAddress() }, discovery)
+    val mailboxes = mailboxPool?.let {
+        com.cruxcoach.android.sharing.mailbox.MailboxDelivery(
+            com.cruxcoach.android.sharing.mailbox.MailboxRelayClient(okhttp3.OkHttpClient(), answerMs = 2_000),
+            com.cruxcoach.android.sharing.mailbox.MailboxChoice(it),
+            foreground = { true },
+            fetchEveryMs = 0,
+            placeEveryMs = 0,
+        )
+    }
     private val binding: MarmotBinding =
-        if (p2p) com.cruxcoach.android.sharing.p2p.P2pMarmotBinding(NativeMarmotBinding, listOf(lan)) else NativeMarmotBinding
+        if (p2p) com.cruxcoach.android.sharing.p2p.P2pMarmotBinding(NativeMarmotBinding, listOf(lan), mailboxes = mailboxes) else NativeMarmotBinding
 
     val host = MarmotHost(trace = timing, binding = binding, open = {
         val config = buildJsonObject {
