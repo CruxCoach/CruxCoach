@@ -469,3 +469,213 @@ fn a_deletion_nobody_placed_is_issued_again() {
         "issued again with a fresh signature"
     );
 }
+
+// ---- invitations through mailboxes ------------------------------------------------
+
+/// Links and contact codes run on the real clock, so these tests do too.
+fn real_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+fn pubkeys(events: &[String]) -> std::collections::HashMap<nostr::EventId, nostr::PublicKey> {
+    events
+        .iter()
+        .map(|json| Event::from_json(json).unwrap())
+        .map(|e| (e.id, e.pubkey))
+        .collect()
+}
+
+#[test]
+fn a_link_makes_friends_through_mailboxes_only_and_leaves_nothing_behind() {
+    let (mut issuer, mut opener) = (Node::new(), Node::new());
+    let now = real_now();
+    let (code, expires) = issuer.engine.link_code().unwrap();
+    assert!(expires > now + 6 * mailbox::DAY_S && expires <= now + 7 * mailbox::DAY_S);
+    assert_eq!(opener.engine.import_contact(&code).unwrap(), issuer.id());
+
+    // The offer: sealed to the link, under its own key, naming no one.
+    let offers = opener.outgoing(now);
+    assert_eq!(offers.len(), 1);
+    let offer = Event::from_json(&offers[0]).unwrap();
+    for identity in [issuer.id(), opener.id()] {
+        assert!(!offers[0].contains(&identity), "no npub on the wire");
+    }
+    let exp: u64 = tags(&offer)
+        .into_iter()
+        .find(|t| t[0] == "expiration")
+        .unwrap()[1]
+        .parse()
+        .unwrap();
+    assert!(
+        exp <= expires + mailbox::CLOCK_GRACE_S,
+        "it ends with the link"
+    );
+    assert!(opener.outgoing(now + 60).is_empty(), "once a day");
+    let again = opener.outgoing(now + mailbox::DAY_S + 1);
+    assert_eq!(again.len(), 1, "published again the next day");
+    assert_ne!(
+        Event::from_json(&again[0]).unwrap().pubkey,
+        offer.pubkey,
+        "each offer has a key of its own"
+    );
+
+    // The issuer sees a request and confirms it.
+    assert_eq!(issuer.absorb(now, &offers)["accepted"], 1);
+    assert_eq!(
+        issuer.engine.peer(&opener.id()).unwrap().unwrap().state,
+        "invited"
+    );
+    // The link is used up: its address is no longer fetched, a copy no longer taken.
+    let address = tags(&offer).into_iter().find(|t| t[0] == "z").unwrap()[1].clone();
+    assert!(
+        !issuer
+            .engine
+            .mailbox_addresses(now, 2)
+            .unwrap()
+            .contains(&address)
+    );
+    assert_eq!(issuer.absorb(now, &offers)["refused"], 1);
+    issuer.engine.accept(&opener.id()).unwrap();
+
+    // The acceptance comes back under the invitation secret of the package.
+    let acceptance = issuer.outgoing(now);
+    assert_eq!(acceptance.len(), 1);
+    let before = opener.engine.mailbox_addresses(now, 2).unwrap();
+    assert_eq!(opener.absorb(now, &acceptance)["accepted"], 1);
+    assert_eq!(
+        opener.engine.peer(&issuer.id()).unwrap().unwrap().state,
+        "active"
+    );
+
+    // From now on both write under the link key.
+    opener.engine.send(&issuer.id(), "t1", "hello").unwrap();
+    let data = opener.outgoing(now + 60);
+    assert_eq!(issuer.absorb(now + 60, &data)["accepted"], 1);
+    assert_eq!(issuer.drain(), vec!["hello"]);
+    issuer.engine.send(&opener.id(), "t2", "welcome").unwrap();
+    let reply = issuer.outgoing(now + 120);
+    assert_eq!(opener.absorb(now + 120, &reply)["accepted"], 1);
+    assert_eq!(opener.drain(), vec!["welcome"]);
+    let after = opener.engine.mailbox_addresses(now + 120, 2).unwrap();
+    assert!(
+        before.iter().any(|a| !after.contains(a)),
+        "the introduction is no longer read once the friend answered under the link"
+    );
+
+    // Nothing stays: the issuer deletes what it took (except the offer, whose
+    // key only the opener has), the opener withdraws its offers.
+    let mut published = pubkeys(
+        &[
+            offers.clone(),
+            again.clone(),
+            acceptance.clone(),
+            data,
+            reply,
+        ]
+        .concat(),
+    );
+    opener.engine.housekeeping().unwrap();
+    let mut named = 0;
+    for node in [&mut issuer, &mut opener] {
+        for (_, role, deletion) in deletions(node, now + 180) {
+            for id in deletion.tags.event_ids() {
+                let author = published
+                    .remove(id)
+                    .expect("a deletion names an event of this introduction");
+                assert_eq!(
+                    author, deletion.pubkey,
+                    "{role}: signed by whoever signed the event"
+                );
+                named += 1;
+            }
+        }
+    }
+    assert_eq!(named, 5, "both offers, the acceptance, both data events");
+    assert!(
+        published.is_empty(),
+        "every event is deleted: {published:?}"
+    );
+}
+
+#[test]
+fn a_link_is_taken_once_can_be_revoked_and_ends() {
+    let mut issuer = Node::new();
+    let now = real_now();
+    let (code, _) = issuer.engine.link_code().unwrap();
+    let (mut first, mut second) = (Node::new(), Node::new());
+    first.engine.import_contact(&code).unwrap();
+    second.engine.import_contact(&code).unwrap();
+    let both = [first.outgoing(now), second.outgoing(now)].concat();
+    let result = issuer.absorb(now, &both);
+    assert_eq!(
+        (result["accepted"].as_i64(), result["refused"].as_i64()),
+        (Some(1), Some(1))
+    );
+    let invited: Vec<_> = issuer
+        .engine
+        .peers()
+        .unwrap()
+        .into_iter()
+        .filter(|p| p.state == "invited")
+        .collect();
+    assert_eq!(invited.len(), 1, "a link is used up by the first offer");
+    assert!(issuer.engine.links().unwrap().is_empty());
+
+    // Revoked: an offer through it is no longer taken.
+    let (code, _) = issuer.engine.link_code().unwrap();
+    let links = issuer.engine.links().unwrap();
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].code, code, "the open link can be shared again");
+    assert!(issuer.engine.revoke_link(&links[0].id).unwrap());
+    let mut third = Node::new();
+    third.engine.import_contact(&code).unwrap();
+    assert_eq!(issuer.absorb(now, &third.outgoing(now))["refused"], 1);
+    assert!(issuer.engine.links().unwrap().is_empty());
+
+    // Ended: the opener learns it at once.
+    let mut ended = code.clone();
+    let past = u32::try_from(now - 60).unwrap().to_be_bytes();
+    ended[68..72].copy_from_slice(&past);
+    let mut late = Node::new();
+    assert_eq!(
+        late.engine.import_contact(&ended).unwrap_err().0,
+        "link_expired"
+    );
+
+    // At most eight open links.
+    for _ in 0..8 {
+        issuer.engine.link_code().unwrap();
+    }
+    assert_eq!(issuer.engine.link_code().unwrap_err().0, "link_quota");
+}
+
+#[test]
+fn a_scanned_qr_code_also_reaches_its_device_through_mailboxes() {
+    let (mut shower, mut scanner) = (Node::new(), Node::new());
+    let now = real_now();
+    let code = shower.engine.contact_code().unwrap();
+    scanner.engine.import_contact(&code).unwrap();
+    let offers = scanner.outgoing(now);
+    assert_eq!(offers.len(), 1);
+    let exp: u64 = tags(&Event::from_json(&offers[0]).unwrap())
+        .into_iter()
+        .find(|t| t[0] == "expiration")
+        .unwrap()[1]
+        .parse()
+        .unwrap();
+    assert!(
+        exp <= now + HOUR + mailbox::CLOCK_GRACE_S + 1,
+        "it ends with the code"
+    );
+    assert_eq!(shower.absorb(now, &offers)["accepted"], 1);
+    assert_eq!(
+        shower.engine.peer(&scanner.id()).unwrap().unwrap().state,
+        "invited"
+    );
+    // A stranger who did not show the code takes nothing.
+    let mut stranger = Node::new();
+    assert_eq!(stranger.absorb(now, &offers)["refused"], 1);
+}

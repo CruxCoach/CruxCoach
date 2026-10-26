@@ -32,7 +32,9 @@ use crate::p2p::{
     MAX_FRAMES, MAX_SKEW_S, SECTION_CHANNEL, SECTION_OFFER,
 };
 use crate::protocol::{MAX_APP_CONTENT, MAX_PEERS, is_hex64, now_ms, now_s};
-use nostr::{Event, EventId, Kind, NostrSigner, PublicKey, Tag, Timestamp, UnsignedEvent};
+use nostr::{
+    Event, EventId, Keys, Kind, NostrSigner, PublicKey, SecretKey, Tag, Timestamp, UnsignedEvent,
+};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -58,6 +60,12 @@ const CONTACT_MAGIC: &[u8; 4] = b"ccc1";
 pub const CONTACT_BYTES: usize = 4 + 32 + 32;
 const CONTACT_TTL_MS: u64 = 3_600_000;
 const MAX_CONTACT_CODES: usize = 2;
+const LINK_MAGIC: &[u8; 4] = b"ccl1";
+/// Magic, the issuer's npub, the secret and the end of validity (seconds).
+pub const LINK_BYTES: usize = 4 + 32 + 32 + 4;
+/// A link is valid this long (a contact code shown as QR only an hour).
+pub const LINK_TTL_S: u64 = 7 * 86_400;
+const MAX_LINKS: usize = 8;
 const INVITATION_TTL_S: u64 = 7 * 86_400;
 const SEEN_RETENTION_MS: u64 = 30 * 86_400_000;
 const ENDED_RETENTION_MS: u64 = 14 * 86_400_000;
@@ -72,7 +80,9 @@ pub const MAX_OUTBOUND_BYTES: usize = 196_608;
 pub const OFFER_PREFIX: &str = "offer:";
 /// Events of one relationship, direction and day (one signing key) with
 /// their expiries: what one deletion may name.
-type DeletionGroup = ((String, i64, i64), Vec<(Vec<u8>, i64)>);
+/// Peer, direction, day, mailbox key and one-off key; the ids and expiries.
+type DeletionKey = (String, i64, i64, Option<Vec<u8>>, Option<Vec<u8>>);
+type DeletionGroup = (DeletionKey, Vec<(Vec<u8>, i64)>);
 /// A mailbox frame without an ack this long after publishing is published
 /// again (a mailbox may have lost it); the sync layer repairs the rest.
 const MAILBOX_REPUBLISH_S: u64 = 86_400;
@@ -133,20 +143,48 @@ CREATE TABLE IF NOT EXISTS olm_reply(peer TEXT NOT NULL, id BLOB NOT NULL, nack 
 CREATE TABLE IF NOT EXISTS olm_base(base_key TEXT PRIMARY KEY NOT NULL, at INTEGER NOT NULL);
 DROP TABLE IF EXISTS olm_hint;
 CREATE TABLE IF NOT EXISTS olm_contact(tag BLOB PRIMARY KEY NOT NULL, created_at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS olm_offer(peer TEXT PRIMARY KEY NOT NULL, tag BLOB NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS olm_offer(peer TEXT PRIMARY KEY NOT NULL, tag BLOB NOT NULL, created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL DEFAULT 0, published_at INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS olm_link(tag BLOB PRIMARY KEY NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS olm_mailbox_out(id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, published_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS olm_mailbox_ack(peer TEXT PRIMARY KEY NOT NULL, since INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS olm_mailbox_sent(
   id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, direction INTEGER NOT NULL, day INTEGER NOT NULL,
-  expires INTEGER NOT NULL, at INTEGER NOT NULL, withdrawn INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0);
+  expires INTEGER NOT NULL, at INTEGER NOT NULL, withdrawn INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0,
+  mkey BLOB, once BLOB);
 CREATE TABLE IF NOT EXISTS olm_mailbox_queue(
   id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, role TEXT NOT NULL, seed TEXT NOT NULL, event TEXT NOT NULL,
   items TEXT NOT NULL, created_at INTEGER NOT NULL, accepted TEXT NOT NULL DEFAULT '[]');
 CREATE TABLE IF NOT EXISTS olm_mailbox_list(peer TEXT PRIMARY KEY NOT NULL, relays TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS olm_mailbox_seen(
   id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, direction INTEGER NOT NULL, day INTEGER NOT NULL,
-  expires INTEGER NOT NULL, at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0);
+  expires INTEGER NOT NULL, at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, mkey BLOB);
 ";
+
+/// Columns added after a table first shipped: `(table, column, declaration)`.
+const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
+    ("olm_offer", "expires_at", "INTEGER NOT NULL DEFAULT 0"),
+    ("olm_offer", "published_at", "INTEGER NOT NULL DEFAULT 0"),
+    ("olm_mailbox_sent", "mkey", "BLOB"),
+    ("olm_mailbox_sent", "once", "BLOB"),
+    ("olm_mailbox_seen", "mkey", "BLOB"),
+];
+
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    for (table, column, declaration) in ADDED_COLUMNS {
+        let present = conn
+            .prepare(&format!(
+                "SELECT 1 FROM pragma_table_info('{table}') WHERE name=?1"
+            ))?
+            .exists([column])?;
+        if !present {
+            conn.execute_batch(&format!(
+                "ALTER TABLE {table} ADD COLUMN {column} {declaration}"
+            ))?;
+        }
+    }
+    Ok(())
+}
 
 #[cfg(feature = "local-harness")]
 thread_local! {
@@ -500,6 +538,37 @@ fn frames_of(container: &[u8]) -> Result<Vec<String>> {
         .collect())
 }
 
+/// An open link of this device.
+pub struct LinkInfo {
+    /// Names the link without revealing its secret.
+    pub id: String,
+    pub code: Vec<u8>,
+    pub created_ms: u64,
+    pub expires_s: u64,
+}
+
+/// What this device reads under one mailbox key and direction.
+struct Inbound {
+    /// The relationship; empty for offers to a contact code or link.
+    peer: String,
+    key: [u8; 32],
+    direction: mailbox::Direction,
+    first_day: u64,
+    offer: bool,
+}
+
+/// The NIP-40 expiry of an event this module built.
+fn event_expiry(event: &Event) -> u64 {
+    event
+        .tags
+        .iter()
+        .find_map(|tag| match tag.as_slice() {
+            [name, value] if name == "expiration" => value.parse().ok(),
+            _ => None,
+        })
+        .unwrap_or(0)
+}
+
 fn i64_of(value: u64) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
 }
@@ -588,6 +657,7 @@ impl OlmEngine {
             "database_key",
         )?;
         checked(conn.execute_batch(SCHEMA), "storage")?;
+        checked(migrate(&conn), "storage")?;
         let public = checked(block_on(signer.get_public_key()), "signer")?;
         if public.to_hex() != account {
             return Err(Error("account_mismatch"));
@@ -976,19 +1046,133 @@ impl OlmEngine {
         tags.iter().map(|t| arr32(t)).collect()
     }
 
-    /// A scanned contact code: invite that account and hand the package to
-    /// the device that shows the code once it is in reach. Returns the peer.
-    pub fn import_contact(&mut self, bytes: &[u8]) -> Result<String> {
-        if bytes.len() != CONTACT_BYTES || &bytes[..4] != CONTACT_MAGIC {
-            return Err(Error("contact_format"));
+    /// A link to send: like a contact code, but valid for [`LINK_TTL_S`] and
+    /// reachable through mailboxes. It is a bearer token, so it is taken once
+    /// and can be revoked; the issuer confirms whoever used it.
+    pub fn link_code(&mut self) -> Result<(Vec<u8>, u64)> {
+        let now = now_ms();
+        let valid: i64 = self.sql(|c| {
+            c.query_row(
+                "SELECT count(*) FROM olm_link WHERE expires_at>=?1",
+                [i64_of(now)],
+                |r| r.get(0),
+            )
+        })?;
+        if valid >= MAX_LINKS as i64 {
+            return Err(Error("link_quota"));
         }
+        let tag = p2p::random::<32>()?;
+        let expires_s = now / 1000 + LINK_TTL_S;
+        let until = u32::try_from(expires_s).map_err(|_| Error("clock"))?;
+        let account = arr32(&checked(hex::decode(&self.account), "account")?)?;
+        self.sql(|c| {
+            c.execute(
+                "INSERT INTO olm_link(tag, created_at, expires_at) VALUES(?1, ?2, ?3)",
+                params![tag.as_slice(), i64_of(now), i64_of(expires_s * 1000)],
+            )
+        })?;
+        Ok((
+            [LINK_MAGIC.as_slice(), &account, &tag, &until.to_be_bytes()].concat(),
+            expires_s,
+        ))
+    }
+
+    /// The links still open, newest first.
+    pub fn links(&self) -> Result<Vec<LinkInfo>> {
+        let account = arr32(&checked(hex::decode(&self.account), "account")?)?;
+        let rows: Vec<(Vec<u8>, i64, i64)> = self.sql(|c| {
+            let mut q = c.prepare(
+                "SELECT tag, created_at, expires_at FROM olm_link WHERE expires_at>=?1 ORDER BY created_at DESC",
+            )?;
+            q.query_map([i64_of(now_ms())], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect()
+        })?;
+        rows.into_iter()
+            .map(|(tag, created, expires)| {
+                let expires_s = expires.max(0).unsigned_abs() / 1000;
+                let until = u32::try_from(expires_s).map_err(|_| Error("clock"))?;
+                Ok(LinkInfo {
+                    id: Self::link_id(&tag),
+                    code: [LINK_MAGIC.as_slice(), &account, &tag, &until.to_be_bytes()].concat(),
+                    created_ms: created.max(0).unsigned_abs(),
+                    expires_s,
+                })
+            })
+            .collect()
+    }
+
+    /// A short name for a link that does not reveal its secret.
+    fn link_id(tag: &[u8]) -> String {
+        hex::encode(&p2p::sha256(&[b"cc-link-id-v1".as_slice(), tag].concat())[..8])
+    }
+
+    /// Revoke an open link: an offer through it is no longer taken.
+    pub fn revoke_link(&mut self, id: &str) -> Result<bool> {
+        let tags: Vec<Vec<u8>> = self.sql(|c| {
+            let mut q = c.prepare("SELECT tag FROM olm_link")?;
+            q.query_map([], |r| r.get(0))?.collect()
+        })?;
+        let Some(tag) = tags.into_iter().find(|t| Self::link_id(t) == id) else {
+            return Ok(false);
+        };
+        self.sql(|c| c.execute("DELETE FROM olm_link WHERE tag=?1", [tag.as_slice()]))?;
+        Ok(true)
+    }
+
+    /// Secrets an offer may be sealed to: the contact codes shown and the
+    /// links open, with when each was made (ms).
+    fn offer_secrets(&self) -> Result<Vec<([u8; 32], u64)>> {
+        let now = i64_of(now_ms());
+        let rows: Vec<(Vec<u8>, i64)> = self.sql(|c| {
+            let mut q = c.prepare(
+                "SELECT tag, created_at FROM (SELECT tag, created_at FROM olm_contact WHERE created_at>=?1
+                   ORDER BY created_at DESC LIMIT ?2)
+                 UNION ALL SELECT tag, created_at FROM olm_link WHERE expires_at>=?3",
+            )?;
+            q.query_map(
+                params![
+                    i64_of(now_ms().saturating_sub(CONTACT_TTL_MS)),
+                    MAX_CONTACT_CODES as i64,
+                    now
+                ],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?
+            .collect()
+        })?;
+        rows.iter()
+            .map(|(tag, at)| Ok((arr32(tag)?, (*at).max(0).unsigned_abs())))
+            .collect()
+    }
+
+    /// A scanned contact code or an opened link: invite that account and hand
+    /// the package to the device that shows the code, directly once it is in
+    /// reach and through mailboxes. Returns the peer.
+    pub fn import_contact(&mut self, bytes: &[u8]) -> Result<String> {
+        let now = now_ms();
+        let expires_ms = if bytes.len() == CONTACT_BYTES && &bytes[..4] == CONTACT_MAGIC {
+            now + CONTACT_TTL_MS
+        } else if bytes.len() == LINK_BYTES && &bytes[..4] == LINK_MAGIC {
+            let until = u64::from(u32::from_be_bytes(
+                bytes[68..72]
+                    .try_into()
+                    .map_err(|_| Error("contact_format"))?,
+            ));
+            if until * 1000 <= now {
+                return Err(Error("link_expired"));
+            }
+            // The issuer decides; this side only stops trying.
+            (until * 1000).min(now + LINK_TTL_S * 1000)
+        } else {
+            return Err(Error("contact_format"));
+        };
         let peer = hex::encode(&bytes[4..36]);
         self.invite(&peer)?;
         self.sql(|c| {
             c.execute(
-                "INSERT INTO olm_offer(peer, tag, created_at) VALUES(?1,?2,?3)
-                   ON CONFLICT(peer) DO UPDATE SET tag=excluded.tag, created_at=excluded.created_at",
-                params![peer, &bytes[36..], i64_of(now_ms())],
+                "INSERT INTO olm_offer(peer, tag, created_at, expires_at, published_at) VALUES(?1,?2,?3,?4,0)
+                   ON CONFLICT(peer) DO UPDATE SET tag=excluded.tag, created_at=excluded.created_at,
+                     expires_at=excluded.expires_at, published_at=0",
+                params![peer, &bytes[36..68], i64_of(now), i64_of(expires_ms)],
             )
         })?;
         Ok(peer)
@@ -999,8 +1183,8 @@ impl OlmEngine {
         let tag: Option<Vec<u8>> = self.sql(|c| {
             c.query_row(
                 "SELECT o.tag FROM olm_offer o JOIN olm_peer p ON p.account=o.peer
-                   WHERE o.peer=?1 AND o.created_at>=?2 AND p.state='pending' AND p.inviter=1",
-                params![peer, i64_of(now_ms().saturating_sub(CONTACT_TTL_MS))],
+                   WHERE o.peer=?1 AND o.expires_at>=?2 AND p.state='pending' AND p.inviter=1",
+                params![peer, i64_of(now_ms())],
                 |r| r.get(0),
             )
             .optional()
@@ -1513,10 +1697,18 @@ impl OlmEngine {
                 c.execute("DELETE FROM olm_seen WHERE at<?1", [horizon])?;
                 c.execute("DELETE FROM olm_token WHERE created_at<?1", [horizon])?;
                 c.execute("DELETE FROM olm_contact WHERE created_at<?1", [codes])?;
+                c.execute("DELETE FROM olm_link WHERE expires_at<?1", [i64_of(now_ms())])?;
+                // An offer in a mailbox is no longer needed once the friend
+                // answered (or the invitation ended): its sender deletes it.
                 c.execute(
-                    "DELETE FROM olm_offer WHERE created_at<?1 OR peer NOT IN
+                    "UPDATE olm_mailbox_sent SET withdrawn=1 WHERE once IS NOT NULL AND withdrawn=0 AND deleted=0
+                       AND peer NOT IN (SELECT account FROM olm_peer WHERE state='pending' AND inviter=1)",
+                    [],
+                )?;
+                c.execute(
+                    "DELETE FROM olm_offer WHERE expires_at<?1 OR peer NOT IN
                        (SELECT account FROM olm_peer WHERE state='pending' AND inviter=1)",
-                    [codes],
+                    [i64_of(now_ms())],
                 )
             })?;
             Ok(())
@@ -1750,10 +1942,76 @@ impl OlmEngine {
 
     // ---- mailboxes -----------------------------------------------------------------
 
+    /// Where this device writes to `row` through mailboxes: the mailbox key
+    /// and the section key. The acceptor writes under the invitation secret
+    /// of the package until the inviter answered under the link key, which
+    /// the inviter only learns from the acceptance itself.
+    fn mailbox_out_route(row: &PeerRow) -> Option<([u8; 32], [u8; 32])> {
+        if row.state != "active" {
+            return None;
+        }
+        if !row.inviter && !row.confirmed {
+            let tag = arr32(row.inviter_tag.as_deref()?).ok()?;
+            return Some((mailbox::intro_key(&tag), tag));
+        }
+        let link = row.link()?;
+        Some((mailbox::mailbox_key(&link), link))
+    }
+
+    /// The mailbox keys this device reads for `row`: the link's, and while an
+    /// own invitation waits (or its acceptor has not heard back yet) the
+    /// introduction under the invitation secret.
+    fn mailbox_in_keys(row: &PeerRow, now_s: u64) -> Vec<[u8; 32]> {
+        let mut keys = Vec::new();
+        if row.state == "active"
+            && let Some(link) = row.link()
+        {
+            keys.push(mailbox::mailbox_key(&link));
+        }
+        let introducing = row.inviter
+            && !row.confirmed
+            && (row.state == "pending"
+                || row.state == "active" && now_s < row.expires_at + mailbox::MAX_AGE_S);
+        if introducing && let Some(tag) = row.inviter_tag.as_deref().and_then(|t| arr32(t).ok()) {
+            keys.push(mailbox::intro_key(&tag));
+        }
+        keys
+    }
+
+    /// Everything this device reads: per relationship its keys, and per
+    /// contact code or link the offers sealed to it (no peer yet).
+    fn mailbox_inbound(&self, now_s: u64) -> Result<Vec<Inbound>> {
+        let mut out = Vec::new();
+        for row in self.peers()? {
+            for key in Self::mailbox_in_keys(&row, now_s) {
+                out.push(Inbound {
+                    peer: row.account.clone(),
+                    key,
+                    direction: mailbox::Direction::incoming(row.inviter),
+                    first_day: 0,
+                    offer: false,
+                });
+            }
+        }
+        for (tag, created_ms) in self.offer_secrets()? {
+            out.push(Inbound {
+                peer: String::new(),
+                key: mailbox::intro_key(&tag),
+                // Whoever takes the code becomes the inviter.
+                direction: mailbox::Direction::FromInviter,
+                // A clock a little ahead on the other side still finds it.
+                first_day: mailbox::day(created_ms / 1000).saturating_sub(1),
+                offer: true,
+            });
+        }
+        Ok(out)
+    }
+
     /// Mailbox events to publish now: per established relationship the frames
     /// not yet published (or published a day ago without an ack) and the acks
     /// owed, each event within one size class. Acks alone wait some hours so
-    /// they mostly travel with data. Returns `{peer, event}` (event JSON).
+    /// they mostly travel with data. Then the offers of pending own
+    /// invitations, once a day each. Returns `{peer, event}` (event JSON).
     pub fn mailbox_outgoing(
         &mut self,
         now_s: u64,
@@ -1764,17 +2022,16 @@ impl OlmEngine {
             let mut out = Vec::new();
             let mut bytes = 0;
             for row in engine.peers()? {
-                let Some(link) = row.link().filter(|_| row.state == "active") else {
+                let Some((key, section)) = Self::mailbox_out_route(&row) else {
                     continue;
                 };
-                let key = mailbox::mailbox_key(&link);
                 let direction = mailbox::Direction::outgoing(row.inviter);
                 for _ in 0..MAILBOX_EVENTS_PER_PEER {
                     // The rest goes on the next call (one answer must cross JNI).
                     if bytes + mailbox::MAX_EVENT_JSON > max_bytes {
                         return Ok(out);
                     }
-                    let Some(container) = engine.mailbox_container(&row.account, &link, now_s)?
+                    let Some(container) = engine.mailbox_container(&row.account, &section, now_s)?
                     else {
                         break;
                     };
@@ -1782,9 +2039,9 @@ impl OlmEngine {
                     // Remembered so a later withdrawal can delete it from the mailboxes.
                     engine.sql(|c| {
                         c.execute(
-                            "INSERT OR IGNORE INTO olm_mailbox_sent(id, peer, direction, day, expires, at) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                            "INSERT OR IGNORE INTO olm_mailbox_sent(id, peer, direction, day, expires, at, mkey) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                             params![event.id.to_bytes().as_slice(), row.account, direction as i64, i64_of(mailbox::day(now_s)),
-                                    i64_of(now_s + mailbox::MAX_AGE_S), i64_of(now_s)],
+                                    i64_of(now_s + mailbox::MAX_AGE_S), i64_of(now_s), key.as_slice()],
                         )
                     })?;
                     let entry = engine.enqueue(
@@ -1799,14 +2056,87 @@ impl OlmEngine {
                     out.push(entry);
                 }
             }
+            for entry in engine.mailbox_offers(now_s, pow, max_bytes.saturating_sub(bytes))? {
+                out.push(entry);
+            }
             Ok(out)
         })
+    }
+
+    /// Offers of pending own invitations not placed today: the package sealed
+    /// to the contact code or link secret, under its introduction address,
+    /// signed with a key of its own (others may hold the secret).
+    fn mailbox_offers(&self, now_s: u64, pow: u8, max_bytes: usize) -> Result<Vec<Value>> {
+        let due: Vec<(String, Vec<u8>, i64)> = self.sql(|c| {
+            let mut q = c.prepare(
+                "SELECT o.peer, o.tag, o.expires_at FROM olm_offer o JOIN olm_peer p ON p.account=o.peer
+                   WHERE o.expires_at>=?1 AND o.published_at<?2 AND p.state='pending' AND p.inviter=1
+                   ORDER BY o.created_at",
+            )?;
+            q.query_map(
+                params![
+                    i64_of(now_ms()),
+                    i64_of(now_s.saturating_sub(MAILBOX_REPUBLISH_S))
+                ],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )?
+            .collect()
+        })?;
+        let mut out = Vec::new();
+        let mut bytes = 0;
+        for (peer, tag, expires_ms) in due {
+            if bytes + mailbox::MAX_EVENT_JSON > max_bytes {
+                break;
+            }
+            let tag = arr32(&tag)?;
+            let package = self.invitation(&peer)?;
+            let mut container = Container::new(KIND_MAILBOX, [0; 16], now_s)?;
+            let sealed = p2p::seal_offer(&tag, &container.nonce, &package)?;
+            let addr = p2p::offer_addr(&tag, &container.nonce);
+            container.push(&tag, addr, SECTION_OFFER, sealed);
+            let key = mailbox::intro_key(&tag);
+            let direction = mailbox::Direction::FromInviter;
+            let once = mailbox::once()?;
+            let expires_s = expires_ms.max(0).unsigned_abs() / 1000 + mailbox::CLOCK_GRACE_S;
+            let event = mailbox::event_once(
+                &key,
+                direction,
+                now_s,
+                &container.encode()?,
+                pow,
+                &once,
+                expires_s,
+            )?;
+            let secret = zeroize::Zeroizing::new(once.secret_key().to_secret_bytes());
+            self.sql(|c| {
+                c.execute(
+                    "INSERT OR IGNORE INTO olm_mailbox_sent(id, peer, direction, day, expires, at, mkey, once) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![event.id.to_bytes().as_slice(), peer, direction as i64, i64_of(mailbox::day(now_s)),
+                            i64_of(event_expiry(&event)), i64_of(now_s), key.as_slice(), secret.as_slice()],
+                )?;
+                c.execute(
+                    "UPDATE olm_offer SET published_at=?1 WHERE peer=?2",
+                    params![i64_of(now_s), peer],
+                )
+            })?;
+            let entry = self.enqueue(
+                &peer,
+                "offer",
+                &mailbox::pool_seed(&key, direction),
+                &event,
+                std::slice::from_ref(&peer),
+                now_s,
+            )?;
+            bytes += entry["event"].as_str().map_or(0, str::len);
+            out.push(entry);
+        }
+        Ok(out)
     }
 
     fn mailbox_container(
         &self,
         peer: &str,
-        link: &[u8; 32],
+        section: &[u8; 32],
         now_s: u64,
     ) -> Result<Option<Vec<u8>>> {
         let republish = i64_of(now_s.saturating_sub(MAILBOX_REPUBLISH_S));
@@ -1889,8 +2219,8 @@ impl OlmEngine {
             c.execute("DELETE FROM olm_mailbox_ack WHERE peer=?1", [peer])
         })?;
         let mut container = Container::new(KIND_MAILBOX, [0; 16], now_s)?;
-        let addr = p2p::channel_addr(link, &container.nonce);
-        container.push(link, addr, SECTION_CHANNEL, body.encode());
+        let addr = p2p::channel_addr(section, &container.nonce);
+        container.push(section, addr, SECTION_CHANNEL, body.encode());
         Ok(Some(container.encode()?))
     }
 
@@ -1912,17 +2242,20 @@ impl OlmEngine {
         let today = mailbox::day(now_s);
         let days = days.clamp(1, mailbox::MAX_AGE_S / mailbox::DAY_S + 1);
         let mut out = Vec::new();
-        for row in self.peers()? {
-            let Some(link) = row.link().filter(|_| row.state == "active") else {
-                continue;
-            };
-            let key = mailbox::mailbox_key(&link);
-            let direction = mailbox::Direction::incoming(row.inviter);
+        for inbound in self.mailbox_inbound(now_s)? {
             let addresses: Vec<String> = (0..days)
-                .map(|back| mailbox::address(&key, direction, today.saturating_sub(back)))
+                .map(|back| today.saturating_sub(back))
+                .filter(|day| *day >= inbound.first_day)
+                .map(|day| mailbox::address(&inbound.key, inbound.direction, day))
                 .collect();
+            if addresses.is_empty() {
+                continue;
+            }
             // Own explicit mailboxes come with own mailboxes (0.2.7); until then: derive.
-            out.push(json!({"seed": mailbox::pool_seed(&key, direction), "addresses": addresses, "relays": []}));
+            out.push(
+                json!({"seed": mailbox::pool_seed(&inbound.key, inbound.direction),
+                            "addresses": addresses, "relays": []}),
+            );
         }
         Ok(out)
     }
@@ -1982,11 +2315,18 @@ impl OlmEngine {
                 let reset = match role.as_str() {
                     "data" => "DELETE FROM olm_mailbox_out WHERE id=?1",
                     "received" => "UPDATE olm_mailbox_seen SET deleted=0 WHERE id=?1",
+                    "offer" => "UPDATE olm_offer SET published_at=0 WHERE peer=?1",
                     _ => "UPDATE olm_mailbox_sent SET deleted=0 WHERE id=?1",
                 };
                 engine.sql(|c| {
-                    for bytes in items.iter().filter_map(|item| hex::decode(item).ok()) {
-                        c.execute(reset, [bytes.as_slice()])?;
+                    if role == "offer" {
+                        for peer in &items {
+                            c.execute(reset, [peer])?;
+                        }
+                    } else {
+                        for bytes in items.iter().filter_map(|item| hex::decode(item).ok()) {
+                            c.execute(reset, [bytes.as_slice()])?;
+                        }
                     }
                     c.execute("DELETE FROM olm_mailbox_queue WHERE id=?1", [id.as_slice()])
                 })?;
@@ -2016,7 +2356,7 @@ impl OlmEngine {
     /// Where an event goes when a list was given: frames and withdrawals to the
     /// friend's list, receipts to the own (none before own mailboxes exist).
     fn relays_for(&self, peer: &str, role: &str) -> Result<Vec<String>> {
-        if role == "received" {
+        if role == "received" || role == "offer" {
             Ok(Vec::new())
         } else {
             self.explicit_mailboxes(peer)
@@ -2072,19 +2412,23 @@ impl OlmEngine {
     /// across mailboxes are dropped by event id, then by frame hash).
     pub fn mailbox_absorb(&mut self, now_s: u64, events: &[String]) -> Result<Value> {
         let today = mailbox::day(now_s);
-        let mut index: HashMap<String, (String, [u8; 32], mailbox::Direction, u64)> =
+        let mut index: HashMap<String, (String, [u8; 32], mailbox::Direction, u64, bool)> =
             HashMap::new();
-        for row in self.peers()? {
-            let Some(link) = row.link().filter(|_| row.state == "active") else {
-                continue;
-            };
-            let key = mailbox::mailbox_key(&link);
-            let direction = mailbox::Direction::incoming(row.inviter);
+        for inbound in self.mailbox_inbound(now_s)? {
             for back in 0..=mailbox::MAX_AGE_S / mailbox::DAY_S + 1 {
                 let day = today.saturating_sub(back);
+                if day < inbound.first_day {
+                    break;
+                }
                 index.insert(
-                    mailbox::address(&key, direction, day),
-                    (row.account.clone(), key, direction, day),
+                    mailbox::address(&inbound.key, inbound.direction, day),
+                    (
+                        inbound.peer.clone(),
+                        inbound.key,
+                        inbound.direction,
+                        day,
+                        inbound.offer,
+                    ),
                 );
             }
         }
@@ -2095,11 +2439,18 @@ impl OlmEngine {
                 refused += 1;
                 continue;
             };
-            let Some((peer, key, direction, day)) = index.get(&envelope.address).cloned() else {
+            let Some((peer, key, direction, day, offer)) = index.get(&envelope.address).cloned()
+            else {
                 refused += 1;
                 continue;
             };
-            if !mailbox::matches(&envelope, &key, direction, day) {
+            // An offer carries a key of its own; everything else the day's key.
+            let signed = if offer {
+                mailbox::matches_address(&envelope, &key, direction, day)
+            } else {
+                mailbox::matches(&envelope, &key, direction, day)
+            };
+            if !signed {
                 refused += 1;
                 continue;
             }
@@ -2128,16 +2479,25 @@ impl OlmEngine {
             // hash) before the event counts as seen: a crash in between fetches
             // it again and applies nothing twice.
             let absorbed = self.absorb(&container)?;
-            if !absorbed.peers.iter().any(|(p, _)| *p == peer) {
+            // An offer counts once its invitation was taken (the code is then
+            // used up); anything else once it reached its relationship.
+            let taken = if offer {
+                absorbed.changes.peers
+            } else {
+                absorbed.peers.iter().any(|(p, _)| *p == peer)
+            };
+            if !taken {
                 refused += 1;
                 continue;
             }
             changes.inbox |= absorbed.changes.inbox;
             changes.peers |= absorbed.changes.peers;
             self.sql(|c| {
+                // Only its sender can delete an offer: nothing to delete here.
                 c.execute(
-                    "INSERT OR IGNORE INTO olm_mailbox_seen(id, peer, direction, day, expires, at) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![id.as_slice(), peer, direction as i64, i64_of(day), i64_of(envelope.expiration), i64_of(now_s)],
+                    "INSERT OR IGNORE INTO olm_mailbox_seen(id, peer, direction, day, expires, at, mkey, deleted) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![id.as_slice(), peer, direction as i64, i64_of(day), i64_of(envelope.expiration), i64_of(now_s),
+                            key.as_slice(), offer],
                 )
             })?;
             accepted += 1;
@@ -2161,49 +2521,59 @@ impl OlmEngine {
                 ("received", "olm_mailbox_seen", "deleted=0"),
                 ("withdrawn", "olm_mailbox_sent", "withdrawn=1 AND deleted=0"),
             ] {
-                let rows: Vec<(Vec<u8>, String, i64, i64, i64)> = engine.sql(|c| {
+                let once = if table == "olm_mailbox_sent" { "once" } else { "NULL" };
+                let rows: Vec<(Vec<u8>, i64, DeletionKey)> = engine.sql(|c| {
                     let mut q = c.prepare(&format!(
-                        "SELECT id, peer, direction, day, expires FROM {table} WHERE {due} ORDER BY peer, direction, day, at LIMIT 5000"
+                        "SELECT id, expires, peer, direction, day, mkey, {once} FROM {table} WHERE {due}
+                           ORDER BY peer, direction, day, mkey, at LIMIT 5000"
                     ))?;
-                    q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
-                        .collect()
+                    q.query_map([], |r| {
+                        Ok((r.get(0)?, r.get(1)?, (r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)))
+                    })?
+                    .collect()
                 })?;
                 let mut groups: Vec<DeletionGroup> = Vec::new();
-                for (id, peer, direction, day, expires) in rows {
+                for (id, expires, group) in rows {
                     match groups.last_mut() {
-                        Some((group, ids))
-                            if *group == (peer.clone(), direction, day) && ids.len() < mailbox::MAX_DELETE_IDS =>
+                        // An event with a key of its own is deleted on its own.
+                        Some((last, ids))
+                            if *last == group && group.4.is_none() && ids.len() < mailbox::MAX_DELETE_IDS =>
                         {
                             ids.push((id, expires))
                         }
-                        _ => groups.push(((peer, direction, day), vec![(id, expires)])),
+                        _ => groups.push((group, vec![(id, expires)])),
                     }
                 }
-                for ((peer, direction, day), ids) in groups {
+                for ((peer, direction, day, mkey, once), ids) in groups {
                     for (id, _) in &ids {
                         engine.sql(|c| c.execute(&format!("UPDATE {table} SET deleted=1 WHERE id=?1"), [id.as_slice()]))?;
                     }
-                    // A relationship whose keys are gone cannot sign; its events expire by themselves.
-                    let Some(link) = engine.peer(&peer)?.and_then(|row| row.link()) else {
-                        continue;
-                    };
                     let direction = if direction == 0 {
                         mailbox::Direction::FromInviter
                     } else {
                         mailbox::Direction::FromAcceptor
                     };
+                    // The key the events were published under; rows from before it
+                    // was stored belong to the link. Without one: they expire by themselves.
+                    let key = match mkey.as_deref().map(arr32).transpose()? {
+                        Some(key) => key,
+                        None => match engine.peer(&peer)?.and_then(|row| row.link()) {
+                            Some(link) => mailbox::mailbox_key(&link),
+                            None => continue,
+                        },
+                    };
                     let event_ids: Vec<EventId> = ids.iter().filter_map(|(id, _)| EventId::from_slice(id).ok()).collect();
                     let expiration = ids.iter().map(|(_, e)| (*e).max(0).unsigned_abs()).max().unwrap_or(0);
-                    let event = mailbox::deletion(
-                        &mailbox::mailbox_key(&link),
-                        direction,
-                        day.max(0).unsigned_abs(),
-                        now_s,
-                        &event_ids,
-                        expiration,
-                    )?;
+                    let event = match once {
+                        Some(secret) => {
+                            let secret = zeroize::Zeroizing::new(secret);
+                            let keys = Keys::new(checked(SecretKey::from_slice(&secret), "mailbox_key")?);
+                            mailbox::deletion_by(&keys, now_s, &event_ids, expiration)?
+                        }
+                        None => mailbox::deletion(&key, direction, day.max(0).unsigned_abs(), now_s, &event_ids, expiration)?,
+                    };
                     let items: Vec<String> = ids.iter().map(|(id, _)| hex::encode(id)).collect();
-                    let seed = mailbox::pool_seed(&mailbox::mailbox_key(&link), direction);
+                    let seed = mailbox::pool_seed(&key, direction);
                     out.push(engine.enqueue(&peer, role, &seed, &event, &items, now_s)?);
                 }
             }
@@ -2248,8 +2618,8 @@ impl OlmEngine {
             match section.flags {
                 SECTION_OFFER => {
                     // Only an offer sealed to a contact code this device shows
-                    // is taken; the code is then used up.
-                    for tag in self.contact_tags()? {
+                    // or a link it sent is taken; the code is then used up.
+                    for (tag, _) in self.offer_secrets()? {
                         if !p2p::same(&p2p::offer_addr(&tag, &container.nonce), &section.addr)
                             || !container.verify(section, &tag)
                         {
@@ -2262,7 +2632,11 @@ impl OlmEngine {
                         // A bad package never blocks the rest of the container.
                         if let Ok(Some(_)) = self.import_invitation(&package) {
                             self.sql(|c| {
-                                c.execute("DELETE FROM olm_contact WHERE tag=?1", [tag.as_slice()])
+                                c.execute(
+                                    "DELETE FROM olm_contact WHERE tag=?1",
+                                    [tag.as_slice()],
+                                )?;
+                                c.execute("DELETE FROM olm_link WHERE tag=?1", [tag.as_slice()])
                             })?;
                             absorbed.changes.peers = true;
                         }
@@ -2279,8 +2653,9 @@ impl OlmEngine {
                     let peer = row.account.clone();
                     if kind != KeyKind::InvitationUntrusted {
                         self.replies(&row, &body)?;
-                        if kind == KeyKind::Link && !row.inviter && !row.confirmed {
-                            // The inviter answered on the link key: done with the invitation tag.
+                        if kind == KeyKind::Link && !row.confirmed {
+                            // The friend answered on the link key: done with the invitation tag
+                            // (the acceptor writes under it, the inviter reads it until then).
                             let mut row = self.peer(&peer)?.ok_or(Error("no_session"))?;
                             row.confirmed = true;
                             self.put_peer(&row)?;
@@ -2970,5 +3345,44 @@ mod mailbox_list_format {
         assert!(
             matches!(serde_json::from_str::<Control>(&set).unwrap(), Control::Keys { mailboxes, .. } if mailboxes.len() == 1)
         );
+    }
+}
+
+#[cfg(test)]
+mod schema_upgrade {
+    use super::*;
+
+    #[test]
+    fn tables_from_an_earlier_build_gain_the_new_columns_and_keep_their_rows() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE olm_offer(peer TEXT PRIMARY KEY NOT NULL, tag BLOB NOT NULL, created_at INTEGER NOT NULL);
+             CREATE TABLE olm_mailbox_sent(id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, direction INTEGER NOT NULL,
+               day INTEGER NOT NULL, expires INTEGER NOT NULL, at INTEGER NOT NULL,
+               withdrawn INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0);
+             CREATE TABLE olm_mailbox_seen(id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, direction INTEGER NOT NULL,
+               day INTEGER NOT NULL, expires INTEGER NOT NULL, at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0);
+             INSERT INTO olm_offer VALUES('p', x'00', 1);",
+        )
+        .unwrap();
+        conn.execute_batch(SCHEMA).unwrap();
+        migrate(&conn).unwrap();
+        migrate(&conn).unwrap();
+        for (table, column, _) in ADDED_COLUMNS {
+            let present = conn
+                .prepare(&format!(
+                    "SELECT 1 FROM pragma_table_info('{table}') WHERE name=?1"
+                ))
+                .unwrap()
+                .exists([column])
+                .unwrap();
+            assert!(present, "{table}.{column}");
+        }
+        let expires: i64 = conn
+            .query_row("SELECT expires_at FROM olm_offer WHERE peer='p'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(expires, 0, "an old offer counts as ended");
     }
 }

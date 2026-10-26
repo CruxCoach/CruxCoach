@@ -83,6 +83,11 @@ enum Command {
     ImportContact {
         payload: String,
     },
+    LinkCode,
+    Links,
+    RevokeLink {
+        id: String,
+    },
     // Mailbox operations: relays are reached from the app side, which moves
     // signed events it cannot open.
     MailboxOutgoing {
@@ -130,6 +135,9 @@ enum Command {
 
 /// The QR form of a contact code (npub and a fresh secret).
 pub const CONTACT_PREFIX: &str = "cruxcoach:c1:";
+/// A link code (npub, secret, valid until); the app puts the part after the
+/// prefix into the fragment of its link, which never reaches a web server.
+pub const LINK_PREFIX: &str = "cruxcoach:l1:";
 
 pub struct OlmHost {
     pub account: String,
@@ -361,9 +369,32 @@ impl OlmHost {
                 self.bump();
                 json!({"payload": format!("{CONTACT_PREFIX}{}", URL_SAFE_NO_PAD.encode(code))})
             }
+            Command::LinkCode => {
+                let (code, expires_s) = self.engine()?.link_code()?;
+                self.bump();
+                json!({"payload": format!("{LINK_PREFIX}{}", URL_SAFE_NO_PAD.encode(code)), "expires_at": expires_s})
+            }
+            Command::Links => {
+                let links: Vec<Value> = self
+                    .engine()?
+                    .links()?
+                    .into_iter()
+                    .map(|link| {
+                        json!({"id": link.id, "payload": format!("{LINK_PREFIX}{}", URL_SAFE_NO_PAD.encode(link.code)),
+                               "created_at": link.created_ms, "expires_at": link.expires_s})
+                    })
+                    .collect();
+                json!({"links": links})
+            }
+            Command::RevokeLink { id } => {
+                let revoked = self.engine()?.revoke_link(&id)?;
+                self.bump();
+                json!({"revoked": revoked})
+            }
             Command::ImportContact { payload } => {
                 let encoded = payload
                     .strip_prefix(CONTACT_PREFIX)
+                    .or_else(|| payload.strip_prefix(LINK_PREFIX))
                     .ok_or(Error("contact_format"))?;
                 if encoded.len() > 128 {
                     return Err(Error("contact_format"));

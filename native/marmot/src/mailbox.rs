@@ -78,6 +78,29 @@ pub fn mailbox_key(link: &[u8; 32]) -> [u8; 32] {
     expand(link, b"cc-mailbox-v1", b"cruxcoach share mailbox")
 }
 
+/// The mailbox key of an introduction: the offer under the secret of a
+/// contact code or link, and the acceptance coming back under the invitation
+/// secret of the package, before both know the link key.
+pub fn intro_key(secret: &[u8; 32]) -> [u8; 32] {
+    expand(
+        secret,
+        b"cc-mailbox-intro-v1",
+        b"cruxcoach share introduction",
+    )
+}
+
+/// A key for one event under a secret others may hold too (a link can be
+/// forwarded): nobody but its sender can delete or replace that event.
+pub fn once() -> Result<Keys> {
+    let mut seed = p2p::random::<32>()?;
+    loop {
+        if let Ok(secret) = SecretKey::from_slice(&seed) {
+            return Ok(Keys::new(secret));
+        }
+        seed = p2p::sha256(&seed);
+    }
+}
+
 fn expand(key: &[u8], salt: &[u8], info: &[u8]) -> [u8; 32] {
     let hkdf = hkdf::Hkdf::<Sha256>::new(Some(salt), key);
     let mut okm = [0u8; 32];
@@ -196,6 +219,42 @@ pub fn event(
     container: &[u8],
     pow: u8,
 ) -> Result<Event> {
+    let signer = signer(key, direction, day(now_s));
+    build(
+        key,
+        direction,
+        now_s,
+        container,
+        pow,
+        &signer,
+        now_s + MAX_AGE_S,
+    )
+}
+
+/// An event signed with its own key ([`once`]) that expires at `expires_s`,
+/// at the latest after the usual age.
+pub fn event_once(
+    key: &[u8; 32],
+    direction: Direction,
+    now_s: u64,
+    container: &[u8],
+    pow: u8,
+    keys: &Keys,
+    expires_s: u64,
+) -> Result<Event> {
+    let expires = expires_s.clamp(now_s + CLOCK_GRACE_S, now_s + MAX_AGE_S);
+    build(key, direction, now_s, container, pow, keys, expires)
+}
+
+fn build(
+    key: &[u8; 32],
+    direction: Direction,
+    now_s: u64,
+    container: &[u8],
+    pow: u8,
+    keys: &Keys,
+    expires_s: u64,
+) -> Result<Event> {
     let today = day(now_s);
     let content = STANDARD.encode(seal(key, direction, today, container)?);
     // Whole minutes only: 0, 1 or 2 back.
@@ -207,7 +266,7 @@ pub fn event(
             TagKind::single_letter(nostr::Alphabet::Z, false),
             [address(key, direction, today)],
         ),
-        Tag::expiration(Timestamp::from(now_s + MAX_AGE_S)),
+        Tag::expiration(Timestamp::from(expires_s)),
     ];
     let mut builder = EventBuilder::new(Kind::Custom(KIND), content)
         .tags(tags)
@@ -216,7 +275,7 @@ pub fn event(
         builder = builder.pow(pow);
     }
     builder
-        .sign_with_keys(&signer(key, direction, today))
+        .sign_with_keys(keys)
         .map_err(|_| Error("mailbox_sign"))
 }
 
@@ -229,6 +288,17 @@ pub fn deletion(
     key: &[u8; 32],
     direction: Direction,
     day: u64,
+    now_s: u64,
+    ids: &[nostr::EventId],
+    expiration: u64,
+) -> Result<Event> {
+    deletion_by(&signer(key, direction, day), now_s, ids, expiration)
+}
+
+/// A NIP-09 deletion signed with `keys`: the day's key, or the one key of an
+/// event signed with [`once`].
+pub fn deletion_by(
+    keys: &Keys,
     now_s: u64,
     ids: &[nostr::EventId],
     expiration: u64,
@@ -249,7 +319,7 @@ pub fn deletion(
     EventBuilder::new(Kind::EventDeletion, "")
         .tags(tags)
         .custom_created_at(Timestamp::from(created))
-        .sign_with_keys(&signer(key, direction, day))
+        .sign_with_keys(keys)
         .map_err(|_| Error("mailbox_sign"))
 }
 
@@ -326,6 +396,17 @@ pub fn envelope(json: &str, now_s: u64) -> Result<Envelope> {
 pub fn matches(envelope: &Envelope, key: &[u8; 32], direction: Direction, day: u64) -> bool {
     envelope.address == address(key, direction, day)
         && envelope.event.pubkey == signer(key, direction, day).public_key()
+}
+
+/// Whether `envelope` sits under the day's address of this direction, signed
+/// by any key: an introduction, whose events each carry their own key.
+pub fn matches_address(
+    envelope: &Envelope,
+    key: &[u8; 32],
+    direction: Direction,
+    day: u64,
+) -> bool {
+    envelope.address == address(key, direction, day)
 }
 
 /// The container inside a matched envelope.
