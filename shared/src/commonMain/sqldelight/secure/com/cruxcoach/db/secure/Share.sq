@@ -63,35 +63,76 @@ CREATE TABLE share_never (
     created_at INTEGER NOT NULL
 );
 
-CREATE TABLE share_outgoing (
-    peer TEXT NOT NULL PRIMARY KEY REFERENCES share_person(peer) ON DELETE CASCADE,
+-- Outgoing sync runs per stream, not per person: one stream
+-- per audience, i.e. per set of people with the same effective rule. A stream
+-- is computed once and goes to each member; 0.2.7 encrypts it once (Megolm).
+-- Its id is random and travels only inside encrypted messages. A stream
+-- without members is deleted.
+CREATE TABLE share_stream (
+    id TEXT NOT NULL PRIMARY KEY CHECK (length(id) = 32),
+    kind TEXT NOT NULL CHECK (kind IN ('RULE', 'GROUP')),
+    rule_key TEXT NOT NULL,
     generation INTEGER NOT NULL,
     sequence INTEGER NOT NULL,
     generation_started_at INTEGER NOT NULL,
     scope TEXT NOT NULL,
-    sent TEXT NOT NULL,
     digest TEXT NOT NULL,
     record_count INTEGER NOT NULL,
     manifest_at INTEGER NOT NULL,
-    full_required INTEGER NOT NULL DEFAULT 0,
-    acked_generation INTEGER NOT NULL DEFAULT 0,
-    acked_sequence INTEGER NOT NULL DEFAULT -1,
-    acked_at INTEGER NOT NULL DEFAULT 0
+    full_required INTEGER NOT NULL DEFAULT 0 CHECK (full_required IN (0, 1)),
+    epoch INTEGER NOT NULL DEFAULT 0,
+    pending_since INTEGER,
+    created_at INTEGER NOT NULL,
+    UNIQUE (kind, rule_key)
 );
 
+-- What a stream's members hold: one row per record sent, with its revision.
+CREATE TABLE share_stream_sent (
+    stream TEXT NOT NULL REFERENCES share_stream(id) ON DELETE CASCADE,
+    record_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    PRIMARY KEY (stream, record_id)
+);
+
+-- A person is in at most one stream. assign counts the snapshots this person
+-- was handed (it travels on the wire and only grows); snapshot_due asks for
+-- the next one.
+CREATE TABLE share_stream_member (
+    peer TEXT NOT NULL PRIMARY KEY REFERENCES share_person(peer) ON DELETE CASCADE,
+    stream TEXT NOT NULL REFERENCES share_stream(id),
+    assign INTEGER NOT NULL DEFAULT 0,
+    assigned_at INTEGER NOT NULL DEFAULT 0,
+    snapshot_due INTEGER NOT NULL DEFAULT 1 CHECK (snapshot_due IN (0, 1)),
+    acked_generation INTEGER NOT NULL DEFAULT 0,
+    acked_sequence INTEGER NOT NULL DEFAULT -1,
+    acked_at INTEGER NOT NULL DEFAULT 0,
+    joined_at INTEGER NOT NULL
+);
+
+CREATE INDEX share_stream_member_stream ON share_stream_member(stream);
+
+-- Per friend: the stream and snapshot (assign) we follow, the position in it,
+-- where the full state being staged stands (base, staged_assign), and the
+-- streams it replaced, whose late messages are dropped.
 CREATE TABLE share_incoming (
     peer TEXT NOT NULL PRIMARY KEY REFERENCES share_person(peer) ON DELETE CASCADE,
+    stream TEXT NOT NULL,
+    assign INTEGER NOT NULL,
     generation INTEGER NOT NULL,
     sequence INTEGER NOT NULL,
+    base INTEGER NOT NULL,
+    staged_assign INTEGER NOT NULL,
     scope TEXT NOT NULL,
     expected_digest TEXT NOT NULL,
     expected_count INTEGER NOT NULL,
     staging TEXT NOT NULL,
     pending TEXT NOT NULL,
+    gap_since INTEGER NOT NULL DEFAULT 0,
     resync_generation INTEGER NOT NULL DEFAULT 0,
     resync_at INTEGER NOT NULL DEFAULT 0,
     ack_due INTEGER NOT NULL DEFAULT 0,
-    received_at INTEGER NOT NULL
+    received_at INTEGER NOT NULL,
+    retired TEXT NOT NULL
 );
 
 -- expires_at: the friend's grant for this record ends then; this app deletes
@@ -199,22 +240,61 @@ INSERT OR REPLACE INTO share_never(record_id, created_at) VALUES (?, ?);
 deleteNever:
 DELETE FROM share_never WHERE record_id = ?;
 
-selectOutgoing:
-SELECT * FROM share_outgoing WHERE peer = ?;
+selectStreams:
+SELECT * FROM share_stream ORDER BY created_at, id;
 
-upsertOutgoing:
-INSERT OR REPLACE INTO share_outgoing(peer, generation, sequence, generation_started_at, scope, sent, digest,
-    record_count, manifest_at, full_required, acked_generation, acked_sequence, acked_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+selectStream:
+SELECT * FROM share_stream WHERE id = ?;
 
-requireFull:
-UPDATE share_outgoing SET full_required = 1 WHERE peer = ?;
+selectStreamByKey:
+SELECT * FROM share_stream WHERE kind = ? AND rule_key = ?;
+
+upsertStream:
+INSERT OR REPLACE INTO share_stream(id, kind, rule_key, generation, sequence, generation_started_at, scope, digest,
+    record_count, manifest_at, full_required, epoch, pending_since, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Foreign keys are off (see deletePersonRules): a stream's rows go explicitly.
+deleteEmptyStreamsSent:
+DELETE FROM share_stream_sent WHERE stream NOT IN (SELECT stream FROM share_stream_member);
+
+deleteEmptyStreams:
+DELETE FROM share_stream WHERE id NOT IN (SELECT stream FROM share_stream_member);
+
+selectSent:
+SELECT record_id, revision FROM share_stream_sent WHERE stream = ?;
+
+upsertSent:
+INSERT OR REPLACE INTO share_stream_sent(stream, record_id, revision) VALUES (?, ?, ?);
+
+deleteSent:
+DELETE FROM share_stream_sent WHERE stream = ? AND record_id = ?;
+
+deleteAllSent:
+DELETE FROM share_stream_sent WHERE stream = ?;
+
+selectMembers:
+SELECT * FROM share_stream_member ORDER BY joined_at, peer;
+
+selectMember:
+SELECT * FROM share_stream_member WHERE peer = ?;
+
+selectStreamMembers:
+SELECT * FROM share_stream_member WHERE stream = ? ORDER BY joined_at, peer;
+
+upsertMember:
+INSERT OR REPLACE INTO share_stream_member(peer, stream, assign, assigned_at, snapshot_due, acked_generation,
+    acked_sequence, acked_at, joined_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+requireSnapshot:
+UPDATE share_stream_member SET snapshot_due = 1 WHERE peer = ?;
 
 recordAck:
-UPDATE share_outgoing SET acked_generation = ?, acked_sequence = ?, acked_at = ? WHERE peer = ?;
+UPDATE share_stream_member SET acked_generation = ?, acked_sequence = ?, acked_at = ? WHERE peer = ?;
 
-deleteOutgoing:
-DELETE FROM share_outgoing WHERE peer = ?;
+deleteMember:
+DELETE FROM share_stream_member WHERE peer = ?;
 
 selectIncoming:
 SELECT * FROM share_incoming WHERE peer = ?;
@@ -223,9 +303,9 @@ selectAllIncoming:
 SELECT * FROM share_incoming;
 
 upsertIncoming:
-INSERT OR REPLACE INTO share_incoming(peer, generation, sequence, scope, expected_digest, expected_count,
-    staging, pending, resync_generation, resync_at, ack_due, received_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO share_incoming(peer, stream, assign, generation, sequence, base, staged_assign, scope,
+    expected_digest, expected_count, staging, pending, gap_since, resync_generation, resync_at, ack_due, received_at, retired)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteIncoming:
 DELETE FROM share_incoming WHERE peer = ?;

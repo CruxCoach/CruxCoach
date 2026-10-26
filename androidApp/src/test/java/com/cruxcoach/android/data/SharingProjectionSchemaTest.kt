@@ -73,10 +73,10 @@ class SharingProjectionSchemaTest {
     )
 
     private val sharingTables = listOf("share_template", "share_setting", "share_person", "share_person_rule", "share_object_rule",
-        "share_never", "share_outgoing", "share_incoming", "share_record", "share_history")
+        "share_never", "share_stream", "share_stream_sent", "share_stream_member", "share_incoming", "share_record", "share_history")
 
     /** Tables that hold one row set per person. */
-    private val personTables = listOf("share_person", "share_person_rule", "share_object_rule", "share_outgoing", "share_incoming", "share_record")
+    private val personTables = listOf("share_person", "share_person_rule", "share_object_rule", "share_stream_member", "share_incoming", "share_record")
 
     private fun templateRows(): Map<String, Triple<String, Long, Long>> =
         driver.executeQuery(null, "SELECT id, categories, period_days, hidden FROM share_template", { c ->
@@ -192,8 +192,11 @@ class SharingProjectionSchemaTest {
             driver.exec("INSERT INTO share_person VALUES ('$p','TRAINING_PARTNER',1,NULL,NULL,'CONNECTED',0,1,NULL)")
             driver.exec("INSERT INTO share_person_rule VALUES ('$p','CLIMB_NOTES','DENY',NULL)")
             driver.exec("INSERT INTO share_object_rule VALUES ('$p','note:x','CLIMB_NOTES','ALLOW',5)")
-            driver.exec("INSERT INTO share_outgoing VALUES ('$p',1,0,1,'{}','{}','d',0,1,0,0,-1,0)")
-            driver.exec("INSERT INTO share_incoming VALUES ('$p',1,0,'{}','d',0,'{}','[]',0,0,0,1)")
+            val stream = p.take(32)
+            driver.exec("INSERT INTO share_stream VALUES ('$stream','RULE','person:$p',1,0,1,'{}','d',0,1,0,0,NULL,1)")
+            driver.exec("INSERT INTO share_stream_sent VALUES ('$stream','note:x',1)")
+            driver.exec("INSERT INTO share_stream_member VALUES ('$p','$stream',1,1,0,0,-1,0,1)")
+            driver.exec("INSERT INTO share_incoming VALUES ('$p','$stream',1,1,0,0,1,'{}','d',0,'{}','[]',0,0,0,0,1,'[]')")
             driver.exec("INSERT INTO share_record VALUES ('$p','note:x','CLIMB_NOTES',1,'x',NULL,'{}',NULL)")
         }
         SharingStore(SecureDatabase(driver)).deletePerson(peer)
@@ -201,6 +204,11 @@ class SharingProjectionSchemaTest {
             assertEquals(0L, count(table, "peer = '$peer'"), table)
             assertEquals(1L, count(table, "peer = '$other'"), "$table keeps other people")
         }
+        // The stream nobody is in any more goes too, with what it sent.
+        assertEquals(0L, count("share_stream", "id = '${peer.take(32)}'"))
+        assertEquals(0L, count("share_stream_sent", "stream = '${peer.take(32)}'"))
+        assertEquals(1L, count("share_stream", "id = '${other.take(32)}'"))
+        assertEquals(1L, count("share_stream_sent", "stream = '${other.take(32)}'"))
     }
 
     @Test

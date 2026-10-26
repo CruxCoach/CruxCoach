@@ -171,16 +171,98 @@ class SharingSyncTest {
         net.now += SharingSync.STALL_MS + 1
         settle(6)
         assertEquals(alice.expected(bob), bob.received(alice))
+        // The gap was Bob's alone: he got a snapshot, the stream kept its generation.
+        assertEquals(1, alice.store.streams().single().generation)
+        assertEquals(2, alice.store.member(bob.account)!!.assign)
+        assertEquals(2, bob.store.incoming(alice.account).assign)
+    }
+
+    @Test fun a_heartbeat_ahead_of_what_arrived_reveals_lost_deltas_even_without_another_change() {
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        alice.note("n1", "one")
+        settle()
+        alice.note("n2", "two")
+        alice.pass()
+        net.deliver { emptyList() } // every copy of the delta is lost or expired
+        settle(4)
+        assertEquals(setOf("note:n1"), bob.received(alice).keys, "nothing shows the gap yet")
+        net.now += SharingSync.HEARTBEAT_MS
+        settle()
+        assertEquals(1, bob.store.incoming(alice.account).pending.size, "the heartbeat waits for the missing delta")
+        net.now += SharingSync.STALL_MS + 1
+        settle(6)
+        assertEquals(alice.expected(bob), bob.received(alice))
+        assertTrue(bob.store.incoming(alice.account).pending.isEmpty())
+    }
+
+    /** Hand-made messages from Alice to Bob, past Alice's own sync. */
+    private fun fromAlice(vararg messages: ShareMessage) = runBlocking {
+        for (m in messages) alice.node.host.send(bob.account, "test:${m.stream.take(4)}:${m.type}:a${m.assign}:g${m.gen}:s${m.seq}:p${m.part}",
+            ShareProtocol.encode(m))
+        net.deliver()
+        bob.pass()
+    }
+
+    private fun note(id: String, text: String): SharingRecord {
+        val fields = linkedMapOf("climbId" to id, "note" to text)
+        return SharingRecord("note:$id", CLIMB_NOTES, SharingRecords.revision("note:$id", CLIMB_NOTES, fields), fields)
+    }
+
+    @Test fun a_new_stream_starts_with_a_snapshot_its_messages_may_overtake_and_the_old_one_falls_silent() {
+        alice.note("n1", "old stream")
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        val old = bob.store.incoming(alice.account)
+        assertEquals(alice.store.streams().single().id, old.stream)
+        val stream = "c".repeat(32)
+        val scope = ShareScope(listOf(CLIMB_NOTES))
+        val first = listOf(note("x1", "snapshot"))
+        val after = first + note("x2", "delta after it")
+        val assign = old.assign + 1
+        // The delta and the page arrive before the manifest that starts the snapshot.
+        fromAlice(
+            ShareProtocol.delta(stream, 3, 6, scope, listOf(after[1]), emptyList(), after),
+            ShareProtocol.full(stream, assign, 3, 5, first).single(),
+        )
+        assertEquals(setOf("note:n1"), bob.received(alice).keys, "held until the snapshot starts")
+        fromAlice(ShareProtocol.manifest(stream, assign, 3, 5, scope, first))
+        assertEquals(setOf("note:x1", "note:x2"), bob.received(alice).keys)
+        val now = bob.store.incoming(alice.account)
+        assertEquals(stream, now.stream)
+        assertEquals(6, now.sequence)
+        assertTrue(old.stream in now.retired)
+        assertTrue(now.pending.isEmpty())
+        // Late messages of the replaced stream and pages of an older snapshot change nothing.
+        fromAlice(
+            ShareProtocol.delta(old.stream, old.generation, old.sequence + 1, scope, listOf(note("late", "from the old stream")),
+                emptyList(), first),
+            ShareProtocol.full(stream, assign - 1, 3, 4, listOf(note("stale", "older snapshot"))).single(),
+        )
+        assertEquals(setOf("note:x1", "note:x2"), bob.received(alice).keys)
+        assertTrue(bob.store.incoming(alice.account).pending.isEmpty(), "dropped, not held")
+    }
+
+    @Test fun every_wire_message_names_its_stream_and_only_snapshots_name_a_friend() {
+        alice.note("n1", "beta")
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        alice.note("n2", "more")
+        alice.pass()
+        val stream = alice.store.streams().single().id
+        val sent = alice.node.outbox.filter { it.first == bob.account }.mapNotNull { ShareProtocol.decode(it.third) }
+        assertTrue(sent.isNotEmpty() && sent.all { it.stream == stream && it.assign == 0L && it.type == "delta" })
+        settle()
+        assertTrue(alice.friend(bob).confirmedAt > 0)
     }
 
     @Test fun a_crash_between_native_admission_and_the_app_commit_converges() {
         befriend(setOf(CLIMB_NOTES), emptySet())
         alice.note("n1", "one")
         settle()
-        val committed = alice.store.outgoing(bob.account)!!
+        val committed = alice.store.streams().single()
+        val sent = alice.store.sent(committed.id)
         alice.note("n1", "two")
         alice.pass() // native admitted the delta ...
-        alice.store.putOutgoing(bob.account, committed) // ... but the app commit was lost
+        alice.store.putStream(committed) // ... but the app commit was lost
+        alice.store.putSent(committed.id, alice.store.sent(committed.id), sent)
         alice.note("n1", "three") // and the source moved on before the restart
         settle(6)
         assertEquals(alice.expected(bob), bob.received(alice))

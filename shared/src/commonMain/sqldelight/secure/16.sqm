@@ -2,7 +2,7 @@
 -- ("who sees this?", FEAT-073), carried from feat/marmot-permissions-v2 onto
 -- the 0.2.4 release line and reshaped before its first release.
 --
--- Purely additive: ten tables, empty except for the shipped templates; no existing
+-- Purely additive: twelve tables, empty except for the shipped templates; no existing
 -- table, row or trigger is touched, and nothing writes to these tables until
 -- someone is invited. The release line never carried the unpublished feature
 -- migrations 14–33 of that branch (its 14/15 are different tables), so nothing
@@ -67,35 +67,76 @@ CREATE TABLE share_never (
     created_at INTEGER NOT NULL
 );
 
-CREATE TABLE share_outgoing (
-    peer TEXT NOT NULL PRIMARY KEY REFERENCES share_person(peer) ON DELETE CASCADE,
+-- Outgoing sync runs per stream, not per person: one stream
+-- per audience, i.e. per set of people with the same effective rule. A stream
+-- is computed once and goes to each member; 0.2.7 encrypts it once (Megolm).
+-- Its id is random and travels only inside encrypted messages. A stream
+-- without members is deleted.
+CREATE TABLE share_stream (
+    id TEXT NOT NULL PRIMARY KEY CHECK (length(id) = 32),
+    kind TEXT NOT NULL CHECK (kind IN ('RULE', 'GROUP')),
+    rule_key TEXT NOT NULL,
     generation INTEGER NOT NULL,
     sequence INTEGER NOT NULL,
     generation_started_at INTEGER NOT NULL,
     scope TEXT NOT NULL,
-    sent TEXT NOT NULL,
     digest TEXT NOT NULL,
     record_count INTEGER NOT NULL,
     manifest_at INTEGER NOT NULL,
-    full_required INTEGER NOT NULL DEFAULT 0,
-    acked_generation INTEGER NOT NULL DEFAULT 0,
-    acked_sequence INTEGER NOT NULL DEFAULT -1,
-    acked_at INTEGER NOT NULL DEFAULT 0
+    full_required INTEGER NOT NULL DEFAULT 0 CHECK (full_required IN (0, 1)),
+    epoch INTEGER NOT NULL DEFAULT 0,
+    pending_since INTEGER,
+    created_at INTEGER NOT NULL,
+    UNIQUE (kind, rule_key)
 );
 
+-- What a stream's members hold: one row per record sent, with its revision.
+CREATE TABLE share_stream_sent (
+    stream TEXT NOT NULL REFERENCES share_stream(id) ON DELETE CASCADE,
+    record_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    PRIMARY KEY (stream, record_id)
+);
+
+-- A person is in at most one stream. assign counts the snapshots this person
+-- was handed (it travels on the wire and only grows); snapshot_due asks for
+-- the next one.
+CREATE TABLE share_stream_member (
+    peer TEXT NOT NULL PRIMARY KEY REFERENCES share_person(peer) ON DELETE CASCADE,
+    stream TEXT NOT NULL REFERENCES share_stream(id),
+    assign INTEGER NOT NULL DEFAULT 0,
+    assigned_at INTEGER NOT NULL DEFAULT 0,
+    snapshot_due INTEGER NOT NULL DEFAULT 1 CHECK (snapshot_due IN (0, 1)),
+    acked_generation INTEGER NOT NULL DEFAULT 0,
+    acked_sequence INTEGER NOT NULL DEFAULT -1,
+    acked_at INTEGER NOT NULL DEFAULT 0,
+    joined_at INTEGER NOT NULL
+);
+
+CREATE INDEX share_stream_member_stream ON share_stream_member(stream);
+
+-- Per friend: the stream and snapshot (assign) we follow, the position in it,
+-- where the full state being staged stands (base, staged_assign), and the
+-- streams it replaced, whose late messages are dropped.
 CREATE TABLE share_incoming (
     peer TEXT NOT NULL PRIMARY KEY REFERENCES share_person(peer) ON DELETE CASCADE,
+    stream TEXT NOT NULL,
+    assign INTEGER NOT NULL,
     generation INTEGER NOT NULL,
     sequence INTEGER NOT NULL,
+    base INTEGER NOT NULL,
+    staged_assign INTEGER NOT NULL,
     scope TEXT NOT NULL,
     expected_digest TEXT NOT NULL,
     expected_count INTEGER NOT NULL,
     staging TEXT NOT NULL,
     pending TEXT NOT NULL,
+    gap_since INTEGER NOT NULL DEFAULT 0,
     resync_generation INTEGER NOT NULL DEFAULT 0,
     resync_at INTEGER NOT NULL DEFAULT 0,
     ack_due INTEGER NOT NULL DEFAULT 0,
-    received_at INTEGER NOT NULL
+    received_at INTEGER NOT NULL,
+    retired TEXT NOT NULL
 );
 
 -- expires_at: the friend's grant for this record ends then; this app deletes

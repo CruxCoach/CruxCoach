@@ -44,39 +44,77 @@ data class SharingPerson(
     val endedAt: Long?,
 )
 
-data class OutgoingState(
+/** One outgoing stream: computed once, sent to every member. */
+data class StreamState(
+    val id: String,
+    val kind: String,
+    /** Which audience the stream serves; unique per [kind]. */
+    val ruleKey: String,
+    /** 0 until the first state is computed: members then join by snapshot. */
     val generation: Long,
     val sequence: Long,
     val generationStartedAt: Long,
     val scope: ShareScope,
-    val sent: Map<String, Long>,
     val digest: String,
     val count: Int,
     val manifestAt: Long,
     val fullRequired: Boolean,
+    /** Counts members who left; 0.2.7 changes the group key when it grows. */
+    val epoch: Long,
+    val pendingSince: Long?,
+    val createdAt: Long,
+) {
+    companion object {
+        const val RULE = "RULE"
+
+        fun fresh(id: String, ruleKey: String, now: Long) =
+            StreamState(id, RULE, ruleKey, 0, 0, now, ShareScope.EMPTY, "", 0, 0, false, 0, null, now)
+    }
+}
+
+/** One person in a stream: which snapshot they were handed and what they confirmed. */
+data class StreamMember(
+    val peer: String,
+    val stream: String,
+    /** The last snapshot handed out; it travels on the wire and only grows. */
+    val assign: Long,
+    val assignedAt: Long,
+    val snapshotDue: Boolean,
     val ackedGeneration: Long,
     val ackedSequence: Long,
     val ackedAt: Long,
+    val joinedAt: Long,
 )
 
 data class IncomingState(
+    /** The friend's stream we follow ("" before the first snapshot) and the snapshot that put us there. */
+    val stream: String,
+    val assign: Long,
     val generation: Long,
-    /** -1 while the generation's full state is still being staged. */
+    /** -1 while the full state is still being staged. */
     val sequence: Long,
+    /** The sequence the staged full state stands for (0 for a new generation). */
+    val base: Long,
+    /** Whose pages are being staged: 0 for a generation of the whole stream, n for snapshot n. */
+    val stagedAssign: Long,
     val scope: ShareScope,
     val expectedDigest: String,
     val expectedCount: Int,
     val staging: Map<Int, List<SharingRecord>>,
     val pending: List<ShareMessage>,
+    /** Since when messages wait in [pending] for a gap to close (0: none wait). */
+    val gapSince: Long,
     val resyncGeneration: Long,
     val resyncAt: Long,
     val ackDue: Boolean,
     val receivedAt: Long,
+    /** Streams this friend's snapshots replaced; their late messages are dropped. */
+    val retired: List<String>,
 ) {
     val complete get() = sequence >= 0
 
     companion object {
-        val NONE = IncomingState(0, -1, ShareScope.EMPTY, "", 0, emptyMap(), emptyList(), 0, 0, false, 0)
+        val NONE = IncomingState("", 0, 0, -1, 0, 0, ShareScope.EMPTY, "", 0, emptyMap(), emptyList(), 0, 0, 0, false, 0, emptyList())
     }
 }
 
@@ -105,6 +143,7 @@ class SharingStore(private val database: SecureDatabase) {
     private val sentSerializer = MapSerializer(String.serializer(), Long.serializer())
     private val stagingSerializer = MapSerializer(Int.serializer(), ListSerializer(SharingRecord.serializer()))
     private val pendingSerializer = ListSerializer(ShareMessage.serializer())
+    private val retiredSerializer = ListSerializer(String.serializer())
 
     fun <T> transaction(block: () -> T): T = database.transactionWithResult { block() }
 
@@ -256,37 +295,76 @@ class SharingStore(private val database: SecureDatabase) {
 
     // ---- directions -------------------------------------------------------------
 
-    fun outgoing(peer: String): OutgoingState? = q.selectOutgoing(peer).executeAsOneOrNull()?.let { row ->
-        OutgoingState(row.generation, row.sequence, row.generation_started_at, json.decodeFromString(row.scope),
-            json.decodeFromString(sentSerializer, row.sent), row.digest, row.record_count.toInt(), row.manifest_at,
-            row.full_required == 1L, row.acked_generation, row.acked_sequence, row.acked_at)
+    fun streams(): List<StreamState> = q.selectStreams().executeAsList().map(::toStream)
+
+    fun stream(id: String): StreamState? = q.selectStream(id).executeAsOneOrNull()?.let(::toStream)
+
+    fun streamByKey(kind: String, ruleKey: String): StreamState? = q.selectStreamByKey(kind, ruleKey).executeAsOneOrNull()?.let(::toStream)
+
+    private fun toStream(row: com.cruxcoach.db.secure.Share_stream) = StreamState(row.id, row.kind, row.rule_key, row.generation,
+        row.sequence, row.generation_started_at, json.decodeFromString(row.scope), row.digest, row.record_count.toInt(),
+        row.manifest_at, row.full_required == 1L, row.epoch, row.pending_since, row.created_at)
+
+    fun putStream(s: StreamState) = q.upsertStream(s.id, s.kind, s.ruleKey, s.generation, s.sequence, s.generationStartedAt,
+        json.encodeToString(s.scope), s.digest, s.count.toLong(), s.manifestAt, if (s.fullRequired) 1 else 0, s.epoch,
+        s.pendingSince, s.createdAt)
+
+    /** Records the members of [stream] hold, with their revisions. */
+    fun sent(stream: String): Map<String, Long> = q.selectSent(stream).executeAsList().associate { it.record_id to it.revision }
+
+    /** Make the sent set of [stream] equal [target], touching only rows that differ from [before]. */
+    fun putSent(stream: String, before: Map<String, Long>, target: Map<String, Long>) {
+        for (id in before.keys - target.keys) q.deleteSent(stream, id)
+        for ((id, revision) in target) if (before[id] != revision) q.upsertSent(stream, id, revision)
     }
 
-    fun putOutgoing(peer: String, s: OutgoingState) = q.upsertOutgoing(peer, s.generation, s.sequence, s.generationStartedAt,
-        json.encodeToString(s.scope), json.encodeToString(sentSerializer, s.sent), s.digest, s.count.toLong(), s.manifestAt,
-        if (s.fullRequired) 1 else 0, s.ackedGeneration, s.ackedSequence, s.ackedAt)
+    fun members(): List<StreamMember> = q.selectMembers().executeAsList().map(::toMember)
 
-    fun requireFull(peer: String) = q.requireFull(peer)
+    fun members(stream: String): List<StreamMember> = q.selectStreamMembers(stream).executeAsList().map(::toMember)
+
+    fun member(peer: String): StreamMember? = q.selectMember(peer).executeAsOneOrNull()?.let(::toMember)
+
+    private fun toMember(row: com.cruxcoach.db.secure.Share_stream_member) = StreamMember(row.peer, row.stream, row.assign,
+        row.assigned_at, row.snapshot_due == 1L, row.acked_generation, row.acked_sequence, row.acked_at, row.joined_at)
+
+    fun putMember(m: StreamMember) = q.upsertMember(m.peer, m.stream, m.assign, m.assignedAt, if (m.snapshotDue) 1 else 0,
+        m.ackedGeneration, m.ackedSequence, m.ackedAt, m.joinedAt)
+
+    /** [peer] leaves its stream; an empty stream goes with [dropEmptyStreams]. */
+    fun clearMember(peer: String) = q.deleteMember(peer)
+
+    /** [peer] gets its own snapshot of its stream next (a gap only this friend has). */
+    fun requireSnapshot(peer: String) = q.requireSnapshot(peer)
+
     fun recordAck(peer: String, generation: Long, sequence: Long, at: Long) = q.recordAck(generation, sequence, at, peer)
 
-    fun incoming(peer: String): IncomingState = q.selectIncoming(peer).executeAsOneOrNull()?.let { row ->
-        IncomingState(row.generation, row.sequence, json.decodeFromString(row.scope), row.expected_digest,
-            row.expected_count.toInt(), json.decodeFromString(stagingSerializer, row.staging),
-            json.decodeFromString(pendingSerializer, row.pending), row.resync_generation, row.resync_at,
-            row.ack_due == 1L, row.received_at)
-    } ?: IncomingState.NONE
+    /** Streams nobody is in any more go, with what they sent. */
+    fun dropEmptyStreams() {
+        q.deleteEmptyStreamsSent()
+        q.deleteEmptyStreams()
+    }
 
-    fun incomingStates(): Map<String, IncomingState> = q.selectAllIncoming().executeAsList().associate { it.peer to incoming(it.peer) }
+    fun incoming(peer: String): IncomingState = q.selectIncoming(peer).executeAsOneOrNull()?.let(::toIncoming) ?: IncomingState.NONE
 
-    fun putIncoming(peer: String, s: IncomingState) = q.upsertIncoming(peer, s.generation, s.sequence, json.encodeToString(s.scope),
-        s.expectedDigest, s.expectedCount.toLong(), json.encodeToString(stagingSerializer, s.staging),
-        json.encodeToString(pendingSerializer, s.pending), s.resyncGeneration, s.resyncAt, if (s.ackDue) 1 else 0, s.receivedAt)
+    private fun toIncoming(row: com.cruxcoach.db.secure.Share_incoming) = IncomingState(row.stream, row.assign, row.generation,
+        row.sequence, row.base, row.staged_assign, json.decodeFromString(row.scope), row.expected_digest,
+        row.expected_count.toInt(), json.decodeFromString(stagingSerializer, row.staging),
+        json.decodeFromString(pendingSerializer, row.pending), row.gap_since, row.resync_generation, row.resync_at,
+        row.ack_due == 1L, row.received_at, json.decodeFromString(retiredSerializer, row.retired))
+
+    fun incomingStates(): Map<String, IncomingState> = q.selectAllIncoming().executeAsList().associate { it.peer to toIncoming(it) }
+
+    fun putIncoming(peer: String, s: IncomingState) = q.upsertIncoming(peer, s.stream, s.assign, s.generation, s.sequence, s.base,
+        s.stagedAssign, json.encodeToString(s.scope), s.expectedDigest, s.expectedCount.toLong(),
+        json.encodeToString(stagingSerializer, s.staging), json.encodeToString(pendingSerializer, s.pending), s.gapSince,
+        s.resyncGeneration, s.resyncAt, if (s.ackDue) 1 else 0, s.receivedAt, json.encodeToString(retiredSerializer, s.retired))
 
     /** Forget both directions and everything received from [peer]. */
     fun clearExchange(peer: String) {
         q.deleteRecords(peer)
         q.deleteIncoming(peer)
-        q.deleteOutgoing(peer)
+        q.deleteMember(peer)
+        dropEmptyStreams()
     }
 
     // ---- received records ---------------------------------------------------------

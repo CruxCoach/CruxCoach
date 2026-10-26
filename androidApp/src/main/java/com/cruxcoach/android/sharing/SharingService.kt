@@ -133,7 +133,7 @@ class SharingService(
                 profileName = received.firstOrNull { it.category == ShareCategory.CLIMBING_PROFILE }?.fields?.get("name"),
                 incomingScope = incoming[person.peer]?.scope ?: ShareScope.EMPTY,
                 received = received.size,
-                confirmedAt = store.outgoing(person.peer)?.ackedAt ?: 0,
+                confirmedAt = store.member(person.peer)?.ackedAt ?: 0,
             )
         }
         // An ended friendship does not hide a new request from the same person.
@@ -415,8 +415,8 @@ class SharingService(
                 change()
                 for ((peer, result) in withdrawn) {
                     // A withdrawn message leaves a gap the friend cannot fill:
-                    // the next send starts a new generation.
-                    if ((result.getOrNull() ?: 0) > 0) store.requireFull(peer)
+                    // the friend gets a snapshot of their own next.
+                    if ((result.getOrNull() ?: 0) > 0) store.requireSnapshot(peer)
                     if (result.isFailure) store.setCancelPending(peer, true)
                 }
             }
