@@ -1486,6 +1486,46 @@ impl OlmEngine {
     /// Durable local admission of one application message, idempotent by
     /// token within the relationship.
     pub fn send(&mut self, peer: &str, token: &str, content: &str) -> Result<(String, bool)> {
+        self.atomic(|engine| engine.admit(peer, token, content))
+    }
+
+    /// Admit many messages in one transaction (one commit instead of one per
+    /// message: a change for a thousand friends is one write). Each message
+    /// is all or nothing on its own; after a failure the rest of that friend's
+    /// messages are skipped, so no friend gets a later one without an earlier.
+    pub fn send_many(
+        &mut self,
+        items: &[(String, String, String)],
+    ) -> Result<Vec<Result<(String, bool)>>> {
+        self.atomic(|engine| {
+            let mut failed: BTreeSet<String> = BTreeSet::new();
+            let mut out = Vec::with_capacity(items.len());
+            for (peer, token, content) in items {
+                if failed.contains(peer) {
+                    out.push(Err(Error("skipped")));
+                    continue;
+                }
+                engine.conn.execute_batch("SAVEPOINT admit")?;
+                match engine.admit(peer, token, content) {
+                    Ok(sent) => {
+                        engine.conn.execute_batch("RELEASE admit")?;
+                        out.push(Ok(sent));
+                    }
+                    Err(error) => {
+                        engine
+                            .conn
+                            .execute_batch("ROLLBACK TO admit; RELEASE admit")?;
+                        failed.insert(peer.clone());
+                        out.push(Err(error));
+                    }
+                }
+            }
+            Ok(out)
+        })
+    }
+
+    /// One message to one friend, inside the caller's transaction.
+    fn admit(&mut self, peer: &str, token: &str, content: &str) -> Result<(String, bool)> {
         if token.is_empty() || token.len() > 128 || content.len() > MAX_APP_CONTENT {
             return Err(Error("payload_limit"));
         }
@@ -1518,26 +1558,24 @@ impl OlmEngine {
         if pending >= 2_000 {
             return Err(Error("native_outbound_quota"));
         }
-        self.atomic(|engine| {
-            if engine.sending_session(peer)?.is_none() {
-                // Lost state on this side: rebuild before sending.
-                engine.rekey(peer, true)?;
-            }
-            let mut session = engine.sending_session(peer)?.ok_or(Error("no_session"))?;
-            let message = checked(
-                session.encrypt([vec![ENVELOPE_APP], content.as_bytes().to_vec()].concat()),
-                "olm_encrypt",
-            )?;
-            engine.save_session(peer, &session, false, false)?;
-            let id = engine.queue_frame(peer, true, &message)?;
-            engine.sql(|c| {
-                c.execute(
-                    "INSERT INTO olm_token(peer, token, frame, content_hash, created_at) VALUES(?1,?2,?3,?4,?5)",
-                    params![peer, token, id.as_slice(), hash, i64_of(now_ms())],
-                )
-            })?;
-            Ok((hex::encode(id), false))
-        })
+        if self.sending_session(peer)?.is_none() {
+            // Lost state on this side: rebuild before sending.
+            self.rekey(peer, true)?;
+        }
+        let mut session = self.sending_session(peer)?.ok_or(Error("no_session"))?;
+        let message = checked(
+            session.encrypt([vec![ENVELOPE_APP], content.as_bytes().to_vec()].concat()),
+            "olm_encrypt",
+        )?;
+        self.save_session(peer, &session, false, false)?;
+        let id = self.queue_frame(peer, true, &message)?;
+        self.sql(|c| {
+            c.execute(
+                "INSERT INTO olm_token(peer, token, frame, content_hash, created_at) VALUES(?1,?2,?3,?4,?5)",
+                params![peer, token, id.as_slice(), hash, i64_of(now_ms())],
+            )
+        })?;
+        Ok((hex::encode(id), false))
     }
 
     /// Withdraw this peer's application frames the peer has not acknowledged.

@@ -599,6 +599,7 @@ class SharingSync(
         val updated = mutableMapOf<String, StreamMember>()
         val failed = mutableSetOf<String>()
         var delivered = false
+        val receivers = mutableListOf<StreamMember>()
         for (member in members) {
             val peer = native[member.peer]
             // Messages withdrawn after this member's last starting point leave a
@@ -615,39 +616,66 @@ class SharingSync(
                 if (!member.snapshotDue) updated[member.peer] = member.copy(snapshotDue = true)
                 continue
             }
-            for ((token, message) in broadcast) {
-                val failure = runCatching { host.send(member.peer, token, ShareProtocol.encode(message)) }.exceptionOrNull() ?: continue
-                if ((failure as? MarmotFailure)?.code == "token_conflict") {
-                    // An earlier attempt with this token carried other content (a
-                    // crash between native admission and our commit): start over
-                    // with a generation no earlier attempt used.
-                    store.putStream(stream.copy(generation = maxOf(stream.generation, message.gen), fullRequired = true, generationStartedAt = now))
-                    return
-                }
-                failed += member.peer
-                updated[member.peer] = member.copy(snapshotDue = true)
-                break
+            receivers += member
+        }
+        if (receivers.isNotEmpty()) {
+            // Everyone gets the same text: one string, many friends, few native commits (B13).
+            val encoded = broadcast.map { (token, message) -> token to ShareProtocol.encode(message) }
+            val results = host.sendMany(receivers.flatMap { m -> encoded.map { (token, content) -> Triple(m.peer, token, content) } })
+            val conflict = results.indexOfFirst { (it.exceptionOrNull() as? MarmotFailure)?.code == "token_conflict" }
+            if (conflict >= 0) {
+                // An earlier attempt with this token carried other content (a
+                // crash between native admission and our commit): start over
+                // with a generation no earlier attempt used.
+                val message = broadcast[conflict % encoded.size].second
+                store.putStream(stream.copy(generation = maxOf(stream.generation, message.gen), fullRequired = true, generationStartedAt = now))
+                return
             }
-            if (member.peer !in failed) delivered = true
+            receivers.forEachIndexed { index, member ->
+                if (encoded.indices.all { results[index * encoded.size + it].isSuccess }) delivered = true
+                else {
+                    failed += member.peer
+                    updated[member.peer] = member.copy(snapshotDue = true)
+                }
+            }
         }
         val snapshots = members.map { updated[it.peer] ?: it }
             .filter { it.snapshotDue && native[it.peer]?.active == true && it.peer !in failed }
         // Nobody could take what moved: try again next time, as if nothing happened.
         if (broadcast.isNotEmpty() && !delivered && snapshots.isEmpty()) return
+        // Snapshots differ per member (their number), so they go in groups of bounded size.
+        val group = mutableListOf<Pair<StreamMember, List<Pair<String, String>>>>()
+        var groupBytes = 0
+        suspend fun flushSnapshots() {
+            if (group.isEmpty()) return
+            // The numbers are taken before anything goes out: after a crash in
+            // the middle, the next snapshot uses a new one. Reusing one at
+            // another position would make the friend ignore the newer state.
+            group.forEach { (member, _) -> store.putMember(member.copy(assign = member.assign + 1)) }
+            val results = host.sendMany(group.flatMap { (member, messages) -> messages.map { (token, content) -> Triple(member.peer, token, content) } })
+            var at = 0
+            for ((member, messages) in group) {
+                val assign = member.assign + 1
+                val complete = (at until at + messages.size).all { results[it].isSuccess }
+                at += messages.size
+                // A number once used is never used again, even when only part of it went out.
+                updated[member.peer] = if (complete) member.copy(assign = assign, assignedAt = now, snapshotDue = false) else member.copy(assign = assign)
+            }
+            group.clear()
+            groupBytes = 0
+        }
         for (member in snapshots) {
             // A snapshot for this member alone, at the state every other member now has.
             val assign = member.assign + 1
             val prefix = "${stream.id}:a$assign:g${next.generation}:s${next.sequence}"
-            val messages = listOf("$prefix:m" to ShareProtocol.manifest(stream.id, assign, next.generation, next.sequence, next.scope, target, now)) +
-                ShareProtocol.full(stream.id, assign, next.generation, next.sequence, target).map { "$prefix:f${it.part}" to it }
-            // The number is taken before anything goes out: after a crash in
-            // the middle, the next snapshot uses a new one. Reusing it at
-            // another position would make the friend ignore the newer state.
-            store.putMember(member.copy(assign = assign))
-            val complete = messages.all { (token, message) -> runCatching { host.send(member.peer, token, ShareProtocol.encode(message)) }.isSuccess }
-            // A number once used is never used again, even when only part of it went out.
-            updated[member.peer] = if (complete) member.copy(assign = assign, assignedAt = now, snapshotDue = false) else member.copy(assign = assign)
+            val messages = (listOf("$prefix:m" to ShareProtocol.manifest(stream.id, assign, next.generation, next.sequence, next.scope, target, now)) +
+                ShareProtocol.full(stream.id, assign, next.generation, next.sequence, target).map { "$prefix:f${it.part}" to it })
+                .map { (token, message) -> token to ShareProtocol.encode(message) }
+            group += member to messages
+            groupBytes += messages.sumOf { it.second.length }
+            if (groupBytes >= SNAPSHOT_GROUP_BYTES) flushSnapshots()
         }
+        flushSnapshots()
         store.transaction {
             if (next != stream) store.putStream(next)
             if (advanced) store.putSent(stream.id, sent, targetMap)
@@ -685,6 +713,8 @@ class SharingSync(
     companion object {
         const val MAX_PENDING = 64
         const val MAX_RETIRED = 8
+        /** Snapshots for several members go out together up to about this much text. */
+        const val SNAPSHOT_GROUP_BYTES = 2_000_000
         /** The audience of everyone who receives nothing from us. */
         const val OFF = "off"
         const val INVITE_FIRST_RETRY_MS = 15_000L

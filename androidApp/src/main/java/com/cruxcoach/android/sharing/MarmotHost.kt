@@ -181,6 +181,66 @@ class MarmotHost(
     suspend fun decline(peer: String) { io { raw("decline") { put("peer", peer) } } }
     suspend fun send(peer: String, token: String, content: String): MarmotSent =
         io { value(raw("send") { put("peer", peer); put("token", token); put("content", content) }) }
+    /**
+     * Many messages, admitted in as few native transactions as fit (one commit
+     * instead of one per message). Per message the result or the refusal;
+     * after a refusal the rest for that friend is skipped. A host without
+     * batches gets them one by one.
+     */
+    suspend fun sendMany(items: List<Triple<String, String, String>>): List<Result<MarmotSent>> = io {
+        val out = ArrayList<Result<MarmotSent>>(items.size)
+        val failed = mutableSetOf<String>()
+        var start = 0
+        while (start < items.size) {
+            var end = start
+            var bytes = 0
+            while (end < items.size && end - start < SEND_BATCH && (end == start || bytes + items[end].third.length < SEND_BATCH_BYTES)) {
+                bytes += items[end].third.length + items[end].second.length + 160
+                end++
+            }
+            // Friends that failed in an earlier chunk get nothing later.
+            val chunk = items.subList(start, end)
+            val asked = chunk.withIndex().filter { it.value.first !in failed }
+            val results = if (batches) runCatching { batch(asked.map { it.value }) }.getOrElse { error ->
+                if ((error as? MarmotFailure)?.code in UNBATCHED) { batches = false; single(asked.map { it.value }) } else throw error
+            } else single(asked.map { it.value })
+            val byIndex = asked.map { it.index }.zip(results).toMap()
+            chunk.forEachIndexed { index, item ->
+                val result = byIndex[index] ?: Result.failure(MarmotFailure("skipped"))
+                if (result.isFailure) failed += item.first
+                out += result
+            }
+            start = end
+        }
+        out
+    }
+
+    @Volatile private var batches = true
+
+    private fun batch(items: List<Triple<String, String, String>>): List<Result<MarmotSent>> {
+        if (items.isEmpty()) return emptyList()
+        val answer = raw("send_many") {
+            put("items", buildJsonArray {
+                items.forEach { (peer, token, content) -> add(buildJsonObject { put("peer", peer); put("token", token); put("content", content) }) }
+            })
+        }
+        return answer.jsonObject["results"]!!.jsonArray.map { element ->
+            val result = element.jsonObject
+            result["error"]?.let { Result.failure(MarmotFailure(it.jsonPrimitive.content)) }
+                ?: Result.success(value<MarmotSent>(element))
+        }
+    }
+
+    /** One by one, stopping a friend at its first refusal. */
+    private fun single(items: List<Triple<String, String, String>>): List<Result<MarmotSent>> {
+        val failed = mutableSetOf<String>()
+        return items.map { (peer, token, content) ->
+            if (peer in failed) Result.failure(MarmotFailure("skipped"))
+            else runCatching { value<MarmotSent>(raw("send") { put("peer", peer); put("token", token); put("content", content) }) }
+                .onFailure { failed += peer }
+        }
+    }
+
     suspend fun cancel(peer: String): Int = io { raw("cancel") { put("peer", peer) }.jsonObject["cancelled"]!!.jsonPrimitive.int }
     suspend fun end(peer: String) { io { raw("end") { put("peer", peer) } } }
     suspend fun ack(seqs: List<Long>) {
@@ -211,4 +271,12 @@ class MarmotHost(
     }
 
     val isOpen: Boolean get() = synchronized(lock) { handle != 0L }
+
+    private companion object {
+        const val SEND_BATCH = 256
+        // Escaped JSON grows; a native command takes at most 512 KiB.
+        const val SEND_BATCH_BYTES = 300_000
+        /** A host that does not know batches says so in one of these. */
+        val UNBATCHED = setOf("command_format", "unsupported")
+    }
 }

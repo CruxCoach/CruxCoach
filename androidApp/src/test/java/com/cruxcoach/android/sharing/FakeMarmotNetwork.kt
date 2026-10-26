@@ -90,6 +90,21 @@ class FakeMarmotNetwork {
                 }
                 "accept" -> if (state(field("peer")) == "invited") { peer(field("peer"), "active", false); ok(JsonPrimitive(true)) } else refuse("no_invitation")
                 "decline" -> { peers.remove(field("peer")); ok(JsonPrimitive(true)) }
+                "send_many" -> {
+                    // One by one through "send", as the native side does in one transaction.
+                    val failed = mutableSetOf<String>()
+                    val results = request["items"]!!.jsonArray.map { element ->
+                        val item = element.jsonObject
+                        val peer = item["peer"]!!.jsonPrimitive.content
+                        if (peer in failed) return@map buildJsonObject { put("error", "skipped") }
+                        val answer = Json.parseToJsonElement(call(handle, buildJsonObject {
+                            put("op", "send"); put("peer", peer); put("token", item["token"]!!); put("content", item["content"]!!)
+                        }.toString())).jsonObject
+                        if (answer["ok"]!!.jsonPrimitive.content == "true") answer["value"]!!
+                        else buildJsonObject { put("error", answer["error"]!!.jsonPrimitive.content) }.also { failed += peer }
+                    }
+                    ok(buildJsonObject { put("results", JsonArray(results)) })
+                }
                 "send" -> {
                     onSend?.invoke(field("peer"), field("token"))
                     failSendsWith?.let { return refuse(it) }

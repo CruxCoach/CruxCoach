@@ -931,3 +931,66 @@ fn invitations_reach_only_the_device_that_showed_the_code() {
     let own = a.e().contact_code().unwrap();
     assert_eq!(a.e().import_contact(&own).unwrap_err().0, "self_invite");
 }
+
+#[test]
+fn many_messages_for_many_friends_are_admitted_in_one_transaction() {
+    use cruxcoach_marmot::olm::FAIL_COMMITS;
+    let mut a = Node::new();
+    let mut friends: Vec<Node> = (0..3).map(|_| Node::new()).collect();
+    let mut wire = Wire::default();
+    for b in friends.iter_mut() {
+        befriend(&mut a, b, &mut wire);
+    }
+    let ids: Vec<String> = friends.iter().map(|b| b.id()).collect();
+    let items = |round: &str| -> Vec<(String, String, String)> {
+        ids.iter()
+            .flat_map(|peer| {
+                (0..2).map(move |n| {
+                    (
+                        peer.clone(),
+                        format!("{round}{n}"),
+                        format!("synthetic {round}{n}"),
+                    )
+                })
+            })
+            .collect()
+    };
+    // Aborted in the middle (the commit fails): nothing of the batch stays.
+    let before: Vec<_> = ids
+        .iter()
+        .map(|p| a.e().session_pickles(p).unwrap())
+        .collect();
+    FAIL_COMMITS.set(1);
+    assert_eq!(
+        a.e().send_many(&items("m")).unwrap_err().0,
+        "injected_fault"
+    );
+    for (peer, pickles) in ids.iter().zip(&before) {
+        assert_eq!(&a.e().session_pickles(peer).unwrap(), pickles);
+        assert_eq!(a.e().pending_for(peer).unwrap(), 0);
+    }
+    // Retried: each message once; again: duplicates, nothing new.
+    let first = a.e().send_many(&items("m")).unwrap();
+    assert!(first.iter().all(|r| matches!(r, Ok((_, false)))));
+    let again = a.e().send_many(&items("m")).unwrap();
+    assert!(again.iter().all(|r| matches!(r, Ok((_, true)))));
+    for (b, peer) in friends.iter_mut().zip(&ids) {
+        assert_eq!(a.e().pending_for(peer).unwrap(), 2);
+        exchange(&mut a, b, &mut wire);
+        assert_eq!(b.drain(), vec!["synthetic m0", "synthetic m1"]);
+    }
+    // A conflict stops that friend only; the others get theirs.
+    let mut mixed = items("n");
+    mixed[0].1 = "m0".into();
+    mixed[0].2 = "synthetic other".into();
+    let results = a.e().send_many(&mixed).unwrap();
+    assert_eq!(results[0].as_ref().unwrap_err().0, "token_conflict");
+    assert_eq!(
+        results[1].as_ref().unwrap_err().0,
+        "skipped",
+        "no later message without the earlier"
+    );
+    assert!(results[2..].iter().all(|r| r.is_ok()));
+    assert_eq!(a.e().pending_for(&ids[0]).unwrap(), 0);
+    assert_eq!(a.e().pending_for(&ids[1]).unwrap(), 2);
+}

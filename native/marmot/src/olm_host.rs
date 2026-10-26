@@ -43,6 +43,9 @@ enum Command {
         token: String,
         content: String,
     },
+    SendMany {
+        items: Vec<SendItem>,
+    },
     Cancel {
         peer: String,
     },
@@ -132,6 +135,17 @@ enum Command {
     #[cfg(feature = "local-harness")]
     SignerOps,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SendItem {
+    peer: String,
+    token: String,
+    content: String,
+}
+
+/// At most this many messages in one batch (the request stays far below what JNI takes).
+const MAX_BATCH: usize = 256;
 
 /// The QR form of a contact code (npub and a fresh secret).
 pub const CONTACT_PREFIX: &str = "cruxcoach:c1:";
@@ -264,6 +278,25 @@ impl OlmHost {
             } => {
                 let (event, duplicate) = self.engine()?.send(&peer, &token, &content)?;
                 json!({"event": event, "duplicate": duplicate})
+            }
+            Command::SendMany { items } => {
+                if items.len() > MAX_BATCH {
+                    return Err(Error("batch_limit"));
+                }
+                let items: Vec<(String, String, String)> = items
+                    .into_iter()
+                    .map(|i| (i.peer, i.token, i.content))
+                    .collect();
+                let results: Vec<Value> = self
+                    .engine()?
+                    .send_many(&items)?
+                    .into_iter()
+                    .map(|result| match result {
+                        Ok((event, duplicate)) => json!({"event": event, "duplicate": duplicate}),
+                        Err(error) => json!({"error": error.0}),
+                    })
+                    .collect();
+                json!({"results": results})
             }
             Command::Cancel { peer } => json!({"cancelled": self.engine()?.cancel(&peer)?}),
             Command::End { peer } => {
