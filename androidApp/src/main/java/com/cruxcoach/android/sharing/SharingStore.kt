@@ -326,9 +326,14 @@ class SharingStore(private val database: SecureDatabase) {
         row.sequence, row.generation_started_at, json.decodeFromString(row.scope), row.digest, row.record_count.toInt(),
         row.manifest_at, row.full_required == 1L, row.epoch, row.pending_since, row.pending_at, row.pending_digest, row.created_at)
 
-    fun putStream(s: StreamState) = q.upsertStream(s.id, s.kind, s.ruleKey, s.generation, s.sequence, s.generationStartedAt,
-        json.encodeToString(s.scope), s.digest, s.count.toLong(), s.manifestAt, if (s.fullRequired) 1 else 0, s.epoch,
-        s.pendingSince, s.pendingAt, s.pendingDigest, s.createdAt)
+    /** Insert or update in place; never delete-and-insert, which would take the sent rows along where foreign keys are on. */
+    fun putStream(s: StreamState) = transaction {
+        val scope = json.encodeToString(s.scope)
+        q.insertStream(s.id, s.kind, s.ruleKey, s.generation, s.sequence, s.generationStartedAt, scope, s.digest, s.count.toLong(),
+            s.manifestAt, if (s.fullRequired) 1 else 0, s.epoch, s.pendingSince, s.pendingAt, s.pendingDigest, s.createdAt)
+        q.updateStream(s.generation, s.sequence, s.generationStartedAt, scope, s.digest, s.count.toLong(), s.manifestAt,
+            if (s.fullRequired) 1 else 0, s.epoch, s.pendingSince, s.pendingAt, s.pendingDigest, s.id)
+    }
 
     /** Records the members of [stream] hold, with their revisions. */
     fun sent(stream: String): Map<String, Long> = q.selectSent(stream).executeAsList().associate { it.record_id to it.revision }

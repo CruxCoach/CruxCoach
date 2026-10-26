@@ -28,8 +28,12 @@ class SharingAudienceTest {
     private val today = LocalDate.of(2026, 9, 23)
     private val drivers = mutableListOf<JdbcSqliteDriver>()
 
+    /** The app keeps foreign keys off; the process harness turns them on. Both must converge. */
+    private var foreignKeys = false
+
     inner class Endpoint(val account: String) {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { SecureDatabase.Schema.create(it); drivers += it }
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY, java.util.Properties().apply { put("foreign_keys", foreignKeys.toString()) })
+            .also { SecureDatabase.Schema.create(it); drivers += it }
         val database = SecureDatabase(driver)
         val node = net.node(account)
         val store = SharingStore(database)
@@ -123,7 +127,8 @@ class SharingAudienceTest {
     @Test fun whatever_happens_to_rules_and_delivery_every_friend_gets_exactly_what_the_resolver_allows() {
         var streams = 0
         var snapshots = 0
-        for (seed in listOf(26L, 3, 7, 11, 19, 42)) {
+        for ((index, seed) in listOf(26L, 3, 7, 11, 19, 42).withIndex()) {
+            foreignKeys = index % 2 == 1
             reset()
             val (most, handed) = randomRun(java.util.Random(seed))
             streams = maxOf(streams, most)

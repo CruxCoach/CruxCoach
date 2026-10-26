@@ -241,6 +241,36 @@ class SharingEndpointCommands(endpoint: SyntheticMarmotEndpoint) : EndpointComma
                         put("native", endpoint.harness("private_storage_matches") { put("marker", marker) }.jsonPrimitive.content.toInt())
                     }
                 }
+                // Positions only (no content, no keys): what a stalled phase is waiting for.
+                "sync_state" -> buildJsonObject {
+                    put("streams", buildJsonArray {
+                        endpoint.store.streams().forEach { st ->
+                            add(buildJsonObject {
+                                put("id", st.id.take(8)); put("gen", st.generation); put("seq", st.sequence); put("count", st.count)
+                                put("full_required", st.fullRequired); put("pending_since", st.pendingSince ?: 0)
+                            })
+                        }
+                    })
+                    put("members", buildJsonArray {
+                        endpoint.store.members().forEach { m ->
+                            add(buildJsonObject {
+                                put("peer", m.peer.take(8)); put("stream", m.stream.take(8)); put("assign", m.assign)
+                                put("snapshot_due", m.snapshotDue); put("acked", "${m.ackedGeneration}/${m.ackedSequence}")
+                            })
+                        }
+                    })
+                    put("incoming", buildJsonArray {
+                        endpoint.store.incomingStates().forEach { (peer, st) ->
+                            add(buildJsonObject {
+                                put("peer", peer.take(8)); put("stream", st.stream.take(8)); put("assign", st.assign)
+                                put("gen", st.generation); put("seq", st.sequence); put("base", st.base); put("staged", st.stagedAssign)
+                                put("pending", st.pending.joinToString(" ") { "${it.type}:${it.stream.take(4)}:a${it.assign}:g${it.gen}:s${it.seq}" })
+                                put("gap_since", st.gapSince); put("resync", "${st.resyncGeneration}@${st.resyncAt}"); put("mismatch", st.mismatch)
+                                put("retired", st.retired.joinToString(" ") { it.take(8) })
+                            })
+                        }
+                    })
+                }
                 "canonical_counts" -> buildJsonObject {
                     put("notes", board.getClimbNotesForBackup().size)
                     put("profiles", if (com.cruxcoach.data.repository.UserRepositoryImpl(endpoint.database).getActiveProfile() == null) 0 else 1)

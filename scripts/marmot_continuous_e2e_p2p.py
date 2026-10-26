@@ -148,7 +148,8 @@ def run():
         a.call('source_training', id='today', delete='true')
         wait(lambda: matches(b, a, owner, friend_b), 'owner restart and training deletion',
              describe=lambda: dict(b_sees_a=summary(b, owner),
-                                   a_plans=sorted(r['id'] + '@' + r['hash'][:8] for r in a.call('source_hashes', peer=friend_b))))
+                                   a_plans=sorted(r['id'] + '@' + r['hash'][:8] for r in a.call('source_hashes', peer=friend_b)),
+                                   a_sync=a.call('sync_state'), b_sync=b.call('sync_state')))
         assert all(r['category'] != TRAINING for r in friend(b, owner)['records'])
 
         a.call('source_training', id='again', attempts='2', date=today.isoformat())
@@ -179,7 +180,9 @@ def run():
         a.call('remove', peer=friend_b)
         a.call('request', peer=friend_b, template='FRIENDS')
         a.call('import_contact', payload=b.call('contact_code')['payload'])
-        wait(lambda: owner in b.call('friends')['invitations'], 'new request after end')
+        wait(lambda: owner in b.call('friends')['invitations'], 'new request after end',
+             describe=lambda: dict(b_friends=b.call('friends'), a_friend=friend(a, friend_b), a_status=a.call('status'),
+                                   a_sync=a.call('sync_state'), b_sync=b.call('sync_state')))
         b.call('remove', peer=owner)
         b.call('accept', peer=owner, template='ACQUAINTANCES', outgoing='false')
         wait(lambda: matches(b, a, owner, friend_b) and friend(a, friend_b)['records'] == [], 'new friendship generation')

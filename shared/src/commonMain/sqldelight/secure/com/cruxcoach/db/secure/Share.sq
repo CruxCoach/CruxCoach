@@ -259,10 +259,18 @@ SELECT * FROM share_stream WHERE id = ?;
 selectStreamByKey:
 SELECT * FROM share_stream WHERE kind = ? AND rule_key = ?;
 
-upsertStream:
-INSERT OR REPLACE INTO share_stream(id, kind, rule_key, generation, sequence, generation_started_at, scope, digest,
+-- A stream is written in place (insertStream, then updateStream), never with
+-- REPLACE: that deletes the row first, and where foreign keys are on the
+-- cascade would take what the stream sent along.
+insertStream:
+INSERT OR IGNORE INTO share_stream(id, kind, rule_key, generation, sequence, generation_started_at, scope, digest,
     record_count, manifest_at, full_required, epoch, pending_since, pending_at, pending_digest, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateStream:
+UPDATE share_stream SET generation = ?, sequence = ?, generation_started_at = ?, scope = ?, digest = ?, record_count = ?,
+    manifest_at = ?, full_required = ?, epoch = ?, pending_since = ?, pending_at = ?, pending_digest = ?
+WHERE id = ?;
 
 -- Foreign keys are off (see deletePersonRules): a stream's rows go explicitly.
 deleteEmptyStreamsSent:

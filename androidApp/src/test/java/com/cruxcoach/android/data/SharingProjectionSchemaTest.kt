@@ -253,4 +253,28 @@ class SharingProjectionSchemaTest {
             "VALUES (999, 1, 'BOULDER', '[]', 60, 7.0)")
         assertEquals(1L, count("training_sessions", "plan_id = 999"))
     }
+
+    @Test
+    fun `updating a stream keeps what it sent, with foreign keys on as well as off`() {
+        for (foreignKeys in listOf(false, true)) {
+            JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY, java.util.Properties().apply { put("foreign_keys", foreignKeys.toString()) }).use { d ->
+                SecureDatabase.Schema.create(d)
+                val store = SharingStore(SecureDatabase(d))
+                val peer = "b".repeat(64)
+                store.insertPerson(peer, ShareTemplates.TRAINING_PARTNER.id, outgoing = true, label = null,
+                    state = com.cruxcoach.android.sharing.PersonState.CONNECTED, now = 1)
+                val stream = com.cruxcoach.android.sharing.StreamState.fresh("c".repeat(32), "key", 1)
+                store.putStream(stream)
+                store.putMember(com.cruxcoach.android.sharing.StreamMember(peer, stream.id, 1, 1, false, 1, 0, 1, 1))
+                val sent = mapOf("note:a" to 1L, "note:b" to 2L)
+                store.putSent(stream.id, emptyMap(), sent)
+                // A delta changes one record; the stream row is written again.
+                store.putStream(stream.copy(generation = 1, sequence = 1, count = 2))
+                store.putSent(stream.id, sent, sent + ("note:b" to 3L))
+                assertEquals(mapOf("note:a" to 1L, "note:b" to 3L), store.sent(stream.id), "foreign keys $foreignKeys")
+                assertEquals(1L, store.stream(stream.id)!!.sequence)
+                assertEquals(1, store.members(stream.id).size)
+            }
+        }
+    }
 }

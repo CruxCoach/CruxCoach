@@ -114,7 +114,19 @@ open class SyntheticMarmotEndpoint(
     /** One production pass: withdrawals, online, native sync, app step. */
     fun pass(): Boolean = runBlocking {
         note("pass start")
-        SharingPass(host, sync).run(stayOnline = true).also { note("pass end $it") }
+        SharingPass(host, sync).run(stayOnline = true).also {
+            note("pass end $it")
+            if (traceFile != null) {
+                // Positions and record versions only, never content.
+                note("streams " + store.streams().joinToString(" | ") { st ->
+                    "${st.id.take(6)} g${st.generation} s${st.sequence} c${st.count} sent=" +
+                        store.sent(st.id).entries.sortedBy { it.key }.joinToString(",") { (id, rev) -> "${id.takeLast(10)}@${rev.toString(16).takeLast(5)}" }
+                })
+                note("incoming " + store.incomingStates().entries.joinToString(" | ") { (peer, st) ->
+                    "${peer.take(6)} ${st.stream.take(6)} a${st.assign} g${st.generation} s${st.sequence} b${st.base} p${st.pending.size} m${st.mismatch} r${st.resyncGeneration}@${st.resyncAt}"
+                })
+            }
+        }
     }
 
     fun <T> blocking(block: suspend MarmotHost.() -> T): T = runBlocking { host.block() }
