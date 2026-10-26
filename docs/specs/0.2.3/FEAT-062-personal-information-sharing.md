@@ -15,6 +15,10 @@ superseded_pin: 101d79946cff6c82d2b849d3b70902a7af7bac08
 
 # Feature Spec: Personal Information Sharing and Social Relationships
 
+> **Superseded (2026-10-26):** The policy model became the audience model v3 of
+> [FEAT-073](../0.2.6/FEAT-073-who-sees-this.md), and the transport is described in
+> [Sharing over mailboxes and invitation links](../../architecture/sharing-mailboxes-and-links.md).
+
 > **Historical annexes:** [wire contract](../social/PRIVATE-SHARING-WIRE-V1.md) ·
 > [threat model](../social/PRIVATE-SHARING-THREAT-MODEL.md) ·
 > [golden vectors](../social/PRIVATE-SHARING-GOLDEN-VECTORS.md)

@@ -1,5 +1,9 @@
 # Marmot permissions v2: target architecture
 
+> **Superseded (2026-10-26):** The owner chose Olm between each pair of friends with delivery through
+> mailboxes instead of MLS. What is built now is described in
+> [Sharing over mailboxes and invitation links](sharing-mailboxes-and-links.md); the MLS code stays, not wired.
+
 [Deutsch: Kurzfassung](marmot-permissions-v2-target-overview.de.md) ·
 [Current v1 architecture](marmot-permissions.md) ·
 [FEAT-062 policy model](../specs/0.2.3/FEAT-062-personal-information-sharing.md)

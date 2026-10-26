@@ -1,5 +1,9 @@
 # Marmot-Permissions v2: Zielbild in Kürze
 
+> **Abgelöst (2026-10-26):** Der Owner hat Olm zwischen je zwei Freunden mit Zustellung über Briefkästen statt MLS
+> gewählt. Was jetzt gebaut ist, steht im [Überblick Briefkästen und Links](sharing-mailboxes-and-links-overview.de.md).
+> Der MLS-Code bleibt, ist aber nicht verdrahtet.
+
 [English: vollständige Zielarchitektur](marmot-permissions-v2-target.md)
 
 Stand 23. September 2026, Branch `feat/marmot-permissions-v2` (APKTrack-Track
