@@ -61,7 +61,7 @@ enum class ShareCategory(val ceiling: AudienceLevel, val health: HealthClass, va
 
     companion object {
         /** Categories with a source in this version; everything else resolves to deny. */
-        val AVAILABLE: Set<ShareCategory> = setOf(CLIMBING_PROFILE, SENDS, ATTEMPTS, CLIMB_NOTES)
+        val AVAILABLE: Set<ShareCategory> = setOf(CLIMBING_PROFILE, SENDS, ATTEMPTS, CLIMB_NOTES, WEEKLY_VOLUME)
     }
 }
 
@@ -96,12 +96,11 @@ object ShareTemplates {
         setOf(ShareCategory.CLIMBING_PROFILE, ShareCategory.SENDS, ShareCategory.ATTEMPTS, ShareCategory.CLIMB_NOTES),
         periodDays = 30,
     )
-    /** Hidden until weekly volume has a source (last, separable step of 0.2.6). */
+    /** Profile & goals and how much one climbs each week, never single climbs. */
     val FAMILY = ShareTemplate(
         TemplateId("FAMILY"),
         setOf(ShareCategory.CLIMBING_PROFILE, ShareCategory.WEEKLY_VOLUME),
         periodDays = 30,
-        hidden = true,
     )
     /** 0.2.8: later also training sessions and benchmarks; health only ticked one by one, with an expiry. */
     val COACH = ShareTemplate(

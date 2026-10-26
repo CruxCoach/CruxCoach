@@ -618,4 +618,18 @@ class SharingSyncTest {
         assertEquals(alice.expected(bob), bob.received(alice))
         assertEquals(before.assign + 2, bob.store.incoming(alice.account).assign)
     }
+
+    @Test fun family_receives_the_profile_and_the_weekly_volume_but_no_single_climb() = runBlocking {
+        alice.profile("Alice")
+        alice.training("t1", "2026-09-14")
+        alice.training("t2", "2026-09-15", attempts = 4)
+        alice.note("n1", "private beta")
+        befriend(setOf(ATTEMPTS, CLIMB_NOTES), emptySet())
+        alice.service.setTemplate(bob.account, ShareTemplates.FAMILY.id)
+        settle()
+        assertEquals(setOf("profile:active", "week:2026-W38"), bob.received(alice).keys)
+        assertEquals(mapOf("week" to "2026-W38", "date" to "2026-09-14", "days" to "2", "sends" to "0", "attempts" to "6"),
+            bob.received(alice).getValue("week:2026-W38"))
+        assertEquals(alice.expected(bob), bob.received(alice))
+    }
 }

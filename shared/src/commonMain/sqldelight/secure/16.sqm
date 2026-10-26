@@ -23,7 +23,7 @@ CREATE TABLE share_template (
 
 INSERT INTO share_template(id, categories, period_days, hidden) VALUES
     ('TRAINING_PARTNER', 'CLIMBING_PROFILE,SENDS,ATTEMPTS,CLIMB_NOTES', 30, 0),
-    ('FAMILY', 'CLIMBING_PROFILE,WEEKLY_VOLUME', 30, 1),
+    ('FAMILY', 'CLIMBING_PROFILE,WEEKLY_VOLUME', 30, 0),
     ('COACH', 'CLIMBING_PROFILE,SENDS,ATTEMPTS,CLIMB_NOTES', 365, 1);
 
 -- Local settings of sharing itself (the self-declared age).

@@ -157,4 +157,22 @@ class SharingSourceTest {
         val after=source.read(scope).single();assertEquals("bid:new",after.id);assertNotEquals(before.revision, after.revision)
     }
 
+
+    @Test fun the_weekly_volume_counts_whole_weeks_and_names_no_climb() {
+        // Week 37 of 2026 starts on Monday 2026-09-07; 2026-09-01 lies in a week that began before the period.
+        // (bid() reuses one external id, which is unique: these need their own rows.)
+        fun attempt(id: String, at: String) = personal.insertBid(id, "synthetic-climb-$id", 40, false, 3, "excluded private comment",
+            at, false, "excluded gym", null, null, "Synthetic route", 5.0, "kilter", null, null)
+        attempt("early", "2026-09-02")
+        attempt("mon", "2026-09-07")
+        attempt("mon2", "2026-09-07 19:00:00")
+        personal.insertAscent("sent", "synthetic-climb", 40, false, 1, 2, 3, 18, false, "excluded private comment",
+            "2026-09-09 09:15:00", false, "excluded gym", "excluded wall", "excluded product", "Synthetic route", 5.0,
+            "excluded frames", 0, "kilter", null, "excluded external send")
+        val weeks = source.read(scope.copy(categories = setOf(WEEKLY_VOLUME)))
+        assertEquals(listOf("week:2026-W37"), weeks.map { it.id }, "the partial first week stays out")
+        assertEquals(mapOf("week" to "2026-W37", "date" to "2026-09-07", "days" to "2", "sends" to "1", "attempts" to "6"), weeks.single().fields)
+        assertTrue(weeks.single().fields.values.none { "excluded" in it || "Synthetic" in it }, "no comment, place or climb name")
+        assertTrue(source.projectClimbs(setOf("synthetic-climb")).records.none { it.category == WEEKLY_VOLUME }, "a week is about no single climb")
+    }
 }

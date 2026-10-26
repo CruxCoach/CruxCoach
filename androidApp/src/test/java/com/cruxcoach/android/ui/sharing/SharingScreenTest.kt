@@ -135,6 +135,7 @@ class SharingScreenTest {
                 ShareCategory.SENDS to CategoryChoice(false, false, null, ShareDecisionSource.NO_GRANT),
                 ShareCategory.ATTEMPTS to CategoryChoice(false, false, null, ShareDecisionSource.NO_GRANT),
                 ShareCategory.CLIMB_NOTES to CategoryChoice(false, true, ShareRule(AccessEffect.DENY), ShareDecisionSource.PERSON_DENY),
+                ShareCategory.WEEKLY_VOLUME to CategoryChoice(false, false, null, ShareDecisionSource.NO_GRANT),
             ),
             periodDays = 30,
             items = listOf(PreviewItem(profile, true, null), PreviewItem(note, true, ShareRule(AccessEffect.ALLOW))),

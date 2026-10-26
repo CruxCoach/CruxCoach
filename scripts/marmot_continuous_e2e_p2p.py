@@ -96,7 +96,7 @@ def run():
         c.call('source_profile', name='Synthetic C private original marker')
         partner = [PROFILE, 'SENDS', TRAINING, NOTES]
         defaults = {'TRAINING_PARTNER': {'categories': partner, 'days': 30, 'hidden': False},
-                    'FAMILY': {'categories': [PROFILE, 'WEEKLY_VOLUME'], 'days': 30, 'hidden': True},
+                    'FAMILY': {'categories': [PROFILE, 'WEEKLY_VOLUME'], 'days': 30, 'hidden': False},
                     'COACH': {'categories': partner, 'days': 365, 'hidden': True}}
         assert all(p.call('templates') == defaults for p in (a, b, c)), 'shipped templates on a fresh install'
         # Two own templates; there is no inheritance between templates.

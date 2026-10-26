@@ -29,7 +29,27 @@ class SharingSource(private val database: SecureDatabase) {
             ascents = { q.sourceAscents(scope.since).executeAsList().map { Ascent(it.uuid, it.climb_uuid, it.climb_name, it.board_brand, it.angle, it.bid_count, it.difficulty, it.climbed_at) } },
             bids = { q.sourceBids(scope.since).executeAsList().map { Bid(it.uuid, it.climb_uuid, it.climb_name, it.board_brand, it.angle, it.bid_count, it.climbed_at) } },
             notes = { q.sourceNotes().executeAsList().map { it.climb_uuid to it.note } },
+            weeks = { weeks(scope.since) },
         )
+    }
+
+    /**
+     * The weekly volume (FEAT-073 WEEKLY_VOLUME): per ISO week the climbing days,
+     * sends and attempts (tries on climbs not sent). Only whole weeks starting on
+     * or after [since] count, so no week reaches back before the period.
+     */
+    private fun weeks(since: String): List<Week> {
+        val monday = java.time.LocalDate.parse(since).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY))
+        val q = database.shareSourceQueries
+        val sends = q.sourceDailySends(monday.toString()).executeAsList().associate { it.day to it.sends }
+        val tries = q.sourceDailyAttempts(monday.toString()).executeAsList().associate { it.day to ((it.tries as Number?)?.toLong() ?: 0L) }
+        return (sends.keys + tries.keys).mapNotNull { day -> runCatching { java.time.LocalDate.parse(day) }.getOrNull() }
+            .groupBy { it.with(java.time.DayOfWeek.MONDAY) }
+            .map { (start, days) ->
+                val key = days.map { it.toString() }
+                Week(start, days.size, key.sumOf { sends[it] ?: 0L }, key.sumOf { tries[it] ?: 0L })
+            }
+            .sortedBy { it.monday }
     }
 
     /** The owner's records about these climbs only, every period (the climb sheet asks
@@ -42,17 +62,21 @@ class SharingSource(private val database: SecureDatabase) {
             ascents = { q.sourceAscentsForClimbs(ids).executeAsList().map { Ascent(it.uuid, it.climb_uuid, it.climb_name, it.board_brand, it.angle, it.bid_count, it.difficulty, it.climbed_at) } },
             bids = { q.sourceBidsForClimbs(ids).executeAsList().map { Bid(it.uuid, it.climb_uuid, it.climb_name, it.board_brand, it.angle, it.bid_count, it.climbed_at) } },
             notes = { q.sourceNotesForClimbs(ids).executeAsList().map { it.climb_uuid to it.note } },
+            // A week is about no single climb.
+            weeks = { emptyList() },
         )
     }
 
     private data class Ascent(val uuid: String, val climb: String, val name: String, val board: String, val angle: Long, val bids: Long?, val grade: Long?, val at: String)
     private data class Bid(val uuid: String, val climb: String, val name: String, val board: String, val angle: Long, val bids: Long?, val at: String)
+    private data class Week(val monday: java.time.LocalDate, val days: Int, val sends: Long, val tries: Long)
 
     private fun build(
         scope: SharingScope,
         ascents: () -> List<Ascent>,
         bids: () -> List<Bid>,
         notes: () -> List<Pair<String, String>>,
+        weeks: () -> List<Week>,
     ): SharingProjection {
         var truncated = false
         fun <T> rows(read: () -> List<T>): List<T> = read().also { if (it.size > SharingRecords.MAX_RECORDS) truncated = true }
@@ -87,6 +111,13 @@ class SharingSource(private val database: SecureDatabase) {
         if (ShareCategory.CLIMB_NOTES in scope.categories) {
             rows(notes).forEach { (climb, note) ->
                 add("note:$climb", ShareCategory.CLIMB_NOTES, linkedMapOf("climbId" to climb, "note" to note))
+            }
+        }
+        if (ShareCategory.WEEKLY_VOLUME in scope.categories) {
+            rows(weeks).forEach { week ->
+                val name = SharingRecords.isoWeek(week.monday)
+                add("week:$name", ShareCategory.WEEKLY_VOLUME, linkedMapOf("week" to name, "date" to week.monday.toString(),
+                    "days" to week.days.toString(), "sends" to week.sends.toString(), "attempts" to week.tries.toString()))
             }
         }
         val (sendable, skipped) = records.sortedBy { it.id }.partition { SharingRecords.valid(it, scope) }

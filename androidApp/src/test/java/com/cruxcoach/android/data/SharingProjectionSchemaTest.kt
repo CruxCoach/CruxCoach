@@ -68,7 +68,7 @@ class SharingProjectionSchemaTest {
     /** The shipped templates (owner decision 2026-10-25), seeded only where share_template is created. */
     private val defaultTemplates = mapOf(
         "TRAINING_PARTNER" to Triple("CLIMBING_PROFILE,SENDS,ATTEMPTS,CLIMB_NOTES", 30L, 0L),
-        "FAMILY" to Triple("CLIMBING_PROFILE,WEEKLY_VOLUME", 30L, 1L),
+        "FAMILY" to Triple("CLIMBING_PROFILE,WEEKLY_VOLUME", 30L, 0L),
         "COACH" to Triple("CLIMBING_PROFILE,SENDS,ATTEMPTS,CLIMB_NOTES", 365L, 1L),
     )
 

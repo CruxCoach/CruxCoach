@@ -2734,8 +2734,10 @@
     <string name="sharing_category_other">Other data</string>
     <string name="sharing_category_notes">Notes</string>
     <string name="sharing_category_notes_info">Your personal notes on climbs.</string>
+    <string name="sharing_category_weekly">Weekly volume</string>
+    <string name="sharing_category_weekly_info">Per week: climbing days, sends and attempts. No single climbs.</string>
     <string name="sharing_templates_title">Templates</string>
-    <string name="sharing_templates_info">Every person gets one template. It decides which categories they receive; exceptions on their page change it for that person only.\n\nShipped templates\nTraining partner: profile &amp; goals, sends and attempts of the last 30 days, notes.\nHealth data is never part of a template. Nothing reaches anyone until you add a person and they accept.</string>
+    <string name="sharing_templates_info">Every person gets one template. It decides which categories they receive; exceptions on their page change it for that person only.\n\nShipped templates\nTraining partner: profile &amp; goals, sends and attempts of the last 30 days, notes.\nFamily: profile &amp; goals and how much you climb each week (climbing days, sends, attempts), no single climbs.\nHealth data is never part of a template. Nothing reaches anyone until you add a person and they accept.</string>
     <string name="sharing_template_body">People with this template receive these categories, except where their page has an exception.</string>
     <string name="sharing_template_applies">Changes apply at once to everyone with this template, except where a person has an exception. Withdrawn data is deleted at the receiver.</string>
     <string name="sharing_age_title">Are you 16 or older?</string>
@@ -2807,6 +2809,7 @@
     <string name="sharing_record_profile">%1$s · %2$s</string>
     <string name="sharing_record_send">%1$s · %2$s · sent</string>
     <string name="sharing_record_note">“%1$s”</string>
+    <string name="sharing_record_week">Week %1$s: climbing days %2$s · sends %3$s · attempts %4$s</string>
     <string name="sharing_record_goals">Goals: %1$s</string>
     <string name="sharing_received_title">From %1$s</string>
     <string name="sharing_received_info">What this person shares with you. It is stored encrypted on this device, separate from your own data, and deleted when they stop sharing or the friendship ends.</string>

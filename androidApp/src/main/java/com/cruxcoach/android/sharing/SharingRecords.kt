@@ -34,7 +34,8 @@ internal object SharingRecords {
     const val MAX_BYTES = 1_048_576
     const val MAX_RECORD_BYTES = 8192
     /** Categories this version can project and accept. */
-    val supported: Set<ShareCategory> = setOf(ShareCategory.CLIMBING_PROFILE, ShareCategory.SENDS, ShareCategory.ATTEMPTS, ShareCategory.CLIMB_NOTES)
+    val supported: Set<ShareCategory> = setOf(ShareCategory.CLIMBING_PROFILE, ShareCategory.SENDS, ShareCategory.ATTEMPTS,
+        ShareCategory.CLIMB_NOTES, ShareCategory.WEEKLY_VOLUME)
     val json = Json { encodeDefaults = true; ignoreUnknownKeys = false; explicitNulls = false }
 
     private val allowed = mapOf(
@@ -42,7 +43,13 @@ internal object SharingRecords {
         ShareCategory.SENDS to setOf("climbId", "name", "board", "angle", "attempts", "grade", "date"),
         ShareCategory.ATTEMPTS to setOf("climbId", "name", "board", "angle", "attempts", "date"),
         ShareCategory.CLIMB_NOTES to setOf("climbId", "note"),
+        ShareCategory.WEEKLY_VOLUME to setOf("week", "date", "days", "sends", "attempts"),
     )
+    private val count = Regex("[0-9]{1,6}")
+
+    /** "2026-W43": the ISO week of [day]. */
+    fun isoWeek(day: java.time.LocalDate): String =
+        "%04d-W%02d".format(day.get(java.time.temporal.IsoFields.WEEK_BASED_YEAR), day.get(java.time.temporal.IsoFields.WEEK_OF_WEEK_BASED_YEAR))
 
     fun hash(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.encodeToByteArray()).joinToString("") { "%02x".format(it) }
@@ -90,6 +97,14 @@ internal object SharingRecords {
                         validDate(date) && date >= scope.since
                 }
                 ShareCategory.CLIMB_NOTES -> record.id == "note:${record.fields["climbId"]}"
+                ShareCategory.WEEKLY_VOLUME -> {
+                    val date = record.fields.getValue("date")
+                    val week = record.fields.getValue("week")
+                    validDate(date) && date >= scope.since && java.time.LocalDate.parse(date).dayOfWeek == java.time.DayOfWeek.MONDAY &&
+                        week == isoWeek(java.time.LocalDate.parse(date)) && record.id == "week:$week" &&
+                        listOf("days", "sends", "attempts").all { count.matches(record.fields.getValue(it)) } &&
+                        record.fields.getValue("days").toInt() in 1..7
+                }
                 else -> false
             }
     }.getOrDefault(false)

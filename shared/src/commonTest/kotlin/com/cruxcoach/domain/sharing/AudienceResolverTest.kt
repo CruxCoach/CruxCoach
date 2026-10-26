@@ -128,9 +128,12 @@ class AudienceResolverTest {
 
     @Test fun categories_without_a_source_are_never_shared() {
         val family = policy(PersonPolicy(ShareTemplates.FAMILY.id))
-        assertEquals(ShareDecisionSource.NOT_AVAILABLE, resolve(family, ShareCategory.WEEKLY_VOLUME).source)
+        assertTrue(resolve(family, ShareCategory.WEEKLY_VOLUME).isAllowed)
         assertTrue(resolve(family, ShareCategory.CLIMBING_PROFILE).isAllowed)
-        assertEquals(setOf(ShareCategory.CLIMBING_PROFILE, ShareCategory.SENDS, ShareCategory.ATTEMPTS, ShareCategory.CLIMB_NOTES), ShareCategory.AVAILABLE)
+        val asked = policy(PersonPolicy(ShareTemplates.FAMILY.id, categoryRules = mapOf(ShareCategory.TRAINING_SESSIONS to ShareRule(AccessEffect.ALLOW))))
+        assertEquals(ShareDecisionSource.NOT_AVAILABLE, resolve(asked, ShareCategory.TRAINING_SESSIONS).source)
+        assertEquals(setOf(ShareCategory.CLIMBING_PROFILE, ShareCategory.SENDS, ShareCategory.ATTEMPTS, ShareCategory.CLIMB_NOTES,
+            ShareCategory.WEEKLY_VOLUME), ShareCategory.AVAILABLE)
     }
 
     @Test fun the_shipped_templates_are_the_owner_decision() {
@@ -140,7 +143,7 @@ class AudienceResolverTest {
         )
         assertEquals(30, ShareTemplates.TRAINING_PARTNER.periodDays)
         assertEquals(setOf(ShareCategory.CLIMBING_PROFILE, ShareCategory.WEEKLY_VOLUME), ShareTemplates.FAMILY.categories)
-        assertTrue(ShareTemplates.FAMILY.hidden, "until weekly volume has a source")
+        assertTrue(!ShareTemplates.FAMILY.hidden, "weekly volume has a source")
         assertTrue(ShareTemplates.COACH.hidden)
         assertEquals(365, ShareTemplates.COACH.periodDays)
         assertEquals(listOf("TRAINING_PARTNER", "FAMILY", "COACH"), ShareTemplates.SHIPPED.map { it.id.value })

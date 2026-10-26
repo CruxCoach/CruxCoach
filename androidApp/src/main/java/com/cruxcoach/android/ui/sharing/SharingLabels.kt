@@ -32,6 +32,7 @@ internal object SharingLabels {
         ShareCategory.SENDS -> R.string.sharing_category_sends
         ShareCategory.ATTEMPTS -> R.string.sharing_category_attempts
         ShareCategory.CLIMB_NOTES -> R.string.sharing_category_notes
+        ShareCategory.WEEKLY_VOLUME -> R.string.sharing_category_weekly
         else -> R.string.sharing_category_other
     }
 
@@ -40,6 +41,7 @@ internal object SharingLabels {
         ShareCategory.SENDS -> R.string.sharing_category_sends_info
         ShareCategory.ATTEMPTS -> R.string.sharing_category_attempts_info
         ShareCategory.CLIMB_NOTES -> R.string.sharing_category_notes_info
+        ShareCategory.WEEKLY_VOLUME -> R.string.sharing_category_weekly_info
         else -> R.string.sharing_category_other
     }
 
@@ -128,6 +130,8 @@ internal fun recordLabel(record: SharingRecord): String {
             pluralStringResource(R.plurals.sharing_record_attempts, attempts, f["name"].orEmpty(), f["date"].orEmpty().take(10), attempts)
         }
         ShareCategory.CLIMB_NOTES -> stringResource(R.string.sharing_record_note, f["note"].orEmpty())
+        ShareCategory.WEEKLY_VOLUME -> stringResource(R.string.sharing_record_week, f["week"].orEmpty().substringAfter("-W").trimStart('0'),
+            f["days"].orEmpty(), f["sends"].orEmpty(), f["attempts"].orEmpty())
         else -> ""
     }
 }

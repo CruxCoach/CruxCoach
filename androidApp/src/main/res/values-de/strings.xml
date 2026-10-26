@@ -2733,8 +2733,10 @@
     <string name="sharing_category_other">Weitere Daten</string>
     <string name="sharing_category_notes">Notizen</string>
     <string name="sharing_category_notes_info">Deine persönlichen Notizen zu Bouldern.</string>
+    <string name="sharing_category_weekly">Wochenumfang</string>
+    <string name="sharing_category_weekly_info">Je Woche: Klettertage, Begehungen und Versuche. Keine einzelnen Boulder.</string>
     <string name="sharing_templates_title">Vorlagen</string>
-    <string name="sharing_templates_info">Jede Person bekommt eine Vorlage. Sie bestimmt, welche Kategorien die Person erhält; Ausnahmen auf ihrer Seite ändern das nur für sie.\n\nMitgelieferte Vorlagen\nTrainingspartner: Profil &amp; Ziele, Begehungen und Versuche der letzten 30 Tage, Notizen.\nGesundheitsdaten sind nie Teil einer Vorlage. Bei niemandem kommt etwas an, bevor du eine Person hinzufügst und sie annimmt.</string>
+    <string name="sharing_templates_info">Jede Person bekommt eine Vorlage. Sie bestimmt, welche Kategorien die Person erhält; Ausnahmen auf ihrer Seite ändern das nur für sie.\n\nMitgelieferte Vorlagen\nTrainingspartner: Profil &amp; Ziele, Begehungen und Versuche der letzten 30 Tage, Notizen.\nFamilie: Profil &amp; Ziele und wie viel du je Woche kletterst (Klettertage, Begehungen, Versuche), keine einzelnen Boulder.\nGesundheitsdaten sind nie Teil einer Vorlage. Bei niemandem kommt etwas an, bevor du eine Person hinzufügst und sie annimmt.</string>
     <string name="sharing_template_body">Personen mit dieser Vorlage erhalten diese Kategorien, außer wo ihre Seite eine Ausnahme hat.</string>
     <string name="sharing_template_applies">Änderungen gelten sofort für alle mit dieser Vorlage, außer bei persönlichen Ausnahmen. Zurückgenommene Daten werden beim Empfänger gelöscht.</string>
     <string name="sharing_age_title">Bist du 16 oder älter?</string>
@@ -2806,6 +2808,7 @@
     <string name="sharing_record_profile">%1$s · %2$s</string>
     <string name="sharing_record_send">%1$s · %2$s · geschafft</string>
     <string name="sharing_record_note">„%1$s“</string>
+    <string name="sharing_record_week">KW %1$s: Klettertage %2$s · Begehungen %3$s · Versuche %4$s</string>
     <string name="sharing_record_goals">Ziele: %1$s</string>
     <string name="sharing_received_title">Von %1$s</string>
     <string name="sharing_received_info">Was diese Person mit dir teilt. Es liegt verschlüsselt auf diesem Gerät, getrennt von deinen eigenen Daten, und wird gelöscht, wenn sie das Teilen stoppt oder die Freundschaft endet.</string>

@@ -17,6 +17,16 @@ FROM bids WHERE climbed_at >= ? ORDER BY uuid LIMIT 1001;
 sourceNotes:
 SELECT climb_uuid, note FROM climb_notes ORDER BY climb_uuid LIMIT 1001;
 
+-- How much was climbed per day, for the weekly volume: counts only, never a
+-- single climb, name, grade or time of day.
+sourceDailySends:
+SELECT substr(climbed_at, 1, 10) AS day, count(*) AS sends
+FROM ascents WHERE climbed_at >= ? GROUP BY day ORDER BY day;
+
+sourceDailyAttempts:
+SELECT substr(climbed_at, 1, 10) AS day, sum(max(coalesce(bid_count, 1), 1)) AS tries
+FROM bids WHERE climbed_at >= ? GROUP BY day ORDER BY day;
+
 -- One climb and its equivalent identities ("who sees this?" on the climb sheet).
 sourceAscentsForClimbs:
 SELECT uuid, climb_uuid, climb_name, board_brand, angle, bid_count, difficulty, climbed_at
