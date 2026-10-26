@@ -32,6 +32,8 @@ class FakeMarmotNetwork {
         var generation = 1L
         var online = true
         var failSendsWith: String? = null
+        /** Called before a send is admitted, with peer and token (to look at the app state at that moment). */
+        var onSend: ((String, String) -> Unit)? = null
 
         fun peer(peer: String, state: String, invitedByMe: Boolean, group: String? = null) {
             val current = group ?: peers[peer]?.get("group")?.jsonPrimitive?.content ?: "g0"
@@ -89,6 +91,7 @@ class FakeMarmotNetwork {
                 "accept" -> if (state(field("peer")) == "invited") { peer(field("peer"), "active", false); ok(JsonPrimitive(true)) } else refuse("no_invitation")
                 "decline" -> { peers.remove(field("peer")); ok(JsonPrimitive(true)) }
                 "send" -> {
+                    onSend?.invoke(field("peer"), field("token"))
                     failSendsWith?.let { return refuse(it) }
                     val peer = field("peer"); val content = field("content")
                     val token = (peers[peer]?.get("group")?.jsonPrimitive?.content ?: "none") + "/" + field("token")

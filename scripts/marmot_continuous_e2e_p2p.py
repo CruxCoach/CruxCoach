@@ -34,6 +34,8 @@ SEED = int(os.environ.get('CC_P2P_SEED', secrets.randbelow(1 << 30)))
 def run():
     resources, directories, proxies = [], [], []
     timings = {}
+    # A failing run can be repeated with CC_P2P_SEED.
+    print(json.dumps(dict(path='P2P-THREE', seed=SEED, starting=True)), flush=True)
     try:
         names = ['a', 'b', 'c']
         proxy = {n: HostileProxy(SEED + i) for i, n in enumerate(names)}
@@ -144,7 +146,9 @@ def run():
         assert recovered == owner
         a.call('automatic', enabled='true')
         a.call('source_training', id='today', delete='true')
-        wait(lambda: matches(b, a, owner, friend_b), 'owner restart and training deletion')
+        wait(lambda: matches(b, a, owner, friend_b), 'owner restart and training deletion',
+             describe=lambda: dict(b_sees_a=summary(b, owner),
+                                   a_plans=sorted(r['id'] + '@' + r['hash'][:8] for r in a.call('source_hashes', peer=friend_b))))
         assert all(r['category'] != TRAINING for r in friend(b, owner)['records'])
 
         a.call('source_training', id='again', attempts='2', date=today.isoformat())

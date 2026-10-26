@@ -561,14 +561,14 @@ class SharingSync(
                 // process start: Android restarts processes often, and every
                 // manifest is one more event whose timing a relay sees.
                 if (now - stream.manifestAt >= HEARTBEAT_MS) {
-                    broadcast += "${stream.id}:hb:g${stream.generation}:s${stream.sequence}:h${now / 3_600_000}" to
+                    broadcast += "${stream.id}:hb:g${stream.generation}:s${stream.sequence}:m${now / 60_000}" to
                         ShareProtocol.manifest(stream.id, 0, stream.generation, stream.sequence, scope, target, now)
                     next = stream.copy(manifestAt = now)
                 }
             } else if (hold(stream, members, native, upserts, deletes, scope, target, now)) {
                 return
             } else {
-                val delta = ShareProtocol.delta(stream.id, stream.generation, stream.sequence + 1, scope, upserts, deletes, target, now)
+                val delta = ShareProtocol.delta(stream.id, stream.generation, stream.sequence + 1, scope, upserts, deletes, target)
                 if (upserts.size > ShareProtocol.MAX_DELTA_UPSERTS || deletes.size > ShareProtocol.MAX_DELTA_DELETES || !ShareProtocol.fits(delta)) {
                     full = true
                 } else {
@@ -638,6 +638,10 @@ class SharingSync(
             val prefix = "${stream.id}:a$assign:g${next.generation}:s${next.sequence}"
             val messages = listOf("$prefix:m" to ShareProtocol.manifest(stream.id, assign, next.generation, next.sequence, next.scope, target, now)) +
                 ShareProtocol.full(stream.id, assign, next.generation, next.sequence, target).map { "$prefix:f${it.part}" to it }
+            // The number is taken before anything goes out: after a crash in
+            // the middle, the next snapshot uses a new one. Reusing it at
+            // another position would make the friend ignore the newer state.
+            store.putMember(member.copy(assign = assign))
             val complete = messages.all { (token, message) -> runCatching { host.send(member.peer, token, ShareProtocol.encode(message)) }.isSuccess }
             // A number once used is never used again, even when only part of it went out.
             updated[member.peer] = if (complete) member.copy(assign = assign, assignedAt = now, snapshotDue = false) else member.copy(assign = assign)

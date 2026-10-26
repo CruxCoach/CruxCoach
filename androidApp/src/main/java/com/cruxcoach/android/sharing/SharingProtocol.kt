@@ -35,8 +35,10 @@ import kotlinx.serialization.json.Json
  * - `manifest` starts a generation, a snapshot at (gen, seq), or is a
  *   heartbeat: scope, count, digest.
  *
- * `manifest` and `delta` carry [at], the owner's clock to the minute when
- * that state was current: the friend shows "complete as of" from it.
+ * A `manifest` carries [at], the owner's clock to the minute when that state
+ * was current: the friend shows "complete as of" from the last manifest that
+ * matched. Deltas carry none, so a delta resent after a crash stays the same
+ * message.
  * - `full` carries one page of that complete state.
  * - `delta` carries upserts/deletes from sequence `seq - 1` to `seq`.
  * - `ack` confirms the receiver's state (stream, assign, generation, sequence, digest).
@@ -94,7 +96,7 @@ object ShareProtocol {
             m.parts in 1..MAX_PARTS && m.part in 0 until m.parts &&
             m.records.size <= MAX_PAGE_RECORDS && m.records.map { it.id }.distinct().size == m.records.size &&
             m.scope == null && m.deletes.isEmpty() && m.count == 0 && m.digest.isEmpty() && m.at == 0L
-        "delta" -> hex32.matches(m.stream) && m.assign == 0L && m.gen >= 1 && m.seq >= 1 && minute(m.at) &&
+        "delta" -> hex32.matches(m.stream) && m.assign == 0L && m.gen >= 1 && m.seq >= 1 && m.at == 0L &&
             m.scope != null && valid(m.scope) &&
             m.records.size <= MAX_DELTA_UPSERTS && m.deletes.size <= MAX_DELTA_DELETES &&
             (m.records.map { it.id } + m.deletes).let { it.distinct().size == it.size } &&
@@ -149,8 +151,8 @@ object ShareProtocol {
     }
 
     fun delta(stream: String, gen: Long, seq: Long, scope: ShareScope, upserts: List<SharingRecord>, deletes: List<String>,
-        target: Collection<SharingRecord>, at: Long = 0) =
-        ShareMessage(type = "delta", stream = stream, gen = gen, seq = seq, at = minuteOf(at), scope = scope, records = upserts.sortedBy { it.id },
+        target: Collection<SharingRecord>) =
+        ShareMessage(type = "delta", stream = stream, gen = gen, seq = seq, scope = scope, records = upserts.sortedBy { it.id },
             deletes = deletes.sorted(), count = target.size, digest = SharingRecords.digest(target))
 
     fun fits(message: ShareMessage) = encode(message).length <= MAX_BYTES

@@ -38,7 +38,9 @@ class SharingProtocolTest {
         val manifest = ShareProtocol.manifest(stream, 0, 1, 0, scope, listOf(note), at)
         assertEquals(1_790_000_100_000L, manifest.at)
         assertNotNull(ShareProtocol.decode(ShareProtocol.encode(manifest)))
-        assertNotNull(ShareProtocol.decode(ShareProtocol.encode(ShareProtocol.delta(stream, 1, 1, scope, listOf(note), emptyList(), listOf(note), at))))
+        val delta = ShareProtocol.delta(stream, 1, 1, scope, listOf(note), emptyList(), listOf(note))
+        assertEquals(0, delta.at, "a delta resent after a crash must stay the same message")
+        assertNull(ShareProtocol.decode(ShareProtocol.encode(delta.copy(at = 1_790_000_100_000L))))
         assertNull(ShareProtocol.decode(ShareProtocol.encode(manifest.copy(at = at))), "seconds say too much")
         assertNull(ShareProtocol.decode(ShareProtocol.encode(ShareProtocol.full(stream, 0, 1, 0, listOf(note)).single().copy(at = 60_000))))
         assertNull(ShareProtocol.decode(ShareProtocol.encode(ShareMessage(type = "ack", stream = stream, assign = 1, gen = 1, at = 60_000,

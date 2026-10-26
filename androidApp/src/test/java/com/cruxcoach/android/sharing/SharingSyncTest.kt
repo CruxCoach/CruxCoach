@@ -595,4 +595,27 @@ class SharingSyncTest {
         bob.service.setOutgoing(alice.account, false)
         assertEquals(null, bob.friend(alice).delivery, "Bob shares nothing with Alice any more")
     }
+
+    @Test fun a_crash_after_a_snapshot_went_out_never_reuses_its_number() = runBlocking {
+        alice.note("n1", "one")
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        alice.store.requireSnapshot(bob.account)
+        val before = alice.store.member(bob.account)!!
+        var atAdmission: StreamMember? = null
+        alice.node.onSend = { _, token -> if (":a${before.assign + 1}:" in token && atAdmission == null) atAdmission = alice.store.member(bob.account) }
+        alice.pass() // native admitted the snapshot ...
+        alice.node.onSend = null
+        // ... but the app was killed before its commit: what was stored when it went out is all that remains.
+        val crashed = atAdmission!!
+        assertEquals(before.assign + 1, crashed.assign, "the number is taken before the snapshot goes out")
+        assertTrue(crashed.snapshotDue)
+        alice.store.putMember(crashed)
+        net.deliver()
+        bob.pass()
+        alice.note("n1", "two") // the source moves on before the restart
+        settle()
+        // No stall: the next snapshot has a new number and replaces the older one at once.
+        assertEquals(alice.expected(bob), bob.received(alice))
+        assertEquals(before.assign + 2, bob.store.incoming(alice.account).assign)
+    }
 }
