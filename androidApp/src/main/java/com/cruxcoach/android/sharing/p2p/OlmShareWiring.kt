@@ -8,12 +8,15 @@ import com.cruxcoach.android.util.ApkShareHelper
 import java.net.InetAddress
 
 /**
- * Spike M0 wiring of the direct Olm channel on Android: the Olm engine behind
- * the unchanged [com.cruxcoach.android.sharing.MarmotHost], LAN HTTP with NSD
- * discovery and BLE GATT. Not bound in Hilt: switching the app to it is a
- * one-line DI change once the owner decides (compiled, not run on a device).
+ * The Olm engine behind the unchanged [com.cruxcoach.android.sharing.MarmotHost]:
+ * mailboxes while online, and LAN HTTP with NSD discovery and BLE GATT while
+ * the app is in front (owner decision 2026-10-26: Olm, mailboxes, direct when
+ * both are reachable; the MLS host stays in the code, not wired).
  */
 object OlmShareWiring {
+    private fun inFront() = androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.currentState
+        .isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+
     fun host(
         context: Context,
         databaseKey: (String) -> ByteArray,
@@ -37,11 +40,10 @@ object OlmShareWiring {
                         .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
                         .build(),
                 ),
-                foreground = {
-                    androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.currentState
-                        .isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
-                },
+                com.cruxcoach.android.sharing.mailbox.MailboxChoice(com.cruxcoach.android.sharing.mailbox.MailboxPools.PREVIEW),
+                foreground = ::inFront,
             ),
+            direct = ::inFront,
         )
     }
 }

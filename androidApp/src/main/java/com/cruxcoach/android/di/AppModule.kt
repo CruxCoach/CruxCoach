@@ -128,7 +128,8 @@ object AppModule {
         nostrSigner: NostrSigner,
         eventSigner: com.cruxcoach.android.sharing.QuartzNip01EventSigner,
     ): com.cruxcoach.android.sharing.AndroidMarmotHost =
-        com.cruxcoach.android.sharing.AndroidMarmotHost(context, keyManager::getDerivedMarmotKeyForPubkey, nostrSigner, eventSigner)
+        // Olm with mailboxes and direct transports (owner decision 2026-10-26).
+        com.cruxcoach.android.sharing.p2p.OlmShareWiring.host(context, keyManager::getDerivedMarmotKeyForPubkey, nostrSigner, eventSigner)
 
     @Provides
     @Singleton

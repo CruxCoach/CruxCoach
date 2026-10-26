@@ -42,6 +42,12 @@ data class Mailbox(
 object MailboxPools {
     val CRUXCOACH = Mailbox("cruxcoach", "wss://blossom.cruxcoach.org/post", MailboxTier.CRUXCOACH, "cruxcoach", hetzner = true)
 
+    /**
+     * What the debug preview uses until the owner decides which mailboxes a
+     * device test may write to (F6): no test events on public relays before.
+     */
+    val PREVIEW: List<Mailbox> = listOf(CRUXCOACH)
+
     val DEFAULT: List<Mailbox> = listOf(
         CRUXCOACH,
         Mailbox("damus", "wss://relay.damus.io", MailboxTier.A, "damus", cloudflare = true),

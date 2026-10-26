@@ -48,6 +48,8 @@ class P2pMarmotBinding(
     private val pollMs: Long = 5_000,
     /** Delivery through mailboxes while online; null: direct transports only. */
     private val mailboxes: com.cruxcoach.android.sharing.mailbox.MailboxDelivery? = null,
+    /** Direct transports (LAN, BLE) run only while this holds: the app is in front. */
+    private val direct: () -> Boolean = { true },
 ) : MarmotBinding {
     @Volatile private var online = false
     private val mailboxNative = com.cruxcoach.android.sharing.mailbox.MailboxNative { op, fields -> value(op, fields) }
@@ -94,7 +96,8 @@ class P2pMarmotBinding(
         return when (op) {
             "set_online" -> {
                 val online = runCatching { Json.parseToJsonElement(command).jsonObject["online"]!!.jsonPrimitive.boolean }.getOrDefault(false)
-                transports.forEach { t -> runCatching { if (online && !t.running) t.start(server) else if (!online) t.stop() } }
+                val meet = online && direct()
+                transports.forEach { t -> runCatching { if (meet && !t.running) t.start(server) else if (!meet) t.stop() } }
                 this.online = online
                 if (online) poll() else poller = null
                 response

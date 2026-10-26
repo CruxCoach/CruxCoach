@@ -107,6 +107,22 @@ class ShareTransportTest {
             native.calls.take(8))
     }
 
+    @Test fun direct_transports_run_only_while_the_app_is_in_front() {
+        val transport = FakeTransport()
+        var front = false
+        val binding = P2pMarmotBinding(FakeNative(), listOf(transport), pollMs = 0, direct = { front })
+        binding.call(1, """{"op":"set_online","online":true}""")
+        assertTrue(!transport.running, "a background pass opens no server and advertises nothing")
+        binding.call(1, """{"op":"sync"}""")
+        assertEquals(0, transport.exchanged)
+        front = true
+        binding.call(1, """{"op":"set_online","online":true}""")
+        assertTrue(transport.running)
+        front = false
+        binding.call(1, """{"op":"set_online","online":true}""")
+        assertTrue(!transport.running, "leaving the app stops them")
+    }
+
     @Test fun http_routes_serve_hello_and_bounded_exchange() {
         val server = object : ShareExchangeServer {
             override fun hello() = ShareHello(listOf("0123456789abcdef"))

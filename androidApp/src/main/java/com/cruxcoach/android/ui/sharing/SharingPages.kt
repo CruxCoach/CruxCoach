@@ -363,16 +363,27 @@ internal fun HistoryPage(overview: com.cruxcoach.android.sharing.SharingOverview
 }
 
 @Composable
-internal fun ConnectionPage(status: MarmotStatus, busy: Boolean, actions: SharingActions) {
+internal fun ConnectionPage(status: MarmotStatus, busy: Boolean, actions: SharingActions, mailboxes: Boolean = false) {
     SettingsSectionCard {
-        InfoHeading(stringResource(R.string.sharing_connection_title), stringResource(R.string.sharing_connection_info))
-        RelayLine(stringResource(R.string.sharing_local_relay),
-            stringResource(if (status.localRelay) R.string.sharing_relay_connected else R.string.sharing_relay_offline))
-        status.relays.forEach { relay -> RelayLine(relay.url.removePrefix("wss://"), relayLabel(relay)) }
+        InfoHeading(stringResource(R.string.sharing_connection_title),
+            stringResource(if (mailboxes) R.string.sharing_connection_info_mailboxes else R.string.sharing_connection_info))
+        // The relay inside the app exists only over MLS.
+        if (!mailboxes) {
+            RelayLine(stringResource(R.string.sharing_local_relay),
+                stringResource(if (status.localRelay) R.string.sharing_relay_connected else R.string.sharing_relay_offline))
+        }
+        status.relays.forEach { relay ->
+            val name = when (relay.url) {
+                "p2p:lan" -> stringResource(R.string.sharing_way_lan)
+                "p2p:ble" -> stringResource(R.string.sharing_way_ble)
+                else -> relay.url.removePrefix("wss://")
+            }
+            RelayLine(name, relayLabel(relay))
+        }
         val pending = status.local.outboundPending.toInt()
         if (pending > 0) {
-            Text(pluralStringResource(R.plurals.sharing_pending_messages, pending, pending), style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.testTag("sharing_pending"))
+            Text(pluralStringResource(if (mailboxes) R.plurals.sharing_pending_delivery else R.plurals.sharing_pending_messages, pending, pending),
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("sharing_pending"))
         }
         OutlinedButton(onClick = actions.syncNow, enabled = !busy, modifier = Modifier.testTag("sharing_sync_now")) {
             Text(stringResource(R.string.sharing_sync_now))

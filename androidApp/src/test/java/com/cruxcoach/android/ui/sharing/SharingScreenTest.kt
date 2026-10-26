@@ -159,6 +159,22 @@ class SharingScreenTest {
         compose.onNodeWithText("Ihr kennt euch hier schon", substring = true).assertExists()
     }
 
+    @Test fun `over links there is no npub switch and the connection page names the ways`() {
+        val status = MarmotStatus(me, true, MarmotDiscovery(false, 0), MarmotLocal(0, 0, 1), emptyList(), listOf(
+            com.cruxcoach.android.sharing.MarmotRelay("wss://blossom.cruxcoach.org/post", "connected", "accepted", false),
+            com.cruxcoach.android.sharing.MarmotRelay("p2p:lan", "offline", "none", false),
+        ), false, 1)
+        val links = overview().copy(status = status, linkInvites = true)
+        val page = mutableStateOf<SharingPage>(SharingPage.Overview)
+        compose.setContent { MaterialTheme { SharingContent(SharingUiState(loading = false, overview = links), page.value, onOpen = {}, actions = actions) } }
+        compose.onNodeWithTag("sharing_reachable").assertDoesNotExist()
+        compose.onNodeWithText("1 von 2 Wegen verfügbar · 1 Nachricht wartet auf Zustellung").assertExists()
+        page.value = SharingPage.Connection
+        compose.onNodeWithText("Direkt über WLAN").assertExists()
+        compose.onNodeWithText("blossom.cruxcoach.org/post").assertExists()
+        compose.onNodeWithText("Relay in dieser App").assertDoesNotExist()
+    }
+
     @Test fun `a refused identity is explained and an empty field cannot be sent`() {
         render(SharingUiState(loading = false, overview = overview(), requestError = RequestError.NOT_A_PUBLIC_KEY), SharingPage.Overview)
         compose.onNodeWithText("Das ist keine öffentliche Kennung. Gib niemals eine nsec weiter.").assertExists()

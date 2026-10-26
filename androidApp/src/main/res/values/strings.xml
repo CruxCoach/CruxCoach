@@ -2802,6 +2802,11 @@
     <string name="sharing_period_title">Period for sends and attempts</string>
     <string name="sharing_period_all">All</string>
     <string name="sharing_connection_summary">%1$d of %2$d relays connected</string>
+    <string name="sharing_own_id_info_links">Your public Nostr identity. Friends see it in your invitation links; it reveals nothing about your data.</string>
+    <string name="sharing_connection_info_mailboxes">Messages are end-to-end encrypted. When you meet, phones exchange them directly over Wi-Fi or Bluetooth; otherwise they wait in mailboxes only until they are delivered. Mailboxes see neither your identity nor the content.</string>
+    <string name="sharing_connection_summary_ways">%1$d of %2$d ways available</string>
+    <string name="sharing_way_lan">Directly over Wi-Fi</string>
+    <string name="sharing_way_ble">Directly over Bluetooth</string>
     <string name="sharing_states_title">States</string>
     <string name="sharing_states_info">Pending\nRequested or being set up; nothing is shared yet.\n\nActive\nYou share with this person.\n\nStopped\nYour switch for this person is off; they may still share with you.\n\nEnded\nThe friendship is over; what was shared has been deleted.</string>
     <string name="sharing_pending_requested">Waiting for %1$s to accept. Nothing is shared until then.</string>
@@ -2861,6 +2866,10 @@
     <plurals name="sharing_pending_messages">
         <item quantity="one">%d message waiting for a relay</item>
         <item quantity="other">%d messages waiting for a relay</item>
+    </plurals>
+    <plurals name="sharing_pending_delivery">
+        <item quantity="one">%d message waiting for delivery</item>
+        <item quantity="other">%d messages waiting for delivery</item>
     </plurals>
     <plurals name="sharing_period_days">
         <item quantity="one">%d day</item>

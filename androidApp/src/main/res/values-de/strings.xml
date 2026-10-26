@@ -2801,6 +2801,11 @@
     <string name="sharing_period_title">Zeitraum für Begehungen und Versuche</string>
     <string name="sharing_period_all">Alles</string>
     <string name="sharing_connection_summary">%1$d von %2$d Relays verbunden</string>
+    <string name="sharing_own_id_info_links">Deine öffentliche Nostr-Kennung. Freunde sehen sie in deinen Einladungslinks; sie verrät nichts über deine Daten.</string>
+    <string name="sharing_connection_info_mailboxes">Nachrichten sind Ende-zu-Ende verschlüsselt. Wenn ihr euch trefft, tauschen die Telefone sie direkt über WLAN oder Bluetooth aus; sonst warten sie in Briefkästen, nur bis sie zugestellt sind. Briefkästen sehen weder deine Kennung noch den Inhalt.</string>
+    <string name="sharing_connection_summary_ways">%1$d von %2$d Wegen verfügbar</string>
+    <string name="sharing_way_lan">Direkt über WLAN</string>
+    <string name="sharing_way_ble">Direkt über Bluetooth</string>
     <string name="sharing_states_title">Zustände</string>
     <string name="sharing_states_info">Ausstehend\nAngefragt oder in Einrichtung; noch wird nichts geteilt.\n\nAktiv\nDu teilst mit dieser Person.\n\nGestoppt\nDein Schalter für diese Person ist aus; sie kann weiter mit dir teilen.\n\nBeendet\nDie Freundschaft ist vorbei; Geteiltes wurde gelöscht.</string>
     <string name="sharing_pending_requested">Wartet darauf, dass %1$s annimmt. Bis dahin wird nichts geteilt.</string>
@@ -2860,6 +2865,10 @@
     <plurals name="sharing_pending_messages">
         <item quantity="one">%d Nachricht wartet auf ein Relay</item>
         <item quantity="other">%d Nachrichten warten auf ein Relay</item>
+    </plurals>
+    <plurals name="sharing_pending_delivery">
+        <item quantity="one">%d Nachricht wartet auf Zustellung</item>
+        <item quantity="other">%d Nachrichten warten auf Zustellung</item>
     </plurals>
     <plurals name="sharing_period_days">
         <item quantity="one">%d Tag</item>

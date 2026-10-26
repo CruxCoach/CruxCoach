@@ -249,7 +249,7 @@ internal fun SharingContent(
                 }
             }
             is SharingPage.Template -> TemplatePage(overview.allTemplates, page.id, state.busy, actions)
-            SharingPage.Connection -> ConnectionPage(overview.status, state.busy, actions)
+            SharingPage.Connection -> ConnectionPage(overview.status, state.busy, actions, mailboxes = overview.linkInvites)
             SharingPage.History -> HistoryPage(overview)
             SharingPage.WhoSees -> WhoSeesPage(overview)
         }
@@ -266,15 +266,18 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
         LinkOfferCard(it, overview.templates, overview.ageConfirmed && !state.busy, state.linkError, actions)
     }
     SettingsSectionCard {
-        SettingsToggleRow(
-            title = stringResource(R.string.sharing_reachable_title),
-            description = stringResource(R.string.sharing_reachable_info),
-            checked = status.discovery.enabled,
-            enabled = !state.busy,
-            onCheckedChange = actions.setReachable,
-            modifier = Modifier.testTag("sharing_reachable"),
-        )
-        OwnIdRow(status.account)
+        // Requests by npub exist only over MLS; with links nobody can ask without one.
+        if (!overview.linkInvites) {
+            SettingsToggleRow(
+                title = stringResource(R.string.sharing_reachable_title),
+                description = stringResource(R.string.sharing_reachable_info),
+                checked = status.discovery.enabled,
+                enabled = !state.busy,
+                onCheckedChange = actions.setReachable,
+                modifier = Modifier.testTag("sharing_reachable"),
+            )
+        }
+        OwnIdRow(status.account, if (overview.linkInvites) R.string.sharing_own_id_info_links else R.string.sharing_own_id_info)
     }
     if (overview.invitations.isNotEmpty()) {
         SettingsGroupHeader(stringResource(R.string.sharing_invitations_title))
@@ -322,8 +325,11 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
         SharingDestinationRow(
             title = stringResource(R.string.sharing_connection_title),
             summary = listOfNotNull(
-                stringResource(R.string.sharing_connection_summary, connected, status.relays.size),
-                if (pending > 0) pluralStringResource(R.plurals.sharing_pending_messages, pending, pending) else null,
+                stringResource(if (overview.linkInvites) R.string.sharing_connection_summary_ways else R.string.sharing_connection_summary,
+                    connected, status.relays.size),
+                if (pending > 0) {
+                    pluralStringResource(if (overview.linkInvites) R.plurals.sharing_pending_delivery else R.plurals.sharing_pending_messages, pending, pending)
+                } else null,
             ).joinToString(" · "),
             icon = Icons.Outlined.Hub,
             modifier = Modifier.testTag("sharing_open_connection"),
@@ -382,7 +388,7 @@ private fun AgeCard(answered: Boolean, busy: Boolean, actions: SharingActions) {
 }
 
 @Composable
-private fun OwnIdRow(account: String) {
+private fun OwnIdRow(account: String, info: Int) {
     val clipboard = LocalClipboardManager.current
     val title = stringResource(R.string.sharing_own_id_title)
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -391,7 +397,7 @@ private fun OwnIdRow(account: String) {
             Text(SharingNames.shortId(account), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("sharing_own_id"))
         }
-        InfoButton(title, stringResource(R.string.sharing_own_id_info))
+        InfoButton(title, stringResource(info))
         IconButton(onClick = { clipboard.setText(AnnotatedString(Bech32.npub(account) ?: account)) }, modifier = Modifier.testTag("sharing_copy_id")) {
             Icon(Icons.Outlined.ContentCopy, stringResource(R.string.sharing_copy_id))
         }
