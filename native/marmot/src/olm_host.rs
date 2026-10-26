@@ -98,6 +98,7 @@ enum Command {
     MailboxAbsorb {
         events: Vec<String>,
     },
+    MailboxDeletions,
     #[cfg(feature = "local-harness")]
     PrivateStorageMatches {
         marker: String,
@@ -324,6 +325,9 @@ impl OlmHost {
                     peers: result["peers"].as_bool().unwrap_or(false),
                 });
                 result
+            }
+            Command::MailboxDeletions => {
+                json!({"events": self.engine()?.mailbox_deletions(crate::protocol::now_s())?})
             }
             Command::ContactCode => {
                 let code = self.engine()?.contact_code()?;

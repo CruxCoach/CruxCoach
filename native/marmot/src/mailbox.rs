@@ -209,6 +209,39 @@ pub fn event(
         .map_err(|_| Error("mailbox_sign"))
 }
 
+/// At most this many events one deletion names, so relays take it as one small event.
+pub const MAX_DELETE_IDS: usize = 50;
+
+/// A NIP-09 deletion of `ids`, all published under the same day's key of one
+/// direction and so signed with it. It expires with the latest of them.
+pub fn deletion(
+    key: &[u8; 32],
+    direction: Direction,
+    day: u64,
+    now_s: u64,
+    ids: &[nostr::EventId],
+    expiration: u64,
+) -> Result<Event> {
+    if ids.is_empty() || ids.len() > MAX_DELETE_IDS {
+        return Err(Error("mailbox_delete"));
+    }
+    let spread = u64::from(p2p::random::<1>()?[0]) % (CREATED_SPREAD_S / 60 + 1) * 60;
+    let created = minute(now_s).saturating_sub(spread);
+    let mut tags: Vec<Tag> = ids.iter().map(|id| Tag::event(*id)).collect();
+    tags.push(Tag::custom(
+        TagKind::single_letter(nostr::Alphabet::K, false),
+        [KIND.to_string()],
+    ));
+    tags.push(Tag::expiration(Timestamp::from(
+        expiration.max(now_s + CLOCK_GRACE_S),
+    )));
+    EventBuilder::new(Kind::EventDeletion, "")
+        .tags(tags)
+        .custom_created_at(Timestamp::from(created))
+        .sign_with_keys(&signer(key, direction, day))
+        .map_err(|_| Error("mailbox_sign"))
+}
+
 /// What a checked event says about itself, before it is opened.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Envelope {

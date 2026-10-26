@@ -70,6 +70,9 @@ pub const MAX_OUTBOUND_BYTES: usize = 196_608;
 /// `identify` names the device of a scanned contact code with this prefix:
 /// the endpoint to hand the sealed invitation to.
 pub const OFFER_PREFIX: &str = "offer:";
+/// Events of one relationship, direction and day (one signing key) with
+/// their expiries: what one deletion may name.
+type DeletionGroup = ((String, i64, i64), Vec<(Vec<u8>, i64)>);
 /// A mailbox frame without an ack this long after publishing is published
 /// again (a mailbox may have lost it); the sync layer repairs the rest.
 const MAILBOX_REPUBLISH_S: u64 = 86_400;
@@ -133,6 +136,9 @@ CREATE TABLE IF NOT EXISTS olm_contact(tag BLOB PRIMARY KEY NOT NULL, created_at
 CREATE TABLE IF NOT EXISTS olm_offer(peer TEXT PRIMARY KEY NOT NULL, tag BLOB NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS olm_mailbox_out(id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, published_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS olm_mailbox_ack(peer TEXT PRIMARY KEY NOT NULL, since INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS olm_mailbox_sent(
+  id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, direction INTEGER NOT NULL, day INTEGER NOT NULL,
+  expires INTEGER NOT NULL, at INTEGER NOT NULL, withdrawn INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS olm_mailbox_seen(
   id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, direction INTEGER NOT NULL, day INTEGER NOT NULL,
   expires INTEGER NOT NULL, at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0);
@@ -1334,6 +1340,18 @@ impl OlmEngine {
         self.atomic(|engine| {
             let cancelled =
                 engine.sql(|c| c.execute("DELETE FROM olm_out WHERE peer=?1 AND app=1", [peer]))?;
+            if cancelled > 0 {
+                engine.sql(|c| {
+                    // What already lies in a mailbox is withdrawn as well: its
+                    // events are deleted under their own day's key. Whatever
+                    // else they carried (control frames) goes out again at once.
+                    c.execute(
+                        "UPDATE olm_mailbox_sent SET withdrawn=1 WHERE peer=?1 AND deleted=0",
+                        [peer],
+                    )?;
+                    c.execute("DELETE FROM olm_mailbox_out WHERE peer=?1", [peer])
+                })?;
+            }
             if cancelled > 0
                 && let Some(mut row) = engine.peer(peer)?
             {
@@ -1454,6 +1472,10 @@ impl OlmEngine {
             engine.sql(|c| {
                 c.execute(
                     "DELETE FROM olm_mailbox_seen WHERE at<?1",
+                    [mailbox_horizon],
+                )?;
+                c.execute(
+                    "DELETE FROM olm_mailbox_sent WHERE at<?1",
                     [mailbox_horizon],
                 )?;
                 c.execute(
@@ -1728,9 +1750,16 @@ impl OlmEngine {
                     else {
                         break;
                     };
-                    let event = nostr::JsonUtil::as_json(&mailbox::event(
-                        &key, direction, now_s, &container, pow,
-                    )?);
+                    let event = mailbox::event(&key, direction, now_s, &container, pow)?;
+                    // Remembered so a later withdrawal can delete it from the mailboxes.
+                    engine.sql(|c| {
+                        c.execute(
+                            "INSERT OR IGNORE INTO olm_mailbox_sent(id, peer, direction, day, expires, at) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                            params![event.id.to_bytes().as_slice(), row.account, direction as i64, i64_of(mailbox::day(now_s)),
+                                    i64_of(now_s + mailbox::MAX_AGE_S), i64_of(now_s)],
+                        )
+                    })?;
+                    let event = nostr::JsonUtil::as_json(&event);
                     bytes += event.len();
                     out.push(json!({"peer": row.account, "event": event}));
                 }
@@ -1934,6 +1963,67 @@ impl OlmEngine {
             json!({"accepted": accepted, "duplicates": duplicates, "refused": refused,
                   "inbox": changes.inbox, "peers": changes.peers}),
         )
+    }
+
+    /// Deletions to publish: for every event taken from a mailbox (the
+    /// receipt to the mailbox, after the frames are stored) and for every
+    /// published event of a withdrawal. Each is signed with the day's key the
+    /// events were published under and names at most 50 of them. Returns
+    /// `{peer, role, event}`; `received` ones go to the own mailboxes,
+    /// `withdrawn` ones to the friend's.
+    pub fn mailbox_deletions(&mut self, now_s: u64) -> Result<Vec<Value>> {
+        self.atomic(|engine| {
+            let mut out = Vec::new();
+            for (role, table, due) in [
+                ("received", "olm_mailbox_seen", "deleted=0"),
+                ("withdrawn", "olm_mailbox_sent", "withdrawn=1 AND deleted=0"),
+            ] {
+                let rows: Vec<(Vec<u8>, String, i64, i64, i64)> = engine.sql(|c| {
+                    let mut q = c.prepare(&format!(
+                        "SELECT id, peer, direction, day, expires FROM {table} WHERE {due} ORDER BY peer, direction, day, at LIMIT 5000"
+                    ))?;
+                    q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+                        .collect()
+                })?;
+                let mut groups: Vec<DeletionGroup> = Vec::new();
+                for (id, peer, direction, day, expires) in rows {
+                    match groups.last_mut() {
+                        Some((group, ids))
+                            if *group == (peer.clone(), direction, day) && ids.len() < mailbox::MAX_DELETE_IDS =>
+                        {
+                            ids.push((id, expires))
+                        }
+                        _ => groups.push(((peer, direction, day), vec![(id, expires)])),
+                    }
+                }
+                for ((peer, direction, day), ids) in groups {
+                    for (id, _) in &ids {
+                        engine.sql(|c| c.execute(&format!("UPDATE {table} SET deleted=1 WHERE id=?1"), [id.as_slice()]))?;
+                    }
+                    // A relationship whose keys are gone cannot sign; its events expire by themselves.
+                    let Some(link) = engine.peer(&peer)?.and_then(|row| row.link()) else {
+                        continue;
+                    };
+                    let direction = if direction == 0 {
+                        mailbox::Direction::FromInviter
+                    } else {
+                        mailbox::Direction::FromAcceptor
+                    };
+                    let event_ids: Vec<EventId> = ids.iter().filter_map(|(id, _)| EventId::from_slice(id).ok()).collect();
+                    let expiration = ids.iter().map(|(_, e)| (*e).max(0).unsigned_abs()).max().unwrap_or(0);
+                    let event = mailbox::deletion(
+                        &mailbox::mailbox_key(&link),
+                        direction,
+                        day.max(0).unsigned_abs(),
+                        now_s,
+                        &event_ids,
+                        expiration,
+                    )?;
+                    out.push(json!({"peer": peer, "role": role, "event": nostr::JsonUtil::as_json(&event)}));
+                }
+            }
+            Ok(out)
+        })
     }
 
     /// Match a section to a relationship. Returns the peer, the key and its

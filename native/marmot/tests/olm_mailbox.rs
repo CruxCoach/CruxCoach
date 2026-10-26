@@ -5,7 +5,7 @@
 use cruxcoach_marmot::mailbox::{self, KIND, MAX_AGE_S};
 use cruxcoach_marmot::olm::{MAX_OUTBOUND_BYTES as MAX, OlmEngine};
 use cruxcoach_marmot::p2p;
-use nostr::{Event, JsonUtil, Keys};
+use nostr::{Event, JsonUtil, Keys, Kind};
 use std::sync::Arc;
 
 const NOW: u64 = 1_793_000_000;
@@ -59,6 +59,26 @@ impl Node {
     fn absorb(&mut self, now: u64, events: &[String]) -> serde_json::Value {
         self.engine.mailbox_absorb(now, events).unwrap()
     }
+}
+
+/// `(peer, role, deletion)` for what `node` should delete now.
+fn deletions(node: &mut Node, now: u64) -> Vec<(String, String, Event)> {
+    node.engine
+        .mailbox_deletions(now)
+        .unwrap()
+        .into_iter()
+        .map(|v| {
+            (
+                v["peer"].as_str().unwrap().to_string(),
+                v["role"].as_str().unwrap().to_string(),
+                Event::from_json(v["event"].as_str().unwrap()).unwrap(),
+            )
+        })
+        .collect()
+}
+
+fn tags(event: &Event) -> Vec<Vec<String>> {
+    event.tags.iter().map(|t| t.as_slice().to_vec()).collect()
 }
 
 /// Befriend directly (QR and one exchange), as before any mailbox exists.
@@ -251,4 +271,113 @@ fn one_call_stays_within_what_crosses_jni_and_the_rest_follows() {
         .collect();
     assert_eq!(b.absorb(NOW, &events)["accepted"], 6);
     assert_eq!(b.drain().len(), 6);
+}
+
+#[test]
+fn the_receiver_deletes_what_it_stored_with_the_key_it_was_published_under() {
+    let (mut a, mut b) = friends();
+    a.engine.send(&b.id(), "t1", "one").unwrap();
+    let events = a.outgoing(NOW);
+    let published = Event::from_json(&events[0]).unwrap();
+    assert!(
+        deletions(&mut b, NOW).is_empty(),
+        "nothing taken, nothing to delete"
+    );
+    b.absorb(NOW, &events);
+    let found = deletions(&mut b, NOW + 60);
+    assert_eq!(found.len(), 1);
+    let (peer, role, deletion) = &found[0];
+    assert_eq!(
+        (peer.as_str(), role.as_str()),
+        (a.id().as_str(), "received")
+    );
+    assert_eq!(deletion.kind, Kind::EventDeletion);
+    assert_eq!(
+        deletion.pubkey, published.pubkey,
+        "the day's key the event was published under"
+    );
+    assert!(deletion.verify().is_ok());
+    let t = tags(deletion);
+    assert!(t.contains(&vec!["e".to_string(), published.id.to_hex()]));
+    assert!(t.contains(&vec!["k".to_string(), KIND.to_string()]));
+    assert!(t.iter().any(|t| t[0] == "expiration"));
+    assert!(deletion.content.is_empty());
+    let json = deletion.as_json();
+    assert!(!json.contains(&a.id()) && !json.contains(&b.id()));
+    assert_eq!(deletion.created_at.as_secs() % 60, 0);
+    assert!(deletions(&mut b, NOW + 120).is_empty(), "issued once");
+    // A duplicate fetched later from another mailbox is not deleted twice.
+    b.absorb(NOW + 180, &events);
+    assert!(deletions(&mut b, NOW + 240).is_empty());
+}
+
+#[test]
+fn many_events_are_deleted_in_batches_of_fifty_per_day_and_key() {
+    let (mut a, mut b) = friends();
+    let mut events = Vec::new();
+    for i in 0..60 {
+        a.engine.send(&b.id(), &format!("t{i}"), "x").unwrap();
+        events.extend(a.outgoing(NOW + i));
+    }
+    a.engine.send(&b.id(), "late", "y").unwrap();
+    events.extend(a.outgoing(NOW + mailbox::DAY_S));
+    assert_eq!(events.len(), 61);
+    assert_eq!(b.absorb(NOW + mailbox::DAY_S, &events)["accepted"], 61);
+    let found = deletions(&mut b, NOW + mailbox::DAY_S);
+    let mut sizes: Vec<usize> = found
+        .iter()
+        .map(|(_, _, d)| tags(d).iter().filter(|t| t[0] == "e").count())
+        .collect();
+    sizes.sort();
+    assert_eq!(sizes, vec![1, 10, 50]);
+    let keys: std::collections::BTreeSet<_> = found.iter().map(|(_, _, d)| d.pubkey).collect();
+    assert_eq!(keys.len(), 2, "one key per day");
+}
+
+#[test]
+fn a_withdrawal_deletes_what_already_lies_in_the_mailboxes() {
+    let (mut a, b) = friends();
+    a.engine.send(&b.id(), "t1", "withdraw me").unwrap();
+    let events = a.outgoing(NOW);
+    let published = Event::from_json(&events[0]).unwrap();
+    assert_eq!(a.engine.cancel(&b.id()).unwrap(), 1);
+    let found = deletions(&mut a, NOW + 60);
+    assert_eq!(found.len(), 1);
+    let (peer, role, deletion) = &found[0];
+    assert_eq!(
+        (peer.as_str(), role.as_str()),
+        (b.id().as_str(), "withdrawn")
+    );
+    assert_eq!(deletion.pubkey, published.pubkey);
+    assert!(tags(deletion).contains(&vec!["e".to_string(), published.id.to_hex()]));
+    assert!(
+        a.outgoing(NOW + 2 * mailbox::DAY_S).is_empty(),
+        "nothing of it goes out again"
+    );
+    assert!(deletions(&mut a, NOW + 120).is_empty());
+    // Without a withdrawal nothing the sender published is deleted by the sender.
+    a.engine.send(&b.id(), "t2", "keep me").unwrap();
+    a.outgoing(NOW + 300);
+    assert!(deletions(&mut a, NOW + 360).is_empty());
+}
+
+/// A crash while frames are stored: the event is not marked seen and not
+/// deleted, the next fetch takes it again, and nothing is applied twice.
+#[cfg(feature = "local-harness")]
+#[test]
+fn a_crash_between_storing_and_deleting_loses_nothing_and_applies_nothing_twice() {
+    let (mut a, mut b) = friends();
+    a.engine.send(&b.id(), "t1", "survives").unwrap();
+    let events = a.outgoing(NOW);
+    cruxcoach_marmot::olm::FAIL_COMMITS.set(1);
+    assert!(b.engine.mailbox_absorb(NOW, &events).is_err());
+    cruxcoach_marmot::olm::FAIL_COMMITS.set(0);
+    assert!(
+        deletions(&mut b, NOW).is_empty(),
+        "nothing is deleted before it is stored"
+    );
+    assert_eq!(b.absorb(NOW + 60, &events)["accepted"], 1);
+    b.absorb(NOW + 120, &events);
+    assert_eq!(b.drain(), vec!["survives"]);
+    assert_eq!(deletions(&mut b, NOW + 180).len(), 1);
 }
