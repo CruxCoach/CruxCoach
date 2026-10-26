@@ -242,6 +242,9 @@ internal fun KilterBoardVisualization(
     val hasBundledImage = when {
         brand == BoardBrand.KILTER -> sizeId in BUNDLED_BOARD_SIZES
         brand.usesAuroraProtocol || isQuantum -> true
+        // Composed from the hold photos (board_images/shinywall); a missing
+        // file falls back to the dots like any other brand.
+        brand == BoardBrand.SHINYWALL -> true
         else -> false
     }
     // The active layout (from the size's set images) picks the layout-specific
