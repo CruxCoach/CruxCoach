@@ -1,6 +1,12 @@
 package com.cruxcoach.android.sharing
 
+import com.cruxcoach.domain.sharing.PeerId
 import com.cruxcoach.domain.sharing.SharePolicy
+import com.cruxcoach.domain.sharing.ShareRule
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.LocalDate
@@ -63,8 +69,8 @@ class SharingSync(
         val status = host.status()
         reconcile(host, status)
         endings(host, status)
-        join(clock())
         val policy = store.policy()
+        join(policy, clock())
         for (stream in store.streams()) send(host, stream, status, policy)
         replies(host, status)
     }
@@ -414,15 +420,45 @@ class SharingSync(
 
     // ---- sending -----------------------------------------------------------------------------
 
-    /** The audience a connected person belongs to. For now everyone has a stream of their own. */
-    private fun ruleKey(person: SharingPerson): String = "person:${person.peer}"
+    /**
+     * The audience a connected person belongs to: everyone whose effective rule
+     * is the same shares a stream. The rule is the template (by id, so editing
+     * it keeps the audience together), the person's own period and their active
+     * category and record rules. "Never share", the age and the catalogue are
+     * the same for everyone. Switched-off people share the empty stream.
+     */
+    private fun ruleKey(person: SharingPerson, policy: SharePolicy, now: Long): String {
+        if (!person.outgoing) return OFF
+        val rules = policy.persons[PeerId(person.peer)] ?: return OFF
+        fun rule(r: ShareRule) = buildJsonObject {
+            put("effect", r.effect.name)
+            r.expiresAt?.let { put("until", it) }
+        }
+        val canonical = buildJsonObject {
+            put("v", 1)
+            put("template", rules.template.value)
+            person.periodDays?.let { put("period", it) }
+            put("categories", buildJsonArray {
+                rules.categoryRules.filterValues { it.activeAt(now) }.entries.sortedBy { it.key.name }.forEach { (category, r) ->
+                    add(buildJsonObject { put("category", category.name); put("rule", rule(r)) })
+                }
+            })
+            put("records", buildJsonArray {
+                rules.recordRules.filterValues { it.activeAt(now) }.entries
+                    .sortedWith(compareBy({ it.key.record.value }, { it.key.category.name })).forEach { (key, r) ->
+                        add(buildJsonObject { put("record", key.record.value); put("category", key.category.name); put("rule", rule(r)) })
+                    }
+            })
+        }.toString()
+        return SharingRecords.hash(canonical)
+    }
 
     /** Every connected person is in exactly one stream: the one of their audience. */
-    private fun join(now: Long) = store.transaction {
+    private fun join(policy: SharePolicy, now: Long) = store.transaction {
         val connected = store.persons().filter { it.state == PersonState.CONNECTED }.associateBy { it.peer }
         for (member in store.members()) if (member.peer !in connected) store.clearMember(member.peer)
         for (person in connected.values) {
-            val key = ruleKey(person)
+            val key = ruleKey(person, policy, now)
             val member = store.member(person.peer)
             val current = member?.let { store.stream(it.stream) }
             if (current != null && current.ruleKey == key) continue
@@ -543,6 +579,8 @@ class SharingSync(
     companion object {
         const val MAX_PENDING = 64
         const val MAX_RETIRED = 8
+        /** The audience of everyone who receives nothing from us. */
+        const val OFF = "off"
         const val INVITE_FIRST_RETRY_MS = 15_000L
         const val INVITE_RETRY_MS = 10 * 60_000L
         const val RESYNC_RETRY_MS = 60 * 60_000L
