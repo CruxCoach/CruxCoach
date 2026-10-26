@@ -107,6 +107,14 @@ data class IncomingState(
     val pending: List<ShareMessage>,
     /** Since when messages wait in [pending] for a gap to close (0: none wait). */
     val gapSince: Long,
+    /** The friend's time of the full state being staged. */
+    val expectedAt: Long,
+    /** The friend's time of the last state we verified complete (0: none yet). */
+    val completeAt: Long,
+    /** Since when we know of a gap, by our clock (0: none known). */
+    val incompleteSince: Long,
+    /** Count or digest did not match; cleared by the next state that does. */
+    val mismatch: Boolean,
     val resyncGeneration: Long,
     val resyncAt: Long,
     val ackDue: Boolean,
@@ -119,7 +127,8 @@ data class IncomingState(
     val complete get() = sequence >= 0
 
     companion object {
-        val NONE = IncomingState("", 0, 0, -1, 0, 0, ShareScope.EMPTY, "", 0, emptyMap(), emptyList(), 0, 0, 0, false, 0, 0, emptyList())
+        val NONE = IncomingState("", 0, 0, -1, 0, 0, ShareScope.EMPTY, "", 0, emptyMap(), emptyList(), 0, 0, 0, 0, false,
+            0, 0, false, 0, 0, emptyList())
     }
 }
 
@@ -360,7 +369,8 @@ class SharingStore(private val database: SecureDatabase) {
     private fun toIncoming(row: com.cruxcoach.db.secure.Share_incoming) = IncomingState(row.stream, row.assign, row.generation,
         row.sequence, row.base, row.staged_assign, json.decodeFromString(row.scope), row.expected_digest,
         row.expected_count.toInt(), json.decodeFromString(stagingSerializer, row.staging),
-        json.decodeFromString(pendingSerializer, row.pending), row.gap_since, row.resync_generation, row.resync_at,
+        json.decodeFromString(pendingSerializer, row.pending), row.gap_since, row.expected_at, row.complete_at,
+        row.incomplete_since, row.mismatch == 1L, row.resync_generation, row.resync_at,
         row.ack_due == 1L, row.ack_sent_at, row.received_at, json.decodeFromString(retiredSerializer, row.retired))
 
     fun incomingStates(): Map<String, IncomingState> = q.selectAllIncoming().executeAsList().associate { it.peer to toIncoming(it) }
@@ -368,7 +378,7 @@ class SharingStore(private val database: SecureDatabase) {
     fun putIncoming(peer: String, s: IncomingState) = q.upsertIncoming(peer, s.stream, s.assign, s.generation, s.sequence, s.base,
         s.stagedAssign, json.encodeToString(s.scope), s.expectedDigest, s.expectedCount.toLong(),
         json.encodeToString(stagingSerializer, s.staging), json.encodeToString(pendingSerializer, s.pending), s.gapSince,
-        s.resyncGeneration, s.resyncAt, if (s.ackDue) 1 else 0, s.ackSentAt, s.receivedAt, json.encodeToString(retiredSerializer, s.retired))
+        s.expectedAt, s.completeAt, s.incompleteSince, if (s.mismatch) 1 else 0, s.resyncGeneration, s.resyncAt, if (s.ackDue) 1 else 0, s.ackSentAt, s.receivedAt, json.encodeToString(retiredSerializer, s.retired))
 
     /** Forget both directions and everything received from [peer]. */
     fun clearExchange(peer: String) {

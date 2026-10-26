@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.cruxcoach.android.sharing.CategoryChoice
+import com.cruxcoach.android.sharing.Completeness
+import com.cruxcoach.android.sharing.Delivery
 import com.cruxcoach.android.sharing.MarmotDiscovery
 import com.cruxcoach.android.sharing.MarmotLocal
 import com.cruxcoach.android.sharing.MarmotPeer
@@ -299,5 +301,49 @@ class SharingScreenTest {
         assertEquals(listOf(true), toggles)
         compose.onNodeWithTag("settings_open_personal_sharing").assertExists().performClick()
         assertEquals(listOf("open"), calls)
+    }
+
+    private val hour = 60 * 60_000L
+
+    private fun detailWith(completeness: Completeness, delivery: Delivery?) =
+        detail().let { it.copy(friend = it.friend.copy(completeness = completeness, delivery = delivery)) }
+
+    @Test fun `a recent complete state is up to date and our share is confirmed`() {
+        val now = System.currentTimeMillis()
+        renderPerson(detailWith(Completeness.Complete(now - hour), Delivery(now - 2 * hour, null)))
+        compose.onNodeWithTag("sharing_received_state").performScrollTo().assertTextContains("Aktuell · Stand ", substring = true)
+        compose.onNodeWithTag("sharing_confirmed").assertTextContains("Bestätigt ", substring = true)
+    }
+
+    @Test fun `an old complete state says nothing new came and a late confirmation says so`() {
+        val now = System.currentTimeMillis()
+        renderPerson(detailWith(Completeness.Complete(now - 72 * hour), Delivery(now - 72 * hour, now - 72 * hour)))
+        compose.onNodeWithTag("sharing_received_state").performScrollTo().assertTextContains("seitdem nichts Neues von Ben", substring = true)
+        compose.onNodeWithTag("sharing_confirmed").assertTextContains("die neuesten Änderungen warten noch", substring = true)
+    }
+
+    @Test fun `a known gap is never up to date and an old one says when it arrives`() {
+        renderPerson(detailWith(Completeness.Filling(System.currentTimeMillis() - 48 * hour), Delivery(0, 1)))
+        compose.onNodeWithTag("sharing_received_state").performScrollTo()
+            .assertTextContains("Unvollständig seit ", substring = true)
+            .assertTextContains("wird nachgeliefert, sobald Ben online ist", substring = true)
+        compose.onNodeWithTag("sharing_confirmed").assertTextEquals("Noch nicht bestätigt")
+    }
+
+    @Test fun `a fresh gap is being completed`() {
+        renderPerson(detailWith(Completeness.Filling(System.currentTimeMillis() - hour), null))
+        compose.onNodeWithTag("sharing_received_state").performScrollTo().assertTextEquals("Wird vervollständigt …")
+        compose.onNodeWithTag("sharing_confirmed").assertDoesNotExist()
+    }
+
+    @Test fun `who sees this says how many friends have what we share`() {
+        val now = System.currentTimeMillis()
+        val friends = listOf(
+            friend("b".repeat(64), VisibleState.ACTIVE, "Ben").copy(delivery = Delivery(now - hour, null)),
+            friend("c".repeat(64), VisibleState.ACTIVE, "Cleo").copy(delivery = Delivery(now - 72 * hour, now - 72 * hour)),
+            friend("d".repeat(64), VisibleState.STOPPED, "Dana", outgoing = false),
+        )
+        render(SharingUiState(loading = false, overview = overview(friends)), SharingPage.WhoSees)
+        compose.onNodeWithTag("sharing_delivery").assertTextContains("Zugestellt an 1 von 2 · 1 wartet (seit ", substring = true)
     }
 }

@@ -87,6 +87,10 @@ internal fun PersonPage(
             VisibleState.ENDED -> stringResource(R.string.sharing_ended_body)
         }
         explanation?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        friend.delivery?.let {
+            Text(deliveryLabel(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("sharing_confirmed"))
+        }
     }
     if (friend.visible == VisibleState.ENDED) {
         SettingsSectionCard {
@@ -167,6 +171,10 @@ internal fun PersonPage(
     }
     SettingsSectionCard {
         InfoHeading(stringResource(R.string.sharing_received_title, name), stringResource(R.string.sharing_received_info))
+        if (friend.visible == VisibleState.ACTIVE || friend.visible == VisibleState.STOPPED) {
+            Text(completenessLabel(friend.completeness, name), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("sharing_received_state"))
+        }
         if (detail.received.isEmpty()) {
             Text(stringResource(R.string.sharing_received_none, name), style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.testTag("sharing_received_none"))
@@ -301,6 +309,15 @@ internal fun TemplatePage(templates: List<ShareTemplate>, id: TemplateId, busy: 
 internal fun WhoSeesPage(overview: com.cruxcoach.android.sharing.SharingOverview) {
     SettingsSectionCard {
         InfoHeading(stringResource(R.string.sharing_whosees_title), stringResource(R.string.sharing_whosees_info))
+        val receiving = overview.friends.mapNotNull { it.delivery }
+        if (receiving.isNotEmpty()) {
+            val waiting = receiving.mapNotNull { it.waitingSince }
+            val parts = listOfNotNull(
+                stringResource(R.string.sharing_delivery_summary, receiving.size - waiting.size, receiving.size),
+                waiting.minOrNull()?.let { oldest -> pluralStringResource(R.plurals.sharing_delivery_waiting, waiting.size, waiting.size, dayLabel(oldest)) },
+            )
+            Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("sharing_delivery"))
+        }
         overview.whoSees.forEach { group ->
             CategoryHeader(group.category, group.entries.size.toString())
             if (group.entries.isEmpty()) {

@@ -34,6 +34,9 @@ import kotlinx.serialization.json.Json
  *
  * - `manifest` starts a generation, a snapshot at (gen, seq), or is a
  *   heartbeat: scope, count, digest.
+ *
+ * `manifest` and `delta` carry [at], the owner's clock to the minute when
+ * that state was current: the friend shows "complete as of" from it.
  * - `full` carries one page of that complete state.
  * - `delta` carries upserts/deletes from sequence `seq - 1` to `seq`.
  * - `ack` confirms the receiver's state (stream, assign, generation, sequence, digest).
@@ -47,6 +50,7 @@ import kotlinx.serialization.json.Json
     val assign: Long = 0,
     val gen: Long = 0,
     val seq: Long = 0,
+    val at: Long = 0,
     val part: Int = 0,
     val parts: Int = 0,
     val scope: ShareScope? = null,
@@ -81,7 +85,7 @@ object ShareProtocol {
             (scope.cutoff == null || scope.categories.any { it.dated })
 
     private fun validShape(m: ShareMessage): Boolean = m.v == VERSION && when (m.type) {
-        "manifest" -> hex32.matches(m.stream) && m.assign >= 0 && m.gen >= 1 && m.seq >= 0 &&
+        "manifest" -> hex32.matches(m.stream) && m.assign >= 0 && m.gen >= 1 && m.seq >= 0 && minute(m.at) &&
             m.scope != null && valid(m.scope) &&
             m.count in 0..SharingRecords.MAX_RECORDS && hex64.matches(m.digest) &&
             m.records.isEmpty() && m.deletes.isEmpty() && m.part == 0 && m.parts == 0
@@ -89,21 +93,28 @@ object ShareProtocol {
         "full" -> hex32.matches(m.stream) && m.assign >= 0 && m.gen >= 1 && m.seq >= 0 && (m.assign > 0 || m.seq == 0L) &&
             m.parts in 1..MAX_PARTS && m.part in 0 until m.parts &&
             m.records.size <= MAX_PAGE_RECORDS && m.records.map { it.id }.distinct().size == m.records.size &&
-            m.scope == null && m.deletes.isEmpty() && m.count == 0 && m.digest.isEmpty()
-        "delta" -> hex32.matches(m.stream) && m.assign == 0L && m.gen >= 1 && m.seq >= 1 && m.scope != null && valid(m.scope) &&
+            m.scope == null && m.deletes.isEmpty() && m.count == 0 && m.digest.isEmpty() && m.at == 0L
+        "delta" -> hex32.matches(m.stream) && m.assign == 0L && m.gen >= 1 && m.seq >= 1 && minute(m.at) &&
+            m.scope != null && valid(m.scope) &&
             m.records.size <= MAX_DELTA_UPSERTS && m.deletes.size <= MAX_DELTA_DELETES &&
             (m.records.map { it.id } + m.deletes).let { it.distinct().size == it.size } &&
             m.deletes.all { it.length in 1..256 } &&
             m.count in 0..MAX_PENDING_REFERENCE && hex64.matches(m.digest) && m.part == 0 && m.parts == 0
-        "ack" -> hex32.matches(m.stream) && m.assign >= 1 && m.gen >= 1 && m.seq >= 0 && hex64.matches(m.digest) && m.scope == null &&
+        "ack" -> hex32.matches(m.stream) && m.assign >= 1 && m.gen >= 1 && m.seq >= 0 && m.at == 0L && hex64.matches(m.digest) && m.scope == null &&
             m.records.isEmpty() && m.deletes.isEmpty() && m.count == 0 && m.part == 0 && m.parts == 0
         // Sent by a friend who may hold no stream yet.
-        "resync" -> (m.stream.isEmpty() || hex32.matches(m.stream)) && m.assign >= 0 && m.gen >= 0 && m.seq >= -1 &&
+        "resync" -> (m.stream.isEmpty() || hex32.matches(m.stream)) && m.assign >= 0 && m.gen >= 0 && m.seq >= -1 && m.at == 0L &&
             m.scope == null && m.records.isEmpty() && m.deletes.isEmpty() &&
             m.digest.isEmpty() && m.count == 0 && m.part == 0 && m.parts == 0
         "end" -> m == ShareMessage(type = "end")
         else -> false
     }
+
+    /** A time on the wire: whole minutes, never seconds (what a friend learns about our activity). */
+    private fun minute(at: Long) = at >= 0 && at % 60_000 == 0L
+
+    /** [now] cut to the minute, as [ShareMessage.at] carries it. */
+    fun minuteOf(now: Long): Long = now - now % 60_000
 
     /** Strict and canonical: re-encoding must reproduce the exact input. */
     fun decode(raw: String): ShareMessage? {
@@ -113,8 +124,8 @@ object ShareProtocol {
     }
 
     /** Start of a generation (`seq` 0) or of a snapshot (`assign` > 0), or a heartbeat. */
-    fun manifest(stream: String, assign: Long, gen: Long, seq: Long, scope: ShareScope, records: Collection<SharingRecord>) =
-        ShareMessage(type = "manifest", stream = stream, assign = assign, gen = gen, seq = seq, scope = scope,
+    fun manifest(stream: String, assign: Long, gen: Long, seq: Long, scope: ShareScope, records: Collection<SharingRecord>, at: Long = 0) =
+        ShareMessage(type = "manifest", stream = stream, assign = assign, gen = gen, seq = seq, at = minuteOf(at), scope = scope,
             count = records.size, digest = SharingRecords.digest(records))
 
     /** Pages of at most [MAX_PAGE_RECORDS] records and [MAX_BYTES]; at least one page. */
@@ -137,8 +148,9 @@ object ShareProtocol {
         }
     }
 
-    fun delta(stream: String, gen: Long, seq: Long, scope: ShareScope, upserts: List<SharingRecord>, deletes: List<String>, target: Collection<SharingRecord>) =
-        ShareMessage(type = "delta", stream = stream, gen = gen, seq = seq, scope = scope, records = upserts.sortedBy { it.id },
+    fun delta(stream: String, gen: Long, seq: Long, scope: ShareScope, upserts: List<SharingRecord>, deletes: List<String>,
+        target: Collection<SharingRecord>, at: Long = 0) =
+        ShareMessage(type = "delta", stream = stream, gen = gen, seq = seq, at = minuteOf(at), scope = scope, records = upserts.sortedBy { it.id },
             deletes = deletes.sorted(), count = target.size, digest = SharingRecords.digest(target))
 
     fun fits(message: ShareMessage) = encode(message).length <= MAX_BYTES

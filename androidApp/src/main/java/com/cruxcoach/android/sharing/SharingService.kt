@@ -19,6 +19,19 @@ import java.time.ZoneOffset
 /** The four states every screen shows for a person. */
 enum class VisibleState { PENDING, ACTIVE, STOPPED, ENDED }
 
+/** How complete what a friend shares with us is (VS7). */
+sealed interface Completeness {
+    /** Count and digest matched for the friend's state as of [asOf] (the friend's clock). */
+    data class Complete(val asOf: Long) : Completeness
+
+    /** A gap is known since [since] (our clock; 0: nothing arrived yet). */
+    data class Filling(val since: Long) : Completeness
+}
+
+/** Whether what we share reached a friend (VS8): their last confirmation and,
+ * when that is overdue, since when they wait (null: they are up to date). */
+data class Delivery(val confirmedAt: Long, val waitingSince: Long?)
+
 /** One person as the UI sees them: local choices plus the native state. */
 data class SharingFriend(
     val person: SharingPerson,
@@ -29,6 +42,9 @@ data class SharingFriend(
     val incomingScope: ShareScope,
     val received: Int,
     val confirmedAt: Long,
+    val completeness: Completeness = Completeness.Filling(0),
+    /** Null while we share nothing with them. */
+    val delivery: Delivery? = null,
 ) {
     val peer get() = person.peer
     val displayName: String get() = SharingNames.display(person.label, profileName, person.peer)
@@ -120,7 +136,8 @@ class SharingService(
 
     suspend fun overview(): SharingOverview {
         // What a friend shared with an end date is gone at that date, open app or not.
-        store.purgeExpiredRecords(clock())
+        val now = clock()
+        store.purgeExpiredRecords(now)
         val status = host.status()
         val incoming = store.incomingStates()
         val friends = store.persons().map { person ->
@@ -134,6 +151,8 @@ class SharingService(
                 incomingScope = incoming[person.peer]?.scope ?: ShareScope.EMPTY,
                 received = received.size,
                 confirmedAt = store.member(person.peer)?.ackedAt ?: 0,
+                completeness = completeness(incoming[person.peer]),
+                delivery = if (person.state == PersonState.CONNECTED && person.outgoing) delivery(person, now) else null,
             )
         }
         // An ended friendship does not hide a new request from the same person.
@@ -143,6 +162,23 @@ class SharingService(
         val templates = store.templates()
         return SharingOverview(status, templates.filterNot { it.hidden }, friends, invitations,
             ageAnswered = store.ageAnswered(), ageConfirmed = store.ageConfirmed(), allTemplates = templates, history = store.history(), whoSees = whoSeesWhat())
+    }
+
+    private fun completeness(state: IncomingState?): Completeness = when {
+        state == null || state.stream.isEmpty() -> Completeness.Filling(state?.incompleteSince ?: 0)
+        state.incompleteSince > 0 -> Completeness.Filling(state.incompleteSince)
+        else -> Completeness.Complete(state.completeAt)
+    }
+
+    /** Up to date: confirmed the stream's current state, or confirmed recently
+     * (confirmations come about once a day). Otherwise waiting since the last one. */
+    private fun delivery(person: SharingPerson, now: Long): Delivery {
+        val member = store.member(person.peer) ?: return Delivery(0, person.createdAt)
+        val stream = store.stream(member.stream)
+        val current = stream != null && member.ackedGeneration == stream.generation && member.ackedSequence == stream.sequence
+        val recent = member.ackedAt > 0 && now - member.ackedAt <= CURRENT_MS
+        val upToDate = !member.snapshotDue && (current || recent)
+        return Delivery(member.ackedAt, if (upToDate) null else member.ackedAt.takeIf { it > 0 } ?: member.joinedAt)
     }
 
     private fun visible(person: SharingPerson, native: MarmotPeer?): VisibleState = when {
@@ -422,5 +458,12 @@ class SharingService(
             }
         }
         onChanged()
+    }
+
+    companion object {
+        /** A complete state this recent counts as current; a confirmation this recent as up to date (VS7, VS8). */
+        const val CURRENT_MS = 36 * 60 * 60_000L
+        /** A gap older than this is shown as missing data, not as data on its way (VS7). */
+        const val LONG_GAP_MS = 24 * 60 * 60_000L
     }
 }

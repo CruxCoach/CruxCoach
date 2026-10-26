@@ -2810,6 +2810,22 @@
     <string name="sharing_received_title">Von %1$s</string>
     <string name="sharing_received_info">Was diese Person mit dir teilt. Es liegt verschlüsselt auf diesem Gerät, getrennt von deinen eigenen Daten, und wird gelöscht, wenn sie das Teilen stoppt oder die Freundschaft endet.</string>
     <string name="sharing_received_none">%1$s teilt noch nichts mit dir.</string>
+    <string name="sharing_complete_current">Aktuell · Stand %1$s</string>
+    <string name="sharing_complete_quiet">Stand vom %1$s · seitdem nichts Neues von %2$s</string>
+    <string name="sharing_complete_filling">Wird vervollständigt …</string>
+    <string name="sharing_complete_missing">Unvollständig seit %1$s · wird nachgeliefert, sobald %2$s online ist</string>
+    <string name="sharing_confirmed">Bestätigt %1$s</string>
+    <string name="sharing_confirmed_waiting">Zuletzt bestätigt %1$s · die neuesten Änderungen warten noch</string>
+    <string name="sharing_confirmed_never">Noch nicht bestätigt</string>
+    <string name="sharing_delivery_summary">Zugestellt an %1$d von %2$d</string>
+    <plurals name="sharing_delivery_waiting">
+        <item quantity="one">%1$d wartet (seit %2$s)</item>
+        <item quantity="other">%1$d warten (älteste seit %2$s)</item>
+    </plurals>
+    <string name="sharing_time_today">heute %1$s</string>
+    <string name="sharing_time_yesterday">gestern %1$s</string>
+    <string name="sharing_day_today">heute</string>
+    <string name="sharing_day_yesterday">gestern</string>
     <string name="sharing_show_all">Alle %1$d anzeigen</string>
     <string name="sharing_end">Freundschaft beenden</string>
     <string name="sharing_withdraw">Anfrage zurückziehen</string>

@@ -2811,6 +2811,22 @@
     <string name="sharing_received_title">From %1$s</string>
     <string name="sharing_received_info">What this person shares with you. It is stored encrypted on this device, separate from your own data, and deleted when they stop sharing or the friendship ends.</string>
     <string name="sharing_received_none">%1$s shares nothing with you yet.</string>
+    <string name="sharing_complete_current">Up to date · as of %1$s</string>
+    <string name="sharing_complete_quiet">As of %1$s · nothing new from %2$s since</string>
+    <string name="sharing_complete_filling">Completing …</string>
+    <string name="sharing_complete_missing">Incomplete since %1$s · arrives as soon as %2$s is online</string>
+    <string name="sharing_confirmed">Confirmed %1$s</string>
+    <string name="sharing_confirmed_waiting">Last confirmed %1$s · waiting for the latest changes</string>
+    <string name="sharing_confirmed_never">Not confirmed yet</string>
+    <string name="sharing_delivery_summary">Delivered to %1$d of %2$d</string>
+    <plurals name="sharing_delivery_waiting">
+        <item quantity="one">%1$d waiting (since %2$s)</item>
+        <item quantity="other">%1$d waiting (oldest since %2$s)</item>
+    </plurals>
+    <string name="sharing_time_today">today %1$s</string>
+    <string name="sharing_time_yesterday">yesterday %1$s</string>
+    <string name="sharing_day_today">today</string>
+    <string name="sharing_day_yesterday">yesterday</string>
     <string name="sharing_show_all">Show all %1$d</string>
     <string name="sharing_end">End friendship</string>
     <string name="sharing_withdraw">Withdraw request</string>

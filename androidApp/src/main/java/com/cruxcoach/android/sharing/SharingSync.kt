@@ -259,8 +259,22 @@ class SharingSync(
             message.type == "full" -> full(peer, start, message, now)
             else -> delta(peer, start, message, now)
         }
-        store.putIncoming(peer, state)
+        store.putIncoming(peer, track(state, now))
     }
+
+    /** Since when a gap is known: a state still being staged, messages waiting
+     * for a missing one, or a count or digest that did not match (VS2). */
+    private fun track(state: IncomingState, now: Long): IncomingState {
+        val gap = !state.complete || state.pending.isNotEmpty() || state.mismatch
+        return when {
+            gap && state.incompleteSince == 0L -> state.copy(incompleteSince = now)
+            !gap && state.incompleteSince != 0L -> state.copy(incompleteSince = 0)
+            else -> state
+        }
+    }
+
+    /** A state that matched count and digest, as of the friend's time [at]. */
+    private fun verified(state: IncomingState, at: Long) = state.copy(mismatch = false, completeAt = maxOf(state.completeAt, at))
 
     /** A message for us alone: a snapshot that replaces everything from this friend. */
     private fun assigned(peer: String, state: IncomingState, m: ShareMessage, now: Long): IncomingState = when {
@@ -287,6 +301,7 @@ class SharingSync(
             scope = scope,
             expectedDigest = m.digest,
             expectedCount = m.count,
+            expectedAt = m.at,
             staging = emptyMap(),
             ackDue = false,
             receivedAt = now,
@@ -294,7 +309,8 @@ class SharingSync(
         )
         if (m.count == 0) {
             store.deleteRecords(peer)
-            next = if (m.digest == SharingRecords.digest(emptyList())) next.copy(sequence = m.seq, ackDue = true, ackSentAt = 0) else requestResync(next, now)
+            next = if (m.digest == SharingRecords.digest(emptyList())) verified(next.copy(sequence = m.seq, ackDue = true, ackSentAt = 0), m.at)
+            else requestResync(next, now)
         }
         return drain(peer, next, now)
     }
@@ -319,7 +335,8 @@ class SharingSync(
      * A match is worth a (daily) confirmation, so a quiet friendship stays confirmed. */
     private fun verify(peer: String, state: IncomingState, m: ShareMessage, now: Long): IncomingState {
         val local = store.records(peer)
-        return if (local.size != m.count || SharingRecords.digest(local) != m.digest) requestResync(state, now) else state.copy(ackDue = true)
+        return if (local.size != m.count || SharingRecords.digest(local) != m.digest) requestResync(state, now)
+        else verified(state.copy(ackDue = true), m.at)
     }
 
     private fun full(peer: String, state: IncomingState, m: ShareMessage, now: Long): IncomingState {
@@ -337,7 +354,8 @@ class SharingSync(
         // A record whose grant already ended is never stored (it may have been delayed).
         all.filterNot { store.receivedExpired(it, now) }.forEach { store.putRecord(peer, it) }
         // A complete state is confirmed at once; deltas only once a day.
-        return drain(peer, state.copy(sequence = state.base, staging = emptyMap(), ackDue = true, ackSentAt = 0, receivedAt = now), now)
+        return drain(peer, verified(state.copy(sequence = state.base, staging = emptyMap(), ackDue = true, ackSentAt = 0, receivedAt = now),
+            state.expectedAt), now)
     }
 
     private fun delta(peer: String, state: IncomingState, m: ShareMessage, now: Long): IncomingState {
@@ -360,7 +378,7 @@ class SharingSync(
         m.deletes.forEach { store.deleteRecord(peer, it) }
         val local = store.records(peer)
         val next = state.copy(sequence = m.seq, scope = scope, ackDue = true, receivedAt = now)
-        return if (local.size != m.count || SharingRecords.digest(local) != m.digest) requestResync(next, now) else next
+        return if (local.size != m.count || SharingRecords.digest(local) != m.digest) requestResync(next, now) else verified(next, m.at)
     }
 
     /** Hold an out-of-order message; too many means a real gap: resync. */
@@ -422,8 +440,9 @@ class SharingSync(
     }
 
     private fun requestResync(state: IncomingState, now: Long, generation: Long = state.generation): IncomingState {
+        val marked = state.copy(mismatch = true)
         val recentlyAsked = state.resyncGeneration == generation && (state.resyncAt == 0L || now - state.resyncAt < RESYNC_RETRY_MS)
-        return if (recentlyAsked) state else state.copy(resyncGeneration = generation, resyncAt = 0)
+        return if (recentlyAsked) marked else marked.copy(resyncGeneration = generation, resyncAt = 0)
     }
 
     // ---- replies (acks, resync requests) ---------------------------------------------------
@@ -454,6 +473,7 @@ class SharingSync(
                 val token = "ack:${state.stream.take(8)}:a${state.assign}:g${state.generation}:s${state.sequence}:${digest.take(16)}"
                 if (runCatching { host.send(peer, token, ShareProtocol.encode(message)) }.isSuccess) state = state.copy(ackDue = false, ackSentAt = now)
             }
+            state = track(state, now)
             if (state != start) store.putIncoming(peer, state)
         }
     }
@@ -535,13 +555,13 @@ class SharingSync(
                 // manifest is one more event whose timing a relay sees.
                 if (now - stream.manifestAt >= HEARTBEAT_MS) {
                     broadcast += "${stream.id}:hb:g${stream.generation}:s${stream.sequence}:h${now / 3_600_000}" to
-                        ShareProtocol.manifest(stream.id, 0, stream.generation, stream.sequence, scope, target)
+                        ShareProtocol.manifest(stream.id, 0, stream.generation, stream.sequence, scope, target, now)
                     next = stream.copy(manifestAt = now)
                 }
             } else if (hold(stream, members, native, upserts, deletes, scope, target, now)) {
                 return
             } else {
-                val delta = ShareProtocol.delta(stream.id, stream.generation, stream.sequence + 1, scope, upserts, deletes, target)
+                val delta = ShareProtocol.delta(stream.id, stream.generation, stream.sequence + 1, scope, upserts, deletes, target, now)
                 if (upserts.size > ShareProtocol.MAX_DELTA_UPSERTS || deletes.size > ShareProtocol.MAX_DELTA_DELETES || !ShareProtocol.fits(delta)) {
                     full = true
                 } else {
@@ -555,7 +575,7 @@ class SharingSync(
             val generation = stream.generation + 1
             // A new stream has no members yet who could follow a generation: they join by snapshot.
             if (stream.generation > 0) {
-                broadcast += "${stream.id}:g$generation:m" to ShareProtocol.manifest(stream.id, 0, generation, 0, scope, target)
+                broadcast += "${stream.id}:g$generation:m" to ShareProtocol.manifest(stream.id, 0, generation, 0, scope, target, now)
                 ShareProtocol.full(stream.id, 0, generation, 0, target).forEach { broadcast += "${stream.id}:g$generation:f${it.part}" to it }
             }
             next = stream.copy(generation = generation, sequence = 0, generationStartedAt = now, scope = scope,
@@ -609,7 +629,7 @@ class SharingSync(
             // A snapshot for this member alone, at the state every other member now has.
             val assign = member.assign + 1
             val prefix = "${stream.id}:a$assign:g${next.generation}:s${next.sequence}"
-            val messages = listOf("$prefix:m" to ShareProtocol.manifest(stream.id, assign, next.generation, next.sequence, next.scope, target)) +
+            val messages = listOf("$prefix:m" to ShareProtocol.manifest(stream.id, assign, next.generation, next.sequence, next.scope, target, now)) +
                 ShareProtocol.full(stream.id, assign, next.generation, next.sequence, target).map { "$prefix:f${it.part}" to it }
             val complete = messages.all { (token, message) -> runCatching { host.send(member.peer, token, ShareProtocol.encode(message)) }.isSuccess }
             // A number once used is never used again, even when only part of it went out.

@@ -33,6 +33,18 @@ class SharingProtocolTest {
         }
     }
 
+    @Test fun times_on_the_wire_are_whole_minutes_and_only_where_a_state_is_described() {
+        val at = 1_790_000_123_456L
+        val manifest = ShareProtocol.manifest(stream, 0, 1, 0, scope, listOf(note), at)
+        assertEquals(1_790_000_100_000L, manifest.at)
+        assertNotNull(ShareProtocol.decode(ShareProtocol.encode(manifest)))
+        assertNotNull(ShareProtocol.decode(ShareProtocol.encode(ShareProtocol.delta(stream, 1, 1, scope, listOf(note), emptyList(), listOf(note), at))))
+        assertNull(ShareProtocol.decode(ShareProtocol.encode(manifest.copy(at = at))), "seconds say too much")
+        assertNull(ShareProtocol.decode(ShareProtocol.encode(ShareProtocol.full(stream, 0, 1, 0, listOf(note)).single().copy(at = 60_000))))
+        assertNull(ShareProtocol.decode(ShareProtocol.encode(ShareMessage(type = "ack", stream = stream, assign = 1, gen = 1, at = 60_000,
+            digest = SharingRecords.digest(listOf(note))))))
+    }
+
     @Test fun streams_and_assignments_keep_their_shape() {
         val digest = SharingRecords.digest(listOf(note))
         fun refused(m: ShareMessage, why: String) = assertNull(ShareProtocol.decode(ShareProtocol.encode(m)), why)

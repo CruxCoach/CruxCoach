@@ -4,7 +4,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.sharing.Completeness
+import com.cruxcoach.android.sharing.Delivery
 import com.cruxcoach.android.sharing.HistoryEntry
+import com.cruxcoach.android.sharing.SharingService
 import com.cruxcoach.android.sharing.HistoryEvent
 import com.cruxcoach.android.sharing.MarmotRelay
 import com.cruxcoach.android.sharing.SharingRecord
@@ -49,6 +52,56 @@ internal object SharingLabels {
         VisibleState.STOPPED -> R.string.sharing_state_stopped
         VisibleState.ENDED -> R.string.sharing_state_ended
     }
+}
+
+/** "today 09:12", "yesterday 18:00", "Mon 14:05" within a week, else a date. */
+@Composable
+internal fun momentLabel(at: Long, now: Long = System.currentTimeMillis()): String {
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val zone = java.time.ZoneId.systemDefault()
+    val time = java.time.Instant.ofEpochMilli(at).atZone(zone)
+    val days = java.time.temporal.ChronoUnit.DAYS.between(time.toLocalDate(), java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate())
+    val clock = time.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", locale))
+    return when (days) {
+        0L -> stringResource(R.string.sharing_time_today, clock)
+        1L -> stringResource(R.string.sharing_time_yesterday, clock)
+        in 2L..6L -> time.format(java.time.format.DateTimeFormatter.ofPattern("EEE HH:mm", locale))
+        else -> time.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM).withLocale(locale))
+    }
+}
+
+/** "today", "yesterday", "Tue" within a week, else a date. */
+@Composable
+internal fun dayLabel(at: Long, now: Long = System.currentTimeMillis()): String {
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val zone = java.time.ZoneId.systemDefault()
+    val date = java.time.Instant.ofEpochMilli(at).atZone(zone).toLocalDate()
+    return when (java.time.temporal.ChronoUnit.DAYS.between(date, java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate())) {
+        0L -> stringResource(R.string.sharing_day_today)
+        1L -> stringResource(R.string.sharing_day_yesterday)
+        in 2L..6L -> date.format(java.time.format.DateTimeFormatter.ofPattern("EEE", locale))
+        else -> date.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM).withLocale(locale))
+    }
+}
+
+/** What we hold of [name]'s data (VS7): never "up to date" while a gap is known. */
+@Composable
+internal fun completenessLabel(completeness: Completeness, name: String, now: Long = System.currentTimeMillis()): String = when (completeness) {
+    is Completeness.Complete ->
+        if (now - completeness.asOf <= SharingService.CURRENT_MS) stringResource(R.string.sharing_complete_current, momentLabel(completeness.asOf, now))
+        else stringResource(R.string.sharing_complete_quiet, momentLabel(completeness.asOf, now), name)
+    is Completeness.Filling ->
+        if (completeness.since > 0 && now - completeness.since > SharingService.LONG_GAP_MS) {
+            stringResource(R.string.sharing_complete_missing, dayLabel(completeness.since, now), name)
+        } else stringResource(R.string.sharing_complete_filling)
+}
+
+/** Whether [name] confirmed what we share (VS8). */
+@Composable
+internal fun deliveryLabel(delivery: Delivery, now: Long = System.currentTimeMillis()): String = when {
+    delivery.waitingSince == null -> stringResource(R.string.sharing_confirmed, momentLabel(delivery.confirmedAt, now))
+    delivery.confirmedAt > 0 -> stringResource(R.string.sharing_confirmed_waiting, momentLabel(delivery.confirmedAt, now))
+    else -> stringResource(R.string.sharing_confirmed_never)
 }
 
 @Composable

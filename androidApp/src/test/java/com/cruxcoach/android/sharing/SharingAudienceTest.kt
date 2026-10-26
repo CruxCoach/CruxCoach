@@ -163,6 +163,13 @@ class SharingAudienceTest {
             everyone.forEach { it.pass() }
             net.deliver { queued -> queued.filter { random.nextInt(10) != 0 }.shuffled(random) + queued.filter { random.nextInt(8) == 0 } }
             most = maxOf(most, alice.store.streams().size)
+            // Never "complete" while a gap is known (VT11).
+            for (friend in friends) {
+                val state = friend.store.incoming(alice.account)
+                if (!state.complete || state.pending.isNotEmpty()) {
+                    assertTrue(friend.service.overview().friends.single { it.peer == alice.account }.completeness is Completeness.Filling)
+                }
+            }
         }
         // Then the network calms down. A lost last delta shows at the next
         // heartbeat; stalled gaps time out and lost resync requests are repeated.

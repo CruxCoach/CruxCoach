@@ -564,4 +564,35 @@ class SharingSyncTest {
         assertEquals(alice.expected(bob), bob.received(alice))
         assertEquals(21, bob.received(alice).size)
     }
+
+    @Test fun the_friend_sees_how_complete_the_data_is_and_never_up_to_date_with_a_known_gap() = runBlocking {
+        alice.note("n1", "one")
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        assertEquals(Completeness.Complete(ShareProtocol.minuteOf(net.now)), bob.friend(alice).completeness)
+        // A delta is lost; the next one shows the gap.
+        alice.note("n2", "two")
+        alice.pass()
+        net.deliver { emptyList() }
+        net.now += 5 * 60_000L
+        alice.note("n3", "three")
+        settle()
+        assertEquals(Completeness.Filling(net.now), bob.friend(alice).completeness)
+        // Repaired: complete as of Alice's snapshot.
+        net.now += SharingSync.STALL_MS + 1
+        settle(6)
+        assertEquals(Completeness.Complete(ShareProtocol.minuteOf(net.now)), bob.friend(alice).completeness)
+        // A quiet day: the heartbeat moves "as of" forward without any change.
+        net.now += SharingSync.HEARTBEAT_MS
+        settle()
+        assertEquals(Completeness.Complete(ShareProtocol.minuteOf(net.now)), bob.friend(alice).completeness)
+        assertEquals(null, alice.friend(bob).delivery!!.waitingSince, "Bob confirmed what Alice shares")
+        // Bob is away for two days while Alice adds something: he is waiting since his last confirmation.
+        val confirmed = alice.friend(bob).confirmedAt
+        net.now += 2 * SharingSync.HEARTBEAT_MS
+        alice.note("n4", "four")
+        alice.pass()
+        assertEquals(Delivery(confirmed, confirmed), alice.friend(bob).delivery)
+        bob.service.setOutgoing(alice.account, false)
+        assertEquals(null, bob.friend(alice).delivery, "Bob shares nothing with Alice any more")
+    }
 }
