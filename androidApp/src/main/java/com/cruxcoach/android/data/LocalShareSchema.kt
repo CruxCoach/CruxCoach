@@ -112,12 +112,12 @@ object LocalShareSchema {
     ).map { it.trimIndent() }
 
     /**
-     * Shiny Wall never crosses the offline share. Receivers released before
-     * the family existed read an unknown `board_brand` as Kilter, and a v2
-     * receiver cannot tell the sender which families it knows, so the rows
-     * would land on their Kilter board. Receivers fetch the small Shiny Wall
-     * catalogue from its own Blossom manifest instead; its geometry ships in
-     * the APK.
+     * Shiny Wall never travels inside the board snapshot. Receivers released
+     * before the family existed read an unknown `board_brand` as Kilter, so
+     * the rows would land on their Kilter board. Current receivers get the
+     * catalogue as its own artifact, named only in the v2 manifest's
+     * `families` list (LocalShareProtocol.V2_SHINYWALL_PATH), which older
+     * receivers never read; its geometry ships in the APK.
      */
     val SHINYWALL_SCRUB: List<String> = listOf(
         """DELETE FROM climb_stats WHERE climb_uuid IN
@@ -137,7 +137,7 @@ object LocalShareSchema {
     /** v2 scrub: Quantum stays, everything else as in [SNAPSHOT_SCRUB]. */
     val V2_SNAPSHOT_SCRUB: List<String> = PRIVACY_SCRUB + SHINYWALL_SCRUB
 
-    /** Families the offline share never carries (see [SHINYWALL_SCRUB]). */
+    /** Families the board snapshot never carries (see [SHINYWALL_SCRUB]). */
     val NON_SHAREABLE_BRANDS: Set<String> = setOf("shinywall")
 
     // ── Peer-share column contract (the drift guard) ────────────────────
