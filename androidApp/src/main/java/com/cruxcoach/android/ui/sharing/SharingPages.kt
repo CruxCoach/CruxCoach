@@ -363,10 +363,29 @@ internal fun HistoryPage(overview: com.cruxcoach.android.sharing.SharingOverview
 }
 
 @Composable
-internal fun ConnectionPage(status: MarmotStatus, busy: Boolean, actions: SharingActions, mailboxes: Boolean = false) {
+internal fun ConnectionPage(
+    status: MarmotStatus,
+    busy: Boolean,
+    actions: SharingActions,
+    mailboxes: Boolean = false,
+    /** Friends whose data has a known gap, and since when (VS9). */
+    gaps: List<Pair<String, Long>> = emptyList(),
+) {
     SettingsSectionCard {
         InfoHeading(stringResource(R.string.sharing_connection_title),
             stringResource(if (mailboxes) R.string.sharing_connection_info_mailboxes else R.string.sharing_connection_info))
+        if (mailboxes) {
+            // VS9: how delivery stands, said as a state.
+            val boxes = status.relays.filterNot { it.direct }
+            val down = boxes.count { it.connection != "connected" }
+            val line = when {
+                boxes.isEmpty() || down == boxes.size ->
+                    if (status.relays.any { it.direct && it.connection == "connected" }) null else stringResource(R.string.sharing_conn_offline_pending)
+                down == 0 -> stringResource(R.string.sharing_delivery_normal)
+                else -> stringResource(R.string.sharing_delivery_limited, down, boxes.size)
+            }
+            line?.let { Text(it, style = MaterialTheme.typography.titleSmall, modifier = Modifier.testTag("sharing_delivery_state")) }
+        }
         // The relay inside the app exists only over MLS.
         if (!mailboxes) {
             RelayLine(stringResource(R.string.sharing_local_relay),
@@ -378,7 +397,8 @@ internal fun ConnectionPage(status: MarmotStatus, busy: Boolean, actions: Sharin
                 "p2p:ble" -> stringResource(R.string.sharing_way_ble)
                 else -> relay.url.removePrefix("wss://")
             }
-            RelayLine(name, relayLabel(relay))
+            val last = relay.lastAt.takeIf { it > 0 }?.let { stringResource(R.string.sharing_way_last, momentLabel(it)) }
+            RelayLine(name, listOfNotNull(relayLabel(relay), last).joinToString(" · "))
         }
         val pending = status.local.outboundPending.toInt()
         if (pending > 0) {
@@ -387,6 +407,16 @@ internal fun ConnectionPage(status: MarmotStatus, busy: Boolean, actions: Sharin
         }
         OutlinedButton(onClick = actions.syncNow, enabled = !busy, modifier = Modifier.testTag("sharing_sync_now")) {
             Text(stringResource(R.string.sharing_sync_now))
+        }
+    }
+    if (mailboxes) {
+        SettingsSectionCard {
+            Text(stringResource(R.string.sharing_gaps_title), style = MaterialTheme.typography.titleSmall)
+            if (gaps.isEmpty()) Text(stringResource(R.string.sharing_gaps_none), style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("sharing_gaps_none"))
+            gaps.forEach { (name, since) ->
+                Text(stringResource(R.string.sharing_gap_line, name, dayLabel(since)), style = MaterialTheme.typography.bodyMedium)
+            }
         }
     }
 }

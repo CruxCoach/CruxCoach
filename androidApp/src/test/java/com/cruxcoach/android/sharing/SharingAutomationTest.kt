@@ -47,6 +47,13 @@ class SharingAutomationTest {
         assertEquals(3, steps)
     }
 
+    @Test fun a_background_send_waits_a_random_zero_to_five_minutes() {
+        val random = java.util.Random(1)
+        val delays = (1..200).map { SharingWork.backgroundDelayMs(random) }
+        assertTrue(delays.all { it in 3_000L..3_000L + SharingWork.BACKGROUND_SPREAD_MS })
+        assertTrue(delays.max() - delays.min() > SharingWork.BACKGROUND_SPREAD_MS / 2, "spread, not fixed")
+    }
+
     @Test fun the_foreground_keeps_the_pool_online() = runBlocking {
         val binding = ScriptedBinding()
         assertTrue(SharingPass(host(binding), { }, pause = {}).run(stayOnline = true))

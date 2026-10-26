@@ -56,6 +56,8 @@ class P2pMarmotBinding(
     @Volatile private var poller: Thread? = null
     @Volatile private var handle = 0L
     @Volatile private var lastResult = "none"
+    /** When a friend was last reached directly, per transport (diagnosis). */
+    private val lastReached = ConcurrentHashMap<String, Long>()
     private val reachable = ConcurrentHashMap<String, Long>()
     private val exchanging = ReentrantLock()
 
@@ -174,6 +176,7 @@ class P2pMarmotBinding(
                 return
             }
             lastResult = "accepted"
+            lastReached[transport.name] = clock()
             val end = value("exchange_end") {
                 put("container", Base64.getEncoder().encodeToString(response))
                 put("max_bytes", transport.maxContainer)
@@ -202,6 +205,7 @@ class P2pMarmotBinding(
                     put("connection", if (m.connected) "connected" else "offline")
                     put("last_result", m.lastResult)
                     put("nip77", false)
+                    put("last_at", m.lastAt)
                 })
             }
             transports.forEach { t ->
@@ -210,6 +214,7 @@ class P2pMarmotBinding(
                     put("connection", if (t.running) "connected" else "offline")
                     put("last_result", lastResult)
                     put("nip77", false)
+                    put("last_at", lastReached[t.name] ?: 0L)
                 })
             }
         }

@@ -154,11 +154,16 @@ class SharingAutomation @Inject constructor(
         scope.launch { serial.withLock { if (native.exists()) runCatching { native.host.setOnline(false) } } }
     }
 
-    /** Something changed locally (a source row, a policy, a request). */
+    /**
+     * Something changed locally (a source row, a policy, a request). In front
+     * it goes out now; in the background after a random 0–5 minutes, so the
+     * moment a message appears in a mailbox does not tell when something
+     * happened on this phone (MD4).
+     */
     fun nudge() {
         if (!active || !native.exists()) return
-        scope.launch { pass() }
-        if (!foreground) SharingWork.wake(context)
+        if (foreground) scope.launch { pass() }
+        else SharingWork.wake(context, SharingWork.backgroundDelayMs())
     }
 
     suspend fun pass(): Boolean = serial.withLock {
@@ -285,11 +290,17 @@ object SharingWork {
         )
     }
 
-    fun wake(context: Context) {
+    /** Background sends wait this long, chosen anew each time (MD4). */
+    fun backgroundDelayMs(random: java.util.Random = java.security.SecureRandom()): Long =
+        3_000L + (random.nextDouble() * BACKGROUND_SPREAD_MS).toLong()
+
+    const val BACKGROUND_SPREAD_MS = 5 * 60_000L
+
+    fun wake(context: Context, delayMs: Long = 3_000L) {
         WorkManager.getInstance(context).enqueueUniqueWork(
             CHANGE, ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<SharingWorker>()
-                .setInitialDelay(3, TimeUnit.SECONDS)
+                .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
                 .setConstraints(constraints())
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build(),

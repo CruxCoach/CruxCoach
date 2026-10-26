@@ -48,7 +48,12 @@ class MarmotFailure(val code: String) : IllegalStateException("Marmot operation 
     val connection: String,
     @SerialName("last_result") val lastResult: String,
     val nip77: Boolean,
-)
+    /** Last answer from it (epoch ms); 0: none yet. */
+    @SerialName("last_at") val lastAt: Long = 0,
+) {
+    /** A direct way (Wi-Fi, Bluetooth) rather than a mailbox or relay. */
+    val direct get() = url.startsWith("p2p:")
+}
 
 @Serializable data class MarmotPeer(
     val account: String,

@@ -32,8 +32,8 @@ data class Pacing(val burst: Int, val perMinute: Int) {
     }
 }
 
-/** What the transport list in the sharing status shows for one mailbox. */
-data class MailboxState(val url: String, val connected: Boolean, val lastResult: String)
+/** What the transport list in the sharing status shows for one mailbox; [lastAt]: last answer (epoch ms). */
+data class MailboxState(val url: String, val connected: Boolean, val lastResult: String, val lastAt: Long = 0)
 
 /**
  * Delivery through mailboxes, one pass at a time.
@@ -306,7 +306,8 @@ class MailboxDelivery(
     }
 
     private fun seen(url: String, connected: Boolean, result: String) {
-        states[url] = MailboxState(url, connected, result)
+        val lastAt = if (connected) clock() else states[url]?.lastAt ?: 0
+        states[url] = MailboxState(url, connected, result, lastAt)
     }
 
     companion object {

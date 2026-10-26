@@ -267,7 +267,9 @@ internal fun SharingContent(
                 }
             }
             is SharingPage.Template -> TemplatePage(overview.allTemplates, page.id, state.busy, actions)
-            SharingPage.Connection -> ConnectionPage(overview.status, state.busy, actions, mailboxes = overview.linkInvites)
+            SharingPage.Connection -> ConnectionPage(overview.status, state.busy, actions, mailboxes = overview.linkInvites,
+                gaps = overview.friends.mapNotNull { f -> (f.completeness as? com.cruxcoach.android.sharing.Completeness.Filling)
+                    ?.since?.takeIf { it > 0 }?.let { f.displayName to it } })
             SharingPage.History -> HistoryPage(overview)
             SharingPage.WhoSees -> WhoSeesPage(overview)
             SharingPage.ShowCode -> ShowCodePage(state.shownCode, overview.status.account, state.busy, actions)
@@ -344,12 +346,19 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
         val pending = status.local.outboundPending.toInt()
         SharingDestinationRow(
             title = stringResource(R.string.sharing_connection_title),
-            summary = listOfNotNull(
-                stringResource(if (overview.linkInvites) R.string.sharing_connection_summary_ways else R.string.sharing_connection_summary,
-                    connected, status.relays.size),
-                if (pending > 0) {
-                    pluralStringResource(if (overview.linkInvites) R.plurals.sharing_pending_delivery else R.plurals.sharing_pending_messages, pending, pending)
-                } else null,
+            summary = if (overview.linkInvites) {
+                // States, never errors: what is waiting goes out by itself.
+                listOfNotNull(
+                    stringResource(when {
+                        connected > 0 -> R.string.sharing_conn_connected
+                        pending > 0 -> R.string.sharing_conn_offline_pending
+                        else -> R.string.sharing_conn_offline
+                    }),
+                    if (pending > 0 && connected > 0) pluralStringResource(R.plurals.sharing_pending_delivery, pending, pending) else null,
+                ).joinToString(" · ")
+            } else listOfNotNull(
+                stringResource(R.string.sharing_connection_summary, connected, status.relays.size),
+                if (pending > 0) pluralStringResource(R.plurals.sharing_pending_messages, pending, pending) else null,
             ).joinToString(" · "),
             icon = Icons.Outlined.Hub,
             modifier = Modifier.testTag("sharing_open_connection"),

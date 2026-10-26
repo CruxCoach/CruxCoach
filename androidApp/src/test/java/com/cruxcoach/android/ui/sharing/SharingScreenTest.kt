@@ -170,7 +170,7 @@ class SharingScreenTest {
         val page = mutableStateOf<SharingPage>(SharingPage.Overview)
         compose.setContent { MaterialTheme { SharingContent(SharingUiState(loading = false, overview = links), page.value, onOpen = {}, actions = actions) } }
         compose.onNodeWithTag("sharing_reachable").assertDoesNotExist()
-        compose.onNodeWithText("1 von 2 Wegen verfügbar · 1 Nachricht wartet auf Zustellung").assertExists()
+        compose.onNodeWithText("Verbunden · 1 Nachricht wartet auf Zustellung").assertExists()
         page.value = SharingPage.Connection
         compose.onNodeWithText("Direkt über WLAN").assertExists()
         compose.onNodeWithText("blossom.cruxcoach.org/post").assertExists()
@@ -201,6 +201,29 @@ class SharingScreenTest {
         assertEquals(listOf("scanned:WIFI:S:x;;", "scanned:cruxcoach:c1:", "open:"), calls)
         state.value = state.value.copy(scanRefused = true)
         compose.onNodeWithTag("sharing_scan_refused").assertExists()
+    }
+
+    @Test fun `states instead of errors and a diagnosis with mailboxes, last contact and gaps`() {
+        val now = System.currentTimeMillis()
+        fun relay(url: String, connection: String, at: Long = 0) = com.cruxcoach.android.sharing.MarmotRelay(url, connection, "accepted", false, at)
+        val limited = MarmotStatus(me, true, MarmotDiscovery(false, 0), MarmotLocal(0, 0, 0), emptyList(), listOf(
+            relay("wss://blossom.cruxcoach.org/post", "connected", now - 60_000),
+            relay("wss://relay.example", "offline"),
+            relay("p2p:lan", "offline"),
+        ), false, 1)
+        val gap = friend("a".repeat(64), VisibleState.ACTIVE, "Anna").copy(completeness = Completeness.Filling(now - 3 * 86_400_000L))
+        val state = mutableStateOf(SharingUiState(loading = false, overview = overview(listOf(gap)).copy(status = limited, linkInvites = true)))
+        val page = mutableStateOf<SharingPage>(SharingPage.Connection)
+        compose.setContent { MaterialTheme { SharingContent(state.value, page.value, onOpen = {}, actions = actions) } }
+        compose.onNodeWithText("Zustellung eingeschränkt · 1 von 2 Briefkästen nicht erreichbar").assertExists()
+        compose.onNodeWithText("verbunden · nimmt Nachrichten an · zuletzt heute", substring = true).assertExists()
+        compose.onNodeWithText("Anna · unvollständig seit", substring = true).performScrollTo().assertExists()
+        // Nothing reachable, something waiting: a state, not an error.
+        val offline = limited.copy(local = MarmotLocal(0, 0, 3), relays = limited.relays.map { it.copy(connection = "offline") })
+        state.value = state.value.copy(overview = state.value.overview!!.copy(status = offline))
+        page.value = SharingPage.Overview
+        compose.onNodeWithText("Offline – wird nachgeliefert").performScrollTo().assertExists()
+        compose.onNodeWithTag("sharing_error").assertDoesNotExist()
     }
 
     @Test fun `a refused identity is explained and an empty field cannot be sent`() {
