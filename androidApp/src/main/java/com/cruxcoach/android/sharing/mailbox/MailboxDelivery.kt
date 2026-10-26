@@ -226,7 +226,7 @@ class MailboxDelivery(
         plan.values.removeAll { it.isEmpty() }
         for ((url, events) in plan) spend(url, events.size, now)
         val answers = coroutineScope {
-            plan.map { (url, events) -> async { url to client.place(url, events) } }.awaitAll()
+            plan.map { (url, events) -> async { url to probing(url, events) } }.awaitAll()
         }
         val accepted = queue.associate { it["id"]!!.jsonPrimitive.content to it["accepted"]!!.jsonArray.map { a -> a.jsonPrimitive.content }.toMutableSet() }
         for ((url, results) in answers) {
@@ -258,6 +258,18 @@ class MailboxDelivery(
         }
         // Nothing in reach: nothing counts as deliverable now (a pass does not wait for it).
         pending = if (answers.any { (_, results) -> results.values.any { it !is Placed.NoAnswer } }) below else 0
+    }
+
+    /**
+     * One event first, the rest only once it was taken: a relay that already
+     * rate limits (a household behind one address) refuses one, not all, and
+     * a relay blocks a client after some refusals.
+     */
+    private suspend fun probing(url: String, events: Map<String, String>): Map<String, Placed> {
+        val first = events.entries.first()
+        val probe = client.place(url, mapOf(first.key to first.value))
+        if (events.size == 1 || probe[first.key] != Placed.Accepted) return probe
+        return probe + client.place(url, events - first.key)
     }
 
     /** Whole events [url] may take now: [BURST] at once, refilled at [PER_MINUTE] a minute. */

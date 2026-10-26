@@ -115,6 +115,19 @@ class MailboxDeliveryTest {
         assertFalse(a.events.containsKey(id))
     }
 
+    @Test fun a_rate_limiting_relay_sees_one_event_not_the_whole_batch() {
+        val native = FakeQueue(5)
+        var offered = 0
+        a.refuse = { offered++; "rate-limited: slow down" }
+        val delivery = delivery()
+        delivery.pass(native)
+        assertEquals(1, offered, "one refusal instead of five")
+        now += 30_000
+        delivery.pass(native)
+        assertEquals(1, offered, "paused for a minute")
+        assertEquals(5, cruxcoach.events.size, "the others take the batch")
+    }
+
     @Test fun a_blocking_relay_is_left_alone_for_a_while() {
         val native = FakeQueue(2)
         var asked = 0
