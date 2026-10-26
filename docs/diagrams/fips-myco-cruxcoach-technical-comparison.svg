@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="7" stdDeviation="11" flood-color="#0f172a" flood-opacity="0.09"/></filter>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8fafc"/><stop offset=".48" stop-color="#fff"/><stop offset="1" stop-color="#f1f5f9"/></linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eff6ff"/><stop offset="1" stop-color="#eef2ff"/></linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#faf5ff"/><stop offset="1" stop-color="#f5f3ff"/></linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ecfdf5"/><stop offset="1" stop-color="#f0fdfa"/></linearGradient>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 Z" fill="#2563eb"/></marker>
+    <marker id="ap" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 Z" fill="#7c3aed"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 Z" fill="#059669"/></marker>
+    <g id="key"><circle cx="-6" cy="0" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M1 0 H16 M10 0 V6 M15 0 V4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></g>
+    <g id="route"><circle cx="-12" cy="-7" r="4" fill="currentColor"/><circle cx="12" cy="-7" r="4" fill="currentColor"/><circle cx="0" cy="10" r="4" fill="currentColor"/><path d="M-8 -5 L-2 7 M8 -5 L2 7 M-8 -7 H8" fill="none" stroke="currentColor" stroke-width="2"/></g>
+    <g id="database"><ellipse cx="0" cy="-9" rx="15" ry="6" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M-15 -9 V10 C-15 18 15 18 15 10 V-9 M-15 1 C-15 9 15 9 15 1" fill="none" stroke="currentColor" stroke-width="2.2"/></g>
+    <g id="shield"><path d="M0 -17 L14 -11 V0 C14 10 7 16 0 20 C-7 16 -14 10 -14 0 V-11 Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M-6 1 L-1 6 L7 -5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></g>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#page)"/>
+  <circle cx="35" cy="45" r="170" fill="#dbeafe" opacity=".28"/><circle cx="1870" cy="1045" r="230" fill="#d1fae5" opacity=".24"/>
+  <text x="960" y="52" font-size="36" font-weight="850" fill="#0f172a" text-anchor="middle">FIPS ≠ Myco ≠ CruxCoach</text>
+  <text x="960" y="84" font-size="16.5" fill="#475569" text-anchor="middle">Technischer Vergleich von Netzgrenze, Identität, Admission, Routing, State und Persistenz</text>
+
+  <!-- column backgrounds -->
+  <g filter="url(#shadow)"><rect x="30" y="112" width="600" height="760" rx="24" fill="url(#blue)" stroke="#bfdbfe"/><rect x="660" y="112" width="600" height="760" rx="24" fill="url(#purple)" stroke="#ddd6fe"/><rect x="1290" y="112" width="600" height="760" rx="24" fill="url(#green)" stroke="#a7f3d0"/></g>
+
+  <!-- headers -->
+  <rect x="56" y="136" width="176" height="27" rx="13.5" fill="#dbeafe"/><text x="144" y="155" font-size="11.5" font-weight="800" fill="#1d4ed8" letter-spacing="1" text-anchor="middle">PROTOKOLL / UNDERLAY</text>
+  <text x="56" y="204" font-size="29" font-weight="850" fill="#0f172a">FIPS allgemein</text><text x="56" y="229" font-size="14" fill="#475569">Globale Adressierung, Live-Path-Mesh, app-neutral</text>
+  <rect x="686" y="136" width="205" height="27" rx="13.5" fill="#ede9fe"/><text x="788" y="155" font-size="11.5" font-weight="800" fill="#6d28d9" letter-spacing="1" text-anchor="middle">APP + CONTENT LAYER</text>
+  <text x="686" y="204" font-size="29" font-weight="850" fill="#0f172a">Myco</text><text x="686" y="229" font-size="14" fill="#475569">Lokaler Circle über dem globalen FIPS-Unterbau</text>
+  <rect x="1316" y="136" width="222" height="27" rx="13.5" fill="#d1fae5"/><text x="1427" y="155" font-size="11.5" font-weight="800" fill="#047857" letter-spacing="1" text-anchor="middle">APP-SCOPED FIPS ISLAND</text>
+  <text x="1316" y="204" font-size="29" font-weight="850" fill="#0f172a">CruxCoach</text><text x="1316" y="229" font-size="14" fill="#475569">Lokaler BoardCell-Realm mit kanonischem State</text>
+
+  <!-- stacks -->
+  <g>
+    <rect x="56" y="254" width="548" height="40" rx="9" fill="#fff" stroke="#93c5fd"/><text x="330" y="279" font-size="13" font-weight="750" fill="#1e3a8a" text-anchor="middle">beliebige App / IPv6-Pakete / FSP Ports</text>
+    <rect x="68" y="300" width="524" height="40" rx="9" fill="#dbeafe" stroke="#60a5fa"/><text x="330" y="325" font-size="13" font-weight="750" fill="#1d4ed8" text-anchor="middle">Noise XK Session · Ende-zu-Ende</text>
+    <rect x="80" y="346" width="500" height="40" rx="9" fill="#bfdbfe" stroke="#3b82f6"/><text x="330" y="371" font-size="13" font-weight="750" fill="#1e40af" text-anchor="middle">Mesh: spanning tree + greedy coordinate routing</text>
+    <rect x="92" y="392" width="476" height="40" rx="9" fill="#93c5fd" stroke="#2563eb"/><text x="330" y="417" font-size="13" font-weight="750" fill="#172554" text-anchor="middle">Noise IK pro Link · BLE / UDP / TCP / Tor …</text>
+  </g>
+  <g>
+    <rect x="686" y="254" width="548" height="40" rx="9" fill="#fff" stroke="#c4b5fd"/><text x="960" y="279" font-size="13" font-weight="750" fill="#581c87" text-anchor="middle">WebView lädt nur localhost: &lt;author&gt;.nsite</text>
+    <rect x="698" y="300" width="524" height="40" rx="9" fill="#ede9fe" stroke="#a78bfa"/><text x="960" y="325" font-size="13" font-weight="750" fill="#6d28d9" text-anchor="middle">nsite-deck: verify · sync · propagate · gateway</text>
+    <rect x="710" y="346" width="500" height="40" rx="9" fill="#ddd6fe" stroke="#8b5cf6"/><text x="960" y="371" font-size="13" font-weight="750" fill="#5b21b6" text-anchor="middle">embedded Relay :4870 + Blossom :24243</text>
+    <rect x="722" y="392" width="476" height="40" rx="9" fill="#c4b5fd" stroke="#7c3aed"/><text x="960" y="417" font-size="13" font-weight="750" fill="#3b0764" text-anchor="middle">globales FIPS · .fips · BLE + optional Wi-Fi Aware</text>
+  </g>
+  <g>
+    <rect x="1316" y="254" width="548" height="40" rx="9" fill="#fff" stroke="#6ee7b7"/><text x="1590" y="279" font-size="13" font-weight="750" fill="#064e3b" text-anchor="middle">BoardCell reducer · controller-ordered Eventlog</text>
+    <rect x="1328" y="300" width="524" height="40" rx="9" fill="#d1fae5" stroke="#34d399"/><text x="1590" y="325" font-size="13" font-weight="750" fill="#047857" text-anchor="middle">Realm/Cell gate · CCJ1 · sponsor admission</text>
+    <rect x="1340" y="346" width="500" height="40" rx="9" fill="#a7f3d0" stroke="#10b981"/><text x="1590" y="371" font-size="13" font-weight="750" fill="#065f46" text-anchor="middle">embedded FIPS · realm-scoped key · no global peers</text>
+    <rect x="1352" y="392" width="476" height="40" rx="9" fill="#6ee7b7" stroke="#059669"/><text x="1590" y="417" font-size="13" font-weight="750" fill="#022c22" text-anchor="middle">BLE L2CAP CoC only · no OS TUN/DNS/control socket</text>
+  </g>
+
+  <!-- technical rows, FIPS -->
+  <g font-size="12.7">
+    <rect x="50" y="454" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(76 484)" color="#2563eb"><use href="#key"/></g><text x="106" y="476" font-weight="800" fill="#1d4ed8">IDENTITÄT</text><text x="106" y="496" fill="#334155">1 secp256k1-Key → npub → SHA256[0:16] node_addr → fd00:: ULA</text>
+    <rect x="50" y="522" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(76 552)" color="#2563eb"><use href="#shield" transform="scale(.72)"/></g><text x="106" y="544" font-weight="800" fill="#1d4ed8">ADMISSION / JOIN</text><text x="106" y="564" fill="#334155">Kein Roster: Link discovery → Pubkey exchange → Noise IK → Meshkante</text>
+    <rect x="50" y="590" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(76 620)" color="#2563eb"><use href="#route"/></g><text x="106" y="612" font-weight="800" fill="#1d4ed8">ROUTING / GRENZE</text><text x="106" y="632" fill="#334155">Globaler Adressraum; erreichbar nur im aktuell verbundenen Transportgraph</text>
+    <rect x="50" y="658" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(76 688)" color="#2563eb"><use href="#database" transform="scale(.8)"/></g><text x="106" y="680" font-weight="800" fill="#1d4ed8">DATEN / DAUERHAFTIGKEIT</text><text x="106" y="700" fill="#334155">Best-effort Datagrams, Live-Path only; kein eigenes Store-and-forward</text>
+    <rect x="50" y="726" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><text x="76" y="750" font-weight="800" fill="#1d4ed8">LIVENESS / EXIT</text><text x="76" y="771" fill="#334155">Link weg → Route konvergiert; keine semantische „Mitgliedschaft“ zu löschen</text>
+    <rect x="50" y="794" width="560" height="54" rx="10" fill="#1e3a8a"/><text x="330" y="817" font-size="12" font-weight="800" fill="#bfdbfe" text-anchor="middle">WICHTIGE NUANCE</text><text x="330" y="837" font-size="12.5" fill="#fff" text-anchor="middle">„Global“ bedeutet global adressierbar — nicht automatisch weltweit verbunden.</text>
+  </g>
+
+  <!-- technical rows, Myco -->
+  <g font-size="12.7">
+    <rect x="680" y="454" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(706 484)" color="#7c3aed"><use href="#key"/></g><text x="736" y="476" font-weight="800" fill="#6d28d9">IDENTITÄT</text><text x="736" y="496" fill="#334155">Persistenter Device-Key für FIPS/BLE/Holder; Author-Key strikt separat</text>
+    <rect x="680" y="522" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(706 552)" color="#7c3aed"><use href="#shield" transform="scale(.72)"/></g><text x="736" y="544" font-weight="800" fill="#6d28d9">PAIRING / JOIN</text><text x="736" y="564" fill="#334155">QR/NFC: npub+name+1× secret → Noise-echo + OK → immer mutual</text>
+    <rect x="680" y="590" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(706 620)" color="#7c3aed"><use href="#route"/></g><text x="736" y="612" font-weight="800" fill="#6d28d9">ROUTING / GRENZE</text><text x="736" y="632" fill="#334155">FIPS bleibt global; Circle autorisiert Sources + transitive Peer Discovery</text>
+    <rect x="680" y="658" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(706 688)" color="#7c3aed"><use href="#database" transform="scale(.8)"/></g><text x="736" y="680" font-weight="800" fill="#6d28d9">DATEN / DAUERHAFTIGKEIT</text><text x="736" y="700" fill="#334155">Signierte Manifeste + SHA256-Blobs; Relay/Blossom cachen &amp; re-serven</text>
+    <rect x="680" y="726" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><text x="706" y="750" font-weight="800" fill="#6d28d9">PROPAGATION / EXIT</text><text x="706" y="771" fill="#334155">Manifest TTL + NIP-77 reconcile; Blob pull on demand; Revocation noch offen</text>
+    <rect x="680" y="794" width="560" height="54" rx="10" fill="#581c87"/><text x="960" y="817" font-size="12" font-weight="800" fill="#ddd6fe" text-anchor="middle">WICHTIGE NUANCE</text><text x="960" y="837" font-size="12.5" fill="#fff" text-anchor="middle">Pairing = gegenseitige Datenquelle, keine Netzwerkmitgliedschaft / Adminrolle.</text>
+  </g>
+
+  <!-- technical rows, CruxCoach -->
+  <g font-size="12.7">
+    <rect x="1310" y="454" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(1336 484)" color="#059669"><use href="#key"/></g><text x="1366" y="476" font-weight="800" fill="#047857">IDENTITÄT</text><text x="1366" y="496" fill="#334155">Key pro Realm, getrennt vom Account; stabil im Realm, Rotation bei Wechsel</text>
+    <rect x="1310" y="522" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(1336 552)" color="#059669"><use href="#shield" transform="scale(.72)"/></g><text x="1366" y="544" font-weight="800" fill="#047857">ADMISSION / JOIN</text><text x="1366" y="564" fill="#334155">BLE hint → FIPS auth → full Realm+Cell CCJ1 → Sponsor → MemberJoined</text>
+    <rect x="1310" y="590" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(1336 620)" color="#059669"><use href="#route"/></g><text x="1366" y="612" font-weight="800" fill="#047857">ROUTING / GRENZE</text><text x="1366" y="632" fill="#334155">Nur gleicher Realm; danach Multi-Hop. Kein globales oder Cross-Realm Transit</text>
+    <rect x="1310" y="658" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><g transform="translate(1336 688)" color="#059669"><use href="#database" transform="scale(.8)"/></g><text x="1366" y="680" font-weight="800" fill="#047857">STATE / DAUERHAFTIGKEIT</text><text x="1366" y="700" fill="#334155">Controller ordnet Events; Hash-Snapshot + Outbox + Anti-Entropy, kein CRDT</text>
+    <rect x="1310" y="726" width="560" height="62" rx="10" fill="#fff" fill-opacity=".78"/><text x="1336" y="750" font-weight="800" fill="#047857">LIVENESS / EXIT</text><text x="1336" y="771" fill="#334155">Leave/BT-off sofort lokal; 3×2 s ohne Traffic → geordnetes MemberLeft</text>
+    <rect x="1310" y="794" width="560" height="54" rx="10" fill="#064e3b"/><text x="1590" y="817" font-size="12" font-weight="800" fill="#a7f3d0" text-anchor="middle">WICHTIGE NUANCE</text><text x="1590" y="837" font-size="12.5" fill="#fff" text-anchor="middle">Permissionless Join; Controller serialisiert Wahrheit, entscheidet nicht Vertrauen.</text>
+  </g>
+
+  <!-- discussion questions -->
+  <rect x="30" y="898" width="1860" height="150" rx="22" fill="#0f172a"/>
+  <text x="60" y="929" font-size="12" font-weight="850" fill="#94a3b8" letter-spacing="1.2">FRAGEN FÜR DIE DISKUSSION MIT DEM MYCO-DEV</text>
+  <g font-size="13.2" fill="#e2e8f0">
+    <circle cx="78" cy="970" r="17" fill="#7c3aed"/><text x="78" y="975" font-size="13" font-weight="850" fill="#fff" text-anchor="middle">1</text><text x="105" y="966"><tspan font-weight="750" fill="#fff">Wo liegt die echte Peer-Grenze?</tspan><tspan x="105" dy="19">FIPS-Link, Circle-Source-ACL oder nur Content Discovery?</tspan></text>
+    <circle cx="445" cy="970" r="17" fill="#7c3aed"/><text x="445" y="975" font-size="13" font-weight="850" fill="#fff" text-anchor="middle">2</text><text x="472" y="966"><tspan font-weight="750" fill="#fff">Was bedeutet Revocation?</tspan><tspan x="472" dy="19">Source entfernen, Routes sperren, Peerlisten prunen, Cache behalten?</tspan></text>
+    <circle cx="835" cy="970" r="17" fill="#7c3aed"/><text x="835" y="975" font-size="13" font-weight="850" fill="#fff" text-anchor="middle">3</text><text x="862" y="966"><tspan font-weight="750" fill="#fff">Wie weit ist Transitivität autorisiert?</tspan><tspan x="862" dy="19">1 Hop nach Pairing, unbegrenzt, oder policy-/degree-basiert?</tspan></text>
+    <circle cx="1218" cy="970" r="17" fill="#059669"/><text x="1218" y="975" font-size="13" font-weight="850" fill="#fff" text-anchor="middle">4</text><text x="1245" y="966"><tspan font-weight="750" fill="#fff">Kann FIPS selektiv forwarden?</tspan><tspan x="1245" dy="19">App-/Realm-Tag unterhalb globaler Route statt separater Inseln?</tspan></text>
+    <circle cx="1582" cy="970" r="17" fill="#2563eb"/><text x="1582" y="975" font-size="13" font-weight="850" fill="#fff" text-anchor="middle">5</text><text x="1609" y="966"><tspan font-weight="750" fill="#fff">Identity-Lifetime &amp; Privacy?</tspan><tspan x="1609" dy="19">Persistent global vs persona vs ephemer pro Realm.</tspan></text>
+  </g>
+  <text x="60" y="1029" font-size="10.5" fill="#64748b">Basis: Myco 85316faf (Designstatus 2026-08-09) · CruxCoach FIPS-Pin 967776079 · BoardCell Variant A · Diskussionsgrafik, keine FIPS-Normspezifikation</text>
+</svg>
