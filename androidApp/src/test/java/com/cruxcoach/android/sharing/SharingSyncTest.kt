@@ -493,4 +493,75 @@ class SharingSyncTest {
         alice.service.setOutgoing(bob.account, false)
         assertTrue(alice.service.whoSeesWhat().all { it.entries.isEmpty() }, "switched off: nobody")
     }
+
+    private fun Endpoint.queued(type: String) = node.outbox.mapNotNull { ShareProtocol.decode(it.third) }.count { it.type == type }
+
+    @Test fun in_the_foreground_a_session_goes_out_as_one_or_two_deltas_and_narrowing_goes_at_once() = runBlocking {
+        alice.training("t0", "2026-09-20")
+        befriend(setOf(ATTEMPTS), emptySet())
+        alice.sync.setForeground(true)
+        var deltas = 0
+        // Ten attempts on one climb within three and a half minutes.
+        repeat(10) {
+            net.now += 20_000
+            alice.training("t0", "2026-09-20", attempts = 3L + it)
+            alice.pass()
+            deltas += alice.queued("delta")
+            net.deliver()
+            bob.pass()
+        }
+        assertTrue(alice.sync.nextFlushAt() != null, "the rest waits for a quiet minute")
+        net.now += SharingSync.QUIET_MS
+        alice.pass()
+        deltas += alice.queued("delta")
+        settle()
+        assertTrue(deltas in 1..2, "$deltas deltas for ten changes")
+        assertEquals(null, alice.sync.nextFlushAt())
+        assertEquals(alice.expected(bob), bob.received(alice))
+        // Taking something away never waits.
+        alice.service.setPersonRule(bob.account, ATTEMPTS, AccessEffect.DENY)
+        alice.pass()
+        net.deliver()
+        bob.pass()
+        assertTrue(bob.received(alice).isEmpty())
+    }
+
+    @Test fun deltas_are_confirmed_about_once_a_day_and_the_confirmation_keeps_up() = runBlocking {
+        alice.note("n1", "beta")
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        var acks = 0
+        // A note every two hours for three days.
+        repeat(36) {
+            net.now += 2 * 60 * 60_000L
+            alice.note("m$it", "more $it")
+            alice.pass()
+            net.deliver()
+            bob.pass()
+            acks += bob.queued("ack")
+            net.deliver()
+        }
+        assertTrue(acks <= 4, "$acks confirmations for 36 deltas")
+        assertTrue(net.now - alice.friend(bob).confirmedAt <= SharingSync.ACK_INTERVAL_MS + 2 * 60 * 60_000L)
+        assertEquals(alice.expected(bob), bob.received(alice))
+    }
+
+    @Test fun back_after_longer_than_a_mailbox_keeps_anything_a_friend_is_complete_at_once() = runBlocking {
+        alice.note("n1", "before")
+        befriend(setOf(CLIMB_NOTES), emptySet())
+        // Bob's phone is off for 20 days; whatever Alice sends meanwhile expires on the way.
+        repeat(20) { day ->
+            net.now += 24 * 60 * 60_000L
+            alice.note("d$day", "day $day")
+            alice.pass()
+            net.deliver { queued -> queued.filter { it.first != bob.account } }
+        }
+        // Back: his first pass tells Alice where he stands, her answer completes him.
+        bob.pass()
+        net.deliver()
+        alice.pass()
+        net.deliver()
+        bob.pass()
+        assertEquals(alice.expected(bob), bob.received(alice))
+        assertEquals(21, bob.received(alice).size)
+    }
 }

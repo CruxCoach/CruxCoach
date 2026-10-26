@@ -44,6 +44,12 @@ fun interface SharingStep {
 
     /** Local obligations that must precede any network activity (withdrawals). */
     suspend fun beforeOnline(host: MarmotHost) = Unit
+
+    /** In the foreground new records are collected for a moment and sent together; leaving it sends them. */
+    fun setForeground(foreground: Boolean) = Unit
+
+    /** When held-back records are due without anything else happening (epoch ms), or null. */
+    fun nextFlushAt(): Long? = null
 }
 
 /** One bounded pass, shared by the foreground loop and the Worker: go online,
@@ -100,6 +106,7 @@ class SharingAutomation @Inject constructor(
     @Volatile private var foreground = false
     @Volatile private var active = false
     private var loop: Job? = null
+    private var flush: Job? = null
     private var started = false
     private var sourceChanges: SharingSourceChanges? = null
     private val native: AndroidMarmotHost get() = nativeHost.get()
@@ -138,6 +145,8 @@ class SharingAutomation @Inject constructor(
         foreground = false
         loop?.cancel()
         loop = null
+        flush?.cancel()
+        flush = null
         runCatching { context.getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(network) }
         sourceChanges?.close()
         sourceChanges = null
@@ -154,7 +163,20 @@ class SharingAutomation @Inject constructor(
 
     suspend fun pass(): Boolean = serial.withLock {
         if (!feature.isEnabled()) return@withLock true
-        SharingPass(native.host, sharingStep.get()).run(stayOnline = foreground).also { scheduleExpiry() }
+        SharingPass(native.host, sharingStep.get()).run(stayOnline = foreground).also {
+            scheduleExpiry()
+            scheduleFlush()
+        }
+    }
+
+    /** Held-back records go out when they are due even if nothing else happens. */
+    private fun scheduleFlush() {
+        flush?.cancel()
+        val at = runCatching { sharingStep.get().nextFlushAt() }.getOrNull() ?: return
+        flush = scope.launch {
+            delay((at - System.currentTimeMillis()).coerceAtLeast(0))
+            pass()
+        }
     }
 
     private val store by lazy { SharingStore(database) }
@@ -171,6 +193,7 @@ class SharingAutomation @Inject constructor(
 
     override fun onStart(owner: LifecycleOwner) {
         foreground = true
+        sharingStep.get().setForeground(true)
         if (!native.exists()) return
         SharingWork.periodic(context)
         loop?.cancel()
@@ -193,6 +216,8 @@ class SharingAutomation @Inject constructor(
 
     override fun onStop(owner: LifecycleOwner) {
         foreground = false
+        // Leaving the app ends the session: what was held back goes now.
+        sharingStep.get().setForeground(false)
         loop?.cancel()
         loop = null
         if (native.exists()) scope.launch { pass() }

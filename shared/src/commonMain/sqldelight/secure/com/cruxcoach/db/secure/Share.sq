@@ -67,7 +67,8 @@ CREATE TABLE share_never (
 -- per audience, i.e. per set of people with the same effective rule. A stream
 -- is computed once and goes to each member; 0.2.7 encrypts it once (Megolm).
 -- Its id is random and travels only inside encrypted messages. A stream
--- without members is deleted.
+-- without members is deleted. pending_*: growth held back to send it as one
+-- delta (since when, last change, the digest it had then).
 CREATE TABLE share_stream (
     id TEXT NOT NULL PRIMARY KEY CHECK (length(id) = 32),
     kind TEXT NOT NULL CHECK (kind IN ('RULE', 'GROUP')),
@@ -82,6 +83,8 @@ CREATE TABLE share_stream (
     full_required INTEGER NOT NULL DEFAULT 0 CHECK (full_required IN (0, 1)),
     epoch INTEGER NOT NULL DEFAULT 0,
     pending_since INTEGER,
+    pending_at INTEGER,
+    pending_digest TEXT,
     created_at INTEGER NOT NULL,
     UNIQUE (kind, rule_key)
 );
@@ -131,6 +134,7 @@ CREATE TABLE share_incoming (
     resync_generation INTEGER NOT NULL DEFAULT 0,
     resync_at INTEGER NOT NULL DEFAULT 0,
     ack_due INTEGER NOT NULL DEFAULT 0,
+    ack_sent_at INTEGER NOT NULL DEFAULT 0,
     received_at INTEGER NOT NULL,
     retired TEXT NOT NULL
 );
@@ -251,8 +255,8 @@ SELECT * FROM share_stream WHERE kind = ? AND rule_key = ?;
 
 upsertStream:
 INSERT OR REPLACE INTO share_stream(id, kind, rule_key, generation, sequence, generation_started_at, scope, digest,
-    record_count, manifest_at, full_required, epoch, pending_since, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    record_count, manifest_at, full_required, epoch, pending_since, pending_at, pending_digest, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- Foreign keys are off (see deletePersonRules): a stream's rows go explicitly.
 deleteEmptyStreamsSent:
@@ -304,8 +308,9 @@ SELECT * FROM share_incoming;
 
 upsertIncoming:
 INSERT OR REPLACE INTO share_incoming(peer, stream, assign, generation, sequence, base, staged_assign, scope,
-    expected_digest, expected_count, staging, pending, gap_since, resync_generation, resync_at, ack_due, received_at, retired)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    expected_digest, expected_count, staging, pending, gap_since, resync_generation, resync_at, ack_due, ack_sent_at,
+    received_at, retired)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteIncoming:
 DELETE FROM share_incoming WHERE peer = ?;

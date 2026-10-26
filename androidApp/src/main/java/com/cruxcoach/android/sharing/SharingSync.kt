@@ -51,6 +51,7 @@ class SharingSync(
     private val newStreamId: () -> String = ::randomStreamId,
 ) : SharingStep {
     private val mutex = Mutex()
+    @Volatile private var foreground = false
     /** Per requested person: when to try the invitation next, and the pause that led there. */
     private val inviteRetry = mutableMapOf<String, Pair<Long, Long>>()
 
@@ -61,7 +62,15 @@ class SharingSync(
 
     override suspend fun beforeOnline(host: MarmotHost) = mutex.withLock { cancelPending(host) }
 
+    override fun setForeground(foreground: Boolean) { this.foreground = foreground }
+
+    override fun nextFlushAt(): Long? = store.streams().mapNotNull { s ->
+        val since = s.pendingSince ?: return@mapNotNull null
+        minOf((s.pendingAt ?: since) + QUIET_MS, since + HOLD_MAX_MS)
+    }.minOrNull()
+
     override suspend fun run(host: MarmotHost) = mutex.withLock {
+        returned(clock())
         expire(host)
         cancelPending(host)
         requests(host, host.status())
@@ -76,6 +85,18 @@ class SharingSync(
     }
 
     // ---- local obligations --------------------------------------------------------
+
+    /** Back after a long silence (longer than a mailbox keeps anything): tell
+     * every friend where we stand, so they can send what expired on the way. */
+    private fun returned(now: Long) {
+        val last = store.lastPass()
+        if (last > 0 && now - last > RETURN_AFTER_MS) store.transaction {
+            for ((peer, state) in store.incomingStates()) {
+                if (state.complete) store.putIncoming(peer, state.copy(ackDue = true, ackSentAt = 0))
+            }
+        }
+        store.setLastPass(now)
+    }
 
     /** Grants that ended: received records go now (the friend need not be in
      * reach), and for own rules that ended, what is still queued is withdrawn so
@@ -176,6 +197,7 @@ class SharingSync(
         if (person.state == PersonState.ENDED || person.state == PersonState.REQUESTED) return
         val message = ShareProtocol.decode(content) ?: return
         val now = clock()
+        if (person.state == PersonState.CONNECTED && message.type != "ack") alive(peer, now)
         when (message.type) {
             "end" -> {
                 store.clearExchange(peer)
@@ -187,11 +209,27 @@ class SharingSync(
         }
     }
 
+    /** A friend who confirmed nothing for longer than a mailbox keeps anything
+     * may have lost what was sent meanwhile: hand them a snapshot. */
+    private fun alive(peer: String, now: Long) {
+        val member = store.member(peer) ?: return
+        if (member.snapshotDue || member.ackedAt == 0L || now - member.ackedAt <= MAILBOX_MAX_AGE_MS) return
+        val stream = store.stream(member.stream) ?: return
+        if (member.ackedGeneration != stream.generation || member.ackedSequence != stream.sequence) store.requireSnapshot(peer)
+    }
+
     private fun acknowledged(peer: String, m: ShareMessage, now: Long) {
         val member = store.member(peer) ?: return
         // An ack of an earlier snapshot or stream says nothing about the current one.
         if (m.stream != member.stream || m.assign != member.assign) return
         val stream = store.stream(member.stream) ?: return
+        // A friend back after a long silence (VS3) and behind: what was sent
+        // meanwhile may have expired on the way.
+        val behind = m.gen < stream.generation || m.gen == stream.generation && m.seq < stream.sequence
+        if (behind && member.ackedAt > 0 && now - member.ackedAt > MAILBOX_MAX_AGE_MS) {
+            store.requireSnapshot(peer)
+            return
+        }
         if (m.gen != stream.generation || m.seq > stream.sequence) return
         if (m.seq == stream.sequence && m.digest != stream.digest) {
             store.requireSnapshot(peer)
@@ -256,7 +294,7 @@ class SharingSync(
         )
         if (m.count == 0) {
             store.deleteRecords(peer)
-            next = if (m.digest == SharingRecords.digest(emptyList())) next.copy(sequence = m.seq, ackDue = true) else requestResync(next, now)
+            next = if (m.digest == SharingRecords.digest(emptyList())) next.copy(sequence = m.seq, ackDue = true, ackSentAt = 0) else requestResync(next, now)
         }
         return drain(peer, next, now)
     }
@@ -277,10 +315,11 @@ class SharingSync(
         }
     }
 
-    /** A heartbeat at our own position: count and digest must match what we hold. */
+    /** A heartbeat at our own position: count and digest must match what we hold.
+     * A match is worth a (daily) confirmation, so a quiet friendship stays confirmed. */
     private fun verify(peer: String, state: IncomingState, m: ShareMessage, now: Long): IncomingState {
         val local = store.records(peer)
-        return if (local.size != m.count || SharingRecords.digest(local) != m.digest) requestResync(state, now) else state
+        return if (local.size != m.count || SharingRecords.digest(local) != m.digest) requestResync(state, now) else state.copy(ackDue = true)
     }
 
     private fun full(peer: String, state: IncomingState, m: ShareMessage, now: Long): IncomingState {
@@ -297,7 +336,8 @@ class SharingSync(
         store.deleteRecords(peer)
         // A record whose grant already ended is never stored (it may have been delayed).
         all.filterNot { store.receivedExpired(it, now) }.forEach { store.putRecord(peer, it) }
-        return drain(peer, state.copy(sequence = state.base, staging = emptyMap(), ackDue = true, receivedAt = now), now)
+        // A complete state is confirmed at once; deltas only once a day.
+        return drain(peer, state.copy(sequence = state.base, staging = emptyMap(), ackDue = true, ackSentAt = 0, receivedAt = now), now)
     }
 
     private fun delta(peer: String, state: IncomingState, m: ShareMessage, now: Long): IncomingState {
@@ -407,12 +447,12 @@ class SharingSync(
                 val token = "rs:${state.stream.take(8)}:a${state.assign}:g${state.resyncGeneration}:s${state.sequence}:h${now / 3_600_000}"
                 if (runCatching { host.send(peer, token, ShareProtocol.encode(message)) }.isSuccess) state = state.copy(resyncAt = now)
             }
-            if (state.ackDue && state.complete && state.assign > 0) {
+            if (state.ackDue && state.complete && state.assign > 0 && (state.ackSentAt == 0L || now - state.ackSentAt >= ACK_INTERVAL_MS)) {
                 val digest = SharingRecords.digest(store.records(peer))
                 val message = ShareMessage(type = "ack", stream = state.stream, assign = state.assign, gen = state.generation,
                     seq = state.sequence, digest = digest)
                 val token = "ack:${state.stream.take(8)}:a${state.assign}:g${state.generation}:s${state.sequence}:${digest.take(16)}"
-                if (runCatching { host.send(peer, token, ShareProtocol.encode(message)) }.isSuccess) state = state.copy(ackDue = false)
+                if (runCatching { host.send(peer, token, ShareProtocol.encode(message)) }.isSuccess) state = state.copy(ackDue = false, ackSentAt = now)
             }
             if (state != start) store.putIncoming(peer, state)
         }
@@ -498,6 +538,8 @@ class SharingSync(
                         ShareProtocol.manifest(stream.id, 0, stream.generation, stream.sequence, scope, target)
                     next = stream.copy(manifestAt = now)
                 }
+            } else if (hold(stream, members, native, upserts, deletes, scope, target, now)) {
+                return
             } else {
                 val delta = ShareProtocol.delta(stream.id, stream.generation, stream.sequence + 1, scope, upserts, deletes, target)
                 if (upserts.size > ShareProtocol.MAX_DELTA_UPSERTS || deletes.size > ShareProtocol.MAX_DELTA_DELETES || !ShareProtocol.fits(delta)) {
@@ -518,6 +560,10 @@ class SharingSync(
             }
             next = stream.copy(generation = generation, sequence = 0, generationStartedAt = now, scope = scope,
                 digest = SharingRecords.digest(target), count = target.size, manifestAt = now, fullRequired = false)
+        }
+        // Whatever goes out now carries what was held back.
+        if (next.generation != stream.generation || next.sequence != stream.sequence) {
+            next = next.copy(pendingSince = null, pendingAt = null, pendingDigest = null)
         }
         val advanced = next.generation != stream.generation || next.sequence != stream.sequence
         val restarted = full && stream.generation > 0
@@ -576,6 +622,33 @@ class SharingSync(
         }
     }
 
+    /**
+     * In the foreground, new and changed records wait until nothing changed for
+     * [QUIET_MS], at most [HOLD_MAX_MS], or the app leaves the foreground: a
+     * session with ten attempts becomes one or two messages instead of ten.
+     * Deletions, a narrower scope and members waiting for a snapshot never wait.
+     */
+    private fun hold(
+        stream: StreamState,
+        members: List<StreamMember>,
+        native: Map<String, MarmotPeer>,
+        upserts: List<SharingRecord>,
+        deletes: List<String>,
+        scope: ShareScope,
+        target: List<SharingRecord>,
+        now: Long,
+    ): Boolean {
+        if (!foreground || deletes.isNotEmpty() || scope != stream.scope || upserts.isEmpty()) return false
+        if (members.any { it.snapshotDue && native[it.peer]?.active == true }) return false
+        val digest = SharingRecords.digest(target)
+        val since = stream.pendingSince ?: now
+        val changedAt = if (digest != stream.pendingDigest) now else stream.pendingAt ?: now
+        if (now - changedAt >= QUIET_MS || now - since >= HOLD_MAX_MS) return false
+        val held = stream.copy(pendingSince = since, pendingAt = changedAt, pendingDigest = digest)
+        if (held != stream) store.putStream(held)
+        return true
+    }
+
     companion object {
         const val MAX_PENDING = 64
         const val MAX_RETIRED = 8
@@ -586,6 +659,14 @@ class SharingSync(
         const val RESYNC_RETRY_MS = 60 * 60_000L
         const val STALL_MS = 10 * 60_000L
         const val HEARTBEAT_MS = 24 * 60 * 60_000L
+        /** A friend confirms deltas and heartbeats at most this often; complete states at once. */
+        const val ACK_INTERVAL_MS = 24 * 60 * 60_000L
+        const val QUIET_MS = 60_000L
+        const val HOLD_MAX_MS = 120_000L
+        /** How long a mailbox keeps a frame (owner question O1; the native expiry must match). */
+        const val MAILBOX_MAX_AGE_MS = 14 * 24 * 60 * 60_000L
+        /** Silence after which an installation tells its friends where it stands (VS3). */
+        const val RETURN_AFTER_MS = MAILBOX_MAX_AGE_MS - 2 * 24 * 60 * 60_000L
 
         private val random = java.security.SecureRandom()
 

@@ -61,14 +61,17 @@ data class StreamState(
     val fullRequired: Boolean,
     /** Counts members who left; 0.2.7 changes the group key when it grows. */
     val epoch: Long,
+    /** Growth held back to go out as one delta: since when, the last change, and the digest it had then. */
     val pendingSince: Long?,
+    val pendingAt: Long?,
+    val pendingDigest: String?,
     val createdAt: Long,
 ) {
     companion object {
         const val RULE = "RULE"
 
         fun fresh(id: String, ruleKey: String, now: Long) =
-            StreamState(id, RULE, ruleKey, 0, 0, now, ShareScope.EMPTY, "", 0, 0, false, 0, null, now)
+            StreamState(id, RULE, ruleKey, 0, 0, now, ShareScope.EMPTY, "", 0, 0, false, 0, null, null, null, now)
     }
 }
 
@@ -107,6 +110,8 @@ data class IncomingState(
     val resyncGeneration: Long,
     val resyncAt: Long,
     val ackDue: Boolean,
+    /** When we last confirmed our state; 0 asks for a confirmation at once. */
+    val ackSentAt: Long,
     val receivedAt: Long,
     /** Streams this friend's snapshots replaced; their late messages are dropped. */
     val retired: List<String>,
@@ -114,7 +119,7 @@ data class IncomingState(
     val complete get() = sequence >= 0
 
     companion object {
-        val NONE = IncomingState("", 0, 0, -1, 0, 0, ShareScope.EMPTY, "", 0, emptyMap(), emptyList(), 0, 0, 0, false, 0, emptyList())
+        val NONE = IncomingState("", 0, 0, -1, 0, 0, ShareScope.EMPTY, "", 0, emptyMap(), emptyList(), 0, 0, 0, false, 0, 0, emptyList())
     }
 }
 
@@ -136,6 +141,7 @@ class SharingStore(private val database: SecureDatabase) {
         private const val AGE_KEY = "age"
         private const val AGE_CONFIRMED = "16_or_older"
         private const val AGE_UNDER = "under_16"
+        private const val LAST_PASS_KEY = "last_pass"
     }
 
     private val q get() = database.shareQueries
@@ -177,6 +183,11 @@ class SharingStore(private val database: SecureDatabase) {
     fun ageAnswered(): Boolean = q.selectSetting(AGE_KEY).executeAsOneOrNull() != null
 
     fun setAge(atLeastSixteen: Boolean) = q.putSetting(AGE_KEY, if (atLeastSixteen) AGE_CONFIRMED else AGE_UNDER)
+
+    /** When this installation last ran a sharing pass (0: never). */
+    fun lastPass(): Long = q.selectSetting(LAST_PASS_KEY).executeAsOneOrNull()?.toLongOrNull() ?: 0
+
+    fun setLastPass(at: Long) = q.putSetting(LAST_PASS_KEY, at.toString())
 
     fun persons(): List<SharingPerson> = q.selectPersons().executeAsList().map { row ->
         SharingPerson(row.peer, TemplateId(row.template), row.outgoing == 1L, row.period_days?.toInt(),
@@ -303,11 +314,11 @@ class SharingStore(private val database: SecureDatabase) {
 
     private fun toStream(row: com.cruxcoach.db.secure.Share_stream) = StreamState(row.id, row.kind, row.rule_key, row.generation,
         row.sequence, row.generation_started_at, json.decodeFromString(row.scope), row.digest, row.record_count.toInt(),
-        row.manifest_at, row.full_required == 1L, row.epoch, row.pending_since, row.created_at)
+        row.manifest_at, row.full_required == 1L, row.epoch, row.pending_since, row.pending_at, row.pending_digest, row.created_at)
 
     fun putStream(s: StreamState) = q.upsertStream(s.id, s.kind, s.ruleKey, s.generation, s.sequence, s.generationStartedAt,
         json.encodeToString(s.scope), s.digest, s.count.toLong(), s.manifestAt, if (s.fullRequired) 1 else 0, s.epoch,
-        s.pendingSince, s.createdAt)
+        s.pendingSince, s.pendingAt, s.pendingDigest, s.createdAt)
 
     /** Records the members of [stream] hold, with their revisions. */
     fun sent(stream: String): Map<String, Long> = q.selectSent(stream).executeAsList().associate { it.record_id to it.revision }
@@ -350,14 +361,14 @@ class SharingStore(private val database: SecureDatabase) {
         row.sequence, row.base, row.staged_assign, json.decodeFromString(row.scope), row.expected_digest,
         row.expected_count.toInt(), json.decodeFromString(stagingSerializer, row.staging),
         json.decodeFromString(pendingSerializer, row.pending), row.gap_since, row.resync_generation, row.resync_at,
-        row.ack_due == 1L, row.received_at, json.decodeFromString(retiredSerializer, row.retired))
+        row.ack_due == 1L, row.ack_sent_at, row.received_at, json.decodeFromString(retiredSerializer, row.retired))
 
     fun incomingStates(): Map<String, IncomingState> = q.selectAllIncoming().executeAsList().associate { it.peer to toIncoming(it) }
 
     fun putIncoming(peer: String, s: IncomingState) = q.upsertIncoming(peer, s.stream, s.assign, s.generation, s.sequence, s.base,
         s.stagedAssign, json.encodeToString(s.scope), s.expectedDigest, s.expectedCount.toLong(),
         json.encodeToString(stagingSerializer, s.staging), json.encodeToString(pendingSerializer, s.pending), s.gapSince,
-        s.resyncGeneration, s.resyncAt, if (s.ackDue) 1 else 0, s.receivedAt, json.encodeToString(retiredSerializer, s.retired))
+        s.resyncGeneration, s.resyncAt, if (s.ackDue) 1 else 0, s.ackSentAt, s.receivedAt, json.encodeToString(retiredSerializer, s.retired))
 
     /** Forget both directions and everything received from [peer]. */
     fun clearExchange(peer: String) {

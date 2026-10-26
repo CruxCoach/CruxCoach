@@ -193,10 +193,10 @@ class SharingProjectionSchemaTest {
             driver.exec("INSERT INTO share_person_rule VALUES ('$p','CLIMB_NOTES','DENY',NULL)")
             driver.exec("INSERT INTO share_object_rule VALUES ('$p','note:x','CLIMB_NOTES','ALLOW',5)")
             val stream = p.take(32)
-            driver.exec("INSERT INTO share_stream VALUES ('$stream','RULE','person:$p',1,0,1,'{}','d',0,1,0,0,NULL,1)")
+            driver.exec("INSERT INTO share_stream VALUES ('$stream','RULE','person:$p',1,0,1,'{}','d',0,1,0,0,NULL,NULL,NULL,1)")
             driver.exec("INSERT INTO share_stream_sent VALUES ('$stream','note:x',1)")
             driver.exec("INSERT INTO share_stream_member VALUES ('$p','$stream',1,1,0,0,-1,0,1)")
-            driver.exec("INSERT INTO share_incoming VALUES ('$p','$stream',1,1,0,0,1,'{}','d',0,'{}','[]',0,0,0,0,1,'[]')")
+            driver.exec("INSERT INTO share_incoming VALUES ('$p','$stream',1,1,0,0,1,'{}','d',0,'{}','[]',0,0,0,0,0,1,'[]')")
             driver.exec("INSERT INTO share_record VALUES ('$p','note:x','CLIMB_NOTES',1,'x',NULL,'{}',NULL)")
         }
         SharingStore(SecureDatabase(driver)).deletePerson(peer)
