@@ -36,6 +36,10 @@ class FakeMailboxRelay(private val cap: Int = 500) : AutoCloseable {
     /** Takes events without ever answering. */
     @Volatile var silent = false
     @Volatile var info: String? = """{"supported_nips":[1,9,11,40],"limitation":{"max_message_length":131072}}"""
+    /** False: a relay that keeps everything and ignores deletions. */
+    @Volatile var deletes = true
+    /** Sent with every answer, whatever was asked (a hostile relay). */
+    val junk = CopyOnWriteArrayList<String>()
 
     init {
         server.dispatcher = object : Dispatcher() {
@@ -82,6 +86,7 @@ class FakeMailboxRelay(private val cap: Int = 500) : AutoCloseable {
                         .sortedByDescending { it["created_at"]!!.jsonPrimitive.long }
                         .take(limit)
                         .forEach { webSocket.send(buildJsonArray { add(JsonPrimitive("EVENT")); add(JsonPrimitive(subscription)); add(it) }.toString()) }
+                    junk.forEach { webSocket.send("""["EVENT","$subscription",$it]""") }
                     webSocket.send(buildJsonArray { add(JsonPrimitive("EOSE")); add(JsonPrimitive(subscription)) }.toString())
                 }
             }
@@ -97,7 +102,7 @@ class FakeMailboxRelay(private val cap: Int = 500) : AutoCloseable {
     private fun tags(event: JsonObject): List<JsonArray> = event["tags"]!!.jsonArray.map { it.jsonArray }
 
     private fun store(event: JsonObject) {
-        if (event["kind"]!!.jsonPrimitive.int == 5) {
+        if (event["kind"]!!.jsonPrimitive.int == 5 && deletes) {
             val author = event["pubkey"]!!.jsonPrimitive.content
             // NIP-09: only the author's own events go.
             tags(event).filter { it[0].jsonPrimitive.content == "e" }.map { it[1].jsonPrimitive.content }.forEach { id ->
