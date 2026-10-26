@@ -59,6 +59,8 @@ class SharingScreenTest {
         revokeLink = { calls += "revoke:$it" },
         openLink = { template, label -> calls += "open-link:${template.value}:$label" },
         dismissLink = { calls += "dismiss-link" },
+        showCode = { calls += "show-code" },
+        scanned = { text -> calls += "scanned:${text.take(13)}"; text.startsWith("cruxcoach:") },
     )
 
     private fun person(peer: String, state: PersonState, outgoing: Boolean = true, label: String? = null) =
@@ -173,6 +175,32 @@ class SharingScreenTest {
         compose.onNodeWithText("Direkt über WLAN").assertExists()
         compose.onNodeWithText("blossom.cruxcoach.org/post").assertExists()
         compose.onNodeWithText("Relay in dieser App").assertDoesNotExist()
+    }
+
+    @Test fun `meeting in person one shows a QR code with the identity to compare`() {
+        val code = "cruxcoach:c1:" + "Y2NjMQ" + "B".repeat(85)
+        render(SharingUiState(loading = false, overview = overview().copy(linkInvites = true), shownCode = code), SharingPage.ShowCode)
+        compose.onNodeWithTag("sharing_code_qr").assertExists()
+        compose.onNodeWithText("Du: ${com.cruxcoach.android.sharing.SharingNames.shortId(me)}").assertExists()
+        compose.onNodeWithTag("sharing_code_new").performScrollTo().performClick()
+        assertEquals("a code on screen is not replaced by itself", listOf("show-code"), calls)
+    }
+
+    @Test fun `a scanned code goes back to the overview and anything else is refused`() {
+        var scan: ((String) -> Unit)? = null
+        val state = mutableStateOf(SharingUiState(loading = false, overview = overview().copy(linkInvites = true)))
+        compose.setContent {
+            MaterialTheme {
+                SharingContent(state.value, SharingPage.Scan, onOpen = { calls += "open:${it.key}" }, actions = actions,
+                    scanner = { onCode -> scan = onCode })
+            }
+        }
+        compose.waitForIdle()
+        scan!!("WIFI:S:x;;")
+        scan!!("cruxcoach:c1:abc")
+        assertEquals(listOf("scanned:WIFI:S:x;;", "scanned:cruxcoach:c1:", "open:"), calls)
+        state.value = state.value.copy(scanRefused = true)
+        compose.onNodeWithTag("sharing_scan_refused").assertExists()
     }
 
     @Test fun `a refused identity is explained and an empty field cannot be sent`() {

@@ -1,7 +1,9 @@
 package com.cruxcoach.android.ui.sharing
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,6 +42,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -90,6 +93,8 @@ internal sealed interface SharingPage {
     data object Connection : SharingPage { override val key = "connection" }
     data object History : SharingPage { override val key = "history" }
     data object WhoSees : SharingPage { override val key = "who-sees" }
+    data object ShowCode : SharingPage { override val key = "show-code" }
+    data object Scan : SharingPage { override val key = "scan" }
 
     companion object {
         fun parse(key: String): SharingPage = when {
@@ -98,6 +103,8 @@ internal sealed interface SharingPage {
             key == Connection.key -> Connection
             key == History.key -> History
             key == WhoSees.key -> WhoSees
+            key == ShowCode.key -> ShowCode
+            key == Scan.key -> Scan
             else -> Overview
         }
     }
@@ -128,6 +135,10 @@ internal class SharingActions(
     val revokeLink: (String) -> Unit = {},
     val openLink: (TemplateId, String) -> Unit = { _, _ -> },
     val dismissLink: () -> Unit = {},
+    val showCode: () -> Unit = {},
+    val hideCode: () -> Unit = {},
+    /** A scanned text; true when it was a contact code or link. */
+    val scanned: (String) -> Boolean = { false },
 )
 
 /** Hand an invitation link to whatever the person sends it with. */
@@ -181,6 +192,9 @@ fun SharingScreen(
             revokeLink = viewModel::revokeLink,
             openLink = viewModel::openLink,
             dismissLink = viewModel::dismissLink,
+            showCode = viewModel::showCode,
+            hideCode = viewModel::hideCode,
+            scanned = viewModel::scanned,
         )
     }
     val title = when (page) {
@@ -190,6 +204,8 @@ fun SharingScreen(
         SharingPage.Connection -> stringResource(R.string.sharing_connection_title)
         SharingPage.History -> stringResource(R.string.sharing_history_title)
         SharingPage.WhoSees -> stringResource(R.string.sharing_whosees_title)
+        SharingPage.ShowCode -> stringResource(R.string.sharing_code_title)
+        SharingPage.Scan -> stringResource(R.string.sharing_scan_title)
     }
     Scaffold(
         topBar = {
@@ -214,6 +230,8 @@ internal fun SharingContent(
     onOpen: (SharingPage) -> Unit,
     actions: SharingActions,
     modifier: Modifier = Modifier,
+    /** The camera; tests pass a stand-in. */
+    scanner: @Composable (onCode: (String) -> Unit) -> Unit = { CameraQrScanner(it) },
 ) {
     if (!state.available) {
         Box(modifier.fillMaxSize().padding(16.dp)) {
@@ -252,6 +270,8 @@ internal fun SharingContent(
             SharingPage.Connection -> ConnectionPage(overview.status, state.busy, actions, mailboxes = overview.linkInvites)
             SharingPage.History -> HistoryPage(overview)
             SharingPage.WhoSees -> WhoSeesPage(overview)
+            SharingPage.ShowCode -> ShowCodePage(state.shownCode, overview.status.account, state.busy, actions)
+            SharingPage.Scan -> ScanPage(state.scanRefused, scanner) { text -> if (actions.scanned(text)) onOpen(SharingPage.Overview) }
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -303,7 +323,7 @@ private fun OverviewPage(state: SharingUiState, onOpen: (SharingPage) -> Unit, a
         }
     }
     if (overview.ageConfirmed) {
-        if (overview.linkInvites) LinkInviteCard(overview.links, state.busy, actions)
+        if (overview.linkInvites) LinkInviteCard(overview.links, state.busy, actions, onOpen)
         else AddPersonCard(state, overview.templates, actions)
     }
     InfoHeading(stringResource(R.string.sharing_templates_title), stringResource(R.string.sharing_templates_info))
@@ -492,12 +512,26 @@ private fun linkErrorText(code: String): Int = when (code) {
 
 /** Invite by link (Olm): a link to send, the open ones to share again or revoke. */
 @Composable
-private fun LinkInviteCard(links: List<com.cruxcoach.android.sharing.MarmotLink>, busy: Boolean, actions: SharingActions) {
+private fun LinkInviteCard(
+    links: List<com.cruxcoach.android.sharing.MarmotLink>,
+    busy: Boolean,
+    actions: SharingActions,
+    onOpen: (SharingPage) -> Unit,
+) {
     SettingsSectionCard {
         InfoHeading(stringResource(R.string.sharing_add_title), stringResource(R.string.sharing_link_info))
         Text(stringResource(R.string.sharing_link_body), style = MaterialTheme.typography.bodyMedium)
         Button(onClick = actions.createLink, enabled = !busy, modifier = Modifier.testTag("sharing_link_create")) {
             Text(stringResource(R.string.sharing_link_create))
+        }
+        // Meeting in person: one shows a code, the other scans it.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { onOpen(SharingPage.ShowCode) }, enabled = !busy, modifier = Modifier.testTag("sharing_code_show")) {
+                Text(stringResource(R.string.sharing_code_show))
+            }
+            OutlinedButton(onClick = { onOpen(SharingPage.Scan) }, enabled = !busy, modifier = Modifier.testTag("sharing_scan_open")) {
+                Text(stringResource(R.string.sharing_scan_open))
+            }
         }
         links.forEach { link ->
             HorizontalDivider()
@@ -510,6 +544,52 @@ private fun LinkInviteCard(links: List<com.cruxcoach.android.sharing.MarmotLink>
                     modifier = Modifier.testTag("sharing_link_revoke_${link.id}")) { Text(stringResource(R.string.sharing_link_revoke)) }
             }
         }
+    }
+}
+
+/** The own contact code as QR, with the identity both compare. */
+@Composable
+private fun ShowCodePage(code: String?, account: String, busy: Boolean, actions: SharingActions) {
+    LaunchedEffect(Unit) { if (code == null) actions.showCode() }
+    DisposableEffect(Unit) { onDispose { actions.hideCode() } }
+    SettingsSectionCard {
+        InfoHeading(stringResource(R.string.sharing_code_title), stringResource(R.string.sharing_code_info))
+        if (code == null) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else {
+            val matrix = remember(code) { QrCodes.encode(code, 720) }
+            QrImage(matrix, Modifier.fillMaxWidth().aspectRatio(1f).testTag("sharing_code_qr"))
+        }
+        Text(stringResource(R.string.sharing_code_identity, SharingNames.shortId(account)), style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold, modifier = Modifier.testTag("sharing_code_identity"))
+        Text(stringResource(R.string.sharing_code_body), style = MaterialTheme.typography.bodyMedium)
+        OutlinedButton(onClick = actions.showCode, enabled = !busy, modifier = Modifier.testTag("sharing_code_new")) {
+            Text(stringResource(R.string.sharing_code_new))
+        }
+    }
+}
+
+/** Dark modules on white, whatever the theme: scanners need the contrast. */
+@Composable
+private fun QrImage(matrix: com.google.zxing.common.BitMatrix, modifier: Modifier) {
+    androidx.compose.foundation.Canvas(modifier.background(androidx.compose.ui.graphics.Color.White)) {
+        val cell = size.minDimension / matrix.width
+        for (y in 0 until matrix.height) for (x in 0 until matrix.width) {
+            if (matrix[x, y]) drawRect(androidx.compose.ui.graphics.Color.Black,
+                androidx.compose.ui.geometry.Offset(x * cell, y * cell), androidx.compose.ui.geometry.Size(cell + 0.5f, cell + 0.5f))
+        }
+    }
+}
+
+@Composable
+private fun ScanPage(refused: Boolean, scanner: @Composable (onCode: (String) -> Unit) -> Unit, onCode: (String) -> Unit) {
+    SettingsSectionCard {
+        InfoHeading(stringResource(R.string.sharing_scan_title), stringResource(R.string.sharing_scan_info))
+        if (refused) {
+            Text(stringResource(R.string.sharing_scan_refused), color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("sharing_scan_refused"))
+        }
+        scanner(onCode)
     }
 }
 

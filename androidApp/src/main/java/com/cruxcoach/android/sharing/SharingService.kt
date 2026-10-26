@@ -231,6 +231,12 @@ class SharingService(
         return ShareLinks.url(link.payload)
     }
 
+    /** A fresh contact code to show as QR (valid an hour, taken once). */
+    suspend fun contactCode(): String {
+        check(store.ageConfirmed()) { "age_not_confirmed" }
+        return host.contactCode()
+    }
+
     suspend fun revokeLink(id: String) {
         host.revokeLink(id)
         onChanged()

@@ -39,6 +39,10 @@ data class SharingUiState(
     val linkOffer: LinkOffer? = null,
     /** Why sending the request for [linkOffer] failed (native code). */
     val linkError: String? = null,
+    /** The contact code on screen as QR (memory only). */
+    val shownCode: String? = null,
+    /** A scanned QR code held no contact code or link. */
+    val scanRefused: Boolean = false,
 )
 
 /** An opened link: whose it is and until when it is valid. */
@@ -128,6 +132,18 @@ class SharingViewModel @Inject constructor(
     }
 
     fun dismissLink() = ShareLinkInbox.clear(_state.value.linkOffer?.payload)
+
+    /** Show a fresh contact code; a new one replaces it. */
+    fun showCode() = act { val code = service.contactCode(); _state.update { it.copy(shownCode = code) } }
+    fun hideCode() = _state.update { it.copy(shownCode = null) }
+
+    /** A scanned QR code: a contact code or link waits for the person's decision like an opened link. */
+    fun scanned(text: String): Boolean {
+        val payload = ShareLinks.scanned(text)
+        _state.update { it.copy(scanRefused = payload == null) }
+        payload?.let(ShareLinkInbox::offer)
+        return payload != null
+    }
     fun requestAgain(peer: String, template: TemplateId, label: String?) = act { service.request(peer, template, label) }
     fun accept(peer: String, template: TemplateId, outgoing: Boolean) = act { service.accept(peer, template, outgoing) }
     fun decline(peer: String) = act { service.decline(peer) }

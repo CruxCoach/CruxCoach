@@ -19,10 +19,16 @@ data class LinkIssuer(val peer: String, val expiresAt: Long)
  */
 object ShareLinks {
     const val LINK_PREFIX = "cruxcoach:l1:"
+    /** A contact code shown as QR: npub and a one-time secret, valid an hour. */
+    const val CONTACT_PREFIX = "cruxcoach:c1:"
     const val PATH = "/f/"
     private const val CODE_BYTES = 72
+    private const val CONTACT_BYTES = 68
+    private const val CONTACT_TTL_MS = 3_600_000L
     private val CODE = Regex("^[A-Za-z0-9_-]{96}$")
+    private val CONTACT = Regex("^[A-Za-z0-9_-]{91}$")
     private val MAGIC = "ccl1".toByteArray()
+    private val CONTACT_MAGIC = "ccc1".toByteArray()
 
     fun url(payload: String, host: String = BuildConfig.APP_LINK_HOST): String {
         require(payload.startsWith(LINK_PREFIX)) { "link_format" }
@@ -40,9 +46,29 @@ object ShareLinks {
         return LINK_PREFIX + code
     }
 
-    /** Who issued [payload] and until when, without the native layer; null when it is no link code. */
-    fun issuer(payload: String): LinkIssuer? =
-        payload.takeIf { it.startsWith(LINK_PREFIX) }?.removePrefix(LINK_PREFIX)?.takeIf(CODE::matches)?.let(::issuerOf)
+    /**
+     * Who issued [payload] (a link code or a scanned contact code) and until
+     * when, without the native layer; null when it is neither. A contact code
+     * carries no end: it is valid an hour from when it was shown, so at most
+     * that long from [now].
+     */
+    fun issuer(payload: String, now: Long = System.currentTimeMillis()): LinkIssuer? = when {
+        payload.startsWith(LINK_PREFIX) -> payload.removePrefix(LINK_PREFIX).takeIf(CODE::matches)?.let(::issuerOf)
+        payload.startsWith(CONTACT_PREFIX) -> payload.removePrefix(CONTACT_PREFIX).takeIf(CONTACT::matches)?.let { code ->
+            val bytes = runCatching { Base64.getUrlDecoder().decode(code) }.getOrNull()
+            bytes?.takeIf { it.size == CONTACT_BYTES && it.copyOfRange(0, 4).contentEquals(CONTACT_MAGIC) }?.let {
+                LinkIssuer(it.copyOfRange(4, 36).joinToString("") { b -> "%02x".format(b) }, now + CONTACT_TTL_MS)
+            }
+        }
+        else -> null
+    }
+
+    /** What a scanned QR code holds: a contact code, or an invitation link shown as QR. */
+    fun scanned(text: String, host: String = BuildConfig.APP_LINK_HOST): String? {
+        val trimmed = text.trim()
+        if (trimmed.length > 512) return null
+        return trimmed.takeIf { it.startsWith(CONTACT_PREFIX) && issuer(it) != null } ?: payload(trimmed, host)
+    }
 
     private fun issuerOf(code: String): LinkIssuer? {
         val bytes = runCatching { Base64.getUrlDecoder().decode(code) }.getOrNull() ?: return null

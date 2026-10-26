@@ -30,6 +30,18 @@ class ShareLinksTest {
         assertEquals(LinkIssuer(peer, until * 1000), ShareLinks.issuer(payload))
     }
 
+    @Test fun a_scanned_contact_code_names_its_issuer_for_an_hour_and_a_link_as_qr_counts_too() {
+        val bytes = ByteArray(68).also { "ccc1".toByteArray().copyInto(it); ByteArray(32) { 0xab.toByte() }.copyInto(it, 4) }
+        val contact = ShareLinks.CONTACT_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        assertEquals(LinkIssuer(peer, 1_000 + 3_600_000), ShareLinks.issuer(contact, now = 1_000))
+        assertEquals(contact, ShareLinks.scanned(" $contact\n", host))
+        val link = "https://cruxcoach.org/f/#${code()}"
+        assertEquals(ShareLinks.LINK_PREFIX + code(), ShareLinks.scanned(link, host))
+        for (text in listOf("", "hello", "cruxcoach:c1:", ShareLinks.CONTACT_PREFIX + "A".repeat(91), "WIFI:S:x;;", "x".repeat(600))) {
+            assertNull(ShareLinks.scanned(text, host), text)
+        }
+    }
+
     @Test fun anything_else_is_no_invitation() {
         val good = code()
         val refused = listOf(
