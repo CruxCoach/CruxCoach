@@ -761,7 +761,8 @@ sealed interface BluetoothFamilyResult {
 /**
  * Schematic Shiny Wall variant for the picker: the big-hold rows (every second
  * one shifted by half a hold) and, on Full walls, the small holds between
- * them. Drawn from the variant's proportions; there is no wall photo.
+ * them. Shown only when the variant's wall image (board_images/shinywall) is
+ * missing.
  */
 @Composable
 private fun ShinyWallSchematic(variant: ShinyWallVariant, modifier: Modifier = Modifier) {

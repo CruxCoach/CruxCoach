@@ -295,3 +295,33 @@ property of Walltopia. CruxCoach is not affiliated with or endorsed by
 Walltopia. The assets are included as referential material for users operating
 their own compatible board; removal requests are handled through the channels
 listed in `SECURITY.md`.
+
+---
+
+# Shiny Wall images
+
+`shinywall/board_9401.webp` … `board_9406.webp` (product sizes of the Standard
+variants: 9401 Mini, 9402 Standard, 9403 Max, 9405 Full, 9406 Max Full; no
+9404, the Mini Full variant is not supported) are composed by CruxCoach with
+`scripts/build_shinywall_images.py`. The official Shiny Wall app has no photo of
+a whole wall: it draws a Standard wall from one cut-out photo per hold
+(`assets/holds/*.png` in Shiny Wall 1.1.4), placed on the wall's grid. The
+script does the same at the hold positions of the bundled geometry
+(`board_geometry/shinywall.sqlite3`), on a plain dark background, and encodes
+WebP. No logo, brand colours or other artwork are included.
+
+Each image covers exactly its variant's board area (edges of the geometry
+bundle, 3 px per unit), so hold markers land on the photographed holds;
+`ShinyWallImageBundleTest` checks every hold. Rebuild both together when the
+geometry changes:
+
+```
+scripts/build_shinywall_geometry.py GEOMETRY.json
+scripts/build_shinywall_images.py GEOMETRY.json <unpacked app>/assets/flutter_assets/assets/holds
+```
+
+The hold photos are the property of **Shiny Wall**. CruxCoach is not
+affiliated with or endorsed by Shiny Wall; the images are referential
+material for users operating their own wall. To remove them, delete the
+`shinywall/` folder: the app then draws the holds as dots again. Removal
+requests are handled through the channels listed in `SECURITY.md`.

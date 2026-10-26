@@ -16,7 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   holds". The Shiny Wall catalogue is downloaded only once you choose a Shiny
   Wall; it is not passed on by offline sharing. If a wall's Bluetooth name
   suggests another variant, CruxCoach asks once per wall and remembers the
-  answer.
+  answer. The wall shows each hold as a photo, laid out the way the Shiny Wall
+  app draws it, instead of dots: on problem pages, in the editor and in the
+  board picker.
 - Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
   data is refreshed (2,933 venues).
 - Wall games, from the main menu or a problem's menu ("Play as a game"):
