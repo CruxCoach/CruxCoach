@@ -33,8 +33,10 @@ data class MailboxState(val url: String, val connected: Boolean, val lastResult:
  *    cannot be reached, and once a day with the reserves.
  * 2. **Absorb** the events natively (checks, opens, stores, deduplicates).
  * 3. Let the native side queue **deletions** (receipts) and new **events**.
- * 4. **Place** each queued event on its three mailboxes in parallel, at most
- *    six per relay and pass, pausing a relay that says it is rate limiting.
+ * 4. **Place** each queued event on its three mailboxes in parallel, paced
+ *    per relay (six at once, then six a minute), pausing a relay that says
+ *    it is rate limiting and never offering an event again to a relay that
+ *    refused it.
  *    Placed means accepted by two of three; a dead mailbox (or no quorum after
  *    ten minutes) brings in a reserve that keeps the rules.
  *
@@ -52,6 +54,10 @@ class MailboxDelivery(
 ) {
     private val states = ConcurrentHashMap<String, MailboxState>()
     private val pausedUntil = ConcurrentHashMap<String, Long>()
+    /** Per relay: tokens left and when they were counted (pacing). */
+    private val tokens = ConcurrentHashMap<String, Pair<Double, Long>>()
+    /** Per queued event: the relays that refused it for good (a reserve stands in). */
+    private val refusedBy = ConcurrentHashMap<String, MutableSet<String>>()
     @Volatile private var lastFetch = 0L
     @Volatile private var lastPlace = 0L
     @Volatile private var lastReserveFetch = 0L
@@ -185,8 +191,10 @@ class MailboxDelivery(
 
     private suspend fun place(native: MailboxNative, now: Long, dead: MutableSet<String>) {
         val queue = native.call("mailbox_queue") {}?.jsonObject?.get("events")?.jsonArray.orEmpty().map { it.jsonObject }
-        // relay → (id → event), at most PER_RELAY per pass and none to a paused one.
+        refusedBy.keys.retainAll(queue.map { it["id"]!!.jsonPrimitive.content }.toSet())
+        // relay → (id → event), within the relay's pacing and none to a paused one.
         val plan = mutableMapOf<String, MutableMap<String, String>>()
+        val allowance = mutableMapOf<String, Int>()
         val targets = mutableMapOf<String, List<String>>()
         for (entry in queue) {
             val id = entry["id"]!!.jsonPrimitive.content
@@ -195,25 +203,28 @@ class MailboxDelivery(
             val explicit = entry["relays"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
             val accepted = entry["accepted"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet()
             val age = now - Regex("\"created_at\":(\\d+)").find(entry["event"]!!.jsonPrimitive.content)!!.groupValues[1].toLong() * 1000
+            val no = refusedBy[id].orEmpty()
             val chosen = when {
                 explicit.isNotEmpty() -> explicit
                 // A receipt deletes wherever the event may be.
                 role == "received" -> choice.read(seed, now).map { it.url }
                 else -> {
                     val write = choice.write(seed, now)
-                    val down = write.filter { it.url in dead || (pausedUntil[it.url] ?: 0) > now }.map { it.id }.toSet()
+                    val down = write.filter { it.url in dead || it.url in no || (pausedUntil[it.url] ?: 0) > now }.map { it.id }.toSet()
                     val late = age >= RESERVE_AFTER_MS && accepted.size < QUORUM
-                    val stand = choice.reserves(seed, now, down).take(down.size + if (late) 1 else 0)
+                    val stand = choice.reserves(seed, now, down).filterNot { it.url in no }.take(down.size + if (late) 1 else 0)
                     write.map { it.url } + stand.map { it.url }
                 }
-            }
+            }.filterNot { it in no }
             targets[id] = chosen
             for (url in chosen) {
                 if (url in accepted || url in dead || (pausedUntil[url] ?: 0) > now) continue
                 val slot = plan.getOrPut(url) { linkedMapOf() }
-                if (slot.size < PER_RELAY) slot[id] = entry["event"]!!.jsonPrimitive.content
+                if (slot.size < allowance.getOrPut(url) { available(url, now) }) slot[id] = entry["event"]!!.jsonPrimitive.content
             }
         }
+        plan.values.removeAll { it.isEmpty() }
+        for ((url, events) in plan) spend(url, events.size, now)
         val answers = coroutineScope {
             plan.map { (url, events) -> async { url to client.place(url, events) } }.awaitAll()
         }
@@ -227,7 +238,12 @@ class MailboxDelivery(
                     native.call("mailbox_accepted") { put("id", id); put("relay", url) }
                     accepted[id]?.add(url)
                 }
-                is Placed.Refused -> if (placed.rateLimited) pausedUntil[url] = now + RATE_PAUSE_MS
+                is Placed.Refused -> when {
+                    placed.rateLimited -> pausedUntil[url] = now + RATE_PAUSE_MS
+                    // A relay that blocked this client refuses everything for a while.
+                    placed.reason.startsWith("blocked") -> pausedUntil[url] = now + BLOCKED_PAUSE_MS
+                    else -> refusedBy.getOrPut(id) { ConcurrentHashMap.newKeySet() } += url
+                }
                 Placed.NoAnswer -> Unit
             }
         }
@@ -244,6 +260,18 @@ class MailboxDelivery(
         pending = if (answers.any { (_, results) -> results.values.any { it !is Placed.NoAnswer } }) below else 0
     }
 
+    /** Whole events [url] may take now: [BURST] at once, refilled at [PER_MINUTE] a minute. */
+    private fun available(url: String, now: Long): Int {
+        val (left, at) = tokens[url] ?: return BURST
+        return minOf(BURST.toDouble(), left + (now - at) * PER_MINUTE / 60_000.0).toInt()
+    }
+
+    private fun spend(url: String, count: Int, now: Long) {
+        val (left, at) = tokens[url] ?: (BURST.toDouble() to now)
+        val refilled = minOf(BURST.toDouble(), left + (now - at) * PER_MINUTE / 60_000.0)
+        tokens[url] = (refilled - count).coerceAtLeast(0.0) to now
+    }
+
     private fun seen(url: String, connected: Boolean, result: String) {
         states[url] = MailboxState(url, connected, result)
     }
@@ -251,8 +279,11 @@ class MailboxDelivery(
     companion object {
         const val KIND = 2437
         const val QUORUM = 2
-        const val PER_RELAY = 6
+        /** Pacing per relay (NACHTRAG: six at once, then six a minute). */
+        const val BURST = 6
+        const val PER_MINUTE = 6
         const val RATE_PAUSE_MS = 60_000L
+        const val BLOCKED_PAUSE_MS = 60 * 60_000L
         /** Without a quorum this long, a reserve joins. */
         const val RESERVE_AFTER_MS = 10 * 60_000L
         /** Placed on two and the third tried this long: done (before the native side re-signs at 50 minutes). */
