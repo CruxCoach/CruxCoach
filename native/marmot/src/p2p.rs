@@ -27,6 +27,8 @@ use sha2_v11::{Digest, Sha256};
 pub const MAGIC: &[u8; 4] = b"ccx1";
 pub const KIND_REQUEST: u8 = 1;
 pub const KIND_RESPONSE: u8 = 2;
+/// One-way: what a relationship's mailbox event carries (see `mailbox`).
+pub const KIND_MAILBOX: u8 = 3;
 /// A channel section: an established or pre-acceptance relationship.
 pub const SECTION_CHANNEL: u8 = 1;
 /// An invitation package sealed to the contact code the invited person
@@ -357,7 +359,7 @@ impl Container {
             return Err(Error("wire_format"));
         }
         let kind = r.u8()?;
-        if kind != KIND_REQUEST && kind != KIND_RESPONSE {
+        if !matches!(kind, KIND_REQUEST | KIND_RESPONSE | KIND_MAILBOX) {
             return Err(Error("wire_format"));
         }
         let nonce = r.array()?;

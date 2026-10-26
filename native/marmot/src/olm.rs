@@ -26,16 +26,17 @@
 //!   the sender withdraws it and rebuilds the session from a spare one-time
 //!   key (or the fallback key), the Matrix "unwedging" pattern.
 use crate::error::{Error, Result, checked};
+use crate::mailbox;
 use crate::p2p::{
-    self, BEACON_BYTES, ChannelBody, Container, FrameId, KIND_REQUEST, KIND_RESPONSE, MAX_FRAMES,
-    MAX_SKEW_S, SECTION_CHANNEL, SECTION_OFFER,
+    self, BEACON_BYTES, ChannelBody, Container, FrameId, KIND_MAILBOX, KIND_REQUEST, KIND_RESPONSE,
+    MAX_FRAMES, MAX_SKEW_S, SECTION_CHANNEL, SECTION_OFFER,
 };
 use crate::protocol::{MAX_APP_CONTENT, MAX_PEERS, is_hex64, now_ms, now_s};
 use nostr::{Event, EventId, Kind, NostrSigner, PublicKey, Tag, Timestamp, UnsignedEvent};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -69,6 +70,13 @@ pub const MAX_OUTBOUND_BYTES: usize = 196_608;
 /// `identify` names the device of a scanned contact code with this prefix:
 /// the endpoint to hand the sealed invitation to.
 pub const OFFER_PREFIX: &str = "offer:";
+/// A mailbox frame without an ack this long after publishing is published
+/// again (a mailbox may have lost it); the sync layer repairs the rest.
+const MAILBOX_REPUBLISH_S: u64 = 86_400;
+/// Acks with no data to travel with wait this long for some.
+const MAILBOX_ACK_DELAY_S: u64 = 6 * 3_600;
+/// At most this many events per relationship and call (the rest next time).
+const MAILBOX_EVENTS_PER_PEER: usize = 8;
 const ENVELOPE_APP: u8 = 1;
 const ENVELOPE_CONTROL: u8 = 2;
 
@@ -123,6 +131,11 @@ CREATE TABLE IF NOT EXISTS olm_base(base_key TEXT PRIMARY KEY NOT NULL, at INTEG
 DROP TABLE IF EXISTS olm_hint;
 CREATE TABLE IF NOT EXISTS olm_contact(tag BLOB PRIMARY KEY NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS olm_offer(peer TEXT PRIMARY KEY NOT NULL, tag BLOB NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS olm_mailbox_out(id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, published_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS olm_mailbox_ack(peer TEXT PRIMARY KEY NOT NULL, since INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS olm_mailbox_seen(
+  id BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, direction INTEGER NOT NULL, day INTEGER NOT NULL,
+  expires INTEGER NOT NULL, at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0);
 ";
 
 #[cfg(feature = "local-harness")]
@@ -1435,7 +1448,18 @@ impl OlmEngine {
             }
             let horizon = i64_of(now_ms().saturating_sub(SEEN_RETENTION_MS));
             let codes = i64_of(now_ms().saturating_sub(CONTACT_TTL_MS));
+            // A mailbox event cannot come back once every relay must have dropped it.
+            let mailbox_horizon =
+                i64_of(now_s().saturating_sub(mailbox::MAX_AGE_S + 2 * mailbox::DAY_S));
             engine.sql(|c| {
+                c.execute(
+                    "DELETE FROM olm_mailbox_seen WHERE at<?1",
+                    [mailbox_horizon],
+                )?;
+                c.execute(
+                    "DELETE FROM olm_mailbox_out WHERE id NOT IN (SELECT id FROM olm_out)",
+                    [],
+                )?;
                 c.execute("DELETE FROM olm_seen WHERE at<?1", [horizon])?;
                 c.execute("DELETE FROM olm_token WHERE created_at<?1", [horizon])?;
                 c.execute("DELETE FROM olm_contact WHERE created_at<?1", [codes])?;
@@ -1672,6 +1696,244 @@ impl OlmEngine {
                 peers,
             },
         ))
+    }
+
+    // ---- mailboxes -----------------------------------------------------------------
+
+    /// Mailbox events to publish now: per established relationship the frames
+    /// not yet published (or published a day ago without an ack) and the acks
+    /// owed, each event within one size class. Acks alone wait some hours so
+    /// they mostly travel with data. Returns `{peer, event}` (event JSON).
+    pub fn mailbox_outgoing(
+        &mut self,
+        now_s: u64,
+        pow: u8,
+        max_bytes: usize,
+    ) -> Result<Vec<Value>> {
+        self.atomic(|engine| {
+            let mut out = Vec::new();
+            let mut bytes = 0;
+            for row in engine.peers()? {
+                let Some(link) = row.link().filter(|_| row.state == "active") else {
+                    continue;
+                };
+                let key = mailbox::mailbox_key(&link);
+                let direction = mailbox::Direction::outgoing(row.inviter);
+                for _ in 0..MAILBOX_EVENTS_PER_PEER {
+                    // The rest goes on the next call (one answer must cross JNI).
+                    if bytes + mailbox::MAX_EVENT_JSON > max_bytes {
+                        return Ok(out);
+                    }
+                    let Some(container) = engine.mailbox_container(&row.account, &link, now_s)?
+                    else {
+                        break;
+                    };
+                    let event = nostr::JsonUtil::as_json(&mailbox::event(
+                        &key, direction, now_s, &container, pow,
+                    )?);
+                    bytes += event.len();
+                    out.push(json!({"peer": row.account, "event": event}));
+                }
+            }
+            Ok(out)
+        })
+    }
+
+    fn mailbox_container(
+        &self,
+        peer: &str,
+        link: &[u8; 32],
+        now_s: u64,
+    ) -> Result<Option<Vec<u8>>> {
+        let republish = i64_of(now_s.saturating_sub(MAILBOX_REPUBLISH_S));
+        let frames: Vec<(Vec<u8>, Vec<u8>)> = self.sql(|c| {
+            let mut q = c.prepare(
+                "SELECT o.id, o.frame FROM olm_out o LEFT JOIN olm_mailbox_out m ON m.id = o.id
+                 WHERE o.peer=?1 AND (m.id IS NULL OR m.published_at < ?2) ORDER BY o.created_at, o.rowid LIMIT 512",
+            )?;
+            q.query_map(params![peer, republish], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect()
+        })?;
+        let replies: Vec<(Vec<u8>, bool)> = self.sql(|c| {
+            let mut q = c.prepare("SELECT id, nack FROM olm_reply WHERE peer=?1 LIMIT 256")?;
+            q.query_map([peer], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect()
+        })?;
+        let mut body = ChannelBody::default();
+        for (id, nack) in &replies {
+            let id: FrameId = id.as_slice().try_into().map_err(|_| Error("storage"))?;
+            if *nack {
+                body.nacks.push(id)
+            } else {
+                body.acks.push(id)
+            }
+        }
+        // Container and section framing around the body.
+        let mut size = 47 + 37 + body.encode().len();
+        for (id, frame) in frames {
+            if body.frames.len() == MAX_FRAMES {
+                break;
+            }
+            // A frame no event can carry waits for a direct exchange.
+            if size + 12 + frame.len() > mailbox::MAX_CONTAINER {
+                continue;
+            }
+            size += 12 + frame.len();
+            let id: FrameId = id.as_slice().try_into().map_err(|_| Error("storage"))?;
+            body.frames.push((id, frame));
+        }
+        if body.frames.is_empty() {
+            if body.acks.is_empty() && body.nacks.is_empty() {
+                self.sql(|c| c.execute("DELETE FROM olm_mailbox_ack WHERE peer=?1", [peer]))?;
+                return Ok(None);
+            }
+            let since: Option<i64> = self.sql(|c| {
+                c.query_row(
+                    "SELECT since FROM olm_mailbox_ack WHERE peer=?1",
+                    [peer],
+                    |r| r.get(0),
+                )
+                .optional()
+            })?;
+            match since {
+                None => {
+                    self.sql(|c| {
+                        c.execute(
+                            "INSERT INTO olm_mailbox_ack(peer, since) VALUES(?1, ?2)",
+                            params![peer, i64_of(now_s)],
+                        )
+                    })?;
+                    return Ok(None);
+                }
+                Some(since) if now_s.saturating_sub(since.max(0) as u64) < MAILBOX_ACK_DELAY_S => {
+                    return Ok(None);
+                }
+                Some(_) => {}
+            }
+        }
+        self.sql(|c| {
+            // A lost event loses its acks too; the peer's republication is acked again.
+            for id in body.acks.iter().chain(&body.nacks) {
+                c.execute("DELETE FROM olm_reply WHERE peer=?1 AND id=?2", params![peer, id.as_slice()])?;
+            }
+            for (id, _) in &body.frames {
+                c.execute(
+                    "INSERT OR REPLACE INTO olm_mailbox_out(id, peer, published_at) VALUES(?1, ?2, ?3)",
+                    params![id.as_slice(), peer, i64_of(now_s)],
+                )?;
+            }
+            c.execute("DELETE FROM olm_mailbox_ack WHERE peer=?1", [peer])
+        })?;
+        let mut container = Container::new(KIND_MAILBOX, [0; 16], now_s)?;
+        let addr = p2p::channel_addr(link, &container.nonce);
+        container.push(link, addr, SECTION_CHANNEL, body.encode());
+        Ok(Some(container.encode()?))
+    }
+
+    /// The addresses to fetch: for every established relationship the incoming
+    /// direction of today and the `days - 1` days before (no peer is named).
+    pub fn mailbox_addresses(&self, now_s: u64, days: u64) -> Result<Vec<String>> {
+        let today = mailbox::day(now_s);
+        let days = days.clamp(1, mailbox::MAX_AGE_S / mailbox::DAY_S + 1);
+        let mut out = BTreeSet::new();
+        for row in self.peers()? {
+            let Some(link) = row.link().filter(|_| row.state == "active") else {
+                continue;
+            };
+            let key = mailbox::mailbox_key(&link);
+            let direction = mailbox::Direction::incoming(row.inviter);
+            for back in 0..days {
+                out.insert(mailbox::address(
+                    &key,
+                    direction,
+                    today.saturating_sub(back),
+                ));
+            }
+        }
+        Ok(out.into_iter().collect())
+    }
+
+    /// Take mailbox events fetched from relays. Each must be a current event of
+    /// the right kind and shape, under the day's address of a relationship and
+    /// signed with that day's key; it then opens to a mailbox container whose
+    /// frames go the same way as directly received ones (replays and duplicates
+    /// across mailboxes are dropped by event id, then by frame hash).
+    pub fn mailbox_absorb(&mut self, now_s: u64, events: &[String]) -> Result<Value> {
+        let today = mailbox::day(now_s);
+        let mut index: HashMap<String, (String, [u8; 32], mailbox::Direction, u64)> =
+            HashMap::new();
+        for row in self.peers()? {
+            let Some(link) = row.link().filter(|_| row.state == "active") else {
+                continue;
+            };
+            let key = mailbox::mailbox_key(&link);
+            let direction = mailbox::Direction::incoming(row.inviter);
+            for back in 0..=mailbox::MAX_AGE_S / mailbox::DAY_S + 1 {
+                let day = today.saturating_sub(back);
+                index.insert(
+                    mailbox::address(&key, direction, day),
+                    (row.account.clone(), key, direction, day),
+                );
+            }
+        }
+        let (mut accepted, mut duplicates, mut refused) = (0, 0, 0);
+        let mut changes = Changes::default();
+        for json in events {
+            let Ok(envelope) = mailbox::envelope(json, now_s) else {
+                refused += 1;
+                continue;
+            };
+            let Some((peer, key, direction, day)) = index.get(&envelope.address).cloned() else {
+                refused += 1;
+                continue;
+            };
+            if !mailbox::matches(&envelope, &key, direction, day) {
+                refused += 1;
+                continue;
+            }
+            let id = envelope.event.id.to_bytes();
+            let seen: Option<i64> = self.sql(|c| {
+                c.query_row(
+                    "SELECT 1 FROM olm_mailbox_seen WHERE id=?1",
+                    [id.as_slice()],
+                    |r| r.get(0),
+                )
+                .optional()
+            })?;
+            if seen.is_some() {
+                duplicates += 1;
+                continue;
+            }
+            let container = mailbox::content(&envelope, &key, direction, day)
+                .and_then(|bytes| Container::decode(&bytes))
+                .ok()
+                .filter(|c| c.kind == KIND_MAILBOX);
+            let Some(container) = container else {
+                refused += 1;
+                continue;
+            };
+            // Frames are stored (each in its own transaction, deduplicated by
+            // hash) before the event counts as seen: a crash in between fetches
+            // it again and applies nothing twice.
+            let absorbed = self.absorb(&container)?;
+            if !absorbed.peers.iter().any(|(p, _)| *p == peer) {
+                refused += 1;
+                continue;
+            }
+            changes.inbox |= absorbed.changes.inbox;
+            changes.peers |= absorbed.changes.peers;
+            self.sql(|c| {
+                c.execute(
+                    "INSERT OR IGNORE INTO olm_mailbox_seen(id, peer, direction, day, expires, at) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![id.as_slice(), peer, direction as i64, i64_of(day), i64_of(envelope.expiration), i64_of(now_s)],
+                )
+            })?;
+            accepted += 1;
+        }
+        Ok(
+            json!({"accepted": accepted, "duplicates": duplicates, "refused": refused,
+                  "inbox": changes.inbox, "peers": changes.peers}),
+        )
     }
 
     /// Match a section to a relationship. Returns the peer, the key and its

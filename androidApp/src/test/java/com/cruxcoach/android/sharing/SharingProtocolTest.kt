@@ -90,6 +90,12 @@ class SharingProtocolTest {
         }
         assertEquals(many.map { it.id }.sorted(), pages.flatMap { p -> p.records.map { it.id } })
         assertEquals(1, ShareProtocol.full(stream, 0, 1, 0, emptyList()).single().parts)
+        // The limit counts bytes: notes in another script fill pages sooner.
+        val cyrillic = (0 until 40).map { SharingRecord("note:c$it", ShareCategory.CLIMB_NOTES, 1, linkedMapOf("climbId" to "c$it", "note" to "Ж".repeat(3500))) }
+        ShareProtocol.full(stream, 0, 2, 0, cyrillic).forEach {
+            assertTrue(ShareProtocol.encode(it).encodeToByteArray().size <= ShareProtocol.MAX_BYTES)
+            assertNotNull(ShareProtocol.decode(ShareProtocol.encode(it)))
+        }
         // A snapshot page carries its friend and position; the size limit still holds.
         ShareProtocol.full(stream, 9, 2, 1_000_000, many).forEach { assertNotNull(ShareProtocol.decode(ShareProtocol.encode(it))) }
     }

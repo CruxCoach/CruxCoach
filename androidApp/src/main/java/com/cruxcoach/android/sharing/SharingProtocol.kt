@@ -65,7 +65,9 @@ import kotlinx.serialization.json.Json
 object ShareProtocol {
     /** 3: categories of FEAT-073 (sends and attempts apart), per-record expiry and streams. */
     const val VERSION = 3
-    const val MAX_BYTES = 49_152
+    /** UTF-8 bytes of one message: one message is one Olm frame, and one frame
+     * must fit one mailbox event (≤ 47 KiB raw, native `mailbox`). */
+    const val MAX_BYTES = 40_960
     const val MAX_PAGE_RECORDS = 16
     const val MAX_PARTS = 128
     const val MAX_DELTA_UPSERTS = 64
@@ -120,7 +122,7 @@ object ShareProtocol {
 
     /** Strict and canonical: re-encoding must reproduce the exact input. */
     fun decode(raw: String): ShareMessage? {
-        if (raw.length > MAX_BYTES) return null
+        if (bytes(raw) > MAX_BYTES) return null
         val message = runCatching { json.decodeFromString<ShareMessage>(raw) }.getOrNull() ?: return null
         return message.takeIf { validShape(it) && encode(it) == raw }
     }
@@ -134,8 +136,8 @@ object ShareProtocol {
     fun full(stream: String, assign: Long, gen: Long, seq: Long, records: List<SharingRecord>): List<ShareMessage> {
         val pages = mutableListOf<List<SharingRecord>>()
         var current = mutableListOf<SharingRecord>()
-        fun size(page: List<SharingRecord>) = encode(ShareMessage(type = "full", stream = stream, assign = assign, gen = gen,
-            seq = seq, part = MAX_PARTS - 1, parts = MAX_PARTS, records = page)).length
+        fun size(page: List<SharingRecord>) = bytes(encode(ShareMessage(type = "full", stream = stream, assign = assign, gen = gen,
+            seq = seq, part = MAX_PARTS - 1, parts = MAX_PARTS, records = page)))
         for (record in records.sortedBy { it.id }) {
             if (current.size == MAX_PAGE_RECORDS || current.isNotEmpty() && size(current + record) > MAX_BYTES - 256) {
                 pages += current
@@ -155,5 +157,8 @@ object ShareProtocol {
         ShareMessage(type = "delta", stream = stream, gen = gen, seq = seq, scope = scope, records = upserts.sortedBy { it.id },
             deletes = deletes.sorted(), count = target.size, digest = SharingRecords.digest(target))
 
-    fun fits(message: ShareMessage) = encode(message).length <= MAX_BYTES
+    fun fits(message: ShareMessage) = bytes(encode(message)) <= MAX_BYTES
+
+    /** Size on the wire: notes in other scripts take up to three bytes per character. */
+    private fun bytes(text: String) = text.encodeToByteArray().size
 }

@@ -83,6 +83,21 @@ enum Command {
     ImportContact {
         payload: String,
     },
+    // Mailbox operations: relays are reached from the app side, which moves
+    // signed events it cannot open.
+    MailboxOutgoing {
+        #[serde(default)]
+        pow: u8,
+        #[serde(default)]
+        max_bytes: Option<usize>,
+    },
+    MailboxAddresses {
+        #[serde(default)]
+        days: Option<u64>,
+    },
+    MailboxAbsorb {
+        events: Vec<String>,
+    },
     #[cfg(feature = "local-harness")]
     PrivateStorageMatches {
         marker: String,
@@ -284,6 +299,31 @@ impl OlmHost {
                     .exchange_serve(&Self::container(&container)?, budget)?;
                 self.after(served.changes);
                 json!({"container": STANDARD.encode(response), "peers": served.peers})
+            }
+            Command::MailboxOutgoing { pow, max_bytes } => {
+                if pow > 24 {
+                    return Err(Error("mailbox_pow"));
+                }
+                // Well below the 8 MiB a JNI answer may carry.
+                let max = max_bytes.unwrap_or(4 << 20).min(6 << 20);
+                json!({"events": self.engine()?.mailbox_outgoing(crate::protocol::now_s(), pow, max)?})
+            }
+            Command::MailboxAddresses { days } => {
+                json!({"addresses": self.engine()?.mailbox_addresses(crate::protocol::now_s(), days.unwrap_or(2))?,
+                       "max_age_s": crate::mailbox::MAX_AGE_S})
+            }
+            Command::MailboxAbsorb { events } => {
+                if events.len() > 512 {
+                    return Err(Error("mailbox_batch"));
+                }
+                let result = self
+                    .engine()?
+                    .mailbox_absorb(crate::protocol::now_s(), &events)?;
+                self.after(crate::olm::Changes {
+                    inbox: result["inbox"].as_bool().unwrap_or(false),
+                    peers: result["peers"].as_bool().unwrap_or(false),
+                });
+                result
             }
             Command::ContactCode => {
                 let code = self.engine()?.contact_code()?;
