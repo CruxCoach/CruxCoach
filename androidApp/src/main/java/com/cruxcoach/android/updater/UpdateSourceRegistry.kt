@@ -218,18 +218,37 @@ class UpdateSourceRegistry @Inject constructor(
             .filter { it.startsWith("https://") }
             .distinct()
 
+        private const val GITHUB_API_BASE = "https://api.github.com"
+
+        private fun normalizedApiBase(raw: String): String = raw.trim().trimEnd('/')
+
+        /**
+         * Id of the first compiled-in forge. Forge ids are per *host*, not
+         * per position: the id is the anonymous updater counter's source
+         * label and the key of the per-source ETag map, so one host must not
+         * go by two names depending on which list happened to be in effect.
+         * The runtime list calls GitHub `github` and Codeberg `forge`, so a
+         * GitHub first forge is `github`; any other keeps `forge`.
+         */
+        internal fun primaryForgeId(apiBase: String): String =
+            if (normalizedApiBase(apiBase) == GITHUB_API_BASE) "github" else "forge"
+
         /**
          * The second compiled-in forge, or null when a build configures none
-         * or repeats the first. GitHub keeps the id the runtime list gives it,
-         * because the id is also the source label of the anonymous updater
-         * counter: one host must not be counted under two names depending on
-         * which list happened to be in effect.
+         * or repeats the first. Same id rule as [primaryForgeId]: GitHub is
+         * `github`; another forge takes `forge` when the first forge is
+         * GitHub (upstream: Codeberg, the release mirror) and the neutral
+         * `forge-2` otherwise.
          */
         internal fun secondaryForge(apiBase: String, primaryApiBase: String): UpdateSource? {
-            val base = apiBase.trim().trimEnd('/')
-            if (!base.startsWith("https://") || base == primaryApiBase.trim().trimEnd('/')) return null
+            val base = normalizedApiBase(apiBase)
+            if (!base.startsWith("https://") || base == normalizedApiBase(primaryApiBase)) return null
             return UpdateSource(
-                id = if (base == "https://api.github.com") "github" else "forge-2",
+                id = when {
+                    base == GITHUB_API_BASE -> "github"
+                    primaryForgeId(primaryApiBase) == "github" -> "forge"
+                    else -> "forge-2"
+                },
                 kind = UpdateSource.Kind.FORGE,
                 url = base,
                 owner = BuildConfig.UPDATER_REPO_OWNER,
@@ -242,13 +261,14 @@ class UpdateSourceRegistry @Inject constructor(
          * unusable. Order matters: most trustworthy and most likely to be
          * current first.
          *
-         * The forge entry is driven by the same `UPDATER_*` fields a fork
+         * The forge entries are driven by the same `UPDATER_*` fields a fork
          * overrides in `local.properties`, so a fork gets its own forge here
-         * without touching this list.
+         * without touching this list. Upstream, GitHub (the primary release
+         * host) comes first and Codeberg (the release mirror) second.
          */
         val EMBEDDED: List<UpdateSource> = listOfNotNull(
             UpdateSource(
-                id = "forge",
+                id = primaryForgeId(BuildConfig.UPDATER_API_BASE),
                 kind = UpdateSource.Kind.FORGE,
                 url = BuildConfig.UPDATER_API_BASE,
                 owner = BuildConfig.UPDATER_REPO_OWNER,

@@ -1037,7 +1037,7 @@ object AppModule {
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             // Wall-clock cap on a single update check / APK download —
-            // bounds slow-loris exposure on the Codeberg release endpoints.
+            // bounds slow-loris exposure on the forge release endpoints.
             .callTimeout(60, TimeUnit.SECONDS)
             .build()
     }
