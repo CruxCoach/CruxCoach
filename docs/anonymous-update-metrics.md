@@ -10,7 +10,7 @@ package installations.
 
 - `ANONYMOUS_METRICS_ENDPOINT` is empty by default. An ordinary clone or fork
   therefore neither shows the setting nor sends a request.
-- The upstream Forgejo release workflow injects
+- The upstream GitHub release workflow (`.github/workflows/release.yml`) injects
   `https://stats.cruxcoach.org/v1/app-event` only when the repository context is
   exactly `CruxCoach/CruxCoach`.
 - In an endpoint-enabled build, **Settings → Updates** discloses the counter and
@@ -31,7 +31,7 @@ not create an event.
 The complete JSON body is:
 
 ```json
-{"metric":"app_update_verified","version":"0.2.2","source":"codeberg"}
+{"metric":"app_update_verified","version":"0.2.2","source":"github"}
 ```
 
 The target `version` must be a stable three-part version.
@@ -44,6 +44,11 @@ suppress exactly the events that show a newly configured host working. The
 client therefore checks *shape* only (`^[a-z0-9][a-z0-9-]{0,23}$`) and the
 collector buckets any well-formed id it does not recognise into `other`, which
 keeps the stored dimension bounded.
+
+Upstream, the ids follow the host rather than its position in the list:
+GitHub, the primary release host, is `github`, and the Codeberg release mirror
+keeps its historical id `forge`. The runtime list and the compiled-in fallback
+use the same ids, so one host is never counted under two names.
 
 The id is still derived solely by matching the download URL against the
 configured source list, comparing scheme, host and port — never by trusting a

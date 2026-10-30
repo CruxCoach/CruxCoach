@@ -2,7 +2,7 @@
 <network-security-config>
     <!--
         Default: no cleartext. All internet-bound traffic (Blossom, Nostr,
-        Keycloak, Codeberg, public APIs) is https and must stay https.
+        Keycloak, GitHub, Codeberg, public APIs) is https and must stay https.
     -->
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>

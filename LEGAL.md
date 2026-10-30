@@ -216,10 +216,10 @@ CruxCoach is an independent, community-developed open-source project. It is not 
 If you believe any material in this project infringes your copyright, please contact us:
 
 - **Nostr DM** (NIP-17 encrypted): developer pubkey listed in [SECURITY.md](SECURITY.md)
-- **Codeberg**: open an issue on the [repository](https://codeberg.org/CruxCoach/CruxCoach)
+- **GitHub**: open an issue on the [repository](https://github.com/CruxCoach/CruxCoach/issues)
 
 We will review all concerns in good faith.
 
 ---
 
-*This document is provided for informational purposes and does not constitute legal advice. Last updated: 2026-09-24.*
+*This document is provided for informational purposes and does not constitute legal advice. Last updated: 2026-10-30.*

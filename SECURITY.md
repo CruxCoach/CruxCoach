@@ -12,7 +12,7 @@ Send an encrypted Nostr DM (NIP-17) to the developer pubkey:
 e75a185c019d09049d5fcb0e29a2cc9bfd016ec0f6d892fc98f6ffe0181a480d
 ```
 
-Alternatively, open a confidential issue on the [Codeberg repository](https://codeberg.org/CruxCoach/CruxCoach).
+Alternatively, open an issue on the [GitHub repository](https://github.com/CruxCoach/CruxCoach/issues) that only asks for a private contact, **without any vulnerability details**; the maintainer will follow up privately. The Codeberg repository is a release mirror; please do not file reports there.
 
 ### What to Include
 
