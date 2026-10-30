@@ -9,6 +9,19 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "flows/run-matching-debug-migration.sh"
+LIBRARY = ROOT / "flows/lib/apk_signer.sh"
+PUBLIC_TAGS = ("v0.1.4", "v0.2.0", "v0.2.1")
+
+
+def has_public_tags() -> bool:
+    """The full preflight audits the public source tags, which a shallow CI checkout lacks."""
+    return all(
+        subprocess.run(
+            ["git", "-C", str(ROOT), "rev-parse", "--verify", "--quiet", f"{tag}^{{commit}}"],
+            capture_output=True, check=False,
+        ).returncode == 0
+        for tag in PUBLIC_TAGS
+    )
 KEY = "0a52788e289fa7387cf41460889bd2eab6a76d37d61644837b08cfdb9246cb9a"
 OTHER = "71c64543b7241f8da8199ed06d5079c7a328b31bbcc8249a6fc84b5879558db9"
 STAMP = "eb0484bf670469455430af586afcc4c56f9d2436eef5d0394eacc273f3f56e32"
@@ -48,6 +61,21 @@ esac
 
 
 class MatchingDebugMigrationSignerTest(unittest.TestCase):
+    def digest(self, certs: str) -> subprocess.CompletedProcess:
+        """Run the shared parser alone, with a fake apksigner that prints `certs`."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tool = root / "apksigner"
+            tool.write_text(FAKE_APKSIGNER, encoding="utf-8")
+            tool.chmod(0o700)
+            apk = root / "app.apk"
+            apk.write_bytes(b"apk")
+            (root / "app.apk.certs").write_text(certs, encoding="utf-8")
+            return subprocess.run(
+                ["bash", "-c", 'source "$1"; apk_signer_digest "$2" "$3"', "_", str(LIBRARY), str(tool), str(apk)],
+                capture_output=True, text=True, check=False,
+            )
+
     def preflight(self, old_certs: str, new_certs: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -76,11 +104,16 @@ class MatchingDebugMigrationSignerTest(unittest.TestCase):
         self.assertIn(message, result.stderr)
 
     def test_reads_build_tools_36_and_37_output(self):
+        for certs in (BUILD_TOOLS_36, BUILD_TOOLS_37, f"V2 Signer: certificate SHA-256 digest: {KEY.upper()}\n"):
+            with self.subTest(certs=certs.splitlines()[0]):
+                result = self.digest(certs)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(KEY, result.stdout)
+
+    @unittest.skipUnless(has_public_tags(), "the full preflight needs the public source tags (full clone)")
+    def test_preflight_accepts_matching_and_rejects_different_signers(self):
         self.assert_passes(BUILD_TOOLS_36, BUILD_TOOLS_36)
         self.assert_passes(BUILD_TOOLS_37, BUILD_TOOLS_37)
-        self.assert_passes(f"V2 Signer: certificate SHA-256 digest: {KEY.upper()}\n", BUILD_TOOLS_37)
-
-    def test_rejects_different_signers(self):
         self.assert_fails(
             BUILD_TOOLS_37,
             BUILD_TOOLS_37.replace(KEY, OTHER),
@@ -98,8 +131,11 @@ class MatchingDebugMigrationSignerTest(unittest.TestCase):
         )
         stamp_only = f"Source Stamp Signer: certificate SHA-256 digest: {STAMP}\n"
         unknown = BUILD_TOOLS_37 + f"V4 Signer [1]: certificate SHA-256 digest: {KEY}\n"
-        for certs in (rotated, two_signers, stamp_only, unknown):
-            self.assert_fails(certs, BUILD_TOOLS_37, "old APK needs exactly one readable public signer")
+        for certs in (rotated, two_signers, stamp_only, unknown, ""):
+            with self.subTest(certs=certs[:40]):
+                result = self.digest(certs)
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual("", result.stdout)
 
 
     def test_flows_share_the_one_signer_parser(self):
