@@ -8,6 +8,8 @@ umask 077
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 readonly repo_root
+# shellcheck source=flows/lib/apk_signer.sh
+source "$repo_root/flows/lib/apk_signer.sh"
 readonly -a tags=(v0.1.4 v0.2.0 v0.2.1)
 
 die() {
@@ -197,9 +199,8 @@ metadata_row() {
     [[ -n "$identity" ]] || die "cannot parse APK identity for $label"
     if grep -qx 'application-debuggable' <<< "$badging"; then debuggable=true; else debuggable=false; fi
     "$apksigner_bin" verify --verbose "$apk" >/dev/null || die "signature verification failed for $label"
-    digest="$("$apksigner_bin" verify --print-certs "$apk" |
-        sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
-    [[ "$digest" =~ ^[0-9a-fA-F]{64}$ ]] || die "cannot parse public signer for $label"
+    digest="$(apk_signer_digest "$apksigner_bin" "$apk")" ||
+        die "$label needs exactly one readable public signer certificate"
     hash="$(sha256sum "$apk" | awk '{print $1}')"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$label" "${identity%%$'\t'*}" "${identity#*$'\t'}" "$debuggable" "$hash" "${digest,,}" \
