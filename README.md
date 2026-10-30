@@ -12,8 +12,9 @@
 
 Open-source multi-board climbing and training app for Android.
 
-**Primary repository, issues and pull requests:** [GitHub](https://github.com/CruxCoach/CruxCoach).
-[Codeberg](https://codeberg.org/CruxCoach/CruxCoach) is the secondary source and release mirror.
+**Primary repository, issues, pull requests, CI and releases:** [GitHub](https://github.com/CruxCoach/CruxCoach).
+[Codeberg](https://codeberg.org/CruxCoach/CruxCoach) is a secondary release mirror: every release
+tag, signed APK and SHA-256 sidecar is mirrored there, but its branches are not kept current.
 
 Browse climbs, control supported LED boards over Bluetooth, play training playlists, import your Kilter or MoonBoard logbook and track your progress — with no mandatory account, no ads and full control over your data.
 
