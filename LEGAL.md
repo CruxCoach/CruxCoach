@@ -228,10 +228,10 @@ The app does not choose a stage from symptoms and does not move a plan on by its
 If you believe any material in this project infringes your copyright, please contact us:
 
 - **Nostr DM** (NIP-17 encrypted): developer pubkey listed in [SECURITY.md](SECURITY.md)
-- **Codeberg**: open an issue on the [repository](https://codeberg.org/CruxCoach/CruxCoach)
+- **GitHub**: open an issue on the [repository](https://github.com/CruxCoach/CruxCoach/issues)
 
 We will review all concerns in good faith.
 
 ---
 
-*This document is provided for informational purposes and does not constitute legal advice. Last updated: 2026-10-25.*
+*This document is provided for informational purposes and does not constitute legal advice. Last updated: 2026-10-30.*

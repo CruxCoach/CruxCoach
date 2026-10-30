@@ -1,7 +1,8 @@
 # CruxCoach Trademark Policy
 
 The CruxCoach **name** and **logo** (collectively, "the Marks") identify the
-upstream project maintained at https://codeberg.org/CruxCoach/CruxCoach.
+upstream project maintained at https://github.com/CruxCoach/CruxCoach
+(releases are mirrored to https://codeberg.org/CruxCoach/CruxCoach).
 
 The source code is licensed under the GNU General Public License v3.0 — you
 are free to fork, modify, and redistribute it under those terms. **The Marks
@@ -65,6 +66,6 @@ escalating further. Personal and educational use will never be challenged.
 
 ## Questions
 
-Open an issue on https://codeberg.org/CruxCoach/CruxCoach/issues or send a
+Open an issue on https://github.com/CruxCoach/CruxCoach/issues or send a
 Nostr DM to the maintainer pubkey published in `NostrConfig.kt` /
 `zapstore.yaml`.

@@ -78,7 +78,7 @@ position on trademarks and interoperability.
 
 If you represent Kilter Grips, LLC (or any prior rights holder) and would
 like any of these images removed or replaced, please contact the maintainer
-via the channels listed in `SECURITY.md`, or open an issue on the Codeberg
+via the channels listed in `SECURITY.md`, or open an issue on the GitHub
 repository. Removal or replacement will be handled promptly.
 
 ## Updating
@@ -175,7 +175,7 @@ affiliated with, endorsed by, or officially connected to Moon Climbing Ltd.
 
 If you represent Moon Climbing Ltd and would like the MoonBoard imagery
 removed or replaced, please contact the maintainer via the channels listed
-in `SECURITY.md`, or open an issue on the Codeberg repository. Removal or
+in `SECURITY.md`, or open an issue on the GitHub repository. Removal or
 replacement will be handled promptly.
 
 ## Updating — MoonBoard
@@ -248,7 +248,7 @@ as the Kilter and MoonBoard sections above. See `LEGAL.md`.
 
 If you represent any of the rights holders above and would like the
 corresponding imagery removed or replaced, please contact the maintainer via
-the channels listed in `SECURITY.md`, or open an issue on the Codeberg
+the channels listed in `SECURITY.md`, or open an issue on the GitHub
 repository. Removal or replacement (per board) will be handled promptly.
 
 ## Updating — Aurora-family boards

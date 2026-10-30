@@ -145,21 +145,53 @@ class UpdateSourceRegistryFailoverTest {
         // Releases go to GitHub and, byte-identical, to Codeberg. A device
         // that cannot reach either manifest host falls back to this list, and
         // it must not have lost a forge the runtime list would have given it.
+        // GitHub is the primary release host, so it comes first.
         val forges = UpdateSourceRegistry.EMBEDDED.filter { it.kind == UpdateSource.Kind.FORGE }
-        assertEquals(listOf("forge", "github"), forges.map { it.id })
-        assertEquals("forges must be distinct hosts", forges.size, forges.map { it.webHost() }.distinct().size)
+        assertEquals(listOf("github", "forge"), forges.map { it.id })
+        assertEquals(listOf("https://github.com", "https://codeberg.org"), forges.map { it.webHost() })
+    }
+
+    @Test
+    fun `embedded forges keep the ids the runtime list gives their hosts`() {
+        // update-sources.json calls GitHub "github" and Codeberg "forge". The id
+        // is the counter's source label and the ETag key, so a download from
+        // either host must resolve to the same id under the embedded list.
+        val tag = "v9.9.9"
+        assertEquals(
+            "github",
+            resolveSourceId(
+                "https://github.com/CruxCoach/CruxCoach/releases/download/$tag/CruxCoach-$tag.apk",
+                UpdateSourceRegistry.EMBEDDED,
+            ),
+        )
+        assertEquals(
+            "forge",
+            resolveSourceId(
+                "https://codeberg.org/CruxCoach/CruxCoach/releases/download/$tag/CruxCoach-$tag.apk",
+                UpdateSourceRegistry.EMBEDDED,
+            ),
+        )
     }
 
     @Test
     fun `a second forge that is missing, insecure or the first one again is dropped`() {
-        val primary = "https://codeberg.org/api/v1"
+        val primary = "https://api.github.com"
         assertNull(UpdateSourceRegistry.secondaryForge("", primary))
-        assertNull(UpdateSourceRegistry.secondaryForge("http://api.github.com", primary))
-        assertNull(UpdateSourceRegistry.secondaryForge("https://codeberg.org/api/v1/", primary))
-        // The id is the updater counter's source label, so GitHub keeps the
-        // name the runtime list uses and anything else gets a neutral one.
-        assertEquals("github", UpdateSourceRegistry.secondaryForge("https://api.github.com/", primary)?.id)
-        assertEquals("forge-2", UpdateSourceRegistry.secondaryForge("https://git.example/api/v1", primary)?.id)
+        assertNull(UpdateSourceRegistry.secondaryForge("http://codeberg.org/api/v1", primary))
+        assertNull(UpdateSourceRegistry.secondaryForge("https://api.github.com/", primary))
+        // Behind a GitHub primary the other forge takes the "forge" id the
+        // runtime list gives Codeberg.
+        assertEquals("forge", UpdateSourceRegistry.secondaryForge("https://codeberg.org/api/v1/", primary)?.id)
+    }
+
+    @Test
+    fun `forge ids follow the host, not the position`() {
+        // A fork that keeps a Forgejo first forge keeps the old ids.
+        val forgejo = "https://codeberg.org/api/v1"
+        assertEquals("forge", UpdateSourceRegistry.primaryForgeId(forgejo))
+        assertEquals("github", UpdateSourceRegistry.primaryForgeId("https://api.github.com/"))
+        assertEquals("github", UpdateSourceRegistry.secondaryForge("https://api.github.com/", forgejo)?.id)
+        assertEquals("forge-2", UpdateSourceRegistry.secondaryForge("https://git.example/api/v1", forgejo)?.id)
     }
 
     @Test
