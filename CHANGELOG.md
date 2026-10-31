@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Spray walls, from the main menu: photograph your own wall (camera or photo
+  library), mark its holds by hand on the photo (tap to pick, drag to move,
+  slider to size, press and hold or "Add" to place, undo/redo, pinch to zoom)
+  and set problems on them with start, hand, foot and finish holds, a name, an
+  optional grade ("Project" without one) and a description. Sort and search a
+  wall's problems, log sends and attempts on each one and see your entries on
+  the problem page. After a partial reset, edit the holds: problems that used a
+  hold that came off keep it, drawn dashed, and show "1 hold gone"; a filter
+  finds them. Spray walls stay on the phone: they are not shared, published or
+  included in backups.
 - Shiny Wall support: pick your Shiny Wall Standard wall (Mini, Standard, Max,
   Full or Max Full), browse its problems with the usual filters (grade, angle
   0–60°, holds, benchmarks, status) plus its categories (technical, physical,
