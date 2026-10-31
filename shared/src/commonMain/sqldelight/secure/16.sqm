@@ -1,0 +1,56 @@
+-- Migration 16 → 17: spray walls (FEAT-078).
+--
+-- Four new tables for a climber's own photographed wall, its holds, the
+-- climbs set on it and the ascents logged on them. Purely additive, so every
+-- earlier secure database upgrades untouched, and an older app that opens a
+-- downgraded file simply does not know the tables. The schema is described in
+-- com/cruxcoach/db/secure/SprayWalls.sq.
+
+CREATE TABLE spray_wall (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    photo_file TEXT NOT NULL,
+    photo_width INTEGER NOT NULL,
+    photo_height INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE spray_wall_hold (
+    wall_id TEXT NOT NULL,
+    hold_id INTEGER NOT NULL,
+    x REAL NOT NULL,
+    y REAL NOT NULL,
+    radius REAL NOT NULL,
+    added_at INTEGER NOT NULL,
+    removed_at INTEGER,
+    PRIMARY KEY (wall_id, hold_id)
+);
+
+CREATE TABLE spray_climb (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    wall_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    difficulty INTEGER,
+    holds TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX spray_climb_wall ON spray_climb(wall_id, created_at);
+
+CREATE TABLE spray_ascent (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    climb_uuid TEXT NOT NULL,
+    wall_id TEXT NOT NULL,
+    is_send INTEGER NOT NULL,
+    tries INTEGER NOT NULL DEFAULT 1,
+    difficulty INTEGER,
+    comment TEXT,
+    climbed_at TEXT NOT NULL
+);
+
+CREATE INDEX spray_ascent_climb ON spray_ascent(climb_uuid, climbed_at);
+CREATE INDEX spray_ascent_wall ON spray_ascent(wall_id, is_send);

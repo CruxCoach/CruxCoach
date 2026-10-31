@@ -52,6 +52,10 @@
          unless the user explicitly enables or confirms sending them. -->
     <exclude domain="file" path="crash_log.txt"/>
     <exclude domain="file" path="crash_log_prev.txt"/>
+    <!-- FEAT-078: spray-wall photos (pictures of a private wall, often at home).
+         Their holds and climbs live in the excluded encrypted database, so a
+         restored photo would have nothing to belong to. -->
+    <exclude domain="file" path="spray_walls"/>
     <!-- Exclude the entire database domain. The personal SQLCipher DB is
          identity-scoped and has a dynamic cruxcoach_secure_<pubkey>.db name,
          so a filename rule cannot cover every identity or its journal files.

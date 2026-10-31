@@ -1,0 +1,155 @@
+-- FEAT-078 spray walls: a climber's own wall, photographed once, with holds
+-- marked by hand on the photo, climbs set on those holds and ascents logged
+-- per climb. Private: lives in the per-identity encrypted database, is never
+-- synced, published or put into an offline share. The photo itself is a file
+-- in the app's private storage (filesDir/spray_walls/<photo_file>).
+--
+-- Coordinates are normalised to the stored photo: x and y run 0..1 across its
+-- width and height, radius is a fraction of its WIDTH.
+
+CREATE TABLE spray_wall (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    photo_file TEXT NOT NULL,
+    photo_width INTEGER NOT NULL,
+    photo_height INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- One row per hold for its whole life. A hold that a climb still uses keeps
+-- its row when it comes off the wall (removed_at set), so the climb can draw
+-- it and say it is gone; a hold no climb uses is deleted outright.
+CREATE TABLE spray_wall_hold (
+    wall_id TEXT NOT NULL,
+    hold_id INTEGER NOT NULL,
+    x REAL NOT NULL,
+    y REAL NOT NULL,
+    radius REAL NOT NULL,
+    added_at INTEGER NOT NULL,
+    removed_at INTEGER,
+    PRIMARY KEY (wall_id, hold_id)
+);
+
+-- holds: `12:start;13:hand;…` (see SprayClimbHolds). difficulty is the
+-- app's internal scale (10..34); NULL = not graded yet.
+CREATE TABLE spray_climb (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    wall_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    difficulty INTEGER,
+    holds TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX spray_climb_wall ON spray_climb(wall_id, created_at);
+
+CREATE TABLE spray_ascent (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    climb_uuid TEXT NOT NULL,
+    wall_id TEXT NOT NULL,
+    is_send INTEGER NOT NULL,
+    tries INTEGER NOT NULL DEFAULT 1,
+    difficulty INTEGER,
+    comment TEXT,
+    climbed_at TEXT NOT NULL
+);
+
+CREATE INDEX spray_ascent_climb ON spray_ascent(climb_uuid, climbed_at);
+CREATE INDEX spray_ascent_wall ON spray_ascent(wall_id, is_send);
+
+-- ═══ Walls ═══
+
+insertWall:
+INSERT INTO spray_wall(id, name, angle, photo_file, photo_width, photo_height, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+updateWall:
+UPDATE spray_wall SET name = ?, angle = ?, updated_at = ? WHERE id = ?;
+
+touchWall:
+UPDATE spray_wall SET updated_at = ? WHERE id = ?;
+
+selectWall:
+SELECT * FROM spray_wall WHERE id = ?;
+
+selectWallsWithCounts:
+SELECT spray_wall.*,
+    (SELECT COUNT(*) FROM spray_wall_hold h WHERE h.wall_id = spray_wall.id AND h.removed_at IS NULL) AS hold_count,
+    (SELECT COUNT(*) FROM spray_climb c WHERE c.wall_id = spray_wall.id) AS climb_count
+FROM spray_wall
+ORDER BY spray_wall.updated_at DESC;
+
+deleteWall:
+DELETE FROM spray_wall WHERE id = ?;
+
+-- ═══ Holds ═══
+
+selectHolds:
+SELECT * FROM spray_wall_hold WHERE wall_id = ? ORDER BY hold_id;
+
+maxHoldId:
+SELECT COALESCE(MAX(hold_id), 0) FROM spray_wall_hold WHERE wall_id = ?;
+
+insertHold:
+INSERT INTO spray_wall_hold(wall_id, hold_id, x, y, radius, added_at, removed_at)
+VALUES (?, ?, ?, ?, ?, ?, NULL);
+
+updateHold:
+UPDATE spray_wall_hold SET x = ?, y = ?, radius = ? WHERE wall_id = ? AND hold_id = ?;
+
+markHoldRemoved:
+UPDATE spray_wall_hold SET removed_at = ? WHERE wall_id = ? AND hold_id = ? AND removed_at IS NULL;
+
+deleteHold:
+DELETE FROM spray_wall_hold WHERE wall_id = ? AND hold_id = ?;
+
+deleteHoldsForWall:
+DELETE FROM spray_wall_hold WHERE wall_id = ?;
+
+-- ═══ Climbs ═══
+
+insertClimb:
+INSERT INTO spray_climb(uuid, wall_id, name, description, difficulty, holds, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+updateClimb:
+UPDATE spray_climb SET name = ?, description = ?, difficulty = ?, holds = ?, updated_at = ? WHERE uuid = ?;
+
+selectClimbs:
+SELECT * FROM spray_climb WHERE wall_id = ? ORDER BY created_at DESC;
+
+selectClimb:
+SELECT * FROM spray_climb WHERE uuid = ?;
+
+deleteClimb:
+DELETE FROM spray_climb WHERE uuid = ?;
+
+deleteClimbsForWall:
+DELETE FROM spray_climb WHERE wall_id = ?;
+
+-- ═══ Ascents ═══
+
+insertAscent:
+INSERT INTO spray_ascent(uuid, climb_uuid, wall_id, is_send, tries, difficulty, comment, climbed_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAscentsForClimb:
+SELECT * FROM spray_ascent WHERE climb_uuid = ? ORDER BY climbed_at DESC;
+
+sendCountsForWall:
+SELECT climb_uuid, COUNT(*) AS sends FROM spray_ascent
+WHERE wall_id = ? AND is_send = 1
+GROUP BY climb_uuid;
+
+deleteAscent:
+DELETE FROM spray_ascent WHERE uuid = ?;
+
+deleteAscentsForClimb:
+DELETE FROM spray_ascent WHERE climb_uuid = ?;
+
+deleteAscentsForWall:
+DELETE FROM spray_ascent WHERE wall_id = ?;
