@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FEAT-078 Spraywände. Englische Vorlage in values/strings_spray_wall.xml. -->
+<resources>
+    <string name="spray_walls_title">Spraywände</string>
+    <string name="spray_walls_empty">Fotografiere deine eigene Wand, markiere ihre Griffe und schraube Boulder darauf. Alles bleibt auf diesem Telefon.</string>
+    <string name="spray_walls_private_note">Spraywände bleiben auf diesem Telefon. Sie werden nicht geteilt, veröffentlicht oder gesichert.</string>
+    <string name="spray_wall_add">Wand hinzufügen</string>
+    <string name="spray_wall_counts">Griffe: %1$d · Boulder: %2$d · %3$d°</string>
+    <string name="spray_cd_photo">Foto der Wand mit ihren Griffen</string>
+    <string name="spray_zoom_reset">Zoom zurücksetzen</string>
+
+    <!-- Wand einrichten -->
+    <string name="spray_wall_new_title">Neue Spraywand</string>
+    <string name="spray_wall_edit_title">Wand bearbeiten</string>
+    <string name="spray_wall_photo_hint">Fotografiere frontal, mit der ganzen Wand im Bild und gleichmäßigem Licht.</string>
+    <string name="spray_wall_take_photo">Foto aufnehmen</string>
+    <string name="spray_wall_pick_photo">Aus deinen Fotos wählen</string>
+    <string name="spray_wall_photo_change">Anderes Foto wählen</string>
+    <string name="spray_wall_photo_fixed">Das Foto bleibt bei der Wand. Nach einem kompletten Umschrauben mit neuem Foto legst du eine neue Wand an.</string>
+    <string name="spray_wall_photo_failed">Dieses Foto ließ sich nicht lesen. Versuche ein anderes.</string>
+    <string name="spray_wall_photo_loading">Foto wird vorbereitet …</string>
+    <string name="spray_wall_photo_missing">Wähle zuerst ein Foto der Wand.</string>
+    <string name="spray_wall_name">Name</string>
+    <string name="spray_wall_name_default">Meine Spraywand</string>
+    <string name="spray_wall_angle">Winkel: %1$d°</string>
+    <string name="spray_wall_angle_hint">Der Winkel wird bei jeder Begehung mitgespeichert.</string>
+    <string name="spray_wall_continue">Weiter zu den Griffen</string>
+    <string name="spray_wall_delete">Wand löschen</string>
+    <string name="spray_wall_delete_confirm_title">%1$s löschen?</string>
+    <string name="spray_wall_delete_confirm_text">Das entfernt Foto, alle Griffe, Boulder und ihre Logbucheinträge von diesem Telefon. Das lässt sich nicht rückgängig machen.</string>
+
+    <!-- Griffe markieren -->
+    <string name="spray_holds_title">Griffe markieren</string>
+    <string name="spray_holds_help">Tippe einen Griff an, um ihn auszuwählen, zieh ihn zum Verschieben und stell mit dem Regler seine Größe ein. Halte die Wand gedrückt, um einen Griff hinzuzufügen, oder schalte Hinzufügen ein, um mehrere nacheinander zu setzen. Mit zwei Fingern zoomen.</string>
+    <string name="spray_holds_mode_add">Hinzufügen</string>
+    <string name="spray_holds_size">Größe</string>
+    <string name="spray_holds_delete">Griff entfernen</string>
+    <string name="spray_holds_undo">Rückgängig</string>
+    <string name="spray_holds_redo">Wiederholen</string>
+    <string name="spray_holds_count">Griffe: %1$d</string>
+    <string name="spray_holds_saved">Griffe gespeichert</string>
+    <string name="spray_holds_saved_kept">Griffe gespeichert. %1$d entfernte Griffe bleiben bei den Bouldern, die sie nutzen, und sind dort als fehlend markiert.</string>
+    <string name="spray_holds_limit">Eine Wand hat höchstens %1$d Griffe.</string>
+    <string name="spray_holds_save_failed">Die Griffe ließen sich nicht speichern.</string>
+    <string name="spray_discard_title">Änderungen verwerfen?</string>
+    <string name="spray_discard_text">Deine Änderungen sind noch nicht gespeichert.</string>
+    <string name="spray_discard_confirm">Verwerfen</string>
+    <string name="spray_discard_keep">Weiter bearbeiten</string>
+
+    <!-- Boulder einer Wand -->
+    <string name="spray_wall_no_holds">Markiere zuerst die Griffe der Wand, dann schraubst du Boulder darauf.</string>
+    <string name="spray_wall_edit_holds">Griffe bearbeiten</string>
+    <string name="spray_climb_new">Neuer Boulder</string>
+    <string name="spray_climbs_empty">Auf dieser Wand gibt es noch keine Boulder.</string>
+    <string name="spray_climbs_none_match">Keine passenden Boulder.</string>
+    <string name="spray_filter_all">Alle</string>
+    <string name="spray_filter_intact">Vollständig</string>
+    <string name="spray_filter_lost">Griffe fehlen</string>
+    <string name="spray_sort_newest">Neueste</string>
+    <string name="spray_sort_name">Name</string>
+    <string name="spray_sort_grade">Grad</string>
+    <string name="spray_search">Boulder suchen</string>
+    <string name="spray_climb_project">Projekt</string>
+    <string name="spray_climb_sends">Begehungen: %1$d</string>
+    <plurals name="spray_climb_holds_gone">
+        <item quantity="one">%d Griff fehlt</item>
+        <item quantity="other">%d Griffe fehlen</item>
+    </plurals>
+
+    <!-- Boulder-Editor -->
+    <string name="spray_climb_new_title">Neuer Boulder</string>
+    <string name="spray_climb_edit_title">Boulder bearbeiten</string>
+    <string name="spray_climb_brush_hint">Wähle eine Rolle und tippe Griffe an. Ein zweites Antippen nimmt den Griff wieder aus dem Boulder.</string>
+    <string name="spray_climb_name">Name</string>
+    <string name="spray_climb_description">Beschreibung (optional)</string>
+    <string name="spray_climb_graded">Grad vergeben</string>
+    <string name="spray_climb_ungraded_hint">Ohne Grad erscheint der Boulder als Projekt.</string>
+    <string name="spray_climb_grade">Grad: %1$s</string>
+    <string name="spray_climb_role_limit">Höchstens zwei Start- und zwei Top-Griffe.</string>
+    <string name="spray_climb_delete">Boulder löschen</string>
+    <string name="spray_climb_delete_confirm_title">%1$s löschen?</string>
+    <string name="spray_climb_delete_confirm_text">Damit werden auch seine Logbucheinträge gelöscht.</string>
+    <string name="spray_climb_save_failed">Der Boulder ließ sich nicht speichern.</string>
+    <string name="spray_problem_name">Gib dem Boulder einen Namen.</string>
+    <string name="spray_problem_name_long">Der Name ist zu lang.</string>
+    <string name="spray_problem_start">Markiere einen oder zwei Start-Griffe.</string>
+    <string name="spray_problem_finish">Markiere einen oder zwei Top-Griffe.</string>
+    <string name="spray_problem_few_holds">Ein Boulder braucht mindestens %1$d Griffe.</string>
+    <string name="spray_problem_many_holds">Ein Boulder hat höchstens %1$d Griffe.</string>
+    <string name="spray_problem_gone">Ein Griff, der nicht mehr an der Wand ist, lässt sich nicht hinzufügen.</string>
+
+    <!-- Boulder-Ansicht und Logbuch -->
+    <plurals name="spray_climb_lost_banner">
+        <item quantity="one">%d Griff dieses Boulders ist nicht mehr an der Wand. Er ist gestrichelt gezeichnet.</item>
+        <item quantity="other">%d Griffe dieses Boulders sind nicht mehr an der Wand. Sie sind gestrichelt gezeichnet.</item>
+    </plurals>
+    <string name="spray_climb_edit">Boulder bearbeiten</string>
+    <string name="spray_log_send">Begehung eintragen</string>
+    <string name="spray_log_attempt">Versuche eintragen</string>
+    <string name="spray_log_tries">Versuche: %1$d</string>
+    <string name="spray_log_rate">Grad bewerten</string>
+    <string name="spray_log_comment">Kommentar (optional)</string>
+    <string name="spray_log_saved">Eingetragen</string>
+    <string name="spray_logbook_title">Dein Logbuch</string>
+    <string name="spray_logbook_empty">Für diesen Boulder ist noch nichts eingetragen.</string>
+    <string name="spray_logbook_send">Begehung · %1$s</string>
+    <string name="spray_logbook_attempt">Versuche · %1$s</string>
+    <string name="spray_logbook_tries">Versuche: %1$d</string>
+    <string name="spray_logbook_delete">Eintrag löschen</string>
+    <string name="spray_not_found">Diese Wand oder dieser Boulder existiert nicht mehr.</string>
+</resources>

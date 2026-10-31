@@ -1,0 +1,316 @@
+package com.cruxcoach.android.ui.spraywall
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.R
+import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.spraywall.SprayWallPhotoStore
+import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.domain.spraywall.SprayClimb
+import com.cruxcoach.domain.spraywall.SprayClimbFilter
+import com.cruxcoach.domain.spraywall.SprayClimbList
+import com.cruxcoach.domain.spraywall.SprayClimbRow
+import com.cruxcoach.domain.spraywall.SprayClimbSort
+import com.cruxcoach.domain.spraywall.SprayHold
+import com.cruxcoach.domain.spraywall.SprayWall
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+data class SprayWallUiState(
+    val loading: Boolean = true,
+    val notFound: Boolean = false,
+    val wall: SprayWall? = null,
+    val photo: ImageBitmap? = null,
+    val holds: List<SprayHold> = emptyList(),
+    val climbs: List<SprayClimb> = emptyList(),
+    val sends: Map<String, Int> = emptyMap(),
+    val filter: SprayClimbFilter = SprayClimbFilter.ALL,
+    val sort: SprayClimbSort = SprayClimbSort.NEWEST,
+    val query: String = "",
+    val gradeScale: GradeScale = GradeScale.FRENCH,
+) {
+    val holdsOnWall: Set<Long> get() = holds.filter { it.isOnWall }.mapTo(HashSet()) { it.id }
+    val rows: List<SprayClimbRow> get() = SprayClimbList.rows(climbs, holdsOnWall, sends, filter, sort, query)
+    val anyLostHolds: Boolean get() = climbs.any { c -> c.holds.keys.any { it !in holdsOnWall } }
+}
+
+@HiltViewModel
+class SprayWallViewModel @Inject constructor(
+    savedState: SavedStateHandle,
+    private val repository: SprayWallRepository,
+    private val photos: SprayWallPhotoStore,
+    private val preferences: UserPreferences,
+) : ViewModel() {
+    private val wallId: String = savedState[SprayWallRoutes.ARG_WALL] ?: ""
+    private val _state = MutableStateFlow(SprayWallUiState())
+    val state: StateFlow<SprayWallUiState> = _state.asStateFlow()
+
+    init {
+        viewModelScope.launch { repository.changes.collect { reload() } }
+        viewModelScope.launch { preferences.gradeScale.collect { scale -> _state.update { it.copy(gradeScale = scale) } } }
+    }
+
+    private suspend fun reload() {
+        val wall = repository.wall(wallId)
+        if (wall == null) {
+            _state.update { it.copy(loading = false, notFound = true) }
+            return
+        }
+        _state.update {
+            it.copy(
+                loading = false, wall = wall,
+                holds = repository.holds(wallId),
+                climbs = repository.climbs(wallId),
+                sends = repository.sendCounts(wallId),
+            )
+        }
+        if (_state.value.photo == null) {
+            val bitmap = photos.load(wall.photoFile, PREVIEW_LONG_SIDE)?.asImageBitmap()
+            _state.update { it.copy(photo = bitmap) }
+        }
+    }
+
+    fun setFilter(filter: SprayClimbFilter) = _state.update { it.copy(filter = filter) }
+    fun setSort(sort: SprayClimbSort) = _state.update { it.copy(sort = sort) }
+    fun setQuery(query: String) = _state.update { it.copy(query = query) }
+
+    private companion object {
+        const val PREVIEW_LONG_SIDE = 1600
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SprayWallScreen(
+    onBack: () -> Unit,
+    onEditWall: () -> Unit,
+    onEditHolds: () -> Unit,
+    onNewClimb: () -> Unit,
+    onOpenClimb: (String) -> Unit,
+    viewModel: SprayWallViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    var menuOpen by remember { mutableStateOf(false) }
+    val wall = state.wall
+    val hasHolds = state.holdsOnWall.isNotEmpty()
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(wall?.name ?: stringResource(R.string.spray_walls_title)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                    }
+                },
+                actions = {
+                    if (wall != null) {
+                        IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("spray_wall_menu")) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more_options))
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.spray_wall_edit_holds)) },
+                                onClick = { menuOpen = false; onEditHolds() },
+                                modifier = Modifier.testTag("spray_menu_holds"),
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.spray_wall_edit_title)) },
+                                onClick = { menuOpen = false; onEditWall() },
+                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                modifier = Modifier.testTag("spray_menu_edit"),
+                            )
+                        }
+                    }
+                },
+            )
+        },
+        floatingActionButton = {
+            if (hasHolds) {
+                ExtendedFloatingActionButton(
+                    onClick = onNewClimb,
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text(stringResource(R.string.spray_climb_new)) },
+                    modifier = Modifier.testTag("spray_climb_new"),
+                )
+            }
+        },
+    ) { padding ->
+        if (state.notFound || wall == null) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                if (state.notFound) Text(stringResource(R.string.spray_not_found))
+            }
+            return@Scaffold
+        }
+        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 96.dp)) {
+            item {
+                SprayWallCanvas(
+                    photo = state.photo,
+                    photoWidth = wall.photoWidth,
+                    photoHeight = wall.photoHeight,
+                    holds = state.holds.filter { it.isOnWall }.map { SprayCanvasHold(it.id, it.x, it.y, it.radius, SprayHoldLook.FAINT) },
+                    interactive = false,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(wall.aspectRatio.coerceIn(0.5f, 2f)).heightIn(max = 420.dp),
+                )
+            }
+            if (!hasHolds) {
+                item {
+                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.spray_wall_no_holds), textAlign = TextAlign.Center)
+                        Button(onClick = onEditHolds, modifier = Modifier.padding(top = 12.dp).testTag("spray_wall_mark_holds")) {
+                            Text(stringResource(R.string.spray_holds_title))
+                        }
+                    }
+                }
+                return@LazyColumn
+            }
+            item { ListControls(state, viewModel) }
+            val rows = state.rows
+            if (rows.isEmpty()) {
+                item {
+                    Text(
+                        stringResource(if (state.climbs.isEmpty()) R.string.spray_climbs_empty else R.string.spray_climbs_none_match),
+                        modifier = Modifier.fillMaxWidth().padding(24.dp).testTag("spray_climbs_empty"),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+            items(rows, key = { it.climb.uuid }) { row ->
+                ClimbRow(row, state.gradeScale) { onOpenClimb(row.climb.uuid) }
+                HorizontalDivider()
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListControls(state: SprayWallUiState, viewModel: SprayWallViewModel) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state.climbs.size > SEARCH_FROM) {
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = viewModel::setQuery,
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                placeholder = { Text(stringResource(R.string.spray_search)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().testTag("spray_search"),
+            )
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // The holds filter only matters once a climb has lost a hold.
+            if (state.anyLostHolds || state.filter != SprayClimbFilter.ALL) {
+                listOf(
+                    SprayClimbFilter.ALL to R.string.spray_filter_all,
+                    SprayClimbFilter.INTACT to R.string.spray_filter_intact,
+                    SprayClimbFilter.LOST_HOLDS to R.string.spray_filter_lost,
+                ).forEach { (filter, label) ->
+                    FilterChip(
+                        selected = state.filter == filter,
+                        onClick = { viewModel.setFilter(filter) },
+                        label = { Text(stringResource(label)) },
+                        modifier = Modifier.testTag("spray_filter_${filter.name.lowercase()}"),
+                    )
+                }
+            }
+            listOf(
+                SprayClimbSort.NEWEST to R.string.spray_sort_newest,
+                SprayClimbSort.NAME to R.string.spray_sort_name,
+                SprayClimbSort.GRADE to R.string.spray_sort_grade,
+            ).forEach { (sort, label) ->
+                FilterChip(
+                    selected = state.sort == sort,
+                    onClick = { viewModel.setSort(sort) },
+                    label = { Text(stringResource(label)) },
+                    modifier = Modifier.testTag("spray_sort_${sort.name.lowercase()}"),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClimbRow(row: SprayClimbRow, scale: GradeScale, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(row.climb.name) },
+        supportingContent = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (row.sends > 0) Text(stringResource(R.string.spray_climb_sends, row.sends), style = MaterialTheme.typography.bodySmall)
+                if (row.lostHolds > 0) {
+                    AssistChip(
+                        onClick = onClick,
+                        label = { Text(pluralStringResource(R.plurals.spray_climb_holds_gone, row.lostHolds, row.lostHolds)) },
+                        modifier = Modifier.testTag("spray_lost_chip"),
+                    )
+                }
+            }
+        },
+        trailingContent = {
+            Text(
+                row.climb.difficulty?.let { formatSprayGrade(it, scale) } ?: stringResource(R.string.spray_climb_project),
+                style = MaterialTheme.typography.titleMedium,
+            )
+        },
+        modifier = Modifier.clickable(onClick = onClick).testTag("spray_climb_row"),
+    )
+}
+
+private const val SEARCH_FROM = 8

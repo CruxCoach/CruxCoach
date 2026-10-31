@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FEAT-078 spray walls. German copy in values-de/strings_spray_wall.xml. -->
+<resources>
+    <string name="spray_walls_title">Spray walls</string>
+    <string name="spray_walls_empty">Photograph your own wall, mark its holds and set climbs on it. Everything stays on this phone.</string>
+    <string name="spray_walls_private_note">Spray walls stay on this phone. They are not shared, published or included in backups.</string>
+    <string name="spray_wall_add">Add a wall</string>
+    <string name="spray_wall_counts">Holds: %1$d · Climbs: %2$d · %3$d°</string>
+    <string name="spray_cd_photo">Photo of the wall with its holds</string>
+    <string name="spray_zoom_reset">Reset zoom</string>
+
+    <!-- Wall setup -->
+    <string name="spray_wall_new_title">New spray wall</string>
+    <string name="spray_wall_edit_title">Edit wall</string>
+    <string name="spray_wall_photo_hint">Take the photo straight on, with the whole wall in the picture and even light.</string>
+    <string name="spray_wall_take_photo">Take a photo</string>
+    <string name="spray_wall_pick_photo">Choose from your photos</string>
+    <string name="spray_wall_photo_change">Choose another photo</string>
+    <string name="spray_wall_photo_fixed">The photo stays with the wall. After a full reset with a new photo, add a new wall.</string>
+    <string name="spray_wall_photo_failed">This photo could not be read. Try another one.</string>
+    <string name="spray_wall_photo_loading">Preparing the photo…</string>
+    <string name="spray_wall_photo_missing">Pick a photo of the wall first.</string>
+    <string name="spray_wall_name">Name</string>
+    <string name="spray_wall_name_default">My spray wall</string>
+    <string name="spray_wall_angle">Angle: %1$d°</string>
+    <string name="spray_wall_angle_hint">The angle is logged with every ascent.</string>
+    <string name="spray_wall_continue">Continue to the holds</string>
+    <string name="spray_wall_delete">Delete wall</string>
+    <string name="spray_wall_delete_confirm_title">Delete %1$s?</string>
+    <string name="spray_wall_delete_confirm_text">This removes the photo, all holds, climbs and their logbook entries from this phone. It can\'t be undone.</string>
+
+    <!-- Hold editor -->
+    <string name="spray_holds_title">Mark holds</string>
+    <string name="spray_holds_help">Tap a hold to pick it, drag it to move it and use the slider to size it. Press and hold the wall to add a hold, or switch on Add to place several in a row. Pinch to zoom.</string>
+    <string name="spray_holds_mode_add">Add</string>
+    <string name="spray_holds_size">Size</string>
+    <string name="spray_holds_delete">Remove hold</string>
+    <string name="spray_holds_undo">Undo</string>
+    <string name="spray_holds_redo">Redo</string>
+    <string name="spray_holds_count">Holds: %1$d</string>
+    <string name="spray_holds_saved">Holds saved</string>
+    <string name="spray_holds_saved_kept">Holds saved. %1$d removed holds stay on the climbs that use them, marked as gone.</string>
+    <string name="spray_holds_limit">A wall can have at most %1$d holds.</string>
+    <string name="spray_holds_save_failed">The holds could not be saved.</string>
+    <string name="spray_discard_title">Discard changes?</string>
+    <string name="spray_discard_text">Your changes are not saved yet.</string>
+    <string name="spray_discard_confirm">Discard</string>
+    <string name="spray_discard_keep">Keep editing</string>
+
+    <!-- A wall's climbs -->
+    <string name="spray_wall_no_holds">Mark the wall\'s holds first, then set climbs on them.</string>
+    <string name="spray_wall_edit_holds">Edit holds</string>
+    <string name="spray_climb_new">New climb</string>
+    <string name="spray_climbs_empty">No climbs on this wall yet.</string>
+    <string name="spray_climbs_none_match">No climbs match.</string>
+    <string name="spray_filter_all">All</string>
+    <string name="spray_filter_intact">Intact</string>
+    <string name="spray_filter_lost">Holds gone</string>
+    <string name="spray_sort_newest">Newest</string>
+    <string name="spray_sort_name">Name</string>
+    <string name="spray_sort_grade">Grade</string>
+    <string name="spray_search">Search climbs</string>
+    <string name="spray_climb_project">Project</string>
+    <string name="spray_climb_sends">Sends: %1$d</string>
+    <plurals name="spray_climb_holds_gone">
+        <item quantity="one">%d hold gone</item>
+        <item quantity="other">%d holds gone</item>
+    </plurals>
+
+    <!-- Climb editor -->
+    <string name="spray_climb_new_title">New climb</string>
+    <string name="spray_climb_edit_title">Edit climb</string>
+    <string name="spray_climb_brush_hint">Pick a role, then tap holds. Tap a hold again to take it off the climb.</string>
+    <string name="spray_climb_name">Name</string>
+    <string name="spray_climb_description">Description (optional)</string>
+    <string name="spray_climb_graded">Give it a grade</string>
+    <string name="spray_climb_ungraded_hint">Without a grade the climb is listed as a project.</string>
+    <string name="spray_climb_grade">Grade: %1$s</string>
+    <string name="spray_climb_role_limit">At most two start and two finish holds.</string>
+    <string name="spray_climb_delete">Delete climb</string>
+    <string name="spray_climb_delete_confirm_title">Delete %1$s?</string>
+    <string name="spray_climb_delete_confirm_text">This also deletes its logbook entries.</string>
+    <string name="spray_climb_save_failed">The climb could not be saved.</string>
+    <string name="spray_problem_name">Give the climb a name.</string>
+    <string name="spray_problem_name_long">The name is too long.</string>
+    <string name="spray_problem_start">Mark one or two start holds.</string>
+    <string name="spray_problem_finish">Mark one or two finish holds.</string>
+    <string name="spray_problem_few_holds">A climb needs at least %1$d holds.</string>
+    <string name="spray_problem_many_holds">A climb can have at most %1$d holds.</string>
+    <string name="spray_problem_gone">A hold that is no longer on the wall can\'t be added.</string>
+
+    <!-- Climb detail and logbook -->
+    <plurals name="spray_climb_lost_banner">
+        <item quantity="one">%d hold of this climb is no longer on the wall. It is drawn dashed.</item>
+        <item quantity="other">%d holds of this climb are no longer on the wall. They are drawn dashed.</item>
+    </plurals>
+    <string name="spray_climb_edit">Edit climb</string>
+    <string name="spray_log_send">Log a send</string>
+    <string name="spray_log_attempt">Log attempts</string>
+    <string name="spray_log_tries">Tries: %1$d</string>
+    <string name="spray_log_rate">Rate the grade</string>
+    <string name="spray_log_comment">Comment (optional)</string>
+    <string name="spray_log_saved">Logged</string>
+    <string name="spray_logbook_title">Your logbook</string>
+    <string name="spray_logbook_empty">Nothing logged on this climb yet.</string>
+    <string name="spray_logbook_send">Send · %1$s</string>
+    <string name="spray_logbook_attempt">Attempts · %1$s</string>
+    <string name="spray_logbook_tries">Tries: %1$d</string>
+    <string name="spray_logbook_delete">Delete entry</string>
+    <string name="spray_not_found">This wall or climb no longer exists.</string>
+</resources>
