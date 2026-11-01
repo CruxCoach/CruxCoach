@@ -60,7 +60,7 @@ private fun distributionChartViewLabel(view: DistributionChartView): String = wh
 }
 
 @Composable
-private fun boardBrandLabel(brand: String): String = when (val b = BoardBrand.fromWire(brand)) {
+internal fun boardBrandLabel(brand: String): String = when (val b = BoardBrand.fromWire(brand)) {
     BoardBrand.KILTER -> stringResource(R.string.board_selection_brand_kilter)
     BoardBrand.MOONBOARD -> stringResource(R.string.board_selection_brand_moonboard)
     // Aurora-family + any future brand: the proper-noun display name (e.g.
@@ -209,6 +209,9 @@ internal fun BoardStatsSheet(
     boardFilter: String? = null,
     availableBoardBrands: List<String> = emptyList(),
     boardComparison: List<BoardComparisonEntry> = emptyList(),
+    crossBoard: CrossBoardStats = CrossBoardStats(),
+    crossBoardView: CrossBoardView = CrossBoardView.TRIES_PER_GRADE,
+    onCrossBoardViewSelect: (CrossBoardView) -> Unit = {},
     heatmapBoardOptions: List<com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption> = emptyList(),
     heatmapBoardSelection: com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption? = null,
     onHeatmapBoardSelect: (com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption?) -> Unit = {},
@@ -390,6 +393,18 @@ internal fun BoardStatsSheet(
                         }
                     }
                 }
+            }
+
+            // Tries per grade and month, boards side by side (#44). Like the
+            // comparison row it spans all boards whatever the board filter is,
+            // and needs sends on two boards in the interval to compare anything.
+            // Below the charts, so the per-board charts stay at the top.
+            if (crossBoard.boards.size > 1) {
+                CrossBoardSection(
+                    stats = crossBoard,
+                    view = crossBoardView,
+                    onViewSelect = onCrossBoardViewSelect,
+                )
             }
 
             // Heatmap section — full mode picker (Meine Sends / Global /

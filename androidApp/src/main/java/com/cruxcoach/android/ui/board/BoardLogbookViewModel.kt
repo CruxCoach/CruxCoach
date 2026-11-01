@@ -152,6 +152,10 @@ data class BoardLogbookState(
     // selected interval. Computed across ALL boards (not scoped to boardFilter)
     // so the user can compare them side by side; only surfaced when >1 board.
     val boardComparison: List<BoardComparisonEntry> = emptyList(),
+    // Tries to send per grade and month, boards side by side (#44). Like
+    // [boardComparison] it spans all boards and is shown only for more than one.
+    val crossBoard: CrossBoardStats = CrossBoardStats(),
+    val crossBoardView: CrossBoardView = CrossBoardView.TRIES_PER_GRADE,
     // Own-Kilter-climb publish gate for logbook entries: NORMALIZED
     // (lowercase, no dashes) climb uuids the connected Kilter account
     // authored that are not yet published to the CruxCoach community.
@@ -612,6 +616,10 @@ class BoardLogbookViewModel @Inject constructor(
         _state.update { it.copy(distributionChartView = view) }
     }
 
+    fun setCrossBoardView(view: CrossBoardView) {
+        _state.update { it.copy(crossBoardView = view) }
+    }
+
     fun toggleStatsSheet() {
         val opening = !_state.value.showStatsSheet
         _state.update { it.copy(showStatsSheet = opening) }
@@ -638,7 +646,7 @@ class BoardLogbookViewModel @Inject constructor(
                 val scoped = s.boardFilter
                     ?.let { bf -> allAscents.filter { it.brand == BoardBrand.fromWire(bf) } }
                     ?: allAscents
-                val (stats, comparison) = withContext(Dispatchers.Default) {
+                val (stats, comparison, crossBoard) = withContext(Dispatchers.Default) {
                     val st = BoardStatsComputer.computeStats(
                         scoped, s.statsInterval, s.gradeScale,
                         s.customDateFrom, s.customDateTo, context
@@ -649,9 +657,15 @@ class BoardLogbookViewModel @Inject constructor(
                         allAscents, s.statsInterval, s.gradeScale,
                         s.customDateFrom, s.customDateTo
                     )
-                    st to cmp
+                    val cross = CrossBoardStatsComputer.compute(
+                        allAscents, s.statsInterval, s.gradeScale,
+                        s.customDateFrom, s.customDateTo, context
+                    )
+                    Triple(st, cmp, cross)
                 }
-                _state.update { it.copy(stats = stats, boardComparison = comparison) }
+                _state.update {
+                    it.copy(stats = stats, boardComparison = comparison, crossBoard = crossBoard)
+                }
                 recomputeHeatmap()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

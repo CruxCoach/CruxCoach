@@ -22,6 +22,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   board picker.
 - Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
   data is refreshed (2,933 venues).
+- Stats across boards: if you climb on more than one board, the logbook statistics
+  show how many tries you need to send each grade on each board, side by side, and
+  per month the hardest problem you sent for the first time on each board with the
+  average tries. Tries from earlier sessions count until the first send; repeats do
+  not. Each cell shows how many problems it rests on, and cells with fewer than
+  three are greyed out. Works with your existing logbook.
 - Wall games, from the main menu or a problem's menu ("Play as a game"):
   "Floor is lava" (lit rows rise from the bottom, five speeds), "Endurance" (a
   problem appears row by row, five waiting times), "Hold thief" (a random

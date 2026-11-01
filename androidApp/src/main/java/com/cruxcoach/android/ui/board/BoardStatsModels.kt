@@ -102,6 +102,11 @@ enum class DistributionChartView {
     PERIOD_COMPARISON
 }
 
+enum class CrossBoardView {
+    TRIES_PER_GRADE,
+    PER_MONTH,
+}
+
 /** Enhanced session summary for end-of-session sheet */
 data class EnhancedSessionSummary(
     val warmupCount: Int = 0,

@@ -1622,6 +1622,18 @@
     <string name="board_stats_angle_distribution">Angle Distribution</string>
     <string name="board_stats_board_comparison">Board Comparison</string>
     <string name="board_stats_board_comparison_board">Board</string>
+    <string name="board_stats_cross_board_tries">Tries to send per grade</string>
+    <string name="board_stats_cross_board_months">Progress per month</string>
+    <string name="board_stats_cross_board_tries_hint">Average tries until you sent a problem for the first time, per board. Tries from earlier sessions count, repeats after the send do not.</string>
+    <string name="board_stats_cross_board_months_hint">Per board: the hardest problem you sent for the first time that month, and the average tries of that month\'s new sends.</string>
+    <string name="board_stats_cross_board_grade">Grade</string>
+    <string name="board_stats_cross_board_month">Month</string>
+    <string name="board_stats_cross_board_tries_value">%1$.1f tries</string>
+    <string name="board_stats_cross_board_small_sample">Grey: fewer than %1$d problems, too few for a reliable average.</string>
+    <plurals name="board_stats_cross_board_problems">
+        <item quantity="one">%d problem</item>
+        <item quantity="other">%d problems</item>
+    </plurals>
     <string name="board_stats_attempt">Attempted</string>
     <string name="board_stats_avg_sessions_week">Sessions/week (8w)</string>
     <string name="board_stats_date_range">Date range…</string>

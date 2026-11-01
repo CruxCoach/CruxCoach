@@ -1665,6 +1665,18 @@
     <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
     <string name="board_stats_board_comparison">Board-Vergleich</string>
     <string name="board_stats_board_comparison_board">Board</string>
+    <string name="board_stats_cross_board_tries">Versuche bis zur Begehung je Grad</string>
+    <string name="board_stats_cross_board_months">Fortschritt je Monat</string>
+    <string name="board_stats_cross_board_tries_hint">Durchschnittliche Versuche, bis du ein Problem zum ersten Mal geschafft hast, je Board. Versuche aus früheren Sessions zählen mit, Wiederholungen nach der Begehung nicht.</string>
+    <string name="board_stats_cross_board_months_hint">Je Board: das schwerste Problem, das du in dem Monat zum ersten Mal geschafft hast, und die durchschnittlichen Versuche der neuen Begehungen des Monats.</string>
+    <string name="board_stats_cross_board_grade">Grad</string>
+    <string name="board_stats_cross_board_month">Monat</string>
+    <string name="board_stats_cross_board_tries_value">%1$.1f Versuche</string>
+    <string name="board_stats_cross_board_small_sample">Grau: weniger als %1$d Probleme, zu wenige für einen verlässlichen Durchschnitt.</string>
+    <plurals name="board_stats_cross_board_problems">
+        <item quantity="one">%d Problem</item>
+        <item quantity="other">%d Probleme</item>
+    </plurals>
     <string name="board_stats_attempt">Versucht</string>
     <string name="board_stats_avg_sessions_week">Sessions/Woche (8 W.)</string>
     <string name="board_stats_date_range">Zeitraum…</string>
