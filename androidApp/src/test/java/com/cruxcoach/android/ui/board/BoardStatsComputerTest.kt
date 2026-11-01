@@ -28,7 +28,7 @@ class BoardStatsComputerTest {
     // Pin "now" so fixture construction and the production code under
     // test see exactly the same instant. Without this a midnight-boundary
     // race made `filterByInterval DAYS_30 drops ascents older than cutoff`
-    // and the periodComparison cases potentially flaky.
+    // potentially flaky.
     private val fixedClock: Clock = Clock.fixed(Instant.parse("2026-03-15T12:00:00Z"), ZoneOffset.UTC)
     private val today: LocalDate = LocalDate.now(fixedClock)
 
@@ -157,7 +157,6 @@ class BoardStatsComputerTest {
         assertEquals(0, stats.uniqueClimbs)
         assertTrue(stats.gradePyramid.isEmpty())
         assertNull(stats.hardestGrade)
-        assertNull(stats.periodComparison)
     }
 
     // -- computeStats: send / bid split --
@@ -320,30 +319,6 @@ class BoardStatsComputerTest {
         assertEquals(1, wk.mediumCount)
         assertEquals(1, wk.hardCount)
         assertEquals(1, wk.eliteCount)
-    }
-
-    // -- Period comparison --
-
-    @Test
-    fun `periodComparison is null for interval ALL`() {
-        val stats = BoardStatsComputer.computeStats(
-            ascents = listOf(ascent()),
-            interval = StatsTimeInterval.ALL,
-            gradeScale = GradeScale.V_SCALE,
-        )
-        assertNull(stats.periodComparison)
-    }
-
-    @Test
-    fun `periodComparison is null when neither period has data`() {
-        val veryOld = today.minusDays(400).toString()
-        val stats = BoardStatsComputer.computeStats(
-            ascents = listOf(ascent(climbedAt = "${veryOld}T10:00:00")),
-            clock = fixedClock,
-            interval = StatsTimeInterval.DAYS_30,
-            gradeScale = GradeScale.V_SCALE,
-        )
-        assertNull(stats.periodComparison)
     }
 
     // -- Rolling grade-performance progression --

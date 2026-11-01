@@ -45,12 +45,10 @@ class BoardStatsHelpTest {
                             statsInterval = StatsTimeInterval.ALL,
                             gradeChartView = selected.value,
                             timeChartView = TimeChartView.SENDS_OVER_TIME,
-                            distributionChartView = DistributionChartView.ANGLE,
                             gradeScale = GradeScale.V_SCALE,
                             onIntervalSelect = { periodChanges++ },
                             onGradeChartViewSelect = { selected.value = it },
                             onTimeChartViewSelect = {},
-                            onDistributionChartViewSelect = {},
                             onCustomDateRange = { _, _ -> periodChanges++ },
                             onDismiss = {},
                         )

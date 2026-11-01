@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -54,12 +55,6 @@ private fun timeChartViewLabel(view: TimeChartView): String = when (view) {
 }
 
 @Composable
-private fun distributionChartViewLabel(view: DistributionChartView): String = when (view) {
-    DistributionChartView.ANGLE -> stringResource(R.string.board_stats_angle_distribution)
-    DistributionChartView.PERIOD_COMPARISON -> stringResource(R.string.board_stats_period_comparison)
-}
-
-@Composable
 internal fun boardBrandLabel(brand: String): String = when (val b = BoardBrand.fromWire(brand)) {
     BoardBrand.KILTER -> stringResource(R.string.board_selection_brand_kilter)
     BoardBrand.MOONBOARD -> stringResource(R.string.board_selection_brand_moonboard)
@@ -98,17 +93,31 @@ private fun BoardFilterChips(
  *  showing sends and hardest sent grade over the current interval. Rows are
  *  tappable to scope the stats to that board (mirrors the filter chips), and
  *  the active board's row is highlighted. Kept as a summary list (not a chart)
- *  so it stays light at the top of the sheet. */
+ *  so it stays light at the top of the sheet. When there is enough data,
+ *  [feel] leads with how hard the boards feel against each other. */
 @Composable
-private fun BoardComparisonSection(
+internal fun BoardComparisonSection(
     entries: List<BoardComparisonEntry>,
     selected: String?,
     onSelect: (String?) -> Unit,
+    allBoards: List<String>,
+    feel: BoardFeel?,
+    feelOrder: List<String>,
 ) {
     // Wide enough for "Begehungen" on one line at the default font scale.
     val SENDS_COLUMN_WIDTH = 88.dp
     val GRADE_COLUMN_WIDTH = 76.dp
-    ChartSection(stringResource(R.string.board_stats_board_comparison)) {
+    val colors = boardSeriesColors(allBoards + entries.map { it.boardBrand })
+    ChartSection(
+        stringResource(R.string.board_stats_board_comparison),
+        help = feel?.let {
+            stringResource(R.string.board_stats_feel_help, BoardFeelEstimator.MIN_PROBLEMS)
+        },
+    ) {
+        if (feel != null) {
+            BoardFeelView(feel, feelOrder, colors)
+            Spacer(modifier = Modifier.height(16.dp))
+        }
         // Column header.
         Row(
             modifier = Modifier
@@ -160,6 +169,16 @@ private fun BoardComparisonSection(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 ) {
+                    // The board's colour in every chart of the sheet.
+                    androidx.compose.foundation.layout.Box(
+                        Modifier
+                            .size(10.dp)
+                            .background(
+                                colors[entry.boardBrand] ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                                androidx.compose.foundation.shape.CircleShape,
+                            ),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         boardBrandLabel(entry.boardBrand),
                         style = MaterialTheme.typography.bodyMedium,
@@ -196,7 +215,6 @@ internal fun BoardStatsSheet(
     statsInterval: StatsTimeInterval,
     gradeChartView: GradeChartView,
     timeChartView: TimeChartView,
-    distributionChartView: DistributionChartView,
     gradeScale: GradeScale,
     zones: IntensityZones? = null,
     customDateFrom: LocalDate? = null,
@@ -210,8 +228,10 @@ internal fun BoardStatsSheet(
     availableBoardBrands: List<String> = emptyList(),
     boardComparison: List<BoardComparisonEntry> = emptyList(),
     crossBoard: CrossBoardStats = CrossBoardStats(),
-    crossBoardView: CrossBoardView = CrossBoardView.TRIES_PER_GRADE,
+    crossBoardView: CrossBoardView = CrossBoardView.TRIES_UNTIL_SEND,
     onCrossBoardViewSelect: (CrossBoardView) -> Unit = {},
+    atAGlance: AtAGlance = AtAGlance(),
+    milestones: List<Milestone> = emptyList(),
     heatmapBoardOptions: List<com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption> = emptyList(),
     heatmapBoardSelection: com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption? = null,
     onHeatmapBoardSelect: (com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption?) -> Unit = {},
@@ -219,7 +239,6 @@ internal fun BoardStatsSheet(
     onIntervalSelect: (StatsTimeInterval) -> Unit,
     onGradeChartViewSelect: (GradeChartView) -> Unit,
     onTimeChartViewSelect: (TimeChartView) -> Unit,
-    onDistributionChartViewSelect: (DistributionChartView) -> Unit,
     onCustomDateRange: (LocalDate, LocalDate) -> Unit,
     onHeatmapModeSelect: (HeatmapMode) -> Unit = {},
     onDismiss: () -> Unit
@@ -249,17 +268,12 @@ internal fun BoardStatsSheet(
                     selected = boardFilter,
                     onSelect = onBoardFilterSelect,
                 )
-                // Compact board comparison: sends / top grade per board, so a
-                // multi-board user can size them up side by side. Tapping a row
-                // scopes the stats to that board (same as its filter chip).
-                if (boardComparison.size > 1) {
-                    BoardComparisonSection(
-                        entries = boardComparison,
-                        selected = boardFilter,
-                        onSelect = onBoardFilterSelect,
-                    )
-                }
             }
+
+            // Records and the last 30 days, then the badges. Both follow the
+            // board filter but not the interval, so they sit above its chips.
+            AtAGlanceCard(atAGlance, availableBoardBrands)
+            MilestonesCard(milestones, availableBoardBrands)
 
             // Time interval chips + custom date
             StatsIntervalChips(
@@ -270,8 +284,20 @@ internal fun BoardStatsSheet(
                 onCustomDateRange = onCustomDateRange
             )
 
-            // Personal Records (always visible, compact)
-            BoardPersonalRecordsRow(stats.personalRecords)
+            // Compact board comparison: sends / top grade per board, so a
+            // multi-board user can size them up side by side, led by how the
+            // boards feel. Tapping a row scopes the stats to that board (same
+            // as its filter chip). Follows the interval like the charts below.
+            if (availableBoardBrands.size > 1 && boardComparison.size > 1) {
+                BoardComparisonSection(
+                    entries = boardComparison,
+                    selected = boardFilter,
+                    onSelect = onBoardFilterSelect,
+                    allBoards = availableBoardBrands,
+                    feel = crossBoard.feel,
+                    feelOrder = crossBoard.boards,
+                )
+            }
 
             // Central performance signal: a rolling four-week level based on
             // the best distinct sends, deliberately separate from volume.
@@ -367,39 +393,19 @@ internal fun BoardStatsSheet(
                 }
             }
 
-            // --- Verteilungen (dropdown) ---
-            if (stats.angleDistribution.isNotEmpty() || stats.periodComparison != null) {
-                ChartSectionWithSelector(
-                    options = DistributionChartView.entries.toTypedArray(),
-                    selected = distributionChartView,
-                    onSelect = onDistributionChartViewSelect,
-                    labelOf = { distributionChartViewLabel(it) }
-                ) {
-                    when (distributionChartView) {
-                        DistributionChartView.ANGLE -> {
-                            BoardAngleDistChart(entries = stats.angleDistribution)
-                        }
-                        DistributionChartView.PERIOD_COMPARISON -> {
-                            val comparison = stats.periodComparison
-                            if (comparison != null) {
-                                BoardPeriodComparisonCard(comparison)
-                            } else {
-                                Text(
-                                    stringResource(R.string.board_stats_select_period),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
+            // Angles. The period comparison that shared this card moved to the
+            // top, where "At a glance" compares the last 30 days.
+            if (stats.angleDistribution.isNotEmpty()) {
+                ChartSection(stringResource(R.string.board_stats_angle_distribution)) {
+                    BoardAngleDistChart(entries = stats.angleDistribution)
                 }
             }
 
-            // Tries per grade and month, boards side by side (#44). Like the
-            // comparison row it spans all boards whatever the board filter is,
-            // and needs sends on two boards in the interval to compare anything.
+            // Tries until the send, per grade and per month, boards side by
+            // side (#44). Like the comparison row it spans all boards whatever
+            // the board filter is; with one board it shows just that board.
             // Below the charts, so the per-board charts stay at the top.
-            if (crossBoard.boards.size > 1) {
+            if (crossBoard.boards.isNotEmpty()) {
                 CrossBoardSection(
                     stats = crossBoard,
                     view = crossBoardView,

@@ -19,12 +19,15 @@ object SessionSummaryBuilder {
      *   logbook history ([BoardStatsComputer.trueFlashUuids]) — a first-try
      *   repeat of an old project is a redpoint, not a flash, so the naive
      *   `bidCount <= 1` per-session detection must not be used here.
+     * @param history The whole logbook, for the milestones on the shareable
+     *   recap; without it the summary has no recap.
      */
     fun build(
         ascents: List<AscentWithClimb>,
         zones: IntensityZones,
         gradeScale: GradeScale,
         trueFlashUuids: Set<String>,
+        history: List<AscentWithClimb> = emptyList(),
     ): EnhancedSessionSummary {
         val sends = ascents.filter { it.isSend }
         val diffs = sends.mapNotNull { it.difficultyAverage }
@@ -51,7 +54,10 @@ object SessionSummaryBuilder {
             totalSends = sends.size,
             totalAttempts = ascents.sumOf { it.bidCount.coerceAtLeast(1L) }.toInt(),
             uniqueClimbs = uniqueClimbs,
-            gradeDistribution = gradePyramid
+            gradeDistribution = gradePyramid,
+            recap = history.takeIf { it.isNotEmpty() }?.let {
+                StatsHighlightsComputer.recapOf(ascents, it, gradeScale, trueFlashUuids)
+            },
         )
     }
 

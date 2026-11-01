@@ -78,7 +78,6 @@ data class BoardLogbookStats(
     val weeklyVolume: List<WeeklyVolumeEntry> = emptyList(),
     val gradeProgression: List<GradeProgressionPoint> = emptyList(),
     val uniqueClimbsByGrade: List<UniqueClimbEntry> = emptyList(),
-    val periodComparison: PeriodComparison? = null,
     val personalRecords: PersonalRecords = PersonalRecords()
 )
 
@@ -121,7 +120,6 @@ data class BoardLogbookState(
     // Chart view selectors
     val gradeChartView: GradeChartView = GradeChartView.PYRAMID,
     val timeChartView: TimeChartView = TimeChartView.SENDS_OVER_TIME,
-    val distributionChartView: DistributionChartView = DistributionChartView.ANGLE,
     val customDateFrom: LocalDate? = null,
     val customDateTo: LocalDate? = null,
     // Heatmap (board visualization in stats sheet). Default = PERSONAL
@@ -152,10 +150,16 @@ data class BoardLogbookState(
     // selected interval. Computed across ALL boards (not scoped to boardFilter)
     // so the user can compare them side by side; only surfaced when >1 board.
     val boardComparison: List<BoardComparisonEntry> = emptyList(),
-    // Tries to send per grade and month, boards side by side (#44). Like
-    // [boardComparison] it spans all boards and is shown only for more than one.
+    // Tries until the send, per grade and per month, boards side by side (#44).
+    // Like [boardComparison] it spans all boards; with one board it shows just that.
     val crossBoard: CrossBoardStats = CrossBoardStats(),
-    val crossBoardView: CrossBoardView = CrossBoardView.TRIES_PER_GRADE,
+    val crossBoardView: CrossBoardView = CrossBoardView.TRIES_UNTIL_SEND,
+    // Top of the statistics: records and the last 30 days, and the badges.
+    // Both follow the board filter, not the interval.
+    val atAGlance: AtAGlance = AtAGlance(),
+    val milestones: List<Milestone> = emptyList(),
+    /** The day whose recap is open, over all boards. */
+    val sessionRecap: SessionRecap? = null,
     // Own-Kilter-climb publish gate for logbook entries: NORMALIZED
     // (lowercase, no dashes) climb uuids the connected Kilter account
     // authored that are not yet published to the CruxCoach community.
@@ -612,12 +616,25 @@ class BoardLogbookViewModel @Inject constructor(
         _state.update { it.copy(timeChartView = view) }
     }
 
-    fun setDistributionChartView(view: DistributionChartView) {
-        _state.update { it.copy(distributionChartView = view) }
-    }
-
     fun setCrossBoardView(view: CrossBoardView) {
         _state.update { it.copy(crossBoardView = view) }
+    }
+
+    /** Open the recap of the logbook day [dateKey] (yyyy-MM-dd). */
+    fun openSessionRecap(dateKey: String) {
+        val day = runCatching { LocalDate.parse(dateKey) }.getOrNull() ?: return
+        viewModelScope.safeLaunch(TAG) {
+            if (allAscents.isEmpty()) return@safeLaunch
+            val scale = _state.value.gradeScale
+            val recap = withContext(Dispatchers.Default) {
+                StatsHighlightsComputer.sessionRecap(allAscents, day, scale)
+            }
+            _state.update { it.copy(sessionRecap = recap) }
+        }
+    }
+
+    fun closeSessionRecap() {
+        _state.update { it.copy(sessionRecap = null) }
     }
 
     fun toggleStatsSheet() {
@@ -646,7 +663,7 @@ class BoardLogbookViewModel @Inject constructor(
                 val scoped = s.boardFilter
                     ?.let { bf -> allAscents.filter { it.brand == BoardBrand.fromWire(bf) } }
                     ?: allAscents
-                val (stats, comparison, crossBoard) = withContext(Dispatchers.Default) {
+                val result = withContext(Dispatchers.Default) {
                     val st = BoardStatsComputer.computeStats(
                         scoped, s.statsInterval, s.gradeScale,
                         s.customDateFrom, s.customDateTo, context
@@ -661,10 +678,22 @@ class BoardLogbookViewModel @Inject constructor(
                         allAscents, s.statsInterval, s.gradeScale,
                         s.customDateFrom, s.customDateTo, context
                     )
-                    Triple(st, cmp, cross)
+                    // Flashes need the full history of every board, also when scoped.
+                    val flashUuids = BoardStatsComputer.trueFlashUuids(allAscents)
+                    val glance = StatsHighlightsComputer.atAGlance(scoped, s.gradeScale, flashUuids)
+                    val badges = StatsHighlightsComputer.milestones(
+                        scoped, s.gradeScale, st.personalRecords.weekStreak,
+                    )
+                    ComputedStats(st, cmp, cross, glance, badges)
                 }
                 _state.update {
-                    it.copy(stats = stats, boardComparison = comparison, crossBoard = crossBoard)
+                    it.copy(
+                        stats = result.stats,
+                        boardComparison = result.comparison,
+                        crossBoard = result.crossBoard,
+                        atAGlance = result.atAGlance,
+                        milestones = result.milestones,
+                    )
                 }
                 recomputeHeatmap()
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -966,3 +995,12 @@ class BoardLogbookViewModel @Inject constructor(
         }
     }
 }
+
+/** Everything [BoardLogbookViewModel] computes for the statistics in one pass. */
+private class ComputedStats(
+    val stats: BoardLogbookStats,
+    val comparison: List<BoardComparisonEntry>,
+    val crossBoard: CrossBoardStats,
+    val atAGlance: AtAGlance,
+    val milestones: List<Milestone>,
+)

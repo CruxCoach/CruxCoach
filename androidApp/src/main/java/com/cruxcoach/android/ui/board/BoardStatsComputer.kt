@@ -88,8 +88,6 @@ object BoardStatsComputer {
         val weeklyVolume = computeWeeklyVolume(filtered)
         val gradeProgression = computeGradeProgression(sends, interval, context)
         val uniqueClimbsByGrade = computeUniqueClimbsByGrade(sends, gradeScale)
-        val periodComparison =
-            computePeriodComparison(ascents, interval, gradeScale, context, clock, flashUuids)
         val personalRecords = computePersonalRecords(ascents, gradeScale, clock, flashUuids)
 
         return BoardLogbookStats(
@@ -114,7 +112,6 @@ object BoardStatsComputer {
             weeklyVolume = weeklyVolume,
             gradeProgression = gradeProgression,
             uniqueClimbsByGrade = uniqueClimbsByGrade,
-            periodComparison = periodComparison,
             personalRecords = personalRecords
         )
     }
@@ -409,52 +406,6 @@ object BoardStatsComputer {
                 )
             }
             .sortedBy { it.difficultyInt }
-    }
-
-    private fun computePeriodComparison(
-        allAscents: List<AscentWithClimb>,
-        interval: StatsTimeInterval,
-        gradeScale: GradeScale,
-        context: Context? = null,
-        clock: Clock = Clock.systemDefaultZone(),
-        flashUuids: Set<String> = emptySet(),
-    ): PeriodComparison? {
-        val days = interval.days ?: return null // No comparison for "ALL"
-        val now = LocalDate.now(clock)
-        val currentStart = now.minusDays(days.toLong())
-        val previousStart = currentStart.minusDays(days.toLong())
-
-        val currentStr = currentStart.toString()
-        val previousStr = previousStart.toString()
-        val nowStr = now.toString()
-
-        val current = allAscents.filter { it.climbedAt.take(10) in currentStr..nowStr }
-        val previous = allAscents.filter { it.climbedAt.take(10) in previousStr..currentStr }
-
-        if (current.isEmpty() && previous.isEmpty()) return null
-
-        val curSends = current.count { it.isSend }
-        val prevSends = previous.count { it.isSend }
-        val curFlashes = current.count { it.isSend && it.uuid in flashUuids }
-        val prevFlashes = previous.count { it.isSend && it.uuid in flashUuids }
-        val curFlashRate = if (curSends > 0) curFlashes.toFloat() / curSends * 100f else 0f
-        val prevFlashRate = if (prevSends > 0) prevFlashes.toFloat() / prevSends * 100f else 0f
-        val curHardest = current.filter { it.isSend }.mapNotNull { it.difficultyAverage?.toInt() }.maxOrNull() ?: 0
-        val prevHardest = previous.filter { it.isSend }.mapNotNull { it.difficultyAverage?.toInt() }.maxOrNull() ?: 0
-        val curUnique = current.map { it.climbUuid }.distinct().size
-        val prevUnique = previous.map { it.climbUuid }.distinct().size
-
-        return PeriodComparison(
-            totalSendsDelta = curSends - prevSends,
-            flashRateDelta = curFlashRate - prevFlashRate,
-            hardestGradeDelta = curHardest - prevHardest,
-            uniqueClimbsDelta = curUnique - prevUnique,
-            currentLabel = context?.getString(interval.labelResId) ?: "",
-            previousLabel = context?.let { ctx ->
-                val label = ctx.getString(interval.labelResId)
-                ctx.getString(R.string.stats_previous_interval, label)
-            } ?: ""
-        )
     }
 
     private fun computePersonalRecords(

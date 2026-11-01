@@ -1,22 +1,15 @@
 package com.cruxcoach.android.ui.board
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingDown
-import androidx.compose.material.icons.automirrored.filled.TrendingFlat
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.InfoButton
@@ -103,143 +96,6 @@ internal fun <T> ChartSectionWithSelector(
             }
             Spacer(modifier = Modifier.height(12.dp))
             content()
-        }
-    }
-}
-
-/** Period comparison card with delta indicators */
-@Composable
-internal fun BoardPeriodComparisonCard(comparison: PeriodComparison) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            "${comparison.currentLabel} vs. ${comparison.previousLabel}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            DeltaChip(stringResource(R.string.board_sends), comparison.totalSendsDelta, isPercentage = false)
-            DeltaChip(stringResource(R.string.board_stats_flash_rate), comparison.flashRateDelta.toInt(), isPercentage = true)
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            DeltaChip(stringResource(R.string.board_stats_hardest), comparison.hardestGradeDelta, isPercentage = false)
-            DeltaChip(stringResource(R.string.board_stats_unique), comparison.uniqueClimbsDelta, isPercentage = false)
-        }
-    }
-}
-
-@Composable
-private fun DeltaChip(label: String, delta: Int, isPercentage: Boolean) {
-    val positive = delta > 0
-    val neutral = delta == 0
-    val color = when {
-        positive -> SuccessGreen
-        neutral -> Slate80
-        else -> GradeHard
-    }
-    val icon = when {
-        positive -> Icons.AutoMirrored.Filled.TrendingUp
-        neutral -> Icons.AutoMirrored.Filled.TrendingFlat
-        else -> Icons.AutoMirrored.Filled.TrendingDown
-    }
-    val suffix = if (isPercentage) "%" else ""
-    val prefix = if (positive) "+" else ""
-
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = color.copy(alpha = 0.15f)
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = color)
-            Column {
-                Text(
-                    "$prefix$delta$suffix",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = color
-                )
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 10.sp
-                )
-            }
-        }
-    }
-}
-
-/** Personal records row — horizontal scrolling highlights */
-@Composable
-internal fun BoardPersonalRecordsRow(records: PersonalRecords) {
-    val hardestFlashLabel = stringResource(R.string.board_stats_hardest_flash)
-    val mostSendsLabel = stringResource(R.string.board_stats_most_sends_day)
-    val avgSessionsLabel = stringResource(R.string.board_stats_avg_sessions_week)
-    val weekStreakLabel = stringResource(R.string.board_stats_week_streak)
-    val items = buildList {
-        records.hardestFlashGrade?.let {
-            add(hardestFlashLabel to it)
-        }
-        if (records.mostSendsInDay > 0) {
-            add(mostSendsLabel to "${records.mostSendsInDay}")
-        }
-        if (records.avgSessionsPerWeek > 0.0) {
-            add(avgSessionsLabel to String.format("%.1f", records.avgSessionsPerWeek))
-        }
-        if (records.weekStreak > 0) {
-            add(weekStreakLabel to "${records.weekStreak}")
-        }
-    }
-    if (items.isEmpty()) return
-
-    Row(
-        // Equal height, so a label that needs a third line does not make its tile taller than
-        // the rest — and does not have to be cut off to keep the row tidy.
-        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items.forEach { (label, value) ->
-            Card(
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                colors = CardDefaults.cardColors(
-                    containerColor = OrangeAccent.copy(alpha = 0.12f)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        value,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = OrangeAccent
-                    )
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 9.sp,
-                        // Three lines fit the shortest labels we ship; cutting a record's name
-                        // off leaves the number meaningless.
-                        maxLines = 3,
-                        textAlign = TextAlign.Center,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
         }
     }
 }

@@ -6,7 +6,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +34,11 @@ internal fun SessionSummarySheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showRecap by remember { mutableStateOf(false) }
+    val recap = summary?.recap
+    if (showRecap && recap != null) {
+        SessionRecapSheet(recap, onDismiss = { showRecap = false })
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -206,6 +217,19 @@ internal fun SessionSummarySheet(
                         }
                         SessionSummaryRow(stringResource(R.string.board_session_summary_session_type), typeLabel)
                     }
+                }
+            }
+
+            // The same card the logbook shares, for this session.
+            if (recap != null) {
+                OutlinedButton(
+                    onClick = { showRecap = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.board_session_recap_share))
                 }
             }
 

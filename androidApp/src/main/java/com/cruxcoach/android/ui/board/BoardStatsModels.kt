@@ -47,16 +47,6 @@ data class UniqueClimbEntry(
     val totalSends: Int
 )
 
-/** Period-over-period comparison deltas */
-data class PeriodComparison(
-    val totalSendsDelta: Int,
-    val flashRateDelta: Float,
-    val hardestGradeDelta: Int,
-    val uniqueClimbsDelta: Int,
-    val currentLabel: String,
-    val previousLabel: String
-)
-
 /** Personal records across all time */
 data class PersonalRecords(
     val hardestFlashGrade: String? = null,
@@ -97,12 +87,8 @@ enum class TimeChartView {
     WEEKLY_VOLUME,
 }
 
-enum class DistributionChartView {
-    ANGLE,
-    PERIOD_COMPARISON
-}
-
 enum class CrossBoardView {
+    TRIES_UNTIL_SEND,
     TRIES_PER_GRADE,
     PER_MONTH,
 }
@@ -119,7 +105,9 @@ data class EnhancedSessionSummary(
     val totalSends: Int = 0,
     val totalAttempts: Int = 0,
     val uniqueClimbs: Int = 0,
-    val gradeDistribution: List<BoardGradePyramidEntry> = emptyList()
+    val gradeDistribution: List<BoardGradePyramidEntry> = emptyList(),
+    /** The shareable card of this session; null without the logbook history. */
+    val recap: SessionRecap? = null,
 ) {
     val zoneTotal: Int get() = warmupCount + optimalCount + limitCount
 }

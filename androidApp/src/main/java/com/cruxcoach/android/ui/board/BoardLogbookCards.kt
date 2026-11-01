@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.outlined.Summarize
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -281,8 +282,9 @@ internal fun EmptyLogbookMessage() {
     }
 }
 
+/** A logbook day's date and entry count; [onRecap] adds the button that opens its recap. */
 @Composable
-internal fun DayHeader(dateKey: String, count: Int) {
+internal fun DayHeader(dateKey: String, count: Int, onRecap: (() -> Unit)? = null) {
     val dayNames = arrayOf(
         stringResource(R.string.day_mo), stringResource(R.string.day_tu),
         stringResource(R.string.day_we), stringResource(R.string.day_th),
@@ -319,8 +321,19 @@ internal fun DayHeader(dateKey: String, count: Int) {
             Text(
                 text = pluralStringResource(R.plurals.board_logbook_day_entries, count, count),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.weight(1f),
             )
+            if (onRecap != null) {
+                IconButton(onClick = onRecap, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Outlined.Summarize,
+                        contentDescription = stringResource(R.string.board_session_recap_open) + ", " + label,
+                        tint = OrangeAccent.copy(alpha = 0.85f),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
         }
     }
 }

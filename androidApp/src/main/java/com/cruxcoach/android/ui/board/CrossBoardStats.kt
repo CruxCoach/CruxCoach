@@ -38,6 +38,24 @@ data class CrossBoardMonthRow(
     val byBoard: Map<String, CrossBoardMonthCell>,
 )
 
+/** First sends by the tries they took: a flash, 2, 3, 4–5, and 6 or more. */
+data class TriesBuckets(val counts: List<Int>) {
+    val problems: Int get() = counts.sum()
+
+    companion object {
+        /** The fewest tries of each bucket. */
+        val LOWEST = listOf(1, 2, 3, 4, 6)
+
+        fun bucketOf(tries: Int): Int = LOWEST.indexOfLast { tries >= it }.coerceAtLeast(0)
+
+        fun of(tries: List<Int>): TriesBuckets {
+            val counts = IntArray(LOWEST.size)
+            tries.forEach { counts[bucketOf(it)]++ }
+            return TriesBuckets(counts.toList())
+        }
+    }
+}
+
 /**
  * Stats across boards (#44): how many tries a grade takes on each board, and
  * how the hardest send and the tries develop month by month. Boards are the
@@ -47,6 +65,10 @@ data class CrossBoardStats(
     val boards: List<String> = emptyList(),
     val grades: List<CrossBoardGradeRow> = emptyList(),
     val months: List<CrossBoardMonthRow> = emptyList(),
+    /** How many tries the first sends took, per board. */
+    val sendCurve: Map<String, TriesBuckets> = emptyMap(),
+    /** How hard the boards feel against the main one; null without enough data. */
+    val feel: BoardFeel? = null,
 )
 
 /**
@@ -123,7 +145,16 @@ object CrossBoardStatsComputer {
                 )
             }
 
-        return CrossBoardStats(boards = boards, grades = grades, months = months)
+        val sendCurve = firstSends.groupBy { it.send.boardBrand }
+            .mapValues { (_, s) -> TriesBuckets.of(s.map { it.tries }) }
+
+        return CrossBoardStats(
+            boards = boards,
+            grades = grades,
+            months = months,
+            sendCurve = sendCurve,
+            feel = BoardFeelEstimator.estimate(firstSends, gradeScale),
+        )
     }
 
     /**

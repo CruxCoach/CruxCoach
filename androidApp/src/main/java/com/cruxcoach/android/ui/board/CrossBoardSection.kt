@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.pluralStringResource
@@ -63,6 +64,8 @@ import kotlin.math.max
 import kotlin.math.min
 
 private val GRADE_COLUMN_WIDTH = 44.dp
+private val SEND_CURVE_LABEL_WIDTH = 104.dp
+private val SEND_CURVE_BAR_HEIGHT = 22.dp
 private val BAR_THICKNESS = 8.dp
 private val LANE_HEIGHT = 12.dp
 // Room after the longest bar for its value ("12,5").
@@ -73,6 +76,7 @@ private val MONTH_AXIS_HEIGHT = 20.dp
 
 @Composable
 private fun crossBoardViewLabel(view: CrossBoardView): String = when (view) {
+    CrossBoardView.TRIES_UNTIL_SEND -> stringResource(R.string.board_stats_cross_board_send_curve)
     CrossBoardView.TRIES_PER_GRADE -> stringResource(R.string.board_stats_cross_board_tries)
     CrossBoardView.PER_MONTH -> stringResource(R.string.board_stats_cross_board_months)
 }
@@ -80,12 +84,14 @@ private fun crossBoardViewLabel(view: CrossBoardView): String = when (view) {
 private fun TriesToSend.isSmallSample() = problems < CrossBoardStatsComputer.SMALL_SAMPLE
 
 /**
- * Stats across boards (#44), one colour per board. "Tries per grade" puts a
- * bar per board under each grade, "Progress by month" draws the hardest new
- * send and the tries per send as two small line charts over the same months.
- * Averages over fewer than [CrossBoardStatsComputer.SMALL_SAMPLE] problems are
+ * Stats across boards (#44), one colour per board. "Tries until the send"
+ * splits each board's first sends by the tries they took, "Tries per grade"
+ * puts a bar per board under each grade, "Progress by month" draws the hardest
+ * new send and the tries per send as two small line charts over the same months.
+ * Values over fewer than [CrossBoardStatsComputer.SMALL_SAMPLE] problems are
  * drawn hollow. The explanation sits behind the info button; tapping
- * a grade or a month shows its numbers.
+ * a board, a grade or a month shows its numbers. With one board the views
+ * work the same, without a legend.
  *
  * [allBoards] are all boards the user has logged on: they fix the colours, so
  * a board keeps its colour when the interval hides another one.
@@ -106,6 +112,7 @@ internal fun CrossBoardSection(
         labelOf = { crossBoardViewLabel(it) },
         help = stringResource(
             when (view) {
+                CrossBoardView.TRIES_UNTIL_SEND -> R.string.board_stats_cross_board_send_curve_help
                 CrossBoardView.TRIES_PER_GRADE -> R.string.board_stats_cross_board_tries_help
                 CrossBoardView.PER_MONTH -> R.string.board_stats_cross_board_months_help
             },
@@ -113,14 +120,23 @@ internal fun CrossBoardSection(
         ),
     ) {
         val smallSamples = when (view) {
+            CrossBoardView.TRIES_UNTIL_SEND -> stats.sendCurve.values.any { it.problems < CrossBoardStatsComputer.SMALL_SAMPLE }
             CrossBoardView.TRIES_PER_GRADE -> stats.grades.any { row -> row.byBoard.values.any { it.isSmallSample() } }
             CrossBoardView.PER_MONTH -> stats.months.any { row -> row.byBoard.values.any { it.tries.isSmallSample() } }
         }
-        BoardLegend(stats.boards, colors, smallSamples)
-        Spacer(Modifier.height(12.dp))
-        when (view) {
-            CrossBoardView.TRIES_PER_GRADE -> TriesPerGradeChart(stats, colors)
-            CrossBoardView.PER_MONTH -> MonthCharts(stats, colors, gradeScale)
+        if (view == CrossBoardView.TRIES_UNTIL_SEND) {
+            // The boards name their rows; the legend explains the shades.
+            val ramp = triesRamp()
+            SendCurveLegend(ramp, smallSamples)
+            Spacer(Modifier.height(12.dp))
+            SendCurveChart(stats, colors, ramp)
+        } else {
+            BoardLegend(if (stats.boards.size > 1) stats.boards else emptyList(), colors, smallSamples)
+            if (stats.boards.size > 1 || smallSamples) Spacer(Modifier.height(12.dp))
+            when (view) {
+                CrossBoardView.TRIES_PER_GRADE -> TriesPerGradeChart(stats, colors)
+                else -> MonthCharts(stats, colors, gradeScale)
+            }
         }
     }
 }
@@ -171,6 +187,152 @@ private fun triesDetail(tries: TriesToSend): String =
 
 /** The top of a tries scale: a whole number of tries, at least two. */
 internal fun triesScaleMax(maxAverage: Double): Double = max(2.0, ceil(maxAverage))
+
+// ---------------------------------------------------------------- tries until the send
+
+/**
+ * Five shades of one blue for flash, 2, 3, 4–5 and 6+ tries, light to dark,
+ * each step told apart from the next and the darkest still clear of the card.
+ */
+@Composable
+private fun triesRamp(): List<Color> =
+    if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) {
+        listOf(Color(0xFF9EC5F4), Color(0xFF6DA7EC), Color(0xFF3987E5), Color(0xFF256ABF), Color(0xFF184F95))
+    } else {
+        listOf(Color(0xFF6DA7EC), Color(0xFF3987E5), Color(0xFF256ABF), Color(0xFF184F95), Color(0xFF0D366B))
+    }
+
+@Composable
+private fun bucketLabel(index: Int): String = when (index) {
+    0 -> stringResource(R.string.board_logbook_flash)
+    TriesBuckets.LOWEST.lastIndex -> "${TriesBuckets.LOWEST[index]}+"
+    else -> {
+        val low = TriesBuckets.LOWEST[index]
+        val high = TriesBuckets.LOWEST[index + 1] - 1
+        if (low == high) "$low" else "$low–$high"
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SendCurveLegend(ramp: List<Color>, smallSamples: Boolean) {
+    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        ramp.forEachIndexed { i, color ->
+            LegendItem(bucketLabel(i)) {
+                Spacer(Modifier.size(10.dp).background(color, RoundedCornerShape(2.dp)))
+            }
+        }
+        if (smallSamples) {
+            LegendItem(stringResource(R.string.board_stats_cross_board_few, CrossBoardStatsComputer.SMALL_SAMPLE)) {
+                Spacer(Modifier.size(10.dp).border(2.dp, ink, RoundedCornerShape(2.dp)))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SendCurveChart(stats: CrossBoardStats, colors: Map<String, Color>, ramp: List<Color>) {
+    var selected by remember(stats.sendCurve) { mutableStateOf<String?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        stats.boards.forEach { board ->
+            val buckets = stats.sendCurve[board] ?: return@forEach
+            SendCurveRow(
+                board = board,
+                buckets = buckets,
+                color = colors.getValue(board),
+                ramp = ramp,
+                expanded = selected == board,
+                onClick = { selected = if (selected == board) null else board },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SendCurveRow(
+    board: String,
+    buckets: TriesBuckets,
+    color: Color,
+    ramp: List<Color>,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val labels = TriesBuckets.LOWEST.indices.map { bucketLabel(it) }
+    val counts = buckets.counts.mapIndexed { i, n -> "${labels[i]} $n" }.joinToString(" · ")
+    val problems = pluralStringResource(R.plurals.board_stats_cross_board_problems, buckets.problems, buckets.problems)
+    val name = boardBrandLabel(board)
+    val small = buckets.problems < CrossBoardStatsComputer.SMALL_SAMPLE
+    val measurer = rememberTextMeasurer()
+    val percentStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (expanded) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "$name: $counts ($problems)" }
+            .padding(vertical = 6.dp, horizontal = 4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.width(SEND_CURVE_LABEL_WIDTH),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Spacer(Modifier.size(8.dp).background(color, CircleShape))
+                Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Canvas(Modifier.weight(1f).height(SEND_CURVE_BAR_HEIGHT)) {
+                val total = buckets.problems.toFloat()
+                if (total <= 0f) return@Canvas
+                val gap = 2.dp.toPx()
+                val shown = buckets.counts.withIndex().filter { it.value > 0 }
+                val width = size.width - gap * (shown.size - 1)
+                val radius = CornerRadius(4.dp.toPx())
+                var x = 0f
+                shown.forEach { (i, n) ->
+                    val w = width * n / total
+                    if (small) {
+                        val stroke = 1.5.dp.toPx()
+                        drawRoundRect(
+                            ramp[i],
+                            topLeft = Offset(x + stroke / 2, stroke / 2),
+                            size = Size(w - stroke, size.height - stroke),
+                            cornerRadius = radius,
+                            style = Stroke(stroke),
+                        )
+                    } else {
+                        drawRoundRect(ramp[i], Offset(x, 0f), Size(w, size.height), radius)
+                        // Shares at a glance, the counts behind them once the row is open.
+                        val percent = measurer.measure(
+                            if (expanded) "$n" else "${Math.round(n * 100f / total)} %",
+                            percentStyle.copy(color = if (ramp[i].luminance() > 0.3f) Color(0xFF0B0B0B) else Color.White),
+                        )
+                        if (percent.size.width + 6.dp.toPx() < w) {
+                            drawText(
+                                percent,
+                                topLeft = Offset(x + (w - percent.size.width) / 2, (size.height - percent.size.height) / 2),
+                            )
+                        }
+                    }
+                    x += w + gap
+                }
+            }
+        }
+        if (expanded) {
+            Text(
+                problems,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = SEND_CURVE_LABEL_WIDTH, top = 6.dp),
+            )
+        }
+    }
+}
 
 // ---------------------------------------------------------------- tries per grade
 

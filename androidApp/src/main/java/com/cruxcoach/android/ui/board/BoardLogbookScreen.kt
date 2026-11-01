@@ -146,7 +146,6 @@ fun BoardLogbookScreen(
             statsInterval = state.statsInterval,
             gradeChartView = state.gradeChartView,
             timeChartView = state.timeChartView,
-            distributionChartView = state.distributionChartView,
             gradeScale = state.gradeScale,
             zones = state.zones,
             customDateFrom = state.customDateFrom,
@@ -162,6 +161,8 @@ fun BoardLogbookScreen(
             crossBoard = state.crossBoard,
             crossBoardView = state.crossBoardView,
             onCrossBoardViewSelect = { viewModel.setCrossBoardView(it) },
+            atAGlance = state.atAGlance,
+            milestones = state.milestones,
             heatmapBoardOptions = state.heatmapBoardOptions,
             heatmapBoardSelection = state.heatmapBoardSelection,
             onHeatmapBoardSelect = { viewModel.setHeatmapBoardSelection(it) },
@@ -169,11 +170,14 @@ fun BoardLogbookScreen(
             onIntervalSelect = { viewModel.setStatsInterval(it) },
             onGradeChartViewSelect = { viewModel.setGradeChartView(it) },
             onTimeChartViewSelect = { viewModel.setTimeChartView(it) },
-            onDistributionChartViewSelect = { viewModel.setDistributionChartView(it) },
             onCustomDateRange = { from, to -> viewModel.setCustomDateRange(from, to) },
             onHeatmapModeSelect = { viewModel.setHeatmapMode(it) },
             onDismiss = { viewModel.toggleStatsSheet() }
         )
+    }
+
+    state.sessionRecap?.let { recap ->
+        SessionRecapSheet(recap = recap, onDismiss = { viewModel.closeSessionRecap() })
     }
 
     if (showFilters) {
@@ -339,7 +343,7 @@ fun BoardLogbookScreen(
                     // Ascent cards grouped by day
                     grouped.forEach { (dateKey, dayAscents) ->
                         item(key = "day_$dateKey") {
-                            DayHeader(dateKey, dayAscents.size)
+                            DayHeader(dateKey, dayAscents.size, onRecap = { viewModel.openSessionRecap(dateKey) })
                         }
                         items(dayAscents, key = { it.uuid }) { ascent ->
                             val isSelected = ascent.uuid in state.selectedUuids

@@ -2414,9 +2414,9 @@ class BoardBrowserViewModel @Inject constructor(
                 )
                     // True flashes need the FULL history — a first-try repeat
                     // of an old project must not count as a flash.
-                    val flashUuids =
-                        BoardStatsComputer.trueFlashUuids(personalBoardRepo.getUserAscentsAll())
-                    SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale, flashUuids)
+                    val history = personalBoardRepo.getUserAscentsAll()
+                    val flashUuids = BoardStatsComputer.trueFlashUuids(history)
+                    SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale, flashUuids, history)
                 }
                 _lastSessionSummary.value = summary
             }
