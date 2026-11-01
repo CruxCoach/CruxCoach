@@ -143,6 +143,40 @@ androidApp/src/main/java/com/cruxcoach/android/
 └── updater/     # Discovery, integrity verification and installation
 ```
 
+### Test builds from your fork
+
+Members of the CruxCoach community can get an installable test build for every
+pull request from their own fork, published under their own name. You don't
+need an Android setup or any signing key; CruxCoach CI builds your commit.
+
+1. Join the CruxCoach community on Buzz. If you have no invite yet, ask in your
+   pull request.
+2. In Buzz, send `/link` as a direct message to **CruxCoach Bot**. Open the
+   personal link it sends back and sign in to GitHub. This connects your GitHub
+   account to your community identity, once. CruxCoach only reads your public
+   GitHub username and ID.
+3. Open a pull request from your fork. After the checks pass, a comment on the
+   pull request links your test build, and the build appears in Buzz.
+
+Test builds are sorted into their release by branch name, and every track shows
+its branch. Name your branch:
+
+- `feat/<version>-<name>` for a feature planned for a release, for example
+  `feat/0.2.5-spray-walls`
+- `feat/<name>` while the feature has no release yet; its builds show under
+  "No release"
+- `fix/<version>-<name>` for a fix planned for a release
+
+Use lowercase letters, digits and hyphens in `<name>`. The release branch itself
+is `feat/<version>-release`; only the maintainer merges into it. Agents that
+open branches for you follow the same rule. If a branch name does not follow
+it, the comment with your test build says so; the build is published anyway.
+
+Testers see who published each build, and the install page asks them whether
+they trust you before their first download from you. CruxCoach does not review
+community builds; they are separate apps with their own data, next to the
+regular app. See [community-publish.yml](.github/workflows/community-publish.yml).
+
 ### Releases & CI (maintainer only)
 
 Pull requests targeting `main` or `feat/**` have hosted checks in
@@ -175,7 +209,8 @@ following keys to `local.properties` — no source edits required:
 | `MAINTAINER_LIGHTNING_ADDRESS` | Lightning address shown for upstream-style donation flows | `npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash` |
 | `MAINTAINER_KOFI_URL` | Ko-fi donation link surfaced in the Payments UI | `https://ko-fi.com/cruxcoach` |
 | `ANNOUNCE_NAMESPACE` | Nostr `L`/`l` tag namespace for announcement events | `com.cruxcoach.announce` — change this when you fork to avoid notification cross-talk with upstream users |
-| `UPDATER_API_BASE` | Forge API root for the *compiled-in default* forge source. Works for Forgejo/Gitea (`https://<host>/api/v1`) and for GitHub (`https://api.github.com`) — their release JSON is field-compatible | `https://codeberg.org/api/v1` |
+| `UPDATER_API_BASE` | Forge API root for the *compiled-in default* forge source. Works for Forgejo/Gitea (`https://<host>/api/v1`) and for GitHub (`https://api.github.com`) — their release JSON is field-compatible | `https://api.github.com` (GitHub, the primary release host) |
+| `UPDATER_SECONDARY_API_BASE` | Optional second compiled-in forge with the same owner/repo, tried after `UPDATER_API_BASE`. Set it to an empty value if your fork publishes releases on one forge only | `https://codeberg.org/api/v1` (the Codeberg release mirror) |
 | `UPDATER_REPO_OWNER` | Repository owner used by the auto-updater and the "Online" app-share QR code | `CruxCoach` |
 | `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code; also drives the expected APK filename `<repo>-<tag>.apk` | `CruxCoach` |
 | `UPDATE_SOURCES_URLS` | Runtime source list (FEAT-050), comma-separated; the first host that answers wins. Fetched at most daily and cached; lets you add, reorder or retire release hosts **without shipping a new APK**. Falls back to the compiled-in defaults when unreachable or unusable | `https://cruxcoach.org/update-sources.json,https://mirror.cruxcoach.org/update-sources.json` |

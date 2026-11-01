@@ -8,6 +8,8 @@ umask 077
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 readonly repo_root
+# shellcheck source=flows/lib/apk_signer.sh
+source "$repo_root/flows/lib/apk_signer.sh"
 readonly package_name="com.cruxcoach.android"
 
 usage() {
@@ -97,16 +99,6 @@ verify_signature() {
     "$apksigner_bin" verify --verbose "$1" >/dev/null
 }
 
-signer_digest() {
-    local apk="$1" output digest count
-    output="$("$apksigner_bin" verify --print-certs "$apk")" || return 1
-    count="$(grep -c '^Signer #1 certificate SHA-256 digest:' <<< "$output" || true)"
-    [[ "$count" == "1" ]] || return 1
-    digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<< "$output")"
-    [[ "$digest" =~ ^[0-9a-fA-F]{64}$ ]] || return 1
-    printf '%s' "${digest,,}"
-}
-
 old_identity="$(apk_identity "$old_apk")" || die "old APK package identity is invalid"
 IFS=$'\t' read -r old_code old_name <<< "$old_identity"
 case "$old_code:$old_name" in
@@ -123,8 +115,8 @@ if apk_is_debuggable "$new_apk"; then
 fi
 verify_signature "$old_apk" || die "old APK signature verification failed"
 verify_signature "$new_apk" || die "new APK signature verification failed"
-old_signer="$(signer_digest "$old_apk")" || die "cannot inspect old APK public signer certificate"
-new_signer="$(signer_digest "$new_apk")" || die "cannot inspect new APK public signer certificate"
+old_signer="$(apk_signer_digest "$apksigner_bin" "$old_apk")" || die "old APK needs exactly one readable public signer certificate"
+new_signer="$(apk_signer_digest "$apksigner_bin" "$new_apk")" || die "new APK needs exactly one readable public signer certificate"
 [[ "$old_signer" == "$new_signer" ]] || die "APK public signers differ; in-place migration is impossible"
 old_hash="$(sha256sum "$old_apk" | awk '{print $1}')"
 new_hash="$(sha256sum "$new_apk" | awk '{print $1}')"
