@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.board
 import com.cruxcoach.android.ui.onboarding.*
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -317,12 +318,16 @@ fun BoardLogbookScreen(
                     // Records, the last 30 days and the milestones; tapping
                     // it opens the statistics. Not tied to the list filters.
                     item(key = "overview") {
-                        LogbookOverviewCard(
-                            glance = state.atAGlance,
-                            milestones = state.milestones,
-                            boards = state.availableBoardBrands,
-                            onOpenStats = { viewModel.toggleStatsSheet() },
-                        )
+                        // The overview is computed after the list loads; let it grow in
+                        // instead of pushing the entries down in one jump.
+                        Box(Modifier.fillMaxWidth().animateContentSize()) {
+                            LogbookOverviewCard(
+                                glance = state.atAGlance,
+                                milestones = state.milestones,
+                                boards = state.availableBoardBrands,
+                                onOpenStats = { viewModel.toggleStatsSheet() },
+                            )
+                        }
                     }
 
                     if (state.ascents.isEmpty()) {
@@ -418,7 +423,16 @@ private fun LogbookFilterSheet(
         ) {
             InfoHeading(stringResource(R.string.board_logbook_filters), stringResource(R.string.ux_logbook_help))
             Text(stringResource(R.string.board_logbook_filter_period), style = MaterialTheme.typography.titleSmall)
-            StatsIntervalChips(selected = state.logbookInterval, onSelect = onIntervalSelect)
+            // Same chips as the other filters here, not the orange ones of the statistics.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatsTimeInterval.entries.forEach { interval ->
+                    FilterChip(
+                        selected = state.logbookInterval == interval,
+                        onClick = { onIntervalSelect(interval) },
+                        label = { Text(statsTimeIntervalLabel(interval)) },
+                    )
+                }
+            }
             Text(stringResource(R.string.board_logbook_filter_outcome), style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LogbookOutcomeFilter.entries.forEach { filter ->

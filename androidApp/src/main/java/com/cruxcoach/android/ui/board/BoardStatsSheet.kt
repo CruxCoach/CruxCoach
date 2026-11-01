@@ -18,7 +18,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import java.time.LocalDate
 
 @Composable
-private fun statsTimeIntervalLabel(interval: StatsTimeInterval): String = when (interval) {
+internal fun statsTimeIntervalLabel(interval: StatsTimeInterval): String = when (interval) {
     StatsTimeInterval.ALL -> stringResource(R.string.board_stats_interval_all)
     StatsTimeInterval.DAYS_30 -> stringResource(R.string.board_stats_interval_30d)
     StatsTimeInterval.DAYS_90 -> stringResource(R.string.board_stats_interval_90d)

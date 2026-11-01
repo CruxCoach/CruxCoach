@@ -49,11 +49,16 @@ internal fun BoardActivityHeatmap(
     interval: StatsTimeInterval
 ) {
     val today = remember { LocalDate.now() }
+    // A whole logbook starts at its first active day (at most two years back),
+    // so a young logbook does not open on months of empty weeks.
+    val firstActive = activityMap.keys.minOrNull()
     val totalDays = when (interval) {
         StatsTimeInterval.DAYS_30 -> 30
         StatsTimeInterval.DAYS_90 -> 90
         StatsTimeInterval.YEAR_1 -> 365
-        StatsTimeInterval.ALL -> 730 // 2yr cap
+        StatsTimeInterval.ALL -> firstActive
+            ?.let { (ChronoUnit.DAYS.between(it, today) + 1).toInt().coerceIn(30, 730) }
+            ?: 730
     }
     val startDate = today.minusDays(totalDays.toLong() - 1)
 
