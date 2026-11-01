@@ -30,6 +30,16 @@ MARKER = "<!-- cruxcoach-community-build -->"
 TRACK_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 PACKAGE_RE = re.compile(r"^com\.cruxcoach\.android\.dev\.community\.c_[0-9a-f]{12}$")
 LOGIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
+BRANCH_RE = re.compile(r"^(feat|fix)/((\d+\.\d+\.\d+)-)?[a-z0-9][a-z0-9-]*$")
+
+# Never repeats the branch name: it comes from the fork and could carry markdown or mentions.
+BRANCH_HINT = (
+    "Tip: test builds are sorted into their release by branch name. Use "
+    "`feat/<version>-<name>` for a feature planned for a release (for example "
+    "`feat/0.2.5-spray-walls`), `fix/<version>-<name>` for a fix, or `feat/<name>` while "
+    "there is no release yet, with lowercase letters, digits and hyphens in `<name>`. "
+    "[Branch names](https://github.com/CruxCoach/CruxCoach/blob/main/CONTRIBUTING.md#test-builds-from-your-fork)"
+)
 
 LINK_HELP = (
     "To publish test builds from your fork, connect your GitHub account to the CruxCoach "
@@ -167,18 +177,27 @@ def install_page(track: str, version_code: int) -> str:
 
 
 def comment_body(
-    *, reason: str | None, publisher_login: str, track: str = "", version_code: int = 0, name: str = ""
+    *,
+    reason: str | None,
+    publisher_login: str,
+    track: str = "",
+    version_code: int = 0,
+    name: str = "",
+    branch: str = "",
 ) -> str:
     if reason is not None:
         text = REASONS.get(reason, "No test build was published.")
         extra = f"\n\n{LINK_HELP}" if reason in {"not_linked", "not_member"} else ""
         return f"{MARKER}\n**No test build yet.** {text}{extra}"
+    # Only a hint: the build is already published when this comment is written.
+    hint = "" if BRANCH_RE.fullmatch(branch) else f"\n\n{BRANCH_HINT}"
     return (
         f"{MARKER}\n**Test build {version_code} by @{publisher_login} is ready:** "
         f"[install page]({install_page(track, version_code)})\n\n"
         f"It was built by CruxCoach CI from this pull request and published under {name}'s "
         "community identity. CruxCoach has not reviewed it; the install page asks testers "
         "whether they trust the publisher before the first download."
+        f"{hint}"
     )
 
 
@@ -241,6 +260,7 @@ def main(argv: list[str]) -> int:
                 track=args.track,
                 version_code=args.version_code,
                 name=args.name,
+                branch=os.environ.get("BRANCH", ""),
             )
         )
     return 0

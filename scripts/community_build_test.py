@@ -58,6 +58,25 @@ class CommunityBuildTest(unittest.TestCase):
         self.assertIn("track=c-led-pulse-1a2b3c4d&build=3#install", ready)
         self.assertNotIn("download=1", ready)
 
+    def test_ready_comment_hints_at_branch_names_without_blocking(self) -> None:
+        def ready(branch: str) -> str:
+            return cb.comment_body(
+                reason=None, publisher_login="alice", track=GRANT["track"], version_code=3, name="Alice",
+                branch=branch,
+            )
+
+        for branch in ("feat/0.2.5-spray-walls", "feat/led-pulse", "fix/0.2.5-crash-on-start", "fix/typo"):
+            with self.subTest(branch=branch):
+                self.assertNotIn(cb.BRANCH_HINT, ready(branch))
+        for branch in ("main", "docs/readme", "feat/LED-Pulse", "feat/0.2-led", "patch-1", "feat/@bob-x"):
+            with self.subTest(branch=branch):
+                body = ready(branch)
+                self.assertIn("Test build 3 by @alice is ready", body)
+                self.assertIn(cb.BRANCH_HINT, body)
+                self.assertIn("`feat/0.2.5-spray-walls`", body)
+        # The fork's branch name is never repeated, so it cannot add mentions or markdown.
+        self.assertNotIn("@bob", ready("feat/@bob-x"))
+
 
 if __name__ == "__main__":
     unittest.main()
