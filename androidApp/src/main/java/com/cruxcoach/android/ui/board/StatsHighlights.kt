@@ -55,6 +55,16 @@ data class Milestone(
     val grade: SentGrade? = null,
 )
 
+/** One of the hardest problems sent in a session. */
+data class RecapClimb(
+    val name: String,
+    val grade: String,
+    val difficulty: Double,
+    val board: String,
+    val angle: Int,
+    val flash: Boolean,
+)
+
 /** One grade of a session: its sends and how many of them were flashes. */
 data class RecapGrade(val grade: String, val difficultyInt: Int, val sends: Int, val flashes: Int)
 
@@ -66,6 +76,8 @@ data class SessionRecap(
     val tries: Int,
     val problems: Int,
     val hardest: SentGrade?,
+    /** The hardest problems sent, each once, hardest first; at most [StatsHighlightsComputer.RECAP_TOP]. */
+    val topClimbs: List<RecapClimb> = emptyList(),
     /** Easiest first. */
     val grades: List<RecapGrade>,
     val boards: List<String>,
@@ -87,6 +99,8 @@ object StatsHighlightsComputer {
     /** A biggest day needs at least this many sends to be worth a badge. */
     const val BIGGEST_DAY_MIN = 5
     const val WEEK_STREAK_MIN = 2
+    /** How many of the hardest sends a recap lists. */
+    const val RECAP_TOP = 3
 
     fun atAGlance(
         ascents: List<AscentWithClimb>,
@@ -241,6 +255,24 @@ object StatsHighlightsComputer {
             tries = rows.sumOf { it.bidCount.coerceAtLeast(1L) }.toInt(),
             problems = rows.map { Triple(it.boardBrand, it.climbUuid, it.angle) }.distinct().size,
             hardest = hardestOf(sends, gradeScale),
+            topClimbs = sends
+                .filter { it.difficultyAverage != null }
+                // A problem sent twice shows once, as a flash if it was one.
+                .groupBy { Triple(it.boardBrand, it.climbUuid, it.angle) }
+                .values
+                .map { repeats -> repeats.minWith(compareBy<AscentWithClimb> { it.uuid !in flashUuids }.thenBy { it.climbedAt }) }
+                .sortedWith(compareByDescending<AscentWithClimb> { it.difficultyAverage!! }.thenBy { it.climbedAt })
+                .take(RECAP_TOP)
+                .map {
+                    RecapClimb(
+                        name = it.climbName,
+                        grade = GradeDisplayHelper.formatDifficulty(it.difficultyAverage!!, gradeScale),
+                        difficulty = it.difficultyAverage!!,
+                        board = it.boardBrand,
+                        angle = it.angle.toInt(),
+                        flash = it.uuid in flashUuids,
+                    )
+                },
             grades = grades,
             boards = rows.groupingBy { it.boardBrand }.eachCount().entries
                 .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })

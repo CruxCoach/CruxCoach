@@ -1705,6 +1705,7 @@
     <string name="board_session_recap_share">Als Bild teilen</string>
     <string name="board_session_recap_chooser">Session teilen</string>
     <string name="board_session_recap_failed">Das Bild konnte nicht geteilt werden.</string>
+    <string name="board_session_recap_hardest">Schwerste Begehungen</string>
     <string name="board_stats_open">Statistik öffnen</string>
     <string name="board_stats_problems">Boulder</string>
     <string name="board_stats_grades_title">Boulder je Grad</string>

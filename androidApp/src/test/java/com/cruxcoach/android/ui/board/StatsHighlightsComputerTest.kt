@@ -188,6 +188,9 @@ class StatsHighlightsComputerTest {
         assertEquals(listOf("kilter", "moonboard"), recap.boards)
         assertEquals(listOf(grade(16.0), grade(20.0)), recap.grades.map { it.grade })
         assertEquals(RecapGrade(grade(16.0), 16, sends = 2, flashes = 2), recap.grades.first())
+        assertEquals(listOf("name-earlier", "name-flash", "name-m"), recap.topClimbs.map { it.name })
+        assertEquals(listOf(false, true, true), recap.topClimbs.map { it.flash })
+        assertEquals(grade(20.0), recap.topClimbs.first().grade)
         assertNull(StatsHighlightsComputer.sessionRecap(rows, LocalDate.parse("2026-03-12"), scale))
     }
 

@@ -230,13 +230,9 @@ internal fun SessionRecapCard(recap: SessionRecap) {
             RecapTile("${recap.sends}", stringResource(R.string.board_sends), null, tile)
             RecapTile("${recap.flashes}", stringResource(R.string.board_session_flashes), null, tile)
             RecapTile("${recap.tries}", stringResource(R.string.board_session_summary_attempts), null, tile)
-            RecapTile(
-                recap.hardest?.grade ?: "–",
-                stringResource(R.string.board_stats_glance_hardest),
-                recap.hardest?.let { gradeColorForDifficulty(it.difficulty) },
-                tile,
-            )
+            RecapTile("${recap.problems}", stringResource(R.string.board_stats_problems), null, tile)
         }
+        if (recap.topClimbs.isNotEmpty()) TopClimbs(recap.topClimbs, colors.takeIf { recap.boards.size > 1 })
         if (recap.grades.isNotEmpty()) GradeStrip(recap.grades)
         if (recap.milestones.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -270,6 +266,69 @@ private fun RecapTile(value: String, label: String, tint: androidx.compose.ui.gr
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/** The hardest problems of the session: grade, name, board and angle, a flash marked. */
+@Composable
+private fun TopClimbs(climbs: List<RecapClimb>, boardColors: Map<String, androidx.compose.ui.graphics.Color>?) {
+    val flashLabel = stringResource(R.string.board_logbook_flash)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            stringResource(R.string.board_session_recap_hardest),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        climbs.forEach { climb ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clearAndSetSemantics {
+                        contentDescription = listOfNotNull(climb.grade, climb.name, "${climb.angle}°", flashLabel.takeIf { climb.flash })
+                            .joinToString(", ")
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    Modifier
+                        .width(48.dp)
+                        .background(gradeColorForDifficulty(climb.difficulty), RoundedCornerShape(8.dp))
+                        .padding(vertical = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(climb.grade, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White, maxLines = 1)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        climb.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (boardColors != null) {
+                            Spacer(Modifier.size(6.dp).background(boardColors[climb.board] ?: MaterialTheme.colorScheme.onSurfaceVariant, androidx.compose.foundation.shape.CircleShape))
+                        }
+                        Text(
+                            "${boardBrandLabel(climb.board)} · ${climb.angle}°",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                }
+                if (climb.flash) {
+                    Text(
+                        flashLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = triesRamp().first(),
+                    )
+                }
+            }
+        }
     }
 }
 
