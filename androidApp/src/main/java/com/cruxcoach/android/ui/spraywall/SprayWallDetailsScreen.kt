@@ -10,7 +10,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,7 +45,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
+import com.cruxcoach.android.spraywall.SprayWallPublisher
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.ui.map.MapVenue
 import com.cruxcoach.domain.spraywall.SprayGym
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -52,7 +61,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** A wall's details: name and angle. [first] = the last step of adding the wall. */
+/** A wall's details: name, angle, who sees it and its gym. [first] = the last step of adding the wall. */
 data class SprayWallDetailsState(
     val loading: Boolean = true,
     val notFound: Boolean = false,
@@ -61,8 +70,16 @@ data class SprayWallDetailsState(
     val angle: Int = SprayWallPhotoViewModel.DEFAULT_ANGLE,
     val visibility: SprayWallVisibility = SprayWallVisibility.PRIVATE,
     val gym: SprayGym? = null,
+    /** On Nostr right now: going private withdraws it. */
+    val published: Boolean = false,
     val saving: Boolean = false,
+    /** The map's venues while the gym picker is open (null = still loading). */
+    val venues: List<MapVenue>? = null,
+    val pickingGym: Boolean = false,
+    val dialog: Dialog? = null,
 ) {
+    enum class Dialog { CONFIRM_PUBLIC, NO_IDENTITY, CONFIRM_WITHDRAW }
+
     val canSave: Boolean get() = !loading && !saving && name.isNotBlank()
 
     companion object {
@@ -81,6 +98,8 @@ sealed interface SprayWallDetailsEvent {
 class SprayWallDetailsViewModel @Inject constructor(
     savedState: SavedStateHandle,
     private val repository: SprayWallRepository,
+    private val publisher: SprayWallPublisher,
+    private val venueSource: SprayVenueSource,
 ) : ViewModel() {
     private val wallId: String = savedState[SprayWallRoutes.ARG_WALL] ?: ""
     private val _state = MutableStateFlow(SprayWallDetailsState(first = savedState.get<Boolean>(SprayWallRoutes.ARG_FIRST) == true))
@@ -95,9 +114,48 @@ class SprayWallDetailsViewModel @Inject constructor(
                 _state.update { it.copy(loading = false, notFound = true) }
                 return@launch
             }
-            _state.update { it.copy(loading = false, name = wall.name, angle = wall.angle, visibility = wall.visibility, gym = wall.gym) }
+            _state.update {
+                it.copy(
+                    loading = false, name = wall.name, angle = wall.angle, visibility = wall.visibility, gym = wall.gym,
+                    published = wall.visibility == SprayWallVisibility.PUBLIC && wall.publishedVersion != null,
+                )
+            }
         }
     }
+
+    /** Public asks first (and needs an identity); private on a published wall asks before withdrawing it. */
+    fun chooseVisibility(visibility: SprayWallVisibility) {
+        val s = _state.value
+        if (visibility == s.visibility) return
+        val dialog = when {
+            visibility == SprayWallVisibility.PUBLIC && !publisher.hasIdentity() -> SprayWallDetailsState.Dialog.NO_IDENTITY
+            visibility == SprayWallVisibility.PUBLIC -> SprayWallDetailsState.Dialog.CONFIRM_PUBLIC
+            s.published -> SprayWallDetailsState.Dialog.CONFIRM_WITHDRAW
+            else -> null
+        }
+        _state.update { if (dialog == null) it.copy(visibility = visibility) else it.copy(dialog = dialog) }
+    }
+
+    fun confirmDialog() = _state.update {
+        when (it.dialog) {
+            SprayWallDetailsState.Dialog.CONFIRM_PUBLIC -> it.copy(visibility = SprayWallVisibility.PUBLIC, dialog = null)
+            SprayWallDetailsState.Dialog.CONFIRM_WITHDRAW -> it.copy(visibility = SprayWallVisibility.PRIVATE, dialog = null)
+            else -> it.copy(dialog = null)
+        }
+    }
+
+    fun dismissDialog() = _state.update { it.copy(dialog = null) }
+
+    fun openGymPicker() {
+        _state.update { it.copy(pickingGym = true) }
+        if (_state.value.venues == null) viewModelScope.launch {
+            val venues = runCatching { venueSource.venues() }.getOrDefault(emptyList())
+            _state.update { it.copy(venues = venues) }
+        }
+    }
+
+    fun pickGym(gym: SprayGym?) = _state.update { it.copy(gym = gym, pickingGym = false) }
+    fun closeGymPicker() = _state.update { it.copy(pickingGym = false) }
 
     fun setName(name: String) = _state.update { it.copy(name = name.take(SprayWallDetailsState.NAME_LIMIT)) }
 
@@ -108,7 +166,10 @@ class SprayWallDetailsViewModel @Inject constructor(
         if (!s.canSave) return
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
+            // Taking a published wall back: tombstones first, while it is still known as public.
+            if (s.published && s.visibility == SprayWallVisibility.PRIVATE) publisher.withdrawWall(wallId)
             repository.updateWallDetails(wallId, s.name, s.angle, s.visibility, s.gym)
+            if (s.visibility == SprayWallVisibility.PUBLIC) publisher.publishSoon()
             _events.emit(SprayWallDetailsEvent.Saved)
         }
     }
@@ -181,6 +242,38 @@ fun SprayWallDetailsScreen(
                 )
                 Text(stringResource(R.string.spray_wall_angle_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.spray_visibility_title), style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = state.visibility == SprayWallVisibility.PRIVATE,
+                        onClick = { viewModel.chooseVisibility(SprayWallVisibility.PRIVATE) },
+                        label = { Text(stringResource(R.string.spray_visibility_private)) },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                        modifier = Modifier.testTag("spray_visibility_private"),
+                    )
+                    FilterChip(
+                        selected = state.visibility == SprayWallVisibility.PUBLIC,
+                        onClick = { viewModel.chooseVisibility(SprayWallVisibility.PUBLIC) },
+                        label = { Text(stringResource(R.string.spray_visibility_public)) },
+                        leadingIcon = { Icon(Icons.Default.Public, contentDescription = null) },
+                        modifier = Modifier.testTag("spray_visibility_public"),
+                    )
+                }
+                Text(
+                    stringResource(if (state.visibility == SprayWallVisibility.PUBLIC) R.string.spray_visibility_public_hint else R.string.spray_visibility_private_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.spray_gym_title), style = MaterialTheme.typography.labelLarge)
+                OutlinedButton(onClick = viewModel::openGymPicker, modifier = Modifier.fillMaxWidth().testTag("spray_gym_pick")) {
+                    Icon(if (state.gym == null) Icons.Default.Home else Icons.Default.Place, contentDescription = null)
+                    Text(state.gym?.name?.ifBlank { null } ?: stringResource(R.string.spray_gym_none), modifier = Modifier.padding(start = 8.dp))
+                }
+                Text(stringResource(R.string.spray_gym_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Button(
                 onClick = viewModel::save,
                 enabled = state.canSave,
@@ -188,13 +281,39 @@ fun SprayWallDetailsScreen(
             ) {
                 Text(stringResource(if (state.first) R.string.action_done else R.string.action_save))
             }
-            Text(stringResource(R.string.spray_walls_private_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (!state.first && !state.loading) {
                 TextButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag("spray_wall_delete")) {
                     Text(stringResource(R.string.spray_wall_delete), color = MaterialTheme.colorScheme.error)
                 }
             }
         }
+    }
+    if (state.pickingGym) {
+        SprayGymPickerDialog(venues = state.venues, current = state.gym, onPick = viewModel::pickGym, onDismiss = viewModel::closeGymPicker)
+    }
+    when (state.dialog) {
+        SprayWallDetailsState.Dialog.CONFIRM_PUBLIC -> SprayConfirmDialog(
+            title = stringResource(R.string.spray_publish_confirm_title),
+            text = stringResource(R.string.spray_publish_confirm_text),
+            confirmLabel = stringResource(R.string.spray_publish_confirm),
+            onConfirm = viewModel::confirmDialog,
+            onDismiss = viewModel::dismissDialog,
+        )
+        SprayWallDetailsState.Dialog.CONFIRM_WITHDRAW -> SprayConfirmDialog(
+            title = stringResource(R.string.spray_withdraw_title),
+            text = stringResource(R.string.spray_withdraw_text),
+            confirmLabel = stringResource(R.string.spray_withdraw_confirm),
+            onConfirm = viewModel::confirmDialog,
+            onDismiss = viewModel::dismissDialog,
+        )
+        SprayWallDetailsState.Dialog.NO_IDENTITY -> SprayConfirmDialog(
+            title = stringResource(R.string.spray_publish_no_identity_title),
+            text = stringResource(R.string.spray_publish_no_identity_text),
+            confirmLabel = stringResource(R.string.action_ok),
+            onConfirm = viewModel::dismissDialog,
+            onDismiss = viewModel::dismissDialog,
+        )
+        null -> Unit
     }
     if (confirmDelete) {
         SprayConfirmDialog(

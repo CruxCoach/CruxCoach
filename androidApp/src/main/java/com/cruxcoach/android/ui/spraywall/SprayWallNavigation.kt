@@ -9,12 +9,13 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.cruxcoach.android.ui.common.ScreenErrorBoundary
+import com.cruxcoach.domain.spraywall.SprayGym
 
 /** Destinations of the spray-wall area (FEAT-078). */
 object SprayWallRoutes {
     const val LIST = "spray_walls"
     /** Step 1 of adding a wall: the photo. Steps 2 and 3 are [HOLDS] and [DETAILS] with first=true. */
-    const val NEW = "spray_wall_new"
+    const val NEW = "spray_wall_new?gymId={gymId}&gymName={gymName}"
     const val RESET = "spray_wall_reset/{wallId}"
     const val DETAILS = "spray_wall_details/{wallId}?first={first}"
     const val WALL = "spray_wall/{wallId}"
@@ -23,6 +24,9 @@ object SprayWallRoutes {
     const val CLIMB_EDITOR = "spray_climb_editor/{wallId}?climbUuid={climbUuid}"
     const val CLIMB = "spray_climb/{climbUuid}"
 
+    /** A new wall, already at [gym] when it is set up from the map. */
+    fun new(gym: SprayGym? = null) =
+        if (gym == null) "spray_wall_new" else "spray_wall_new?gymId=${Uri.encode(gym.id)}&gymName=${Uri.encode(gym.name)}"
     fun reset(wallId: String) = "spray_wall_reset/${Uri.encode(wallId)}"
     fun details(wallId: String, first: Boolean = false) = "spray_wall_details/${Uri.encode(wallId)}?first=$first"
     fun wall(wallId: String) = "spray_wall/${Uri.encode(wallId)}"
@@ -35,6 +39,8 @@ object SprayWallRoutes {
     const val ARG_WALL = "wallId"
     const val ARG_CLIMB = "climbUuid"
     const val ARG_FIRST = "first"
+    const val ARG_GYM_ID = "gymId"
+    const val ARG_GYM_NAME = "gymName"
 }
 
 fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
@@ -46,11 +52,15 @@ fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
     screen(SprayWallRoutes.LIST, "SprayWalls", back) {
         SprayWallListScreen(
             onBack = back,
-            onAddWall = { go(SprayWallRoutes.NEW) },
+            onAddWall = { go(SprayWallRoutes.new()) },
             onOpenWall = { go(SprayWallRoutes.wall(it)) },
         )
     }
-    screen(SprayWallRoutes.NEW, "SprayWallNew", back) {
+    val gymArgs = listOf(
+        navArgument(SprayWallRoutes.ARG_GYM_ID) { type = NavType.StringType; nullable = true; defaultValue = null },
+        navArgument(SprayWallRoutes.ARG_GYM_NAME) { type = NavType.StringType; nullable = true; defaultValue = null },
+    )
+    screen(SprayWallRoutes.NEW, "SprayWallNew", back, gymArgs) {
         SprayWallPhotoScreen(
             onBack = back,
             // The new wall goes on to its holds; Back from there lands on the wall.

@@ -6,9 +6,11 @@ import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.spraywall.EditableHold
 import com.cruxcoach.domain.spraywall.SprayClimbRules
 import com.cruxcoach.domain.spraywall.SprayGym
+import com.cruxcoach.domain.spraywall.SprayHold
 import com.cruxcoach.domain.spraywall.SprayHoldRole
 import com.cruxcoach.domain.spraywall.SprayVersionKind
 import com.cruxcoach.domain.spraywall.SprayWallHistory
+import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import io.mockk.mockk
 import io.mockk.verify
@@ -231,6 +233,91 @@ class SprayWallRepositoryTest {
         repository.updateWallDetails(wall, "Wall", 40, SprayWallVisibility.PRIVATE, null)
         assertNull(repository.wall(wall)!!.publishedVersion)
         assertFalse(repository.wall(wall)!!.needsPublish)
+    }
+
+    // ── Other people's public walls ─────────────────────────────
+
+    private val owner = "b".repeat(64)
+    private val remoteId = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"
+
+    private fun head(version: Int, name: String = "Gym wall") =
+        SprayWallNostr.Parsed.WallHead(owner, 1_000, SprayWallNostr.wallDTag(owner, remoteId), remoteId, name, 30, version, SprayGym("475123,93456", "Halle"))
+
+    private fun remoteVersion(n: Int, file: String) = SprayWallRepository.RemoteVersion(
+        SprayWallNostr.Parsed.Version(
+            owner, 1_000L + n, SprayWallNostr.versionDTag(owner, remoteId, n), remoteId, n, SprayVersionKind.HOLDS, null,
+            "c".repeat(64), "https://cdn.example/" + "c".repeat(64), 3000, 2000,
+            listOf(SprayHold(remoteId, n, 1, 0.1f, 0.2f, 0.02f), SprayHold(remoteId, n, 2, 0.3f, 0.2f, 0.02f)),
+        ),
+        SprayWallPhotoStore.StoredPhoto(file, 3000, 2000),
+    )
+
+    private fun remoteClimb(uuid: String, author: String, createdAt: Long, name: String = "Their line") = SprayWallNostr.Parsed.Climb(
+        author, createdAt, SprayWallNostr.climbDTag(author, uuid), uuid, owner, remoteId, 1, name, "", 20,
+        mapOf(1L to SprayHoldRole.START, 2L to SprayHoldRole.FINISH),
+    )
+
+    @Test
+    fun `someone else's wall is stored read-only with its versions`() = runTest {
+        assertEquals(remoteId, repository.importRemoteWall(head(1), listOf(remoteVersion(1, "r1.jpg"))))
+        val wall = repository.wall(remoteId)!!
+        assertFalse(wall.isMine)
+        assertEquals(owner, wall.ownerPubkey)
+        assertEquals(SprayWallVisibility.PUBLIC, wall.visibility)
+        assertFalse(wall.needsPublish, "someone else's wall is never published from here")
+        assertEquals(listOf(1L, 2L), repository.holds(remoteId, 1).map { it.id })
+        assertEquals("r1.jpg", repository.photoWithHash("c".repeat(64))?.fileName)
+
+        // A newer head with a new version; the known version is kept as it is.
+        repository.importRemoteWall(head(2, name = "Renamed"), listOf(remoteVersion(1, "other.jpg"), remoteVersion(2, "r1.jpg")))
+        val updated = repository.wall(remoteId)!!
+        assertEquals("Renamed", updated.name)
+        assertEquals(2, updated.current.number)
+        assertEquals("r1.jpg", repository.versions(remoteId).first { it.number == 1 }.photoFile)
+        assertEquals(listOf(remoteId), repository.publicWalls().map { it.id })
+    }
+
+    @Test
+    fun `a wall id that is already taken here is refused`() = runTest {
+        repository.createWall("Mine", 40, SprayWallVisibility.PRIVATE, null, photo, emptyList())
+        val mine = repository.walls().single().wall.id
+        val clash = head(1).copy(wallId = mine, dTag = SprayWallNostr.wallDTag(owner, mine))
+        assertNull(repository.importRemoteWall(clash, listOf(remoteVersion(1, "r1.jpg"))))
+        assertTrue(repository.wall(mine)!!.isMine)
+    }
+
+    @Test
+    fun `climbs others publish are added, replaced only by newer ones and removed unless logged`() = runTest {
+        repository.importRemoteWall(head(1), listOf(remoteVersion(1, "r1.jpg")))
+        val uuid = "1a2b3c4d-5e6f-7081-92a3-b4c5d6e7f809"
+        val setter = "d".repeat(64)
+        repository.upsertRemoteClimb(remoteClimb(uuid, setter, 2_000))
+        assertEquals(setter, repository.climb(uuid)?.authorPubkey)
+
+        repository.upsertRemoteClimb(remoteClimb(uuid, setter, 1_500, name = "Older"))
+        assertEquals("Their line", repository.climb(uuid)?.name)
+        repository.upsertRemoteClimb(remoteClimb(uuid, setter, 3_000, name = "Newer"))
+        assertEquals("Newer", repository.climb(uuid)?.name)
+        // Someone else cannot take over the climb.
+        repository.upsertRemoteClimb(remoteClimb(uuid, "e".repeat(64), 4_000, name = "Hijack"))
+        assertEquals("Newer", repository.climb(uuid)?.name)
+
+        // Logged here: it stays when its setter takes it back.
+        repository.logAscent(repository.climb(uuid)!!, true, 1, null, null)
+        repository.removeRemoteClimb(setter, uuid)
+        assertEquals("Newer", repository.climb(uuid)?.name)
+        repository.deleteAscent(repository.ascents(uuid).single().uuid)
+        repository.removeRemoteClimb(setter, uuid)
+        assertNull(repository.climb(uuid))
+    }
+
+    @Test
+    fun `a withdrawn wall stays here as a private copy`() = runTest {
+        repository.importRemoteWall(head(1), listOf(remoteVersion(1, "r1.jpg")))
+        repository.markRemoteWallWithdrawn(owner, remoteId)
+        val wall = repository.wall(remoteId)!!
+        assertEquals(SprayWallVisibility.PRIVATE, wall.visibility)
+        assertTrue(repository.publicWalls().isEmpty())
     }
 
     @Test

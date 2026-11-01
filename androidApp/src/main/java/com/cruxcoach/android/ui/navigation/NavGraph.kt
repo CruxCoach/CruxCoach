@@ -668,6 +668,8 @@ fun CruxCoachNavHost(
                             navController.popBackStack(Routes.BOARD_BROWSER, false)
                         },
                         onNavigateToBoardSync = { navController.navigate(Routes.BOARD_SYNC) },
+                        onOpenSprayWall = { navController.navigate(SprayWallRoutes.wall(it)) { launchSingleTop = true } },
+                        onNewSprayWall = { navController.navigate(SprayWallRoutes.new(it)) { launchSingleTop = true } },
                     )
                 }
             }

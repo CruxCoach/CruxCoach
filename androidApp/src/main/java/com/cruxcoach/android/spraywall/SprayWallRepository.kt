@@ -17,6 +17,7 @@ import com.cruxcoach.domain.spraywall.SprayHoldRole
 import com.cruxcoach.domain.spraywall.SprayVersionKind
 import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.SprayWallHistory
+import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallSummary
 import com.cruxcoach.domain.spraywall.SprayWallVersion
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
@@ -89,8 +90,11 @@ class SprayWallRepository @Inject constructor(
         io {
             database.transaction {
                 queries.updateWallDetails(name.trim(), angle.toLong(), visibility.wire, gym?.id, gym?.name, now(), id)
-                // Going public (again) publishes the current version and the climbs anew.
-                if (visibility == SprayWallVisibility.PRIVATE) queries.setPublishedVersion(null, id)
+                // Going public (again) publishes every version and the climbs anew.
+                if (visibility == SprayWallVisibility.PRIVATE) {
+                    queries.setPublishedVersion(null, id)
+                    queries.clearClimbsPublished(id)
+                }
             }
         }
         changed()
@@ -343,6 +347,104 @@ class SprayWallRepository @Inject constructor(
     /** Only if the climb was not edited meanwhile ([updatedAt] still matches). */
     suspend fun markClimbPublished(uuid: String, updatedAt: Long) {
         io { queries.setClimbPublished(now(), uuid, updatedAt) }
+    }
+
+    // ── Other people's public walls (SprayWallFetcher) ──────────
+
+    /** A version of someone else's wall as read from Nostr, with its photo stored here. */
+    data class RemoteVersion(val parsed: SprayWallNostr.Parsed.Version, val photo: SprayWallPhotoStore.StoredPhoto)
+
+    /**
+     * Stores or updates someone else's public wall. Versions never change, so
+     * known ones stay as they are. Returns null when the id already belongs
+     * to a different wall on this phone.
+     */
+    suspend fun importRemoteWall(head: SprayWallNostr.Parsed.WallHead, versions: List<RemoteVersion>): String? = io {
+        database.transactionWithResult<String?> {
+            val existing = queries.selectWall(head.wallId).executeAsOneOrNull()
+            if (existing != null && existing.owner_pubkey != head.author) return@transactionWithResult null
+            val known = queries.selectVersions(head.wallId).executeAsList().map { it.version.toInt() }.toSet()
+            val available = known + versions.map { it.parsed.number }
+            val current = head.currentVersion.takeIf { it in available }
+                ?: existing?.current_version?.toInt()
+                ?: return@transactionWithResult null
+            val t = now()
+            if (existing == null) {
+                queries.insertWall(head.wallId, head.name, head.angle.toLong(), SprayWallVisibility.PUBLIC.wire, head.gym?.id, head.gym?.name,
+                    head.author, current.toLong(), current.toLong(), t, t)
+            } else {
+                queries.updateRemoteWall(head.name, head.angle.toLong(), SprayWallVisibility.PUBLIC.wire, head.gym?.id, head.gym?.name,
+                    current.toLong(), current.toLong(), t, head.wallId, head.author)
+            }
+            for (v in versions) {
+                val p = v.parsed
+                if (p.number in known) continue
+                insertVersion(head.wallId, p.number, p.kind, p.basedOn, v.photo.fileName, v.photo.width, v.photo.height,
+                    p.photoSha256, p.photoUrl, p.holds.map { EditableHold(it.id, it.x, it.y, it.radius) }, p.createdAt * 1000)
+            }
+            head.wallId
+        }
+    }.also { if (it != null) changed() }
+
+    /** A climb someone published on a public wall here; a newer one replaces it. */
+    suspend fun upsertRemoteClimb(c: SprayWallNostr.Parsed.Climb) {
+        val wrote = io {
+            database.transactionWithResult {
+                if (queries.selectWall(c.wallId).executeAsOneOrNull() == null) return@transactionWithResult false
+                val t = c.createdAt * 1000
+                val holds = SprayClimbHolds.encode(c.holds)
+                val existing = queries.selectClimb(c.uuid).executeAsOneOrNull()
+                when {
+                    existing == null -> {
+                        queries.insertClimb(c.uuid, c.wallId, c.version.toLong(), c.name, c.description, c.difficulty?.toLong(), holds, c.author, t, t, t)
+                        true
+                    }
+                    existing.author_pubkey == c.author && existing.wall_id == c.wallId && existing.updated_at < t -> {
+                        queries.replaceRemoteClimb(c.version.toLong(), c.name, c.description, c.difficulty?.toLong(), holds, t, c.uuid, c.author)
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }
+        if (wrote) changed()
+    }
+
+    /** Its setter took a climb back. It stays here only while it carries logbook entries of mine. */
+    suspend fun removeRemoteClimb(author: String, uuid: String) {
+        val removed = io {
+            database.transactionWithResult {
+                val climb = queries.selectClimb(uuid).executeAsOneOrNull() ?: return@transactionWithResult false
+                if (climb.author_pubkey != author) return@transactionWithResult false
+                if (queries.selectAscentsForClimb(uuid).executeAsList().isNotEmpty()) return@transactionWithResult false
+                queries.deleteRemoteClimb(uuid, author)
+                true
+            }
+        }
+        if (removed) changed()
+    }
+
+    /** Its owner took a wall back: the copy here stays for the logbook, but is no longer public. */
+    suspend fun markRemoteWallWithdrawn(owner: String, wallId: String) {
+        io { queries.setRemoteWallVisibility(SprayWallVisibility.PRIVATE.wire, now(), wallId, owner) }
+        changed()
+    }
+
+    /** A photo already here with this Blossom hash (versions on the same photo share it). */
+    suspend fun photoWithHash(sha256: String): SprayWallPhotoStore.StoredPhoto? = io {
+        queries.selectPhotoWithHash(sha256).executeAsOneOrNull()
+            ?.takeIf { photos.file(it.photo_file) != null }
+            ?.let { SprayWallPhotoStore.StoredPhoto(it.photo_file, it.photo_width.toInt(), it.photo_height.toInt()) }
+    }
+
+    /** Public walls here, mine and followed ones. */
+    suspend fun publicWalls(): List<SprayWall> = io {
+        queries.selectPublicWalls().executeAsList().mapNotNull { it.toModel() }
+    }
+
+    /** My climbs on [wallId] that are on Nostr. */
+    suspend fun publishedClimbs(wallId: String): List<SprayClimb> = io {
+        queries.selectClimbs(wallId).executeAsList().map { it.toModel() }.filter { it.isMine && it.publishedAt != null }
     }
 
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }

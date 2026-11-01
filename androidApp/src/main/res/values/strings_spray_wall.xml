@@ -2,8 +2,8 @@
 <!-- FEAT-078 spray walls. German copy in values-de/strings_spray_wall.xml. -->
 <resources>
     <string name="spray_walls_title">Spray walls</string>
-    <string name="spray_walls_empty">Photograph your own wall, mark its holds and set climbs on it. Everything stays on this phone.</string>
-    <string name="spray_walls_private_note">Spray walls stay on this phone. They are not shared, published or included in backups.</string>
+    <string name="spray_walls_empty">Photograph your own wall, mark its holds and set climbs on it. A wall stays on this phone unless you make it public.</string>
+    <string name="spray_walls_private_note">Private walls stay on this phone. Spray walls are not included in Android backups; your logbook is never published.</string>
     <string name="spray_wall_add">Add a wall</string>
     <string name="spray_wall_counts">Holds: %1$d · Climbs: %2$d · %3$d°</string>
     <string name="spray_cd_photo">Photo of the wall with its holds</string>
@@ -160,4 +160,38 @@
     <string name="spray_visibility_private">Private</string>
     <string name="spray_visibility_public">Public</string>
     <string name="spray_publish_pending">Not published yet</string>
+
+    <!-- Public walls, gyms -->
+    <string name="spray_visibility_title">Who sees this wall</string>
+    <string name="spray_visibility_private_hint">Only on this phone. Nothing about it is published.</string>
+    <string name="spray_visibility_public_hint">Published over Nostr with your CruxCoach account: the photo of every version, the holds and the climbs. Others can add the wall and set climbs on it. Your logbook stays private.</string>
+    <string name="spray_publish_confirm_title">Make this wall public?</string>
+    <string name="spray_publish_confirm_text">The photo of every version of this wall, its holds and the climbs on it become public under your CruxCoach account. You can withdraw the wall later, but copies others already have can stay. Your logbook is never published.</string>
+    <string name="spray_publish_confirm">Make public</string>
+    <string name="spray_publish_no_identity_title">No account key yet</string>
+    <string name="spray_publish_no_identity_text">Publishing a wall needs your CruxCoach account key. Set it up in Settings under CruxCoach Account, then make the wall public.</string>
+    <string name="spray_publish_failed">This wall is not published yet: no connection to the relays or the photo server. Try again later.</string>
+    <string name="spray_withdraw_title">Withdraw this wall?</string>
+    <string name="spray_withdraw_text">Relays are asked to delete the wall, all its versions and your climbs on it. Copies others already have can stay. The wall stays on this phone as a private wall.</string>
+    <string name="spray_withdraw_confirm">Withdraw</string>
+    <string name="spray_gym_title">Gym</string>
+    <string name="spray_gym_pick_title">Where is the wall?</string>
+    <string name="spray_gym_search">Search gyms by name or town</string>
+    <string name="spray_gym_hint">A public wall at a gym shows up at that gym on the map. Where a home wall is, is never published.</string>
+    <string name="spray_gym_none">Home wall, no gym</string>
+    <string name="spray_gym_no_match">No gym found. The list has the places of the board map.</string>
+    <string name="spray_climb_public_note">This wall is public: the climb is published under your CruxCoach account. Your logbook stays private.</string>
+    <string name="spray_followed_note">Shared by %1$s. Its holds are fixed; you can set and log climbs on it.</string>
+    <string name="spray_followed_withdrawn">Its owner withdrew this wall. It stays here for your climbs and your logbook.</string>
+    <string name="spray_followed_remove">Remove from my walls</string>
+    <string name="spray_followed_remove_text">This removes the wall from this phone, with your climbs and logbook entries on it. The public wall itself stays.</string>
+    <string name="spray_venue_title">Spray walls here</string>
+    <string name="spray_venue_hint">Public spray walls people shared for this place. They are only loaded when you ask.</string>
+    <string name="spray_venue_show">Show spray walls</string>
+    <string name="spray_venue_none">No public spray walls here yet.</string>
+    <string name="spray_venue_wall_facts">%1$d° · by %2$s</string>
+    <string name="spray_venue_add">Add</string>
+    <string name="spray_venue_open">Open</string>
+    <string name="spray_venue_failed">That did not work. Check the connection and try again.</string>
+    <string name="spray_venue_new">Set up a spray wall here</string>
 </resources>

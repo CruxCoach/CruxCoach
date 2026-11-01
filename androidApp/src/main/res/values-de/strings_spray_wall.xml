@@ -2,8 +2,8 @@
 <!-- FEAT-078 Spraywände. Englische Vorlage in values/strings_spray_wall.xml. -->
 <resources>
     <string name="spray_walls_title">Spraywände</string>
-    <string name="spray_walls_empty">Fotografiere deine eigene Wand, markiere ihre Griffe und schraube Boulder darauf. Alles bleibt auf diesem Telefon.</string>
-    <string name="spray_walls_private_note">Spraywände bleiben auf diesem Telefon. Sie werden nicht geteilt, veröffentlicht oder gesichert.</string>
+    <string name="spray_walls_empty">Fotografiere deine eigene Wand, markiere ihre Griffe und schraube Boulder darauf. Eine Wand bleibt auf diesem Telefon, außer du machst sie öffentlich.</string>
+    <string name="spray_walls_private_note">Private Wände bleiben auf diesem Telefon. Spraywände sind nicht in Android-Sicherungen enthalten; dein Logbuch wird nie veröffentlicht.</string>
     <string name="spray_wall_add">Wand hinzufügen</string>
     <string name="spray_wall_counts">Griffe: %1$d · Boulder: %2$d · %3$d°</string>
     <string name="spray_cd_photo">Foto der Wand mit ihren Griffen</string>
@@ -160,4 +160,38 @@
     <string name="spray_visibility_private">Privat</string>
     <string name="spray_visibility_public">Öffentlich</string>
     <string name="spray_publish_pending">Noch nicht veröffentlicht</string>
+
+    <!-- Öffentliche Wände, Hallen -->
+    <string name="spray_visibility_title">Wer die Wand sieht</string>
+    <string name="spray_visibility_private_hint">Nur auf diesem Telefon. Nichts davon wird veröffentlicht.</string>
+    <string name="spray_visibility_public_hint">Über Nostr mit deinem CruxCoach-Account veröffentlicht: das Foto jeder Version, die Griffe und die Boulder. Andere können die Wand hinzufügen und Boulder darauf schrauben. Dein Logbuch bleibt privat.</string>
+    <string name="spray_publish_confirm_title">Wand öffentlich machen?</string>
+    <string name="spray_publish_confirm_text">Das Foto jeder Version dieser Wand, ihre Griffe und die Boulder darauf werden unter deinem CruxCoach-Account öffentlich. Du kannst die Wand später zurückziehen, aber Kopien, die andere schon haben, können bleiben. Dein Logbuch wird nie veröffentlicht.</string>
+    <string name="spray_publish_confirm">Öffentlich machen</string>
+    <string name="spray_publish_no_identity_title">Noch kein Kontoschlüssel</string>
+    <string name="spray_publish_no_identity_text">Zum Veröffentlichen braucht die Wand deinen CruxCoach-Kontoschlüssel. Richte ihn in den Einstellungen unter CruxCoach Account ein und mach die Wand dann öffentlich.</string>
+    <string name="spray_publish_failed">Diese Wand ist noch nicht veröffentlicht: keine Verbindung zu den Relays oder zum Fotoserver. Versuch es später noch einmal.</string>
+    <string name="spray_withdraw_title">Wand zurückziehen?</string>
+    <string name="spray_withdraw_text">Die Relays werden gebeten, die Wand, alle ihre Versionen und deine Boulder darauf zu löschen. Kopien, die andere schon haben, können bleiben. Die Wand bleibt als private Wand auf diesem Telefon.</string>
+    <string name="spray_withdraw_confirm">Zurückziehen</string>
+    <string name="spray_gym_title">Halle</string>
+    <string name="spray_gym_pick_title">Wo hängt die Wand?</string>
+    <string name="spray_gym_search">Hallen nach Name oder Ort suchen</string>
+    <string name="spray_gym_hint">Eine öffentliche Wand in einer Halle erscheint auf der Karte bei dieser Halle. Wo eine Heimwand hängt, wird nie veröffentlicht.</string>
+    <string name="spray_gym_none">Heimwand, keine Halle</string>
+    <string name="spray_gym_no_match">Keine Halle gefunden. Die Liste enthält die Orte der Boardkarte.</string>
+    <string name="spray_climb_public_note">Diese Wand ist öffentlich: Der Boulder wird unter deinem CruxCoach-Account veröffentlicht. Dein Logbuch bleibt privat.</string>
+    <string name="spray_followed_note">Geteilt von %1$s. Ihre Griffe sind fest; du kannst Boulder darauf schrauben und loggen.</string>
+    <string name="spray_followed_withdrawn">Der Besitzer hat diese Wand zurückgezogen. Sie bleibt hier für deine Boulder und dein Logbuch.</string>
+    <string name="spray_followed_remove">Aus meinen Wänden entfernen</string>
+    <string name="spray_followed_remove_text">Das entfernt die Wand von diesem Telefon, mit deinen Bouldern und Logbucheinträgen darauf. Die öffentliche Wand selbst bleibt.</string>
+    <string name="spray_venue_title">Spraywände hier</string>
+    <string name="spray_venue_hint">Öffentliche Spraywände, die Leute für diesen Ort geteilt haben. Sie werden erst geladen, wenn du fragst.</string>
+    <string name="spray_venue_show">Spraywände zeigen</string>
+    <string name="spray_venue_none">Hier gibt es noch keine öffentlichen Spraywände.</string>
+    <string name="spray_venue_wall_facts">%1$d° · von %2$s</string>
+    <string name="spray_venue_add">Hinzufügen</string>
+    <string name="spray_venue_open">Öffnen</string>
+    <string name="spray_venue_failed">Das hat nicht geklappt. Prüfe die Verbindung und versuch es noch einmal.</string>
+    <string name="spray_venue_new">Hier eine Spraywand einrichten</string>
 </resources>

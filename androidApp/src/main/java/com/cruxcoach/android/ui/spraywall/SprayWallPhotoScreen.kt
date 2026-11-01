@@ -63,7 +63,10 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.domain.spraywall.SprayClimbRules
 import com.cruxcoach.domain.spraywall.SprayCropRect
+import com.cruxcoach.domain.spraywall.SprayGym
+import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -111,6 +114,10 @@ class SprayWallPhotoViewModel @Inject constructor(
     private val photos: SprayWallPhotoStore,
 ) : ViewModel() {
     private val wallId: String? = savedState[SprayWallRoutes.ARG_WALL]
+    /** Set up from a place on the map: the new wall belongs to that gym. */
+    private val gym: SprayGym? = savedState.get<String>(SprayWallRoutes.ARG_GYM_ID)
+        ?.takeIf { SprayWallNostr.validVenueKey(it) }
+        ?.let { SprayGym(it, savedState.get<String>(SprayWallRoutes.ARG_GYM_NAME).orEmpty().take(SprayClimbRules.MAX_NAME_LENGTH)) }
     private val _state = MutableStateFlow(SprayWallPhotoState(wallId = wallId))
     val state: StateFlow<SprayWallPhotoState> = _state.asStateFlow()
     private val _events = MutableSharedFlow<SprayWallPhotoEvent>(extraBufferCapacity = 2)
@@ -177,7 +184,7 @@ class SprayWallPhotoViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val id = if (wallId == null) {
-                    repository.createWall(defaultName, DEFAULT_ANGLE, SprayWallVisibility.PRIVATE, null, photo, emptyList())
+                    repository.createWall(defaultName, DEFAULT_ANGLE, SprayWallVisibility.PRIVATE, gym, photo, emptyList())
                 } else {
                     repository.resetWall(wallId, photo, emptyList())
                     wallId

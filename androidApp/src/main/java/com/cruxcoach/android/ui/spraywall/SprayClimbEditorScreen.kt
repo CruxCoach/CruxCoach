@@ -56,6 +56,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
+import com.cruxcoach.android.spraywall.SprayWallPublisher
 import com.cruxcoach.android.spraywall.SprayWallRepository
 import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.domain.spraywall.SprayClimbRules
@@ -64,6 +65,7 @@ import com.cruxcoach.domain.spraywall.SprayHoldRole
 import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.SprayWallHistory
 import com.cruxcoach.domain.spraywall.SprayWallVersion
+import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -124,6 +126,7 @@ class SprayClimbEditorViewModel @Inject constructor(
     private val repository: SprayWallRepository,
     private val photos: SprayWallPhotoStore,
     private val preferences: UserPreferences,
+    private val publisher: SprayWallPublisher,
 ) : ViewModel() {
     private val wallId: String = savedState[SprayWallRoutes.ARG_WALL] ?: ""
     private val climbUuid: String? = savedState[SprayWallRoutes.ARG_CLIMB]
@@ -218,7 +221,8 @@ class SprayClimbEditorViewModel @Inject constructor(
     fun delete() {
         val uuid = climbUuid ?: return
         viewModelScope.launch {
-            repository.deleteClimb(uuid)
+            // A published climb is taken back from Nostr too.
+            repository.deleteClimb(uuid)?.let { publisher.withdrawClimbSoon(it, _state.value.wall?.ownerPubkey) }
             _events.emit(SprayClimbEditorEvent.Deleted)
         }
     }
@@ -291,6 +295,9 @@ fun SprayClimbEditorScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(stringResource(R.string.spray_climb_brush_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (wall.visibility == SprayWallVisibility.PUBLIC) {
+                    Text(stringResource(R.string.spray_climb_public_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("spray_climb_public_note"))
+                }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
                         SprayHoldRole.START to R.string.climb_creator_count_start,

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
@@ -69,7 +70,9 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.spraywall.SprayWallFetcher
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
+import com.cruxcoach.android.spraywall.SprayWallPublisher
 import com.cruxcoach.android.spraywall.SprayWallRepository
 import com.cruxcoach.domain.spraywall.SprayClimb
 import com.cruxcoach.domain.spraywall.SprayClimbFilter
@@ -103,7 +106,12 @@ data class SprayWallUiState(
     val sort: SprayClimbSort = SprayClimbSort.NEWEST,
     val query: String = "",
     val gradeScale: GradeScale = GradeScale.FRENCH,
+    /** Why a public wall of mine is not on Nostr yet (null = nothing pending or no attempt). */
+    val publishProblem: PublishProblem? = null,
+    val publishing: Boolean = false,
 ) {
+    enum class PublishProblem { NO_IDENTITY, FAILED }
+
     val holdsOnWall: Set<Long> get() = holds.mapTo(HashSet()) { it.id }
     val earlierVersions: Set<Int> get() = wall?.let { SprayWallHistory.earlierVersions(versions, it.current) }.orEmpty()
     val rows: List<SprayClimbRow> get() = SprayClimbList.rows(climbs, holdsOnWall, sends, filter, sort, query, earlierVersions)
@@ -120,6 +128,8 @@ class SprayWallViewModel @Inject constructor(
     private val repository: SprayWallRepository,
     private val photos: SprayWallPhotoStore,
     private val preferences: UserPreferences,
+    private val publisher: SprayWallPublisher,
+    private val fetcher: SprayWallFetcher,
 ) : ViewModel() {
     private val wallId: String = savedState[SprayWallRoutes.ARG_WALL] ?: ""
     private val _state = MutableStateFlow(SprayWallUiState())
@@ -129,6 +139,35 @@ class SprayWallViewModel @Inject constructor(
     init {
         viewModelScope.launch { repository.changes.collect { reload() } }
         viewModelScope.launch { preferences.gradeScale.collect { scale -> _state.update { it.copy(gradeScale = scale) } } }
+        viewModelScope.launch {
+            publisher.last.collect { outcome ->
+                val problem = when (outcome) {
+                    SprayWallPublisher.Outcome.NoIdentity -> SprayWallUiState.PublishProblem.NO_IDENTITY
+                    is SprayWallPublisher.Outcome.Failed -> SprayWallUiState.PublishProblem.FAILED
+                    else -> null
+                }
+                _state.update { it.copy(publishProblem = problem) }
+            }
+        }
+        // A public wall: climbs others set on it, new versions, withdrawals.
+        viewModelScope.launch { fetcher.refresh(wallId) }
+    }
+
+    fun publishNow() {
+        if (_state.value.publishing) return
+        _state.update { it.copy(publishing = true) }
+        viewModelScope.launch {
+            publisher.publishPending()
+            _state.update { it.copy(publishing = false) }
+        }
+    }
+
+    /** Someone else's wall: removes the copy here with my logbook on it. */
+    fun removeFollowed(onDone: () -> Unit) {
+        viewModelScope.launch {
+            repository.deleteWall(wallId)
+            onDone()
+        }
     }
 
     private suspend fun reload() {
@@ -180,6 +219,7 @@ fun SprayWallScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var menuOpen by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
     val wall = state.wall
     val hasHolds = state.holdsOnWall.isNotEmpty()
     Scaffold(
@@ -224,6 +264,13 @@ fun SprayWallScreen(
                                     leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                                     modifier = Modifier.testTag("spray_menu_edit"),
                                 )
+                            } else {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.spray_followed_remove)) },
+                                    onClick = { menuOpen = false; confirmRemove = true },
+                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                    modifier = Modifier.testTag("spray_menu_remove"),
+                                )
                             }
                         }
                     }
@@ -259,6 +306,11 @@ fun SprayWallScreen(
                 )
             }
             item { WallFacts(wall) }
+            if (!wall.isMine) item { FollowedNote(wall) }
+            val problem = state.publishProblem
+            if (wall.needsPublish && problem != null) {
+                item { PublishCard(problem, state.publishing, viewModel::publishNow) }
+            }
             if (state.unfinishedReset && wall.isMine) {
                 item {
                     Card(
@@ -302,7 +354,56 @@ fun SprayWallScreen(
             }
         }
     }
+    if (confirmRemove) {
+        SprayConfirmDialog(
+            title = stringResource(R.string.spray_followed_remove),
+            text = stringResource(R.string.spray_followed_remove_text),
+            confirmLabel = stringResource(R.string.action_delete),
+            onConfirm = { confirmRemove = false; viewModel.removeFollowed(onBack) },
+            onDismiss = { confirmRemove = false },
+        )
+    }
 }
+
+@Composable
+private fun FollowedNote(wall: SprayWall) {
+    val owner = wall.ownerPubkey.orEmpty()
+    val text = if (wall.visibility == SprayWallVisibility.PUBLIC) {
+        stringResource(R.string.spray_followed_note, shortKey(owner))
+    } else {
+        stringResource(R.string.spray_followed_withdrawn)
+    }
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp).testTag("spray_followed_note"),
+    )
+}
+
+@Composable
+private fun PublishCard(problem: SprayWallUiState.PublishProblem, publishing: Boolean, onRetry: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag("spray_publish_card"),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                stringResource(
+                    if (problem == SprayWallUiState.PublishProblem.NO_IDENTITY) R.string.spray_publish_no_identity_text else R.string.spray_publish_failed,
+                ),
+            )
+            if (problem == SprayWallUiState.PublishProblem.FAILED) {
+                OutlinedButton(onClick = onRetry, enabled = !publishing, modifier = Modifier.testTag("spray_publish_retry")) {
+                    Text(stringResource(R.string.action_retry))
+                }
+            }
+        }
+    }
+}
+
+/** The first characters of a public key, enough to tell people apart in a list. */
+internal fun shortKey(hex: String): String = if (hex.length > 12) "${hex.take(8)}…" else hex
 
 @Composable
 private fun WallFacts(wall: SprayWall) {

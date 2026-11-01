@@ -221,3 +221,24 @@ DELETE FROM spray_ascent WHERE climb_uuid = ?;
 
 deleteAscentsForWall:
 DELETE FROM spray_ascent WHERE wall_id = ?;
+
+-- ═══ Publishing and other people's walls ═══
+
+updateRemoteWall:
+UPDATE spray_wall SET name = ?, angle = ?, visibility = ?, gym_id = ?, gym_name = ?, current_version = ?, published_version = ?, updated_at = ?
+WHERE id = ? AND owner_pubkey = ?;
+
+setRemoteWallVisibility:
+UPDATE spray_wall SET visibility = ?, updated_at = ? WHERE id = ? AND owner_pubkey = ?;
+
+selectPublicWalls:
+SELECT * FROM spray_wall WHERE visibility = 'public' ORDER BY updated_at DESC;
+
+selectPhotoWithHash:
+SELECT photo_file, photo_width, photo_height FROM spray_wall_version WHERE photo_sha256 = ? LIMIT 1;
+
+clearClimbsPublished:
+UPDATE spray_climb SET published_at = NULL WHERE wall_id = ? AND author_pubkey IS NULL;
+
+deleteRemoteClimb:
+DELETE FROM spray_climb WHERE uuid = ? AND author_pubkey = ?;
