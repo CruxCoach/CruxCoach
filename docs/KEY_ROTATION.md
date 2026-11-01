@@ -58,22 +58,28 @@ notification:
 >
 > Die Signatur der neuen Version unterscheidet sich von der
 > installierten. Das kann ein legitimer Schlüsselwechsel oder ein
-> Angriff sein. Bitte manuell von Codeberg neu installieren.
+> Angriff sein. Bitte manuell von der Release-Seite neu installieren.
 >
-> [Auf Codeberg öffnen]   [Später]
+> [Update prüfen]
+
+*Settings → Updates* then shows **"Update blockiert — Signatur hat sich
+geändert"** with a **"Release-Seite öffnen"** button.
 
 ### What to do
 
 1. **First, ask before you install.** A signature change is rare. The
    maintainers will always announce a planned key rotation in advance,
-   on the project's Nostr channel and in the Codeberg release notes for
-   the version that introduces the new key. **If you did not see such
+   on the project's Nostr channel and in the GitHub release notes for
+   the version that introduces the new key (the Codeberg release mirror
+   carries the same notes). **If you did not see such
    an announcement, do not install** — ask in the project's Dev-Chat
    first. An unannounced signature change is the exact pattern that a
    malicious APK trying to impersonate CruxCoach would also create.
 2. If the rotation **was** announced and you trust the source:
-   - Tap **"Auf Codeberg öffnen"**. Your browser opens the Codeberg
-     release page for the new version.
+   - Tap **"Update prüfen"**, then **"Release-Seite öffnen"** in
+     *Settings → Updates*. Your browser opens the release page for the
+     new version — normally the GitHub release; the Codeberg mirror and
+     the install page on cruxcoach.org offer the identical APK.
    - Download the APK from that page. Verify the SHA-256 against the
      `.sha256` file published next to it (most file managers can do
      this; on a desktop, `sha256sum cruxcoach-release.apk` works).
@@ -88,7 +94,7 @@ notification:
      silent again from that point forward.
 3. If the rotation was **not** announced — keep the old version,
    contact the maintainers, and report the unexpected signature change
-   in the Dev-Chat. Do not tap "Auf Codeberg öffnen" speculatively.
+   in the Dev-Chat. Do not tap "Release-Seite öffnen" speculatively.
 
 ## Why the app cannot just "trust" the new key automatically
 
@@ -133,7 +139,7 @@ A rotation is a coordinated action with three phases.
     the new key.
   - The SHA-256 hash of the new signing certificate, so technical
     users can verify it independently after install.
-- Pin the same notice to the project's Codeberg README until the
+- Pin the same notice to the project's GitHub README until the
   rotation is complete.
 
 ### 2. Release — sign with the new key **and a v3 lineage**
@@ -274,13 +280,13 @@ strands users quietly.
 
 ### Things that are NOT a key rotation
 
-- Changing CI infrastructure (Forgejo runner image, Codeberg
-  organization settings, etc.) — the *signing key* is what matters,
-  not where the build runs.
+- Changing CI infrastructure (GitHub Actions runner, GitHub or
+  Codeberg organization settings, etc.) — the *signing key* is what
+  matters, not where the build runs.
 - Switching maintainers — as long as the keystore is handed over
   intact, the signing key is unchanged.
-- Switching from one Codeberg release artifact name to another — the
-  updater pins the cert hash, not the file name.
+- Switching from one release artifact name to another — the updater
+  pins the cert hash, not the file name.
 
 If you are a maintainer about to do anything that *might* change the
 signing certificate fingerprint and you are not sure, build a release

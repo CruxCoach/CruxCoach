@@ -158,8 +158,9 @@ android {
             "\"${localProps.getProperty("ANNOUNCE_NAMESPACE", "com.cruxcoach.announce")}\"")
 
         // FEAT-004 in-app updater: the compiled-in *default* forge for release
-        // polling. Forks override via local.properties to point at their own
-        // forge. Note this is only the first entry of
+        // polling. GitHub is the primary release host: the protected release
+        // workflow publishes there first. Forks override via local.properties
+        // to point at their own forge. Note this is only the first entry of
         // UpdateSourceRegistry.EMBEDDED — since FEAT-050 the effective source
         // list is data, and the runtime manifest below can reorder or replace
         // it without a new APK.
@@ -172,7 +173,7 @@ android {
         // the APK *signing certificate* (UpdaterPinStore), not on the host. A
         // fork signing with its own key is what invalidates it.
         buildConfigField("String", "UPDATER_API_BASE",
-            "\"${localProps.getProperty("UPDATER_API_BASE", "https://codeberg.org/api/v1")}\"")
+            "\"${localProps.getProperty("UPDATER_API_BASE", "https://api.github.com")}\"")
         buildConfigField("String", "UPDATER_REPO_OWNER",
             "\"${localProps.getProperty("UPDATER_REPO_OWNER", "CruxCoach")}\"")
         buildConfigField("String", "UPDATER_REPO_NAME",
@@ -180,11 +181,14 @@ android {
         // A second forge for the compiled-in fallback, same owner/repo. Every
         // release since 0.2.2 is published on GitHub and mirrored to Codeberg
         // byte for byte, and the runtime list has carried both since then —
-        // but the embedded list knew only UPDATER_API_BASE, so a device that
-        // reached neither manifest host had one forge fewer than it could
-        // have. A fork without a second forge sets this to "".
+        // so the embedded list carries both too, GitHub first and the Codeberg
+        // release mirror second, and a device that reaches neither manifest
+        // host still has two forges. Ids stay per host ("github", and "forge"
+        // for Codeberg, as in the runtime list); see
+        // UpdateSourceRegistry.secondaryForge. A fork without a second forge
+        // sets this to "".
         buildConfigField("String", "UPDATER_SECONDARY_API_BASE",
-            "\"${localProps.getProperty("UPDATER_SECONDARY_API_BASE", "https://api.github.com")}\"")
+            "\"${localProps.getProperty("UPDATER_SECONDARY_API_BASE", "https://codeberg.org/api/v1")}\"")
 
         // FEAT-050 runtime source list. Fetched at most daily and cached; the
         // embedded defaults apply whenever it is unreachable or unusable.

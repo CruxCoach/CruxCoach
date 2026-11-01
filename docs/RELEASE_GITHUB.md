@@ -399,21 +399,27 @@ it makes the target match the source and deletes refs the source does not have.
 The first tag pushed straight to GitHub is exactly such a ref, and the next
 mirror run would remove it along with the release hanging off it.
 
-## Historical proposal for 0.2.3
+## Compiled-in forge order: GitHub first
 
-This proposal is retained for owner review, not an instruction to change the
-release configuration or evidence of deployment:
+The 0.2.3 proposal was to move the compiled-in default (`UPDATER_API_BASE` in
+`androidApp/build.gradle.kts`) to `https://api.github.com`, so fresh installs do
+not depend on the runtime list at all. After 0.2.3 it was first addressed
+differently: `UPDATER_API_BASE` stayed on Codeberg and the new
+`UPDATER_SECONDARY_API_BASE` added GitHub as a second compiled-in forge.
 
-Move the compiled-in default (`UPDATER_API_BASE` in `androidApp/build.gradle.kts`)
-to `https://api.github.com`, so fresh installs do not depend on the runtime list
-at all.
+The compiled-in order now matches the release flow: `UPDATER_API_BASE` defaults
+to GitHub (`https://api.github.com`) and `UPDATER_SECONDARY_API_BASE` to the
+Codeberg release mirror (`https://codeberg.org/api/v1`), so the embedded
+fallback still carries both forges. Forge ids follow the host, not the
+position: `github` for GitHub and `forge` for Codeberg, exactly as in
+`update-sources.json`. The anonymous update counter and the per-source ETags
+therefore see one name per host whichever list is in effect. Changing the order
+does not touch the TOFU pin, which is on the signing certificate.
 
-*Addressed differently after 0.2.3:* `UPDATER_API_BASE` stays on Codeberg and
-the new `UPDATER_SECONDARY_API_BASE` (default `https://api.github.com`) adds
-GitHub as a second compiled-in forge, under the `github` id the runtime list
-uses, so the embedded fallback carries both forges. Keep Codeberg in `update-sources.json` for as long as it answers — the
-sweep asks every source and takes the highest version, so a second forge costs
-one request and buys a fallback.
+Keep Codeberg in `update-sources.json` for as long as it answers — the sweep
+asks every source and takes the highest version, so a second forge costs one
+request and buys a fallback. On a version tie the earlier entry wins and is
+tried first for the download, so list GitHub before Codeberg there as well.
 
 ## Known differences between the two forges
 
