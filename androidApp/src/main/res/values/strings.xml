@@ -3389,4 +3389,41 @@
     <string name="wall_games_no_holds">The hold positions of this board are not on the device yet. Download its catalogue first.</string>
     <string name="wall_games_sound_turn_off">Turn countdown sound off</string>
     <string name="wall_games_sound_turn_on">Turn countdown sound on</string>
+    <!-- Shiny Wall account (read-only logbook import) -->
+    <string name="shinywall_section_title">Shiny Wall account</string>
+    <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (sends and projects), favorites, lists and your own routes into CruxCoach. Read-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only.</string>
+    <string name="shinywall_connect_button">Connect Shiny Wall account</string>
+    <string name="shinywall_login_title">Sign in to Shiny Wall</string>
+    <string name="shinywall_login_privacy">Your password goes only to Shiny Wall’s sign-in service. CruxCoach keeps a sign-in token on this phone, never the password. Accounts that sign in with Google can’t be connected.</string>
+    <string name="shinywall_email_label">Email</string>
+    <string name="shinywall_password_label">Password</string>
+    <string name="shinywall_login_button">Sign in</string>
+    <string name="shinywall_connected_as">Connected as: %1$s</string>
+    <string name="shinywall_last_import">Last import: %1$s</string>
+    <string name="shinywall_import_new">Import new entries</string>
+    <string name="shinywall_disconnect">Disconnect</string>
+    <string name="shinywall_disconnect_confirm">CruxCoach forgets the Shiny Wall sign-in on this phone. Imported entries and lists stay.</string>
+    <string name="shinywall_preview_title">Import from Shiny Wall</string>
+    <string name="shinywall_preview_found">%1$d entries found: %2$d new ascents, %3$d new projects, %4$d already in CruxCoach.</string>
+    <string name="shinywall_preview_skipped">%1$d entries can’t be imported (custom walls, routes you created, incomplete entries).</string>
+    <string name="shinywall_import_button">Import</string>
+    <string name="shinywall_import_lists_button">Update lists</string>
+    <string name="shinywall_import_empty">No entries found in your Shiny Wall logbook yet.</string>
+    <string name="shinywall_import_part_ascents">%1$d ascents</string>
+    <string name="shinywall_import_part_projects">%1$d projects</string>
+    <string name="shinywall_import_part_lists">%1$d lists</string>
+    <string name="shinywall_import_part_known">%1$d already imported</string>
+    <string name="shinywall_import_part_skipped">%1$d skipped</string>
+    <string name="shinywall_auth_invalid_credentials">Email or password is wrong. If you sign in to Shiny Wall with Google, CruxCoach can’t connect.</string>
+    <string name="shinywall_auth_disabled">This Shiny Wall account is disabled.</string>
+    <string name="shinywall_auth_throttled">Too many attempts. Please wait a moment and try again.</string>
+    <string name="shinywall_auth_network">No connection to Shiny Wall. Check your internet connection.</string>
+    <string name="shinywall_auth_http_failure" formatted="false">Sign-in failed (HTTP %1$d).</string>
+    <string name="shinywall_auth_unexpected">Shiny Wall sent an unexpected answer. Please try again later.</string>
+    <string name="shinywall_import_error_auth">Your Shiny Wall sign-in has expired. Disconnect and sign in again.</string>
+    <string name="shinywall_import_error_denied">Shiny Wall did not allow reading your logbook.</string>
+    <string name="shinywall_import_error_network">No connection to Shiny Wall. Check your internet connection.</string>
+    <string name="shinywall_import_error_generic">The import failed. Please try again.</string>
+    <string name="shinywall_list_favorites">Shiny Wall favorites</string>
+    <string name="shinywall_list_own_routes">My Shiny Wall routes</string>
 </resources>

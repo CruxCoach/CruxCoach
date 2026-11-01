@@ -19,8 +19,10 @@ import javax.inject.Singleton
 /**
  * Shiny Wall catalogue: one signed Blossom manifest (`cruxcoach/shinywall-db`)
  * with a single zstd SQLite chunk, imported by
- * [BoardDatabaseImporter.importShinyWallSnapshot]. The app never talks to the
- * vendor's backend.
+ * [BoardDatabaseImporter.importShinyWallSnapshot]. The catalogue never comes
+ * from the vendor's backend. Only the optional Shiny Wall account import
+ * ([com.cruxcoach.android.data.shinywall.ShinyWallSyncEngine]) reads the
+ * signed-in user's own data there, at the user's request.
  */
 @Singleton
 class ShinyWallCatalogueSync @Inject constructor(
