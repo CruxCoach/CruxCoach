@@ -199,7 +199,7 @@ class SprayWallRepository @Inject constructor(
      */
     suspend fun discardCurrentVersion(wallId: String): Boolean {
         val dropped = io {
-            database.transactionWithResult {
+            database.transactionWithResult<String?> {
                 val wall = queries.selectWall(wallId).executeAsOneOrNull() ?: return@transactionWithResult null
                 val current = queries.selectVersion(wallId, wall.current_version).executeAsOne().toModel()
                 val climbs = queries.selectClimbs(wallId).executeAsList().map { it.toModel() }
@@ -247,7 +247,11 @@ class SprayWallRepository @Inject constructor(
 
     suspend fun climb(uuid: String): SprayClimb? = io { queries.selectClimb(uuid).executeAsOneOrNull()?.toModel() }
 
-    /** Saves a new climb (null [uuid]) or updates one, on the wall's current version; returns its uuid. */
+    /**
+     * Saves a new climb (null [uuid]) or updates one; returns its uuid. The
+     * climb goes onto the wall's current version, or stays on [version] (a
+     * climb from before a reset is edited on the photo it was set on).
+     */
     suspend fun saveClimb(
         uuid: String?,
         wallId: String,
@@ -255,11 +259,12 @@ class SprayWallRepository @Inject constructor(
         description: String,
         difficulty: Int?,
         holds: Map<Long, SprayHoldRole>,
+        version: Int? = null,
     ): String = io {
         val t = now()
         val encoded = SprayClimbHolds.encode(holds)
         database.transactionWithResult {
-            val version = queries.selectWall(wallId).executeAsOne().current_version
+            val version = version?.toLong() ?: queries.selectWall(wallId).executeAsOne().current_version
             val existing = uuid?.let { queries.selectClimb(it).executeAsOneOrNull() }
             if (existing != null) {
                 queries.updateClimb(version, name.trim(), description.trim(), difficulty?.toLong(), encoded, t, existing.uuid)

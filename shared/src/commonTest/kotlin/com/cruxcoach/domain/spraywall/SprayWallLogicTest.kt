@@ -115,6 +115,18 @@ class SprayClimbListTest {
     }
 
     @Test
+    fun climbsFromBeforeAResetOnlyShowUnderEarlier() {
+        val old = climb("old", mapOf(1L to SprayHoldRole.START, 99L to SprayHoldRole.FINISH), version = 1, createdAt = 9)
+        val current = all.map { it.copy(version = 2) }
+        val listed = SprayClimbList.rows(current + old, wall, emptyMap(), SprayClimbFilter.ALL, SprayClimbSort.NEWEST, earlierVersions = setOf(1))
+        assertEquals(listOf("broken", "intact", "easy"), listed.map { it.climb.uuid })
+        val earlier = SprayClimbList.rows(current + old, wall, emptyMap(), SprayClimbFilter.EARLIER, SprayClimbSort.NEWEST, earlierVersions = setOf(1))
+        assertEquals(listOf("old"), earlier.map { it.climb.uuid })
+        // An earlier climb never counts lost holds: its holds belong to the old photo.
+        assertEquals(0, earlier.single().lostHolds)
+    }
+
+    @Test
     fun carriesTheSendCount() {
         val rows = SprayClimbList.rows(all, wall, mapOf("easy" to 3), SprayClimbFilter.ALL, SprayClimbSort.NEWEST)
         assertEquals(3, rows.first { it.climb.uuid == "easy" }.sends)
@@ -123,13 +135,14 @@ class SprayClimbListTest {
 }
 
 class SprayHoldEditorTest {
-    private fun hold(id: Long, x: Float = 0.5f, y: Float = 0.5f, r: Float = 0.02f, removedAt: Long? = null) =
-        SprayHold("w", id, x, y, r, addedAt = 0, removedAt = removedAt)
+    private fun hold(id: Long, x: Float = 0.5f, y: Float = 0.5f, r: Float = 0.02f) = SprayHold("w", 1, id, x, y, r)
 
     @Test
-    fun startsFromTheHoldsOnTheWallOnly() {
-        val state = SprayHoldEditorState.from(listOf(hold(1), hold(2, removedAt = 5)))
-        assertEquals(listOf(1L), state.holds.map { it.id })
+    fun startsFromTheVersionsHoldsWithTheirTypicalSize() {
+        val state = SprayHoldEditorState.from(listOf(hold(1, r = 0.01f), hold(2, r = 0.03f), hold(3, r = 0.05f)))
+        assertEquals(listOf(1L, 2L, 3L), state.holds.map { it.id })
+        assertEquals(0.03f, state.lastRadius)
+        assertFalse(state.canUndo)
     }
 
     @Test
@@ -179,8 +192,53 @@ class SprayHoldEditorTest {
     }
 
     @Test
+    fun suggestionsOnMarkedHoldsAreDroppedAndTheRestSortedBestFirst() {
+        val state = SprayHoldEditorState(holds = listOf(EditableHold(1, 0.5f, 0.5f, 0.03f))).withSuggestions(
+            listOf(
+                SpraySuggestion(0.51f, 0.5f, 0.02f, 0.9f), // on the marked hold
+                SpraySuggestion(0.2f, 0.2f, 0.02f, 0.4f),
+                SpraySuggestion(0.8f, 0.8f, 0.02f, 0.7f),
+            ),
+            aspect = 4f / 3f,
+        )
+        assertEquals(listOf(0.7f, 0.4f), state.suggestions.map { it.confidence })
+        // The default threshold hides the doubtful one; more sensitivity shows it.
+        assertEquals(1, state.visibleSuggestions.size)
+        assertEquals(2, state.setThreshold(0.3f).visibleSuggestions.size)
+    }
+
+    @Test
+    fun acceptingOneSuggestionMakesItAPickedHold() {
+        val s = SpraySuggestion(0.2f, 0.3f, 0.5f, 0.9f)
+        val state = SprayHoldEditorState(holds = emptyList()).withSuggestions(listOf(s), 1f).accept(s)
+        val hold = state.selected!!
+        assertTrue(hold.id < 0)
+        assertEquals(0.2f, hold.x)
+        // A huge suggestion is clamped to the largest hold.
+        assertEquals(SprayHoldEditorState.MAX_RADIUS, hold.radius)
+        assertTrue(state.suggestions.isEmpty())
+        assertEquals(listOf(s), state.undo().suggestions)
+    }
+
+    @Test
+    fun takingAllVisibleSuggestionsIsOneUndoStep() {
+        val found = listOf(
+            SpraySuggestion(0.1f, 0.1f, 0.02f, 0.9f),
+            SpraySuggestion(0.3f, 0.1f, 0.02f, 0.8f),
+            SpraySuggestion(0.5f, 0.1f, 0.02f, 0.2f),
+        )
+        val state = SprayHoldEditorState(holds = emptyList()).withSuggestions(found, 1f).acceptVisible()
+        assertEquals(2, state.holds.size)
+        assertEquals(setOf(-1L, -2L), state.holds.map { it.id }.toSet())
+        assertEquals(listOf(0.2f), state.suggestions.map { it.confidence })
+        val undone = state.undo()
+        assertTrue(undone.holds.isEmpty())
+        assertEquals(3, undone.suggestions.size)
+    }
+
+    @Test
     fun theDiffSeesAddedChangedAndRemovedHolds() {
-        val original = listOf(hold(1), hold(2), hold(3), hold(4, removedAt = 9))
+        val original = listOf(hold(1), hold(2), hold(3))
         val edited = listOf(
             EditableHold(1, 0.5f, 0.5f, 0.02f), // unchanged
             EditableHold(2, 0.6f, 0.5f, 0.02f), // moved
@@ -189,9 +247,87 @@ class SprayHoldEditorTest {
         val diff = SprayHoldDiff.between(original, edited)
         assertEquals(listOf(-1L), diff.added.map { it.id })
         assertEquals(listOf(2L), diff.changed.map { it.id })
-        // Hold 4 was already gone; only hold 3 comes off now.
         assertEquals(setOf(3L), diff.removedIds)
         assertTrue(SprayHoldDiff.between(original, SprayHoldEditorState.from(original).holds).isEmpty)
+    }
+}
+
+class SprayWallHistoryTest {
+    private fun version(n: Int, photo: String, kind: SprayVersionKind = SprayVersionKind.HOLDS) =
+        SprayWallVersion("w", n, kind, null, photo, 400, 300, null, null, 0, n.toLong())
+
+    @Test
+    fun versionsOnAnotherPhotoAreEarlier() {
+        val versions = listOf(version(1, "a.jpg", SprayVersionKind.CREATED), version(2, "a.jpg"), version(3, "b.jpg", SprayVersionKind.RESET), version(4, "b.jpg"))
+        assertEquals(setOf(1, 2), SprayWallHistory.earlierVersions(versions, versions[3]))
+        // Restoring version 2 brings photo a back: then b's versions are the earlier ones.
+        val restored = version(5, "a.jpg", SprayVersionKind.RESTORED)
+        assertEquals(setOf(3, 4), SprayWallHistory.earlierVersions(versions + restored, restored))
+    }
+
+    @Test
+    fun aHoldIsLastSeenInTheNewestVersionThatHasIt() {
+        val holds = listOf(
+            SprayHold("w", 1, 7, 0.1f, 0.1f, 0.02f),
+            SprayHold("w", 2, 7, 0.2f, 0.1f, 0.02f), // moved in version 2
+            SprayHold("w", 1, 8, 0.5f, 0.5f, 0.02f), // gone after version 1
+        )
+        val last = SprayWallHistory.lastKnown(holds)
+        assertEquals(0.2f, last[7L]?.x)
+        assertEquals(1, last[8L]?.version)
+    }
+
+    @Test
+    fun theFirstMarkingIsCorrectedInPlaceUntilSomethingDependsOnIt() {
+        val current = version(1, "a.jpg", SprayVersionKind.CREATED)
+        assertTrue(SprayWallHistory.mayAmend(current, publishedVersion = null, climbs = emptyList()))
+        assertFalse(SprayWallHistory.mayAmend(current, publishedVersion = 1, climbs = emptyList()))
+        assertFalse(SprayWallHistory.mayAmend(current, null, listOf(climb("c", emptyMap(), version = 1))))
+        // A climb on an older version does not pin the current one.
+        assertTrue(SprayWallHistory.mayAmend(version(2, "a.jpg"), 1, listOf(climb("c", emptyMap(), version = 1))))
+    }
+
+    @Test
+    fun newHoldsGetTheNextFreeIds() {
+        val edited = listOf(EditableHold(3, 0f, 0f, 0.02f), EditableHold(-1, 0f, 0f, 0.02f), EditableHold(-2, 0f, 0f, 0.02f))
+        assertEquals(listOf(3L, 10L, 11L), SprayWallHistory.assignIds(edited, 10).map { it.id })
+    }
+}
+
+class SprayCropBoxTest {
+    private val rect = SprayCropRect(0.2f, 0.2f, 0.8f, 0.8f)
+
+    @Test
+    fun cornersWinOverEdgesAndEdgesOverMoving() {
+        assertEquals(SprayCropBox.Handle.TOP_LEFT, SprayCropBox.handleAt(rect, 0.21f, 0.19f, 0.03f, 0.03f))
+        assertEquals(SprayCropBox.Handle.RIGHT, SprayCropBox.handleAt(rect, 0.79f, 0.5f, 0.03f, 0.03f))
+        assertEquals(SprayCropBox.Handle.MOVE, SprayCropBox.handleAt(rect, 0.5f, 0.5f, 0.03f, 0.03f))
+        assertNull(SprayCropBox.handleAt(rect, 0.05f, 0.5f, 0.03f, 0.03f))
+    }
+
+    @Test
+    fun aDragKeepsTheBoxOnThePhotoAndNotTooSmall() {
+        val shrunk = SprayCropBox.drag(rect, SprayCropBox.Handle.LEFT, 0.9f, 0f)
+        assertEquals(0.8f - SprayCropBox.MIN_SIDE, shrunk.left, 1e-6f)
+        assertEquals(0.8f, shrunk.right)
+        val moved = SprayCropBox.drag(rect, SprayCropBox.Handle.MOVE, -0.5f, 0.1f)
+        assertEquals(0f, moved.left, 1e-6f)
+        assertEquals(0.3f, moved.top, 1e-6f)
+        assertEquals(0.6f, moved.right, 1e-6f)
+        assertEquals(0.9f, moved.bottom, 1e-6f)
+    }
+
+    @Test
+    fun turningAQuarterMovesTheCropWithThePhoto() {
+        // The top band of the photo becomes its right band after a clockwise quarter turn.
+        val top = SprayCropRect(0f, 0f, 1f, 0.25f)
+        assertEquals(SprayCropRect(0.75f, 0f, 1f, 1f), SprayCropBox.rotateClockwise(top))
+        var r = rect
+        repeat(4) { r = SprayCropBox.rotateClockwise(r) }
+        assertEquals(rect.left, r.left, 1e-6f)
+        assertEquals(rect.top, r.top, 1e-6f)
+        assertEquals(rect.right, r.right, 1e-6f)
+        assertEquals(rect.bottom, r.bottom, 1e-6f)
     }
 }
 
@@ -244,4 +380,5 @@ internal fun climb(
     name: String = uuid,
     difficulty: Int? = 20,
     createdAt: Long = 0,
-) = SprayClimb(uuid, "w", name, "", difficulty, holds, createdAt, createdAt)
+    version: Int = 1,
+) = SprayClimb(uuid, "w", version, name, "", difficulty, holds, createdAt, createdAt)

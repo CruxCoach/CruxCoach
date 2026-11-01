@@ -91,6 +91,8 @@ import javax.inject.Inject
 
 data class SprayHoldEditorUiState(
     val loading: Boolean = true,
+    /** Step 2 of adding a wall: saving goes on to the details. */
+    val first: Boolean = false,
     val notFound: Boolean = false,
     val wall: SprayWall? = null,
     val photo: ImageBitmap? = null,
@@ -110,6 +112,8 @@ data class SprayHoldEditorUiState(
 
 sealed interface SprayHoldEditorMessage {
     data class Saved(val newVersion: Boolean) : SprayHoldEditorMessage
+    /** Adding a wall: the holds are stored, on to the details. */
+    data object FirstDone : SprayHoldEditorMessage
     data object Failed : SprayHoldEditorMessage
     data object Limit : SprayHoldEditorMessage
     data class Detected(val count: Int) : SprayHoldEditorMessage
@@ -126,7 +130,7 @@ class SprayHoldEditorViewModel @Inject constructor(
     private val photos: SprayWallPhotoStore,
 ) : ViewModel() {
     private val wallId: String = savedState[SprayWallRoutes.ARG_WALL] ?: ""
-    private val _state = MutableStateFlow(SprayHoldEditorUiState())
+    private val _state = MutableStateFlow(SprayHoldEditorUiState(first = savedState.get<Boolean>(SprayWallRoutes.ARG_FIRST) == true))
     val state: StateFlow<SprayHoldEditorUiState> = _state.asStateFlow()
     private val _messages = MutableSharedFlow<SprayHoldEditorMessage>(extraBufferCapacity = 4)
     val messages: SharedFlow<SprayHoldEditorMessage> = _messages.asSharedFlow()
@@ -221,7 +225,11 @@ class SprayHoldEditorViewModel @Inject constructor(
 
     fun save() {
         val s = _state.value
-        if (s.saving || !s.dirty) return
+        if (s.saving) return
+        if (!s.dirty) {
+            if (s.first) _messages.tryEmit(SprayHoldEditorMessage.FirstDone)
+            return
+        }
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             try {
@@ -234,7 +242,7 @@ class SprayHoldEditorViewModel @Inject constructor(
                     threshold = s.editor.threshold,
                 ).withSuggestions(s.editor.suggestions, s.wall?.aspectRatio ?: 1f)
                 _state.update { it.copy(saving = false, wall = wall ?: it.wall, editor = editor, saved = editor.holds) }
-                _messages.emit(SprayHoldEditorMessage.Saved(result.newVersion))
+                _messages.emit(if (s.first) SprayHoldEditorMessage.FirstDone else SprayHoldEditorMessage.Saved(result.newVersion))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -261,6 +269,7 @@ class SprayHoldEditorViewModel @Inject constructor(
 @Composable
 fun SprayHoldEditorScreen(
     onBack: () -> Unit,
+    onFirstSaved: () -> Unit,
     viewModel: SprayHoldEditorViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -273,7 +282,12 @@ fun SprayHoldEditorScreen(
     BackHandler(enabled = askBeforeLeaving) { confirmLeave = true }
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { message ->
+            if (message == SprayHoldEditorMessage.FirstDone) {
+                onFirstSaved()
+                return@collect
+            }
             val text = when (message) {
+                SprayHoldEditorMessage.FirstDone -> return@collect
                 is SprayHoldEditorMessage.Saved ->
                     context.getString(if (message.newVersion) R.string.spray_holds_saved_version else R.string.spray_holds_saved)
                 SprayHoldEditorMessage.Failed -> context.getString(R.string.spray_holds_save_failed)
@@ -303,8 +317,12 @@ fun SprayHoldEditorScreen(
                     IconButton(onClick = { showHelp = !showHelp }) {
                         Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.action_show_info, stringResource(R.string.spray_holds_title)))
                     }
-                    TextButton(onClick = viewModel::save, enabled = state.dirty && !state.saving, modifier = Modifier.testTag("spray_holds_save")) {
-                        Text(stringResource(R.string.action_save))
+                    TextButton(
+                        onClick = viewModel::save,
+                        enabled = (state.dirty || state.first) && !state.saving && state.wall != null,
+                        modifier = Modifier.testTag("spray_holds_save"),
+                    ) {
+                        Text(stringResource(if (state.first) R.string.action_next else R.string.action_save))
                     }
                 },
             )
@@ -321,7 +339,8 @@ fun SprayHoldEditorScreen(
         val editor = state.editor
         val visible = editor.visibleSuggestions
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (showHelp) {
+            if (state.first) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { SprayStepLabel(step = 2) }
+            if (showHelp || (state.first && editor.holds.isEmpty() && editor.suggestions.isEmpty() && !state.detecting)) {
                 Text(
                     stringResource(R.string.spray_holds_help),
                     style = MaterialTheme.typography.bodySmall,

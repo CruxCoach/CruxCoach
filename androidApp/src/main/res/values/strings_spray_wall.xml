@@ -11,12 +11,11 @@
 
     <!-- Wall setup -->
     <string name="spray_wall_new_title">New spray wall</string>
-    <string name="spray_wall_edit_title">Edit wall</string>
+    <string name="spray_wall_edit_title">Wall details</string>
     <string name="spray_wall_photo_hint">Take the photo straight on, with the whole wall in the picture and even light.</string>
     <string name="spray_wall_take_photo">Take a photo</string>
     <string name="spray_wall_pick_photo">Choose from your photos</string>
     <string name="spray_wall_photo_change">Choose another photo</string>
-    <string name="spray_wall_photo_fixed">The photo stays with the wall. After a full reset with a new photo, add a new wall.</string>
     <string name="spray_wall_photo_failed">This photo could not be read. Try another one.</string>
     <string name="spray_wall_photo_loading">Preparing the photo…</string>
     <string name="spray_wall_photo_missing">Pick a photo of the wall first.</string>
@@ -31,7 +30,7 @@
 
     <!-- Hold editor -->
     <string name="spray_holds_title">Mark holds</string>
-    <string name="spray_holds_help">Tap a hold to pick it, drag it to move it and use the slider to size it. Press and hold the wall to add a hold, or switch on Add to place several in a row. Pinch to zoom.</string>
+    <string name="spray_holds_help">Tap a hold to pick it, drag it to move it and use the slider to size it. Press and hold the wall to add a hold, or switch on Add to place several in a row. Dashed rings are suggestions: tap one to take it. Pinch to zoom.</string>
     <string name="spray_holds_mode_add">Add</string>
     <string name="spray_holds_size">Size</string>
     <string name="spray_holds_delete">Remove hold</string>
@@ -39,7 +38,6 @@
     <string name="spray_holds_redo">Redo</string>
     <string name="spray_holds_count">Holds: %1$d</string>
     <string name="spray_holds_saved">Holds saved</string>
-    <string name="spray_holds_saved_kept">Holds saved. %1$d removed holds stay on the climbs that use them, marked as gone.</string>
     <string name="spray_holds_limit">A wall can have at most %1$d holds.</string>
     <string name="spray_holds_save_failed">The holds could not be saved.</string>
     <string name="spray_discard_title">Discard changes?</string>
@@ -108,4 +106,58 @@
     <string name="spray_logbook_tries">Tries: %1$d</string>
     <string name="spray_logbook_delete">Delete entry</string>
     <string name="spray_not_found">This wall or climb no longer exists.</string>
+
+    <!-- Steps of adding a wall, photo step, reset -->
+    <string name="spray_step">Step %1$d of %2$d: %3$s</string>
+    <string name="spray_step_photo">Photo</string>
+    <string name="spray_step_holds">Holds</string>
+    <string name="spray_step_details">Details</string>
+    <string name="spray_wall_photo_privacy">The photo is shrunk and stored without camera data (place, device). It stays on this phone.</string>
+    <string name="spray_adjust_title">Crop and rotate</string>
+    <string name="spray_adjust_hint">Drag the corners or edges to crop to the wall. Turn the photo until the wall stands upright.</string>
+    <string name="spray_adjust_rotate">Turn</string>
+    <string name="spray_wall_reset">Reset with a new photo</string>
+    <string name="spray_reset_title">Reset the wall</string>
+    <string name="spray_reset_explain">The holds of %1$s were taken down and set again? Take a new photo of the wall. Its holds start fresh; the climbs set so far stay with the old photo under \"Earlier\", and the old state can be restored at any time under Versions.</string>
+    <string name="spray_reset_unfinished_title">Reset not finished</string>
+    <string name="spray_reset_unfinished_text">The new photo has no holds yet. Mark them now, or discard the reset to go back to the previous state of the wall.</string>
+    <string name="spray_reset_discard">Discard reset</string>
+
+    <!-- Hold suggestions -->
+    <string name="spray_detect">Find holds</string>
+    <string name="spray_detect_running">Looking for holds…</string>
+    <string name="spray_detect_suggestions">Suggested holds: %1$d</string>
+    <string name="spray_detect_hint">Dashed rings are suggestions. Tap one to take it, or take all. More sensitive shows more, including doubtful ones.</string>
+    <string name="spray_detect_sensitivity">Sensitivity</string>
+    <string name="spray_detect_accept_all">Take all</string>
+    <string name="spray_detect_dismiss">Hide suggestions</string>
+    <string name="spray_detect_none">No holds found. Mark them by hand: press and hold the wall, or switch on Add.</string>
+    <string name="spray_detect_failed">Looking for holds did not work on this photo. Mark them by hand.</string>
+    <plurals name="spray_detect_found">
+        <item quantity="one">%d hold found. Check it and take it.</item>
+        <item quantity="other">%d holds found. Check them and take them.</item>
+    </plurals>
+    <string name="spray_holds_saved_version">Holds saved as a new version. Climbs that use a removed hold keep it, drawn dashed.</string>
+
+    <!-- Versions -->
+    <string name="spray_versions_title">Versions</string>
+    <string name="spray_versions_explain">Every saved change of the holds, every reset with a new photo and every restore is kept as a version. Tap a version to see it.</string>
+    <string name="spray_versions_restore">Restore version %1$d</string>
+    <string name="spray_versions_restore_text">Its photo and holds become the wall\'s current state again, as a new version. Nothing is deleted: the versions in between stay in the list.</string>
+    <string name="spray_versions_restore_confirm">Restore</string>
+    <string name="spray_versions_restored">Version %1$d is current again.</string>
+    <string name="spray_version_label">Version %1$d</string>
+    <string name="spray_version_current">Version %1$d · current</string>
+    <string name="spray_version_created">First photo</string>
+    <string name="spray_version_holds">Holds edited</string>
+    <string name="spray_version_reset">Reset with a new photo</string>
+    <string name="spray_version_restored">Version %1$d restored</string>
+    <string name="spray_version_counts">Holds: %1$d · Climbs set: %2$d</string>
+    <string name="spray_filter_earlier">Earlier</string>
+    <string name="spray_climb_earlier">Before the last reset</string>
+    <string name="spray_climb_earlier_banner">Set before the wall was reset. It is shown on the photo it was set on.</string>
+    <string name="spray_climb_by_other">By someone else</string>
+    <string name="spray_visibility_private">Private</string>
+    <string name="spray_visibility_public">Public</string>
+    <string name="spray_publish_pending">Not published yet</string>
 </resources>

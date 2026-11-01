@@ -68,6 +68,8 @@ import com.cruxcoach.domain.spraywall.SprayClimb
 import com.cruxcoach.domain.spraywall.SprayClimbRules
 import com.cruxcoach.domain.spraywall.SprayHold
 import com.cruxcoach.domain.spraywall.SprayWall
+import com.cruxcoach.domain.spraywall.SprayWallHistory
+import com.cruxcoach.domain.spraywall.SprayWallVersion
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,13 +89,18 @@ data class SprayClimbDetailState(
     val notFound: Boolean = false,
     val climb: SprayClimb? = null,
     val wall: SprayWall? = null,
+    /** The version the climb is shown on: the current one, or for a climb from before a reset its own. */
+    val version: SprayWallVersion? = null,
     val photo: ImageBitmap? = null,
     val holds: List<SprayHold> = emptyList(),
+    val lastKnown: Map<Long, SprayHold> = emptyMap(),
     val ascents: List<SprayAscent> = emptyList(),
     val gradeScale: GradeScale = GradeScale.FRENCH,
 ) {
+    /** Set before the wall was reset with a new photo. */
+    val earlier: Boolean get() = wall != null && version != null && version.photoFile != wall.current.photoFile
     val lostHolds: Int
-        get() = climb?.let { c -> SprayClimbRules.lostHoldCount(c, holds.filter { it.isOnWall }.mapTo(HashSet()) { it.id }) } ?: 0
+        get() = climb?.let { c -> SprayClimbRules.lostHoldCount(c, holds.mapTo(HashSet()) { it.id }) } ?: 0
 }
 
 @HiltViewModel
@@ -106,6 +113,7 @@ class SprayClimbDetailViewModel @Inject constructor(
     private val climbUuid: String = savedState[SprayWallRoutes.ARG_CLIMB] ?: ""
     private val _state = MutableStateFlow(SprayClimbDetailState())
     val state: StateFlow<SprayClimbDetailState> = _state.asStateFlow()
+    private var photoOf: String? = null
     private val _logged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val logged: SharedFlow<Unit> = _logged.asSharedFlow()
 
@@ -121,10 +129,22 @@ class SprayClimbDetailViewModel @Inject constructor(
             _state.update { it.copy(loading = false, notFound = true) }
             return
         }
+        val versions = repository.versions(wall.id)
+        val earlier = SprayWallHistory.earlierVersions(versions, wall.current)
+        val version = climb.version.takeIf { it in earlier }?.let { n -> versions.firstOrNull { it.number == n } } ?: wall.current
+        val all = repository.allHolds(wall.id)
         _state.update {
-            it.copy(loading = false, notFound = false, climb = climb, wall = wall, holds = repository.holds(wall.id), ascents = repository.ascents(climbUuid))
+            it.copy(
+                loading = false, notFound = false, climb = climb, wall = wall, version = version,
+                holds = all.filter { h -> h.version == version.number },
+                lastKnown = SprayWallHistory.lastKnown(all.filter { h -> h.version <= version.number }),
+                ascents = repository.ascents(climbUuid),
+            )
         }
-        if (_state.value.photo == null) _state.update { it.copy(photo = photos.load(wall.photoFile)?.asImageBitmap()) }
+        if (photoOf != version.photoFile) {
+            photoOf = version.photoFile
+            _state.update { it.copy(photo = photos.load(version.photoFile)?.asImageBitmap()) }
+        }
     }
 
     fun log(isSend: Boolean, tries: Int, difficulty: Int?, comment: String) {
@@ -164,7 +184,7 @@ fun SprayClimbDetailScreen(
                     }
                 },
                 actions = {
-                    if (climb != null) {
+                    if (climb != null && climb.isMine) {
                         IconButton(onClick = { onEdit(climb.wallId, climb.uuid) }, modifier = Modifier.testTag("spray_climb_edit")) {
                             Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.spray_climb_edit))
                         }
@@ -174,7 +194,8 @@ fun SprayClimbDetailScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        if (state.notFound || climb == null || wall == null) {
+        val version = state.version
+        if (state.notFound || climb == null || wall == null || version == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 if (state.notFound) Text(stringResource(R.string.spray_not_found))
             }
@@ -185,11 +206,11 @@ fun SprayClimbDetailScreen(
             item {
                 SprayWallCanvas(
                     photo = state.photo,
-                    photoWidth = wall.photoWidth,
-                    photoHeight = wall.photoHeight,
-                    holds = climbCanvasHolds(state.holds, climb.holds, showOthers = false),
+                    photoWidth = version.photoWidth,
+                    photoHeight = version.photoHeight,
+                    holds = climbCanvasHolds(state.holds, state.lastKnown, climb.holds, showOthers = false),
                     dimPhoto = true,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(wall.aspectRatio.coerceIn(0.5f, 2f)).heightIn(max = maxCanvasHeight),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(version.aspectRatio.coerceIn(0.5f, 2f)).heightIn(max = maxCanvasHeight),
                 )
             }
             item {
@@ -202,7 +223,11 @@ fun SprayClimbDetailScreen(
                         )
                         Text("${wall.angle}°", style = MaterialTheme.typography.titleMedium)
                     }
-                    if (state.lostHolds > 0) {
+                    if (state.earlier) {
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.testTag("spray_earlier_banner")) {
+                            Text(stringResource(R.string.spray_climb_earlier_banner), modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    } else if (state.lostHolds > 0) {
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.testTag("spray_lost_banner")) {
                             Text(
                                 pluralStringResource(R.plurals.spray_climb_lost_banner, state.lostHolds, state.lostHolds),

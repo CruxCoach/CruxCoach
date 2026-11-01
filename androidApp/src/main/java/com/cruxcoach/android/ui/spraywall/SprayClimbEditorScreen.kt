@@ -62,6 +62,8 @@ import com.cruxcoach.domain.spraywall.SprayClimbRules
 import com.cruxcoach.domain.spraywall.SprayHold
 import com.cruxcoach.domain.spraywall.SprayHoldRole
 import com.cruxcoach.domain.spraywall.SprayWall
+import com.cruxcoach.domain.spraywall.SprayWallHistory
+import com.cruxcoach.domain.spraywall.SprayWallVersion
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -79,8 +81,13 @@ data class SprayClimbEditorState(
     val notFound: Boolean = false,
     val climbUuid: String? = null,
     val wall: SprayWall? = null,
+    /** The version the climb is set on: the current one, or for a climb from before a reset its own. */
+    val version: SprayWallVersion? = null,
     val photo: ImageBitmap? = null,
+    /** The holds of [version]. */
     val wallHolds: List<SprayHold> = emptyList(),
+    /** Where each hold was last seen, so a climb's hold that came off can be drawn dashed. */
+    val lastKnown: Map<Long, SprayHold> = emptyMap(),
     val holds: Map<Long, SprayHoldRole> = emptyMap(),
     /** Holds the climb had when the editor opened; it may keep those even if they came off the wall. */
     val originalHolds: Map<Long, SprayHoldRole> = emptyMap(),
@@ -97,7 +104,7 @@ data class SprayClimbEditorState(
     data class Snapshot(val holds: Map<Long, SprayHoldRole>, val name: String, val description: String, val difficulty: Int?)
 
     val isEdit: Boolean get() = climbUuid != null
-    val holdsOnWall: Set<Long> get() = wallHolds.filter { it.isOnWall }.mapTo(HashSet()) { it.id }
+    val holdsOnWall: Set<Long> get() = wallHolds.mapTo(HashSet()) { it.id }
     val problems: List<SprayClimbRules.Problem>
         get() = SprayClimbRules.problems(name, holds, holdsOnWall, originalHolds.keys)
     private val current: Snapshot get() = Snapshot(holds, name.trim(), description.trim(), difficulty.takeIf { graded })
@@ -130,17 +137,23 @@ class SprayClimbEditorViewModel @Inject constructor(
         viewModelScope.launch {
             val wall = repository.wall(wallId)
             val climb = climbUuid?.let { repository.climb(it) }
-            if (wall == null || (climbUuid != null && climb == null)) {
+            if (wall == null || (climbUuid != null && (climb == null || !climb.isMine))) {
                 _state.update { it.copy(loading = false, notFound = true) }
                 return@launch
             }
-            val wallHolds = repository.holds(wallId)
+            // A climb from before a reset stays on the photo it was set on.
+            val versions = repository.versions(wallId)
+            val earlier = SprayWallHistory.earlierVersions(versions, wall.current)
+            val version = climb?.version?.takeIf { it in earlier }?.let { n -> versions.firstOrNull { it.number == n } } ?: wall.current
+            val wallHolds = repository.holds(wallId, version.number)
+            val lastKnown = SprayWallHistory.lastKnown(repository.allHolds(wallId).filter { it.version <= version.number || version == wall.current })
+            keepVersion = version.number.takeIf { version != wall.current }
             _state.update {
                 if (climb == null) {
-                    it.copy(loading = false, wall = wall, wallHolds = wallHolds)
+                    it.copy(loading = false, wall = wall, version = version, wallHolds = wallHolds, lastKnown = lastKnown)
                 } else {
                     it.copy(
-                        loading = false, wall = wall, wallHolds = wallHolds,
+                        loading = false, wall = wall, version = version, wallHolds = wallHolds, lastKnown = lastKnown,
                         holds = climb.holds, originalHolds = climb.holds,
                         brush = SprayHoldRole.HAND,
                         name = climb.name, description = climb.description,
@@ -150,9 +163,12 @@ class SprayClimbEditorViewModel @Inject constructor(
                     )
                 }
             }
-            _state.update { it.copy(photo = photos.load(wall.photoFile)?.asImageBitmap()) }
+            _state.update { it.copy(photo = photos.load(version.photoFile)?.asImageBitmap()) }
         }
     }
+
+    /** Set for a climb from before a reset: it keeps its version instead of moving to the current one. */
+    private var keepVersion: Int? = null
 
     fun onTap(holdId: Long?) {
         val s = _state.value
@@ -187,7 +203,7 @@ class SprayClimbEditorViewModel @Inject constructor(
             try {
                 val uuid = repository.saveClimb(
                     uuid = s.climbUuid, wallId = wallId, name = s.name, description = s.description,
-                    difficulty = s.difficulty.takeIf { s.graded }, holds = s.holds,
+                    difficulty = s.difficulty.takeIf { s.graded }, holds = s.holds, version = keepVersion,
                 )
                 _events.emit(SprayClimbEditorEvent.Saved(uuid))
             } catch (e: CancellationException) {
@@ -252,7 +268,8 @@ fun SprayClimbEditorScreen(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         val wall = state.wall
-        if (state.notFound || wall == null) {
+        val version = state.version
+        if (state.notFound || wall == null || version == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 if (state.notFound) Text(stringResource(R.string.spray_not_found))
             }
@@ -262,18 +279,11 @@ fun SprayClimbEditorScreen(
         Column(Modifier.fillMaxSize().padding(padding)) {
             SprayWallCanvas(
                 photo = state.photo,
-                photoWidth = wall.photoWidth,
-                photoHeight = wall.photoHeight,
-                holds = state.wallHolds.mapNotNull { h ->
-                    val role = state.holds[h.id]
-                    when {
-                        role != null -> SprayCanvasHold(h.id, h.x, h.y, h.radius, if (h.isOnWall) SprayHoldLook.ROLE else SprayHoldLook.GONE, role)
-                        h.isOnWall -> SprayCanvasHold(h.id, h.x, h.y, h.radius, SprayHoldLook.FAINT)
-                        else -> null
-                    }
-                },
+                photoWidth = version.photoWidth,
+                photoHeight = version.photoHeight,
+                holds = climbCanvasHolds(state.wallHolds, state.lastKnown, state.holds, showOthers = true),
                 gestures = SprayCanvasGestures(onTap = { _, _, id -> viewModel.onTap(id) }),
-                modifier = Modifier.fillMaxWidth().aspectRatio(wall.aspectRatio.coerceIn(0.5f, 2f), matchHeightConstraintsFirst = false)
+                modifier = Modifier.fillMaxWidth().aspectRatio(version.aspectRatio.coerceIn(0.5f, 2f), matchHeightConstraintsFirst = false)
                     .heightIn(max = maxCanvasHeight),
             )
             Column(

@@ -77,10 +77,11 @@ class SprayWallListViewModel @Inject constructor(
     private suspend fun reload() {
         val walls = repository.walls()
         _state.update { it.copy(loading = false, walls = walls) }
-        val missing = walls.filter { it.wall.id !in _state.value.thumbnails }
-        for (summary in missing) {
-            val bitmap = photos.load(summary.wall.photoFile, THUMBNAIL_LONG_SIDE) ?: continue
-            _state.update { it.copy(thumbnails = it.thumbnails + (summary.wall.id to bitmap.asImageBitmap())) }
+        // Keyed by photo: a reset brings a new one.
+        val missing = walls.map { it.wall.photoFile }.distinct().filter { it !in _state.value.thumbnails }
+        for (file in missing) {
+            val bitmap = photos.load(file, THUMBNAIL_LONG_SIDE) ?: continue
+            _state.update { it.copy(thumbnails = it.thumbnails + (file to bitmap.asImageBitmap())) }
         }
     }
 
@@ -147,7 +148,7 @@ fun SprayWallListScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(state.walls, key = { it.wall.id }) { summary ->
-                WallCard(summary, state.thumbnails[summary.wall.id]) { onOpenWall(summary.wall.id) }
+                WallCard(summary, state.thumbnails[summary.wall.photoFile]) { onOpenWall(summary.wall.id) }
             }
             item {
                 Text(
