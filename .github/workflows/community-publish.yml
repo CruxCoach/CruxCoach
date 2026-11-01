@@ -1,0 +1,177 @@
+name: Publish community feature APK
+
+# Test builds for pull requests from forks, published under the contributor's own
+# community identity. The fork's code is built without any credential. Only the jobs
+# that hold the community token check out `main`, and they never execute fork code.
+on:
+  workflow_run:
+    workflows: ['Pull request checks']
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: community-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  authorize:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name != github.repository
+    runs-on: ubuntu-latest
+    environment: apktrack-community-publishing
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      authorized: ${{ steps.authorize.outputs.authorized }}
+      track: ${{ steps.authorize.outputs.track }}
+      package: ${{ steps.authorize.outputs.package }}
+      label: ${{ steps.authorize.outputs.label }}
+      version_code: ${{ steps.authorize.outputs.version_code }}
+      source_branch: ${{ steps.authorize.outputs.source_branch }}
+      feature_branch: ${{ steps.authorize.outputs.feature_branch }}
+      publisher_login: ${{ steps.authorize.outputs.publisher_login }}
+      publisher_name: ${{ steps.authorize.outputs.publisher_name }}
+    steps:
+      # Always check out trusted main before a credential-bearing step.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Ask APKTrack to admit this fork build
+        id: authorize
+        env:
+          APKTRACK_COMMUNITY_TOKEN: ${{ secrets.APKTRACK_COMMUNITY_TOKEN }}
+          OWNER_ID: ${{ github.event.workflow_run.head_repository.owner.id }}
+          OWNER_LOGIN: ${{ github.event.workflow_run.head_repository.owner.login }}
+          REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: python3 scripts/community_build.py authorize --github-output "$GITHUB_OUTPUT"
+      - name: Explain how to get test builds
+        if: steps.authorize.outputs.authorized != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OWNER_LOGIN: ${{ github.event.workflow_run.head_repository.owner.login }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          REASON: ${{ steps.authorize.outputs.reason }}
+        run: python3 scripts/community_build.py comment --reason "$REASON" --publisher-login "$OWNER_LOGIN"
+
+  build:
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true'
+    runs-on: ubuntu-latest
+    # No environment and no secrets: this job runs the fork's code.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install pinned Rust Android target
+        run: rustup target add --toolchain 1.94.1 aarch64-linux-android
+      - name: Build the community APK with the authorized identity
+        env:
+          FEATURE_BRANCH: ${{ needs.authorize.outputs.feature_branch }}
+          FEATURE_TRACK: ${{ needs.authorize.outputs.track }}
+          FEATURE_PACKAGE: ${{ needs.authorize.outputs.package }}
+          FEATURE_LABEL: ${{ needs.authorize.outputs.label }}
+          FEATURE_VERSION_CODE: ${{ needs.authorize.outputs.version_code }}
+        run: |
+          ./gradlew :androidApp:assembleDebug --console=plain \
+            -PfeatureBranch="$FEATURE_BRANCH" \
+            -PfeatureTrack="$FEATURE_TRACK" \
+            -PfeaturePackage="$FEATURE_PACKAGE" \
+            -PfeatureLabel="$FEATURE_LABEL" \
+            -PfeatureVersionCode="$FEATURE_VERSION_CODE"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: community-apk
+          if-no-files-found: error
+          retention-days: 7
+          path: androidApp/build/outputs/apk/debug/androidApp-debug.apk
+
+  publish:
+    needs: [authorize, build]
+    # Pinned for the same reason as feature-publish: the APKTrack wheel needs Python 3.12.
+    runs-on: ubuntu-24.04
+    environment: apktrack-community-publishing
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Never execute code or files from the fork in this job.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: community-apk
+          path: community-artifact
+      - name: Check package and versionCode against the authorization
+        env:
+          PACKAGE: ${{ needs.authorize.outputs.package }}
+          VERSION_CODE: ${{ needs.authorize.outputs.version_code }}
+        run: |
+          python3 scripts/community_build.py verify-apk \
+            community-artifact/androidApp-debug.apk \
+            --package "$PACKAGE" --version-code "$VERSION_CODE"
+      - name: Install pinned APKTrack CLI
+        env:
+          WHEEL_URL: https://npub1uux22z2rhhcvk9fs9dp60k3uc5f7frdqy5chrsemsxwgnyl0y9dqhx0gem.nsite.lol/downloads/apktrack-0.2.1-py3-none-any.whl
+          WHEEL_SHA256: a54ab48d770819ecf5c09649ba16c45303eafba055e8b4c23ef2fb17173c2468
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/apktrack-0.2.1-py3-none-any.whl" "$WHEEL_URL"
+          echo "$WHEEL_SHA256  $RUNNER_TEMP/apktrack-0.2.1-py3-none-any.whl" | sha256sum --check --strict
+          python3 -m pip install "$RUNNER_TEMP/apktrack-0.2.1-py3-none-any.whl"
+      - name: Publish through APKTrack
+        env:
+          APKTRACK_AGENT_TOKEN: ${{ secrets.APKTRACK_COMMUNITY_TOKEN }}
+          TRACK: ${{ needs.authorize.outputs.track }}
+          SOURCE_BRANCH: ${{ needs.authorize.outputs.source_branch }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test -n "$APKTRACK_AGENT_TOKEN"
+          set -o pipefail
+          apktrack publish-build community-artifact/androidApp-debug.apk \
+            --config .apktrack/project.toml \
+            --track "$TRACK" \
+            --branch "$SOURCE_BRANCH" \
+            --commit "$COMMIT" \
+            --wait-timeout 2700 \
+            | tee "$RUNNER_TEMP/apktrack-job.json"
+          python3 - "$RUNNER_TEMP/apktrack-job.json" <<'PY'
+          import json
+          import sys
+
+          job = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          if job.get("status") != "published" or job.get("receipt_delivered") is not True:
+              raise SystemExit("APKTrack did not confirm a delivered publication receipt")
+          PY
+      - name: Link the test build on the pull request
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OWNER_LOGIN: ${{ github.event.workflow_run.head_repository.owner.login }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TRACK: ${{ needs.authorize.outputs.track }}
+          VERSION_CODE: ${{ needs.authorize.outputs.version_code }}
+          PUBLISHER_LOGIN: ${{ needs.authorize.outputs.publisher_login }}
+          PUBLISHER_NAME: ${{ needs.authorize.outputs.publisher_name }}
+        run: |
+          python3 scripts/community_build.py comment \
+            --publisher-login "$PUBLISHER_LOGIN" --track "$TRACK" \
+            --version-code "$VERSION_CODE" --name "$PUBLISHER_NAME"
