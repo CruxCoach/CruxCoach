@@ -192,6 +192,13 @@ See [LEGAL.md](LEGAL.md) for our position on interoperability and data usage.
 
 ---
 
+## Community
+
+Talk to the developers, test new builds first and help shape what comes next:
+[join the CruxCoach community on Buzz](https://community.cruxcoach.org/join).
+Buzz is a separate app with its own account, for Android, iPhone and desktop;
+the community speaks English.
+
 ## Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for bug reporting, dev setup, coding standards, and PR guidelines.
