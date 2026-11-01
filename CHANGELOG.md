@@ -460,6 +460,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   not come back yet, it offers "Restore name now". When CruxCoach does not know the
   earlier name, it suggests the device name from the phone settings, lets you change
   it, and renames the phone only once you confirm.
+- Catalogue updates no longer wait 15 seconds per board when one Nostr relay accepts the
+  connection but never answers. Once two relays have sent the catalogue's signed manifest,
+  the others get two more seconds, then the update goes on with the newest manifest it has.
 
 ## [0.2.4] - 2026-10-25
 
