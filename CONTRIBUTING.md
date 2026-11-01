@@ -149,8 +149,8 @@ Members of the CruxCoach community can get an installable test build for every
 pull request from their own fork, published under their own name. You don't
 need an Android setup or any signing key; CruxCoach CI builds your commit.
 
-1. Join the CruxCoach community on Buzz. If you have no invite yet, ask in your
-   pull request.
+1. Join the [CruxCoach community on Buzz](https://community.cruxcoach.org/join).
+   If the link says the community is full, ask in your pull request.
 2. In Buzz, send `/link` as a direct message to **CruxCoach Bot**. Open the
    personal link it sends back and sign in to GitHub. This connects your GitHub
    account to your community identity, once. CruxCoach only reads your public
@@ -385,4 +385,5 @@ Room is Android-only. SQLDelight generates code for all KMP targets from a singl
 
 ## Questions?
 
-Open an issue or reach out via Nostr.
+Ask in the [CruxCoach community on Buzz](https://community.cruxcoach.org/join),
+open an issue or reach out via Nostr.
