@@ -143,6 +143,26 @@ androidApp/src/main/java/com/cruxcoach/android/
 └── updater/     # Discovery, integrity verification and installation
 ```
 
+### Test builds from your fork
+
+Members of the CruxCoach community can get an installable test build for every
+pull request from their own fork, published under their own name. You don't
+need an Android setup or any signing key; CruxCoach CI builds your commit.
+
+1. Join the CruxCoach community on Buzz. If you have no invite yet, ask in your
+   pull request.
+2. In Buzz, send `/link` as a direct message to **CruxCoach Bot**. Open the
+   personal link it sends back and sign in to GitHub. This connects your GitHub
+   account to your community identity, once. CruxCoach only reads your public
+   GitHub username and ID.
+3. Open a pull request from your fork. After the checks pass, a comment on the
+   pull request links your test build, and the build appears in Buzz.
+
+Testers see who published each build, and the install page asks them whether
+they trust you before their first download from you. CruxCoach does not review
+community builds; they are separate apps with their own data, next to the
+regular app. See [community-publish.yml](.github/workflows/community-publish.yml).
+
 ### Releases & CI (maintainer only)
 
 Pull requests targeting `main` or `feat/**` have hosted checks in
