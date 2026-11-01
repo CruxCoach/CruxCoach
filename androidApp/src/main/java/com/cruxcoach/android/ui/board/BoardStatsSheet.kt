@@ -404,6 +404,8 @@ internal fun BoardStatsSheet(
                     stats = crossBoard,
                     view = crossBoardView,
                     onViewSelect = onCrossBoardViewSelect,
+                    gradeScale = gradeScale,
+                    allBoards = availableBoardBrands,
                 )
             }
 

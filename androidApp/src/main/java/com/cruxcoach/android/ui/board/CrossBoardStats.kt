@@ -28,6 +28,8 @@ data class CrossBoardGradeRow(
 data class CrossBoardMonthCell(
     val hardestGrade: String?,
     val tries: TriesToSend,
+    /** Difficulty of [hardestGrade], so charts can place it on a grade axis. */
+    val hardestDifficulty: Double? = null,
 )
 
 data class CrossBoardMonthRow(
@@ -111,10 +113,11 @@ object CrossBoardStatsComputer {
                     month = month,
                     label = monthLabel(month, context),
                     byBoard = sends.groupBy { it.send.boardBrand }.mapValues { (_, s) ->
+                        val hardest = s.mapNotNull { it.send.difficultyAverage }.maxOrNull()
                         CrossBoardMonthCell(
-                            hardestGrade = s.mapNotNull { it.send.difficultyAverage }.maxOrNull()
-                                ?.let { GradeDisplayHelper.formatDifficulty(it, gradeScale) },
+                            hardestGrade = hardest?.let { GradeDisplayHelper.formatDifficulty(it, gradeScale) },
                             tries = triesOf(s),
+                            hardestDifficulty = hardest,
                         )
                     },
                 )

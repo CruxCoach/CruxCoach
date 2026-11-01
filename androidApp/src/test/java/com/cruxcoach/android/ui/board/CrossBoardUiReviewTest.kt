@@ -7,6 +7,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.GradeScale
@@ -61,11 +63,17 @@ class CrossBoardUiReviewTest {
     }
 
     private val logbook = buildList {
-        addAll(problems("kilter", "2026-01", 16.0, 6, 2))
-        addAll(problems("kilter", "2026-02", 18.0, 4, 3))
+        addAll(problems("kilter", "2025-10", 14.0, 5, 1))
+        addAll(problems("kilter", "2025-11", 16.0, 6, 2))
+        addAll(problems("kilter", "2025-12", 16.0, 4, 2))
+        addAll(problems("kilter", "2026-01", 18.0, 4, 3))
+        addAll(problems("kilter", "2026-02", 18.0, 3, 2))
         addAll(problems("kilter", "2026-03", 20.0, 2, 6))
+        addAll(problems("moonboard", "2025-11", 14.0, 3, 3))
         addAll(problems("moonboard", "2026-01", 16.0, 3, 4))
+        addAll(problems("moonboard", "2026-02", 16.0, 2, 3))
         addAll(problems("moonboard", "2026-03", 18.0, 2, 5))
+        addAll(problems("tension", "2025-12", 14.0, 3, 2))
         addAll(problems("tension", "2026-02", 16.0, 1, 1))
     }
 
@@ -74,12 +82,14 @@ class CrossBoardUiReviewTest {
         clock = Clock.fixed(Instant.parse("2026-03-31T12:00:00Z"), ZoneOffset.UTC),
     )
 
-    private fun shoot(name: String, content: @Composable () -> Unit) {
+    private fun shoot(name: String, before: () -> Unit = {}, content: @Composable () -> Unit) {
         var view: android.view.View? = null
         compose.setContent {
             view = LocalView.current
             CruxCoachTheme(theme) { Surface { androidx.compose.foundation.layout.Box(Modifier.padding(16.dp)) { content() } } }
         }
+        compose.waitForIdle()
+        before()
         compose.waitForIdle()
         compose.runOnIdle {
             val root = requireNotNull(view)
@@ -95,11 +105,18 @@ class CrossBoardUiReviewTest {
 
     @Test
     fun triesPerGrade() = shoot("cross-board-tries") {
-        CrossBoardSection(stats, CrossBoardView.TRIES_PER_GRADE, onViewSelect = {})
+        CrossBoardSection(stats, CrossBoardView.TRIES_PER_GRADE, onViewSelect = {}, gradeScale = GradeScale.FRENCH)
+    }
+
+    @Test
+    fun triesPerGradeWithAGradeOpen() = shoot("cross-board-tries-open", before = {
+        compose.onNodeWithText(stats.grades[1].grade).performClick()
+    }) {
+        CrossBoardSection(stats, CrossBoardView.TRIES_PER_GRADE, onViewSelect = {}, gradeScale = GradeScale.FRENCH)
     }
 
     @Test
     fun perMonth() = shoot("cross-board-months") {
-        CrossBoardSection(stats, CrossBoardView.PER_MONTH, onViewSelect = {})
+        CrossBoardSection(stats, CrossBoardView.PER_MONTH, onViewSelect = {}, gradeScale = GradeScale.FRENCH)
     }
 }

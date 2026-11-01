@@ -19,11 +19,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.*
 
 /**
  * Reusable chart section with a dropdown selector in the title area.
  * The dropdown lets the user pick from an enum of chart views without cluttering the UI.
+ * An optional [help] text for the selected view sits behind an info button
+ * beside the title, so the chart itself needs no explanation underneath.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +35,7 @@ internal fun <T> ChartSectionWithSelector(
     selected: T,
     onSelect: (T) -> Unit,
     labelOf: @Composable (T) -> String,
+    help: String? = null,
     content: @Composable () -> Unit
 ) {
     Card(
@@ -48,47 +52,53 @@ internal fun <T> ChartSectionWithSelector(
         ) {
             // Dropdown selector as title
             var expanded by remember { mutableStateOf(false) }
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = it }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                        .fillMaxWidth().heightIn(min = 48.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = labelOf(selected),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(
-                        Icons.Default.ArrowDropDown,
-                        contentDescription = stringResource(R.string.cd_select_view),
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                ExposedDropdownMenu(
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ExposedDropdownMenuBox(
                     expanded = expanded,
-                    onDismissRequest = { expanded = false }
+                    onExpandedChange = { expanded = it },
+                    modifier = Modifier.weight(1f),
                 ) {
-                    options.forEach { option ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    labelOf(option),
-                                    fontWeight = if (option == selected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            },
-                            onClick = {
-                                onSelect(option)
-                                expanded = false
-                            }
+                    Row(
+                        modifier = Modifier
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth().heightIn(min = 48.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = labelOf(selected),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = stringResource(R.string.cd_select_view),
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        options.forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        labelOf(option),
+                                        fontWeight = if (option == selected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                onClick = {
+                                    onSelect(option)
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                if (help != null) {
+                    InfoButton(labelOf(selected), help)
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
