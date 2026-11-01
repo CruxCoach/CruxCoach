@@ -36,7 +36,7 @@ class BoardStatsHelpTest {
             totalAttempts = 6,
             gradeOutcomes = listOf(GradeOutcomeEntry("6a", 15, 1, 2, 3)),
             activityMap = mapOf(java.time.LocalDate.now() to 2),
-            weeklyVolume = listOf(WeeklyVolumeEntry("KW 1", 1, 2, 0, 0)),
+            weeklyVolume = listOf(WeeklyVolumeEntry(java.time.LocalDate.now(), 1, 2, 0, 0)),
         )
         compose.setContent {
             MaterialTheme {

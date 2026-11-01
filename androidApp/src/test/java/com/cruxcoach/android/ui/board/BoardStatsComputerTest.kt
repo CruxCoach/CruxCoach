@@ -314,6 +314,7 @@ class BoardStatsComputerTest {
         // All five ascents are in ISO week 10 of 2026 (Mon 2026-03-02 .. Sun 2026-03-08).
         assertEquals(1, stats.weeklyVolume.size)
         val wk = stats.weeklyVolume[0]
+        assertEquals(LocalDate.of(2026, 3, 2), wk.weekStart)
         assertEquals(1, wk.easyCount)
         assertEquals(1, wk.mediumCount)
         assertEquals(1, wk.hardCount)
@@ -388,7 +389,7 @@ class BoardStatsComputerTest {
     }
 
     @Test
-    fun `inactive weeks remain real proportional gaps in model and chart`() {
+    fun `inactive weeks remain real gaps in the model`() {
         val points = statsForProgression(
             ascent(climbUuid = "w1", climbedAt = "2026-01-05T10:00:00"),
             ascent(climbUuid = "w2", climbedAt = "2026-01-12T10:00:00"),
@@ -398,9 +399,6 @@ class BoardStatsComputerTest {
             listOf(LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 12), LocalDate.of(2026, 2, 2)),
             points.map { it.weekStart },
         )
-        assertEquals(0f, progressionXFraction(points, 0), 0.001f)
-        assertEquals(0.25f, progressionXFraction(points, 1), 0.001f)
-        assertEquals(1f, progressionXFraction(points, 2), 0.001f)
     }
 
     private fun statsForProgression(vararg ascents: AscentWithClimb) =

@@ -179,6 +179,11 @@ class StatsHighlightsUiReviewTest {
     }
 
     @Test
+    fun weekly() = shoot("stats-weekly") {
+        ActivityCard(ActivityView.WEEKLY, onSelect = {}, stats.activityMap, stats.weeklyVolume, StatsTimeInterval.ALL)
+    }
+
+    @Test
     fun gradesOpen() = shoot("stats-grades-open", before = {
         compose.onNodeWithText(stats.gradeOutcomes.last().grade).performClick()
     }) {

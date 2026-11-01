@@ -1712,7 +1712,6 @@
     <string name="board_stats_grades_help">Jeder Boulder, den du im gewählten Zeitraum geloggt hast, zählt einmal je Board, über alle Winkel, mit seinem besten Ergebnis: Flash, später geschafft oder noch offen.\n\nFür einen Flash muss der erste erfasste Eintrag bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch.\n\nTippe auf einen Grad, um seine Zahlen zu sehen.</string>
     <string name="board_stats_grades_open">Noch offen</string>
     <string name="board_logbook_filter_period">Zeitraum</string>
-    <string name="board_stats_attempt">Versucht</string>
     <string name="board_stats_date_range">Zeitraum…</string>
     <string name="board_stats_grade_easy">Leicht</string>
     <string name="board_stats_grade_elite">Elite</string>
@@ -1725,7 +1724,7 @@
     <string name="board_stats_interval_all">Gesamt</string>
     <string name="board_stats_total">Gesamt</string>
     <string name="board_stats_unique">Verschiedene Boulder</string>
-    <string name="board_stats_weekly_volume">Wöchentliche Einträge nach Gradbereich</string>
+    <string name="board_stats_weekly_volume">Einträge pro Woche</string>
     <string name="board_zone_limit">Limit</string>
     <string name="board_zone_optimal">Optimal</string>
     <string name="board_zone_warmup">Warm-Up</string>

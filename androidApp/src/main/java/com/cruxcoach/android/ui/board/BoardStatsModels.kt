@@ -13,7 +13,8 @@ data class GradeOutcomeEntry(
 
 /** Weekly volume entry grouped by grade band */
 data class WeeklyVolumeEntry(
-    val weekLabel: String,
+    /** The Monday of the week; weeks without entries have no entry. */
+    val weekStart: java.time.LocalDate,
     val easyCount: Int,
     val mediumCount: Int,
     val hardCount: Int,

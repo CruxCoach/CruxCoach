@@ -36,11 +36,14 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -48,9 +51,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.ui.theme.GradeEasy
+import com.cruxcoach.android.ui.theme.GradeElite
+import com.cruxcoach.android.ui.theme.GradeHard
+import com.cruxcoach.android.ui.theme.GradeMedium
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.util.GradeDisplayHelper
 import java.time.LocalDate
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
@@ -306,25 +314,11 @@ private fun ProgressChart(
             drawText(text, topLeft = Offset(0f, y - text.size.height / 2f))
         }
 
-        // Month names where a month starts, as many as fit.
-        val axisTop = PROGRESS_PLOT_HEIGHT.toPx() + 2.dp.toPx()
-        var lastEnd = Float.NEGATIVE_INFINITY
-        var month = first.withDayOfMonth(1).plusMonths(1)
-        val firstMonth = first.withDayOfMonth(1)
-        val starts = buildList {
-            if (first.dayOfMonth <= 7) add(firstMonth)
-            while (!month.isAfter(last)) { add(month); month = month.plusMonths(1) }
-        }
-        starts.forEachIndexed { i, start ->
-            val name = months[start.monthValue - 1] + if (i == 0 || start.monthValue == 1) " '${start.year % 100}" else ""
-            val text = measurer.measure(name, axisStyle)
-            val x = xOf(start.coerceAtLeast(first)).coerceAtMost(right - text.size.width)
-            if (x > lastEnd + 8.dp.toPx()) {
-                drawLine(ink.copy(alpha = 0.10f), Offset(x, top), Offset(x, bottom), 1.dp.toPx())
-                drawText(text, topLeft = Offset(x, axisTop))
-                lastEnd = x + text.size.width
-            }
-        }
+        drawMonthAxis(
+            measurer, axisStyle, months, first, last, ::xOf,
+            gridTop = top, gridBottom = bottom, labelTop = PROGRESS_PLOT_HEIGHT.toPx() + 2.dp.toPx(),
+            right = right, grid = ink.copy(alpha = 0.10f),
+        )
 
         series.forEachIndexed { i, points ->
             val color = colors[i]
@@ -349,10 +343,14 @@ private fun ProgressChart(
         }.sortedBy { it.second }
         var lastBottom = Float.NEGATIVE_INFINITY
         ends.forEach { (i, y, text) ->
-            val labelTop = max(y - text.size.height / 2f, lastBottom + 1.dp.toPx())
+            val natural = y - text.size.height / 2f
+            val labelTop = max(natural, lastBottom + 1.dp.toPx())
                 .coerceAtMost(PROGRESS_PLOT_HEIGHT.toPx() - text.size.height)
             val x = right + 8.dp.toPx()
-            drawCircle(colors[i], 3.dp.toPx(), Offset(x, labelTop + text.size.height / 2f))
+            // A label pushed off its line gets its board's dot, so it is still clear whose it is.
+            if (abs(labelTop - natural) > 2.dp.toPx()) {
+                drawCircle(colors[i], 3.dp.toPx(), Offset(x, labelTop + text.size.height / 2f))
+            }
             drawText(text, topLeft = Offset(x + 6.dp.toPx(), labelTop))
             lastBottom = labelTop + text.size.height
         }
@@ -360,6 +358,42 @@ private fun ProgressChart(
 }
 
 private fun LocalDate.coerceAtLeast(other: LocalDate) = if (isBefore(other)) other else this
+
+/**
+ * Month names under a time axis from [first] to [last], where each month
+ * starts, as many as fit, with the year on the first one and on January; a
+ * faint line marks each labelled month.
+ */
+private fun DrawScope.drawMonthAxis(
+    measurer: TextMeasurer,
+    style: TextStyle,
+    months: List<String>,
+    first: LocalDate,
+    last: LocalDate,
+    xOf: (LocalDate) -> Float,
+    gridTop: Float,
+    gridBottom: Float,
+    labelTop: Float,
+    right: Float,
+    grid: Color,
+) {
+    val starts = buildList {
+        if (first.dayOfMonth <= 7) add(first.withDayOfMonth(1))
+        var month = first.withDayOfMonth(1).plusMonths(1)
+        while (!month.isAfter(last)) { add(month); month = month.plusMonths(1) }
+    }
+    var lastEnd = Float.NEGATIVE_INFINITY
+    starts.forEachIndexed { i, start ->
+        val name = months[start.monthValue - 1] + if (i == 0 || start.monthValue == 1) " '${start.year % 100}" else ""
+        val text = measurer.measure(name, style)
+        val x = xOf(start.coerceAtLeast(first)).coerceAtMost(right - text.size.width)
+        if (x > lastEnd + 8.dp.toPx()) {
+            drawLine(grid, Offset(x, gridTop), Offset(x, gridBottom), 1.dp.toPx())
+            drawText(text, topLeft = Offset(x, labelTop))
+            lastEnd = x + text.size.width
+        }
+    }
+}
 
 private val PROGRESS_PLOT_HEIGHT = 140.dp
 private val PROGRESS_AXIS_HEIGHT = 20.dp
@@ -396,7 +430,93 @@ internal fun ActivityCard(
                 Spacer(Modifier.height(8.dp))
                 HeatmapLegend()
             }
-            ActivityView.WEEKLY -> BoardWeeklyVolumeChart(entries = weeklyVolume)
+            ActivityView.WEEKLY -> WeeklyChart(weeklyVolume)
         }
     }
 }
+
+/**
+ * Log entries per week as columns on a time axis, so weeks off stay visible
+ * as gaps, stacked by grade band in the grade colours.
+ */
+@Composable
+private fun WeeklyChart(entries: List<WeeklyVolumeEntry>) {
+    if (entries.isEmpty()) return
+    val bands = listOf(GradeEasy, GradeMedium, GradeHard, GradeElite)
+    val used = listOf(
+        entries.any { it.easyCount > 0 }, entries.any { it.mediumCount > 0 },
+        entries.any { it.hardCount > 0 }, entries.any { it.eliteCount > 0 },
+    )
+    // Only the bands that occur.
+    SwatchLegend(
+        listOf(
+            stringResource(R.string.board_stats_grade_easy),
+            stringResource(R.string.board_stats_grade_medium),
+            stringResource(R.string.board_stats_grade_hard),
+            stringResource(R.string.board_stats_grade_elite),
+        ).zip(bands).filterIndexed { i, _ -> used[i] },
+    )
+    Spacer(Modifier.height(10.dp))
+    val measurer = rememberTextMeasurer()
+    val axisStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val ink = MaterialTheme.colorScheme.onSurface
+    val months = MONTH_LABELS.map { stringResource(it) }
+    val most = entries.maxOf { it.total }.coerceAtLeast(1)
+    val first = entries.first().weekStart
+    val last = entries.last().weekStart.plusDays(6)
+    val days = (last.toEpochDay() - first.toEpochDay() + 1).toFloat()
+    val description = stringResource(R.string.board_stats_weekly_volume) + ": " +
+        entries.joinToString("; ") { "${it.weekStart}: ${it.total}" }
+
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(WEEKLY_PLOT_HEIGHT + PROGRESS_AXIS_HEIGHT)
+            .semantics { contentDescription = description },
+    ) {
+        val left = PROGRESS_Y_AXIS.toPx()
+        val right = size.width
+        val top = 6.dp.toPx()
+        val bottom = WEEKLY_PLOT_HEIGHT.toPx()
+        fun xOf(day: LocalDate) = left + (day.toEpochDay() - first.toEpochDay()) / days * (right - left)
+        val week = (right - left) * 7 / days
+        val gap = min(2.dp.toPx(), week * 0.25f)
+        val barWidth = (week - gap).coerceAtLeast(1.dp.toPx())
+
+        listOf(most / 2, most).distinct().filter { it > 0 }.forEach { value ->
+            val y = bottom - value.toFloat() / most * (bottom - top)
+            drawLine(ink.copy(alpha = 0.10f), Offset(left, y), Offset(right, y), 1.dp.toPx())
+            val text = measurer.measure("$value", axisStyle)
+            drawText(text, topLeft = Offset(0f, y - text.size.height / 2f))
+        }
+        drawLine(ink.copy(alpha = 0.20f), Offset(left, bottom), Offset(right, bottom), 1.dp.toPx())
+        drawMonthAxis(
+            measurer, axisStyle, months, first, last, ::xOf,
+            gridTop = top, gridBottom = bottom, labelTop = bottom + 2.dp.toPx(),
+            right = right, grid = ink.copy(alpha = 0.06f),
+        )
+
+        entries.forEach { entry ->
+            val x = xOf(entry.weekStart) + gap / 2
+            var y = bottom
+            val counts = listOf(entry.easyCount, entry.mediumCount, entry.hardCount, entry.eliteCount)
+            val topBand = counts.indexOfLast { it > 0 }
+            counts.forEachIndexed { i, n ->
+                if (n == 0) return@forEachIndexed
+                val h = n.toFloat() / most * (bottom - top)
+                // Rounded only at the top of the column.
+                if (i == topBand) {
+                    val r = min(2.dp.toPx(), barWidth / 2)
+                    drawRoundRect(bands[i], Offset(x, y - h), Size(barWidth, h), CornerRadius(r))
+                    if (h > r) drawRect(bands[i], Offset(x, y - h + r), Size(barWidth, h - r))
+                } else {
+                    drawRect(bands[i], Offset(x, y - h), Size(barWidth, h))
+                }
+                y -= h
+            }
+        }
+
+    }
+}
+
+private val WEEKLY_PLOT_HEIGHT = 112.dp

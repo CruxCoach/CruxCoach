@@ -1669,7 +1669,6 @@
     <string name="board_stats_grades_help">Every problem you logged in the chosen period counts once per board, across angles, by its best result: a flash, sent later, or not sent yet.\n\nA flash needs the first recorded entry at that angle to be a send with at most one try.\n\nTap a grade to see its numbers.</string>
     <string name="board_stats_grades_open">Not sent yet</string>
     <string name="board_logbook_filter_period">Period</string>
-    <string name="board_stats_attempt">Attempted</string>
     <string name="board_stats_date_range">Date range…</string>
     <string name="board_stats_grade_easy">Easy</string>
     <string name="board_stats_grade_elite">Elite</string>
@@ -1682,7 +1681,7 @@
     <string name="board_stats_interval_all">All Time</string>
     <string name="board_stats_total">Total</string>
     <string name="board_stats_unique">Distinct climbs</string>
-    <string name="board_stats_weekly_volume">Weekly log entries by grade band</string>
+    <string name="board_stats_weekly_volume">Entries per week</string>
     <string name="board_zone_limit">Limit</string>
     <string name="board_zone_optimal">Optimal</string>
     <string name="board_zone_warmup">Warm-Up</string>

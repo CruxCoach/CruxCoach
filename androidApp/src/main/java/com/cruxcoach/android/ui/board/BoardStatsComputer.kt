@@ -267,23 +267,19 @@ object BoardStatsComputer {
     ): List<WeeklyVolumeEntry> {
         if (filtered.isEmpty()) return emptyList()
 
-        data class WeekKey(val year: Int, val week: Int) : Comparable<WeekKey> {
-            override fun compareTo(other: WeekKey): Int =
-                compareValuesBy(this, other, { it.year }, { it.week })
-        }
-
+        val toMonday = TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)
         val withDate = filtered.mapNotNull { a ->
             val date = parseDate(a.climbedAt) ?: return@mapNotNull null
             val diff = a.difficultyAverage ?: return@mapNotNull null
-            Triple(WeekKey(date.get(WEEK_BASED_YEAR_FIELD), date.get(WEEK_FIELD)), diff, a)
+            date.with(toMonday) to diff
         }
 
         return withDate.groupBy { it.first }
             .toSortedMap()
-            .map { (weekKey, entries) ->
+            .map { (monday, entries) ->
                 val diffs = entries.map { it.second }
                 WeeklyVolumeEntry(
-                    weekLabel = "KW ${weekKey.week}",
+                    weekStart = monday,
                     easyCount = diffs.count { it < MEDIUM_THRESHOLD },
                     mediumCount = diffs.count { it >= MEDIUM_THRESHOLD && it < HARD_THRESHOLD },
                     hardCount = diffs.count { it >= HARD_THRESHOLD && it < ELITE_THRESHOLD },
