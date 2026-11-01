@@ -241,9 +241,11 @@ vertrauenswürdig sein muss.
 
 ```
 1. REQ {"kinds":[30078],"authors":["70b2740b…"],"#d":["<board>"],"limit":1}
-   an alle 5 MANIFEST_RELAYS parallel, 3 Durchläufe mit Backoff+Jitter
+   an alle 6 MANIFEST_RELAYS parallel, 3 Durchläufe mit Backoff+Jitter,
+   je Relay höchstens 15 s; sobald 2 Relays ein geprüftes Manifest geliefert
+   haben, bekommen die übrigen noch 2 s, dann werden sie abgebrochen
 
-2. max(created_at) gewinnt   ← NICHT first-success
+2. max(created_at) der eingegangenen Manifeste gewinnt   ← NICHT first-success
 3. pro Antwort prüfen: pubkey, verifySignature(), verifyId(), d-Tag
 4. content parsen → pro Chunk: lokal gemerkter Hash == Manifest-Hash?
                                ja  → überspringen
@@ -262,6 +264,15 @@ entwerten.
 mit eigener Manifest-Abfrage. Ein einzelnes schlechtes Zeitfenster (503 von damus,
 Connect-Timeout von wellorder) ließ vorher genau einen Katalog fehlschlagen, während
 die Geschwister durchliefen — der Bug „manche Boards laden beim ersten Mal nicht".
+
+**Warum nach zwei Manifesten nur noch 2 s gewartet wird (#39):** Ein Relay, das die
+Verbindung annimmt und nie antwortet (relay.damus.io, 29.–31.10.2026), hielt sonst jeden
+Katalog die vollen 15 s auf, und die Kataloge laden nacheinander. Unter zwei Manifesten
+bleibt es bei 15 s, damit langsame Mobilverbindungen weiter funktionieren; eine leere
+Antwort oder ein Fehler zählt nicht mit. Haben die zwei schnellsten Relays beide ein
+älteres Manifest, nimmt dieses Update das ältere (oder behält den vorhandenen Katalog,
+wenn es nicht neuer ist; Rollback-Schutz, kein Fehler) und das nächste holt es nach. Das eigene Relay bekommt jeden Publish direkt und
+antwortet schnell, deshalb ist das selten.
 
 **Warum der d-Tag clientseitig nachgeprüft wird:** Kilter und MoonBoard teilen den
 Signing-Key, nur der d-Tag trennt sie. Ein schlampiges Relay könnte auf die
@@ -854,7 +865,7 @@ angefragt, wenn der Scanner geöffnet wird, und die drei anderen Wege hinein
 
 | Feature | Mechanismus |
 |---|---|
-| **Manifest** | `max(created_at)` über 5 Relays parallel, dann Chunk-Hash-Diff |
+| **Manifest** | `max(created_at)` über 6 Relays parallel, dann Chunk-Hash-Diff |
 | **Community-Climb** | Relay-Replaceable **+** monotone Sende-Stempel **+** lokaler `created_at`-Vergleich |
 | **Climb-Löschung** | monotoner Stempel, damit der Grabstein den letzten Publish sicher überholt |
 | **Backup** | `newestByDTag` **+** Anti-Rollback gegen `lastBackupSync` |

@@ -9,16 +9,18 @@ import com.cruxcoach.android.util.ZstdNative
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -81,7 +83,8 @@ class BlossomSyncManager(
      * different relays may serve different versions (e.g. a relay that was
      * offline during the last publish still holds yesterday's manifest).
      * Picking first-success would deterministically pin us to the slowest-
-     * updating relay and defeat every fresh publish.
+     * updating relay and defeat every fresh publish. A relay that hangs does
+     * not hold the update once two others have answered (see [queryRelays]).
      */
     suspend fun fetchManifest(): BlossomManifest = withContext(Dispatchers.IO) {
         fetchManifestWithRetry(manifestDTag) { relayUrl -> fetchManifestFromRelay(relayUrl) }
@@ -590,26 +593,7 @@ class BlossomSyncManager(
             var lastError: Throwable? = null
 
             for (pass in 0 until passes) {
-                val outcomes = coroutineScope {
-                    relayUrls.map { relayUrl ->
-                        async {
-                            try {
-                                RelayOutcome(relayUrl, fetchOne(relayUrl), null)
-                            } catch (e: TimeoutCancellationException) {
-                                // withTimeout's own signal — this relay was slow,
-                                // not the whole sync being cancelled.
-                                RelayOutcome(relayUrl, null, e)
-                            } catch (e: CancellationException) {
-                                // Real cancellation (user left the screen) must
-                                // propagate; swallowing it would keep the sync
-                                // running after its scope is gone.
-                                throw e
-                            } catch (e: Exception) {
-                                RelayOutcome(relayUrl, null, e)
-                            }
-                        }
-                    }.awaitAll()
-                }
+                val outcomes = queryRelays(dTag, relayUrls, fetchOne)
 
                 // Log hit / miss / error separately: a relay that answers with no
                 // event is a replication gap, one that throws is an availability
@@ -664,6 +648,75 @@ class BlossomSyncManager(
                 lastError
             )
         }
+
+        /**
+         * One pass over the relay set, all relays in parallel.
+         *
+         * Waiting for every relay let one that accepts the connection but never
+         * answers hold each catalogue for the full [RELAY_TIMEOUT_MS], and the
+         * catalogues sync one after another (relay.damus.io, 2026-10-29 to
+         * 2026-10-31). Once [MANIFEST_QUORUM] relays have returned a verified
+         * manifest, the others get [MANIFEST_GRACE_MS] to catch up and are then
+         * cancelled. With fewer manifests in hand the pass still waits for every
+         * relay, so slow mobile connections keep working. A relay that answers
+         * with no event does not count towards the quorum.
+         *
+         * If the fastest relays all hold an older manifest, this update uses it
+         * (or keeps the catalogue on disk if that is not newer) and the next one
+         * corrects it; our own relay receives every publish directly and answers
+         * fast, which keeps that rare.
+         */
+        private suspend fun queryRelays(
+            dTag: String,
+            relayUrls: List<String>,
+            fetchOne: suspend (String) -> BlossomManifest?,
+        ): List<RelayOutcome> = coroutineScope {
+            val pending = LinkedHashMap<Deferred<RelayOutcome>, String>()
+            for (relayUrl in relayUrls) {
+                pending[async {
+                    try {
+                        RelayOutcome(relayUrl, fetchOne(relayUrl), null)
+                    } catch (e: TimeoutCancellationException) {
+                        // withTimeout's own signal — this relay was slow,
+                        // not the whole sync being cancelled.
+                        RelayOutcome(relayUrl, null, e)
+                    } catch (e: CancellationException) {
+                        // Real cancellation (user left the screen) must
+                        // propagate; swallowing it would keep the sync
+                        // running after its scope is gone.
+                        throw e
+                    } catch (e: Exception) {
+                        RelayOutcome(relayUrl, null, e)
+                    }
+                }] = relayUrl
+            }
+            val outcomes = mutableListOf<RelayOutcome>()
+
+            // A relay cancelled by a real cancellation rethrows from onAwait,
+            // which ends the scope and cancels the other relays with it.
+            suspend fun takeNext() {
+                val (done, outcome) = select<Pair<Deferred<RelayOutcome>, RelayOutcome>> {
+                    pending.keys.forEach { deferred -> deferred.onAwait { deferred to it } }
+                }
+                pending.remove(done)
+                outcomes += outcome
+            }
+
+            while (pending.isNotEmpty() && outcomes.count { it.manifest != null } < MANIFEST_QUORUM) {
+                takeNext()
+            }
+            if (pending.isNotEmpty()) {
+                withTimeoutOrNull(MANIFEST_GRACE_MS) {
+                    while (pending.isNotEmpty()) takeNext()
+                }
+                for ((deferred, relayUrl) in pending) {
+                    Log.d(TAG, "[$dTag] relay $relayUrl skipped: no answer $MANIFEST_GRACE_MS ms after the quorum")
+                    deferred.cancel()
+                }
+            }
+            outcomes
+        }
+
         private const val TAG = "BlossomSyncManager"
         private const val RELAY_TIMEOUT_MS = 15_000L
         // Slack above the manifest-declared chunk size for HTTP/zstd framing
@@ -707,6 +760,10 @@ class BlossomSyncManager(
          * where one pass was simply unlucky.
          */
         internal const val MANIFEST_FETCH_PASSES = 3
+        /** Verified manifests after which a pass stops waiting for slow relays. */
+        internal const val MANIFEST_QUORUM = 2
+        /** How long the other relays may still answer once the quorum is in. */
+        internal const val MANIFEST_GRACE_MS = 2_000L
         private const val MANIFEST_BACKOFF_BASE_MS = 500L
         private const val MANIFEST_BACKOFF_JITTER_MS = 500L
         // Backoff between retry passes. Linear + jitter is sufficient for
