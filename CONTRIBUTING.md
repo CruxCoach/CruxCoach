@@ -158,6 +158,20 @@ need an Android setup or any signing key; CruxCoach CI builds your commit.
 3. Open a pull request from your fork. After the checks pass, a comment on the
    pull request links your test build, and the build appears in Buzz.
 
+Test builds are sorted into their release by branch name, and every track shows
+its branch. Name your branch:
+
+- `feat/<version>-<name>` for a feature planned for a release, for example
+  `feat/0.2.5-spray-walls`
+- `feat/<name>` while the feature has no release yet; its builds show under
+  "No release"
+- `fix/<version>-<name>` for a fix planned for a release
+
+Use lowercase letters, digits and hyphens in `<name>`. The release branch itself
+is `feat/<version>-release`; only the maintainer merges into it. Agents that
+open branches for you follow the same rule. If a branch name does not follow
+it, the comment with your test build says so; the build is published anyway.
+
 Testers see who published each build, and the install page asks them whether
 they trust you before their first download from you. CruxCoach does not review
 community builds; they are separate apps with their own data, next to the
