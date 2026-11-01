@@ -63,7 +63,12 @@ class OnnxHoldDetector(modelFile: File, threads: Int = DEFAULT_THREADS) : Closea
             decoded
         }
         val t4 = System.nanoTime()
-        val candidates = SegPipeline.candidates(SegPipeline.merge(perTile, settings.nmsIou), workWidth, workHeight)
+        val merged = if (settings.seamAware) {
+            SegPipeline.merge(perTile, tiles, workWidth, workHeight, settings.nmsIou)
+        } else {
+            SegPipeline.merge(perTile, settings.nmsIou)
+        }
+        val candidates = SegPipeline.candidates(merged, workWidth, workHeight)
         postNs += System.nanoTime() - t4
         return Result(candidates, Timing(resizeNs / MS, inferNs / MS, postNs / MS), tiles.size)
     }

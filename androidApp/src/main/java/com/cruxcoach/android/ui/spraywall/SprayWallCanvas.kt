@@ -272,10 +272,15 @@ private fun DrawScope.drawHold(hold: SprayCanvasHold, fit: SprayWallGeometry.Fit
     when (hold.look) {
         SprayHoldLook.FAINT -> line(Color.White.copy(alpha = 0.45f), stroke * 0.6f)
         SprayHoldLook.SUGGESTED -> {
-            val dash = PathEffect.dashPathEffect(floatArrayOf(stroke * 2.2f, stroke * 1.6f))
             fill(Color(0xFFFFA000).copy(alpha = 0.18f))
-            line(halo, stroke * 1.8f, dash)
-            line(Color(0xFFFFB300), stroke, dash)
+            if (shape != null) {
+                // Dashes on many small shapes turn into noise: a thin solid line reads better.
+                line(Color(0xFFFFB300), stroke * 0.8f)
+            } else {
+                val dash = PathEffect.dashPathEffect(floatArrayOf(stroke * 2.2f, stroke * 1.6f))
+                line(halo, stroke * 1.8f, dash)
+                line(Color(0xFFFFB300), stroke, dash)
+            }
         }
         SprayHoldLook.PLAIN -> {
             line(halo, stroke * 2f)

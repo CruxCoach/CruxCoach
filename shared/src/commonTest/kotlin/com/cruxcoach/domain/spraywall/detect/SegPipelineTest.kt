@@ -122,5 +122,47 @@ class SegPipelineTest {
         assertEquals((0f - 0.406f) / 0.225f, tensor[2 * 64 * 64], 1e-4f)
     }
 
+    @Test
+    fun nearestSetMatchesTheSpiral() {
+        val random = kotlin.random.Random(7)
+        repeat(200) {
+            val w = random.nextInt(1, 30)
+            val h = random.nextInt(1, 30)
+            val filled = BooleanArray(w * h) { random.nextInt(100) < 3 }
+            val x = random.nextInt(w)
+            val y = random.nextInt(h)
+            filled[y * w + x] = false
+            assertEquals(spiral(filled, w, h, x, y), MaskOutline.nearestSet(filled, w, h, x, y))
+        }
+    }
+
+    /** The reference's square spiral, for comparison. */
+    private fun spiral(filled: BooleanArray, w: Int, h: Int, x: Int, y: Int): Pair<Int, Int>? {
+        for (r in 1 until maxOf(w, h)) {
+            for (dy in -r..r) {
+                for (dx in -r..r) {
+                    if (maxOf(abs(dx), abs(dy)) != r) continue
+                    val nx = x + dx
+                    val ny = y + dy
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+                    if (filled[ny * w + nx]) return nx to ny
+                }
+            }
+        }
+        return null
+    }
+
+    @Test
+    fun seamAwareMergeKeepsTheWholeCopy() {
+        // Two tiles overlap at x 40..60. Tile 0 sees the hold cut at its right edge (x1 = 60), tile 1 sees it whole.
+        val tiles = listOf(SegTile(0, 0, 60, 100), SegTile(40, 0, 100, 100))
+        val cut = SegDetection(45f, 10f, 59f, 30f, 0.9f, null)
+        val whole = SegDetection(45f, 10f, 70f, 30f, 0.7f, null)
+        val merged = SegPipeline.merge(listOf(listOf(cut), listOf(whole)), tiles, 100, 100, 0.3f)
+        assertEquals(listOf(whole), merged)
+        // The plain merge keeps the better score.
+        assertEquals(listOf(cut), SegPipeline.merge(listOf(listOf(cut), listOf(whole)), 0.3f))
+    }
+
     private fun logit(p: Float): Float = ln(p / (1 - p))
 }

@@ -46,6 +46,12 @@ data class SegSettings(
     val simplifyTolerance: Float = 0.5f,
     val maxRingPoints: Int = 150,
     val resampler: Resampler = Resampler.LANCZOS3,
+    /**
+     * Where two tiles both saw a hold, keep the copy that is not cut by a
+     * tile edge, and drop a cut copy that lies mostly inside a kept hold.
+     * Off reproduces the reference merge (best score wins).
+     */
+    val seamAware: Boolean = false,
 ) {
     enum class Resampler { LANCZOS3, BILINEAR }
 
@@ -187,7 +193,32 @@ object SegPipeline {
     fun merge(perTile: List<List<SegDetection>>, iou: Float): List<SegDetection> {
         val all = perTile.flatten()
         if (all.size <= 1) return all
-        val order = all.indices.sortedByDescending { all[it].score }
+        return nms(all, all.indices.sortedByDescending { all[it].score }, iou, cut = null)
+    }
+
+    /**
+     * [merge] that knows the tiles: a detection whose box touches an inner
+     * tile edge was cut off there, so where it overlaps a copy from another
+     * tile, the whole copy wins even with a lower score, and a cut copy that
+     * lies mostly inside a kept hold is dropped as a duplicate.
+     */
+    fun merge(perTile: List<List<SegDetection>>, tiles: List<SegTile>, workWidth: Int, workHeight: Int, iou: Float): List<SegDetection> {
+        val all = ArrayList<SegDetection>()
+        val cut = ArrayList<Boolean>()
+        for ((t, detections) in perTile.withIndex()) {
+            val tile = tiles[t]
+            for (d in detections) {
+                all += d
+                cut += (tile.x0 > 0 && d.x0 <= tile.x0 + SEAM_PX) || (tile.x1 < workWidth && d.x1 >= tile.x1 - SEAM_PX) ||
+                    (tile.y0 > 0 && d.y0 <= tile.y0 + SEAM_PX) || (tile.y1 < workHeight && d.y1 >= tile.y1 - SEAM_PX)
+            }
+        }
+        if (all.size <= 1) return all
+        val order = all.indices.sortedWith(compareBy<Int> { cut[it] }.thenByDescending { all[it].score })
+        return nms(all, order, iou, cut)
+    }
+
+    private fun nms(all: List<SegDetection>, order: List<Int>, iou: Float, cut: List<Boolean>?): List<SegDetection> {
         val suppressed = BooleanArray(all.size)
         val keep = ArrayList<SegDetection>()
         for (i in order) {
@@ -195,11 +226,21 @@ object SegPipeline {
             keep += all[i]
             for (j in order) {
                 if (j == i || suppressed[j]) continue
-                if (boxIou(all[i], all[j]) > iou) suppressed[j] = true
+                if (boxIou(all[i], all[j]) > iou || (cut != null && cut[j] && insideShare(all[j], all[i]) > CUT_INSIDE)) suppressed[j] = true
             }
         }
         return keep
     }
+
+    /** How much of [a]'s box lies inside [b]'s. */
+    private fun insideShare(a: SegDetection, b: SegDetection): Float {
+        val area = max(0f, a.x1 - a.x0) * max(0f, a.y1 - a.y0)
+        val inter = max(0f, min(a.x1, b.x1) - max(a.x0, b.x0)) * max(0f, min(a.y1, b.y1) - max(a.y0, b.y0))
+        return if (area > 0f) inter / area else 0f
+    }
+
+    private const val SEAM_PX = 2f
+    private const val CUT_INSIDE = 0.6f
 
     fun boxIou(a: SegDetection, b: SegDetection): Float {
         val areaA = max(0f, a.x1 - a.x0) * max(0f, a.y1 - a.y0)
@@ -355,20 +396,28 @@ object MaskOutline {
         return component
     }
 
-    private fun nearestSet(filled: BooleanArray, w: Int, h: Int, x: Int, y: Int): Pair<Int, Int>? {
-        val limit = max(w, h)
-        for (r in 1 until limit) {
-            for (dy in -r..r) {
-                for (dx in -r..r) {
-                    if (max(abs(dx), abs(dy)) != r) continue
-                    val nx = x + dx
-                    val ny = y + dy
-                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
-                    if (filled[ny * w + nx]) return nx to ny
+    /**
+     * The set pixel nearest to (x, y) by Chebyshev distance; ties go to the
+     * one above, then to the left, as the reference's square spiral finds
+     * them. One pass instead of the spiral: the spiral rescans the window for
+     * every radius, which on an empty mask costs seconds per photo.
+     */
+    internal fun nearestSet(filled: BooleanArray, w: Int, h: Int, x: Int, y: Int): Pair<Int, Int>? {
+        var best = Int.MAX_VALUE
+        var bx = -1
+        var by = -1
+        for (ny in 0 until h) {
+            for (nx in 0 until w) {
+                if (!filled[ny * w + nx]) continue
+                val d = max(abs(nx - x), abs(ny - y))
+                if (d < best) {
+                    best = d
+                    bx = nx
+                    by = ny
                 }
             }
         }
-        return null
+        return if (bx < 0) null else bx to by
     }
 
     /** Moore-neighbourhood walk around the component's outer edge, once. */

@@ -517,8 +517,10 @@ private fun SuggestionBar(editor: SprayHoldEditorState, viewModel: SprayHoldEdit
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFFFB300))
+                val open = editor.visibleSuggestions.size
+                // Everything shown was taken: say so, the slider can still show the less sure ones.
                 Text(
-                    stringResource(R.string.spray_detect_suggestions, editor.visibleSuggestions.size),
+                    if (open > 0) stringResource(R.string.spray_detect_suggestions, open) else stringResource(R.string.spray_detect_none_open),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f).padding(start = 8.dp),
                 )
@@ -526,7 +528,9 @@ private fun SuggestionBar(editor: SprayHoldEditorState, viewModel: SprayHoldEdit
                     Icon(Icons.Default.Close, contentDescription = stringResource(R.string.spray_detect_dismiss))
                 }
             }
-            Text(stringResource(R.string.spray_detect_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (editor.visibleSuggestions.isNotEmpty()) {
+                Text(stringResource(R.string.spray_detect_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.spray_detect_sensitivity), style = MaterialTheme.typography.labelMedium)
                 // More sensitive = a lower confidence threshold.
@@ -536,11 +540,12 @@ private fun SuggestionBar(editor: SprayHoldEditorState, viewModel: SprayHoldEdit
                     valueRange = 0.05f..0.95f,
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp).testTag("spray_detect_sensitivity"),
                 )
-                Button(
-                    onClick = viewModel::acceptSuggestions,
-                    enabled = editor.visibleSuggestions.isNotEmpty(),
-                    modifier = Modifier.testTag("spray_suggestions_accept"),
-                ) { Text(stringResource(R.string.spray_detect_accept_all)) }
+                if (editor.visibleSuggestions.isNotEmpty()) {
+                    Button(
+                        onClick = viewModel::acceptSuggestions,
+                        modifier = Modifier.testTag("spray_suggestions_accept"),
+                    ) { Text(stringResource(R.string.spray_detect_accept_all)) }
+                }
             }
         }
     }

@@ -273,6 +273,17 @@ fun SprayWallPhotoScreen(
                 SprayStepLabel(step = 1)
             }
             PhotoTile(state.preview, state.importing, state.photo?.let { it.width.toFloat() / it.height } ?: (4f / 3f))
+            val continueButton = @Composable {
+                Button(
+                    onClick = { viewModel.continueWith(defaultName) },
+                    enabled = state.canContinue,
+                    modifier = Modifier.fillMaxWidth().testTag("spray_photo_continue"),
+                ) {
+                    Text(stringResource(R.string.spray_wall_continue))
+                }
+            }
+            // With a photo the next step sits right under it, above the long reset explanation's scroll edge.
+            if (state.photo != null) continueButton()
             Text(stringResource(R.string.spray_wall_photo_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (state.photoFailed) {
                 Text(stringResource(R.string.spray_wall_photo_failed), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("spray_photo_failed"))
@@ -303,13 +314,7 @@ fun SprayWallPhotoScreen(
                     Text(stringResource(R.string.spray_adjust_title))
                 }
             }
-            Button(
-                onClick = { viewModel.continueWith(defaultName) },
-                enabled = state.canContinue,
-                modifier = Modifier.fillMaxWidth().testTag("spray_photo_continue"),
-            ) {
-                Text(stringResource(R.string.spray_wall_continue))
-            }
+            if (state.photo == null) continueButton()
             if (state.photo == null && !state.importing) {
                 Text(stringResource(R.string.spray_wall_photo_missing), style = MaterialTheme.typography.bodySmall)
             }

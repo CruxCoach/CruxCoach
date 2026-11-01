@@ -130,6 +130,7 @@
     <string name="spray_detect">Griffe finden</string>
     <string name="spray_detect_running">Griffe werden gesucht …</string>
     <string name="spray_detect_suggestions">Vorgeschlagene Griffe: %1$d</string>
+    <string name="spray_detect_none_open">Keine offenen Vorschläge. Empfindlicher zeigt auch unsichere.</string>
     <string name="spray_detect_hint">Gestrichelte Ringe sind Vorschläge. Tippe einen an, um ihn zu übernehmen, oder übernimm alle. Empfindlicher zeigt mehr, auch unsichere.</string>
     <string name="spray_detect_sensitivity">Empfindlichkeit</string>
     <string name="spray_detect_accept_all">Alle übernehmen</string>

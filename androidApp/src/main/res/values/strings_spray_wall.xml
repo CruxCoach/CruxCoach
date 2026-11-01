@@ -130,6 +130,7 @@
     <string name="spray_detect">Find holds</string>
     <string name="spray_detect_running">Looking for holds…</string>
     <string name="spray_detect_suggestions">Suggested holds: %1$d</string>
+    <string name="spray_detect_none_open">No open suggestions. More sensitive shows less sure ones.</string>
     <string name="spray_detect_hint">Dashed rings are suggestions. Tap one to take it, or take all. More sensitive shows more, including doubtful ones.</string>
     <string name="spray_detect_sensitivity">Sensitivity</string>
     <string name="spray_detect_accept_all">Take all</string>

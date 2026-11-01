@@ -4,6 +4,7 @@ import android.app.Activity
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
 import com.cruxcoach.android.spraywall.HoldModel
 import com.cruxcoach.android.spraywall.HoldModelStore
@@ -30,7 +31,7 @@ import kotlin.math.max
  *
  * Extras: mode (seg|classic), longSide, rows, cols, overlap, threshold, floor,
  * nms, outlines, upsample, tolerance, maxPoints, resampler (lanczos3|bilinear),
- * threads, repeat (timing passes per photo), only (comma-separated photo names).
+ * seam, threads, repeat (timing passes per photo), only (comma-separated photo names).
  */
 class HoldBenchActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,6 +71,7 @@ class HoldBenchActivity : Activity() {
             simplifyTolerance = x.getFloatExtra("tolerance", 0.5f),
             maxRingPoints = x.getIntExtra("maxPoints", 150),
             resampler = if (x.getStringExtra("resampler") == "bilinear") SegSettings.Resampler.BILINEAR else SegSettings.Resampler.LANCZOS3,
+            seamAware = x.getBooleanExtra("seam", false),
         )
         val threads = x.getIntExtra("threads", OnnxHoldDetector.DEFAULT_THREADS)
         val repeat = x.getIntExtra("repeat", 1).coerceIn(1, 10)
@@ -117,6 +119,7 @@ class HoldBenchActivity : Activity() {
                         .put(c.outline?.let { ring -> JSONArray(ring.map { v -> (v * 1000).toInt() / 1000.0 }) } ?: JSONObject.NULL)
                 }))
                 rows.put(row)
+                Log.i("HoldBench", "$label ${photo.name} ${candidates.size} holds, ${passes.optJSONObject(0)}")
             }
         } finally {
             detector?.close()
