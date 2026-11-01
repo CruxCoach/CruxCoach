@@ -96,7 +96,7 @@ data class SprayWallSummary(
     val climbCount: Int,
 )
 
-/** One hold in one version of a wall. */
+/** One hold in one version of a wall. [outline]: its shape, see [HoldOutline]; null is a circle. */
 data class SprayHold(
     val wallId: String,
     val version: Int,
@@ -104,6 +104,7 @@ data class SprayHold(
     val x: Float,
     val y: Float,
     val radius: Float,
+    val outline: List<Float>? = null,
 )
 
 enum class SprayHoldRole(val wire: String) {

@@ -28,7 +28,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -45,6 +47,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
+import com.cruxcoach.domain.spraywall.HoldOutline
 import com.cruxcoach.domain.spraywall.SprayHoldRole
 import com.cruxcoach.domain.spraywall.SprayWallGeometry
 import kotlin.math.roundToInt
@@ -60,6 +63,8 @@ data class SprayCanvasHold(
     val radius: Float,
     val look: SprayHoldLook,
     val role: SprayHoldRole? = null,
+    /** The hold's shape (see HoldOutline); null draws a circle. */
+    val outline: List<Float>? = null,
 )
 
 /** Screen colours for the hold roles, in the usual board convention. */
@@ -252,33 +257,47 @@ private fun DrawScope.drawHold(hold: SprayCanvasHold, fit: SprayWallGeometry.Fit
     val center = Offset(fit.left + hold.x * fit.width, fit.top + hold.y * fit.height)
     val r = hold.radius * fit.width
     val halo = Color.Black.copy(alpha = 0.55f)
+    // A hold with a known shape is drawn as that shape, else as a circle.
+    val shape = hold.outline?.takeIf { HoldOutline.isValid(it) }?.let { ring ->
+        Path().apply {
+            moveTo(center.x + ring[0] * r, center.y + ring[1] * r)
+            for (i in 2 until ring.size step 2) lineTo(center.x + ring[i] * r, center.y + ring[i + 1] * r)
+            close()
+        }
+    }
+    fun fill(color: Color) = if (shape != null) drawPath(shape, color) else drawCircle(color, r, center)
+    fun line(color: Color, width: Float, dash: PathEffect? = null) =
+        if (shape != null) drawPath(shape, color, style = Stroke(width, pathEffect = dash, join = StrokeJoin.Round))
+        else drawCircle(color, r, center, style = Stroke(width, pathEffect = dash))
     when (hold.look) {
-        SprayHoldLook.FAINT -> drawCircle(Color.White.copy(alpha = 0.45f), r, center, style = Stroke(stroke * 0.6f))
+        SprayHoldLook.FAINT -> line(Color.White.copy(alpha = 0.45f), stroke * 0.6f)
         SprayHoldLook.SUGGESTED -> {
             val dash = PathEffect.dashPathEffect(floatArrayOf(stroke * 2.2f, stroke * 1.6f))
-            drawCircle(Color(0xFFFFA000).copy(alpha = 0.18f), r, center)
-            drawCircle(halo, r, center, style = Stroke(stroke * 1.8f, pathEffect = dash))
-            drawCircle(Color(0xFFFFB300), r, center, style = Stroke(stroke, pathEffect = dash))
+            fill(Color(0xFFFFA000).copy(alpha = 0.18f))
+            line(halo, stroke * 1.8f, dash)
+            line(Color(0xFFFFB300), stroke, dash)
         }
         SprayHoldLook.PLAIN -> {
-            drawCircle(halo, r, center, style = Stroke(stroke * 2f))
-            drawCircle(Color.White, r, center, style = Stroke(stroke))
+            line(halo, stroke * 2f)
+            line(Color.White, stroke)
         }
         SprayHoldLook.PICKED -> {
-            drawCircle(Color(0xFFFFEB3B).copy(alpha = 0.25f), r, center)
-            drawCircle(halo, r, center, style = Stroke(stroke * 2.6f))
-            drawCircle(Color(0xFFFFEB3B), r, center, style = Stroke(stroke * 1.6f))
+            fill(Color(0xFFFFEB3B).copy(alpha = 0.25f))
+            line(halo, stroke * 2.6f)
+            line(Color(0xFFFFEB3B), stroke * 1.6f)
         }
         SprayHoldLook.ROLE -> {
             val color = hold.role?.color() ?: Color.White
-            drawCircle(halo, r, center, style = Stroke(stroke * 2.4f))
-            drawCircle(color, r, center, style = Stroke(stroke * 1.4f))
+            // A traced hold is coloured in, so the climb reads at a glance.
+            if (shape != null) fill(color.copy(alpha = 0.3f))
+            line(halo, stroke * 2.4f)
+            line(color, stroke * 1.4f)
         }
         SprayHoldLook.GONE -> {
             val color = (hold.role?.color() ?: Color.White).copy(alpha = 0.8f)
             val dash = PathEffect.dashPathEffect(floatArrayOf(stroke * 3f, stroke * 2.5f))
-            drawCircle(halo, r, center, style = Stroke(stroke * 2f, pathEffect = dash))
-            drawCircle(color, r, center, style = Stroke(stroke * 1.2f, pathEffect = dash))
+            line(halo, stroke * 2f, dash)
+            line(color, stroke * 1.2f, dash)
         }
     }
 }

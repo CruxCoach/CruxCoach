@@ -42,6 +42,8 @@ CREATE TABLE spray_wall_hold (
     x REAL NOT NULL,
     y REAL NOT NULL,
     radius REAL NOT NULL,
+    -- The hold's shape: HoldOutline's compact ring (base64url), NULL for a circle.
+    outline TEXT,
     PRIMARY KEY (wall_id, version, hold_id)
 );
 

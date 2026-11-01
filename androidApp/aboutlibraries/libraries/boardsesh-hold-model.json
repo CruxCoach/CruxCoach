@@ -1,0 +1,20 @@
+{
+  "uniqueId": "com.boardsesh:hold-detector-2026-09-18-seg",
+  "artifactVersion": "2026-09-18-seg",
+  "name": "BoardSesh hold segmentation model (downloaded on request)",
+  "description": "Finds the holds on a spray-wall photo with their outlines. Not part of the app: downloaded only when you set up hold finding, then checked against its SHA-256.",
+  "website": "https://github.com/boardsesh/boardsesh",
+  "developers": [
+    {
+      "name": "BoardSesh contributors"
+    },
+    {
+      "name": "Roboflow (RF-DETR)"
+    }
+  ],
+  "licenses": [
+    "hold-model-Apache-2.0",
+    "roboflow-holds-CC-BY-4.0",
+    "d12-holds-MIT"
+  ]
+}

@@ -53,6 +53,20 @@ BoardSesh — MoonBoard hold-set cell map (which grid cell belongs to which
     2.0 (https://www.apache.org/licenses/LICENSE-2.0). See
     THIRD_PARTY_LICENSES.md for the full attribution.
 
+BoardSesh — hold segmentation pipeline (tiling, decoding, mask-to-outline
+    tracing, tile merging) ported to Kotlin in
+    shared/src/commonMain/kotlin/com/cruxcoach/domain/spraywall/detect/SegPipeline.kt
+    from packages/shared/hold-detection in https://github.com/boardsesh/boardsesh.
+    Licensed under the Apache License 2.0
+    (https://www.apache.org/licenses/LICENSE-2.0). See THIRD_PARTY_LICENSES.md.
+
+Hold segmentation model (downloaded on request, not in the APK) — BoardSesh's
+    published RF-DETR-Seg nano export "2026-09-18-seg" (Apache License 2.0).
+    RF-DETR © Roboflow, Apache License 2.0. Trained on "Climbing Holds and
+    Volumes" v14 from Roboflow Universe (CC BY 4.0); mask labels distilled from
+    d12's crux-climbing-hold-segmentation-models v1.0.0 (MIT). See
+    THIRD_PARTY_LICENSES.md.
+
 dontkillmyapp.com (Urbandroid Team) — OEM background-killer taxonomy used in
     androidApp/src/main/java/com/cruxcoach/android/notification/
     NotificationReliabilityHelper.kt. Licensed under CC BY-SA 4.0

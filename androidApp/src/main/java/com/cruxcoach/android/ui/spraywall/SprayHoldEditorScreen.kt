@@ -67,6 +67,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
+import com.cruxcoach.android.spraywall.HoldModel
+import com.cruxcoach.android.spraywall.HoldModelStore
+import com.cruxcoach.android.spraywall.OnnxHoldDetector
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallRepository
 import com.cruxcoach.domain.spraywall.EditableHold
@@ -75,6 +78,7 @@ import com.cruxcoach.domain.spraywall.SpraySuggestion
 import com.cruxcoach.domain.spraywall.SprayVersionKind
 import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.detect.RgbImage
+import com.cruxcoach.domain.spraywall.detect.SegSettings
 import com.cruxcoach.domain.spraywall.detect.SprayHoldDetector
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -105,6 +109,8 @@ data class SprayHoldEditorUiState(
     val detecting: Boolean = false,
     /** The detector ran on this photo (so an empty result is a real result). */
     val detected: Boolean = false,
+    /** The hold model: missing until the climber downloads it, then used instead of the classical detector. */
+    val model: HoldModelStore.State = HoldModelStore.State.Missing,
 ) {
     val dirty: Boolean get() = editor.holds != saved
     /** A reset whose holds were never saved: leaving may drop it again. */
@@ -131,6 +137,7 @@ class SprayHoldEditorViewModel @Inject constructor(
     savedState: SavedStateHandle,
     private val repository: SprayWallRepository,
     private val photos: SprayWallPhotoStore,
+    private val models: HoldModelStore,
 ) : ViewModel() {
     private val wallId: String = savedState[SprayWallRoutes.ARG_WALL] ?: ""
     private val _state = MutableStateFlow(SprayHoldEditorUiState(first = savedState.get<Boolean>(SprayWallRoutes.ARG_FIRST) == true))
@@ -138,7 +145,10 @@ class SprayHoldEditorViewModel @Inject constructor(
     private val _messages = MutableSharedFlow<SprayHoldEditorMessage>(extraBufferCapacity = 4)
     val messages: SharedFlow<SprayHoldEditorMessage> = _messages.asSharedFlow()
 
+    private var segmentation: OnnxHoldDetector? = null
+
     init {
+        viewModelScope.launch { models.state.collect { model -> _state.update { it.copy(model = model) } } }
         viewModelScope.launch {
             val wall = repository.wall(wallId)
             if (wall == null || !wall.isMine) {
@@ -163,12 +173,23 @@ class SprayHoldEditorViewModel @Inject constructor(
         _state.update { it.copy(detecting = true) }
         viewModelScope.launch {
             try {
+                val useModel = models.isReady()
                 val found = withContext(Dispatchers.Default) {
-                    val (w, h, pixels) = photos.pixels(wall.photoFile, DETECT_LONG_SIDE) ?: return@withContext emptyList()
-                    SprayHoldDetector.detect(RgbImage(w, h, pixels))
-                        .map { SpraySuggestion(it.x, it.y, it.radius, it.confidence) }
+                    val candidates = if (useModel) {
+                        val image = photos.image(wall.photoFile, MODEL_SETTINGS.longSide) ?: return@withContext emptyList()
+                        val detector = segmentation ?: OnnxHoldDetector(models.file).also { segmentation = it }
+                        detector.detect(image, MODEL_SETTINGS).candidates
+                    } else {
+                        val (w, h, pixels) = photos.pixels(wall.photoFile, DETECT_LONG_SIDE) ?: return@withContext emptyList()
+                        SprayHoldDetector.detect(RgbImage(w, h, pixels))
+                    }
+                    candidates.map { SpraySuggestion(it.x, it.y, it.radius, it.confidence, it.outline) }
                 }
-                _state.update { it.copy(detecting = false, detected = true, editor = it.editor.withSuggestions(found, wall.aspectRatio)) }
+                _state.update {
+                    val editor = it.editor.withSuggestions(found, wall.aspectRatio)
+                    // The model's scores mean something else than the classical detector's: start at its own threshold.
+                    it.copy(detecting = false, detected = true, editor = if (useModel) editor.setThreshold(MODEL_SETTINGS.threshold) else editor)
+                }
                 _messages.emit(SprayHoldEditorMessage.Detected(_state.value.editor.visibleSuggestions.size))
             } catch (e: CancellationException) {
                 throw e
@@ -270,7 +291,18 @@ class SprayHoldEditorViewModel @Inject constructor(
         }
     }
 
+    /** Downloads the hold model once, then looks for holds again with it. */
+    fun downloadModel() {
+        viewModelScope.launch { if (models.download()) detect() }
+    }
+
+    override fun onCleared() {
+        segmentation?.close()
+    }
+
     private companion object {
+        /** The model's published settings; the floor keeps unsure holds for the sensitivity slider. */
+        val MODEL_SETTINGS = SegSettings(floor = 0.3f)
         const val DETECT_LONG_SIDE = 1024
     }
 }
@@ -366,9 +398,9 @@ fun SprayHoldEditorScreen(
                     photo = state.photo,
                     photoWidth = wall.photoWidth,
                     photoHeight = wall.photoHeight,
-                    holds = visible.mapIndexed { i, s -> SprayCanvasHold(SUGGESTION_ID_BASE - i, s.x, s.y, s.radius, SprayHoldLook.SUGGESTED) } +
+                    holds = visible.mapIndexed { i, s -> SprayCanvasHold(SUGGESTION_ID_BASE - i, s.x, s.y, s.radius, SprayHoldLook.SUGGESTED, outline = s.outline) } +
                         editor.holds.map {
-                            SprayCanvasHold(it.id, it.x, it.y, it.radius, if (it.id == editor.selectedId) SprayHoldLook.PICKED else SprayHoldLook.PLAIN)
+                            SprayCanvasHold(it.id, it.x, it.y, it.radius, if (it.id == editor.selectedId) SprayHoldLook.PICKED else SprayHoldLook.PLAIN, outline = it.outline)
                         },
                     gestures = SprayCanvasGestures(
                         onTap = viewModel::onTap,
@@ -384,6 +416,7 @@ fun SprayHoldEditorScreen(
             }
             Surface(tonalElevation = 3.dp) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    if (state.model !is HoldModelStore.State.Ready) ModelCard(state.model, viewModel::downloadModel)
                     if (editor.suggestions.isNotEmpty()) SuggestionBar(editor, viewModel)
                     val selected = editor.selected
                     // The row keeps its height either way, so picking a hold does not shrink the photo under the finger.
@@ -452,6 +485,28 @@ fun SprayHoldEditorScreen(
             )
         } else {
             SprayDiscardDialog(onDiscard = { confirmLeave = false; onBack() }, onKeep = { confirmLeave = false })
+        }
+    }
+}
+
+@Composable
+private fun ModelCard(model: HoldModelStore.State, onDownload: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("spray_model")) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.spray_model_title), style = MaterialTheme.typography.titleSmall)
+            Text(
+                stringResource(if (model == HoldModelStore.State.Failed) R.string.spray_model_failed else R.string.spray_model_text),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (model is HoldModelStore.State.Downloading) {
+                val percent = (model.doneBytes * 100 / HoldModel.BYTES).toInt()
+                Text(stringResource(R.string.spray_model_downloading, percent), style = MaterialTheme.typography.labelMedium)
+            } else {
+                Button(onClick = onDownload, modifier = Modifier.testTag("spray_model_download")) {
+                    Text(stringResource(R.string.spray_model_download))
+                }
+            }
         }
     }
 }

@@ -7,6 +7,7 @@ import com.cruxcoach.db.secure.Spray_wall
 import com.cruxcoach.db.secure.Spray_wall_hold
 import com.cruxcoach.db.secure.Spray_wall_version
 import com.cruxcoach.domain.spraywall.EditableHold
+import com.cruxcoach.domain.spraywall.HoldOutline
 import com.cruxcoach.domain.spraywall.SprayAscent
 import com.cruxcoach.domain.spraywall.SprayClimb
 import com.cruxcoach.domain.spraywall.SprayClimbHolds
@@ -186,7 +187,8 @@ class SprayWallRepository @Inject constructor(
     suspend fun restoreVersion(wallId: String, version: Int): Int = io {
         database.transactionWithResult {
             val source = queries.selectVersion(wallId, version.toLong()).executeAsOne().toModel()
-            val holds = queries.selectHolds(wallId, version.toLong()).executeAsList().map { EditableHold(it.hold_id, it.x.toFloat(), it.y.toFloat(), it.radius.toFloat()) }
+            val holds = queries.selectHolds(wallId, version.toLong()).executeAsList().map { it.toModel() }
+                .map { EditableHold(it.id, it.x, it.y, it.radius, it.outline) }
             val t = now()
             val next = latestVersionNumber(wallId) + 1
             insertVersion(wallId, next, SprayVersionKind.RESTORED, version, source.photoFile, source.photoWidth, source.photoHeight,
@@ -242,7 +244,8 @@ class SprayWallRepository @Inject constructor(
 
     private fun insertHold(wallId: String, version: Int, h: EditableHold) {
         require(h.id >= 0) { "hold without a stored id" }
-        queries.insertHold(wallId, version.toLong(), h.id, h.x.toDouble(), h.y.toDouble(), h.radius.toDouble())
+        val outline = HoldOutline.fit(h.outline)?.let(HoldOutline::encode)
+        queries.insertHold(wallId, version.toLong(), h.id, h.x.toDouble(), h.y.toDouble(), h.radius.toDouble(), outline)
     }
 
     // ── Climbs ──────────────────────────────────────────────────
@@ -380,7 +383,7 @@ class SprayWallRepository @Inject constructor(
                 val p = v.parsed
                 if (p.number in known) continue
                 insertVersion(head.wallId, p.number, p.kind, p.basedOn, v.photo.fileName, v.photo.width, v.photo.height,
-                    p.photoSha256, p.photoUrl, p.holds.map { EditableHold(it.id, it.x, it.y, it.radius) }, p.createdAt * 1000)
+                    p.photoSha256, p.photoUrl, p.holds.map { EditableHold(it.id, it.x, it.y, it.radius, it.outline) }, p.createdAt * 1000)
             }
             head.wallId
         }
@@ -474,7 +477,7 @@ internal fun Spray_wall_version.toModel() = SprayWallVersion(
 )
 
 internal fun Spray_wall_hold.toModel() =
-    SprayHold(wall_id, version.toInt(), hold_id, x.toFloat(), y.toFloat(), radius.toFloat())
+    SprayHold(wall_id, version.toInt(), hold_id, x.toFloat(), y.toFloat(), radius.toFloat(), outline?.let(HoldOutline::decode))
 
 internal fun Spray_climb.toModel() = SprayClimb(
     uuid = uuid, wallId = wall_id, version = version.toInt(), name = name, description = description,

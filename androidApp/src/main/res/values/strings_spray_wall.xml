@@ -135,6 +135,11 @@
     <string name="spray_detect_accept_all">Take all</string>
     <string name="spray_detect_dismiss">Hide suggestions</string>
     <string name="spray_detect_none">No holds found. Mark them by hand: press and hold the wall, or switch on Add.</string>
+    <string name="spray_model_title">Better hold finding</string>
+    <string name="spray_model_text">Download the hold model once (33 MB). It finds holds of every colour with their real shape and then runs on this phone without internet.</string>
+    <string name="spray_model_download">Download</string>
+    <string name="spray_model_downloading">Downloading … %1$d %%</string>
+    <string name="spray_model_failed">The download did not work. Check the connection and try again.</string>
     <string name="spray_detect_failed">Looking for holds did not work on this photo. Mark them by hand.</string>
     <plurals name="spray_detect_found">
         <item quantity="one">%d hold found. Check it and take it.</item>

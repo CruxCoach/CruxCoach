@@ -62,9 +62,9 @@ fun climbCanvasHolds(
     for ((id, role) in climbHolds) {
         val here = shown[id]
         val h = here ?: lastKnown[id] ?: continue
-        out += SprayCanvasHold(id, h.x, h.y, h.radius, if (here != null) SprayHoldLook.ROLE else SprayHoldLook.GONE, role)
+        out += SprayCanvasHold(id, h.x, h.y, h.radius, if (here != null) SprayHoldLook.ROLE else SprayHoldLook.GONE, role, h.outline)
     }
-    if (showOthers) holds.filter { it.id !in climbHolds }.forEach { out += SprayCanvasHold(it.id, it.x, it.y, it.radius, SprayHoldLook.FAINT) }
+    if (showOthers) holds.filter { it.id !in climbHolds }.forEach { out += SprayCanvasHold(it.id, it.x, it.y, it.radius, SprayHoldLook.FAINT, outline = it.outline) }
     return out
 }
 

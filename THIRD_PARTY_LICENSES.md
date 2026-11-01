@@ -59,6 +59,20 @@ Used to show which holds a MoonBoard hold set covers, and to derive the
 `climbs.hsm` hold-set mask for locally authored and peer-received MoonBoard
 climbs (FEAT-049).
 
+### Hold segmentation pipeline — BoardSesh
+
+- **Location:** [`SegPipeline.kt`](shared/src/commonMain/kotlin/com/cruxcoach/domain/spraywall/detect/SegPipeline.kt)
+- **Upstream:** https://github.com/boardsesh/boardsesh — `packages/shared/hold-detection/src`
+  (`tiles.ts`, `decode.ts`, `outline.ts`, `nms.ts`, `candidates.ts`)
+- **License:** Apache License 2.0
+- **License text:** https://www.apache.org/licenses/LICENSE-2.0
+- **Changes:** ported to Kotlin; a resampler replaces libvips; a score floor
+  below the threshold keeps unsure holds for the sensitivity slider; the ring
+  point limit is a setting.
+
+Turns the hold segmentation model's output into spray-wall holds with their
+outlines (FEAT-078).
+
 ---
 
 ## Bundled Assets
@@ -248,6 +262,23 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 ---
 
 ## Downloaded on Request (not in the APK)
+
+### Hold segmentation model "2026-09-18-seg" — BoardSesh
+
+- **Used in:** spray walls (FEAT-078), hold suggestions with outlines, only
+  after the user starts the download in the hold editor.
+- **File:** `model-int8.onnx` (RF-DETR-Seg nano, int8), pinned to size and
+  SHA-256 in [`HoldModelStore.kt`](androidApp/src/main/java/com/cruxcoach/android/spraywall/HoldModelStore.kt),
+  published at https://media.boardsesh.com/models/hold-detector/2026-09-18-seg/.
+- **License:** Apache License 2.0 (model weights, BoardSesh; RF-DETR code and
+  base weights, Roboflow).
+- **Training data:** "Climbing Holds and Volumes" v14, Roboflow Universe
+  (https://universe.roboflow.com/blackcreed-xpgxh/climbing-holds-and-volumes),
+  licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+- **Mask teacher:** d12, crux-climbing-hold-segmentation-models v1.0.0
+  (https://github.com/d12/crux-climbing-hold-segmentation-models), MIT License.
+- **Runtime:** ONNX Runtime for Android (Microsoft, MIT License), a Gradle
+  dependency listed on the in-app licence screen.
 
 ### Qwen3.5 2B / 4B vision-language models — Qwen Team, Alibaba Cloud
 

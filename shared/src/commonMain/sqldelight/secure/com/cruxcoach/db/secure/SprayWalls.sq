@@ -49,6 +49,8 @@ CREATE TABLE spray_wall_hold (
     x REAL NOT NULL,
     y REAL NOT NULL,
     radius REAL NOT NULL,
+    -- The hold's shape: HoldOutline's compact ring (base64url), NULL for a circle.
+    outline TEXT,
     PRIMARY KEY (wall_id, version, hold_id)
 );
 
@@ -161,7 +163,7 @@ maxHoldId:
 SELECT COALESCE(MAX(hold_id), 0) FROM spray_wall_hold WHERE wall_id = ?;
 
 insertHold:
-INSERT INTO spray_wall_hold(wall_id, version, hold_id, x, y, radius) VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO spray_wall_hold(wall_id, version, hold_id, x, y, radius, outline) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 deleteHoldsOfVersion:
 DELETE FROM spray_wall_hold WHERE wall_id = ? AND version = ?;

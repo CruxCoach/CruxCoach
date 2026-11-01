@@ -135,6 +135,11 @@
     <string name="spray_detect_accept_all">Alle übernehmen</string>
     <string name="spray_detect_dismiss">Vorschläge ausblenden</string>
     <string name="spray_detect_none">Keine Griffe gefunden. Markiere sie von Hand: Wand gedrückt halten oder Hinzufügen einschalten.</string>
+    <string name="spray_model_title">Bessere Griffsuche</string>
+    <string name="spray_model_text">Lade einmal das Griff-Modell herunter (33 MB). Es findet Griffe in jeder Farbe mit ihrer echten Form und läuft danach ohne Internet auf diesem Telefon.</string>
+    <string name="spray_model_download">Herunterladen</string>
+    <string name="spray_model_downloading">Wird heruntergeladen … %1$d %%</string>
+    <string name="spray_model_failed">Der Download hat nicht geklappt. Prüfe die Verbindung und versuch es noch einmal.</string>
     <string name="spray_detect_failed">Die Griffsuche hat bei diesem Foto nicht geklappt. Markiere die Griffe von Hand.</string>
     <plurals name="spray_detect_found">
         <item quantity="one">%d Griff gefunden. Prüfe ihn und übernimm ihn.</item>

@@ -176,9 +176,25 @@ object SprayWallNostr {
         "",
     )
 
-    /** Holds as `id,x,y,r;…` with x, y and r in 1/10000 (of the width for r). */
-    fun encodeHolds(holds: List<SprayHold>): String = holds.sortedBy { it.id }.joinToString(";") {
-        "${it.id},${scaled(it.x)},${scaled(it.y)},${scaled(it.radius)}"
+    /**
+     * Holds as `id,x,y,r[,outline];…` with x, y and r in 1/10000 (of the width
+     * for r) and the outline as [HoldOutline]'s compact ring. An outline is
+     * left out when it would push the text past [HOLDS_BUDGET] with room kept
+     * for the holds still to come, so a wall with very many holds still fits
+     * one event; those holds read as circles.
+     */
+    fun encodeHolds(holds: List<SprayHold>): String {
+        val out = StringBuilder()
+        val sorted = holds.sortedBy { it.id }
+        for ((i, h) in sorted.withIndex()) {
+            if (out.isNotEmpty()) out.append(';')
+            out.append(h.id).append(',').append(scaled(h.x)).append(',').append(scaled(h.y)).append(',').append(scaled(h.radius))
+            val ring = HoldOutline.fit(h.outline) ?: continue
+            val encoded = HoldOutline.encode(ring)
+            val rest = (sorted.size - i - 1) * PLAIN_HOLD_CHARS
+            if (out.length + encoded.length + 1 + rest <= HOLDS_BUDGET) out.append(',').append(encoded)
+        }
+        return out.toString()
     }
 
     /** Null when anything is malformed or out of range: a bad version is dropped whole. */
@@ -190,7 +206,7 @@ object SprayWallNostr {
         val seen = HashSet<Long>()
         for (p in parts) {
             val f = p.split(',')
-            if (f.size != 4) return null
+            if (f.size != 4 && f.size != 5) return null
             val id = f[0].toLongOrNull()?.takeIf { it in 1..MAX_HOLD_ID } ?: return null
             val x = f[1].toIntOrNull()?.takeIf { it in 0..SCALE } ?: return null
             val y = f[2].toIntOrNull()?.takeIf { it in 0..SCALE } ?: return null
@@ -198,12 +214,17 @@ object SprayWallNostr {
             val radius = r.toFloat() / SCALE
             if (radius < SprayHoldEditorState.MIN_RADIUS * 0.5f || radius > SprayHoldEditorState.MAX_RADIUS * 1.01f) return null
             if (!seen.add(id)) return null
-            out += SprayHold(wallId, version, id, x.toFloat() / SCALE, y.toFloat() / SCALE, radius)
+            // An outline that does not parse is dropped, not the version: the hold stays a circle.
+            val outline = if (f.size == 5) HoldOutline.decode(f[4]) else null
+            out += SprayHold(wallId, version, id, x.toFloat() / SCALE, y.toFloat() / SCALE, radius, outline)
         }
         return out
     }
 
     private const val MAX_HOLD_ID = 1_000_000_000L
+    /** What the holds text may use of one event, and the most one hold takes without its outline. */
+    private const val HOLDS_BUDGET = 52_000
+    private const val PLAIN_HOLD_CHARS = 32
     private fun scaled(v: Float): Int = (v * SCALE).roundToInt().coerceIn(0, SCALE)
 
     // ── Reading ──────────────────────────────────────────────────────────

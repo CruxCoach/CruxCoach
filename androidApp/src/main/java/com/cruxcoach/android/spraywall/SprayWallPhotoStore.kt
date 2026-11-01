@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import com.cruxcoach.android.nostr.profile.ImageProcessor
 import com.cruxcoach.domain.spraywall.SprayCropRect
+import com.cruxcoach.domain.spraywall.detect.RgbImage
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -89,6 +90,14 @@ class SprayWallPhotoStore @Inject constructor(
         if (scaled !== bitmap) scaled.recycle()
         bitmap.recycle()
         result
+    }
+
+    /** A stored photo as pixels with at least [minLongSide] on its long side (or its full size), for the hold model. */
+    suspend fun image(fileName: String, minLongSide: Int): RgbImage? = withContext(Dispatchers.IO) {
+        val bitmap = decode(fileName, minLongSide) ?: return@withContext null
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        RgbImage(bitmap.width, bitmap.height, pixels).also { bitmap.recycle() }
     }
 
     /** Stores a photo downloaded from Blossom (someone else's public wall), after its hash was checked. */

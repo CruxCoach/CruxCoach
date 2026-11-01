@@ -183,7 +183,7 @@ fun SprayWallVersionsScreen(
                     photo = state.photo,
                     photoWidth = shown.photoWidth,
                     photoHeight = shown.photoHeight,
-                    holds = state.holds.map { SprayCanvasHold(it.id, it.x, it.y, it.radius, SprayHoldLook.PLAIN) },
+                    holds = state.holds.map { SprayCanvasHold(it.id, it.x, it.y, it.radius, SprayHoldLook.PLAIN, outline = it.outline) },
                     interactive = false,
                     modifier = Modifier.sprayPhotoSize(shown.aspectRatio, screenHeightShare(0.4f)),
                 )

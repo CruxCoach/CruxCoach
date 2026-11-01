@@ -4,11 +4,17 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
-/** A hold while it is being edited. Negative ids are holds added in this session. */
-data class EditableHold(val id: Long, val x: Float, val y: Float, val radius: Float)
+/** A hold while it is being edited. Negative ids are holds added in this session. [outline]: see [HoldOutline]. */
+data class EditableHold(val id: Long, val x: Float, val y: Float, val radius: Float, val outline: List<Float>? = null)
 
 /** A hold the detector proposes; the climber accepts or ignores it. Same coordinates as a hold. */
-data class SpraySuggestion(val x: Float, val y: Float, val radius: Float, val confidence: Float)
+data class SpraySuggestion(
+    val x: Float,
+    val y: Float,
+    val radius: Float,
+    val confidence: Float,
+    val outline: List<Float>? = null,
+)
 
 /**
  * Pure state of the hold editor: the holds, the picked one, the detector's
@@ -45,7 +51,7 @@ data class SprayHoldEditorState(
 
         /** Starts from the holds of one version. */
         fun from(holds: List<SprayHold>): SprayHoldEditorState {
-            val editable = holds.map { EditableHold(it.id, it.x, it.y, it.radius) }
+            val editable = holds.map { EditableHold(it.id, it.x, it.y, it.radius, it.outline) }
             return SprayHoldEditorState(holds = editable, lastRadius = typicalRadius(editable.map { it.radius }))
         }
 
@@ -113,7 +119,7 @@ data class SprayHoldEditorState(
     /** Accepts one suggestion as a hold and picks it. */
     fun accept(suggestion: SpraySuggestion): SprayHoldEditorState {
         if (!canAdd || suggestion !in suggestions) return this
-        val hold = EditableHold(nextTempId, suggestion.x, suggestion.y, suggestion.radius.coerceIn(MIN_RADIUS, MAX_RADIUS))
+        val hold = EditableHold(nextTempId, suggestion.x, suggestion.y, suggestion.radius.coerceIn(MIN_RADIUS, MAX_RADIUS), suggestion.outline)
         return pushUndo().copy(
             holds = holds + hold,
             suggestions = suggestions - suggestion,
@@ -128,7 +134,7 @@ data class SprayHoldEditorState(
         val taken = visibleSuggestions.take(room.coerceAtLeast(0))
         if (taken.isEmpty()) return this
         var id = nextTempId
-        val added = taken.map { EditableHold(id--, it.x, it.y, it.radius.coerceIn(MIN_RADIUS, MAX_RADIUS)) }
+        val added = taken.map { EditableHold(id--, it.x, it.y, it.radius.coerceIn(MIN_RADIUS, MAX_RADIUS), it.outline) }
         val radii = (holds + added).map { it.radius }
         return pushUndo().copy(
             holds = holds + added,
@@ -178,7 +184,7 @@ data class SprayHoldDiff(
             val keptIds = edited.filter { it.id >= 0 }.map { it.id }.toSet()
             val changed = edited.filter { e ->
                 val o = before[e.id] ?: return@filter false
-                o.x != e.x || o.y != e.y || o.radius != e.radius
+                o.x != e.x || o.y != e.y || o.radius != e.radius || o.outline != e.outline
             }
             return SprayHoldDiff(
                 added = edited.filter { it.id < 0 || it.id !in before },
