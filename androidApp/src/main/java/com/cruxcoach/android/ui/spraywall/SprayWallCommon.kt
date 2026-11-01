@@ -20,21 +20,26 @@ fun formatSprayGrade(difficulty: Int, scale: GradeScale): String = when (scale) 
 }
 
 /**
- * The wall's holds for a climb view: the climb's holds in their role colours
- * (dashed when they came off the wall), every other hold on the wall as a
- * faint ring when [showOthers] is set.
+ * The holds for a climb view: the climb's holds in their role colours, drawn
+ * where they are in [holds] (the version shown) or, when they came off, dashed
+ * at the place they were last seen ([lastKnown]); every other hold of [holds]
+ * as a faint ring when [showOthers] is set.
  */
 fun climbCanvasHolds(
-    wallHolds: List<SprayHold>,
+    holds: List<SprayHold>,
+    lastKnown: Map<Long, SprayHold>,
     climbHolds: Map<Long, SprayHoldRole>,
     showOthers: Boolean,
-): List<SprayCanvasHold> = wallHolds.mapNotNull { h ->
-    val role = climbHolds[h.id]
-    when {
-        role != null -> SprayCanvasHold(h.id, h.x, h.y, h.radius, if (h.isOnWall) SprayHoldLook.ROLE else SprayHoldLook.GONE, role)
-        showOthers && h.isOnWall -> SprayCanvasHold(h.id, h.x, h.y, h.radius, SprayHoldLook.FAINT)
-        else -> null
+): List<SprayCanvasHold> {
+    val shown = holds.associateBy { it.id }
+    val out = ArrayList<SprayCanvasHold>(holds.size + climbHolds.size)
+    for ((id, role) in climbHolds) {
+        val here = shown[id]
+        val h = here ?: lastKnown[id] ?: continue
+        out += SprayCanvasHold(id, h.x, h.y, h.radius, if (here != null) SprayHoldLook.ROLE else SprayHoldLook.GONE, role)
     }
+    if (showOthers) holds.filter { it.id !in climbHolds }.forEach { out += SprayCanvasHold(it.id, it.x, it.y, it.radius, SprayHoldLook.FAINT) }
+    return out
 }
 
 @Composable

@@ -1,27 +1,92 @@
 package com.cruxcoach.domain.spraywall
 
 /**
- * Spray walls (FEAT-078): a climber's own wall, photographed once. Holds are
- * marked by hand on the photo, climbs are set on those holds, and ascents are
- * logged per climb. Everything stays on the phone.
+ * Spray walls (FEAT-078): a climber's own wall, photographed, with holds marked
+ * on the photo (suggested by the on-device detector, corrected by hand),
+ * climbs set on those holds and ascents logged per climb.
  *
- * Coordinates are normalised to the stored photo: `x` and `y` run 0..1 across
- * the photo's width and height, and a hold's `radius` is a fraction of the
- * photo's WIDTH (so a circle stays a circle on a non-square photo).
+ * A wall is a list of immutable **versions**. Each version is one photo plus
+ * the holds on it. Editing the holds, a reset with a new photo ("Umschrauben")
+ * and restoring an old version each add a version; nothing is overwritten, so
+ * every earlier state can be looked at and restored.
+ *
+ * Coordinates are normalised to the version's photo: `x` and `y` run 0..1
+ * across its width and height, and a hold's `radius` is a fraction of its
+ * WIDTH (so a circle stays a circle on a non-square photo). Hold ids are per
+ * wall and never reused; a hold keeps its id across versions while it stays on
+ * the wall, and a moved hold keeps it too (a correction, not a new hold).
+ *
+ * A wall is private (only on this phone) or public (published over Nostr with
+ * its photo on Blossom). Ascents are always private.
  */
+enum class SprayWallVisibility(val wire: String) {
+    PRIVATE("private"),
+    PUBLIC("public");
+
+    companion object {
+        fun fromWire(value: String?): SprayWallVisibility = entries.firstOrNull { it.wire == value } ?: PRIVATE
+    }
+}
+
+enum class SprayVersionKind(val wire: String) {
+    /** The wall's first photo. */
+    CREATED("created"),
+    /** Holds edited on the same photo. */
+    HOLDS("holds"),
+    /** Reset with a new photo ("Umschrauben"). */
+    RESET("reset"),
+    /** A copy of an earlier version, made current again. */
+    RESTORED("restored");
+
+    companion object {
+        fun fromWire(value: String?): SprayVersionKind = entries.firstOrNull { it.wire == value } ?: HOLDS
+    }
+}
+
+data class SprayWallVersion(
+    val wallId: String,
+    val number: Int,
+    val kind: SprayVersionKind,
+    /** For [SprayVersionKind.RESTORED]: the version that was copied. */
+    val basedOn: Int?,
+    /** File name inside the app's private spray-wall folder. Versions on the same photo share the file. */
+    val photoFile: String,
+    val photoWidth: Int,
+    val photoHeight: Int,
+    /** Blossom hash and URL once the photo is uploaded (public walls) or downloaded (other people's walls). */
+    val photoSha256: String?,
+    val photoUrl: String?,
+    val holdCount: Int,
+    val createdAt: Long,
+) {
+    val aspectRatio: Float get() = photoWidth.toFloat() / photoHeight.coerceAtLeast(1)
+}
+
+/** Where a wall hangs: a venue of the board-location data, by its stable id. */
+data class SprayGym(val id: String, val name: String)
+
 data class SprayWall(
     val id: String,
     val name: String,
     /** Fixed per wall; logged with every ascent. */
     val angle: Int,
-    /** File name inside the app's private spray-wall folder. */
-    val photoFile: String,
-    val photoWidth: Int,
-    val photoHeight: Int,
+    val visibility: SprayWallVisibility,
+    val gym: SprayGym?,
+    /** Null for a wall made on this phone; the owner's hex pubkey for someone else's public wall followed here. */
+    val ownerPubkey: String?,
+    val current: SprayWallVersion,
+    /** Highest version published over Nostr; null = never published. */
+    val publishedVersion: Int?,
     val createdAt: Long,
     val updatedAt: Long,
 ) {
-    val aspectRatio: Float get() = photoWidth.toFloat() / photoHeight.coerceAtLeast(1)
+    val isMine: Boolean get() = ownerPubkey == null
+    val photoFile: String get() = current.photoFile
+    val photoWidth: Int get() = current.photoWidth
+    val photoHeight: Int get() = current.photoHeight
+    val aspectRatio: Float get() = current.aspectRatio
+    /** A public wall with a newer version than the one on Nostr. */
+    val needsPublish: Boolean get() = isMine && visibility == SprayWallVisibility.PUBLIC && (publishedVersion ?: 0) < current.number
 }
 
 /** A wall in the list, with its counts. */
@@ -31,22 +96,15 @@ data class SprayWallSummary(
     val climbCount: Int,
 )
 
-/**
- * One hold on a wall. [removedAt] is set once a hold that a climb uses comes
- * off the wall: the row stays so those climbs can still draw it and say that
- * it is gone. A hold no climb uses is simply deleted.
- */
+/** One hold in one version of a wall. */
 data class SprayHold(
     val wallId: String,
+    val version: Int,
     val id: Long,
     val x: Float,
     val y: Float,
     val radius: Float,
-    val addedAt: Long,
-    val removedAt: Long? = null,
-) {
-    val isOnWall: Boolean get() = removedAt == null
-}
+)
 
 enum class SprayHoldRole(val wire: String) {
     START("start"),
@@ -62,6 +120,8 @@ enum class SprayHoldRole(val wire: String) {
 data class SprayClimb(
     val uuid: String,
     val wallId: String,
+    /** The wall version the climb was set (or last edited) on. */
+    val version: Int,
     val name: String,
     val description: String,
     /** CruxCoach's internal difficulty scale (10..34, see KilterGradeMapper); null = not graded yet. */
@@ -69,7 +129,13 @@ data class SprayClimb(
     val holds: Map<Long, SprayHoldRole>,
     val createdAt: Long,
     val updatedAt: Long,
-)
+    /** Null for my own climbs; the setter's hex pubkey for a climb someone published on a public wall. */
+    val authorPubkey: String? = null,
+    /** When my climb was last published over Nostr; null = not published. */
+    val publishedAt: Long? = null,
+) {
+    val isMine: Boolean get() = authorPubkey == null
+}
 
 data class SprayAscent(
     val uuid: String,
@@ -161,7 +227,8 @@ object SprayClimbRules {
     fun clampDifficulty(value: Int): Int = value.coerceIn(MIN_DIFFICULTY, MAX_DIFFICULTY)
 }
 
-enum class SprayClimbFilter { ALL, INTACT, LOST_HOLDS }
+/** ALL, INTACT and LOST_HOLDS show the climbs of the current photo; EARLIER the ones set before a reset. */
+enum class SprayClimbFilter { ALL, INTACT, LOST_HOLDS, EARLIER }
 
 enum class SprayClimbSort { NEWEST, NAME, GRADE }
 
@@ -170,6 +237,8 @@ data class SprayClimbRow(
     val climb: SprayClimb,
     val lostHolds: Int,
     val sends: Int,
+    /** Set before a reset: shown on the photo it was set on. */
+    val earlier: Boolean = false,
 )
 
 object SprayClimbList {
@@ -180,15 +249,20 @@ object SprayClimbList {
         filter: SprayClimbFilter,
         sort: SprayClimbSort,
         query: String = "",
+        earlierVersions: Set<Int> = emptySet(),
     ): List<SprayClimbRow> {
         val q = query.trim()
         return climbs.asSequence()
-            .map { SprayClimbRow(it, SprayClimbRules.lostHoldCount(it, holdsOnWall), sends[it.uuid] ?: 0) }
+            .map {
+                val earlier = it.version in earlierVersions
+                SprayClimbRow(it, if (earlier) 0 else SprayClimbRules.lostHoldCount(it, holdsOnWall), sends[it.uuid] ?: 0, earlier)
+            }
             .filter {
                 when (filter) {
-                    SprayClimbFilter.ALL -> true
-                    SprayClimbFilter.INTACT -> it.lostHolds == 0
-                    SprayClimbFilter.LOST_HOLDS -> it.lostHolds > 0
+                    SprayClimbFilter.ALL -> !it.earlier
+                    SprayClimbFilter.INTACT -> !it.earlier && it.lostHolds == 0
+                    SprayClimbFilter.LOST_HOLDS -> !it.earlier && it.lostHolds > 0
+                    SprayClimbFilter.EARLIER -> it.earlier
                 }
             }
             .filter { q.isEmpty() || it.climb.name.contains(q, ignoreCase = true) }
@@ -205,5 +279,37 @@ object SprayClimbList {
                     )
                 }
             }
+    }
+}
+
+/** How versions relate: which ones a reset left behind, and where a hold was last seen. */
+object SprayWallHistory {
+    /** Versions on another photo than the current one: their climbs belong to an earlier setting of the wall. */
+    fun earlierVersions(versions: List<SprayWallVersion>, current: SprayWallVersion): Set<Int> =
+        versions.filter { it.photoFile != current.photoFile }.mapTo(HashSet()) { it.number }
+
+    /** Every hold id with its position in the newest version that has it, so a hold that came off can still be drawn. */
+    fun lastKnown(holds: List<SprayHold>): Map<Long, SprayHold> {
+        val out = HashMap<Long, SprayHold>()
+        for (h in holds) {
+            val seen = out[h.id]
+            if (seen == null || h.version > seen.version) out[h.id] = h
+        }
+        return out
+    }
+
+    /**
+     * Whether saving the holds may change the current version in place
+     * instead of adding one: only while nobody can depend on it yet, i.e. no
+     * climb was set on it and it was never published. Keeps the first marking
+     * of a wall (often saved several times) from filling the history.
+     */
+    fun mayAmend(current: SprayWallVersion, publishedVersion: Int?, climbs: List<SprayClimb>): Boolean =
+        (publishedVersion ?: 0) < current.number && climbs.none { it.version == current.number }
+
+    /** Hold ids of the next version, for an editor list where new holds carry negative ids. */
+    fun assignIds(edited: List<EditableHold>, nextFreeId: Long): List<EditableHold> {
+        var next = nextFreeId
+        return edited.map { if (it.id < 0) it.copy(id = next++) else it }
     }
 }

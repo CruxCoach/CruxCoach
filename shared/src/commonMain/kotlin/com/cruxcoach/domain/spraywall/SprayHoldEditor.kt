@@ -7,40 +7,64 @@ import kotlin.math.sqrt
 /** A hold while it is being edited. Negative ids are holds added in this session. */
 data class EditableHold(val id: Long, val x: Float, val y: Float, val radius: Float)
 
+/** A hold the detector proposes; the climber accepts or ignores it. Same coordinates as a hold. */
+data class SpraySuggestion(val x: Float, val y: Float, val radius: Float, val confidence: Float)
+
 /**
- * Pure state of the hold editor: the holds, the picked one, and undo/redo.
- * Every user action is one undo step; a drag is one step from its start to
- * its end (see [beginMove] / [moveSelected]).
+ * Pure state of the hold editor: the holds, the picked one, the detector's
+ * open suggestions, and undo/redo. Every user action is one undo step; a drag
+ * is one step from its start to its end (see [beginMove] / [moveSelected]).
  */
 data class SprayHoldEditorState(
     val holds: List<EditableHold>,
     val selectedId: Long? = null,
     val lastRadius: Float = DEFAULT_RADIUS,
     val nextTempId: Long = -1,
-    val undoStack: List<List<EditableHold>> = emptyList(),
-    val redoStack: List<List<EditableHold>> = emptyList(),
+    /** Detector suggestions not accepted yet, best first. */
+    val suggestions: List<SpraySuggestion> = emptyList(),
+    /** Suggestions below this confidence are hidden. */
+    val threshold: Float = DEFAULT_THRESHOLD,
+    val undoStack: List<Snapshot> = emptyList(),
+    val redoStack: List<Snapshot> = emptyList(),
 ) {
+    data class Snapshot(val holds: List<EditableHold>, val suggestions: List<SpraySuggestion>)
+
     val selected: EditableHold? get() = holds.firstOrNull { it.id == selectedId }
     val canUndo: Boolean get() = undoStack.isNotEmpty()
     val canRedo: Boolean get() = redoStack.isNotEmpty()
     val canAdd: Boolean get() = holds.size < MAX_HOLDS
+    val visibleSuggestions: List<SpraySuggestion> get() = suggestions.filter { it.confidence >= threshold }
 
     companion object {
         const val MAX_HOLDS = 1500
         const val MIN_RADIUS = 0.006f
         const val MAX_RADIUS = 0.12f
         const val DEFAULT_RADIUS = 0.022f
+        const val DEFAULT_THRESHOLD = 0.5f
         private const val MAX_UNDO = 100
 
+        /** Starts from the holds of one version. */
         fun from(holds: List<SprayHold>): SprayHoldEditorState {
-            val onWall = holds.filter { it.isOnWall }.map { EditableHold(it.id, it.x, it.y, it.radius) }
-            val typical = onWall.map { it.radius }.sorted().let { if (it.isEmpty()) DEFAULT_RADIUS else it[it.size / 2] }
-            return SprayHoldEditorState(holds = onWall, lastRadius = typical)
+            val editable = holds.map { EditableHold(it.id, it.x, it.y, it.radius) }
+            return SprayHoldEditorState(holds = editable, lastRadius = typicalRadius(editable.map { it.radius }))
+        }
+
+        private fun typicalRadius(radii: List<Float>): Float =
+            radii.sorted().let { if (it.isEmpty()) DEFAULT_RADIUS else it[it.size / 2] }
+
+        /** A suggestion counts as already marked when its centre lies inside a hold (or the hold's centre inside it). */
+        fun overlaps(s: SpraySuggestion, h: EditableHold, aspect: Float): Boolean {
+            val dx = s.x - h.x
+            val dy = (s.y - h.y) / aspect
+            val d = kotlin.math.sqrt(dx * dx + dy * dy)
+            return d < maxOf(s.radius, h.radius)
         }
     }
 
+    private fun snapshot() = Snapshot(holds, suggestions)
+
     private fun pushUndo(): SprayHoldEditorState =
-        copy(undoStack = (undoStack + listOf(holds)).takeLast(MAX_UNDO), redoStack = emptyList())
+        copy(undoStack = (undoStack + snapshot()).takeLast(MAX_UNDO), redoStack = emptyList())
 
     /** Adds a hold centred on (x, y), sized like the last hold touched, and picks it. */
     fun add(x: Float, y: Float): SprayHoldEditorState {
@@ -74,23 +98,68 @@ data class SprayHoldEditorState(
         return pushUndo().copy(holds = holds.filterNot { it.id == id }, selectedId = null)
     }
 
+    /**
+     * New detector output. Suggestions on top of holds already marked are
+     * dropped, so re-running the detector on a half-marked wall only offers
+     * what is still missing. [aspect] = photo width / height.
+     */
+    fun withSuggestions(found: List<SpraySuggestion>, aspect: Float): SprayHoldEditorState {
+        val open = found.filter { s -> holds.none { h -> overlaps(s, h, aspect) } }.sortedByDescending { it.confidence }
+        return copy(suggestions = open)
+    }
+
+    fun setThreshold(value: Float): SprayHoldEditorState = copy(threshold = value.coerceIn(0f, 1f))
+
+    /** Accepts one suggestion as a hold and picks it. */
+    fun accept(suggestion: SpraySuggestion): SprayHoldEditorState {
+        if (!canAdd || suggestion !in suggestions) return this
+        val hold = EditableHold(nextTempId, suggestion.x, suggestion.y, suggestion.radius.coerceIn(MIN_RADIUS, MAX_RADIUS))
+        return pushUndo().copy(
+            holds = holds + hold,
+            suggestions = suggestions - suggestion,
+            selectedId = hold.id,
+            nextTempId = nextTempId - 1,
+        )
+    }
+
+    /** Accepts every visible suggestion (up to the hold limit) as one undo step. */
+    fun acceptVisible(): SprayHoldEditorState {
+        val room = MAX_HOLDS - holds.size
+        val taken = visibleSuggestions.take(room.coerceAtLeast(0))
+        if (taken.isEmpty()) return this
+        var id = nextTempId
+        val added = taken.map { EditableHold(id--, it.x, it.y, it.radius.coerceIn(MIN_RADIUS, MAX_RADIUS)) }
+        val radii = (holds + added).map { it.radius }
+        return pushUndo().copy(
+            holds = holds + added,
+            suggestions = suggestions - taken.toSet(),
+            nextTempId = id,
+            selectedId = null,
+            lastRadius = typicalRadius(radii),
+        )
+    }
+
+    fun dismissSuggestions(): SprayHoldEditorState = if (suggestions.isEmpty()) this else pushUndo().copy(suggestions = emptyList())
+
     fun undo(): SprayHoldEditorState {
         val previous = undoStack.lastOrNull() ?: return this
         return copy(
-            holds = previous,
+            holds = previous.holds,
+            suggestions = previous.suggestions,
             undoStack = undoStack.dropLast(1),
-            redoStack = redoStack + listOf(holds),
-            selectedId = selectedId?.takeIf { id -> previous.any { it.id == id } },
+            redoStack = redoStack + snapshot(),
+            selectedId = selectedId?.takeIf { id -> previous.holds.any { it.id == id } },
         )
     }
 
     fun redo(): SprayHoldEditorState {
         val next = redoStack.lastOrNull() ?: return this
         return copy(
-            holds = next,
+            holds = next.holds,
+            suggestions = next.suggestions,
             redoStack = redoStack.dropLast(1),
-            undoStack = undoStack + listOf(holds),
-            selectedId = selectedId?.takeIf { id -> next.any { it.id == id } },
+            undoStack = undoStack + snapshot(),
+            selectedId = selectedId?.takeIf { id -> next.holds.any { it.id == id } },
         )
     }
 }
@@ -105,7 +174,7 @@ data class SprayHoldDiff(
 
     companion object {
         fun between(original: List<SprayHold>, edited: List<EditableHold>): SprayHoldDiff {
-            val before = original.filter { it.isOnWall }.associateBy { it.id }
+            val before = original.associateBy { it.id }
             val keptIds = edited.filter { it.id >= 0 }.map { it.id }.toSet()
             val changed = edited.filter { e ->
                 val o = before[e.id] ?: return@filter false

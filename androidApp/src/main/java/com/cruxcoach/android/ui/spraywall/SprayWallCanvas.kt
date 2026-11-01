@@ -51,7 +51,7 @@ import kotlin.math.roundToInt
 
 /** How one hold is drawn on the wall photo. */
 /** Drawn in this order, so faint rings sit below and the picked hold on top. */
-enum class SprayHoldLook { FAINT, PLAIN, GONE, ROLE, PICKED }
+enum class SprayHoldLook { FAINT, SUGGESTED, PLAIN, GONE, ROLE, PICKED }
 
 data class SprayCanvasHold(
     val id: Long,
@@ -254,6 +254,12 @@ private fun DrawScope.drawHold(hold: SprayCanvasHold, fit: SprayWallGeometry.Fit
     val halo = Color.Black.copy(alpha = 0.55f)
     when (hold.look) {
         SprayHoldLook.FAINT -> drawCircle(Color.White.copy(alpha = 0.45f), r, center, style = Stroke(stroke * 0.6f))
+        SprayHoldLook.SUGGESTED -> {
+            val dash = PathEffect.dashPathEffect(floatArrayOf(stroke * 2.2f, stroke * 1.6f))
+            drawCircle(Color(0xFFFFA000).copy(alpha = 0.18f), r, center)
+            drawCircle(halo, r, center, style = Stroke(stroke * 1.8f, pathEffect = dash))
+            drawCircle(Color(0xFFFFB300), r, center, style = Stroke(stroke, pathEffect = dash))
+        }
         SprayHoldLook.PLAIN -> {
             drawCircle(halo, r, center, style = Stroke(stroke * 2f))
             drawCircle(Color.White, r, center, style = Stroke(stroke))

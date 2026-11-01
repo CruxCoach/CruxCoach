@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import com.cruxcoach.android.nostr.profile.ImageProcessor
+import com.cruxcoach.domain.spraywall.SprayCropRect
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,6 +43,69 @@ class SprayWallPhotoStore @Inject constructor(
         check(part.renameTo(File(directory, name))) { "could not store the photo" }
         StoredPhoto(name, bounds.outWidth, bounds.outHeight)
     }
+
+    /**
+     * A new photo made from a stored one: turned [quarterTurns] times clockwise,
+     * then cropped to [crop] (0..1 of the turned photo). The source file stays;
+     * the caller deletes it when it is no longer needed.
+     */
+    suspend fun adjust(fileName: String, quarterTurns: Int, crop: SprayCropRect): StoredPhoto = withContext(Dispatchers.IO) {
+        val source = file(fileName) ?: error("unknown photo")
+        val original = BitmapFactory.decodeFile(source.path) ?: error("unreadable photo")
+        val turns = ((quarterTurns % 4) + 4) % 4
+        val turned = if (turns == 0) original else {
+            val m = android.graphics.Matrix().apply { postRotate(90f * turns) }
+            Bitmap.createBitmap(original, 0, 0, original.width, original.height, m, true)
+        }
+        val x = (crop.left * turned.width).toInt().coerceIn(0, turned.width - 1)
+        val y = (crop.top * turned.height).toInt().coerceIn(0, turned.height - 1)
+        val w = (crop.width * turned.width).toInt().coerceIn(1, turned.width - x)
+        val h = (crop.height * turned.height).toInt().coerceIn(1, turned.height - y)
+        val cropped = if (x == 0 && y == 0 && w == turned.width && h == turned.height) turned else Bitmap.createBitmap(turned, x, y, w, h)
+        try {
+            val name = "${UUID.randomUUID()}.jpg"
+            val part = File(directory, "$name.part")
+            part.outputStream().use { cropped.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
+            check(part.renameTo(File(directory, name))) { "could not store the photo" }
+            StoredPhoto(name, cropped.width, cropped.height)
+        } finally {
+            if (cropped !== turned) cropped.recycle()
+            if (turned !== original) turned.recycle()
+            original.recycle()
+        }
+    }
+
+    /** Pixels of a stored photo for the hold detector, at most [maxLongSide] on the long side. */
+    suspend fun pixels(fileName: String, maxLongSide: Int): Triple<Int, Int, IntArray>? = withContext(Dispatchers.IO) {
+        val bitmap = load(fileName, maxLongSide * 2) ?: return@withContext null
+        val long = max(bitmap.width, bitmap.height)
+        val scaled = if (long <= maxLongSide) bitmap else {
+            val s = maxLongSide.toFloat() / long
+            Bitmap.createScaledBitmap(bitmap, (bitmap.width * s).toInt().coerceAtLeast(1), (bitmap.height * s).toInt().coerceAtLeast(1), true)
+        }
+        val out = IntArray(scaled.width * scaled.height)
+        scaled.getPixels(out, 0, scaled.width, 0, 0, scaled.width, scaled.height)
+        val result = Triple(scaled.width, scaled.height, out)
+        if (scaled !== bitmap) scaled.recycle()
+        bitmap.recycle()
+        result
+    }
+
+    /** Stores a photo downloaded from Blossom (someone else's public wall), after its hash was checked. */
+    suspend fun storeDownloaded(bytes: ByteArray): StoredPhoto = withContext(Dispatchers.IO) {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "not a picture" }
+        require(bounds.outMimeType == "image/jpeg" || bounds.outMimeType == "image/webp" || bounds.outMimeType == "image/png") { "unexpected type" }
+        val name = "${UUID.randomUUID()}.jpg"
+        val part = File(directory, "$name.part")
+        part.writeBytes(bytes)
+        check(part.renameTo(File(directory, name))) { "could not store the photo" }
+        StoredPhoto(name, bounds.outWidth, bounds.outHeight)
+    }
+
+    /** The bytes of a stored photo, for the Blossom upload. */
+    suspend fun bytes(fileName: String): ByteArray? = withContext(Dispatchers.IO) { file(fileName)?.readBytes() }
 
     /** The stored file, or null for a name that is not one of ours. */
     fun file(fileName: String): File? {

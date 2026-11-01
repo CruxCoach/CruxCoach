@@ -12,17 +12,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,6 +42,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -67,7 +77,11 @@ import com.cruxcoach.domain.spraywall.SprayClimbList
 import com.cruxcoach.domain.spraywall.SprayClimbRow
 import com.cruxcoach.domain.spraywall.SprayClimbSort
 import com.cruxcoach.domain.spraywall.SprayHold
+import com.cruxcoach.domain.spraywall.SprayVersionKind
 import com.cruxcoach.domain.spraywall.SprayWall
+import com.cruxcoach.domain.spraywall.SprayWallHistory
+import com.cruxcoach.domain.spraywall.SprayWallVersion
+import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -81,6 +95,7 @@ data class SprayWallUiState(
     val notFound: Boolean = false,
     val wall: SprayWall? = null,
     val photo: ImageBitmap? = null,
+    val versions: List<SprayWallVersion> = emptyList(),
     val holds: List<SprayHold> = emptyList(),
     val climbs: List<SprayClimb> = emptyList(),
     val sends: Map<String, Int> = emptyMap(),
@@ -89,9 +104,14 @@ data class SprayWallUiState(
     val query: String = "",
     val gradeScale: GradeScale = GradeScale.FRENCH,
 ) {
-    val holdsOnWall: Set<Long> get() = holds.filter { it.isOnWall }.mapTo(HashSet()) { it.id }
-    val rows: List<SprayClimbRow> get() = SprayClimbList.rows(climbs, holdsOnWall, sends, filter, sort, query)
-    val anyLostHolds: Boolean get() = climbs.any { c -> c.holds.keys.any { it !in holdsOnWall } }
+    val holdsOnWall: Set<Long> get() = holds.mapTo(HashSet()) { it.id }
+    val earlierVersions: Set<Int> get() = wall?.let { SprayWallHistory.earlierVersions(versions, it.current) }.orEmpty()
+    val rows: List<SprayClimbRow> get() = SprayClimbList.rows(climbs, holdsOnWall, sends, filter, sort, query, earlierVersions)
+    private val currentRows: List<SprayClimbRow> get() = SprayClimbList.rows(climbs, holdsOnWall, sends, SprayClimbFilter.ALL, sort, "", earlierVersions)
+    val anyLostHolds: Boolean get() = currentRows.any { it.lostHolds > 0 }
+    val anyEarlier: Boolean get() = climbs.any { it.version in earlierVersions }
+    /** A reset whose holds were not marked yet. */
+    val unfinishedReset: Boolean get() = wall?.current?.let { it.kind == SprayVersionKind.RESET && it.holdCount == 0 } == true
 }
 
 @HiltViewModel
@@ -104,6 +124,7 @@ class SprayWallViewModel @Inject constructor(
     private val wallId: String = savedState[SprayWallRoutes.ARG_WALL] ?: ""
     private val _state = MutableStateFlow(SprayWallUiState())
     val state: StateFlow<SprayWallUiState> = _state.asStateFlow()
+    private var photoOf: String? = null
 
     init {
         viewModelScope.launch { repository.changes.collect { reload() } }
@@ -119,12 +140,15 @@ class SprayWallViewModel @Inject constructor(
         _state.update {
             it.copy(
                 loading = false, wall = wall,
-                holds = repository.holds(wallId),
+                versions = repository.versions(wallId),
+                holds = repository.holds(wallId, wall.current.number),
                 climbs = repository.climbs(wallId),
                 sends = repository.sendCounts(wallId),
             )
         }
-        if (_state.value.photo == null) {
+        // A reset brings a new photo.
+        if (photoOf != wall.photoFile) {
+            photoOf = wall.photoFile
             val bitmap = photos.load(wall.photoFile, PREVIEW_LONG_SIDE)?.asImageBitmap()
             _state.update { it.copy(photo = bitmap) }
         }
@@ -133,6 +157,9 @@ class SprayWallViewModel @Inject constructor(
     fun setFilter(filter: SprayClimbFilter) = _state.update { it.copy(filter = filter) }
     fun setSort(sort: SprayClimbSort) = _state.update { it.copy(sort = sort) }
     fun setQuery(query: String) = _state.update { it.copy(query = query) }
+    fun discardUnfinishedReset() {
+        viewModelScope.launch { repository.discardCurrentVersion(wallId) }
+    }
 
     private companion object {
         const val PREVIEW_LONG_SIDE = 1600
@@ -145,6 +172,8 @@ fun SprayWallScreen(
     onBack: () -> Unit,
     onEditWall: () -> Unit,
     onEditHolds: () -> Unit,
+    onReset: () -> Unit,
+    onVersions: () -> Unit,
     onNewClimb: () -> Unit,
     onOpenClimb: (String) -> Unit,
     viewModel: SprayWallViewModel = hiltViewModel(),
@@ -168,17 +197,34 @@ fun SprayWallScreen(
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more_options))
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            if (wall.isMine) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.spray_wall_edit_holds)) },
+                                    onClick = { menuOpen = false; onEditHolds() },
+                                    leadingIcon = { Icon(Icons.Default.TouchApp, contentDescription = null) },
+                                    modifier = Modifier.testTag("spray_menu_holds"),
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.spray_wall_reset)) },
+                                    onClick = { menuOpen = false; onReset() },
+                                    leadingIcon = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
+                                    modifier = Modifier.testTag("spray_menu_reset"),
+                                )
+                            }
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.spray_wall_edit_holds)) },
-                                onClick = { menuOpen = false; onEditHolds() },
-                                modifier = Modifier.testTag("spray_menu_holds"),
+                                text = { Text(stringResource(R.string.spray_versions_title)) },
+                                onClick = { menuOpen = false; onVersions() },
+                                leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
+                                modifier = Modifier.testTag("spray_menu_versions"),
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.spray_wall_edit_title)) },
-                                onClick = { menuOpen = false; onEditWall() },
-                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                                modifier = Modifier.testTag("spray_menu_edit"),
-                            )
+                            if (wall.isMine) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.spray_wall_edit_title)) },
+                                    onClick = { menuOpen = false; onEditWall() },
+                                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                    modifier = Modifier.testTag("spray_menu_edit"),
+                                )
+                            }
                         }
                     }
                 },
@@ -207,12 +253,28 @@ fun SprayWallScreen(
                     photo = state.photo,
                     photoWidth = wall.photoWidth,
                     photoHeight = wall.photoHeight,
-                    holds = state.holds.filter { it.isOnWall }.map { SprayCanvasHold(it.id, it.x, it.y, it.radius, SprayHoldLook.FAINT) },
+                    holds = state.holds.map { SprayCanvasHold(it.id, it.x, it.y, it.radius, SprayHoldLook.FAINT) },
                     interactive = false,
                     modifier = Modifier.fillMaxWidth().aspectRatio(wall.aspectRatio.coerceIn(0.5f, 2f)).heightIn(max = 420.dp),
                 )
             }
-            if (!hasHolds) {
+            item { WallFacts(wall) }
+            if (state.unfinishedReset && wall.isMine) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag("spray_reset_unfinished"),
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.spray_reset_unfinished_text))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = onEditHolds) { Text(stringResource(R.string.spray_holds_title)) }
+                                OutlinedButton(onClick = viewModel::discardUnfinishedReset) { Text(stringResource(R.string.spray_reset_discard)) }
+                            }
+                        }
+                    }
+                }
+            } else if (!hasHolds && wall.isMine) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.spray_wall_no_holds), textAlign = TextAlign.Center)
@@ -221,8 +283,8 @@ fun SprayWallScreen(
                         }
                     }
                 }
-                return@LazyColumn
             }
+            if (state.climbs.isEmpty() && !hasHolds) return@LazyColumn
             item { ListControls(state, viewModel) }
             val rows = state.rows
             if (rows.isEmpty()) {
@@ -243,6 +305,28 @@ fun SprayWallScreen(
 }
 
 @Composable
+private fun WallFacts(wall: SprayWall) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        val public = wall.visibility == SprayWallVisibility.PUBLIC
+        Icon(if (public) Icons.Default.Public else Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+        val parts = listOfNotNull(
+            stringResource(if (public) R.string.spray_visibility_public else R.string.spray_visibility_private),
+            wall.gym?.name?.takeIf { it.isNotBlank() },
+            "${wall.angle}°",
+            stringResource(R.string.spray_version_label, wall.current.number),
+        )
+        Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).testTag("spray_wall_facts"))
+        if (wall.needsPublish) {
+            Icon(Icons.Default.CloudUpload, contentDescription = stringResource(R.string.spray_publish_pending), modifier = Modifier.size(18.dp).testTag("spray_publish_pending"))
+        }
+    }
+}
+
+@Composable
 private fun ListControls(state: SprayWallUiState, viewModel: SprayWallViewModel) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (state.climbs.size > SEARCH_FROM) {
@@ -256,13 +340,17 @@ private fun ListControls(state: SprayWallUiState, viewModel: SprayWallViewModel)
             )
         }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // The holds filter only matters once a climb has lost a hold.
-            if (state.anyLostHolds || state.filter != SprayClimbFilter.ALL) {
-                listOf(
-                    SprayClimbFilter.ALL to R.string.spray_filter_all,
-                    SprayClimbFilter.INTACT to R.string.spray_filter_intact,
-                    SprayClimbFilter.LOST_HOLDS to R.string.spray_filter_lost,
-                ).forEach { (filter, label) ->
+            val filters = buildList {
+                add(SprayClimbFilter.ALL to R.string.spray_filter_all)
+                // The holds filters only matter once a climb lost a hold, "earlier" once the wall was reset.
+                if (state.anyLostHolds || state.filter == SprayClimbFilter.INTACT || state.filter == SprayClimbFilter.LOST_HOLDS) {
+                    add(SprayClimbFilter.INTACT to R.string.spray_filter_intact)
+                    add(SprayClimbFilter.LOST_HOLDS to R.string.spray_filter_lost)
+                }
+                if (state.anyEarlier || state.filter == SprayClimbFilter.EARLIER) add(SprayClimbFilter.EARLIER to R.string.spray_filter_earlier)
+            }
+            if (filters.size > 1) {
+                filters.forEach { (filter, label) ->
                     FilterChip(
                         selected = state.filter == filter,
                         onClick = { viewModel.setFilter(filter) },
@@ -294,7 +382,10 @@ private fun ClimbRow(row: SprayClimbRow, scale: GradeScale, onClick: () -> Unit)
         supportingContent = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (row.sends > 0) Text(stringResource(R.string.spray_climb_sends, row.sends), style = MaterialTheme.typography.bodySmall)
-                if (row.lostHolds > 0) {
+                if (!row.climb.isMine) Text(stringResource(R.string.spray_climb_by_other), style = MaterialTheme.typography.bodySmall)
+                if (row.earlier) {
+                    Text(stringResource(R.string.spray_climb_earlier), style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("spray_earlier_label"))
+                } else if (row.lostHolds > 0) {
                     AssistChip(
                         onClick = onClick,
                         label = { Text(pluralStringResource(R.plurals.spray_climb_holds_gone, row.lostHolds, row.lostHolds)) },
