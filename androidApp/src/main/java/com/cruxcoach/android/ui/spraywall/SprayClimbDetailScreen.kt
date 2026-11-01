@@ -5,10 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -201,7 +198,7 @@ fun SprayClimbDetailScreen(
             }
             return@Scaffold
         }
-        val maxCanvasHeight = (LocalConfiguration.current.screenHeightDp * 0.65f).dp
+        val maxCanvasHeight = screenHeightShare(0.65f)
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 32.dp)) {
             item {
                 SprayWallCanvas(
@@ -210,7 +207,7 @@ fun SprayClimbDetailScreen(
                     photoHeight = version.photoHeight,
                     holds = climbCanvasHolds(state.holds, state.lastKnown, climb.holds, showOthers = false),
                     dimPhoto = true,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(version.aspectRatio.coerceIn(0.5f, 2f)).heightIn(max = maxCanvasHeight),
+                    modifier = Modifier.sprayPhotoSize(version.aspectRatio, maxCanvasHeight),
                 )
             }
             item {

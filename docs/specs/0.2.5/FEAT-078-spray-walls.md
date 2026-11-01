@@ -46,10 +46,11 @@ them with the people who climb on the same wall.
    and every restore adds an immutable version, and each climb remembers the version
    it was set on.
    - **After a hold edit:** a climb that uses a hold that came off shows "N holds gone"
-     and draws the hold dashed at its last place. The filter All / Intact / Holds gone
+     and draws the hold dashed at its last place. The filter Current / Intact / Holds gone
      finds those climbs.
    - **After a reset:** earlier climbs move to the **Earlier** filter and open on the
-     photo they were set on.
+     photo they were set on. **Current** shows the climbs on the current photo. A filter
+     with nothing left to show (Earlier after a restore) falls back to Current.
    - **Versions screen:** lists every version with what changed, its date, holds and
      climbs, and shows it. **Restore** makes an old version current again as a new
      version.
@@ -135,7 +136,8 @@ additive). Schema and queries: `SprayWalls.sq`.
   at most 100 characters, one or two start holds, one or two finish holds, and 2 to
   100 holds. Holds that are gone may stay on a climb that had them but cannot be
   added.
-- **`SprayClimbList`:** filter (All, Intact, Holds gone, Earlier), sort and search.
+- **`SprayClimbList`:** filter (Current, Intact, Holds gone, Earlier; only the ones
+  with climbs get a chip), sort and search.
 - **`SprayCropBox`** and **`SprayWallGeometry`:** crop handles and quarter turns; the
   photo fit, screen ↔ photo coordinates under zoom and pan, hold picking with a slop
   that shrinks when zoomed in.

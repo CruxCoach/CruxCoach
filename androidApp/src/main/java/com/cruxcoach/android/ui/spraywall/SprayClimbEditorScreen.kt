@@ -7,10 +7,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -42,7 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -279,7 +276,7 @@ fun SprayClimbEditorScreen(
             }
             return@Scaffold
         }
-        val maxCanvasHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
+        val maxCanvasHeight = screenHeightShare(0.6f)
         Column(Modifier.fillMaxSize().padding(padding)) {
             SprayWallCanvas(
                 photo = state.photo,
@@ -287,8 +284,7 @@ fun SprayClimbEditorScreen(
                 photoHeight = version.photoHeight,
                 holds = climbCanvasHolds(state.wallHolds, state.lastKnown, state.holds, showOthers = true),
                 gestures = SprayCanvasGestures(onTap = { _, _, id -> viewModel.onTap(id) }),
-                modifier = Modifier.fillMaxWidth().aspectRatio(version.aspectRatio.coerceIn(0.5f, 2f), matchHeightConstraintsFirst = false)
-                    .heightIn(max = maxCanvasHeight),
+                modifier = Modifier.sprayPhotoSize(version.aspectRatio, maxCanvasHeight),
             )
             Column(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),

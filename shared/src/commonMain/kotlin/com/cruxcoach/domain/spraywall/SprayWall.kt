@@ -242,6 +242,31 @@ data class SprayClimbRow(
 )
 
 object SprayClimbList {
+    /**
+     * The filters worth a chip: ALL always, the holds filters once a current
+     * climb lost a hold, EARLIER once climbs were set before a reset.
+     */
+    fun filters(climbs: List<SprayClimb>, holdsOnWall: Set<Long>, earlierVersions: Set<Int> = emptySet()): List<SprayClimbFilter> {
+        val anyLost = climbs.any { it.version !in earlierVersions && SprayClimbRules.lostHoldCount(it, holdsOnWall) > 0 }
+        val anyEarlier = climbs.any { it.version in earlierVersions }
+        return buildList {
+            add(SprayClimbFilter.ALL)
+            if (anyLost) {
+                add(SprayClimbFilter.INTACT)
+                add(SprayClimbFilter.LOST_HOLDS)
+            }
+            if (anyEarlier) add(SprayClimbFilter.EARLIER)
+        }
+    }
+
+    /**
+     * The filter to keep after the wall changed. One without a chip any more
+     * (a restore leaves nothing under EARLIER, fixed holds nothing under
+     * LOST_HOLDS) falls back to ALL, so the list does not stay empty.
+     */
+    fun keep(filter: SprayClimbFilter, available: List<SprayClimbFilter>): SprayClimbFilter =
+        if (filter in available) filter else SprayClimbFilter.ALL
+
     fun rows(
         climbs: List<SprayClimb>,
         holdsOnWall: Set<Long>,

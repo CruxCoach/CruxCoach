@@ -47,6 +47,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.domain.spraywall.SprayWallSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -115,6 +116,9 @@ fun SprayWallListScreen(
                 onClick = onAddWall,
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 text = { Text(stringResource(R.string.spray_wall_add)) },
+                // The design accent pair: the default container colours put orange text on orange.
+                containerColor = CruxCoachDesign.colors.brandAccent,
+                contentColor = CruxCoachDesign.colors.onBrandAccent,
                 modifier = Modifier.testTag("spray_wall_add"),
             )
         },

@@ -77,7 +77,7 @@ class SprayWallPhotoStore @Inject constructor(
 
     /** Pixels of a stored photo for the hold detector, at most [maxLongSide] on the long side. */
     suspend fun pixels(fileName: String, maxLongSide: Int): Triple<Int, Int, IntArray>? = withContext(Dispatchers.IO) {
-        val bitmap = load(fileName, maxLongSide * 2) ?: return@withContext null
+        val bitmap = decode(fileName, maxLongSide * 2) ?: return@withContext null
         val long = max(bitmap.width, bitmap.height)
         val scaled = if (long <= maxLongSide) bitmap else {
             val s = maxLongSide.toFloat() / long
@@ -117,16 +117,34 @@ class SprayWallPhotoStore @Inject constructor(
         if (SAFE_NAME.matches(fileName)) File(directory, fileName).delete()
     }
 
-    /** Decodes a stored photo for the screen, at most [maxLongSide] pixels on its long side. */
+    /**
+     * Decodes a stored photo for the screen, at most [maxLongSide] pixels on
+     * its long side. A full-size photo (3072 px) would otherwise reach the
+     * screen whole and stall the first frame while it is uploaded.
+     */
     suspend fun load(fileName: String, maxLongSide: Int = DISPLAY_LONG_SIDE): Bitmap? = withContext(Dispatchers.IO) {
-        val file = file(fileName) ?: return@withContext null
+        val decoded = decode(fileName, maxLongSide) ?: return@withContext null
+        val long = max(decoded.width, decoded.height)
+        val bitmap = if (long <= maxLongSide) decoded else {
+            val s = maxLongSide.toFloat() / long
+            Bitmap.createScaledBitmap(decoded, (decoded.width * s).toInt().coerceAtLeast(1), (decoded.height * s).toInt().coerceAtLeast(1), true)
+                .also { decoded.recycle() }
+        }
+        // Starts the upload to the GPU now, not on the first frame that draws it.
+        bitmap.prepareToDraw()
+        bitmap
+    }
+
+    /** Decodes with the largest power-of-two sample that keeps at least [minLongSide] pixels on the long side. */
+    private fun decode(fileName: String, minLongSide: Int): Bitmap? {
+        val file = file(fileName) ?: return null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
         val long = max(bounds.outWidth, bounds.outHeight)
-        if (long <= 0) return@withContext null
+        if (long <= 0) return null
         var sample = 1
-        while (long / (sample * 2) >= maxLongSide) sample *= 2
-        BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
+        while (long / (sample * 2) >= minLongSide) sample *= 2
+        return BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
     companion object {

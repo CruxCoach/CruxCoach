@@ -34,6 +34,7 @@
     <string name="spray_holds_help">Tippe einen Griff an, um ihn auszuwählen, zieh ihn zum Verschieben und stell mit dem Regler seine Größe ein. Halte die Wand gedrückt, um einen Griff hinzuzufügen, oder schalte Hinzufügen ein, um mehrere nacheinander zu setzen. Gestrichelte Ringe sind Vorschläge: Tippe einen an, um ihn zu übernehmen. Mit zwei Fingern zoomen.</string>
     <string name="spray_holds_mode_add">Hinzufügen</string>
     <string name="spray_holds_size">Größe</string>
+    <string name="spray_holds_size_hint">Tippe einen Griff an, um seine Größe zu ändern oder ihn zu entfernen.</string>
     <string name="spray_holds_delete">Griff entfernen</string>
     <string name="spray_holds_undo">Rückgängig</string>
     <string name="spray_holds_redo">Wiederholen</string>
@@ -52,7 +53,8 @@
     <string name="spray_climb_new">Neuer Boulder</string>
     <string name="spray_climbs_empty">Auf dieser Wand gibt es noch keine Boulder.</string>
     <string name="spray_climbs_none_match">Keine passenden Boulder.</string>
-    <string name="spray_filter_all">Alle</string>
+    <string name="spray_climbs_none_current">Auf dem aktuellen Foto gibt es noch keine Boulder. Die von vor dem Umschrauben findest du unter „Früher“.</string>
+    <string name="spray_filter_all">Aktuell</string>
     <string name="spray_filter_intact">Vollständig</string>
     <string name="spray_filter_lost">Griffe fehlen</string>
     <string name="spray_sort_newest">Neueste</string>

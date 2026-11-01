@@ -13,10 +13,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -343,10 +341,9 @@ fun SprayStepLabel(step: Int) {
 @Composable
 private fun PhotoTile(preview: ImageBitmap?, importing: Boolean, aspect: Float) {
     Box(
+        // Small enough that the buttons below stay in view with a portrait photo.
         Modifier
-            .fillMaxWidth()
-            .aspectRatio(aspect.coerceIn(0.5f, 2f))
-            .heightIn(max = 480.dp)
+            .sprayPhotoSize(aspect, screenHeightShare(0.35f))
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .testTag("spray_photo_tile"),

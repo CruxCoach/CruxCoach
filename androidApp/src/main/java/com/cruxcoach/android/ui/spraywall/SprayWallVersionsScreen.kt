@@ -5,10 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -187,7 +185,7 @@ fun SprayWallVersionsScreen(
                     photoHeight = shown.photoHeight,
                     holds = state.holds.map { SprayCanvasHold(it.id, it.x, it.y, it.radius, SprayHoldLook.PLAIN) },
                     interactive = false,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(shown.aspectRatio.coerceIn(0.5f, 2f)).heightIn(max = 380.dp),
+                    modifier = Modifier.sprayPhotoSize(shown.aspectRatio, screenHeightShare(0.4f)),
                 )
             }
             item {

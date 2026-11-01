@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -114,6 +115,8 @@ sealed interface SprayHoldEditorMessage {
     data class Saved(val newVersion: Boolean) : SprayHoldEditorMessage
     /** Adding a wall: the holds are stored, on to the details. */
     data object FirstDone : SprayHoldEditorMessage
+    /** A reset has its holds: back to the wall. */
+    data object ResetDone : SprayHoldEditorMessage
     data object Failed : SprayHoldEditorMessage
     data object Limit : SprayHoldEditorMessage
     data class Detected(val count: Int) : SprayHoldEditorMessage
@@ -242,7 +245,14 @@ class SprayHoldEditorViewModel @Inject constructor(
                     threshold = s.editor.threshold,
                 ).withSuggestions(s.editor.suggestions, s.wall?.aspectRatio ?: 1f)
                 _state.update { it.copy(saving = false, wall = wall ?: it.wall, editor = editor, saved = editor.holds) }
-                _messages.emit(if (s.first) SprayHoldEditorMessage.FirstDone else SprayHoldEditorMessage.Saved(result.newVersion))
+                _messages.emit(
+                    when {
+                        s.first -> SprayHoldEditorMessage.FirstDone
+                        // The first holds on a reset's photo finish the reset: back to the wall, like adding one goes on.
+                        s.unfinishedReset -> SprayHoldEditorMessage.ResetDone
+                        else -> SprayHoldEditorMessage.Saved(result.newVersion)
+                    },
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -286,8 +296,12 @@ fun SprayHoldEditorScreen(
                 onFirstSaved()
                 return@collect
             }
+            if (message == SprayHoldEditorMessage.ResetDone) {
+                onBack()
+                return@collect
+            }
             val text = when (message) {
-                SprayHoldEditorMessage.FirstDone -> return@collect
+                SprayHoldEditorMessage.FirstDone, SprayHoldEditorMessage.ResetDone -> return@collect
                 is SprayHoldEditorMessage.Saved ->
                     context.getString(if (message.newVersion) R.string.spray_holds_saved_version else R.string.spray_holds_saved)
                 SprayHoldEditorMessage.Failed -> context.getString(R.string.spray_holds_save_failed)
@@ -372,8 +386,18 @@ fun SprayHoldEditorScreen(
                 Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
                     if (editor.suggestions.isNotEmpty()) SuggestionBar(editor, viewModel)
                     val selected = editor.selected
-                    if (selected != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The row keeps its height either way, so picking a hold does not shrink the photo under the finger.
+                    if (selected == null) {
+                        Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.CenterStart) {
+                            Text(
+                                stringResource(R.string.spray_holds_size_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.testTag("spray_hold_size_hint"),
+                            )
+                        }
+                    } else {
+                        Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.spray_holds_size), style = MaterialTheme.typography.labelLarge)
                             Spacer(Modifier.width(12.dp))
                             var resizing by remember(selected.id) { mutableStateOf(false) }

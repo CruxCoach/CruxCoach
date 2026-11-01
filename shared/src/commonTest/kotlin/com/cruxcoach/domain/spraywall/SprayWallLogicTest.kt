@@ -132,6 +132,28 @@ class SprayClimbListTest {
         assertEquals(3, rows.first { it.climb.uuid == "easy" }.sends)
         assertEquals(0, rows.first { it.climb.uuid == "intact" }.sends)
     }
+
+    @Test
+    fun offersOnlyFiltersThatHaveClimbs() {
+        assertEquals(listOf(SprayClimbFilter.ALL), SprayClimbList.filters(listOf(intact, easy), wall))
+        assertEquals(
+            listOf(SprayClimbFilter.ALL, SprayClimbFilter.INTACT, SprayClimbFilter.LOST_HOLDS),
+            SprayClimbList.filters(all, wall),
+        )
+        // An earlier climb's holds belong to the old photo: it adds EARLIER, not the holds filters.
+        val old = climb("old", mapOf(1L to SprayHoldRole.START, 99L to SprayHoldRole.FINISH), version = 1)
+        val current = listOf(intact, easy).map { it.copy(version = 2) }
+        assertEquals(listOf(SprayClimbFilter.ALL, SprayClimbFilter.EARLIER), SprayClimbList.filters(current + old, wall, setOf(1)))
+    }
+
+    @Test
+    fun aFilterWithNothingLeftFallsBackToAll() {
+        // After a restore the earlier climbs are current again: EARLIER has no chip, so the list goes back to ALL.
+        val restored = SprayClimbList.filters(all, wall, earlierVersions = emptySet())
+        assertEquals(SprayClimbFilter.ALL, SprayClimbList.keep(SprayClimbFilter.EARLIER, restored))
+        assertEquals(SprayClimbFilter.LOST_HOLDS, SprayClimbList.keep(SprayClimbFilter.LOST_HOLDS, restored))
+        assertEquals(SprayClimbFilter.ALL, SprayClimbList.keep(SprayClimbFilter.INTACT, SprayClimbList.filters(listOf(intact), wall)))
+    }
 }
 
 class SprayHoldEditorTest {

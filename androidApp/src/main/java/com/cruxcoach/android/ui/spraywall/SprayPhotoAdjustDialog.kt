@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -126,13 +127,15 @@ fun SprayPhotoAdjustDialog(
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
-            Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Two rows: with long labels (German) four buttons in one row squeeze the last one.
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { turns = (turns + 1) % 4; crop = SprayCropBox.rotateClockwise(crop) }, modifier = Modifier.testTag("spray_adjust_rotate")) {
                     Icon(Icons.Default.Rotate90DegreesCw, contentDescription = null)
                     Text(stringResource(R.string.spray_adjust_rotate), modifier = Modifier.padding(start = 6.dp))
                 }
                 TextButton(onClick = { turns = 0; crop = SprayCropRect.FULL }) { Text(stringResource(R.string.action_reset), color = Color.White) }
-                Box(Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 TextButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel), color = Color.White) }
                 Button(onClick = { onDone(turns, crop) }, modifier = Modifier.testTag("spray_adjust_done")) { Text(stringResource(R.string.action_done)) }
             }

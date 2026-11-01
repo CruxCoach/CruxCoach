@@ -7,10 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -74,6 +72,7 @@ import com.cruxcoach.android.spraywall.SprayWallFetcher
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallPublisher
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.domain.spraywall.SprayClimb
 import com.cruxcoach.domain.spraywall.SprayClimbFilter
 import com.cruxcoach.domain.spraywall.SprayClimbList
@@ -115,9 +114,7 @@ data class SprayWallUiState(
     val holdsOnWall: Set<Long> get() = holds.mapTo(HashSet()) { it.id }
     val earlierVersions: Set<Int> get() = wall?.let { SprayWallHistory.earlierVersions(versions, it.current) }.orEmpty()
     val rows: List<SprayClimbRow> get() = SprayClimbList.rows(climbs, holdsOnWall, sends, filter, sort, query, earlierVersions)
-    private val currentRows: List<SprayClimbRow> get() = SprayClimbList.rows(climbs, holdsOnWall, sends, SprayClimbFilter.ALL, sort, "", earlierVersions)
-    val anyLostHolds: Boolean get() = currentRows.any { it.lostHolds > 0 }
-    val anyEarlier: Boolean get() = climbs.any { it.version in earlierVersions }
+    val filters: List<SprayClimbFilter> get() = SprayClimbList.filters(climbs, holdsOnWall, earlierVersions)
     /** A reset whose holds were not marked yet. */
     val unfinishedReset: Boolean get() = wall?.current?.let { it.kind == SprayVersionKind.RESET && it.holdCount == 0 } == true
 }
@@ -176,14 +173,14 @@ class SprayWallViewModel @Inject constructor(
             _state.update { it.copy(loading = false, notFound = true) }
             return
         }
+        val versions = repository.versions(wallId)
+        val holds = repository.holds(wallId, wall.current.number)
+        val climbs = repository.climbs(wallId)
+        val sends = repository.sendCounts(wallId)
         _state.update {
-            it.copy(
-                loading = false, wall = wall,
-                versions = repository.versions(wallId),
-                holds = repository.holds(wallId, wall.current.number),
-                climbs = repository.climbs(wallId),
-                sends = repository.sendCounts(wallId),
-            )
+            val loaded = it.copy(loading = false, wall = wall, versions = versions, holds = holds, climbs = climbs, sends = sends)
+            // A restore or a hold edit can leave the selected filter with nothing to show.
+            loaded.copy(filter = SprayClimbList.keep(loaded.filter, loaded.filters))
         }
         // A reset brings a new photo.
         if (photoOf != wall.photoFile) {
@@ -283,6 +280,9 @@ fun SprayWallScreen(
                     onClick = onNewClimb,
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
                     text = { Text(stringResource(R.string.spray_climb_new)) },
+                    // The design accent pair: the default container colours put orange text on orange.
+                    containerColor = CruxCoachDesign.colors.brandAccent,
+                    contentColor = CruxCoachDesign.colors.onBrandAccent,
                     modifier = Modifier.testTag("spray_climb_new"),
                 )
             }
@@ -302,7 +302,7 @@ fun SprayWallScreen(
                     photoHeight = wall.photoHeight,
                     holds = state.holds.map { SprayCanvasHold(it.id, it.x, it.y, it.radius, SprayHoldLook.FAINT) },
                     interactive = false,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(wall.aspectRatio.coerceIn(0.5f, 2f)).heightIn(max = 420.dp),
+                    modifier = Modifier.sprayPhotoSize(wall.aspectRatio, screenHeightShare(0.45f)),
                 )
             }
             item { WallFacts(wall) }
@@ -340,9 +340,15 @@ fun SprayWallScreen(
             item { ListControls(state, viewModel) }
             val rows = state.rows
             if (rows.isEmpty()) {
+                val empty = when {
+                    state.climbs.isEmpty() -> R.string.spray_climbs_empty
+                    // Right after a reset: the climbs so far are one chip further.
+                    state.filter == SprayClimbFilter.ALL && state.query.isBlank() && SprayClimbFilter.EARLIER in state.filters -> R.string.spray_climbs_none_current
+                    else -> R.string.spray_climbs_none_match
+                }
                 item {
                     Text(
-                        stringResource(if (state.climbs.isEmpty()) R.string.spray_climbs_empty else R.string.spray_climbs_none_match),
+                        stringResource(empty),
                         modifier = Modifier.fillMaxWidth().padding(24.dp).testTag("spray_climbs_empty"),
                         textAlign = TextAlign.Center,
                     )
@@ -441,17 +447,16 @@ private fun ListControls(state: SprayWallUiState, viewModel: SprayWallViewModel)
             )
         }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val filters = buildList {
-                add(SprayClimbFilter.ALL to R.string.spray_filter_all)
-                // The holds filters only matter once a climb lost a hold, "earlier" once the wall was reset.
-                if (state.anyLostHolds || state.filter == SprayClimbFilter.INTACT || state.filter == SprayClimbFilter.LOST_HOLDS) {
-                    add(SprayClimbFilter.INTACT to R.string.spray_filter_intact)
-                    add(SprayClimbFilter.LOST_HOLDS to R.string.spray_filter_lost)
-                }
-                if (state.anyEarlier || state.filter == SprayClimbFilter.EARLIER) add(SprayClimbFilter.EARLIER to R.string.spray_filter_earlier)
-            }
+            // The holds filters only matter once a climb lost a hold, "earlier" once the wall was reset.
+            val filters = state.filters
             if (filters.size > 1) {
-                filters.forEach { (filter, label) ->
+                filters.forEach { filter ->
+                    val label = when (filter) {
+                        SprayClimbFilter.ALL -> R.string.spray_filter_all
+                        SprayClimbFilter.INTACT -> R.string.spray_filter_intact
+                        SprayClimbFilter.LOST_HOLDS -> R.string.spray_filter_lost
+                        SprayClimbFilter.EARLIER -> R.string.spray_filter_earlier
+                    }
                     FilterChip(
                         selected = state.filter == filter,
                         onClick = { viewModel.setFilter(filter) },
