@@ -7,7 +7,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
@@ -82,6 +86,24 @@ class CrossBoardUiReviewTest {
         clock = Clock.fixed(Instant.parse("2026-03-31T12:00:00Z"), ZoneOffset.UTC),
     )
 
+    // The phone test's case: three boards close together in a month in the middle.
+    private val crowded = CrossBoardStatsComputer.compute(
+        buildList {
+            addAll(problems("kilter", "2026-08", 18.0, 3, 2))
+            addAll(problems("tension", "2026-08", 16.0, 3, 2))
+            addAll(problems("kilter", "2026-09", 18.0, 1, 3))
+            addAll(problems("kilter", "2026-09", 18.0, 1, 4))
+            addAll(problems("tension", "2026-09", 18.0, 1, 5))
+            addAll(problems("moonboard", "2026-09", 18.0, 2, 2))
+            addAll(problems("kilter", "2026-10", 20.0, 3, 3))
+            addAll(problems("tension", "2026-10", 20.0, 1, 6))
+            addAll(problems("moonboard", "2026-10", 20.0, 1, 6))
+            addAll(problems("kilter", "2026-11", 22.0, 1, 10))
+        },
+        StatsTimeInterval.ALL, GradeScale.FRENCH,
+        clock = Clock.fixed(Instant.parse("2026-11-30T12:00:00Z"), ZoneOffset.UTC),
+    )
+
     private fun shoot(name: String, before: () -> Unit = {}, content: @Composable () -> Unit) {
         var view: android.view.View? = null
         compose.setContent {
@@ -118,5 +140,16 @@ class CrossBoardUiReviewTest {
     @Test
     fun perMonth() = shoot("cross-board-months") {
         CrossBoardSection(stats, CrossBoardView.PER_MONTH, onViewSelect = {}, gradeScale = GradeScale.FRENCH)
+    }
+
+    @Test
+    fun perMonthCrowded() = shoot("cross-board-months-crowded", before = {
+        // September is the second of four months; tap it in the upper chart.
+        compose.onNodeWithContentDescription("Sep:", substring = true).performTouchInput {
+            val left = 36.dp.toPx()
+            click(Offset(left + (width - left) * 1.5f / 4f, 60.dp.toPx()))
+        }
+    }) {
+        CrossBoardSection(crowded, CrossBoardView.PER_MONTH, onViewSelect = {}, gradeScale = GradeScale.FRENCH)
     }
 }

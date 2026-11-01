@@ -313,6 +313,12 @@ internal fun gradeLevels(difficulties: List<Double>, scale: GradeScale): List<St
 /** One series point: a board's value in one month. */
 private class MonthPoint(val month: Int, val value: Double, val label: String, val hollow: Boolean)
 
+/** The value of the selected month, led by a colour dot for each board that has it. */
+private class ValueLabel(val text: TextLayoutResult, val colors: List<Color>, val y: Float, val swatchWidth: Float) {
+    val width: Float = colors.size * swatchWidth + text.size.width
+    val height: Float = text.size.height.toFloat()
+}
+
 @Composable
 private fun MonthCharts(stats: CrossBoardStats, colors: Map<String, Color>, gradeScale: GradeScale) {
     // The model lists the newest month first; a chart reads left to right.
@@ -400,8 +406,9 @@ private fun ChartCaption(text: String) {
 /**
  * A line per board over evenly spaced months, with dots on the months that
  * have a value. Boards sit a few dp apart inside a month, so equal values do
- * not hide each other. The selected month is shaded and its values are
- * written beside the dots; equal values share one label.
+ * not hide each other. The selected month is shaded and its values stand in
+ * one column beside its dots, each led by its board's colour; equal values
+ * share one label.
  */
 @Composable
 private fun MonthLineChart(
@@ -447,7 +454,8 @@ private fun MonthLineChart(
         val plotTop = inset
         val plotBottom = plotHeight.toPx() - inset
         val band = (size.width - left) / monthCount
-        val dodgeStep = min(6.dp.toPx(), band * 0.2f)
+        // Wide enough that equal values show as dots side by side, not as one blot.
+        val dodgeStep = min(10.dp.toPx(), band * 0.2f)
         fun xOf(month: Int, lane: Int) =
             left + band * (month + 0.5f) + (lane - (boards.size - 1) / 2f) * dodgeStep
         fun yOf(value: Double) =
@@ -496,36 +504,63 @@ private fun MonthLineChart(
             }
         }
 
-        // Values of the selected month, beside its dots; equal values share one label.
-        val labels = boards.withIndex()
-            .mapNotNull { (lane, board) ->
-                series[board].orEmpty().firstOrNull { it.month == selected }?.let { p ->
-                    Triple(p.label, xOf(p.month, lane), yOf(p.value))
+        // Values of the selected month in one column beside all of its dots, so
+        // no label covers a dot. Each label starts with the colour of its board;
+        // equal values share one label with a dot per board.
+        val present = boards.withIndex().mapNotNull { (lane, board) ->
+            series[board].orEmpty().firstOrNull { it.month == selected }?.let { p -> Triple(board, lane, p) }
+        }
+        if (present.isNotEmpty()) {
+            val pad = 3.dp.toPx()
+            val gap = 6.dp.toPx()
+            val swatch = 6.dp.toPx()
+            val swatchGap = 3.dp.toPx()
+            val labels = present
+                .groupBy { (_, _, p) -> p.label }
+                .map { (label, at) ->
+                    ValueLabel(
+                        text = measurer.measure(label, valueStyle),
+                        colors = at.map { (board, _, _) -> colors.getValue(board) },
+                        y = yOf(at.first().third.value),
+                        swatchWidth = swatch + swatchGap,
+                    )
                 }
+                .sortedBy { it.y }
+            val dotRadius = 6.dp.toPx()
+            val clusterRight = present.maxOf { (_, lane, _) -> xOf(selected, lane) } + dotRadius
+            val clusterLeft = present.minOf { (_, lane, _) -> xOf(selected, lane) } - dotRadius
+            val onRight = clusterRight + gap + 2 * pad + labels.maxOf { it.width } <= size.width
+            // Each label as close to its value as the ones above it allow…
+            val tops = FloatArray(labels.size)
+            var lastBottom = Float.NEGATIVE_INFINITY
+            labels.forEachIndexed { i, label ->
+                tops[i] = max(label.y - label.height / 2f, lastBottom + pad)
+                lastBottom = tops[i] + label.height
             }
-            .groupBy { it.first }
-            .map { (label, at) -> Triple(measurer.measure(label, valueStyle), at.maxOf { it.second }, at.first().third) }
-            .sortedBy { it.third }
-        val gap = 8.dp.toPx()
-        val pad = 3.dp.toPx()
-        val leftmostDot = xOf(selected, 0)
-        var lastBottom = Float.NEGATIVE_INFINITY
-        labels.forEach { (text, dotX, dotY) ->
-            val width = text.size.width.toFloat()
-            val height = text.size.height.toFloat()
-            val rightX = dotX + gap
-            val x = if (rightX + width + pad <= size.width) rightX else max(0f, leftmostDot - gap - width)
-            // Push a label down when it would overlap the one above it.
-            val top = max(dotY - height / 2f, lastBottom + pad)
-                .coerceAtMost(plotHeight.toPx() - height)
-            lastBottom = top + height
-            drawRoundRect(
-                card,
-                topLeft = Offset(x - pad, top - pad / 2f),
-                size = Size(width + 2 * pad, height + pad),
-                cornerRadius = CornerRadius(4.dp.toPx()),
-            )
-            drawText(text, topLeft = Offset(x, top))
+            // …and the column pulled back up where it runs past the plot.
+            var limit = plotHeight.toPx() - pad / 2f
+            for (i in labels.indices.reversed()) {
+                tops[i] = min(tops[i], limit - labels[i].height)
+                limit = tops[i] - pad
+            }
+            labels.forEachIndexed { i, label ->
+                val x = if (onRight) clusterRight + gap + pad else max(pad, clusterLeft - gap - pad - label.width)
+                val top = tops[i]
+                drawRoundRect(
+                    card,
+                    topLeft = Offset(x - pad, top - pad / 2f),
+                    size = Size(label.width + 2 * pad, label.height + pad),
+                    cornerRadius = CornerRadius(4.dp.toPx()),
+                )
+                label.colors.forEachIndexed { j, color ->
+                    drawCircle(
+                        color,
+                        radius = swatch / 2f,
+                        center = Offset(x + j * label.swatchWidth + swatch / 2f, top + label.height / 2f),
+                    )
+                }
+                drawText(label.text, topLeft = Offset(x + label.colors.size * label.swatchWidth, top))
+            }
         }
 
         // Month axis: as many labels as fit, always the selected month.
