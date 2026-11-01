@@ -374,6 +374,7 @@ class BoardStatsComputerTest {
         assertEquals(2, before.sessions)
         assertEquals(2, before.problems)
         assertEquals(100f, before.flashRate, 0.01f)
+        assertEquals(18.5, before.hardestDifficulty!!, 1e-9)
         assertNull(BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock).previous)
     }
 

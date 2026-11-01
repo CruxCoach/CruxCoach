@@ -78,6 +78,7 @@ object BoardStatsComputer {
         return BoardLogbookStats(
             hardestGrade = hardestGrade,
             hardestDifficultyInt = hardestDiffInt,
+            hardestDifficulty = hardestDiff,
             totalSends = totalSends,
             // bidCount is attempts-to-outcome for both open bids and sends.
             // Counting rows made a consolidated "X, X, send" sequence look
@@ -132,6 +133,7 @@ object BoardStatsComputer {
             sessions = before.map { it.climbedAt.take(10) }.distinct().size,
             problems = before.map { it.boardBrand to it.climbUuid }.distinct().size,
             flashRate = if (sends.isNotEmpty()) sends.count { it.uuid in flashUuids } * 100f / sends.size else 0f,
+            hardestDifficulty = sends.mapNotNull { it.difficultyAverage }.maxOrNull(),
         )
     }
 

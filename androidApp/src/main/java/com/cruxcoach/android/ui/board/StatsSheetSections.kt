@@ -76,22 +76,26 @@ import kotlin.math.min
 // ---------------------------------------------------------------- the period in numbers
 
 /**
- * Sends, tries, climbing days, distinct problems and the flash rate of the
- * chosen period and boards, as plain numbers under the filters: everything
- * below explains them. For a period with a length, each number shows its
- * change against the period of the same length before.
+ * The six numbers of the chosen period and boards, in two rows of three:
+ * sends, tries and climbing days; distinct problems, the hardest grade and
+ * the flash rate. For a period with a length, each shows its change against
+ * the period of the same length before (the hardest grade in grade steps).
+ * Everything below explains these numbers.
  */
 @Composable
-internal fun PeriodNumbers(stats: BoardLogbookStats) {
+internal fun PeriodNumbers(stats: BoardLogbookStats, gradeScale: GradeScale) {
     if (stats.totalSends == 0 && stats.totalAttempts == 0) return
     val sends = if (stats.routeSends > 0) "${stats.boulderSends}B / ${stats.routeSends}R" else "${stats.totalSends}"
     val before = stats.previous
     val flash = Math.round(stats.flashRate)
+    val hardestNow = stats.hardestDifficulty
+    val hardestBefore = before?.hardestDifficulty
     Column(
         Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
             .padding(vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             val column = Modifier.weight(1f).fillMaxHeight()
@@ -104,9 +108,21 @@ internal fun PeriodNumbers(stats: BoardLogbookStats) {
                 "${stats.sessionCount}", stringResource(R.string.board_logbook_sessions),
                 before?.let { stats.sessionCount - it.sessions }, column,
             )
+        }
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            val column = Modifier.weight(1f).fillMaxHeight()
             PeriodNumber(
                 "${stats.uniqueClimbs}", stringResource(R.string.board_stats_problems),
                 before?.let { stats.uniqueClimbs - it.problems }, column,
+            )
+            PeriodNumber(
+                stats.hardestGrade ?: "–", stringResource(R.string.board_stats_glance_hardest),
+                if (hardestNow != null && hardestBefore != null) {
+                    StatsHighlightsComputer.gradeSteps(hardestBefore, hardestNow, gradeScale)
+                } else {
+                    null
+                },
+                column,
             )
             PeriodNumber(
                 "$flash %", stringResource(R.string.board_logbook_flash),
@@ -118,7 +134,7 @@ internal fun PeriodNumbers(stats: BoardLogbookStats) {
                 stringResource(R.string.board_stats_period_versus),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp),
+                modifier = Modifier.align(Alignment.CenterHorizontally),
             )
         }
     }

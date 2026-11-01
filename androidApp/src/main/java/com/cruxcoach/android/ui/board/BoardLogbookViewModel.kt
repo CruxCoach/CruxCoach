@@ -56,6 +56,8 @@ data class AngleDistEntry(
 data class BoardLogbookStats(
     val hardestGrade: String? = null,
     val hardestDifficultyInt: Int = 0,
+    /** The hardest send's difficulty as logged, for comparing grades. */
+    val hardestDifficulty: Double? = null,
     val totalSends: Int = 0,
     val totalAttempts: Int = 0,
     val boulderSends: Int = 0,

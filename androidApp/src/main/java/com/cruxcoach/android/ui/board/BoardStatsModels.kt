@@ -18,6 +18,7 @@ data class PeriodTotals(
     val sessions: Int,
     val problems: Int,
     val flashRate: Float,
+    val hardestDifficulty: Double? = null,
 )
 
 /**

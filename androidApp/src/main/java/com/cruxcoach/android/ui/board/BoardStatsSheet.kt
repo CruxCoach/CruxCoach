@@ -161,8 +161,8 @@ internal fun BoardStatsSheet(
                 )
             }
 
-            // The period in four numbers; the cards below explain them.
-            PeriodNumbers(stats)
+            // The period in six numbers; the cards below explain them.
+            PeriodNumbers(stats, gradeScale)
 
             // How the boards feel against each other, when there is enough
             // data. Spans every board whatever the board filter is.

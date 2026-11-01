@@ -148,7 +148,7 @@ class StatsHighlightsUiReviewTest {
     fun sheetTop() = shoot("stats-sheet-1") {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             StatsIntervalChips(selected = StatsTimeInterval.ALL, onSelect = {}, onCustomDateRange = { _, _ -> })
-            PeriodNumbers(stats)
+            PeriodNumbers(stats, scale)
             BoardsCard(cross.feel!!, cross.boards, boards)
             ProgressCard(stats.gradeProgression, byBoard, boardFilter = null, allBoards = boards, gradeScale = scale)
             GradesCard(stats.gradeOutcomes, stats.gradePyramid, zones, GradesView.PROBLEMS, onSelect = {})
@@ -174,7 +174,7 @@ class StatsHighlightsUiReviewTest {
         shoot("stats-one-board") {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 LogbookOverviewCard(one, badges, listOf("kilter"), onOpenStats = {})
-                PeriodNumbers(kilterStats)
+                PeriodNumbers(kilterStats, scale)
                 ProgressCard(kilterStats.gradeProgression, emptyMap(), boardFilter = null, allBoards = listOf("kilter"), gradeScale = scale)
                 GradesCard(kilterStats.gradeOutcomes, kilterStats.gradePyramid, zones, GradesView.PROBLEMS, onSelect = {})
             }
@@ -196,7 +196,7 @@ class StatsHighlightsUiReviewTest {
 
     @Test
     fun periodNumbers30Days() = shoot("stats-period-30") {
-        PeriodNumbers(BoardStatsComputer.computeStats(logbook, StatsTimeInterval.DAYS_30, scale, clock = clock))
+        PeriodNumbers(BoardStatsComputer.computeStats(logbook, StatsTimeInterval.DAYS_30, scale, clock = clock), scale)
     }
 
     @Test

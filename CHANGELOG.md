@@ -31,8 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   angle.
 - Statistics, reorganised so every number and chart appears once: the period
   and board filters on top (each board chip shows its sends and best grade),
-  the period in five numbers with the change against the period before (sends,
-  tries, climbing days, problems, flash rate), then progress (the rolling level,
+  the period in six numbers with the change against the period before (sends,
+  tries, climbing days, problems, hardest grade, flash rate), then progress (the rolling level,
   one line per board), grades (problems per grade by flash, later send or still
   open, or every send with repeats in your intensity-zone colours), tries,
   activity (calendar, climbing days per week, entries or sends over time),
