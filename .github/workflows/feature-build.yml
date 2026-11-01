@@ -19,11 +19,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 1
+      # Trusted builds restore no Actions cache: community builds run fork code in the default-branch cache scope.
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
       - name: Derive immutable feature identity
         id: identity
         run: python3 scripts/feature_identity.py --branch "$GITHUB_REF_NAME" --github-output "$GITHUB_OUTPUT"

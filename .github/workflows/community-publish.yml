@@ -76,6 +76,9 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 1
           persist-credentials: false
+          # Acceptable here: no environment or secrets, a read-only token, no persisted
+          # credentials, and no trusted job restores an Actions cache this job could write.
+          allow-unsafe-pr-checkout: true
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
