@@ -96,12 +96,42 @@ def run_text(command: list[str]) -> str:
     return completed.stdout + completed.stderr
 
 
-def signer_digest(apksigner: Path, apk: Path) -> str:
+# apksigner up to build-tools 36 prints "Signer #1 certificate SHA-256 digest: …" (with key
+# rotation "Signer (minSdkVersion=…, maxSdkVersion=…) certificate …"). Build-tools 37 names the
+# scheme instead: "V3.0 Signer: certificate …", "V2 Signer #1: certificate …",
+# "V3.1 Signer: (minSdkVersion=…, maxSdkVersion=…) certificate …".
+SIGNER_DIGEST = re.compile(
+    r"^(?:V\d+(?:\.\d+)? )?Signer(?: #\d+)?:? "
+    r"(?:\(minSdkVersion=\d+, maxSdkVersion=\d+\) )?"
+    r"certificate SHA-256 digest: (?P<digest>[0-9a-fA-F]{64})$"
+)
+# The source stamp records the distributing store; it is not an app signer.
+STAMP_DIGEST = re.compile(r"^Source Stamp Signer:? certificate SHA-256 digest: [0-9a-fA-F]{64}$")
+
+
+def parse_signer_digests(output: str) -> set[str]:
+    """Return every app signer digest that apksigner printed (all signers, all rotations)."""
+    digests = set()
+    for line in output.splitlines():
+        line = line.strip()
+        if "certificate SHA-256 digest:" not in line or STAMP_DIGEST.match(line):
+            continue
+        match = SIGNER_DIGEST.match(line)
+        if not match:
+            # An unknown format could hide a second signer, so it fails closed.
+            raise ValueError(f"unrecognized apksigner certificate line: {line!r}")
+        digests.add(match.group("digest").lower())
+    if not digests:
+        raise ValueError("no signer certificate found")
+    return digests
+
+
+def signer_digests(apksigner: Path, apk: Path) -> set[str]:
     output = run_text([str(apksigner), "verify", "--print-certs", str(apk)])
-    match = re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]{64})", output)
-    if not match:
-        raise ValueError(f"no signer certificate found for {apk.name}")
-    return match.group(1).lower()
+    try:
+        return parse_signer_digests(output)
+    except ValueError as error:
+        raise ValueError(f"{error} for {apk.name} (apksigner: {apksigner})") from None
 
 
 def scan_markers(apks: Iterable[Path], groups: dict[str, list[str]]) -> tuple[dict[str, bool], list[str]]:
@@ -202,7 +232,7 @@ def analyze(args: argparse.Namespace) -> dict[str, object]:
         if len(bases) != 1:
             raise ValueError(f"expected exactly one base APK, found {len(bases)}")
         base = bases[0]
-        digests = {signer_digest(apksigner, apk) for apk in apks}
+        digests = set().union(*(signer_digests(apksigner, apk) for apk in apks))
         markers, evidence_entries = scan_markers(apks, baseline["marker_groups"])
 
     expected_package = baseline["package"]
