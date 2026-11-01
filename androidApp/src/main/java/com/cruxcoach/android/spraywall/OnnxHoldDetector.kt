@@ -23,7 +23,14 @@ import java.nio.FloatBuffer
  * Holds one ONNX Runtime session; close it when done. Not thread-safe: one
  * photo at a time.
  */
-class OnnxHoldDetector(modelFile: File, threads: Int = DEFAULT_THREADS) : Closeable {
+class OnnxHoldDetector(
+    modelFile: File,
+    threads: Int = DEFAULT_THREADS,
+    /** Execution provider: CPU (default), or XNNPACK / NNAPI where ONNX Runtime can place the model's operators. */
+    provider: Provider = Provider.CPU,
+) : Closeable {
+    enum class Provider { CPU, XNNPACK, NNAPI }
+
     /** Where the time of one photo went, in milliseconds. */
     data class Timing(val resizeMs: Long, val inferMs: Long, val postMs: Long) {
         val totalMs: Long get() = resizeMs + inferMs + postMs
@@ -38,6 +45,11 @@ class OnnxHoldDetector(modelFile: File, threads: Int = DEFAULT_THREADS) : Closea
             setIntraOpNumThreads(threads)
             setInterOpNumThreads(1)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+            when (provider) {
+                Provider.CPU -> Unit
+                Provider.XNNPACK -> addXnnpack(mapOf("intra_op_num_threads" to threads.toString()))
+                Provider.NNAPI -> addNnapi()
+            }
         },
     )
     private val inputName = session.inputNames.first()

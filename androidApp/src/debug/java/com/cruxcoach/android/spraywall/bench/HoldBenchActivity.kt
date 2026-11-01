@@ -32,7 +32,7 @@ import kotlin.math.max
  *
  * Extras: mode (seg|classic), longSide, rows, cols, overlap, threshold, floor,
  * nms, outlines, upsample, tolerance, maxPoints, resampler (lanczos3|bilinear|native),
- * seam, threads, repeat (timing passes per photo), only (comma-separated photo names).
+ * seam, threads, ep (cpu|xnnpack|nnapi), repeat (timing passes per photo), only (comma-separated photo names).
  */
 class HoldBenchActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,7 +95,13 @@ class HoldBenchActivity : Activity() {
         val model = File(filesDir, "${HoldModelStore.DIR}/${HoldModel.FILE_NAME}").takeIf { it.length() == HoldModel.BYTES }
             ?: File(dir, "model.onnx")
         val t0 = System.nanoTime()
-        val detector = if (mode == "seg") OnnxHoldDetector(model, threads) else null
+        val provider = when (x.getStringExtra("ep")) {
+            "xnnpack" -> OnnxHoldDetector.Provider.XNNPACK
+            "nnapi" -> OnnxHoldDetector.Provider.NNAPI
+            else -> OnnxHoldDetector.Provider.CPU
+        }
+        json.put("provider", provider.name)
+        val detector = if (mode == "seg") OnnxHoldDetector(model, threads, provider) else null
         json.put("modelLoadMs", (System.nanoTime() - t0) / 1_000_000)
         val rows = JSONArray()
         try {
