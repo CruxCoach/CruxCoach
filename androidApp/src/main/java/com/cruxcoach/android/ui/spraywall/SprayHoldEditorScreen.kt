@@ -109,6 +109,8 @@ data class SprayHoldEditorUiState(
     val detecting: Boolean = false,
     /** The detector ran on this photo (so an empty result is a real result). */
     val detected: Boolean = false,
+    /** Tiles done and in total while the hold model runs, for the scan overlay. */
+    val detectProgress: Pair<Int, Int>? = null,
     /** The hold model: missing until the climber downloads it, then used instead of the classical detector. */
     val model: HoldModelStore.State = HoldModelStore.State.Missing,
 ) {
@@ -176,9 +178,10 @@ class SprayHoldEditorViewModel @Inject constructor(
                 val useModel = models.isReady()
                 val found = withContext(Dispatchers.Default) {
                     val candidates = if (useModel) {
-                        val image = photos.image(wall.photoFile, MODEL_SETTINGS.longSide) ?: return@withContext emptyList()
+                        val image = photos.bitmap(wall.photoFile, MODEL_SETTINGS.longSide) ?: return@withContext emptyList()
                         val detector = segmentation ?: OnnxHoldDetector(models.file).also { segmentation = it }
-                        detector.detect(image, MODEL_SETTINGS).candidates
+                        detector.detect(image, MODEL_SETTINGS) { done, total -> _state.update { it.copy(detectProgress = done to total) } }
+                            .candidates.also { image.recycle() }
                     } else {
                         val (w, h, pixels) = photos.pixels(wall.photoFile, DETECT_LONG_SIDE) ?: return@withContext emptyList()
                         SprayHoldDetector.detect(RgbImage(w, h, pixels))
@@ -188,13 +191,18 @@ class SprayHoldEditorViewModel @Inject constructor(
                 _state.update {
                     val editor = it.editor.withSuggestions(found, wall.aspectRatio)
                     // The model's scores mean something else than the classical detector's: start at its own threshold.
-                    it.copy(detecting = false, detected = true, editor = if (useModel) editor.setThreshold(MODEL_SETTINGS.threshold) else editor)
+                    it.copy(
+                        detecting = false,
+                        detected = true,
+                        detectProgress = null,
+                        editor = if (useModel) editor.setThreshold(MODEL_SETTINGS.threshold) else editor,
+                    )
                 }
                 _messages.emit(SprayHoldEditorMessage.Detected(_state.value.editor.visibleSuggestions.size))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(detecting = false) }
+                _state.update { it.copy(detecting = false, detectProgress = null) }
                 _messages.emit(SprayHoldEditorMessage.DetectFailed)
             }
         }
@@ -302,7 +310,7 @@ class SprayHoldEditorViewModel @Inject constructor(
 
     private companion object {
         /** The model's published settings; the floor keeps unsure holds for the sensitivity slider. */
-        val MODEL_SETTINGS = SegSettings(floor = 0.3f)
+        val MODEL_SETTINGS = SegSettings(floor = 0.3f, resampler = SegSettings.Resampler.NATIVE)
         const val DETECT_LONG_SIDE = 1024
     }
 }
@@ -412,7 +420,7 @@ fun SprayHoldEditorScreen(
                     ),
                     modifier = Modifier.fillMaxSize(),
                 )
-                if (state.detecting) ScanOverlay(Modifier.fillMaxSize())
+                if (state.detecting) ScanOverlay(state.detectProgress, Modifier.fillMaxSize())
             }
             Surface(tonalElevation = 3.dp) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -553,7 +561,7 @@ private fun SuggestionBar(editor: SprayHoldEditorState, viewModel: SprayHoldEdit
 
 /** A band sweeping down the photo while the detector looks for holds. */
 @Composable
-private fun ScanOverlay(modifier: Modifier) {
+private fun ScanOverlay(tiles: Pair<Int, Int>?, modifier: Modifier) {
     val transition = rememberInfiniteTransition(label = "scan")
     val progress by transition.animateFloat(
         initialValue = 0f,
@@ -575,7 +583,10 @@ private fun ScanOverlay(modifier: Modifier) {
         Card {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.padding(end = 12.dp))
-                Text(stringResource(R.string.spray_detect_running))
+                Text(
+                    if (tiles == null) stringResource(R.string.spray_detect_running)
+                    else stringResource(R.string.spray_detect_running_progress, tiles.first * 100 / tiles.second),
+                )
             }
         }
     }

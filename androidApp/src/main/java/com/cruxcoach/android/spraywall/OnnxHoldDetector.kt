@@ -3,12 +3,14 @@ package com.cruxcoach.android.spraywall
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import android.graphics.Bitmap
 import com.cruxcoach.domain.spraywall.detect.HoldCandidate
 import com.cruxcoach.domain.spraywall.detect.RgbImage
 import com.cruxcoach.domain.spraywall.detect.Resampling
 import com.cruxcoach.domain.spraywall.detect.SegOutputs
 import com.cruxcoach.domain.spraywall.detect.SegPipeline
 import com.cruxcoach.domain.spraywall.detect.SegSettings
+import com.cruxcoach.domain.spraywall.detect.SegTile
 import java.io.Closeable
 import java.io.File
 import java.nio.FloatBuffer
@@ -40,26 +42,64 @@ class OnnxHoldDetector(modelFile: File, threads: Int = DEFAULT_THREADS) : Closea
     )
     private val inputName = session.inputNames.first()
 
-    /** [photo] at any size at or above the working size; it is resampled here. */
-    fun detect(photo: RgbImage, settings: SegSettings = SegSettings()): Result {
+    /**
+     * [photo] at any size at or above the working size; it is resampled here,
+     * with Android's own bitmap scaling for [SegSettings.Resampler.NATIVE].
+     * [onTile] hears after every tile (done, total).
+     */
+    fun detect(photo: Bitmap, settings: SegSettings = SegSettings(), onTile: (Int, Int) -> Unit = { _, _ -> }): Result {
+        if (settings.resampler != SegSettings.Resampler.NATIVE) {
+            val pixels = IntArray(photo.width * photo.height)
+            photo.getPixels(pixels, 0, photo.width, 0, 0, photo.width, photo.height)
+            return detect(RgbImage(photo.width, photo.height, pixels), settings, onTile)
+        }
+        val started = System.nanoTime()
+        val (workWidth, workHeight) = SegPipeline.workingSize(photo.width, photo.height, settings.longSide)
+        val work = if (photo.width == workWidth && photo.height == workHeight) photo else Bitmap.createScaledBitmap(photo, workWidth, workHeight, true)
+        val size = settings.input
+        val pixels = IntArray(size * size)
+        return runTiles(workWidth, workHeight, settings, started, onTile) { tile ->
+            val crop = Bitmap.createBitmap(work, tile.x0, tile.y0, tile.width, tile.height)
+            val stretched = Bitmap.createScaledBitmap(crop, size, size, true)
+            stretched.getPixels(pixels, 0, size, 0, 0, size, size)
+            if (stretched !== crop) stretched.recycle()
+            if (crop !== work) crop.recycle()
+            SegPipeline.normalize(pixels, size)
+        }.also { if (work !== photo) work.recycle() }
+    }
+
+    /** [photo] at any size at or above the working size; it is resampled here in Kotlin. */
+    fun detect(photo: RgbImage, settings: SegSettings = SegSettings(), onTile: (Int, Int) -> Unit = { _, _ -> }): Result {
         val started = System.nanoTime()
         val (workWidth, workHeight) = SegPipeline.workingSize(photo.width, photo.height, settings.longSide)
         val work = Resampling.resize(photo, workWidth, workHeight, settings.resampler)
+        return runTiles(workWidth, workHeight, settings, started, onTile) { tile -> SegPipeline.inputTensor(work, tile, settings) }
+    }
+
+    private fun runTiles(
+        workWidth: Int,
+        workHeight: Int,
+        settings: SegSettings,
+        started: Long,
+        onTile: (Int, Int) -> Unit,
+        input: (SegTile) -> FloatArray,
+    ): Result {
         val tiles = SegPipeline.tiles(workWidth, workHeight, settings.rows, settings.cols, settings.overlap)
         var resizeNs = System.nanoTime() - started
         var inferNs = 0L
         var postNs = 0L
-        val perTile = tiles.map { tile ->
+        val perTile = tiles.mapIndexed { index, tile ->
             val t0 = System.nanoTime()
-            val input = SegPipeline.inputTensor(work, tile, settings)
+            val tensor = input(tile)
             val t1 = System.nanoTime()
-            val outputs = run(input, settings.input)
+            val outputs = infer(tensor, settings.input)
             val t2 = System.nanoTime()
             val decoded = SegPipeline.decode(outputs, tile, settings)
             val t3 = System.nanoTime()
             resizeNs += t1 - t0
             inferNs += t2 - t1
             postNs += t3 - t2
+            onTile(index + 1, tiles.size)
             decoded
         }
         val t4 = System.nanoTime()
@@ -73,7 +113,7 @@ class OnnxHoldDetector(modelFile: File, threads: Int = DEFAULT_THREADS) : Closea
         return Result(candidates, Timing(resizeNs / MS, inferNs / MS, postNs / MS), tiles.size)
     }
 
-    private fun run(input: FloatArray, size: Int): SegOutputs {
+    private fun infer(input: FloatArray, size: Int): SegOutputs {
         OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, size.toLong(), size.toLong())).use { tensor ->
             session.run(mapOf(inputName to tensor)).use { result ->
                 var boxes: Pair<FloatArray, LongArray>? = null

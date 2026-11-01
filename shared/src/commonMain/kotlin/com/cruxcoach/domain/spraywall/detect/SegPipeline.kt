@@ -53,7 +53,8 @@ data class SegSettings(
      */
     val seamAware: Boolean = false,
 ) {
-    enum class Resampler { LANCZOS3, BILINEAR }
+    /** NATIVE: the platform's own bitmap scaling (fast); on the JVM it means BILINEAR. */
+    enum class Resampler { LANCZOS3, BILINEAR, NATIVE }
 
     init {
         require(input in 64..1536 && longSide in 128..8192) { "bad sizes" }
@@ -133,13 +134,17 @@ object SegPipeline {
             work.argb.copyInto(crop, y * tile.width, (tile.y0 + y) * work.width + tile.x0, (tile.y0 + y) * work.width + tile.x1)
         }
         val size = settings.input
-        val stretched = Resampling.resize(RgbImage(tile.width, tile.height, crop), size, size, settings.resampler)
+        return normalize(Resampling.resize(RgbImage(tile.width, tile.height, crop), size, size, settings.resampler).argb, size)
+    }
+
+    /** A tile already stretched to size² as ARGB, normalised with the ImageNet mean and std, as NCHW floats. */
+    fun normalize(argb: IntArray, size: Int): FloatArray {
         val pixels = size * size
         val out = FloatArray(3 * pixels)
         val mean = SegSettings.MEAN
         val std = SegSettings.STD
         for (i in 0 until pixels) {
-            val c = stretched.argb[i]
+            val c = argb[i]
             out[i] = (((c shr 16) and 0xFF) / 255f - mean[0]) / std[0]
             out[pixels + i] = (((c shr 8) and 0xFF) / 255f - mean[1]) / std[1]
             out[2 * pixels + i] = ((c and 0xFF) / 255f - mean[2]) / std[2]
@@ -567,7 +572,7 @@ object Resampling {
     }
 
     private fun kernel(x: Double, kind: SegSettings.Resampler): Double = when (kind) {
-        SegSettings.Resampler.BILINEAR -> max(0.0, 1.0 - abs(x))
+        SegSettings.Resampler.BILINEAR, SegSettings.Resampler.NATIVE -> max(0.0, 1.0 - abs(x))
         SegSettings.Resampler.LANCZOS3 -> if (x == 0.0) 1.0 else if (abs(x) >= 3.0) 0.0 else sinc(x) * sinc(x / 3.0)
     }
 

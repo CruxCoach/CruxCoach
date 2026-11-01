@@ -128,6 +128,7 @@
 
     <!-- Hold suggestions -->
     <string name="spray_detect">Find holds</string>
+    <string name="spray_detect_running_progress">Looking for holds … %1$d %%</string>
     <string name="spray_detect_running">Looking for holds…</string>
     <string name="spray_detect_suggestions">Suggested holds: %1$d</string>
     <string name="spray_detect_none_open">No open suggestions. More sensitive shows less sure ones.</string>

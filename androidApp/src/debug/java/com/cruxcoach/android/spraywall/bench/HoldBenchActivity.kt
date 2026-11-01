@@ -1,6 +1,7 @@
 package com.cruxcoach.android.spraywall.bench
 
 import android.app.Activity
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Bundle
@@ -30,7 +31,7 @@ import kotlin.math.max
  *         --es label base --ei rows 2 --ei cols 2 --es overlap 0.15 --ef floor 0.3
  *
  * Extras: mode (seg|classic), longSide, rows, cols, overlap, threshold, floor,
- * nms, outlines, upsample, tolerance, maxPoints, resampler (lanczos3|bilinear),
+ * nms, outlines, upsample, tolerance, maxPoints, resampler (lanczos3|bilinear|native),
  * seam, threads, repeat (timing passes per photo), only (comma-separated photo names).
  */
 class HoldBenchActivity : Activity() {
@@ -70,7 +71,11 @@ class HoldBenchActivity : Activity() {
             maskUpsample = x.getIntExtra("upsample", 4),
             simplifyTolerance = x.getFloatExtra("tolerance", 0.5f),
             maxRingPoints = x.getIntExtra("maxPoints", 150),
-            resampler = if (x.getStringExtra("resampler") == "bilinear") SegSettings.Resampler.BILINEAR else SegSettings.Resampler.LANCZOS3,
+            resampler = when (x.getStringExtra("resampler")) {
+                "bilinear" -> SegSettings.Resampler.BILINEAR
+                "native" -> SegSettings.Resampler.NATIVE
+                else -> SegSettings.Resampler.LANCZOS3
+            },
             seamAware = x.getBooleanExtra("seam", false),
         )
         val threads = x.getIntExtra("threads", OnnxHoldDetector.DEFAULT_THREADS)
@@ -96,21 +101,22 @@ class HoldBenchActivity : Activity() {
         try {
             for (photo in photos) {
                 val d0 = System.nanoTime()
-                val image = load(photo, if (mode == "seg") settings.longSide else CLASSIC_LONG_SIDE)
+                val bitmap = if (mode == "seg") decode(photo, settings.longSide) else null
+                val image = if (bitmap == null) load(photo, CLASSIC_LONG_SIDE) else null
                 val decodeMs = (System.nanoTime() - d0) / 1_000_000
                 val row = JSONObject().put("name", photo.name).put("decodeMs", decodeMs)
-                    .put("width", image.width).put("height", image.height)
+                    .put("width", bitmap?.width ?: image!!.width).put("height", bitmap?.height ?: image!!.height)
                 var candidates: List<HoldCandidate> = emptyList()
                 val passes = JSONArray()
                 repeat(repeat) {
                     if (detector != null) {
-                        val r = detector.detect(image, settings)
+                        val r = detector.detect(bitmap!!, settings)
                         candidates = r.candidates
                         passes.put(JSONObject().put("resizeMs", r.timing.resizeMs).put("inferMs", r.timing.inferMs)
                             .put("postMs", r.timing.postMs).put("totalMs", r.timing.totalMs).put("tiles", r.tiles))
                     } else {
                         val c0 = System.nanoTime()
-                        candidates = SprayHoldDetector.detect(image)
+                        candidates = SprayHoldDetector.detect(image!!)
                         passes.put(JSONObject().put("totalMs", (System.nanoTime() - c0) / 1_000_000))
                     }
                 }
@@ -119,6 +125,7 @@ class HoldBenchActivity : Activity() {
                         .put(c.outline?.let { ring -> JSONArray(ring.map { v -> (v * 1000).toInt() / 1000.0 }) } ?: JSONObject.NULL)
                 }))
                 rows.put(row)
+                bitmap?.recycle()
                 Log.i("HoldBench", "$label ${photo.name} ${candidates.size} holds, ${passes.optJSONObject(0)}")
             }
         } finally {
@@ -127,7 +134,17 @@ class HoldBenchActivity : Activity() {
         return json.put("photos", rows).put("rssEndKb", status("VmRSS")).put("hwmEndKb", status("VmHWM"))
     }
 
-    /** The photo at a long side of at least [minLongSide] (power-of-two subsampling), or at the classic detector's size. */
+    /** The photo at a long side of at least [minLongSide] (power-of-two subsampling), as the app stores and loads it. */
+    private fun decode(file: File, minLongSide: Int): Bitmap {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        val long = max(bounds.outWidth, bounds.outHeight)
+        var sample = 1
+        while (long / (sample * 2) >= minLongSide) sample *= 2
+        return BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: error("cannot decode ${file.name}")
+    }
+
+    /** The photo at the classic detector's size. */
     private fun load(file: File, minLongSide: Int): RgbImage {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)

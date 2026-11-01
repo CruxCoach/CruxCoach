@@ -128,6 +128,7 @@
 
     <!-- Griffvorschläge -->
     <string name="spray_detect">Griffe finden</string>
+    <string name="spray_detect_running_progress">Griffe werden gesucht … %1$d %%</string>
     <string name="spray_detect_running">Griffe werden gesucht …</string>
     <string name="spray_detect_suggestions">Vorgeschlagene Griffe: %1$d</string>
     <string name="spray_detect_none_open">Keine offenen Vorschläge. Empfindlicher zeigt auch unsichere.</string>
