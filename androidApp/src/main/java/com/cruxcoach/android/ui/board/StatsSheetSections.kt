@@ -18,6 +18,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDropUp
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +37,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
@@ -55,7 +60,11 @@ import com.cruxcoach.android.ui.theme.GradeEasy
 import com.cruxcoach.android.ui.theme.GradeElite
 import com.cruxcoach.android.ui.theme.GradeHard
 import com.cruxcoach.android.ui.theme.GradeMedium
+import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.SuccessGreen
+import com.cruxcoach.android.ui.theme.zoneColorForDifficulty
+import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.android.util.GradeDisplayHelper
 import java.time.LocalDate
 import kotlin.math.abs
@@ -67,35 +76,75 @@ import kotlin.math.min
 // ---------------------------------------------------------------- the period in numbers
 
 /**
- * Sends, tries, climbing days and distinct problems of the chosen period and
- * boards, as plain numbers under the filters: everything below explains them.
+ * Sends, tries, climbing days, distinct problems and the flash rate of the
+ * chosen period and boards, as plain numbers under the filters: everything
+ * below explains them. For a period with a length, each number shows its
+ * change against the period of the same length before.
  */
 @Composable
 internal fun PeriodNumbers(stats: BoardLogbookStats) {
     if (stats.totalSends == 0 && stats.totalAttempts == 0) return
     val sends = if (stats.routeSends > 0) "${stats.boulderSends}B / ${stats.routeSends}R" else "${stats.totalSends}"
-    Row(
+    val before = stats.previous
+    val flash = Math.round(stats.flashRate)
+    Column(
         Modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
             .padding(vertical = 10.dp),
     ) {
-        val column = Modifier.weight(1f).fillMaxHeight()
-        PeriodNumber(sends, stringResource(R.string.board_sends), column)
-        PeriodNumber("${stats.totalAttempts}", stringResource(R.string.board_session_summary_attempts), column)
-        PeriodNumber("${stats.sessionCount}", stringResource(R.string.board_logbook_sessions), column)
-        PeriodNumber("${stats.uniqueClimbs}", stringResource(R.string.board_stats_problems), column)
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            val column = Modifier.weight(1f).fillMaxHeight()
+            PeriodNumber(sends, stringResource(R.string.board_sends), before?.let { stats.totalSends - it.sends }, column)
+            PeriodNumber(
+                "${stats.totalAttempts}", stringResource(R.string.board_session_summary_attempts),
+                before?.let { stats.totalAttempts - it.attempts }, column,
+            )
+            PeriodNumber(
+                "${stats.sessionCount}", stringResource(R.string.board_logbook_sessions),
+                before?.let { stats.sessionCount - it.sessions }, column,
+            )
+            PeriodNumber(
+                "${stats.uniqueClimbs}", stringResource(R.string.board_stats_problems),
+                before?.let { stats.uniqueClimbs - it.problems }, column,
+            )
+            PeriodNumber(
+                "$flash %", stringResource(R.string.board_logbook_flash),
+                before?.let { flash - Math.round(it.flashRate) }, column, unit = " %",
+            )
+        }
+        if (before != null) {
+            Text(
+                stringResource(R.string.board_stats_period_versus),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 6.dp),
+            )
+        }
     }
 }
 
 @Composable
-private fun PeriodNumber(value: String, label: String, modifier: Modifier) {
+private fun PeriodNumber(value: String, label: String, change: Int?, modifier: Modifier, unit: String = "") {
+    val changeText = change?.let { if (it > 0) "+$it$unit" else if (it < 0) "−${-it}$unit" else "±0$unit" }
     Column(
-        modifier.clearAndSetSemantics { contentDescription = "$label: $value" },
+        modifier.clearAndSetSemantics { contentDescription = listOfNotNull(label, value, changeText).joinToString(", ") },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        if (change != null && changeText != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (change != 0) {
+                    Icon(
+                        if (change > 0) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
+                        contentDescription = null,
+                        tint = if (change > 0) SuccessGreen else ErrorRed,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                Text(changeText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
@@ -107,14 +156,49 @@ private fun PeriodNumber(value: String, label: String, modifier: Modifier) {
 
 // ---------------------------------------------------------------- grades
 
+@Composable
+private fun gradesViewLabel(view: GradesView): String = when (view) {
+    GradesView.PROBLEMS -> stringResource(R.string.board_stats_grades_title)
+    GradesView.SENDS -> stringResource(R.string.board_stats_grade_sends_title)
+}
+
 /**
- * Problems per grade, each counted once by its best result: flashed, sent
- * later, or not sent yet. The same light blue means a flash as in "Tries
- * until the send", a darker blue a send after more tries. Tap a grade for its
- * numbers.
+ * The grades in two views. "Problems per grade" counts every problem once by
+ * its best result: flashed, sent later, or not sent yet; the same light blue
+ * means a flash as in "Tries until the send". "Sends per grade" counts every
+ * send with its repeats, coloured by the climber's intensity zones. Tap a
+ * grade for its numbers.
  */
 @Composable
-internal fun GradesCard(entries: List<GradeOutcomeEntry>) {
+internal fun GradesCard(
+    outcomes: List<GradeOutcomeEntry>,
+    sends: List<BoardGradePyramidEntry>,
+    zones: IntensityZones?,
+    view: GradesView,
+    onSelect: (GradesView) -> Unit,
+) {
+    if (outcomes.isEmpty() && sends.isEmpty()) return
+    ChartSectionWithSelector(
+        options = GradesView.entries.toTypedArray(),
+        selected = view,
+        onSelect = onSelect,
+        labelOf = { gradesViewLabel(it) },
+        help = stringResource(
+            when (view) {
+                GradesView.PROBLEMS -> R.string.board_stats_grades_help
+                GradesView.SENDS -> R.string.board_stats_grade_sends_help
+            },
+        ),
+    ) {
+        when (view) {
+            GradesView.PROBLEMS -> ProblemsPerGrade(outcomes)
+            GradesView.SENDS -> SendsPerGrade(sends, zones)
+        }
+    }
+}
+
+@Composable
+private fun ProblemsPerGrade(entries: List<GradeOutcomeEntry>) {
     if (entries.isEmpty()) return
     val ramp = triesRamp()
     val shades = listOf(ramp[0], ramp[2], MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f))
@@ -123,64 +207,95 @@ internal fun GradesCard(entries: List<GradeOutcomeEntry>) {
         stringResource(R.string.ux_later_send),
         stringResource(R.string.board_stats_grades_open),
     )
-    val most = entries.maxOf { it.total }.coerceAtLeast(1)
-    var selected by remember(entries) { mutableStateOf<String?>(null) }
-    ChartSection(
-        stringResource(R.string.board_stats_grades_title),
-        help = stringResource(R.string.board_stats_grades_help),
-    ) {
-        SwatchLegend(labels.zip(shades))
+    SwatchLegend(labels.zip(shades))
+    Spacer(Modifier.height(10.dp))
+    // Hardest grade on top, like a pyramid.
+    GradeRows(
+        rows = entries.asReversed().map { entry ->
+            val counts = listOf(entry.flashCount, entry.redpointCount, entry.attemptCount)
+            GradeRow(entry.grade, counts.zip(shades), counts.indices.filter { counts[it] > 0 }.joinToString(" · ") { "${labels[it]} ${counts[it]}" })
+        },
+    )
+}
+
+@Composable
+private fun SendsPerGrade(entries: List<BoardGradePyramidEntry>, zones: IntensityZones?) {
+    if (entries.isEmpty()) return
+    if (zones != null) {
+        // The colours of zoneColorForDifficulty, as in the end-of-session summary.
+        SwatchLegend(
+            listOf(
+                stringResource(R.string.board_zone_warmup) to GradeEasy,
+                stringResource(R.string.board_zone_optimal) to GradeMedium,
+                stringResource(R.string.board_zone_limit) to GradeHard,
+            ),
+        )
         Spacer(Modifier.height(10.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            // Hardest grade on top, like a pyramid.
-            entries.asReversed().forEach { entry ->
-                val counts = listOf(entry.flashCount, entry.redpointCount, entry.attemptCount)
-                val detail = counts.indices.filter { counts[it] > 0 }.joinToString(" · ") { "${labels[it]} ${counts[it]}" }
-                val expanded = selected == entry.grade
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (expanded) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f) else Color.Transparent)
-                        .clickable { selected = if (expanded) null else entry.grade }
-                        .semantics { contentDescription = "${entry.grade}: $detail" }
-                        .padding(vertical = 4.dp, horizontal = 4.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            entry.grade,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.width(44.dp),
-                        )
-                        Canvas(Modifier.weight(1f).height(16.dp)) {
-                            val gap = 2.dp.toPx()
-                            val full = size.width * entry.total / most
-                            val shown = counts.withIndex().filter { it.value > 0 }
-                            val width = (full - gap * (shown.size - 1)).coerceAtLeast(2f)
-                            var x = 0f
-                            shown.forEach { (i, n) ->
-                                val w = (width * n / entry.total).coerceAtLeast(2.dp.toPx())
-                                drawRoundRect(shades[i], Offset(x, 0f), Size(w, size.height), CornerRadius(4.dp.toPx()))
-                                x += w + gap
-                            }
+    }
+    val sendsLabel = stringResource(R.string.board_sends)
+    GradeRows(
+        rows = entries.asReversed().map { entry ->
+            val color = zoneColorForDifficulty(entry.difficultyInt.toDouble(), zones)
+            GradeRow(entry.grade, listOf(entry.count to color), "$sendsLabel ${entry.count}")
+        },
+    )
+}
+
+/** One grade row: its segments, each a count and a colour, and the detail shown on tap. */
+private class GradeRow(val grade: String, val segments: List<Pair<Int, Color>>, val detail: String) {
+    val total: Int get() = segments.sumOf { it.first }
+}
+
+@Composable
+private fun GradeRows(rows: List<GradeRow>) {
+    val most = rows.maxOf { it.total }.coerceAtLeast(1)
+    var selected by remember(rows.map { it.grade }) { mutableStateOf<String?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        rows.forEach { row ->
+            val expanded = selected == row.grade
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (expanded) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f) else Color.Transparent)
+                    .clickable { selected = if (expanded) null else row.grade }
+                    .semantics { contentDescription = "${row.grade}: ${row.detail}" }
+                    .padding(vertical = 4.dp, horizontal = 4.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        row.grade,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = Modifier.width(44.dp),
+                    )
+                    Canvas(Modifier.weight(1f).height(16.dp)) {
+                        val gap = 2.dp.toPx()
+                        val full = size.width * row.total / most
+                        val shown = row.segments.filter { it.first > 0 }
+                        val width = (full - gap * (shown.size - 1)).coerceAtLeast(2f)
+                        var x = 0f
+                        shown.forEach { (n, color) ->
+                            val w = (width * n / row.total).coerceAtLeast(2.dp.toPx())
+                            drawRoundRect(color, Offset(x, 0f), Size(w, size.height), CornerRadius(4.dp.toPx()))
+                            x += w + gap
                         }
-                        Text(
-                            "${entry.total}",
-                            style = MaterialTheme.typography.labelMedium,
-                            textAlign = TextAlign.End,
-                            modifier = Modifier.width(36.dp),
-                        )
                     }
-                    if (expanded) {
-                        Text(
-                            detail,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 44.dp, top = 4.dp),
-                        )
-                    }
+                    Text(
+                        "${row.total}",
+                        style = MaterialTheme.typography.labelMedium,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.width(36.dp),
+                    )
+                }
+                if (expanded) {
+                    Text(
+                        row.detail,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 44.dp, top = 4.dp),
+                    )
                 }
             }
         }
@@ -406,19 +521,26 @@ private val PROGRESS_END_LABELS = 44.dp
 @Composable
 private fun activityViewLabel(view: ActivityView): String = when (view) {
     ActivityView.CALENDAR -> stringResource(R.string.board_stats_activity)
-    ActivityView.WEEKLY -> stringResource(R.string.board_stats_weekly_volume)
+    ActivityView.DAYS_PER_WEEK -> stringResource(R.string.board_stats_days_per_week)
+    ActivityView.ENTRIES -> stringResource(R.string.board_stats_entries_over_time)
+    ActivityView.SENDS -> stringResource(R.string.board_stats_sends_over_time)
 }
 
-/** When you climbed: the days as a calendar, or the entries per week by grade band. */
+/**
+ * When you climbed: the days as a calendar, or all entries or only the sends
+ * per week (per month over long periods) by grade band.
+ */
 @Composable
 internal fun ActivityCard(
     view: ActivityView,
     onSelect: (ActivityView) -> Unit,
     activityMap: Map<LocalDate, Int>,
-    weeklyVolume: List<WeeklyVolumeEntry>,
+    daysPerWeek: List<DaysPerWeek>,
+    entries: List<VolumeBucket>,
+    sends: List<VolumeBucket>,
     interval: StatsTimeInterval,
 ) {
-    if (activityMap.isEmpty() && weeklyVolume.isEmpty()) return
+    if (activityMap.isEmpty() && entries.isEmpty()) return
     ChartSectionWithSelector(
         options = ActivityView.entries.toTypedArray(),
         selected = view,
@@ -431,17 +553,19 @@ internal fun ActivityCard(
                 Spacer(Modifier.height(8.dp))
                 HeatmapLegend()
             }
-            ActivityView.WEEKLY -> WeeklyChart(weeklyVolume)
+            ActivityView.DAYS_PER_WEEK -> DaysPerWeekChart(daysPerWeek)
+            ActivityView.ENTRIES -> VolumeChart(entries, stringResource(R.string.board_stats_entries_over_time))
+            ActivityView.SENDS -> VolumeChart(sends, stringResource(R.string.board_stats_sends_over_time))
         }
     }
 }
 
 /**
- * Log entries per week as columns on a time axis, so weeks off stay visible
- * as gaps, stacked by grade band in the grade colours.
+ * Columns per week or month on a time axis, so time off stays visible as
+ * gaps, stacked by grade band in the grade colours.
  */
 @Composable
-private fun WeeklyChart(entries: List<WeeklyVolumeEntry>) {
+private fun VolumeChart(entries: List<VolumeBucket>, title: String) {
     if (entries.isEmpty()) return
     val bands = listOf(GradeEasy, GradeMedium, GradeHard, GradeElite)
     val used = listOf(
@@ -463,11 +587,10 @@ private fun WeeklyChart(entries: List<WeeklyVolumeEntry>) {
     val ink = MaterialTheme.colorScheme.onSurface
     val months = MONTH_LABELS.map { stringResource(it) }
     val most = entries.maxOf { it.total }.coerceAtLeast(1)
-    val first = entries.first().weekStart
-    val last = entries.last().weekStart.plusDays(6)
+    val first = entries.first().start
+    val last = entries.last().let { it.start.plusDays(it.days - 1L) }
     val days = (last.toEpochDay() - first.toEpochDay() + 1).toFloat()
-    val description = stringResource(R.string.board_stats_weekly_volume) + ": " +
-        entries.joinToString("; ") { "${it.weekStart}: ${it.total}" }
+    val description = "$title: " + entries.joinToString("; ") { "${it.start}: ${it.total}" }
 
     Canvas(
         Modifier
@@ -480,9 +603,7 @@ private fun WeeklyChart(entries: List<WeeklyVolumeEntry>) {
         val top = 6.dp.toPx()
         val bottom = WEEKLY_PLOT_HEIGHT.toPx()
         fun xOf(day: LocalDate) = left + (day.toEpochDay() - first.toEpochDay()) / days * (right - left)
-        val week = (right - left) * 7 / days
-        val gap = min(2.dp.toPx(), week * 0.25f)
-        val barWidth = (week - gap).coerceAtLeast(1.dp.toPx())
+        val dayWidth = (right - left) / days
 
         listOf(most / 2, most).distinct().filter { it > 0 }.forEach { value ->
             val y = bottom - value.toFloat() / most * (bottom - top)
@@ -498,7 +619,10 @@ private fun WeeklyChart(entries: List<WeeklyVolumeEntry>) {
         )
 
         entries.forEach { entry ->
-            val x = xOf(entry.weekStart) + gap / 2
+            val span = dayWidth * entry.days
+            val gap = min(2.dp.toPx(), span * 0.25f)
+            val barWidth = (span - gap).coerceAtLeast(1.dp.toPx())
+            val x = xOf(entry.start) + gap / 2
             var y = bottom
             val counts = listOf(entry.easyCount, entry.mediumCount, entry.hardCount, entry.eliteCount)
             val topBand = counts.indexOfLast { it > 0 }
@@ -521,3 +645,78 @@ private fun WeeklyChart(entries: List<WeeklyVolumeEntry>) {
 }
 
 private val WEEKLY_PLOT_HEIGHT = 112.dp
+
+/**
+ * Climbing days per week as columns on a time axis, per week or, over long
+ * periods, as the weekly average of each month. A faint line marks the
+ * average over the whole period.
+ */
+@Composable
+private fun DaysPerWeekChart(entries: List<DaysPerWeek>) {
+    if (entries.isEmpty()) return
+    val measurer = rememberTextMeasurer()
+    val axisStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val averageStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+    val ink = MaterialTheme.colorScheme.onSurface
+    val months = MONTH_LABELS.map { stringResource(it) }
+    val first = entries.first().start
+    val last = entries.last().let { it.start.plusDays(it.days - 1L) }
+    val days = (last.toEpochDay() - first.toEpochDay() + 1).toFloat()
+    // Weighted by length, so short months do not count as much as long ones.
+    val average = entries.sumOf { it.perWeek * it.days } / entries.sumOf { it.days }
+    val top = max(3.0, ceil(entries.maxOf { it.perWeek })).coerceAtMost(7.0)
+    val averageLabel = stringResource(R.string.board_stats_days_per_week_average, average)
+    val description = stringResource(R.string.board_stats_days_per_week) + ": " + averageLabel + ". " +
+        entries.joinToString("; ") { "${it.start}: ${"%.1f".format(it.perWeek)}" }
+
+    // The average above the chart, so it never covers a column.
+    Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Spacer(Modifier.weight(1f))
+        Canvas(Modifier.width(16.dp).height(2.dp)) {
+            drawLine(ink.copy(alpha = 0.55f), Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 1.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)))
+        }
+        Spacer(Modifier.width(6.dp))
+        Text(averageLabel, style = averageStyle)
+    }
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(WEEKLY_PLOT_HEIGHT + PROGRESS_AXIS_HEIGHT)
+            .semantics { contentDescription = description },
+    ) {
+        val left = PROGRESS_Y_AXIS.toPx()
+        val right = size.width
+        val plotTop = 6.dp.toPx()
+        val bottom = WEEKLY_PLOT_HEIGHT.toPx()
+        fun xOf(day: LocalDate) = left + (day.toEpochDay() - first.toEpochDay()) / days * (right - left)
+        fun yOf(v: Double) = bottom - (v / top).toFloat() * (bottom - plotTop)
+        val dayWidth = (right - left) / days
+
+        listOf(top / 2, top).forEach { value ->
+            val y = yOf(value)
+            drawLine(ink.copy(alpha = 0.10f), Offset(left, y), Offset(right, y), 1.dp.toPx())
+            val text = measurer.measure(if (value == floor(value)) "${value.toInt()}" else "%.1f".format(value), axisStyle)
+            drawText(text, topLeft = Offset(0f, y - text.size.height / 2f))
+        }
+        drawLine(ink.copy(alpha = 0.20f), Offset(left, bottom), Offset(right, bottom), 1.dp.toPx())
+        drawMonthAxis(
+            measurer, axisStyle, months, first, last, ::xOf,
+            gridTop = plotTop, gridBottom = bottom, labelTop = bottom + 2.dp.toPx(),
+            right = right, grid = ink.copy(alpha = 0.06f),
+        )
+        entries.forEach { entry ->
+            if (entry.perWeek <= 0.0) return@forEach
+            val span = dayWidth * entry.days
+            val gap = min(2.dp.toPx(), span * 0.25f)
+            val width = (span - gap).coerceAtLeast(1.dp.toPx())
+            val y = yOf(entry.perWeek)
+            val r = min(2.dp.toPx(), width / 2)
+            drawRoundRect(OrangeAccent, Offset(xOf(entry.start) + gap / 2, y), Size(width, bottom - y), CornerRadius(r))
+            if (bottom - y > r) drawRect(OrangeAccent, Offset(xOf(entry.start) + gap / 2, y + r), Size(width, bottom - y - r))
+        }
+        // The average over the period; its value stands above the chart.
+        val y = yOf(average)
+        drawLine(ink.copy(alpha = 0.55f), Offset(left, y), Offset(right, y), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)))
+    }
+}

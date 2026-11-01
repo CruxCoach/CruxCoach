@@ -1674,7 +1674,7 @@
     <string name="board_stats_cross_board_send_curve">Versuche bis zur Begehung</string>
     <string name="board_stats_cross_board_send_curve_help">Wie viele Versuche deine Boulder bis zur ersten Begehung gebraucht haben, je Board: Flash, im 2. oder 3. Versuch, nach 4 bis 5 oder nach 6 und mehr Versuchen. Versuche aus früheren Sessions zählen mit, eine Begehung nach Versuchen an einem früheren Tag ist also kein Flash.\n\nHohle Balken beruhen auf weniger als %1$d Bouldern.\n\nTippe auf ein Board, um die Zahlen zu sehen.</string>
     <string name="board_stats_glance_title">Auf einen Blick</string>
-    <string name="board_stats_glance_help">Oben: deine schwerste Begehung und dein schwerster Flash im ganzen Logbuch.\n\nDarunter: die letzten %1$d Tage gegenüber den %1$d Tagen davor. Klettertage sind Tage mit mindestens einem Eintrag. Versuche je Begehung zählt alle Versuche bis zur ersten Begehung eines Boulders, auch aus früheren Sessions.\n\nGrün heißt besser: mehr Begehungen, ein schwererer Grad, weniger Versuche je Begehung.</string>
+    <string name="board_stats_glance_help">Oben: deine schwerste Begehung und dein schwerster Flash im ganzen Logbuch.\n\nDarunter: die letzten %1$d Tage gegenüber den %1$d Tagen davor: Klettertage (Tage mit mindestens einem Eintrag), Begehungen und deine schwerste Begehung. Grün heißt mehr oder ein schwererer Grad.\n\nKlettertage pro Woche: der Schnitt der letzten acht Wochen.</string>
     <string name="board_stats_glance_hardest_send">Schwerste Begehung</string>
     <string name="board_stats_glance_hardest_flash">Schwerster Flash</string>
     <string name="board_stats_glance_hardest">Schwerste</string>
@@ -1684,7 +1684,6 @@
         <item quantity="other">%d Klettertage</item>
     </plurals>
     <string name="board_stats_glance_versus">ggü. den %1$d Tagen davor</string>
-    <string name="board_stats_glance_tries_delta">%1$.1f</string>
     <string name="board_stats_milestones_help">Neuer Grad: die erste Begehung eines Grads, der schwerer ist als alle Begehungen davor.\n\nBegehungen: wann du 50, 100, 250 und mehr Begehungen erreicht hast.\n\nBegehungen an einem Tag: dein bester Tag, ab %1$d Begehungen.\n\nWochen in Folge: Wochen mit mindestens einem Klettertag, bis in diese oder die letzte Woche.</string>
     <string name="board_stats_milestone_new_grade">Neuer Grad</string>
     <string name="board_stats_milestone_biggest_day">Begehungen an einem Tag</string>
@@ -1712,6 +1711,15 @@
     <string name="board_stats_grades_help">Jeder Boulder, den du im gewählten Zeitraum geloggt hast, zählt einmal je Board, über alle Winkel, mit seinem besten Ergebnis: Flash, später geschafft oder noch offen.\n\nFür einen Flash muss der erste erfasste Eintrag bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch.\n\nTippe auf einen Grad, um seine Zahlen zu sehen.</string>
     <string name="board_stats_grades_open">Noch offen</string>
     <string name="board_logbook_filter_period">Zeitraum</string>
+    <string name="board_stats_period_versus">Änderung gegenüber dem gleich langen Zeitraum davor</string>
+    <string name="board_stats_grade_sends_title">Begehungen je Grad</string>
+    <string name="board_stats_grade_sends_help">Jede Begehung im gewählten Zeitraum zählt, auch Wiederholungen.\n\nDie Farben sind deine Intensitätszonen: Aufwärmen, optimal und Limit, berechnet aus den Graden, die du loggst. Zum Vergleich zählt „Boulder je Grad“ jeden Boulder einmal.</string>
+    <string name="board_stats_days_per_week">Klettertage pro Woche</string>
+    <string name="board_stats_days_per_week_average">Ø %1$.1f pro Woche</string>
+    <string name="board_stats_entries_over_time">Einträge im Zeitverlauf</string>
+    <string name="board_stats_sends_over_time">Begehungen im Zeitverlauf</string>
+    <string name="board_stats_glance_per_week">Klettertage pro Woche</string>
+    <string name="board_stats_glance_per_week_value">%1$.1f</string>
     <string name="board_stats_date_range">Zeitraum…</string>
     <string name="board_stats_grade_easy">Leicht</string>
     <string name="board_stats_grade_elite">Elite</string>
@@ -1724,7 +1732,6 @@
     <string name="board_stats_interval_all">Gesamt</string>
     <string name="board_stats_total">Gesamt</string>
     <string name="board_stats_unique">Verschiedene Boulder</string>
-    <string name="board_stats_weekly_volume">Einträge pro Woche</string>
     <string name="board_zone_limit">Limit</string>
     <string name="board_zone_optimal">Optimal</string>
     <string name="board_zone_warmup">Warm-Up</string>

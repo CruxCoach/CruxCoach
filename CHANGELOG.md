@@ -24,17 +24,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   data is refreshed (2,933 venues).
 - Logbook overview: the logbook now opens with one card instead of six tiles:
   your hardest send and hardest flash, the last 30 days against the 30 before
-  (sends, hardest grade, tries per send; green means better) and your milestones
-  (new grades, 50, 100, 250 and more sends, your biggest day, weeks in a row).
-  Tap it for the statistics. The period filter of the list moved into the
-  logbook filter, next to result, board and angle.
+  (climbing days, sends and hardest grade; green means more or harder), your
+  climbing days per week and your milestones (new grades, 50, 100, 250 and more
+  sends, your biggest day, weeks in a row). Tap it for the statistics. The period
+  filter of the list moved into the logbook filter, next to result, board and
+  angle.
 - Statistics, reorganised so every number and chart appears once: the period
-  and board filters on top (each board chip shows its sends), the period in four
-  numbers, then progress (the rolling level, one line per board), problems per
-  grade (flashed, sent later or still open), tries, activity (calendar or per
-  week), angles and holds. The grade pyramid, the flash donut, sent climbs per
-  grade, log entries over time, the records row and the period comparison are
-  folded into these.
+  and board filters on top (each board chip shows its sends and best grade),
+  the period in five numbers with the change against the period before (sends,
+  tries, climbing days, problems, flash rate), then progress (the rolling level,
+  one line per board), grades (problems per grade by flash, later send or still
+  open, or every send with repeats in your intensity-zone colours), tries,
+  activity (calendar, climbing days per week, entries or sends over time),
+  angles and holds.
 - Tries until the send: per board, how many of your problems you flashed or sent
   on the 2nd, 3rd, 4th–5th or a later try. Tries from earlier sessions count, so a
   send after attempts on an earlier day is no flash.

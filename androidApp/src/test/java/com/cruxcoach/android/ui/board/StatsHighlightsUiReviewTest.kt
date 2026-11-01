@@ -109,6 +109,9 @@ class StatsHighlightsUiReviewTest {
     private val stats = BoardStatsComputer.computeStats(logbook, StatsTimeInterval.ALL, scale, clock = clock)
     private val byBoard = BoardStatsComputer.gradeProgressionByBoard(logbook, StatsTimeInterval.ALL, clock = clock)
     private val recap = StatsHighlightsComputer.sessionRecap(logbook, today, scale, flashUuids)!!
+    private val zones = com.cruxcoach.domain.board.IntensityZoneEngine.computeZones(
+        logbook.mapNotNull { it.difficultyAverage },
+    )
 
     private fun shoot(name: String, before: () -> Unit = {}, content: @Composable () -> Unit) {
         var view: android.view.View? = null
@@ -148,7 +151,7 @@ class StatsHighlightsUiReviewTest {
             PeriodNumbers(stats)
             BoardsCard(cross.feel!!, cross.boards, boards)
             ProgressCard(stats.gradeProgression, byBoard, boardFilter = null, allBoards = boards, gradeScale = scale)
-            GradesCard(stats.gradeOutcomes)
+            GradesCard(stats.gradeOutcomes, stats.gradePyramid, zones, GradesView.PROBLEMS, onSelect = {})
         }
     }
 
@@ -157,7 +160,7 @@ class StatsHighlightsUiReviewTest {
     fun sheetBottom() = shoot("stats-sheet-2") {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             CrossBoardSection(cross, CrossBoardView.TRIES_UNTIL_SEND, onViewSelect = {}, allBoards = boards)
-            ActivityCard(ActivityView.CALENDAR, onSelect = {}, stats.activityMap, stats.weeklyVolume, StatsTimeInterval.ALL)
+            ActivityCard(ActivityView.CALENDAR, onSelect = {}, stats.activityMap, stats.daysPerWeek, stats.entriesOverTime, stats.sendsOverTime, StatsTimeInterval.ALL)
             ChartSection("Winkel-Verteilung") { BoardAngleDistChart(entries = stats.angleDistribution) }
         }
     }
@@ -173,21 +176,34 @@ class StatsHighlightsUiReviewTest {
                 LogbookOverviewCard(one, badges, listOf("kilter"), onOpenStats = {})
                 PeriodNumbers(kilterStats)
                 ProgressCard(kilterStats.gradeProgression, emptyMap(), boardFilter = null, allBoards = listOf("kilter"), gradeScale = scale)
-                GradesCard(kilterStats.gradeOutcomes)
+                GradesCard(kilterStats.gradeOutcomes, kilterStats.gradePyramid, zones, GradesView.PROBLEMS, onSelect = {})
             }
         }
     }
 
     @Test
     fun weekly() = shoot("stats-weekly") {
-        ActivityCard(ActivityView.WEEKLY, onSelect = {}, stats.activityMap, stats.weeklyVolume, StatsTimeInterval.ALL)
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            ActivityCard(ActivityView.DAYS_PER_WEEK, onSelect = {}, stats.activityMap, stats.daysPerWeek, stats.entriesOverTime, stats.sendsOverTime, StatsTimeInterval.ALL)
+            ActivityCard(ActivityView.SENDS, onSelect = {}, stats.activityMap, stats.daysPerWeek, stats.entriesOverTime, stats.sendsOverTime, StatsTimeInterval.ALL)
+        }
+    }
+
+    @Test
+    fun gradeSends() = shoot("stats-grade-sends") {
+        GradesCard(stats.gradeOutcomes, stats.gradePyramid, zones, GradesView.SENDS, onSelect = {})
+    }
+
+    @Test
+    fun periodNumbers30Days() = shoot("stats-period-30") {
+        PeriodNumbers(BoardStatsComputer.computeStats(logbook, StatsTimeInterval.DAYS_30, scale, clock = clock))
     }
 
     @Test
     fun gradesOpen() = shoot("stats-grades-open", before = {
         compose.onNodeWithText(stats.gradeOutcomes.last().grade).performClick()
     }) {
-        GradesCard(stats.gradeOutcomes)
+        GradesCard(stats.gradeOutcomes, stats.gradePyramid, zones, GradesView.PROBLEMS, onSelect = {})
     }
 
     @Test

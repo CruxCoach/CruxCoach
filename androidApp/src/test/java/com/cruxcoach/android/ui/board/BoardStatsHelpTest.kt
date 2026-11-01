@@ -36,7 +36,7 @@ class BoardStatsHelpTest {
             totalAttempts = 6,
             gradeOutcomes = listOf(GradeOutcomeEntry("6a", 15, 1, 2, 3)),
             activityMap = mapOf(java.time.LocalDate.now() to 2),
-            weeklyVolume = listOf(WeeklyVolumeEntry(java.time.LocalDate.now(), 1, 2, 0, 0)),
+            entriesOverTime = listOf(VolumeBucket(java.time.LocalDate.now(), 7, 1, 2, 0, 0)),
         )
         compose.setContent {
             MaterialTheme {
@@ -70,8 +70,8 @@ class BoardStatsHelpTest {
         compose.onNodeWithText(app.getString(R.string.board_stats_activity))
             .performScrollTo().assertIsDisplayed().onParent()
             .performSemanticsAction(SemanticsActions.OnClick) { it() }
-        compose.onNodeWithText(app.getString(R.string.board_stats_weekly_volume))
+        compose.onNodeWithText(app.getString(R.string.board_stats_entries_over_time))
             .performScrollTo().assertIsDisplayed().performSemanticsAction(SemanticsActions.OnClick) { it() }
-        compose.runOnIdle { assertEquals(ActivityView.WEEKLY, selected.value) }
+        compose.runOnIdle { assertEquals(ActivityView.ENTRIES, selected.value) }
     }
 }

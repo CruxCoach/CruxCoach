@@ -54,33 +54,38 @@ internal fun boardBrandLabel(brand: String): String = when (val b = BoardBrand.f
 @Composable
 private fun BoardFilterChips(
     brands: List<String>,
-    sends: Map<String, Int>,
+    comparison: List<BoardComparisonEntry>,
     selected: String?,
     onSelect: (String?) -> Unit,
 ) {
+    val byBoard = comparison.associateBy { it.boardBrand }
+    val hardest = comparison.filter { it.hardestGrade != null }.maxByOrNull { it.hardestDifficultyInt }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(
             selected = selected == null,
             onClick = { onSelect(null) },
-            label = { BoardChipLabel(stringResource(R.string.map_filter_show_all), sends.values.sum()) },
+            label = {
+                BoardChipLabel(stringResource(R.string.map_filter_show_all), comparison.sumOf { it.sendCount }, hardest?.hardestGrade)
+            },
         )
         brands.forEach { brand ->
             FilterChip(
                 selected = selected == brand,
                 onClick = { onSelect(brand) },
-                label = { BoardChipLabel(boardBrandLabel(brand), sends[brand] ?: 0) },
+                label = { BoardChipLabel(boardBrandLabel(brand), byBoard[brand]?.sendCount ?: 0, byBoard[brand]?.hardestGrade) },
             )
         }
     }
 }
 
+/** "Kilter 11 · 7a": the board, its sends and its best grade in the period. */
 @Composable
-private fun BoardChipLabel(name: String, sends: Int) {
+private fun BoardChipLabel(name: String, sends: Int, best: String?) {
     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Text(name)
         Spacer(Modifier.width(6.dp))
         Text(
-            "$sends",
+            listOfNotNull("$sends", best).joinToString(" · "),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -93,6 +98,7 @@ internal fun BoardStatsSheet(
     stats: BoardLogbookStats,
     statsInterval: StatsTimeInterval,
     gradeScale: GradeScale,
+    zones: com.cruxcoach.domain.board.IntensityZones? = null,
     customDateFrom: LocalDate? = null,
     customDateTo: LocalDate? = null,
     heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
@@ -109,6 +115,8 @@ internal fun BoardStatsSheet(
     progressionByBoard: Map<String, List<GradeProgressionPoint>> = emptyMap(),
     activityView: ActivityView = ActivityView.CALENDAR,
     onActivityViewSelect: (ActivityView) -> Unit = {},
+    gradesView: GradesView = GradesView.PROBLEMS,
+    onGradesViewSelect: (GradesView) -> Unit = {},
     heatmapBoardOptions: List<com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption> = emptyList(),
     heatmapBoardSelection: com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption? = null,
     onHeatmapBoardSelect: (com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption?) -> Unit = {},
@@ -147,7 +155,7 @@ internal fun BoardStatsSheet(
             if (availableBoardBrands.size > 1) {
                 BoardFilterChips(
                     brands = availableBoardBrands,
-                    sends = boardComparison.associate { it.boardBrand to it.sendCount },
+                    comparison = boardComparison,
                     selected = boardFilter,
                     onSelect = onBoardFilterSelect,
                 )
@@ -174,8 +182,15 @@ internal fun BoardStatsSheet(
                 )
             }
 
-            // Which grades: every problem once, flashed, sent later or open.
-            GradesCard(stats.gradeOutcomes)
+            // Which grades: every problem once (flashed, sent later or open),
+            // or every send with its repeats in the intensity-zone colours.
+            GradesCard(
+                outcomes = stats.gradeOutcomes,
+                sends = stats.gradePyramid,
+                zones = zones,
+                view = gradesView,
+                onSelect = onGradesViewSelect,
+            )
 
             // How many tries: until the send, per grade, per month (#44).
             if (crossBoard.boards.isNotEmpty()) {
@@ -187,12 +202,14 @@ internal fun BoardStatsSheet(
                 )
             }
 
-            // When: the days as a calendar, or the entries per week.
+            // When: the days as a calendar, or all entries or the sends over time.
             ActivityCard(
                 view = activityView,
                 onSelect = onActivityViewSelect,
                 activityMap = stats.activityMap,
-                weeklyVolume = stats.weeklyVolume,
+                daysPerWeek = stats.daysPerWeek,
+                entries = stats.entriesOverTime,
+                sends = stats.sendsOverTime,
                 interval = statsInterval,
             )
 

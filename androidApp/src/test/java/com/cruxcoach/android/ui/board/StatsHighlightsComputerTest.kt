@@ -72,13 +72,11 @@ class StatsHighlightsComputerTest {
         )
         val recent = StatsHighlightsComputer.atAGlance(rows, scale, clock = clock).recent!!
         assertEquals("days with any entry", 3, recent.sessions)
+        assertEquals(2, recent.previousSessions)
         assertEquals(3, recent.sends)
         assertEquals(2, recent.previousSends)
         assertEquals(grade(20.0), recent.hardest?.grade)
         assertEquals(2, recent.hardestStep)
-        // c1 took 3 tries over two days, c2 and c3 one each.
-        assertEquals(5.0 / 3, recent.triesPerSend!!, 1e-9)
-        assertEquals(3.0, recent.previousTriesPerSend!!, 1e-9)
         assertTrue(recent.hasPrevious)
     }
 
@@ -95,7 +93,7 @@ class StatsHighlightsComputerTest {
         val recent = StatsHighlightsComputer.atAGlance(listOf(row("c", "2026-03-20")), scale, clock = clock).recent!!
         assertFalse(recent.hasPrevious)
         assertNull(recent.hardestStep)
-        assertNull(recent.previousTriesPerSend)
+        assertEquals(0, recent.previousSessions)
     }
 
     @Test

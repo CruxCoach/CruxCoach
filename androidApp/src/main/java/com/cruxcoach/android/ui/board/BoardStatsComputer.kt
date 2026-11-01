@@ -69,7 +69,9 @@ object BoardStatsComputer {
         val outcomeSends = problemOutcomes.filter { it.isSend }
         val outcomeBids = problemOutcomes.filterNot { it.isSend }
         val gradeOutcomes = computeGradeOutcomes(outcomeSends, outcomeBids, gradeScale, flashUuids)
-        val weeklyVolume = computeWeeklyVolume(filtered)
+        val daysPerWeek = computeDaysPerWeek(filtered)
+        val entriesOverTime = computeVolume(filtered)
+        val sendsOverTime = computeVolume(sends)
         val gradeProgression = computeGradeProgression(sends, interval, context)
         val personalRecords = computePersonalRecords(ascents, gradeScale, clock, flashUuids)
 
@@ -89,11 +91,53 @@ object BoardStatsComputer {
             angleDistribution = angleDist,
             activityMap = activityMap,
             gradeOutcomes = gradeOutcomes,
-            weeklyVolume = weeklyVolume,
+            daysPerWeek = daysPerWeek,
+            entriesOverTime = entriesOverTime,
+            sendsOverTime = sendsOverTime,
+            gradePyramid = computeGradePyramid(sends, gradeScale),
+            previous = previousTotals(ascents, interval, customFrom, customTo, clock, flashUuids),
             gradeProgression = gradeProgression,
             personalRecords = personalRecords
         )
     }
+
+    /**
+     * The headline numbers of the period just before the chosen one, of the
+     * same length: for 30 or 90 days, a year or a custom range. Null for the
+     * whole logbook, or when nothing was logged in that period.
+     */
+    private fun previousTotals(
+        ascents: List<AscentWithClimb>,
+        interval: StatsTimeInterval,
+        customFrom: LocalDate?,
+        customTo: LocalDate?,
+        clock: Clock,
+        flashUuids: Set<String>,
+    ): PeriodTotals? {
+        val (from, to) = if (customFrom != null && customTo != null) {
+            val days = ChronoUnit.DAYS.between(customFrom, customTo) + 1
+            customFrom.minusDays(days) to customFrom.minusDays(1)
+        } else {
+            val days = interval.days?.toLong() ?: return null
+            // The chosen period starts at today minus [days], see filterByInterval.
+            val start = LocalDate.now(clock).minusDays(days)
+            start.minusDays(days) to start.minusDays(1)
+        }
+        val before = ascents.filter { it.climbedAt.take(10) in from.toString()..to.toString() }
+        if (before.isEmpty()) return null
+        val sends = before.filter { it.isSend }
+        return PeriodTotals(
+            sends = sends.size,
+            attempts = before.sumOf { it.bidCount.coerceAtLeast(1L) }.toInt(),
+            sessions = before.map { it.climbedAt.take(10) }.distinct().size,
+            problems = before.map { it.boardBrand to it.climbUuid }.distinct().size,
+            flashRate = if (sends.isNotEmpty()) sends.count { it.uuid in flashUuids } * 100f / sends.size else 0f,
+        )
+    }
+
+    /** Sessions per week over the last eight weeks, as in the records (see [computeAvgSessionsPerWeek]). */
+    fun sessionsPerWeekOf(ascents: List<AscentWithClimb>, clock: Clock = Clock.systemDefaultZone()): Double =
+        computeAvgSessionsPerWeek(ascents.mapNotNull { parseDate(it.climbedAt) }.distinct().sorted(), clock)
 
     /**
      * Per-board summary for the multi-board comparison row in the stats sheet:
@@ -262,24 +306,60 @@ object BoardStatsComputer {
         }.sortedBy { it.difficultyInt }
     }
 
-    private fun computeWeeklyVolume(
-        filtered: List<AscentWithClimb>
-    ): List<WeeklyVolumeEntry> {
-        if (filtered.isEmpty()) return emptyList()
+    /**
+     * Climbing days per week from the first to the last active week, weeks
+     * without a session as zero; over more than half a year, the average per
+     * week of each month instead.
+     */
+    internal fun computeDaysPerWeek(entries: List<AscentWithClimb>): List<DaysPerWeek> {
+        val days = entries.mapNotNull { parseDate(it.climbedAt) }.distinct()
+        if (days.isEmpty()) return emptyList()
+        val first = days.min()
+        val last = days.max()
+        return if (ChronoUnit.DAYS.between(first, last) > WEEKLY_MAX_DAYS) {
+            val perMonth = days.groupingBy { it.withDayOfMonth(1) }.eachCount()
+            generateSequence(first.withDayOfMonth(1)) { it.plusMonths(1) }
+                .takeWhile { !it.isAfter(last) }
+                .map { month ->
+                    DaysPerWeek(month, month.lengthOfMonth(), (perMonth[month] ?: 0) * DAYS_PER_WEEK.toDouble() / month.lengthOfMonth())
+                }
+                .toList()
+        } else {
+            val toMonday = TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)
+            val perWeek = days.groupingBy { it.with(toMonday) }.eachCount()
+            generateSequence(first.with(toMonday)) { it.plusWeeks(1) }
+                .takeWhile { !it.isAfter(last) }
+                .map { week -> DaysPerWeek(week, DAYS_PER_WEEK.toInt(), (perWeek[week] ?: 0).toDouble()) }
+                .toList()
+        }
+    }
 
-        val toMonday = TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)
-        val withDate = filtered.mapNotNull { a ->
+    /** Spans longer than this are counted per month instead of per week. */
+    private const val WEEKLY_MAX_DAYS = 26 * 7L
+
+    /**
+     * Entries per week by grade band, or per month when they span more than
+     * half a year, so a long logbook does not end up as hairline columns.
+     */
+    internal fun computeVolume(entries: List<AscentWithClimb>): List<VolumeBucket> {
+        val withDate = entries.mapNotNull { a ->
             val date = parseDate(a.climbedAt) ?: return@mapNotNull null
             val diff = a.difficultyAverage ?: return@mapNotNull null
-            date.with(toMonday) to diff
+            date to diff
         }
-
-        return withDate.groupBy { it.first }
+        if (withDate.isEmpty()) return emptyList()
+        val first = withDate.minOf { it.first }
+        val last = withDate.maxOf { it.first }
+        val perMonth = ChronoUnit.DAYS.between(first, last) > WEEKLY_MAX_DAYS
+        val toMonday = TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)
+        return withDate
+            .groupBy { (date, _) -> if (perMonth) date.withDayOfMonth(1) else date.with(toMonday) }
             .toSortedMap()
-            .map { (monday, entries) ->
-                val diffs = entries.map { it.second }
-                WeeklyVolumeEntry(
-                    weekStart = monday,
+            .map { (start, inBucket) ->
+                val diffs = inBucket.map { it.second }
+                VolumeBucket(
+                    start = start,
+                    days = if (perMonth) start.lengthOfMonth() else DAYS_PER_WEEK.toInt(),
                     easyCount = diffs.count { it < MEDIUM_THRESHOLD },
                     mediumCount = diffs.count { it >= MEDIUM_THRESHOLD && it < HARD_THRESHOLD },
                     hardCount = diffs.count { it >= HARD_THRESHOLD && it < ELITE_THRESHOLD },

@@ -11,10 +11,24 @@ data class GradeOutcomeEntry(
     val total: Int get() = flashCount + redpointCount + attemptCount
 }
 
-/** Weekly volume entry grouped by grade band */
-data class WeeklyVolumeEntry(
-    /** The Monday of the week; weeks without entries have no entry. */
-    val weekStart: java.time.LocalDate,
+/** The period's headline numbers, for the comparison with the period before. */
+data class PeriodTotals(
+    val sends: Int,
+    val attempts: Int,
+    val sessions: Int,
+    val problems: Int,
+    val flashRate: Float,
+)
+
+/**
+ * Log entries of one time bucket by grade band: a week (from its Monday) or,
+ * over long periods, a month (from its first day). Buckets without entries
+ * are left out.
+ */
+data class VolumeBucket(
+    val start: java.time.LocalDate,
+    /** Length in days, so a chart can place the bucket on a time axis. */
+    val days: Int,
     val easyCount: Int,
     val mediumCount: Int,
     val hardCount: Int,
@@ -58,10 +72,29 @@ data class BoardComparisonEntry(
     val hardestDifficultyInt: Int
 )
 
-/** The two views of the activity card: days as a calendar, or sends per week. */
+/** Climbing days per week in one week, or on average in one month over long periods. */
+data class DaysPerWeek(
+    val start: java.time.LocalDate,
+    /** Length in days of the week or month. */
+    val days: Int,
+    val perWeek: Double,
+)
+
+/**
+ * The views of the activity card: the days as a calendar, climbing days per
+ * week over time, all entries or only the sends over time.
+ */
 enum class ActivityView {
     CALENDAR,
-    WEEKLY,
+    DAYS_PER_WEEK,
+    ENTRIES,
+    SENDS,
+}
+
+/** The views of the grades card: each problem once, or every send with repeats. */
+enum class GradesView {
+    PROBLEMS,
+    SENDS,
 }
 
 enum class CrossBoardView {

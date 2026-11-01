@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -54,7 +55,6 @@ import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.ui.theme.gradeColorForDifficulty
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import kotlin.math.abs
 
 /**
  * The overview at the top of the logbook: the hardest send and flash, the last
@@ -130,9 +130,13 @@ internal fun LogbookOverviewCard(
                 Spacer(Modifier.height(8.dp))
                 RecentRow(recent)
             }
-            if (milestones.isNotEmpty()) {
+            if (milestones.isNotEmpty() || glance.sessionsPerWeek > 0.0) {
                 Spacer(Modifier.height(10.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // How regularly, then the badges.
+                    if (glance.sessionsPerWeek > 0.0) {
+                        item(key = "per-week") { PerWeekChip(glance.sessionsPerWeek) }
+                    }
                     items(milestones, key = { "${it.kind}-${it.date}-${it.count}" }) { milestone ->
                         MilestoneChip(milestone, colors.takeIf { boards.size > 1 })
                     }
@@ -197,8 +201,7 @@ private fun RecentRow(recent: RecentComparison) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(R.string.board_stats_glance_recent, days) + " · " +
-                    pluralStringResource(R.plurals.board_stats_glance_days, recent.sessions, recent.sessions),
+                stringResource(R.string.board_stats_glance_recent, days),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
@@ -212,8 +215,17 @@ private fun RecentRow(recent: RecentComparison) {
             }
         }
         Spacer(Modifier.height(8.dp))
+        // Climbing days, sends and the hardest grade side by side.
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             val column = Modifier.weight(1f).fillMaxHeight()
+            DeltaColumn(
+                value = "${recent.sessions}",
+                label = stringResource(R.string.board_logbook_sessions),
+                delta = (recent.sessions - recent.previousSessions).takeIf { recent.hasPrevious }?.let { d ->
+                    Delta(signed(d), better = d > 0, worse = d < 0)
+                },
+                modifier = column,
+            )
             DeltaColumn(
                 value = "${recent.sends}",
                 label = stringResource(R.string.board_sends),
@@ -226,27 +238,6 @@ private fun RecentRow(recent: RecentComparison) {
                 value = recent.hardest?.grade ?: "–",
                 label = stringResource(R.string.board_stats_glance_hardest),
                 delta = recent.hardestStep?.let { d -> Delta(signed(d), better = d > 0, worse = d < 0) },
-                modifier = column,
-            )
-            val tries = recent.triesPerSend
-            val previous = recent.previousTriesPerSend
-            DeltaColumn(
-                value = tries?.let { stringResource(R.string.board_stats_cross_board_tries_number, it) } ?: "–",
-                label = stringResource(R.string.board_stats_cross_board_tries_per_send),
-                delta = if (tries != null && previous != null) {
-                    val d = tries - previous
-                    // Fewer tries per send is the good direction.
-                    val shown = stringResource(R.string.board_stats_glance_tries_delta, abs(d))
-                    val zero = shown == stringResource(R.string.board_stats_glance_tries_delta, 0.0)
-                    Delta(
-                        if (zero) "±$shown" else (if (d > 0) "+" else "−") + shown,
-                        better = !zero && d < 0,
-                        worse = !zero && d > 0,
-                        up = d > 0,
-                    )
-                } else {
-                    null
-                },
                 modifier = column,
             )
         }
@@ -297,6 +288,25 @@ private fun DeltaColumn(value: String, label: String, delta: Delta?, modifier: M
 }
 
 // ---------------------------------------------------------------- milestones
+
+/** Climbing days per week over the last eight weeks, as a chip beside the milestones. */
+@Composable
+private fun PerWeekChip(perWeek: Double) {
+    val value = stringResource(R.string.board_stats_glance_per_week_value, perWeek)
+    val caption = stringResource(R.string.board_stats_glance_per_week)
+    Row(
+        Modifier
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f), RoundedCornerShape(50))
+            .padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+            .clearAndSetSemantics { contentDescription = "$caption: $value" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = OrangeAccent, modifier = Modifier.size(16.dp))
+        Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        Text(caption, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+    }
+}
 
 /** A milestone as one small chip: its icon, what it is and when. */
 @Composable

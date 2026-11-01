@@ -312,13 +312,81 @@ class BoardStatsComputerTest {
         )
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         // All five ascents are in ISO week 10 of 2026 (Mon 2026-03-02 .. Sun 2026-03-08).
-        assertEquals(1, stats.weeklyVolume.size)
-        val wk = stats.weeklyVolume[0]
-        assertEquals(LocalDate.of(2026, 3, 2), wk.weekStart)
+        assertEquals(1, stats.entriesOverTime.size)
+        val wk = stats.entriesOverTime[0]
+        assertEquals(LocalDate.of(2026, 3, 2), wk.start)
+        assertEquals(7, wk.days)
         assertEquals(1, wk.easyCount)
         assertEquals(1, wk.mediumCount)
         assertEquals(1, wk.hardCount)
         assertEquals(1, wk.eliteCount)
+    }
+
+    @Test
+    fun `entries over more than half a year are counted per month`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2025-01-15T10:00:00", difficulty = 14.0),
+            ascent(climbedAt = "2025-01-20T10:00:00", difficulty = 14.0),
+            ascent(climbedAt = "2025-09-03T10:00:00", difficulty = 14.0),
+        )
+        val buckets = BoardStatsComputer.computeVolume(ascents)
+        assertEquals(listOf(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 9, 1)), buckets.map { it.start })
+        assertEquals(listOf(31, 30), buckets.map { it.days })
+        assertEquals(listOf(2, 1), buckets.map { it.total })
+    }
+
+    @Test
+    fun `days per week count each climbing day once and keep weeks off as zero`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2026-03-02T10:00:00"),
+            ascent(climbedAt = "2026-03-02T18:00:00"),
+            ascent(climbedAt = "2026-03-04T10:00:00", isSend = false),
+            ascent(climbedAt = "2026-03-18T10:00:00"),
+        )
+        val weeks = BoardStatsComputer.computeDaysPerWeek(ascents)
+        assertEquals(listOf(2.0, 0.0, 1.0), weeks.map { it.perWeek })
+        assertEquals(LocalDate.of(2026, 3, 9), weeks[1].start)
+    }
+
+    @Test
+    fun `days per week over a long span are the weekly average of each month`() {
+        val ascents = (1..10).map { ascent(climbedAt = "2025-01-%02dT10:00:00".format(it * 3)) } +
+            listOf(ascent(climbedAt = "2025-08-01T10:00:00"))
+        val months = BoardStatsComputer.computeDaysPerWeek(ascents)
+        assertEquals(8, months.size)
+        assertEquals(10 * 7.0 / 31, months.first().perWeek, 1e-9)
+        assertEquals(0.0, months[1].perWeek, 1e-9)
+    }
+
+    @Test
+    fun `a period with a length is compared with the same length before`() {
+        val ascents = listOf(
+            // 30 days back from 2026-03-15 starts at 2026-02-13; the period before is 2026-01-14 .. 2026-02-12.
+            ascent(uuid = "p1", climbUuid = "a", climbedAt = "2026-01-20T10:00:00", bidCount = 1),
+            ascent(uuid = "p2", climbUuid = "b", climbedAt = "2026-02-10T10:00:00", isSend = false, bidCount = 3),
+            ascent(uuid = "c1", climbUuid = "c", climbedAt = "2026-03-01T10:00:00"),
+            ascent(uuid = "old", climbUuid = "d", climbedAt = "2025-12-01T10:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.DAYS_30, GradeScale.V_SCALE, clock = fixedClock)
+        val before = stats.previous!!
+        assertEquals(1, before.sends)
+        assertEquals(4, before.attempts)
+        assertEquals(2, before.sessions)
+        assertEquals(2, before.problems)
+        assertEquals(100f, before.flashRate, 0.01f)
+        assertNull(BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock).previous)
+    }
+
+    @Test
+    fun `sends per grade count repeats`() {
+        val ascents = listOf(
+            ascent(uuid = "s1", climbUuid = "a", difficulty = 18.0),
+            ascent(uuid = "s2", climbUuid = "a", difficulty = 18.0, climbedAt = "2026-03-06T10:00:00"),
+            ascent(uuid = "b1", climbUuid = "b", difficulty = 18.0, isSend = false),
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock)
+        assertEquals(2, stats.gradePyramid.single().count)
+        assertEquals(1, stats.gradeOutcomes.single().redpointCount + stats.gradeOutcomes.single().flashCount)
     }
 
     // -- Rolling grade-performance progression --

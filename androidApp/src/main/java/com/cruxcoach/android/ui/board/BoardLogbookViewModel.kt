@@ -67,7 +67,15 @@ data class BoardLogbookStats(
     val activityMap: Map<LocalDate, Int> = emptyMap(),
     // Extended stats
     val gradeOutcomes: List<GradeOutcomeEntry> = emptyList(),
-    val weeklyVolume: List<WeeklyVolumeEntry> = emptyList(),
+    /** Climbing days per week over the period, weeks without a session included. */
+    val daysPerWeek: List<DaysPerWeek> = emptyList(),
+    /** All log entries and only the sends, per week or per month. */
+    val entriesOverTime: List<VolumeBucket> = emptyList(),
+    val sendsOverTime: List<VolumeBucket> = emptyList(),
+    /** Sends per grade, repeats included. */
+    val gradePyramid: List<BoardGradePyramidEntry> = emptyList(),
+    /** The same numbers for the period before, when the period has a length. */
+    val previous: PeriodTotals? = null,
     val gradeProgression: List<GradeProgressionPoint> = emptyList(),
     val personalRecords: PersonalRecords = PersonalRecords()
 )
@@ -110,8 +118,9 @@ data class BoardLogbookState(
     val stats: BoardLogbookStats = BoardLogbookStats(),
     val showStatsSheet: Boolean = false,
     val zones: IntensityZones? = null,
-    // Chart view selector
+    // Chart view selectors
     val activityView: ActivityView = ActivityView.CALENDAR,
+    val gradesView: GradesView = GradesView.PROBLEMS,
     val customDateFrom: LocalDate? = null,
     val customDateTo: LocalDate? = null,
     // Heatmap (board visualization in stats sheet). Default = PERSONAL
@@ -606,6 +615,10 @@ class BoardLogbookViewModel @Inject constructor(
 
     fun setActivityView(view: ActivityView) {
         _state.update { it.copy(activityView = view) }
+    }
+
+    fun setGradesView(view: GradesView) {
+        _state.update { it.copy(gradesView = view) }
     }
 
     fun setCrossBoardView(view: CrossBoardView) {

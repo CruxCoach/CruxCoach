@@ -21,14 +21,14 @@ data class SentGrade(
  * tells whether there is anything to compare with at all.
  */
 data class RecentComparison(
+    /** Climbing days: days with at least one entry. */
     val sessions: Int,
+    val previousSessions: Int,
     val sends: Int,
     val previousSends: Int,
     val hardest: SentGrade?,
     /** Displayed grades between the hardest of both spans, null without both. */
     val hardestStep: Int?,
-    val triesPerSend: Double?,
-    val previousTriesPerSend: Double?,
     val hasPrevious: Boolean,
 )
 
@@ -37,6 +37,8 @@ data class AtAGlance(
     val hardestSend: SentGrade? = null,
     val hardestFlash: SentGrade? = null,
     val recent: RecentComparison? = null,
+    /** Climbing days per week over the last eight weeks. */
+    val sessionsPerWeek: Double = 0.0,
 )
 
 enum class MilestoneKind { NEW_GRADE, SENDS, BIGGEST_DAY, WEEK_STREAK }
@@ -73,10 +75,9 @@ data class SessionRecap(
 )
 
 /**
- * Pure computation of the highlights at the top of the statistics, the
- * milestones and the session recap, next to [BoardStatsComputer]. Sends count
- * every successful entry like everywhere in the statistics; tries per send
- * count the tries until a problem's first send ([CrossBoardStatsComputer.firstSends]).
+ * Pure computation of the overview at the top of the logbook, the milestones
+ * and the session recap, next to [BoardStatsComputer]. Sends count every
+ * successful entry like everywhere in the statistics.
  */
 object StatsHighlightsComputer {
 
@@ -99,6 +100,7 @@ object StatsHighlightsComputer {
             hardestSend = hardestOf(sends, gradeScale),
             hardestFlash = hardestOf(sends.filter { it.uuid in flashUuids }, gradeScale),
             recent = recent(ascents, gradeScale, clock),
+            sessionsPerWeek = BoardStatsComputer.sessionsPerWeekOf(ascents, clock),
         )
     }
 
@@ -112,16 +114,11 @@ object StatsHighlightsComputer {
         val previous = ascents.filter { inSpan(dayOf(it), previousStart, start.minusDays(1)) }
         if (current.isEmpty() && previous.isEmpty()) return null
 
-        val firstSends = CrossBoardStatsComputer.firstSends(ascents)
-        fun triesPerSend(from: LocalDate, to: LocalDate): Double? = firstSends
-            .filter { inSpan(dayOf(it.send), from, to) }
-            .takeIf { it.isNotEmpty() }
-            ?.let { sends -> sends.sumOf { it.tries }.toDouble() / sends.size }
-
         val hardest = hardestOf(current.filter { it.isSend }, gradeScale)
         val previousHardest = hardestOf(previous.filter { it.isSend }, gradeScale)
         return RecentComparison(
             sessions = current.mapNotNull { dayOf(it) }.distinct().size,
+            previousSessions = previous.mapNotNull { dayOf(it) }.distinct().size,
             sends = current.count { it.isSend },
             previousSends = previous.count { it.isSend },
             hardest = hardest,
@@ -130,8 +127,6 @@ object StatsHighlightsComputer {
             } else {
                 null
             },
-            triesPerSend = triesPerSend(start, today),
-            previousTriesPerSend = triesPerSend(previousStart, start.minusDays(1)),
             hasPrevious = previous.isNotEmpty(),
         )
     }

@@ -1631,7 +1631,7 @@
     <string name="board_stats_cross_board_send_curve">Tries until the send</string>
     <string name="board_stats_cross_board_send_curve_help">How many tries your problems took until their first send, per board: a flash, the 2nd or 3rd try, 4 to 5 tries, or 6 and more. Tries from earlier sessions count, so a send after attempts on an earlier day is no flash.\n\nHollow bars rest on fewer than %1$d problems.\n\nTap a board to see the numbers.</string>
     <string name="board_stats_glance_title">At a glance</string>
-    <string name="board_stats_glance_help">Top: your hardest send and your hardest flash in the whole logbook.\n\nBelow: the last %1$d days against the %1$d days before. Climbing days are days with at least one entry. Tries per send counts every try until the first send of a problem, also from earlier sessions.\n\nGreen means better: more sends, a harder grade, fewer tries per send.</string>
+    <string name="board_stats_glance_help">Top: your hardest send and your hardest flash in the whole logbook.\n\nBelow: the last %1$d days against the %1$d days before: climbing days (days with at least one entry), sends and your hardest send. Green means more, or a harder grade.\n\nClimbing days a week: the average over the last eight weeks.</string>
     <string name="board_stats_glance_hardest_send">Hardest send</string>
     <string name="board_stats_glance_hardest_flash">Hardest flash</string>
     <string name="board_stats_glance_hardest">Hardest</string>
@@ -1641,7 +1641,6 @@
         <item quantity="other">%d climbing days</item>
     </plurals>
     <string name="board_stats_glance_versus">vs. the %1$d days before</string>
-    <string name="board_stats_glance_tries_delta">%1$.1f</string>
     <string name="board_stats_milestones_help">New grade: the first send of a grade harder than every send before.\n\nSends: when your sends reached 50, 100, 250 and so on.\n\nSends in one day: your biggest day, from %1$d sends on.\n\nWeeks in a row: weeks with at least one climbing day, up to this week or the last one.</string>
     <string name="board_stats_milestone_new_grade">New grade</string>
     <string name="board_stats_milestone_biggest_day">Sends in one day</string>
@@ -1669,6 +1668,15 @@
     <string name="board_stats_grades_help">Every problem you logged in the chosen period counts once per board, across angles, by its best result: a flash, sent later, or not sent yet.\n\nA flash needs the first recorded entry at that angle to be a send with at most one try.\n\nTap a grade to see its numbers.</string>
     <string name="board_stats_grades_open">Not sent yet</string>
     <string name="board_logbook_filter_period">Period</string>
+    <string name="board_stats_period_versus">Changes against the period of the same length before</string>
+    <string name="board_stats_grade_sends_title">Sends per grade</string>
+    <string name="board_stats_grade_sends_help">Every send in the chosen period counts, repeats included.\n\nThe colours are your intensity zones: warm-up, optimal and limit, worked out from the grades you log. Compare with \"Problems per grade\", which counts each problem once.</string>
+    <string name="board_stats_days_per_week">Climbing days per week</string>
+    <string name="board_stats_days_per_week_average">Ø %1$.1f a week</string>
+    <string name="board_stats_entries_over_time">Entries over time</string>
+    <string name="board_stats_sends_over_time">Sends over time</string>
+    <string name="board_stats_glance_per_week">climbing days a week</string>
+    <string name="board_stats_glance_per_week_value">%1$.1f</string>
     <string name="board_stats_date_range">Date range…</string>
     <string name="board_stats_grade_easy">Easy</string>
     <string name="board_stats_grade_elite">Elite</string>
@@ -1681,7 +1689,6 @@
     <string name="board_stats_interval_all">All Time</string>
     <string name="board_stats_total">Total</string>
     <string name="board_stats_unique">Distinct climbs</string>
-    <string name="board_stats_weekly_volume">Entries per week</string>
     <string name="board_zone_limit">Limit</string>
     <string name="board_zone_optimal">Optimal</string>
     <string name="board_zone_warmup">Warm-Up</string>
