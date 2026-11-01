@@ -93,7 +93,8 @@ class SprayWallPublisher @Inject constructor(
     }
 
     private suspend fun run(): Outcome {
-        val walls = repository.wallsNeedingPublish()
+        // A wall without holds yet (a reset still being marked) waits: published, it could no longer be corrected in place.
+        val walls = repository.wallsNeedingPublish().filter { it.current.holdCount > 0 }
         val publicWalls = repository.publicWalls()
         if (walls.isEmpty() && publicWalls.none { repository.unpublishedClimbs(it.id).isNotEmpty() }) return Outcome.Done(0, 0)
         val me = myPubkey() ?: return Outcome.NoIdentity
@@ -103,7 +104,7 @@ class SprayWallPublisher @Inject constructor(
         for (wall in repository.publicWalls()) {
             val owner = wall.ownerPubkey ?: me
             for (climb in repository.unpublishedClimbs(wall.id)) {
-                val event = SprayWallNostr.climb(me, now(), climb, owner)
+                val event = SprayWallNostr.climb(me, stamp(SprayWallNostr.climbDTag(me, climb.uuid)), climb, owner)
                 if (send(event) > 0) {
                     repository.markClimbPublished(climb.uuid, climb.updatedAt)
                     climbs++
@@ -117,13 +118,15 @@ class SprayWallPublisher @Inject constructor(
     private suspend fun publishWall(me: String, wall: SprayWall): Int {
         val from = (wall.publishedVersion ?: 0) + 1
         val pending = repository.versions(wall.id).filter { it.number >= from }.sortedBy { it.number }
+        // Versions on the same photo share one upload.
+        val blobs = HashMap<String, Pair<String, String>>()
         for (version in pending) {
-            val (sha, url) = uploaded(wall.id, version)
+            val (sha, url) = blobs.getOrPut(version.photoFile) { uploaded(wall.id, version) }
             val event = SprayWallNostr.version(me, now(), version, sha, url, repository.holds(wall.id, version.number))
             check(send(event) > 0) { "no relay took version ${version.number}" }
         }
         val fresh = repository.wall(wall.id) ?: return pending.size
-        check(send(SprayWallNostr.wallHead(me, now(), fresh)) > 0) { "no relay took the wall" }
+        check(send(SprayWallNostr.wallHead(me, stamp(SprayWallNostr.wallDTag(me, wall.id)), fresh)) > 0) { "no relay took the wall" }
         repository.markPublished(wall.id, fresh.current.number)
         return pending.size
     }
@@ -163,9 +166,8 @@ class SprayWallPublisher @Inject constructor(
                 }
                 repository.publishedClimbs(wallId).forEach { add(SprayWallNostr.climbDTag(me, it.uuid) to SprayWallNostr.LABEL_CLIMB) }
             }
-            val t = now()
-            for ((d, label) in dTags) accepted = maxOf(accepted, send(SprayWallNostr.tombstone(t, d, label, address)))
-            accepted = maxOf(accepted, send(SprayWallNostr.deletion(me, t, dTags.map { it.first })))
+            for ((d, label) in dTags) accepted = maxOf(accepted, send(SprayWallNostr.tombstone(stamp(d), d, label, address)))
+            accepted = maxOf(accepted, send(SprayWallNostr.deletion(me, now(), dTags.map { it.first })))
         }
         repository.updateWallDetails(wallId, wall.name, wall.angle, SprayWallVisibility.PRIVATE, wall.gym)
         accepted > 0
@@ -179,9 +181,8 @@ class SprayWallPublisher @Inject constructor(
                 runCatching {
                     val me = myPubkey() ?: return@runCatching
                     val d = SprayWallNostr.climbDTag(me, climb.uuid)
-                    val t = now()
-                    send(SprayWallNostr.tombstone(t, d, SprayWallNostr.LABEL_CLIMB, SprayWallNostr.wallAddress(wallOwner ?: me, climb.wallId)))
-                    send(SprayWallNostr.deletion(me, t, listOf(d)))
+                    send(SprayWallNostr.tombstone(stamp(d), d, SprayWallNostr.LABEL_CLIMB, SprayWallNostr.wallAddress(wallOwner ?: me, climb.wallId)))
+                    send(SprayWallNostr.deletion(me, now(), listOf(d)))
                 }.onFailure { Log.w(TAG, "withdrawing a climb failed", it) }
             }
         }
@@ -200,6 +201,12 @@ class SprayWallPublisher @Inject constructor(
     }
 
     private fun now() = System.currentTimeMillis() / 1000
+
+    /** Replaceable events at one d-tag get strictly rising times, so a quick second edit still replaces the first. */
+    private val stamps = HashMap<String, Long>()
+    private fun stamp(dTag: String): Long = synchronized(stamps) {
+        maxOf(now(), (stamps[dTag] ?: 0L) + 1).also { stamps[dTag] = it }
+    }
 
     private companion object {
         const val TAG = "SprayWallPublisher"

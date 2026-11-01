@@ -9,7 +9,6 @@ import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -107,7 +106,9 @@ class SprayWallFetcher @Inject constructor(
             if (head.currentVersion !in known && stored.none { it.parsed.number == head.currentVersion }) return FollowResult.Failed("current version not found")
             if (repository.importRemoteWall(head, stored) == null) return FollowResult.Conflict
         }
-        for (c in climbs) repository.upsertRemoteClimb(c)
+        // A climb only comes in with the version it was set on, so it can be drawn on its own photo.
+        val present = repository.versions(wallId).map { it.number }.toSet()
+        for (c in climbs) if (c.version in present) repository.upsertRemoteClimb(c)
         for ((author, uuid) in removed) repository.removeRemoteClimb(author, uuid)
         return FollowResult.Added(wallId)
     }
@@ -129,7 +130,9 @@ class SprayWallFetcher @Inject constructor(
     }.toString()
 
     private suspend fun fetch(filter: String): List<SprayWallNostr.Parsed> {
-        val raw = withTimeoutOrNull(FETCH_TIMEOUT_MS) { pool.fetchStored(filter).toList() } ?: emptyList()
+        // A slow relay must not cost the answers of the others: keep what came in by the timeout.
+        val raw = ArrayList<String>()
+        withTimeoutOrNull(FETCH_TIMEOUT_MS) { pool.fetchStored(filter).collect { raw += it } }
         val now = System.currentTimeMillis() / 1000
         return raw.mapNotNull { json ->
             if (json.length > SprayWallNostr.MAX_EVENT_BYTES + 4096) return@mapNotNull null

@@ -27,6 +27,7 @@
     <string name="spray_wall_delete">Wand löschen</string>
     <string name="spray_wall_delete_confirm_title">%1$s löschen?</string>
     <string name="spray_wall_delete_confirm_text">Das entfernt Foto, alle Griffe, Boulder und ihre Logbucheinträge von diesem Telefon. Das lässt sich nicht rückgängig machen.</string>
+    <string name="spray_wall_delete_public_note">Die Wand wird auch von Nostr zurückgezogen; Kopien, die andere schon haben, können bleiben.</string>
 
     <!-- Griffe markieren -->
     <string name="spray_holds_title">Griffe markieren</string>

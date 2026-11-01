@@ -176,6 +176,8 @@ class SprayWallDetailsViewModel @Inject constructor(
 
     fun delete() {
         viewModelScope.launch {
+            // A published wall is taken back from Nostr first; afterwards nothing here could withdraw it.
+            if (_state.value.published) publisher.withdrawWall(wallId)
             repository.deleteWall(wallId)
             _events.emit(SprayWallDetailsEvent.Deleted)
         }
@@ -318,7 +320,8 @@ fun SprayWallDetailsScreen(
     if (confirmDelete) {
         SprayConfirmDialog(
             title = stringResource(R.string.spray_wall_delete_confirm_title, state.name),
-            text = stringResource(R.string.spray_wall_delete_confirm_text),
+            text = stringResource(R.string.spray_wall_delete_confirm_text) +
+                if (state.published) " " + stringResource(R.string.spray_wall_delete_public_note) else "",
             confirmLabel = stringResource(R.string.action_delete),
             onConfirm = { confirmDelete = false; viewModel.delete() },
             onDismiss = { confirmDelete = false },
