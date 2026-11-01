@@ -2980,6 +2980,9 @@
     <string name="whatsnew_024_title">New in 0.2.4</string>
     <string name="whatsnew_024_body">• Newer Kilter boards – boards that show up only as “Kilter Board” now connect.\n• Kilter logbook upload – works again, without duplicates, and retries by itself.\n• Board map – clearer markers, a list of the places in view, “My location” and gyms near you.\n• Clean holds – the logbook menu lights the holds of the problems you logged today, for brushing.</string>
     <string name="whatsnew_024_hint">Also: a board switch shows at once during a catalogue download, and a session resumes after a rest.</string>
+    <!-- 0.2.5: one line per feature; the release preparation adds the others and registers the dialog. -->
+    <string name="whatsnew_025_title">New in 0.2.5</string>
+    <string name="whatsnew_025_body">• Community – join the CruxCoach community on Buzz from Settings → Community.</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
 
@@ -3010,6 +3013,18 @@
     <string name="settings_summary_support">Report bugs, request features and contact the developer. Configure notifications and automatic crash reports.</string>
     <string name="settings_page_about">About CruxCoach</string>
     <string name="settings_summary_about">Version, licenses, privacy notice and source code, or share the app.</string>
+    <!-- Community on Buzz (0.2.5): the link only opens in the browser; nothing is sent. -->
+    <string name="settings_page_community">Community</string>
+    <string name="settings_summary_community">Join the CruxCoach community on Buzz: talk to the developers, test new builds first and help shape what comes next.</string>
+    <string name="community_join_title">Join the CruxCoach community</string>
+    <string name="community_point_talk">Talk to the developers</string>
+    <string name="community_point_test">Test new builds first</string>
+    <string name="community_point_shape">Help shape what comes next</string>
+    <string name="community_join_action">Join on Buzz</string>
+    <string name="community_join_note">Buzz is a separate app with its own account. Nothing from CruxCoach is shared.</string>
+    <string name="community_report_hint">Follow your report and test the fix early: join the community on Buzz</string>
+    <string name="community_report_hint_join">Join</string>
+    <string name="community_report_hint_member">Already a member</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>

@@ -31,6 +31,8 @@ import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import com.cruxcoach.android.ui.devcontact.COMMUNITY_JOIN_URL
+import com.cruxcoach.android.ui.devcontact.CommunityJoinSection
 import com.cruxcoach.android.ui.devcontact.DevContactSection
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
@@ -426,6 +428,12 @@ internal fun SettingsScreen(
                         onCategoryChange = { cat, enabled -> viewModel.updateAnnouncementCategory(cat, enabled) },
                         onDrainQueue = { viewModel.drainQueue() }
                     )
+                }
+            }
+            SettingsPage.COMMUNITY -> {
+                val uriHandler = LocalUriHandler.current
+                SettingsSectionCard {
+                    CommunityJoinSection(onJoin = { uriHandler.openUri(COMMUNITY_JOIN_URL) })
                 }
             }
             SettingsPage.ABOUT -> {

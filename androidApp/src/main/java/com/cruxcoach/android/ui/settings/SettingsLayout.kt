@@ -52,6 +52,7 @@ internal enum class SettingsPage(
     DELETE(R.string.settings_page_delete, R.string.settings_summary_delete, R.string.settings_section_accounts_data, Icons.Outlined.DeleteOutline),
     UPDATES(R.string.updater_settings_title, R.string.settings_summary_updates, R.string.settings_group_app_help, Icons.Outlined.SystemUpdate),
     SUPPORT(R.string.settings_page_support, R.string.settings_summary_support, R.string.settings_group_app_help, Icons.AutoMirrored.Outlined.HelpOutline),
+    COMMUNITY(R.string.settings_page_community, R.string.settings_summary_community, R.string.settings_group_app_help, Icons.Outlined.Groups),
     ABOUT(R.string.settings_page_about, R.string.settings_summary_about, R.string.settings_group_app_help, Icons.Outlined.Info),
 }
 
