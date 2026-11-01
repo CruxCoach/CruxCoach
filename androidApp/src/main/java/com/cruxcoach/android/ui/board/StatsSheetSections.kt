@@ -220,7 +220,8 @@ internal fun ProgressCard(
     val series: List<Pair<String?, List<GradeProgressionPoint>>> = if (byBoard.size > 1) {
         allBoards.filter { it in byBoard }.map { it to byBoard.getValue(it) }
     } else {
-        listOf((boardFilter ?: allBoards.singleOrNull()) to single)
+        // One line: the filtered board, the only board with sends in the period, or the only board at all.
+        listOf((boardFilter ?: byBoard.keys.singleOrNull() ?: allBoards.singleOrNull()) to single)
     }
     if (series.none { it.second.size >= 2 }) return
     val lineColors = series.map { (board, _) -> board?.let { colors[it] } ?: OrangeAccent }
