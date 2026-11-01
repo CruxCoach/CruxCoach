@@ -144,10 +144,7 @@ fun BoardLogbookScreen(
         BoardStatsSheet(
             stats = state.stats,
             statsInterval = state.statsInterval,
-            gradeChartView = state.gradeChartView,
-            timeChartView = state.timeChartView,
             gradeScale = state.gradeScale,
-            zones = state.zones,
             customDateFrom = state.customDateFrom,
             customDateTo = state.customDateTo,
             heatmapMode = state.heatmapMode,
@@ -161,15 +158,14 @@ fun BoardLogbookScreen(
             crossBoard = state.crossBoard,
             crossBoardView = state.crossBoardView,
             onCrossBoardViewSelect = { viewModel.setCrossBoardView(it) },
-            atAGlance = state.atAGlance,
-            milestones = state.milestones,
+            progressionByBoard = state.progressionByBoard,
+            activityView = state.activityView,
+            onActivityViewSelect = { viewModel.setActivityView(it) },
             heatmapBoardOptions = state.heatmapBoardOptions,
             heatmapBoardSelection = state.heatmapBoardSelection,
             onHeatmapBoardSelect = { viewModel.setHeatmapBoardSelection(it) },
             onBoardFilterSelect = { viewModel.setBoardFilter(it) },
             onIntervalSelect = { viewModel.setStatsInterval(it) },
-            onGradeChartViewSelect = { viewModel.setGradeChartView(it) },
-            onTimeChartViewSelect = { viewModel.setTimeChartView(it) },
             onCustomDateRange = { from, to -> viewModel.setCustomDateRange(from, to) },
             onHeatmapModeSelect = { viewModel.setHeatmapMode(it) },
             onDismiss = { viewModel.toggleStatsSheet() }
@@ -183,6 +179,7 @@ fun BoardLogbookScreen(
     if (showFilters) {
         LogbookFilterSheet(
             state = state,
+            onIntervalSelect = viewModel::setLogbookInterval,
             onOutcomeSelect = viewModel::setLogbookOutcomeFilter,
             onBoardSelect = viewModel::setLogbookBoardFilter,
             onAngleSelect = viewModel::setLogbookAngleFilter,
@@ -216,6 +213,7 @@ fun BoardLogbookScreen(
                                     Icons.Default.FilterList,
                                     contentDescription = stringResource(R.string.board_logbook_filters),
                                     tint = if (
+                                        state.logbookInterval != StatsTimeInterval.ALL ||
                                         state.logbookOutcomeFilter != LogbookOutcomeFilter.ALL ||
                                         state.logbookBoardFilter != null || state.logbookAngleFilter != null
                                     ) OrangeAccent else MaterialTheme.colorScheme.onSurface,
@@ -301,7 +299,7 @@ fun BoardLogbookScreen(
 
                 LaunchedEffect(tourStep, grouped) {
                     if (tourStep == TourStep.ENTRY) {
-                        var index = 2 // interval and statistics rows
+                        var index = 1 // the overview
                         for (entries in grouped.values) {
                             index++ // date heading
                             val entryIndex = entries.indexOfFirst { it.uuid == tourEntry }
@@ -316,17 +314,15 @@ fun BoardLogbookScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize().padding(padding)
                 ) {
-                    // Stats interval selector
-                    item(key = "interval") {
-                        StatsIntervalChips(
-                            selected = state.statsInterval,
-                            onSelect = { viewModel.setStatsInterval(it) }
+                    // Records, the last 30 days and the milestones; tapping
+                    // it opens the statistics. Not tied to the list filters.
+                    item(key = "overview") {
+                        LogbookOverviewCard(
+                            glance = state.atAGlance,
+                            milestones = state.milestones,
+                            boards = state.availableBoardBrands,
+                            onOpenStats = { viewModel.toggleStatsSheet() },
                         )
-                    }
-
-                    // Summary cards only (no charts)
-                    item(key = "stats") {
-                        StatsSummaryRow(state.stats)
                     }
 
                     if (state.ascents.isEmpty()) {
@@ -409,6 +405,7 @@ fun BoardLogbookScreen(
 @Composable
 private fun LogbookFilterSheet(
     state: BoardLogbookState,
+    onIntervalSelect: (StatsTimeInterval) -> Unit,
     onOutcomeSelect: (LogbookOutcomeFilter) -> Unit,
     onBoardSelect: (String?) -> Unit,
     onAngleSelect: (Int?) -> Unit,
@@ -420,6 +417,8 @@ private fun LogbookFilterSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             InfoHeading(stringResource(R.string.board_logbook_filters), stringResource(R.string.ux_logbook_help))
+            Text(stringResource(R.string.board_logbook_filter_period), style = MaterialTheme.typography.titleSmall)
+            StatsIntervalChips(selected = state.logbookInterval, onSelect = onIntervalSelect)
             Text(stringResource(R.string.board_logbook_filter_outcome), style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LogbookOutcomeFilter.entries.forEach { filter ->

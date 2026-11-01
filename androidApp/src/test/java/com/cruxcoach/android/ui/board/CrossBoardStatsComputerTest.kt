@@ -116,7 +116,7 @@ class CrossBoardStatsComputerTest {
     }
 
     @Test
-    fun `months run newest first with the hardest new send per board`() {
+    fun `months run newest first with the tries of their new sends per board`() {
         val rows = listOf(
             row("a", "2026-01-10T18:00:00", isSend = true, difficulty = 16.0),
             row("b", "2026-01-20T18:00:00", isSend = true, bidCount = 3, difficulty = 20.0),
@@ -129,18 +129,7 @@ class CrossBoardStatsComputerTest {
         assertEquals("Feb '26", months.first().label)
         assertNull("the repeat adds nothing to February", months.first().byBoard["kilter"])
         val january = months.last().byBoard.getValue("kilter")
-        assertEquals(GradeDisplayHelper.formatDifficulty(20.0, scale), january.hardestGrade)
-        assertEquals("the chart places it by its difficulty", 20.0, january.hardestDifficulty!!, 1e-9)
         assertEquals(TriesToSend(problems = 2, tries = 4), january.tries)
-    }
-
-    @Test
-    fun `a grade axis lists every displayed grade once, easiest first`() {
-        val levels = gradeLevels(listOf(20.0, 16.0, 18.4), scale)
-        val expected = (16..20).map { GradeDisplayHelper.formatDifficulty(it.toDouble(), scale) }.distinct()
-        assertEquals(expected, levels)
-        assertEquals(levels.distinct(), levels)
-        assertTrue(gradeLevels(emptyList(), scale).isEmpty())
     }
 
     @Test

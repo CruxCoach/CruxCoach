@@ -11,15 +11,6 @@ data class GradeOutcomeEntry(
     val total: Int get() = flashCount + redpointCount + attemptCount
 }
 
-/** Distinct problem outcomes across all grades, including ungraded problems. */
-data class OutcomeDistribution(
-    val flashes: Int,
-    val redpoints: Int,
-    val attempts: Int
-) {
-    val total: Int get() = flashes + redpoints + attempts
-}
-
 /** Weekly volume entry grouped by grade band */
 data class WeeklyVolumeEntry(
     val weekLabel: String,
@@ -37,14 +28,6 @@ data class GradeProgressionPoint(
     val label: String,
     val weekStart: java.time.LocalDate,
     val performanceDifficulty: Double,
-)
-
-/** Unique climb count vs total sends per grade */
-data class UniqueClimbEntry(
-    val grade: String,
-    val difficultyInt: Int,
-    val uniqueCount: Int,
-    val totalSends: Int
 )
 
 /** Personal records across all time */
@@ -74,17 +57,10 @@ data class BoardComparisonEntry(
     val hardestDifficultyInt: Int
 )
 
-/** Chart view selectors for dropdown sections */
-enum class GradeChartView {
-    PYRAMID,
-    FLASH_SEND_ATTEMPT,
-    OUTCOME_DONUT,
-    UNIQUE_CLIMBS
-}
-
-enum class TimeChartView {
-    SENDS_OVER_TIME,
-    WEEKLY_VOLUME,
+/** The two views of the activity card: days as a calendar, or sends per week. */
+enum class ActivityView {
+    CALENDAR,
+    WEEKLY,
 }
 
 enum class CrossBoardView {

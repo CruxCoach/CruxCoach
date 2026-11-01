@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -17,30 +18,38 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.ErrorRed
+import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.ui.theme.gradeColorForDifficulty
 import java.time.LocalDate
@@ -48,38 +57,87 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 
 /**
- * The top of the statistics: the hardest send and flash as two big tiles,
- * then the last 30 days against the 30 before. Green means better, so fewer
- * tries per send is green as well. [boards] are all boards the user has
- * logged on; with more than one, each record names its board.
+ * The overview at the top of the logbook: the hardest send and flash, the last
+ * 30 days against the 30 before, and the milestones as small chips, over every
+ * board and the whole logbook. Green means better, so fewer tries per send is
+ * green as well. [boards] are all boards the user has logged on; with more
+ * than one, each record names its board. Tapping it opens the statistics.
  */
 @Composable
-internal fun AtAGlanceCard(glance: AtAGlance, boards: List<String>) {
+internal fun LogbookOverviewCard(
+    glance: AtAGlance,
+    milestones: List<Milestone>,
+    boards: List<String>,
+    onOpenStats: () -> Unit,
+) {
     if (glance.hardestSend == null && glance.recent == null) return
     val colors = boardSeriesColors(boards)
-    val showBoard = boards.size > 1
-    ChartSection(
-        stringResource(R.string.board_stats_glance_title),
-        help = stringResource(R.string.board_stats_glance_help, StatsHighlightsComputer.RECENT_DAYS.toInt()),
+    val openStats = stringResource(R.string.board_stats_open)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClickLabel = openStats, onClick = onOpenStats),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        ),
+        shape = RoundedCornerShape(16.dp),
     ) {
-        if (glance.hardestSend != null) {
-            Row(
-                Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                RecordTile(
-                    glance.hardestSend, stringResource(R.string.board_stats_glance_hardest_send),
-                    colors.takeIf { showBoard }, Modifier.weight(1f).fillMaxHeight(),
+        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val title = stringResource(R.string.board_stats_glance_title)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.semantics { heading() },
                 )
-                RecordTile(
-                    glance.hardestFlash, stringResource(R.string.board_stats_glance_hardest_flash),
-                    colors.takeIf { showBoard }, Modifier.weight(1f).fillMaxHeight(),
+                InfoButton(
+                    title,
+                    stringResource(R.string.board_stats_glance_help, StatsHighlightsComputer.RECENT_DAYS.toInt()) +
+                        "\n\n" + stringResource(R.string.board_stats_milestones_help, StatsHighlightsComputer.BIGGEST_DAY_MIN),
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.board_stats_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = OrangeAccent,
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = OrangeAccent,
+                    modifier = Modifier.size(20.dp),
                 )
             }
-        }
-        glance.recent?.let { recent ->
-            if (glance.hardestSend != null) Spacer(Modifier.height(16.dp))
-            RecentRow(recent)
+            if (glance.hardestSend != null) {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    RecordTile(
+                        glance.hardestSend, stringResource(R.string.board_stats_glance_hardest_send),
+                        colors.takeIf { boards.size > 1 }, Modifier.weight(1f).fillMaxHeight(),
+                    )
+                    RecordTile(
+                        glance.hardestFlash, stringResource(R.string.board_stats_glance_hardest_flash),
+                        colors.takeIf { boards.size > 1 }, Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
+            }
+            glance.recent?.let { recent ->
+                Spacer(Modifier.height(8.dp))
+                RecentRow(recent)
+            }
+            if (milestones.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(milestones, key = { "${it.kind}-${it.date}-${it.count}" }) { milestone ->
+                        MilestoneChip(milestone, colors.takeIf { boards.size > 1 })
+                    }
+                }
+            }
         }
     }
 }
@@ -89,14 +147,14 @@ private fun RecordTile(record: SentGrade?, label: String, boardColors: Map<Strin
     val tint = record?.let { gradeColorForDifficulty(it.difficulty) } ?: MaterialTheme.colorScheme.onSurface
     Column(
         modifier
-            .background(tint.copy(alpha = if (record != null) 0.16f else 0.05f), RoundedCornerShape(14.dp))
-            .padding(vertical = 14.dp, horizontal = 8.dp),
+            .background(tint.copy(alpha = if (record != null) 0.16f else 0.05f), RoundedCornerShape(12.dp))
+            .padding(vertical = 8.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
             record?.grade ?: "–",
-            style = MaterialTheme.typography.displaySmall,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
@@ -107,7 +165,7 @@ private fun RecordTile(record: SentGrade?, label: String, boardColors: Map<Strin
             textAlign = TextAlign.Center,
         )
         if (record != null && boardColors != null) {
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(2.dp))
             BoardTag(record.board, boardColors[record.board] ?: MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -131,63 +189,67 @@ internal fun BoardTag(board: String, color: Color) {
 @Composable
 private fun RecentRow(recent: RecentComparison) {
     val days = StatsHighlightsComputer.RECENT_DAYS.toInt()
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            stringResource(R.string.board_stats_glance_recent, days) + " · " +
-                pluralStringResource(R.plurals.board_stats_glance_days, recent.sessions, recent.sessions),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        if (recent.hasPrevious) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(R.string.board_stats_glance_versus, days),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                stringResource(R.string.board_stats_glance_recent, days) + " · " +
+                    pluralStringResource(R.plurals.board_stats_glance_days, recent.sessions, recent.sessions),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            if (recent.hasPrevious) {
+                Text(
+                    stringResource(R.string.board_stats_glance_versus, days),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            val column = Modifier.weight(1f).fillMaxHeight()
+            DeltaColumn(
+                value = "${recent.sends}",
+                label = stringResource(R.string.board_sends),
+                delta = (recent.sends - recent.previousSends).takeIf { recent.hasPrevious }?.let { d ->
+                    Delta(signed(d), better = d > 0, worse = d < 0)
+                },
+                modifier = column,
+            )
+            DeltaColumn(
+                value = recent.hardest?.grade ?: "–",
+                label = stringResource(R.string.board_stats_glance_hardest),
+                delta = recent.hardestStep?.let { d -> Delta(signed(d), better = d > 0, worse = d < 0) },
+                modifier = column,
+            )
+            val tries = recent.triesPerSend
+            val previous = recent.previousTriesPerSend
+            DeltaColumn(
+                value = tries?.let { stringResource(R.string.board_stats_cross_board_tries_number, it) } ?: "–",
+                label = stringResource(R.string.board_stats_cross_board_tries_per_send),
+                delta = if (tries != null && previous != null) {
+                    val d = tries - previous
+                    // Fewer tries per send is the good direction.
+                    val shown = stringResource(R.string.board_stats_glance_tries_delta, abs(d))
+                    val zero = shown == stringResource(R.string.board_stats_glance_tries_delta, 0.0)
+                    Delta(
+                        if (zero) "±$shown" else (if (d > 0) "+" else "−") + shown,
+                        better = !zero && d < 0,
+                        worse = !zero && d > 0,
+                        up = d > 0,
+                    )
+                } else {
+                    null
+                },
+                modifier = column,
             )
         }
-    }
-    Spacer(Modifier.height(8.dp))
-    Row(
-        Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        val tile = Modifier.weight(1f).fillMaxHeight()
-        DeltaTile(
-            value = "${recent.sends}",
-            label = stringResource(R.string.board_sends),
-            delta = (recent.sends - recent.previousSends).takeIf { recent.hasPrevious }?.let { d ->
-                Delta(signed(d), better = d > 0, worse = d < 0)
-            },
-            modifier = tile,
-        )
-        DeltaTile(
-            value = recent.hardest?.grade ?: "–",
-            label = stringResource(R.string.board_stats_glance_hardest),
-            delta = recent.hardestStep?.let { d -> Delta(signed(d), better = d > 0, worse = d < 0) },
-            modifier = tile,
-        )
-        val tries = recent.triesPerSend
-        val previous = recent.previousTriesPerSend
-        DeltaTile(
-            value = tries?.let { stringResource(R.string.board_stats_cross_board_tries_number, it) } ?: "–",
-            label = stringResource(R.string.board_stats_cross_board_tries_per_send),
-            delta = if (tries != null && previous != null) {
-                val d = tries - previous
-                // Fewer tries per send is the good direction.
-                val shown = stringResource(R.string.board_stats_glance_tries_delta, abs(d))
-                val zero = shown == stringResource(R.string.board_stats_glance_tries_delta, 0.0)
-                Delta(
-                    if (zero) "±$shown" else (if (d > 0) "+" else "−") + shown,
-                    better = !zero && d < 0,
-                    worse = !zero && d > 0,
-                    up = d > 0,
-                )
-            } else {
-                null
-            },
-            modifier = tile,
-        )
     }
 }
 
@@ -201,13 +263,10 @@ private fun signed(value: Int) = when {
 private class Delta(val text: String, val better: Boolean, val worse: Boolean, val up: Boolean = better)
 
 @Composable
-private fun DeltaTile(value: String, label: String, delta: Delta?, modifier: Modifier) {
+private fun DeltaColumn(value: String, label: String, delta: Delta?, modifier: Modifier) {
     val description = listOfNotNull(label, value, delta?.text).joinToString(", ")
     Column(
-        modifier
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
-            .padding(vertical = 10.dp, horizontal = 6.dp)
-            .clearAndSetSemantics { contentDescription = description },
+        modifier.clearAndSetSemantics { contentDescription = description },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -239,22 +298,30 @@ private fun DeltaTile(value: String, label: String, delta: Delta?, modifier: Mod
 
 // ---------------------------------------------------------------- milestones
 
-/** The badges in one row, newest first; the row scrolls when they do not fit. */
+/** A milestone as one small chip: its icon, what it is and when. */
 @Composable
-internal fun MilestonesCard(milestones: List<Milestone>, boards: List<String>) {
-    if (milestones.isEmpty()) return
-    val colors = boardSeriesColors(boards)
-    ChartSection(
-        stringResource(R.string.board_stats_milestones),
-        help = stringResource(
-            R.string.board_stats_milestones_help,
-            StatsHighlightsComputer.BIGGEST_DAY_MIN,
-        ),
+private fun MilestoneChip(milestone: Milestone, boardColors: Map<String, Color>?) {
+    val accent = milestone.grade?.let { gradeColorForDifficulty(it.difficulty) } ?: OrangeAccent
+    val value = milestone.grade?.grade ?: "${milestone.count}"
+    val caption = milestoneCaption(milestone)
+    val date = milestone.date?.let { milestoneDate(it) }
+    Row(
+        Modifier
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f), RoundedCornerShape(50))
+            .padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+            .clearAndSetSemantics { contentDescription = listOfNotNull(caption, value, date).joinToString(", ") },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(milestones, key = { "${it.kind}-${it.date}-${it.count}" }) { milestone ->
-                MilestoneBadge(milestone, colors.takeIf { boards.size > 1 })
+        Icon(milestoneIcon(milestone.kind), contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
+        Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        Text(caption, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        if (date != null) {
+            val board = milestone.grade?.board
+            if (board != null && boardColors != null) {
+                Spacer(Modifier.size(6.dp).background(boardColors[board] ?: MaterialTheme.colorScheme.onSurfaceVariant, CircleShape))
             }
+            Text(date, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), maxLines = 1)
         }
     }
 }

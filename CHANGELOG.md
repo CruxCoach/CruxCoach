@@ -22,28 +22,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   board picker.
 - Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
   data is refreshed (2,933 venues).
-- Statistics at a glance: the logbook statistics open with your hardest send and
-  hardest flash, and the last 30 days against the 30 before (sends, hardest grade,
-  tries per send; green means better). Below, milestones mark new grades, 50, 100,
-  250 and more sends, your biggest day and weeks in a row. This replaces the
-  records row and the period comparison.
+- Logbook overview: the logbook now opens with one card instead of six tiles:
+  your hardest send and hardest flash, the last 30 days against the 30 before
+  (sends, hardest grade, tries per send; green means better) and your milestones
+  (new grades, 50, 100, 250 and more sends, your biggest day, weeks in a row).
+  Tap it for the statistics. The period filter of the list moved into the
+  logbook filter, next to result, board and angle.
+- Statistics, reorganised so every number and chart appears once: the period
+  and board filters on top (each board chip shows its sends), the period in four
+  numbers, then progress (the rolling level, one line per board), problems per
+  grade (flashed, sent later or still open), tries, activity (calendar or per
+  week), angles and holds. The grade pyramid, the flash donut, sent climbs per
+  grade, log entries over time, the records row and the period comparison are
+  folded into these.
 - Tries until the send: per board, how many of your problems you flashed or sent
   on the 2nd, 3rd, 4th–5th or a later try. Tries from earlier sessions count, so a
   send after attempts on an earlier day is no flash.
-- Stats across boards: if you climb on more than one board, the logbook statistics
-  show how many tries you need to send each grade on each board, as bars side by
-  side, and per month the hardest problem you sent for the first time on each board
-  and the average tries, as two small line charts. Tries from earlier sessions count
-  until the first send; repeats do not. Values that rest on fewer than three
-  problems are drawn hollow; tap a grade or a month for its numbers. Each board
-  keeps one colour. With enough data on two boards, the board comparison says how
-  they feel for you ("MoonBoard feels about one grade harder for you than Kilter"),
-  estimated from your tries at the same grades. These tries views now also show if
-  you climb on one board. Works with your existing logbook.
-- Session recap: the button beside each day in the logbook, and "Share as image"
-  at the end of a timed session, show one card with sends, flashes, tries, the
-  hardest grade, the grades you sent and the milestones of the day, ready to share
-  as an image.
+- Stats across boards: if you climb on more than one board, the statistics show
+  how many tries you need to send each grade on each board, as bars side by side,
+  and the average tries per month as a small line chart. Tries from earlier
+  sessions count until the first send; repeats do not. Values that rest on fewer
+  than three problems are drawn hollow; tap a board, grade or month for its
+  numbers. Each board keeps one colour everywhere. With enough data on two
+  boards, the statistics say how they feel for you ("MoonBoard feels about one
+  grade harder for you than Kilter"), estimated from your tries at the same
+  grades. The tries views also show if you climb on one board. Works with your
+  existing logbook.
+- Session recap: the button beside each day in the logbook, and the summary at
+  the end of a timed session, show one card with sends, flashes, tries, the
+  hardest grade, the grades you sent and the milestones of the day, ready to
+  share as an image.
 - Wall games, from the main menu or a problem's menu ("Play as a game"):
   "Floor is lava" (lit rows rise from the bottom, five speeds), "Endurance" (a
   problem appears row by row, five waiting times), "Hold thief" (a random

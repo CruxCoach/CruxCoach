@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +33,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -78,11 +80,6 @@ import java.time.format.FormatStyle
 internal fun SessionRecapSheet(recap: SessionRecap, onDismiss: () -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val layer = rememberGraphicsLayer()
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val chooser = stringResource(R.string.board_session_recap_chooser)
-    val failed = stringResource(R.string.board_session_recap_failed)
-    var sharing by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -99,25 +96,49 @@ internal fun SessionRecapSheet(recap: SessionRecap, onDismiss: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             SessionRecapImage(recap, layer)
-            Button(
-                onClick = {
-                    sharing = true
-                    scope.launch {
-                        val ok = runCatching { shareRecap(context, layer, recap, chooser) }.isSuccess
-                        if (!ok) Toast.makeText(context, failed, Toast.LENGTH_SHORT).show()
-                        sharing = false
-                    }
-                },
-                enabled = !sharing,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.board_session_recap_share), fontWeight = FontWeight.Bold)
-            }
+            ShareRecapButton(recap, layer)
         }
+    }
+}
+
+/** Shares the card recorded in [layer] as an image through the phone's share menu. */
+@Composable
+internal fun ShareRecapButton(recap: SessionRecap, layer: GraphicsLayer, filled: Boolean = true) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val chooser = stringResource(R.string.board_session_recap_chooser)
+    val failed = stringResource(R.string.board_session_recap_failed)
+    var sharing by remember { mutableStateOf(false) }
+    val onClick: () -> Unit = {
+        sharing = true
+        scope.launch {
+            val ok = runCatching { shareRecap(context, layer, recap, chooser) }.isSuccess
+            if (!ok) Toast.makeText(context, failed, Toast.LENGTH_SHORT).show()
+            sharing = false
+        }
+    }
+    val content: @Composable RowScope.() -> Unit = {
+        Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(stringResource(R.string.board_session_recap_share), fontWeight = FontWeight.Bold)
+    }
+    if (filled) {
+        Button(
+            onClick = onClick,
+            enabled = !sharing,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
+            shape = RoundedCornerShape(12.dp),
+            content = content,
+        )
+    } else {
+        OutlinedButton(
+            onClick = onClick,
+            enabled = !sharing,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            content = content,
+        )
     }
 }
 

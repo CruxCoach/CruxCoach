@@ -23,20 +23,6 @@ object BoardStatsComputer {
     private val DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE
     private val WEEK_FIELD = WeekFields.ISO.weekOfWeekBasedYear()
     private val WEEK_BASED_YEAR_FIELD = WeekFields.ISO.weekBasedYear()
-    private val MONTH_NAMES_FALLBACK = arrayOf("", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
-    private val MONTH_RES_IDS = arrayOf(
-        0, R.string.month_jan, R.string.month_feb, R.string.month_mar,
-        R.string.month_apr, R.string.month_may, R.string.month_jun,
-        R.string.month_jul, R.string.month_aug, R.string.month_sep,
-        R.string.month_oct, R.string.month_nov, R.string.month_dec
-    )
-
-    private fun monthName(month: Int, context: Context?): String {
-        if (month < 1 || month > 12) return ""
-        return context?.getString(MONTH_RES_IDS[month]) ?: MONTH_NAMES_FALLBACK[month]
-    }
 
     // Grade band thresholds (Kilter difficulty values)
     // Easy: V0-V2 (diff < 16), Medium: V3-V5 (16..20), Hard: V6-V8 (21..26), Elite: V9+ (27+)
@@ -67,16 +53,15 @@ object BoardStatsComputer {
         val flashUuids = trueFlashUuids(ascents)
         val flashCount = sends.count { it.uuid in flashUuids }
         val flashRate = if (totalSends > 0) flashCount.toFloat() / totalSends * 100f else 0f
-        val uniqueClimbs = filtered.map { it.climbUuid }.distinct().size
+        // A problem is a climb on one board, as in the grades chart.
+        val uniqueClimbs = filtered.map { it.boardBrand to it.climbUuid }.distinct().size
         val sessionCount = filtered.map { it.climbedAt.take(10) }.distinct().size
 
         val hardestDiff = sends.mapNotNull { it.difficultyAverage }.maxOrNull()
         val hardestGrade = hardestDiff?.let { GradeDisplayHelper.formatDifficulty(it, gradeScale) }
         val hardestDiffInt = hardestDiff?.toInt() ?: 0
 
-        val gradePyramid = computeGradePyramid(sends, gradeScale)
         val angleDist = computeAngleDistribution(filtered)
-        val sendsOverTime = computeSendsOverTime(filtered, interval, context)
         val activityMap = computeActivityMap(filtered)
 
         // New extended stats
@@ -84,10 +69,8 @@ object BoardStatsComputer {
         val outcomeSends = problemOutcomes.filter { it.isSend }
         val outcomeBids = problemOutcomes.filterNot { it.isSend }
         val gradeOutcomes = computeGradeOutcomes(outcomeSends, outcomeBids, gradeScale, flashUuids)
-        val outcomeDistribution = computeOutcomeDistribution(outcomeSends, outcomeBids, flashUuids)
         val weeklyVolume = computeWeeklyVolume(filtered)
         val gradeProgression = computeGradeProgression(sends, interval, context)
-        val uniqueClimbsByGrade = computeUniqueClimbsByGrade(sends, gradeScale)
         val personalRecords = computePersonalRecords(ascents, gradeScale, clock, flashUuids)
 
         return BoardLogbookStats(
@@ -103,15 +86,11 @@ object BoardStatsComputer {
             flashRate = flashRate,
             uniqueClimbs = uniqueClimbs,
             sessionCount = sessionCount,
-            gradePyramid = gradePyramid,
             angleDistribution = angleDist,
-            sendsOverTime = sendsOverTime,
             activityMap = activityMap,
             gradeOutcomes = gradeOutcomes,
-            outcomeDistribution = outcomeDistribution,
             weeklyVolume = weeklyVolume,
             gradeProgression = gradeProgression,
-            uniqueClimbsByGrade = uniqueClimbsByGrade,
             personalRecords = personalRecords
         )
     }
@@ -151,6 +130,28 @@ object BoardStatsComputer {
             .sortedWith(compareByDescending<BoardComparisonEntry> { it.sendCount }
                 .thenByDescending { it.attemptCount })
     }
+
+    /**
+     * The rolling level of [computeGradeProgression] for each board over the
+     * interval, so a progress chart can draw one line per board.
+     */
+    fun gradeProgressionByBoard(
+        ascents: List<AscentWithClimb>,
+        interval: StatsTimeInterval,
+        customFrom: LocalDate? = null,
+        customTo: LocalDate? = null,
+        context: Context? = null,
+        clock: Clock = Clock.systemDefaultZone(),
+    ): Map<String, List<GradeProgressionPoint>> =
+        filterByInterval(ascents, interval, customFrom, customTo, clock)
+            .filter { it.isSend }
+            .groupBy { it.boardBrand }
+            .mapValues { (_, sends) -> computeGradeProgression(sends, interval, context) }
+            .filterValues { it.isNotEmpty() }
+
+    /** Consecutive weeks with a session up to now, over [ascents] (see [computeWeekStreak]). */
+    fun weekStreakOf(ascents: List<AscentWithClimb>, clock: Clock = Clock.systemDefaultZone()): Int =
+        computeWeekStreak(ascents.mapNotNull { parseDate(it.climbedAt) }.distinct().sorted(), clock)
 
     fun filterByInterval(
         ascents: List<AscentWithClimb>,
@@ -203,40 +204,6 @@ object BoardStatsComputer {
             .groupBy { it.angle.toInt() }
             .map { (angle, list) -> AngleDistEntry(angle, list.size) }
             .sortedBy { it.angle }
-    }
-
-    fun computeSendsOverTime(
-        ascents: List<AscentWithClimb>,
-        interval: StatsTimeInterval,
-        context: Context? = null
-    ): List<TimeBucketEntry> {
-        if (ascents.isEmpty()) return emptyList()
-        val parsed = ascents.filter { it.isSend }.mapNotNull { parseDate(it.climbedAt) }
-        if (parsed.isEmpty()) return emptyList()
-
-        return when (interval) {
-            StatsTimeInterval.DAYS_30 -> {
-                val dayFmt = DateTimeFormatter.ofPattern("dd.MM")
-                parsed.groupBy { it }
-                    .map { (date, list) -> TimeBucketEntry(date.format(dayFmt), list.size) }
-                    .sortedBy { it.label }
-            }
-            StatsTimeInterval.DAYS_90 -> {
-                parsed.groupBy {
-                    context?.getString(R.string.calendar_week_short, it.get(WEEK_FIELD))
-                        ?: "CW ${it.get(WEEK_FIELD)}"
-                }
-                    .toSortedMap()
-                    .map { (label, list) -> TimeBucketEntry(label, list.size) }
-            }
-            StatsTimeInterval.YEAR_1, StatsTimeInterval.ALL -> {
-                parsed.groupBy { it.year to it.monthValue }
-                    .toSortedMap(compareBy({ it.first }, { it.second }))
-                    .map { (key, list) ->
-                        TimeBucketEntry("${monthName(key.second, context)} '${key.first % 100}", list.size)
-                    }
-            }
-        }
     }
 
     private fun computeActivityMap(
@@ -293,20 +260,6 @@ object BoardStatsComputer {
                 attemptCount = attempts
             )
         }.sortedBy { it.difficultyInt }
-    }
-
-    private fun computeOutcomeDistribution(
-        sends: List<AscentWithClimb>,
-        bids: List<AscentWithClimb>,
-        flashUuids: Set<String>,
-    ): OutcomeDistribution {
-        val flashes = sends.count { it.uuid in flashUuids }
-        val redpoints = sends.count { it.uuid !in flashUuids }
-        return OutcomeDistribution(
-            flashes = flashes,
-            redpoints = redpoints,
-            attempts = bids.size,
-        )
     }
 
     private fun computeWeeklyVolume(
@@ -386,26 +339,6 @@ object BoardStatsComputer {
             }
             GradeProgressionPoint(label, weekStart, level)
         }
-    }
-
-    private fun computeUniqueClimbsByGrade(
-        sends: List<AscentWithClimb>,
-        gradeScale: GradeScale
-    ): List<UniqueClimbEntry> {
-        // Group by displayed grade label (see computeGradePyramid).
-        return sends
-            .filter { it.difficultyAverage != null }
-            .groupBy { GradeDisplayHelper.formatDifficulty(it.difficultyAverage!!, gradeScale) }
-            .map { (grade, entries) ->
-                val diffInt = entries.minOf { Math.round(it.difficultyAverage!!).toInt() }
-                UniqueClimbEntry(
-                    grade = grade,
-                    difficultyInt = diffInt,
-                    uniqueCount = entries.map { it.climbUuid }.distinct().size,
-                    totalSends = entries.size
-                )
-            }
-            .sortedBy { it.difficultyInt }
     }
 
     private fun computePersonalRecords(

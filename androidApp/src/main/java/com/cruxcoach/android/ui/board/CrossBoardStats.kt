@@ -24,12 +24,9 @@ data class CrossBoardGradeRow(
     val byBoard: Map<String, TriesToSend>,
 )
 
-/** One board in one month: the hardest first send and the tries of all first sends. */
+/** One board in one month: the tries of its first sends. */
 data class CrossBoardMonthCell(
-    val hardestGrade: String?,
     val tries: TriesToSend,
-    /** Difficulty of [hardestGrade], so charts can place it on a grade axis. */
-    val hardestDifficulty: Double? = null,
 )
 
 data class CrossBoardMonthRow(
@@ -58,7 +55,7 @@ data class TriesBuckets(val counts: List<Int>) {
 
 /**
  * Stats across boards (#44): how many tries a grade takes on each board, and
- * how the hardest send and the tries develop month by month. Boards are the
+ * how the tries develop month by month. Boards are the
  * raw wire values, ordered by first sends in the interval, most first.
  */
 data class CrossBoardStats(
@@ -135,12 +132,7 @@ object CrossBoardStatsComputer {
                     month = month,
                     label = monthLabel(month, context),
                     byBoard = sends.groupBy { it.send.boardBrand }.mapValues { (_, s) ->
-                        val hardest = s.mapNotNull { it.send.difficultyAverage }.maxOrNull()
-                        CrossBoardMonthCell(
-                            hardestGrade = hardest?.let { GradeDisplayHelper.formatDifficulty(it, gradeScale) },
-                            tries = triesOf(s),
-                            hardestDifficulty = hardest,
-                        )
+                        CrossBoardMonthCell(tries = triesOf(s))
                     },
                 )
             }

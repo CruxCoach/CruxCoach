@@ -1,13 +1,17 @@
 package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,38 +67,58 @@ internal fun boardFeelSentence(feel: BoardFeel, order: List<String>): String? {
 }
 
 /**
- * How the boards feel against the main one: a sentence, then a row per board
- * with its dot on a shared scale of grades, the main board on the 0 line. The
- * pale band around a dot spans one standard error either side, so a wide band
- * means a rough estimate.
+ * How hard the boards feel against the main board over the interval: one
+ * sentence, then a row per board with its dot on a shared scale of grades, the
+ * main board on the 0 line. The pale band around a dot spans one standard
+ * error either side, so a wide band means a rough estimate. Shown only when
+ * there is enough data; how much you climb on each board is on the board
+ * chips. [allBoards] fix the colours as everywhere in the sheet.
  */
 @Composable
-internal fun BoardFeelView(feel: BoardFeel, order: List<String>, colors: Map<String, Color>) {
-    val sentence = boardFeelSentence(feel, order) ?: return
+internal fun BoardsCard(feel: BoardFeel, feelOrder: List<String>, allBoards: List<String>) {
+    val sentence = boardFeelSentence(feel, feelOrder) ?: return
+    val colors = boardSeriesColors(allBoards + feel.offsets.keys + feel.reference)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     // The main board first, then the others in the order of the comparison.
     val rows = listOf(feel.reference to BoardOffset(0.0, 0.0)) +
-        order.filter { it in feel.offsets }.map { it to feel.offsets.getValue(it) } +
-        feel.offsets.filterKeys { it !in order }.toList()
+        feelOrder.filter { it in feel.offsets }.map { it to feel.offsets.getValue(it) } +
+        feel.offsets.filterKeys { it !in feelOrder }.toList()
     val reach = rows.maxOf { (_, o) -> abs(o.grades) + o.error }
     val range = min(3.0, max(2.0, ceil(reach)))
 
-    Column(Modifier.semantics(mergeDescendants = true) { contentDescription = sentence }) {
-        Text(sentence, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+    ChartSection(
+        stringResource(R.string.board_stats_feel_title),
+        help = stringResource(R.string.board_stats_feel_help, BoardFeelEstimator.MIN_PROBLEMS),
+    ) {
+        Text(
+            sentence,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { contentDescription = sentence },
+        )
         Spacer(Modifier.height(12.dp))
         rows.forEach { (board, offset) ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    boardBrandLabel(board),
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.width(FEEL_NAME_WIDTH),
-                )
-                FeelLane(offset, colors[board] ?: muted, range, Modifier.weight(1f).height(FEEL_LANE_HEIGHT))
+            Row(
+                Modifier.fillMaxWidth().height(FEEL_LANE_HEIGHT),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    Modifier.width(FEEL_NAME_WIDTH),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Spacer(Modifier.size(8.dp).background(colors[board] ?: muted, CircleShape))
+                    Text(
+                        boardBrandLabel(board),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                FeelLane(offset, colors[board] ?: muted, range, Modifier.weight(1f).fillMaxHeight())
             }
         }
-        Row(verticalAlignment = Alignment.Top) {
+        Row {
             Spacer(Modifier.width(FEEL_NAME_WIDTH))
             FeelAxis(range, Modifier.weight(1f))
         }
@@ -154,6 +178,6 @@ private fun FeelAxis(range: Double, modifier: Modifier) {
     }
 }
 
-private val FEEL_NAME_WIDTH = 96.dp
-private val FEEL_LANE_HEIGHT = 28.dp
+private val FEEL_NAME_WIDTH = 104.dp
+private val FEEL_LANE_HEIGHT = 32.dp
 private val FEEL_INSET = 10.dp

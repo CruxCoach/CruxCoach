@@ -54,8 +54,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
-import com.cruxcoach.android.data.GradeScale
-import com.cruxcoach.android.util.GradeDisplayHelper
 import java.time.Month
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -101,7 +99,6 @@ internal fun CrossBoardSection(
     stats: CrossBoardStats,
     view: CrossBoardView,
     onViewSelect: (CrossBoardView) -> Unit,
-    gradeScale: GradeScale,
     allBoards: List<String> = emptyList(),
 ) {
     val colors = boardSeriesColors(allBoards + stats.boards)
@@ -135,7 +132,7 @@ internal fun CrossBoardSection(
             if (stats.boards.size > 1 || smallSamples) Spacer(Modifier.height(12.dp))
             when (view) {
                 CrossBoardView.TRIES_PER_GRADE -> TriesPerGradeChart(stats, colors)
-                else -> MonthCharts(stats, colors, gradeScale)
+                else -> MonthCharts(stats, colors)
             }
         }
     }
@@ -195,7 +192,7 @@ internal fun triesScaleMax(maxAverage: Double): Double = max(2.0, ceil(maxAverag
  * each step told apart from the next and the darkest still clear of the card.
  */
 @Composable
-private fun triesRamp(): List<Color> =
+internal fun triesRamp(): List<Color> =
     if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) {
         listOf(Color(0xFF9EC5F4), Color(0xFF6DA7EC), Color(0xFF3987E5), Color(0xFF256ABF), Color(0xFF184F95))
     } else {
@@ -460,18 +457,6 @@ private val MONTH_RES_IDS = intArrayOf(
     R.string.month_oct, R.string.month_nov, R.string.month_dec,
 )
 
-/**
- * The grades between the easiest and the hardest of [difficulties], easiest
- * first, each once: the rows of a grade axis. Several difficulties can share
- * a displayed grade, so the axis counts grades, not difficulty steps.
- */
-internal fun gradeLevels(difficulties: List<Double>, scale: GradeScale): List<String> {
-    if (difficulties.isEmpty()) return emptyList()
-    val low = floor(difficulties.min()).toInt()
-    val high = ceil(difficulties.max()).toInt()
-    return (low..high).map { GradeDisplayHelper.formatDifficulty(it.toDouble(), scale) }.distinct()
-}
-
 /** One series point: a board's value in one month. */
 private class MonthPoint(val month: Int, val value: Double, val label: String, val hollow: Boolean)
 
@@ -482,22 +467,12 @@ private class ValueLabel(val text: TextLayoutResult, val colors: List<Color>, va
 }
 
 @Composable
-private fun MonthCharts(stats: CrossBoardStats, colors: Map<String, Color>, gradeScale: GradeScale) {
+private fun MonthCharts(stats: CrossBoardStats, colors: Map<String, Color>) {
     // The model lists the newest month first; a chart reads left to right.
     val months = remember(stats.months) { stats.months.reversed() }
     if (months.isEmpty()) return
     var selected by remember(months) { mutableIntStateOf(months.lastIndex) }
 
-    val levels = remember(months, gradeScale) {
-        gradeLevels(months.flatMap { row -> row.byBoard.values.mapNotNull { it.hardestDifficulty } }, gradeScale)
-    }
-    val gradeSeries = stats.boards.associateWith { board ->
-        months.mapIndexedNotNull { index, row ->
-            val grade = row.byBoard[board]?.hardestGrade ?: return@mapIndexedNotNull null
-            val level = levels.indexOf(grade).takeIf { it >= 0 } ?: return@mapIndexedNotNull null
-            MonthPoint(index, level.toDouble(), grade, hollow = false)
-        }
-    }
     val triesSeries = stats.boards.associateWith { board ->
         months.mapIndexedNotNull { index, row ->
             val tries = row.byBoard[board]?.tries ?: return@mapIndexedNotNull null
@@ -511,32 +486,11 @@ private fun MonthCharts(stats: CrossBoardStats, colors: Map<String, Color>, grad
     val description = months.mapIndexed { index, row ->
         monthLabels[index] + ": " + stats.boards.filter { it in row.byBoard }.map { board ->
             val cell = row.byBoard.getValue(board)
-            boardBrandLabel(board) + " " + (cell.hardestGrade?.let { "$it, " } ?: "") + triesDetail(cell.tries)
+            boardBrandLabel(board) + " " + triesDetail(cell.tries)
         }.joinToString("; ")
     }.joinToString(". ")
 
     Column(Modifier.semantics { contentDescription = description }) {
-        ChartCaption(stringResource(R.string.board_stats_cross_board_hardest))
-        if (levels.isNotEmpty()) {
-            val step = ceil(levels.size / 5.0).toInt()
-            val pad = if (levels.size == 1) 1.0 else 0.5
-            MonthLineChart(
-                monthCount = months.size,
-                boards = stats.boards,
-                colors = colors,
-                series = gradeSeries,
-                yMin = -pad,
-                yMax = levels.lastIndex + pad,
-                ticks = levels.indices.filter { it % step == 0 || it == levels.lastIndex }
-                    .map { it.toDouble() to levels[it] },
-                monthLabels = null,
-                plotHeight = 128.dp,
-                selected = selected,
-                onSelect = { selected = it },
-            )
-        }
-        Spacer(Modifier.height(16.dp))
-        ChartCaption(stringResource(R.string.board_stats_cross_board_tries_per_send))
         val top = triesScaleMax(months.maxOf { row -> row.byBoard.values.maxOf { it.tries.averageTries } })
         val middle = ((1 + top) / 2).let { if (it == floor(it)) it else null }
         MonthLineChart(
@@ -548,21 +502,11 @@ private fun MonthCharts(stats: CrossBoardStats, colors: Map<String, Color>, grad
             yMax = top,
             ticks = listOfNotNull(1.0, middle?.takeIf { top >= 4 }, top).map { it to "${it.toInt()}" },
             monthLabels = monthLabels,
-            plotHeight = 88.dp,
+            plotHeight = 112.dp,
             selected = selected,
             onSelect = { selected = it },
         )
     }
-}
-
-@Composable
-private fun ChartCaption(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 6.dp),
-    )
 }
 
 /**

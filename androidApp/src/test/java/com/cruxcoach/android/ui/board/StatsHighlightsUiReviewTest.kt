@@ -39,7 +39,7 @@ import kotlin.math.roundToInt
  * `CRUXCOACH_UI_REVIEW_THEME=light`). Skipped unless that variable is set.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, qualifiers = "de-w411dp-h1400dp-xhdpi")
+@Config(application = Application::class, qualifiers = "de-w411dp-h1600dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class StatsHighlightsUiReviewTest {
 
@@ -106,7 +106,8 @@ class StatsHighlightsUiReviewTest {
     private val glance = StatsHighlightsComputer.atAGlance(logbook, scale, flashUuids, clock)
     private val milestones = StatsHighlightsComputer.milestones(logbook, scale, weekStreak = 7)
     private val cross = CrossBoardStatsComputer.compute(logbook, StatsTimeInterval.ALL, scale, clock = clock)
-    private val comparison = BoardStatsComputer.computeBoardComparison(logbook, StatsTimeInterval.ALL, scale, clock = clock)
+    private val stats = BoardStatsComputer.computeStats(logbook, StatsTimeInterval.ALL, scale, clock = clock)
+    private val byBoard = BoardStatsComputer.gradeProgressionByBoard(logbook, StatsTimeInterval.ALL, clock = clock)
     private val recap = StatsHighlightsComputer.sessionRecap(logbook, today, scale, flashUuids)!!
 
     private fun shoot(name: String, before: () -> Unit = {}, content: @Composable () -> Unit) {
@@ -130,16 +131,34 @@ class StatsHighlightsUiReviewTest {
         }
     }
 
+    /** The logbook top: the overview over the first day of the list. */
     @Test
-    fun top() = shoot("stats-top") {
+    fun logbookTop() = shoot("logbook-top") {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LogbookOverviewCard(glance, milestones, boards, onOpenStats = {})
+            DayHeader(today.toString(), 9, onRecap = {})
+        }
+    }
+
+    /** The statistics from the filters down to the grades. */
+    @Test
+    fun sheetTop() = shoot("stats-sheet-1") {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            AtAGlanceCard(glance, boards)
-            MilestonesCard(milestones, boards)
-            StatsIntervalChips(selected = StatsTimeInterval.ALL, onSelect = {})
-            BoardComparisonSection(
-                entries = comparison, selected = null, onSelect = {}, allBoards = boards,
-                feel = cross.feel, feelOrder = cross.boards,
-            )
+            StatsIntervalChips(selected = StatsTimeInterval.ALL, onSelect = {}, onCustomDateRange = { _, _ -> })
+            PeriodNumbers(stats)
+            BoardsCard(cross.feel!!, cross.boards, boards)
+            ProgressCard(stats.gradeProgression, byBoard, boardFilter = null, allBoards = boards, gradeScale = scale)
+            GradesCard(stats.gradeOutcomes)
+        }
+    }
+
+    /** The statistics from the tries down to the angles. */
+    @Test
+    fun sheetBottom() = shoot("stats-sheet-2") {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            CrossBoardSection(cross, CrossBoardView.TRIES_UNTIL_SEND, onViewSelect = {}, allBoards = boards)
+            ActivityCard(ActivityView.CALENDAR, onSelect = {}, stats.activityMap, stats.weeklyVolume, StatsTimeInterval.ALL)
+            ChartSection("Winkel-Verteilung") { BoardAngleDistChart(entries = stats.angleDistribution) }
         }
     }
 
@@ -148,26 +167,29 @@ class StatsHighlightsUiReviewTest {
         val kilter = logbook.filter { it.boardBrand == "kilter" }
         val one = StatsHighlightsComputer.atAGlance(kilter, scale, flashUuids, clock)
         val badges = StatsHighlightsComputer.milestones(kilter, scale, weekStreak = 7)
-        val tries = CrossBoardStatsComputer.compute(kilter, StatsTimeInterval.ALL, scale, clock = clock)
+        val kilterStats = BoardStatsComputer.computeStats(kilter, StatsTimeInterval.ALL, scale, clock = clock)
         shoot("stats-one-board") {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                AtAGlanceCard(one, listOf("kilter"))
-                MilestonesCard(badges, listOf("kilter"))
-                CrossBoardSection(tries, CrossBoardView.TRIES_UNTIL_SEND, onViewSelect = {}, gradeScale = scale, allBoards = listOf("kilter"))
+                LogbookOverviewCard(one, badges, listOf("kilter"), onOpenStats = {})
+                PeriodNumbers(kilterStats)
+                ProgressCard(kilterStats.gradeProgression, emptyMap(), boardFilter = null, allBoards = listOf("kilter"), gradeScale = scale)
+                GradesCard(kilterStats.gradeOutcomes)
             }
         }
     }
 
     @Test
-    fun sendCurve() = shoot("stats-send-curve") {
-        CrossBoardSection(cross, CrossBoardView.TRIES_UNTIL_SEND, onViewSelect = {}, gradeScale = scale, allBoards = boards)
+    fun gradesOpen() = shoot("stats-grades-open", before = {
+        compose.onNodeWithText(stats.gradeOutcomes.last().grade).performClick()
+    }) {
+        GradesCard(stats.gradeOutcomes)
     }
 
     @Test
     fun sendCurveOpen() = shoot("stats-send-curve-open", before = {
         compose.onNodeWithText("MoonBoard").performClick()
     }) {
-        CrossBoardSection(cross, CrossBoardView.TRIES_UNTIL_SEND, onViewSelect = {}, gradeScale = scale, allBoards = boards)
+        CrossBoardSection(cross, CrossBoardView.TRIES_UNTIL_SEND, onViewSelect = {}, allBoards = boards)
     }
 
     @Test

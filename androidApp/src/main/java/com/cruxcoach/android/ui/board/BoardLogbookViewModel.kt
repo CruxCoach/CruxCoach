@@ -53,11 +53,6 @@ data class AngleDistEntry(
     val count: Int
 )
 
-data class TimeBucketEntry(
-    val label: String,
-    val count: Int
-)
-
 data class BoardLogbookStats(
     val hardestGrade: String? = null,
     val hardestDifficultyInt: Int = 0,
@@ -68,16 +63,12 @@ data class BoardLogbookStats(
     val flashRate: Float = 0f,
     val uniqueClimbs: Int = 0,
     val sessionCount: Int = 0,
-    val gradePyramid: List<BoardGradePyramidEntry> = emptyList(),
     val angleDistribution: List<AngleDistEntry> = emptyList(),
-    val sendsOverTime: List<TimeBucketEntry> = emptyList(),
     val activityMap: Map<LocalDate, Int> = emptyMap(),
     // Extended stats
     val gradeOutcomes: List<GradeOutcomeEntry> = emptyList(),
-    val outcomeDistribution: OutcomeDistribution = OutcomeDistribution(0, 0, 0),
     val weeklyVolume: List<WeeklyVolumeEntry> = emptyList(),
     val gradeProgression: List<GradeProgressionPoint> = emptyList(),
-    val uniqueClimbsByGrade: List<UniqueClimbEntry> = emptyList(),
     val personalRecords: PersonalRecords = PersonalRecords()
 )
 
@@ -106,8 +97,10 @@ data class BoardLogbookState(
     // Multi-select
     val selectedUuids: Set<String> = emptySet(),
     val showBatchDeleteConfirm: Boolean = false,
-    // Filters for the visible logbook list. The date interval is shared with
-    // statistics so list and headline numbers describe the same period.
+    // Filters for the visible logbook list, all in its filter sheet. The
+    // list has its own period: the overview above it does not depend on one,
+    // and the statistics keep theirs.
+    val logbookInterval: StatsTimeInterval = StatsTimeInterval.ALL,
     val logbookOutcomeFilter: LogbookOutcomeFilter = LogbookOutcomeFilter.ALL,
     val logbookBoardFilter: String? = null,
     val logbookAngleFilter: Int? = null,
@@ -117,9 +110,8 @@ data class BoardLogbookState(
     val stats: BoardLogbookStats = BoardLogbookStats(),
     val showStatsSheet: Boolean = false,
     val zones: IntensityZones? = null,
-    // Chart view selectors
-    val gradeChartView: GradeChartView = GradeChartView.PYRAMID,
-    val timeChartView: TimeChartView = TimeChartView.SENDS_OVER_TIME,
+    // Chart view selector
+    val activityView: ActivityView = ActivityView.CALENDAR,
     val customDateFrom: LocalDate? = null,
     val customDateTo: LocalDate? = null,
     // Heatmap (board visualization in stats sheet). Default = PERSONAL
@@ -154,10 +146,13 @@ data class BoardLogbookState(
     // Like [boardComparison] it spans all boards; with one board it shows just that.
     val crossBoard: CrossBoardStats = CrossBoardStats(),
     val crossBoardView: CrossBoardView = CrossBoardView.TRIES_UNTIL_SEND,
-    // Top of the statistics: records and the last 30 days, and the badges.
-    // Both follow the board filter, not the interval.
+    // The overview at the top of the logbook: records, the last 30 days and
+    // the badges, over all boards and the whole logbook.
     val atAGlance: AtAGlance = AtAGlance(),
     val milestones: List<Milestone> = emptyList(),
+    // The rolling level per board, for the progress chart when the statistics
+    // show all of several boards; empty otherwise.
+    val progressionByBoard: Map<String, List<GradeProgressionPoint>> = emptyMap(),
     /** The day whose recap is open, over all boards. */
     val sessionRecap: SessionRecap? = null,
     // Own-Kilter-climb publish gate for logbook entries: NORMALIZED
@@ -556,14 +551,17 @@ class BoardLogbookViewModel @Inject constructor(
 
     fun setStatsInterval(interval: StatsTimeInterval) {
         _state.update { it.copy(statsInterval = interval, customDateFrom = null, customDateTo = null) }
-        applyLogbookFilters()
         recomputeStats()
     }
 
     fun setCustomDateRange(from: LocalDate, to: LocalDate) {
         _state.update { it.copy(customDateFrom = from, customDateTo = to) }
-        applyLogbookFilters()
         recomputeStats()
+    }
+
+    fun setLogbookInterval(interval: StatsTimeInterval) {
+        _state.update { it.copy(logbookInterval = interval) }
+        applyLogbookFilters()
     }
 
     fun setLogbookOutcomeFilter(filter: LogbookOutcomeFilter) {
@@ -584,9 +582,7 @@ class BoardLogbookViewModel @Inject constructor(
     private fun applyLogbookFilters() {
         if (allAscents.isEmpty()) return
         val s = _state.value
-        val visible = BoardStatsComputer.filterByInterval(
-            allAscents, s.statsInterval, s.customDateFrom, s.customDateTo,
-        ).filter { ascent ->
+        val visible = BoardStatsComputer.filterByInterval(allAscents, s.logbookInterval).filter { ascent ->
             when (s.logbookOutcomeFilter) {
                 LogbookOutcomeFilter.ALL -> true
                 LogbookOutcomeFilter.SENDS -> ascent.isSend
@@ -608,12 +604,8 @@ class BoardLogbookViewModel @Inject constructor(
         }
     }
 
-    fun setGradeChartView(view: GradeChartView) {
-        _state.update { it.copy(gradeChartView = view) }
-    }
-
-    fun setTimeChartView(view: TimeChartView) {
-        _state.update { it.copy(timeChartView = view) }
+    fun setActivityView(view: ActivityView) {
+        _state.update { it.copy(activityView = view) }
     }
 
     fun setCrossBoardView(view: CrossBoardView) {
@@ -678,13 +670,19 @@ class BoardLogbookViewModel @Inject constructor(
                         allAscents, s.statsInterval, s.gradeScale,
                         s.customDateFrom, s.customDateTo, context
                     )
-                    // Flashes need the full history of every board, also when scoped.
-                    val flashUuids = BoardStatsComputer.trueFlashUuids(allAscents)
-                    val glance = StatsHighlightsComputer.atAGlance(scoped, s.gradeScale, flashUuids)
+                    // The logbook overview spans every board and the whole logbook.
+                    val glance = StatsHighlightsComputer.atAGlance(allAscents, s.gradeScale)
                     val badges = StatsHighlightsComputer.milestones(
-                        scoped, s.gradeScale, st.personalRecords.weekStreak,
+                        allAscents, s.gradeScale, BoardStatsComputer.weekStreakOf(allAscents),
                     )
-                    ComputedStats(st, cmp, cross, glance, badges)
+                    val byBoard = if (s.boardFilter == null && s.availableBoardBrands.size > 1) {
+                        BoardStatsComputer.gradeProgressionByBoard(
+                            allAscents, s.statsInterval, s.customDateFrom, s.customDateTo, context,
+                        )
+                    } else {
+                        emptyMap()
+                    }
+                    ComputedStats(st, cmp, cross, glance, badges, byBoard)
                 }
                 _state.update {
                     it.copy(
@@ -693,6 +691,7 @@ class BoardLogbookViewModel @Inject constructor(
                         crossBoard = result.crossBoard,
                         atAGlance = result.atAGlance,
                         milestones = result.milestones,
+                        progressionByBoard = result.progressionByBoard,
                     )
                 }
                 recomputeHeatmap()
@@ -1003,4 +1002,5 @@ private class ComputedStats(
     val crossBoard: CrossBoardStats,
     val atAGlance: AtAGlance,
     val milestones: List<Milestone>,
+    val progressionByBoard: Map<String, List<GradeProgressionPoint>>,
 )

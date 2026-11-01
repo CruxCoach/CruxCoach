@@ -127,19 +127,19 @@ class CrossBoardUiReviewTest {
 
     @Test
     fun triesPerGrade() = shoot("cross-board-tries") {
-        CrossBoardSection(stats, CrossBoardView.TRIES_PER_GRADE, onViewSelect = {}, gradeScale = GradeScale.FRENCH)
+        CrossBoardSection(stats, CrossBoardView.TRIES_PER_GRADE, onViewSelect = {})
     }
 
     @Test
     fun triesPerGradeWithAGradeOpen() = shoot("cross-board-tries-open", before = {
         compose.onNodeWithText(stats.grades[1].grade).performClick()
     }) {
-        CrossBoardSection(stats, CrossBoardView.TRIES_PER_GRADE, onViewSelect = {}, gradeScale = GradeScale.FRENCH)
+        CrossBoardSection(stats, CrossBoardView.TRIES_PER_GRADE, onViewSelect = {})
     }
 
     @Test
     fun perMonth() = shoot("cross-board-months") {
-        CrossBoardSection(stats, CrossBoardView.PER_MONTH, onViewSelect = {}, gradeScale = GradeScale.FRENCH)
+        CrossBoardSection(stats, CrossBoardView.PER_MONTH, onViewSelect = {})
     }
 
     @Test
@@ -150,6 +150,6 @@ class CrossBoardUiReviewTest {
             click(Offset(left + (width - left) * 1.5f / 4f, 60.dp.toPx()))
         }
     }) {
-        CrossBoardSection(crowded, CrossBoardView.PER_MONTH, onViewSelect = {}, gradeScale = GradeScale.FRENCH)
+        CrossBoardSection(crowded, CrossBoardView.PER_MONTH, onViewSelect = {})
     }
 }
