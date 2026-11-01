@@ -162,7 +162,11 @@ class OnnxHoldDetector(
     override fun close() = session.close()
 
     companion object {
-        const val DEFAULT_THREADS = 4
+        /**
+         * Every core, up to 8: on the test phone (8 slow cores) 8 threads ran
+         * the model 2.7× faster than 4.
+         */
+        val DEFAULT_THREADS: Int = Runtime.getRuntime().availableProcessors().coerceIn(1, 8)
         private const val MS = 1_000_000L
     }
 }

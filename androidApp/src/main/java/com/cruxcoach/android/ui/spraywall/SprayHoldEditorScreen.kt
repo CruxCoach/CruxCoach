@@ -309,8 +309,22 @@ class SprayHoldEditorViewModel @Inject constructor(
     }
 
     private companion object {
-        /** The model's published settings; the floor keeps unsure holds for the sensitivity slider. */
-        val MODEL_SETTINGS = SegSettings(floor = 0.3f, resampler = SegSettings.Resampler.NATIVE)
+        /**
+         * Tuned on 28 labelled wall photos: 3×3 tiles of a 1536 px working
+         * photo find small holds the published 2×2 setting misses, a stricter
+         * overlap (0.3) drops duplicates from neighbouring tiles, and 0.5 is
+         * the best default threshold. The floor keeps unsure holds for the
+         * sensitivity slider.
+         */
+        val MODEL_SETTINGS = SegSettings(
+            longSide = 1536,
+            rows = 3,
+            cols = 3,
+            threshold = 0.5f,
+            floor = 0.3f,
+            nmsIou = 0.3f,
+            resampler = SegSettings.Resampler.NATIVE,
+        )
         const val DETECT_LONG_SIDE = 1024
     }
 }
