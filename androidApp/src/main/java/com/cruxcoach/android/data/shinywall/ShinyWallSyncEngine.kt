@@ -51,7 +51,8 @@ data class ShinyWallListNames(val favorites: String, val ownRoutes: String)
  * - Activity history → logbook. Sends become ascents, projects become
  *   attempts. Attempts before a send on the same route and angle are part
  *   of it (Shiny's attempt count already includes them): no entry of their
- *   own, and an attempt an earlier import logged gives way to the send.
+ *   own, and an attempt an earlier import logged gives way to the send
+ *   unless the user edited it.
  *   Each history entry gets a stable uuid and the external id
  *   `shinywall:history:<entry id>`, so a re-import never duplicates it and
  *   a local edit is never overwritten. Entries the user deleted locally stay
@@ -140,7 +141,7 @@ class ShinyWallSyncEngine @Inject constructor(
         val total: Int,
         val newestMs: Long?,
         val catalogue: Map<String, ClimbWithStats>,
-        /** Attempts an earlier import logged that are now part of a send: removed on import. */
+        /** Attempts an earlier import logged, unedited, that are now part of a send: removed on import. */
         val mergedAttempts: Set<String> = emptySet(),
     )
 
@@ -246,8 +247,9 @@ class ShinyWallSyncEngine @Inject constructor(
         for (p in placed) {
             val send = sendOf[p]
             if (send != null) {
-                // Part of the send: never an entry of its own; one an earlier import logged goes.
-                if (p.uuid in existing && (send.uuid in existing || isNew(send))) merged += p.uuid
+                // Part of the send: never an entry of its own; one an earlier import logged goes,
+                // unless it was edited since.
+                if (p.uuid in existing && (send.uuid in existing || isNew(send)) && asImported(p)) merged += p.uuid
                 continue
             }
             if (!isNew(p)) {
@@ -269,6 +271,15 @@ class ShinyWallSyncEngine @Inject constructor(
         val unique = planned.distinctBy { it.uuid }
         duplicates += planned.size - unique.size
         return Plan(unique, duplicates, skipped, history.size, newestMs, catalogue, merged)
+    }
+
+    /** True while [attempt]'s row is still as the import wrote it: same attempts, no comment, same date. */
+    private fun asImported(attempt: Placed): Boolean {
+        val row = secureDb.bidsQueries.selectBidContent(attempt.uuid).executeAsOneOrNull() ?: return false
+        return row.external_id == EXTERNAL_ID_PREFIX + attempt.entry.docId &&
+            row.bid_count == -attempt.sent.toLong() &&
+            row.comment.isNullOrBlank() &&
+            row.climbed_at == attempt.climbedAt
     }
 
     /**

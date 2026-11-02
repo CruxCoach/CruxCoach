@@ -253,6 +253,31 @@ class ShinyWallSyncEngineTest {
     }
 
     @Test
+    fun an_edited_attempt_stays_when_its_send_arrives() = runTest {
+        val attemptsR3 = realEntry("p1", "r3", -2, grade = null, ts = tOld)
+        val countEdited = realEntry("p2", "r1", -1, grade = null, ts = tOld)
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, attemptsR3, countEdited))
+        engine.importAll(names).getOrThrow()
+        // The user notes something on one attempt, changes the count of another; one stays as imported.
+        repo.updateBid(ShinyWallSyncEngine.logUuid("rev1"), 2, "almost had the crux")
+        repo.updateBid(ShinyWallSyncEngine.logUuid("p2"), 4, null)
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(
+                revAttempts, attemptsR3, countEdited,
+                revSend, realEntry("s1", "r3", 3, ts = tNew), realEntry("s2", "r1", 2, ts = tNew),
+            )
+        )
+        assertEquals(3, engine.importAll(names).getOrThrow().newAscents)
+        // Only the untouched attempt gave way; the edited ones stay, counted twice rather than lost.
+        assertEquals(listOf("shinywall:history:p2" to 4L, "shinywall:history:rev1" to 2L), bids())
+        assertEquals(
+            "almost had the crux",
+            query("SELECT comment FROM bids WHERE external_id = 'shinywall:history:rev1'") { rs -> rs.getString(1) }.single(),
+        )
+    }
+
+    @Test
     fun attempts_without_a_send_are_projects_with_their_count() = runTest {
         coEvery { client.fetchHistory("uid1") } returns Result.success(
             listOf(revAttempts, realEntry("p1", "r3", -3, grade = null), realEntry("p2", "r3", -1, grade = null, ts = tNew))
