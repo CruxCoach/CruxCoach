@@ -190,5 +190,32 @@ class SegPipelineTest {
         assertEquals(listOf(cut), SegPipeline.merge(listOf(listOf(cut), listOf(whole)), 0.3f))
     }
 
+    @Test
+    fun piecesOfAHoldCutInEveryTileAreJoined() {
+        // A hold 80 px wide across a 20 px overlap: each tile sees one cut piece, a half-disc.
+        val tiles = listOf(SegTile(0, 0, 110, 200), SegTile(90, 0, 200, 200))
+        fun halfDisc(from: Float, to: Float): SegDetection {
+            val x0 = from
+            val x1 = to
+            val cx = (x0 + x1) / 2
+            val r = sqrt((x1 - x0) * 80f / PI.toFloat())
+            // The half of a disc centred at (100, 100) that lies inside x0..x1, in units of r around the box centre.
+            val pts = (0..32).map { k -> 100f + 40f * kotlin.math.cos(2 * PI * k / 32).toFloat() to 100f + 40f * kotlin.math.sin(2 * PI * k / 32).toFloat() }
+                .map { (px, py) -> px.coerceIn(x0, x1) to py }
+            return SegDetection(x0, 60f, x1, 140f, 0.8f, pts.flatMap { (px, py) -> listOf((px - cx) / r, (py - 100f) / r) }.toFloatArray())
+        }
+        val left = halfDisc(60f, 110f)
+        val right = halfDisc(90f, 140f)
+        val merged = SegPipeline.merge(listOf(listOf(left), listOf(right)), tiles, 200, 200, 0.3f)
+        val whole = merged.single()
+        assertEquals(listOf(60f, 60f, 140f, 140f), listOf(whole.x0, whole.y0, whole.x1, whole.y1))
+        val ring = assertNotNull(whole.outline)
+        // The joined shape is the disc again: every point near its edge, on both sides.
+        val r = sqrt(80f * 80f / PI.toFloat())
+        val distances = (ring.indices step 2).map { hypot(ring[it], ring[it + 1]) * r }
+        assertTrue(distances.all { abs(it - 40f) < 3f }, "distances $distances")
+        assertTrue((ring.indices step 2).any { ring[it] < -0.5f } && (ring.indices step 2).any { ring[it] > 0.5f })
+    }
+
     private fun logit(p: Float): Float = ln(p / (1 - p))
 }

@@ -116,7 +116,7 @@ class OnnxHoldDetector(
         }
         val t4 = System.nanoTime()
         val merged = if (settings.seamAware) {
-            SegPipeline.merge(perTile, tiles, workWidth, workHeight, settings.nmsIou)
+            SegPipeline.merge(perTile, tiles, workWidth, workHeight, settings.nmsIou, settings.maxRingPoints)
         } else {
             SegPipeline.merge(perTile, settings.nmsIou)
         }

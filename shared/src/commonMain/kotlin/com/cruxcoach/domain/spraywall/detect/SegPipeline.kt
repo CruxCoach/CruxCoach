@@ -208,32 +208,150 @@ object SegPipeline {
      * detection is cut and an uncut copy from another tile overlaps it, the
      * kept hold takes the uncut copy's box and shape.
      */
-    fun merge(perTile: List<List<SegDetection>>, tiles: List<SegTile>, workWidth: Int, workHeight: Int, iou: Float): List<SegDetection> {
+    fun merge(
+        perTile: List<List<SegDetection>>,
+        tiles: List<SegTile>,
+        workWidth: Int,
+        workHeight: Int,
+        iou: Float,
+        maxRingPoints: Int = 150,
+    ): List<SegDetection> {
         val all = ArrayList<SegDetection>()
         val cut = ArrayList<Boolean>()
+        val tileOf = ArrayList<Int>()
         for ((t, detections) in perTile.withIndex()) {
             val tile = tiles[t]
             for (d in detections) {
                 all += d
+                tileOf += t
                 cut += (tile.x0 > 0 && d.x0 <= tile.x0 + SEAM_PX) || (tile.x1 < workWidth && d.x1 >= tile.x1 - SEAM_PX) ||
                     (tile.y0 > 0 && d.y0 <= tile.y0 + SEAM_PX) || (tile.y1 < workHeight && d.y1 >= tile.y1 - SEAM_PX)
             }
         }
         val keep = ArrayList<SegDetection>()
         val keptCut = ArrayList<Boolean>()
+        val keptTile = ArrayList<Int>()
         for (j in all.indices.sortedByDescending { all[it].score }) {
             val d = all[j]
             val hit = keep.indexOfFirst { boxIou(d, it) > iou }
             if (hit < 0) {
                 keep += d
                 keptCut += cut[j]
+                keptTile += tileOf[j]
             } else if (keptCut[hit] && !cut[j]) {
                 keep[hit] = SegDetection(d.x0, d.y0, d.x1, d.y1, keep[hit].score, d.outline)
                 keptCut[hit] = false
+                keptTile[hit] = tileOf[j]
+            }
+        }
+        // A hold bigger than the tile overlap is cut in every tile: join its pieces.
+        var joined = true
+        while (joined) {
+            joined = false
+            search@ for (i in keep.indices) {
+                if (!keptCut[i]) continue
+                for (j in i + 1 until keep.size) {
+                    if (!keptCut[j] || keptTile[i] == keptTile[j] && keptTile[i] >= 0) continue
+                    if (overlapShare(keep[i], keep[j]) <= JOIN_SHARE) continue
+                    keep[i] = join(keep[i], keep[j], maxRingPoints)
+                    keptTile[i] = -1
+                    keep.removeAt(j)
+                    keptCut.removeAt(j)
+                    keptTile.removeAt(j)
+                    joined = true
+                    break@search
+                }
             }
         }
         return keep
     }
+
+    /** Intersection of two boxes over the smaller one. */
+    private fun overlapShare(a: SegDetection, b: SegDetection): Float {
+        val areaA = max(0f, a.x1 - a.x0) * max(0f, a.y1 - a.y0)
+        val areaB = max(0f, b.x1 - b.x0) * max(0f, b.y1 - b.y0)
+        val inter = max(0f, min(a.x1, b.x1) - max(a.x0, b.x0)) * max(0f, min(a.y1, b.y1) - max(a.y0, b.y0))
+        val smaller = min(areaA, areaB)
+        return if (smaller > 0f) inter / smaller else 0f
+    }
+
+    /**
+     * Two pieces of one hold as one: the union of the boxes, the better
+     * score, and both shapes filled into one raster and traced again. A piece
+     * without a shape counts as the ellipse in its box.
+     */
+    internal fun join(a: SegDetection, b: SegDetection, maxRingPoints: Int): SegDetection {
+        val x0 = min(a.x0, b.x0)
+        val y0 = min(a.y0, b.y0)
+        val x1 = max(a.x1, b.x1)
+        val y1 = max(a.y1, b.y1)
+        val score = max(a.score, b.score)
+        val w = x1 - x0
+        val h = y1 - y0
+        if (!(w > 0f && h > 0f)) return SegDetection(x0, y0, x1, y1, score, null)
+        val scale = min(1f, JOIN_RASTER / max(w, h))
+        val rw = ceil(w * scale).toInt() + 2
+        val rh = ceil(h * scale).toInt() + 2
+        val grid = BooleanArray(rw * rh)
+        for (d in listOf(a, b)) fill(grid, rw, rh, polygon(d), x0, y0, scale)
+        val cx = (x0 + x1) / 2f
+        val cy = (y0 + y1) / 2f
+        val component = MaskOutline.componentAt(grid, rw, rh, ((cx - x0) * scale).toInt() + 1, ((cy - y0) * scale).toInt() + 1)
+            ?: return SegDetection(x0, y0, x1, y1, score, null)
+        val traced = MaskOutline.traceBoundary(component, rw, rh)
+        val points = MaskOutline.fitPoints(traced, 0.5, maxRingPoints) ?: return SegDetection(x0, y0, x1, y1, score, null)
+        val radius = sqrt(w * h / kotlin.math.PI.toFloat())
+        val ring = FloatArray(points.size * 2)
+        for ((k, p) in points.withIndex()) {
+            ring[2 * k] = ((p.first - 1 + 0.5f) / scale + x0 - cx) / radius
+            ring[2 * k + 1] = ((p.second - 1 + 0.5f) / scale + y0 - cy) / radius
+        }
+        val valid = ring.all { it.isFinite() && abs(it) <= 4f }
+        return SegDetection(x0, y0, x1, y1, score, ring.takeIf { valid })
+    }
+
+    /** A detection's shape as a polygon in working-image pixels (its box's ellipse without a ring). */
+    private fun polygon(d: SegDetection): List<Pair<Float, Float>> {
+        val cx = (d.x0 + d.x1) / 2f
+        val cy = (d.y0 + d.y1) / 2f
+        val ring = d.outline
+        if (ring != null && ring.size >= 6) {
+            val r = sqrt(max(0f, d.x1 - d.x0) * max(0f, d.y1 - d.y0) / kotlin.math.PI.toFloat())
+            return (ring.indices step 2).map { cx + ring[it] * r to cy + ring[it + 1] * r }
+        }
+        val rx = (d.x1 - d.x0) / 2f
+        val ry = (d.y1 - d.y0) / 2f
+        return (0 until 24).map { k ->
+            val t = 2 * kotlin.math.PI * k / 24
+            cx + rx * kotlin.math.cos(t).toFloat() to cy + ry * kotlin.math.sin(t).toFloat()
+        }
+    }
+
+    /** Even-odd scanline fill of a polygon into the raster (pixel centres). */
+    private fun fill(grid: BooleanArray, rw: Int, rh: Int, polygon: List<Pair<Float, Float>>, x0: Float, y0: Float, scale: Float) {
+        val pts = polygon.map { ((it.first - x0) * scale + 1f) to ((it.second - y0) * scale + 1f) }
+        val xs = ArrayList<Float>()
+        for (row in 0 until rh) {
+            val y = row + 0.5f
+            xs.clear()
+            for (k in pts.indices) {
+                val (ax, ay) = pts[k]
+                val (bx, by) = pts[(k + 1) % pts.size]
+                if ((ay <= y && by > y) || (by <= y && ay > y)) xs += ax + (y - ay) / (by - ay) * (bx - ax)
+            }
+            xs.sort()
+            var k = 0
+            while (k + 1 < xs.size) {
+                val from = max(0, ceil(xs[k] - 0.5f).toInt())
+                val to = min(rw - 1, floor(xs[k + 1] - 0.5f).toInt())
+                for (col in from..to) grid[row * rw + col] = true
+                k += 2
+            }
+        }
+    }
+
+    private const val JOIN_SHARE = 0.3f
+    private const val JOIN_RASTER = 256f
 
     private fun nms(all: List<SegDetection>, order: List<Int>, iou: Float): List<SegDetection> {
         val suppressed = BooleanArray(all.size)
