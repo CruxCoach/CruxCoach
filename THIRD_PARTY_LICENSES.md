@@ -113,6 +113,25 @@ climbs (FEAT-049).
   time via the contacts in [`SECURITY.md`](SECURITY.md). Requests will be
   handled promptly (per board).
 
+### Shiny Wall wall images
+
+- **Location:** [`board_images/shinywall/`](androidApp/src/main/assets/board_images/shinywall/)
+- **Files:** `board_9401.webp`, `board_9402.webp`, `board_9403.webp`,
+  `board_9405.webp`, `board_9406.webp` (Standard Mini, Standard, Max, Full,
+  Max Full)
+- **Source:** composed by CruxCoach
+  ([`scripts/build_shinywall_images.py`](scripts/build_shinywall_images.py))
+  from the cut-out hold photos of the official Shiny Wall app (1.1.4),
+  placed at each variant's hold positions and encoded as WebP. No logo or
+  brand colours.
+- **Rights holder:** Shiny Wall (hold photos)
+- **Basis for bundling:** referential visualization and hardware
+  interoperability; see [`LEGAL.md`](LEGAL.md#bundled-shiny-wall-wall-images).
+- **Details:** [`board_images/README.md`](androidApp/src/main/assets/board_images/README.md)
+- **Takedown:** Shiny Wall may request removal or replacement at any time via
+  the contacts in [`SECURITY.md`](SECURITY.md). Deleting the folder removes
+  the images; the app then draws the holds as dots.
+
 These images are **not** covered by the CruxCoach GPLv3 source license.
 
 ---
@@ -244,6 +263,26 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 - **Takedown:** any rights holder may request removal at any time via the
   contacts in [`SECURITY.md`](SECURITY.md); a board can be dropped from the
   bundle without affecting its catalogue download.
+
+### Board geometry — Shiny Wall
+
+- **Used in:** [`BundledBoardGeometry.kt`](androidApp/src/main/java/com/cruxcoach/android/data/BundledBoardGeometry.kt)
+  (draws and lights Shiny Wall problems and places holds in the editor; the
+  APK is the only source of this geometry).
+- **Location:** [`board_geometry/shinywall.sqlite3`](androidApp/src/main/assets/board_geometry/shinywall.sqlite3)
+- **Content:** hold positions of the Shiny Wall Standard variants. No
+  climbs, user data, images or descriptive text.
+- **Source:** a numeric table derived from the Shiny Wall app's own layout
+  data for interoperability;
+  [`scripts/build_shinywall_geometry.py`](scripts/build_shinywall_geometry.py)
+  builds the file. Provenance in the
+  [`README.md`](androidApp/src/main/assets/board_geometry/README.md).
+- **Rights holder:** Shiny Wall
+- **Basis for bundling:** functional hardware reference data — see
+  [`LEGAL.md`](LEGAL.md#bundled-board-geometry). CruxCoach claims no rights
+  in it; it is not covered by the CruxCoach GPLv3 source license.
+- **Takedown:** Shiny Wall may request removal at any time via the contacts
+  in [`SECURITY.md`](SECURITY.md).
 
 ---
 
