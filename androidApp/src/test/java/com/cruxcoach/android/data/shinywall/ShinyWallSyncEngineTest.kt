@@ -242,6 +242,17 @@ class ShinyWallSyncEngineTest {
     }
 
     @Test
+    fun an_attempt_logged_with_the_send_is_part_of_it() = runTest {
+        // Same timestamp, the send listed first: the attempt still belongs to it.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(realEntry("s", "r3", 2), realEntry("a", "r3", -1, grade = null))
+        )
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 0, result.newAscents to result.newProjects)
+        assertEquals(emptyList(), bids())
+    }
+
+    @Test
     fun attempts_without_a_send_are_projects_with_their_count() = runTest {
         coEvery { client.fetchHistory("uid1") } returns Result.success(
             listOf(revAttempts, realEntry("p1", "r3", -3, grade = null), realEntry("p2", "r3", -1, grade = null, ts = tNew))

@@ -280,7 +280,8 @@ class ShinyWallSyncEngine @Inject constructor(
         val out = HashMap<Placed, Placed>()
         for (group in placed.groupBy { it.climbUuid to it.angle }.values) {
             val waiting = mutableListOf<Placed>()
-            for (p in group.sortedBy { it.ms ?: Long.MIN_VALUE }) {
+            // At the same moment the attempt comes first, so it belongs to the send.
+            for (p in group.sortedWith(compareBy({ it.ms ?: Long.MIN_VALUE }, { it.sent >= 0 }))) {
                 if (p.sent < 0) {
                     waiting += p
                 } else {

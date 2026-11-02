@@ -239,14 +239,6 @@ internal object ShinyWallParsers {
         else -> null
     }
 
-    private fun double(v: Any?): Double? = when (v) {
-        is Long -> v.toDouble()
-        is Int -> v.toDouble()
-        is Double -> v.takeIf { it.isFinite() }
-        is String -> v.trim().toDoubleOrNull()?.takeIf { it.isFinite() }
-        else -> null
-    }
-
     /** Booleans are tolerated: true = sent with unknown attempts, false = project. */
     private fun sentCode(v: Any?): Int? = when (v) {
         is Boolean -> if (v) SENT_UNKNOWN_ATTEMPTS else -1
