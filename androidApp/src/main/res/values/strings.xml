@@ -3389,4 +3389,26 @@
     <string name="wall_games_no_holds">The hold positions of this board are not on the device yet. Download its catalogue first.</string>
     <string name="wall_games_sound_turn_off">Turn countdown sound off</string>
     <string name="wall_games_sound_turn_on">Turn countdown sound on</string>
+    <!-- Board-size check: optional help for users unsure about their board size -->
+    <string name="board_size_check_title">Check your board size</string>
+    <string name="board_size_check_link">Not sure which size? Check on your board</string>
+    <string name="board_size_check_menu">Wrong holds lighting up?</string>
+    <string name="board_size_check_intro">Your board does not tell the app its size. The app lights the holds marked below, and you compare them with your board.</string>
+    <string name="board_size_check_question">Are exactly these holds lit on your board?</string>
+    <string name="board_size_check_yes">Yes, that\'s right</string>
+    <string name="board_size_check_no">No</string>
+    <string name="board_size_check_relight">Light them again</string>
+    <string name="board_size_check_connect_hint">Connect to your board, then the marked holds light up there.</string>
+    <string name="board_size_check_connect">Connect to board</string>
+    <string name="board_size_check_other_board">The connected board is not a %1$s. Connect to your %1$s.</string>
+    <string name="board_size_check_pick_other">Then try another size. Tap one and it lights up on your board straight away.</string>
+    <string name="board_size_check_tried">tried</string>
+    <string name="board_size_check_none_fit">None of them fits? Then the board may be set up differently from its catalogue. Tell us in the feedback, ideally with a photo.</string>
+    <string name="board_size_check_saved">Saved: your board is now %1$s.</string>
+    <string name="board_size_check_selected">Selected: %1$s. Tap Confirm to keep it.</string>
+    <string name="board_size_check_fits">Fits: %1$s is the right setting.</string>
+    <string name="board_size_check_send_failed">The holds could not be lit. Check the connection and try again.</string>
+    <string name="board_size_check_no_data">The LED data for this board is not loaded yet. Load its catalogue first.</string>
+    <string name="board_size_check_done">Done</string>
+    <string name="board_size_check_image_cd">%1$s with the holds that should light up</string>
 </resources>

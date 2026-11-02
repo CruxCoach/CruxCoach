@@ -3388,4 +3388,26 @@
     <string name="wall_games_no_holds">Die Griffpositionen dieses Boards sind noch nicht auf dem Gerät. Lade zuerst seinen Katalog.</string>
     <string name="wall_games_sound_turn_off">Countdown-Ton ausschalten</string>
     <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
+    <!-- Board-Größe prüfen: optionale Hilfe, wenn jemand unsicher ist, welche Größe sein Board hat -->
+    <string name="board_size_check_title">Board-Größe am Board prüfen</string>
+    <string name="board_size_check_link">Unsicher, welche Größe? Am Board prüfen</string>
+    <string name="board_size_check_menu">Falsche Griffe am Board?</string>
+    <string name="board_size_check_intro">Dein Board verrät der App seine Größe nicht. Die App lässt die markierten Griffe leuchten, und du vergleichst mit deinem Board.</string>
+    <string name="board_size_check_question">Leuchten am Board genau diese Griffe?</string>
+    <string name="board_size_check_yes">Ja, passt</string>
+    <string name="board_size_check_no">Nein</string>
+    <string name="board_size_check_relight">Nochmal leuchten lassen</string>
+    <string name="board_size_check_connect_hint">Verbinde dich mit deinem Board, dann leuchten dort die markierten Griffe.</string>
+    <string name="board_size_check_connect">Mit Board verbinden</string>
+    <string name="board_size_check_other_board">Verbunden ist kein %1$s. Verbinde dich mit deinem %1$s.</string>
+    <string name="board_size_check_pick_other">Dann probier eine andere Größe. Tippe eine an, sie leuchtet sofort am Board.</string>
+    <string name="board_size_check_tried">probiert</string>
+    <string name="board_size_check_none_fit">Keine passt? Dann ist das Board vielleicht anders aufgebaut als sein Katalog. Schreib uns über das Feedback, am besten mit Foto.</string>
+    <string name="board_size_check_saved">Gespeichert: Dein Board ist jetzt %1$s.</string>
+    <string name="board_size_check_selected">Ausgewählt: %1$s. Tippe auf „Bestätigen“, um es zu speichern.</string>
+    <string name="board_size_check_fits">Passt: %1$s ist richtig eingestellt.</string>
+    <string name="board_size_check_send_failed">Die Griffe konnten nicht leuchten. Prüfe die Verbindung und versuch es nochmal.</string>
+    <string name="board_size_check_no_data">Für dieses Board fehlen noch die LED-Daten. Lade zuerst seinen Katalog.</string>
+    <string name="board_size_check_done">Fertig</string>
+    <string name="board_size_check_image_cd">%1$s mit den Griffen, die leuchten sollen</string>
 </resources>
