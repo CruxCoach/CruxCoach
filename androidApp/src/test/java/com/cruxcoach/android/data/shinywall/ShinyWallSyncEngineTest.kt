@@ -95,8 +95,6 @@ class ShinyWallSyncEngineTest {
 
         client = mockk()
         coEvery { client.fetchHistory("uid1") } returns Result.success(history)
-        coEvery { client.fetchOwnRatings("uid1", any()) } returns
-            mapOf(("r1" to 40) to ShinyWallRating("r1", 40, null, 5.0, "nice"))
         coEvery { client.fetchProfile("uid1") } returns Result.success(ShinyWallProfile(null, emptyList(), emptyMap()))
         coEvery { client.fetchOwnRoutes("uid1") } returns Result.success(emptyList())
 
@@ -146,9 +144,9 @@ class ShinyWallSyncEngineTest {
         assertEquals(ShinyWallSnapshot.climbUuid("r1", ShinyWallVariant.ST1), h0.climbUuid)
         assertEquals(40L, h0.angle)
         assertEquals(0L to 1L, h0.attemptId to h0.bidCount)
-        assertEquals(3L, h0.quality)           // 5 of 5 → 3 stars
+        assertEquals(null, h0.quality)         // star ratings stay in Shiny Wall
         assertEquals(17L, h0.difficulty)       // 6A+
-        assertEquals("nice", h0.comment)
+        assertEquals(null, h0.comment)
         assertEquals(ShinyWallSyncEngine.localClimbedAt(t), h0.climbedAt)
         assertEquals("Route one", h0.name)
         assertEquals(18.5, h0.diffAvg)

@@ -86,16 +86,6 @@ data class ShinyWallHistoryEntry(
     val timestamp: String?,
 )
 
-/** The user's own rating of one route at one angle. */
-data class ShinyWallRating(
-    val routeId: String,
-    val angle: Int,
-    val grade: String?,
-    /** Quality vote 1..5; 0 or null = no vote. */
-    val punctuation: Double?,
-    val comment: String?,
-)
-
 /** A route reference from the profile lists, optionally pinned to an angle. */
 data class ShinyWallRouteRef(val routeId: String, val angle: Int?)
 
@@ -154,15 +144,6 @@ internal object ShinyWallParsers {
     /** True when the entry records that the user created the route rather than climbed it. */
     fun isCreation(entry: ShinyWallHistoryEntry): Boolean =
         entry.sent == null || entry.type?.lowercase() in CREATED_TYPES
-
-    fun rating(routeId: String, angle: Int, fields: Map<String, Any?>): ShinyWallRating =
-        ShinyWallRating(
-            routeId = routeId,
-            angle = angle,
-            grade = string(fields["grade"])?.trim()?.takeIf { it.isNotBlank() },
-            punctuation = double(fields["punctuation"])?.takeIf { it > 0 },
-            comment = string(fields["comment"])?.trim()?.takeIf { it.isNotBlank() },
-        )
 
     fun profile(fields: Map<String, Any?>): ShinyWallProfile = ShinyWallProfile(
         username = string(fields["username"])?.trim()?.takeIf { it.isNotBlank() },

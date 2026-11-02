@@ -216,21 +216,4 @@ class ShinyWallAccountClientHttpTest {
         assertTrue(body.contains("\"creatorId\"") && body.contains("\"stringValue\":\"uid1\""), body)
         assertFalse(body.contains("details"), body)
     }
-
-    @Test
-    fun ratings_are_best_effort_and_keyed_by_route_and_angle() = runTest {
-        signedIn()
-        val base = "projects/climbingwall3js/databases/(default)/documents/standard_routes"
-        server.enqueue(json("""[
-            {"found":{"name":"$base/r1/user-statistics/uid1-40","fields":{"grade":{"stringValue":"6B"},
-              "punctuation":{"integerValue":"5"},"comment":{"stringValue":"great"}}}},
-            {"missing":"$base/r2/user-statistics/uid1-30"}]"""))
-        val ratings = client.fetchOwnRatings("uid1", listOf("r1" to 40, "r2" to 30, "r1" to 40))
-        assertEquals(mapOf(("r1" to 40) to ShinyWallRating("r1", 40, "6B", 5.0, "great")), ratings)
-        val body = server.takeRequest().body.readUtf8()
-        assertTrue(body.contains("$base/r1/user-statistics/uid1-40") && body.contains("$base/r2/user-statistics/uid1-30"), body)
-
-        server.enqueue(json("{}", 403))
-        assertEquals(emptyMap(), client.fetchOwnRatings("uid1", listOf("r1" to 40)))
-    }
 }

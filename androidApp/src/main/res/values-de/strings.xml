@@ -3390,7 +3390,7 @@
     <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
     <!-- Shiny-Wall-Konto (Logbuch-Import, nur lesend) -->
     <string name="shinywall_section_title">Shiny-Wall-Konto</string>
-    <string name="shinywall_connect_desc">Übernimmt dein Shiny-Wall-Logbuch (Begehungen und Projekte), deine Favoriten, Listen und eigenen Routen in CruxCoach. Nur lesend: CruxCoach ändert nichts an deinem Shiny-Wall-Konto. Nur Standard-Wände.</string>
+    <string name="shinywall_connect_desc">Übernimmt dein Shiny-Wall-Logbuch (Begehungen und Projekte), deine Favoriten, Listen und eigenen Routen in CruxCoach. Sterne und Kommentare bleiben in Shiny Wall. Nur lesend: CruxCoach ändert nichts an deinem Shiny-Wall-Konto. Nur Standard-Wände.</string>
     <string name="shinywall_connect_button">Shiny-Wall-Konto verbinden</string>
     <string name="shinywall_login_title">Bei Shiny Wall anmelden</string>
     <string name="shinywall_login_privacy">Dein Passwort geht nur an den Anmeldedienst von Shiny Wall. CruxCoach speichert auf diesem Handy ein Anmelde-Token, nie das Passwort. Konten mit Google-Anmeldung lassen sich nicht verbinden.</string>

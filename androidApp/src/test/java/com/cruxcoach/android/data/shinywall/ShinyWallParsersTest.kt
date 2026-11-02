@@ -159,13 +159,6 @@ class ShinyWallParsersTest {
     }
 
     @Test
-    fun rating_drops_empty_votes() {
-        val r = ShinyWallParsers.rating("r1", 40, mapOf("grade" to "6B", "punctuation" to 0L, "comment" to "  "))
-        assertEquals(ShinyWallRating("r1", 40, "6B", null, null), r)
-        assertEquals(4.0, ShinyWallParsers.rating("r1", 40, mapOf("punctuation" to 4L)).punctuation)
-    }
-
-    @Test
     fun send_shape_covers_every_attempt_code() {
         assertEquals(0L to 1L, ShinyWallSyncEngine.sendShape(0))
         assertEquals(0L to 1L, ShinyWallSyncEngine.sendShape(1))

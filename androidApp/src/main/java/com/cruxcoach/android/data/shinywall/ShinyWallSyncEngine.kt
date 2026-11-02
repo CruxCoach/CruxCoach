@@ -22,7 +22,6 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.roundToLong
 
 data class ShinyWallImportPreview(
     val totalEntries: Int,
@@ -157,9 +156,7 @@ class ShinyWallSyncEngine @Inject constructor(
             val session = tokenStore.session() ?: return@withLock notSignedIn<ShinyWallImportResult>()
             val history = client.fetchHistory(session.uid).getOrElse { return@withLock Result.failure<ShinyWallImportResult>(it) }
             val plan = plan(session.uid, history)
-            val ratings = if (plan.logs.isEmpty()) emptyMap() else
-                client.fetchOwnRatings(session.uid, plan.logs.map { it.entry.routeId to it.angle })
-            write(plan, ratings)
+            write(plan)
             val lists = try {
                 importLists(session.uid, history, listNames)
             } catch (e: CancellationException) {
@@ -263,7 +260,7 @@ class ShinyWallSyncEngine @Inject constructor(
         return wanted.mapNotNull { uuid -> byKey[ClimbUuid.normKey(uuid)]?.let { uuid to it } }.toMap()
     }
 
-    private fun write(plan: Plan, ratings: Map<Pair<String, Int>, ShinyWallRating>) {
+    private fun write(plan: Plan) {
         if (plan.logs.isEmpty()) return
         val difficultyByAngle = mutableMapOf<Pair<String, Int>, Double>()
         for (angle in plan.logs.map { it.angle }.distinct()) {
@@ -277,10 +274,7 @@ class ShinyWallSyncEngine @Inject constructor(
         personalBoardRepo.runInTransaction {
             for (log in plan.logs) {
                 val climb = plan.catalogue[log.climbUuid]
-                val rating = ratings[log.entry.routeId to log.angle]
-                val grade = log.entry.grade ?: rating?.grade
-                val difficulty = ShinyWallCatalogue.difficultyForGrade(grade)?.toLong()
-                val quality = ShinyWallCatalogue.qualityForAverageVote(rating?.punctuation)?.roundToLong()
+                val difficulty = ShinyWallCatalogue.difficultyForGrade(log.entry.grade)?.toLong()
                 val diffAvg = difficultyByAngle[ClimbUuid.normKey(log.climbUuid) to log.angle]
                 val send = log.send
                 if (send != null) {
@@ -291,10 +285,10 @@ class ShinyWallSyncEngine @Inject constructor(
                         isMirror = false,
                         attemptId = send.first,
                         bidCount = send.second,
-                        quality = quality,
+                        quality = null,
                         difficulty = difficulty,
                         isBenchmark = false,
-                        comment = rating?.comment,
+                        comment = null,
                         climbedAt = log.climbedAt,
                         synced = true,
                         climbName = climb?.name.orEmpty(),
@@ -312,7 +306,7 @@ class ShinyWallSyncEngine @Inject constructor(
                         angle = log.angle.toLong(),
                         isMirror = false,
                         bidCount = 1L,
-                        comment = rating?.comment,
+                        comment = null,
                         climbedAt = log.climbedAt,
                         synced = true,
                         climbName = climb?.name.orEmpty(),
