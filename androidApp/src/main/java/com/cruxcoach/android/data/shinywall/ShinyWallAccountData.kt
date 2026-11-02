@@ -76,9 +76,10 @@ data class ShinyWallHistoryEntry(
     val grade: String?,
     val angle: Int?,
     /**
-     * Shiny's attempt code: 0 on-sight, 1 flash, 2..9 attempts, 10 and more
-     * "more than nine", negative = project (not sent), null = no log (the
-     * entry records a route the user created).
+     * Shiny's attempt code: 0 on-sight, 1 flash, 2..9 sent on that attempt
+     * (earlier attempts included), 10 and more "more than nine", -N = N
+     * attempts without a send, null = no log (the entry records a route the
+     * user created).
      */
     val sent: Int?,
     val type: String?,

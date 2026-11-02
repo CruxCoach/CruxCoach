@@ -208,14 +208,73 @@ class ShinyWallSyncEngineTest {
     }
 
     /** A history entry in the shape the account returns: `standard` is a boolean, the variant is the wallId prefix. */
-    private fun realEntry(id: String, routeId: String, sent: Long, wallId: String = "STP_Wall") =
-        ShinyWallParsers.historyEntry(
-            id,
-            mapOf(
-                "routeId" to routeId, "angle" to 40L, "sent" to sent, "grade" to "6B+", "timestamp" to t,
-                "wallId" to wallId, "standard" to true, "type" to "route",
-            ),
-        )!!
+    private fun realEntry(
+        id: String, routeId: String, sent: Long, wallId: String = "STP_Wall", grade: String? = "6B+", ts: String = t,
+    ) = ShinyWallParsers.historyEntry(
+        id,
+        mapOf(
+            "routeId" to routeId, "angle" to 40L, "sent" to sent, "grade" to grade, "timestamp" to ts,
+            "wallId" to wallId, "standard" to true, "type" to "route",
+        ),
+    )!!
+
+    private fun bids() = query("SELECT external_id, bid_count FROM bids ORDER BY external_id") { rs -> rs.getString(1) to rs.getLong(2) }
+
+    /** A route logged in the original app: two attempts first, later sent on the third. */
+    private val reventaera = "Iwxw8cNqqjt02mmtdWHQ"
+    private val revAttempts = realEntry("rev1", reventaera, -2, grade = null, ts = tOld)
+    private val revSend = realEntry("rev2", reventaera, 3, ts = tNew)
+
+    @Test
+    fun attempts_before_a_send_are_part_of_it() = runTest {
+        val afterTheSend = realEntry("rev3", reventaera, -1, grade = null, ts = "2026-11-01T10:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revSend, afterTheSend, revAttempts))
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(ShinyWallImportResult(newAscents = 1, newProjects = 1, duplicates = 0, skipped = 0, lists = 0), result)
+        val send = ascents().single()
+        assertEquals("shinywall:history:rev2", send.externalId)
+        assertEquals(ShinyWallSnapshot.climbUuid(reventaera, ShinyWallVariant.ST1), send.climbUuid)
+        // Shiny's count already holds the two attempts before: nothing added.
+        assertEquals(1L to 3L, send.attemptId to send.bidCount)
+        assertEquals(19L, send.difficulty) // 6B+
+        // Attempts after the last send are a project of their own.
+        assertEquals(listOf("shinywall:history:rev3" to 1L), bids())
+    }
+
+    @Test
+    fun attempts_without_a_send_are_projects_with_their_count() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(revAttempts, realEntry("p1", "r3", -3, grade = null), realEntry("p2", "r3", -1, grade = null, ts = tNew))
+        )
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(0, result.newAscents)
+        assertEquals(3, result.newProjects)
+        assertEquals(listOf("shinywall:history:p1" to 3L, "shinywall:history:p2" to 1L, "shinywall:history:rev1" to 2L), bids())
+    }
+
+    @Test
+    fun a_later_send_replaces_the_attempts_an_earlier_import_logged() = runTest {
+        // First import: only the attempts, plus a newer entry that puts them behind the watermark.
+        val other = realEntry("o1", "r1", 1, ts = t)
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, other))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:rev1" to 2L), bids())
+
+        // The send comes later; the whole history is read again, so the old attempts go.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, other, revSend))
+        assertEquals(1, engine.previewImport().getOrThrow().newAscents)
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1, again.newAscents)
+        assertEquals(0, again.newProjects)
+        assertEquals(emptyList(), bids())
+        assertEquals(setOf("shinywall:history:o1", "shinywall:history:rev2"), ascents().mapNotNull { it.externalId }.toSet())
+        assertEquals(3L, ascents().single { it.externalId == "shinywall:history:rev2" }.bidCount)
+
+        // A third import changes nothing.
+        val third = engine.importAll(names).getOrThrow()
+        assertEquals(0, third.newAscents + third.newProjects)
+        assertEquals(emptyList(), bids())
+    }
 
     @Test
     fun real_entries_import_on_their_wall_id_variant() = runTest {
