@@ -47,9 +47,10 @@ data class SegSettings(
     val maxRingPoints: Int = 150,
     val resampler: Resampler = Resampler.LANCZOS3,
     /**
-     * Where two tiles both saw a hold, keep the copy that is not cut by a
-     * tile edge, and drop a cut copy that lies mostly inside a kept hold.
-     * Off reproduces the reference merge (best score wins).
+     * Where two tiles both saw a hold and the best-scored copy is cut off by
+     * a tile edge, take the box and shape of the uncut copy (with the best
+     * score). The same holds survive as without it; only their shapes lose
+     * the straight tile edges. Off reproduces the reference merge.
      */
     val seamAware: Boolean = false,
 ) {
@@ -198,14 +199,14 @@ object SegPipeline {
     fun merge(perTile: List<List<SegDetection>>, iou: Float): List<SegDetection> {
         val all = perTile.flatten()
         if (all.size <= 1) return all
-        return nms(all, all.indices.sortedByDescending { all[it].score }, iou, cut = null)
+        return nms(all, all.indices.sortedByDescending { all[it].score }, iou)
     }
 
     /**
      * [merge] that knows the tiles: a detection whose box touches an inner
-     * tile edge was cut off there, so where it overlaps a copy from another
-     * tile, the whole copy wins even with a lower score, and a cut copy that
-     * lies mostly inside a kept hold is dropped as a duplicate.
+     * tile edge was cut off there. Same NMS as [merge], but when a kept
+     * detection is cut and an uncut copy from another tile overlaps it, the
+     * kept hold takes the uncut copy's box and shape.
      */
     fun merge(perTile: List<List<SegDetection>>, tiles: List<SegTile>, workWidth: Int, workHeight: Int, iou: Float): List<SegDetection> {
         val all = ArrayList<SegDetection>()
@@ -218,12 +219,23 @@ object SegPipeline {
                     (tile.y0 > 0 && d.y0 <= tile.y0 + SEAM_PX) || (tile.y1 < workHeight && d.y1 >= tile.y1 - SEAM_PX)
             }
         }
-        if (all.size <= 1) return all
-        val order = all.indices.sortedWith(compareBy<Int> { cut[it] }.thenByDescending { all[it].score })
-        return nms(all, order, iou, cut)
+        val keep = ArrayList<SegDetection>()
+        val keptCut = ArrayList<Boolean>()
+        for (j in all.indices.sortedByDescending { all[it].score }) {
+            val d = all[j]
+            val hit = keep.indexOfFirst { boxIou(d, it) > iou }
+            if (hit < 0) {
+                keep += d
+                keptCut += cut[j]
+            } else if (keptCut[hit] && !cut[j]) {
+                keep[hit] = SegDetection(d.x0, d.y0, d.x1, d.y1, keep[hit].score, d.outline)
+                keptCut[hit] = false
+            }
+        }
+        return keep
     }
 
-    private fun nms(all: List<SegDetection>, order: List<Int>, iou: Float, cut: List<Boolean>?): List<SegDetection> {
+    private fun nms(all: List<SegDetection>, order: List<Int>, iou: Float): List<SegDetection> {
         val suppressed = BooleanArray(all.size)
         val keep = ArrayList<SegDetection>()
         for (i in order) {
@@ -231,21 +243,13 @@ object SegPipeline {
             keep += all[i]
             for (j in order) {
                 if (j == i || suppressed[j]) continue
-                if (boxIou(all[i], all[j]) > iou || (cut != null && cut[j] && insideShare(all[j], all[i]) > CUT_INSIDE)) suppressed[j] = true
+                if (boxIou(all[i], all[j]) > iou) suppressed[j] = true
             }
         }
         return keep
     }
 
-    /** How much of [a]'s box lies inside [b]'s. */
-    private fun insideShare(a: SegDetection, b: SegDetection): Float {
-        val area = max(0f, a.x1 - a.x0) * max(0f, a.y1 - a.y0)
-        val inter = max(0f, min(a.x1, b.x1) - max(a.x0, b.x0)) * max(0f, min(a.y1, b.y1) - max(a.y0, b.y0))
-        return if (area > 0f) inter / area else 0f
-    }
-
     private const val SEAM_PX = 2f
-    private const val CUT_INSIDE = 0.6f
 
     fun boxIou(a: SegDetection, b: SegDetection): Float {
         val areaA = max(0f, a.x1 - a.x0) * max(0f, a.y1 - a.y0)

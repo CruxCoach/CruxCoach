@@ -183,8 +183,9 @@ class SegPipelineTest {
         val tiles = listOf(SegTile(0, 0, 60, 100), SegTile(40, 0, 100, 100))
         val cut = SegDetection(45f, 10f, 59f, 30f, 0.9f, null)
         val whole = SegDetection(45f, 10f, 70f, 30f, 0.7f, null)
-        val merged = SegPipeline.merge(listOf(listOf(cut), listOf(whole)), tiles, 100, 100, 0.3f)
-        assertEquals(listOf(whole), merged)
+        val merged = SegPipeline.merge(listOf(listOf(cut), listOf(whole)), tiles, 100, 100, 0.3f).single()
+        // The whole copy's box and shape, the better score.
+        assertEquals(listOf(45f, 10f, 70f, 30f, 0.9f), listOf(merged.x0, merged.y0, merged.x1, merged.y1, merged.score))
         // The plain merge keeps the better score.
         assertEquals(listOf(cut), SegPipeline.merge(listOf(listOf(cut), listOf(whole)), 0.3f))
     }

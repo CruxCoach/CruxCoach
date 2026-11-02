@@ -313,7 +313,8 @@ class SprayHoldEditorViewModel @Inject constructor(
          * Tuned on 28 labelled wall photos: 3×3 tiles of a 1536 px working
          * photo find small holds the published 2×2 setting misses, a stricter
          * overlap (0.3) drops duplicates from neighbouring tiles, and 0.5 is
-         * the best default threshold. The floor keeps unsure holds for the
+         * the best default threshold. Holds cut by a tile edge take the shape
+         * of their uncut copy. The floor keeps unsure holds for the
          * sensitivity slider.
          */
         val MODEL_SETTINGS = SegSettings(
@@ -324,6 +325,7 @@ class SprayHoldEditorViewModel @Inject constructor(
             floor = 0.3f,
             nmsIou = 0.3f,
             resampler = SegSettings.Resampler.NATIVE,
+            seamAware = true,
         )
         const val DETECT_LONG_SIDE = 1024
     }
