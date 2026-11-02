@@ -212,8 +212,9 @@ internal fun BoardSizeCheckContent(
                 val label = size?.let { boardSizeCheckLabel(brand, it) }.orEmpty()
                 Text(
                     when {
-                        state.confirmedChange && applyOnConfirm -> stringResource(R.string.board_size_check_saved, label)
-                        state.confirmedChange -> stringResource(R.string.board_size_check_selected, label)
+                        // In the picker nothing is saved before Confirm, also not the size it had selected.
+                        !applyOnConfirm -> stringResource(R.string.board_size_check_selected, label)
+                        state.confirmedChange -> stringResource(R.string.board_size_check_saved, label)
                         else -> stringResource(R.string.board_size_check_fits, label)
                     },
                     style = MaterialTheme.typography.bodyLarge,

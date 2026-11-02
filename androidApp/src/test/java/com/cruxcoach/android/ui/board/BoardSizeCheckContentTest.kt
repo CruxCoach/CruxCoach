@@ -97,4 +97,17 @@ class BoardSizeCheckContentTest {
         show(confirmed, apply = false)
         compose.onNodeWithText("Bestätigen", substring = true).assertExists()
     }
+
+    @Test fun `the size the picker had selected is not called saved either`() {
+        val confirmed = ask().copy(step = BoardSizeCheckStep.CONFIRMED, confirmedSizeId = 10)
+        show(confirmed, apply = false)
+        compose.onNodeWithText("Bestätigen", substring = true).assertExists()
+        compose.onNodeWithText("Passt", substring = true).assertDoesNotExist()
+    }
+
+    @Test fun `the saved size reads fits in the climb view`() {
+        val confirmed = ask().copy(step = BoardSizeCheckStep.CONFIRMED, confirmedSizeId = 10)
+        show(confirmed, apply = true)
+        compose.onNodeWithText("Passt", substring = true).assertExists()
+    }
 }
