@@ -236,6 +236,31 @@ class ShinyWallSyncEngineTest {
     }
 
     @Test
+    fun skipped_entries_leave_the_watermark_alone() = runTest {
+        // What a version that could not read the wall saw: every entry skipped.
+        val unreadable = listOf(
+            entry("old", "r1", "true", 2, wallId = "STP_Wall", ts = tOld),
+            entry("recent", "r3", "true", 2, wallId = "STP_Wall", ts = t),
+        )
+        coEvery { client.fetchHistory("uid1") } returns Result.success(unreadable)
+        assertEquals(2, engine.importAll(names).getOrThrow().skipped)
+        assertEquals(null, store.historyWatermarkMs("uid1"))
+
+        // A version that can place them takes both, the old one too.
+        val placed = unreadable.map { it.copy(standard = "st1") }
+        coEvery { client.fetchHistory("uid1") } returns Result.success(placed)
+        assertEquals(2, engine.importAll(names).getOrThrow().newAscents)
+        assertEquals(ShinyWallSyncEngine.epochMs(t), store.historyWatermarkMs("uid1"))
+
+        // A newer entry that is skipped does not move it either.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            placed + entry("custom", "r7", null, 2, wallId = "CTM_Home", ts = tNew)
+        )
+        engine.importAll(names).getOrThrow()
+        assertEquals(ShinyWallSyncEngine.epochMs(t), store.historyWatermarkMs("uid1"))
+    }
+
+    @Test
     fun lists_import_favorites_own_lists_and_own_routes() = runTest {
         coEvery { client.fetchProfile("uid1") } returns Result.success(
             ShinyWallProfile(

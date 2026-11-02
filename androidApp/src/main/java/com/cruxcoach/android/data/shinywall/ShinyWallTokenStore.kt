@@ -28,7 +28,7 @@ interface ShinyWallTokenStorage {
     /** Wall clock (ms) of the last successful import, or null. */
     fun lastImportAtMs(): Long?
 
-    /** Newest history timestamp (epoch ms) seen by an import of [uid], or null. */
+    /** Newest timestamp (epoch ms) of a history entry an import of [uid] placed in the logbook, or null. */
     fun historyWatermarkMs(uid: String): Long?
     fun recordImport(uid: String, atMs: Long, watermarkMs: Long?)
 
@@ -60,7 +60,11 @@ class ShinyWallTokenStore(
     private val keyExpiry = "${pubkeyPrefix}_id_token_expiry"
     private val keyDisplayName = "${pubkeyPrefix}_display_name"
     private val keyLastImport = "${pubkeyPrefix}_last_import"
-    private val keyWatermarkPrefix = "${pubkeyPrefix}_watermark_"
+    // Versioned: when the import learns to place entries it used to skip, the
+    // next version drops the older watermark, which may lie past them. v1 (no
+    // suffix) also counted skipped entries.
+    private val keyWatermarkPrefix = "${pubkeyPrefix}_watermark_v2_"
+    private val keyOldWatermarkPrefix = "${pubkeyPrefix}_watermark_"
     private fun keyWatermark(uid: String) = keyWatermarkPrefix + uid
 
     private val prefs: SharedPreferences by lazy { openOrRecreatePrefs() }
@@ -125,7 +129,7 @@ class ShinyWallTokenStore(
     override fun historyWatermarkMs(uid: String): Long? = prefs.getLong(keyWatermark(uid), 0L).takeIf { it > 0 }
 
     override fun recordImport(uid: String, atMs: Long, watermarkMs: Long?) {
-        val edit = prefs.edit().putLong(keyLastImport, atMs)
+        val edit = prefs.edit().putLong(keyLastImport, atMs).remove(keyOldWatermarkPrefix + uid)
         if (watermarkMs != null) edit.putLong(keyWatermark(uid), watermarkMs)
         edit.apply()
     }

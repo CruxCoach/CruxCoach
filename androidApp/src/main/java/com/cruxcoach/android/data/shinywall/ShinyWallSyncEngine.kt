@@ -189,7 +189,9 @@ class ShinyWallSyncEngine @Inject constructor(
         val existing = personalBoardRepo.getExistingLogUuids()
         val deleted = personalBoardRepo.pendingLogDeletions().toHashSet()
         val watermark = tokenStore.historyWatermarkMs(uid)?.minus(WATERMARK_OVERLAP_MS)
-        val newestMs = history.mapNotNull { epochMs(it.timestamp) }.maxOrNull()
+        // Only entries the logbook holds or gets move the watermark, so skipped entries
+        // newer than those stay in view (older ones need a new watermark key).
+        var newestMs: Long? = null
 
         // Variant candidates per entry; the catalogue decides when the entry names none.
         val logs = history.filterNot { ShinyWallParsers.isCreation(it) }
@@ -214,6 +216,7 @@ class ShinyWallSyncEngine @Inject constructor(
             }
             val uuid = logUuid(entry.docId)
             val ms = epochMs(entry.timestamp)
+            if (ms != null) newestMs = maxOf(newestMs ?: ms, ms)
             if (uuid in existing || uuid in deleted || (watermark != null && ms != null && ms < watermark)) {
                 duplicates++
                 continue
