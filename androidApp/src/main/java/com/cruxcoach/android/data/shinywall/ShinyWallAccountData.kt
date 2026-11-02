@@ -1,5 +1,6 @@
 package com.cruxcoach.android.data.shinywall
 
+import com.cruxcoach.domain.board.ShinyWallVariant
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -69,7 +70,7 @@ data class ShinyWallHistoryEntry(
     val routeId: String,
     /** Wall the entry was logged on; set for standard walls too, so it does not tell the wall kind. */
     val wallId: String?,
-    /** Standard variant code (`st0` … `st5`); empty for custom walls. */
+    /** Standard variant code (`st0` … `st5`), from `standard` or the `wallId` prefix; null or another value for custom walls. */
     val standard: String?,
     /** The user's grade for the route, e.g. `6A+`. */
     val grade: String?,
@@ -121,17 +122,33 @@ internal object ShinyWallParsers {
 
     fun historyEntry(docId: String, fields: Map<String, Any?>, createTime: String? = null): ShinyWallHistoryEntry? {
         val routeId = string(fields["routeId"])?.takeIf { it.isNotBlank() } ?: return null
+        val wallId = string(fields["wallId"])?.takeIf { it.isNotBlank() }
         return ShinyWallHistoryEntry(
             docId = docId,
             routeId = routeId,
-            wallId = string(fields["wallId"])?.takeIf { it.isNotBlank() },
-            standard = string(fields["standard"])?.trim()?.lowercase()?.takeIf { it.isNotBlank() },
+            wallId = wallId,
+            standard = standardCode(fields["standard"], wallId),
             grade = string(fields["grade"])?.trim()?.takeIf { it.isNotBlank() },
             angle = int(fields["angle"]),
             sent = sentCode(fields["sent"]),
             type = string(fields["type"])?.trim()?.takeIf { it.isNotBlank() },
             timestamp = string(fields["timestamp"]) ?: string(fields["timeStamp"]) ?: createTime,
         )
+    }
+
+    /**
+     * The entry's variant code. Real entries carry `standard: true` and name
+     * the variant only in the `wallId` prefix (`STP_Wall` → `st1`, see
+     * [ShinyWallVariant.advertisedCode]); a string `standard` names the code
+     * itself. Anything else stays as written, so the import skips it:
+     * `standard: false` or an unknown prefix is a custom wall.
+     */
+    private fun standardCode(standard: Any?, wallId: String?): String? {
+        val text = string(standard)?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+        if (ShinyWallVariant.fromCode(text) != null || standard == false) return text
+        val prefix = wallId?.substringBefore('_', missingDelimiterValue = "")
+        return ShinyWallVariant.entries.firstOrNull { it.advertisedCode != null && it.advertisedCode.equals(prefix, ignoreCase = true) }
+            ?.code ?: text
     }
 
     /** True when the entry records that the user created the route rather than climbed it. */

@@ -209,6 +209,32 @@ class ShinyWallSyncEngineTest {
         assertEquals(setOf("shinywall:history:new", "shinywall:history:recent"), ascents().mapNotNull { it.externalId }.toSet())
     }
 
+    /** A history entry in the shape the account returns: `standard` is a boolean, the variant is the wallId prefix. */
+    private fun realEntry(id: String, routeId: String, sent: Long, wallId: String = "STP_Wall") =
+        ShinyWallParsers.historyEntry(
+            id,
+            mapOf(
+                "routeId" to routeId, "angle" to 40L, "sent" to sent, "grade" to "6B+", "timestamp" to t,
+                "wallId" to wallId, "standard" to true, "type" to "route",
+            ),
+        )!!
+
+    @Test
+    fun real_entries_import_on_their_wall_id_variant() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(realEntry("a", "r1", 1), realEntry("b", "r3", -1), realEntry("c", "r7", 2, wallId = "CTM_Home"))
+        )
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(ShinyWallImportResult(newAscents = 1, newProjects = 1, duplicates = 0, skipped = 1, lists = 0), result)
+        val a = ascents().single()
+        assertEquals(ShinyWallSnapshot.climbUuid("r1", ShinyWallVariant.ST1), a.climbUuid)
+        assertEquals(ShinyWallVariant.ST1.layoutId, a.layoutId)
+        assertEquals(0L to 1L, a.attemptId to a.bidCount)
+        assertEquals(19L, a.difficulty) // 6B+
+        val bids = query("SELECT external_id, climb_uuid FROM bids") { rs -> rs.getString(1) to rs.getString(2) }
+        assertEquals(listOf("shinywall:history:b" to ShinyWallSnapshot.climbUuid("r3", ShinyWallVariant.ST1)), bids)
+    }
+
     @Test
     fun lists_import_favorites_own_lists_and_own_routes() = runTest {
         coEvery { client.fetchProfile("uid1") } returns Result.success(
