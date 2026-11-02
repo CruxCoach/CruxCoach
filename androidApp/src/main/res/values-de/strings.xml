@@ -3031,7 +3031,7 @@
     <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
     <!-- 0.2.5: eine Zeile je Feature; die Release-Vorbereitung ergänzt die anderen und registriert den Dialog. -->
     <string name="whatsnew_025_title">Neu in 0.2.5</string>
-    <string name="whatsnew_025_body">• Community – tritt der CruxCoach-Community auf Buzz bei, unter Einstellungen → Community.</string>
+    <string name="whatsnew_025_body">• Community – tritt der CruxCoach-Community auf Buzz bei, unter Einstellungen → Community.\n• Shiny Wall – wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Probleme und lass sie per Bluetooth leuchten. Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten &amp; Importe.\n• Wand-Spiele – Der Boden ist Lava, Ausdauer, Griffdieb und Quergang, aus dem Hauptmenü oder dem Menü eines Problems („Als Spiel spielen“).</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 
