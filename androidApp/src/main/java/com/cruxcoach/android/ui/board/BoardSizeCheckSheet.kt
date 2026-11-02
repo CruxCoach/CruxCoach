@@ -296,7 +296,7 @@ private fun BoardSizeCheckImage(
     }
 }
 
-/** Quiet entry below a size list: "Not sure which size? Check on your board". */
+/** Quiet entry right above a size list: "Not sure which size? Check on your board". */
 @Composable
 internal fun BoardSizeCheckLink(onClick: () -> Unit) {
     TextButton(

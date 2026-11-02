@@ -222,7 +222,7 @@ internal fun BoardSelectionDialog(
     // the active size when it belongs to this variant's product, else the
     // variant default; null when no size tier is shown (pre-sync / single-size).
     var auroraSizeId by remember { mutableStateOf<Int?>(null) }
-    // Optional board-size check opened from below a size list. A size confirmed there
+    // Optional board-size check opened from above a size list. A size confirmed there
     // only selects it here; Confirm still saves, as for a tapped size.
     var sizeCheck by remember { mutableStateOf<BoardSizeCheckRequest?>(null) }
     LaunchedEffect(auroraVariant, auroraBrand, auroraBrandSizes) {
@@ -493,20 +493,20 @@ internal fun BoardSelectionDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        auroraSizes.forEach { size ->
-                            BoardImageChoiceRow(
-                                label = BoardConstants.auroraSizeLabel(auroraBrand!!, size),
-                                selected = auroraSizeId == size.id.toInt(),
-                                onSelect = { auroraSizeId = size.id.toInt() },
-                                brand = auroraBrand!!, sizeId = size.id, layoutId = auroraVariant?.layoutId?.toLong(),
-                            )
-                        }
                         BoardSizeCheckLink {
                             sizeCheck = BoardSizeCheckRequest(
                                 auroraBrand!!,
                                 auroraSizeId?.takeIf { id -> auroraSizes.any { it.id.toInt() == id } }
                                     ?: auroraSizes.first().id.toInt(),
                                 auroraVariant?.layoutId,
+                            )
+                        }
+                        auroraSizes.forEach { size ->
+                            BoardImageChoiceRow(
+                                label = BoardConstants.auroraSizeLabel(auroraBrand!!, size),
+                                selected = auroraSizeId == size.id.toInt(),
+                                onSelect = { auroraSizeId = size.id.toInt() },
+                                brand = auroraBrand!!, sizeId = size.id, layoutId = auroraVariant?.layoutId?.toLong(),
                             )
                         }
                     }
@@ -544,6 +544,16 @@ internal fun BoardSelectionDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
+                        if (BoardSizeCheckPoints.offered(BoardBrand.KILTER, shownSizes.size)) {
+                            BoardSizeCheckLink {
+                                sizeCheck = BoardSizeCheckRequest(
+                                    BoardBrand.KILTER,
+                                    kilterSelection.takeIf { id -> shownSizes.any { it.id.toInt() == id } }
+                                        ?: shownSizes.first().id.toInt(),
+                                    BoardConstants.layoutIdForProduct(kilterProductId),
+                                )
+                            }
+                        }
                         shownSizes.forEach { size ->
                             BoardImageChoiceRow(
                                 label = BoardConstants.sizeLabel(size.id, size.name),
@@ -558,16 +568,6 @@ internal fun BoardSelectionDialog(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (BoardSizeCheckPoints.offered(BoardBrand.KILTER, shownSizes.size)) {
-                            BoardSizeCheckLink {
-                                sizeCheck = BoardSizeCheckRequest(
-                                    BoardBrand.KILTER,
-                                    kilterSelection.takeIf { id -> shownSizes.any { it.id.toInt() == id } }
-                                        ?: shownSizes.first().id.toInt(),
-                                    BoardConstants.layoutIdForProduct(kilterProductId),
-                                )
-                            }
-                        }
                     }
                 } else if (isQuantum) {
                     Text(
