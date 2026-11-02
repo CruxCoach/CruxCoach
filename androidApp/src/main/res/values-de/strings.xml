@@ -2979,6 +2979,9 @@
     <string name="whatsnew_024_title">Neu in 0.2.4</string>
     <string name="whatsnew_024_body">• Neuere Kilter-Boards – Boards, die nur als „Kilter Board“ erscheinen, verbinden sich jetzt.\n• Kilter-Logbuch-Upload – funktioniert wieder, ohne Doppelte, und versucht es selbst erneut.\n• Board-Karte – klarere Markierungen, eine Liste der Orte im Ausschnitt, „Mein Standort“ und Hallen in deiner Nähe.\n• Griffe putzen – das Logbuch-Menü leuchtet die Griffe deiner heute geloggten Probleme zum Bürsten.</string>
     <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
+    <!-- 0.2.5: eine Zeile je Feature; die Release-Vorbereitung ergänzt die anderen und registriert den Dialog. -->
+    <string name="whatsnew_025_title">Neu in 0.2.5</string>
+    <string name="whatsnew_025_body">• Shiny Wall – wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Probleme und lass sie per Bluetooth leuchten.\n• Wand-Spiele – Der Boden ist Lava, Ausdauer, Griffdieb und Quergang, aus dem Hauptmenü oder dem Menü eines Problems („Als Spiel spielen“).</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 

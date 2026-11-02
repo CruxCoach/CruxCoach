@@ -2980,6 +2980,9 @@
     <string name="whatsnew_024_title">New in 0.2.4</string>
     <string name="whatsnew_024_body">• Newer Kilter boards – boards that show up only as “Kilter Board” now connect.\n• Kilter logbook upload – works again, without duplicates, and retries by itself.\n• Board map – clearer markers, a list of the places in view, “My location” and gyms near you.\n• Clean holds – the logbook menu lights the holds of the problems you logged today, for brushing.</string>
     <string name="whatsnew_024_hint">Also: a board switch shows at once during a catalogue download, and a session resumes after a rest.</string>
+    <!-- 0.2.5: one line per feature; the release preparation adds the others and registers the dialog. -->
+    <string name="whatsnew_025_title">New in 0.2.5</string>
+    <string name="whatsnew_025_body">• Shiny Wall – choose your Shiny Wall in the board picker, browse its problems and light them over Bluetooth.\n• Wall games – Floor is lava, Endurance, Hold thief and Traverse, from the main menu or a problem’s menu (“Play as a game”).</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
 
