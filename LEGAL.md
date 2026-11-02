@@ -50,6 +50,7 @@ CruxCoach distributes board reference data and community-created climb data via 
 | Climbs (hold sequences + grades) | Community-created factual data | User-generated content | Factual data, created by climbers |
 | Climb statistics (difficulty averages, ascent counts) | Aggregated community data | Community activity metrics | Statistical facts |
 | Gym & wall locations (FEAT-015) | Public-business directory data | [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards) (Kilter PowerSync `global_gyms` mirror + StoreRocket contact records) | Factual / functional information about commercial gym entities, used to render the in-app board-locations map. No user personal data. |
+| Shiny Wall catalogue (hold sequences, grades, angles, route names, aggregate statistics) | Community-created factual data | Shiny Wall's published standard routes, refreshed every day | See [below](#shiny-wall-catalogue). Drafts and personal data are never included. |
 
 ### What we do NOT distribute
 
@@ -112,6 +113,25 @@ endorsement. See the in-directory
 [`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
 per-board rights holders, and removal-request contacts.
 
+### Bundled Shiny Wall wall images
+
+The Shiny Wall Standard variants are drawn from images under
+[`androidApp/src/main/assets/board_images/shinywall/`](androidApp/src/main/assets/board_images/shinywall/).
+CruxCoach composes each image itself
+([`scripts/build_shinywall_images.py`](scripts/build_shinywall_images.py))
+from the cut-out hold photos of the official Shiny Wall app, placed at the
+variant's hold positions on a plain dark background. No other artwork, logo
+or brand colours are included.
+
+The hold photos remain the property of **Shiny Wall**. Inclusion is limited
+to referential visualization and hardware interoperability. CruxCoach claims
+no ownership, affiliation, or endorsement. See the in-directory
+[`README.md`](androidApp/src/main/assets/board_images/README.md) for
+provenance and removal-request contacts, and
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
+attribution inventory. Deleting the `shinywall/` folder removes the images;
+the app then draws the holds as dots.
+
 ### Bundled board geometry
 
 The hold positions, board sizes, layout-image references and LED addresses of
@@ -130,6 +150,12 @@ of data. CruxCoach claims no ownership, affiliation or endorsement. Quantum
 geometry is not bundled. Per-board provenance is in the in-directory
 [`README.md`](androidApp/src/main/assets/board_geometry/README.md), attribution
 and removal contacts in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+
+Shiny Wall is the exception: no catalogue chunk carries its geometry, so the
+APK is its only source. `shinywall.sqlite3` holds the hold positions of the
+Shiny Wall Standard variants, a numeric table derived from the Shiny Wall
+app's own layout data for interoperability (positions only: no images,
+routes or user data).
 
 ### Map rendering & tile data
 
@@ -172,6 +198,17 @@ correctness and removal at the dataset level. Gym operators or rights
 holders may request removal at any time via the contacts in `SECURITY.md`,
 which are forwarded upstream where applicable.
 
+### Shiny Wall catalogue
+
+The Shiny Wall catalogue is a signed CruxCoach catalogue
+(`cruxcoach/shinywall-db`), refreshed every day from Shiny Wall's published
+standard routes: hold sequences, grades, angles, route names and aggregate
+statistics (average grade and rating, assessment counts). Drafts and personal
+data are never included: no account or author identifiers and no free-text
+descriptions. The app downloads it only once a user chooses a Shiny Wall.
+Shiny Wall keeps all rights in its routes; removal requests can be sent via
+the contacts in `SECURITY.md`.
+
 ### Integrity & verifiability
 
 All data chunks are content-addressed by their SHA-256 hash and served via the Blossom protocol. A Nostr manifest event (Kind 30078, NIP-78) published to public relays contains the hash, size, and download URLs for each chunk, enabling any client to verify data integrity independently.
@@ -203,11 +240,11 @@ EU and German law independently establish the right to analyse and interoperate 
 
 ### Trademark
 
-"Kilter Board" and "Kilter" are trademarks of Kilter Grips, LLC. "MoonBoard" and "Moon" are trademarks of Moon Climbing Ltd. CruxCoach uses these marks solely to indicate compatibility with the respective board hardware, as permitted under **§ 23(1) No. 3 MarkenG** (referential use to indicate intended purpose) and **Art. 14(1)(c) EUTMR (2017/1001)**.
+"Kilter Board" and "Kilter" are trademarks of Kilter Grips, LLC. "MoonBoard" and "Moon" are trademarks of Moon Climbing Ltd. "Shiny Wall" is a trademark of its owner. CruxCoach uses these marks solely to indicate compatibility with the respective board hardware, as permitted under **§ 23(1) No. 3 MarkenG** (referential use to indicate intended purpose) and **Art. 14(1)(c) EUTMR (2017/1001)**.
 
 The board-locations map (FEAT-015) additionally displays the names of other board brands (e.g. Tension, Grasshopper, Decoy, So iLL, Touchstone, Aurora, 12climb) and the **egym Wellpass** membership brand, purely to label third-party gym/board locations. These names are trademarks of their respective owners and are used referentially under the same provisions; CruxCoach claims no affiliation with, endorsement by, or sponsorship from any of them.
 
-CruxCoach is an independent, community-developed open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected with Kilter Grips, LLC, Aurora Climbing, Moon Climbing Ltd, egym, or any board manufacturer. All product and company names are trademarks of their respective holders.
+CruxCoach is an independent, community-developed open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected with Kilter Grips, LLC, Aurora Climbing, Moon Climbing Ltd, Shiny Wall, egym, or any board manufacturer. All product and company names are trademarks of their respective holders.
 
 ---
 
