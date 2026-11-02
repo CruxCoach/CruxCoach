@@ -3410,4 +3410,8 @@
     <string name="board_size_check_no_data">Für dieses Board fehlen noch die LED-Daten. Lade zuerst seinen Katalog.</string>
     <string name="board_size_check_done">Fertig</string>
     <string name="board_size_check_image_cd">%1$s mit den Griffen, die leuchten sollen</string>
+    <!-- Board-Auswahl: wie häufig jede Option in Gyms ist, damit eine seltene Wahl geprüft wird -->
+    <string name="board_gym_share">In Gyms: %1$s</string>
+    <string name="board_gym_share_rare">Selten in Gyms: %1$s</string>
+    <string name="board_gym_share_rare_hint">Nur wenige Gyms haben dieses Board. Prüfe bitte, ob es wirklich deins ist.</string>
 </resources>
