@@ -3404,14 +3404,33 @@
     <string name="shinywall_disconnect">Disconnect</string>
     <string name="shinywall_disconnect_confirm">CruxCoach forgets the Shiny Wall sign-in on this phone. Imported entries and lists stay.</string>
     <string name="shinywall_preview_title">Import from Shiny Wall</string>
-    <string name="shinywall_preview_found">%1$d entries found: %2$d new ascents, %3$d new projects, %4$d already in CruxCoach.</string>
+    <!-- %1$s, %2$s, %3$s: shinywall_preview_new_ascents, shinywall_preview_new_projects, shinywall_preview_known -->
+    <string name="shinywall_preview_found">%1$s, %2$s, %3$s.</string>
+    <plurals name="shinywall_preview_new_ascents">
+        <item quantity="one">%1$d new ascent</item>
+        <item quantity="other">%1$d new ascents</item>
+    </plurals>
+    <plurals name="shinywall_preview_new_projects">
+        <item quantity="one">%1$d new project</item>
+        <item quantity="other">%1$d new projects</item>
+    </plurals>
+    <string name="shinywall_preview_known">%1$d already in CruxCoach</string>
     <string name="shinywall_preview_skipped">%1$d entries can’t be imported (custom walls, routes you created, incomplete entries).</string>
     <string name="shinywall_import_button">Import</string>
     <string name="shinywall_import_lists_button">Update lists</string>
     <string name="shinywall_import_empty">No entries found in your Shiny Wall logbook yet.</string>
-    <string name="shinywall_import_part_ascents">%1$d ascents</string>
-    <string name="shinywall_import_part_projects">%1$d projects</string>
-    <string name="shinywall_import_part_lists">%1$d lists</string>
+    <plurals name="shinywall_import_part_ascents">
+        <item quantity="one">%1$d ascent</item>
+        <item quantity="other">%1$d ascents</item>
+    </plurals>
+    <plurals name="shinywall_import_part_projects">
+        <item quantity="one">%1$d project</item>
+        <item quantity="other">%1$d projects</item>
+    </plurals>
+    <plurals name="shinywall_import_part_lists">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
     <string name="shinywall_import_part_known">%1$d already imported</string>
     <string name="shinywall_import_part_skipped">%1$d skipped</string>
     <string name="shinywall_auth_invalid_credentials">Email or password is wrong. If you sign in to Shiny Wall with Google, CruxCoach can’t connect.</string>
