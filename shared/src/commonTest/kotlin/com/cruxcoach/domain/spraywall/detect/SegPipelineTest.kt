@@ -76,6 +76,31 @@ class SegPipelineTest {
     }
 
     @Test
+    fun skippingNegativeCornersChangesNoRing() {
+        // A noisy blob: the fast path must trace exactly what full sampling traces.
+        val grid = 78
+        val random = kotlin.random.Random(3)
+        val masks = FloatArray(grid * grid) { i ->
+            val x = i % grid + 0.5f
+            val y = i / grid + 0.5f
+            9f - hypot(x - 30f, (y - 42f) * 1.6f) + random.nextFloat() * 4f - 2f
+        }
+        val ring = MaskOutline.trace(masks, 0, grid, grid, 0.28f, 0.45f, 0.5f, 0.63f, 400f, 300f, SegSettings())
+        assertNotNull(ring)
+        // The same window traced the slow way: every pixel sampled.
+        val up = 4
+        val w = grid * up
+        val slow = BooleanArray(w * w) { MaskOutline.sample(masks, 0, grid, grid, (it % w).toFloat() / up, (it / w).toFloat() / up) > 0f }
+        val fast = BooleanArray(w * w) { i ->
+            val gx0 = kotlin.math.floor(((i % w).toFloat() / up - 0.5f).coerceIn(0f, grid - 1f)).toInt()
+            val gy0 = kotlin.math.floor(((i / w).toFloat() / up - 0.5f).coerceIn(0f, grid - 1f)).toInt()
+            val corners = listOf(gy0 * grid + gx0, gy0 * grid + minOf(gx0 + 1, grid - 1), minOf(gy0 + 1, grid - 1) * grid + gx0, minOf(gy0 + 1, grid - 1) * grid + minOf(gx0 + 1, grid - 1))
+            corners.any { masks[it] > 0f } && MaskOutline.sample(masks, 0, grid, grid, (i % w).toFloat() / up, (i / w).toFloat() / up) > 0f
+        }
+        assertTrue(slow.contentEquals(fast))
+    }
+
+    @Test
     fun anEmptyMaskHasNoRing() {
         val masks = FloatArray(78 * 78) { -3f }
         assertNull(MaskOutline.trace(masks, 0, 78, 78, 0.4f, 0.4f, 0.6f, 0.6f, 312f, 312f, SegSettings()))

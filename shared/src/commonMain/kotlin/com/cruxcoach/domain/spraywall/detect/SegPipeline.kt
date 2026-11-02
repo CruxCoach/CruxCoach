@@ -324,9 +324,23 @@ object MaskOutline {
         val wh = bottom - top
         if (ww < 2 || wh < 2) return null
         val filled = BooleanArray(ww * wh)
+        // A bilinear sample is positive only if one of its four grid corners
+        // is: skip the arithmetic everywhere else (most of the window).
+        val positive = BooleanArray(maskWidth * maskHeight) { masks[offset + it] > 0f }
         for (y in 0 until wh) {
+            val sy = (top + y).toFloat() / upsample
+            val gy0 = floor((sy - 0.5f).coerceIn(0f, (maskHeight - 1).toFloat())).toInt()
+            val gy1 = min(gy0 + 1, maskHeight - 1)
             for (x in 0 until ww) {
-                filled[y * ww + x] = sample(masks, offset, maskWidth, maskHeight, (left + x).toFloat() / upsample, (top + y).toFloat() / upsample) > 0f
+                val sx = (left + x).toFloat() / upsample
+                val gx0 = floor((sx - 0.5f).coerceIn(0f, (maskWidth - 1).toFloat())).toInt()
+                val gx1 = min(gx0 + 1, maskWidth - 1)
+                if (!positive[gy0 * maskWidth + gx0] && !positive[gy0 * maskWidth + gx1] &&
+                    !positive[gy1 * maskWidth + gx0] && !positive[gy1 * maskWidth + gx1]
+                ) {
+                    continue
+                }
+                filled[y * ww + x] = sample(masks, offset, maskWidth, maskHeight, sx, sy) > 0f
             }
         }
         val centreX = roundHalfUpF(((bx0 + bx1) / 2f) * width) - left
