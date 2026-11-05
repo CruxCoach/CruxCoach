@@ -179,7 +179,7 @@ class NostrRelayPool @Inject constructor(
                     }
                     "EOSE" -> {
                         val subId = arr[1].jsonPrimitive.content
-                        subscriptionFlows[subId]?.tryEmit(EOSE_SENTINEL)
+                        subscriptionFlows[subId]?.tryEmit(eoseFrame(url))
                     }
                     "NOTICE" -> Log.w(TAG, "Relay $url: ${arr[1].jsonPrimitive.content.take(512)}")
                 }
@@ -412,7 +412,8 @@ class NostrRelayPool @Inject constructor(
      *   subscription may have already seen.
      * @param closeOnEose If true, the flow completes after all relays have sent
      *   EOSE (End of Stored Events), instead of staying open for real-time events.
-     *   Use this for one-shot historical queries (e.g., poll workers).
+     *   Use this for one-shot historical queries (e.g., poll workers). Each
+     *   relay counts once, and a relay that fails to connect counts as done.
      */
     fun subscribe(
         filter: String,
@@ -423,19 +424,13 @@ class NostrRelayPool @Inject constructor(
         val subId = java.util.UUID.randomUUID().toString()
         val readRelays = readRelays()
         val flow = MutableSharedFlow<String>(extraBufferCapacity = 256)
-        val eoseCount = java.util.concurrent.atomic.AtomicInteger(0)
-        val relayCount = readRelays.size
+        val eose = if (closeOnEose) EoseTracker(readRelays.map { it.url }) else null
 
-        val job = scope.launch {
-            flow.collect { eventJson ->
-                if (eventJson == EOSE_SENTINEL) {
-                    if (closeOnEose && eoseCount.incrementAndGet() >= relayCount) {
-                        channel.close()
-                    }
-                    return@collect
-                }
-                if (deliveryGate.accepts(eventJson, skipDedup)) send(eventJson)
-            }
+        // A child of this callbackFlow, not of the pool scope: if forwarding
+        // fails, the collector sees the error instead of the app crashing.
+        // Dispatchers.IO keeps the signature checks off the collector's thread.
+        val job = launch(Dispatchers.IO) {
+            forwardRelayFrames(flow, channel, eose) { deliveryGate.accepts(it, skipDedup) }
         }
 
         readRelays.forEach { relay ->
@@ -445,10 +440,8 @@ class NostrRelayPool @Inject constructor(
                 conn.addSubscription(subId, filter, flow)
             } catch (e: Exception) {
                 Log.w(TAG, "Subscribe to ${relay.url} failed", e)
-                // Count failed relays as "EOSE received" so we don't hang forever
-                if (closeOnEose && eoseCount.incrementAndGet() >= relayCount) {
-                    channel.close()
-                }
+                // A failed relay counts as done so the query doesn't hang forever
+                if (eose?.markDone(relay.url) == true) channel.close()
             }
         }
 
@@ -498,7 +491,5 @@ class NostrRelayPool @Inject constructor(
 
     companion object {
         private const val TAG = "NostrRelayPool"
-        /** Sentinel value emitted by EOSE handler — never valid JSON. */
-        internal const val EOSE_SENTINEL = "__EOSE__"
     }
 }
