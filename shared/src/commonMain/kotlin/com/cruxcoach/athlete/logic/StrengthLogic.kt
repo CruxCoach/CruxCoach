@@ -19,19 +19,20 @@ object StrengthMath {
 
     /**
      * What the athlete actually held or moved: bodyweight ± added kg for
-     * hangs and pull-ups, the lifted load for pick-ups and free weights.
+     * hangs and pull-ups, the lifted load for pick-ups and free weights –
+     * both dumbbells of a pair ([LoadRules.lifted]).
      */
-    fun effectiveLoad(mode: LoadMode, loadKg: Double?, bodyweightKg: Double?): Double? = when (mode) {
+    fun effectiveLoad(def: ExerciseDefinition, loadKg: Double?, bodyweightKg: Double?): Double? = when (def.load) {
         LoadMode.BODYWEIGHT_PLUS -> bodyweightKg?.let { it + (loadKg ?: 0.0) }
-        LoadMode.EXTERNAL -> loadKg
+        LoadMode.EXTERNAL -> loadKg?.let { LoadRules.lifted(def, it) }
         LoadMode.BODYWEIGHT -> bodyweightKg
         LoadMode.NONE -> null
     }
 
     /** Effective load as % of body weight — the strength-to-weight number climbers care about. */
-    fun percentBodyweight(mode: LoadMode, loadKg: Double?, bodyweightKg: Double?): Double? {
+    fun percentBodyweight(def: ExerciseDefinition, loadKg: Double?, bodyweightKg: Double?): Double? {
         val bw = bodyweightKg?.takeIf { it > 0 } ?: return null
-        return effectiveLoad(mode, loadKg, bw)?.let { it / bw * 100.0 }
+        return effectiveLoad(def, loadKg, bw)?.let { it / bw * 100.0 }
     }
 
     /** Round to the smallest increment the athlete can actually load (plates, pulley steps). */
@@ -62,7 +63,7 @@ object PersonalRecords {
             ExerciseKind.LOAD_REPS -> {
                 val reps = set.reps ?: return null
                 if (reps <= 0) return null
-                val load = StrengthMath.effectiveLoad(def.load, set.loadKg, set.bodyweightKg)
+                val load = StrengthMath.effectiveLoad(def, set.loadKg, set.bodyweightKg)
                     ?: set.loadKg ?: return null
                 RecordKind.ESTIMATED_MAX to StrengthMath.epley(load, reps)
             }
@@ -74,7 +75,7 @@ object PersonalRecords {
                 if (def.load == LoadMode.NONE || def.load == LoadMode.BODYWEIGHT) {
                     return duration?.let { RecordKind.DURATION to it }
                 }
-                val load = StrengthMath.effectiveLoad(def.load, set.loadKg, set.bodyweightKg)
+                val load = StrengthMath.effectiveLoad(def, set.loadKg, set.bodyweightKg)
                     ?: set.loadKg ?: return null
                 RecordKind.LOAD to load
             }

@@ -601,7 +601,7 @@ private fun LatestDoneExtras(set: ExerciseSet, def: ExerciseDefinition, state: P
             }
         }
         state.adjustment?.let { adj ->
-            Text(adjustmentText(adj, units, set.side), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+            Text(adjustmentText(adj, def, units, set.side), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("player_adjustment"))
         }

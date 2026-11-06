@@ -27,7 +27,7 @@ import org.robolectric.annotation.Config
 /**
  * Most lifting edges take one hand (owner 2026-10-10): one pick-up block
  * means one-arm lifts; two-arm lifts need a second block (or an edge for
- * both hands), and their total is shown per block.
+ * both hands), and the hint says what goes on each of two blocks.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -78,7 +78,7 @@ class PickupBlocksTest : AthleteScreenTest() {
             Text("two: " + perBlockText(set(twoArm.slug), twoArm, UnitSystem.METRIC))
             Text("one: " + perBlockText(set(oneArm.slug), oneArm, UnitSystem.METRIC))
         }
-        compose.onNodeWithText("two: 19 kg per block").assertExists()
+        compose.onNodeWithText("two: With two blocks: 19 kg each").assertExists()
         compose.onNodeWithText("one: null").assertExists()
     }
 }

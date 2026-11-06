@@ -463,6 +463,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Catalogue updates no longer wait 15 seconds per board when one Nostr relay accepts the
   connection but never answers. Once two relays have sent the catalogue's signed manifest,
   the others get two more seconds, then the update goes on with the newest manifest it has.
+- Training: every weight field now says what the number means, on every screen, in
+  English and German, kg and lb. The labels read "Weight per dumbbell", "Dumbbell weight",
+  "Total incl. bar", "Total incl. block", "Total, both hands", "Weight on the stack" and
+  "Added weight", and values read the way you enter them: "2 × 16 kg", "+12 kg",
+  "15 kg assisted". Dumbbells are logged per dumbbell. Volume, % body weight, the
+  estimated one-rep max and records count both dumbbells of a pair, so a set of 2 × 16 kg
+  no longer counts as 16 kg; older dumbbell sets are read the same way. Exercise steps
+  say what to log, one-sided exercises show "Sets per side" in the workout editor, and
+  your own dumbbell or kettlebell exercises can use one or two. In typed workouts,
+  "2x16 kg" is 16 kg per dumbbell on dumbbell work, +32 kg added on body-weight work
+  and 32 kg in total on a two-arm pick-up.
 
 ## [0.2.4] - 2026-10-25
 

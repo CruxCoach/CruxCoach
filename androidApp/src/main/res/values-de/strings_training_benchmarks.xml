@@ -21,7 +21,6 @@
     <string name="trbm_ten_second_max">10-s-Max %1$s (%2$d %% KG)</string>
     <string name="trbm_max_reps">max. %1$d Wdh.</string>
     <string name="trbm_max_seconds">max. %1$d s</string>
-    <string name="trbm_assisted">entlastet %1$s</string>
     <string name="trbm_hint_e1rm">Der schwerste Satz, den du sauber schaffst: Last und Wiederholungen (1–30). Daraus schätzt CruxCoach dein 1RM.</string>
     <string name="trbm_hint_hang">Das Maximum, das du halten kannst: Last, Haltezeit und Leiste. 10 s ist der Bezug, andere Zeiten werden umgerechnet.</string>
     <string name="trbm_hint_reps">Deine maximale Anzahl sauberer Wiederholungen in einem Satz.</string>
@@ -36,8 +35,6 @@
     <string name="trbm_sets_reps">%1$d × %2$d Wdh.</string>
     <string name="trbm_max_reps_about">max. etwa %1$d Wdh.</string>
     <string name="trbm_max_seconds_about">max. etwa %1$d s</string>
-    <string name="trbm_load_added">Zusatzgewicht (%1$s)</string>
-    <string name="trbm_load_total">Last (%1$s)</string>
     <string name="trbm_load_added_hint">0 = Körpergewicht, negativ = entlastet (Umlenkrolle, Band)</string>
     <string name="trbm_reps">Wiederholungen</string>
     <string name="trbm_seconds">Sekunden</string>

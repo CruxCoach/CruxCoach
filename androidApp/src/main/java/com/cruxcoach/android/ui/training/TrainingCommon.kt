@@ -310,7 +310,7 @@ fun formatNumber(value: Double, decimals: Int = 1): String {
 }
 
 /** Plate steps like 1.25 kg need two decimals; body weights and loads read best with one. */
-private fun massDecimals(v: Double): Int {
+internal fun massDecimals(v: Double): Int {
     val quarter = abs(v * 4 - Math.round(v * 4)) < 1e-6
     val tenth = abs(v * 10 - Math.round(v * 10)) < 1e-6
     return if (quarter && !tenth) 2 else 1

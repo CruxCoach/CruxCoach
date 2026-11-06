@@ -45,9 +45,20 @@ data class ExerciseSet(
     val side: Side? = null,
     val targetReps: Int? = null,
     val targetDurationS: Double? = null,
+    /** Planned [loadKg], read the same way. */
     val targetLoadKg: Double? = null,
+    /**
+     * Reps and seconds of this set: on one-sided work ([side] set) those of that side; on exercises that
+     * alternate sides within a set (walking lunge, dead bug) every side counts as one rep.
+     */
     val reps: Int? = null,
     val durationS: Double? = null,
+    /**
+     * The weight as the athlete enters it ([com.cruxcoach.athlete.logic.LoadRules], issue #58): added kg for
+     * body-weight work (negative = assistance), one dumbbell or kettlebell of a pair, a barbell with the bar,
+     * a pick-up block with everything on it, the stack of a cable. Always kg; never rewritten when a rule
+     * changes – totals are derived at read time.
+     */
     val loadKg: Double? = null,
     val edgeMm: Double? = null,
     val grip: Grip? = null,
@@ -84,7 +95,10 @@ data class RoutineItem(
     val repsMin: Int? = null,
     val repsMax: Int? = null,
     val durationS: Int? = null,
-    /** A load the athlete chose (added kg for body-weight work); wins over the prescription. Null = planned automatically. */
+    /**
+     * A load the athlete chose, read like [ExerciseSet.loadKg] (added kg for body-weight work, one dumbbell of a
+     * pair); wins over the prescription. Null = planned automatically.
+     */
     val loadKg: Double? = null,
     val restS: Int? = null,
     val edgeMm: Int? = null,
@@ -136,6 +150,7 @@ data class Benchmark(
     val side: Side? = null,
     val edgeMm: Double? = null,
     val grip: Grip? = null,
+    /** Read like [ExerciseSet.loadKg]: added kg for body-weight work, one dumbbell of a pair. */
     val loadKg: Double? = null,
     val reps: Int? = null,
     val durationS: Double? = null,

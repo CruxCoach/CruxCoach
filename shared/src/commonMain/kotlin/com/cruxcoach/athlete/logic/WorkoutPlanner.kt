@@ -179,7 +179,7 @@ object WorkoutSummarizer {
         fun work(set: ExerciseSet): Double {
             val def = catalog.fallbackFor(set.exerciseSlug)
             // Total load (body weight ± added, or the lifted block), so +0 vs +2 kg is not "half".
-            val load = StrengthMath.effectiveLoad(def.load, set.loadKg, set.bodyweightKg) ?: set.loadKg ?: 1.0
+            val load = StrengthMath.effectiveLoad(def, set.loadKg, set.bodyweightKg) ?: set.loadKg ?: 1.0
             return (set.durationS ?: 0.0) * load.coerceAtLeast(1.0)
         }
         val sideLoad = mutableMapOf<Side, Double>()

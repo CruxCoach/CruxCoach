@@ -12,6 +12,7 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.training.formatNumber
 import com.cruxcoach.android.ui.training.routineName
+import com.cruxcoach.android.ui.training.weightTextOfTotal
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.BuiltinRoutines
@@ -60,10 +61,13 @@ internal fun massText(resources: Resources, kg: Double, units: UnitSystem, signe
 
 internal fun recordValueText(resources: Resources, def: ExerciseDefinition, record: PersonalRecord, units: UnitSystem): String =
     when (record.kind) {
+        // Body-weight work as the total with body weight; free weights the way they are loaded ("2 × 20 kg").
         RecordKind.LOAD ->
             if (def.load == LoadMode.BODYWEIGHT_PLUS) resources.getString(R.string.trw_record_total, massText(resources, record.value, units))
-            else massText(resources, record.value, units)
-        RecordKind.ESTIMATED_MAX -> resources.getString(R.string.trw_record_e1rm, massText(resources, record.value, units))
+            else weightTextOfTotal(resources, def, record.value, units)
+        RecordKind.ESTIMATED_MAX -> resources.getString(R.string.trw_record_e1rm,
+            if (def.load == LoadMode.BODYWEIGHT_PLUS) resources.getString(R.string.trw_record_total, massText(resources, record.value, units))
+            else weightTextOfTotal(resources, def, record.value, units))
         RecordKind.REPS -> record.value.roundToInt().let { resources.getQuantityString(R.plurals.trw_reps, it, it) }
         RecordKind.DURATION -> resources.getString(R.string.tr_format_seconds, record.value.roundToInt())
     }

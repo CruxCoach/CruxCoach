@@ -64,8 +64,9 @@ object StartEstimate {
 
     /**
      * Working weight as a share of body weight for a first session of common dumbbell, kettlebell,
-     * barbell and machine lifts without any value (per dumbbell for one-handed and paired work, else the
-     * total). Device test 2026-10-17: wrist curls were planned at 0 kg. Deliberately on the light side –
+     * barbell and machine lifts without any value, in the number the athlete logs ([LoadRules]: per
+     * dumbbell for one-handed and paired work, else the total). Device test 2026-10-17: wrist curls were
+     * planned at 0 kg. Deliberately on the light side –
      * the reserve answer after each set moves the next sets, and the first logged sets become the value.
      */
     private val LIFT_SHARE = mapOf(
@@ -91,7 +92,8 @@ object StartEstimate {
         if (def.load != LoadMode.EXTERNAL || def.kind != com.cruxcoach.athlete.catalog.ExerciseKind.LOAD_REPS) return null
         val bw = bodyweightKg?.takeIf { it > 0 } ?: return null
         val reps = def.defaults.repsMax ?: def.defaults.repsMin ?: 10
-        return Capacity(CapacityKind.E1RM_TOTAL, bw * share * (1.0 + (reps + BenchmarkMath.TARGET_RIR) / 30.0), bw, estimated = true)
+        val lifted = LoadRules.lifted(def, bw * share)
+        return Capacity(CapacityKind.E1RM_TOTAL, lifted * (1.0 + (reps + BenchmarkMath.TARGET_RIR) / 30.0), bw, estimated = true)
     }
 
     /** Two-hand 10-second pick-up total from body weight and grade alone. */
@@ -165,11 +167,11 @@ object BenchmarkMath {
         return when (capacityKind(def)) {
             CapacityKind.E1RM_TOTAL -> {
                 val reps = b.reps?.takeIf { it > 0 } ?: return null
-                val total = StrengthMath.effectiveLoad(def.load, b.loadKg, bw) ?: return null
+                val total = StrengthMath.effectiveLoad(def, b.loadKg, bw) ?: return null
                 Capacity(CapacityKind.E1RM_TOTAL, StrengthMath.epley(total, reps), bw)
             }
             CapacityKind.TEN_SECOND_MAX -> {
-                val total = StrengthMath.effectiveLoad(def.load, b.loadKg, bw) ?: return null
+                val total = StrengthMath.effectiveLoad(def, b.loadKg, bw) ?: return null
                 val duration = b.durationS?.takeIf { it > 0 } ?: 10.0
                 Capacity(CapacityKind.TEN_SECOND_MAX, total / HoldCurve.relative(duration), bw)
             }
@@ -182,11 +184,11 @@ object BenchmarkMath {
     private fun fromWorkingSets(def: ExerciseDefinition, b: Benchmark, bw: Double?): Capacity? = when (capacityKind(def)) {
         CapacityKind.E1RM_TOTAL -> {
             val reps = b.reps?.takeIf { it > 0 }
-            val total = StrengthMath.effectiveLoad(def.load, b.loadKg, bw)
+            val total = StrengthMath.effectiveLoad(def, b.loadKg, bw)
             if (reps == null || total == null) null
             else Capacity(CapacityKind.E1RM_TOTAL, total * (1.0 + (reps + TARGET_RIR) / 30.0), bw)
         }
-        CapacityKind.TEN_SECOND_MAX -> StrengthMath.effectiveLoad(def.load, b.loadKg, bw)?.let { total ->
+        CapacityKind.TEN_SECOND_MAX -> StrengthMath.effectiveLoad(def, b.loadKg, bw)?.let { total ->
             val value = if (def.kind == ExerciseKind.INTERVAL) total / LoadPrescriber.REPEATER_SHARE else {
                 val d = b.durationS?.takeIf { it > 0 } ?: 10.0
                 total / HoldCurve.relative(d) / LoadPrescriber.holdShare(d.roundToInt())
@@ -211,13 +213,13 @@ object BenchmarkMath {
             CapacityKind.E1RM_TOTAL -> {
                 val reps = (set.reps ?: return null) + (set.rir ?: 0)
                 if (reps <= 0) return null
-                val total = StrengthMath.effectiveLoad(def.load, set.loadKg, bw) ?: return null
+                val total = StrengthMath.effectiveLoad(def, set.loadKg, bw) ?: return null
                 Capacity(CapacityKind.E1RM_TOTAL, StrengthMath.epley(total, reps), bw)
             }
             CapacityKind.TEN_SECOND_MAX -> {
                 if (def.kind == ExerciseKind.INTERVAL) return null // repeaters are too fatigue-driven to estimate a maximum
                 val duration = set.durationS?.takeIf { it >= 3.0 } ?: return null
-                val total = StrengthMath.effectiveLoad(def.load, set.loadKg, bw) ?: return null
+                val total = StrengthMath.effectiveLoad(def, set.loadKg, bw) ?: return null
                 Capacity(CapacityKind.TEN_SECOND_MAX, total / HoldCurve.relative(duration + (set.rir ?: 0)), bw)
             }
             CapacityKind.MAX_REPS -> ((set.reps ?: return null) + (set.rir ?: 0)).takeIf { it > 0 }
@@ -286,9 +288,10 @@ object LoadPrescriber {
     ): LoadTarget? {
         if (capacity == null || item.test || item.warmup) return null
         val bw = bodyweightKg ?: capacity.bodyweightKg
+        // Back to the number the athlete loads: added kilos, or the weight of one dumbbell of a pair.
         fun toLoad(total: Double): Double? = when (def.load) {
             LoadMode.BODYWEIGHT_PLUS -> bw?.let { StrengthMath.roundTo(total - it, incrementKg) }
-            LoadMode.EXTERNAL -> StrengthMath.roundTo(max(total, 0.0), incrementKg)
+            LoadMode.EXTERNAL -> StrengthMath.roundTo(LoadRules.logged(def, max(total, 0.0)), incrementKg)
             else -> null
         }
         return when (capacity.kind) {

@@ -208,7 +208,7 @@ fun ExerciseStatsScreen(
                         key.edgeMm?.let { stringResource(R.string.tr_format_mm, it.toString()) },
                         key.grip?.let { gripLabel(it) },
                     ).joinToString(" · ").ifBlank { capacityLabel(kind) }
-                    ListItem(headlineContent = { Text(label) }, supportingContent = { Text(recordValue(best.first, best.second, units)) })
+                    ListItem(headlineContent = { Text(label) }, supportingContent = { Text(recordValue(def, best.first, best.second, units)) })
                 }
             }
 
@@ -243,10 +243,14 @@ private fun volumeHint(def: ExerciseDefinition): Int = when (def.kind) {
     com.cruxcoach.athlete.catalog.ExerciseKind.HANG, com.cruxcoach.athlete.catalog.ExerciseKind.INTERVAL -> R.string.trs_volume_hint_hang
 }
 
+/** Body-weight work reads as the total with body weight; free weights the way they are loaded ("2 × 20 kg"). */
 @Composable
-private fun recordValue(kind: RecordKind, value: Double, units: com.cruxcoach.athlete.model.UnitSystem): String = when (kind) {
-    RecordKind.LOAD -> stringResource(R.string.trs_best_load, formatMass(value, units))
-    RecordKind.ESTIMATED_MAX -> stringResource(R.string.trs_best_e1rm, formatMass(value, units))
+private fun recordValue(def: ExerciseDefinition, kind: RecordKind, value: Double, units: com.cruxcoach.athlete.model.UnitSystem): String = when (kind) {
+    RecordKind.LOAD -> if (def.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS)
+        stringResource(R.string.trs_best_load, formatMass(value, units)) else weightTextOfTotal(def, value, units)
+    RecordKind.ESTIMATED_MAX -> if (def.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS)
+        stringResource(R.string.trs_best_e1rm, formatMass(value, units))
+    else stringResource(R.string.trs_best_e1rm_lifted, weightTextOfTotal(def, value, units))
     RecordKind.REPS -> value.roundToInt().let { pluralStringResource(R.plurals.trs_reps, it, it) }
     RecordKind.DURATION -> stringResource(R.string.tr_format_seconds, value.roundToInt())
 }

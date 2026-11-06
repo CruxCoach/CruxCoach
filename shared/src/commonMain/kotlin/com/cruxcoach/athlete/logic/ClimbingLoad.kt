@@ -2,6 +2,7 @@ package com.cruxcoach.athlete.logic
 
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
 import com.cruxcoach.athlete.catalog.ExerciseCategoryV2
+import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadDomain
 import com.cruxcoach.athlete.catalog.LoadMode
@@ -183,13 +184,13 @@ object ClimbingLoad {
                     ExerciseKind.HANG, ExerciseKind.TIME -> s.durationS ?: s.targetDurationS ?: 10.0
                     else -> (s.reps ?: 5) * 2.0
                 }
-                finger += seconds / 10.0 * relativeLoad(def.load, s.loadKg, bw, def.unilateral)
+                finger += seconds / 10.0 * relativeLoad(def, s.loadKg, bw)
             }
             if (def.category == ExerciseCategoryV2.PULL || def.category == ExerciseCategoryV2.PUSH ||
                 (LoadDomain.SHOULDER in def.domains && def.category != ExerciseCategoryV2.FINGER)
             ) {
                 val reps = s.reps?.toDouble() ?: ((s.durationS ?: 0.0) / 5.0)
-                shoulder += reps / 5.0 * relativeLoad(def.load, s.loadKg, bw, def.unilateral)
+                shoulder += reps / 5.0 * relativeLoad(def, s.loadKg, bw)
             }
         }
         return mapOf(LoadStructure.FINGER to finger, LoadStructure.SKIN to skin, LoadStructure.SHOULDER to shoulder)
@@ -198,13 +199,13 @@ object ClimbingLoad {
     /** Steeper boards load the shoulder girdle more; 40° is the reference. */
     private fun angleWeight(angle: Int): Double = (angle / 40.0).coerceIn(0.5, 1.5)
 
-    /** Load relative to body weight (1 = body weight); per hand for one-arm external loads. */
-    private fun relativeLoad(mode: LoadMode, loadKg: Double?, bodyweightKg: Double?, unilateral: Boolean): Double {
+    /** Load relative to body weight (1 = body weight); per hand for one-arm external loads, both dumbbells of a pair. */
+    private fun relativeLoad(def: ExerciseDefinition, loadKg: Double?, bodyweightKg: Double?): Double {
         val bw = bodyweightKg ?: return 1.0
-        return when (mode) {
+        return when (def.load) {
             LoadMode.BODYWEIGHT_PLUS -> (bw + (loadKg ?: 0.0)) / bw
             LoadMode.BODYWEIGHT -> 1.0
-            LoadMode.EXTERNAL -> (loadKg ?: 0.0) / (if (unilateral) bw / 2.0 else bw)
+            LoadMode.EXTERNAL -> LoadRules.lifted(def, loadKg ?: 0.0) / (if (def.unilateral) bw / 2.0 else bw)
             LoadMode.NONE -> 0.5
         }.coerceIn(0.2, 2.5)
     }

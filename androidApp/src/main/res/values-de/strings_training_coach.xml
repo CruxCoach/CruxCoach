@@ -140,7 +140,7 @@
     <string name="trc_estimate_pull_8_12">8–12</string>
     <string name="trc_estimate_pull_13">13+</string>
     <string name="trc_estimate_pull_weighted">Mit Zusatzgewicht</string>
-    <string name="trc_estimate_added">Zusatz (%1$s)</string>
+    <string name="trc_estimate_added">Zusatzgewicht (%1$s)</string>
     <string name="trc_estimate_reps">Wdh.</string>
     <string name="trc_estimate_hang">10 s an einer 20-mm-Leiste, beide Hände?</string>
     <string name="trc_estimate_hang_no">Geht nicht</string>
@@ -148,7 +148,7 @@
     <string name="trc_estimate_hang_easy">Locker</string>
     <string name="trc_estimate_hang_weighted">Mit Zusatzgewicht</string>
     <string name="trc_estimate_hang_cannot">Kein Problem – Fingerarbeit startet dann an einer größeren Leiste oder entlastet.</string>
-    <string name="trc_estimate_pickup">Blockheben einarmig 10 s, je Hand</string>
+    <string name="trc_estimate_pickup">Blockheben einarmig 10 s, je Hand, inkl. Block</string>
     <string name="trc_estimate_healthy_side">Nur die gesunde Hand, solange deine Verletzung offen ist.</string>
     <string name="trc_estimate_injury_skip">Übersprungen – deine Verletzung schließt beidarmiges Hängen gerade aus.</string>
     <string name="trc_estimate_no_weight">Trag dein Körpergewicht ein, dann rechnet der Coach auch in Prozent des Körpergewichts.</string>

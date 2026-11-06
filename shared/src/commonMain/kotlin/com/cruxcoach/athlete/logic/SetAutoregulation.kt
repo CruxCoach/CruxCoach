@@ -119,7 +119,9 @@ object SetAutoregulation {
         val easy = !failed && (done.rir ?: 0) >= BIG_RESERVE
         return when {
             failed && loaded && done.loadKg != null -> {
-                val total = StrengthMath.effectiveLoad(def.load, done.loadKg, done.bodyweightKg) ?: done.loadKg
+                // Per dumbbell for a pair: the drop applies to the number the athlete loads.
+                val total = StrengthMath.effectiveLoad(def, done.loadKg, done.bodyweightKg)
+                    ?.let { if (def.load == LoadMode.EXTERNAL) LoadRules.logged(def, it) else it } ?: done.loadKg
                 // Feeling out drops the full step (about 10 %); otherwise about 5 % of the total load.
                 val drop = if (feel) step else max(step, StrengthMath.roundTo(total * HOLD_LOAD_SHARE, step))
                 // Lifted weight cannot go below zero; added weight may turn into assistance.

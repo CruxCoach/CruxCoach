@@ -95,13 +95,13 @@ object ValueUpdates {
         val bw = b.bodyweightKg ?: bodyweightKg
         fun load(total: Double): Double? = when (def.load) {
             LoadMode.BODYWEIGHT_PLUS -> bw?.let { floorHalf(total - it) }
-            LoadMode.EXTERNAL -> floorHalf(max(total, 0.0))
+            LoadMode.EXTERNAL -> floorHalf(LoadRules.logged(def, max(total, 0.0)))
             else -> null
         }
         return when (BenchmarkMath.capacityKind(def)) {
             CapacityKind.E1RM_TOTAL -> {
                 val reps = b.reps ?: return b
-                val lifted = StrengthMath.effectiveLoad(def.load, b.loadKg, bw)
+                val lifted = StrengthMath.effectiveLoad(def, b.loadKg, bw)
                 if (lifted != null && lifted > 0 && lifted <= value) {
                     // The load stays, the reps come down to what the value allows ("+20 kg × 8", not "−27 kg × 50").
                     b.copy(reps = max(1, floor(30.0 * (value / lifted - 1.0) + 1e-9).toInt()))

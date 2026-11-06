@@ -5,6 +5,8 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.training.formatMass
+import com.cruxcoach.android.ui.training.weightDeltaText
+import com.cruxcoach.android.ui.training.weightText
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.CapacityKind
@@ -35,11 +37,11 @@ fun capacityLabel(kind: CapacityKind?): String = stringResource(when (kind) {
     null -> R.string.trs_kind_volume
 })
 
-/** A display value (see ProgressStats.displayValue) in the athlete's units. */
+/** A display value (see ProgressStats.displayValue) in the athlete's units, written like a logged weight: "2 × 20 kg", "+12 kg". */
 @Composable
 fun capacityText(def: ExerciseDefinition, kind: CapacityKind?, value: Double, units: UnitSystem): String = when (kind) {
     CapacityKind.E1RM_TOTAL, CapacityKind.TEN_SECOND_MAX ->
-        if (def.load == LoadMode.BODYWEIGHT_PLUS) formatMass(value, units, signed = true) else formatMass(value, units)
+        if (def.load == LoadMode.BODYWEIGHT_PLUS) formatMass(value, units, signed = true) else weightText(def, value, units)
     CapacityKind.MAX_REPS -> value.roundToInt().let { pluralStringResource(R.plurals.trs_reps, it, it) }
     CapacityKind.MAX_SECONDS -> stringResource(R.string.tr_format_seconds, value.roundToInt())
     null -> value.roundToInt().toString()
@@ -54,7 +56,7 @@ fun changeText(def: ExerciseDefinition, kind: CapacityKind?, change: Double, uni
         else -> "↓"
     }
     val amount = when (kind) {
-        CapacityKind.E1RM_TOTAL, CapacityKind.TEN_SECOND_MAX -> formatMass(change, units, signed = true)
+        CapacityKind.E1RM_TOTAL, CapacityKind.TEN_SECOND_MAX -> weightDeltaText(def, change, units)
         CapacityKind.MAX_REPS -> (if (change > 0) "+" else "") + change.roundToInt()
         CapacityKind.MAX_SECONDS -> (if (change > 0) "+" else "") + stringResource(R.string.tr_format_seconds, change.roundToInt())
         null -> change.roundToInt().toString()

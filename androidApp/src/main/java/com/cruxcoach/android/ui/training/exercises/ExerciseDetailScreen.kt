@@ -38,6 +38,7 @@ import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.athlete.catalog.BodyRegion
 import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
+import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.InjuryAdvice
 import com.cruxcoach.athlete.logic.InjuryAdvisor
@@ -561,7 +562,10 @@ private fun Bests(def: ExerciseDefinition, bests: List<BestEntry>, profile: Athl
         SectionTitle(stringResource(R.string.trx_bests))
         bests.forEach { best ->
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(keyLabel(best.key) ?: stringResource(R.string.trx_best_any), style = MaterialTheme.typography.bodyMedium,
+                // "Any edge" only where there are edges; a bench press best is just the best.
+                val edged = def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL
+                Text(keyLabel(best.key) ?: stringResource(if (edged) R.string.trx_best_any else R.string.trx_best_overall),
+                    style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.weight(1f))
                 Text(bestValue(def, best, profile), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             }
@@ -572,11 +576,11 @@ private fun Bests(def: ExerciseDefinition, bests: List<BestEntry>, profile: Athl
 @Composable
 private fun bestValue(def: ExerciseDefinition, best: BestEntry, profile: AthleteProfile): String = when (best.kind) {
     RecordKind.LOAD -> {
-        val pct = StrengthMath.percentBodyweight(def.load, best.set.loadKg, best.set.bodyweightKg)
-        formatMass(best.value, profile.units) +
+        val pct = StrengthMath.percentBodyweight(def, best.set.loadKg, best.set.bodyweightKg)
+        bestLoadText(def, best.value, profile.units) +
             (pct?.let { " · " + stringResource(R.string.tr_format_percent_bw, it.roundToInt()) } ?: "")
     }
-    RecordKind.ESTIMATED_MAX -> stringResource(R.string.trx_e1rm, formatMass(best.value, profile.units))
+    RecordKind.ESTIMATED_MAX -> stringResource(R.string.trx_e1rm, bestLoadText(def, best.value, profile.units))
     RecordKind.REPS -> pluralStringResource(R.plurals.trx_reps, best.value.roundToInt(), best.value.roundToInt())
     RecordKind.DURATION -> stringResource(R.string.tr_format_seconds, best.value.roundToInt())
 }
@@ -606,7 +610,13 @@ private fun History(def: ExerciseDefinition, sessions: List<HistorySession>, pro
     }
 }
 
-/** "L · 8× · +10 kg · 20 mm · Half crimp" — only the parts the set has. */
+/** A record's total load: body weight included for body-weight work ("80 kg total"), per dumbbell for a pair. */
+@Composable
+private fun bestLoadText(def: ExerciseDefinition, totalKg: Double, units: com.cruxcoach.athlete.model.UnitSystem): String =
+    if (def.load == LoadMode.BODYWEIGHT_PLUS) stringResource(R.string.trw_record_total, formatMass(totalKg, units))
+    else weightTextOfTotal(def, totalKg, units)
+
+/** "L · 8× · +10 kg · 20 mm · Half crimp" — only the parts the set has; weights as entered ("2 × 16 kg"). */
 @Composable
 internal fun setSummary(def: ExerciseDefinition, set: ExerciseSet, profile: AthleteProfile): String {
     val parts = mutableListOf<String>()
@@ -616,9 +626,8 @@ internal fun setSummary(def: ExerciseDefinition, set: ExerciseSet, profile: Athl
     (set.durationS ?: set.workS)?.let { parts += stringResource(R.string.tr_format_seconds, it.roundToInt()) }
     set.repsPerSet?.let { parts += stringResource(R.string.trx_reps_short, it) }
     when (def.load) {
-        LoadMode.BODYWEIGHT_PLUS -> parts += set.loadKg?.takeIf { it != 0.0 }?.let { formatMass(it, profile.units, signed = true) }
-            ?: stringResource(R.string.tr_bodyweight)
-        LoadMode.EXTERNAL -> set.loadKg?.let { parts += formatMass(it, profile.units) }
+        LoadMode.BODYWEIGHT_PLUS -> parts += weightText(def, set.loadKg ?: 0.0, profile.units)
+        LoadMode.EXTERNAL -> set.loadKg?.let { parts += weightText(def, it, profile.units) }
         else -> Unit
     }
     set.edgeMm?.let { parts += stringResource(R.string.tr_format_mm, formatNumber(it)) }
