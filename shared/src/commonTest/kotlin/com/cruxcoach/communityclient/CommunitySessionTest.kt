@@ -196,6 +196,30 @@ class CommunitySessionTest {
     }
 
     @Test
+    fun query_withoutEose_failsWithCommunityException_andCloses() = runTest {
+        val factory = FakeSocketFactory()
+        val signer = FakeSigner()
+        val (session, scope) = newSession(factory, signer)
+        session.start()
+        runCurrent()
+        factory.last.listener.onOpen()
+        factory.last.listener.onMessage("""["AUTH","c"]""")
+        runCurrent()
+        factory.last.listener.onMessage("""["OK","${signer.signed.last().id}",true,""]""")
+        runCurrent()
+
+        // A plain exception, not a cancellation: a query running next to another one must fail the pair.
+        val result = async { runCatching { session.query(listOf(CommunityFilters.channelDirectory()), timeoutMs = 5_000) } }
+        runCurrent()
+        assertEquals(1, factory.last.frames("REQ").size)
+        advanceTimeBy(5_001)
+        runCurrent()
+        assertIs<CommunityException>(result.await().exceptionOrNull())
+        assertEquals(1, factory.last.frames("CLOSE").size)
+        scope.cancel()
+    }
+
+    @Test
     fun publish_whileOffline_failsFast() = runTest {
         val (session, scope) = newSession(FakeSocketFactory())
         val result = async { session.publish(CommunityEventTemplates.streamMessage(CHANNEL, "x", 1)) }

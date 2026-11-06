@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.random.Random
 
@@ -127,10 +126,14 @@ class CommunitySession(
         awaitClose { inbox.trySend(Msg.Unsubscribe(id)) }
     }.buffer(Channel.UNLIMITED)
 
-    /** Stored events matching [filters], up to EOSE. Throws if the relay closes the request. */
+    /**
+     * Stored events matching [filters], up to EOSE. Throws [CommunityException] if the relay
+     * closes the request or does not finish it in time (a plain exception, not a cancellation,
+     * so callers running queries side by side see it as a failure).
+     */
     suspend fun query(filters: List<RelayFilter>, timeoutMs: Long = 20_000): List<CommunityEvent> {
         val events = ArrayList<CommunityEvent>()
-        withTimeout(timeoutMs) {
+        withTimeoutOrNull(timeoutMs) {
             subscribe(filters).first { item ->
                 when (item) {
                     is SubscriptionItem.Event -> { events += item.event; false }
@@ -138,7 +141,7 @@ class CommunitySession(
                     is SubscriptionItem.Closed -> throw CommunityException("closed: ${item.reason}")
                 }
             }
-        }
+        } ?: throw CommunityException("timeout: no answer from the relay")
         return events
     }
 

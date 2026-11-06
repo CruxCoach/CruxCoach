@@ -2,7 +2,9 @@ package com.cruxcoach.communityclient
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -98,18 +100,22 @@ class CommunityClient(
     suspend fun refreshRooms() = roomsLock.withLock {
         _rooms.value = _rooms.value.copy(loading = true, error = null)
         try {
-            val memberLists = session.query(listOf(CommunityFilters.myMemberships(me)))
-                .mapNotNull { ChannelMembers.fromEvent(it) }
-                .groupBy { it.channelId }
-                .mapValues { (_, lists) -> lists.maxBy { it.revisionAt } }
-            timing("memberships")
-            val mine = memberLists.values.filter { it.contains(me) }.map { it.channelId }.toSet()
-            val metas = buildList {
-                if (mine.isNotEmpty()) addAll(session.query(listOf(CommunityFilters.channelMetadata(mine.toList()))))
+            // The open-room directory does not depend on my memberships: fetch both at once.
+            val (memberLists, metas) = coroutineScope {
+                val directory = async {
+                    session.query(listOf(CommunityFilters.channelDirectory())).also { timing("directory") }
+                }
+                val memberLists = session.query(listOf(CommunityFilters.myMemberships(me)))
+                    .mapNotNull { ChannelMembers.fromEvent(it) }
+                    .groupBy { it.channelId }
+                    .mapValues { (_, lists) -> lists.maxBy { it.revisionAt } }
+                timing("memberships")
+                val mine = memberLists.values.filter { it.contains(me) }.map { it.channelId }
+                val myMetas = if (mine.isEmpty()) emptyList() else session.query(listOf(CommunityFilters.channelMetadata(mine)))
                 timing("my_rooms")
-                addAll(session.query(listOf(CommunityFilters.channelDirectory())))
-                timing("directory")
-            }.mapNotNull { CommunityChannel.fromEvent(it) }
+                memberLists to (myMetas + directory.await()).mapNotNull { CommunityChannel.fromEvent(it) }
+            }
+            val mine = memberLists.values.filter { it.contains(me) }.map { it.channelId }.toSet()
             val roles = memberLists.filterKeys { it in mine }.mapValues { (_, list) -> list.roleOf(me) }
             val list = buildRoomList(metas, mine, emptyMap(), roles)
             val first = _rooms.value.firstListAfterSeconds ?: ((elapsedMillis() - startedAt) / 1000.0)
@@ -212,8 +218,6 @@ class CommunityClient(
         val head = flow {
             val event = try {
                 session.query(listOf(CommunityFilters.threadRoot(channelId, rootId)), ROOT_LOOKUP_TIMEOUT_MS).firstOrNull()
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                null
             } catch (e: CommunityException) {
                 null
             }

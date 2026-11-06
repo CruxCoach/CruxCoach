@@ -63,6 +63,8 @@
     <string name="community_client_reply_action">Antworten</string>
     <string name="community_client_edited">(bearbeitet)</string>
     <string name="community_client_deleted">Diese Nachricht wurde gelöscht.</string>
+    <!-- Autor der eigenen Nachrichten, solange es keinen Profilnamen gibt -->
+    <string name="community_client_you">Du</string>
     <!-- Raum-Hinweise vom Server: %1$s und %2$s sind Namen -->
     <string name="community_client_notice_someone">Jemand</string>
     <string name="community_client_notice_joined">%1$s ist beigetreten</string>

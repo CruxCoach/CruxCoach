@@ -63,6 +63,8 @@
     <string name="community_client_reply_action">Reply</string>
     <string name="community_client_edited">(edited)</string>
     <string name="community_client_deleted">This message was deleted.</string>
+    <!-- Author of your own messages while you have no profile name -->
+    <string name="community_client_you">You</string>
     <!-- Room notices from the server: %1$s and %2$s are names -->
     <string name="community_client_notice_someone">Someone</string>
     <string name="community_client_notice_joined">%1$s joined</string>

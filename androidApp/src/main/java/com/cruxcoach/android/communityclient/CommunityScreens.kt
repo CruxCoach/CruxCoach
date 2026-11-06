@@ -50,14 +50,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -72,7 +75,11 @@ import com.cruxcoach.communityclient.SessionState
 import com.cruxcoach.communityclient.SystemNotice
 import com.cruxcoach.communityclient.ThreadSummary
 import com.halilibo.richtext.markdown.Markdown
+import com.halilibo.richtext.ui.RichTextStyle
 import com.halilibo.richtext.ui.material3.RichText
+import com.halilibo.richtext.ui.string.RichTextStringStyle
+import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
+import com.vitorpamplona.quartz.nip19Bech32.toNpub
 import java.text.DateFormat
 import java.util.Date
 
@@ -197,6 +204,9 @@ private fun EnterInvitePane(step: JoinStep.EnterInvite, identity: CommunityHomeS
 private fun RulesPane(step: JoinStep.Rules, onAccept: (Boolean) -> Unit, onCancel: () -> Unit) {
     var ageConfirmed by rememberSaveable { mutableStateOf(false) }
     val policy = step.policy
+    // Accepting needs the rules on screen: the text appears a moment after its card.
+    val texts = listOfNotNull(policy?.termsMarkdown, policy?.privacyMarkdown).filter { it.isNotBlank() }
+    var shown by remember(step) { mutableStateOf(emptySet<String>()) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -205,8 +215,8 @@ private fun RulesPane(step: JoinStep.Rules, onAccept: (Boolean) -> Unit, onCance
         if (policy == null) {
             Text(stringResource(R.string.community_client_rules_none), style = MaterialTheme.typography.bodyMedium)
         } else {
-            policy.termsMarkdown?.let { MarkdownCard(stringResource(R.string.community_client_rules_terms), it) }
-            policy.privacyMarkdown?.let { MarkdownCard(stringResource(R.string.community_client_rules_privacy), it) }
+            policy.termsMarkdown?.let { terms -> MarkdownCard(stringResource(R.string.community_client_rules_terms), terms) { shown = shown + terms } }
+            policy.privacyMarkdown?.let { privacy -> MarkdownCard(stringResource(R.string.community_client_rules_privacy), privacy) { shown = shown + privacy } }
             if (policy.ageAttestationRequired) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { ageConfirmed = !ageConfirmed }) {
                     Checkbox(checked = ageConfirmed, onCheckedChange = { ageConfirmed = it })
@@ -217,7 +227,7 @@ private fun RulesPane(step: JoinStep.Rules, onAccept: (Boolean) -> Unit, onCance
         step.error?.let { Text(joinErrorText(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         Button(
             onClick = { onAccept(ageConfirmed) },
-            enabled = policy?.ageAttestationRequired != true || ageConfirmed,
+            enabled = (policy?.ageAttestationRequired != true || ageConfirmed) && shown.containsAll(texts),
             modifier = Modifier.fillMaxWidth().testTag("community_accept_join"),
         ) { Text(stringResource(if (policy == null) R.string.community_client_join else R.string.community_client_accept_join)) }
         TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.action_cancel)) }
@@ -418,7 +428,7 @@ private fun ForumList(state: CommunityRoomState, onOpen: (String) -> Unit) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(post.displayContent.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty().trimStart('#', ' ').take(140), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
-                        "${authorLabel(post.author, state.profiles)} · ${formatTime(post.createdAt)}",
+                        "${authorName(post.author, state.profiles, state.me)} · ${formatTime(post.createdAt)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -496,7 +506,7 @@ private fun MessageRow(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                authorLabel(message.author, profiles),
+                authorName(message.author, profiles, me),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = if (message.author == me) OrangeAccent else MaterialTheme.colorScheme.onSurface,
@@ -509,7 +519,7 @@ private fun MessageRow(
         if (message.isDeleted) {
             Text(stringResource(R.string.community_client_deleted), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
-            RichText { Markdown(content = message.displayContent) }
+            RichText(style = linkStyle()) { Markdown(content = message.displayContent) }
         }
         if (message.reactions.isNotEmpty()) {
             Text(
@@ -643,10 +653,13 @@ private fun InfoCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MarkdownCard(title: String, markdown: String) {
+private fun MarkdownCard(title: String, markdown: String, onShown: () -> Unit = {}) {
     InfoCard {
         Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-        RichText { Markdown(content = markdown) }
+        // The library parses in the background, so the text has no height until it is there.
+        RichText(style = linkStyle(), modifier = Modifier.onSizeChanged { if (it.height > 0) onShown() }) {
+            Markdown(content = markdown)
+        }
     }
 }
 
@@ -665,9 +678,25 @@ private fun joinErrorText(error: JoinError): String = stringResource(
 )
 
 private fun authorLabel(pubkey: String, profiles: Map<String, CommunityProfile>): String =
-    profiles[pubkey]?.label ?: shortKey(pubkey)
+    profiles[pubkey]?.label ?: shortNpubOf(pubkey)
 
-internal fun shortKey(pubkey: String): String = if (pubkey.length > 12) pubkey.take(8) + "…" else pubkey
+/** Like [authorLabel], but "You" for the user's own messages while they have no profile name. */
+@Composable
+private fun authorName(pubkey: String, profiles: Map<String, CommunityProfile>, me: String): String =
+    profiles[pubkey]?.label ?: if (pubkey == me) stringResource(R.string.community_client_you) else shortNpubOf(pubkey)
+
+private val npubs = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+/** A key without a profile, in the npub form people copy and share. */
+private fun shortNpubOf(pubkey: String): String = npubs.getOrPut(pubkey) {
+    runCatching { shortNpub(pubkey.hexToByteArray().toNpub()) }.getOrElse { pubkey.take(8) + "…" }
+}
+
+/** Links in the brand colour, readable on the dark surface. */
+@Composable
+private fun linkStyle(): RichTextStyle = remember {
+    RichTextStyle(stringStyle = RichTextStringStyle(linkStyle = SpanStyle(color = OrangeAccent, textDecoration = TextDecoration.Underline)))
+}
 
 private fun formatTime(unixSeconds: Long): String =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(unixSeconds * 1000))
