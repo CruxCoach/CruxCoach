@@ -56,6 +56,7 @@ data class CommunityHomeState(
     val session: SessionState = SessionState.Idle,
     val rooms: RoomsState = RoomsState(),
     val pubkey: String = "",
+    val npub: String = "",
     val usesAmber: Boolean = false,
     /** Why the last room join failed, until the next try. */
     val joinRoomError: String? = null,
@@ -71,7 +72,7 @@ class CommunityHomeViewModel @Inject constructor(
 
     val state: StateFlow<CommunityHomeState> = holder.setup.flatMapLatest { setup ->
         val client = holder.client()
-        val base = CommunityHomeState(enabled = setup.enabled, joined = client != null, pubkey = holder.pubkey, usesAmber = holder.usesAmber)
+        val base = CommunityHomeState(enabled = setup.enabled, joined = client != null, pubkey = holder.pubkey, npub = holder.npub, usesAmber = holder.usesAmber)
         if (client == null) {
             join.map { base.copy(join = it) }
         } else {

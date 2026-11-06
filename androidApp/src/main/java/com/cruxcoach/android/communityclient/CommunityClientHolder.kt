@@ -10,6 +10,8 @@ import com.cruxcoach.communityclient.CommunityClient
 import com.cruxcoach.communityclient.CommunityEndpoint
 import com.cruxcoach.communityclient.CommunityJoin
 import com.cruxcoach.communityclient.UnixClock
+import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
+import com.vitorpamplona.quartz.nip19Bech32.toNpub
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +60,9 @@ class CommunityClientHolder @Inject constructor(
 
     /** The identity that signs, for display. */
     val pubkey: String get() = signer.pubkey
+
+    /** The same identity as an npub, which people can give to a community admin. */
+    val npub: String get() = runCatching { pubkey.hexToByteArray().toNpub() }.getOrDefault(pubkey)
     val usesAmber: Boolean get() = nostrSigner.getStoredSignerMode().name == "AMBER"
 
     fun setEnabled(enabled: Boolean) {

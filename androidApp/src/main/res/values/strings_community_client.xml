@@ -14,6 +14,7 @@
     <string name="community_client_identity_local">You sign as %1$s with the app\'s own key.</string>
     <string name="community_client_identity_amber">You sign as %1$s with Amber.</string>
     <string name="community_client_turn_on">Turn on Community</string>
+    <string name="community_client_copy_key">Copy key</string>
     <string name="community_client_enabled_switch">Community on</string>
 
     <string name="community_client_join_title">Join the community</string>

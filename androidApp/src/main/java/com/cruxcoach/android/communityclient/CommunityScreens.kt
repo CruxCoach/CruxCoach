@@ -140,14 +140,7 @@ private fun IntroPane(state: CommunityHomeState, onTurnOn: () -> Unit) {
         Text(stringResource(R.string.community_client_intro_body), style = MaterialTheme.typography.bodyMedium)
         InfoCard {
             Text(stringResource(R.string.community_client_intro_preview), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(
-                    if (state.usesAmber) R.string.community_client_identity_amber else R.string.community_client_identity_local,
-                    shortKey(state.pubkey),
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            IdentityRow(state)
         }
         Button(onClick = onTurnOn, modifier = Modifier.fillMaxWidth().testTag("community_turn_on")) {
             Text(stringResource(R.string.community_client_turn_on))
@@ -158,14 +151,14 @@ private fun IntroPane(state: CommunityHomeState, onTurnOn: () -> Unit) {
 @Composable
 private fun JoinPane(state: CommunityHomeState, viewModel: CommunityHomeViewModel) {
     when (val step = state.join) {
-        is JoinStep.EnterInvite -> EnterInvitePane(step, onUse = viewModel::useInvite, onMember = viewModel::connectAsMember)
+        is JoinStep.EnterInvite -> EnterInvitePane(step, state, onUse = viewModel::useInvite, onMember = viewModel::connectAsMember)
         JoinStep.LoadingRules, JoinStep.Joining -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         is JoinStep.Rules -> RulesPane(step, onAccept = viewModel::acceptAndJoin, onCancel = viewModel::backToInvite)
     }
 }
 
 @Composable
-private fun EnterInvitePane(step: JoinStep.EnterInvite, onUse: (String) -> Unit, onMember: () -> Unit) {
+private fun EnterInvitePane(step: JoinStep.EnterInvite, identity: CommunityHomeState, onUse: (String) -> Unit, onMember: () -> Unit) {
     var link by rememberSaveable { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
     Column(
@@ -174,6 +167,7 @@ private fun EnterInvitePane(step: JoinStep.EnterInvite, onUse: (String) -> Unit,
     ) {
         Text(stringResource(R.string.community_client_join_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
         Text(stringResource(R.string.community_client_join_body), style = MaterialTheme.typography.bodyMedium)
+        IdentityRow(identity)
         OutlinedTextField(
             value = link,
             onValueChange = { link = it },
@@ -268,6 +262,7 @@ private fun RoomListPane(
                 state.joinRoomError?.let {
                     Text(stringResource(R.string.community_client_join_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
+                IdentityRow(state)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.community_client_enabled_switch), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = true, onCheckedChange = { if (!it) onTurnOff() })
@@ -582,6 +577,28 @@ private fun ReadOnlyBar(onJoin: (() -> Unit)?) {
         }
     }
 }
+
+/** Who signs, as an npub the user can copy and give to a community admin. */
+@Composable
+private fun IdentityRow(state: CommunityHomeState) {
+    val clipboard = LocalClipboardManager.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            stringResource(
+                if (state.usesAmber) R.string.community_client_identity_amber else R.string.community_client_identity_local,
+                shortNpub(state.npub),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(state.npub)) }, modifier = Modifier.testTag("community_copy_npub")) {
+            Text(stringResource(R.string.community_client_copy_key))
+        }
+    }
+}
+
+private fun shortNpub(npub: String): String = if (npub.length > 24) npub.take(12) + "…" + npub.takeLast(6) else npub
 
 @Composable
 private fun InfoCard(content: @Composable () -> Unit) {
