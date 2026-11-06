@@ -10,6 +10,8 @@
     <string name="yr_stats_entry_title">Jahresrückblick</string>
     <string name="yr_so_far_title">Dein %1$d bisher</string>
     <string name="yr_so_far_text">Bisher %1$s und %2$s. Der ganze Rückblick öffnet sich ab %3$s oder %4$s im Jahr.</string>
+    <string name="yr_little_title">Dein %1$d</string>
+    <string name="yr_little_text">%1$s und %2$s in dem Jahr. Der ganze Rückblick öffnet sich ab %3$s oder %4$s im Jahr.</string>
     <string name="yr_test_date">Testdatum (nur Test-Apps)</string>
     <string name="yr_test_date_real">Heute</string>
 

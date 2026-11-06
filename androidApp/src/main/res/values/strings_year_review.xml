@@ -10,6 +10,8 @@
     <string name="yr_stats_entry_title">Year in review</string>
     <string name="yr_so_far_title">Your %1$d so far</string>
     <string name="yr_so_far_text">%1$s and %2$s so far. The full review opens from %3$s or %4$s in a year.</string>
+    <string name="yr_little_title">Your %1$d</string>
+    <string name="yr_little_text">%1$s and %2$s that year. The full review opens from %3$s or %4$s in a year.</string>
     <string name="yr_test_date">Test date (feature builds only)</string>
     <string name="yr_test_date_real">Today</string>
 
