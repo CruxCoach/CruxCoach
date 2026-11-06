@@ -88,6 +88,16 @@
     <string name="yr_highlights_project_since">since %1$s</string>
     <string name="yr_highlights_how">The biggest day is the one with the most sends. The most repeated problem is the one you sent most often this year. The longest project is the new problem that took the most tries, counted across all sessions up to the send, even from earlier years.</string>
 
+    <!-- Holds touched -->
+    <string name="yr_touched_title">Hold by hold</string>
+    <string name="yr_touched_hero_label">holds touched on your sends</string>
+    <string name="yr_touched_per_send">Per send</string>
+    <string name="yr_touched_holds_value">%1$s holds</string>
+    <string name="yr_touched_most">Most holds</string>
+    <string name="yr_touched_how">Every hold a problem marks counts once per send, repeats included: start, hand and finish holds, and foot holds where the board marks them. Tries without a send do not count. A rough count: on the wall you may skip a hold or use one twice.</string>
+    <string name="yr_touched_how_all">Counted from all your %1$s.</string>
+    <string name="yr_touched_how_some">Counted from %1$s of your %2$s; the holds of the other problems are not on this phone.</string>
+
     <!-- Hold types -->
     <string name="yr_holds_title">Your holds</string>
     <string name="yr_holds_hero_label">your most tagged hold type</string>
@@ -164,6 +174,10 @@
     <string name="yr_share_problem_hidden">a %1$s</string>
     <string name="yr_share_wordmark">CruxCoach</string>
 
+    <plurals name="yr_holds">
+        <item quantity="one">%s hold</item>
+        <item quantity="other">%s holds</item>
+    </plurals>
     <plurals name="yr_days">
         <item quantity="one">%s day</item>
         <item quantity="other">%s days</item>

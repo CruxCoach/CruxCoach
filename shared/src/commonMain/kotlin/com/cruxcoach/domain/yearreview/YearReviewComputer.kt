@@ -8,6 +8,7 @@ import com.cruxcoach.athlete.model.Injury
 import com.cruxcoach.athlete.model.Workout
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.BoardClimbParser
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -41,9 +42,14 @@ object YearReviewComputer {
     const val PROJECT_MIN_TRIES = 3
     /** The hold types page needs this many tagged sends in the year. */
     const val MIN_TAGGED_SENDS = 5
+    /** The holds touched need this many sends whose problem's holds are known. */
+    const val MIN_SENDS_WITH_HOLDS = 10
 
     data class Input(
-        /** The whole logbook, sends and attempts of every year: first sends and flashes need the history. */
+        /**
+         * The whole logbook, sends and attempts of every year: first sends and flashes need the history.
+         * Sends carry their problem's frames for the holds touched; without them a send is not counted there.
+         */
         val entries: List<AscentWithClimb> = emptyList(),
         val climbingDays: List<ClimbingDayEntry> = emptyList(),
         val timedSessions: List<TimedSession> = emptyList(),
@@ -105,6 +111,7 @@ object YearReviewComputer {
             rhythm = rhythm,
             highlights = highlightsOf(sends, firstSends, history),
             holdTypes = holdTypesOf(input.taggedSends, span),
+            holdsTouched = holdsTouchedOf(sends),
             training = training,
             climberType = if (hasEnoughData) {
                 val facts = ClimberTypeFacts(
@@ -322,6 +329,23 @@ object YearReviewComputer {
             .map { (tag, sends) -> HoldTypeCount(tag, sends, inYear.size) }
             .sortedWith(compareByDescending<HoldTypeCount> { it.sends }.thenBy { it.tag })
     }
+
+    private fun holdsTouchedOf(sends: List<Row>): YearHoldsTouched? {
+        val counted = sends.mapNotNull { row -> holdCount(row.entry.climbFrames).takeIf { it > 0 }?.let { row to it } }
+        if (counted.size < MIN_SENDS_WITH_HOLDS) return null
+        val (most, mostHolds) = counted.minWith(
+            compareByDescending<Pair<Row, Int>> { it.second }.thenBy { it.first.day }.thenBy { it.first.entry.climbedAt },
+        )
+        return YearHoldsTouched(
+            holds = counted.sumOf { it.second },
+            countedSends = counted.size,
+            most = most.toYearSend(flash = false, tries = null),
+            mostHolds = mostHolds,
+        )
+    }
+
+    /** The holds a problem marks, each once, also when a route lists one in several frames. */
+    fun holdCount(frames: String): Int = BoardClimbParser.parseFrames(frames).map { it.placementId }.distinct().size
 
     // ── Climber type ─────────────────────────────────────────────────
 

@@ -38,7 +38,8 @@ class YearReviewSource @Inject constructor(
     suspend fun load(): YearReviewComputer.Input = withContext(Dispatchers.IO) {
         val athlete = athleteService.repo
         YearReviewComputer.Input(
-            entries = personalBoardRepo.getUserLogbookAllLight(),
+            // Sends with their problem's frames, for the holds touched; the light logbook has the attempts.
+            entries = personalBoardRepo.getUserAscentsAll() + personalBoardRepo.getUserLogbookAllLight().filter { !it.isSend },
             climbingDays = athlete.allClimbingDays(),
             timedSessions = personalBoardRepo.getAllBoardSessions().map {
                 TimedSession(

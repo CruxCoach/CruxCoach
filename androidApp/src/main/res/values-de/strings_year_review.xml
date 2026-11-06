@@ -88,6 +88,16 @@
     <string name="yr_highlights_project_since">seit %1$s</string>
     <string name="yr_highlights_how">Der stärkste Tag ist der mit den meisten Begehungen. Am öftesten wiederholt ist der Boulder, den du in diesem Jahr am häufigsten geklettert hast. Das längste Projekt ist der neue Boulder mit den meisten Versuchen, gezählt über alle Sessions bis zur Begehung, auch aus früheren Jahren.</string>
 
+    <!-- Holds touched -->
+    <string name="yr_touched_title">Griff für Griff</string>
+    <string name="yr_touched_hero_label">Griffe angefasst bei deinen Begehungen</string>
+    <string name="yr_touched_per_send">Pro Begehung</string>
+    <string name="yr_touched_holds_value">%1$s Griffe</string>
+    <string name="yr_touched_most">Die meisten Griffe</string>
+    <string name="yr_touched_how">Jeder Griff, den ein Boulder markiert, zählt einmal pro Begehung, Wiederholungen eingeschlossen: Start-, Hand- und Topgriffe, und Tritte, wo das Board sie markiert. Versuche ohne Begehung zählen nicht. Eine grobe Zählung: An der Wand lässt du vielleicht einen Griff aus oder nimmst einen zweimal.</string>
+    <string name="yr_touched_how_all">Gezählt aus allen deinen %1$s.</string>
+    <string name="yr_touched_how_some">Gezählt aus %1$s deiner %2$s; die Griffe der anderen Boulder sind nicht auf diesem Handy.</string>
+
     <!-- Hold types -->
     <string name="yr_holds_title">Deine Griffe</string>
     <string name="yr_holds_hero_label">dein am häufigsten markierter Grifftyp</string>
@@ -163,6 +173,10 @@
     <string name="yr_share_problem_hidden">ein %1$s</string>
     <string name="yr_share_wordmark">CruxCoach</string>
 
+    <plurals name="yr_holds">
+        <item quantity="one">%s Griff</item>
+        <item quantity="other">%s Griffe</item>
+    </plurals>
     <plurals name="yr_days">
         <item quantity="one">%s Tag</item>
         <item quantity="other">%s Tage</item>

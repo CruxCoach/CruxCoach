@@ -377,6 +377,33 @@ class YearReviewComputerTest {
     }
 
     @Test
+    fun holdsTouchedCountEachMarkedHoldOncePerSendFromTenKnownSends() {
+        val today = LocalDate(2026, 12, 31)
+        val four = "p1r12p2r13p3r13p4r14"
+        // Nine sends with known holds, one without, and an attempt: below the minimum.
+        val nine = (1..9).map { entry("2026-03-${10 + it}T18:00:00", "a$it").copy(climbFrames = four) } +
+            entry("2026-03-25T18:00:00", "unknown") +
+            entry("2026-03-26T18:00:00", "tried", send = false).copy(climbFrames = four)
+        assertNull(review(Input(entries = nine), 2026, today).holdsTouched)
+
+        // A route that lists a hold in two frames counts it once, a Kilter API frame counts,
+        // a repeat counts again, last year does not.
+        val more = nine +
+            entry("2026-04-01T18:00:00", "route").copy(climbFrames = "p1r12p2r13,p2r13p3r14p5r15p6r15") +
+            entry("2026-04-02T18:00:00", "a1").copy(climbFrames = four) +
+            entry("2026-04-03T18:00:00", "api").copy(climbFrames = "h10p12h11p13h12p14") +
+            entry("2026-04-04T18:00:00", "route2").copy(climbFrames = "p7r12p8r13p9r13p10r14p11r15") +
+            entry("2025-04-03T18:00:00", "old").copy(climbFrames = four)
+        val holds = review(Input(entries = more), 2026, today).holdsTouched!!
+        assertEquals(13, holds.countedSends)
+        assertEquals(9 * 4 + 5 + 4 + 3 + 5, holds.holds)
+        // Five holds twice: the earlier send wins.
+        assertEquals(5, holds.mostHolds)
+        assertEquals("Problem route", holds.most.name)
+        assertEquals(LocalDate(2026, 4, 1), holds.most.date)
+    }
+
+    @Test
     fun yearsListEveryYearWithDataAndNeverTheFuture() {
         val input = Input(
             entries = listOf(entry("2024-03-01T18:00:00", "a"), entry("2027-01-02T18:00:00", "future")),

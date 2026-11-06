@@ -26,7 +26,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-enum class ReviewPageKind { INTRO, VOLUME, BOARDS, HARDEST, COMPARED, RHYTHM, HIGHLIGHTS, HOLD_TYPES, TRAINING, CLIMBER_TYPE, SUMMARY }
+enum class ReviewPageKind { INTRO, VOLUME, BOARDS, HARDEST, COMPARED, RHYTHM, HIGHLIGHTS, HOLDS_TOUCHED, HOLD_TYPES, TRAINING, CLIMBER_TYPE, SUMMARY }
 
 /** One line of a page: a label, its value and an optional detail below. [board] colours the line by its board. */
 data class ReviewRow(val label: String, val value: String, val detail: String? = null, val board: String? = null)
@@ -84,6 +84,7 @@ fun reviewPages(
         compared(review, eyebrow, f),
         rhythm(review, eyebrow, f),
         highlights(review, eyebrow, f),
+        holdsTouched(review, eyebrow, f),
         holdTypes(review, eyebrow, f),
         training(review, eyebrow, f, training),
         climberType(review, eyebrow, f),
@@ -303,6 +304,33 @@ private fun highlights(review: YearReview, eyebrow: String, f: Formats): ReviewP
         title = stringResource(R.string.yr_highlights_title),
         rows = rows,
         howCalculated = stringResource(R.string.yr_highlights_how),
+    )
+}
+
+@Composable
+private fun holdsTouched(review: YearReview, eyebrow: String, f: Formats): ReviewPage? {
+    val h = review.holdsTouched ?: return null
+    val sends = review.volume.sends
+    return ReviewPage(
+        kind = ReviewPageKind.HOLDS_TOUCHED,
+        eyebrow = eyebrow,
+        title = stringResource(R.string.yr_touched_title),
+        hero = f.number(h.holds),
+        heroLabel = stringResource(R.string.yr_touched_hero_label),
+        rows = listOf(
+            ReviewRow(stringResource(R.string.yr_touched_per_send), stringResource(R.string.yr_touched_holds_value, f.decimal(h.holds.toDouble() / h.countedSends))),
+            ReviewRow(
+                stringResource(R.string.yr_touched_most),
+                pluralStringResource(R.plurals.yr_holds, h.mostHolds, f.number(h.mostHolds)),
+                listOfNotNull(f.problem(h.most), h.most.difficulty?.let { f.grade(it) }, f.board(h.most.board)).joinToString(" · "),
+                h.most.board,
+            ),
+        ),
+        howCalculated = stringResource(R.string.yr_touched_how) + " " + if (h.countedSends >= sends) {
+            stringResource(R.string.yr_touched_how_all, pluralStringResource(R.plurals.yr_sends, sends, f.number(sends)))
+        } else {
+            stringResource(R.string.yr_touched_how_some, f.number(h.countedSends), pluralStringResource(R.plurals.yr_sends, sends, f.number(sends)))
+        },
     )
 }
 

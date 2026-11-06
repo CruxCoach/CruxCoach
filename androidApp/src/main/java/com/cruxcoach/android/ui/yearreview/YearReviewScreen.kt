@@ -133,7 +133,7 @@ fun YearReviewScreen(onClose: () -> Unit, viewModel: YearReviewViewModel = hiltV
     }
 }
 
-private fun screenReaderOn(context: Context): Boolean =
+internal fun screenReaderOn(context: Context): Boolean =
     (context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager)?.isTouchExplorationEnabled == true
 
 private fun animationsOn(context: Context): Boolean =
@@ -142,7 +142,7 @@ private fun animationsOn(context: Context): Boolean =
 // ── Pages ────────────────────────────────────────────────────────────
 
 @Composable
-private fun ReviewPager(
+internal fun ReviewPager(
     pages: List<ReviewPage>,
     index: Int,
     onIndex: (Int) -> Unit,
