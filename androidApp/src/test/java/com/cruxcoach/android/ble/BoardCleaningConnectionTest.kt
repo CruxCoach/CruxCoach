@@ -33,6 +33,29 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [28])
 class BoardCleaningConnectionTest {
+    @Test fun `manual projection pauses auto send independently of keep alive`() {
+        val link = Link()
+        val connection = link.connection
+        connection.pauseAutomaticProjection("paintbox")
+        connection.pauseAutomaticProjection("paintbox")
+        assertTrue(connection.automaticProjectionPaused)
+        assertFalse(connection.keepAliveActive.value)
+        connection.pauseAutomaticProjection("another-editor")
+        connection.resumeAutomaticProjection("paintbox")
+        assertTrue(connection.automaticProjectionPaused)
+        connection.resumeAutomaticProjection("another-editor")
+        assertFalse(connection.automaticProjectionPaused)
+    }
+
+    @Test fun `raw image transmission returns to connected on success and write failure`() = runTest {
+        val link = Link()
+        assertTrue(link.connection.sendRawLeds(listOf(1 to 28), BoardBrand.KILTER))
+        assertEquals(ConnectionState.CONNECTED, link.connection.connectionState.value)
+        link.status = BluetoothGatt.GATT_FAILURE
+        assertFalse(link.connection.sendRawLeds(listOf(2 to 224), BoardBrand.KILTER))
+        assertEquals(ConnectionState.CONNECTED, link.connection.connectionState.value)
+    }
+
     private class Link(brand: BoardBrand = BoardBrand.KILTER, apiLevel: Int = 3, pacingMs: Long = 0L) {
         val connection = BoardBleConnection(RuntimeEnvironment.getApplication())
         val board = DiscoveredBoard("Test board", "123", apiLevel, "00:11:22:33:44:55", -40, brand)

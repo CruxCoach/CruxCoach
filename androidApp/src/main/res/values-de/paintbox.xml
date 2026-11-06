@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="paintbox_title">PaintBox</string>
+    <string name="paintbox_extras">Extras</string>
+    <string name="paintbox_description">Griffe bemalen, Bilder speichern und am Board anzeigen.</string>
+    <string name="paintbox_board">Board wählen</string>
+    <string name="paintbox_bluetooth">Mit Board verbinden</string>
+    <string name="paintbox_live_on">Live-Malen an — Übertragung pausieren</string>
+    <string name="paintbox_live_off">Live-Malen aus — senden und aktivieren</string>
+    <string name="paintbox_brush">Pinsel</string>
+    <string name="paintbox_eraser">Radierer</string>
+    <string name="paintbox_color">Farbe</string>
+    <string name="paintbox_undo">Rückgängig</string>
+    <string name="paintbox_redo">Wiederholen</string>
+    <string name="paintbox_clear">Bild leeren</string>
+    <string name="paintbox_clear_confirm">Alle Farben aus diesem Bild entfernen? Rückgängig ist möglich.</string>
+    <string name="paintbox_gestures">Ein Finger malt; zwei Finger zoomen und verschieben.</string>
+    <string name="paintbox_save">Speichern</string>
+    <string name="paintbox_save_as">Speichern unter</string>
+    <string name="paintbox_load">Bilder</string>
+    <string name="paintbox_name">Bildname</string>
+    <string name="paintbox_send">Jetzt übertragen</string>
+    <string name="paintbox_sent">Bild übertragen.</string>
+    <string name="paintbox_unsaved">Änderungen speichern?</string>
+    <string name="paintbox_discard">Verwerfen</string>
+    <string name="paintbox_delete">Bild löschen</string>
+    <string name="paintbox_empty">Noch keine gespeicherten Bilder.</string>
+    <string name="paintbox_unreadable">%1$d Bilddateien konnten nicht gelesen werden. Sie bleiben erhalten.</string>
+    <string name="paintbox_missing_board">Boarddaten fehlen. Passenden Katalog herunterladen und erneut versuchen.</string>
+    <string name="paintbox_download">Board-Kataloge</string>
+    <string name="paintbox_retry">Erneut versuchen</string>
+    <string name="paintbox_load_error">Bild oder Boarddaten konnten nicht geladen werden.</string>
+    <string name="paintbox_save_error">Bild konnte nicht gespeichert oder gelöscht werden. Bitte erneut versuchen.</string>
+    <string name="paintbox_connect_error">Zuerst mit einem passenden Board verbinden.</string>
+    <string name="paintbox_missing_led">Für einige bemalte Griffe fehlt die LED-Zuordnung. Es wurde nichts gesendet.</string>
+    <string name="paintbox_send_error">Übertragung fehlgeschlagen oder nur teilweise abgeschlossen. Live-Malen ist pausiert; Board prüfen und erneut senden.</string>
+    <string name="paintbox_quantum_limit">Quantum unterstützt derzeit bis zu 92 LEDs je Farbe.</string>
+    <string name="paintbox_quantum_occupied">Quantum zeigt andere aktive Ebenen. Deren Griffpositionen sind hier nicht überprüfbar. Vor dem Malen in der zugehörigen App entfernen.</string>
+    <string name="paintbox_quantum_hint">Quantum: vier Farben, bis zu 92 LEDs je Farbe. Andere aktive Ebenen müssen durch ihren Besitzer entfernt werden.</string>
+</resources>
