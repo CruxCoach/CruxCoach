@@ -349,7 +349,7 @@ private fun summary(review: YearReview, f: Formats): ReviewPage {
     val main = review.boards.firstOrNull { it.hardest.isNotEmpty() }
     return ReviewPage(
         kind = ReviewPageKind.SUMMARY,
-        eyebrow = stringResource(if (review.isFinal) R.string.yr_summary_title else R.string.yr_summary_title_so_far, review.year),
+        eyebrow = stringResource(R.string.yr_intro_title),
         title = stringResource(if (review.isFinal) R.string.yr_summary_title else R.string.yr_summary_title_so_far, review.year),
         rows = listOfNotNull(
             ReviewRow(stringResource(R.string.yr_volume_hero_label), f.number(v.climbingDays)),

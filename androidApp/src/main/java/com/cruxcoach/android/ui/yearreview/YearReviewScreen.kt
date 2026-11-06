@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -214,7 +215,7 @@ private fun ProgressSegments(count: Int, current: Int) {
 }
 
 @Composable
-private fun PageContent(page: ReviewPage, index: Int, count: Int) {
+internal fun PageContent(page: ReviewPage, index: Int, count: Int) {
     val context = LocalContext.current
     val animate = remember { animationsOn(context) }
     val appear = remember(index) { Animatable(if (animate) 0f else 1f) }
@@ -284,7 +285,7 @@ private fun RowsList(rows: List<ReviewRow>) {
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.End,
-                    modifier = Modifier.weight(0.8f, fill = false),
+                    modifier = Modifier.widthIn(max = 200.dp),
                 )
             }
         }
@@ -325,7 +326,7 @@ private fun MonthBars(perMonth: List<Int>) {
 // ── List view for screen readers ─────────────────────────────────────
 
 @Composable
-private fun ReviewList(pages: List<ReviewPage>, onClose: () -> Unit, onShare: (ReviewPageKind) -> Unit, onPages: () -> Unit) {
+internal fun ReviewList(pages: List<ReviewPage>, onClose: () -> Unit, onShare: (ReviewPageKind) -> Unit, onPages: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()

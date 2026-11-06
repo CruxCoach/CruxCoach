@@ -33,6 +33,9 @@ object YearShareImage {
     const val SQUARE_HEIGHT = 1080
 
     private const val MARGIN = 80f
+    /** A story's content block sits between these. */
+    private const val STORY_TOP = 150f
+    private const val STORY_FOOTER = 200f
     private val BACKGROUND_TOP = 0xFF121212.toInt()
     private val BACKGROUND_BOTTOM = 0xFF1A1A2E.toInt()
     private val ACCENT = 0xFFFF6D00.toInt()
@@ -58,18 +61,27 @@ object YearShareImage {
         canvas.drawRect(0f, 0f, WIDTH.toFloat(), 14f, paint)
 
         val width = WIDTH - 2 * MARGIN
-        var y = if (square) 90f else 150f
-        y = text(canvas, header ?: page.eyebrow, MARGIN, y, width, 40f, ACCENT, bold = true, maxLines = 1) + 18f
-        y = text(canvas, page.title, MARGIN, y, width, if (square) 64f else 76f, TEXT, bold = true, maxLines = 2) + 40f
-
         if (square) {
+            var y = 90f
+            y = text(canvas, header ?: page.eyebrow, MARGIN, y, width, 40f, ACCENT, bold = true, maxLines = 1) + 18f
+            y = text(canvas, page.title, MARGIN, y, width, 64f, TEXT, bold = true, maxLines = 2) + 40f
             grid(canvas, page.rows, y, width, boardColors)
         } else {
-            page.hero?.let { y = fitted(canvas, it, MARGIN, y, width, 210f, ACCENT) + 8f }
-            page.heroLabel?.let { y = text(canvas, it, MARGIN, y, width, 46f, MUTED, maxLines = 2) + 40f }
-            page.lead?.let { y = text(canvas, it, MARGIN, y, width, 46f, TEXT, maxLines = 5) + 48f }
-            page.months?.let { y = months(canvas, it, MARGIN, y, width) + 48f }
-            rows(canvas, page.rows, y, width, footer = height - 200f, boardColors)
+            // Drawn into its own layer first, so the block can sit in the middle of the image.
+            val room = STORY_HEIGHT - STORY_TOP - STORY_FOOTER
+            val layer = Bitmap.createBitmap(WIDTH, room.toInt(), Bitmap.Config.ARGB_8888)
+            val content = Canvas(layer)
+            var y = 0f
+            y = text(content, header ?: page.eyebrow, MARGIN, y, width, 40f, ACCENT, bold = true, maxLines = 1) + 18f
+            y = text(content, page.title, MARGIN, y, width, 76f, TEXT, bold = true, maxLines = 2) + 40f
+            page.hero?.let { y = fitted(content, it, MARGIN, y, width, 210f, ACCENT) + 8f }
+            page.heroLabel?.let { y = text(content, it, MARGIN, y, width, 46f, MUTED, maxLines = 2) + 40f }
+            page.lead?.let { y = text(content, it, MARGIN, y, width, 46f, TEXT, maxLines = 5) + 48f }
+            page.months?.let { y = months(content, it, MARGIN, y, width) + 48f }
+            y = rows(content, page.rows, y, width, footer = room, boardColors)
+            val top = STORY_TOP + ((room - y) / 2).coerceAtLeast(0f) * 0.7f
+            canvas.drawBitmap(layer, 0f, top, null)
+            layer.recycle()
         }
 
         // The wordmark, small and without a link.
@@ -95,7 +107,8 @@ object YearShareImage {
         context.startActivity(Intent.createChooser(send, chooser))
     }
 
-    private fun rows(canvas: Canvas, rows: List<ReviewRow>, top: Float, width: Float, footer: Float, colors: Map<String, Int>) {
+    /** Draws [rows] from [top] while they fit above [footer]; returns the bottom of the last one. */
+    private fun rows(canvas: Canvas, rows: List<ReviewRow>, top: Float, width: Float, footer: Float, colors: Map<String, Int>): Float {
         var y = top
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         for (row in rows) {
@@ -123,6 +136,7 @@ object YearShareImage {
             paint.color = DIVIDER
             canvas.drawRect(MARGIN, y - 13f, MARGIN + width, y - 11f, paint)
         }
+        return y
     }
 
     /** The summary's numbers in two columns. */
