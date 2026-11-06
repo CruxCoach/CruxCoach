@@ -1,6 +1,10 @@
 package com.cruxcoach.android.ui.paintbox
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -41,6 +45,11 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
     val state by viewModel.state.collectAsStateWithLifecycle()
     val connection by viewModel.connection.collectAsStateWithLifecycle()
     val document = state.document
+    val importing = state.imageImport != null || state.imageLoading
+    val context = LocalContext.current
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) viewModel.importImage(context, uri)
+    }
     val brand = document?.board?.brand?.let(BoardBrand::fromWire) ?: BoardBrand.KILTER
     var boardPicker by remember { mutableStateOf(false) }
     var bluetooth by remember { mutableStateOf(false) }
@@ -75,17 +84,24 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
         viewModel.pause()
         if (state.dirty) { pendingAction = action; askUnsaved = true } else action()
     }
-    BackHandler { navigate(onBack) }
+    fun back() { if (importing) viewModel.cancelImage() else navigate(onBack) }
+    BackHandler { back() }
     Scaffold(
         modifier = Modifier.testTag("paintbox_screen"),
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.paintbox_title)) },
-                navigationIcon = { IconButton(onClick = { navigate(onBack) }) {
+                navigationIcon = { IconButton(onClick = { back() }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
                 } },
                 actions = {
+                    IconToggleButton(checked = state.imageImport != null, onCheckedChange = {
+                        imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }, enabled = document != null && !state.loading && !state.saving && !state.missingBoard && !state.imageLoading,
+                        modifier = Modifier.testTag("paintbox_image_import")) {
+                        Icon(Icons.Outlined.Image, stringResource(R.string.paintbox_image_import))
+                    }
                     IconButton(onClick = { bluetooth = true }) {
                         Icon(Icons.Outlined.Bluetooth, stringResource(R.string.paintbox_bluetooth))
                     }
@@ -99,11 +115,20 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 12.dp)) {
-            TextButton(onClick = { navigate { boardPicker = true } }, enabled = !state.saving) {
+            TextButton(onClick = { navigate { boardPicker = true } }, enabled = !state.saving && !importing) {
                 Text(document?.let { it.board.label.ifBlank { brand.displayName } }
                     ?: stringResource(R.string.paintbox_board))
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (importing) {
+                    TextButton(onClick = viewModel::acceptImage, enabled = state.imageImport?.ready == true && !state.imageLoading) {
+                        Text(stringResource(R.string.paintbox_image_ok))
+                    }
+                    TextButton(onClick = viewModel::cancelImage) { Text(stringResource(R.string.action_cancel)) }
+                    FilterChip(selected = state.imageImport?.let { it.pickingBackground || it.background != null } == true,
+                        onClick = viewModel::imageBackgroundTool, enabled = state.imageImport != null && !state.imageLoading,
+                        label = { Text(stringResource(R.string.paintbox_image_bg)) })
+                } else {
                 FilterChip(selected = !state.eraser, onClick = { viewModel.brush(state.brush) }, label = { Text(stringResource(R.string.paintbox_brush)) })
                 FilterChip(selected = state.eraser, onClick = viewModel::eraser, label = { Text(stringResource(R.string.paintbox_eraser)) })
                 AssistChip(onClick = { colorPicker = true }, label = { Text(stringResource(R.string.paintbox_color)) },
@@ -111,11 +136,15 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
                 IconButton(onClick = viewModel::undo, enabled = state.canUndo) { Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.paintbox_undo)) }
                 IconButton(onClick = viewModel::redo, enabled = state.canRedo) { Icon(Icons.AutoMirrored.Filled.Redo, stringResource(R.string.paintbox_redo)) }
                 IconButton(onClick = { clearConfirm = true }, enabled = document?.colors?.isNotEmpty() == true) { Icon(Icons.Outlined.Delete, stringResource(R.string.paintbox_clear)) }
+                }
             }
-            Text(stringResource(R.string.paintbox_gestures), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(if (state.imageImport?.pickingBackground == true) R.string.paintbox_image_pick_bg
+                else if (importing) R.string.paintbox_image_gestures else R.string.paintbox_gestures), style = MaterialTheme.typography.bodySmall)
             if (brand == BoardBrand.QUANTUM) Text(stringResource(R.string.paintbox_quantum_hint), style = MaterialTheme.typography.bodySmall)
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 when {
+                    state.imageLoading -> CircularProgressIndicator()
+                    state.imageImport != null -> PaintImageEditor(state, viewModel)
                     state.loading -> CircularProgressIndicator()
                     state.missingBoard -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.paintbox_missing_board))
@@ -145,14 +174,18 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
             }
             if (state.sending) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { name = document?.name.orEmpty(); saveCopy = false; saveDialog = true }, enabled = document != null && !state.loading && !state.saving) { Text(stringResource(R.string.paintbox_save)) }
-                TextButton(onClick = { name = document?.name.orEmpty(); saveCopy = true; saveDialog = true }, enabled = document != null && !state.loading && !state.saving) { Text(stringResource(R.string.paintbox_save_as)) }
-                TextButton(onClick = { viewModel.refreshLibrary(); library = true }) { Text(stringResource(R.string.paintbox_load)) }
-                TextButton(onClick = viewModel::sendOnce, enabled = connection == ConnectionState.CONNECTED && !state.loading && !state.sending && !state.missingBoard) { Text(stringResource(R.string.paintbox_send)) }
+                TextButton(onClick = { name = document?.name.orEmpty(); saveCopy = false; saveDialog = true }, enabled = !importing && document != null && !state.loading && !state.saving) { Text(stringResource(R.string.paintbox_save)) }
+                TextButton(onClick = { name = document?.name.orEmpty(); saveCopy = true; saveDialog = true }, enabled = !importing && document != null && !state.loading && !state.saving) { Text(stringResource(R.string.paintbox_save_as)) }
+                TextButton(onClick = { viewModel.refreshLibrary(); library = true }, enabled = !importing) { Text(stringResource(R.string.paintbox_load)) }
+                TextButton(onClick = viewModel::sendOnce, enabled = connection == ConnectionState.CONNECTED && !state.loading && !state.sending && !state.missingBoard && !state.imageLoading && (state.imageImport == null || state.imageImport?.ready == true)) { Text(stringResource(R.string.paintbox_send)) }
             }
         }
     }
-    if (bluetooth) BleConnectionSheet(onDismiss = { bluetooth = false }, onBoardMismatchExit = { bluetooth = false; navigate { boardPicker = true } })
+    if (bluetooth) BleConnectionSheet(onDismiss = { bluetooth = false }, onBoardMismatchExit = {
+        bluetooth = false
+        if (importing) viewModel.cancelImage()
+        navigate { boardPicker = true }
+    })
     if (boardPicker) BoardPickerDialog(onDismiss = { boardPicker = false }, onSelected = { boardPicker = false; viewModel.selectCurrentBoard() })
     if (colorPicker) ColorPickerBottomSheet(
         roleLabel = stringResource(R.string.paintbox_brush), currentByte = state.brush,

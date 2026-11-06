@@ -54,3 +54,26 @@ compare the complete wall to the preview. Repeat a single send, disconnect and
 reconnect. On Quantum test occupied layers, 92/93 LEDs, and a failed multi-color
 transfer. Full builds/lint/suites belong in CI per AGENTS.md; source and JVM tests
 alone do not certify a controller or a published APK.
+
+## Import a phone image
+
+The image icon immediately left of Bluetooth opens Android's photo picker.
+The selected image replaces the board photo while hold positions stay fixed at
+normal board zoom. Drag with one finger; pinch and rotate with two fingers.
+The image starts fitted and centered. The highlighted image icon can replace it.
+
+Colors are sampled at hold centers and mapped to the nearest supported board
+color. Pixels below 50% opacity and positions outside the image turn holds off.
+BG Color shows “Pick Background Color”: tap the image to exclude that color and
+nearby RGB colors (Euclidean distance up to 24). Tap BG Color again to clear the
+exclusion, then again to pick another color. Existing transparent overlays remain
+visible on colored holds; neutral dots identify positions that are off.
+
+OK applies the preview as one undo step. Cancel or Back restores the previous
+picture and undo/redo state. With the lamp enabled, previews are sent live; Cancel
+also restores a previously transmitted preview on the same connected board.
+Bluetooth failures and Quantum capacity limits use the existing error handling.
+Saving, loading and board selection are disabled until the import is finished.
+Only the resulting hold colors are saved, not the source image or transformation.
+Decoding preserves alpha and orientation and limits the long edge to 2048 pixels.
+An unconfirmed import survives configuration changes but not process termination.

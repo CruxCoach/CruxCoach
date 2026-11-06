@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
@@ -30,6 +31,62 @@ import org.robolectric.annotation.Config
 @Config(application = Application::class, qualifiers = "en")
 class PaintBoxUiTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun `image mode replaces tools and exposes background picking and accept cancel`() {
+        val vm = mockk<PaintBoxViewModel>(relaxed = true)
+        val bitmap = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888)
+        val state = MutableStateFlow(PaintBoxState(
+            document = PaintDocument(board = PaintBoard("kilter", 1, 10)), loading = false,
+            imageImport = PaintImageSession(bitmap, pickingBackground = true, ready = true),
+            boardSize = BoardSize(10, 1, "Test board", 0, 100, 0, 100, null),
+            placements = mapOf(1 to BoardPlacement(1, 1, 1, 30, 30)),
+        ))
+        every { vm.state } returns state
+        every { vm.connection } returns MutableStateFlow(ConnectionState.CONNECTED)
+        compose.setContent { MaterialTheme { PaintBoxScreen({}, {}, vm) } }
+        compose.onNodeWithTag("paintbox_image_import").assertIsOn()
+        assertTrue(compose.onNodeWithTag("paintbox_image_import").fetchSemanticsNode().boundsInRoot.right <=
+            compose.onNodeWithContentDescription("Connect to board").fetchSemanticsNode().boundsInRoot.left)
+        compose.onNodeWithText("Eraser").assertDoesNotExist()
+        compose.onNodeWithText("Brush").assertDoesNotExist()
+        compose.onNodeWithText("Color").assertDoesNotExist()
+        compose.onNodeWithText("Pick Background Color").assertIsDisplayed()
+        compose.onNodeWithText("Save").assertIsNotEnabled()
+        compose.onNodeWithText("BG Color").performClick()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        verify { vm.imageBackgroundTool(); vm.acceptImage(); vm.cancelImage() }
+    }
+
+    @Test fun `import canvas responds to one finger pan and two finger zoom`() {
+        val vm = mockk<PaintBoxViewModel>(relaxed = true)
+        val bitmap = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888)
+        val state = MutableStateFlow(PaintBoxState(
+            document = PaintDocument(board = PaintBoard("kilter", 1, 10)), loading = false,
+            imageImport = PaintImageSession(bitmap),
+            boardSize = BoardSize(10, 1, "Test", 0, 100, 0, 100, null),
+            placements = mapOf(1 to BoardPlacement(1, 1, 1, 30, 30)),
+        ))
+        every { vm.imageTransform(any()) } answers {
+            state.value = state.value.copy(imageImport = state.value.imageImport!!.copy(transform = firstArg(), ready = false))
+        }
+        every { vm.imagePreview(any(), any()) } answers {
+            if (state.value.imageImport === firstArg<PaintImageSession>()) {
+                state.value = state.value.copy(imageImport = state.value.imageImport!!.copy(colors = secondArg(), ready = true))
+            }
+        }
+        compose.setContent { MaterialTheme { PaintImageEditor(state.collectAsState().value, vm) } }
+        compose.onNodeWithTag("paintbox_image_canvas").performTouchInput {
+            down(center); moveTo(center + Offset(80f, 30f)); up()
+        }
+        compose.runOnIdle { assertTrue(state.value.imageImport!!.transform.center.x > .5f) }
+        compose.onNodeWithTag("paintbox_image_canvas").performTouchInput {
+            down(0, Offset(width * .3f, centerY)); down(1, Offset(width * .7f, centerY))
+            moveTo(0, Offset(width * .1f, centerY)); moveTo(1, Offset(width * .9f, centerY))
+            up(0); up(1)
+        }
+        compose.runOnIdle { assertTrue(state.value.imageImport!!.transform.zoom > 1f) }
+    }
 
     @Test fun `editor presents tools and a paused lamp without sending on entry`() {
         val vm = mockk<PaintBoxViewModel>(relaxed = true)

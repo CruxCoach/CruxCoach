@@ -17,6 +17,8 @@ import java.util.UUID
 import javax.inject.Inject
 
 data class PaintBoxState(
+    val imageImport: PaintImageSession? = null,
+    val imageLoading: Boolean = false,
     val document: PaintDocument? = null,
     val boardSize: BoardSize? = null,
     val placements: Map<Int, BoardPlacement> = emptyMap(),
@@ -52,6 +54,8 @@ class PaintBoxViewModel @Inject constructor(
     private var pending = false
     private var sender: Job? = null
     private var loadJob: Job? = null
+    private var imageJob: Job? = null
+    private var previewAddress: String? = null
     val connection = ble.connectionState
 
     init {
@@ -122,6 +126,63 @@ class PaintBoxViewModel @Inject constructor(
         }
     }
     fun brush(color: Int) { mutable.update { it.copy(brush = color, eraser = false) } }
+    fun importImage(context: android.content.Context, uri: android.net.Uri) {
+        imageJob?.cancel()
+        mutable.update { it.copy(imageLoading = true) }
+        imageJob = viewModelScope.launch {
+            try {
+                val bitmap = loadPaintImage(context.applicationContext, uri)
+                startImage(bitmap)
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { mutable.update { it.copy(imageLoading = false, message = R.string.paintbox_image_error) } }
+        }
+    }
+    internal fun startImage(bitmap: android.graphics.Bitmap) {
+        endStroke()
+        generation++
+        pending = false
+        mutable.update { it.copy(imageImport = PaintImageSession(bitmap), imageLoading = false) }
+    }
+    fun imageTransform(transform: PaintImageTransform) {
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(transform = transform, ready = false)) }
+    }
+    fun imageBackgroundTool() {
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
+            if (it.background != null || it.pickingBackground) it.copy(background = null, pickingBackground = false, ready = false)
+            else it.copy(pickingBackground = true)
+        }) }
+    }
+    fun imageBackground(color: Int) {
+        if ((color ushr 24) < 128) return
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(background = color and 0xffffff,
+            pickingBackground = false, ready = false)) }
+    }
+    fun imagePreview(source: PaintImageSession, colors: Map<Int, Int>) {
+        if (state.value.imageImport !== source) return
+        mutable.update { it.copy(imageImport = source.copy(colors = colors, ready = true)) }
+        if (state.value.live && (!source.ready || source.colors != colors)) queueSend()
+    }
+    fun acceptImage() {
+        val image = state.value.imageImport ?: return
+        if (!image.ready || state.value.imageLoading) return
+        generation++
+        pending = false
+        beginStroke()
+        mutable.update { it.copy(imageImport = null) }
+        change(image.colors)
+        endStroke()
+        if (state.value.live) queueSend()
+        previewAddress = null
+    }
+    fun cancelImage() {
+        imageJob?.cancel()
+        generation++
+        pending = false
+        mutable.update { it.copy(imageImport = null, imageLoading = false) }
+        val restore = previewAddress != null && previewAddress == ble.connectedBoard?.address
+        previewAddress = null
+        if (restore && connection.value in setOf(ConnectionState.CONNECTED, ConnectionState.SENDING)) queueSend()
+    }
     fun eraser() { mutable.update { it.copy(eraser = true) } }
     fun beginStroke() { state.value.document?.let { history.begin(it.colors) } }
     fun endStroke() { state.value.document?.let { history.end(it.colors) }; updateHistory() }
@@ -173,11 +234,15 @@ class PaintBoxViewModel @Inject constructor(
                 pending = false
                 val ticket = generation
                 val snapshot = state.value
-                val document = snapshot.document ?: break
+                val original = snapshot.document ?: break
+                val image = snapshot.imageImport
+                if (image != null && !image.ready) continue
+                val document = if (image == null) original else original.copy(colors = image.colors)
                 val address = ble.connectedBoard?.address
                 mutable.update { it.copy(sending = true) }
                 try {
                     if (snapshot.missingBoard) throw PaintProjectionException(R.string.paintbox_missing_board)
+                    if (image != null) previewAddress = address
                     val sent = projector.send(document, snapshot.ledMap) {
                         generation == ticket && ble.connectedBoard?.address == address
                     }

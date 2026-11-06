@@ -584,18 +584,10 @@ internal fun KilterBoardVisualization(
                     )
                 }
                 placements.values.forEach { placement ->
-                    val point = quantumModel?.let {
-                        quantumBoardPoint(
-                            model = it,
-                            sourceXMilli = placement.x,
-                            sourceYMilli = placement.y,
-                            boardPixels = size.width,
-                            compactPhone = compactQuantumPhone,
-                            tablet = quantumTablet,
-                        )
-                    }
-                    val px = point?.x ?: (placement.x.toFloat() - edgeLeft) * xScale
-                    val py = point?.y ?: size.height - (placement.y.toFloat() - edgeBottom) * yScale
+                    val point = paintBoardPoint(placement, size, edgeLeft, edgeBottom,
+                        boardWidth, boardHeight, quantumModel, compactQuantumPhone, quantumTablet)
+                    val px = point.x
+                    val py = point.y
 
                     if (px !in 0f..size.width || py !in 0f..size.height) return@forEach
 

@@ -45,3 +45,29 @@ Kaltstart waren erfolgreich; Android zeigte die anfängliche Berechtigungsabfrag
 Maestro, vollständige CI-Prüfungen und echte LED-Boards wurden noch nicht geprüft.
 Die Hardware-Abnahme und ihre Grenzen sind im [englischen Prüfablauf](../en/PAINTBOX.md#verification)
 beschrieben. Vollständige Builds, Lint und Tests laufen gemäß AGENTS.md in CI.
+
+## Bild vom Smartphone importieren
+
+Das Bild-Icon direkt links neben Bluetooth öffnet die Android-Bildauswahl.
+Das gewählte Bild ersetzt das Wandfoto; die Griffpositionen bleiben in der
+Standardansicht fest. Ein Finger verschiebt das Bild, zwei Finger zoomen und
+drehen es. Zu Beginn wird es vollständig eingepasst und zentriert. Über das aktive
+Bild-Icon lässt es sich austauschen.
+
+Die Farbe am Griffmittelpunkt wird auf die nächstmögliche Boardfarbe abgebildet.
+Pixel unter 50 % Deckkraft und Positionen außerhalb des Bildes schalten Griffe aus.
+BG Color zeigt „Pick Background Color“: Ein Tipp auf das Bild blendet diese Farbe
+und ähnliche RGB-Farben aus (euklidischer Abstand bis 24). Erneutes Tippen auf BG
+Color löscht die Auswahl; ein weiterer Tipp aktiviert die Pipette erneut.
+Farbige Griffe behalten die transparente Darstellung, ausgeschaltete Positionen
+bleiben als neutrale Punkte sichtbar.
+
+OK übernimmt die Vorschau als einen Undo-Schritt. Cancel oder Zurück stellt den
+vorherigen Zustand samt Undo/Redo wieder her. Bei aktiver Glühbirne folgt das Board
+der Vorschau live; Cancel stellt auch eine bereits übertragene Vorschau am selben
+verbundenen Board wieder zurück. Verbindungsfehler und Quantum-Grenzen werden wie
+bisher angezeigt. Speichern, Laden und Boardwechsel sind während des Imports
+gesperrt. Gespeichert werden nur die resultierenden Grifffarben, nicht Quelldatei
+oder Transformation. Das Laden erhält Alpha und Bildausrichtung und begrenzt die
+lange Kante auf 2048 Pixel. Ein unbestätigter Import bleibt bei Konfigurationswechseln
+erhalten, wird bei Prozessbeendigung jedoch verworfen.

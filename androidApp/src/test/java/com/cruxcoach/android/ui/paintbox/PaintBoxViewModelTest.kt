@@ -100,4 +100,84 @@ class PaintBoxViewModelTest {
         assertTrue(vm.state.value.dirty)
         assertNotNull(vm.state.value.message)
     }
+    @Test fun `accept image is one undo step and stale sampling cannot overwrite it`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.beginStroke(); vm.paint(setOf(1)); vm.endStroke()
+        vm.startImage(mockk())
+        val source = vm.state.value.imageImport!!
+        vm.imagePreview(source, mapOf(2 to 224))
+        assertEquals(mapOf(1 to 28), vm.state.value.document!!.colors)
+        vm.acceptImage()
+        vm.imagePreview(source, mapOf(1 to 3))
+        assertNull(vm.state.value.imageImport)
+        assertEquals(mapOf(2 to 224), vm.state.value.document!!.colors)
+        vm.undo()
+        assertEquals(mapOf(1 to 28), vm.state.value.document!!.colors)
+        vm.redo()
+        assertEquals(mapOf(2 to 224), vm.state.value.document!!.colors)
+    }
+    @Test fun `cancel restores live board even after lamp was disabled and preserves redo`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.beginStroke(); vm.paint(setOf(1)); vm.endStroke(); vm.undo()
+        val before = vm.state.value
+        vm.startImage(mockk())
+        vm.imagePreview(vm.state.value.imageImport!!, mapOf(2 to 224))
+        vm.toggleLive()
+        advanceUntilIdle()
+        coVerify { projector.send(match { it.colors == mapOf(2 to 224) }, any(), any()) }
+        vm.pause()
+        vm.cancelImage()
+        advanceUntilIdle()
+        coVerify { projector.send(match { it.colors.isEmpty() }, any(), any()) }
+        assertEquals(before.document, vm.state.value.document)
+        assertEquals(before.dirty, vm.state.value.dirty)
+        assertTrue(vm.state.value.canRedo)
+    }
+    @Test fun `cancel invalidates pending preview and does not send when no preview reached board`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.startImage(mockk())
+        vm.imagePreview(vm.state.value.imageImport!!, mapOf(1 to 224))
+        vm.toggleLive()
+        vm.cancelImage()
+        advanceUntilIdle()
+        coVerify(exactly = 0) { projector.send(any(), any(), any()) }
+    }
+    @Test fun `background tool selects resets and rearms`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.startImage(mockk())
+        vm.imageBackgroundTool()
+        assertTrue(vm.state.value.imageImport!!.pickingBackground)
+        vm.imageBackground(0xff112233.toInt())
+        assertEquals(0x112233, vm.state.value.imageImport!!.background)
+        assertFalse(vm.state.value.imageImport!!.pickingBackground)
+        vm.imageBackgroundTool()
+        assertNull(vm.state.value.imageImport!!.background)
+        vm.imageBackgroundTool()
+        assertTrue(vm.state.value.imageImport!!.pickingBackground)
+    }
+    @Test fun `cancel fences an in flight preview and restores after transport finishes`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        val release = CompletableDeferred<Unit>()
+        var oldFence: (() -> Boolean)? = null
+        coEvery { projector.send(any(), any(), any()) } coAnswers {
+            if (firstArg<PaintDocument>().colors.isNotEmpty()) {
+                oldFence = thirdArg()
+                release.await()
+            }
+            true
+        }
+        vm.startImage(mockk())
+        vm.imagePreview(vm.state.value.imageImport!!, mapOf(1 to 224))
+        vm.toggleLive()
+        advanceTimeBy(101); runCurrent()
+        assertTrue(oldFence!!())
+        vm.cancelImage()
+        assertFalse(oldFence!!())
+        release.complete(Unit)
+        advanceUntilIdle()
+        coVerifyOrder {
+            projector.send(match { it.colors == mapOf(1 to 224) }, any(), any())
+            projector.send(match { it.colors.isEmpty() }, any(), any())
+        }
+    }
 }
