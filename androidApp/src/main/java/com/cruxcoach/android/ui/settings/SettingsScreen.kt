@@ -8,6 +8,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.Gavel
+import androidx.compose.material.icons.outlined.Checklist
+import com.cruxcoach.android.BuildConfig
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +47,7 @@ internal fun SettingsScreen(
     onNavigateToProfile: () -> Unit,
     onNavigateToAppShare: () -> Unit,
     onNavigateToLicenses: () -> Unit = {},
+    onNavigateToHoldTypeReview: () -> Unit = {},
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
@@ -452,6 +455,15 @@ internal fun SettingsScreen(
                     icon = Icons.Outlined.Gavel,
                     onClick = onNavigateToLicenses,
                 )
+                // #63: the hold-type review is test-build tooling; release builds never show it.
+                if (BuildConfig.DEBUG) {
+                    SettingsDestinationRow(
+                        title = stringResource(R.string.settings_hold_review_title),
+                        summary = stringResource(R.string.settings_hold_review_desc),
+                        icon = Icons.Outlined.Checklist,
+                        onClick = onNavigateToHoldTypeReview,
+                    )
+                }
                 SettingsDestinationRow(
                     title = stringResource(R.string.settings_privacy_title),
                     summary = stringResource(R.string.settings_privacy_desc),

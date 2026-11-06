@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Griffarten (#63): Namen der Arten -->
+    <string name="hold_type_jug">Henkel</string>
+    <string name="hold_type_edge">Leiste</string>
+    <string name="hold_type_sloper">Sloper</string>
+    <string name="hold_type_pinch">Zange</string>
+    <string name="hold_type_pocket">Loch</string>
+    <string name="hold_type_volume">Volumen</string>
+    <string name="hold_type_foot_chip">Tritt</string>
+    <string name="hold_direction_all_round">Rundum</string>
+
+    <!-- Griffarten prüfen: nur in Testversionen -->
+    <string name="settings_hold_review_title">Griffarten prüfen</string>
+    <string name="settings_hold_review_desc">Nur in Testversionen: berechnete Griffarten prüfen</string>
+    <string name="hold_review_title">Griffarten: Prüfung</string>
+    <string name="hold_review_stage_blind">1 · Blind %1$d/%2$d</string>
+    <string name="hold_review_stage_decide">2 · Entscheiden %1$d</string>
+    <string name="hold_review_stage_results">Ergebnis</string>
+    <string name="hold_review_progress">Griff %1$d von %2$d · #%3$d</string>
+    <string name="hold_review_blind_hint">Erst antworten. Das berechnete Label erscheint nach deiner Antwort, und dann gilt deine Antwort.</string>
+    <string name="hold_review_decide_hint">Nur die Felder, in denen du und das berechnete Label abweichen. Wer lag richtig?</string>
+    <string name="hold_review_decide_locked">Erst die Blindrunde beenden.</string>
+    <string name="hold_review_q_type">Art</string>
+    <string name="hold_review_q_direction">Die nutzbare Seite zeigt nach</string>
+    <string name="hold_review_q_foot_only">Nur für die Füße</string>
+    <string name="hold_review_field_direction">Richtung</string>
+    <string name="hold_review_cant_tell">Nicht erkennbar</string>
+    <string name="hold_review_yes">Ja</string>
+    <string name="hold_review_no">Nein</string>
+    <string name="hold_review_show_label">Berechnetes Label zeigen</string>
+    <string name="hold_review_computed">Berechnet: %1$s</string>
+    <string name="hold_review_yours">Du: %1$s</string>
+    <string name="hold_review_verdict_reviewer">Ich lag richtig</string>
+    <string name="hold_review_verdict_computed">Berechnet lag richtig</string>
+    <string name="hold_review_verdict_both">Beide falsch</string>
+    <string name="hold_review_none_disagree">Keine Abweichungen.</string>
+    <string name="hold_review_results_blind">Blindrunde: Übereinstimmung</string>
+    <string name="hold_review_results_blind_row">%1$s: %2$d von %3$d (%4$d %%), nicht erkennbar %5$d</string>
+    <string name="hold_review_results_near">Richtung gleich oder einen Schritt daneben: %1$d von %2$d</string>
+    <string name="hold_review_results_decided">Nach der Entscheidung</string>
+    <string name="hold_review_results_decided_row">%1$s: berechnet falsch %2$d, du falsch %3$d (beide %4$d), offen %5$d</string>
+    <string name="hold_review_save_file">Als Datei speichern</string>
+    <string name="hold_review_share">Als Text teilen</string>
+    <string name="hold_review_saved">Gespeichert</string>
+    <string name="hold_review_start_over">Neu beginnen</string>
+    <string name="hold_review_start_over_confirm">Alle Antworten löschen und die Blindrunde neu beginnen?</string>
+    <string name="hold_review_missing">Diese Version enthält keine Griffarten.</string>
+    <string name="hold_review_no_board">Die Board-Geometrie ist noch nicht geladen.</string>
+    <string name="hold_review_dataset">Label-Version %1$s</string>
+</resources>
