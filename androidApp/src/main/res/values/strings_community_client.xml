@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Community client preview (issue #61). Kept in its own file while it is a spike. -->
+<resources>
+    <string name="settings_page_community">Community (preview)</string>
+    <string name="settings_summary_community">Rooms and forums of the CruxCoach community</string>
+
+    <string name="community_client_title">Community</string>
+    <string name="community_client_connecting">Connecting…</string>
+    <string name="community_client_offline">Offline</string>
+
+    <string name="community_client_intro_title">Community in the app</string>
+    <string name="community_client_intro_body">Talk with the CruxCoach community right here: rooms, forums and threads, with the key you already use in CruxCoach. No second app and no second account.</string>
+    <string name="community_client_intro_preview">This is an early preview. When you turn it on, the app connects to community.cruxcoach.org and signs in with your key. Nothing is sent before that.</string>
+    <string name="community_client_identity_local">You sign as %1$s with the app\'s own key.</string>
+    <string name="community_client_identity_amber">You sign as %1$s with Amber.</string>
+    <string name="community_client_turn_on">Turn on Community</string>
+    <string name="community_client_enabled_switch">Community on</string>
+
+    <string name="community_client_join_title">Join the community</string>
+    <string name="community_client_join_body">Paste the invite link you got. It looks like https://community.cruxcoach.org/invite/…</string>
+    <string name="community_client_invite_link">Invite link</string>
+    <string name="community_client_paste">Paste</string>
+    <string name="community_client_continue">Continue</string>
+    <string name="community_client_already_member">Already a member with this key?</string>
+    <string name="community_client_connect_member">Connect without an invite</string>
+    <string name="community_client_rules_title">Rules of %1$s</string>
+    <string name="community_client_rules_none">This community has no rules to accept.</string>
+    <string name="community_client_rules_terms">Community rules</string>
+    <string name="community_client_rules_privacy">Privacy</string>
+    <string name="community_client_rules_age">I am old enough to join this community.</string>
+    <string name="community_client_accept_join">Accept and join</string>
+    <string name="community_client_join">Join</string>
+    <string name="community_client_not_member">This key is not a member of the community yet. Join with an invite link.</string>
+    <string name="community_client_use_invite">Use an invite link</string>
+    <string name="community_client_error_bad_link">That is not an invite link.</string>
+    <string name="community_client_error_expired">This invite has expired. Ask for a new one.</string>
+    <string name="community_client_error_used_up">This invite has been used up. Ask for a new one.</string>
+    <string name="community_client_error_invalid">This invite is not valid.</string>
+    <string name="community_client_error_rate_limited">Too many tries. Wait a minute and try again.</string>
+    <string name="community_client_error_sign_refused">Signing was refused, so the community could not check your key.</string>
+    <string name="community_client_error_network">The community could not be reached. Check your connection.</string>
+
+    <string name="community_client_section_rooms">Rooms</string>
+    <string name="community_client_section_forums">Forums</string>
+    <string name="community_client_no_rooms">No rooms yet.</string>
+    <string name="community_client_join_room">Join</string>
+
+    <string name="community_client_message_hint">Message #%1$s</string>
+    <string name="community_client_new_post_hint">New topic in #%1$s</string>
+    <string name="community_client_no_messages">No messages yet. Say hello!</string>
+    <string name="community_client_no_posts">No topics yet.</string>
+    <string name="community_client_join_to_write">Join this room to write</string>
+    <string name="community_client_read_only">Only the room\'s admins write here.</string>
+    <string name="community_client_follow_room">Add to my rooms</string>
+    <string name="community_client_send_failed">Not sent: %1$s</string>
+
+    <string name="community_client_thread_title">Thread</string>
+    <string name="community_client_post_title">Topic</string>
+    <string name="community_client_reply_hint">Reply in thread</string>
+    <string name="community_client_comment_hint">Write a comment</string>
+    <string name="community_client_reply_action">Reply</string>
+    <string name="community_client_edited">(edited)</string>
+    <string name="community_client_deleted">This message was deleted.</string>
+    <plurals name="community_client_replies">
+        <item quantity="one">%d reply</item>
+        <item quantity="other">%d replies</item>
+    </plurals>
+    <plurals name="community_client_comments">
+        <item quantity="one">%d comment</item>
+        <item quantity="other">%d comments</item>
+    </plurals>
+</resources>

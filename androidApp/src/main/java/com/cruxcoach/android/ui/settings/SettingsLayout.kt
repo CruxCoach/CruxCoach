@@ -50,6 +50,8 @@ internal enum class SettingsPage(
     IMPORTS(R.string.settings_page_imports, R.string.settings_summary_imports, R.string.settings_section_accounts_data, Icons.Outlined.MoveToInbox),
     BACKUP(R.string.settings_page_backup, R.string.settings_summary_backup, R.string.settings_section_accounts_data, Icons.Outlined.Backup),
     DELETE(R.string.settings_page_delete, R.string.settings_summary_delete, R.string.settings_section_accounts_data, Icons.Outlined.DeleteOutline),
+    /** Community client preview (#61): its own screens, in feature and development builds only. */
+    COMMUNITY(R.string.settings_page_community, R.string.settings_summary_community, R.string.settings_group_app_help, Icons.Outlined.Forum, external = true),
     UPDATES(R.string.updater_settings_title, R.string.settings_summary_updates, R.string.settings_group_app_help, Icons.Outlined.SystemUpdate),
     SUPPORT(R.string.settings_page_support, R.string.settings_summary_support, R.string.settings_group_app_help, Icons.AutoMirrored.Outlined.HelpOutline),
     ABOUT(R.string.settings_page_about, R.string.settings_summary_about, R.string.settings_group_app_help, Icons.Outlined.Info),

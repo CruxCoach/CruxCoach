@@ -60,6 +60,8 @@ internal fun SettingsScreen(
     onDonateClick: () -> Unit = {},
     /** The training area's settings; null hides the row. */
     onNavigateToTrainingSettings: (() -> Unit)? = null,
+    /** The community client preview; null hides the row. */
+    onNavigateToCommunity: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
     backupViewModel: BackupSettingsViewModel = hiltViewModel(),
     // Created on their own pages only: opening the settings must not open the
@@ -141,11 +143,14 @@ internal fun SettingsScreen(
             SyncStatusBannerSlot()
             BleStatusArea()
         },
-        externalPages = listOfNotNull(onNavigateToTrainingSettings?.let { SettingsPage.TRAINING to it }).toMap(),
+        externalPages = listOfNotNull(
+            onNavigateToTrainingSettings?.let { SettingsPage.TRAINING to it },
+            onNavigateToCommunity?.let { SettingsPage.COMMUNITY to it },
+        ).toMap(),
     ) { page ->
         when (page) {
-            // Opens the training area's settings screen; never a page here.
-            SettingsPage.TRAINING -> Unit
+            // Open their own screens; never a page here.
+            SettingsPage.TRAINING, SettingsPage.COMMUNITY -> Unit
             SettingsPage.DISPLAY -> {
                 SettingsSectionCard {
                     LanguageSection()

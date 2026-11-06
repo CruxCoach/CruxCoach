@@ -151,6 +151,7 @@ class MainActivity : AppCompatActivity() {
                 ?: extractBoardDbDeepLink(intent)
                 ?: extractClimbAppLink(intent)
                 ?: extractPlaylistAppLink(intent)
+                ?: extractCommunityInvite(intent)
             handleUpdaterExtras(intent)
         }
         // userPreferences injected via Hilt
@@ -333,6 +334,7 @@ class MainActivity : AppCompatActivity() {
             ?: extractBoardDbDeepLink(intent)
             ?: extractClimbAppLink(intent)
             ?: extractPlaylistAppLink(intent)
+            ?: extractCommunityInvite(intent)
         handleUpdaterExtras(intent)
     }
 
@@ -390,6 +392,20 @@ class MainActivity : AppCompatActivity() {
                 null
             }
         }
+    }
+
+    /**
+     * A community invite link (`https://community.cruxcoach.org/invite/<code>`) opens the
+     * Community preview on its join step. Feature and development builds only; the
+     * link is shown to the user, who decides whether to join.
+     */
+    private fun extractCommunityInvite(intent: Intent?): String? {
+        if (!com.cruxcoach.android.communityclient.CommunityClientHolder.isAvailable) return null
+        if (intent?.action != Intent.ACTION_VIEW) return null
+        val link = intent.data?.toString() ?: return null
+        val invite = com.cruxcoach.communityclient.CommunityInvite.parse(link) ?: return null
+        if (invite.endpoint != com.cruxcoach.android.communityclient.CommunityClientHolder.DEFAULT_COMMUNITY) return null
+        return com.cruxcoach.android.ui.navigation.Routes.community(link)
     }
 
     /**
