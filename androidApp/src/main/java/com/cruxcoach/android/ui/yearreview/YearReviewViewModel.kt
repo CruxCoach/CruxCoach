@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -63,7 +64,8 @@ class YearReviewViewModel @Inject constructor(
                 val input = source.load()
                 val training = withContext(Dispatchers.IO) {
                     runCatching {
-                        TrainingContext(athleteService.catalog, athleteService.repo.profile(), athleteService.currentBodyweight())
+                        // The catalogue loads on first use; until then it is empty and no exercise has a name.
+                        TrainingContext(athleteService.catalogStore.ensureLoaded(), athleteService.repo.profile(), athleteService.currentBodyweight())
                     }.getOrDefault(TrainingContext(null, null, null))
                 }
                 val review = withContext(Dispatchers.Default) {
@@ -114,16 +116,20 @@ class YearReviewEntryViewModel @Inject constructor(
     private var input: YearReviewComputer.Input? = null
     private var cardStarted = false
     private var statsStarted = false
+    private val cardCheck = MutableStateFlow(0)
 
     /**
-     * For the card only: reads the logbook only in December and January and
-     * while the card is not hidden, so the start screen stays light all year.
+     * For the card only, each time its screen resumes: the date may have moved
+     * into December while the app was open. Reads the logbook only in December
+     * and January and while the card is not hidden, so the start screen stays
+     * light all year.
      */
-    fun startCard() {
+    fun checkCard() {
+        cardCheck.value++
         if (cardStarted) return
         cardStarted = true
         viewModelScope.launch {
-            userPreferences.yearReviewHiddenYears.collect { hidden ->
+            combine(userPreferences.yearReviewHiddenYears, cardCheck) { hidden, _ -> hidden }.collect { hidden ->
                 val year = YearReviewWindow.invitedYear(source.today())
                 if (year == null || year in hidden) {
                     _state.update { it.copy(cardYear = null) }

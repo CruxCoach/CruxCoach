@@ -31,6 +31,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.DarkBackground
@@ -46,7 +49,10 @@ import kotlinx.datetime.LocalDate
  */
 @Composable
 fun YearReviewEntryCard(onOpen: (Int) -> Unit, modifier: Modifier = Modifier, viewModel: YearReviewEntryViewModel = hiltViewModel()) {
-    LaunchedEffect(viewModel) { viewModel.startCard() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner, viewModel) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.checkCard() }
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val year = state.cardYear ?: return
     val soFar = state.today?.year == year

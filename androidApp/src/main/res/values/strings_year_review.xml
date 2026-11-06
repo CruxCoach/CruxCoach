@@ -45,7 +45,7 @@
 
     <!-- Boards and angles -->
     <string name="yr_boards_title">Your boards</string>
-    <string name="yr_boards_angle">mostly at %1$d° (%2$d %%)</string>
+    <string name="yr_boards_angle">mostly at %1$d° (%2$d&#160;%%)</string>
     <string name="yr_boards_how">Entries are your sends and attempts on that board. The angle is the one you logged most there, with its share of the board\'s entries.</string>
 
     <!-- Hardest -->

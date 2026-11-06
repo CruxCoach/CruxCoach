@@ -45,7 +45,7 @@
 
     <!-- Boards and angles -->
     <string name="yr_boards_title">Deine Boards</string>
-    <string name="yr_boards_angle">meist bei %1$d° (%2$d %%)</string>
+    <string name="yr_boards_angle">meist bei %1$d° (%2$d&#160;%%)</string>
     <string name="yr_boards_how">Einträge sind deine Begehungen und Versuche an diesem Board. Der Winkel ist der, den du dort am häufigsten erfasst hast, mit seinem Anteil an den Einträgen des Boards.</string>
 
     <!-- Hardest -->
