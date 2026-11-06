@@ -47,6 +47,7 @@ fun BoardLogbookScreen(
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
     onNavigateToSync: () -> Unit,
     onNavigateBack: () -> Unit,
+    onOpenYearReview: (year: Int) -> Unit = {},
     viewModel: BoardLogbookViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -172,6 +173,12 @@ fun BoardLogbookScreen(
             onIntervalSelect = { viewModel.setStatsInterval(it) },
             onCustomDateRange = { from, to -> viewModel.setCustomDateRange(from, to) },
             onHeatmapModeSelect = { viewModel.setHeatmapMode(it) },
+            yearReview = {
+                com.cruxcoach.android.ui.yearreview.YearReviewStatsEntry(onOpen = {
+                    viewModel.toggleStatsSheet()
+                    onOpenYearReview(it)
+                })
+            },
             onDismiss = { viewModel.toggleStatsSheet() }
         )
     }
@@ -323,7 +330,9 @@ fun BoardLogbookScreen(
                     item(key = "overview") {
                         // The overview is computed after the list loads; let it grow in
                         // instead of pushing the entries down in one jump.
-                        Box(Modifier.fillMaxWidth().animateContentSize()) {
+                        Column(Modifier.fillMaxWidth().animateContentSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // The year in review's invitation in December and January (#64).
+                            com.cruxcoach.android.ui.yearreview.YearReviewEntryCard(onOpen = onOpenYearReview)
                             LogbookOverviewCard(
                                 glance = state.atAGlance,
                                 milestones = state.milestones,

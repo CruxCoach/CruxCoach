@@ -88,6 +88,7 @@ fun BoardBrowserScreen(
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
+    onOpenYearReview: (year: Int) -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -430,6 +431,11 @@ fun BoardBrowserScreen(
         RestTimerBannerSlot()
         // While the sync card itself is on this screen the banner would only repeat it.
         if (state.hasBoardData) SyncStatusBannerSlot()
+        // The year in review's invitation in December and January (#64).
+        com.cruxcoach.android.ui.yearreview.YearReviewEntryCard(
+            onOpen = onOpenYearReview,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
         if (state.isLoading && !state.hasBoardData) {
             // First DB access lazily runs any pending schema migration +
             // the onOpen VACUUM / index rebuild on the ~190k-row board DB.

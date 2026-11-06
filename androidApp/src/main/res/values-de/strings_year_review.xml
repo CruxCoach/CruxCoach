@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Jahresrückblick (#64). -->
+<resources>
+    <!-- Entry card and year picker -->
+    <string name="yr_card_title">Dein %1$d an den Boards</string>
+    <string name="yr_card_title_so_far">Dein %1$d bisher</string>
+    <string name="yr_card_text">Dein Kletterjahr über alle deine Boards, gemacht auf diesem Handy.</string>
+    <string name="yr_card_open">Öffnen</string>
+    <string name="yr_card_hide">Für dieses Jahr ausblenden</string>
+    <string name="yr_stats_entry_title">Jahresrückblick</string>
+    <string name="yr_so_far_title">Dein %1$d bisher</string>
+    <string name="yr_so_far_text">Bisher %1$s und %2$s. Der ganze Rückblick öffnet sich ab %3$s oder %4$s im Jahr.</string>
+    <string name="yr_test_date">Testdatum (nur Test-Apps)</string>
+    <string name="yr_test_date_real">Heute</string>
+
+    <!-- Pages: frame -->
+    <string name="yr_close">Schließen</string>
+    <string name="yr_share">Teilen</string>
+    <string name="yr_list_view">Listenansicht</string>
+    <string name="yr_page_view">Seiten</string>
+    <string name="yr_page_of">Seite %1$d von %2$d</string>
+    <string name="yr_previous">Vorherige Seite</string>
+    <string name="yr_next">Nächste Seite</string>
+    <string name="yr_how_calculated">Wie wird das berechnet?</string>
+    <string name="yr_eyebrow">%1$d an den Boards</string>
+    <string name="yr_eyebrow_so_far">%1$d bisher, bis %2$s</string>
+
+    <!-- Intro -->
+    <string name="yr_intro_title">Dein Jahr an den Boards</string>
+    <string name="yr_intro_lead">Gemacht auf diesem Handy. Nichts verlässt es, außer du teilst es.</string>
+    <string name="yr_intro_how">Gezählt vom 1. Januar bis 31. Dezember in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen und Workouts, die du erfasst hast.</string>
+    <string name="yr_intro_how_so_far">Gezählt vom 1. Januar bis heute in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen und Workouts, die du erfasst hast. Das Jahr ist noch nicht vorbei: Es zählt bis zum 31. Dezember weiter.</string>
+
+    <!-- Volume -->
+    <string name="yr_volume_title">Dein Umfang</string>
+    <string name="yr_volume_hero_label">Klettertage</string>
+    <string name="yr_volume_board_days">Tage am Board</string>
+    <string name="yr_volume_sessions">Sessions mit Timer</string>
+    <string name="yr_volume_session_time">%1$s am Board</string>
+    <string name="yr_volume_tries">Versuche</string>
+    <string name="yr_volume_sends">Begehungen</string>
+    <string name="yr_volume_first_sends">Neue Boulder geklettert</string>
+    <string name="yr_volume_flashes">Flashes</string>
+    <string name="yr_volume_how">Ein Klettertag ist ein Tag mit einem Board-Eintrag oder einem Klettertag, den du selbst erfasst hast. Eine Begehung zählt ihre Versuche, mindestens einen. Begehungen sind alle erfolgreichen Einträge, Wiederholungen eingeschlossen. Ein neuer Boulder ist einer, den du zum ersten Mal überhaupt geklettert hast, je Boulder und Winkel; ein Flash ist ein neuer Boulder im ersten Versuch.</string>
+
+    <!-- Boards and angles -->
+    <string name="yr_boards_title">Deine Boards</string>
+    <string name="yr_boards_angle">meist bei %1$d° (%2$d %%)</string>
+    <string name="yr_boards_how">Einträge sind deine Begehungen und Versuche an diesem Board. Der Winkel ist der, den du dort am häufigsten erfasst hast, mit seinem Anteil an den Einträgen des Boards.</string>
+
+    <!-- Hardest -->
+    <string name="yr_hardest_title">Schwerste Begehungen</string>
+    <string name="yr_hardest_flash">Flash</string>
+    <string name="yr_hardest_repeat">Wiederholung</string>
+    <string name="yr_hardest_sample">von %1$s mit Grad</string>
+    <string name="yr_hardest_how">Je Board, in der Gradskala, die du gewählt hast, nach dem Grad des Boulders bei seinem Winkel. Grade werden nie über Boards hinweg verglichen. Jeder Boulder zählt einmal; bei wenigen Begehungen sagt ein Grad weniger.</string>
+
+    <!-- Compared with last year -->
+    <string name="yr_compared_title">Im Vergleich zu %1$d</string>
+    <string name="yr_compared_value">%1$s (%2$s)</string>
+    <string name="yr_compared_hardest">Schwerste Begehung am %1$s</string>
+    <string name="yr_compared_grades_up">%1$s höher</string>
+    <string name="yr_compared_grades_down">%1$s tiefer</string>
+    <string name="yr_compared_grades_same">gleicher Grad</string>
+    <string name="yr_compared_how">Das letzte Jahr vom 1. Januar bis %1$s, derselbe Zeitraum wie in diesem Jahr. Es zählen nur deine eigenen früheren Jahre, nie andere Kletternde.</string>
+
+    <!-- Rhythm -->
+    <string name="yr_rhythm_title">Dein Rhythmus</string>
+    <string name="yr_rhythm_hero_label">stärkster Monat, %1$s</string>
+    <string name="yr_rhythm_weeks">Wochen mit Klettern</string>
+    <string name="yr_rhythm_weeks_value">%1$d von %2$d</string>
+    <string name="yr_rhythm_streak">Längste Serie</string>
+    <string name="yr_rhythm_streak_from">ab %1$s</string>
+    <string name="yr_rhythm_weekday">Lieblingstag</string>
+    <string name="yr_rhythm_how">Wochen gehen von Montag bis Sonntag; eine Serie zählt Wochen am Stück mit mindestens einem Klettertag. Bei Gleichstand gewinnt der frühere Monat oder Wochentag.</string>
+
+    <!-- Highlights -->
+    <string name="yr_highlights_title">Highlights</string>
+    <string name="yr_highlights_flash">Schwerster Flash am %1$s</string>
+    <string name="yr_highlights_biggest_day">Stärkster Tag</string>
+    <string name="yr_highlights_repeated">Am öftesten wiederholt</string>
+    <string name="yr_highlights_project">Längstes Projekt</string>
+    <string name="yr_highlights_project_detail">%1$s an %2$s</string>
+    <string name="yr_highlights_project_since">seit %1$s</string>
+    <string name="yr_highlights_how">Der stärkste Tag ist der mit den meisten Begehungen. Am öftesten wiederholt ist der Boulder, den du in diesem Jahr am häufigsten geklettert hast. Das längste Projekt ist der neue Boulder mit den meisten Versuchen, gezählt über alle Sessions bis zur Begehung, auch aus früheren Jahren.</string>
+
+    <!-- Training -->
+    <string name="yr_training_title">Abseits der Wand</string>
+    <string name="yr_training_hero_label">Workouts</string>
+    <string name="yr_training_days">Trainingstage</string>
+    <string name="yr_training_time">Zeit</string>
+    <string name="yr_training_best">Neuester Bestwert</string>
+    <string name="yr_training_comeback">Zurück nach einer Pause</string>
+    <string name="yr_training_how">Abgeschlossene Workouts, die du im Trainingsbereich erfasst hast, mit ihrer Zeit. Bestwerte sind die neuesten, die du je Übung in diesem Jahr gemessen hast; schnelle Schätzungen zählen nicht.</string>
+
+    <!-- Climber type -->
+    <string name="yr_type_title">Dein Klettertyp</string>
+    <string name="yr_type_also">Auch: %1$s</string>
+    <string name="yr_type_how">Einer von zehn Typen, ausgewählt nach Regeln über deine eigenen Zahlen: Es gewinnt der Typ, dessen Regel du am deutlichsten erfüllst. Ein Comeback wird nur als Pause gezeigt, nie mit Grund.</string>
+    <string name="yr_type_flash_machine">Flash-Maschine</string>
+    <string name="yr_type_flash_machine_line">Anschauen, durchsteigen.</string>
+    <string name="yr_type_projector">Projekt-Profi</string>
+    <string name="yr_type_projector_line">Lässt kein Projekt los.</string>
+    <string name="yr_type_mileage_monster">Meter-Monster</string>
+    <string name="yr_type_mileage_monster_line">Mehr Boulder, mehr Spaß.</string>
+    <string name="yr_type_steep_specialist">Überhang-Fan</string>
+    <string name="yr_type_steep_specialist_line">Je steiler, desto lieber.</string>
+    <string name="yr_type_board_hopper">Board-Hopper</string>
+    <string name="yr_type_board_hopper_line">Zu Hause an jeder Wand.</string>
+    <string name="yr_type_clockwork">Uhrwerk</string>
+    <string name="yr_type_clockwork_line">Woche für Woche.</string>
+    <string name="yr_type_rising_star">Rakete</string>
+    <string name="yr_type_rising_star_line">Steil nach oben.</string>
+    <string name="yr_type_strength_lab">Kraftpaket</string>
+    <string name="yr_type_strength_lab_line">Holt sich die Kraft abseits der Wand.</string>
+    <string name="yr_type_comeback_kid">Comeback-Talent</string>
+    <string name="yr_type_comeback_kid_line">Zurückgekommen und drangeblieben.</string>
+    <string name="yr_type_all_rounder">Allround-Talent</string>
+    <string name="yr_type_all_rounder_line">Von allem etwas. Auch das ist ein Stil.</string>
+    <string name="yr_rule_flash">%1$s deiner neuen Boulder waren Flashes. Flash-Maschine ab %2$s.</string>
+    <string name="yr_rule_projector_share">%1$s deiner neuen Boulder brauchten 10 Versuche oder mehr. Projekt-Profi ab %2$s.</string>
+    <string name="yr_rule_projector_average">Deine neuen Boulder brauchten im Schnitt %1$s Versuche. Projekt-Profi ab %2$s.</string>
+    <string name="yr_rule_mileage">%1$s Begehungen pro Tag am Board. Meter-Monster ab %2$s.</string>
+    <string name="yr_rule_steep">%1$s deiner Einträge waren bei 45° oder steiler (40° am MoonBoard). Überhang-Fan ab %2$s.</string>
+    <string name="yr_rule_hopper">Dein drittes Board hatte %1$s deiner Einträge. Board-Hopper ab %2$s an drei Boards.</string>
+    <string name="yr_rule_clockwork_share">Du hast in %1$s der Wochen seit deinem ersten Klettertag in diesem Jahr geklettert. Uhrwerk ab %2$s.</string>
+    <string name="yr_rule_clockwork_streak">%1$s am Stück mit Klettern. Uhrwerk ab %2$s.</string>
+    <string name="yr_rule_rising_last_year">%1$s über dem letzten Jahr an deinem Haupt-Board. Rakete ab %2$s.</string>
+    <string name="yr_rule_rising_within">%1$s von deinen ersten drei Monaten bis zu deinen letzten drei an deinem Haupt-Board. Rakete ab %2$s.</string>
+    <string name="yr_rule_strength">Workouts an %1$s deiner Trainingstage. Kraftpaket ab %2$s, mit 20 Workouts.</string>
+    <string name="yr_rule_comeback_plan">Zurück nach einer Pause, und drangeblieben.</string>
+    <string name="yr_rule_comeback_break">Zurück nach einer Pause von %1$s, mit %2$s seitdem.</string>
+    <string name="yr_rule_all_rounder">Keine einzelne Regel sticht heraus, also bist du von allem etwas. Am nächsten dran: %1$s</string>
+    <string name="yr_rule_all_rounder_none">Keine einzelne Regel sticht heraus, also bist du von allem etwas.</string>
+
+    <!-- Summary -->
+    <string name="yr_summary_title">%1$d an den Boards</string>
+    <string name="yr_summary_title_so_far">%1$d bisher</string>
+    <string name="yr_summary_hardest">Am schwersten am %1$s</string>
+    <string name="yr_summary_type">Klettertyp</string>
+    <string name="yr_summary_how">Die wichtigsten Zahlen des Jahres von den Seiten davor.</string>
+
+    <!-- Sharing -->
+    <string name="yr_share_title">Diese Seite teilen</string>
+    <string name="yr_share_show_name">Meinen Namen zeigen</string>
+    <string name="yr_share_name_missing">Leg in den Community-Einstellungen einen Anzeigenamen fest, um ihn zu zeigen.</string>
+    <string name="yr_share_show_problems">Namen der Boulder zeigen</string>
+    <string name="yr_share_show_dates">Genaue Daten zeigen</string>
+    <string name="yr_share_hint">Das Bild entsteht auf diesem Handy. Es enthält deine Zahlen und einen kleinen CruxCoach-Schriftzug, sonst nichts.</string>
+    <string name="yr_share_send">Bild teilen</string>
+    <string name="yr_share_chooser">Dein Jahr teilen</string>
+    <string name="yr_share_failed">Das Bild konnte nicht geteilt werden.</string>
+    <string name="yr_share_name_header">%2$d von %1$s</string>
+    <string name="yr_share_problem_hidden">ein %1$s</string>
+    <string name="yr_share_wordmark">CruxCoach</string>
+
+    <plurals name="yr_days">
+        <item quantity="one">%s Tag</item>
+        <item quantity="other">%s Tage</item>
+    </plurals>
+    <plurals name="yr_climbing_days">
+        <item quantity="one">%s Klettertag</item>
+        <item quantity="other">%s Klettertage</item>
+    </plurals>
+    <plurals name="yr_weeks">
+        <item quantity="one">%s Woche</item>
+        <item quantity="other">%s Wochen</item>
+    </plurals>
+    <plurals name="yr_entries">
+        <item quantity="one">%s Eintrag</item>
+        <item quantity="other">%s Einträge</item>
+    </plurals>
+    <plurals name="yr_sends">
+        <item quantity="one">%s Begehung</item>
+        <item quantity="other">%s Begehungen</item>
+    </plurals>
+    <plurals name="yr_tries">
+        <item quantity="one">%s Versuch</item>
+        <item quantity="other">%s Versuche</item>
+    </plurals>
+    <plurals name="yr_tries_after">
+        <item quantity="one">im ersten Versuch</item>
+        <item quantity="other">nach %s Versuchen</item>
+    </plurals>
+    <plurals name="yr_times">
+        <item quantity="one">einmal geklettert</item>
+        <item quantity="other">%s-mal geklettert</item>
+    </plurals>
+    <plurals name="yr_grades">
+        <item quantity="one">%s Grad</item>
+        <item quantity="other">%s Grade</item>
+    </plurals>
+    <plurals name="yr_sessions">
+        <item quantity="one">%s Session</item>
+        <item quantity="other">%s Sessions</item>
+    </plurals>
+</resources>

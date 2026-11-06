@@ -323,6 +323,8 @@ object PreferenceKeys {
     /** Advertised names of Shiny Wall controllers whose variant suggestion the
      *  user already answered; a name only hints a variant, so it is asked once. */
     val SHINY_VARIANT_HINT_ANSWERED = stringSetPreferencesKey("shiny_variant_hint_answered")
+    /** Years whose year-in-review card the user closed (#64); the review itself stays in the statistics. */
+    val YEAR_REVIEW_HIDDEN_YEARS = stringSetPreferencesKey("year_review_hidden_years")
     val BOARD_BRAND = stringPreferencesKey("board_brand")
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
     val CLIMB_HISTORY_RETENTION_DAYS = intPreferencesKey("climb_history_retention_days")
@@ -612,6 +614,17 @@ class UserPreferences(
                 prefs[PreferenceKeys.SHINY_VARIANT_HINT_ANSWERED].orEmpty(),
                 controllerName,
             )
+        }
+    }
+
+    /** Years whose year-in-review card was closed. */
+    val yearReviewHiddenYears: Flow<Set<Int>> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.YEAR_REVIEW_HIDDEN_YEARS].orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
+    }
+
+    suspend fun hideYearReviewCard(year: Int) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.YEAR_REVIEW_HIDDEN_YEARS] = prefs[PreferenceKeys.YEAR_REVIEW_HIDDEN_YEARS].orEmpty() + year.toString()
         }
     }
 
