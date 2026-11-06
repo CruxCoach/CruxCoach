@@ -104,6 +104,10 @@ okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver",
 # payment path refuses a plain-http endpoint, so a test that used http would be
 # testing the refusal instead of the flow.
 okhttp-tls = { group = "com.squareup.okhttp3", name = "okhttp-tls", version.ref = "okhttp" }
+# JVM build of the secp256k1 library Quartz signs with, so plain unit tests can
+# sign Nostr events (the community client's integration test). Same version as
+# the Android build quartz-android pulls in.
+secp256k1-jni-jvm = { group = "fr.acinq.secp256k1", name = "secp256k1-kmp-jni-jvm", version = "0.22.0" }
 
 # Encrypted SharedPreferences
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "security-crypto" }

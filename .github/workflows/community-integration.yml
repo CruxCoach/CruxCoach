@@ -1,0 +1,124 @@
+name: Community client integration
+
+# Runs the community client against a real Buzz relay at the version the
+# community server uses. The relay, Postgres, Redis and MinIO start from Buzz's
+# own deploy/compose bundle at the pinned commit. Throwaway keys and secrets are
+# made per run; nothing here talks to community.cruxcoach.org.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'feat/**'
+    paths:
+      - 'shared/src/**/communityclient/**'
+      - 'androidApp/src/**/communityclient/**'
+      - '.github/workflows/community-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-it-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Bump both together, and only after the client passes against the new version.
+  BUZZ_COMMIT: d676c7b8db30ccc15611b9ef51ed9c6f2e8a954a
+  BUZZ_IMAGE: ghcr.io/block/buzz:sha-d676c7b
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Fetch the pinned Buzz compose bundle
+        run: |
+          mkdir -p "$RUNNER_TEMP/buzz"
+          curl -fsSL "https://raw.githubusercontent.com/block/buzz/${BUZZ_COMMIT}/deploy/compose/compose.yml" \
+            -o "$RUNNER_TEMP/buzz/compose.yml"
+
+      - name: Make throwaway keys and the relay configuration
+        run: |
+          cd "$RUNNER_TEMP/buzz"
+          # A fresh secp256k1 key for the relay owner: x-only public key for the
+          # relay, secret for the test. Plain integer math, no extra packages.
+          python3 - > owner.txt <<'PY'
+          import secrets
+          P = 2**256 - 2**32 - 977
+          N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+          G = (0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
+               0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8)
+          def add(a, b):
+              if a is None: return b
+              if b is None: return a
+              if a[0] == b[0] and (a[1] + b[1]) % P == 0: return None
+              if a == b: l = 3 * a[0] * a[0] * pow(2 * a[1], P - 2, P) % P
+              else: l = (b[1] - a[1]) * pow(b[0] - a[0], P - 2, P) % P
+              x = (l * l - a[0] - b[0]) % P
+              return (x, (l * (a[0] - x) - a[1]) % P)
+          def mul(k, p):
+              r = None
+              while k:
+                  if k & 1: r = add(r, p)
+                  p = add(p, p); k >>= 1
+              return r
+          d = secrets.randbelow(N - 1) + 1
+          print(f"{d:064x} {mul(d, G)[0]:064x}")
+          PY
+          read -r OWNER_SECRET OWNER_PUBKEY < owner.txt
+          echo "::add-mask::$OWNER_SECRET"
+          echo "COMMUNITY_IT_OWNER_SECRET=$OWNER_SECRET" >> "$GITHUB_ENV"
+          {
+            echo "BUZZ_IMAGE=$BUZZ_IMAGE"
+            echo "RELAY_URL=ws://localhost:3000"
+            echo "BUZZ_MEDIA_BASE_URL=http://localhost:3000/media"
+            echo "BUZZ_MEDIA_SERVER_DOMAIN=localhost:3000"
+            echo "BUZZ_CORS_ORIGINS=http://localhost:3000"
+            echo "BUZZ_REQUIRE_AUTH_TOKEN=true"
+            echo "BUZZ_REQUIRE_RELAY_MEMBERSHIP=true"
+            echo "BUZZ_AUTO_MIGRATE=true"
+            echo "BUZZ_GIT_CONFORMANCE_PROBE=false"
+            echo "BUZZ_PUSH_ENABLED=false"
+            echo "BUZZ_TERMS_OF_SERVICE_MARKDOWN=# Test rules. Be kind."
+            echo "BUZZ_AGE_ATTESTATION_REQUIRED=true"
+            echo "RELAY_OWNER_PUBKEY=$OWNER_PUBKEY"
+            echo "BUZZ_RELAY_PRIVATE_KEY=$(openssl rand -hex 32)"
+            echo "BUZZ_GIT_HOOK_HMAC_SECRET=$(openssl rand -hex 32)"
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "REDIS_PASSWORD=$(openssl rand -hex 16)"
+            echo "BUZZ_S3_ACCESS_KEY=$(openssl rand -hex 12)"
+            echo "BUZZ_S3_SECRET_KEY=$(openssl rand -hex 24)"
+            echo "RUST_LOG=buzz_relay=info,buzz_auth=info"
+          } > .env
+          rm owner.txt
+
+      - name: Start the relay
+        run: |
+          cd "$RUNNER_TEMP/buzz"
+          docker compose up -d --wait --wait-timeout 300
+          curl -fsS http://localhost:3000/_liveness
+
+      - name: Integration test
+        env:
+          COMMUNITY_IT_RELAY: ws://localhost:3000
+        run: |
+          ./gradlew :androidApp:testDebugUnitTest --console=plain \
+            --tests 'com.cruxcoach.android.communityclient.CommunityServerIntegrationTest' \
+            -i | grep -E 'community-it:|CommunityServerIntegrationTest|FAILED|PASSED|SKIPPED' || true
+          test -f androidApp/build/test-results/testDebugUnitTest/TEST-com.cruxcoach.android.communityclient.CommunityServerIntegrationTest.xml
+          ! grep -qE '<(failure|error|skipped)' androidApp/build/test-results/testDebugUnitTest/TEST-com.cruxcoach.android.communityclient.CommunityServerIntegrationTest.xml
+
+      - name: Relay log on failure
+        if: failure()
+        run: |
+          cd "$RUNNER_TEMP/buzz"
+          docker compose logs --no-color --tail 300 relay
