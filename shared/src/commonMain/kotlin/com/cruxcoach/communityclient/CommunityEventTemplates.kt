@@ -37,8 +37,9 @@ object CommunityEventTemplates {
         )
 
     /** A forum comment (kind:45003) on a post. The Buzz apps tag only the direct parent. */
-    fun forumComment(channelId: String, parentId: String, content: String, createdAt: Long, mentions: List<String> = emptyList()): UnsignedEvent =
-        UnsignedEvent(
+    fun forumComment(channelId: String, parentId: String, content: String, createdAt: Long, mentions: List<String> = emptyList()): UnsignedEvent {
+        require(parentId.isHex(64)) { "not an event id: $parentId" }
+        return UnsignedEvent(
             createdAt = createdAt,
             kind = CommunityKinds.FORUM_COMMENT,
             tags = buildList {
@@ -48,6 +49,7 @@ object CommunityEventTemplates {
             },
             content = content,
         )
+    }
 
     /** Join an open room (NIP-29 kind:9021). */
     fun joinRequest(channelId: String, createdAt: Long): UnsignedEvent =
@@ -78,11 +80,16 @@ object CommunityEventTemplates {
             content = "",
         )
 
-    /** Direct reply to a thread head: one `reply` tag; deeper: `root` + `reply`. */
-    internal fun replyTags(ref: ThreadRef): List<List<String>> =
-        if (ref.rootId == ref.parentId) {
+    /**
+     * Direct reply to a thread head: one `reply` tag; deeper: `root` + `reply`.
+     * Refuses ids that are not event ids, which would turn the reply into a top-level message.
+     */
+    internal fun replyTags(ref: ThreadRef): List<List<String>> {
+        require(ref.rootId.isHex(64) && ref.parentId.isHex(64)) { "not an event id: $ref" }
+        return if (ref.rootId == ref.parentId) {
             listOf(listOf("e", ref.parentId, "", "reply"))
         } else {
             listOf(listOf("e", ref.rootId, "", "root"), listOf("e", ref.parentId, "", "reply"))
         }
+    }
 }

@@ -101,6 +101,16 @@ internal object CommunityTestEvents {
     val nestedReply = event(kind = 9, id = id(12), createdAt = 1_760_025_800,
         tags = listOf(listOf("h", CHANNEL), listOf("e", id(10), "", "root"), listOf("e", id(11), "", "reply")), content = "nested")
 
+    /**
+     * Room notices (kind:40099) as the relay writes them: JSON content with `type`,
+     * `actor` and `target`, one `h` tag, signed with the relay key
+     * (crates/buzz-relay/src/handlers/side_effects.rs).
+     */
+    val memberJoined = event(kind = 40099, id = id(30), pubkey = RELAY, tags = listOf(listOf("h", CHANNEL)),
+        content = """{"type":"member_joined","actor":"$ALICE","target":"$BOB"}""")
+    val channelCreated = event(kind = 40099, id = id(31), pubkey = RELAY, tags = listOf(listOf("h", CHANNEL)),
+        content = """{"type":"channel_created","actor":"$ALICE"}""")
+
     /** NIP-CW example kind:39005. */
     val threadSummary = event(
         kind = 39005,

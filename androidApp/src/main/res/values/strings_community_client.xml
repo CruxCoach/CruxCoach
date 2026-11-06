@@ -63,6 +63,19 @@
     <string name="community_client_reply_action">Reply</string>
     <string name="community_client_edited">(edited)</string>
     <string name="community_client_deleted">This message was deleted.</string>
+    <!-- Room notices from the server: %1$s and %2$s are names -->
+    <string name="community_client_notice_someone">Someone</string>
+    <string name="community_client_notice_joined">%1$s joined</string>
+    <string name="community_client_notice_added">%1$s added %2$s</string>
+    <string name="community_client_notice_left">%1$s left</string>
+    <string name="community_client_notice_removed">%1$s removed %2$s</string>
+    <string name="community_client_notice_topic">%1$s changed the topic to “%2$s”</string>
+    <string name="community_client_notice_topic_cleared">%1$s cleared the topic</string>
+    <string name="community_client_notice_purpose">%1$s changed the description to “%2$s”</string>
+    <string name="community_client_notice_purpose_cleared">%1$s cleared the description</string>
+    <string name="community_client_notice_created">%1$s created this room</string>
+    <string name="community_client_notice_archived">%1$s archived this room</string>
+    <string name="community_client_notice_unarchived">%1$s restored this room</string>
     <plurals name="community_client_replies">
         <item quantity="one">%d reply</item>
         <item quantity="other">%d replies</item>

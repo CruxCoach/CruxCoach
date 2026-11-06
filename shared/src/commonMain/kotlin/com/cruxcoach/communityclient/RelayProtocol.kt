@@ -132,8 +132,13 @@ object CommunityFilters {
         limit = 500,
     )
 
-    /** The root event of a thread. */
-    fun event(id: String): RelayFilter = RelayFilter(ids = listOf(id), limit = 1)
+    /** The head of a thread or a forum topic, scoped to its room like the Buzz apps' lookup. */
+    fun threadRoot(channelId: String, rootId: String): RelayFilter = RelayFilter(
+        ids = listOf(rootId),
+        kinds = listOf(CommunityKinds.STREAM_MESSAGE, CommunityKinds.STREAM_MESSAGE_V2, CommunityKinds.FORUM_POST, CommunityKinds.FORUM_COMMENT),
+        tags = mapOf('h' to listOf(channelId)),
+        limit = 1,
+    )
 
     /** Forum topics in one forum room, history and live. */
     fun forumPosts(channelId: String, limit: Int = 50): RelayFilter = RelayFilter(

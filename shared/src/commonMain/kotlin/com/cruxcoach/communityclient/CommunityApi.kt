@@ -106,7 +106,7 @@ fun splitWindowPage(events: List<CommunityEvent>, channelId: String, cursor: Win
     val boundsEvents = events.filter { it.kind == CommunityKinds.WINDOW_BOUNDS }
     if (boundsEvents.size != 1 || !fromRelay(boundsEvents[0])) return null
     val bounds = WindowBounds.fromEvent(boundsEvents[0], channelId, cursor) ?: return null
-    val rows = events.filter { it.kind in CommunityKinds.STREAM_CONTENT && it.channelId == channelId }
+    val rows = events.filter { it.kind in CommunityKinds.STREAM_CONTENT && it.channelId == channelId && (it.kind !in CommunityKinds.RELAY_SIGNED || fromRelay(it)) }
     val aux = events.filter { it.kind in CommunityKinds.AUX }
     val summaries = events.filter { it.kind == CommunityKinds.THREAD_SUMMARY && fromRelay(it) }.mapNotNull { ThreadSummary.fromEvent(it) }
     return WindowPage(rows, aux, summaries, bounds)

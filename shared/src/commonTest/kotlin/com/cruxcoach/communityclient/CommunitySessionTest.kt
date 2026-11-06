@@ -184,8 +184,9 @@ class CommunitySessionTest {
         runCurrent()
         val subId = factory.last.frames("REQ").last().substringAfter("[\"REQ\",\"").substringBefore('"')
         val fakeMeta = CommunityTestEvents.groupMetadata.copy(pubkey = CommunityTestEvents.ALICE)
+        val fakeNotice = CommunityTestEvents.memberJoined.copy(pubkey = CommunityTestEvents.ALICE)
         val forged = CommunityTestEvents.message.copy(content = "forged")
-        for (e in listOf(fakeMeta, forged, CommunityTestEvents.groupMetadata)) {
+        for (e in listOf(fakeMeta, fakeNotice, forged, CommunityTestEvents.groupMetadata)) {
             factory.last.listener.onMessage("""["EVENT","$subId",${e.toJson()}]""")
         }
         factory.last.listener.onMessage("""["EOSE","$subId"]""")

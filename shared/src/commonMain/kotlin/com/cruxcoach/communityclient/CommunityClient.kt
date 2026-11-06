@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -39,6 +42,8 @@ class CommunityClient(
     private val scope: CoroutineScope,
     /** Monotonic milliseconds, for timing the first room list. */
     private val elapsedMillis: () -> Long = { clock.nowSeconds() * 1000 },
+    /** Steps to the first room list, with milliseconds since [start] (diagnostics only). */
+    private val onTiming: (step: String, millis: Long) -> Unit = { _, _ -> },
 ) {
     val session = CommunitySession(endpoint, socketFactory, signer, verifier, clock, scope)
     val api = CommunityApi(endpoint, http, signer, verifier, clock)
@@ -65,9 +70,15 @@ class CommunityClient(
         watcher = scope.launch {
             // The relay key lets the session drop relay-only kinds signed by anyone else.
             runCatching { api.relayInfo() }.getOrNull()?.relayPubkey?.let { session.relayPubkey = it }
+            timing("relay_info")
             session.start()
             launch {
-                session.state.collect { state -> if (state == SessionState.Ready) refreshRooms() }
+                session.state.collect { state ->
+                    if (state == SessionState.Ready) {
+                        timing("signed_in")
+                        refreshRooms()
+                    }
+                }
             }
             launch {
                 session.state.first { it == SessionState.Ready }
@@ -91,10 +102,13 @@ class CommunityClient(
                 .mapNotNull { ChannelMembers.fromEvent(it) }
                 .groupBy { it.channelId }
                 .mapValues { (_, lists) -> lists.maxBy { it.revisionAt } }
+            timing("memberships")
             val mine = memberLists.values.filter { it.contains(me) }.map { it.channelId }.toSet()
             val metas = buildList {
                 if (mine.isNotEmpty()) addAll(session.query(listOf(CommunityFilters.channelMetadata(mine.toList()))))
+                timing("my_rooms")
                 addAll(session.query(listOf(CommunityFilters.channelDirectory())))
+                timing("directory")
             }.mapNotNull { CommunityChannel.fromEvent(it) }
             val roles = memberLists.filterKeys { it in mine }.mapValues { (_, list) -> list.roleOf(me) }
             val list = buildRoomList(metas, mine, emptyMap(), roles)
@@ -104,6 +118,11 @@ class CommunityClient(
             if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
             _rooms.value = _rooms.value.copy(loading = false, error = e.message ?: "loading rooms failed")
         }
+    }
+
+    /** Reports a step until the first room list is there. */
+    private fun timing(step: String) {
+        if (_rooms.value.firstListAfterSeconds == null) onTiming(step, elapsedMillis() - startedAt)
     }
 
     /** Fetches the kind:0 profiles of [pubkeys] not asked for yet. */
@@ -180,28 +199,42 @@ class CommunityClient(
         awaitClose { live.cancel() }
     }.conflate()
 
-    /** A thread: its head and every reply, live. */
-    fun thread(channelId: String, rootId: String): Flow<ThreadView> = callbackFlow {
+    /**
+     * A thread: its head and every reply, live. The head lookup runs next to the
+     * reply subscription, so a slow lookup never holds the replies back.
+     */
+    fun thread(channelId: String, rootId: String): Flow<ThreadView> = flow {
         session.state.first { it == SessionState.Ready }
-        val root = runCatching { session.query(listOf(CommunityFilters.event(rootId))).firstOrNull() }.getOrNull()
         val buffer = TimelineBuffer(channelId, topLevelOnly = false)
-        var loaded = false
-        fun emit(error: String? = null) {
-            // Every row of this subscription tags the root, so all but the root are replies.
-            val all = buffer.messages()
-            trySend(ThreadView(all.firstOrNull { it.id == rootId }, all.filter { it.id != rootId }, loading = !loaded, error = error))
+        var repliesLoaded = false
+        var rootLoaded = false
+        var error: String? = null
+        val head = flow {
+            val event = try {
+                session.query(listOf(CommunityFilters.threadRoot(channelId, rootId)), ROOT_LOOKUP_TIMEOUT_MS).firstOrNull()
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                null
+            } catch (e: CommunityException) {
+                null
+            }
+            emit(ThreadInput.Head(event))
         }
-        root?.let { buffer.add(listOf(it)) }
-        val job = launch {
-            session.subscribe(listOf(CommunityFilters.thread(channelId, rootId))).collect { item ->
-                when (item) {
-                    is SubscriptionItem.Event -> if (buffer.add(listOf(item.event)) && loaded) emit()
-                    SubscriptionItem.Eose -> { loaded = true; emit() }
-                    is SubscriptionItem.Closed -> { loaded = true; emit(item.reason) }
+        val replies = session.subscribe(listOf(CommunityFilters.thread(channelId, rootId))).map { ThreadInput.Item(it) }
+        merge(head, replies).collect { input ->
+            val changed = when (input) {
+                is ThreadInput.Head -> { rootLoaded = true; input.event?.let { buffer.add(listOf(it)) }; true }
+                is ThreadInput.Item -> when (val item = input.item) {
+                    is SubscriptionItem.Event -> buffer.add(listOf(item.event))
+                    SubscriptionItem.Eose -> { repliesLoaded = true; true }
+                    is SubscriptionItem.Closed -> { repliesLoaded = true; error = item.reason; true }
                 }
             }
+            if (changed && repliesLoaded) {
+                // Every row of the subscription tags the root, so all but the root are replies.
+                val all = buffer.messages()
+                emit(ThreadView(all.firstOrNull { it.id == rootId }, all.filter { it.id != rootId }, loading = !rootLoaded, error = error))
+            }
         }
-        awaitClose { job.cancel() }
     }.conflate()
 
     /** A forum room: topics, newest first, and how many comments each has. */
@@ -234,6 +267,15 @@ class CommunityClient(
         awaitClose { postsJob.cancel(); commentsJob.cancel() }
     }.conflate()
 }
+
+/** What the thread view merges: the head lookup's answer and the reply subscription. */
+private sealed interface ThreadInput {
+    data class Head(val event: CommunityEvent?) : ThreadInput
+    data class Item(val item: SubscriptionItem) : ThreadInput
+}
+
+/** How long a thread waits for its head before showing the replies without it. */
+private const val ROOT_LOOKUP_TIMEOUT_MS = 8_000L
 
 /**
  * The join steps before the first connection: read the rules, accept them, claim

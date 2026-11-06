@@ -61,14 +61,14 @@ authenticated WebSocket, "HTTP" a NIP-98 request.
 | Stream messages | kind 9 with `["h", room]` (40002 rich messages are read too; 40001 legacy) | WS | Markdown content. | ✅ |
 | Timeline pages | NIP-CW channel window over `POST /query`: `top_level`, `include_summaries`, `include_aux`, composite cursor `until` + `before_id`; returns rows, aux, kind 39005 thread summaries and exactly one kind 39006 bounds | HTTP | Only top-level rows; exhaustion only from 39006 (`has_more`), `d` tag must echo the request cursor. Not served on WS REQ. | ✅ head page |
 | Live messages | REQ `#h:[room]`, `since` now, kinds 9/40002/40099 + aux | WS | Merge by id; replies update thread counts. | ✅ |
-| Threads | NIP-10 marked tags: direct reply `["e", head, "", "reply"]`; deeper `root` + `reply`. Broadcast reply adds `["broadcast", "1"]`. Thread reads: REQ `#e:[head]`, or NIP-CW thread windows / legacy oldest-first paging over `/query` (`depth_limit`, `thread_cursor`) | WS / HTTP | Max depth 100. Unknown parents are refused. | ✅ via REQ |
+| Threads | NIP-10 marked tags: direct reply `["e", head, "", "reply"]`; deeper `root` + `reply`. Broadcast reply adds `["broadcast", "1"]`. Thread reads: the head by `ids` + `#h` + kinds, replies by REQ `#e:[head]`, or NIP-CW thread windows / legacy oldest-first paging over `/query` (`depth_limit`, `thread_cursor`) | WS / HTTP | Max depth 100. Unknown parents are refused. | ✅ via REQ |
 | Thread summaries | kind 39005 (`reply_count`, `descendant_count`, `last_reply_at`, `participants`) | HTTP overlay | Only via the window query. | ✅ |
 | Reactions | kind 7 with `["e", target]`; the relay derives the room from the target. Custom emoji: NIP-30 `emoji` tags, kind 30030 sets | WS | Subscribe with `#h` to get them live. | shown, not sent |
 | Edits | kind 40003 with `h` and `["e", original]`; author (or the agent's owner) only | WS | Newest edit wins. | shown, not sent |
 | Deletes | kind 5 (own, NIP-09) or kind 9005 (own, or admin) | WS | Hide the row. | shown, not sent |
 | Mentions | `["p", key]` notifies (key must be a room member), `["mention", key]` names without notifying | WS | Member picker; the relay rejects `p` for non-members. | — |
 | Pins, bookmarks, scheduled | kinds 40004, 40005, 40006, reminders 40007 / 30300 (NIP-ER, NIP-44-encrypted to self) | WS | Phase 2. | — |
-| Diffs, system rows | kind 40008, 40099 | WS | Show 40099 as a small system row. | read |
+| Diffs, room notices | kind 40008; kind 40099 signed by the relay key, content JSON `type` (`member_joined`, `member_left`, `member_removed`, `topic_changed`, `purpose_changed`, `channel_created`, `channel_archived`, `channel_unarchived`), `actor`, `target`, `topic`/`purpose` | WS / HTTP | Show 40099 as a one-line notice; hide unknown types; accept it only from the relay key (it is not in the relay's relay-only list, so the client checks the signer). | ✅ notices, diffs read |
 
 ### Media, search, DMs, canvases
 

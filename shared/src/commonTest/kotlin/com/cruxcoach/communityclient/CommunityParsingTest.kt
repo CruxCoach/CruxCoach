@@ -182,4 +182,27 @@ class CommunityParsingTest {
         // The same reply again changes nothing.
         assertFalse(buffer.add(listOf(CommunityTestEvents.reply)))
     }
+
+    @Test
+    fun systemNotices_parseKnownTypes_andHideUnknownOnes() {
+        val joined = assertNotNull(CommunityMessage.fromEvent(CommunityTestEvents.memberJoined))
+        assertEquals(SystemNotice(SystemNotice.Type.MEMBER_JOINED, ALICE, BOB, null), joined.notice)
+        assertTrue(joined.isTopLevel)
+        assertEquals(listOf(ALICE, BOB), joined.notice?.pubkeys)
+        assertEquals(SystemNotice.Type.CHANNEL_CREATED, CommunityMessage.fromEvent(CommunityTestEvents.channelCreated)?.notice?.type)
+
+        // A cleared topic arrives as an empty string; a bad pubkey is dropped, not shown.
+        assertEquals(
+            SystemNotice(SystemNotice.Type.TOPIC_CHANGED, null, null, null),
+            SystemNotice.parse("""{"type":"topic_changed","actor":"not-a-key","topic":"  "}"""),
+        )
+        assertEquals("Boards", SystemNotice.parse("""{"type":"topic_changed","actor":"$ALICE","topic":"Boards"}""")?.text)
+
+        // Unknown types and junk are not shown at all, rather than as raw JSON.
+        assertNull(CommunityMessage.fromEvent(CommunityTestEvents.memberJoined.copy(content = """{"type":"huddle_party"}""")))
+        assertNull(CommunityMessage.fromEvent(CommunityTestEvents.memberJoined.copy(content = "not json")))
+        assertNull(CommunityMessage.fromEvent(CommunityTestEvents.memberJoined.copy(content = """{"type":7}""")))
+        // A normal message carries no notice.
+        assertNull(CommunityMessage.fromEvent(CommunityTestEvents.message)?.notice)
+    }
 }

@@ -105,6 +105,7 @@ class CommunityClientHolder @Inject constructor(
                 clock = clock,
                 scope = scope,
                 elapsedMillis = { SystemClock.elapsedRealtime() },
+                onTiming = { step, millis -> Log.i(TAG, "event=timing step=$step ms=$millis") },
             ).also { started ->
                 started.start()
                 // Time to the first room list, for the spike report (logcat only, no content).

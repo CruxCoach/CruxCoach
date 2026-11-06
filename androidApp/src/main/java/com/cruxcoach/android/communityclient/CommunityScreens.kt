@@ -57,6 +57,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -68,6 +69,7 @@ import com.cruxcoach.communityclient.CommunityMessage
 import com.cruxcoach.communityclient.CommunityProfile
 import com.cruxcoach.communityclient.RoomListItem
 import com.cruxcoach.communityclient.SessionState
+import com.cruxcoach.communityclient.SystemNotice
 import com.cruxcoach.communityclient.ThreadSummary
 import com.halilibo.richtext.markdown.Markdown
 import com.halilibo.richtext.ui.material3.RichText
@@ -318,7 +320,7 @@ private fun RoomRow(item: RoomListItem, onOpen: (String, String) -> Unit, onJoin
 @Composable
 fun CommunityRoomScreen(
     onNavigateBack: () -> Unit,
-    onOpenThread: (channelId: String, rootId: String, type: String) -> Unit,
+    onOpenThread: (channelId: String, type: String, rootId: String) -> Unit,
     viewModel: CommunityRoomViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -355,8 +357,8 @@ fun CommunityRoomScreen(
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            if (state.isForum) ForumList(state, onOpen = { onOpenThread(viewModel.channelId, it, type) })
-            else StreamList(state, onOpenThread = { onOpenThread(viewModel.channelId, it, type) })
+            if (state.isForum) ForumList(state, onOpen = { onOpenThread(viewModel.channelId, type, it) })
+            else StreamList(state, onOpenThread = { onOpenThread(viewModel.channelId, type, it) })
         }
     }
 }
@@ -381,13 +383,18 @@ private fun StreamList(state: CommunityRoomState, onOpenThread: (String) -> Unit
         contentPadding = PaddingValues(vertical = 8.dp),
     ) {
         items(newestFirst, key = { it.id }) { message ->
-            MessageRow(
-                message = message,
-                profiles = state.profiles,
-                me = state.me,
-                thread = stream.threads[message.id],
-                onOpenThread = { onOpenThread(message.id) },
-            )
+            val notice = message.notice
+            if (notice != null) {
+                NoticeRow(notice, message.createdAt, state.profiles)
+            } else {
+                MessageRow(
+                    message = message,
+                    profiles = state.profiles,
+                    me = state.me,
+                    thread = stream.threads[message.id],
+                    onOpenThread = { onOpenThread(message.id) },
+                )
+            }
         }
     }
 }
@@ -522,6 +529,34 @@ private fun MessageRow(
             Text(stringResource(R.string.community_client_reply_action), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+/** A relay notice (someone joined, the topic changed) as one quiet line. */
+@Composable
+private fun NoticeRow(notice: SystemNotice, createdAt: Long, profiles: Map<String, CommunityProfile>) {
+    val actor = notice.actor?.let { authorLabel(it, profiles) } ?: stringResource(R.string.community_client_notice_someone)
+    val target = notice.target?.let { authorLabel(it, profiles) } ?: stringResource(R.string.community_client_notice_someone)
+    val text = when (notice.type) {
+        SystemNotice.Type.MEMBER_JOINED ->
+            if (notice.target == null || notice.target == notice.actor) stringResource(R.string.community_client_notice_joined, actor)
+            else stringResource(R.string.community_client_notice_added, actor, target)
+        SystemNotice.Type.MEMBER_LEFT -> stringResource(R.string.community_client_notice_left, actor)
+        SystemNotice.Type.MEMBER_REMOVED -> stringResource(R.string.community_client_notice_removed, actor, target)
+        SystemNotice.Type.TOPIC_CHANGED -> notice.text?.let { stringResource(R.string.community_client_notice_topic, actor, it) }
+            ?: stringResource(R.string.community_client_notice_topic_cleared, actor)
+        SystemNotice.Type.PURPOSE_CHANGED -> notice.text?.let { stringResource(R.string.community_client_notice_purpose, actor, it) }
+            ?: stringResource(R.string.community_client_notice_purpose_cleared, actor)
+        SystemNotice.Type.CHANNEL_CREATED -> stringResource(R.string.community_client_notice_created, actor)
+        SystemNotice.Type.CHANNEL_ARCHIVED -> stringResource(R.string.community_client_notice_archived, actor)
+        SystemNotice.Type.CHANNEL_UNARCHIVED -> stringResource(R.string.community_client_notice_unarchived, actor)
+    }
+    Text(
+        "$text · ${formatTime(createdAt)}",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp).testTag("community_notice"),
+    )
 }
 
 @Composable

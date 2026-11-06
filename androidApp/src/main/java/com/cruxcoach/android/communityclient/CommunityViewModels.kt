@@ -188,7 +188,9 @@ class CommunityRoomViewModel @Inject constructor(
     }
 
     private fun requestAuthors(c: CommunityClient, stream: StreamTimeline, forum: ForumView) {
-        val authors = stream.messages.map { it.author } + stream.threads.values.flatMap { it.participants } + forum.posts.map { it.author }
+        // A notice is signed by the relay; the people it names are actor and target.
+        val authors = stream.messages.flatMap { it.notice?.pubkeys ?: listOf(it.author) } +
+            stream.threads.values.flatMap { it.participants } + forum.posts.map { it.author }
         c.requestProfiles(authors.distinct())
     }
 

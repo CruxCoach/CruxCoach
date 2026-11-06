@@ -44,6 +44,8 @@ data class CommunityMessage(
     val isDeleted: Boolean = false,
     /** Emoji → authors who reacted with it. */
     val reactions: Map<String, Set<String>> = emptyMap(),
+    /** Set for a relay notice (kind:40099); [content] is then its raw JSON. */
+    val notice: SystemNotice? = null,
 ) {
     val isReply: Boolean get() = thread != null
     val displayContent: String get() = editedContent ?: content
@@ -63,6 +65,8 @@ data class CommunityMessage(
         fun fromEvent(event: CommunityEvent): CommunityMessage? {
             if (event.kind !in MESSAGE_KINDS) return null
             val channelId = event.channelId ?: return null
+            // A notice of an unknown type is not shown, as in the Buzz apps.
+            val notice = if (event.kind == CommunityKinds.SYSTEM_MESSAGE) SystemNotice.parse(event.content) ?: return null else null
             return CommunityMessage(
                 id = event.id,
                 channelId = channelId,
@@ -73,6 +77,46 @@ data class CommunityMessage(
                 thread = ThreadRef.of(event),
                 isBroadcast = event.tags.any { it.size >= 2 && it[0] == "broadcast" && it[1] == "1" },
                 mentions = event.tagValues("p").filter { it.isHex(64) }.distinct(),
+                notice = notice,
+            )
+        }
+    }
+}
+
+/**
+ * A room notice the relay writes and signs (kind:40099): JSON content with a `type`,
+ * the `actor` and, for member changes, the `target`. Types and fields as the Buzz
+ * apps read them at the pinned version (mobile/lib/features/channels/timeline_message.dart).
+ */
+data class SystemNotice(val type: Type, val actor: String?, val target: String?, val text: String?) {
+    enum class Type(val wire: String) {
+        MEMBER_JOINED("member_joined"),
+        MEMBER_LEFT("member_left"),
+        MEMBER_REMOVED("member_removed"),
+        TOPIC_CHANGED("topic_changed"),
+        PURPOSE_CHANGED("purpose_changed"),
+        CHANNEL_CREATED("channel_created"),
+        CHANNEL_ARCHIVED("channel_archived"),
+        CHANNEL_UNARCHIVED("channel_unarchived"),
+    }
+
+    /** The pubkeys the notice names, for loading their profiles. */
+    val pubkeys: List<String> get() = listOfNotNull(actor, target).distinct()
+
+    companion object {
+        fun parse(content: String): SystemNotice? {
+            val obj = parseObject(content) ?: return null
+            fun string(key: String) = (obj[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            val type = Type.entries.firstOrNull { it.wire == string("type") } ?: return null
+            return SystemNotice(
+                type = type,
+                actor = string("actor")?.takeIf { it.isHex(64) },
+                target = string("target")?.takeIf { it.isHex(64) },
+                text = when (type) {
+                    Type.TOPIC_CHANGED -> string("topic")
+                    Type.PURPOSE_CHANGED -> string("purpose")
+                    else -> null
+                }?.trim()?.ifEmpty { null },
             )
         }
     }

@@ -91,8 +91,11 @@ object CommunityKinds {
     /** Kinds that change rows already shown: reactions, deletions, edits. */
     val AUX = listOf(DELETION, REACTION, GROUP_DELETE_EVENT, STREAM_MESSAGE_EDIT)
 
-    /** Kinds that only the relay may sign. */
-    val RELAY_SIGNED = setOf(GROUP_METADATA, GROUP_ADMINS, GROUP_MEMBERS, THREAD_SUMMARY, WINDOW_BOUNDS, MEMBER_ADDED, MEMBER_REMOVED)
+    /**
+     * Kinds the client accepts only from the relay's key. Room notices (40099) are
+     * among them: from any other key, a notice could fake "X removed Y".
+     */
+    val RELAY_SIGNED = setOf(GROUP_METADATA, GROUP_ADMINS, GROUP_MEMBERS, THREAD_SUMMARY, WINDOW_BOUNDS, SYSTEM_MESSAGE, MEMBER_ADDED, MEMBER_REMOVED)
 }
 
 internal val CommunityJson = Json {

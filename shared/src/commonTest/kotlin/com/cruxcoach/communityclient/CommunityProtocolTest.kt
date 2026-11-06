@@ -4,6 +4,7 @@ import com.cruxcoach.communityclient.CommunityTestEvents.CHANNEL
 import com.cruxcoach.communityclient.CommunityTestEvents.id
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -41,6 +42,11 @@ class CommunityProtocolTest {
         // A head request carries neither half of the cursor.
         val head = CommunityFilters.channelWindow(CHANNEL).toJson()
         assertFalse("until" in head || "before_id" in head)
+        // A thread head is looked up within its room, as the Buzz apps do.
+        assertEquals(
+            """{"kinds":[9,40002,45001,45003],"ids":["${id(10)}"],"#h":["$CHANNEL"],"limit":1}""",
+            CommunityFilters.threadRoot(CHANNEL, id(10)).toJson(),
+        )
     }
 
     @Test
@@ -62,6 +68,11 @@ class CommunityProtocolTest {
         assertEquals(45003, CommunityEventTemplates.forumComment(CHANNEL, id(10), "c", 1).kind)
         assertEquals(listOf(listOf("h", CHANNEL), listOf("e", id(10), "", "reply")), CommunityEventTemplates.forumComment(CHANNEL, id(10), "c", 1).tags)
         assertEquals(UnsignedEvent(5, 9021, listOf(listOf("h", CHANNEL)), ""), CommunityEventTemplates.joinRequest(CHANNEL, 5))
+
+        // Anything but an event id would make the relay treat a reply as a top-level message.
+        assertFailsWith<IllegalArgumentException> { CommunityEventTemplates.streamMessage(CHANNEL, "re", 100, ThreadRef("stream", "stream")) }
+        assertFailsWith<IllegalArgumentException> { CommunityEventTemplates.streamMessage(CHANNEL, "re", 100, ThreadRef(id(10), "")) }
+        assertFailsWith<IllegalArgumentException> { CommunityEventTemplates.forumComment(CHANNEL, "forum", "c", 1) }
 
         val auth = CommunityEventTemplates.auth("wss://community.example", "chal", 7)
         assertEquals(22242, auth.kind)
