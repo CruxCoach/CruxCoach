@@ -37,6 +37,22 @@ class LoadStepsTest {
     }
 
     @Test
+    fun theBiggerStepIsAllowedOnlyWhenNothingKeepsLoadsCareful() {
+        val adult = CoachProfile(ageBand = AgeBand.Y18_39, experience = ExperienceBand.Y3_5)
+        val noRamp: () -> Result<ReturnState?> = { Result.success(null) }
+        assertEquals(true, LoadSteps.mayStepUp(comeback = false, openInjury = false, coach = adult, returnState = noRamp))
+        assertEquals(false, LoadSteps.mayStepUp(comeback = true, openInjury = false, coach = adult, returnState = noRamp))
+        assertEquals(false, LoadSteps.mayStepUp(comeback = false, openInjury = true, coach = adult, returnState = noRamp))
+        assertEquals(false, LoadSteps.mayStepUp(false, false, adult.copy(ageBand = AgeBand.UNDER_16), noRamp))
+        assertEquals(false, LoadSteps.mayStepUp(false, false, adult.copy(ageBand = AgeBand.Y16_17), noRamp))
+        assertEquals(false, LoadSteps.mayStepUp(false, false, adult.copy(experience = ExperienceBand.UNDER_1), noRamp))
+        val ramp = ReturnState(daysOff = 20, week = 1, setsFactor = 0.6, noMaxFinger = true, fingerOnly = false, reason = ReturnReason.entries.first())
+        assertEquals(false, LoadSteps.mayStepUp(false, false, adult) { Result.success(ramp) })
+        // A return ramp that could not be worked out keeps loads careful (fail closed, owner 2026-11-06).
+        assertEquals(false, LoadSteps.mayStepUp(false, false, adult) { Result.failure(IllegalStateException("no data")) })
+    }
+
+    @Test
     fun smallLoadsMoveOneStepAtATimeAndThatWins() {
         // Simulation: radial/ulnar deviation went from 3 to 5 kg between two trainings.
         assertEquals(4.0, LoadSteps.adjust(wrist, 5.0, sets(wrist, 3.0, rir = 1), 1.0, mayStepUp = true))

@@ -722,14 +722,13 @@ class AthleteService @Inject constructor(
 
     /**
      * Loads may take the bigger step after an easy training ([LoadSteps]) unless something keeps them careful
-     * (owner 2026-11-06): an open injury, a comeback session, the return ramp after a break, a climber under 18
-     * or in the first year.
+     * (owner 2026-11-06, [LoadSteps.mayStepUp]): an open injury, a comeback session, the return ramp after a break,
+     * a climber under 18 or in the first year. Anything that cannot be read keeps them careful too.
      */
     fun loadsMayStepUp(comebackInjury: String? = null): Boolean = runCatching {
-        if (comebackInjury != null || repo.activeInjuries().isNotEmpty()) return false
-        val coach = repo.profile().coach
-        if (coach.ageBand == AgeBand.UNDER_16 || coach.ageBand == AgeBand.Y16_17 || coach.experience == ExperienceBand.UNDER_1) return false
-        todayCoach().returnState(activities(days = 7 * 26), today()) == null
+        LoadSteps.mayStepUp(comeback = comebackInjury != null, openInjury = repo.activeInjuries().isNotEmpty(), coach = repo.profile().coach) {
+            runCatching { todayCoach().returnStateResult(activities(days = 7 * 26), today()) }.getOrElse { Result.failure(it) }
+        }
     }.getOrDefault(false)
 
     // ── Performance values ───────────────────────────────────────────
