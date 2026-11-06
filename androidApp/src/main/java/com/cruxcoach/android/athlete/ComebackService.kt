@@ -105,19 +105,38 @@ class ComebackService(private val service: AthleteService) {
     /** Starts session [index] of the injury's stage as a training; the athlete adjusts loads in it. */
     fun startSession(injuryId: String, index: Int, name: String): String? {
         val injury = repo.injury(injuryId) ?: return null
-        val routine = Comeback.routine(injury, index, name, lastLoad = { slug, grip, side -> lastLoad(injuryId, slug, grip, side) },
+        val kind = injury.activePlan?.let { Comeback.stage(injury, it).sessions.getOrNull(index)?.kind }
+        val routine = Comeback.routine(injury, index, name, lastLoad = { slug, grip, side -> lastLoad(injuryId, slug, grip, side, kind) },
             incrementKg = repo.profile().smallestIncrementKg.coerceAtLeast(0.5)) ?: return null
         return service.startWorkout(routine, name, trimSets = false)
     }
 
-    /** The last load of a completed work set in a comeback session of this injury. */
-    fun lastLoad(injuryId: String, slug: String, grip: Grip?, side: Side?): Double? {
+    /**
+     * The last load of a completed work set in a comeback session of this injury; with [kind], only from sessions
+     * of that kind, so the light 30-second tendon holds and the strength holds keep their own loads (the training
+     * simulation found the tendon session planned with the strength session's load, issue #59).
+     */
+    fun lastLoad(injuryId: String, slug: String, grip: Grip?, side: Side?, kind: ComebackSessionKind? = null): Double? {
+        val injury = repo.injury(injuryId)
         val ids = mutableMapOf<String, Boolean>()
         return repo.history(slug, 120).asSequence()
             .filter { it.setType == com.cruxcoach.athlete.model.SetType.WORK && it.side == side && (grip == null || it.grip == grip) }
-            .filter { s -> ids.getOrPut(s.workoutId) { repo.workout(s.workoutId)?.routineId?.startsWith(Comeback.ROUTINE_PREFIX + injuryId + ":") == true } }
+            .filter { s ->
+                ids.getOrPut(s.workoutId) {
+                    val routineId = repo.workout(s.workoutId)?.routineId
+                    routineId?.startsWith(Comeback.ROUTINE_PREFIX + injuryId + ":") == true && (kind == null || kindOf(injury, routineId) == kind)
+                }
+            }
             .sortedByDescending { it.completedAt ?: 0L }
             .firstOrNull()?.loadKg
+    }
+
+    /** The kind of session a comeback training was (its stage and index in the routine id). */
+    private fun kindOf(injury: Injury?, routineId: String): ComebackSessionKind? {
+        val parts = routineId.removePrefix(Comeback.ROUTINE_PREFIX).split(':')
+        val stage = parts.getOrNull(1)?.toIntOrNull() ?: return null
+        val index = parts.getOrNull(2)?.toIntOrNull() ?: return null
+        return injury?.let { Comeback.ladder(it).stages.getOrNull(stage)?.sessions?.getOrNull(index)?.kind }
     }
 
     /**

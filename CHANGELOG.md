@@ -488,6 +488,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one plans at least two weight steps more, so a start that was too light catches up. Not for finger work,
   and not during an injury, the return after a break, a comeback plan or for climbers under 18 or in their
   first year. Below 10 kg a load rises by at most one step per training.
+- Comeback plan: a strength session starts from the last strength session's loads, no longer from the
+  light tendon holds done earlier the same day (and the other way round).
 
 ## [0.2.4] - 2026-10-25
 
