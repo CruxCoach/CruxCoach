@@ -11,7 +11,7 @@
     <string name="yr_so_far_title">Dein %1$d bisher</string>
     <string name="yr_so_far_text">Bisher %1$s und %2$s. Der ganze Rückblick öffnet sich, sobald ein Jahr %3$s oder %4$s hat.</string>
     <string name="yr_little_title">Dein %1$d</string>
-    <string name="yr_little_text">In diesem Jahr waren es %1$s und %2$s. Der ganze Rückblick öffnet sich, sobald ein Jahr %3$s oder %4$s hat.</string>
+    <string name="yr_little_text">Insgesamt %1$s und %2$s. Der ganze Rückblick öffnet sich, sobald ein Jahr %3$s oder %4$s hat.</string>
     <string name="yr_test_date">Testdatum (nur Test-Apps)</string>
     <string name="yr_test_date_real">Heute</string>
 

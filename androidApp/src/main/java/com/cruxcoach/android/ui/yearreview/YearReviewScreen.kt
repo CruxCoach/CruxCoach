@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -231,10 +232,12 @@ internal fun PageContent(page: ReviewPage, index: Int, count: Int) {
     val appear = remember(index) { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(index) { if (animate) appear.animateTo(1f, tween(450)) }
     var explaining by remember(index) { mutableStateOf(false) }
+    // Each page starts at its top, also after a long page was scrolled down.
+    val scroll = remember(index) { ScrollState(0) }
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(horizontal = 28.dp, vertical = 16.dp)
             .alpha(appear.value),
         verticalArrangement = Arrangement.spacedBy(12.dp),
