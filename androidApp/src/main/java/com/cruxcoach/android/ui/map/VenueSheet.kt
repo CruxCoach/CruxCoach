@@ -343,6 +343,8 @@ fun VenueDetails(
     /** For a board the map cannot open directly (no layout in the data):
      *  the gym search with this place already picked, to choose the exact board. */
     onChooseBoard: () -> Unit = {},
+    /** Sections after the contact rows (the spray walls at this place). */
+    extra: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     val contact = venue.contactBoard()
@@ -384,6 +386,7 @@ fun VenueDetails(
                 }
             }
         }
+        extra()
     }
 }
 
