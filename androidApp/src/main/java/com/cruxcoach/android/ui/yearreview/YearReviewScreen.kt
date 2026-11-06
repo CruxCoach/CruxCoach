@@ -394,10 +394,15 @@ private fun SoFar(year: Int, review: YearReview?, onClose: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         IconButton(onClick = onClose) { Icon(Icons.Filled.Close, stringResource(R.string.yr_close), tint = PageText) }
-        Text(stringResource(R.string.yr_so_far_title, year), color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(littleTitle(year, review), color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(soFarText(review), color = PageMuted, style = MaterialTheme.typography.bodyLarge)
     }
 }
+
+/** "Your 2026 so far" while the year runs, "Your 2025" once it is over. */
+@Composable
+fun littleTitle(year: Int, review: YearReview?): String =
+    stringResource(if (review?.isFinal == true) R.string.yr_little_title else R.string.yr_so_far_title, year)
 
 /** "3 climbing days and 12 sends so far", without judgement, and what opens the full review. */
 @Composable
@@ -405,7 +410,7 @@ fun soFarText(review: YearReview?): String {
     val days = review?.volume?.climbingDays ?: 0
     val sends = review?.volume?.sends ?: 0
     return stringResource(
-        R.string.yr_so_far_text,
+        if (review?.isFinal == true) R.string.yr_little_text else R.string.yr_so_far_text,
         pluralStringResource(R.plurals.yr_climbing_days, days, days.toString()),
         pluralStringResource(R.plurals.yr_sends, sends, sends.toString()),
         pluralStringResource(R.plurals.yr_climbing_days, com.cruxcoach.domain.yearreview.YearReviewComputer.MIN_CLIMBING_DAYS, com.cruxcoach.domain.yearreview.YearReviewComputer.MIN_CLIMBING_DAYS.toString()),

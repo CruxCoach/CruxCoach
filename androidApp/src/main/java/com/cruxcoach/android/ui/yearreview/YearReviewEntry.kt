@@ -128,7 +128,7 @@ fun YearReviewStatsEntry(onOpen: (Int) -> Unit, viewModel: YearReviewEntryViewMo
                 Text(stringResource(if (soFar) R.string.yr_card_title_so_far else R.string.yr_card_title, selected), fontWeight = FontWeight.Bold)
             }
         } else if (review != null) {
-            Text(stringResource(R.string.yr_so_far_title, selected), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            Text(littleTitle(selected, review), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
             Text(soFarText(review), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (YearReviewTestDate.available) TestDates(state.today) { viewModel.setTestDate(it) }
