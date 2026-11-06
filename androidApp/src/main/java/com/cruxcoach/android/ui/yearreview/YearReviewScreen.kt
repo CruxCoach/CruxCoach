@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -69,6 +68,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -80,6 +80,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -245,7 +246,7 @@ internal fun PageContent(page: ReviewPage, index: Int, count: Int) {
         }
         page.heroLabel?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.titleMedium) }
         page.lead?.let { Text(it, color = PageText, style = MaterialTheme.typography.bodyLarge) }
-        page.months?.let { MonthBars(it) }
+        page.months?.let { MonthBars(it, page.busiestMonth) }
         if (page.rows.isNotEmpty()) Spacer(Modifier.height(4.dp))
         RowsList(page.rows)
         page.howCalculated?.let {
@@ -280,29 +281,63 @@ private fun RowsList(rows: List<ReviewRow>) {
                         .background(colors[board] ?: PageMuted),
                 )
             }
-            Column(Modifier.weight(1f)) {
-                Text(row.label, color = PageMuted, style = MaterialTheme.typography.bodyLarge)
-                row.detail?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, color = PageFaint, style = MaterialTheme.typography.bodyMedium)
-                }
+            LabelValue(
+                Modifier.weight(1f),
+                label = {
+                    Column {
+                        Text(row.label, color = PageMuted, style = MaterialTheme.typography.bodyLarge)
+                        row.detail?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, color = PageFaint, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                },
+                value = {
+                    if (row.value.isNotEmpty()) {
+                        Text(row.value, color = PageText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
+                    }
+                },
+            )
+        }
+    }
+}
+
+/**
+ * The label on the left and the value on the right, the value taking at most about half the
+ * width. When that would leave the label too narrow for its longest word (large fonts, long
+ * German words), the value moves under the label instead of breaking words apart.
+ */
+@Composable
+private fun LabelValue(modifier: Modifier, label: @Composable () -> Unit, value: @Composable () -> Unit) {
+    Layout(contents = listOf(label, value), modifier = modifier) { (labelPart, valuePart), constraints ->
+        val label = labelPart.first()
+        val value = valuePart.firstOrNull()
+        val width = constraints.maxWidth
+        val gap = 12.dp.roundToPx()
+        val valueWidth = value?.let {
+            val cap = maxOf(width * 55 / 100, it.minIntrinsicWidth(Constraints.Infinity))
+            minOf(it.maxIntrinsicWidth(Constraints.Infinity), cap)
+        } ?: 0
+        val stacked = label.minIntrinsicWidth(Constraints.Infinity) + gap + valueWidth > width
+        if (value != null && stacked) {
+            val l = label.measure(Constraints(maxWidth = width))
+            val v = value.measure(Constraints(maxWidth = width))
+            layout(width, l.height + v.height) {
+                l.place(0, 0)
+                v.place(width - v.width, l.height)
             }
-            if (row.value.isNotEmpty()) {
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    row.value,
-                    color = PageText,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.widthIn(max = 200.dp),
-                )
+        } else {
+            val v = value?.measure(Constraints(maxWidth = valueWidth.coerceAtMost(width)))
+            val l = label.measure(Constraints(maxWidth = (width - (v?.let { it.width + gap } ?: 0)).coerceAtLeast(0)))
+            layout(width, maxOf(l.height, v?.height ?: 0)) {
+                l.place(0, 0)
+                v?.place(width - v.width, 0)
             }
         }
     }
 }
 
 @Composable
-private fun MonthBars(perMonth: List<Int>) {
+private fun MonthBars(perMonth: List<Int>, busiest: Int?) {
     val most = (perMonth.maxOrNull() ?: 0).coerceAtLeast(1)
     val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     Row(
@@ -313,14 +348,17 @@ private fun MonthBars(perMonth: List<Int>) {
         verticalAlignment = Alignment.Bottom,
     ) {
         perMonth.forEachIndexed { i, days ->
-            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Bottom, horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight((days.toFloat() / most).coerceAtLeast(if (days > 0) 0.05f else 0.02f) * 0.8f)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(if (days == most) OrangeAccent else PageMuted),
-                )
+            Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                // The bars share the height the month letter leaves, so a large font never pushes a letter down.
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight((days.toFloat() / most).coerceAtLeast(if (days > 0) 0.05f else 0.02f) * 0.9f)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(if (i + 1 == busiest) OrangeAccent else PageMuted),
+                    )
+                }
                 Text(
                     java.time.Month.of(i + 1).getDisplayName(java.time.format.TextStyle.NARROW_STANDALONE, locale),
                     color = PageFaint,

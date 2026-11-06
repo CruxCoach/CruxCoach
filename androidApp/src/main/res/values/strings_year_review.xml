@@ -36,6 +36,7 @@
     <!-- Volume -->
     <string name="yr_volume_title">Your volume</string>
     <string name="yr_volume_hero_label">climbing days</string>
+    <string name="yr_volume_days_row">Climbing days</string>
     <string name="yr_volume_board_days">Days on the board</string>
     <string name="yr_volume_sessions">Timed sessions</string>
     <string name="yr_volume_session_time">%1$s on the board</string>
@@ -47,7 +48,7 @@
 
     <!-- Boards and angles -->
     <string name="yr_boards_title">Your boards</string>
-    <string name="yr_boards_angle">mostly at %1$d° (%2$d&#160;%%)</string>
+    <string name="yr_boards_angle">mostly at %1$d° (%2$d%%)</string>
     <string name="yr_boards_how">Entries are your sends and attempts on that board. The angle is the one you logged most there, with its share of the board\'s entries.</string>
 
     <!-- Hardest -->

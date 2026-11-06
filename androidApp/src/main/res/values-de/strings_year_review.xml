@@ -36,6 +36,7 @@
     <!-- Volume -->
     <string name="yr_volume_title">Dein Umfang</string>
     <string name="yr_volume_hero_label">Klettertage</string>
+    <string name="yr_volume_days_row">Klettertage</string>
     <string name="yr_volume_board_days">Tage am Board</string>
     <string name="yr_volume_sessions">Sessions mit Timer</string>
     <string name="yr_volume_session_time">%1$s am Board</string>
@@ -82,7 +83,7 @@
     <string name="yr_highlights_biggest_day">Stärkster Tag</string>
     <string name="yr_highlights_repeated">Am öftesten wiederholt</string>
     <string name="yr_highlights_project">Längstes Projekt</string>
-    <string name="yr_highlights_project_detail">%1$s an %2$s</string>
+    <string name="yr_highlights_project_detail">%1$s in %2$s</string>
     <string name="yr_highlights_project_since">seit %1$s</string>
     <string name="yr_highlights_how">Der stärkste Tag ist der mit den meisten Begehungen. Am öftesten wiederholt ist der Boulder, den du in diesem Jahr am häufigsten geklettert hast. Das längste Projekt ist der neue Boulder mit den meisten Versuchen, gezählt über alle Sessions bis zur Begehung, auch aus früheren Jahren.</string>
 
