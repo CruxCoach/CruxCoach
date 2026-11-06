@@ -124,6 +124,8 @@ internal fun BoardStatsSheet(
     onIntervalSelect: (StatsTimeInterval) -> Unit,
     onCustomDateRange: (LocalDate, LocalDate) -> Unit,
     onHeatmapModeSelect: (HeatmapMode) -> Unit = {},
+    /** The year in review's place in the statistics (#64). */
+    yearReview: @Composable () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -143,6 +145,7 @@ internal fun BoardStatsSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             InfoHeading(stringResource(R.string.board_stats_title), stringResource(R.string.ux_stats_help))
+            yearReview()
 
             // Filters first: everything below follows the period and the board.
             StatsIntervalChips(
