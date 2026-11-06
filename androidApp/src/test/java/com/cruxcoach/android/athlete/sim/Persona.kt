@@ -10,7 +10,9 @@ import com.cruxcoach.athlete.model.CoachProfile
 import com.cruxcoach.athlete.model.ExperienceBand
 import com.cruxcoach.athlete.model.FingerPreference
 import com.cruxcoach.athlete.model.FocusArea
+import com.cruxcoach.athlete.model.InjuryFinding
 import com.cruxcoach.athlete.model.InjuryRegion
+import com.cruxcoach.athlete.model.InjurySide
 import com.cruxcoach.athlete.model.SetupState
 import com.cruxcoach.athlete.model.UnitSystem
 import com.cruxcoach.android.athlete.sim.SimAthlete.Quality
@@ -31,10 +33,16 @@ sealed class Event {
     /** Away from [day] to [until]: a holiday pause, nothing logged. */
     data class Holiday(override val day: Int, val until: Int) : Event()
 
-    /** An injury on [day], over on [resolvedOn]; climbing pauses while it is open. */
+    /**
+     * An injury on [day], over on [resolvedOn]; climbing pauses while it is open. With [comeback] the athlete
+     * follows the app's comeback plan instead and ends it themselves ([resolvedOn] is then null).
+     */
     data class Injury(
-        override val day: Int, val region: InjuryRegion, val severity: Int, val resolvedOn: Int,
+        override val day: Int, val region: InjuryRegion, val severity: Int, val resolvedOn: Int?,
         val loss: Double = 0.2,
+        val side: InjurySide? = null,
+        val comeback: Boolean = false,
+        val finding: InjuryFinding? = null,
     ) : Event()
 
     /** Travels from [day] to [until] with only [equipment] at hand. */
@@ -174,6 +182,16 @@ data class Persona(
                 equipment = HOME, trainingDays = setOf(1, 3, 6),
                 climbing = mapOf(2 to boulder(120, ClimbIntensity.HARD), 5 to boulder(120, ClimbIntensity.LIMIT)),
                 events = listOf(Event.Injury(day = 17, region = InjuryRegion.FINGER, severity = 4, resolvedOn = 52, loss = 0.25))),
+            Persona("pulley-comeback", "A finger pulley injury with the comeback plan",
+                "Intermediate with a home setup and a pick-up block; a pulley strain of the right hand in week 2, checked by a doctor, " +
+                    "then the app's comeback plan from its first stage until the athlete ends it.",
+                seed = 717, weeks = 14, level = Level.INTERMEDIATE, bodyweightKg = 70.0,
+                coach = coach(CoachGoal.CLIMB_HARDER, ExperienceBand.Y3_5, AgeBand.Y18_39, 5, setOf(2, 5),
+                    setOf(ClimbingContext.GYM_BOULDER), FingerPreference.HANGBOARD),
+                equipment = HOME + EquipmentV2.PICKUP_BLOCK, trainingDays = setOf(1, 3, 6),
+                climbing = mapOf(2 to boulder(120, ClimbIntensity.HARD), 5 to boulder(120, ClimbIntensity.LIMIT)),
+                events = listOf(Event.Injury(day = 10, region = InjuryRegion.FINGER, severity = 4, resolvedOn = null, loss = 0.25,
+                    side = InjurySide.RIGHT, comeback = true, finding = InjuryFinding.PULLEY_STRAIN))),
             Persona("ill-and-away", "A week of illness, then three weeks of holiday",
                 "Intermediate, gym and home; ill in week 4, on holiday in weeks 9 to 11.",
                 seed = 808, weeks = 14, level = Level.INTERMEDIATE, bodyweightKg = 75.0,
@@ -214,9 +232,11 @@ data class Persona(
                 climbing = mapOf(6 to boulder(120, ClimbIntensity.VOLUME))),
         )
 
-        /** The fast subset for CI: three personas, three weeks each. */
-        val FAST: List<Persona> = listOf("home-hangboard", "youth-15", "pulley-injury").map { id ->
-            ALL.first { it.id == id }.let { p -> p.copy(weeks = 3, events = p.events.map { e -> if (e is Event.Injury) e.copy(day = 8, resolvedOn = 18) else e }) }
+        /** The fast subset for CI: four personas, three weeks each. */
+        val FAST: List<Persona> = listOf("home-hangboard", "youth-15", "pulley-injury", "pulley-comeback").map { id ->
+            ALL.first { it.id == id }.let { p ->
+                p.copy(weeks = 3, events = p.events.map { e -> if (e is Event.Injury) e.copy(day = 8, resolvedOn = e.resolvedOn?.let { 18 }) else e })
+            }
         }
     }
 }

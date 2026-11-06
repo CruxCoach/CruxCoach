@@ -8,7 +8,7 @@ Code: `androidApp/src/test/java/com/cruxcoach/android/athlete/sim/`.
 
 ## How to run
 
-- **Fast subset** (CI): three personas for three weeks each, about 15 s. It runs with the unit tests and fails
+- **Fast subset** (CI): four personas for three weeks each, about 20 s. It runs with the unit tests and fails
   on any safety flag.
 
   ```
@@ -41,13 +41,21 @@ Each persona starts in a fresh database with a simulated clock. Every day:
    They do every set in the player's order. Each set goes through `completeSetDetailed`, then
    `adjustUpcomingSets`, then the reserve answer and `adjustUpcomingSets` again, as the player sends them.
    The training ends with `finishWorkout`.
+6. During a comeback plan (persona `pulley-comeback`) the athlete also follows the plan, through the same
+   calls as the comeback screen and Today's card: they start it on the day of the injury
+   (`ComebackService.start`, from stage 0, with the doctor's finding and their own reference values), log the
+   morning pain on most days and the pressure pain twice a week, and answer the plan's prompts with the
+   button the screen offers. At 9, 13, 16 and 21 o'clock they do every session Today lists as due
+   (`Comeback.due`, `ComebackService.startSession`), set by set, finish it and report its highest pain
+   (`ComebackService.logSession`). They climb no harder than the stage allows and end the plan when the last
+   stage's week went well.
 
 Nothing of the coach's rules is copied into the simulation. The logic that used to live in the Today screen
 now lives in shared code (`TodayCoach`), so the app and the simulation run the same lines.
 
 Not simulated yet: the board logbook from the app's own board (board climbers log their sessions as
-climbing days), the comeback plan's own sessions (the injury persona checks the injury filter and the return
-ramp after the injury), and swaps or "another suggestion" on the card, except "too easy".
+climbing days), comeback plans for other regions than the fingers, a plan that starts later than the
+injury, and swaps or "another suggestion" on the card, except "too easy".
 
 ## The simulated athlete
 
@@ -76,6 +84,24 @@ sets after it, as in the app.
   Strength is largely kept for about three weeks (Mujika & Padilla 2000).
 - An injury takes a share off the injured quality at once (pulley injury: fingers −25 %).
 
+### The injured finger
+
+During a comeback plan the injured tissue has a truth of its own (`SimInjury`), apart from the athlete's
+strength and apart from the plan's rules:
+
+- **Tolerance**: the share of the hand's maximum before the injury it takes without pain. 15 % on the day of
+  the injury, rising evenly to 100 % over seven weeks (pulley strain: easy climbing after about four weeks,
+  full climbing after six to eight; Schöffl et al. 2003). A session that loads the hand within tolerance
+  speeds healing a little; a session that hurts 6 or more and climbing above tolerance set it back.
+- **Pain** in a set: none up to 70 % of the tolerance, then one point per 10 % more, plus 0.4 × the
+  irritation. Longer holds ask more of the hand (the same hold curve as above).
+- **Irritation** starts at the injury's pain and fades by 7 % a day; painful sessions and climbing above
+  tolerance add to it. The morning pain reads it, the pressure pain adds what has not healed yet.
+- **The athlete** is careful and honest. They report the true highest pain of a session. They take the
+  stage's range when it has one (from below: a fifth more per session at most), otherwise the planned load
+  and their sense of effort. They go one step lighter after a session above the stage's green zone, and one
+  step heavier at most once a week when it stayed green. They accept every proposal.
+
 ## Personas
 
 | Id | Who |
@@ -87,6 +113,7 @@ sets after it, as in the app.
 | `masters-55` | 55+, in pounds |
 | `youth-15` | Under 16, gym bouldering three times |
 | `pulley-injury` | A finger pulley injury in week 3, over in week 8 |
+| `pulley-comeback` | A pulley strain of the right hand in week 2, then the comeback plan until the athlete ends it |
 | `ill-and-away` | A week of illness, then three weeks of holiday |
 | `gym-no-board` | Gym only, then two weeks on a trip without equipment |
 | `skipper` | Plans four sessions a week and skips about half |
@@ -105,14 +132,19 @@ that misfires is caught instead of confirmed.
 | Safety | No suggested exercise that lists an open injury's region as a contraindication (injuries of pain ≥ 4) | – |
 | Safety | Climbers under 18: no campus, no one-arm or max finger work | Morrison & Schöffl 2007 |
 | Safety | 55+: max finger sessions at least 72 h apart | Fell & Williams 2008 |
-| Load | The first planned set of an exercise rises by at most one weight step or 10 % of the total load from one session to the next. More is allowed after a session in which every work set had 3+ in reserve | ACSM 2009: 2–10 % |
+| Safety | Comeback plan: the planned load of the injured hand stays within the stage's range of the athlete's reference (one step for rounding); where the stage asks for an effort instead, it feels at most 1.5 × that effort | The stage's own percentages and effort |
+| Safety | Comeback plan: the next stage is offered only after a week in which no session truly hurt beyond the stage's amber limit and no morning reached 5 | Pain-monitoring model (Silbernagel et al. 2007) |
+| Safety | Comeback plan: no more sessions of a kind a day than the stage plans; strength sessions at least 46 h apart (the stage asks for 48 h of rest) | The stage's own plan |
+| Safety | Comeback plan: no board session while the stage allows less than hard climbing | The stage's own climbing |
+| Load | The first planned set of an exercise rises by at most one weight step or 10 % of the total load from one session to the next, counted from the higher of last time's plan and the heaviest load done. More is allowed after a session in which every work set had 3+ in reserve, but below 10 kg never more than one step | ACSM 2009: 2–10 %; owner 2026-11-06 |
 | Load | No max finger work while the finger load of the last 7 days is above 1.5 × its 28-day normal, from week 5 on (the athlete's climbing makes the load; the coach must not add to a spike) | Gabbett 2016 (acute:chronic ratio) |
 | Load | After six weeks the app's value of an exercise trained in at least four sessions is within 20 % of the truth | – |
 | Progress | No loaded or body-weight strength exercise is planned the same way in five sessions over four weeks or more | – |
+| Progress | A comeback stage that stayed within its pain rule for its last two weeks has offered the next stage within three weeks | – |
 | Progress | A run of six weeks or more has a lighter phase, deload trainings have at most 85 % of the work sets of build trainings, and the ten days before a target date taper | Bompa & Haff 2009 (3:1 loading); Bosquet et al. 2007 (taper of 8–14 days, volume −41–60 %) |
 | Plan | In weeks trained as planned and without an injury or return ramp, each area (mobility aside) reaches at least half of its weekly goal and at most 1.25 × its maximum | Schoenfeld et al. 2017 (weekly sets) |
 | Plan | A suggested training lasts at most 1.3 × the chosen length (+5 min) | – |
-| Plan | No full training is suggested once the week's training days (climbing included) are used up | – |
+| Plan | No full training is suggested once the week's training days (climbing included) are used up, and "training days done" is not said while days are left | – |
 | Plan | At least six different exercises in every eight full trainings (the block after climbing is meant to repeat) | – |
 | Stacking | A suggested training has at least three work sets and 12 minutes | – |
 
@@ -139,7 +171,12 @@ that misfires is caught instead of confirmed.
   adaptations. Part I. *Sports Medicine*, 30(2), 79–87.
 - Schoenfeld, B. J., Ogborn, D., & Krieger, J. W. (2017). Dose-response relationship between weekly
   resistance training volume and increases in muscle mass. *Journal of Sports Sciences*, 35(11), 1073–1082.
+- Schöffl, V., Hochholzer, T., Winkelmann, H. P., & Strecker, W. (2003). Pulley injuries in rock climbers.
+  *Wilderness & Environmental Medicine*, 14(2), 94–100.
 - Schöffl, V., Popp, D., Küpper, T., & Schöffl, I. (2015). Injury trends in rock climbers: evaluation of a
   case series of 911 injuries between 2009 and 2012. *Wilderness & Environmental Medicine*, 26(1), 62–67.
+- Silbernagel, K. G., Thomeé, R., Eriksson, B. I., & Karlsson, J. (2007). Continued sports activity, using a
+  pain-monitoring model, during rehabilitation in patients with Achilles tendinopathy. *The American Journal
+  of Sports Medicine*, 35(6), 897–906.
 - Zourdos, M. C., et al. (2016). Novel resistance training-specific rating of perceived exertion scale
   measuring repetitions in reserve. *Journal of Strength and Conditioning Research*, 30(1), 267–275.

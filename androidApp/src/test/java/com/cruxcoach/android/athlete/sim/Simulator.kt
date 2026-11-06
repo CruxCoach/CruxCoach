@@ -87,6 +87,8 @@ data class DayTrace(
     val away: Boolean,
     /** On Sundays: the week's volume per area after the day's training. */
     val weekEnd: List<com.cruxcoach.athlete.logic.AreaProgress>? = null,
+    /** While the athlete follows a comeback plan: its day. */
+    val comeback: ComebackTrace? = null,
 )
 
 /** A whole run of one persona. */
@@ -111,6 +113,7 @@ class Simulator(
     private val repo get() = service.repo
     private val rng = Random(persona.seed)
     private val athlete = SimAthlete(persona, Random(persona.seed * 7 + 1))
+    private var comeback: SimComeback? = null
 
     private fun dateOf(day: Int) = start.plus(DatePeriod(days = day))
 
@@ -164,8 +167,14 @@ class Simulator(
             repo.savePause(PausePeriod("away-$day", PauseReason.HOLIDAY, date.toString(), dateOf(e.until).toString())); events += "holiday"
         }
         persona.events.filterIsInstance<Event.Injury>().firstOrNull { it.day == day }?.let { e ->
-            repo.saveInjury(Injury("injury-$day", e.region, severity = e.severity, climbingPaused = true, startedOn = date.toString(),
-                updatedAt = clock.nowMs))
+            repo.saveInjury(Injury("injury-$day", e.region, side = e.side, severity = e.severity, climbingPaused = true,
+                startedOn = date.toString(), updatedAt = clock.nowMs))
+            if (e.comeback) {
+                // Made before the setback, so the plan's truth knows the hand's maximum before the injury.
+                comeback = SimComeback(service, clock, persona, athlete, "injury-$day", SimComeback.sideOf(e.side), e.severity,
+                    Random(persona.seed * 13 + 5)).also { it.start(date, e.finding) }
+                events += "comeback plan"
+            }
             athlete.setback(Quality.FINGER, e.loss)
             events += "injury ${e.region.name.lowercase()}"
         }
@@ -180,6 +189,7 @@ class Simulator(
 
         if (holiday != null) {
             athlete.night(day)
+            comeback?.night()
             return DayTrace(day, date, events, null, ReadinessLevel.GO, null, null, repo.activeInjuries(), null, null,
                 trained = false, skipped = false, sets = emptyList(), load = emptyMap(), truth = athlete.value.toMap(), away = true)
         }
@@ -189,12 +199,28 @@ class Simulator(
         if (checkin != null && ((checkin.sleep ?: 5) <= 2 || (checkin.energy ?: 5) <= 2)) athlete.dayPenalty = 0.05
         if (ill != null) athlete.dayPenalty = 0.15
 
-        // Climbing first, in the afternoon (it is logged after the session).
+        // The comeback plan: the diary and the plan's prompts in the morning, its sessions when Today lists them.
+        val cb = comeback?.takeIf { !it.ended }
+        val (cbMorning, cbPrompts, cbReviews) = cb?.morning(date) ?: Triple(null to null, emptyList(), emptyList())
+        val cbEnded = cb != null && cb.ended
+        if (cbEnded) events += "comeback plan ended"
+        val cbSessions = mutableListOf<ComebackSessionTrace>()
+        fun comebackAt(hour: Int, strength: Boolean) {
+            if (cb == null || cb.ended || ill != null) return
+            at(day, hour)
+            cbSessions += cb.sessions(day, strength)
+        }
+        comebackAt(9, strength = false)
+        comebackAt(13, strength = false)
+        comebackAt(16, strength = true)
+
+        // Climbing first, in the afternoon (it is logged after the session); during a comeback plan as its stage allows.
         val climb = persona.climbing[date.dayOfWeek.isoDayNumber]?.takeIf { ill == null && repo.activeInjuries().none { it.climbingPaused } }
+            ?.let { c -> if (cb != null && !cb.ended) cb.climb(c) else c }
 
         // Today in the evening: what the coach suggests (also on days the athlete does not train).
         at(day, 17)
-        if (climb != null) logClimb(day, climb)
+        if (climb != null) { logClimb(day, climb); cb?.climbed(climb) }
         val today = service.today()
         service.usePlaceOfToday()
         val profile = repo.profile()
@@ -241,9 +267,12 @@ class Simulator(
             val plan = shown.boardPlan!!
             val c = Climb(ClimbingDayKind.OTHER_BOARD, plan.minutes, ClimbIntensity.HARD)
             logClimb(day, c)
+            cb?.climbed(c)
             events += "board as suggested"
         }
+        comebackAt(21, strength = true)
         athlete.night(day)
+        comeback?.night()
         val weekEnd = if (date.dayOfWeek == kotlinx.datetime.DayOfWeek.SUNDAY) runCatching {
             coach.weeklyProgress(repo.profile(), repo.activeInjuries(), service.activities(days = 8), block, today, weekStart)
         }.getOrNull() else null
@@ -251,7 +280,8 @@ class Simulator(
             LoadSnapshot(s.acute7, s.chronic28, s.trend)
         }.orEmpty()
         return DayTrace(day, date, events, checkin, readiness.level, block, returnState, injuries, climb, trace, trained, skipped,
-            done, load, athlete.value.toMap(), away = false, weekEnd = weekEnd)
+            done, load, athlete.value.toMap(), away = false, weekEnd = weekEnd,
+            comeback = cb?.trace(cbPrompts, cbReviews, cbMorning, cbSessions, cbEnded))
     }
 
     private fun checkIn(day: Int, ill: Boolean): Checkin {

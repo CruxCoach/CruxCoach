@@ -70,6 +70,7 @@ object SimReport {
             }
             appendLine()
         }
+        r.days.mapNotNull { it.comeback }.takeIf { it.isNotEmpty() }?.let { appendLine(comebackWeeks(r)) }
         appendLine("## Flagged moments")
         appendLine()
         if (flags.isEmpty()) appendLine("None.")
@@ -103,9 +104,39 @@ object SimReport {
                 d.skipped -> "skipped"
                 else -> "–"
             }
-            val events = d.events.takeIf { it.isNotEmpty() }?.joinToString(", ", " (", ")") ?: ""
+            val comeback = d.comeback?.let { c -> listOf("comeback stage ${c.stage}") + c.sessions.map { "${it.kind.name.lowercase()} pain ${it.painMax}" } + c.prompts }.orEmpty()
+            val events = (d.events + comeback).takeIf { it.isNotEmpty() }?.joinToString(", ", " (", ")") ?: ""
             appendLine("| $day$events | $phase | $climb | $why | $items | $done |")
         }
+    }
+
+    /** The comeback plan week by week: stages, sessions, pain and the injured hand's loads. */
+    private fun comebackWeeks(r: SimRun): String = buildString {
+        appendLine("## Comeback plan")
+        appendLine()
+        appendLine("The injured hand's tolerance is the simulated truth: the share of its maximum before the injury it takes without pain.")
+        appendLine()
+        appendLine("| Week | Stage | Climbing | Sessions | Highest pain | Injured hand, first set planned → done | Load changed by hand | Look back | Tolerance |")
+        appendLine("|---|---|---|---|---|---|---|---|---|")
+        r.days.chunked(7).forEachIndexed { i, week ->
+            val cbs = week.mapNotNull { it.comeback }
+            if (cbs.isEmpty()) return@forEachIndexed
+            val stages = cbs.map { it.stage }.distinct().joinToString("→")
+            val climbing = cbs.mapNotNull { it.climbing?.name?.lowercase() }.distinct().joinToString("/").ifEmpty { "–" }
+            val sessions = cbs.flatMap { it.sessions }
+            val kinds = sessions.groupingBy { it.kind.name.lowercase() }.eachCount().entries.joinToString(", ") { "${it.key} ${it.value}" }.ifEmpty { "–" }
+            val pain = sessions.maxOfOrNull { it.painMax }?.toString() ?: "–"
+            val loads = sessions.flatMap { s -> s.sets.filter { it.injured } }.groupBy { it.slug.substringAfter('.') }.entries.joinToString("; ") { (slug, sets) ->
+                fun kg(v: Double?) = v?.let { "%.0f".format(it) } ?: "–"
+                "$slug ${kg(sets.first().plannedKg)}→${kg(sets.first().doneKg)} … ${kg(sets.last().plannedKg)}→${kg(sets.last().doneKg)} kg"
+            }.ifEmpty { "–" }
+            val prompts = cbs.flatMap { it.prompts }.joinToString("; ").ifEmpty { "–" }
+            // Sessions in which the athlete had to change the injured hand's planned load.
+            val loaded = sessions.filter { s -> s.sets.any { it.injured && it.plannedKg != null } }
+            val changed = loaded.count { s -> s.sets.any { it.injured && it.plannedKg != null && it.doneKg != it.plannedKg } }
+            appendLine("| ${i + 1} | $stages | $climbing | $kinds | $pain | $loads | ${if (loaded.isEmpty()) "–" else "$changed of ${loaded.size}"} | $prompts | ${(cbs.last().tolerance * 100).toInt()} % |")
+        }
+        r.days.firstOrNull { it.comeback?.ended == true }?.let { appendLine(); appendLine("The athlete ended the plan on ${it.date} (week ${it.day / 7 + 1}); the injury counts as over from then on.") }
     }
 
     fun overview(runs: List<Pair<SimRun, List<Flag>>>): String = buildString {

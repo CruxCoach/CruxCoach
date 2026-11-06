@@ -32,14 +32,20 @@ enum class Check(val group: String, val title: String) {
     CONTRAINDICATED("Safety", "Exercise that loads an open injury"),
     YOUTH("Safety", "Finger work a growing climber should not do"),
     MASTERS("Safety", "Max finger sessions too close together for a masters climber"),
+    COMEBACK_LOAD("Safety", "Comeback load above its stage"),
+    COMEBACK_EARLY("Safety", "Next comeback stage offered while it still hurt"),
+    COMEBACK_SPACING("Safety", "Comeback sessions closer than their stage allows"),
+    COMEBACK_CLIMBING("Safety", "Board session suggested while the comeback stage holds it back"),
     LOAD_JUMP("Load", "Planned load jumped more than one step or 10 % between sessions"),
     STRUCTURE_LOAD("Load", "Max finger work while the finger load is above 1.5 × its normal"),
     CONVERGENCE("Load", "The app's value is far from what the athlete can really do"),
     STALL("Progress", "An exercise stalled for weeks without a change"),
     DELOAD("Progress", "No lighter week in a block, or no taper before the date"),
+    COMEBACK_STUCK("Progress", "Comeback plan stuck on a stage although it stayed calm"),
     WEEKLY_VOLUME("Plan", "Weekly volume of an area far from its target"),
     SESSION_FIT("Plan", "Suggestion does not fit the session length"),
     TRAINING_DAYS("Plan", "A full training suggested after the week's training days are used up"),
+    DAYS_LEFT("Plan", "Recovery suggested although training days are left"),
     VARIETY("Plan", "Too little variety"),
     STACKING("Stacking", "Reductions stacked into a pointless session"),
 }
@@ -57,6 +63,10 @@ object Checks {
     const val CONVERGENCE_SHARE = 0.20
     /** Weekly volume per area within this range of its goal counts as "near". */
     val VOLUME_RANGE = 0.5..1.6
+    /** Comeback strength sessions start at least this far apart (the stage asks for 48 h of rest between them). */
+    const val COMEBACK_STRENGTH_GAP_H = 46
+    /** A stage that stayed calm this long should have offered the next one (a stage is a week or two). */
+    const val COMEBACK_STUCK_DAYS = 21
 
     fun isMaxFinger(def: ExerciseDefinition): Boolean =
         (LoadDomain.FINGER in def.domains && (def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL) &&
@@ -125,7 +135,7 @@ object Checks {
 
         // ── Load ──
         val sessions = days.filter { it.trained }
-        val firstLoads = mutableMapOf<Pair<String, com.cruxcoach.athlete.model.Side?>, Pair<Int, Double>>()
+        val firstLoads = mutableMapOf<Pair<String, com.cruxcoach.athlete.model.Side?>, Triple<Int, Double, Double>>()
         sessions.forEach { d ->
             d.sets.filter { it.setType == SetType.WORK && it.targetLoadKg != null }
                 .groupBy { it.slug to it.side }
@@ -137,16 +147,26 @@ object Checks {
                         LoadMode.BODYWEIGHT_PLUS -> bw + (first.targetLoadKg ?: 0.0)
                         else -> LoadRules.lifted(def, first.targetLoadKg ?: 0.0)
                     }
-                    firstLoads[key]?.let { (day, before) ->
+                    firstLoads[key]?.let { (day, plannedBefore, plannedLoggedBefore) ->
                         val step = LoadRules.lifted(def, p.smallestIncrementKg) * if (EquipmentV2.BARBELL in def.equipment) 2 else 1
+                        val last = days.firstOrNull { it.day == day }?.sets.orEmpty().filter { it.slug == key.first && it.side == key.second && it.setType == SetType.WORK }
+                        // The reference is the higher of what was planned and what was done last time: a load raised
+                        // within the training (or by the athlete) is where the next one starts.
+                        val doneLogged = last.mapNotNull { it.loadKg }.maxOrNull() ?: plannedLoggedBefore
+                        val doneTotal = if (def.load == LoadMode.BODYWEIGHT_PLUS) bw + doneLogged else LoadRules.lifted(def, doneLogged)
+                        val before = max(plannedBefore, doneTotal)
+                        val loggedBefore = max(plannedLoggedBefore, doneLogged)
                         val allowed = max(step, before * JUMP_SHARE) + 1e-6
                         // A bigger step is fine after a session in which every work set had 3+ in reserve: the athlete said so.
-                        val last = days.firstOrNull { it.day == day }?.sets.orEmpty().filter { it.slug == key.first && it.side == key.second && it.setType == SetType.WORK }
                         val easy = last.isNotEmpty() && last.all { (it.rir ?: 0) >= 3 }
-                        if (total - before > allowed && !easy) flags += Flag(Check.LOAD_JUMP, d.day,
-                            "${key.first}${key.second?.let { " (${it.name.lowercase()})" } ?: ""}: %.1f → %.1f kg total since day $day".format(before, total))
+                        // Below 10 kg one step per training, whatever the reserve said (owner 2026-11-06).
+                        val small = def.load == LoadMode.EXTERNAL && loggedBefore < 10.0 &&
+                            (first.targetLoadKg ?: 0.0) > loggedBefore + p.smallestIncrementKg + 1e-6
+                        if ((total - before > allowed && !easy) || small) flags += Flag(Check.LOAD_JUMP, d.day,
+                            "${key.first}${key.second?.let { " (${it.name.lowercase()})" } ?: ""}: %.1f → %.1f kg total since day $day (done then: %s, reserve %s)".format(
+                                before, total, last.joinToString("/") { "%.1f".format(it.loadKg ?: 0.0) }, last.joinToString("/") { it.rir?.toString() ?: "–" }))
                     }
-                    firstLoads[key] = d.day to total
+                    firstLoads[key] = Triple(d.day, total, first.targetLoadKg ?: 0.0)
                 }
         }
         // The athlete's climbing makes the load; the coach must not add max finger work on top of a spike.
@@ -213,6 +233,9 @@ object Checks {
                 val used = r.days.filter { it.day in weekStart until d.day }.count { it.trained || it.climbed != null }
                 if (used >= days && d.climbed == null && s.focus != SuggestionFocus.MOBILITY_RECOVERY) flags += Flag(Check.TRAINING_DAYS, d.day,
                     "${s.focus.name.lowercase()} for ${s.minutes} min after $used of $days training days this week")
+                // The other way round: trainings and climbing days are what uses a training day up, nothing else.
+                if (used < days && com.cruxcoach.athlete.logic.SuggestionReason.WEEK_DAYS_DONE in s.reasons) flags += Flag(Check.DAYS_LEFT, d.day,
+                    "\"training days done\" after $used of $days training days this week")
             }
             val work = s.items.filter { !it.warmup }
             if (work.isNotEmpty() && (work.sumOf { it.sets } < 3 || s.minutes < 12)) flags += Flag(Check.STACKING, d.day,
@@ -242,6 +265,67 @@ object Checks {
                 if (distinct.size < 6) flags += Flag(Check.VARIETY, chunk.last().day, "${distinct.size} different exercises in ${chunk.size} trainings")
             }
         }
+        comeback(r, flags)
         return flags
+    }
+
+    /** The comeback plan's sessions, prompts and climbing, against the truth of the injured tissue ([SimInjury]). */
+    private fun comeback(r: SimRun, flags: MutableList<Flag>) {
+        val injury = r.persona.events.filterIsInstance<Event.Injury>().firstOrNull { it.comeback } ?: return
+        val ladder = SimComeback.ladderFor(injury)
+        val days = r.days.filter { it.comeback != null }
+        val step = r.persona.smallestIncrementKg
+        days.forEach { d ->
+            val cb = d.comeback!!
+            // The plan's load for the injured hand stays within the stage's range of the athlete's reference (one step of rounding).
+            cb.sessions.flatMap { s -> s.sets.map { s to it } }
+                .filter { (_, set) -> set.injured && set.rangeKg != null && set.plannedKg != null && set.plannedKg > set.rangeKg.endInclusive + step + 1e-6 }
+                .distinctBy { (s, set) -> s.kind to set.slug }
+                .forEach { (s, set) -> flags += Flag(Check.COMEBACK_LOAD, d.day, "stage ${s.stage}, ${s.kind.name.lowercase()}: ${set.slug} planned %.1f kg, the stage's range is %.1f–%.1f kg"
+                    .format(set.plannedKg, set.rangeKg!!.start, set.rangeKg.endInclusive)) }
+            // Where the stage asks for an effort instead, the planned load must not feel far harder than that.
+            cb.sessions.flatMap { s -> s.sets.map { s to it } }
+                .filter { (_, set) -> set.injured && set.rangeKg == null && set.effort != null && set.plannedEffort != null && set.plannedEffort > set.effort.last * 1.5 }
+                .distinctBy { (s, set) -> s.kind to set.slug }
+                .forEach { (s, set) -> flags += Flag(Check.COMEBACK_LOAD, d.day, "stage ${s.stage}, ${s.kind.name.lowercase()}: ${set.slug} planned %.1f kg, about %.0f/10 where the stage asks for %d–%d"
+                    .format(set.plannedKg, set.plannedEffort, set.effort!!.first, set.effort.last)) }
+            // The next stage is offered only after a week that stayed within the stage's pain rule (the truth, not the diary).
+            if (com.cruxcoach.athlete.logic.Proposal.MOVE_UP in cb.reviews) {
+                val rule = ladder.stages[cb.stage.coerceIn(0, ladder.stages.lastIndex)].pain
+                val week = r.days.filter { it.day in (d.day - 7) until d.day }.mapNotNull { it.comeback }
+                val worst = week.flatMap { it.sessions }.maxOfOrNull { it.painMax } ?: 0
+                val mornings = week.mapNotNull { it.morningPain }
+                if (worst > rule.amberMax || mornings.any { it >= 5 }) flags += Flag(Check.COMEBACK_EARLY, d.day,
+                    "stage ${cb.stage + 1} offered after a week with session pain up to $worst (amber up to ${rule.amberMax}) and mornings ${mornings.joinToString("/")}")
+            }
+            // No more sessions of a kind in a day than the stage plans.
+            cb.sessions.groupBy { it.kind to it.stage }.forEach { (key, list) ->
+                val spec = ladder.stages[key.second].sessions.firstOrNull { it.kind == key.first } ?: return@forEach
+                if (list.size > spec.perDay) flags += Flag(Check.COMEBACK_SPACING, d.day, "${list.size} ${key.first.name.lowercase()} sessions, the stage plans ${spec.perDay} a day")
+            }
+            // Board days wait until the stage's climbing is hard.
+            val level = cb.climbing
+            if (level != null && level < com.cruxcoach.athlete.logic.ClimbingLevel.HARD && d.suggestion?.board == true) flags += Flag(Check.COMEBACK_CLIMBING, d.day,
+                "a board session while the stage allows ${level.name.lowercase()} climbing")
+        }
+        // Strength sessions with a rest in between.
+        days.flatMap { d -> d.comeback!!.sessions.filter { it.kind == com.cruxcoach.athlete.model.ComebackSessionKind.STRENGTH }.map { d to it } }
+            .zipWithNext().forEach { (a, b) ->
+                val hours = (b.second.atMs - a.second.atMs) / 3_600_000.0
+                if (hours < COMEBACK_STRENGTH_GAP_H) flags += Flag(Check.COMEBACK_SPACING, b.first.day, "strength sessions %.0f h apart".format(hours))
+            }
+        // A stage that stayed calm for three weeks should have moved on.
+        var since = days.firstOrNull() ?: return
+        days.forEach { d ->
+            if (d.comeback!!.stage != since.comeback!!.stage) since = d
+            val held = d.day - since.day
+            if (held == COMEBACK_STUCK_DAYS) {
+                val rule = ladder.stages[d.comeback.stage].pain
+                val last = r.days.filter { it.day in (d.day - 14)..d.day }.mapNotNull { it.comeback }
+                val calm = last.flatMap { it.sessions }.all { it.painMax <= rule.greenMax } && last.mapNotNull { it.morningPain }.all { it <= 2 }
+                if (calm && d.comeback.stage < ladder.stages.lastIndex) flags += Flag(Check.COMEBACK_STUCK, d.day,
+                    "stage ${d.comeback.stage} for $held days, the last two weeks within its pain rule")
+            }
+        }
     }
 }

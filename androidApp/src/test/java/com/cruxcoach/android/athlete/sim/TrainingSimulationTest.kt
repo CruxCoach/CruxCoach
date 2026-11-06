@@ -67,7 +67,7 @@ class TrainingSimulationTest {
     }
 
     /**
-     * CI: three personas, three weeks each. The safety checks must hold; everything else is reported.
+     * CI: four personas, three weeks each. The safety checks must hold; everything else is reported.
      */
     @Test
     fun `fast subset keeps the safety rules`() {
@@ -76,6 +76,9 @@ class TrainingSimulationTest {
         val safety = runs.flatMap { (r, flags) -> flags.filter { it.check.group == "Safety" }.map { r.persona.id to it } }
         assertTrue("safety flags: $safety", safety.isEmpty())
         runs.forEach { (r, _) -> assertTrue("${r.persona.id} never trained", r.days.any { it.trained }) }
+        runs.filter { (r, _) -> r.persona.events.any { it is Event.Injury && it.comeback } }.forEach { (r, _) ->
+            assertTrue("${r.persona.id} did no comeback session", r.days.any { it.comeback?.sessions?.isNotEmpty() == true })
+        }
     }
 
     /** Every persona for its whole run; reports only, started with SIM_FULL=1. */
