@@ -26,7 +26,8 @@ concurrency:
 env:
   # Bump both together, and only after the client passes against the new version.
   BUZZ_COMMIT: d676c7b8db30ccc15611b9ef51ed9c6f2e8a954a
-  BUZZ_IMAGE: ghcr.io/block/buzz:sha-d676c7b
+  # The image of that commit (tag sha-d676c7b), pinned by digest like the server.
+  BUZZ_IMAGE: ghcr.io/block/buzz@sha256:891216c8b6dc17ca02ac9317d1c6cf3ddb83d372fa4bd5bb979fae2e8a698654
 
 jobs:
   integration:
