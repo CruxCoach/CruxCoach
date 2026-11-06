@@ -62,6 +62,8 @@ object PreferenceLearning {
     const val CHOSEN_FORMAT = "chosen_format:"
     /** Today's circuit rounds and rests ("rounds,circuitRest,roundRest", empty = coach default), for a restart. */
     const val CIRCUIT_SETUP = "circuit_setup:"
+    /** Ledger [SuggestionEventKind.FEEDBACK] focus for "train anyway" on the recovery card, for a restart; recorded only. */
+    const val TRAIN_ANYWAY = "train_anyway"
     /** A DISLIKE_EXERCISE with this value is "leave it out today" (no replacement), not "not today, something else". */
     const val LEFT_OUT = 1.0
     /**

@@ -264,6 +264,11 @@ data class SuggestionInput(
      * today's level when "easier"/"harder" was chosen today.
      */
     val kept: List<String> = emptyList(),
+    /**
+     * "Train anyway" on the recovery card (owner 2026-11-06): the week's training days do not limit today. Every
+     * other rule applies; the suggestion is the one Today would make without the day limit.
+     */
+    val beyondWeekDays: Boolean = false,
 )
 
 data class SessionSuggestion(
@@ -500,8 +505,8 @@ object SessionSuggester {
             }
             planned != null -> plannedRoutine(ctx, planned, climbingPaused, fingerBlock, guard, lowEnergy, budget)?.let { return it }
             // The week's training days are used up (owner 2026-11-06, issue #59): recovery by default; choosing a kind
-            // of training on the card still trains (that goes through [chosen] above).
-            weekDaysUsed(input) -> {
+            // of training on the card still trains (that goes through [chosen] above), and so does "train anyway".
+            !input.beyondWeekDays && weekDaysUsed(input) -> {
                 reasons.add(0, SuggestionReason.WEEK_DAYS_DONE)
                 return build(ctx, SuggestionFocus.MOBILITY_RECOVERY, List(4) { Slot.MOBILITY }, min(budget, EASY_MINUTES), planned, weekly = false)
             }

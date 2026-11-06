@@ -231,6 +231,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private var ignoreUsualKind = false
     /** "Another suggestion" or "the coach decides" on the usual workout: something else today. */
     private var ignoreHabit = false
+    /** "Train anyway" on the recovery card: the week's training days do not limit today. */
+    private var trainAnyway = false
     /** Today's plan as this screen last stored it for nutrition ([AthleteService.rememberPlannedToday]). */
     private var plannedWritten: String? = null
     /** Suggestions already in the ledger as SHOWN today (focus + slugs). */
@@ -251,6 +253,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         if (variantDay != today) {
             variant = 0; variantDay = today
             budgetFactor = 1.0; levelShift = 0; wish = null; minutesToday = null; dislikedToday.clear(); shownToday.clear(); swapsToday.clear(); ignoreUsualKind = false; ignoreHabit = false
+            trainAnyway = false
             circuitToday = false; circuitRounds = null; circuitRestS = null; circuitRoundRestS = null
             runCatching {
                 val todays = service.repo.suggestionEventsForDay(today.toString()).sortedBy { it.createdAt }
@@ -428,6 +431,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                     }
                     focus.startsWith(PreferenceLearning.CHOSEN_FORMAT) ->
                         circuitToday = focus.removePrefix(PreferenceLearning.CHOSEN_FORMAT) == "circuit"
+                    focus == PreferenceLearning.TRAIN_ANYWAY -> trainAnyway = true
                     focus.startsWith(PreferenceLearning.CIRCUIT_SETUP) -> {
                         val f = focus.removePrefix(PreferenceLearning.CIRCUIT_SETUP).split(",")
                         circuitRounds = f.getOrNull(0)?.toIntOrNull()
@@ -468,6 +472,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 choices = com.cruxcoach.athlete.data.TodayCoach.Choices(
                     variant = variant, budgetFactor = budgetFactor, levelShift = levelShift, wish = wish, minutesToday = minutesToday,
                     dislikedToday = dislikedToday.toSet(), ignoreHabit = ignoreHabit, ignoreUsualKind = ignoreUsualKind,
+                    trainAnyway = trainAnyway,
                 ),
             )
             lastHabit = built.habit
@@ -512,6 +517,20 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             if (s?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE_WEEKDAY || s?.reasons?.firstOrNull() == SuggestionReason.USUAL_ROUTINE) {
                 ignoreHabit = true
             }
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * "Train anyway" on the recovery card (owner 2026-11-06): once the week's training days are done, one tap
+     * gives the training Today would suggest without the day limit. Holds for the day, also after a restart.
+     */
+    fun trainAnyway() = io {
+        synchronized(refreshLock) {
+            val s = _state.value.suggestion
+            service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), null)
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.TRAIN_ANYWAY, emptyList())
+            trainAnyway = true
             lastInputs?.let { refreshUnlocked(it) }
         }
     }

@@ -483,7 +483,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   The 28-day normal now counts from the first logged day once 14 days are logged; until then the careful
   start (no max finger work) stays.
 - Training: once the week's training days (climbing included) are used up, Today suggests mobility or
-  rest, with a training still one tap away. The short daily sessions of a comeback plan do not use up a day.
+  rest. "Train anyway" on that card gives the training Today would have suggested without the day limit,
+  for the rest of the day. The short daily sessions of a comeback plan do not use up a day.
 - Training: after a training in which every work set of a strength exercise was answered "3+", the next
   one plans at least two weight steps more, so a start that was too light catches up. Not for finger work,
   and not during an injury, the return after a break, a comeback plan or for climbers under 18 or in their

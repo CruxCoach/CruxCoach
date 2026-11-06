@@ -60,6 +60,8 @@ class TodayCoach(
         val ignoreHabit: Boolean = false,
         /** "The coach decides" for today: the weekday's usual kind does not apply. */
         val ignoreUsualKind: Boolean = false,
+        /** "Train anyway" on the recovery card: the week's training days do not limit today. */
+        val trainAnyway: Boolean = false,
     )
 
     /** The engine input plus what the card shows next to it. */
@@ -232,6 +234,7 @@ class TodayCoach(
             wishLearned = choices.wish == null && usualWish != null,
             minutesLearned = choices.minutesToday == null && usualMinutes != null,
             kept = kept.preferred,
+            beyondWeekDays = choices.trainAnyway,
         )
         return Built(input, habit, levelOffers, usual)
     }

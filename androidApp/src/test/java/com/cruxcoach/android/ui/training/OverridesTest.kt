@@ -24,6 +24,7 @@ import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.Routine
 import com.cruxcoach.athlete.model.RoutineItem
 import com.cruxcoach.athlete.model.SetType
+import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.minus
 import org.junit.Before
 import org.junit.Test
@@ -375,6 +376,39 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     private fun idle() = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    @Test
+    fun `once the week's training days are done, "train anyway" gives the training without the day limit, for the day`() {
+        // A Friday, two training days a week, climbing on Wednesday and Thursday (owner 2026-11-06).
+        val friday = kotlinx.datetime.LocalDate.parse("2026-03-06")
+        val ms = friday.atStartOfDayIn(service.zone).toEpochMilliseconds() + 18 * 3_600_000L
+        service.clock = { ms }
+        repo.updateProfile { it.copy(weeklyGoal = 2, coach = it.coach.copy(trainingDaysPerWeek = 2)) }
+        listOf("2026-03-04", "2026-03-05").forEach { day ->
+            service.saveClimbingDay(com.cruxcoach.athlete.model.ClimbingDayEntry("c-$day", day, com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER,
+                90, com.cruxcoach.athlete.model.ClimbIntensity.VOLUME, updatedAt = ms))
+        }
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(4, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val rest = vm.state.value.suggestion!!
+        assertEquals(SuggestionFocus.MOBILITY_RECOVERY, rest.focus)
+        assertEquals(SuggestionReason.WEEK_DAYS_DONE, rest.reasons.first())
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_train_anyway"))
+        click("today_train_anyway")
+        until { vm.state.value.suggestion?.focus.let { it != null && it != SuggestionFocus.MOBILITY_RECOVERY } }
+        assertTrue(SuggestionReason.WEEK_DAYS_DONE !in vm.state.value.suggestion!!.reasons)
+        // The button belongs to the recovery card only.
+        idle()
+        assertTrue(compose.onAllNodesWithTag("today_train_anyway").fetchSemanticsNodes().isEmpty())
+        assertEquals(friday.toString(), service.today().toString())
+        assertTrue(repo.suggestionEventsForDay(friday.toString()).any { it.focus == com.cruxcoach.athlete.logic.PreferenceLearning.TRAIN_ANYWAY })
+        // It holds for the day, also after the app was closed.
+        val again = loaded(TodayViewModel(service))
+        until { again.state.value.suggestion != null && !again.state.value.asksBeforeSuggestion }
+        assertTrue(again.state.value.suggestion!!.focus != SuggestionFocus.MOBILITY_RECOVERY, "${again.state.value.suggestion!!.reasons}")
+    }
 
     @Test
     fun `the time on the card changes today's training, only for today`() {
