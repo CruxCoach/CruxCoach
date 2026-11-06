@@ -474,6 +474,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   your own dumbbell or kettlebell exercises can use one or two. In typed workouts,
   "2x16 kg" is 16 kg per dumbbell on dumbbell work, +32 kg added on body-weight work
   and 32 kg in total on a two-arm pick-up.
+- Training: a suggested training no longer plans more of an area than the week still allows. One
+  legs-and-core day could hold 16 leg sets against a weekly maximum of 10, and the short block after
+  climbing could add antagonist sets on every climbing day. In a week with no room left for that kind of
+  work, the coach suggests an easy 20-minute mobility session instead of a few sets. Found by a new
+  simulation that runs synthetic athletes through the training logic for months.
 
 ## [0.2.4] - 2026-10-25
 

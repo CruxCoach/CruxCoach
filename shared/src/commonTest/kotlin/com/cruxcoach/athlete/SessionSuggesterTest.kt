@@ -7,6 +7,7 @@ import com.cruxcoach.athlete.model.*
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -146,6 +147,54 @@ class SessionSuggesterTest {
         val stretch = SessionSuggester.suggest(input().copy(wish = SuggestionFocus.MOBILITY_RECOVERY))
         assertEquals(SuggestionFocus.MOBILITY_RECOVERY, stretch.focus)
         assertTrue(stretch.routine.items.isNotEmpty() && stretch.routine.items.all { catalog[it.slug]?.category == ExerciseCategoryV2.MOBILITY })
+    }
+
+    // ── Weekly maximum (training simulation, issue #59) ──
+
+    private fun area(a: VolumeArea, done: Int, min: Int, max: Int) = AreaProgress(a, done, if (done > 0) 1 else 0, AreaTarget(a, min, max, 1), 0.0)
+    private val noFingers = profile.copy(coach = CoachProfile(fingerPreference = FingerPreference.NONE))
+    private fun areaSets(s: SessionSuggestion, a: VolumeArea) = s.routine.items.filter { !it.warmup }.sumOf { item ->
+        val def = catalog.fallbackFor(item.slug)
+        if (WeeklyVolume.areaOf(def) == a) item.sets * (if (def.unilateral && item.sides == SideMode.BOTH) 2 else 1) else 0
+    }
+
+    @Test
+    fun aSessionNeverPlansMoreOfAnAreaThanTheWeekStillAllows() {
+        // Simulation: a 60-minute legs-and-core day filled 16 leg sets against a weekly maximum of 10.
+        val friday = monday.plus(DatePeriod(days = 4))
+        val weekly = listOf(area(VolumeArea.PULL, 8, 7, 12), area(VolumeArea.PUSH, 5, 4, 8), area(VolumeArea.ANTAGONIST, 6, 5, 10),
+            area(VolumeArea.LEGS, 7, 3, 9), area(VolumeArea.CORE, 0, 6, 12))
+        val s = SessionSuggester.suggest(input(profile = noFingers).copy(today = friday, weekly = weekly, weekStart = monday))
+        assertEquals(SuggestionFocus.LEGS_CORE, s.focus, "${s.reasons}")
+        assertTrue(areaSets(s, VolumeArea.LEGS) <= 2, "${s.routine.items}")
+        assertTrue(areaSets(s, VolumeArea.CORE) <= 12, "${s.routine.items}")
+        assertTrue(SuggestionReason.WEEKLY_TARGET in s.reasons)
+    }
+
+    @Test
+    fun aWeekWithoutRoomLeftSuggestsMobilityInsteadOfAFewLonelySets() {
+        val sunday = monday.plus(DatePeriod(days = 6))
+        val full = listOf(area(VolumeArea.PULL, 12, 7, 12), area(VolumeArea.PUSH, 8, 4, 8), area(VolumeArea.ANTAGONIST, 10, 5, 10),
+            area(VolumeArea.LEGS, 9, 3, 9), area(VolumeArea.CORE, 12, 6, 12))
+        val s = SessionSuggester.suggest(input(profile = noFingers).copy(today = sunday, weekly = full, weekStart = monday))
+        assertEquals(SuggestionFocus.MOBILITY_RECOVERY, s.focus, "${s.reasons} ${s.routine.items}")
+        assertTrue(s.routine.items.isNotEmpty() && s.routine.items.all { catalog[it.slug]?.category == ExerciseCategoryV2.MOBILITY })
+    }
+
+    @Test
+    fun theBlockAfterClimbingStaysWithinTheWeek() {
+        // Simulation: two antagonist exercises after each of three climbing days made 19 antagonist sets against a maximum of 11.
+        val today = monday.plus(DatePeriod(days = 4))
+        val climbed = mapOf(today to DayActivity(today.toString(), climbingMinutes = 120, climbIntensity = ClimbIntensity.HARD))
+        fun addOn(antagonistDone: Int) = SessionSuggester.suggest(input(activities = climbed).copy(today = today, climbingToday = true,
+            weekly = listOf(area(VolumeArea.ANTAGONIST, antagonistDone, 5, 11), area(VolumeArea.CORE, 0, 4, 10)), weekStart = monday))
+        val room = addOn(antagonistDone = 4)
+        assertTrue(room.addOn, "${room.reasons}")
+        assertTrue(areaSets(room, VolumeArea.ANTAGONIST) in 1..7, "${room.routine.items}")
+        val full = addOn(antagonistDone = 11)
+        assertTrue(full.addOn)
+        assertEquals(0, areaSets(full, VolumeArea.ANTAGONIST), "${full.routine.items}")
+        assertTrue(full.routine.items.any { !it.warmup }, "the block keeps something to do")
     }
 
     @Test

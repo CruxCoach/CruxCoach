@@ -28,12 +28,14 @@ import com.cruxcoach.athlete.model.Routine
 import com.cruxcoach.athlete.model.RoutineItem
 import com.cruxcoach.athlete.model.SetType
 import com.cruxcoach.athlete.model.SetupState
+import com.cruxcoach.athlete.model.SideMode
 import com.cruxcoach.domain.playlist.GeneratorType
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -296,6 +298,10 @@ object SessionSuggester {
     private enum class Slot { WARMUP, FINGER_MAIN, PULL, PUSH, POWER, ANTAGONIST, CORE, LEGS, MOBILITY }
 
     private const val REST_MINUTES = 10
+    /** Fewer work sets than this after the weekly cap make no training of their own (issue #59). */
+    private const val MIN_WORK_SETS = 6
+    /** The easy mobility session of a week without room left. */
+    private const val EASY_MINUTES = 20
     private const val ADDON_MINUTES = 15
     private const val SETUP_SECONDS_PER_EXERCISE = 60
     /** Main-work slots whose picks follow the athlete's level from below too. */
@@ -649,6 +655,48 @@ object SessionSuggester {
     }
 
     /**
+     * No area gets more sets today than its weekly maximum still allows (training simulation, issue #59: a
+     * 60-minute legs-and-core day filled with 16 leg sets against a weekly maximum of 10). Counted like the
+     * weekly targets: every work set, each side of one-sided work. An item that no longer fits gets fewer
+     * sets (at least two) or leaves; the first main exercise of a training always stays, with two sets
+     * ([keepFirst]; the short block after climbing may go entirely).
+     */
+    private fun capToWeeklyRoom(ctx: Ctx, items: List<RoutineItem>, keepFirst: Boolean = true): List<RoutineItem> {
+        val input = ctx.input
+        if (input.weekly.isEmpty()) return items
+        val room = input.weekly
+            .filter { !it.target.isOff && it.target.maxSets > 0 && it.area != VolumeArea.FINGER }
+            .associate { it.area to (it.target.maxSets - it.effective) }
+            .toMutableMap()
+        val out = mutableListOf<RoutineItem>()
+        var kept = 0
+        var capped = false
+        for (item in items) {
+            val def = input.catalog.fallbackFor(item.slug)
+            val area = WeeklyVolume.areaOf(def)
+            val left = area?.let { room[it] }
+            if (item.warmup || item.test || left == null) { out += item; if (!item.warmup) kept++; continue }
+            val perSet = if (def.unilateral && item.sides == SideMode.BOTH) 2 else 1
+            val fits = floor(left / perSet).toInt()
+            val sets = when {
+                fits >= item.sets -> item.sets
+                keepFirst && kept < 1 -> min(item.sets, max(2, fits))
+                fits >= 2 -> fits
+                else -> 0
+            }
+            if (sets != item.sets) capped = true
+            if (sets == 0) continue
+            out += item.copy(sets = sets)
+            kept++
+            room[area] = left - sets * perSet
+        }
+        if (capped) {
+            ctx.reasons += SuggestionReason.WEEKLY_TARGET
+        }
+        return out
+    }
+
+    /**
      * Today's training as the athlete chose it. Safety still decides: fingers that need
      * their recovery or an injury pause turn a finger or board wish into pull and push
      * (or the injury-safe session), with the reason why.
@@ -957,7 +1005,7 @@ object SessionSuggester {
                 taken = warmup.map { it.slug }.toMutableSet())
             null -> pickSlots(ctx, listOf(Slot.ANTAGONIST, Slot.ANTAGONIST), allowWall = true, focus = SuggestionFocus.BOARD_DAY,
                 taken = warmup.map { it.slug }.toMutableSet())
-        }.map { it.copy(sets = min(it.sets, 2)) }
+        }.map { it.copy(sets = min(it.sets, 2)) }.let { afterClimbing(ctx, it) }
         if (addOn == true) ctx.reasons += SuggestionReason.CLIMBING_DAY_ADDON
         val items = warmup + after
         // A chosen duration goes to the board: what the warm-up and the block after it leave, in 5-minute steps.
@@ -982,9 +1030,22 @@ object SessionSuggester {
                 taken = warmup.map { it.slug }.toMutableSet())
             null -> pickSlots(ctx, listOf(Slot.ANTAGONIST, Slot.ANTAGONIST), allowWall = true, focus = SuggestionFocus.BOARD_DAY,
                 taken = warmup.map { it.slug }.toMutableSet())
-        }.map { it.copy(sets = min(it.sets, 2)) }
+        }.map { it.copy(sets = min(it.sets, 2)) }.let { afterClimbing(ctx, it) }
         if (addOn == true) ctx.reasons += SuggestionReason.CLIMBING_DAY_ADDON
         return finish(ctx, SuggestionFocus.BOARD_DAY, routineOf(SuggestionFocus.BOARD_DAY, warmup + after), planned)
+    }
+
+    /**
+     * The block after climbing within the week's room (issue #59: three climbing days with two antagonist
+     * exercises each made 19 antagonist sets against a weekly maximum of 11); with no room left, two
+     * mobility exercises instead.
+     */
+    private fun afterClimbing(ctx: Ctx, items: List<RoutineItem>): List<RoutineItem> {
+        if (items.isEmpty()) return items
+        val capped = capToWeeklyRoom(ctx, items, keepFirst = false)
+        if (capped.isNotEmpty()) return capped
+        return pickSlots(ctx, listOf(Slot.MOBILITY, Slot.MOBILITY), allowWall = false, focus = SuggestionFocus.BOARD_DAY,
+            taken = mutableSetOf()).map { it.copy(sets = min(it.sets, 2)) }
     }
 
     /** 10–15 minutes of antagonists and core after the climbing session. */
@@ -992,6 +1053,7 @@ object SessionSuggester {
         val picked = pickSlots(ctx, listOf(Slot.ANTAGONIST, Slot.CORE, Slot.ANTAGONIST), allowWall = false,
             focus = SuggestionFocus.BOARD_DAY, taken = mutableSetOf())
             .map { it.copy(sets = min(it.sets, 2)) }
+            .let { afterClimbing(ctx, it) }
         val budget = ctx.input.minutesToday ?: ADDON_MINUTES
         var fitted = fitToBudget(picked, budget, ctx.input.catalog)
         if (ctx.input.minutesToday != null) {
@@ -1053,6 +1115,15 @@ object SessionSuggester {
         // taper week keeps the build week's exercises with fewer sets.
         if (grow) items = growToBudget(ctx, focus, items, budgetMinutes, growSlots(focus))
         if (training) items = applyBlock(ctx, items)
+        if (weekly && focus in WEEKLY_FOCI) {
+            val capped = capToWeeklyRoom(ctx, items)
+            // The week has no room left for this kind of work: an easy mobility session instead of a few lonely sets.
+            if (capped != items && capped.filter { !it.warmup && !it.test }.sumOf { it.sets } < MIN_WORK_SETS) {
+                return build(ctx, SuggestionFocus.MOBILITY_RECOVERY, List(4) { Slot.MOBILITY }, min(budgetMinutes, EASY_MINUTES), planned,
+                    weekly = false)
+            }
+            items = capped
+        }
         val fitted = fitToBudget(items, budgetMinutes, input.catalog)
         if (fitted != items) ctx.reasons += SuggestionReason.SHORTENED_TO_TIME
         return finish(ctx, focus, routineOf(focus, fitted), planned)
