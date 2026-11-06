@@ -45,6 +45,8 @@ data class ReviewPage(
     val rows: List<ReviewRow> = emptyList(),
     /** Climbing days per month, January first, for the rhythm chart. */
     val months: List<Int>? = null,
+    /** The month the page names as strongest (1–12); only its bar is highlighted, also on a tie. */
+    val busiestMonth: Int? = null,
     val howCalculated: String? = null,
 )
 
@@ -196,7 +198,7 @@ private fun compared(review: YearReview, eyebrow: String, f: Formats): ReviewPag
         eyebrow = eyebrow,
         title = stringResource(R.string.yr_compared_title, previous.year),
         rows = listOf(
-            row(R.string.yr_volume_hero_label, now.climbingDays, then.climbingDays),
+            row(R.string.yr_volume_days_row, now.climbingDays, then.climbingDays),
             row(R.string.yr_volume_sends, now.sends, then.sends),
             row(R.string.yr_volume_first_sends, now.firstSends, then.firstSends),
             row(R.string.yr_volume_flashes, now.flashes, then.flashes),
@@ -249,6 +251,7 @@ private fun rhythm(review: YearReview, eyebrow: String, f: Formats): ReviewPage?
             },
         ),
         months = r.daysPerMonth,
+        busiestMonth = r.busiestMonth,
         howCalculated = stringResource(R.string.yr_rhythm_how),
     )
 }
@@ -382,7 +385,7 @@ private fun summary(review: YearReview, f: Formats): ReviewPage {
         eyebrow = stringResource(R.string.yr_intro_title),
         title = stringResource(if (review.isFinal) R.string.yr_summary_title else R.string.yr_summary_title_so_far, review.year),
         rows = listOfNotNull(
-            ReviewRow(stringResource(R.string.yr_volume_hero_label), f.number(v.climbingDays)),
+            ReviewRow(stringResource(R.string.yr_volume_days_row), f.number(v.climbingDays)),
             ReviewRow(stringResource(R.string.yr_volume_sends), f.number(v.sends)),
             ReviewRow(stringResource(R.string.yr_volume_first_sends), f.number(v.firstSends)),
             ReviewRow(stringResource(R.string.yr_volume_flashes), f.number(v.flashes)),

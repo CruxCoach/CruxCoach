@@ -77,7 +77,7 @@ object YearShareImage {
             page.hero?.let { y = fitted(content, it, MARGIN, y, width, 210f, ACCENT) + 8f }
             page.heroLabel?.let { y = text(content, it, MARGIN, y, width, 46f, MUTED, maxLines = 2) + 40f }
             page.lead?.let { y = text(content, it, MARGIN, y, width, 46f, TEXT, maxLines = 5) + 48f }
-            page.months?.let { y = months(content, it, MARGIN, y, width) + 48f }
+            page.months?.let { y = months(content, it, page.busiestMonth, MARGIN, y, width) + 48f }
             y = rows(content, page.rows, y, width, footer = room, boardColors)
             val top = STORY_TOP + ((room - y) / 2).coerceAtLeast(0f) * 0.7f
             canvas.drawBitmap(layer, 0f, top, null)
@@ -150,7 +150,7 @@ object YearShareImage {
         }
     }
 
-    private fun months(canvas: Canvas, perMonth: List<Int>, x: Float, top: Float, width: Float): Float {
+    private fun months(canvas: Canvas, perMonth: List<Int>, busiest: Int?, x: Float, top: Float, width: Float): Float {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         val most = perMonth.maxOrNull()?.coerceAtLeast(1) ?: 1
         val gap = 14f
@@ -158,7 +158,7 @@ object YearShareImage {
         val chart = 260f
         perMonth.forEachIndexed { i, days ->
             val h = (chart * days / most).coerceAtLeast(if (days > 0) 8f else 3f)
-            paint.color = if (days == most) ACCENT else MUTED
+            paint.color = if (i + 1 == busiest) ACCENT else MUTED
             val left = x + i * (bar + gap)
             canvas.drawRoundRect(RectF(left, top + chart - h, left + bar, top + chart), 8f, 8f, paint)
         }
