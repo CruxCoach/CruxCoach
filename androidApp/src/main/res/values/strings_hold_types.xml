@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Hold types (#63): names of the types -->
+    <string name="hold_type_jug">Jug</string>
+    <string name="hold_type_edge">Edge</string>
+    <string name="hold_type_sloper">Sloper</string>
+    <string name="hold_type_pinch">Pinch</string>
+    <string name="hold_type_pocket">Pocket</string>
+    <string name="hold_type_volume">Volume</string>
+    <string name="hold_type_foot_chip">Foot chip</string>
+    <string name="hold_direction_all_round">All round</string>
+
+    <!-- Hold-type review: test builds only -->
+    <string name="settings_hold_review_title">Hold-type review</string>
+    <string name="settings_hold_review_desc">Test builds only: check the computed hold types</string>
+    <string name="hold_review_title">Hold types: review</string>
+    <string name="hold_review_stage_blind">1 · Blind %1$d/%2$d</string>
+    <string name="hold_review_stage_decide">2 · Decide %1$d</string>
+    <string name="hold_review_stage_results">Results</string>
+    <string name="hold_review_progress">Hold %1$d of %2$d · #%3$d</string>
+    <string name="hold_review_blind_hint">Answer first. The computed label appears after you answer, and your answer is final then.</string>
+    <string name="hold_review_decide_hint">Only the fields where you and the computed label differ. Who was right?</string>
+    <string name="hold_review_decide_locked">Finish the blind round first.</string>
+    <string name="hold_review_q_type">Type</string>
+    <string name="hold_review_q_direction">The usable side faces</string>
+    <string name="hold_review_q_foot_only">For feet only</string>
+    <string name="hold_review_field_direction">Direction</string>
+    <string name="hold_review_cant_tell">Can\'t tell</string>
+    <string name="hold_review_yes">Yes</string>
+    <string name="hold_review_no">No</string>
+    <string name="hold_review_show_label">Show the computed label</string>
+    <string name="hold_review_computed">Computed: %1$s</string>
+    <string name="hold_review_yours">You: %1$s</string>
+    <string name="hold_review_verdict_reviewer">I was right</string>
+    <string name="hold_review_verdict_computed">Computed was right</string>
+    <string name="hold_review_verdict_both">Both wrong</string>
+    <string name="hold_review_none_disagree">No disagreements.</string>
+    <string name="hold_review_results_blind">Blind round: agreement</string>
+    <string name="hold_review_results_blind_row">%1$s: %2$d of %3$d (%4$d %%), can\'t tell %5$d</string>
+    <string name="hold_review_results_near">Direction equal or one step apart: %1$d of %2$d</string>
+    <string name="hold_review_results_decided">After deciding</string>
+    <string name="hold_review_results_decided_row">%1$s: computed wrong %2$d, you wrong %3$d (both %4$d), open %5$d</string>
+    <string name="hold_review_save_file">Save as file</string>
+    <string name="hold_review_share">Share as text</string>
+    <string name="hold_review_saved">Saved</string>
+    <string name="hold_review_start_over">Start over</string>
+    <string name="hold_review_start_over_confirm">Delete all answers and start the blind round again?</string>
+    <string name="hold_review_missing">This build has no hold types.</string>
+    <string name="hold_review_no_board">The board geometry has not loaded yet.</string>
+    <string name="hold_review_dataset">Labels version %1$s</string>
+</resources>
