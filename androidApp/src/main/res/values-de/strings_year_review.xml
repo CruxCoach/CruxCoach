@@ -18,6 +18,7 @@
     <!-- Pages: frame -->
     <string name="yr_close">Schließen</string>
     <string name="yr_share">Teilen</string>
+    <string name="yr_share_page">Diese Seite teilen: %1$s</string>
     <string name="yr_list_view">Listenansicht</string>
     <string name="yr_page_view">Seiten</string>
     <string name="yr_page_of">Seite %1$d von %2$d</string>

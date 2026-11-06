@@ -411,7 +411,11 @@ internal fun ReviewList(
                     }
                     RowsList(page.rows)
                     page.howCalculated?.let { Text(it, color = PageFaint, style = MaterialTheme.typography.bodyMedium) }
-                    TextButton(onClick = { onShare(page.kind) }) { Text(stringResource(R.string.yr_share), color = OrangeAccent) }
+                    // A screen reader hears which page the button shares, not just "Share" ten times.
+                    val shareLabel = stringResource(R.string.yr_share_page, page.title)
+                    TextButton(onClick = { onShare(page.kind) }, modifier = Modifier.semantics { contentDescription = shareLabel }) {
+                        Text(stringResource(R.string.yr_share), color = OrangeAccent)
+                    }
                     HorizontalDivider(color = Color.White.copy(alpha = 0.25f))
                 }
             }
