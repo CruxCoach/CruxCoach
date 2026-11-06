@@ -47,6 +47,8 @@ object WorkoutPlanner {
         /** Performance value per side (null = two-handed / not one-sided); null when none is known. */
         capacityFor: (Side?) -> Capacity? = { null },
         incrementKg: Double = 1.0,
+        /** Loads may take the bigger step after an easy training ([LoadSteps]); false while anything keeps them careful. */
+        stepUp: Boolean = false,
         newId: () -> String,
     ): PlannedBlock {
         val def = catalog.fallbackFor(item.slug)
@@ -70,6 +72,14 @@ object WorkoutPlanner {
         // A load the athlete wrote into the workout wins over both (owner
         // 2026-10-15: recommendations must be overridable).
         val targets = sides.associateWith { side -> LoadPrescriber.prescribe(def, item, capacityFor(side), bodyweightKg, incrementKg) }
+        // Between trainings: bigger steps after an easy one, small loads one step at a time ([LoadSteps]).
+        // Only where the load was planned, never over a load the athlete chose.
+        val stepped = sides.associateWith { side ->
+            if (item.loadKg != null || item.warmup || item.test) return@associateWith null
+            val last = LoadSteps.lastSession(history, side)
+            val base = targets[side]?.loadKg
+            LoadSteps.adjust(def, base, last, incrementKg, stepUp)?.takeIf { it != (base ?: last.mapNotNull { s -> s.loadKg }.maxOrNull()) }
+        }
         // A circuit member's sets know their circuit; their rest is the short one to the next exercise.
         val circuit = item.circuit?.takeIf { Circuits.eligible(def, item) }
         val restS = if (circuit != null) item.circuitRestS ?: Circuits.DEFAULT_CIRCUIT_REST_S else item.restS
@@ -90,7 +100,7 @@ object WorkoutPlanner {
                     side = side,
                     targetReps = targetReps.takeIf { def.kind == ExerciseKind.REPS || def.kind == ExerciseKind.LOAD_REPS },
                     targetDurationS = targetDuration?.toDouble()?.takeIf { def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.CLIMB },
-                    targetLoadKg = item.loadKg ?: target?.loadKg,
+                    targetLoadKg = item.loadKg ?: stepped[side] ?: target?.loadKg,
                     reps = when (def.kind) {
                         ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> target?.reps ?: ghost?.reps ?: targetReps
                         ExerciseKind.CLIMB -> ghost?.reps ?: item.repsPerSet
@@ -101,7 +111,7 @@ object WorkoutPlanner {
                         else -> null
                     },
                     loadKg = if (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL)
-                        item.loadKg ?: target?.loadKg ?: ghost?.loadKg else null,
+                        item.loadKg ?: stepped[side] ?: target?.loadKg ?: ghost?.loadKg else null,
                     edgeMm = (ghost?.edgeMm ?: item.edgeMm?.toDouble())
                         .takeIf { def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL },
                     grip = ghost?.grip ?: item.grip,
@@ -159,6 +169,8 @@ object WorkoutSummarizer {
         catalog: ExerciseCatalog,
         historyBefore: (String) -> List<ExerciseSet>,
         smallestIncrementKg: Double,
+        /** Loads may take the bigger step after an easy training ([LoadSteps]): the "next time" line says so. */
+        mayStepUp: Boolean = false,
     ): WorkoutSummary {
         val done = sets.filter { it.isCompleted }
         val bySlug = done.groupBy { it.exerciseSlug }
@@ -170,7 +182,7 @@ object WorkoutSummarizer {
             slugSets.mapNotNull { PersonalRecords.detect(def, it, earlier) }
                 .maxByOrNull { it.value - it.previous }
                 ?.let { records += slug to it }
-            ProgressionAdvisor.evaluate(def, slugSets, smallestIncrementKg)
+            ProgressionAdvisor.evaluate(def, slugSets, smallestIncrementKg, mayStepUp)
                 ?.takeIf { it.verdict != ProgressionVerdict.ON_TRACK }
                 ?.let { suggestions += slug to it }
         }

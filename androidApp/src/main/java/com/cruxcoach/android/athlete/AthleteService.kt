@@ -294,6 +294,7 @@ class AthleteService @Inject constructor(
                 climbingMinutes = boardMinutes + m.sumOf { it.minutes },
                 climbingEfforts = c?.efforts ?: 0,
                 workoutMinutes = w.sumOf { it.durationMinutes ?: 0 },
+                comebackMinutes = w.filter { Comeback.parseRoutineId(it.routineId) != null }.sumOf { it.durationMinutes ?: 0 },
                 workoutLoad = w.sumOf { (it.durationMinutes ?: 0) * (it.sessionRpe ?: 6) },
                 climbIntensity = intensity,
                 fingerLoad = units[LoadStructure.FINGER] ?: 0.0,
@@ -434,8 +435,9 @@ class AthleteService @Inject constructor(
             val modifier = if (comeback != null) ReadinessModifier.NONE else todaysModifier().let { if (trimSets) it else it.copy(setsDelta = 0) }
             // Circuits in their canonical form, every member with the circuit's rests (the round rest needs all members).
             val items = routine?.items?.let { Circuits.resolveRests(Circuits.normalize(it, catalog), catalog) }
+            val stepUp = loadsMayStepUp(comeback)
             items?.forEachIndexed { index, item ->
-                addItem(id, index, item, modifier, ownInjury = comeback, despiteInjury = item.slug in despiteInjury)
+                addItem(id, index, item, modifier, ownInjury = comeback, despiteInjury = item.slug in despiteInjury, stepUp = stepUp)
             }
             if (comeback == null && items?.any { it.warmup } == true) addSpecificWarmups(id)
         }
@@ -671,6 +673,8 @@ class AthleteService @Inject constructor(
         ownInjury: String? = null,
         /** The athlete chose it although the open injury rules it out: planned as if nothing hurt. */
         despiteInjury: Boolean = false,
+        /** Loads may take the bigger step after an easy training ([loadsMayStepUp]). */
+        stepUp: Boolean = loadsMayStepUp(ownInjury),
     ): Boolean {
         val def = catalog.fallbackFor(item.slug)
         val bodyweight = currentBodyweight()
@@ -690,6 +694,7 @@ class AthleteService @Inject constructor(
             },
             incrementKg = increment,
             newId = repo::newId,
+            stepUp = stepUp,
         )
         val factor = if (item.warmup || item.test) 1.0 else ReadinessModifiers.loadFactorFor(def, modifier)
         // The training remembers what today's form changed, so the player can say why and offer "as planned".
@@ -714,6 +719,18 @@ class AthleteService @Inject constructor(
         }
         return !planned.skippedForInjury
     }
+
+    /**
+     * Loads may take the bigger step after an easy training ([LoadSteps]) unless something keeps them careful
+     * (owner 2026-11-06): an open injury, a comeback session, the return ramp after a break, a climber under 18
+     * or in the first year.
+     */
+    fun loadsMayStepUp(comebackInjury: String? = null): Boolean = runCatching {
+        if (comebackInjury != null || repo.activeInjuries().isNotEmpty()) return false
+        val coach = repo.profile().coach
+        if (coach.ageBand == AgeBand.UNDER_16 || coach.ageBand == AgeBand.Y16_17 || coach.experience == ExperienceBand.UNDER_1) return false
+        todayCoach().returnState(activities(days = 7 * 26), today()) == null
+    }.getOrDefault(false)
 
     // ── Performance values ───────────────────────────────────────────
 
@@ -1256,7 +1273,7 @@ class AthleteService @Inject constructor(
             historyBefore = { slug ->
                 repo.history(slug, HISTORY_LIMIT).filter { it.workoutId != id && (it.completedAt ?: 0L) < startedAt }
             },
-            smallestIncrementKg = repo.profile().smallestIncrementKg)
+            smallestIncrementKg = repo.profile().smallestIncrementKg, mayStepUp = loadsMayStepUp())
     }
 
     /**

@@ -198,6 +198,34 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun usedUpTrainingDaysMeanRecoveryUnlessAKindIsChosen() {
+        // Owner 2026-11-06 (#59): once the week's training days are used up, recovery by default, training one tap away.
+        val friday = monday.plus(DatePeriod(days = 4))
+        val fourDays = (0 until 4).associate { i -> monday.plus(DatePeriod(days = i)).let { it to DayActivity(it.toString(), workoutMinutes = 60) } }
+        val fourPerWeek = profile.copy(coach = CoachProfile(trainingDaysPerWeek = 4))
+        val rest = SessionSuggester.suggest(input(profile = fourPerWeek, activities = fourDays).copy(today = friday, weekStart = monday))
+        assertEquals(SuggestionFocus.MOBILITY_RECOVERY, rest.focus, "${rest.reasons}")
+        assertEquals(SuggestionReason.WEEK_DAYS_DONE, rest.reasons.first())
+        assertTrue(rest.totalMinutes <= 25, "${rest.totalMinutes} min")
+        // A chosen kind still trains.
+        val chosen = SessionSuggester.suggest(input(profile = fourPerWeek, activities = fourDays).copy(today = friday, weekStart = monday,
+            wish = SuggestionFocus.PULL_PUSH))
+        assertEquals(SuggestionFocus.PULL_PUSH, chosen.focus)
+        // Days left, or no answer in the setup: training as before.
+        val fivePerWeek = profile.copy(coach = CoachProfile(trainingDaysPerWeek = 5))
+        assertTrue(SessionSuggester.suggest(input(profile = fivePerWeek, activities = fourDays).copy(today = friday, weekStart = monday))
+            .focus != SuggestionFocus.MOBILITY_RECOVERY)
+        assertTrue(SessionSuggester.suggest(input(activities = fourDays).copy(today = friday, weekStart = monday)).focus != SuggestionFocus.MOBILITY_RECOVERY)
+        // The short daily sessions of a comeback plan are rehab, not training days (found by the simulation).
+        val rehab = fourDays.mapValues { (_, a) -> a.copy(workoutMinutes = 8, comebackMinutes = 8) }
+        assertTrue(SessionSuggester.suggest(input(profile = fourPerWeek, activities = rehab).copy(today = friday, weekStart = monday))
+            .focus != SuggestionFocus.MOBILITY_RECOVERY)
+        val both = fourDays.mapValues { (_, a) -> a.copy(workoutMinutes = 68, comebackMinutes = 8) }
+        assertEquals(SuggestionFocus.MOBILITY_RECOVERY,
+            SessionSuggester.suggest(input(profile = fourPerWeek, activities = both).copy(today = friday, weekStart = monday)).focus)
+    }
+
+    @Test
     fun aChosenFingerDayStillRespectsTiredFingersAndTheEquipment() {
         val tired = SessionSuggester.suggest(input(checkin = Checkin(monday.toString(), 0, fingers = 1)).copy(wish = SuggestionFocus.FINGER_STRENGTH))
         assertEquals(SuggestionFocus.PULL_PUSH, tired.focus)

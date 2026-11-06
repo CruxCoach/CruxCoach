@@ -13,6 +13,7 @@ import com.cruxcoach.athlete.logic.LoadTrend
 import com.cruxcoach.athlete.logic.LogbookSummary
 import com.cruxcoach.athlete.logic.PreferenceLearning
 import com.cruxcoach.athlete.logic.Readiness
+import com.cruxcoach.athlete.logic.ReturnState
 import com.cruxcoach.athlete.logic.ReturnToTraining
 import com.cruxcoach.athlete.logic.Soreness
 import com.cruxcoach.athlete.logic.SuggestionFocus
@@ -118,6 +119,16 @@ class TodayCoach(
         return WeeklyVolume.progress(weekSets, activities, catalog, weekStart, targets, today)
     }
 
+    /** The return ramp after a break or a healed finger injury ([ReturnToTraining]); null when training normally. */
+    fun returnState(activities: Map<String, DayActivity>, today: LocalDate): ReturnState? = runCatching {
+        val since = today.minus(DatePeriod(days = 120))
+        val days120 = repo.workoutsBetween(since.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
+        val sets120 = repo.completedSetsSince(now() - 120L * 24 * 3600 * 1000)
+            .mapNotNull { set -> days120[set.workoutId]?.let { it to set } }
+        ReturnToTraining.state(activities, repo.pauses(), repo.allInjuries(), today,
+            maxFingerBefore = ReturnToTraining.maxFingerBefore(sets120, catalog, today))
+    }.getOrNull()
+
     /** Today's engine input from all the coach knows. */
     fun build(
         profile: AthleteProfile,
@@ -181,14 +192,7 @@ class TodayCoach(
         val benchmarks = allBenchmarks.groupBy { it.exerciseSlug }.mapNotNull { (_, list) -> list.maxByOrNull { it.measuredAt } }
         val historyWeeks = parsedActivities.filterValues { it.trained }.keys.map { ConsistencyStreak.weekStart(it) }.distinct().size
         // Back after a break or a healed finger injury: a conservative ramp on top of every other rule.
-        val returnState = runCatching {
-            val since = today.minus(DatePeriod(days = 120))
-            val days120 = repo.workoutsBetween(since.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
-            val sets120 = repo.completedSetsSince(nowMs - 120L * 24 * 3600 * 1000)
-                .mapNotNull { set -> days120[set.workoutId]?.let { it to set } }
-            ReturnToTraining.state(activities, repo.pauses(), repo.allInjuries(), today,
-                maxFingerBefore = ReturnToTraining.maxFingerBefore(sets120, catalog, today))
-        }.getOrNull()
+        val returnState = returnState(activities, today)
         val input = SuggestionInput(
             catalog = catalog,
             profile = profile,

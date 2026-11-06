@@ -99,6 +99,12 @@ enum class SuggestionReason {
     LEVEL_HARDER_KEPT,
     /** The weekly volume plan: this area has the most left to do this week (see [WeeklyVolume]). */
     WEEKLY_TARGET,
+    /** The week already has most of these sets: today plans fewer of them (issue #59). */
+    WEEK_VOLUME_FULL,
+    /** The week has no room left for this kind of work: an easy mobility session instead (issue #59). */
+    WEEK_VOLUME_DONE,
+    /** The week's training days, climbing included, are used up: recovery by default, a chosen kind still trains (owner 2026-11-06). */
+    WEEK_DAYS_DONE,
     /** Back after a break: fewer sets and no maximal finger load for now (see [ReturnToTraining]). */
     RETURN_AFTER_BREAK,
     /** A finger injury healed recently: finger work stays light for a few weeks. */
@@ -493,6 +499,12 @@ object SessionSuggester {
                 }
             }
             planned != null -> plannedRoutine(ctx, planned, climbingPaused, fingerBlock, guard, lowEnergy, budget)?.let { return it }
+            // The week's training days are used up (owner 2026-11-06, issue #59): recovery by default; choosing a kind
+            // of training on the card still trains (that goes through [chosen] above).
+            weekDaysUsed(input) -> {
+                reasons.add(0, SuggestionReason.WEEK_DAYS_DONE)
+                return build(ctx, SuggestionFocus.MOBILITY_RECOVERY, List(4) { Slot.MOBILITY }, min(budget, EASY_MINUTES), planned, weekly = false)
+            }
             // "Always the same training": the athlete's usual workout on a free day, progression per exercise (owner 2026-10-19).
             habit != null && (input.wish == null || input.wishLearned) -> {
                 val why = if (habit.kind == PreferenceLearning.HabitKind.WEEKDAY) SuggestionReason.USUAL_ROUTINE_WEEKDAY else SuggestionReason.USUAL_ROUTINE
@@ -563,6 +575,20 @@ object SessionSuggester {
     }
 
     // ── Weekly volume plan ───────────────────────────────────────────
+
+    /**
+     * The days the athlete trains a week (coach setup, climbing included) are used up before today: days this
+     * week with a logged training or climbing. The short daily sessions of a comeback plan do not use up a day
+     * (the training simulation found them filling the week). Without the setup answer there is no such limit.
+     */
+    private fun weekDaysUsed(input: SuggestionInput): Boolean {
+        val days = input.coach.trainingDaysPerWeek?.takeIf { it in 1..6 } ?: return false
+        val start = input.weekStart ?: WeeklyVolume.weekStartOf(input.today)
+        val used = input.activities.count { (day, a) ->
+            day >= start && day < input.today && (a.workoutMinutes > a.comebackMinutes || a.climbingMinutes > 0 || a.climbingEfforts > 0)
+        }
+        return used >= days
+    }
 
     private val WEEKLY_FOCI = setOf(SuggestionFocus.FINGER_STRENGTH, SuggestionFocus.PULL_PUSH, SuggestionFocus.LEGS_CORE,
         SuggestionFocus.INJURY_SAFE)
@@ -690,9 +716,7 @@ object SessionSuggester {
             kept++
             room[area] = left - sets * perSet
         }
-        if (capped) {
-            ctx.reasons += SuggestionReason.WEEKLY_TARGET
-        }
+        if (capped && SuggestionReason.WEEK_VOLUME_FULL !in ctx.reasons) ctx.reasons += SuggestionReason.WEEK_VOLUME_FULL
         return out
     }
 
@@ -1119,6 +1143,8 @@ object SessionSuggester {
             val capped = capToWeeklyRoom(ctx, items)
             // The week has no room left for this kind of work: an easy mobility session instead of a few lonely sets.
             if (capped != items && capped.filter { !it.warmup && !it.test }.sumOf { it.sets } < MIN_WORK_SETS) {
+                ctx.reasons.remove(SuggestionReason.WEEK_VOLUME_FULL)
+                ctx.reasons.add(0, SuggestionReason.WEEK_VOLUME_DONE)
                 return build(ctx, SuggestionFocus.MOBILITY_RECOVERY, List(4) { Slot.MOBILITY }, min(budgetMinutes, EASY_MINUTES), planned,
                     weekly = false)
             }
