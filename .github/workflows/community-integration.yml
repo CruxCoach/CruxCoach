@@ -14,13 +14,12 @@ on:
       - 'shared/src/**/communityclient/**'
       - 'androidApp/src/**/communityclient/**'
       - '.github/workflows/community-integration.yml'
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: community-it-${{ github.event.pull_request.number || github.ref }}
+  group: community-it-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
