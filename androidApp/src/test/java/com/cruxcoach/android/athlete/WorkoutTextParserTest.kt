@@ -269,6 +269,11 @@ class WorkoutTextParserTest {
         assertEquals(40.0, blocks.item.loadKg)
         // Body-weight work counts everything carried as added weight.
         assertEquals(20.0, one("Ausfallschritte gehend 3x12 2x10kg").item.loadKg)
+        // One dumbbell per side stays the dumbbell; "3x10 kg" is not three dumbbells.
+        val row = one("Einarmiges Kurzhantelrudern 3x10 2x20kg")
+        assertEquals("pull.dumbbell_row", row.item.slug)
+        assertEquals(20.0, row.item.loadKg)
+        assertEquals(10.0, one("Ausfallschritte gehend 3x12 3x10kg").item.loadKg)
     }
 
     @Test

@@ -317,7 +317,7 @@ object WorkoutTextParser {
                 // Lifted weight has no sign; "-10 kg" on a pick-up is not assistance.
                 loadMode == LoadMode.EXTERNAL -> abs(kg) * piecesCounted(match, guess, n)
                 // "Ausfallschritte 2x10 kg": added weight is everything carried, together (LoadRules).
-                else -> kg * (n.pieces ?: 1)
+                else -> kg * (n.pair ?: 1)
             }
         }
         return when (kind) {
@@ -346,13 +346,19 @@ object WorkoutTextParser {
     }
 
     /**
-     * "2x16 kg" stays 16 where the exercise logs one dumbbell of a pair ([LoadRules]); everywhere else the
-     * number is the total, so two 20 kg blocks on a two-arm pick-up are 40 kg.
+     * How many times "2x16 kg" counts ([LoadRules]): once where the exercise logs one dumbbell of a pair or
+     * one implement anyway (a single dumbbell, a barbell, a cable stack); twice where the number is a total
+     * of separate pieces, so two 20 kg blocks on a pick-up are 40 kg and two 24 kg weights on a new
+     * farmer's walk 48 kg.
      */
     private fun piecesCounted(match: ExerciseDefinition?, guess: ExerciseGuess, n: Numbers): Int {
-        val pieces = n.pieces ?: return 1
-        val paired = match?.let { LoadRules.implements(it) > 1 } ?: (guess.implements > 1)
-        return if (paired) 1 else pieces
+        val pair = n.pair ?: return 1
+        val def = match ?: ExerciseDefinition("", guess.category, guess.kind, guess.load, guess.unilateral, guess.equipment,
+            implements = guess.implements)
+        return when (LoadRules.basis(def)) {
+            LoadBasis.PICKUP, LoadBasis.PICKUP_BOTH_HANDS, LoadBasis.WEIGHT -> pair
+            else -> 1
+        }
     }
 
     private fun capitalize(s: String): String = s.trim().replaceFirstChar { it.uppercase() }
@@ -389,6 +395,9 @@ object WorkoutTextParser {
         /** "2x16 kg": [loadKg] is the weight of one of this many dumbbells, kettlebells or blocks. */
         val pieces: Int? = null,
     ) {
+        /** 2 for "2x16 kg", the pair the notation is for; "3x10 kg" keeps the weight as written, as before. */
+        val pair: Int? get() = pieces?.takeIf { it == 2 }
+
         val any: Boolean get() = sets != null || reps != null || seconds != null || loadKg != null || edgeMm != null ||
             restS != null || workS != null || perSet != null || rounds != null
 
@@ -990,7 +999,7 @@ data class ExerciseGuess(
             }
             val unilateral = n?.unilateral == true || has(t, *UNILATERAL)
             // Only dumbbells and kettlebells log one of a pair; "Farmer Walk 2x24 kg" without them is 48 kg in total.
-            val paired = load == LoadMode.EXTERNAL && (n?.pieces ?: 1) > 1 && !unilateral &&
+            val paired = load == LoadMode.EXTERNAL && n?.pair != null && !unilateral &&
                 LoadRules.pairable(ExerciseDefinition("", category, kind, load, equipment = equipment))
             return ExerciseGuess(category, kind, load, unilateral, equipment, domains, implements = if (paired) 2 else 1)
         }
