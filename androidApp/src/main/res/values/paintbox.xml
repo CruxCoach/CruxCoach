@@ -37,4 +37,10 @@
     <string name="paintbox_quantum_limit">Quantum currently supports up to 92 LEDs per color.</string>
     <string name="paintbox_quantum_occupied">Quantum has other active layers. Their hold positions cannot be verified here. Remove them using their owning app before painting.</string>
     <string name="paintbox_quantum_hint">Quantum: four colors, up to 92 LEDs per color. Other active layers must be cleared by their owner.</string>
+    <string name="paintbox_image_import">Import image</string>
+    <string name="paintbox_image_ok">OK</string>
+    <string name="paintbox_image_bg">BG Color</string>
+    <string name="paintbox_image_pick_bg">Pick Background Color</string>
+    <string name="paintbox_image_gestures">Drag the image with one finger; zoom and rotate with two.</string>
+    <string name="paintbox_image_error">Could not load this image. Please choose another image.</string>
 </resources>

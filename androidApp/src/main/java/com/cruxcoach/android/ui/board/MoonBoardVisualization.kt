@@ -55,11 +55,11 @@ private val MoonBoardPanelColor = Color(0xFFEAE1CC)
 private val MoonBoardGridDotColor = Color(0x40202020)
 
 /** Board card aspect (width / height) for the generic (no-photo) raster. */
-private const val BOARD_ASPECT_RATIO = 0.65f
+internal const val BOARD_ASPECT_RATIO = 0.65f
 
 /** Ring radius for a climb hold on a real board image, as a fraction of
  *  the image width — sized to encircle a physical MoonBoard hold. */
-private const val IMAGE_HOLD_RADIUS_FRACTION = 0.028f
+internal const val IMAGE_HOLD_RADIUS_FRACTION = 0.028f
 
 /**
  * MoonBoard climb visualization (FEAT-027).
@@ -266,7 +266,7 @@ private fun DrawScope.drawTappableLatticeMapped(asset: MoonBoardRenderAsset) {
  * Bounding box of the 11x18 hold lattice (centre of A1 to centre of
  * K18) for the generic raster — inset from the card edges.
  */
-private fun gridRect(size: Size): Rect = Rect(
+internal fun gridRect(size: Size): Rect = Rect(
     left = size.width * 0.09f,
     top = size.height * 0.055f,
     right = size.width * 0.94f,
@@ -278,7 +278,7 @@ private fun gridRect(size: Size): Rect = Rect(
  * (0 = row 1 at the bottom .. [gridRows]-1 = top row). [gridRows] is the
  * variant's row count (18 standard, 12 for Mini MoonBoard 2020).
  */
-private fun holdCentre(grid: Rect, column: Int, rowIndex: Int, gridRows: Int): Offset {
+internal fun holdCentre(grid: Rect, column: Int, rowIndex: Int, gridRows: Int): Offset {
     val x = grid.left + column * grid.width / (MoonBoardVariant.GRID_COLUMNS - 1)
     val y = grid.top + (gridRows - 1 - rowIndex) *
         grid.height / (gridRows - 1)
@@ -286,7 +286,7 @@ private fun holdCentre(grid: Rect, column: Int, rowIndex: Int, gridRows: Int): O
 }
 
 /** Spacing between adjacent lattice points (smaller of the two axes). */
-private fun cellSpacing(grid: Rect, gridRows: Int): Float = min(
+internal fun cellSpacing(grid: Rect, gridRows: Int): Float = min(
     grid.width / (MoonBoardVariant.GRID_COLUMNS - 1),
     grid.height / (gridRows - 1),
 )
