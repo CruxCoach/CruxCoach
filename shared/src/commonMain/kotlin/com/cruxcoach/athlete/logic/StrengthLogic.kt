@@ -152,7 +152,7 @@ data class ProgressionSuggestion(
  */
 object ProgressionAdvisor {
 
-    fun evaluate(def: ExerciseDefinition, lastSession: List<ExerciseSet>, smallestIncrementKg: Double): ProgressionSuggestion? {
+    fun evaluate(def: ExerciseDefinition, lastSession: List<ExerciseSet>, smallestIncrementKg: Double, mayStepUp: Boolean = false): ProgressionSuggestion? {
         val work = lastSession.filter { it.isCompleted && it.setType == SetType.WORK }
         if (work.isEmpty() || def.kind == ExerciseKind.CLIMB) return null
 
@@ -193,8 +193,10 @@ object ProgressionAdvisor {
                 else -> ProgressionSuggestion(ProgressionVerdict.TOO_HARD, easierSlug = def.easier)
             }
             hitTop && easyEnough -> when {
+                // The step the next training plans ([LoadSteps]): two after an easy one, one at small loads.
                 supportsLoad -> ProgressionSuggestion(ProgressionVerdict.TOO_EASY,
-                    nextLoadKg = (lastLoad ?: 0.0) + step, harderSlug = def.harder)
+                    nextLoadKg = LoadSteps.adjust(def, (lastLoad ?: 0.0) + step, work, smallestIncrementKg, mayStepUp) ?: ((lastLoad ?: 0.0) + step),
+                    harderSlug = def.harder)
                 else -> ProgressionSuggestion(ProgressionVerdict.TOO_EASY, harderSlug = def.harder)
             }
             else -> ProgressionSuggestion(ProgressionVerdict.ON_TRACK)

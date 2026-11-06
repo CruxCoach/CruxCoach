@@ -1186,6 +1186,9 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.RETURN_AFTER_BREAK -> R.string.tre_reason_return_break
     SuggestionReason.RETURN_FINGER -> R.string.tre_reason_return_finger
     SuggestionReason.WEEKLY_TARGET -> R.string.trv_reason_weekly
+    SuggestionReason.WEEK_VOLUME_FULL -> R.string.trv_reason_week_full
+    SuggestionReason.WEEK_VOLUME_DONE -> R.string.trv_reason_week_done
+    SuggestionReason.WEEK_DAYS_DONE -> R.string.trv_reason_week_days_done
     SuggestionReason.CHOSEN_TODAY -> R.string.trt_reason_chosen
     SuggestionReason.SPARED_TODAY -> R.string.trt_reason_spared_generic
     SuggestionReason.NO_WALL_HERE -> R.string.trt_reason_no_wall

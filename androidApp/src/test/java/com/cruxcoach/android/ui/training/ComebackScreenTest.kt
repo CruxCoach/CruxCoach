@@ -26,6 +26,7 @@ import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.minus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -131,6 +132,12 @@ class ComebackScreenTest : AthleteScreenTest() {
         assertEquals(1, log.painMax)
         // The next session starts from the load the athlete used.
         assertEquals(6.0, ComebackService(service).lastLoad("i1", "finger.open_hand_block_lift", Grip.OPEN_HAND, Side.LEFT))
+        // In a session of the same kind: the strength holds do not take over the light tendon holds' load, nor the other way round (#59).
+        assertEquals(6.0, ComebackService(service).lastLoad("i1", "finger.open_hand_block_lift", Grip.OPEN_HAND, Side.LEFT, ComebackSessionKind.TENDON))
+        assertNull(ComebackService(service).lastLoad("i1", "finger.open_hand_block_lift", Grip.OPEN_HAND, Side.LEFT, ComebackSessionKind.STRENGTH))
+        compose.waitUntil(WAIT_MS) { repo.openWorkout() == null }
+        val strength = ComebackService(service).startSession("i1", 1, "Kraft")!!
+        assertTrue(repo.setsFor(strength).filter { it.exerciseSlug == "finger.open_hand_block_lift" }.all { it.loadKg == Comeback.START_KG })
     }
 
     @Test

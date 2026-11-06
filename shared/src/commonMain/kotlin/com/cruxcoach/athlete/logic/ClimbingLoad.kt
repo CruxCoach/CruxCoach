@@ -59,6 +59,11 @@ object ClimbingLoad {
     private const val CHRONIC_DAYS = 28
     /** Below this mean daily load there is no meaningful baseline to compare against. */
     private const val MIN_CHRONIC = 0.5
+    /**
+     * Days of logged history before the athlete's own normal counts (owner 2026-11-06, issue #59). Until then
+     * any real load reads as rising: the careful start, no max finger work.
+     */
+    const val CAREFUL_START_DAYS = 14
 
     const val RISING_RATIO = 1.3
     const val SPIKE_RATIO = 1.5
@@ -213,16 +218,22 @@ object ClimbingLoad {
     /**
      * Acute (7 days) against chronic (28 days) per structure, plus the daily
      * series of the last [SERIES_DAYS] days for the chart. Days without an
-     * entry count as zero — rest days are part of the average.
+     * entry count as zero — rest days are part of the average. Days before the
+     * first logged load are not rest, they are unknown: the normal counts from
+     * the first logged day, and only once [CAREFUL_START_DAYS] are logged
+     * (training simulation, issue #59: every new user who climbed regularly
+     * read "rising" for four weeks).
      */
     fun status(daily: Map<LocalDate, Map<LoadStructure, Double>>, today: LocalDate): LoadStatus {
         val days = (SERIES_DAYS + LEAD_DAYS - 1 downTo 0).map { today.minus(DatePeriod(days = it)) }
         val series = LoadStructure.entries.associateWith { s -> days.map { d -> d to (daily[d]?.get(s) ?: 0.0) } }
+        val first = daily.filter { (d, units) -> d <= today && units.values.any { it > 0.0 } }.keys.minOrNull()
+        val known = first?.let { (today.toEpochDays() - it.toEpochDays()).toInt() + 1 } ?: 0
         val structures = series.mapValues { (_, points) ->
             val values = points.map { it.second }
             val acute = values.takeLast(ACUTE_DAYS).average()
-            val chronic = values.takeLast(CHRONIC_DAYS).average()
-            val ratio = if (chronic < MIN_CHRONIC) null else acute / chronic
+            val chronic = values.takeLast(known.coerceIn(1, CHRONIC_DAYS)).average()
+            val ratio = if (known < CAREFUL_START_DAYS || chronic < MIN_CHRONIC) null else acute / chronic
             val trend = when {
                 ratio == null -> if (acute >= 1.0) LoadTrend.RISING else LoadTrend.LOW
                 ratio >= SPIKE_RATIO -> LoadTrend.SPIKE

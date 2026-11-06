@@ -98,6 +98,22 @@ class ClimbingLoadTest {
     }
 
     @Test
+    fun theNormalCountsFromTheFirstLoggedDay() {
+        // Owner 2026-11-06 (#59): a new user climbing steadily every other day is not "rising" for four weeks.
+        fun steady(days: Int) = (0 until days step 2).associate { today.minus(DatePeriod(days = it)) to mapOf(LoadStructure.FINGER to 10.0) }
+        val careful = ClimbingLoad.status(steady(10), today).structures.getValue(LoadStructure.FINGER)
+        // The first 14 days: no normal yet, real load reads as rising (no max finger work).
+        assertNull(careful.ratio)
+        assertEquals(LoadTrend.RISING, careful.trend)
+        val known = ClimbingLoad.status(steady(16), today).structures.getValue(LoadStructure.FINGER)
+        assertEquals(LoadTrend.NORMAL, known.trend, "ratio ${known.ratio}")
+        // A real jump after the careful start still shows.
+        val jump = steady(20).toMutableMap()
+        (0 until 5).forEach { jump[today.minus(DatePeriod(days = it))] = mapOf(LoadStructure.FINGER to 25.0) }
+        assertEquals(LoadTrend.SPIKE, ClimbingLoad.status(jump, today).structures.getValue(LoadStructure.FINGER).trend)
+    }
+
+    @Test
     fun recoveryGrowsWithIntensityAndAge() {
         assertEquals(60, ClimbingLoad.recoveryHours(ClimbIntensity.LIMIT, null))
         assertEquals(48, ClimbingLoad.recoveryHours(ClimbIntensity.HARD, AgeBand.Y18_39))

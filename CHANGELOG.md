@@ -474,6 +474,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   your own dumbbell or kettlebell exercises can use one or two. In typed workouts,
   "2x16 kg" is 16 kg per dumbbell on dumbbell work, +32 kg added on body-weight work
   and 32 kg in total on a two-arm pick-up.
+- Training: a suggested training no longer plans more of an area than the week still allows. One
+  legs-and-core day could hold 16 leg sets against a weekly maximum of 10, and the short block after
+  climbing could add antagonist sets on every climbing day. In a week with no room left for that kind of
+  work, the coach suggests an easy 20-minute mobility session instead of a few sets. Found by a new
+  simulation that runs synthetic athletes through the training logic for months.
+- Training: new users who climb regularly no longer see "finger load rising" in their first four weeks.
+  The 28-day normal now counts from the first logged day once 14 days are logged; until then the careful
+  start (no max finger work) stays.
+- Training: once the week's training days (climbing included) are used up, Today suggests mobility or
+  rest, with a training still one tap away. The short daily sessions of a comeback plan do not use up a day.
+- Training: after a training in which every work set of a strength exercise was answered "3+", the next
+  one plans at least two weight steps more, so a start that was too light catches up. Not for finger work,
+  and not during an injury, the return after a break, a comeback plan or for climbers under 18 or in their
+  first year. Below 10 kg a load rises by at most one step per training.
+- Comeback plan: a strength session starts from the last strength session's loads, no longer from the
+  light tendon holds done earlier the same day (and the other way round).
 
 ## [0.2.4] - 2026-10-25
 

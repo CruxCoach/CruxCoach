@@ -26,6 +26,9 @@
     <string name="trv_status_done">erreicht</string>
     <string name="trv_status_over">über der Spanne</string>
     <string name="trv_reason_weekly">Dein Wochenplan: In diesem Bereich fehlt diese Woche noch am meisten.</string>
+    <string name="trv_reason_week_full">Diese Woche hat schon fast alle Sätze davon, deshalb stehen heute weniger an.</string>
+    <string name="trv_reason_week_done">Diese Woche hat ihre Sätze für diese Trainingsart schon, deshalb heute eine lockere Einheit Mobilität. Wähl eine Trainingsart, wenn du trotzdem trainieren willst.</string>
+    <string name="trv_reason_week_days_done">Deine Trainingstage für diese Woche sind geschafft, heute ist Erholung dran. Wähl eine Trainingsart, wenn du trotzdem trainieren willst.</string>
     <string name="trv_reason_weekly_area">Dein Wochenplan: Bei %1$s fehlt diese Woche noch am meisten.</string>
     <string name="trv_ev_sets">Woche: %1$s %2$d/%3$d Sätze</string>
     <string name="trv_ev_sessions">Woche: %1$s %2$d/%3$d Einheiten</string>
