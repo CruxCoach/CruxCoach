@@ -1,0 +1,144 @@
+package com.cruxcoach.android.athlete.sim
+
+import com.cruxcoach.athlete.catalog.ExerciseKind
+import com.cruxcoach.athlete.catalog.LoadMode
+import com.cruxcoach.athlete.logic.SuggestionFocus
+import com.cruxcoach.athlete.model.SetType
+import com.cruxcoach.athlete.model.UnitSystem
+
+/** Markdown summaries of simulation runs: one per persona, short enough for a coach to review, and an overview. */
+object SimReport {
+
+    private const val LB = 2.20462
+
+    private fun mass(kg: Double, units: UnitSystem): String =
+        if (units == UnitSystem.IMPERIAL) "%.1f lb".format(kg * LB) else "%.1f kg".format(kg)
+
+    fun persona(r: SimRun, flags: List<Flag>): String = buildString {
+        val p = r.persona
+        appendLine("# ${p.title}")
+        appendLine()
+        appendLine(p.summary)
+        appendLine()
+        appendLine("Level ${p.level.name.lowercase()}, ${mass(p.bodyweightKg, p.units)} body weight, ${p.weeks} weeks, " +
+            "training on ${weekdays(p.trainingDays)}" + (if (p.climbing.isNotEmpty()) ", climbing on ${weekdays(p.climbing.keys)}" else "") +
+            (if (p.skipShare > 0) ", skips about ${(p.skipShare * 100).toInt()} %" else "") + ".")
+        appendLine()
+        appendLine("## Weeks at a glance")
+        appendLine()
+        appendLine("| Week | Block | Trained | Climbed | Suggestions | Work sets done | Flags |")
+        appendLine("|---|---|---|---|---|---|---|")
+        r.days.chunked(7).forEachIndexed { i, week ->
+            val phases = week.mapNotNull { it.block?.phase?.name?.lowercase() }.distinct().joinToString("/").ifEmpty { "–" }
+            val away = if (week.all { it.away }) " (away)" else ""
+            val trained = week.count { it.trained }
+            val planned = week.count { it.date.dayOfWeek.ordinal + 1 in p.trainingDays && !it.away }
+            val climbed = week.count { it.climbed != null }
+            val focus = week.mapNotNull { it.suggestion?.focus }.groupingBy { it }.eachCount()
+                .entries.sortedByDescending { it.value }.joinToString(", ") { "${short(it.key)} ${it.value}" }
+            val sets = week.sumOf { d -> d.sets.count { it.setType == SetType.WORK } }
+            val weekFlags = flags.filter { f -> f.day in week.first().day..week.last().day }.size
+            appendLine("| ${i + 1}$away | $phases | $trained/$planned | $climbed | $focus | $sets | ${if (weekFlags == 0) "–" else weekFlags} |")
+        }
+        appendLine()
+        appendLine("## Key exercises")
+        appendLine()
+        val measured = r.convergence.map { it.slug }.toSet()
+        val key = r.days.flatMap { d -> d.sets.filter { it.setType == SetType.WORK }.map { it.slug } }
+            .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }
+            .map { it.key }.filter { it in measured }
+            .take(4)
+        if (key.isEmpty()) appendLine("No loaded exercise was trained.")
+        key.forEach { slug ->
+            val def = r.catalog[slug]!!
+            appendLine("**${def.name("en")}** (${if (def.kind == ExerciseKind.LOAD_REPS) "est. 1RM" else "10-s max"} of the total load" +
+                (if (def.load == LoadMode.BODYWEIGHT_PLUS) ", body weight included" else "") + ")")
+            appendLine()
+            appendLine("| Week | Planned first set | App's value | True value |")
+            appendLine("|---|---|---|---|")
+            r.convergence.filter { it.slug == slug }.groupBy { it.week }.forEach { (week, rows) ->
+                val days = r.days.filter { it.day / 7 + 1 == week }
+                val firstSet = days.flatMap { it.sets }.firstOrNull { it.slug == slug && it.setType == SetType.WORK }
+                val planned = firstSet?.let { s ->
+                    val load = s.targetLoadKg?.let { (if (def.load == LoadMode.BODYWEIGHT_PLUS && it >= 0) "+" else "") + mass(it, p.units) } ?: "–"
+                    "$load × ${s.targetReps ?: s.targetDurationS?.toInt()?.let { "$it s" } ?: "?"}"
+                } ?: "–"
+                rows.forEach { c ->
+                    val side = c.side?.let { " ${it.name.lowercase()}" } ?: ""
+                    appendLine("| $week$side | $planned | ${c.appKg?.let { mass(it, p.units) } ?: "–"} | ${mass(c.trueKg, p.units)} |")
+                }
+            }
+            appendLine()
+        }
+        appendLine("## Flagged moments")
+        appendLine()
+        if (flags.isEmpty()) appendLine("None.")
+        flags.groupBy { it.check }.forEach { (check, list) ->
+            appendLine("**${check.group}: ${check.title}** (${list.size})")
+            appendLine()
+            list.take(12).forEach { f -> appendLine("- Week ${f.day / 7 + 1}, ${r.days[f.day].date} (${r.days[f.day].date.dayOfWeek.name.lowercase().take(3)}): ${f.what}") }
+            if (list.size > 12) appendLine("- … and ${list.size - 12} more")
+            appendLine()
+        }
+    }
+
+    /** Every day in one line: what was climbed, what the coach suggested and why, what was done. */
+    fun days(r: SimRun): String = buildString {
+        val p = r.persona
+        appendLine("# ${p.title}: day by day")
+        appendLine()
+        appendLine("| Day | Block | Climbed | Suggested (focus · first reasons) | Exercises × sets | Done |")
+        appendLine("|---|---|---|---|---|---|")
+        r.days.forEach { d ->
+            val day = "${d.date} ${d.date.dayOfWeek.name.lowercase().take(3)}"
+            if (d.away) { appendLine("| $day | – | – | away | – | – |"); return@forEach }
+            val s = d.suggestion
+            val phase = d.block?.let { "${it.phase.name.lowercase()} ${it.weekInBlock}" } ?: "–"
+            val climb = d.climbed?.let { "${it.kind.name.lowercase()} ${it.minutes} min ${it.intensity.name.lowercase()}" } ?: "–"
+            val why = s?.let { "${short(it.focus)} · " + it.reasons.take(3).joinToString(", ") { r -> r.name.lowercase() } +
+                (if (it.levelShift != 0) " · level ${it.levelShift}" else "") } ?: "–"
+            val items = s?.items?.filter { !it.warmup }?.joinToString(", ") { "${it.slug.substringAfter('.')}×${it.sets}" }.orEmpty().ifEmpty { "–" }
+            val done = when {
+                d.trained -> "${d.sets.count { it.setType == SetType.WORK }} sets"
+                d.skipped -> "skipped"
+                else -> "–"
+            }
+            val events = d.events.takeIf { it.isNotEmpty() }?.joinToString(", ", " (", ")") ?: ""
+            appendLine("| $day$events | $phase | $climb | $why | $items | $done |")
+        }
+    }
+
+    fun overview(runs: List<Pair<SimRun, List<Flag>>>): String = buildString {
+        appendLine("# Training simulation: overview")
+        appendLine()
+        appendLine("| Persona | Weeks | Trainings | Climbing days | " + Check.entries.map { it.group }.distinct().joinToString(" | ") + " |")
+        appendLine("|---|---|---|---|" + Check.entries.map { it.group }.distinct().joinToString("") { "---|" })
+        runs.forEach { (r, flags) ->
+            val groups = Check.entries.map { it.group }.distinct().map { g -> flags.count { it.check.group == g } }
+            appendLine("| ${r.persona.title} | ${r.persona.weeks} | ${r.days.count { it.trained }} | ${r.days.count { it.climbed != null }} | " +
+                groups.joinToString(" | ") { if (it == 0) "–" else it.toString() } + " |")
+        }
+        appendLine()
+        appendLine("## Flags by check")
+        appendLine()
+        Check.entries.forEach { c ->
+            val n = runs.sumOf { (_, f) -> f.count { it.check == c } }
+            val who = runs.filter { (_, f) -> f.any { it.check == c } }.joinToString { it.first.persona.id }
+            appendLine("- ${c.group}: ${c.title}: ${if (n == 0) "none" else "$n ($who)"}")
+        }
+    }
+
+    private fun weekdays(days: Set<Int>) = days.sorted().joinToString("/") { listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")[it - 1] }
+        .ifEmpty { "no day" }
+
+    private fun short(f: SuggestionFocus) = when (f) {
+        SuggestionFocus.PLANNED -> "planned"
+        SuggestionFocus.BOARD_DAY -> "board"
+        SuggestionFocus.FINGER_STRENGTH -> "finger"
+        SuggestionFocus.PULL_PUSH -> "pull/push"
+        SuggestionFocus.LEGS_CORE -> "legs/core"
+        SuggestionFocus.MOBILITY_RECOVERY -> "mobility"
+        SuggestionFocus.INJURY_SAFE -> "injury-safe"
+        SuggestionFocus.REST -> "rest"
+    }
+}
