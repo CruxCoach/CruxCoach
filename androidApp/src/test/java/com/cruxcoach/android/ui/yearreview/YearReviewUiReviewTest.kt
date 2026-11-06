@@ -73,7 +73,7 @@ class YearReviewUiReviewTest {
                         uuid = "e${id++}", climbUuid = climb, angle = angle, isMirror = false,
                         bidCount = random.nextInt(1, 6).toLong(), quality = null, difficulty = null, comment = null,
                         climbedAt = "${day}T18:${(10 + i).toString().padStart(2, '0')}:00", climbName = "Problem ${climb.drop(1)} Crimpfest",
-                        climbFrames = "", difficultyAverage = difficulty, isSend = random.nextDouble() < 0.8, boardBrand = board,
+                        climbFrames = (1..4 + climb.drop(1).toInt() % 9).joinToString("") { "p${it}r13" }, difficultyAverage = difficulty, isSend = random.nextDouble() < 0.8, boardBrand = board,
                     )
                 }
             }

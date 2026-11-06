@@ -57,8 +57,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Year in review: your climbing year across all your boards, imported logbooks
   included, as pages you tap through: volume, boards and angles, your hardest
   send per board, last year over the same span, your rhythm, highlights, the
-  hold types you tagged, off-board training and your climber type (one of ten, picked by rules on your
-  own numbers, with the rule shown). Every page can be shared as an image drawn
+  holds you touched on your sends, the hold types you tagged, off-board
+  training and your climber type (one of ten, picked by rules on your own
+  numbers, with the rule shown). Every page can be shared as an image drawn
   on the phone, with your name, problem names and exact dates left out unless
   you switch them on. From 1 December to 31 January a card on the start screen
   and in the logbook invites you in (its X hides it for the year); all year the

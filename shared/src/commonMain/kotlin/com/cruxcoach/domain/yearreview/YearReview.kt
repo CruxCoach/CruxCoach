@@ -30,6 +30,8 @@ data class YearReview(
     val highlights: YearHighlights,
     /** Sends per hold type from the user's own tags, most first; empty below [YearReviewComputer.MIN_TAGGED_SENDS]. */
     val holdTypes: List<HoldTypeCount> = emptyList(),
+    /** The holds on this year's sends; null below [YearReviewComputer.MIN_SENDS_WITH_HOLDS]. */
+    val holdsTouched: YearHoldsTouched? = null,
     val training: YearTraining,
     /** Null below the minimum: the short review has no type. */
     val climberType: ClimberTypeResult?,
@@ -160,6 +162,19 @@ data class YearTraining(
 ) {
     val isEmpty: Boolean get() = workouts == 0 && bestValues.isEmpty() && comebacksCompleted == 0
 }
+
+/**
+ * The holds marked on the problems sent this year, each hold once per send,
+ * repeats included. Only sends whose problem's holds are on the phone count:
+ * [countedSends] of the year's sends.
+ */
+data class YearHoldsTouched(
+    val holds: Int,
+    val countedSends: Int,
+    /** The sent problem with the most holds; the earlier send wins a tie. */
+    val most: YearSend,
+    val mostHolds: Int,
+)
 
 /** How many tagged sends had a hold type, out of [YearReview.holdTypes]' tagged sends. */
 data class HoldTypeCount(val tag: String, val sends: Int, val taggedSends: Int)
