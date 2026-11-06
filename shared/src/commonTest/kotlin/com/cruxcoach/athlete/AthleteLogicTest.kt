@@ -79,10 +79,10 @@ class AthleteLogicTest {
 
     @Test
     fun effectiveLoadReadsAddedAndAssistedWeight() {
-        assertEquals(80.0, StrengthMath.effectiveLoad(LoadMode.BODYWEIGHT_PLUS, 10.0, 70.0))
-        assertEquals(55.0, StrengthMath.effectiveLoad(LoadMode.BODYWEIGHT_PLUS, -15.0, 70.0))
-        assertEquals(30.0, StrengthMath.effectiveLoad(LoadMode.EXTERNAL, 30.0, 70.0))
-        assertEquals(50.0, StrengthMath.percentBodyweight(LoadMode.EXTERNAL, 35.0, 70.0)!!, 1e-9)
+        assertEquals(80.0, StrengthMath.effectiveLoad(maxHang, 10.0, 70.0))
+        assertEquals(55.0, StrengthMath.effectiveLoad(maxHang, -15.0, 70.0))
+        assertEquals(30.0, StrengthMath.effectiveLoad(pickup, 30.0, 70.0))
+        assertEquals(50.0, StrengthMath.percentBodyweight(pickup, 35.0, 70.0)!!, 1e-9)
     }
 
     @Test

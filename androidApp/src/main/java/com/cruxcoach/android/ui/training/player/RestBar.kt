@@ -150,11 +150,14 @@ internal fun capacityText(def: com.cruxcoach.athlete.catalog.ExerciseDefinition,
         com.cruxcoach.athlete.logic.CapacityKind.E1RM_TOTAL -> {
             val shown = if (def.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS && bw != null)
                 com.cruxcoach.android.ui.training.formatMass(capacity.value - bw, units, signed = true)
-            else com.cruxcoach.android.ui.training.formatMass(capacity.value, units)
+            // Per dumbbell for a pair ("2 × 20 kg"), the way the athlete loads it.
+            else com.cruxcoach.android.ui.training.weightTextOfTotal(def, capacity.value, units)
             stringResource(R.string.trp_capacity_e1rm, shown)
         }
         com.cruxcoach.athlete.logic.CapacityKind.TEN_SECOND_MAX -> {
-            val mass = com.cruxcoach.android.ui.training.formatMass(capacity.value, units)
+            val mass = if (def.load == com.cruxcoach.athlete.catalog.LoadMode.EXTERNAL)
+                com.cruxcoach.android.ui.training.weightTextOfTotal(def, capacity.value, units)
+            else com.cruxcoach.android.ui.training.formatMass(capacity.value, units)
             // Rounded like the set's own "% BW" line (15 kg at 69.5 kg showed 22 % there and 21 % here).
             val pct = bw?.takeIf { it > 0 }?.let { (capacity.value / it * 100).roundToInt() }
             if (pct != null) stringResource(R.string.trp_capacity_ten_pct, mass, stringResource(R.string.tr_format_percent_bw, pct))
@@ -170,6 +173,7 @@ internal fun capacityText(def: com.cruxcoach.athlete.catalog.ExerciseDefinition,
 @Composable
 internal fun adjustmentText(
     adj: com.cruxcoach.athlete.logic.SetAdjustment,
+    def: com.cruxcoach.athlete.catalog.ExerciseDefinition,
     units: UnitSystem,
     /** One-arm work adjusts only that hand's sets: the line names it (it read "next sets +2 kg" while the other hand stayed). */
     side: com.cruxcoach.athlete.model.Side? = null,
@@ -182,7 +186,7 @@ internal fun adjustmentText(
         com.cruxcoach.athlete.logic.AdjustReason.HOLD_EASY -> R.string.trp2_adj_hold_easy
     })
     val change = buildList {
-        if (kotlin.math.abs(adj.loadDeltaKg) > 1e-9) add(com.cruxcoach.android.ui.training.formatMass(adj.loadDeltaKg, units, signed = true))
+        if (kotlin.math.abs(adj.loadDeltaKg) > 1e-9) add(com.cruxcoach.android.ui.training.weightDeltaText(def, adj.loadDeltaKg, units))
         if (adj.repsDelta != 0) add(stringResource(R.string.trp2_adj_reps, adj.repsDelta))
         if (kotlin.math.abs(adj.durationDeltaS) > 1e-9) add(stringResource(R.string.trp2_adj_seconds, kotlin.math.round(adj.durationDeltaS).toInt()))
     }.joinToString(" · ")

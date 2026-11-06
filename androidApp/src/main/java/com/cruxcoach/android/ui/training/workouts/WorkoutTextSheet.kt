@@ -46,7 +46,9 @@ import com.cruxcoach.android.ui.training.catalogLanguage
 import com.cruxcoach.android.ui.training.exercises.kindLabel
 import com.cruxcoach.android.ui.training.formatMass
 import com.cruxcoach.android.ui.training.sideLabel
+import com.cruxcoach.android.ui.training.weightText
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
+import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.Circuits
@@ -115,7 +117,10 @@ fun WorkoutTextSheet(
             val items = result.lines.map { it.item }
             result.lines.forEachIndexed { i, line ->
                 val kind = line.match?.kind ?: line.guess.kind
-                val load = line.match?.load ?: line.guess.load
+                // A new exercise reads like the one it will become ("2 × 12 kg" for a pair of dumbbells).
+                val def = line.match ?: line.guess.let { g ->
+                    ExerciseDefinition("", g.category, g.kind, g.load, g.unilateral, g.equipment, g.domains, implements = g.implements)
+                }
                 val circuit = line.circuit
                 // A circuit's members under one line: rounds, the rest between the exercises, the rest after a round.
                 if (circuit != null && result.lines.getOrNull(i - 1)?.circuit != circuit) {
@@ -140,7 +145,7 @@ fun WorkoutTextSheet(
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(line.match?.name(lang) ?: line.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Text(routineItemSummary(line.item, kind, load, units), style = MaterialTheme.typography.bodyMedium)
+                        Text(routineItemSummary(line.item, def, units), style = MaterialTheme.typography.bodyMedium)
                         if (line.isNew) {
                             Text(stringResource(R.string.trwo_text_new, kindLabel(kind)), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -164,13 +169,15 @@ fun WorkoutTextSheet(
 /** How long after the last keystroke the text is read again. */
 private const val READ_DELAY_MS = 120L
 
-/** "5 × 5 · +20 kg", "3 × 60 s", "6 × 7 s on / 3 s off × 6 · 20 mm", "warm-up". */
+/** "5 × 5 · +20 kg", "3 × 8 · 2 × 16 kg", "3 × 60 s", "6 × 7 s on / 3 s off × 6 · 20 mm", "warm-up". */
 @Composable
 internal fun routineItemSummary(
-    item: RoutineItem, kind: ExerciseKind, load: LoadMode, units: UnitSystem,
+    item: RoutineItem, def: ExerciseDefinition, units: UnitSystem,
     /** Only sets and reps or time ("3 × 8"), for a one-line list. */
     short: Boolean = false,
 ): String {
+    val kind = def.kind
+    val load = def.load
     val amount = when (kind) {
         ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> {
             val min = item.repsMin
@@ -188,9 +195,9 @@ internal fun routineItemSummary(
         add(amount)
         item.loadKg?.let { kg ->
             when {
-                load == LoadMode.BODYWEIGHT_PLUS && kg < 0 -> add(stringResource(R.string.trw_load_assisted, formatMass(-kg, units)))
-                load == LoadMode.BODYWEIGHT_PLUS -> add(formatMass(kg, units, signed = true))
-                load == LoadMode.EXTERNAL -> add(formatMass(kg, units))
+                // A typed "+0 kg" stays a number here, as in the text.
+                load == LoadMode.BODYWEIGHT_PLUS && kg == 0.0 -> add(formatMass(kg, units, signed = true))
+                load == LoadMode.BODYWEIGHT_PLUS || load == LoadMode.EXTERNAL -> add(weightText(def, kg, units))
             }
         }
         if (kind == ExerciseKind.HANG || kind == ExerciseKind.INTERVAL) item.edgeMm?.let { add(stringResource(R.string.tr_format_mm, it.toString())) }

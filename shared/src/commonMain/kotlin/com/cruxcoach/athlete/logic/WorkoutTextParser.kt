@@ -315,8 +315,9 @@ object WorkoutTextParser {
             when {
                 !loaded -> null
                 // Lifted weight has no sign; "-10 kg" on a pick-up is not assistance.
-                loadMode == LoadMode.EXTERNAL -> abs(kg)
-                else -> kg
+                loadMode == LoadMode.EXTERNAL -> abs(kg) * piecesCounted(match, guess, n)
+                // "Ausfallschritte 2x10 kg": added weight is everything carried, together (LoadRules).
+                else -> kg * (n.pieces ?: 1)
             }
         }
         return when (kind) {
@@ -342,6 +343,16 @@ object WorkoutTextParser {
             sides = n.sides ?: base.sides,
             warmup = warmup,
         )
+    }
+
+    /**
+     * "2x16 kg" stays 16 where the exercise logs one dumbbell of a pair ([LoadRules]); everywhere else the
+     * number is the total, so two 20 kg blocks on a two-arm pick-up are 40 kg.
+     */
+    private fun piecesCounted(match: ExerciseDefinition?, guess: ExerciseGuess, n: Numbers): Int {
+        val pieces = n.pieces ?: return 1
+        val paired = match?.let { LoadRules.implements(it) > 1 } ?: (guess.implements > 1)
+        return if (paired) 1 else pieces
     }
 
     private fun capitalize(s: String): String = s.trim().replaceFirstChar { it.uppercase() }
@@ -375,6 +386,8 @@ object WorkoutTextParser {
         val spans: List<Span> = emptyList(),
         /** "je", "jeweils", "each": the numbers hold for every exercise named with them. */
         val distributed: Boolean = false,
+        /** "2x16 kg": [loadKg] is the weight of one of this many dumbbells, kettlebells or blocks. */
+        val pieces: Int? = null,
     ) {
         val any: Boolean get() = sets != null || reps != null || seconds != null || loadKg != null || edgeMm != null ||
             restS != null || workS != null || perSet != null || rounds != null
@@ -397,7 +410,7 @@ object WorkoutTextParser {
             private val TRAILING_X = Regex("$B[x×]\\s*(\\d{1,3})$E")
             private val SETS_WORD = Regex("$B(\\d{1,2})\\s*(sätze|saetze|satze|satz|sets?|serien|serie|durchgänge|durchgaenge|durchgang|runden|runde|rounds?)$E")
             private val REPS_WORD = Regex("$B(\\d{1,3})(?:\\s*-\\s*(\\d{1,3}))?\\s*(?:wdh\\.?|wh\\.?|wiederholungen|wiederholung|reps?|repetitions|mal)(?![\\p{L}])")
-            /** "2x16 kg": a pair of dumbbells, 16 kg each. */
+            /** "2x16 kg": a pair of dumbbells, 16 kg each ([Numbers.pieces]). */
             private val LOAD_PAIR = Regex("$B([1-4])\\s*x\\s*$NUM\\s*(kg|kilo|kilogramm|lbs?|pfund)$E")
             private val LOAD = Regex("$B(?:(plus|minus)\\s+)?([+-])?\\s*$NUM\\s*(kg|kilo|kilogramm|lbs?|pfund)$E")
             private val EDGE = Regex("$B$NUM\\s*mm$E")
@@ -458,7 +471,7 @@ object WorkoutTextParser {
                 var sets: Int? = null; var reps: Int? = null; var repsMax: Int? = null; var seconds: Double? = null
                 var load: Double? = null; var signed = false; var edge: Double? = null; var restS: Int? = null
                 var workS: Int? = null; var restBetween: Int? = null; var perSet: Int? = null; var rounds: Int? = null
-                var grip: Grip? = null; var sides: SideMode? = null; var unilateral = false
+                var grip: Grip? = null; var sides: SideMode? = null; var unilateral = false; var pieces: Int? = null
 
                 take(REST1) { m ->
                     num(m.groupValues[1])?.let { v ->
@@ -471,7 +484,10 @@ object WorkoutTextParser {
                 take(REST2) { m -> num(m.groupValues[1])?.let { restS = secondsOf(it, m.groupValues[2]).roundToInt() }; true }
                 take(LOAD_PAIR) { m ->
                     val v = num(m.groupValues[2]) ?: return@take false
-                    if (load == null) load = if (m.groupValues[3].startsWith("lb") || m.groupValues[3] == "pfund") v * LB_IN_KG else v
+                    if (load == null) {
+                        load = if (m.groupValues[3].startsWith("lb") || m.groupValues[3] == "pfund") v * LB_IN_KG else v
+                        pieces = m.groupValues[1].toInt()
+                    }
                     true
                 }
                 take(LOAD) { m ->
@@ -550,7 +566,7 @@ object WorkoutTextParser {
                     if (stripped.isNotEmpty()) rest = stripped
                 }
                 return Numbers(sets, reps, repsMax, seconds, load, signed, edge, restS, workS, restBetween, perSet, rounds,
-                    grip, sides, unilateral, warmup, restoreCase(segment, rest), spans.sortedBy { it.start }, distributed)
+                    grip, sides, unilateral, warmup, restoreCase(segment, rest), spans.sortedBy { it.start }, distributed, pieces)
             }
 
             /** The name as the athlete wrote it, not lower-cased. */
@@ -870,6 +886,8 @@ data class ExerciseGuess(
     val unilateral: Boolean,
     val equipment: List<EquipmentV2>,
     val domains: List<LoadDomain>,
+    /** "Kurzhantel-Curls 2x12 kg": two dumbbells, logged per dumbbell ([ExerciseDefinition.implements]). */
+    val implements: Int = 1,
 ) {
     val defaults: Prescription get() = defaultPrescription(kind)
 
@@ -971,7 +989,10 @@ data class ExerciseGuess(
                 if (category == ExerciseCategoryV2.PULL) add(LoadDomain.ELBOW)
             }
             val unilateral = n?.unilateral == true || has(t, *UNILATERAL)
-            return ExerciseGuess(category, kind, load, unilateral, equipment, domains)
+            // Only dumbbells and kettlebells log one of a pair; "Farmer Walk 2x24 kg" without them is 48 kg in total.
+            val paired = load == LoadMode.EXTERNAL && (n?.pieces ?: 1) > 1 && !unilateral &&
+                LoadRules.pairable(ExerciseDefinition("", category, kind, load, equipment = equipment))
+            return ExerciseGuess(category, kind, load, unilateral, equipment, domains, implements = if (paired) 2 else 1)
         }
     }
 }

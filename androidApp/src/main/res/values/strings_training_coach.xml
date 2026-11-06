@@ -140,7 +140,7 @@
     <string name="trc_estimate_pull_8_12">8–12</string>
     <string name="trc_estimate_pull_13">13+</string>
     <string name="trc_estimate_pull_weighted">With added weight</string>
-    <string name="trc_estimate_added">Added (%1$s)</string>
+    <string name="trc_estimate_added">Added weight (%1$s)</string>
     <string name="trc_estimate_reps">Reps</string>
     <string name="trc_estimate_hang">10 s on a 20 mm edge, both hands?</string>
     <string name="trc_estimate_hang_no">Can\'t</string>
@@ -148,7 +148,7 @@
     <string name="trc_estimate_hang_easy">Easily</string>
     <string name="trc_estimate_hang_weighted">With added weight</string>
     <string name="trc_estimate_hang_cannot">Fine – finger work then starts on a bigger edge or with assistance.</string>
-    <string name="trc_estimate_pickup">One-arm pick-up for 10 s, per hand</string>
+    <string name="trc_estimate_pickup">One-arm pick-up for 10 s, per hand, block included</string>
     <string name="trc_estimate_healthy_side">Only the healthy hand while your injury is open.</string>
     <string name="trc_estimate_injury_skip">Skipped – your injury rules out two-hand hangs for now.</string>
     <string name="trc_estimate_no_weight">Enter your body weight and the coach also works in percent of body weight.</string>

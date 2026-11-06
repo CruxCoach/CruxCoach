@@ -131,6 +131,21 @@
     <string name="tr_format_percent_bw">%1$d %% KG</string>
     <string name="tr_bodyweight">Körpergewicht</string>
     <string name="tr_assisted">entlastet</string>
+    <string name="tr_weight">Gewicht</string>
+    <string name="tr_weight_added">Zusatzgewicht</string>
+    <string name="tr_weight_per_dumbbell">Gewicht pro Hantel</string>
+    <string name="tr_weight_per_kettlebell">Gewicht pro Kettlebell</string>
+    <string name="tr_weight_dumbbell">Gewicht der Hantel</string>
+    <string name="tr_weight_kettlebell">Gewicht der Kettlebell</string>
+    <string name="tr_weight_barbell">Gesamt inkl. Stange</string>
+    <string name="tr_weight_pickup">Gesamt inkl. Block</string>
+    <string name="tr_weight_pickup_both">Gesamt, beide Hände</string>
+    <string name="tr_weight_stack">Gewicht am Kabelzug</string>
+    <string name="tr_weight_force">Wert am Kraftmesser</string>
+    <string name="tr_weight_input">%1$s in %2$s</string>
+    <string name="tr_format_pair">%1$d × %2$s</string>
+    <string name="tr_format_per_dumbbell">%1$s pro Hantel</string>
+    <string name="tr_format_per_kettlebell">%1$s pro Kettlebell</string>
 
     <string name="tr_action_start">Starten</string>
     <string name="tr_action_save">Speichern</string>

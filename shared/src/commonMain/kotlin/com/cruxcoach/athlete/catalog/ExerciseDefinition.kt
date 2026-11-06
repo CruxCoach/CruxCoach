@@ -30,6 +30,13 @@ data class ExerciseDefinition(
     val i18n: Map<String, ExerciseText> = emptyMap(),
     /** True for exercises the user created; never part of the packaged catalogue. */
     val custom: Boolean = false,
+    /**
+     * How many identical dumbbells or kettlebells an [LoadMode.EXTERNAL] exercise uses at once (issue #58):
+     * 2 for a bench press with two dumbbells. The logged load is then the weight of one of them, and totals
+     * (volume, % body weight, the one-rep max estimate) count it this many times. 1 for everything else;
+     * see [com.cruxcoach.athlete.logic.LoadRules].
+     */
+    val implements: Int = 1,
 ) {
     fun text(language: String): ExerciseText =
         i18n[language] ?: i18n["en"] ?: i18n.values.firstOrNull() ?: ExerciseText(name = slug)
@@ -53,6 +60,8 @@ data class ExerciseDefinition(
         /** Made for the comeback plan: never picked by the suggestion, still in the catalogue to add by hand. */
         const val TAG_COMEBACK = "comeback"
         const val TAG_HOME = "home"
+        /** The load is the reading of a force gauge, not a weight on the implement. */
+        const val TAG_FORCE_GAUGE = "force_gauge"
     }
 }
 
@@ -109,14 +118,17 @@ enum class ExerciseKind {
     CLIMB,
 }
 
-/** How the load field is read. */
+/** How the load field is read; what exactly the number refers to is [com.cruxcoach.athlete.logic.LoadRules]. */
 @Serializable
 enum class LoadMode {
     NONE,
     BODYWEIGHT,
     /** Bodyweight plus added kg; negative values mean assistance (pulley, band, feet). */
     BODYWEIGHT_PLUS,
-    /** Absolute lifted kg (pick-up blocks, dumbbells, barbells). */
+    /**
+     * Absolute lifted kg: a pick-up block with everything on it, a barbell with the bar, a cable stack, or
+     * one dumbbell or kettlebell ([ExerciseDefinition.implements] of them at once).
+     */
     EXTERNAL,
 }
 

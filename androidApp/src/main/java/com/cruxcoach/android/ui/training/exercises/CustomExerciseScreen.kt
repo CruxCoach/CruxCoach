@@ -30,6 +30,7 @@ import com.cruxcoach.athlete.catalog.LoadDomain
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.catalog.Prescription
 import com.cruxcoach.athlete.logic.ExerciseGuess
+import com.cruxcoach.athlete.logic.LoadRules
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,13 +48,27 @@ data class CustomExerciseState(
     val unilateral: Boolean = false,
     val equipment: Set<EquipmentV2> = emptySet(),
     val domains: Set<LoadDomain> = emptySet(),
+    /** Dumbbells or kettlebells used at once (1 or 2); asked only where [pairable]. */
+    val implements: Int = 1,
     val note: String = "",
     val showNameError: Boolean = false,
     val saving: Boolean = false,
     val savedSlug: String? = null,
     /** The fields below the name were filled in from it ([ExerciseGuess]); the athlete may change each. */
     val guessed: Boolean = false,
-)
+) {
+    /** The exercise as it would be saved, for the rules that depend on kind, load and equipment. */
+    private val draft: ExerciseDefinition get() = ExerciseDefinition(
+        slug = "", category = category, kind = kind, load = load, unilateral = unilateral,
+        equipment = equipment.toList(), domains = domains.toList(), implements = implements,
+    )
+
+    /** Dumbbell or kettlebell work that can use one or two of them (issue #58); one-sided work uses one. */
+    val pairable: Boolean get() = !unilateral && LoadRules.pairable(draft)
+
+    /** What is saved: two only where it can apply. */
+    val savedImplements: Int get() = if (pairable) implements else 1
+}
 
 @HiltViewModel
 class CustomExerciseViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
@@ -61,7 +76,7 @@ class CustomExerciseViewModel @Inject constructor(private val service: AthleteSe
     private val _state = MutableStateFlow(CustomExerciseState())
     val state: StateFlow<CustomExerciseState> = _state.asStateFlow()
 
-    private enum class Field { CATEGORY, KIND, LOAD, SIDE, EQUIPMENT, DOMAINS }
+    private enum class Field { CATEGORY, KIND, LOAD, SIDE, EQUIPMENT, DOMAINS, IMPLEMENTS }
     /** Fields the athlete set by hand; the name's guess leaves them alone. */
     private val touched = mutableSetOf<Field>()
 
@@ -82,12 +97,14 @@ class CustomExerciseViewModel @Inject constructor(private val service: AthleteSe
             unilateral = if (Field.SIDE in touched) s.unilateral else guess.unilateral,
             equipment = if (Field.EQUIPMENT in touched) s.equipment else guess.equipment.filterNot { it == EquipmentV2.NONE }.toSet(),
             domains = if (Field.DOMAINS in touched) s.domains else guess.domains.toSet(),
+            implements = if (Field.IMPLEMENTS in touched) s.implements else guess.implements,
         )
     }
     fun setCategory(c: ExerciseCategoryV2) { touched += Field.CATEGORY; _state.update { it.copy(category = c) } }
     fun setKind(k: ExerciseKind) { touched += Field.KIND; _state.update { it.copy(kind = k, load = defaultLoad(k)) } }
     fun setLoad(l: LoadMode) { touched += Field.LOAD; _state.update { it.copy(load = l) } }
     fun setUnilateral(v: Boolean) { touched += Field.SIDE; _state.update { it.copy(unilateral = v) } }
+    fun setImplements(n: Int) { touched += Field.IMPLEMENTS; _state.update { it.copy(implements = n.coerceIn(1, LoadRules.MAX_IMPLEMENTS)) } }
     fun setNote(v: String) = _state.update { it.copy(note = v.take(300)) }
     fun toggleEquipment(e: EquipmentV2) {
         touched += Field.EQUIPMENT
@@ -106,7 +123,8 @@ class CustomExerciseViewModel @Inject constructor(private val service: AthleteSe
         _state.update { it.copy(saving = true) }
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            val slug = service.createCustomExercise(name, s.category, s.kind, s.load, s.unilateral, s.equipment, s.domains, s.note)
+            val slug = service.createCustomExercise(name, s.category, s.kind, s.load, s.unilateral, s.equipment, s.domains, s.note,
+                implements = s.savedImplements)
             _state.update { it.copy(saving = false, savedSlug = slug) }
         }
     }
@@ -201,6 +219,27 @@ fun CustomExerciseScreen(
                     FilterChip(selected = e in state.equipment, onClick = { viewModel.toggleEquipment(e) },
                         label = { Text(equipmentLabel(e)) }, modifier = Modifier.testTag("custom_equipment_${e.name.lowercase()}"))
                 }
+            }
+
+            // Two dumbbells or one (issue #58): two log the weight of one of them, "2 × 16 kg".
+            if (state.pairable) {
+                val kettlebell = EquipmentV2.KETTLEBELL in state.equipment && EquipmentV2.DUMBBELL !in state.equipment
+                SectionTitle(stringResource(R.string.trx_custom_implements))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(1, 2).forEach { n ->
+                        val label = when {
+                            kettlebell && n == 1 -> R.string.trx_custom_one_kettlebell
+                            kettlebell -> R.string.trx_custom_two_kettlebells
+                            n == 1 -> R.string.trx_custom_one_dumbbell
+                            else -> R.string.trx_custom_two_dumbbells
+                        }
+                        FilterChip(selected = state.implements == n, onClick = { viewModel.setImplements(n) },
+                            label = { Text(stringResource(label)) }, modifier = Modifier.testTag("custom_implements_$n"))
+                    }
+                }
+                Text(stringResource(if (state.implements == 2) R.string.trx_custom_implements_two else R.string.trx_custom_implements_one),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp))
             }
 
             SectionTitle(stringResource(R.string.trx_custom_domains))

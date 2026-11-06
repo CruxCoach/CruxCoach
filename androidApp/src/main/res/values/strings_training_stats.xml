@@ -61,13 +61,14 @@
     <string name="trs_current_value">Current performance value: %1$s</string>
     <string name="trs_volume_chart">Volume per session</string>
     <string name="trs_volume_cd">Volume across %1$d sessions.</string>
-    <string name="trs_volume_hint_load">Load × reps of all work sets.</string>
+    <string name="trs_volume_hint_load">Weight lifted × reps of all work sets: both dumbbells of a pair, body weight included on body-weight exercises.</string>
     <string name="trs_volume_hint_reps">Reps (or rounds) of all work sets.</string>
     <string name="trs_volume_hint_time">Seconds held in all work sets.</string>
-    <string name="trs_volume_hint_hang">Seconds × load of all work sets.</string>
+    <string name="trs_volume_hint_hang">Seconds × weight held of all work sets, body weight included on hangs.</string>
     <string name="trs_bests">Personal bests</string>
     <string name="trs_best_load">Total load %1$s</string>
     <string name="trs_best_e1rm">Est. 1RM %1$s (total)</string>
+    <string name="trs_best_e1rm_lifted">Est. 1RM %1$s</string>
     <string name="trs_sessions">Sessions</string>
 
     <string name="trs_progress_title">Progress</string>

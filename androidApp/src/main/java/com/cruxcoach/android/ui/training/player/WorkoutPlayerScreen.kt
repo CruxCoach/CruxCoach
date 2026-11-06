@@ -651,13 +651,14 @@ internal fun SetSteppers(
             val minLoad = if (def.load == LoadMode.BODYWEIGHT_PLUS) -200.0 else 0.0
             val load = set.loadKg ?: 0.0
             PlayerStepper(
-                label = stringResource(R.string.trw_load_label),
-                value = loadText(set, def, units) ?: formatMass(load, units),
+                // The label says what the number is ("Weight per dumbbell"), so the value is the plain number typed.
+                label = weightLabel(def),
+                value = if (def.load == LoadMode.EXTERNAL) formatMass(load, units) else loadText(set, def, units) ?: formatMass(load, units),
                 tag = "player_load",
                 onMinus = { onUpdate(set.copy(loadKg = (snap(load - step, step)).coerceAtLeast(minLoad))) },
                 onPlus = { onUpdate(set.copy(loadKg = (snap(load + step, step)).coerceAtMost(500.0))) },
                 edit = StepperEdit(
-                    title = stringResource(R.string.trw_load_input, com.cruxcoach.athlete.logic.Units.massUnit(units)),
+                    title = weightInputTitle(def, units),
                     initial = formatNumber(com.cruxcoach.athlete.logic.Units.massToDisplay(load, units), 2),
                     decimal = true, allowNegative = def.load == LoadMode.BODYWEIGHT_PLUS,
                 ) { v -> onUpdate(set.copy(loadKg = com.cruxcoach.athlete.logic.Units.massFromDisplay(v, units).coerceIn(minLoad, 500.0))) },
@@ -880,23 +881,15 @@ internal fun mainValue(set: ExerciseSet, def: ExerciseDefinition): String? = whe
     ExerciseKind.INTERVAL -> null
 }
 
-/** "+12 kg", "15 kg assisted", "Bodyweight", "32 kg"; null without a load. */
+/** "+12 kg", "15 kg assisted", "Bodyweight", "2 × 16 kg", "32 kg" ([weightText]); null without a load. */
 @Composable
-internal fun loadText(set: ExerciseSet, def: ExerciseDefinition, units: UnitSystem): String? {
-    val load = set.loadKg
-    return when (def.load) {
-        LoadMode.BODYWEIGHT_PLUS -> when {
-            load == null || load == 0.0 -> stringResource(R.string.tr_bodyweight)
-            load < 0 -> stringResource(R.string.trw_load_assisted, formatMass(-load, units))
-            else -> formatMass(load, units, signed = true)
-        }
-        // Always a line for loaded work, so the layout never jumps under the finger.
-        LoadMode.EXTERNAL -> formatMass(load ?: 0.0, units)
-        else -> null
-    }
+internal fun loadText(set: ExerciseSet, def: ExerciseDefinition, units: UnitSystem): String? = when (def.load) {
+    // Always a line for loaded work, so the layout never jumps under the finger.
+    LoadMode.BODYWEIGHT_PLUS, LoadMode.EXTERNAL -> weightText(def, set.loadKg ?: 0.0, units)
+    else -> null
 }
 
-/** Two-arm pick-ups log the total of both hands; this says what goes on each block. */
+/** Two-arm pick-ups log the total of both hands; this says what goes on each of two blocks. */
 @Composable
 internal fun perBlockText(set: ExerciseSet, def: ExerciseDefinition, units: UnitSystem): String? {
     if (def.load != LoadMode.EXTERNAL || def.unilateral || EquipmentV2.PICKUP_BLOCK_PAIR !in def.equipment) return null
@@ -909,7 +902,7 @@ internal fun perBlockText(set: ExerciseSet, def: ExerciseDefinition, units: Unit
 internal fun percentText(set: ExerciseSet, def: ExerciseDefinition, bodyweight: Double?): String? {
     if (def.load != LoadMode.BODYWEIGHT_PLUS && def.load != LoadMode.EXTERNAL) return null
     if (def.kind != ExerciseKind.HANG && def.kind != ExerciseKind.INTERVAL && def.kind != ExerciseKind.LOAD_REPS) return null
-    val pct = StrengthMath.percentBodyweight(def.load, set.loadKg ?: 0.0, set.bodyweightKg ?: bodyweight) ?: return null
+    val pct = StrengthMath.percentBodyweight(def, set.loadKg ?: 0.0, set.bodyweightKg ?: bodyweight) ?: return null
     return stringResource(R.string.tr_format_percent_bw, pct.roundToInt())
 }
 

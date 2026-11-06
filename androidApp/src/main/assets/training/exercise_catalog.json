@@ -142,7 +142,8 @@
      "steps": [
       "Belade den Block moderat und greif eine große Leiste mit geradem Handgelenk.",
       "Steh aufrecht, den Arm locker gestreckt, und halte 20–30 s.",
-      "Geh optional ein paar Schritte, dann wechsle die Seite."
+      "Geh optional ein paar Schritte, dann wechsle die Seite.",
+      "Trag das Gesamtgewicht pro Seite ein, Block und Pin inklusive."
      ],
      "cues": [
       "Handgelenk in Verlängerung des Unterarms"
@@ -161,7 +162,8 @@
      "steps": [
       "Load the block moderately and grip a large edge with a neutral wrist.",
       "Stand tall, arm long and relaxed, and hold 20–30 s.",
-      "Optionally walk a few steps, then switch sides."
+      "Optionally walk a few steps, then switch sides.",
+      "Log the total per side, block and pin included."
      ],
      "cues": [
       "Wrist in line with the forearm"
@@ -258,6 +260,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -304,7 +307,8 @@
      "steps": [
       "Setz dich, leg den Unterarm auf den Oberschenkel, Handfläche nach oben, Kurzhantel in der Hand.",
       "Lass die Hantel langsam bis in die Fingerspitzen rollen.",
-      "Roll sie mit den Fingern wieder ein und beuge zum Schluss leicht das Handgelenk."
+      "Roll sie mit den Fingern wieder ein und beuge zum Schluss leicht das Handgelenk.",
+      "Eine Hantel pro Hand, gleichzeitig oder nacheinander: Trag das Gewicht einer Hantel und die Wiederholungen einer Hand ein."
      ],
      "cues": [
       "Langsam ablassen, kontrolliert einrollen"
@@ -323,7 +327,8 @@
      "steps": [
       "Sit with your forearm on your thigh, palm up, dumbbell in hand.",
       "Let the dumbbell roll slowly down to your fingertips.",
-      "Curl it back up with your fingers, finishing with a slight wrist curl."
+      "Curl it back up with your fingers, finishing with a slight wrist curl.",
+      "One dumbbell per hand, both at once or one after the other: log the weight of one dumbbell and the reps of one hand."
      ],
      "cues": [
       "Lower slowly, curl with control"
@@ -617,7 +622,8 @@
    "tags": [
     "strength",
     "no_climbing",
-    "home"
+    "home",
+    "force_gauge"
    ],
    "i18n": {
     "de": {
@@ -718,7 +724,7 @@
       "Belade den Block mit Hantelscheiben oder einer Kettlebell, Leiste 20 mm.",
       "Stell dich seitlich daneben, greif halb aufgestellt und heb ihn mit geradem Rücken an.",
       "Halte 10 s knapp über dem Boden, Schulter tief, Handgelenk gerade.",
-      "Setz kontrolliert ab und trag das Gewicht pro Seite ein."
+      "Setz kontrolliert ab und trag das Gesamtgewicht pro Seite ein, Block und Pin inklusive."
      ],
      "cues": [
       "Der Block hängt senkrecht unter der Hand",
@@ -740,7 +746,7 @@
       "Load the block with plates or a kettlebell; use a 20 mm edge.",
       "Stand beside it, half crimp, and lift with a neutral back.",
       "Hold 10 s just off the floor, shoulder down, wrist straight.",
-      "Lower under control and log the weight per side."
+      "Lower under control and log the total per side, block and pin included."
      ],
      "cues": [
       "Block hangs straight below the hand",
@@ -803,7 +809,8 @@
      "steps": [
       "Belade den Zangenblock mit Hantelscheiben oder einer Kettlebell.",
       "Greif den Block mit dem Daumen auf der einen und den Fingern auf der anderen Seite.",
-      "Heb ihn an und halte 10 s mit geradem Handgelenk, dann wechsle die Seite."
+      "Heb ihn an und halte 10 s mit geradem Handgelenk, dann wechsle die Seite.",
+      "Trag das Gesamtgewicht pro Seite ein, Block und Pin inklusive."
      ],
      "cues": [
       "Daumen kräftig dagegen drücken"
@@ -822,7 +829,8 @@
      "steps": [
       "Load the pinch block with plates or a kettlebell.",
       "Grip with your thumb on one side and your fingers on the other.",
-      "Lift and hold 10 s with a straight wrist, then switch sides."
+      "Lift and hold 10 s with a straight wrist, then switch sides.",
+      "Log the total per side, block and pin included."
      ],
      "cues": [
       "Drive the thumb hard into the block"
@@ -886,7 +894,8 @@
      "steps": [
       "Belade den Block und stell die Leiste auf etwa 20 mm ein.",
       "Greif mit offener Hand, die Mittelgelenke flach, und heb den Block an.",
-      "Halte 10 s, ohne aufzustellen; setz ab und wechsle die Seite."
+      "Halte 10 s, ohne aufzustellen; setz ab und wechsle die Seite.",
+      "Trag das Gesamtgewicht pro Seite ein, Block und Pin inklusive."
      ],
      "cues": [
       "Mittelgelenke flach halten"
@@ -905,7 +914,8 @@
      "steps": [
       "Load the block and set the edge to about 20 mm.",
       "Grip open-handed with flat middle knuckles and lift the block.",
-      "Hold 10 s without crimping; lower and switch sides."
+      "Hold 10 s without crimping; lower and switch sides.",
+      "Log the total per side, block and pin included."
      ],
      "cues": [
       "Keep middle knuckles flat"
@@ -975,7 +985,7 @@
      "steps": [
       "Belade zwei Blöcke (einen pro Hand) oder einen Block mit Leiste für beide Hände mit Hantelscheiben oder einer Kettlebell, Leiste 20 mm.",
       "Stell dich mittig davor, greif halb aufgestellt und heb mit geradem Rücken an.",
-      "Halte 10 s knapp über dem Boden, setz kontrolliert ab und trag das Gesamtgewicht beider Hände ein."
+      "Halte 10 s knapp über dem Boden, setz kontrolliert ab und trag das Gesamtgewicht beider Hände ein, Blöcke und Pins inklusive."
      ],
      "cues": [
       "Aus den Beinen heben, nicht aus dem Rücken"
@@ -995,7 +1005,7 @@
      "steps": [
       "Load two blocks (one per hand) or one block with an edge for both hands with plates or a kettlebell; use a 20 mm edge.",
       "Stand centred over them, half crimp, and lift with a neutral back.",
-      "Hold 10 s just off the floor, lower under control and log the total for both hands."
+      "Hold 10 s just off the floor, lower under control and log the total for both hands, blocks and pins included."
      ],
      "cues": [
       "Lift with your legs, not your back"
@@ -2405,7 +2415,8 @@
      "steps": [
       "Setz dich an den Kabelzug, Oberschenkel unter den Polstern, Stange breit greifen.",
       "Zieh die Stange zur oberen Brust und die Schulterblätter nach unten.",
-      "Lass sie kontrolliert hoch, bis die Arme gestreckt sind."
+      "Lass sie kontrolliert hoch, bis die Arme gestreckt sind.",
+      "Trag das Gewicht ein, das am Kabelzug steht – nicht die Nummer der Platte."
      ],
      "cues": [
       "Brust raus, leicht zurückgelehnt"
@@ -2424,7 +2435,8 @@
      "steps": [
       "Sit at the cable station, thighs under the pads, grab the bar wide.",
       "Pull the bar to your upper chest and draw your shoulder blades down.",
-      "Let it rise with control until your arms are straight."
+      "Let it rise with control until your arms are straight.",
+      "Log the weight shown on the stack, not the plate number."
      ],
      "cues": [
       "Chest up, lean back slightly"
@@ -2577,7 +2589,8 @@
      "steps": [
       "Häng ein Widerstandsband an die Stange und stell Fuß oder Knie hinein.",
       "Starte aus dem aktiven Hang und zieh das Kinn über die Stange.",
-      "Lass dich langsam ab, bis die Arme gestreckt sind."
+      "Lass dich langsam ab, bis die Arme gestreckt sind.",
+      "Trag die Hilfe des Bands als negatives Zusatzgewicht ein; geschätzt reicht (z. B. −20 kg für ein starkes Band)."
      ],
      "cues": [
       "Nimm ein leichteres Band, sobald 8 saubere Wiederholungen klappen"
@@ -2597,7 +2610,8 @@
      "steps": [
       "Loop a resistance band over the bar and put a foot or knee in it.",
       "Start from an active hang and pull your chin over the bar.",
-      "Lower slowly until your arms are straight."
+      "Lower slowly until your arms are straight.",
+      "Log the band's help as negative added weight; an estimate is fine (e.g. −20 kg for a strong band)."
      ],
      "cues": [
       "Switch to a lighter band once 8 clean reps feel easy"
@@ -3177,7 +3191,7 @@
      ],
      "why": "Steigert gezielt deine maximale Zugkraft, die dir bei harten Einzelzügen und steilen Bouldern hilft.",
      "steps": [
-      "Häng Gewicht an einen Dip-Gürtel oder zieh eine Gewichtsweste an.",
+      "Häng Gewicht an einen Dip-Gürtel oder zieh eine Gewichtsweste an; trag nur das Zusatzgewicht ein.",
       "Zieh dich sauber hoch, bis das Kinn über der Stange ist.",
       "Lass dich kontrolliert ab; steigere das Gewicht nur bei sauberer Technik."
      ],
@@ -3196,7 +3210,7 @@
      ],
      "why": "Targets maximal pulling strength, which helps on hard single moves and steep boulders.",
      "steps": [
-      "Hang weight from a dip belt or wear a weight vest.",
+      "Hang weight from a dip belt or wear a weight vest; log only the added weight.",
       "Pull up cleanly until your chin is over the bar.",
       "Lower with control; only add weight while your form stays clean."
      ],
@@ -4118,7 +4132,8 @@
      "steps": [
       "Setz dich etwas seitlich versetzt an den Kabelzug und greif den Einzelgriff mit einer Hand.",
       "Zieh den Griff zur Schulter, Ellbogen nach unten und hinten, Schulterblatt nach unten.",
-      "Lass ihn kontrolliert hoch, bis der Arm gestreckt ist; dann die Seite wechseln."
+      "Lass ihn kontrolliert hoch, bis der Arm gestreckt ist; dann die Seite wechseln.",
+      "Trag das Gewicht ein, das am Kabelzug steht – nicht die Nummer der Platte."
      ],
      "cues": [
       "Oberkörper ruhig, nicht mitdrehen",
@@ -4140,7 +4155,8 @@
      "steps": [
       "Sit slightly off-centre at the cable station and take the single handle in one hand.",
       "Pull the handle to your shoulder, elbow down and back, shoulder blade down.",
-      "Let it rise under control until the arm is straight; then switch sides."
+      "Let it rise under control until the arm is straight; then switch sides.",
+      "Log the weight shown on the stack, not the plate number."
      ],
      "cues": [
       "Keep the torso still, do not twist",
@@ -4209,7 +4225,8 @@
      "steps": [
       "Setz dich an den Kabelzug, Füße an der Platte, Knie leicht gebeugt, Rücken aufrecht.",
       "Zieh den Griff zum Bauch und die Schulterblätter zusammen.",
-      "Lass ihn kontrolliert nach vorn, bis die Arme gestreckt sind, ohne den Rücken zu runden."
+      "Lass ihn kontrolliert nach vorn, bis die Arme gestreckt sind, ohne den Rücken zu runden.",
+      "Trag das Gewicht ein, das am Kabelzug steht – nicht die Nummer der Platte."
      ],
      "cues": [
       "Brust raus, Schultern weg von den Ohren"
@@ -4230,7 +4247,8 @@
      "steps": [
       "Sit at the cable station, feet on the plate, knees slightly bent, back upright.",
       "Pull the handle to your belly and squeeze the shoulder blades together.",
-      "Let it go forward under control until the arms are straight, without rounding the back."
+      "Let it go forward under control until the arms are straight, without rounding the back.",
+      "Log the weight shown on the stack, not the plate number."
      ],
      "cues": [
       "Chest up, shoulders away from the ears"
@@ -4598,6 +4616,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL",
     "BENCH"
@@ -4647,7 +4666,8 @@
      "steps": [
       "Leg dich auf die Bank, Füße fest am Boden, Hanteln neben der Brust.",
       "Drück die Hanteln nach oben, bis die Arme fast gestreckt sind.",
-      "Senk sie langsam ab, Ellbogen etwa 45° vom Körper."
+      "Senk sie langsam ab, Ellbogen etwa 45° vom Körper.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Schulterblätter zurück und nach unten"
@@ -4666,7 +4686,8 @@
      "steps": [
       "Lie on the bench, feet planted, dumbbells beside your chest.",
       "Press the dumbbells up until your arms are nearly straight.",
-      "Lower slowly, elbows about 45° from your body."
+      "Lower slowly, elbows about 45° from your body.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Shoulder blades back and down"
@@ -4684,6 +4705,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -4734,7 +4756,8 @@
      "steps": [
       "Stell dich hüftbreit hin, Hanteln auf Schulterhöhe, Rumpf fest.",
       "Drück die Hanteln über den Kopf, bis die Arme gestreckt sind.",
-      "Senk sie kontrolliert auf Schulterhöhe; mit der Langhantel geht es genauso."
+      "Senk sie kontrolliert auf Schulterhöhe.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Rippen unten, kein Hohlkreuz"
@@ -4754,7 +4777,8 @@
      "steps": [
       "Stand hip-width apart, dumbbells at shoulder height, trunk braced.",
       "Press the dumbbells overhead until your arms are straight.",
-      "Lower them with control to shoulder height; a barbell works the same way."
+      "Lower them with control to shoulder height.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Ribs down, no arched back"
@@ -5565,6 +5589,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL",
     "BENCH"
@@ -5615,7 +5640,8 @@
      "steps": [
       "Stell die Bank auf 30–45° und setz dich mit den Hanteln auf den Oberschenkeln hin.",
       "Leg dich zurück und drück die Hanteln über der oberen Brust nach oben.",
-      "Senk sie kontrolliert neben die Brust, Ellbogen etwa 45° vom Körper."
+      "Senk sie kontrolliert neben die Brust, Ellbogen etwa 45° vom Körper.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Schulterblätter zurück und nach unten",
@@ -5637,7 +5663,8 @@
      "steps": [
       "Set the bench to 30–45° and sit down with the dumbbells on your thighs.",
       "Lie back and press the dumbbells up over your upper chest.",
-      "Lower them under control beside your chest, elbows about 45° from your body."
+      "Lower them under control beside your chest, elbows about 45° from your body.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Shoulder blades back and down",
@@ -5699,7 +5726,8 @@
      "steps": [
       "Stell dich vor den Kabelzug und greif Seil oder Stange auf Brusthöhe, Ellbogen am Körper.",
       "Streck die Arme nach unten, bis sie ganz gestreckt sind.",
-      "Lass den Griff langsam bis etwa Brusthöhe zurück; die Ellbogen bleiben an Ort und Stelle."
+      "Lass den Griff langsam bis etwa Brusthöhe zurück; die Ellbogen bleiben an Ort und Stelle.",
+      "Trag das Gewicht ein, das am Kabelzug steht – nicht die Nummer der Platte."
      ],
      "cues": [
       "Oberarme ruhig an der Seite"
@@ -5720,7 +5748,8 @@
      "steps": [
       "Stand facing the cable station, rope or bar at chest height, elbows at your sides.",
       "Straighten the arms down until they are fully extended.",
-      "Let the handle return slowly to about chest height; the elbows stay where they are."
+      "Let the handle return slowly to about chest height; the elbows stay where they are.",
+      "Log the weight shown on the stack, not the plate number."
      ],
      "cues": [
       "Upper arms still at your sides"
@@ -6411,6 +6440,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -6457,7 +6487,8 @@
      "steps": [
       "Leg den Unterarm auf Oberschenkel oder Bank, Handfläche nach unten, Hand über der Kante.",
       "Heb die Hantel nur aus dem Handgelenk so weit wie möglich an.",
-      "Senk sie langsam wieder ab."
+      "Senk sie langsam wieder ab.",
+      "Eine Hantel pro Hand, gleichzeitig oder nacheinander: Trag das Gewicht einer Hantel und die Wiederholungen einer Hand ein."
      ],
      "cues": [
       "Unterarm bleibt liegen"
@@ -6476,7 +6507,8 @@
      "steps": [
       "Rest your forearm on your thigh or a bench, palm down, hand past the edge.",
       "Lift the dumbbell as far as you can using only the wrist.",
-      "Lower it slowly."
+      "Lower it slowly.",
+      "One dumbbell per hand, both at once or one after the other: log the weight of one dumbbell and the reps of one hand."
      ],
      "cues": [
       "Forearm stays down"
@@ -6835,6 +6867,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -6882,7 +6915,8 @@
      "steps": [
       "Leg den Unterarm auf Oberschenkel oder Bank, Handfläche nach oben, Hand über der Kante.",
       "Lass das Handgelenk kontrolliert nach unten sinken.",
-      "Beug es so weit wie möglich nach oben und senk langsam ab."
+      "Beug es so weit wie möglich nach oben und senk langsam ab.",
+      "Eine Hantel pro Hand, gleichzeitig oder nacheinander: Trag das Gewicht einer Hantel und die Wiederholungen einer Hand ein."
      ],
      "cues": [
       "Hantel fest, aber ohne zu quetschen"
@@ -6902,7 +6936,8 @@
      "steps": [
       "Rest your forearm on your thigh or a bench, palm up, hand past the edge.",
       "Let the wrist sink down with control.",
-      "Curl it up as far as you can, then lower slowly."
+      "Curl it up as far as you can, then lower slowly.",
+      "One dumbbell per hand, both at once or one after the other: log the weight of one dumbbell and the reps of one hand."
      ],
      "cues": [
       "Hold the dumbbell firmly without squeezing hard"
@@ -7009,6 +7044,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -7056,7 +7092,8 @@
      "steps": [
       "Halte leichte Hanteln und zieh die Ellbogen seitlich auf Schulterhöhe hoch.",
       "Dreh die Unterarme nach oben, bis sie senkrecht stehen.",
-      "Drück die Hanteln über den Kopf, dann alle Schritte rückwärts zurück."
+      "Drück die Hanteln über den Kopf, dann alle Schritte rückwärts zurück.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Ellbogen bleiben beim Drehen auf Schulterhöhe"
@@ -7075,7 +7112,8 @@
      "steps": [
       "Hold light dumbbells and raise your elbows out to shoulder height.",
       "Rotate the forearms up until they are vertical.",
-      "Press the dumbbells overhead, then reverse each step."
+      "Press the dumbbells overhead, then reverse each step.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Elbows stay at shoulder height while rotating"
@@ -7093,6 +7131,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "BENCH",
     "DUMBBELL"
@@ -7140,7 +7179,8 @@
      "steps": [
       "Leg dich bäuchlings auf eine Schrägbank, leichte Hanteln in den Händen, Arme hängen.",
       "Heb die gestreckten Arme nach vorn (I), schräg nach oben (Y) und seitlich (T).",
-      "Halte jede Position kurz und senk die Arme langsam ab."
+      "Halte jede Position kurz und senk die Arme langsam ab.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Daumen zeigen nach oben"
@@ -7160,7 +7200,8 @@
      "steps": [
       "Lie face down on an incline bench with light dumbbells, arms hanging.",
       "Raise the straight arms forward (I), diagonally up (Y) and out to the side (T).",
-      "Hold each position briefly and lower slowly."
+      "Hold each position briefly and lower slowly.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Thumbs point up"
@@ -7272,6 +7313,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -7320,7 +7362,8 @@
      "steps": [
       "Beug dich mit geradem Rücken weit nach vorn, leichte Hanteln hängen unter den Schultern.",
       "Heb die Arme leicht gebeugt seitlich bis auf Schulterhöhe.",
-      "Senk sie langsam wieder ab, ohne Schwung."
+      "Senk sie langsam wieder ab, ohne Schwung.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Schulterblätter zusammen, Nacken lang"
@@ -7340,7 +7383,8 @@
      "steps": [
       "Hinge forward with a straight back, light dumbbells hanging under your shoulders.",
       "Raise the arms out to the sides, elbows slightly bent, up to shoulder height.",
-      "Lower them slowly again, without momentum."
+      "Lower them slowly again, without momentum.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Shoulder blades together, long neck"
@@ -7403,7 +7447,7 @@
      "steps": [
       "Geh in den Vierfüßlerstand, Hände unter den Schultern, Knie unter der Hüfte.",
       "Streck einen Arm nach vorn und das gegenüberliegende Bein nach hinten.",
-      "Halte kurz, ohne dass die Hüfte kippt, dann wechsle die Seite."
+      "Halte kurz, ohne dass die Hüfte kippt, dann wechsle die Seite; jede Seite zählt als eine Wiederholung."
      ],
      "cues": [
       "Stell dir ein Wasserglas auf deinem Rücken vor"
@@ -7422,7 +7466,7 @@
      "steps": [
       "Kneel on all fours, hands under shoulders, knees under hips.",
       "Reach one arm forward and the opposite leg back.",
-      "Pause briefly without the hips tilting, then switch sides."
+      "Pause briefly without the hips tilting, then switch sides; each side counts as one rep."
      ],
      "cues": [
       "Imagine a glass of water on your back"
@@ -7482,7 +7526,7 @@
       "Leg dich auf den Rücken, Arme senkrecht nach oben, Hüfte und Knie im 90°-Winkel.",
       "Drück den unteren Rücken sanft in den Boden.",
       "Streck langsam einen Arm und das gegenüberliegende Bein aus, ohne dass der Rücken abhebt.",
-      "Kehr zurück und wechsle die Seite."
+      "Kehr zurück und wechsle die Seite; jede Seite zählt als eine Wiederholung."
      ],
      "cues": [
       "Ausatmen beim Strecken",
@@ -7501,7 +7545,7 @@
       "Lie on your back, arms pointing up, hips and knees bent to 90°.",
       "Gently press your lower back into the floor.",
       "Slowly extend one arm and the opposite leg without your back lifting.",
-      "Return and switch sides."
+      "Return and switch sides; each side counts as one rep."
      ],
      "cues": [
       "Exhale as you extend",
@@ -8114,7 +8158,7 @@
      "steps": [
       "Leg dich bäuchlings auf eine Rückenstrecker- oder Flachbank, Füße fixiert, Hüfte an der Kante.",
       "Senk den Oberkörper mit geradem Rücken ab.",
-      "Richte dich auf, bis der Körper eine Linie bildet; für Zusatzlast eine Scheibe an die Brust drücken."
+      "Richte dich auf, bis der Körper eine Linie bildet; für mehr eine Scheibe an die Brust drücken und als Zusatzgewicht eintragen."
      ],
      "cues": [
       "Bewegung aus Hüfte und Gesäß"
@@ -8132,7 +8176,7 @@
      "steps": [
       "Lie face down on a back-extension or flat bench, feet anchored, hips at the edge.",
       "Lower your torso with a straight back.",
-      "Rise until your body forms a line; for extra load, hug a plate to your chest."
+      "Rise until your body forms a line; for more, hug a plate to your chest and log it as added weight."
      ],
      "cues": [
       "Drive from hips and glutes"
@@ -9511,7 +9555,7 @@
      "steps": [
       "Hold a plate or dumbbell against your chest, feet hooked or flat on the floor.",
       "Roll up under control until your torso is upright.",
-      "Lower yourself slowly; log the weight as added load."
+      "Lower yourself slowly; log the weight as added weight."
      ],
      "cues": [
       "Keep the weight close to your body",
@@ -10641,7 +10685,8 @@
      "steps": [
       "Setz dich mit dem oberen Rücken an eine Bank, die Langhantel gepolstert über der Hüfte.",
       "Stell die Füße hüftbreit auf und drück die Hüfte hoch, bis der Oberkörper waagerecht ist.",
-      "Halte oben kurz und senk kontrolliert ab."
+      "Halte oben kurz und senk kontrolliert ab.",
+      "Trag das Gesamtgewicht inklusive Stange ein."
      ],
      "cues": [
       "Kinn leicht zur Brust, Rippen runter"
@@ -10659,7 +10704,8 @@
      "steps": [
       "Sit with your upper back against a bench, padded barbell across your hips.",
       "Plant your feet hip-width and drive your hips up until your torso is horizontal.",
-      "Pause at the top and lower under control."
+      "Pause at the top and lower under control.",
+      "Log the total weight including the bar."
      ],
      "cues": [
       "Chin slightly tucked, ribs down"
@@ -10760,6 +10806,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -10806,9 +10853,10 @@
      ],
      "why": "Stärkt die hintere Kette für Fersenhaken und eine belastbare Hüfte beim Hochziehen der Füße.",
      "steps": [
-      "Halte Kurzhanteln oder eine Langhantel vor den Oberschenkeln, Knie leicht gebeugt.",
+      "Halte zwei Kurzhanteln vor den Oberschenkeln, Knie leicht gebeugt.",
       "Schieb die Hüfte nach hinten und führ die Last dicht an den Beinen nach unten.",
-      "Stopp bei deutlicher Dehnung hinten im Oberschenkel und richte dich über die Hüfte auf."
+      "Stopp bei deutlicher Dehnung hinten im Oberschenkel und richte dich über die Hüfte auf.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Rücken neutral, Last nah am Körper"
@@ -10825,9 +10873,10 @@
      ],
      "why": "Strengthens the posterior chain for heel hooks and robust hips when hauling your feet up.",
      "steps": [
-      "Hold dumbbells or a barbell in front of your thighs, knees soft.",
+      "Hold two dumbbells in front of your thighs, knees soft.",
       "Push your hips back and slide the load down close to your legs.",
-      "Stop at a strong hamstring stretch and stand up by driving the hips forward."
+      "Stop at a strong hamstring stretch and stand up by driving the hips forward.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Neutral back, load close"
@@ -10885,7 +10934,7 @@
      "steps": [
       "Stell dich mit einem Fußballen auf eine Stufe und halt dich leicht an der Wand fest.",
       "Senk die Ferse langsam ab und drück dich auf einem Bein ganz hoch.",
-      "Alle Wiederholungen pro Seite, dann wechseln; für mehr Last eine Hantel halten."
+      "Alle Wiederholungen pro Seite, dann wechseln; für mehr eine Hantel halten und als Zusatzgewicht eintragen."
      ],
      "cues": [
       "Druck über den großen Zeh"
@@ -10901,7 +10950,7 @@
      "steps": [
       "Stand on one forefoot on a step, lightly holding a wall.",
       "Lower the heel slowly, then rise all the way up on one leg.",
-      "Do all reps on one side, then switch; hold a dumbbell for more load."
+      "Do all reps on one side, then switch; hold a dumbbell for more and log it as added weight."
      ],
      "cues": [
       "Press through the big toe"
@@ -11207,7 +11256,8 @@
      "steps": [
       "Leg die Langhantel im Rack auf den oberen Rücken und tritt einen Schritt zurück.",
       "Atme ein, spann den Rumpf an und geh kontrolliert tief.",
-      "Drück dich mit stabilem Rücken nach oben."
+      "Drück dich mit stabilem Rücken nach oben.",
+      "Trag das Gesamtgewicht inklusive Stange ein."
      ],
      "cues": [
       "Rumpf vor jeder Wiederholung fest machen"
@@ -11226,7 +11276,8 @@
      "steps": [
       "Set the barbell on your upper back in the rack and step back.",
       "Breathe in, brace your trunk and squat down under control.",
-      "Drive up with a stable back."
+      "Drive up with a stable back.",
+      "Log the total weight including the bar."
      ],
      "cues": [
       "Brace before every rep"
@@ -11453,7 +11504,7 @@
      "steps": [
       "Leg den hinteren Fußrücken auf eine Bank oder einen Stuhl, den vorderen Fuß gut einen Schritt davor.",
       "Senk dich senkrecht ab, bis der vordere Oberschenkel etwa waagerecht ist.",
-      "Drück dich über das vordere Bein hoch; bei Bedarf Kurzhanteln oder Rucksack als Zusatzlast."
+      "Drück dich über das vordere Bein hoch; bei Bedarf Kurzhanteln oder Rucksack dazu, zusammen als Zusatzgewicht eingetragen."
      ],
      "cues": [
       "Gewicht auf dem vorderen Bein"
@@ -11472,7 +11523,7 @@
      "steps": [
       "Rest the top of your back foot on a bench or chair, front foot a good step ahead.",
       "Lower straight down until the front thigh is about parallel.",
-      "Drive up through the front leg; add dumbbells or a backpack if needed."
+      "Drive up through the front leg; add dumbbells or a backpack if needed and log them together as added weight."
      ],
      "cues": [
       "Weight on the front leg"
@@ -11539,7 +11590,8 @@
      "steps": [
       "Stell dich hüftbreit hin, die Stange über der Fußmitte, und greif knapp außerhalb der Knie.",
       "Spann Rumpf und Lats an, Rücken gerade, Hüfte etwas über den Knien.",
-      "Drück den Boden weg, streck Hüfte und Knie gemeinsam und setz kontrolliert ab."
+      "Drück den Boden weg, streck Hüfte und Knie gemeinsam und setz kontrolliert ab.",
+      "Trag das Gesamtgewicht inklusive Stange ein."
      ],
      "cues": [
       "Stange bleibt am Schienbein"
@@ -11558,7 +11610,8 @@
      "steps": [
       "Stand hip-width with the bar over mid-foot and grip just outside your knees.",
       "Brace trunk and lats, back straight, hips slightly above the knees.",
-      "Push the floor away, extend hips and knees together, and lower under control."
+      "Push the floor away, extend hips and knees together, and lower under control.",
+      "Log the total weight including the bar."
      ],
      "cues": [
       "Bar stays against your shins"
@@ -11869,7 +11922,8 @@
      "steps": [
       "Leg die Langhantel vorn auf die Schultern, Ellbogen hoch (oder Arme gekreuzt).",
       "Geh mit aufrechtem Oberkörper tief in die Hocke.",
-      "Drück dich hoch, ohne dass die Ellbogen absinken."
+      "Drück dich hoch, ohne dass die Ellbogen absinken.",
+      "Trag das Gesamtgewicht inklusive Stange ein."
      ],
      "cues": [
       "Ellbogen hoch, Brust raus"
@@ -11885,7 +11939,8 @@
      "steps": [
       "Rest the barbell on the front of your shoulders, elbows high (or arms crossed).",
       "Squat deep with an upright torso.",
-      "Drive up without letting the elbows drop."
+      "Drive up without letting the elbows drop.",
+      "Log the total weight including the bar."
      ],
      "cues": [
       "Elbows up, chest proud"
@@ -13901,7 +13956,7 @@
      "steps": [
       "Setz dich mit beiden Knien im 90°-Winkel hin, ein Bein vorn, eins seitlich.",
       "Richte dich auf, heb beide Knie und dreh sie zur anderen Seite in die gespiegelte Position.",
-      "Halte jede Position kurz und bewege dich langsam."
+      "Halte jede Position kurz und bewege dich langsam; jeder Wechsel zählt als eine Wiederholung."
      ],
      "cues": [
       "Stütz dich anfangs mit den Händen hinter dir ab"
@@ -13921,7 +13976,7 @@
      "steps": [
       "Sit with both knees bent to 90°, one leg in front of you, one to the side.",
       "Sit tall, lift both knees and rotate them to the other side into the mirrored position.",
-      "Pause briefly in each position and keep the movement slow."
+      "Pause briefly in each position and keep the movement slow; each switch counts as one rep."
      ],
      "cues": [
       "Use your hands behind you for support at first"

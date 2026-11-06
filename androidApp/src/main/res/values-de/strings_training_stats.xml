@@ -61,13 +61,14 @@
     <string name="trs_current_value">Aktueller Leistungswert: %1$s</string>
     <string name="trs_volume_chart">Volumen pro Einheit</string>
     <string name="trs_volume_cd">Volumen über %1$d Einheiten.</string>
-    <string name="trs_volume_hint_load">Last × Wiederholungen aller Arbeitssätze.</string>
+    <string name="trs_volume_hint_load">Bewegtes Gewicht × Wiederholungen aller Arbeitssätze: beide Hanteln eines Paars, bei Körpergewichtsübungen samt Körpergewicht.</string>
     <string name="trs_volume_hint_reps">Wiederholungen (oder Runden) aller Arbeitssätze.</string>
     <string name="trs_volume_hint_time">Gehaltene Sekunden aller Arbeitssätze.</string>
-    <string name="trs_volume_hint_hang">Sekunden × Last aller Arbeitssätze.</string>
+    <string name="trs_volume_hint_hang">Sekunden × gehaltenes Gewicht aller Arbeitssätze, beim Hängen samt Körpergewicht.</string>
     <string name="trs_bests">Bestwerte</string>
-    <string name="trs_best_load">Gesamtlast %1$s</string>
+    <string name="trs_best_load">Gesamtgewicht %1$s</string>
     <string name="trs_best_e1rm">Geschätztes 1RM %1$s (gesamt)</string>
+    <string name="trs_best_e1rm_lifted">Geschätztes 1RM %1$s</string>
     <string name="trs_sessions">Einheiten</string>
 
     <string name="trs_progress_title">Fortschritt</string>

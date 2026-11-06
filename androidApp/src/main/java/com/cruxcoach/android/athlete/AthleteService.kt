@@ -1330,6 +1330,8 @@ class AthleteService @Inject constructor(
         equipment: Collection<com.cruxcoach.athlete.catalog.EquipmentV2>,
         domains: Collection<com.cruxcoach.athlete.catalog.LoadDomain>,
         note: String = "",
+        /** Two dumbbells or kettlebells at once, logged per piece ([com.cruxcoach.athlete.logic.LoadRules]). */
+        implements: Int = 1,
     ): String {
         val slug = "user." + com.cruxcoach.android.ui.training.exercises.CustomExerciseViewModel.slugify(name) + "_" +
             repo.newId().filter { it.isLetterOrDigit() }.take(6).lowercase()
@@ -1347,7 +1349,7 @@ class AthleteService @Inject constructor(
             slug = slug, category = category, kind = kind, load = load, unilateral = unilateral,
             equipment = gear, domains = domains.toList(), difficulty = 2,
             defaults = com.cruxcoach.athlete.logic.ExerciseGuess.defaultPrescription(kind), tags = tags,
-            i18n = mapOf("de" to text, "en" to text), custom = true,
+            i18n = mapOf("de" to text, "en" to text), custom = true, implements = implements.coerceIn(1, 2),
         ))
         catalogStore.refresh()
         return slug
@@ -1382,7 +1384,7 @@ class AthleteService @Inject constructor(
             else {
                 val g = line.guess
                 val slug = created.getOrPut(line.name.trim().lowercase()) {
-                    createCustomExercise(line.name, g.category, g.kind, g.load, g.unilateral, g.equipment, g.domains)
+                    createCustomExercise(line.name, g.category, g.kind, g.load, g.unilateral, g.equipment, g.domains, implements = g.implements)
                 }
                 line.item.copy(slug = slug)
             }

@@ -326,7 +326,8 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
             if (cap != null) {
                 val bw = b.bodyweightKg ?: bodyweight
                 val shown = if (def.load == LoadMode.BODYWEIGHT_PLUS && bw != null) cap.value - bw else cap.value
-                pieces += stringResource(R.string.trbm_e1rm, if (def.load == LoadMode.BODYWEIGHT_PLUS) formatMass(shown, units, signed = true) else formatMass(shown, units))
+                pieces += stringResource(R.string.trbm_e1rm, if (def.load == LoadMode.BODYWEIGHT_PLUS) formatMass(shown, units, signed = true)
+                    else weightTextOfTotal(def, shown, units))
             }
         }
         CapacityKind.TEN_SECOND_MAX -> {
@@ -337,7 +338,8 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
             b.grip?.let { pieces += gripLabel(it) }
             val bw = b.bodyweightKg ?: bodyweight
             if (cap != null && bw != null && bw > 0) {
-                pieces += stringResource(R.string.trbm_ten_second_max, formatMass(cap.value, units), (cap.value / bw * 100).roundToInt())
+                val held = if (def.load == LoadMode.EXTERNAL) weightTextOfTotal(def, cap.value, units) else formatMass(cap.value, units)
+                pieces += stringResource(R.string.trbm_ten_second_max, held, (cap.value / bw * 100).roundToInt())
             }
         }
         CapacityKind.MAX_REPS -> if (sets != null) {
@@ -354,12 +356,7 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
 }
 
 @Composable
-private fun loadText(def: ExerciseDefinition, loadKg: Double, units: UnitSystem): String = when {
-    def.load == LoadMode.BODYWEIGHT_PLUS && loadKg == 0.0 -> stringResource(R.string.tr_bodyweight)
-    def.load == LoadMode.BODYWEIGHT_PLUS && loadKg < 0 -> stringResource(R.string.trbm_assisted, formatMass(-loadKg, units))
-    def.load == LoadMode.BODYWEIGHT_PLUS -> formatMass(loadKg, units, signed = true)
-    else -> formatMass(loadKg, units)
-}
+private fun loadText(def: ExerciseDefinition, loadKg: Double, units: UnitSystem): String = weightText(def, loadKg, units)
 
 @Composable
 private fun sourceLabel(s: BenchmarkSource): String = stringResource(when (s) {
@@ -471,9 +468,7 @@ fun BenchmarkEntryDialog(
                 if (needsLoad) {
                     OutlinedTextField(
                         value = loadText, onValueChange = { loadText = it.take(8) }, singleLine = true,
-                        label = { Text(stringResource(
-                            if (def.load == LoadMode.BODYWEIGHT_PLUS) R.string.trbm_load_added else R.string.trbm_load_total,
-                            Units.massUnit(units))) },
+                        label = { Text(weightInputTitle(def, units)) },
                         supportingText = if (def.load == LoadMode.BODYWEIGHT_PLUS) ({ Text(stringResource(R.string.trbm_load_added_hint)) }) else null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("benchmark_load"),
