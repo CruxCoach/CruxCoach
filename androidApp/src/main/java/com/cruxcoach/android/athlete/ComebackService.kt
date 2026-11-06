@@ -23,7 +23,7 @@ import kotlinx.datetime.atStartOfDayIn
 class ComebackService(private val service: AthleteService) {
 
     private val repo get() = service.repo
-    private fun now() = System.currentTimeMillis()
+    private fun now() = service.now()
 
     fun injury(id: String): Injury? = repo.injury(id)
 
@@ -127,7 +127,7 @@ class ComebackService(private val service: AthleteService) {
     fun suggestedReferences(injury: Injury): Map<String, Pair<Double, Boolean>> {
         val injured = when (injury.side) { InjurySide.LEFT -> Side.LEFT; InjurySide.RIGHT -> Side.RIGHT; else -> return emptyMap() }
         val before = runCatching {
-            kotlinx.datetime.LocalDate.parse(injury.startedOn).atStartOfDayIn(kotlinx.datetime.TimeZone.currentSystemDefault()).toEpochMilliseconds()
+            kotlinx.datetime.LocalDate.parse(injury.startedOn).atStartOfDayIn(service.zone).toEpochMilliseconds()
         }.getOrDefault(Long.MAX_VALUE)
         val out = mutableMapOf<String, Pair<Double, Boolean>>()
         listOf(Grip.HALF_CRIMP to "finger.one_arm_pickup", Grip.OPEN_HAND to "finger.open_hand_block_lift").forEach { (grip, slug) ->

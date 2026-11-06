@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.time.Clock
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -138,11 +137,23 @@ class AthleteService @Inject constructor(
     val repo: AthleteRepository get() = repoLazy.get()
     val catalog: ExerciseCatalog get() = catalogStore.catalog.value
 
+    /**
+     * The service's clock and time zone. Real time in the app; the training simulation (issue #59) runs
+     * athletes through weeks by moving it.
+     */
+    @Volatile internal var clock: () -> Long = { System.currentTimeMillis() }
+    /** Read on every call, so a time zone change on the phone moves "today" at once (device test D41). */
+    val zone: TimeZone get() = TimeZone.currentSystemDefault()
+    fun now(): Long = clock()
+
+    /** What today's suggestion is built from ([TodayCoach]), on this service's data and clock. */
+    fun todayCoach(): com.cruxcoach.athlete.data.TodayCoach = com.cruxcoach.athlete.data.TodayCoach(repo, catalog, zone) { now() }
+
     @Volatile private var logbookCache: Pair<Long, List<ClimbRow>>? = null
 
     /** Board logbook rows for the coach, cached for a minute (the logbook only grows during a session). */
     fun logbookRows(): List<ClimbRow> {
-        val now = System.currentTimeMillis()
+        val now = now()
         logbookCache?.let { (at, rows) -> if (now - at < 60_000) return rows }
         val rows = runCatching { climbingDays.logbookRows() }.getOrDefault(emptyList())
         logbookCache = now to rows
@@ -177,7 +188,7 @@ class AthleteService @Inject constructor(
     fun takeOverGrade(grade: String): String? {
         val before = repo.profile().coach.currentGrade
         repo.updateProfile { p -> p.copy(coach = p.coach.copy(currentGrade = grade, currentFlashGrade = p.coach.currentFlashGrade?.takeIf {
-            (LogbookSummaries.difficultyOf(it) ?: 0.0) <= (LogbookSummaries.difficultyOf(grade) ?: 0.0) }, setupUpdatedAt = System.currentTimeMillis())) }
+            (LogbookSummaries.difficultyOf(it) ?: 0.0) <= (LogbookSummaries.difficultyOf(grade) ?: 0.0) }, setupUpdatedAt = now())) }
         return before
     }
 
@@ -211,7 +222,7 @@ class AthleteService @Inject constructor(
             // Places: an older profile gets its one equipment set as its first place; a place picked yesterday ends.
             runCatching { usePlaceOfToday() }
             // The coach learns from the last months; older ledger rows only cost space.
-            runCatching { repo.pruneSuggestionEvents(System.currentTimeMillis() - LEDGER_KEEP_DAYS * 86_400_000L) }
+            runCatching { repo.pruneSuggestionEvents(now() - LEDGER_KEEP_DAYS * 86_400_000L) }
             importLegacyBodyStats()
             ready = true
         }
@@ -231,7 +242,7 @@ class AthleteService @Inject constructor(
         repo.saveProfile(profile.copy(legacyBodyStatsImported = true))
     }
 
-    fun today(): LocalDate = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+    fun today(): LocalDate = kotlin.time.Instant.fromEpochMilliseconds(now()).toLocalDateTime(zone).date
 
     // ── Activity ─────────────────────────────────────────────────────
 
@@ -262,7 +273,7 @@ class AthleteService @Inject constructor(
         val summary = LogbookSummaries.summarize(rows, today)
         val rowsByDay = rows.filter { it.day in from..to }.groupBy { it.day }
         val workoutDay = allWorkouts.associate { it.id to it.day }
-        val zone = TimeZone.currentSystemDefault()
+        val zone = zone
         val setsByDay = repo.completedSetsSince(fromDate.atStartOfDayIn(zone).toEpochMilliseconds())
             .mapNotNull { s -> workoutDay[s.workoutId]?.let { it to s } }
             .groupBy({ it.first }, { it.second })
@@ -308,7 +319,7 @@ class AthleteService @Inject constructor(
         val rows = logbookRows()
         val coach = repo.profile().coach
         val summary = LogbookSummaries.withCoachGrades(LogbookSummaries.summarize(rows, today), coach.currentGrade, coach.currentFlashGrade)
-        val zone = TimeZone.currentSystemDefault()
+        val zone = zone
         val sets = PerformanceProfiles.RELEVANT_SLUGS.flatMap { slug -> repo.history(slug, HISTORY_LIMIT) }
             .filter { it.isCompleted }
             .mapNotNull { s -> s.completedAt?.let { ms -> dayOfMillis(ms, zone) to s } }
@@ -322,7 +333,7 @@ class AthleteService @Inject constructor(
         kotlin.time.Instant.fromEpochMilliseconds(ms).toLocalDateTime(zone).date
 
     /** Climbing outside the board app (gym, rock, another board). */
-    fun saveClimbingDay(entry: ClimbingDayEntry) = repo.saveClimbingDay(entry.copy(updatedAt = System.currentTimeMillis()))
+    fun saveClimbingDay(entry: ClimbingDayEntry) = repo.saveClimbingDay(entry.copy(updatedAt = now()))
 
     /**
      * When the last training or board session ended (epoch ms), from the last two days; null without one. Adding food
@@ -330,7 +341,7 @@ class AthleteService @Inject constructor(
      */
     fun lastTrainingEndedAt(): Long? {
         val workouts = repo.recentWorkouts(5).mapNotNull { it.endedAt }
-        val zone = TimeZone.currentSystemDefault()
+        val zone = zone
         val boards = runCatching { climbingDays.sessionTimes(today().minus(DatePeriod(days = 1)).toString()) }.getOrDefault(emptyList())
             .mapNotNull { s -> s.endedAt?.takeIf { it.isNotBlank() }?.let { BoardOverlap.epochMillis(it, zone) } }
         return (workouts + boards).maxOrNull()
@@ -340,7 +351,7 @@ class AthleteService @Inject constructor(
     fun boardEvidence(fromDay: String): BoardOverlap.Evidence {
         val rows = logbookRows().filter { it.day >= fromDay }
         val sessions = runCatching { climbingDays.sessionTimes(fromDay) }.getOrDefault(emptyList())
-        return BoardOverlap.evidence(rows, sessions, TimeZone.currentSystemDefault(), System.currentTimeMillis())
+        return BoardOverlap.evidence(rows, sessions, zone, now())
     }
 
     /** Stored board overlaps of synced climbing days, by entry id. */
@@ -413,7 +424,7 @@ class AthleteService @Inject constructor(
      */
     fun startWorkout(routine: Routine?, title: String?, trimSets: Boolean = true, despiteInjury: Set<String> = emptySet()): String = synchronized(structureLock) {
         repo.openWorkout()?.let { return it.id }
-        val now = System.currentTimeMillis()
+        val now = now()
         val id = repo.newId()
         repo.transaction {
             repo.saveWorkout(Workout(id, now, null, today().toString(), title ?: routine?.name, routine?.id, updatedAt = now))
@@ -429,6 +440,32 @@ class AthleteService @Inject constructor(
             if (comeback == null && items?.any { it.warmup } == true) addSpecificWarmups(id)
         }
         id
+    }
+
+    /** Today's suggestion as the routine a training starts from: a planned or usual workout keeps its name in the id. */
+    fun suggestionRoutine(suggestion: com.cruxcoach.athlete.logic.SessionSuggestion, title: String): Routine {
+        val of = suggestion.plannedEntry?.takeIf {
+            suggestion.focus == SuggestionFocus.PLANNED && it != com.cruxcoach.athlete.model.PLAN_BOARD &&
+                it != com.cruxcoach.athlete.model.PLAN_REST && !com.cruxcoach.athlete.logic.DayPlans.isClimb(it)
+        }
+        return suggestion.routine.copy(id = "suggestion:${today()}" + (of?.let { "${PreferenceLearning.SUGGESTION_OF}$it" } ?: ""),
+            name = title)
+    }
+
+    /** Starts today's suggestion (the card's "Start"); the coach learns what was started and how much was planned. */
+    fun startSuggestion(
+        suggestion: com.cruxcoach.athlete.logic.SessionSuggestion,
+        routine: Routine = suggestionRoutine(suggestion, suggestion.routine.name),
+        title: String = routine.name,
+    ): String {
+        val id = startWorkout(routine, title, trimSets = !suggestion.shortenedForFatigue)
+        // Planned work sets, so the summary can tell how much of the suggestion was done.
+        val plannedSets = suggestion.routine.items.filter { !it.warmup }.sumOf { item ->
+            item.sets * (if (catalog.fallbackFor(item.slug).unilateral && item.sides == SideMode.BOTH) 2 else 1)
+        }
+        logSuggestion(SuggestionEventKind.STARTED, suggestion.focus.name, suggestion.routine.items.map { it.slug },
+            workoutId = id, value = plannedSets.toDouble())
+        return id
     }
 
     /**
@@ -805,7 +842,7 @@ class AthleteService @Inject constructor(
         }
         val update = ValueUpdates.decide(def, set, existing, before, session, set.bodyweightKg) ?: return null
         val source = if (set.setType == SetType.TEST) BenchmarkSource.TEST else BenchmarkSource.AUTO
-        val raw = BenchmarkMath.benchmarkFromSet(def, update.source, repo.newId(), source, System.currentTimeMillis())
+        val raw = BenchmarkMath.benchmarkFromSet(def, update.source, repo.newId(), source, now())
         val b = if (update.capped) ValueUpdates.scaledTo(def, raw, update.value, set.bodyweightKg) else raw
         repo.saveBenchmark(b)
         return Triple(b, Capacity(update.kind, update.value, set.bodyweightKg), existing == null)
@@ -819,7 +856,7 @@ class AthleteService @Inject constructor(
     fun completeSet(set: ExerciseSet, startRest: Boolean): PersonalRecord? = completeSetDetailed(set, startRest).record
 
     fun completeSetDetailed(set: ExerciseSet, startRest: Boolean, restSeconds: Int? = null): SetOutcome {
-        val done = set.copy(completedAt = System.currentTimeMillis(), bodyweightKg = set.bodyweightKg ?: currentBodyweight())
+        val done = set.copy(completedAt = now(), bodyweightKg = set.bodyweightKg ?: currentBodyweight())
         val history = repo.history(set.exerciseSlug, HISTORY_LIMIT).filter { it.id != set.id }
         repo.saveSet(done)
         if (startRest) (restSeconds ?: done.restS ?: catalog[set.exerciseSlug]?.defaults?.restS)?.takeIf { it > 0 }?.let(::startRest)
@@ -916,7 +953,7 @@ class AthleteService @Inject constructor(
 
     /** Learned preference per exercise and the exercises resting after a rejection or a kept choice (today's included). */
     private fun learnedChoices(today: LocalDate, profile: AthleteProfile): Pair<Map<String, Double>, Set<String>> = runCatching {
-        val sinceMs = System.currentTimeMillis() - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
+        val sinceMs = now() - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
         val resets = profile.learningResets
         val events = repo.suggestionEventsSince(sinceMs)
         PreferenceLearning.affinity(events, repo.completedSetsSince(sinceMs), today, resets) to
@@ -934,7 +971,7 @@ class AthleteService @Inject constructor(
         val block = TrainingBlocks.state(day(coach.blockStartDay), day(coach.targetDate), today)
         val targets = WeeklyVolume.targets(profile, block, injuries, coach.trainingDaysPerWeek ?: profile.weeklyGoal)
         val workoutDays = repo.workoutsBetween(weekStart.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
-        val startMs = java.time.LocalDate.parse(weekStart.toString()).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val startMs = weekStart.atStartOfDayIn(zone).toEpochMilliseconds()
         val sets = repo.completedSetsSince(startMs).mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }
         return WeeklyVolume.progress(sets, activities(days = 8), catalog, weekStart, targets, today)
     }
@@ -1074,7 +1111,7 @@ class AthleteService @Inject constructor(
         val sets = repo.setsFor(workoutId)
         val block = sets.filter { it.blockIndex == blockIndex }
         val def = block.firstOrNull()?.let { catalog.fallbackFor(it.exerciseSlug) } ?: return PainOutcome(action)
-        val now = System.currentTimeMillis()
+        val now = now()
         val injury = Injury(
             id = repo.newId(), region = region, side = side, severity = severity.coerceIn(0, 9),
             climbingPaused = severity >= PAIN_PAUSE_SEVERITY, startedOn = today().toString(), updatedAt = now,
@@ -1170,7 +1207,7 @@ class AthleteService @Inject constructor(
 
     fun finishWorkout(id: String, sessionRpe: Int?, notes: String?): WorkoutSummary {
         val workout = repo.workout(id)
-        val end = System.currentTimeMillis()
+        val end = now()
         // Planned sets never done are dropped: the log shows what happened.
         repo.transaction {
             repo.setsFor(id).filter { !it.isCompleted }.forEach { repo.deleteSet(it.id) }
@@ -1190,7 +1227,7 @@ class AthleteService @Inject constructor(
      */
     fun learnOwnLoads(workoutId: String): List<Benchmark> {
         val sets = repo.setsFor(workoutId)
-        val now = System.currentTimeMillis()
+        val now = now()
         return sets.map { it.exerciseSlug }.distinct().flatMap { slug ->
             val def = catalog[slug] ?: return@flatMap emptyList()
             OwnLoads.lowered(def, sets, repo::newId, now).filter { b ->
@@ -1207,7 +1244,7 @@ class AthleteService @Inject constructor(
      * "from your training" measured while it ran or right after.
      */
     fun ownLoadsOf(workout: Workout): List<Benchmark> {
-        val until = (workout.endedAt ?: System.currentTimeMillis()) + 60_000L
+        val until = (workout.endedAt ?: now()) + 60_000L
         return repo.setsFor(workout.id).map { it.exerciseSlug }.distinct().flatMap { repo.benchmarks(it) }
             .filter { it.source == BenchmarkSource.AUTO && it.sets != null && it.measuredAt in workout.startedAt..until }
     }
@@ -1231,7 +1268,7 @@ class AthleteService @Inject constructor(
         val workout = repo.workout(id)
         if (workout != null) {
             val slugs = repo.setsFor(id).map { it.exerciseSlug }.toSet()
-            val until = (workout.endedAt ?: System.currentTimeMillis()) + 60_000L
+            val until = (workout.endedAt ?: now()) + 60_000L
             slugs.flatMap { repo.benchmarks(it) }
                 .filter { (it.source == BenchmarkSource.AUTO || it.source == BenchmarkSource.TEST) && it.measuredAt in workout.startedAt..until }
                 .forEach { repo.deleteBenchmark(it.id) }
@@ -1270,7 +1307,7 @@ class AthleteService @Inject constructor(
         value: Double? = null,
     ): String? = runCatching {
         val id = repo.newId()
-        repo.logSuggestionEvent(SuggestionEvent(id, today().toString(), System.currentTimeMillis(), kind, focus,
+        repo.logSuggestionEvent(SuggestionEvent(id, today().toString(), now(), kind, focus,
             slugs, feedback, workoutId, value))
         id
     }.getOrNull()
@@ -1365,7 +1402,7 @@ class AthleteService @Inject constructor(
             repo.routines().filter { r -> r.items.any { it.slug == slug } }.forEach { r ->
                 val items = r.items.filterNot { it.slug == slug }
                 if (items.isEmpty()) repo.deleteRoutine(r.id)
-                else repo.saveRoutine(r.copy(items = items, updatedAt = System.currentTimeMillis()))
+                else repo.saveRoutine(r.copy(items = items, updatedAt = now()))
             }
             repo.benchmarks(slug).forEach { repo.deleteBenchmark(it.id) }
             repo.deleteCustomExercise(slug)
@@ -1431,7 +1468,7 @@ class AthleteService @Inject constructor(
                 circuit = circuit, circuitRestS = circuit?.let { first.restS }, roundRestS = circuit?.let { first.roundRestS },
             )
         }
-        val now = System.currentTimeMillis()
+        val now = now()
         return Routine(repo.newId(), name, items = Circuits.normalize(items, catalog), createdAt = now, updatedAt = now)
             .also(repo::saveRoutine)
     }
