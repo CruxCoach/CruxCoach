@@ -265,6 +265,9 @@ private fun RoomListPane(
         item {
             Column(Modifier.padding(16.dp)) {
                 rooms.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                state.joinRoomError?.let {
+                    Text(stringResource(R.string.community_client_join_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.community_client_enabled_switch), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = true, onCheckedChange = { if (!it) onTurnOff() })

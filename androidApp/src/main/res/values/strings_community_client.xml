@@ -44,6 +44,7 @@
     <string name="community_client_section_forums">Forums</string>
     <string name="community_client_no_rooms">No rooms yet.</string>
     <string name="community_client_join_room">Join</string>
+    <string name="community_client_join_failed">Could not join: %1$s</string>
 
     <string name="community_client_message_hint">Message #%1$s</string>
     <string name="community_client_new_post_hint">New topic in #%1$s</string>

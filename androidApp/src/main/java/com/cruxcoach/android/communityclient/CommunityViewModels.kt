@@ -57,6 +57,8 @@ data class CommunityHomeState(
     val rooms: RoomsState = RoomsState(),
     val pubkey: String = "",
     val usesAmber: Boolean = false,
+    /** Why the last room join failed, until the next try. */
+    val joinRoomError: String? = null,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -65,6 +67,7 @@ class CommunityHomeViewModel @Inject constructor(
     private val holder: CommunityClientHolder,
 ) : ViewModel() {
     private val join = MutableStateFlow<JoinStep>(JoinStep.EnterInvite())
+    private val joinRoomError = MutableStateFlow<String?>(null)
 
     val state: StateFlow<CommunityHomeState> = holder.setup.flatMapLatest { setup ->
         val client = holder.client()
@@ -72,8 +75,8 @@ class CommunityHomeViewModel @Inject constructor(
         if (client == null) {
             join.map { base.copy(join = it) }
         } else {
-            combine(client.session.state, client.rooms) { session, rooms ->
-                base.copy(session = session, rooms = rooms)
+            combine(client.session.state, client.rooms, joinRoomError) { session, rooms, joinError ->
+                base.copy(session = session, rooms = rooms, joinRoomError = joinError)
             }
         }
     }.stateIn(
@@ -143,9 +146,10 @@ class CommunityHomeViewModel @Inject constructor(
         viewModelScope.launch { client.refreshRooms() }
     }
 
-    fun joinRoom(channelId: String, onDone: (PublishResult) -> Unit = {}) {
+    fun joinRoom(channelId: String) {
         val client = holder.client() ?: return
-        viewModelScope.launch { onDone(client.joinRoom(channelId)) }
+        joinRoomError.value = null
+        viewModelScope.launch { joinRoomError.value = publishError { client.joinRoom(channelId) } }
     }
 }
 
