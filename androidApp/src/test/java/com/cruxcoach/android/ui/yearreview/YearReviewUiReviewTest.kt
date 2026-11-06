@@ -22,6 +22,7 @@ import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.DarkSurface
 import com.cruxcoach.athlete.model.Workout
 import com.cruxcoach.data.repository.AscentWithClimb
+import com.cruxcoach.domain.yearreview.TaggedSend
 import com.cruxcoach.domain.yearreview.YearReview
 import com.cruxcoach.domain.yearreview.YearReviewComputer
 import kotlinx.datetime.DateTimeUnit
@@ -82,8 +83,10 @@ class YearReviewUiReviewTest {
             val d = LocalDate(2026, 1, 5).plus(i * 11, DateTimeUnit.DAY)
             Workout("w$i", startedAt = i * 100_000_000L, endedAt = i * 100_000_000L + 3_000_000L, day = d.toString(), updatedAt = 0)
         }
+        val tagged = listOf(listOf("CRIMP"), listOf("CRIMP", "PINCH"), listOf("SLOPER"), listOf("CRIMP"), listOf("JUG", "CRIMP"), listOf("UNDERCLING"))
+            .mapIndexed { i, tags -> TaggedSend(LocalDate(2026, 3, 1).plus(i * 9, DateTimeUnit.DAY).toString(), tags) }
         YearReviewComputer.compute(
-            YearReviewComputer.Input(entries = entries, workouts = workouts), 2026, LocalDate(2027, 1, 10), TimeZone.UTC,
+            YearReviewComputer.Input(entries = entries, workouts = workouts, taggedSends = tagged), 2026, LocalDate(2027, 1, 10), TimeZone.UTC,
         )
     }
 
