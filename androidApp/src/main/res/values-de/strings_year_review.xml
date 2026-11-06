@@ -9,9 +9,9 @@
     <string name="yr_card_hide">Für dieses Jahr ausblenden</string>
     <string name="yr_stats_entry_title">Jahresrückblick</string>
     <string name="yr_so_far_title">Dein %1$d bisher</string>
-    <string name="yr_so_far_text">Bisher %1$s und %2$s. Der ganze Rückblick öffnet sich ab %3$s oder %4$s im Jahr.</string>
+    <string name="yr_so_far_text">Bisher %1$s und %2$s. Der ganze Rückblick öffnet sich, sobald ein Jahr %3$s oder %4$s hat.</string>
     <string name="yr_little_title">Dein %1$d</string>
-    <string name="yr_little_text">%1$s und %2$s in dem Jahr. Der ganze Rückblick öffnet sich ab %3$s oder %4$s im Jahr.</string>
+    <string name="yr_little_text">In diesem Jahr waren es %1$s und %2$s. Der ganze Rückblick öffnet sich, sobald ein Jahr %3$s oder %4$s hat.</string>
     <string name="yr_test_date">Testdatum (nur Test-Apps)</string>
     <string name="yr_test_date_real">Heute</string>
 
@@ -132,11 +132,11 @@
     <string name="yr_rule_hopper">Dein drittes Board hatte %1$s deiner Einträge. Board-Hopper ab %2$s an drei Boards.</string>
     <string name="yr_rule_clockwork_share">Du hast in %1$s der Wochen seit deinem ersten Klettertag in diesem Jahr geklettert. Uhrwerk ab %2$s.</string>
     <string name="yr_rule_clockwork_streak">%1$s am Stück mit Klettern. Uhrwerk ab %2$s.</string>
-    <string name="yr_rule_rising_last_year">%1$s über dem letzten Jahr an deinem Haupt-Board. Rakete ab %2$s.</string>
-    <string name="yr_rule_rising_within">%1$s von deinen ersten drei Monaten bis zu deinen letzten drei an deinem Haupt-Board. Rakete ab %2$s.</string>
+    <string name="yr_rule_rising_last_year">%1$s über dem letzten Jahr an deinem Haupt-Board. Rakete heißt mindestens %2$s.</string>
+    <string name="yr_rule_rising_within">%1$s von deinen ersten drei Monaten bis zu deinen letzten drei an deinem Haupt-Board. Rakete heißt mindestens %2$s.</string>
     <string name="yr_rule_strength">Workouts an %1$s deiner Trainingstage. Kraftpaket ab %2$s, mit 20 Workouts.</string>
     <string name="yr_rule_comeback_plan">Zurück nach einer Pause, und drangeblieben.</string>
-    <string name="yr_rule_comeback_break">Zurück nach einer Pause von %1$s, mit %2$s seitdem.</string>
+    <string name="yr_rule_comeback_break">Zurück nach einer Pause von %1$s, seitdem %2$s.</string>
     <string name="yr_rule_all_rounder">Keine einzelne Regel sticht heraus, also bist du von allem etwas. Am nächsten dran: %1$s</string>
     <string name="yr_rule_all_rounder_none">Keine einzelne Regel sticht heraus, also bist du von allem etwas.</string>
 
