@@ -44,6 +44,7 @@
     <string name="trx_history">Your history</string>
     <string name="trx_bests">Best values</string>
     <string name="trx_best_any">Any edge</string>
+    <string name="trx_best_overall">Overall</string>
     <string name="trx_e1rm">est. max %1$s</string>
     <plurals name="trx_reps">
         <item quantity="one">%d rep</item>

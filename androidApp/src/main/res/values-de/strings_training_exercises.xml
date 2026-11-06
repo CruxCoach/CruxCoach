@@ -43,6 +43,7 @@
     <string name="trx_history">Deine Historie</string>
     <string name="trx_bests">Bestwerte</string>
     <string name="trx_best_any">Beliebige Leiste</string>
+    <string name="trx_best_overall">Insgesamt</string>
     <string name="trx_e1rm">geschätztes Max. %1$s</string>
     <plurals name="trx_reps">
         <item quantity="one">%d Wiederholung</item>

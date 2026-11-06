@@ -651,9 +651,10 @@ internal fun SetSteppers(
             val minLoad = if (def.load == LoadMode.BODYWEIGHT_PLUS) -200.0 else 0.0
             val load = set.loadKg ?: 0.0
             PlayerStepper(
-                // The label says what the number is ("Weight per dumbbell"), so the value is the plain number typed.
+                // The label says what the number is ("Weight per dumbbell", "Added weight"), so the value is the plain
+                // number typed; "Bodyweight" or "15 kg assisted" next to the long label squeezed it (device test #58).
                 label = weightLabel(def),
-                value = if (def.load == LoadMode.EXTERNAL) formatMass(load, units) else loadText(set, def, units) ?: formatMass(load, units),
+                value = formatMass(load, units, signed = def.load == LoadMode.BODYWEIGHT_PLUS),
                 tag = "player_load",
                 onMinus = { onUpdate(set.copy(loadKg = (snap(load - step, step)).coerceAtLeast(minLoad))) },
                 onPlus = { onUpdate(set.copy(loadKg = (snap(load + step, step)).coerceAtMost(500.0))) },
@@ -663,6 +664,11 @@ internal fun SetSteppers(
                     decimal = true, allowNegative = def.load == LoadMode.BODYWEIGHT_PLUS,
                 ) { v -> onUpdate(set.copy(loadKg = com.cruxcoach.athlete.logic.Units.massFromDisplay(v, units).coerceIn(minLoad, 500.0))) },
             )
+            // Body weight alone or assisted, in words under the number.
+            if (def.load == LoadMode.BODYWEIGHT_PLUS && load <= 0.0) {
+                Text(weightText(def, load, units), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("player_load_words"))
+            }
             belowLoad()
         }
         if (showMain) when (def.kind) {

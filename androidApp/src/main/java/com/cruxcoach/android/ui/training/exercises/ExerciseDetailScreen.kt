@@ -38,6 +38,7 @@ import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.athlete.catalog.BodyRegion
 import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
+import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.InjuryAdvice
 import com.cruxcoach.athlete.logic.InjuryAdvisor
@@ -561,7 +562,10 @@ private fun Bests(def: ExerciseDefinition, bests: List<BestEntry>, profile: Athl
         SectionTitle(stringResource(R.string.trx_bests))
         bests.forEach { best ->
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(keyLabel(best.key) ?: stringResource(R.string.trx_best_any), style = MaterialTheme.typography.bodyMedium,
+                // "Any edge" only where there are edges; a bench press best is just the best.
+                val edged = def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL
+                Text(keyLabel(best.key) ?: stringResource(if (edged) R.string.trx_best_any else R.string.trx_best_overall),
+                    style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.weight(1f))
                 Text(bestValue(def, best, profile), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             }

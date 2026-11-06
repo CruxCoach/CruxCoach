@@ -326,7 +326,7 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
             if (cap != null) {
                 val bw = b.bodyweightKg ?: bodyweight
                 val shown = if (def.load == LoadMode.BODYWEIGHT_PLUS && bw != null) cap.value - bw else cap.value
-                pieces += stringResource(R.string.trbm_e1rm, if (def.load == LoadMode.BODYWEIGHT_PLUS) formatMass(shown, units, signed = true)
+                pieces += stringResource(R.string.trbm_e1rm, if (def.load == LoadMode.BODYWEIGHT_PLUS) weightText(def, shown, units)
                     else weightTextOfTotal(def, shown, units))
             }
         }

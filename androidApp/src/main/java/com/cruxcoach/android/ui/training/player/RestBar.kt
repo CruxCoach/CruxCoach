@@ -149,7 +149,7 @@ internal fun capacityText(def: com.cruxcoach.athlete.catalog.ExerciseDefinition,
     return when (capacity.kind) {
         com.cruxcoach.athlete.logic.CapacityKind.E1RM_TOTAL -> {
             val shown = if (def.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS && bw != null)
-                com.cruxcoach.android.ui.training.formatMass(capacity.value - bw, units, signed = true)
+                com.cruxcoach.android.ui.training.weightText(def, capacity.value - bw, units)
             // Per dumbbell for a pair ("2 × 20 kg"), the way the athlete loads it.
             else com.cruxcoach.android.ui.training.weightTextOfTotal(def, capacity.value, units)
             stringResource(R.string.trp_capacity_e1rm, shown)
