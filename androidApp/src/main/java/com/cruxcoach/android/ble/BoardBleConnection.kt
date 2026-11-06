@@ -738,6 +738,19 @@ class BoardBleConnection(
     // more than once (e.g. startQueue + promoteToHost) and release once.
     private val keepAliveOwners = mutableSetOf<String>()
     private val keepAliveLock = Any()
+    private val automaticProjectionPauseOwners = mutableSetOf<String>()
+
+    /** A manual editor may be visible above a still-alive climb-detail ViewModel. */
+    val automaticProjectionPaused: Boolean
+        get() = synchronized(keepAliveLock) { automaticProjectionPauseOwners.isNotEmpty() }
+
+    fun pauseAutomaticProjection(owner: String) {
+        synchronized(keepAliveLock) { automaticProjectionPauseOwners.add(owner) }
+    }
+
+    fun resumeAutomaticProjection(owner: String) {
+        synchronized(keepAliveLock) { automaticProjectionPauseOwners.remove(owner) }
+    }
     private val _keepAliveActive = MutableStateFlow(false)
     /** True while a session or the relay owns the physical board connection. */
     val keepAliveActive: StateFlow<Boolean> = _keepAliveActive.asStateFlow()
@@ -2470,12 +2483,21 @@ class BoardBleConnection(
             Log.w(TAG, "Refusing an API-2 frame of ${leds.size} LEDs: the 18 W budget would light none of them")
             return false
         }
-        val chunks = encoder.encodeClimb(leds)
-        val success = writeChunks(chunks)
-        // The easter frames replace whatever climb was lit.
-        _litFrame.value = null
-        if (success) cleaning.projected(ticket, chunks)
-        return success
+        _connectionState.value = ConnectionState.SENDING
+        disconnectJob?.cancel()
+        try {
+            val chunks = encoder.encodeClimb(leds)
+            val success = writeChunks(chunks)
+            // The easter frames replace whatever climb was lit.
+            _litFrame.value = null
+            if (success) cleaning.projected(ticket, chunks)
+            return success
+        } finally {
+            if (_connectionState.value == ConnectionState.SENDING) {
+                _connectionState.value = ConnectionState.CONNECTED
+                resetIdleTimer()
+            }
+        }
     }
 
     /**

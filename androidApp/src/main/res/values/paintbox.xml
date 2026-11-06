@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="paintbox_title">PaintBox</string>
+    <string name="paintbox_extras">Extras</string>
+    <string name="paintbox_description">Paint holds, save pictures and light up your board.</string>
+    <string name="paintbox_board">Choose board</string>
+    <string name="paintbox_bluetooth">Connect to board</string>
+    <string name="paintbox_live_on">Live painting on — pause transmission</string>
+    <string name="paintbox_live_off">Live painting off — send and enable</string>
+    <string name="paintbox_brush">Brush</string>
+    <string name="paintbox_eraser">Eraser</string>
+    <string name="paintbox_color">Color</string>
+    <string name="paintbox_undo">Undo</string>
+    <string name="paintbox_redo">Redo</string>
+    <string name="paintbox_clear">Clear picture</string>
+    <string name="paintbox_clear_confirm">Remove all colors from this picture? You can undo this.</string>
+    <string name="paintbox_gestures">One finger paints; two fingers zoom and move.</string>
+    <string name="paintbox_save">Save</string>
+    <string name="paintbox_save_as">Save as</string>
+    <string name="paintbox_load">Pictures</string>
+    <string name="paintbox_name">Picture name</string>
+    <string name="paintbox_send">Send now</string>
+    <string name="paintbox_sent">Picture transmitted.</string>
+    <string name="paintbox_unsaved">Save changes?</string>
+    <string name="paintbox_discard">Discard</string>
+    <string name="paintbox_delete">Delete picture</string>
+    <string name="paintbox_empty">No saved pictures yet.</string>
+    <string name="paintbox_unreadable">%1$d picture files could not be read. They have been kept.</string>
+    <string name="paintbox_missing_board">Board data is missing. Download the matching catalogue and retry.</string>
+    <string name="paintbox_download">Board catalogues</string>
+    <string name="paintbox_retry">Retry</string>
+    <string name="paintbox_load_error">Could not load the picture or board data.</string>
+    <string name="paintbox_save_error">Could not save or delete the picture. Please retry.</string>
+    <string name="paintbox_connect_error">Connect to a matching board first.</string>
+    <string name="paintbox_missing_led">Some painted holds have no LED mapping for this board. Nothing was sent.</string>
+    <string name="paintbox_send_error">Transmission failed or was only partially completed. Live painting is paused; check the board and retry.</string>
+    <string name="paintbox_quantum_limit">Quantum currently supports up to 92 LEDs per color.</string>
+    <string name="paintbox_quantum_occupied">Quantum has other active layers. Their hold positions cannot be verified here. Remove them using their owning app before painting.</string>
+    <string name="paintbox_quantum_hint">Quantum: four colors, up to 92 LEDs per color. Other active layers must be cleared by their owner.</string>
+</resources>

@@ -32,6 +32,7 @@ activated production boundary. See [release and CI status](RELEASE_GITHUB.md).
 | Check the training suggestions over weeks with simulated athletes | [Training simulation](en/TRAINING_SIMULATION.md) |
 | Find implementation and architectural boundaries | [Source map and architecture](en/CORE_CONCEPTS.md#source-map) |
 | Design app flows and interfaces | [UI/UX design guide](../design.md) |
+| Paint and save LED pictures | PaintBox: [English](en/PAINTBOX.md) · [Deutsch](de/PAINTBOX.md) |
 | Make a contribution or orient an agent | [CONTRIBUTING](../CONTRIBUTING.md) and mandatory [AGENTS](../AGENTS.md) |
 | Choose focused checks or use a device | [Testing](testing.md) |
 | Understand release authority and migration state | [Release and CI](RELEASE_GITHUB.md), [key rotation](KEY_ROTATION.md) |
