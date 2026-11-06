@@ -84,6 +84,11 @@
     <string name="yr_highlights_project_since">seit %1$s</string>
     <string name="yr_highlights_how">Der stärkste Tag ist der mit den meisten Begehungen. Am öftesten wiederholt ist der Boulder, den du in diesem Jahr am häufigsten geklettert hast. Das längste Projekt ist der neue Boulder mit den meisten Versuchen, gezählt über alle Sessions bis zur Begehung, auch aus früheren Jahren.</string>
 
+    <!-- Hold types -->
+    <string name="yr_holds_title">Deine Griffe</string>
+    <string name="yr_holds_hero_label">dein am häufigsten markierter Grifftyp</string>
+    <string name="yr_holds_how">Aus den Grifftypen, die du bei selbst erfassten Bouldern markiert hast: der Anteil dieser %1$s mit jedem Typ. Ein Boulder kann mehrere haben. Board-Boulder bekommen ihre Grifftypen später.</string>
+
     <!-- Training -->
     <string name="yr_training_title">Abseits der Wand</string>
     <string name="yr_training_hero_label">Workouts</string>

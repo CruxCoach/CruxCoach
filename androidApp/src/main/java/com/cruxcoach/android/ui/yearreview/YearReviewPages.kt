@@ -26,7 +26,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-enum class ReviewPageKind { INTRO, VOLUME, BOARDS, HARDEST, COMPARED, RHYTHM, HIGHLIGHTS, TRAINING, CLIMBER_TYPE, SUMMARY }
+enum class ReviewPageKind { INTRO, VOLUME, BOARDS, HARDEST, COMPARED, RHYTHM, HIGHLIGHTS, HOLD_TYPES, TRAINING, CLIMBER_TYPE, SUMMARY }
 
 /** One line of a page: a label, its value and an optional detail below. [board] colours the line by its board. */
 data class ReviewRow(val label: String, val value: String, val detail: String? = null, val board: String? = null)
@@ -82,6 +82,7 @@ fun reviewPages(
         compared(review, eyebrow, f),
         rhythm(review, eyebrow, f),
         highlights(review, eyebrow, f),
+        holdTypes(review, eyebrow, f),
         training(review, eyebrow, f, training),
         climberType(review, eyebrow, f),
         summary(review, f),
@@ -303,6 +304,35 @@ private fun highlights(review: YearReview, eyebrow: String, f: Formats): ReviewP
 }
 
 @Composable
+private fun holdTypes(review: YearReview, eyebrow: String, f: Formats): ReviewPage? {
+    if (review.holdTypes.isEmpty()) return null
+    val tagged = review.holdTypes.first().taggedSends
+    return ReviewPage(
+        kind = ReviewPageKind.HOLD_TYPES,
+        eyebrow = eyebrow,
+        title = stringResource(R.string.yr_holds_title),
+        hero = holdName(review.holdTypes.first().tag),
+        heroLabel = stringResource(R.string.yr_holds_hero_label),
+        rows = review.holdTypes.take(MAX_HOLD_TYPES).map {
+            ReviewRow(holdName(it.tag), f.percent(it.sends.toDouble() / tagged), pluralStringResource(R.plurals.yr_sends, it.sends, f.number(it.sends)))
+        },
+        howCalculated = stringResource(R.string.yr_holds_how, pluralStringResource(R.plurals.yr_sends, tagged, f.number(tagged))),
+    )
+}
+
+@Composable
+private fun holdName(tag: String): String = when (tag) {
+    "CRIMP" -> stringResource(R.string.hold_crimp)
+    "SLOPER" -> stringResource(R.string.hold_sloper)
+    "PINCH" -> stringResource(R.string.hold_pinch)
+    "JUG" -> stringResource(R.string.hold_jug)
+    "POCKET" -> stringResource(R.string.hold_pocket)
+    "VOLUME" -> stringResource(R.string.hold_volume)
+    "UNDERCLING" -> stringResource(R.string.hold_undercling)
+    else -> tag.lowercase().replaceFirstChar { it.uppercase() }
+}
+
+@Composable
 private fun training(review: YearReview, eyebrow: String, f: Formats, context: TrainingContext): ReviewPage? {
     val t = review.training
     if (t.isEmpty) return null
@@ -480,3 +510,4 @@ class Formats(val locale: Locale, private val gradeScale: GradeScale, val privac
 }
 
 private const val MAX_BOARDS = 4
+private const val MAX_HOLD_TYPES = 5

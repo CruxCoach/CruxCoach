@@ -2,7 +2,9 @@ package com.cruxcoach.android.ui.yearreview
 
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.athlete.AthleteService
+import com.cruxcoach.data.repository.ClimbRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.domain.yearreview.TaggedSend
 import com.cruxcoach.domain.yearreview.TimedSession
 import com.cruxcoach.domain.yearreview.YearReviewComputer
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +24,7 @@ import kotlin.time.Instant
 class YearReviewSource @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val athleteService: AthleteService,
+    private val climbRepository: ClimbRepository,
 ) {
     /** The review's clock: real time, unless a test moves it (see [YearReviewTestDate]). */
     @Volatile internal var clock: () -> Long = { System.currentTimeMillis() }
@@ -47,6 +50,7 @@ class YearReviewSource @Inject constructor(
             workouts = athlete.workoutsBetween("0000-01-01", "9999-12-31"),
             benchmarks = athlete.allBenchmarks(),
             injuries = athlete.allInjuries(),
+            taggedSends = climbRepository.getAll().filter { it.sent && it.holdTypes.isNotEmpty() }.map { TaggedSend(it.date, it.holdTypes) },
         )
     }
 }

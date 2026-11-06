@@ -39,6 +39,8 @@ object YearReviewComputer {
     const val TOP_SENDS = 3
     /** A first send is a project from this many tries. */
     const val PROJECT_MIN_TRIES = 3
+    /** The hold types page needs this many tagged sends in the year. */
+    const val MIN_TAGGED_SENDS = 5
 
     data class Input(
         /** The whole logbook, sends and attempts of every year: first sends and flashes need the history. */
@@ -48,6 +50,8 @@ object YearReviewComputer {
         val workouts: List<Workout> = emptyList(),
         val benchmarks: List<Benchmark> = emptyList(),
         val injuries: List<Injury> = emptyList(),
+        /** Sends logged by hand with their hold type tags (until the board problems carry hold types, #63). */
+        val taggedSends: List<TaggedSend> = emptyList(),
     )
 
     /**
@@ -100,6 +104,7 @@ object YearReviewComputer {
             previous = previous,
             rhythm = rhythm,
             highlights = highlightsOf(sends, firstSends, history),
+            holdTypes = holdTypesOf(input.taggedSends, span),
             training = training,
             climberType = if (hasEnoughData) {
                 val facts = ClimberTypeFacts(
@@ -307,6 +312,15 @@ object YearReviewComputer {
             mostRepeated = mostRepeated,
             longestProject = project,
         )
+    }
+
+    private fun holdTypesOf(tagged: List<TaggedSend>, span: Span): List<HoldTypeCount> {
+        val inYear = tagged.filter { it.tags.isNotEmpty() && parseDay(it.day)?.let { d -> d in span } == true }
+        if (inYear.size < MIN_TAGGED_SENDS) return emptyList()
+        return inYear.flatMap { it.tags.distinct() }
+            .groupingBy { it }.eachCount()
+            .map { (tag, sends) -> HoldTypeCount(tag, sends, inYear.size) }
+            .sortedWith(compareByDescending<HoldTypeCount> { it.sends }.thenBy { it.tag })
     }
 
     // ── Climber type ─────────────────────────────────────────────────

@@ -28,6 +28,8 @@ data class YearReview(
     val previous: YearComparison?,
     val rhythm: YearRhythm,
     val highlights: YearHighlights,
+    /** Sends per hold type from the user's own tags, most first; empty below [YearReviewComputer.MIN_TAGGED_SENDS]. */
+    val holdTypes: List<HoldTypeCount> = emptyList(),
     val training: YearTraining,
     /** Null below the minimum: the short review has no type. */
     val climberType: ClimberTypeResult?,
@@ -158,6 +160,12 @@ data class YearTraining(
 ) {
     val isEmpty: Boolean get() = workouts == 0 && bestValues.isEmpty() && comebacksCompleted == 0
 }
+
+/** How many tagged sends had a hold type, out of [YearReview.holdTypes]' tagged sends. */
+data class HoldTypeCount(val tag: String, val sends: Int, val taggedSends: Int)
+
+/** A send logged by hand with the hold types the climber tagged on it. */
+data class TaggedSend(val day: String, val tags: List<String>)
 
 /** A timed board session: when it started (as stored) and how long it was active. */
 data class TimedSession(val startedAt: String, val activeSeconds: Long, val ended: Boolean = true)
