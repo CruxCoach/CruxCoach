@@ -364,6 +364,19 @@ class YearReviewComputerTest {
     }
 
     @Test
+    fun holdTypesNeedFiveTaggedSendsInTheYear() {
+        val today = LocalDate(2026, 12, 31)
+        val four = (1..4).map { TaggedSend("2026-03-0$it", listOf("CRIMP")) } + TaggedSend("2025-03-01", listOf("CRIMP"))
+        assertTrue(review(Input(taggedSends = four), 2026, today).holdTypes.isEmpty())
+
+        val five = four + TaggedSend("2026-04-01", listOf("SLOPER", "CRIMP", "CRIMP")) + TaggedSend("2026-04-02", emptyList())
+        assertEquals(
+            listOf(HoldTypeCount("CRIMP", 5, 5), HoldTypeCount("SLOPER", 1, 5)),
+            review(Input(taggedSends = five), 2026, today).holdTypes,
+        )
+    }
+
+    @Test
     fun yearsListEveryYearWithDataAndNeverTheFuture() {
         val input = Input(
             entries = listOf(entry("2024-03-01T18:00:00", "a"), entry("2027-01-02T18:00:00", "future")),
