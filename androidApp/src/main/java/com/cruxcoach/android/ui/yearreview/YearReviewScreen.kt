@@ -118,10 +118,12 @@ fun YearReviewScreen(onClose: () -> Unit, viewModel: YearReviewViewModel = hiltV
                 val pages = reviewPages(review, state.gradeScale, state.training)
                 var listView by rememberSaveable { mutableStateOf(screenReaderOn(context)) }
                 var sharing by remember { mutableStateOf<ReviewPageKind?>(null) }
+                // The page stays when switching between the pages and the list.
+                var index by rememberSaveable { mutableIntStateOf(0) }
                 if (listView) {
-                    ReviewList(pages, onClose, onShare = { sharing = it }, onPages = { listView = false })
+                    ReviewList(pages, onClose, onShare = { sharing = it }, onPages = { listView = false }, startAt = index)
                 } else {
-                    ReviewPager(pages, onClose, onShare = { sharing = it }, onList = { listView = true })
+                    ReviewPager(pages, index, onIndex = { index = it }, onClose, onShare = { sharing = it }, onList = { listView = true })
                 }
                 sharing?.let { kind -> ShareSheet(review, state, kind, onDismiss = { sharing = null }) }
             }
@@ -138,8 +140,15 @@ private fun animationsOn(context: Context): Boolean =
 // ── Pages ────────────────────────────────────────────────────────────
 
 @Composable
-private fun ReviewPager(pages: List<ReviewPage>, onClose: () -> Unit, onShare: (ReviewPageKind) -> Unit, onList: () -> Unit) {
-    var index by rememberSaveable { mutableIntStateOf(0) }
+private fun ReviewPager(
+    pages: List<ReviewPage>,
+    index: Int,
+    onIndex: (Int) -> Unit,
+    onClose: () -> Unit,
+    onShare: (ReviewPageKind) -> Unit,
+    onList: () -> Unit,
+) {
+    val current by androidx.compose.runtime.rememberUpdatedState(index)
     var held by remember { mutableStateOf(false) }
     val page = pages[index.coerceIn(0, pages.lastIndex)]
     val previous = stringResource(R.string.yr_previous)
@@ -176,14 +185,14 @@ private fun ReviewPager(pages: List<ReviewPage>, onClose: () -> Unit, onShare: (
                         // A long hold only pauses; letting go does not turn the page.
                         onLongPress = {},
                         onTap = { offset ->
-                            index = if (offset.x < size.width / 3f) (index - 1).coerceAtLeast(0) else (index + 1).coerceAtMost(pages.lastIndex)
+                            onIndex(if (offset.x < size.width / 3f) (current - 1).coerceAtLeast(0) else (current + 1).coerceAtMost(pages.lastIndex))
                         },
                     )
                 }
                 .semantics {
                     customActions = listOf(
-                        CustomAccessibilityAction(previous) { index = (index - 1).coerceAtLeast(0); true },
-                        CustomAccessibilityAction(next) { index = (index + 1).coerceAtMost(pages.lastIndex); true },
+                        CustomAccessibilityAction(previous) { onIndex((current - 1).coerceAtLeast(0)); true },
+                        CustomAccessibilityAction(next) { onIndex((current + 1).coerceAtMost(pages.lastIndex)); true },
                     )
                 },
         ) {
@@ -326,7 +335,14 @@ private fun MonthBars(perMonth: List<Int>) {
 // ── List view for screen readers ─────────────────────────────────────
 
 @Composable
-internal fun ReviewList(pages: List<ReviewPage>, onClose: () -> Unit, onShare: (ReviewPageKind) -> Unit, onPages: () -> Unit) {
+internal fun ReviewList(
+    pages: List<ReviewPage>,
+    onClose: () -> Unit,
+    onShare: (ReviewPageKind) -> Unit,
+    onPages: () -> Unit,
+    startAt: Int = 0,
+) {
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = startAt.coerceIn(0, pages.lastIndex.coerceAtLeast(0)))
     Column(
         Modifier
             .fillMaxSize()
@@ -338,7 +354,7 @@ internal fun ReviewList(pages: List<ReviewPage>, onClose: () -> Unit, onShare: (
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onPages) { Icon(Icons.Filled.ViewCarousel, stringResource(R.string.yr_page_view), tint = PageText) }
         }
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 24.dp), state = listState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(pages, key = { it.kind }) { page ->
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(page.title, color = PageText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
