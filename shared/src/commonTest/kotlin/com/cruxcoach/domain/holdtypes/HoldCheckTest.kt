@@ -53,6 +53,15 @@ class HoldCheckTest {
     }
 
     @Test
+    fun moonBoardReferenceKeysCarryTheLayout() {
+        val entry = dataset[4, 5]!!
+        assertEquals(4005, dataset.referenceKey(entry))
+        assertEquals(entry, dataset.referenceEntry(4005))
+        val aurora = dataset.copy(board = "tension")
+        assertEquals(5, aurora.referenceKey(entry))
+    }
+
+    @Test
     fun aCheckReplacesTheEarlierOneForTheSameHoldOnly() {
         val session = HoldCheckSession("moonboard", "v1")
             .withCheck(check(2, 5, CheckVerdict.CONFIRMED))

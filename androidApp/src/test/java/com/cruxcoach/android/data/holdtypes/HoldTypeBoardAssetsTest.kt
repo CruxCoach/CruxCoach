@@ -51,6 +51,15 @@ class HoldTypeBoardAssetsTest {
     }
 
     @Test
+    fun everyReferenceHoldIsLabelledAndListedOnce() {
+        boards().forEach { board ->
+            val data = dataset(board)
+            assertEquals("$board reference set", data.referenceSet.size, data.referenceSet.toSet().size)
+            data.referenceSet.forEach { key -> assertNotNull("$board reference $key", data.referenceEntry(key)?.holdType) }
+        }
+    }
+
+    @Test
     fun moonBoardCoversExactlyTheCellsOfEveryGeneration() {
         if ("moonboard" !in boards()) return
         val data = dataset("moonboard")

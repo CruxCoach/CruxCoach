@@ -97,7 +97,10 @@ data class HoldTypeDataset(
     val board: String,
     val version: String,
     val taxonomy: String = "",
-    /** Placements of the reference set, in review order. */
+    /**
+     * The reference set, in review order, as reference keys: the placement id on Aurora boards, and
+     * `layoutId * 1000 + hold id` on MoonBoard, whose hold ids repeat across generations ([referenceKey]).
+     */
     val referenceSet: List<Int> = emptyList(),
     val holds: List<HoldTypeEntry>,
 ) {
@@ -112,8 +115,18 @@ data class HoldTypeDataset(
     /** By layout and placement (or MoonBoard hold id); works on every board. */
     operator fun get(layoutId: Int, placement: Int): HoldTypeEntry? = byLayoutPlacement[layoutId to placement]
 
+    /** The hold a reference key stands for (see [referenceSet]). */
+    fun referenceEntry(key: Int): HoldTypeEntry? =
+        if (board == MOONBOARD) get(key / MOON_KEY_FACTOR, key % MOON_KEY_FACTOR) else get(key)
+
+    /** The reference key of [entry] on this board (see [referenceSet]). */
+    fun referenceKey(entry: HoldTypeEntry): Int =
+        if (board == MOONBOARD) entry.layoutId * MOON_KEY_FACTOR + entry.placement else entry.placement
+
     companion object {
         const val FORMAT = "cruxcoach-hold-types-v1"
+        private const val MOONBOARD = "moonboard"
+        private const val MOON_KEY_FACTOR = 1000
         private val json = Json { ignoreUnknownKeys = true }
 
         fun parse(text: String): HoldTypeDataset {
