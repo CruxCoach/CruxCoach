@@ -27,10 +27,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   stay projects of their own. Star ratings and comments stay in Shiny Wall.
   Email and password go to Google's Firebase servers, which run Shiny Wall's
   sign-in and data. Read-only: CruxCoach never changes anything in your Shiny
-  Wall account, keeps only a sign-in token on the phone, and "Import new
-  entries" fetches what is new without duplicating or restoring what you
-  deleted. Standard walls only; accounts that sign in with Google can't
-  connect.
+  Wall account, keeps a sign-in token on the phone (never the password), and
+  "Import new entries" fetches what is new without duplicating or restoring
+  what you deleted. Standard walls only; accounts that sign in with Google
+  can't connect.
 - Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
   data is refreshed (2,933 venues).
 - Wall games, from the main menu or a problem's menu ("Play as a game"):

@@ -3394,7 +3394,7 @@
     <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (sends and projects), favorites, lists and your own routes into CruxCoach. Star ratings and comments stay in Shiny Wall. Read-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only.</string>
     <string name="shinywall_connect_button">Connect Shiny Wall account</string>
     <string name="shinywall_login_title">Sign in to Shiny Wall</string>
-    <string name="shinywall_login_privacy">Your email and password go to Google’s Firebase servers, which run Shiny Wall’s sign-in. CruxCoach reads your Shiny Wall data from the same Google servers and keeps only a sign-in token on this phone, never the password. Accounts that sign in with Google can’t be connected.</string>
+    <string name="shinywall_login_privacy">Your email and password go to Google’s Firebase servers, which run Shiny Wall’s sign-in. CruxCoach reads your Shiny Wall data from the same Google servers. On this phone it keeps a sign-in token, never the password. Accounts that sign in with Google can’t be connected.</string>
     <string name="shinywall_email_label">Email</string>
     <string name="shinywall_password_label">Password</string>
     <string name="shinywall_login_button">Sign in</string>
