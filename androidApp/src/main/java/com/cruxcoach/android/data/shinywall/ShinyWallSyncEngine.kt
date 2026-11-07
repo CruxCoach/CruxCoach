@@ -56,9 +56,12 @@ data class ShinyWallListNames(val favorites: String, val ownRoutes: String)
  *   Each history entry gets a stable uuid and the external id
  *   `shinywall:history:<entry id>`, so a re-import never duplicates it and
  *   a local edit is never overwritten. Entries the user deleted locally stay
- *   deleted ([PersonalBoardRepository.pendingLogDeletions]); entries older
- *   than the last import (minus [WATERMARK_OVERLAP_MS]) are not looked at
- *   again, which keeps them deleted even once a tombstone is gone.
+ *   deleted: the import keeps its own record of the entries it has placed
+ *   ([ShinyWallTokenStorage.placedLogs]), and one the logbook lacks is never
+ *   written again. Kilter's deletion queue is no help here: an entry leaves
+ *   it once Kilter confirms the deletion. Entries older than the last import (minus
+ *   [WATERMARK_OVERLAP_MS]) are not looked at again, so the record only
+ *   keeps that window.
  * - Favourites, own lists and own published routes → local lists
  *   (`shinywall:favorites`, `shinywall:list:<name>`, `shinywall:own-routes`),
  *   refreshed on every import. Best effort: a failure there never fails
@@ -136,6 +139,7 @@ class ShinyWallSyncEngine @Inject constructor(
 
     internal data class Plan(
         val logs: List<PlannedLog>,
+        /** Entries the logbook holds already. */
         val duplicates: Int,
         val skipped: Int,
         val total: Int,
@@ -143,6 +147,10 @@ class ShinyWallSyncEngine @Inject constructor(
         val catalogue: Map<String, ClimbWithStats>,
         /** Attempts an earlier import logged, unedited, that are now part of a send: removed on import. */
         val mergedAttempts: Set<String> = emptySet(),
+        /** Entries an earlier import placed that the logbook lacks now: deleted there, never written again. */
+        val deleted: Int = 0,
+        /** What [ShinyWallTokenStorage.placedLogs] holds after this import. */
+        val placed: Map<String, Long> = emptyMap(),
     )
 
     /** A history entry the logbook can take. */
@@ -182,11 +190,11 @@ class ShinyWallSyncEngine @Inject constructor(
                 Log.w(TAG, "List import failed, logbook import kept", e)
                 0
             }
-            tokenStore.recordImport(session.uid, System.currentTimeMillis(), plan.newestMs)
+            tokenStore.recordImport(session.uid, System.currentTimeMillis(), plan.newestMs, plan.placed)
             Log.i(
                 TAG,
-                "Imported ${plan.logs.size} entries (${plan.duplicates} known, ${plan.skipped} skipped, " +
-                    "${plan.mergedAttempts.size} attempts merged into sends), $lists list(s)",
+                "Imported ${plan.logs.size} entries (${plan.duplicates} known, ${plan.deleted} deleted here, " +
+                    "${plan.skipped} skipped, ${plan.mergedAttempts.size} attempts merged into sends), $lists list(s)",
             )
             Result.success(
                 ShinyWallImportResult(
@@ -206,7 +214,9 @@ class ShinyWallSyncEngine @Inject constructor(
     internal fun plan(uid: String, history: List<ShinyWallHistoryEntry>): Plan {
         val existing = personalBoardRepo.getExistingLogUuids()
         val deleted = personalBoardRepo.pendingLogDeletions().toHashSet()
-        val watermark = tokenStore.historyWatermarkMs(uid)?.minus(WATERMARK_OVERLAP_MS)
+        val placedBefore = tokenStore.placedLogs(uid)
+        val lastWatermark = tokenStore.historyWatermarkMs(uid)
+        val watermark = lastWatermark?.minus(WATERMARK_OVERLAP_MS)
         // Only entries the logbook holds or gets move the watermark, so skipped entries
         // newer than those stay in view (older ones need a new watermark key).
         var newestMs: Long? = null
@@ -238,10 +248,12 @@ class ShinyWallSyncEngine @Inject constructor(
 
         // The whole history, not only what is past the watermark: a send can come after
         // attempts an earlier import has logged already.
-        fun isNew(p: Placed) = p.uuid !in existing && p.uuid !in deleted &&
+        // An entry an earlier import placed is in the logbook, or the user deleted it there.
+        fun isNew(p: Placed) = p.uuid !in existing && p.uuid !in deleted && p.uuid !in placedBefore &&
             (watermark == null || p.ms == null || p.ms >= watermark)
         val sendOf = sendsOfAttempts(placed)
         var duplicates = 0
+        var deletedHere = 0
         val planned = mutableListOf<PlannedLog>()
         val merged = mutableSetOf<String>()
         for (p in placed) {
@@ -252,8 +264,12 @@ class ShinyWallSyncEngine @Inject constructor(
                 if (p.uuid in existing && (send.uuid in existing || isNew(send)) && asImported(p)) merged += p.uuid
                 continue
             }
-            if (!isNew(p)) {
+            if (p.uuid in existing) {
                 duplicates++
+                continue
+            }
+            if (!isNew(p)) {
+                deletedHere++
                 continue
             }
             planned += PlannedLog(
@@ -270,7 +286,14 @@ class ShinyWallSyncEngine @Inject constructor(
         // One entry per uuid even if Shiny lists an id twice.
         val unique = planned.distinctBy { it.uuid }
         duplicates += planned.size - unique.size
-        return Plan(unique, duplicates, skipped, history.size, newestMs, catalogue, merged)
+
+        // Every placed entry is dealt with now: in the logbook, deleted there, or part of its send.
+        // Entries before the next import's window are never looked at again, so they need no record.
+        val nextWatermark = listOfNotNull(newestMs, lastWatermark).maxOrNull()
+        val keepFrom = nextWatermark?.minus(WATERMARK_OVERLAP_MS) ?: Long.MIN_VALUE
+        val placedNow = (placedBefore + placed.mapNotNull { p -> p.ms?.let { p.uuid to it } })
+            .filterValues { it >= keepFrom }
+        return Plan(unique, duplicates, skipped, history.size, nextWatermark, catalogue, merged, deletedHere, placedNow)
     }
 
     /** True while [attempt]'s row is still as the import wrote it: same attempts, no comment, same date. */

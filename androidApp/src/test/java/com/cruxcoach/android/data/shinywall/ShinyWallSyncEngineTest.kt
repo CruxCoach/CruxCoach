@@ -186,25 +186,48 @@ class ShinyWallSyncEngineTest {
         val again = engine.importAll(names).getOrThrow()
         assertEquals(0, again.newAscents)
         assertEquals(0, again.newProjects)
-        assertEquals(6, again.duplicates)
+        // The deleted entry is not "already in CruxCoach".
+        assertEquals(5, again.duplicates)
         assertEquals(4, ascents().size)
         assertEquals(0, engine.previewImport().getOrThrow().let { it.newAscents + it.newProjects })
     }
 
     @Test
-    fun old_entries_stay_deleted_after_the_tombstone_is_gone() = runTest {
+    fun deleted_entries_stay_deleted_after_the_tombstone_is_gone() = runTest {
         val dated = listOf(entry("old", "r1", "st1", 2, ts = tOld), entry("recent", "r3", "st1", 2, ts = t))
         coEvery { client.fetchHistory("uid1") } returns Result.success(dated)
         engine.importAll(names).getOrThrow()
         repo.deleteAscent(ShinyWallSyncEngine.logUuid("old"))
         repo.deleteAscent(ShinyWallSyncEngine.logUuid("recent"))
+        // What a Kilter deletion push used to do to every board's tombstones.
         repo.clearAllLogDeletions()
 
         coEvery { client.fetchHistory("uid1") } returns Result.success(dated + entry("new", "r2", "st5", 3, angle = 30, ts = tNew))
+        assertEquals(1, engine.previewImport().getOrThrow().newAscents)
         val again = engine.importAll(names).getOrThrow()
-        // "old" lies before the last import's window, "recent" inside it, "new" is new.
-        assertEquals(2, again.newAscents)
-        assertEquals(setOf("shinywall:history:new", "shinywall:history:recent"), ascents().mapNotNull { it.externalId }.toSet())
+        // "old" lies before the last import's window, "recent" inside it: neither comes back. "new" is new.
+        assertEquals(1, again.newAscents)
+        assertEquals(0, again.duplicates)
+        assertEquals(setOf("shinywall:history:new"), ascents().mapNotNull { it.externalId }.toSet())
+
+        // Still so after a disconnect and a new sign-in to the same account.
+        store.clearSession()
+        store.storeSession(ShinyWallSession("uid1", "id", "refresh", Long.MAX_VALUE, "a@b.c"))
+        assertEquals(0, engine.importAll(names).getOrThrow().newAscents)
+        assertEquals(setOf("shinywall:history:new"), ascents().mapNotNull { it.externalId }.toSet())
+    }
+
+    @Test
+    fun the_record_of_placed_entries_keeps_only_the_window() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(entry("old", "r1", "st1", 2, ts = tOld), entry("recent", "r3", "st1", 2, ts = t), entry("new", "r2", "st5", 3, ts = tNew))
+        )
+        engine.importAll(names).getOrThrow()
+        // The next import looks back 7 days from the newest entry; "old" is long before that.
+        assertEquals(
+            mapOf(ShinyWallSyncEngine.logUuid("recent") to ShinyWallSyncEngine.epochMs(t)!!, ShinyWallSyncEngine.logUuid("new") to ShinyWallSyncEngine.epochMs(tNew)!!),
+            store.placedLogs("uid1"),
+        )
     }
 
     /** A history entry in the shape the account returns: `standard` is a boolean, the variant is the wallId prefix. */
