@@ -303,6 +303,12 @@ fun AthleteSettingsScreen(
                     SectionTitle(stringResource(R.string.tra_plan_title))
                     Stepper(stringResource(R.string.tra_weekly_goal, p.weeklyGoal), "weekly_goal",
                         onMinus = { viewModel.setWeeklyGoal(p.weeklyGoal - 1) }, onPlus = { viewModel.setWeeklyGoal(p.weeklyGoal + 1) })
+                    // Which exercises the coach picks (issue #68); the same chips as in the coach setup.
+                    Text(stringResource(R.string.trc_exercise_choice), style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 12.dp))
+                    com.cruxcoach.android.ui.training.coach.ExerciseChoiceChips(p.coach.exerciseChoice) { c ->
+                        viewModel.update { it.copy(coach = it.coach.copy(exerciseChoice = c)) }
+                    }
                     // The training goal is the coach's (card above); losing weight is a choice of its own. It is
                     // never locked: target, pace and calorie target are shown with every warning that applies.
                     SectionTitle(stringResource(R.string.tru_set_weight_goal))
