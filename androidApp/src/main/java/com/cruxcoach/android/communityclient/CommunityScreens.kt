@@ -403,7 +403,7 @@ private fun StreamList(state: CommunityRoomState, onOpenThread: (String) -> Unit
         items(newestFirst, key = { it.id }) { message ->
             val notice = message.notice
             if (notice != null) {
-                NoticeRow(notice, message.createdAt, state.profiles)
+                NoticeRow(notice, message.createdAt, state.profiles, state.me)
             } else {
                 MessageRow(
                     message = message,
@@ -553,15 +553,23 @@ private fun MessageRow(
 
 /** A relay notice (someone joined, the topic changed) as one quiet line. */
 @Composable
-private fun NoticeRow(notice: SystemNotice, createdAt: Long, profiles: Map<String, CommunityProfile>) {
+private fun NoticeRow(notice: SystemNotice, createdAt: Long, profiles: Map<String, CommunityProfile>, me: String) {
     val actor = notice.actor?.let { authorLabel(it, profiles) } ?: stringResource(R.string.community_client_notice_someone)
     val target = notice.target?.let { authorLabel(it, profiles) } ?: stringResource(R.string.community_client_notice_someone)
+    val selfJoined = notice.target == null || notice.target == notice.actor
     val text = when (notice.type) {
-        SystemNotice.Type.MEMBER_JOINED ->
-            if (notice.target == null || notice.target == notice.actor) stringResource(R.string.community_client_notice_joined, actor)
-            else stringResource(R.string.community_client_notice_added, actor, target)
-        SystemNotice.Type.MEMBER_LEFT -> stringResource(R.string.community_client_notice_left, actor)
-        SystemNotice.Type.MEMBER_REMOVED -> stringResource(R.string.community_client_notice_removed, actor, target)
+        SystemNotice.Type.MEMBER_JOINED -> when {
+            selfJoined && notice.actor == me -> stringResource(R.string.community_client_notice_you_joined)
+            selfJoined -> stringResource(R.string.community_client_notice_joined, actor)
+            notice.target == me -> stringResource(R.string.community_client_notice_added_you, actor)
+            else -> stringResource(R.string.community_client_notice_added, actor, target)
+        }
+        SystemNotice.Type.MEMBER_LEFT ->
+            if (notice.actor == me) stringResource(R.string.community_client_notice_you_left)
+            else stringResource(R.string.community_client_notice_left, actor)
+        SystemNotice.Type.MEMBER_REMOVED ->
+            if (notice.target == me) stringResource(R.string.community_client_notice_removed_you, actor)
+            else stringResource(R.string.community_client_notice_removed, actor, target)
         SystemNotice.Type.TOPIC_CHANGED -> notice.text?.let { stringResource(R.string.community_client_notice_topic, actor, it) }
             ?: stringResource(R.string.community_client_notice_topic_cleared, actor)
         SystemNotice.Type.PURPOSE_CHANGED -> notice.text?.let { stringResource(R.string.community_client_notice_purpose, actor, it) }
@@ -603,7 +611,8 @@ private fun Composer(hint: String, sending: Boolean, error: String?, sentCount: 
                 value = text,
                 onValueChange = { text = it },
                 modifier = Modifier.weight(1f).testTag("community_composer"),
-                enabled = !sending,
+                // Read-only, not disabled, while sending: disabling would drop the focus and close the keyboard.
+                readOnly = sending,
                 placeholder = { Text(hint, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 5,

@@ -79,6 +79,11 @@
     <string name="community_client_notice_created">%1$s created this room</string>
     <string name="community_client_notice_archived">%1$s archived this room</string>
     <string name="community_client_notice_unarchived">%1$s restored this room</string>
+    <!-- The same notices when they are about you -->
+    <string name="community_client_notice_you_joined">You joined</string>
+    <string name="community_client_notice_added_you">%1$s added you</string>
+    <string name="community_client_notice_you_left">You left</string>
+    <string name="community_client_notice_removed_you">%1$s removed you</string>
     <plurals name="community_client_replies">
         <item quantity="one">%d reply</item>
         <item quantity="other">%d replies</item>

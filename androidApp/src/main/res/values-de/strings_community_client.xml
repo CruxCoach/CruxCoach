@@ -79,6 +79,11 @@
     <string name="community_client_notice_created">%1$s hat den Raum erstellt</string>
     <string name="community_client_notice_archived">%1$s hat den Raum archiviert</string>
     <string name="community_client_notice_unarchived">%1$s hat den Raum wiederhergestellt</string>
+    <!-- Dieselben Hinweise, wenn sie dich betreffen -->
+    <string name="community_client_notice_you_joined">Du bist beigetreten</string>
+    <string name="community_client_notice_added_you">%1$s hat dich hinzugefügt</string>
+    <string name="community_client_notice_you_left">Du hast den Raum verlassen</string>
+    <string name="community_client_notice_removed_you">%1$s hat dich entfernt</string>
     <plurals name="community_client_replies">
         <item quantity="one">%d Antwort</item>
         <item quantity="other">%d Antworten</item>
