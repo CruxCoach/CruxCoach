@@ -962,7 +962,8 @@ class AthleteService @Inject constructor(
         val (affinity, resting) = learnedChoices(today, profile)
         val input = SuggestionInput(catalog, profile, today, ReadinessEvaluator.evaluate(checkin, injuries), injuries,
             favorites = repo.favorites(), benchmarkSlugs = repo.allBenchmarks().map { it.exerciseSlug }.toSet(),
-            affinity = affinity, resting = resting)
+            affinity = affinity, resting = resting,
+            known = ExerciseFamiliarity.known(repo.trainedExercises().associate { it.slug to it.trainings }, repo.allBenchmarks()))
         val focus = if (active.any { it.climbingPaused }) SuggestionFocus.INJURY_SAFE else SuggestionFocus.PULL_PUSH
         return SessionSuggester.alternatives(input, slugs.distinct().map { RoutineItem(it) }, focus, slug)
     }

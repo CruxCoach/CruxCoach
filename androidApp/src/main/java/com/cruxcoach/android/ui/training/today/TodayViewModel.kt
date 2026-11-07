@@ -119,6 +119,8 @@ data class TodayState(
     val minutesToday: Int? = null,
     /** Favourite exercises, starred on the card. */
     val favorites: Set<String> = emptySet(),
+    /** Exercises of the suggestion that are new to the athlete (issue #68): "new to you" with the way to the steps. */
+    val newToYou: Set<String> = emptySet(),
     /** Today's "easier" (−1) / "harder" (+1) answer from the "another suggestion" sheet. */
     val levelShift: Int = 0,
     /** What the athlete usually chooses on today's weekday (kind, duration), learned from earlier choices. */
@@ -386,6 +388,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 circuitToday = circuitToday && daily?.routine?.items?.any { it.circuit != null } == true,
                 circuitPossible = daily?.let { circuitCandidates(it) } ?: false,
                 favorites = runCatching { repo.favorites() }.getOrDefault(emptySet()),
+                newToYou = lastInput?.let { input -> daily?.routine?.items?.map { item -> item.slug }
+                    ?.filter { slug -> SessionSuggester.isNewTo(input, slug) }?.toSet() }.orEmpty(),
                 levelShift = levelShift,
                 levelOffer = daily?.let { s -> lastLevelOffers.firstOrNull { it.focus == s.focus } },
                 gradeOffer = runCatching { service.gradeOffer(i.profile) }.getOrNull(),
@@ -421,6 +425,15 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             SuggestionEventKind.FEEDBACK -> {
                 val focus = e.focus.orEmpty()
                 when {
+                    // "Kenne ich nicht" holds for the day like a swap.
+                    focus == PreferenceLearning.DONT_KNOW -> {
+                        val from = e.slugs.getOrNull(0)
+                        val to = e.slugs.getOrNull(1)
+                        if (from != null && to != null) {
+                            val key = originalOf(from)
+                            if (key == to) swapsToday.remove(key) else swapsToday[key] = to
+                        }
+                    }
                     focus.startsWith(PreferenceLearning.CHOSEN_LEVEL) -> levelShift = (e.value?.toInt() ?: 0).coerceIn(-1, 1)
                     focus == PreferenceLearning.CHOSEN_MINUTES -> minutesToday = e.value?.toInt()
                     focus.startsWith(PreferenceLearning.CHOSEN_KIND) -> {
@@ -784,6 +797,37 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 lastInputs?.let { refreshUnlocked(it) }
             }
             offerNeverIfRepeated(from)
+        }
+    }
+
+    /** "Kenne ich nicht" (issue #68): what would take [slug]'s place, Basic or known to the athlete; null when nothing fits. */
+    fun familiarSwap(slug: String): com.cruxcoach.athlete.catalog.ExerciseDefinition? {
+        val input = lastInput ?: return null
+        val s = _state.value.suggestion ?: return null
+        return runCatching {
+            // What was swapped away or left out elsewhere on the card today stays away; the slot's own pick may come back.
+            // Read under the lock: the swaps change on the IO thread.
+            val away = synchronized(refreshLock) { swapsToday.keys.toSet() - originalOf(slug) }
+            SessionSuggester.familiarSwap(input, s.routine.items, s.focus, slug, exclude = away)
+        }.getOrNull()
+    }
+
+    /**
+     * "Kenne ich nicht": [to] instead of [from] for today, like a swap, but no dislike and no rest for [from] and no
+     * point for [to] (the coach picked it); [from] is only not the coach's new pick for a while.
+     */
+    fun dontKnowExercise(from: String, to: String) {
+        val undo = CardUndo().also { cardUndo = it }
+        cardJob = viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            synchronized(refreshLock) {
+                val key = originalOf(from)
+                undo.key = key; undo.previous = swapsToday[key]
+                // Back to the coach's own pick of the slot: no swap left.
+                if (key == to) swapsToday.remove(key) else swapsToday[key] = to
+                undo.eventId = service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.DONT_KNOW, listOf(from, to))
+                lastInputs?.let { refreshUnlocked(it) }
+            }
         }
     }
 

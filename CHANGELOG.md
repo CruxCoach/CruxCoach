@@ -146,6 +146,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Favourite exercises are chosen right next to "routine or variety" in the
   coach setup: with a routine they are in almost every suggestion they fit,
   with variety they come back regularly. The suggestion card stars them.
+- Well-known exercises first: the coach starts with exercises everyone knows and brings in more unusual
+  ones with experience, with at most one exercise new to you per training (two with "Open to unusual
+  exercises"). Today's card marks such an
+  exercise "New to you" with its steps one tap away, and the player opens with its steps the first time.
+  "Don't know it" in the swap sheet puts an exercise you know in its place without counting against it.
+  "Exercise choice" in the coach setup and the training settings: "Mostly classics", "Balanced" (the
+  default) or "Open to unusual exercises".
 - Today's card lists every exercise with its sets ("3 × 8"), the whole list
   one tap away, and a tap on an exercise swaps it: its easier and harder
   variant and the best other exercises of the same kind – through the same

@@ -74,6 +74,39 @@ object PreferenceLearning {
     const val ENDED_EARLY = "ended_early"
     /** Ledger [SuggestionEventKind.FEEDBACK] focus for "+ Satz"; slugs = the exercise, value = its work sets now. */
     const val EXTRA_SET = "extra_set"
+    /**
+     * Ledger [SuggestionEventKind.FEEDBACK] focus for "Kenne ich nicht" on the card (issue #68): slugs = [the exercise, its
+     * replacement]. It swaps the exercise for today like a swap but costs it nothing (no dislike, no rest), and the
+     * replacement earns nothing either: the coach picked it. The exercise is only not the coach's new pick for a while ([unfamiliar]).
+     */
+    const val DONT_KNOW = "dont_know"
+
+    /**
+     * Without the hand swaps the athlete took back the same day with "Kenne ich nicht" on the exercise they had swapped in:
+     * the pick was unknown to them, so the swap teaches nothing, neither against the exercise swapped away nor for the pick.
+     */
+    private fun withoutUnknownSwaps(events: List<SuggestionEvent>): List<SuggestionEvent> {
+        val unknown = events.filter { it.kind == SuggestionEventKind.FEEDBACK && it.focus == DONT_KNOW }
+        if (unknown.isEmpty()) return events
+        return events.filterNot { s ->
+            s.kind == SuggestionEventKind.SWAPPED && unknown.any { u ->
+                u.day == s.day && u.createdAt > s.createdAt && u.slugs.getOrNull(0) == s.slugs.getOrNull(1)
+            }
+        }
+    }
+
+    /**
+     * Exercises the athlete marked "Kenne ich nicht" in the last [ExerciseFamiliarity.UNFAMILIAR_DAYS] days, today included;
+     * forgotten exercises start fresh.
+     */
+    fun unfamiliar(events: List<SuggestionEvent>, today: LocalDate, resets: Map<String, Long> = emptyMap()): Set<String> {
+        val from = today.minus(DatePeriod(days = ExerciseFamiliarity.UNFAMILIAR_DAYS))
+        return events.filter { it.kind == SuggestionEventKind.FEEDBACK && it.focus == DONT_KNOW }.mapNotNull { e ->
+            val slug = e.slugs.firstOrNull() ?: return@mapNotNull null
+            val day = runCatching { LocalDate.parse(e.day) }.getOrNull() ?: return@mapNotNull null
+            slug.takeIf { day > from && day <= today && e.createdAt > since(resets, exerciseKey(slug)) }
+        }.toSet()
+    }
 
     /** What the athlete chose again and again on one weekday: a kind of training and/or a duration. */
     data class UsualChoice(val isoDay: Int, val focus: SuggestionFocus?, val minutes: Int?)
@@ -148,7 +181,7 @@ object PreferenceLearning {
             val weight = (1.0 - ageDays / WINDOW_DAYS).coerceAtLeast(0.0)
             if (weight > 0) scores[slug] = (scores[slug] ?: 0.0) + value * weight
         }
-        for (e in events) {
+        for (e in withoutUnknownSwaps(events)) {
             val day = runCatching { LocalDate.parse(e.day) }.getOrNull() ?: ProgressStats.dayOf(e.createdAt, zone)
             fun add(slug: String, value: Double) = add(slug, value, e.createdAt, day)
             when (e.kind) {
@@ -218,7 +251,7 @@ object PreferenceLearning {
     ): Map<String, List<Pair<LocalDate, Double>>> {
         val from = today.minus(DatePeriod(days = WINDOW_DAYS))
         val rejections = mutableMapOf<String, MutableList<Pair<LocalDate, Double>>>()
-        for (e in events) {
+        for (e in withoutUnknownSwaps(events)) {
             val day = runCatching { LocalDate.parse(e.day) }.getOrNull() ?: ProgressStats.dayOf(e.createdAt, zone)
             if (day < from || day > today) continue
             fun reject(slug: String, weight: Double) {
@@ -328,6 +361,8 @@ object PreferenceLearning {
         val now = LinkedHashMap<String, String>()   // suggested slug → what took its place ("" = left out)
         val changedAt = mutableMapOf<String, Long>()
         val cardOriginals = mutableSetOf<String>()
+        // Slots where the athlete said "Kenne ich nicht": the coach picked what took their place, so they ask nothing.
+        val unknownSlots = mutableSetOf<String>()
         fun original(shown: String) = now.entries.firstOrNull { it.value == shown }?.key ?: shown
         for (e in sorted) {
             // The card's own changes come before the start and belong to no training; the summary's swap in the
@@ -344,6 +379,13 @@ object PreferenceLearning {
                     changedAt[key] = e.createdAt
                     if (card) cardOriginals += key
                 }
+                card && e.kind == SuggestionEventKind.FEEDBACK && e.focus == DONT_KNOW -> {
+                    val from = e.slugs.getOrNull(0) ?: continue
+                    val to = e.slugs.getOrNull(1) ?: continue
+                    val key = original(from)
+                    if (key == to) now.remove(key) else now[key] = to
+                    unknownSlots += key
+                }
                 card && e.kind == SuggestionEventKind.NEXT && e.feedback == SuggestionFeedback.DISLIKE_EXERCISE && e.value == LEFT_OUT ->
                     e.slugs.forEach { val key = original(it); now[key] = ""; changedAt[key] = e.createdAt; cardOriginals += key }
                 training && (e.kind == SuggestionEventKind.SKIPPED_SET || (e.kind == SuggestionEventKind.FEEDBACK && e.focus == REMOVED)) ->
@@ -351,7 +393,7 @@ object PreferenceLearning {
             }
         }
         val suggested = started.slugs.toSet() + cardOriginals
-        return now.entries.filter { (key, _) -> key in suggested && (changedAt[key] ?: Long.MIN_VALUE) > answeredAt }
+        return now.entries.filter { (key, _) -> key in suggested && key !in unknownSlots && (changedAt[key] ?: Long.MIN_VALUE) > answeredAt }
             .map { (key, to) -> Change(key, to.ifEmpty { null }) }
     }
 

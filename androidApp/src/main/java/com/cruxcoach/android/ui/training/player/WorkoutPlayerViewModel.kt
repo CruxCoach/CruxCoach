@@ -137,6 +137,8 @@ data class PlayerState(
     val asPlannedUndo: AthleteService.AsPlannedUndo? = null,
     /** This week's volume per area, for the hint when an exercise is left out or removed (comparison review #13). */
     val weekly: List<com.cruxcoach.athlete.logic.AreaProgress> = emptyList(),
+    /** Exercises of this training done for the first time that are not Basic (issue #68): their steps start open. */
+    val firstTime: Set<String> = emptySet(),
 ) {
     val page: PlayerPage? get() = pages.getOrNull(pageIndex)
     fun def(slug: String): ExerciseDefinition? = defs[slug]
@@ -261,6 +263,24 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
 
     /** Workout and done sets the weekly volume in the state was read for. */
     private var weeklyKey: String? = null
+    /** Workout and exercises [PlayerState.firstTime] was read for. */
+    private var firstTimeKey: String? = null
+
+    /**
+     * The training's exercises that are not Basic, not the athlete's own or a favourite, and were never done in another
+     * training: the first time they come up.
+     */
+    private fun firstTimeIn(workout: Workout, sets: List<ExerciseSet>): Set<String> = runCatching {
+        val slugs = sets.map { it.exerciseSlug }.distinct()
+        val favorites = service.repo.favorites()
+        val trainings = service.repo.trainedExercises().associate { it.slug to it.trainings }
+        val doneHere = sets.filter { it.isCompleted }.map { it.exerciseSlug }.toSet()
+        slugs.filter { slug ->
+            val def = service.catalog.fallbackFor(slug)
+            val before = (trainings[slug] ?: 0L) - (if (slug in doneHere) 1 else 0)
+            def.familiarity != com.cruxcoach.athlete.catalog.Familiarity.BASIC && !def.custom && slug !in favorites && before <= 0
+        }.toSet()
+    }.getOrDefault(emptySet())
 
     private fun onData(workout: Workout?, sets: List<ExerciseSet>, profile: AthleteProfile, bodyweight: Double?) {
         // Read here on the IO thread, again only when a set was done or taken back; the screen only looks it up.
@@ -269,6 +289,13 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             workout == null -> emptyList()
             weeklyNow == weeklyKey -> _state.value.weekly
             else -> runCatching { service.weeklyProgress(profile) }.getOrDefault(emptyList()).also { weeklyKey = weeklyNow }
+        }
+        // Once per training and set of exercises (a swap brings a new one in), not per logged set.
+        val firstTimeNow = workout?.let { w -> w.id + ":" + sets.map { it.exerciseSlug }.distinct().sorted().joinToString(",") }
+        val firstTime = when {
+            workout == null -> emptySet()
+            firstTimeNow == firstTimeKey -> _state.value.firstTime
+            else -> firstTimeIn(workout, sets).also { firstTimeKey = firstTimeNow }
         }
         _state.update { st ->
             if (st.closing) return@update st.copy(profile = profile)
@@ -316,6 +343,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
                 editingId = editing,
                 defs = ordered.map { it.exerciseSlug }.distinct().associateWith { def(it) },
                 dayForm = service.dayForm(workout.id),
+                firstTime = firstTime,
                 weekly = weekly,
             )
         }

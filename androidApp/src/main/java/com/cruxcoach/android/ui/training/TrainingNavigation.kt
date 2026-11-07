@@ -96,6 +96,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onOpenClimbingDays = { go(TrainingRoutes.CLIMBING_DAYS) },
             onOpenLearned = { go(TrainingRoutes.athleteSettings(com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED.key)) },
             onOpenComeback = { go(TrainingRoutes.comeback(it)) },
+            onOpenExercise = { go(TrainingRoutes.exerciseDetail(it)) },
         )
         if (showEstimate) com.cruxcoach.android.ui.training.coach.QuickEstimateSheet(onDismiss = { showEstimate = false })
         climbingSheet?.let { id ->

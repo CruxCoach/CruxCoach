@@ -7,6 +7,7 @@ import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.logic.ConsistencyStreak
 import com.cruxcoach.athlete.logic.DayActivity
 import com.cruxcoach.athlete.logic.DayPlans
+import com.cruxcoach.athlete.logic.ExerciseFamiliarity
 import com.cruxcoach.athlete.logic.LoadStatus
 import com.cruxcoach.athlete.logic.LoadStructure
 import com.cruxcoach.athlete.logic.LoadTrend
@@ -155,7 +156,8 @@ class TodayCoach(
             .associate { it.id to LocalDate.parse(it.day) }
         val recentSets = repo.completedSetsSince(nowMs - 9L * 24 * 3600 * 1000)
             .mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }
-        val lastTrained = repo.trainedExercises().mapNotNull { t -> t.lastAt?.let { ms -> t.slug to dayOf(ms) } }.toMap()
+        val trained = repo.trainedExercises()
+        val lastTrained = trained.mapNotNull { t -> t.lastAt?.let { ms -> t.slug to dayOf(ms) } }.toMap()
         val routines = repo.routines()
         val sinceMs = nowMs - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
         val resets = profile.learningResets
@@ -180,6 +182,8 @@ class TodayCoach(
         // Kept after a training ("künftig so"): the chosen exercise leads its slot, the replaced one rests.
         val kept = PreferenceLearning.keptEffect(PreferenceLearning.kept(events, today, resets))
         val resting = PreferenceLearning.resting(stable.filterNot { it.day == today.toString() }, today, resets).keys + kept.resting.keys
+        // "Kenne ich nicht" on earlier days: not the coach's new pick for a while (today's own works as a swap, the card stays).
+        val unfamiliar = PreferenceLearning.unfamiliar(events.filterNot { it.day == today.toString() }, today, resets)
         // The kind and time the athlete chose on this weekday before: today's default until they choose otherwise.
         val levelOffers = PreferenceLearning.levelOffers(events, today, profile.keptLevels, resets)
         val usual = PreferenceLearning.usualChoices(events, today, resets)[today.dayOfWeek.isoDayNumber]
@@ -235,6 +239,8 @@ class TodayCoach(
             minutesLearned = choices.minutesToday == null && usualMinutes != null,
             kept = kept.preferred,
             beyondWeekDays = choices.trainAnyway,
+            known = ExerciseFamiliarity.known(trained.associate { it.slug to it.trainings }, allBenchmarks),
+            unfamiliar = unfamiliar,
         )
         return Built(input, habit, levelOffers, usual)
     }
