@@ -2,19 +2,25 @@ package com.cruxcoach.android.ui.yearreview
 
 import android.app.Application
 import android.view.accessibility.AccessibilityManager
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.data.repository.AscentWithClimb
@@ -123,6 +129,20 @@ class YearReviewAccessibilityTest {
         assertEquals(0, index)
         compose.onNodeWithContentDescription("List view").assertHasClickAction()
         compose.onNodeWithContentDescription("Share").assertHasClickAction()
+    }
+
+    @Test
+    fun theNoteScrollsAtTheLargestFontSize() {
+        lateinit var page: ReviewPage
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                page = reviewPages(review, GradeScale.FRENCH, TrainingContext(null, null, null)).first { it.kind == ReviewPageKind.HOLDS_TOUCHED }
+                PageContent(page, index = 0, count = 1)
+            }
+        }
+        compose.onNodeWithText("How is this calculated?").performClick()
+        compose.onNode(hasText(page.howCalculated!!) and hasScrollAction()).assertExists()
     }
 
     @Test

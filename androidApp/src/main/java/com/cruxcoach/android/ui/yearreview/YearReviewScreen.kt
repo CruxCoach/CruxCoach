@@ -264,7 +264,8 @@ internal fun PageContent(page: ReviewPage, index: Int, count: Int) {
             onDismissRequest = { explaining = false },
             confirmButton = { TextButton(onClick = { explaining = false }) { Text(stringResource(android.R.string.ok)) } },
             title = { Text(stringResource(R.string.yr_how_calculated)) },
-            text = { Text(page.howCalculated.orEmpty()) },
+            // Long notes scroll, so the largest font size never cuts them off.
+            text = { Text(page.howCalculated.orEmpty(), modifier = Modifier.verticalScroll(rememberScrollState())) },
         )
     }
 }
