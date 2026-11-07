@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,6 +76,8 @@ data class SprayWallDetailsState(
     /** On Nostr right now: going private withdraws it. */
     val published: Boolean = false,
     val saving: Boolean = false,
+    /** Taking the wall off the relays and Blossom: that waits for them, up to half a minute. */
+    val withdrawing: Boolean = false,
     /** The map's venues while the gym picker is open (null = still loading). */
     val venues: List<MapVenue>? = null,
     val pickingGym: Boolean = false,
@@ -193,7 +197,9 @@ class SprayWallDetailsViewModel @Inject constructor(
 
     /** True when the wall is off Nostr and Blossom; else the screen says why and the wall stays public. */
     private suspend fun withdraw(deleting: Boolean): Boolean {
+        _state.update { it.copy(withdrawing = true) }
         val result = publisher.withdrawWall(wallId)
+        _state.update { it.copy(withdrawing = false) }
         if (result == SprayWithdrawal.DONE) return true
         _state.update {
             it.copy(
@@ -303,7 +309,13 @@ fun SprayWallDetailsScreen(
                 enabled = state.canSave,
                 modifier = Modifier.fillMaxWidth().testTag("spray_wall_save"),
             ) {
-                Text(stringResource(if (state.first) R.string.action_done else R.string.action_save))
+                // Withdrawing waits for the relays and the photo servers, up to half a minute: show that it is working.
+                if (state.withdrawing) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text(stringResource(R.string.spray_wall_withdrawing), modifier = Modifier.padding(start = 8.dp))
+                } else {
+                    Text(stringResource(if (state.first) R.string.action_done else R.string.action_save))
+                }
             }
             if (!state.first && !state.loading) {
                 TextButton(onClick = { confirmDelete = true }, enabled = !state.saving, modifier = Modifier.testTag("spray_wall_delete")) {

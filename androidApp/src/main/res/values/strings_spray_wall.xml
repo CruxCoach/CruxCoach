@@ -190,6 +190,7 @@
     <string name="spray_withdraw_title">Withdraw this wall?</string>
     <string name="spray_withdraw_text">Relays are asked to delete the wall, all its versions and your climbs on it, and its photos are deleted from the Blossom servers they were uploaded to. Copies others already have can stay. The wall stays on this phone as a private wall.</string>
     <string name="spray_withdraw_confirm">Withdraw</string>
+    <string name="spray_wall_withdrawing">Withdrawing the wall …</string>
     <string name="spray_withdraw_failed_title">Wall not withdrawn</string>
     <string name="spray_delete_failed_title">Wall not deleted</string>
     <string name="spray_withdraw_failed_relays">No relay confirmed the withdrawal, so the wall is still public. Check the connection and try again.</string>
