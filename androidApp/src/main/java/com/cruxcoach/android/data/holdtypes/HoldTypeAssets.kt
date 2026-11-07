@@ -47,8 +47,9 @@ class HoldTypeAssets @Inject constructor(@ApplicationContext private val context
 class HoldReviewStore @Inject constructor(@ApplicationContext private val context: Context) {
     private fun file(board: String) = File(File(context.filesDir, DIR), "$board-reference.json")
 
+    /** A file that cannot be read is moved aside, never overwritten by a fresh session. */
     fun load(board: String): HoldReviewSession? = file(board).takeIf { it.exists() }?.let {
-        runCatching { HoldReviewSession.fromJson(it.readText()) }.getOrNull()
+        runCatching { HoldReviewSession.fromJson(it.readText()) }.getOrElse { _ -> keepAside(it); null }
     }
 
     fun save(session: HoldReviewSession) {
@@ -76,8 +77,9 @@ class HoldReviewStore @Inject constructor(@ApplicationContext private val contex
 class HoldCheckStore @Inject constructor(@ApplicationContext private val context: Context) {
     private fun file(board: String) = File(File(context.filesDir, DIR), "$board-check.json")
 
+    /** A file that cannot be read is moved aside, never overwritten by a fresh session. */
     fun load(board: String): HoldCheckSession? = file(board).takeIf { it.exists() }?.let {
-        runCatching { HoldCheckSession.fromJson(it.readText()) }.getOrNull()
+        runCatching { HoldCheckSession.fromJson(it.readText()) }.getOrElse { _ -> keepAside(it); null }
     }
 
     fun save(session: HoldCheckSession) {
@@ -98,4 +100,9 @@ class HoldCheckStore @Inject constructor(@ApplicationContext private val context
     private companion object {
         const val DIR = "hold_review"
     }
+}
+
+/** Renames an unreadable answers file to `<name>.bad-<time>` so the answers in it are not lost. */
+private fun keepAside(file: File) {
+    file.renameTo(File(file.parentFile, "${file.name}.bad-${System.currentTimeMillis()}"))
 }

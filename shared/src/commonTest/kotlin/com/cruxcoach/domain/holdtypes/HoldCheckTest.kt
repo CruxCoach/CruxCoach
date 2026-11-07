@@ -46,6 +46,13 @@ class HoldCheckTest {
     }
 
     @Test
+    fun queue_neverShowsReferenceHolds() {
+        val withReference = dataset.copy(referenceSet = listOf(4005, 1003))
+        assertEquals(listOf(2 to 7), withReference.checkQueue(reviewListOnly = true).map { it.layoutId to it.placement })
+        assertEquals(listOf(2 to 7, 2 to 5), withReference.checkQueue(reviewListOnly = false).map { it.layoutId to it.placement })
+    }
+
+    @Test
     fun moonBoardHoldIdsAreLookedUpPerLayout() {
         assertEquals(2, dataset[2, 5]?.layoutId)
         assertEquals(4, dataset[4, 5]?.layoutId)
