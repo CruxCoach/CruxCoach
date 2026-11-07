@@ -166,38 +166,51 @@ internal fun BoardSizeCheckContent(
         when (state.step) {
             BoardSizeCheckStep.LOADING -> LinearProgressIndicator(Modifier.fillMaxWidth())
             BoardSizeCheckStep.NO_DATA -> Text(stringResource(R.string.board_size_check_no_data))
-            BoardSizeCheckStep.ASK -> when {
-                otherBoardConnected -> ConnectPrompt(
-                    stringResource(R.string.board_size_check_other_board, brand.displayName), onConnect,
-                )
-                !connected -> ConnectPrompt(stringResource(R.string.board_size_check_connect_hint), onConnect)
-                else -> {
+            BoardSizeCheckStep.ASK -> {
+                val lookAlikeOf = state.startsWithLookAlike
+                if (lookAlikeOf != null && size != null) {
                     Text(
-                        stringResource(R.string.board_size_check_question),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        stringResource(
+                            R.string.board_size_check_look_alike_first,
+                            boardSizeCheckLabel(brand, lookAlikeOf),
+                            boardSizeCheckLabel(brand, size),
+                        ),
+                        modifier = Modifier.testTag("board_size_check_look_alike"),
                     )
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(
-                            onClick = onYes,
-                            enabled = ready && state.lit && !state.busy,
-                            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                            modifier = Modifier.weight(1f).testTag("board_size_check_yes"),
-                        ) { Text(stringResource(R.string.board_size_check_yes)) }
-                        OutlinedButton(
-                            onClick = onNo,
-                            enabled = !state.busy,
-                            modifier = Modifier.weight(1f).testTag("board_size_check_no"),
-                        ) { Text(stringResource(R.string.board_size_check_no)) }
-                    }
-                    TextButton(
-                        onClick = onLight,
-                        enabled = ready && !state.busy,
-                        modifier = Modifier.testTag("board_size_check_relight"),
-                    ) { Text(stringResource(R.string.board_size_check_relight)) }
-                    if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    if (state.sendFailed) {
-                        Text(stringResource(R.string.board_size_check_send_failed), color = MaterialTheme.colorScheme.error)
+                }
+                when {
+                    otherBoardConnected -> ConnectPrompt(
+                        stringResource(R.string.board_size_check_other_board, brand.displayName), onConnect,
+                    )
+                    !connected -> ConnectPrompt(stringResource(R.string.board_size_check_connect_hint), onConnect)
+                    else -> {
+                        Text(
+                            stringResource(R.string.board_size_check_question),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(
+                                onClick = onYes,
+                                enabled = ready && state.lit && !state.busy && state.canConfirm,
+                                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                                modifier = Modifier.weight(1f).testTag("board_size_check_yes"),
+                            ) { Text(stringResource(R.string.board_size_check_yes)) }
+                            OutlinedButton(
+                                onClick = onNo,
+                                enabled = !state.busy,
+                                modifier = Modifier.weight(1f).testTag("board_size_check_no"),
+                            ) { Text(stringResource(R.string.board_size_check_no)) }
+                        }
+                        TextButton(
+                            onClick = onLight,
+                            enabled = ready && !state.busy,
+                            modifier = Modifier.testTag("board_size_check_relight"),
+                        ) { Text(stringResource(R.string.board_size_check_relight)) }
+                        if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        if (state.sendFailed) {
+                            Text(stringResource(R.string.board_size_check_send_failed), color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }

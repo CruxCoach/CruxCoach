@@ -66,6 +66,45 @@ class BoardSizeCheckPointsTest {
         assertTrue(moved >= 2, "only $moved of ${points.size} points move")
     }
 
+    /**
+     * Like Tension Board 1: Half Kickboard is Full Wall without one kickboard hold, with the
+     * same LED numbers. Full Wall's six points all sit on holds Half Kickboard has too.
+     */
+    private fun hold(id: Int, x: Long, y: Long, led: Int) = BoardSizeCheckPoint(id, x, y, led)
+    private val halfKickboard = listOf(
+        hold(1, 0, 10, 1), hold(2, 10, 10, 2), hold(3, 20, 10, 3),
+        hold(4, 0, 20, 4), hold(5, 10, 20, 5), hold(6, 20, 20, 6),
+        hold(7, 0, 30, 7), hold(8, 10, 30, 8), hold(9, 20, 30, 9),
+    )
+    private val kickboardHold = hold(10, 10, 5, 10)
+    private val fullWall = halfKickboard + kickboardHold
+
+    private fun movedOn(other: List<BoardSizeCheckPoint>, points: List<BoardSizeCheckPoint>): Int {
+        val holdOfLed = other.associate { it.led to (it.x to it.y) }
+        return points.count { holdOfLed[it.led] != (it.x to it.y) }
+    }
+
+    @Test fun `a size that lights the same six holds as a smaller kit gets a hold the kit lacks`() {
+        assertEquals(0, movedOn(halfKickboard, BoardSizeCheckPoints.plan(fullWall, emptyMap()).points))
+        val plan = BoardSizeCheckPoints.plan(fullWall, mapOf(2 to halfKickboard))
+        assertTrue(kickboardHold in plan.points)
+        assertEquals(1, movedOn(halfKickboard, plan.points))
+        assertTrue(plan.lookAlikes.isEmpty())
+    }
+
+    @Test fun `an LED subset with the same numbers cannot be told apart from the larger kit`() {
+        val plan = BoardSizeCheckPoints.plan(halfKickboard, mapOf(1 to fullWall))
+        assertEquals(setOf(1), plan.lookAlikes)
+        assertEquals(0, movedOn(fullWall, plan.points))
+    }
+
+    @Test fun `sizes the six points already tell apart get no extra hold`() {
+        val renumbered = fullWall.map { it.copy(led = it.led + 100) }
+        val plan = BoardSizeCheckPoints.plan(fullWall, mapOf(3 to renumbered))
+        assertEquals(BoardSizeCheckPoints.plan(fullWall, emptyMap()).points, plan.points)
+        assertTrue(plan.lookAlikes.isEmpty())
+    }
+
     @Test fun `offered only for Aurora-protocol boards with more than one size`() {
         assertTrue(BoardSizeCheckPoints.offered(BoardBrand.KILTER, 2))
         assertTrue(BoardSizeCheckPoints.offered(BoardBrand.TENSION, 3))

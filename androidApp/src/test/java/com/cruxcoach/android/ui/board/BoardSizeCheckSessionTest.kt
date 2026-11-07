@@ -19,24 +19,36 @@ class BoardSizeCheckSessionTest {
         val sizeList: List<BoardSize>,
         var ready: Boolean = true,
         var lightWorks: Boolean = true,
+        val holdsBySize: Map<Int, List<BoardSizeCheckPoint>> = emptyMap(),
     ) : BoardSizeCheckSession.Source {
         val lit = mutableListOf<List<Int>>()
         var clears = 0
         val applied = mutableListOf<Int>()
         override suspend fun sizes(brand: BoardBrand, sizeId: Int) = sizeList
         override suspend fun layoutFor(brand: BoardBrand, size: BoardSize, hint: Int?) = 1
-        override suspend fun points(brand: BoardBrand, size: BoardSize, layoutId: Int?) =
-            // Distinct LEDs per size, so a test can tell which size is on the board.
-            (0 until 3).map { BoardSizeCheckPoint(it, it.toLong(), it.toLong(), size.id.toInt() * 100 + it) }
+        override suspend fun holds(brand: BoardBrand, size: BoardSize, layoutId: Int?) =
+            holdsBySize[size.id.toInt()]
+                // Distinct LEDs per size, so a test can tell which size is on the board.
+                ?: (0 until 3).map { BoardSizeCheckPoint(it, it.toLong(), it.toLong(), size.id.toInt() * 100 + it) }
         override fun ready(brand: BoardBrand) = ready
         override suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean {
             assertTrue(leds.all { it.second == BoardSizeCheckPoints.LIGHT_COLOR })
-            if (lightWorks) lit += leds.map { it.first }
+            if (lightWorks) lit += leds.map { it.first }.sorted()
             return lightWorks
         }
         override suspend fun clear(brand: BoardBrand): Boolean { clears++; return true }
         override suspend fun apply(brand: BoardBrand, layoutId: Int?, sizeId: Int) { applied += sizeId }
     }
+
+    /** Tension Board 1 in small: Half Kickboard (2) and No Kickboard (3) are Full Wall (1) minus rows, same LEDs. */
+    private fun hold(id: Int, x: Long, y: Long) = BoardSizeCheckPoint(id, x, y, id)
+    private val noKickboard = (1..9).map { hold(it, (it - 1) % 3 * 10L, 20L + (it - 1) / 3 * 10L) }
+    private val halfKickboard = noKickboard + listOf(hold(10, 0, 10), hold(11, 20, 10))
+    private val fullWall = halfKickboard + hold(12, 10, 5)
+    private fun tension(ready: Boolean = true) = FakeSource(
+        listOf(size(1), size(2), size(3)), ready = ready,
+        holdsBySize = mapOf(1 to fullWall, 2 to halfKickboard, 3 to noKickboard),
+    )
 
     @Test fun `opening lights the saved size when connected`() = runTest {
         val source = FakeSource(listOf(size(10), size(7)))
@@ -47,6 +59,7 @@ class BoardSizeCheckSessionTest {
         assertEquals(10, state.size?.id?.toInt())
         assertTrue(state.lit)
         assertEquals(listOf(listOf(1000, 1001, 1002)), source.lit)
+        assertNull(state.startsWithLookAlike)
     }
 
     @Test fun `without a board nothing is sent until it connects`() = runTest {
@@ -113,16 +126,76 @@ class BoardSizeCheckSessionTest {
         assertTrue(source.applied.isEmpty())
     }
 
-    @Test fun `switching size without a board clears the old frame`() = runTest {
+    @Test fun `switching size without a board leaves the old frame for closing to clear`() = runTest {
         val source = FakeSource(listOf(size(10), size(7)))
         val session = BoardSizeCheckSession(source)
         session.open(BoardBrand.KILTER, 10, null)
         source.ready = false
+        session.boardGone()
         session.reject()
         session.test(7)
-        assertEquals(1, source.clears)
+        assertEquals(0, source.clears)
         assertFalse(session.state.value.lit)
         assertEquals(7, session.state.value.size?.id?.toInt())
+        session.close()
+        assertEquals(1, source.clears, "the link dropped, but the frame is still on the board")
+    }
+
+    @Test fun `after the link drops the holds are lit again once the board is back`() = runTest {
+        val source = FakeSource(listOf(size(10), size(7)))
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.KILTER, 10, null)
+        source.ready = false
+        session.boardGone()
+        assertFalse(session.state.value.canConfirm && session.state.value.lit)
+        source.ready = true
+        session.lightIfDark()
+        assertEquals(2, source.lit.size)
+        assertTrue(session.state.value.lit)
+    }
+
+    @Test fun `a larger kit with the same LEDs is ruled out before a smaller size can be confirmed`() = runTest {
+        val source = tension()
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.TENSION, 2, null)
+        val start = session.state.value
+        assertEquals(1, start.size?.id?.toInt(), "Half Kickboard starts with Full Wall")
+        assertEquals(2, start.startsWithLookAlike?.id?.toInt())
+        assertTrue(12 in start.points.map { it.placementId }, "Full Wall lights a hold Half Kickboard lacks")
+        assertTrue(start.otherSizes.isEmpty(), "both smaller kits wait until Full Wall is ruled out")
+        session.test(2) // not yet: Full Wall is still open
+        assertEquals(1, session.state.value.size?.id?.toInt())
+
+        session.reject()
+        assertEquals(listOf(2), session.state.value.otherSizes.map { it.id.toInt() })
+        assertNull(session.state.value.startsWithLookAlike)
+        session.test(2)
+        assertTrue(session.state.value.canConfirm)
+        assertEquals(2, session.confirm(applyChange = true))
+        assertFalse(session.state.value.confirmedChange)
+        assertTrue(source.applied.isEmpty())
+    }
+
+    @Test fun `the smallest kit is offered once both larger ones are ruled out`() = runTest {
+        val source = tension()
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.TENSION, 3, null)
+        assertEquals(1, session.state.value.size?.id?.toInt())
+        session.reject()
+        session.test(2)
+        session.reject()
+        assertEquals(listOf(1, 3), session.state.value.otherSizes.map { it.id.toInt() })
+        session.test(3)
+        assertEquals(3, session.confirm(applyChange = true))
+    }
+
+    @Test fun `yes on a size with an open look-alike is refused`() = runTest {
+        val session = BoardSizeCheckSession(tension())
+        session.open(BoardBrand.TENSION, 1, null)
+        // Forced onto Half Kickboard without ruling out Full Wall: the holds cannot tell.
+        val forced = session.state.value.plans.getValue(2)
+        assertFalse(session.state.value.copy(size = forced.size).canConfirm)
+        assertEquals(1, session.confirm(applyChange = false), "Full Wall itself can be confirmed")
     }
 
     @Test fun `a failed send is reported and blocks no retry`() = runTest {

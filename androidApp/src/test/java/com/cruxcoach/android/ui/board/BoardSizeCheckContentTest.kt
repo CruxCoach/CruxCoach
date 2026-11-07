@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -27,9 +28,13 @@ class BoardSizeCheckContentTest {
     private val s7 = BoardSize(7, 1, "12 x 14", 0, 144, 0, 180, null)
     private val points = listOf(BoardSizeCheckPoint(1, 4, 4, 33), BoardSizeCheckPoint(2, 136, 152, 476))
 
-    private fun ask(lit: Boolean = true) = BoardSizeCheckState(
-        brand = BoardBrand.KILTER, currentSizeId = 10, sizes = listOf(s10, s7), size = s10,
-        layoutId = 1, points = points, step = BoardSizeCheckStep.ASK, lit = lit,
+    private fun ask(lit: Boolean = true, lookAlikesOf7: Set<Int> = emptySet()) = BoardSizeCheckState(
+        brand = BoardBrand.KILTER, currentSizeId = 10, sizes = listOf(s10, s7),
+        plans = mapOf(
+            10 to BoardSizeCheckSizePlan(s10, 1, points, emptySet()),
+            7 to BoardSizeCheckSizePlan(s7, 1, points, lookAlikesOf7),
+        ),
+        size = s10, layoutId = 1, points = points, step = BoardSizeCheckStep.ASK, lit = lit,
     )
 
     private fun show(
@@ -84,6 +89,23 @@ class BoardSizeCheckContentTest {
         compose.onNodeWithTag("board_size_check_option_10").assertDoesNotExist()
         compose.onNodeWithTag("board_size_check_option_7").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf("test 7"), events) }
+    }
+
+    @Test fun `a size its holds cannot tell from an open one is neither offered nor confirmable`() {
+        val waiting = ask(lookAlikesOf7 = setOf(10)).copy(step = BoardSizeCheckStep.PICK_OTHER, tried = setOf(10))
+        show(waiting)
+        compose.onNodeWithTag("board_size_check_option_7").assertDoesNotExist()
+    }
+
+    @Test fun `yes stays off for a size with an open look-alike`() {
+        show(ask(lookAlikesOf7 = setOf(10)).copy(size = s7, currentSizeId = 7))
+        compose.onNodeWithTag("board_size_check_yes").assertIsNotEnabled()
+    }
+
+    @Test fun `a check that starts with the larger kit says why`() {
+        show(ask().copy(currentSizeId = 7))
+        compose.onNodeWithText("Prüfe zuerst", substring = true).assertExists()
+        compose.onNodeWithTag("board_size_check_yes").assertIsEnabled()
     }
 
     @Test fun `a changed size reads saved in the climb view and selected in the picker`() {

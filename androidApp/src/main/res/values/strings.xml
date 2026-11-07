@@ -3411,6 +3411,7 @@
     <string name="board_size_check_no_data">The LED data for this board is not loaded yet. Load its catalogue first.</string>
     <string name="board_size_check_done">Done</string>
     <string name="board_size_check_image_cd">%1$s with the holds that should light up</string>
+    <string name="board_size_check_look_alike_first">%1$s lights the same holds as part of %2$s. Check %2$s first.</string>
     <!-- Board picker: how common each option is in gyms, so a rare pick gets a second look -->
     <string name="board_gym_share">In gyms: %1$s</string>
     <string name="board_gym_share_rare">Rare in gyms: %1$s</string>
