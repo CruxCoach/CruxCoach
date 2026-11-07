@@ -52,6 +52,7 @@ import com.cruxcoach.android.spraywall.SprayWallRepository
 import com.cruxcoach.android.spraywall.SprayWithdrawal
 import com.cruxcoach.android.ui.map.MapVenue
 import com.cruxcoach.domain.spraywall.SprayGym
+import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -181,6 +182,7 @@ class SprayWallDetailsViewModel @Inject constructor(
         if (!s.canSave) return
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
+            val before = repository.wall(wallId)
             // Taking a public wall back: tombstones and photos first, while it is still known as public.
             if (storedPublic && s.visibility == SprayWallVisibility.PRIVATE) {
                 val result = withdraw()
@@ -191,7 +193,10 @@ class SprayWallDetailsViewModel @Inject constructor(
                 }
             }
             repository.updateWallDetails(wallId, s.name, s.angle, s.visibility, s.gym)
-            if (s.visibility == SprayWallVisibility.PUBLIC) publisher.publishSoon()
+            if (s.visibility == SprayWallVisibility.PUBLIC) {
+                // A published wall's name, angle and gym are in its head event, which only a new version would send again.
+                if (s.published && before != null && !before.hasDetails(s)) publisher.publishHeadSoon(wallId) else publisher.publishSoon()
+            }
             _events.emit(SprayWallDetailsEvent.Saved)
         }
     }
@@ -233,10 +238,12 @@ class SprayWallDetailsViewModel @Inject constructor(
     /** Saves the name, angle and gym of a wall that stays public; true when any of them changed. */
     private suspend fun keepEdits(s: SprayWallDetailsState): Boolean {
         val wall = repository.wall(wallId) ?: return false
-        if (wall.name == s.name.trim() && wall.angle == s.angle && wall.gym == s.gym) return false
+        if (wall.hasDetails(s)) return false
         repository.updateWallDetails(wallId, s.name, s.angle, SprayWallVisibility.PUBLIC, s.gym)
         return true
     }
+
+    private fun SprayWall.hasDetails(s: SprayWallDetailsState) = name == s.name.trim() && angle == s.angle && gym == s.gym
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
