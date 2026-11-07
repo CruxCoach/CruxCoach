@@ -431,7 +431,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                     }
                     focus.startsWith(PreferenceLearning.CHOSEN_FORMAT) ->
                         circuitToday = focus.removePrefix(PreferenceLearning.CHOSEN_FORMAT) == "circuit"
-                    focus == PreferenceLearning.TRAIN_ANYWAY -> trainAnyway = true
+                    // Also written with a NEXT, which is no "another suggestion" either (phone check 2026-11-07).
+                    focus == PreferenceLearning.TRAIN_ANYWAY -> { trainAnyway = true; chosenKinds++ }
                     focus.startsWith(PreferenceLearning.CIRCUIT_SETUP) -> {
                         val f = focus.removePrefix(PreferenceLearning.CIRCUIT_SETUP).split(",")
                         circuitRounds = f.getOrNull(0)?.toIntOrNull()
@@ -442,7 +443,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             }
             else -> Unit
         }
-        // "Another suggestion" taps: a kind choice also writes a NEXT, so it does not count as one, and neither does a level chip.
+        // "Another suggestion" taps: a kind choice and "train anyway" also write a NEXT, so they do not count as one, and neither
+        // does a level chip.
         variant = (events.count { it.kind == SuggestionEventKind.NEXT && it.feedback != SuggestionFeedback.DISLIKE_EXERCISE &&
             it.feedback != SuggestionFeedback.TOO_EASY && it.feedback != SuggestionFeedback.TOO_HARD } - chosenKinds).coerceAtLeast(0)
     }

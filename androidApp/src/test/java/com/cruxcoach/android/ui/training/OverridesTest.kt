@@ -399,6 +399,7 @@ class OverridesTest : AthleteScreenTest() {
         click("today_train_anyway")
         until { vm.state.value.suggestion?.focus.let { it != null && it != SuggestionFocus.MOBILITY_RECOVERY } }
         assertTrue(SuggestionReason.WEEK_DAYS_DONE !in vm.state.value.suggestion!!.reasons)
+        val trained = vm.state.value.suggestion!!.routine.items.map { it.slug }
         // The button belongs to the recovery card only.
         idle()
         assertTrue(compose.onAllNodesWithTag("today_train_anyway").fetchSemanticsNodes().isEmpty())
@@ -408,6 +409,8 @@ class OverridesTest : AthleteScreenTest() {
         val again = loaded(TodayViewModel(service))
         until { again.state.value.suggestion != null && !again.state.value.asksBeforeSuggestion }
         assertTrue(again.state.value.suggestion!!.focus != SuggestionFocus.MOBILITY_RECOVERY, "${again.state.value.suggestion!!.reasons}")
+        // The same training, not another one: the tap is no "another suggestion" (phone check 2026-11-07).
+        assertEquals(trained, again.state.value.suggestion!!.routine.items.map { it.slug })
     }
 
     @Test
