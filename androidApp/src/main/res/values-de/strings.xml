@@ -3393,7 +3393,7 @@
     <string name="shinywall_connect_desc">Übernimmt dein Shiny-Wall-Logbuch (Begehungen und Projekte), deine Favoriten, Listen und eigenen Routen in CruxCoach. Sterne und Kommentare bleiben in Shiny Wall. Nur lesend: CruxCoach ändert nichts an deinem Shiny-Wall-Konto. Nur Standard-Wände.</string>
     <string name="shinywall_connect_button">Shiny-Wall-Konto verbinden</string>
     <string name="shinywall_login_title">Bei Shiny Wall anmelden</string>
-    <string name="shinywall_login_privacy">Dein Passwort geht nur an den Anmeldedienst von Shiny Wall. CruxCoach speichert auf diesem Handy ein Anmelde-Token, nie das Passwort. Konten mit Google-Anmeldung lassen sich nicht verbinden.</string>
+    <string name="shinywall_login_privacy">Deine E-Mail-Adresse und dein Passwort gehen an die Firebase-Server von Google, über die Shiny Wall die Anmeldung abwickelt. CruxCoach liest deine Shiny-Wall-Daten von denselben Google-Servern und speichert auf diesem Handy nur ein Anmelde-Token, nie das Passwort. Konten mit Google-Anmeldung lassen sich nicht verbinden.</string>
     <string name="shinywall_email_label">E-Mail</string>
     <string name="shinywall_password_label">Passwort</string>
     <string name="shinywall_login_button">Anmelden</string>
