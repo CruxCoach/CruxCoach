@@ -325,13 +325,16 @@ class ShinyWallSyncEngine @Inject constructor(
         return Plan(unique, duplicates, skipped, history.size, nextWatermark, catalogue, merged, deletedHere, placedNow)
     }
 
-    /** True while [attempt]'s row is still as the import wrote it: same attempts, no comment, same date. */
+    /**
+     * True while [attempt]'s row is still as the import wrote it: the same entry, same attempts,
+     * no comment. Not the date: the import writes it in the time zone of the day, so after
+     * travelling the same entry has another one, and the app has no way to change it.
+     */
     private fun asImported(attempt: Placed): Boolean {
         val row = secureDb.bidsQueries.selectBidContent(attempt.uuid).executeAsOneOrNull() ?: return false
         return row.external_id == EXTERNAL_ID_PREFIX + attempt.entry.docId &&
-            row.bid_count == -attempt.sent.toLong() &&
-            row.comment.isNullOrBlank() &&
-            row.climbed_at == attempt.climbedAt
+            row.bid_count == attempt.attempts &&
+            row.comment.isNullOrBlank()
     }
 
     /** Every send with the attempts before it. Attempts no send follows are in no run and stay projects. */

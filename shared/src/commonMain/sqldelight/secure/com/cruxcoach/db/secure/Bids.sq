@@ -62,7 +62,7 @@ DELETE FROM bids WHERE uuid = ?;
 -- An imported attempt as it stands now: the Shiny Wall import replaces one only while
 -- it is still as written (see ShinyWallSyncEngine).
 selectBidContent:
-SELECT bid_count, comment, climbed_at, external_id FROM bids WHERE uuid = ?;
+SELECT bid_count, comment, external_id FROM bids WHERE uuid = ?;
 
 -- ═══ UUID lookups ═══
 

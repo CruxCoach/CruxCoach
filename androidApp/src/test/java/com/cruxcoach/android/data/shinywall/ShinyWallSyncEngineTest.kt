@@ -315,6 +315,22 @@ class ShinyWallSyncEngineTest {
     }
 
     @Test
+    fun a_send_after_travelling_still_replaces_its_attempts() = runTest {
+        // Attempts imported at home, the send imported in another time zone, the same day in both.
+        engine.zone = { java.time.ZoneOffset.UTC }
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:rev1" to 2L), bids())
+
+        engine.zone = { java.time.ZoneOffset.ofHours(9) }
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, revSend))
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 0, again.newAscents to again.newProjects)
+        assertEquals(emptyList(), bids())
+        assertEquals(listOf(Triple("shinywall:history:rev2", 1L, 3L)), ascentCounts())
+    }
+
+    @Test
     fun attempts_of_earlier_days_stay_entries_of_their_own() = runTest {
         engine.zone = { java.time.ZoneOffset.UTC }
         val monday = realEntry("mon", "r3", -3, grade = null, ts = "2026-10-26T18:00:00Z")
