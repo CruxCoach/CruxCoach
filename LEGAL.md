@@ -2,9 +2,9 @@
 
 ## What This Project Is
 
-CruxCoach is a free, open-source climbing app for use with the Kilter Board and MoonBoard climbing training systems. It provides climb browsing, BLE board control, session tracking, logbook management, progress analytics, Kilter account sync, and CruxCoach-community climb authoring. It is non-commercial and maintained by volunteers.
+CruxCoach is a free, open-source climbing app for use with the Kilter Board, MoonBoard and Shiny Wall climbing training systems. It provides climb browsing, BLE board control, session tracking, logbook management, progress analytics, Kilter account sync, and CruxCoach-community climb authoring. It is non-commercial and maintained by volunteers.
 
-The legal reasoning below is written primarily around the Kilter Board (the project's original target). The same principles — factual/functional climb data, community-created content, referential trademark use, and interoperability via BLE — apply equally to the MoonBoard; MoonBoard-specific provenance details are still being documented.
+The legal reasoning below is written primarily around the Kilter Board (the project's original target). The same principles — factual/functional climb data, community-created content, referential trademark use, and interoperability via BLE — apply equally to the MoonBoard and Shiny Wall. MoonBoard-specific provenance details are still being documented; the Shiny Wall catalogue, wall images and geometry have their own sections below.
 
 ---
 
@@ -219,7 +219,7 @@ All data chunks are content-addressed by their SHA-256 hash and served via the B
 
 We respect the climbing community and the people who create climbs.
 
-- Where climb creator information is available, we attribute the creator by their username.
+- Where a catalogue carries the climb creator's username, we show it with the climb. The Shiny Wall catalogue carries no author identifiers, so Shiny Wall routes are shown without a creator.
 - We do not claim authorship of climbs we did not create.
 - If you are the creator of a climb and would like it removed from this project, please open an issue or contact us. We will remove it from all data sources under our control. Note that due to the decentralised nature of the Nostr/Blossom protocol, we cannot guarantee removal from third-party mirrors or relays.
 
@@ -231,7 +231,9 @@ We respect the climbing community and the people who create climbs.
 
 CruxCoach communicates with Kilter Board hardware over standard Bluetooth Low Energy (BLE) using the Nordic UART Service (NUS), a widely documented BLE GATT service. The board hardware openly advertises this service through standard GATT service discovery. Sending BLE packets to a documented, publicly discoverable service on purchased hardware does not reproduce any copyrighted code and does not constitute a restricted act under copyright law.
 
-No technological protection measures are circumvented. NUS is a communication protocol, not an access control mechanism.
+Shiny Wall controllers are reached the same way: the controller exposes a writable GATT characteristic over BLE, without pairing or authentication, and CruxCoach writes to it which holds to light in which colours.
+
+No technological protection measures are circumvented. NUS and the Shiny Wall characteristic are communication channels, not access control mechanisms.
 
 EU and German law independently establish the right to analyse and interoperate with lawfully acquired products:
 - **§ 69e UrhG** (implementing EU Software Directive 2009/24/EC, Article 6): statutory right to decompile for interoperability, non-waivable per § 69g(2) UrhG
