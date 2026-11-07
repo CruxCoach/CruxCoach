@@ -177,6 +177,7 @@ object Routes {
     const val APP_SHARE = "app_share"
     const val LICENSES = "licenses"
     const val HOLD_TYPE_REVIEW = "hold_type_review"
+    const val HOLD_TYPE_CHECK = "hold_type_check"
     const val ASSESSMENT = "assessment"
     const val DEV_CHAT = "dev_chat"
     const val BUG_REPORT = "bug_report?title={title}&description={description}&kilterDiagnostics={kilterDiagnostics}"
@@ -987,6 +988,7 @@ fun CruxCoachNavHost(
                         onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
                         onNavigateToLicenses = { navController.navigate(Routes.LICENSES) },
                         onNavigateToHoldTypeReview = { navController.navigate(Routes.HOLD_TYPE_REVIEW) },
+                        onNavigateToHoldTypeCheck = { navController.navigate(Routes.HOLD_TYPE_CHECK) },
                         onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                         onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
                         onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
@@ -1038,9 +1040,12 @@ fun CruxCoachNavHost(
                 LicensesScreen(onNavigateBack = { navController.popBackStack() })
             }
 
-            // #63: hold-type review, reachable only from the settings of test builds.
+            // #63: hold-type review and label check, reachable only from the settings of test builds.
             composable(Routes.HOLD_TYPE_REVIEW) {
                 com.cruxcoach.android.ui.holdtypes.HoldReviewScreen(onNavigateBack = { navController.popBackStack() })
+            }
+            composable(Routes.HOLD_TYPE_CHECK) {
+                com.cruxcoach.android.ui.holdtypes.HoldCheckScreen(onNavigateBack = { navController.popBackStack() })
             }
 
             composable(Routes.APP_SHARE) {

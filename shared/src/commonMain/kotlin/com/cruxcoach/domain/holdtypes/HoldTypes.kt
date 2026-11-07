@@ -63,7 +63,11 @@ enum class HoldDirection(val wire: String, val ringIndex: Int?) {
 @Serializable
 data class HoldTypeConfidence(val type: Double = 0.0, val direction: Double = 0.0, val size: Double = 0.0)
 
-/** One placement's label, as shipped in `assets/hold_types/<board>.json`. */
+/**
+ * One placement's label, as shipped in `assets/hold_types/<board>.json`. On Aurora boards [placement] is the
+ * placement id, unique on the board. On MoonBoard it is the grid hold id, unique only within a layout (one
+ * MoonBoard generation), so look MoonBoard holds up by layout and hold id.
+ */
 @Serializable
 data class HoldTypeEntry(
     val placement: Int,
@@ -76,8 +80,8 @@ data class HoldTypeEntry(
     val footOnly: Boolean = false,
     val confidence: HoldTypeConfidence = HoldTypeConfidence(),
     val source: Map<String, String> = emptyMap(),
-    /** The board size whose image shows this hold best. */
-    val viewSizeId: Int,
+    /** The board size whose image shows this hold best; 0 on boards without sizes (MoonBoard). */
+    val viewSizeId: Int = 0,
     val footprintCm: List<Double>? = null,
     /** Why the hold is on the review list; empty when it is not. */
     val review: List<String> = emptyList(),
@@ -98,8 +102,15 @@ data class HoldTypeDataset(
     val holds: List<HoldTypeEntry>,
 ) {
     private val byPlacement: Map<Int, HoldTypeEntry> by lazy { holds.associateBy { it.placement } }
+    private val byLayoutPlacement: Map<Pair<Int, Int>, HoldTypeEntry> by lazy {
+        holds.associateBy { it.layoutId to it.placement }
+    }
 
+    /** By placement id, for boards whose placement ids are unique across layouts (Aurora boards). */
     operator fun get(placement: Int): HoldTypeEntry? = byPlacement[placement]
+
+    /** By layout and placement (or MoonBoard hold id); works on every board. */
+    operator fun get(layoutId: Int, placement: Int): HoldTypeEntry? = byLayoutPlacement[layoutId to placement]
 
     companion object {
         const val FORMAT = "cruxcoach-hold-types-v1"
