@@ -12,6 +12,7 @@ no hold types.
 | `grasshopper.json` | Grasshopper | 466 | 466 |
 | `decoy.json` | Decoy | 1,036 | 454 |
 | `soill.json` | So iLL | 340 | 0 (235 with a direction) |
+| `shinywall.json` | Shiny Wall (five wall sizes; the same holds repeat across sizes) | 2,042 | 2,042 |
 
 The files hold labels only, with no images and no climbs. Placements without a usable picture in the app have no
 type. Each such entry says why in `review`.
@@ -28,8 +29,8 @@ type. Each such entry says why in `review`.
 
 `referenceSet` lists the holds of the blind review in test builds.
 
-Aurora boards are keyed by placement id. MoonBoard is keyed by layout (generation) and hold id, and its reference keys
-are `layout * 1000 + hold id`.
+Aurora boards and Shiny Wall are keyed by placement id. MoonBoard is keyed by layout (generation) and hold id, and
+its reference keys are `layout * 1000 + hold id`.
 
 How the labels were made, and how sure they are, is in the reports linked from #63.
 
