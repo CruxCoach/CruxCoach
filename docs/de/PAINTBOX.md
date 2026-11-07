@@ -70,4 +70,4 @@ bisher angezeigt. Speichern, Laden und Boardwechsel sind während des Imports
 gesperrt. Gespeichert werden nur die resultierenden Grifffarben, nicht Quelldatei
 oder Transformation. Das Laden erhält Alpha und Bildausrichtung und begrenzt die
 lange Kante auf 2048 Pixel. Ein unbestätigter Import bleibt bei Konfigurationswechseln
-erhalten, wird bei Prozessbeendigung jedoch verworfen.
+erhalten, wird bei Prozessbeendigung jedoch verworfen. 
