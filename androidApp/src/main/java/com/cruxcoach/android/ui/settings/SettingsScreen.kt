@@ -38,6 +38,7 @@ import com.cruxcoach.android.ui.devcontact.CommunityJoinSection
 import com.cruxcoach.android.ui.devcontact.DevContactSection
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.spraywall.HoldModelStore
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardBrand
 
@@ -70,6 +71,7 @@ internal fun SettingsScreen(
     // training database or the food files (a board-only user never needs them).
     unitsViewModel: UnitsSettingsViewModel? = null,
     foodDataViewModel: FoodDataStorageViewModel? = null,
+    sprayModelViewModel: SprayModelStorageViewModel? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val backupState by backupViewModel.state.collectAsStateWithLifecycle()
@@ -376,6 +378,13 @@ internal fun SettingsScreen(
             SettingsPage.DELETE -> {
                 SettingsSectionCard {
                     FoodDataStorageSection(foodDataViewModel ?: hiltViewModel())
+                }
+                val sprayModels = sprayModelViewModel ?: hiltViewModel<SprayModelStorageViewModel>()
+                val sprayModel by sprayModels.model.collectAsStateWithLifecycle()
+                if (sprayModel == HoldModelStore.State.Ready) {
+                    SettingsSectionCard {
+                        SprayModelStorageSection(onRemove = sprayModels::remove)
+                    }
                 }
                 SettingsSectionCard {
                     DataDeletionSection(

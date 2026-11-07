@@ -1,0 +1,256 @@
+-- FEAT-078 spray walls: a climber's own wall, photographed, with holds marked
+-- on the photo, climbs set on those holds and ascents logged per climb. Lives
+-- in the per-identity encrypted database. Ascents never leave the phone; a
+-- PUBLIC wall, its versions and the climbs on it are also published over
+-- Nostr (photo on Blossom), and other people's public walls can be followed
+-- here (owner_pubkey set, read-only holds).
+--
+-- A wall is a list of immutable versions (photo + holds). Editing holds, a
+-- reset with a new photo and restoring an old version each add one, so every
+-- earlier state stays available. Coordinates are normalised to the version's
+-- photo: x and y run 0..1 across its width and height, radius is a fraction of
+-- its WIDTH. Hold ids are per wall and never reused.
+
+CREATE TABLE spray_wall (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    visibility TEXT NOT NULL DEFAULT 'private',
+    gym_id TEXT,
+    gym_name TEXT,
+    owner_pubkey TEXT,
+    current_version INTEGER NOT NULL,
+    published_version INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- photo_file is shared by the versions on the same photo. photo_sha256 and
+-- photo_url are set once the photo is on Blossom.
+CREATE TABLE spray_wall_version (
+    wall_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    based_on INTEGER,
+    photo_file TEXT NOT NULL,
+    photo_width INTEGER NOT NULL,
+    photo_height INTEGER NOT NULL,
+    photo_sha256 TEXT,
+    photo_url TEXT,
+    hold_count INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (wall_id, version)
+);
+
+CREATE TABLE spray_wall_hold (
+    wall_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    hold_id INTEGER NOT NULL,
+    x REAL NOT NULL,
+    y REAL NOT NULL,
+    radius REAL NOT NULL,
+    -- The hold's shape: HoldOutline's compact ring (base64url), NULL for a circle.
+    outline TEXT,
+    PRIMARY KEY (wall_id, version, hold_id)
+);
+
+-- holds: `12:start;13:hand;…` (see SprayClimbHolds). difficulty is the app's
+-- internal scale (10..34); NULL = not graded yet. author_pubkey NULL = mine.
+CREATE TABLE spray_climb (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    wall_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    difficulty INTEGER,
+    holds TEXT NOT NULL,
+    author_pubkey TEXT,
+    published_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX spray_climb_wall ON spray_climb(wall_id, created_at);
+
+-- Private: never synced or published.
+CREATE TABLE spray_ascent (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    climb_uuid TEXT NOT NULL,
+    wall_id TEXT NOT NULL,
+    is_send INTEGER NOT NULL,
+    tries INTEGER NOT NULL DEFAULT 1,
+    difficulty INTEGER,
+    comment TEXT,
+    climbed_at TEXT NOT NULL
+);
+
+CREATE INDEX spray_ascent_climb ON spray_ascent(climb_uuid, climbed_at);
+CREATE INDEX spray_ascent_wall ON spray_ascent(wall_id, is_send);
+
+-- ═══ Walls ═══
+
+insertWall:
+INSERT INTO spray_wall(id, name, angle, visibility, gym_id, gym_name, owner_pubkey, current_version, published_version, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateWallDetails:
+UPDATE spray_wall SET name = ?, angle = ?, visibility = ?, gym_id = ?, gym_name = ?, updated_at = ? WHERE id = ?;
+
+setCurrentVersion:
+UPDATE spray_wall SET current_version = ?, updated_at = ? WHERE id = ?;
+
+setPublishedVersion:
+UPDATE spray_wall SET published_version = ? WHERE id = ?;
+
+touchWall:
+UPDATE spray_wall SET updated_at = ? WHERE id = ?;
+
+selectWall:
+SELECT * FROM spray_wall WHERE id = ?;
+
+selectWalls:
+SELECT * FROM spray_wall ORDER BY updated_at DESC;
+
+selectWallsNeedingPublish:
+SELECT * FROM spray_wall
+WHERE owner_pubkey IS NULL AND visibility = 'public' AND COALESCE(published_version, 0) < current_version;
+
+countClimbsPerWall:
+SELECT wall_id, COUNT(*) AS climbs FROM spray_climb GROUP BY wall_id;
+
+deleteWall:
+DELETE FROM spray_wall WHERE id = ?;
+
+-- ═══ Versions ═══
+
+insertVersion:
+INSERT INTO spray_wall_version(wall_id, version, kind, based_on, photo_file, photo_width, photo_height, photo_sha256, photo_url, hold_count, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectVersions:
+SELECT * FROM spray_wall_version WHERE wall_id = ? ORDER BY version DESC;
+
+selectVersion:
+SELECT * FROM spray_wall_version WHERE wall_id = ? AND version = ?;
+
+setVersionHoldCount:
+UPDATE spray_wall_version SET hold_count = ? WHERE wall_id = ? AND version = ?;
+
+setPhotoBlob:
+UPDATE spray_wall_version SET photo_sha256 = ?, photo_url = ? WHERE wall_id = ? AND photo_file = ?;
+
+-- A withdrawn wall's photos were deleted from Blossom: publishing it again uploads them anew.
+clearPhotoBlobs:
+UPDATE spray_wall_version SET photo_sha256 = NULL, photo_url = NULL WHERE wall_id = ?;
+
+-- Another public wall of mine still shows this photo on Blossom.
+countPublishedPhotoUses:
+SELECT COUNT(*) FROM spray_wall_version v JOIN spray_wall w ON w.id = v.wall_id
+WHERE v.photo_sha256 = ? AND v.wall_id != ? AND w.owner_pubkey IS NULL
+  AND w.visibility = 'public' AND w.published_version IS NOT NULL;
+
+selectPhotoFiles:
+SELECT DISTINCT photo_file FROM spray_wall_version WHERE wall_id = ?;
+
+countPhotoFileUses:
+SELECT COUNT(*) FROM spray_wall_version WHERE photo_file = ?;
+
+deleteVersion:
+DELETE FROM spray_wall_version WHERE wall_id = ? AND version = ?;
+
+deleteVersionsForWall:
+DELETE FROM spray_wall_version WHERE wall_id = ?;
+
+-- ═══ Holds ═══
+
+selectHolds:
+SELECT * FROM spray_wall_hold WHERE wall_id = ? AND version = ? ORDER BY hold_id;
+
+selectAllHolds:
+SELECT * FROM spray_wall_hold WHERE wall_id = ? ORDER BY version, hold_id;
+
+maxHoldId:
+SELECT COALESCE(MAX(hold_id), 0) FROM spray_wall_hold WHERE wall_id = ?;
+
+insertHold:
+INSERT INTO spray_wall_hold(wall_id, version, hold_id, x, y, radius, outline) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteHoldsOfVersion:
+DELETE FROM spray_wall_hold WHERE wall_id = ? AND version = ?;
+
+deleteHoldsForWall:
+DELETE FROM spray_wall_hold WHERE wall_id = ?;
+
+-- ═══ Climbs ═══
+
+insertClimb:
+INSERT INTO spray_climb(uuid, wall_id, version, name, description, difficulty, holds, author_pubkey, published_at, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateClimb:
+UPDATE spray_climb SET version = ?, name = ?, description = ?, difficulty = ?, holds = ?, published_at = NULL, updated_at = ? WHERE uuid = ?;
+
+replaceRemoteClimb:
+UPDATE spray_climb SET version = ?, name = ?, description = ?, difficulty = ?, holds = ?, updated_at = ? WHERE uuid = ? AND author_pubkey = ?;
+
+setClimbPublished:
+UPDATE spray_climb SET published_at = ? WHERE uuid = ? AND updated_at = ?;
+
+selectClimbs:
+SELECT * FROM spray_climb WHERE wall_id = ? ORDER BY created_at DESC;
+
+selectUnpublishedClimbs:
+SELECT * FROM spray_climb WHERE wall_id = ? AND author_pubkey IS NULL AND published_at IS NULL;
+
+selectClimb:
+SELECT * FROM spray_climb WHERE uuid = ?;
+
+deleteClimb:
+DELETE FROM spray_climb WHERE uuid = ?;
+
+deleteClimbsForWall:
+DELETE FROM spray_climb WHERE wall_id = ?;
+
+-- ═══ Ascents ═══
+
+insertAscent:
+INSERT INTO spray_ascent(uuid, climb_uuid, wall_id, is_send, tries, difficulty, comment, climbed_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAscentsForClimb:
+SELECT * FROM spray_ascent WHERE climb_uuid = ? ORDER BY climbed_at DESC;
+
+sendCountsForWall:
+SELECT climb_uuid, COUNT(*) AS sends FROM spray_ascent
+WHERE wall_id = ? AND is_send = 1
+GROUP BY climb_uuid;
+
+deleteAscent:
+DELETE FROM spray_ascent WHERE uuid = ?;
+
+deleteAscentsForClimb:
+DELETE FROM spray_ascent WHERE climb_uuid = ?;
+
+deleteAscentsForWall:
+DELETE FROM spray_ascent WHERE wall_id = ?;
+
+-- ═══ Publishing and other people's walls ═══
+
+updateRemoteWall:
+UPDATE spray_wall SET name = ?, angle = ?, visibility = ?, gym_id = ?, gym_name = ?, current_version = ?, published_version = ?, updated_at = ?
+WHERE id = ? AND owner_pubkey = ?;
+
+setRemoteWallVisibility:
+UPDATE spray_wall SET visibility = ?, updated_at = ? WHERE id = ? AND owner_pubkey = ?;
+
+selectPublicWalls:
+SELECT * FROM spray_wall WHERE visibility = 'public' ORDER BY updated_at DESC;
+
+selectPhotoWithHash:
+SELECT photo_file, photo_width, photo_height FROM spray_wall_version WHERE photo_sha256 = ? LIMIT 1;
+
+clearClimbsPublished:
+UPDATE spray_climb SET published_at = NULL WHERE wall_id = ? AND author_pubkey IS NULL;
+
+deleteRemoteClimb:
+DELETE FROM spray_climb WHERE uuid = ? AND author_pubkey = ?;

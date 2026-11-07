@@ -1,0 +1,15 @@
+{
+  "uniqueId": "com.microsoft.onnxruntime:onnxruntime-android",
+  "artifactVersion": "1.31.1",
+  "name": "ONNX Runtime",
+  "description": "Runs the spray-wall hold model on the phone (FEAT-078). Its telemetry to Microsoft is switched off and its start-up provider removed. The licence entry reproduces the release's third-party notices.",
+  "website": "https://github.com/microsoft/onnxruntime",
+  "developers": [
+    {
+      "name": "Microsoft Corporation"
+    }
+  ],
+  "licenses": [
+    "onnxruntime-MIT"
+  ]
+}

@@ -21,6 +21,8 @@
         <exclude domain="file" path="datastore"/>
         <exclude domain="file" path="crash_log.txt"/>
         <exclude domain="file" path="crash_log_prev.txt"/>
+        <exclude domain="file" path="spray_walls"/>
+        <exclude domain="file" path="hold_model"/>
         <!-- All databases, including dynamic identity-scoped SQLCipher DBs. -->
         <exclude domain="database" path="."/>
         <!-- FEAT-069 photo model (2–4 GB, re-downloadable) and its device-specific state. -->
@@ -44,6 +46,8 @@
         <exclude domain="file" path="datastore"/>
         <exclude domain="file" path="crash_log.txt"/>
         <exclude domain="file" path="crash_log_prev.txt"/>
+        <exclude domain="file" path="spray_walls"/>
+        <exclude domain="file" path="hold_model"/>
         <exclude domain="database" path="."/>
         <exclude domain="external" path="foodvision"/>
         <exclude domain="sharedpref" path="foodvision.xml"/>
