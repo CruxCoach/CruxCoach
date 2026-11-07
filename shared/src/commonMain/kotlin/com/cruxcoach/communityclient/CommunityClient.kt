@@ -5,18 +5,19 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -60,6 +61,9 @@ class CommunityClient(
     /** Profiles fetched so far, by pubkey. Ask for more with [requestProfiles]. */
     val profiles: StateFlow<Map<String, CommunityProfile>> = _profiles.asStateFlow()
 
+    /** The relay's own key once NIP-11 named it. Nothing relay-signed is trusted before. */
+    private val relayKey = MutableStateFlow<String?>(null)
+
     private var watcher: Job? = null
     private var startedAt: Long = 0
     private val roomsLock = Mutex()
@@ -70,34 +74,77 @@ class CommunityClient(
         if (watcher != null) return
         startedAt = elapsedMillis()
         watcher = scope.launch {
-            // The relay key lets the session drop relay-only kinds signed by anyone else.
-            runCatching { api.relayInfo() }.getOrNull()?.relayPubkey?.let { session.relayPubkey = it }
-            timing("relay_info")
+            // The relay key comes over HTTP while the socket signs in; relay-only kinds wait for it.
+            launch {
+                val key = fetchRelayKey()
+                session.relayPubkey = key
+                relayKey.value = key
+                timing("relay_info")
+            }
             session.start()
             launch {
-                session.state.collect { state ->
-                    if (state == SessionState.Ready) {
-                        timing("signed_in")
-                        refreshRooms()
+                combine(session.state, relayKey) { state, key -> state == SessionState.Ready && key != null }
+                    .distinctUntilChanged()
+                    .collect { ready ->
+                        if (ready) {
+                            timing("signed_in")
+                            refreshRooms()
+                        }
                     }
-                }
             }
             launch {
-                session.state.first { it == SessionState.Ready }
+                awaitReady()
                 session.subscribe(listOf(CommunityFilters.myMembershipNotices(me, clock.nowSeconds())))
                     .collect { item -> if (item is SubscriptionItem.Event) refreshRooms() }
             }
         }
     }
 
+    /** Ends the client for good: the socket closes and the session's coroutine ends. */
     fun stop() {
         watcher?.cancel()
         watcher = null
-        session.stop()
+        session.close()
+    }
+
+    /** Disconnects while nobody looks (the app is in the background); [resume] reconnects. */
+    fun pause() = session.stop()
+
+    fun resume() = session.start()
+
+    /** Signed in, and the relay's key is known. */
+    private suspend fun awaitReady() {
+        relayKey.first { it != null }
+        session.state.first { it == SessionState.Ready }
+    }
+
+    /**
+     * NIP-11 `self`, retried until the relay names it. A relay without a stable key
+     * cannot prove which room lists and notices are its own, so the client waits.
+     */
+    private suspend fun fetchRelayKey(): String {
+        var attempt = 0
+        while (true) {
+            val key = try {
+                api.relayInfo().relayPubkey
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            if (key != null) return key
+            _rooms.value = _rooms.value.copy(loading = false, error = "the community server did not name its key; trying again")
+            delay(RELAY_KEY_RETRY_SECONDS[minOf(attempt++, RELAY_KEY_RETRY_SECONDS.lastIndex)] * 1000)
+        }
     }
 
     /** Loads my memberships, their metadata and the open-room directory. */
-    suspend fun refreshRooms() = roomsLock.withLock {
+    suspend fun refreshRooms() {
+        awaitReady()
+        roomsLock.withLock { loadRooms() }
+    }
+
+    private suspend fun loadRooms() {
         _rooms.value = _rooms.value.copy(loading = true, error = null)
         try {
             // The open-room directory does not depend on my memberships: fetch both at once.
@@ -121,7 +168,11 @@ class CommunityClient(
             val first = _rooms.value.firstListAfterSeconds ?: ((elapsedMillis() - startedAt) / 1000.0)
             _rooms.value = RoomsState(list, loading = false, error = null, firstListAfterSeconds = first)
         } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+            if (e is kotlinx.coroutines.CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) {
+                // The caller left (e.g. a screen's scope); the list must not keep spinning.
+                _rooms.value = _rooms.value.copy(loading = false)
+                throw e
+            }
             _rooms.value = _rooms.value.copy(loading = false, error = e.message ?: "loading rooms failed")
         }
     }
@@ -183,7 +234,7 @@ class CommunityClient(
             state = state.update().copy(messages = buffer.messages(), threads = buffer.threadSummaries())
             trySend(state)
         }
-        session.state.first { it == SessionState.Ready }
+        awaitReady()
         // Live first, so nothing falls between the stored page and the live stream.
         val live = launch {
             session.subscribe(listOf(CommunityFilters.streamLive(channelId, clock.nowSeconds() - 2))).collect { item ->
@@ -207,43 +258,60 @@ class CommunityClient(
 
     /**
      * A thread: its head and every reply, live. The head lookup runs next to the
-     * reply subscription, so a slow lookup never holds the replies back.
+     * reply subscription, so a slow lookup never holds the replies back. Edits,
+     * deletions and reactions of a reply tag only that reply, so they come from a
+     * lookup by the replies' ids and from the room's live aux stream.
      */
-    fun thread(channelId: String, rootId: String): Flow<ThreadView> = flow {
-        session.state.first { it == SessionState.Ready }
+    fun thread(channelId: String, rootId: String): Flow<ThreadView> = channelFlow {
+        awaitReady()
         val buffer = TimelineBuffer(channelId, topLevelOnly = false)
+        val lock = Mutex()
         var repliesLoaded = false
         var rootLoaded = false
         var error: String? = null
-        val head = flow {
+        suspend fun update(change: () -> Boolean) = lock.withLock {
+            if (change() && repliesLoaded) {
+                // Every row of the reply subscription tags the root, so all but the root are replies.
+                val all = buffer.messages()
+                send(ThreadView(all.firstOrNull { it.id == rootId }, all.filter { it.id != rootId }, loading = !rootLoaded, error = error))
+            }
+        }
+        launch {
             val event = try {
                 session.query(listOf(CommunityFilters.threadRoot(channelId, rootId)), ROOT_LOOKUP_TIMEOUT_MS).firstOrNull()
             } catch (e: CommunityException) {
                 null
             }
-            emit(ThreadInput.Head(event))
+            update { rootLoaded = true; event?.let { buffer.add(listOf(it)) }; true }
         }
-        val replies = session.subscribe(listOf(CommunityFilters.thread(channelId, rootId))).map { ThreadInput.Item(it) }
-        merge(head, replies).collect { input ->
-            val changed = when (input) {
-                is ThreadInput.Head -> { rootLoaded = true; input.event?.let { buffer.add(listOf(it)) }; true }
-                is ThreadInput.Item -> when (val item = input.item) {
-                    is SubscriptionItem.Event -> buffer.add(listOf(item.event))
-                    SubscriptionItem.Eose -> { repliesLoaded = true; true }
-                    is SubscriptionItem.Closed -> { repliesLoaded = true; error = item.reason; true }
-                }
+        launch {
+            session.subscribe(listOf(CommunityFilters.roomAuxLive(channelId, clock.nowSeconds() - 2))).collect { item ->
+                if (item is SubscriptionItem.Event) update { buffer.add(listOf(item.event)) }
             }
-            if (changed && repliesLoaded) {
-                // Every row of the subscription tags the root, so all but the root are replies.
-                val all = buffer.messages()
-                emit(ThreadView(all.firstOrNull { it.id == rootId }, all.filter { it.id != rootId }, loading = !rootLoaded, error = error))
+        }
+        session.subscribe(listOf(CommunityFilters.thread(channelId, rootId))).collect { item ->
+            when (item) {
+                is SubscriptionItem.Event -> update { buffer.add(listOf(item.event)) }
+                SubscriptionItem.Eose -> {
+                    update { repliesLoaded = true; true }
+                    val ids = lock.withLock { buffer.messages().map { it.id }.filter { it != rootId } }
+                    if (ids.isNotEmpty()) launch {
+                        val aux = try {
+                            ids.chunked(AUX_LOOKUP_CHUNK).flatMap { session.query(listOf(CommunityFilters.auxFor(channelId, it))) }
+                        } catch (e: CommunityException) {
+                            emptyList()
+                        }
+                        update { buffer.add(aux) }
+                    }
+                }
+                is SubscriptionItem.Closed -> update { repliesLoaded = true; error = item.reason; true }
             }
         }
     }.conflate()
 
     /** A forum room: topics, newest first, and how many comments each has. */
     fun forum(channelId: String): Flow<ForumView> = callbackFlow {
-        session.state.first { it == SessionState.Ready }
+        awaitReady()
         val posts = LinkedHashMap<String, CommunityEvent>()
         val comments = HashMap<String, MutableSet<String>>()
         var loaded = false
@@ -272,14 +340,14 @@ class CommunityClient(
     }.conflate()
 }
 
-/** What the thread view merges: the head lookup's answer and the reply subscription. */
-private sealed interface ThreadInput {
-    data class Head(val event: CommunityEvent?) : ThreadInput
-    data class Item(val item: SubscriptionItem) : ThreadInput
-}
-
 /** How long a thread waits for its head before showing the replies without it. */
 private const val ROOT_LOOKUP_TIMEOUT_MS = 8_000L
+
+/** Reply ids per aux lookup, to keep one filter small. */
+private const val AUX_LOOKUP_CHUNK = 200
+
+/** Waits between tries to learn the relay's key. */
+private val RELAY_KEY_RETRY_SECONDS = listOf(1L, 2, 5, 10, 30, 60)
 
 /**
  * The join steps before the first connection: read the rules, accept them, claim

@@ -71,7 +71,10 @@ class CommunitySession(
     private val _state = MutableStateFlow<SessionState>(SessionState.Idle)
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
-    /** The relay's own key (NIP-11 `self`); relay-signed kinds from another key are dropped. */
+    /**
+     * The relay's own key (NIP-11 `self`). Relay-signed kinds count only when this key
+     * signed them; while it is unknown they are dropped.
+     */
     @kotlin.concurrent.Volatile
     var relayPubkey: String? = null
 
@@ -82,6 +85,7 @@ class CommunitySession(
         data class Text(val gen: Int, val text: String) : Msg
         data class Lost(val gen: Int, val reason: String) : Msg
         data class AuthSigned(val gen: Int, val event: CommunityEvent) : Msg
+        data class AuthSignFailed(val gen: Int, val reason: String) : Msg
         data class AuthTimeout(val gen: Int) : Msg
         data class Retry(val gen: Int) : Msg
         data class Subscribe(val id: String, val filters: List<RelayFilter>, val out: (SubscriptionItem) -> Unit) : Msg
@@ -111,8 +115,15 @@ class CommunitySession(
         inbox.trySend(Msg.Start)
     }
 
+    /** Disconnects; [start] connects again and resends the open subscriptions. */
     fun stop() {
         inbox.trySend(Msg.Stop)
+    }
+
+    /** Disconnects for good and ends the session's coroutine. The session cannot be started again. */
+    fun close() {
+        inbox.trySend(Msg.Stop)
+        inbox.close()
     }
 
     /**
@@ -188,6 +199,11 @@ class CommunitySession(
             is Msg.AuthSigned -> if (msg.gen == generation && _state.value == SessionState.Authenticating) {
                 authEventId = msg.event.id
                 socket?.send(ClientFrames.auth(msg.event))
+            }
+            is Msg.AuthSignFailed -> if (msg.gen == generation && _state.value == SessionState.Authenticating) {
+                // Close this socket for good, so its later close is not counted as a second loss.
+                disconnect(msg.reason)
+                scheduleRetry(msg.reason)
             }
             is Msg.AuthTimeout -> if (msg.gen == generation && _state.value == SessionState.Authenticating) {
                 disconnect("no authentication from the relay")
@@ -276,7 +292,7 @@ class CommunitySession(
                 scope.launch {
                     val signed = runCatching { signer.sign(template) }.getOrNull()
                     if (signed != null) inbox.trySend(Msg.AuthSigned(gen, signed))
-                    else inbox.trySend(Msg.Lost(gen, "signing the sign-in was refused"))
+                    else inbox.trySend(Msg.AuthSignFailed(gen, "signing the sign-in was refused"))
                 }
             }
             is RelayFrame.Ok -> {
@@ -319,10 +335,7 @@ class CommunitySession(
     }
 
     private fun accepts(event: CommunityEvent): Boolean {
-        if (event.kind in CommunityKinds.RELAY_SIGNED) {
-            val relay = relayPubkey
-            if (relay != null && event.pubkey != relay) return false
-        }
+        if (event.kind in CommunityKinds.RELAY_SIGNED && event.pubkey != relayPubkey) return false
         return runCatching { verifier.verify(event) }.getOrDefault(false)
     }
 

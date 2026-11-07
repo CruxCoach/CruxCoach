@@ -40,6 +40,7 @@
     <string name="community_client_error_rate_limited">Zu viele Versuche. Warte eine Minute und versuche es dann noch einmal.</string>
     <string name="community_client_error_sign_refused">Das Unterschreiben wurde abgelehnt, deshalb konnte die Community deinen Schlüssel nicht prüfen.</string>
     <string name="community_client_error_network">Die Community ist nicht erreichbar. Prüfe deine Verbindung.</string>
+    <string name="community_client_error_server">Die Community hat diesen Schritt nicht angenommen. Öffne den Einladungslink noch einmal, um die aktuellen Regeln zu laden.</string>
 
     <string name="community_client_section_rooms">Räume</string>
     <string name="community_client_section_forums">Foren</string>

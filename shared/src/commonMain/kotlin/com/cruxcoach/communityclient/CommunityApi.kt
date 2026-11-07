@@ -102,7 +102,7 @@ class CommunityApi(
  * Returns null when the page is unusable: no bounds, several, or bounds for another request.
  */
 fun splitWindowPage(events: List<CommunityEvent>, channelId: String, cursor: WindowCursor?, relayPubkey: String?): WindowPage? {
-    fun fromRelay(e: CommunityEvent) = relayPubkey == null || e.pubkey == relayPubkey
+    fun fromRelay(e: CommunityEvent) = relayPubkey != null && e.pubkey == relayPubkey
     val boundsEvents = events.filter { it.kind == CommunityKinds.WINDOW_BOUNDS }
     if (boundsEvents.size != 1 || !fromRelay(boundsEvents[0])) return null
     val bounds = WindowBounds.fromEvent(boundsEvents[0], channelId, cursor) ?: return null

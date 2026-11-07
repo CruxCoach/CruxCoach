@@ -8,14 +8,18 @@ import com.cruxcoach.communityclient.CommunityEndpoint
 import com.cruxcoach.communityclient.CommunityEventTemplates
 import com.cruxcoach.communityclient.CommunityInvite
 import com.cruxcoach.communityclient.CommunityJoin
+import com.cruxcoach.communityclient.CommunityKinds
 import com.cruxcoach.communityclient.SessionState
 import com.cruxcoach.communityclient.ThreadRef
+import com.cruxcoach.communityclient.ThreadView
 import com.cruxcoach.communityclient.UnixClock
 import com.cruxcoach.communityclient.UnsignedEvent
 import com.cruxcoach.communityclient.sha256Hex
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -111,6 +115,22 @@ class CommunityServerIntegrationTest {
             assertEquals(ownerMessage.id, thread.root?.id)
             val counted = withTimeout(30_000) { joiner.streamTimeline(streamId).first { s -> (s.threads[ownerMessage.id]?.replyCount ?: 0) >= 1 } }
             assertTrue(counted.messages.none { it.id == reply.id }, "replies stay out of the channel timeline")
+
+            // A reaction tags only the reply: the open thread shows it live, a thread opened later finds it too.
+            fun ThreadView.reacted() = replies.firstOrNull { it.id == reply.id }?.reactions?.containsKey("🧗") == true
+            val replyShown = CompletableDeferred<Unit>()
+            val liveReaction = async {
+                withTimeout(30_000) {
+                    joiner.thread(streamId, ownerMessage.id).first { t ->
+                        if (t.replies.any { it.id == reply.id }) replyShown.complete(Unit)
+                        t.reacted()
+                    }
+                }
+            }
+            withTimeout(30_000) { replyShown.await() }
+            assertAccepted(owner.session.publish(UnsignedEvent(clock.nowSeconds(), CommunityKinds.REACTION, listOf(listOf("e", reply.id)), "🧗")))
+            liveReaction.await()
+            withTimeout(30_000) { joiner.thread(streamId, ownerMessage.id).first { it.reacted() } }
 
             // Forum: a topic from the joiner, a comment from the owner, seen live.
             val post = joiner.createForumPost(forumId, "Topic from the app\n\nDetails.").also { assertAccepted(it) }.event

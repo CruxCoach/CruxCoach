@@ -68,6 +68,7 @@ class CommunitySessionTest {
         val factory = FakeSocketFactory()
         val signer = FakeSigner()
         val (session, scope) = newSession(factory, signer)
+        session.relayPubkey = CommunityTestEvents.RELAY
         val items = async { session.subscribe(listOf(CommunityFilters.channelDirectory())).take(2).toList() }
         session.start()
         runCurrent()
@@ -192,6 +193,57 @@ class CommunitySessionTest {
         factory.last.listener.onMessage("""["EOSE","$subId"]""")
         runCurrent()
         assertEquals(listOf(SubscriptionItem.Event(CommunityTestEvents.groupMetadata), SubscriptionItem.Eose), got.await())
+        scope.cancel()
+    }
+
+    @Test
+    fun relaySignedKinds_areDroppedWhileTheRelayKeyIsUnknown() = runTest {
+        val factory = FakeSocketFactory()
+        val signer = FakeSigner()
+        val (session, scope) = newSession(factory, signer)
+        session.start()
+        runCurrent()
+        factory.last.listener.onOpen()
+        factory.last.listener.onMessage("""["AUTH","c"]""")
+        runCurrent()
+        factory.last.listener.onMessage("""["OK","${signer.signed.last().id}",true,""]""")
+        runCurrent()
+        val got = async { session.subscribe(listOf(CommunityFilters.channelDirectory())).take(2).toList() }
+        runCurrent()
+        val subId = factory.last.frames("REQ").last().substringAfter("[\"REQ\",\"").substringBefore('"')
+        // Without NIP-11 `self` nobody can prove a room list is the relay's: fail closed.
+        factory.last.listener.onMessage("""["EVENT","$subId",${CommunityTestEvents.groupMetadata.toJson()}]""")
+        factory.last.listener.onMessage("""["EVENT","$subId",${CommunityTestEvents.message.toJson()}]""")
+        factory.last.listener.onMessage("""["EOSE","$subId"]""")
+        runCurrent()
+        assertEquals(listOf(SubscriptionItem.Event(CommunityTestEvents.message), SubscriptionItem.Eose), got.await())
+        scope.cancel()
+    }
+
+    @Test
+    fun refusedSignIn_closesTheSocket_andRetriesOnce() = runTest {
+        val factory = FakeSocketFactory()
+        val refusing = object : CommunitySigner {
+            override val pubkey = CommunityTestEvents.BOB
+            override suspend fun sign(event: UnsignedEvent): CommunityEvent = throw IllegalStateException("refused")
+        }
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val session = CommunitySession(endpoint, factory, refusing, { true }, { 1_000 }, scope)
+        session.start()
+        runCurrent()
+        val first = factory.last
+        first.listener.onOpen()
+        first.listener.onMessage("""["AUTH","c"]""")
+        runCurrent()
+        assertTrue(first.closed, "the socket of a refused sign-in is closed right away")
+        assertEquals(1L, assertIs<SessionState.Offline>(session.state.value).retryInSeconds)
+        // The relay's own close of that socket arrives later and must not count as a second loss.
+        first.listener.onClosed(RuntimeException("auth timeout"))
+        runCurrent()
+        assertEquals(1L, assertIs<SessionState.Offline>(session.state.value).retryInSeconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(2, factory.sockets.size)
         scope.cancel()
     }
 

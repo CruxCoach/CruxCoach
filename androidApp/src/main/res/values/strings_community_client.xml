@@ -40,6 +40,7 @@
     <string name="community_client_error_rate_limited">Too many tries. Wait a minute and try again.</string>
     <string name="community_client_error_sign_refused">Signing was refused, so the community could not check your key.</string>
     <string name="community_client_error_network">The community could not be reached. Check your connection.</string>
+    <string name="community_client_error_server">The community did not accept this step. Open the invite link again to load the current rules.</string>
 
     <string name="community_client_section_rooms">Rooms</string>
     <string name="community_client_section_forums">Forums</string>

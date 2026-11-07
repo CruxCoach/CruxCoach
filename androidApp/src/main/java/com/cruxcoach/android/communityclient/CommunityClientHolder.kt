@@ -3,6 +3,9 @@ package com.cruxcoach.android.communityclient
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.communityclient.CommunityApi
@@ -15,7 +18,10 @@ import com.vitorpamplona.quartz.nip19Bech32.toNpub
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,7 +62,40 @@ class CommunityClientHolder @Inject constructor(
     val setup: StateFlow<CommunitySetup> = _setup.asStateFlow()
 
     private var client: CommunityClient? = null
+    private var clientScope: CoroutineScope? = null
     private var clientKey: Pair<CommunityEndpoint, String>? = null
+
+    /**
+     * The app is on screen. A minute after it left the screen the session disconnects
+     * (no notifications in the preview). The minute covers a trip to Amber for a signature.
+     */
+    private var foreground = true
+    private var pauseJob: Job? = null
+
+    init {
+        scope.launch(Dispatchers.Main) {
+            ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) = setForeground(true)
+                override fun onStop(owner: LifecycleOwner) = setForeground(false)
+            })
+        }
+    }
+
+    @Synchronized
+    private fun setForeground(value: Boolean) {
+        foreground = value
+        pauseJob?.cancel()
+        pauseJob = null
+        val current = client ?: return
+        if (value) current.resume() else schedulePause(current)
+    }
+
+    private fun schedulePause(target: CommunityClient) {
+        pauseJob = scope.launch {
+            delay(BACKGROUND_GRACE_MS)
+            synchronized(this@CommunityClientHolder) { if (!foreground && client === target) target.pause() }
+        }
+    }
 
     /** The identity that signs, for display. */
     val pubkey: String get() = signer.pubkey
@@ -96,6 +135,9 @@ class CommunityClientHolder @Inject constructor(
         val key = endpoint to signer.pubkey
         if (clientKey != key) {
             closeClient()
+            // Its own scope, so closing the client ends everything it started.
+            val ownScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            clientScope = ownScope
             client = CommunityClient(
                 endpoint = endpoint,
                 socketFactory = sockets,
@@ -103,13 +145,14 @@ class CommunityClientHolder @Inject constructor(
                 signer = signer,
                 verifier = QuartzEventVerifier,
                 clock = clock,
-                scope = scope,
+                scope = ownScope,
                 elapsedMillis = { SystemClock.elapsedRealtime() },
                 onTiming = { step, millis -> Log.i(TAG, "event=timing step=$step ms=$millis") },
             ).also { started ->
                 started.start()
+                if (!foreground) schedulePause(started)
                 // Time to the first room list, for the spike report (logcat only, no content).
-                scope.launch {
+                ownScope.launch {
                     val seconds = started.rooms.first { it.firstListAfterSeconds != null }.firstListAfterSeconds
                     Log.i(TAG, "event=first_room_list seconds=$seconds")
                 }
@@ -126,7 +169,11 @@ class CommunityClientHolder @Inject constructor(
     @Synchronized
     private fun closeClient() {
         client?.stop()
+        // Give the session a moment to close its socket, then end whatever the client still runs.
+        val closing = clientScope
+        closing?.launch { delay(CLOSE_GRACE_MS); closing.cancel() }
         client = null
+        clientScope = null
         clientKey = null
     }
 
@@ -150,6 +197,8 @@ class CommunityClientHolder @Inject constructor(
         val isAvailable: Boolean get() = BuildConfig.DEBUG
 
         private const val TAG = "CommunityClient"
+        private const val CLOSE_GRACE_MS = 2_000L
+        private const val BACKGROUND_GRACE_MS = 60_000L
         private const val PREFS = "community_client"
         private const val KEY_ENABLED = "enabled"
         private const val KEY_HOST = "host"

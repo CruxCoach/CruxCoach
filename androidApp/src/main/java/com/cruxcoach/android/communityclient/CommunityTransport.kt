@@ -26,7 +26,7 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * OkHttp WebSocket for the community relay. The connection stays open while the
- * community screens are in use, so it has no read timeout and pings instead.
+ * app is in the foreground, so it has no read timeout and pings instead.
  */
 internal class OkHttpCommunitySocketFactory(base: OkHttpClient) : CommunitySocketFactory {
     private val client = base.newBuilder()

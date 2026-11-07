@@ -7,6 +7,7 @@ import com.cruxcoach.communityclient.ChannelType
 import com.cruxcoach.communityclient.ClaimRefusal
 import com.cruxcoach.communityclient.ClaimResult
 import com.cruxcoach.communityclient.CommunityClient
+import com.cruxcoach.communityclient.CommunityException
 import com.cruxcoach.communityclient.CommunityInvite
 import com.cruxcoach.communityclient.CommunityProfile
 import com.cruxcoach.communityclient.ForumView
@@ -46,7 +47,7 @@ sealed interface JoinStep {
 }
 
 /** User-facing join problems; the screen maps them to strings. */
-enum class JoinError { BAD_LINK, EXPIRED, USED_UP, INVALID, RATE_LIMITED, SIGN_REFUSED, NETWORK, NOT_MEMBER }
+enum class JoinError { BAD_LINK, EXPIRED, USED_UP, INVALID, RATE_LIMITED, SIGN_REFUSED, NETWORK, SERVER, NOT_MEMBER }
 
 /** State of the community home: off, joining, or the room list. */
 data class CommunityHomeState(
@@ -121,7 +122,14 @@ class CommunityHomeViewModel @Inject constructor(
                         }
                     }
                 },
-                onFailure = { if (it is java.io.IOException) JoinError.NETWORK else JoinError.SIGN_REFUSED },
+                onFailure = {
+                    when (it) {
+                        is java.io.IOException -> JoinError.NETWORK
+                        // The server answered but refused (e.g. the rules changed meanwhile).
+                        is CommunityException -> JoinError.SERVER
+                        else -> JoinError.SIGN_REFUSED
+                    }
+                },
             )
             if (error == null) {
                 join.value = JoinStep.EnterInvite()
@@ -164,6 +172,9 @@ data class CommunityRoomState(
     val me: String = "",
     val sending: Boolean = false,
     val sendError: String? = null,
+    /** Messages sent from this screen; the composer clears its text when this goes up. */
+    val sentCount: Int = 0,
+    val joining: Boolean = false,
 )
 
 @HiltViewModel
@@ -199,15 +210,17 @@ class CommunityRoomViewModel @Inject constructor(
         local.value = local.value.copy(sending = true, sendError = null)
         viewModelScope.launch {
             val error = publishError { if (isForum) c.createForumPost(channelId, text) else c.sendMessage(channelId, text) }
-            local.value = local.value.copy(sending = false, sendError = error)
+            local.value = local.value.let { it.copy(sending = false, sendError = error, sentCount = it.sentCount + if (error == null) 1 else 0) }
         }
     }
 
     fun join() {
         val c = client ?: return
+        if (local.value.joining) return
+        local.value = local.value.copy(joining = true, sendError = null)
         viewModelScope.launch {
             val error = publishError { c.joinRoom(channelId) }
-            if (error != null) local.value = local.value.copy(sendError = error)
+            local.value = local.value.copy(joining = false, sendError = error)
         }
     }
 }
@@ -221,6 +234,8 @@ data class CommunityThreadState(
     val me: String = "",
     val sending: Boolean = false,
     val sendError: String? = null,
+    /** Replies sent from this screen; the composer clears its text when this goes up. */
+    val sentCount: Int = 0,
 )
 
 @HiltViewModel
@@ -254,7 +269,7 @@ class CommunityThreadViewModel @Inject constructor(
                 if (isForum) c.commentOnForumPost(channelId, rootId, text)
                 else c.sendMessage(channelId, text, ThreadRef(rootId, rootId))
             }
-            local.value = local.value.copy(sending = false, sendError = error)
+            local.value = local.value.let { it.copy(sending = false, sendError = error, sentCount = it.sentCount + if (error == null) 1 else 0) }
         }
     }
 }

@@ -80,6 +80,7 @@ import com.halilibo.richtext.ui.material3.RichText
 import com.halilibo.richtext.ui.string.RichTextStringStyle
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip19Bech32.toNpub
+import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
@@ -205,8 +206,11 @@ private fun RulesPane(step: JoinStep.Rules, onAccept: (Boolean) -> Unit, onCance
     var ageConfirmed by rememberSaveable { mutableStateOf(false) }
     val policy = step.policy
     // Accepting needs the rules on screen: the text appears a moment after its card.
+    // A text that renders to nothing must not block joining, hence the fallback.
     val texts = listOfNotNull(policy?.termsMarkdown, policy?.privacyMarkdown).filter { it.isNotBlank() }
     var shown by remember(step) { mutableStateOf(emptySet<String>()) }
+    var waitedLongEnough by remember(step) { mutableStateOf(false) }
+    LaunchedEffect(step) { delay(RULES_RENDER_FALLBACK_MS); waitedLongEnough = true }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -227,12 +231,15 @@ private fun RulesPane(step: JoinStep.Rules, onAccept: (Boolean) -> Unit, onCance
         step.error?.let { Text(joinErrorText(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         Button(
             onClick = { onAccept(ageConfirmed) },
-            enabled = (policy?.ageAttestationRequired != true || ageConfirmed) && shown.containsAll(texts),
+            enabled = (policy?.ageAttestationRequired != true || ageConfirmed) && (shown.containsAll(texts) || waitedLongEnough),
             modifier = Modifier.fillMaxWidth().testTag("community_accept_join"),
         ) { Text(stringResource(if (policy == null) R.string.community_client_join else R.string.community_client_accept_join)) }
         TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.action_cancel)) }
     }
 }
+
+/** How long the accept button waits at most for the rules text to render. */
+private const val RULES_RENDER_FALLBACK_MS = 3_000L
 
 @Composable
 private fun NotMemberPane(onUseInvite: () -> Unit) {
@@ -354,13 +361,14 @@ fun CommunityRoomScreen(
         bottomBar = {
             when {
                 room == null -> Unit
-                !room.isMember && room.channel.isReadOnlyOnJoin -> ReadOnlyBar(onJoin = viewModel::join)
-                !room.isMember -> JoinBar(onJoin = viewModel::join, error = state.sendError)
+                !room.isMember && room.channel.isReadOnlyOnJoin -> ReadOnlyBar(onJoin = viewModel::join, joining = state.joining, error = state.sendError)
+                !room.isMember -> JoinBar(onJoin = viewModel::join, joining = state.joining, error = state.sendError)
                 !room.canWrite -> ReadOnlyBar(onJoin = null)
                 else -> Composer(
                     hint = stringResource(if (state.isForum) R.string.community_client_new_post_hint else R.string.community_client_message_hint, room.channel.name),
                     sending = state.sending,
                     error = state.sendError,
+                    sentCount = state.sentCount,
                     onSend = viewModel::send,
                 )
             }
@@ -402,7 +410,8 @@ private fun StreamList(state: CommunityRoomState, onOpenThread: (String) -> Unit
                     profiles = state.profiles,
                     me = state.me,
                     thread = stream.threads[message.id],
-                    onOpenThread = { onOpenThread(message.id) },
+                    // A reply also sent to the room belongs to its thread: open that thread.
+                    onOpenThread = { onOpenThread(message.thread?.rootId ?: message.id) },
                 )
             }
         }
@@ -465,6 +474,7 @@ fun CommunityThreadScreen(
                     hint = stringResource(if (state.isForum) R.string.community_client_comment_hint else R.string.community_client_reply_hint),
                     sending = state.sending,
                     error = state.sendError,
+                    sentCount = state.sentCount,
                     onSend = viewModel::reply,
                 )
             }
@@ -570,8 +580,16 @@ private fun NoticeRow(notice: SystemNotice, createdAt: Long, profiles: Map<Strin
 }
 
 @Composable
-private fun Composer(hint: String, sending: Boolean, error: String?, onSend: (String) -> Unit) {
+private fun Composer(hint: String, sending: Boolean, error: String?, sentCount: Int, onSend: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
+    // The text stays until the relay took it, so a failed send can be retried.
+    var clearedAt by rememberSaveable { mutableStateOf(sentCount) }
+    LaunchedEffect(sentCount) {
+        if (sentCount != clearedAt) {
+            text = ""
+            clearedAt = sentCount
+        }
+    }
     Column(Modifier.fillMaxWidth().imePadding()) {
         error?.let {
             Text(stringResource(R.string.community_client_send_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
@@ -585,6 +603,7 @@ private fun Composer(hint: String, sending: Boolean, error: String?, onSend: (St
                 value = text,
                 onValueChange = { text = it },
                 modifier = Modifier.weight(1f).testTag("community_composer"),
+                enabled = !sending,
                 placeholder = { Text(hint, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 5,
@@ -593,7 +612,7 @@ private fun Composer(hint: String, sending: Boolean, error: String?, onSend: (St
                 CircularProgressIndicator(Modifier.size(24.dp), color = OrangeAccent, strokeWidth = 2.dp)
             } else {
                 IconButton(
-                    onClick = { onSend(text.trim()); text = "" },
+                    onClick = { onSend(text.trim()) },
                     enabled = text.isNotBlank(),
                     modifier = Modifier.testTag("community_send"),
                 ) {
@@ -605,20 +624,21 @@ private fun Composer(hint: String, sending: Boolean, error: String?, onSend: (St
 }
 
 @Composable
-private fun JoinBar(onJoin: () -> Unit, error: String?) {
+private fun JoinBar(onJoin: () -> Unit, joining: Boolean, error: String?) {
     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        error?.let { Text(stringResource(R.string.community_client_send_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-        Button(onClick = onJoin, modifier = Modifier.fillMaxWidth().testTag("community_join_room")) { Text(stringResource(R.string.community_client_join_to_write)) }
+        error?.let { Text(stringResource(R.string.community_client_join_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        Button(onClick = onJoin, enabled = !joining, modifier = Modifier.fillMaxWidth().testTag("community_join_room")) { Text(stringResource(R.string.community_client_join_to_write)) }
     }
 }
 
 /** An announce room: anyone may read, joiners are guests who cannot write. */
 @Composable
-private fun ReadOnlyBar(onJoin: (() -> Unit)?) {
+private fun ReadOnlyBar(onJoin: (() -> Unit)?, joining: Boolean = false, error: String? = null) {
     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.community_client_read_only), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        error?.let { Text(stringResource(R.string.community_client_join_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         if (onJoin != null) {
-            OutlinedButton(onClick = onJoin, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.community_client_follow_room)) }
+            OutlinedButton(onClick = onJoin, enabled = !joining, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.community_client_follow_room)) }
         }
     }
 }
@@ -673,6 +693,7 @@ private fun joinErrorText(error: JoinError): String = stringResource(
         JoinError.RATE_LIMITED -> R.string.community_client_error_rate_limited
         JoinError.SIGN_REFUSED -> R.string.community_client_error_sign_refused
         JoinError.NETWORK -> R.string.community_client_error_network
+        JoinError.SERVER -> R.string.community_client_error_server
         JoinError.NOT_MEMBER -> R.string.community_client_not_member
     },
 )

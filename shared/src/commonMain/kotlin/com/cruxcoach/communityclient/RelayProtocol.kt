@@ -125,11 +125,25 @@ object CommunityFilters {
         limit = limit,
     )
 
-    /** All replies under one thread root plus their aux events, history and live. */
+    /** All replies under one thread root plus the root's own aux events, history and live. */
     fun thread(channelId: String, rootId: String): RelayFilter = RelayFilter(
         kinds = listOf(CommunityKinds.STREAM_MESSAGE, CommunityKinds.STREAM_MESSAGE_V2, CommunityKinds.FORUM_COMMENT) + CommunityKinds.AUX,
         tags = mapOf('h' to listOf(channelId), 'e' to listOf(rootId)),
         limit = 500,
+    )
+
+    /** Edits, deletions and reactions of the given messages (they tag only the message they change). */
+    fun auxFor(channelId: String, ids: List<String>): RelayFilter = RelayFilter(
+        kinds = CommunityKinds.AUX,
+        tags = mapOf('h' to listOf(channelId), 'e' to ids),
+        limit = 1000,
+    )
+
+    /** Edits, deletions and reactions in one room from [since] on, live. */
+    fun roomAuxLive(channelId: String, since: Long): RelayFilter = RelayFilter(
+        kinds = CommunityKinds.AUX,
+        tags = mapOf('h' to listOf(channelId)),
+        since = since,
     )
 
     /** The head of a thread or a forum topic, scoped to its room like the Buzz apps' lookup. */

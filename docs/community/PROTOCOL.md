@@ -113,9 +113,15 @@ signing with the local key or Amber, Compose screens).
 
 - `CommunitySession`: one authenticated WebSocket; NIP-42 before any REQ; subscriptions survive
   reconnects; every event's signature is checked, and relay-only kinds must come from `self`.
+  While `self` is unknown they are dropped (fail closed); the client fetches NIP-11 next to the
+  sign-in and retries until the relay names its key. On Android the socket closes a minute after
+  the app leaves the screen and reconnects when it returns.
 - `CommunityApi`: NIP-11, rules, accept, claim (NIP-98), `POST /query`, NIP-CW channel windows.
 - `CommunityClient`: room list (memberships + directory, live refresh), stream timeline (window +
-  live), threads, forums, profiles, join, send, reply, forum post and comment.
+  live), threads, forums, profiles, join, send, reply, forum post and comment. Edits, deletions and
+  reactions of a thread reply tag only the reply (reactions carry no `h`; the relay derives the
+  room from the target, and `#h` filters match it), so the thread view looks them up by the
+  replies' ids and follows the room's aux kinds live.
 - Tag shapes for every event we write match the phone app's at the pinned version.
 
 ## 5. Upstream since the pin (`d676c7b` → `main` @ `744f3946f`, 11 days)
