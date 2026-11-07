@@ -497,6 +497,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first year. Below 10 kg a load rises by at most one step per training.
 - Comeback plan: a strength session starts from the last strength session's loads, no longer from the
   light tendon holds done earlier the same day (and the other way round).
+- "Privacy notice" and "Source code" in Settings → About no longer close the app on a
+  phone without a browser; a short message says that no app can open the link. The
+  community links do the same.
 
 ## [0.2.4] - 2026-10-25
 

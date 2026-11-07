@@ -30,8 +30,13 @@ class CommunityJoinTest {
     @get:Rule val compose = createComposeRule()
 
     private val opened = mutableListOf<String>()
+    private var hasBrowser = true
     private val uriHandler = object : UriHandler {
-        override fun openUri(uri: String) { opened += uri }
+        override fun openUri(uri: String) {
+            // What AndroidUriHandler throws when no app takes the link.
+            if (!hasBrowser) throw IllegalArgumentException("Can't open $uri.")
+            opened += uri
+        }
     }
 
     private val sendSuccess = mutableStateOf<Boolean?>(null)
@@ -125,6 +130,18 @@ class CommunityJoinTest {
         compose.onNodeWithTag("community_report_hint_join").performClick()
         compose.runOnIdle {
             assertEquals(listOf(COMMUNITY_JOIN_URL), opened)
+            assertEquals(1, backs)
+            assertEquals(0, hidden)
+        }
+    }
+
+    @Test fun `join without a browser shows a toast and still leaves the form`() {
+        hasBrowser = false
+        renderForm()
+        send()
+        compose.onNodeWithTag("community_report_hint_join").performClick()
+        compose.runOnIdle {
+            assertEquals("No app can open this link.", ShadowToast.getTextOfLatestToast())
             assertEquals(1, backs)
             assertEquals(0, hidden)
         }

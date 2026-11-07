@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Policy
@@ -31,6 +32,7 @@ import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import com.cruxcoach.android.ui.common.openUriOrToast
 import com.cruxcoach.android.ui.devcontact.COMMUNITY_JOIN_URL
 import com.cruxcoach.android.ui.devcontact.CommunityJoinSection
 import com.cruxcoach.android.ui.devcontact.DevContactSection
@@ -432,8 +434,9 @@ internal fun SettingsScreen(
             }
             SettingsPage.COMMUNITY -> {
                 val uriHandler = LocalUriHandler.current
+                val context = LocalContext.current
                 SettingsSectionCard {
-                    CommunityJoinSection(onJoin = { uriHandler.openUri(COMMUNITY_JOIN_URL) })
+                    CommunityJoinSection(onJoin = { uriHandler.openUriOrToast(context, COMMUNITY_JOIN_URL) })
                 }
             }
             SettingsPage.ABOUT -> {
@@ -454,6 +457,7 @@ internal fun SettingsScreen(
                     onClick = onNavigateToAppShare,
                 )
                 val uriHandler = LocalUriHandler.current
+                val context = LocalContext.current
                 SettingsDestinationRow(
                     title = stringResource(R.string.settings_licenses_title),
                     summary = stringResource(R.string.settings_licenses_desc),
@@ -464,13 +468,13 @@ internal fun SettingsScreen(
                     title = stringResource(R.string.settings_privacy_title),
                     summary = stringResource(R.string.settings_privacy_desc),
                     icon = Icons.Outlined.Policy,
-                    onClick = { uriHandler.openUri(PRIVACY_NOTICE_URL) },
+                    onClick = { uriHandler.openUriOrToast(context, PRIVACY_NOTICE_URL) },
                 )
                 SettingsDestinationRow(
                     title = stringResource(R.string.settings_source_title),
                     summary = stringResource(R.string.settings_source_desc),
                     icon = Icons.Outlined.Code,
-                    onClick = { uriHandler.openUri(SOURCE_CODE_URL) },
+                    onClick = { uriHandler.openUriOrToast(context, SOURCE_CODE_URL) },
                 )
             }
         }

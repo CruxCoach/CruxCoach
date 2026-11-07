@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.openUriOrToast
 import kotlinx.coroutines.launch
 
 /**
@@ -156,7 +157,7 @@ internal fun ReportSentHandler(
         CommunityReportHintDialog(
             title = sentTitle,
             onJoin = {
-                runCatching { uriHandler.openUri(COMMUNITY_JOIN_URL) }
+                uriHandler.openUriOrToast(context, COMMUNITY_JOIN_URL)
                 leave()
             },
             onAlreadyMember = {

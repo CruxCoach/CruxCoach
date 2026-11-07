@@ -3025,6 +3025,7 @@
     <string name="community_report_hint">Follow your report and test the fix early: join the community on Buzz</string>
     <string name="community_report_hint_join">Join</string>
     <string name="community_report_hint_member">Already a member</string>
+    <string name="link_open_failed">No app can open this link.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>

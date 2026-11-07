@@ -3024,6 +3024,7 @@
     <string name="community_report_hint">Verfolge deine Meldung und teste die Lösung früh: Tritt der Community auf Buzz bei</string>
     <string name="community_report_hint_join">Beitreten</string>
     <string name="community_report_hint_member">Bereits Mitglied</string>
+    <string name="link_open_failed">Keine App kann diesen Link öffnen.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Hell</string>
     <string name="settings_theme_dark">Dunkel</string>
