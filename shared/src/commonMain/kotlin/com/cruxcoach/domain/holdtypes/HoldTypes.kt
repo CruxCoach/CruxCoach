@@ -60,6 +60,9 @@ enum class HoldDirection(val wire: String, val ringIndex: Int?) {
     }
 }
 
+/** A MoonBoard hold id (`(row-1)*11 + col + 1`) as the board names it: column letter and row, e.g. "A18". */
+fun moonBoardGridName(holdId: Int): String = "${'A' + (holdId - 1) % 11}${(holdId - 1) / 11 + 1}"
+
 @Serializable
 data class HoldTypeConfidence(val type: Double = 0.0, val direction: Double = 0.0, val size: Double = 0.0)
 
