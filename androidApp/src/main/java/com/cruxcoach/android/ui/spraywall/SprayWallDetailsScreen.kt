@@ -87,7 +87,8 @@ data class SprayWallDetailsState(
 ) {
     enum class Dialog { CONFIRM_PUBLIC, NO_IDENTITY, CONFIRM_WITHDRAW }
 
-    data class WithdrawFailure(val reason: SprayWithdrawal, val deleting: Boolean)
+    /** [keptEdits]: the name, angle or gym changes were saved all the same (the wall stays public). */
+    data class WithdrawFailure(val reason: SprayWithdrawal, val deleting: Boolean, val keptEdits: Boolean = false)
 
     val canSave: Boolean get() = !loading && !saving && name.isNotBlank()
 
@@ -116,6 +117,9 @@ class SprayWallDetailsViewModel @Inject constructor(
     private val _events = MutableSharedFlow<SprayWallDetailsEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<SprayWallDetailsEvent> = _events.asSharedFlow()
 
+    /** Public in the database: going private or deleting takes it back first (also when a publish failed partway). */
+    private var storedPublic = false
+
     init {
         viewModelScope.launch {
             val wall = repository.wall(wallId)
@@ -123,6 +127,7 @@ class SprayWallDetailsViewModel @Inject constructor(
                 _state.update { it.copy(loading = false, notFound = true) }
                 return@launch
             }
+            storedPublic = wall.visibility == SprayWallVisibility.PUBLIC
             _state.update {
                 it.copy(
                     loading = false, name = wall.name, angle = wall.angle, visibility = wall.visibility, gym = wall.gym,
@@ -176,8 +181,15 @@ class SprayWallDetailsViewModel @Inject constructor(
         if (!s.canSave) return
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
-            // Taking a published wall back: tombstones and photos first, while it is still known as public.
-            if (s.published && s.visibility == SprayWallVisibility.PRIVATE && !withdraw(deleting = false)) return@launch
+            // Taking a public wall back: tombstones and photos first, while it is still known as public.
+            if (storedPublic && s.visibility == SprayWallVisibility.PRIVATE) {
+                val result = withdraw()
+                if (result != SprayWithdrawal.DONE) {
+                    // It stays public, but the name, angle and gym edits are not lost.
+                    failed(result, deleting = false, keptEdits = keepEdits(s))
+                    return@launch
+                }
+            }
             repository.updateWallDetails(wallId, s.name, s.angle, s.visibility, s.gym)
             if (s.visibility == SprayWallVisibility.PUBLIC) publisher.publishSoon()
             _events.emit(SprayWallDetailsEvent.Saved)
@@ -188,27 +200,42 @@ class SprayWallDetailsViewModel @Inject constructor(
         if (_state.value.saving) return
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
-            // A published wall is taken back first; afterwards nothing here could withdraw it, so it stays until that worked.
-            if (_state.value.published && !withdraw(deleting = true)) return@launch
+            // A public wall is taken back first; afterwards nothing here could withdraw it, so it stays until that worked.
+            if (storedPublic) {
+                val result = withdraw()
+                if (result != SprayWithdrawal.DONE) {
+                    failed(result, deleting = true, keptEdits = false)
+                    return@launch
+                }
+            }
             repository.deleteWall(wallId)
             _events.emit(SprayWallDetailsEvent.Deleted)
         }
     }
 
-    /** True when the wall is off Nostr and Blossom; else the screen says why and the wall stays public. */
-    private suspend fun withdraw(deleting: Boolean): Boolean {
+    /** [SprayWithdrawal.DONE] when the wall is off Nostr and Blossom; anything else left it public. */
+    private suspend fun withdraw(): SprayWithdrawal {
         _state.update { it.copy(withdrawing = true) }
         val result = publisher.withdrawWall(wallId)
         _state.update { it.copy(withdrawing = false) }
-        if (result == SprayWithdrawal.DONE) return true
-        _state.update {
-            it.copy(
-                saving = false,
-                visibility = SprayWallVisibility.PUBLIC,
-                withdrawFailed = SprayWallDetailsState.WithdrawFailure(result, deleting),
-            )
-        }
-        return false
+        return result
+    }
+
+    /** The screen says why the withdrawal did not work; the wall stays public. */
+    private fun failed(result: SprayWithdrawal, deleting: Boolean, keptEdits: Boolean) = _state.update {
+        it.copy(
+            saving = false,
+            visibility = SprayWallVisibility.PUBLIC,
+            withdrawFailed = SprayWallDetailsState.WithdrawFailure(result, deleting, keptEdits),
+        )
+    }
+
+    /** Saves the name, angle and gym of a wall that stays public; true when any of them changed. */
+    private suspend fun keepEdits(s: SprayWallDetailsState): Boolean {
+        val wall = repository.wall(wallId) ?: return false
+        if (wall.name == s.name.trim() && wall.angle == s.angle && wall.gym == s.gym) return false
+        repository.updateWallDetails(wallId, s.name, s.angle, SprayWallVisibility.PUBLIC, s.gym)
+        return true
     }
 }
 
@@ -363,7 +390,11 @@ fun SprayWallDetailsScreen(
         )
         SprayConfirmDialog(
             title = stringResource(if (failure.deleting) R.string.spray_delete_failed_title else R.string.spray_withdraw_failed_title),
-            text = if (failure.deleting) reason + " " + stringResource(R.string.spray_delete_failed_note) else reason,
+            text = buildString {
+                append(reason)
+                if (failure.deleting) append(" ").append(stringResource(R.string.spray_delete_failed_note))
+                if (failure.keptEdits) append(" ").append(stringResource(R.string.spray_withdraw_failed_kept_edits))
+            },
             confirmLabel = stringResource(R.string.action_ok),
             onConfirm = viewModel::dismissWithdrawFailure,
             onDismiss = viewModel::dismissWithdrawFailure,

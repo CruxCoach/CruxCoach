@@ -21,6 +21,8 @@ class SprayWallWithdrawalTest {
     private lateinit var driver: SqlDriver
     private lateinit var repository: SprayWallRepository
     private val photo = SprayWallPhotoStore.StoredPhoto("0b1c2d3e-photo.jpg", 3000, 2000)
+    private val newPhoto = SprayWallPhotoStore.StoredPhoto("1c2d3e4f-photo.jpg", 3000, 2000)
+    private val thirdPhoto = SprayWallPhotoStore.StoredPhoto("2d3e4f5a-photo.jpg", 3000, 2000)
 
     private val sent = mutableListOf<SprayNostrEvent>()
     private val deleted = mutableListOf<Pair<String, List<String>>>()
@@ -158,6 +160,75 @@ class SprayWallWithdrawalTest {
         assertEquals(listOf(SHA to listOf("https://default.example.org")), deleted)
     }
 
+    /** A published wall, reset onto a second photo that reached Blossom before the publish failed. */
+    private suspend fun partlyPublishedWall(): String {
+        val id = publishedWall()
+        repository.resetWall(id, newPhoto, listOf(EditableHold(-1, 0.4f, 0.4f, 0.02f)))
+        repository.setPhotoBlob(id, newPhoto.fileName, SHA_2, "https://cdn.example.org/$SHA_2")
+        return id
+    }
+
+    @Test
+    fun `withdrawing also takes back what a publish that failed partway left`() = runTest {
+        val id = partlyPublishedWall()
+
+        assertEquals(SprayWithdrawal.DONE, withdrawal.run(ME, id))
+
+        // Head and both versions (the second may have reached a relay), then the deletion; both photos.
+        assertEquals(listOf(30078, 30078, 30078, 5), sent.map { it.kind })
+        assertEquals(setOf(SHA, SHA_2), deleted.map { it.first }.toSet())
+        assertTrue(repository.versions(id).all { it.photoSha256 == null })
+    }
+
+    @Test
+    fun `a failed publish deletes the photos it uploaded and keeps the published ones`() = runTest {
+        val id = partlyPublishedWall()
+
+        withdrawal.deleteUnpublishedPhotos(id)
+
+        assertTrue(sent.isEmpty())
+        assertEquals(listOf(SHA_2 to listOf("https://cdn.example.org")), deleted)
+        val versions = repository.versions(id).associateBy { it.number }
+        assertEquals(SHA, versions.getValue(1).photoSha256)
+        // The next publish uploads the second photo again.
+        assertNull(versions.getValue(2).photoSha256)
+        val wall = repository.wall(id)!!
+        assertEquals(SprayWallVisibility.PUBLIC, wall.visibility)
+        assertEquals(1, wall.publishedVersion)
+    }
+
+    @Test
+    fun `a photo of a failed publish that could not be deleted is remembered for the withdrawal`() = runTest {
+        val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
+        repository.setPhotoBlob(id, photo.fileName, SHA, "https://cdn.example.org/$SHA")
+        photoResult = SprayWallWithdrawal.PhotoDeletion.LEFT
+
+        withdrawal.deleteUnpublishedPhotos(id)
+        assertEquals(SHA, repository.wall(id)!!.current.photoSha256)
+
+        // Never published, yet its photo is on Blossom: going private deletes it.
+        photoResult = SprayWallWithdrawal.PhotoDeletion.DELETED
+        deleted.clear()
+        assertEquals(SprayWithdrawal.DONE, withdrawal.run(ME, id))
+        assertEquals(listOf(SHA to listOf("https://cdn.example.org")), deleted)
+        val wall = repository.wall(id)!!
+        assertEquals(SprayWallVisibility.PRIVATE, wall.visibility)
+        assertNull(wall.current.photoSha256)
+    }
+
+    @Test
+    fun `a declined Blossom authorisation stops deleting the photos of a failed publish`() = runTest {
+        val id = partlyPublishedWall()
+        repository.resetWall(id, thirdPhoto, listOf(EditableHold(-1, 0.3f, 0.3f, 0.02f)))
+        repository.setPhotoBlob(id, thirdPhoto.fileName, SHA_3, "https://cdn.example.org/$SHA_3")
+        photoResult = SprayWallWithdrawal.PhotoDeletion.NOT_AUTHORISED
+
+        withdrawal.deleteUnpublishedPhotos(id)
+
+        assertEquals(1, deleted.size)
+        assertTrue(repository.versions(id).all { it.photoSha256 != null })
+    }
+
     @Test
     fun `a wall never published turns private without asking anyone`() = runTest {
         val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, emptyList())
@@ -170,5 +241,7 @@ class SprayWallWithdrawalTest {
     private companion object {
         val ME = "a1".repeat(32)
         val SHA = "5e".repeat(32)
+        val SHA_2 = "6f".repeat(32)
+        val SHA_3 = "7a".repeat(32)
     }
 }

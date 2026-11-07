@@ -143,6 +143,10 @@ UPDATE spray_wall_version SET photo_sha256 = ?, photo_url = ? WHERE wall_id = ? 
 clearPhotoBlobs:
 UPDATE spray_wall_version SET photo_sha256 = NULL, photo_url = NULL WHERE wall_id = ?;
 
+-- One photo of a publish that failed partway was deleted from Blossom again.
+clearPhotoBlob:
+UPDATE spray_wall_version SET photo_sha256 = NULL, photo_url = NULL WHERE wall_id = ? AND photo_sha256 = ?;
+
 -- Another public wall of mine still shows this photo on Blossom.
 countPublishedPhotoUses:
 SELECT COUNT(*) FROM spray_wall_version v JOIN spray_wall w ON w.id = v.wall_id

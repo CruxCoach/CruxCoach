@@ -100,7 +100,15 @@ class SprayWallPublisher @Inject constructor(
         if (walls.isEmpty() && publicWalls.none { repository.unpublishedClimbs(it.id).isNotEmpty() }) return Outcome.Done(0, 0)
         val me = myPubkey() ?: return Outcome.NoIdentity
         var versions = 0
-        for (wall in walls) versions += publishWall(me, wall)
+        for (wall in walls) versions += try {
+            publishWall(me, wall)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Photos uploaded before the failure do not stay on Blossom unused; the next try uploads them again.
+            withdrawal.deleteUnpublishedPhotos(wall.id)
+            throw e
+        }
         var climbs = 0
         for (wall in repository.publicWalls()) {
             val owner = wall.ownerPubkey ?: me

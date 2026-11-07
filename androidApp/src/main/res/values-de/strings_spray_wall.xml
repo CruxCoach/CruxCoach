@@ -198,6 +198,7 @@
     <string name="spray_withdraw_failed_signing">Das Signieren hat nicht geklappt oder wurde in deiner Signer-App abgelehnt, die Wand ist also noch öffentlich. Versuch es noch einmal und bestätige die Anfragen.</string>
     <string name="spray_withdraw_failed_identity">Zum Zurückziehen braucht es den Schlüssel des CruxCoach-Accounts, mit dem die Wand veröffentlicht wurde. Richte ihn in den Einstellungen unter CruxCoach Account ein und versuch es dann noch einmal.</string>
     <string name="spray_delete_failed_note">Eine öffentliche Wand wird hier erst gelöscht, wenn sie zurückgezogen ist.</string>
+    <string name="spray_withdraw_failed_kept_edits">Deine anderen Änderungen sind gespeichert.</string>
     <string name="spray_gym_title">Halle</string>
     <string name="spray_gym_pick_title">Wo hängt die Wand?</string>
     <string name="spray_gym_search">Hallen nach Name oder Ort suchen</string>

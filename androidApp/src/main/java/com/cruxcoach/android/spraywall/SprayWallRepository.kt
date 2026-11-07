@@ -347,6 +347,11 @@ class SprayWallRepository @Inject constructor(
         io { queries.clearPhotoBlobs(wallId) }
     }
 
+    /** One photo of [wallId] is off Blossom again (a publish that failed partway): the next publish uploads it anew. */
+    suspend fun clearPhotoBlob(wallId: String, sha256: String) {
+        io { queries.clearPhotoBlob(wallId, sha256) }
+    }
+
     /** Whether another public wall of mine still uses this Blossom photo (then it stays on the servers). */
     suspend fun photoUsedElsewhere(sha256: String, wallId: String): Boolean = io {
         queries.countPublishedPhotoUses(sha256, wallId).executeAsOne() > 0
