@@ -2851,7 +2851,7 @@
     ]
    },
    "difficulty": 2,
-   "familiarity": "COMMON",
+   "familiarity": "BASIC",
    "easier": "pull.band_assisted_pull_up",
    "harder": "pull.pull_up",
    "defaults": {

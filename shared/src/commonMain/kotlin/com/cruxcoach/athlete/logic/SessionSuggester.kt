@@ -1648,8 +1648,11 @@ object SessionSuggester {
             fresh.filter { it != easierPick && it.difficulty == original.difficulty } +
             fresh.filter { it != easierPick && it.difficulty != original.difficulty } +
             rest.filter { it.slug in input.resting }
-        return (chain + ordered.map { Alternative(it, easier = it.difficulty < original.difficulty, harder = it.difficulty > original.difficulty) })
-            .take(count)
+        val all = chain + ordered.map { Alternative(it, easier = it.difficulty < original.difficulty, harder = it.difficulty > original.difficulty) }
+        // A beginner sees Basic and known exercises first (issue #68), in the same order otherwise; turned down lately stays last.
+        val shown = if (group != ExerciseFamiliarity.Group.BEGINNER) all
+            else all.sortedWith(compareBy<Alternative>({ it.def.slug in input.resting }, { ExerciseFamiliarity.isNew(input, it.def) }))
+        return shown.take(count)
     }
 
     /**

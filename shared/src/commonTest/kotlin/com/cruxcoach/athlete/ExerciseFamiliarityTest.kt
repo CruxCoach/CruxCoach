@@ -209,6 +209,20 @@ class ExerciseFamiliarityTest {
     }
 
     @Test
+    fun aBeginnersSwapListStartsWithKnownExercises() {
+        val items = listOf(RoutineItem("pull.table_row"), RoutineItem("push.push_up"), RoutineItem("core.front_plank"))
+        // A beginner: Basic and known alternatives first.
+        val beginner = SessionSuggester.alternatives(input(), items, SuggestionFocus.PULL_PUSH, "core.front_plank", count = 4).map { it.def }
+        val firstNew = beginner.indexOfFirst { it.familiarity != Familiarity.BASIC }
+        assertTrue(firstNew < 0 || beginner.drop(firstNew).all { it.familiarity != Familiarity.BASIC }, "${beginner.map { it.slug }}")
+        assertEquals("core.side_plank", beginner.first().slug)
+        // A known Special exercise counts like a Basic one.
+        val known = SessionSuggester.alternatives(input(known = setOf("core.pallof_press")), items, SuggestionFocus.PULL_PUSH, "core.front_plank", count = 4)
+            .map { it.def.slug }
+        assertTrue(known.indexOf("core.pallof_press") < known.indexOf("core.dead_bug"), "$known")
+    }
+
+    @Test
     fun dontKnowItIsNoDislike() {
         val day = "2026-10-01"
         val events = listOf(SuggestionEvent("e1", day, 1_000L, SuggestionEventKind.FEEDBACK, PreferenceLearning.DONT_KNOW,
