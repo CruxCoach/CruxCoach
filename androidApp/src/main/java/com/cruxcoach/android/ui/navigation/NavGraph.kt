@@ -192,6 +192,14 @@ object Routes {
     const val SETTERS_LIST = "setters_list"
     const val MY_KILTER_CLIMBS = "my_kilter_climbs"
     const val MESSAGE_THREAD = "message_thread/{eventId}"
+    /** Community client preview (#61); `invite` is an opened invite link. */
+    const val COMMUNITY = "community?invite={invite}"
+    const val COMMUNITY_ROOM = "community_room/{channelId}/{type}"
+    const val COMMUNITY_THREAD = "community_thread/{channelId}/{type}/{rootId}"
+    fun community(invite: String? = null) =
+        if (invite == null) "community" else "community?invite=${android.net.Uri.encode(invite)}"
+    fun communityRoom(channelId: String, type: String) = "community_room/$channelId/$type"
+    fun communityThread(channelId: String, type: String, rootId: String) = "community_thread/$channelId/$type/$rootId"
     fun sessionDetail(sessionId: Long) = "session_detail/$sessionId"
     fun activeWorkout(sessionId: Long) = "active_workout/$sessionId"
     fun postWorkout(sessionId: Long, durationMin: Int, completedCount: Int) =
@@ -306,6 +314,7 @@ fun CruxCoachNavHost(
             route == Routes.APP_SHARE ||
             route == Routes.MOONBOARD_CSV_IMPORT ||
             route.startsWith("message_thread/") ||
+            route.startsWith("community?invite=") ||
             route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
             // Training reminder: back to the training area's Today, never a second one on the stack.
@@ -1000,6 +1009,11 @@ fun CruxCoachNavHost(
                         onNavigateToTrainingSettings = {
                             navController.navigate(com.cruxcoach.android.ui.training.TrainingRoutes.ATHLETE_SETTINGS) { launchSingleTop = true }
                         },
+                        onNavigateToCommunity = if (com.cruxcoach.android.communityclient.CommunityClientHolder.isAvailable) {
+                            { navController.navigate(Routes.community()) { launchSingleTop = true } }
+                        } else {
+                            null
+                        },
                         onDonateClick = {
                             paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
                             showPaymentSheet = true
@@ -1042,6 +1056,28 @@ fun CruxCoachNavHost(
                     onSave = { navController.popBackStack() },
                     onNavigateBack = { navController.popBackStack() }
                 )
+            }
+
+            if (com.cruxcoach.android.communityclient.CommunityClientHolder.isAvailable) {
+                composable(
+                    Routes.COMMUNITY,
+                    arguments = listOf(navArgument("invite") { type = NavType.StringType; nullable = true; defaultValue = null }),
+                ) { entry ->
+                    com.cruxcoach.android.communityclient.CommunityHomeScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onOpenRoom = { id, type -> navController.navigate(Routes.communityRoom(id, type)) },
+                        initialInvite = entry.arguments?.getString("invite"),
+                    )
+                }
+                composable(Routes.COMMUNITY_ROOM) {
+                    com.cruxcoach.android.communityclient.CommunityRoomScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onOpenThread = { id, type, root -> navController.navigate(Routes.communityThread(id, type, root)) },
+                    )
+                }
+                composable(Routes.COMMUNITY_THREAD) {
+                    com.cruxcoach.android.communityclient.CommunityThreadScreen(onNavigateBack = { navController.popBackStack() })
+                }
             }
 
             composable(Routes.DEV_CHAT) {

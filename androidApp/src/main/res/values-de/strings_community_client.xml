@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Community client preview (issue #61). Kept in its own file while it is a spike. -->
+<resources>
+    <string name="settings_page_community">Community (Vorschau)</string>
+    <string name="settings_summary_community">Räume und Foren der CruxCoach-Community</string>
+
+    <string name="community_client_title">Community</string>
+    <string name="community_client_connecting">Verbinde …</string>
+    <string name="community_client_offline">Offline</string>
+
+    <string name="community_client_intro_title">Community in der App</string>
+    <string name="community_client_intro_body">Sprich direkt hier mit der CruxCoach-Community: Räume, Foren und Threads, mit dem Schlüssel, den du in CruxCoach schon nutzt. Keine zweite App und kein zweites Konto.</string>
+    <string name="community_client_intro_preview">Das ist eine frühe Vorschau. Wenn du sie einschaltest, verbindet sich die App mit community.cruxcoach.org und meldet sich mit deinem Schlüssel an. Vorher wird nichts gesendet.</string>
+    <string name="community_client_identity_local">Du unterschreibst als %1$s mit dem eigenen Schlüssel der App.</string>
+    <string name="community_client_identity_amber">Du unterschreibst als %1$s mit Amber.</string>
+    <string name="community_client_turn_on">Community einschalten</string>
+    <string name="community_client_copy_key">Schlüssel kopieren</string>
+    <string name="community_client_enabled_switch">Community an</string>
+
+    <string name="community_client_join_title">Der Community beitreten</string>
+    <string name="community_client_join_body">Füge den Einladungslink ein, den du bekommen hast. Er sieht so aus: https://community.cruxcoach.org/invite/…</string>
+    <string name="community_client_invite_link">Einladungslink</string>
+    <string name="community_client_paste">Einfügen</string>
+    <string name="community_client_continue">Weiter</string>
+    <string name="community_client_already_member">Mit diesem Schlüssel schon Mitglied?</string>
+    <string name="community_client_connect_member">Ohne Einladung verbinden</string>
+    <string name="community_client_rules_title">Regeln von %1$s</string>
+    <string name="community_client_rules_none">Diese Community hat keine Regeln zum Annehmen.</string>
+    <string name="community_client_rules_terms">Community-Regeln</string>
+    <string name="community_client_rules_privacy">Datenschutz</string>
+    <string name="community_client_rules_age">Ich bin alt genug, um dieser Community beizutreten.</string>
+    <string name="community_client_accept_join">Annehmen und beitreten</string>
+    <string name="community_client_join">Beitreten</string>
+    <string name="community_client_not_member">Dieser Schlüssel ist noch kein Mitglied der Community. Tritt mit einem Einladungslink bei.</string>
+    <string name="community_client_use_invite">Einladungslink verwenden</string>
+    <string name="community_client_error_bad_link">Das ist kein Einladungslink.</string>
+    <string name="community_client_error_expired">Diese Einladung ist abgelaufen. Bitte um eine neue.</string>
+    <string name="community_client_error_used_up">Diese Einladung ist aufgebraucht. Bitte um eine neue.</string>
+    <string name="community_client_error_invalid">Diese Einladung ist nicht gültig.</string>
+    <string name="community_client_error_rate_limited">Zu viele Versuche. Warte eine Minute und versuche es dann noch einmal.</string>
+    <string name="community_client_error_sign_refused">Das Unterschreiben wurde abgelehnt, deshalb konnte die Community deinen Schlüssel nicht prüfen.</string>
+    <string name="community_client_error_network">Die Community ist nicht erreichbar. Prüfe deine Verbindung.</string>
+    <string name="community_client_error_server">Die Community hat diesen Schritt nicht angenommen. Öffne den Einladungslink noch einmal, um die aktuellen Regeln zu laden.</string>
+
+    <string name="community_client_section_rooms">Räume</string>
+    <string name="community_client_section_forums">Foren</string>
+    <string name="community_client_no_rooms">Noch keine Räume.</string>
+    <string name="community_client_join_room">Beitreten</string>
+    <string name="community_client_join_failed">Beitritt nicht möglich: %1$s</string>
+
+    <string name="community_client_message_hint">Nachricht an #%1$s</string>
+    <string name="community_client_new_post_hint">Neues Thema in #%1$s</string>
+    <string name="community_client_no_messages">Noch keine Nachrichten. Sag Hallo!</string>
+    <string name="community_client_no_posts">Noch keine Themen.</string>
+    <string name="community_client_join_to_write">Tritt dem Raum bei, um zu schreiben</string>
+    <string name="community_client_read_only">Hier schreiben nur die Admins des Raums.</string>
+    <string name="community_client_follow_room">Zu meinen Räumen hinzufügen</string>
+    <string name="community_client_send_failed">Nicht gesendet: %1$s</string>
+
+    <string name="community_client_thread_title">Thread</string>
+    <string name="community_client_post_title">Thema</string>
+    <string name="community_client_reply_hint">Im Thread antworten</string>
+    <string name="community_client_comment_hint">Kommentar schreiben</string>
+    <string name="community_client_reply_action">Antworten</string>
+    <string name="community_client_edited">(bearbeitet)</string>
+    <string name="community_client_deleted">Diese Nachricht wurde gelöscht.</string>
+    <!-- Autor der eigenen Nachrichten, solange es keinen Profilnamen gibt -->
+    <string name="community_client_you">Du</string>
+    <!-- Raum-Hinweise vom Server: %1$s und %2$s sind Namen -->
+    <string name="community_client_notice_someone">Jemand</string>
+    <string name="community_client_notice_joined">%1$s ist beigetreten</string>
+    <string name="community_client_notice_added">%1$s hat %2$s hinzugefügt</string>
+    <string name="community_client_notice_left">%1$s hat den Raum verlassen</string>
+    <string name="community_client_notice_removed">%1$s hat %2$s entfernt</string>
+    <string name="community_client_notice_topic">%1$s hat das Thema geändert: „%2$s“</string>
+    <string name="community_client_notice_topic_cleared">%1$s hat das Thema entfernt</string>
+    <string name="community_client_notice_purpose">%1$s hat die Beschreibung geändert: „%2$s“</string>
+    <string name="community_client_notice_purpose_cleared">%1$s hat die Beschreibung entfernt</string>
+    <string name="community_client_notice_created">%1$s hat den Raum erstellt</string>
+    <string name="community_client_notice_archived">%1$s hat den Raum archiviert</string>
+    <string name="community_client_notice_unarchived">%1$s hat den Raum wiederhergestellt</string>
+    <!-- Dieselben Hinweise, wenn sie dich betreffen -->
+    <string name="community_client_notice_you_joined">Du bist beigetreten</string>
+    <string name="community_client_notice_added_you">%1$s hat dich hinzugefügt</string>
+    <string name="community_client_notice_you_left">Du hast den Raum verlassen</string>
+    <string name="community_client_notice_removed_you">%1$s hat dich entfernt</string>
+    <plurals name="community_client_replies">
+        <item quantity="one">%d Antwort</item>
+        <item quantity="other">%d Antworten</item>
+    </plurals>
+    <plurals name="community_client_comments">
+        <item quantity="one">%d Kommentar</item>
+        <item quantity="other">%d Kommentare</item>
+    </plurals>
+</resources>

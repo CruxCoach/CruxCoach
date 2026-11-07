@@ -59,6 +59,20 @@ Used to show which holds a MoonBoard hold set covers, and to derive the
 `climbs.hsm` hold-set mask for locally authored and peer-received MoonBoard
 climbs (FEAT-049).
 
+### Buzz protocol constants and event shapes — Block, Inc. and the Buzz contributors
+
+- **Location:** [`shared/src/commonMain/kotlin/com/cruxcoach/communityclient/`](shared/src/commonMain/kotlin/com/cruxcoach/communityclient/)
+  and its tests in `shared/src/commonTest/kotlin/com/cruxcoach/communityclient/`
+- **Upstream:** https://github.com/block/buzz at commit `d676c7b8db30ccc15611b9ef51ed9c6f2e8a954a`
+  (`crates/buzz-core/src/kind.rs`, `NOSTR.md`, `docs/nips/NIP-CL.md`, `docs/nips/NIP-CW.md`, `mobile/lib/`)
+- **License:** Apache License 2.0
+- **License text:** https://www.apache.org/licenses/LICENSE-2.0
+- **Distribution form:** event kind numbers, tag layouts and the documented example events are
+  transcribed into Kotlin; no Buzz code is copied. The client is written from the protocol
+  documentation (see [`docs/community/PROTOCOL.md`](docs/community/PROTOCOL.md)).
+
+Used by the Community preview (#61) to talk to the CruxCoach community server.
+
 ---
 
 ## Bundled Assets

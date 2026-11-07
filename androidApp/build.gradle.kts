@@ -570,6 +570,8 @@ dependencies {
     testImplementation(libs.okhttp)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.okhttp.tls)
+    // Schnorr signing on the JVM for the community client integration test.
+    testImplementation(libs.secp256k1.jni.jvm)
     // Robolectric: Android-framework shim on JVM. Activity lifecycle,
     // SharedPreferences, Resources, Context — needed for ViewModel tests
     // that pull anything from the Android side.
