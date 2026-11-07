@@ -1,0 +1,738 @@
+package com.cruxcoach.android.ui.board
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.cruxcoach.android.R
+import java.time.Month
+import java.time.YearMonth
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
+
+private val GRADE_COLUMN_WIDTH = 44.dp
+private val SEND_CURVE_LABEL_WIDTH = 104.dp
+private val SEND_CURVE_BAR_HEIGHT = 22.dp
+private val BAR_THICKNESS = 8.dp
+private val LANE_HEIGHT = 12.dp
+// Room after the longest bar for its value ("12,5").
+private val BAR_LABEL_RESERVE = 36.dp
+// Shared by both month charts so their months line up.
+private val Y_AXIS_WIDTH = 36.dp
+private val MONTH_AXIS_HEIGHT = 20.dp
+
+@Composable
+private fun crossBoardViewLabel(view: CrossBoardView): String = when (view) {
+    CrossBoardView.TRIES_UNTIL_SEND -> stringResource(R.string.board_stats_cross_board_send_curve)
+    CrossBoardView.TRIES_PER_GRADE -> stringResource(R.string.board_stats_cross_board_tries)
+    CrossBoardView.PER_MONTH -> stringResource(R.string.board_stats_cross_board_months)
+}
+
+private fun TriesToSend.isSmallSample() = problems < CrossBoardStatsComputer.SMALL_SAMPLE
+
+/**
+ * Stats across boards (#44), one colour per board. "Tries until the send"
+ * splits each board's first sends by the tries they took, "Tries per grade"
+ * puts a bar per board under each grade, "Progress by month" draws the hardest
+ * new send and the tries per send as two small line charts over the same months.
+ * Values over fewer than [CrossBoardStatsComputer.SMALL_SAMPLE] problems are
+ * drawn hollow. The explanation sits behind the info button; tapping
+ * a board, a grade or a month shows its numbers. With one board the views
+ * work the same, without a legend.
+ *
+ * [allBoards] are all boards the user has logged on: they fix the colours, so
+ * a board keeps its colour when the interval hides another one.
+ */
+@Composable
+internal fun CrossBoardSection(
+    stats: CrossBoardStats,
+    view: CrossBoardView,
+    onViewSelect: (CrossBoardView) -> Unit,
+    allBoards: List<String> = emptyList(),
+) {
+    val colors = boardSeriesColors(allBoards + stats.boards)
+    ChartSectionWithSelector(
+        options = CrossBoardView.entries.toTypedArray(),
+        selected = view,
+        onSelect = onViewSelect,
+        labelOf = { crossBoardViewLabel(it) },
+        help = stringResource(
+            when (view) {
+                CrossBoardView.TRIES_UNTIL_SEND -> R.string.board_stats_cross_board_send_curve_help
+                CrossBoardView.TRIES_PER_GRADE -> R.string.board_stats_cross_board_tries_help
+                CrossBoardView.PER_MONTH -> R.string.board_stats_cross_board_months_help
+            },
+            CrossBoardStatsComputer.SMALL_SAMPLE,
+        ),
+    ) {
+        val smallSamples = when (view) {
+            CrossBoardView.TRIES_UNTIL_SEND -> stats.sendCurve.values.any { it.problems < CrossBoardStatsComputer.SMALL_SAMPLE }
+            CrossBoardView.TRIES_PER_GRADE -> stats.grades.any { row -> row.byBoard.values.any { it.isSmallSample() } }
+            CrossBoardView.PER_MONTH -> stats.months.any { row -> row.byBoard.values.any { it.tries.isSmallSample() } }
+        }
+        if (view == CrossBoardView.TRIES_UNTIL_SEND) {
+            // The boards name their rows; the legend explains the shades.
+            val ramp = triesRamp()
+            SendCurveLegend(ramp, smallSamples)
+            Spacer(Modifier.height(12.dp))
+            SendCurveChart(stats, colors, ramp)
+        } else {
+            BoardLegend(if (stats.boards.size > 1) stats.boards else emptyList(), colors, smallSamples)
+            if (stats.boards.size > 1 || smallSamples) Spacer(Modifier.height(12.dp))
+            when (view) {
+                CrossBoardView.TRIES_PER_GRADE -> TriesPerGradeChart(stats, colors)
+                else -> MonthCharts(stats, colors)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BoardLegend(
+    boards: List<String>,
+    colors: Map<String, Color>,
+    smallSamples: Boolean,
+) {
+    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        boards.forEach { board ->
+            LegendItem(boardBrandLabel(board)) {
+                Spacer(Modifier.size(10.dp).background(colors.getValue(board), CircleShape))
+            }
+        }
+        if (smallSamples) {
+            LegendItem(stringResource(R.string.board_stats_cross_board_few, CrossBoardStatsComputer.SMALL_SAMPLE)) {
+                Spacer(Modifier.size(10.dp).border(2.dp, ink, CircleShape))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LegendItem(label: String, marker: @Composable () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        marker()
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** "2,4": an average number of tries, in the language of the app. */
+@Composable
+private fun triesNumber(tries: TriesToSend): String =
+    stringResource(R.string.board_stats_cross_board_tries_number, tries.averageTries)
+
+/** "2,0 Versuche · 6 Probleme": the spelled-out value for details and screen readers. */
+@Composable
+private fun triesDetail(tries: TriesToSend): String =
+    stringResource(R.string.board_stats_cross_board_tries_value, tries.averageTries) + " · " +
+        pluralStringResource(R.plurals.board_stats_cross_board_problems, tries.problems, tries.problems)
+
+/** The top of a tries scale: a whole number of tries, at least two. */
+internal fun triesScaleMax(maxAverage: Double): Double = max(2.0, ceil(maxAverage))
+
+// ---------------------------------------------------------------- tries until the send
+
+/**
+ * Five shades of one blue for flash, 2, 3, 4–5 and 6+ tries, light to dark,
+ * each step told apart from the next and the darkest still clear of the card.
+ */
+@Composable
+internal fun triesRamp(): List<Color> =
+    if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) {
+        listOf(Color(0xFF9EC5F4), Color(0xFF6DA7EC), Color(0xFF3987E5), Color(0xFF256ABF), Color(0xFF184F95))
+    } else {
+        listOf(Color(0xFF6DA7EC), Color(0xFF3987E5), Color(0xFF256ABF), Color(0xFF184F95), Color(0xFF0D366B))
+    }
+
+@Composable
+private fun bucketLabel(index: Int): String = when (index) {
+    0 -> stringResource(R.string.board_logbook_flash)
+    TriesBuckets.LOWEST.lastIndex -> "${TriesBuckets.LOWEST[index]}+"
+    else -> {
+        val low = TriesBuckets.LOWEST[index]
+        val high = TriesBuckets.LOWEST[index + 1] - 1
+        if (low == high) "$low" else "$low–$high"
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SendCurveLegend(ramp: List<Color>, smallSamples: Boolean) {
+    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        ramp.forEachIndexed { i, color ->
+            LegendItem(bucketLabel(i)) {
+                Spacer(Modifier.size(10.dp).background(color, RoundedCornerShape(2.dp)))
+            }
+        }
+        if (smallSamples) {
+            LegendItem(stringResource(R.string.board_stats_cross_board_few, CrossBoardStatsComputer.SMALL_SAMPLE)) {
+                Spacer(Modifier.size(10.dp).border(2.dp, ink, RoundedCornerShape(2.dp)))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SendCurveChart(stats: CrossBoardStats, colors: Map<String, Color>, ramp: List<Color>) {
+    var selected by remember(stats.sendCurve) { mutableStateOf<String?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        stats.boards.forEach { board ->
+            val buckets = stats.sendCurve[board] ?: return@forEach
+            SendCurveRow(
+                board = board,
+                buckets = buckets,
+                color = colors.getValue(board),
+                ramp = ramp,
+                expanded = selected == board,
+                onClick = { selected = if (selected == board) null else board },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SendCurveRow(
+    board: String,
+    buckets: TriesBuckets,
+    color: Color,
+    ramp: List<Color>,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val labels = TriesBuckets.LOWEST.indices.map { bucketLabel(it) }
+    val counts = buckets.counts.mapIndexed { i, n -> "${labels[i]} $n" }.joinToString(" · ")
+    val problems = pluralStringResource(R.plurals.board_stats_cross_board_problems, buckets.problems, buckets.problems)
+    val name = boardBrandLabel(board)
+    val small = buckets.problems < CrossBoardStatsComputer.SMALL_SAMPLE
+    val measurer = rememberTextMeasurer()
+    val percentStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (expanded) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "$name: $counts ($problems)" }
+            .padding(vertical = 6.dp, horizontal = 4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.width(SEND_CURVE_LABEL_WIDTH),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Spacer(Modifier.size(8.dp).background(color, CircleShape))
+                Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Canvas(Modifier.weight(1f).height(SEND_CURVE_BAR_HEIGHT)) {
+                val total = buckets.problems.toFloat()
+                if (total <= 0f) return@Canvas
+                val gap = 2.dp.toPx()
+                val shown = buckets.counts.withIndex().filter { it.value > 0 }
+                val width = size.width - gap * (shown.size - 1)
+                val radius = CornerRadius(4.dp.toPx())
+                var x = 0f
+                shown.forEach { (i, n) ->
+                    val w = width * n / total
+                    if (small) {
+                        val stroke = 1.5.dp.toPx()
+                        drawRoundRect(
+                            ramp[i],
+                            topLeft = Offset(x + stroke / 2, stroke / 2),
+                            size = Size(w - stroke, size.height - stroke),
+                            cornerRadius = radius,
+                            style = Stroke(stroke),
+                        )
+                    } else {
+                        drawRoundRect(ramp[i], Offset(x, 0f), Size(w, size.height), radius)
+                        // Shares at a glance, the counts behind them once the row is open.
+                        val percent = measurer.measure(
+                            if (expanded) "$n" else "${Math.round(n * 100f / total)} %",
+                            percentStyle.copy(color = if (ramp[i].luminance() > 0.3f) Color(0xFF0B0B0B) else Color.White),
+                        )
+                        if (percent.size.width + 6.dp.toPx() < w) {
+                            drawText(
+                                percent,
+                                topLeft = Offset(x + (w - percent.size.width) / 2, (size.height - percent.size.height) / 2),
+                            )
+                        }
+                    }
+                    x += w + gap
+                }
+            }
+        }
+        if (expanded) {
+            Text(
+                problems,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = SEND_CURVE_LABEL_WIDTH, top = 6.dp),
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------- tries per grade
+
+@Composable
+private fun TriesPerGradeChart(stats: CrossBoardStats, colors: Map<String, Color>) {
+    if (stats.grades.isEmpty()) return
+    val scaleMax = triesScaleMax(stats.grades.maxOf { row -> row.byBoard.values.maxOf { it.averageTries } })
+    var selected by remember(stats.grades) { mutableStateOf<String?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        stats.grades.forEach { row ->
+            GradeRow(
+                row = row,
+                boards = stats.boards,
+                colors = colors,
+                scaleMax = scaleMax,
+                expanded = selected == row.grade,
+                onClick = { selected = if (selected == row.grade) null else row.grade },
+            )
+        }
+    }
+}
+
+@Composable
+private fun GradeRow(
+    row: CrossBoardGradeRow,
+    boards: List<String>,
+    colors: Map<String, Color>,
+    scaleMax: Double,
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val present = boards.filter { it in row.byBoard }
+    val description = row.grade + ": " + present.map { board ->
+        boardBrandLabel(board) + " " + triesDetail(row.byBoard.getValue(board))
+    }.joinToString("; ")
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (expanded) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f) else Color.Transparent,
+            )
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = description }
+            .padding(vertical = 6.dp, horizontal = 4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                row.grade,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = Modifier.width(GRADE_COLUMN_WIDTH),
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                // Only boards with sends at this grade; the colour says which board it is.
+                present.forEach { board ->
+                    TriesBar(row.byBoard.getValue(board), colors.getValue(board), scaleMax)
+                }
+            }
+        }
+        if (expanded) {
+            Column(
+                modifier = Modifier.padding(start = GRADE_COLUMN_WIDTH, top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                present.forEach { board ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Spacer(Modifier.size(8.dp).background(colors.getValue(board), CircleShape))
+                        Text(
+                            boardBrandLabel(board) + "  " + triesDetail(row.byBoard.getValue(board)),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TriesBar(tries: TriesToSend, color: Color, scaleMax: Double) {
+    val label = triesNumber(tries)
+    BoxWithConstraints(Modifier.fillMaxWidth().height(LANE_HEIGHT)) {
+        val small = tries.isSmallSample()
+        // Rounded at the value end, square at the baseline.
+        val shape = RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)
+        val track = maxWidth - BAR_LABEL_RESERVE
+        val length = (track * (tries.averageTries / scaleMax).toFloat()).coerceAtLeast(BAR_THICKNESS)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(
+                Modifier
+                    .width(length)
+                    .height(BAR_THICKNESS)
+                    // Hollow like the dots of the month view when few problems back it.
+                    .then(if (small) Modifier.border(1.5.dp, color, shape) else Modifier.background(color, shape)),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (small) FontWeight.Normal else FontWeight.SemiBold,
+                color = if (small) {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 1,
+                // Taller than the lane: centred on the bar instead of cut off at the bottom.
+                modifier = Modifier.wrapContentHeight(unbounded = true),
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------- progress by month
+
+private val MONTH_RES_IDS = intArrayOf(
+    R.string.month_jan, R.string.month_feb, R.string.month_mar,
+    R.string.month_apr, R.string.month_may, R.string.month_jun,
+    R.string.month_jul, R.string.month_aug, R.string.month_sep,
+    R.string.month_oct, R.string.month_nov, R.string.month_dec,
+)
+
+/** One series point: a board's value in one month. */
+private class MonthPoint(val month: Int, val value: Double, val label: String, val hollow: Boolean)
+
+/** The value of the selected month, led by a colour dot for each board that has it. */
+private class ValueLabel(val text: TextLayoutResult, val colors: List<Color>, val y: Float, val swatchWidth: Float) {
+    val width: Float = colors.size * swatchWidth + text.size.width
+    val height: Float = text.size.height.toFloat()
+}
+
+/** One month of the period, with its row when a problem was first sent in it. */
+private class MonthSlot(val month: YearMonth, val row: CrossBoardMonthRow?)
+
+/**
+ * Every month from the start of the period to its end, oldest first, so the
+ * months without a first send stay visible as gaps.
+ */
+private fun monthSlots(stats: CrossBoardStats): List<MonthSlot> {
+    if (stats.months.isEmpty()) return emptyList()
+    val byMonth = stats.months.associateBy { it.month }
+    val first = listOfNotNull(stats.period?.start?.let { YearMonth.from(it) }, byMonth.keys.min()).min()
+    val last = listOfNotNull(stats.period?.end?.let { YearMonth.from(it) }, byMonth.keys.max()).max()
+    return generateSequence(first) { it.plusMonths(1) }
+        .takeWhile { !it.isAfter(last) }
+        .map { MonthSlot(it, byMonth[it]) }
+        .toList()
+}
+
+@Composable
+private fun MonthCharts(stats: CrossBoardStats, colors: Map<String, Color>) {
+    val months = remember(stats.months, stats.period) { monthSlots(stats) }
+    if (months.isEmpty()) return
+    // The newest month with a value; a new period starts there again.
+    var selected by remember(months) { mutableIntStateOf(months.indexOfLast { it.row != null }) }
+
+    val triesSeries = stats.boards.associateWith { board ->
+        months.mapIndexedNotNull { index, slot ->
+            val tries = slot.row?.byBoard?.get(board)?.tries ?: return@mapIndexedNotNull null
+            MonthPoint(index, tries.averageTries, triesNumber(tries), tries.isSmallSample())
+        }
+    }
+    val monthLabels = months.mapIndexed { index, slot ->
+        val name = stringResource(MONTH_RES_IDS[slot.month.monthValue - 1])
+        if (index == 0 || slot.month.month == Month.JANUARY) "$name '${slot.month.year % 100}" else name
+    }
+    val description = months.mapIndexedNotNull { index, slot ->
+        val row = slot.row ?: return@mapIndexedNotNull null
+        monthLabels[index] + ": " + stats.boards.filter { it in row.byBoard }.map { board ->
+            boardBrandLabel(board) + " " + triesDetail(row.byBoard.getValue(board).tries)
+        }.joinToString("; ")
+    }.joinToString(". ")
+
+    Column(Modifier.semantics { contentDescription = description }) {
+        val top = triesScaleMax(stats.months.maxOf { row -> row.byBoard.values.maxOf { it.tries.averageTries } })
+        val middle = ((1 + top) / 2).let { if (it == floor(it)) it else null }
+        MonthLineChart(
+            monthCount = months.size,
+            boards = stats.boards,
+            colors = colors,
+            series = triesSeries,
+            yMin = 1.0,
+            yMax = top,
+            ticks = listOfNotNull(1.0, middle?.takeIf { top >= 4 }, top).map { it to "${it.toInt()}" },
+            monthLabels = monthLabels,
+            plotHeight = 112.dp,
+            selected = selected,
+            onSelect = { selected = it },
+        )
+    }
+}
+
+/**
+ * A line per board over evenly spaced months, with dots on the months that
+ * have a value; across months without one the line turns into a faint dashed
+ * one, so a gap stays a gap. Boards sit a few dp apart inside a month, so
+ * equal values do not hide each other. The selected month is shaded and its
+ * values stand in one column beside its dots, each led by its board's colour;
+ * equal values share one label. When the months do not fit, the chart
+ * scrolls sideways with the value axis standing still, starting at the
+ * newest month.
+ */
+@Composable
+private fun MonthLineChart(
+    monthCount: Int,
+    boards: List<String>,
+    colors: Map<String, Color>,
+    series: Map<String, List<MonthPoint>>,
+    yMin: Double,
+    yMax: Double,
+    ticks: List<Pair<Double, String>>,
+    monthLabels: List<String>?,
+    plotHeight: Dp,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+) {
+    val measurer = rememberTextMeasurer()
+    val axisStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val selectedAxisStyle = axisStyle.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+    val valueStyle = MaterialTheme.typography.labelMedium.copy(
+        color = MaterialTheme.colorScheme.onSurface,
+        fontWeight = FontWeight.SemiBold,
+    )
+    val ink = MaterialTheme.colorScheme.onSurface
+    // The card's own colour: rings around dots and backdrops behind labels.
+    val card = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        .compositeOver(MaterialTheme.colorScheme.surface)
+    val axisHeight = if (monthLabels != null) MONTH_AXIS_HEIGHT else 0.dp
+    // The tap handler outlives recompositions; it must call the newest onSelect.
+    val currentOnSelect by rememberUpdatedState(onSelect)
+
+    val inset = 8.dp
+    fun DrawScope.yOf(value: Double): Float {
+        val plotTop = inset.toPx()
+        val plotBottom = plotHeight.toPx() - inset.toPx()
+        return plotBottom - ((value - yMin) / (yMax - yMin)).toFloat() * (plotBottom - plotTop)
+    }
+
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val available = maxWidth - Y_AXIS_WIDTH
+        val bandWidth = maxOf(available / monthCount, MIN_MONTH_BAND)
+        val scrolls = bandWidth * monthCount > available
+        Row {
+            // Value axis, standing still while the months scroll.
+            Canvas(Modifier.width(Y_AXIS_WIDTH).height(plotHeight + axisHeight)) {
+                ticks.forEach { (value, label) ->
+                    val text = measurer.measure(label, axisStyle)
+                    drawText(text, topLeft = Offset(0f, yOf(value) - text.size.height / 2f))
+                }
+            }
+            // A new period starts at its newest month again.
+            val scroll = remember(monthCount) { ScrollState(Int.MAX_VALUE) }
+            Canvas(
+                Modifier
+                    .then(if (scrolls) Modifier.horizontalScroll(scroll) else Modifier)
+                    .width(if (scrolls) bandWidth * monthCount else available)
+                    .height(plotHeight + axisHeight)
+                    .pointerInput(monthCount) {
+                        detectTapGestures { tap ->
+                            val band = size.width.toFloat() / monthCount
+                            currentOnSelect((tap.x / band).toInt().coerceIn(0, monthCount - 1))
+                        }
+                    },
+            ) {
+                val band = size.width / monthCount
+                // Wide enough that equal values show as dots side by side, not as one blot.
+                val dodgeStep = min(10.dp.toPx(), band * 0.2f)
+                fun xOf(month: Int, lane: Int) =
+                    band * (month + 0.5f) + (lane - (boards.size - 1) / 2f) * dodgeStep
+                val hairline = 1.dp.toPx()
+
+                // Grid.
+                ticks.forEach { (value, _) ->
+                    val y = yOf(value)
+                    drawLine(ink.copy(alpha = 0.10f), Offset(0f, y), Offset(size.width, y), hairline)
+                }
+
+                // The selected month.
+                drawRoundRect(
+                    ink.copy(alpha = 0.06f),
+                    topLeft = Offset(band * selected + 2.dp.toPx(), 0f),
+                    size = Size(band - 4.dp.toPx(), plotHeight.toPx()),
+                    cornerRadius = CornerRadius(6.dp.toPx()),
+                )
+
+                boards.forEachIndexed { lane, board ->
+                    val color = colors.getValue(board)
+                    series[board].orEmpty().zipWithNext().forEach { (a, b) ->
+                        val from = Offset(xOf(a.month, lane), yOf(a.value))
+                        val to = Offset(xOf(b.month, lane), yOf(b.value))
+                        if (b.month - a.month == 1) {
+                            drawLine(color, from, to, 2.dp.toPx(), cap = StrokeCap.Round)
+                        } else {
+                            drawLine(
+                                color.copy(alpha = 0.45f), from, to, 1.5.dp.toPx(),
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx())),
+                            )
+                        }
+                    }
+                }
+                boards.forEachIndexed { lane, board ->
+                    val color = colors.getValue(board)
+                    series[board].orEmpty().forEach { p ->
+                        val center = Offset(xOf(p.month, lane), yOf(p.value))
+                        drawCircle(card, radius = 6.dp.toPx(), center = center)
+                        if (p.hollow) {
+                            drawCircle(color, radius = 3.dp.toPx(), center = center, style = Stroke(2.dp.toPx()))
+                        } else {
+                            drawCircle(color, radius = 4.dp.toPx(), center = center)
+                        }
+                    }
+                }
+
+                // Values of the selected month in one column beside all of its dots, so
+                // no label covers a dot. Each label starts with the colour of its board;
+                // equal values share one label with a dot per board.
+                val present = boards.withIndex().mapNotNull { (lane, board) ->
+                    series[board].orEmpty().firstOrNull { it.month == selected }?.let { p -> Triple(board, lane, p) }
+                }
+                if (present.isNotEmpty()) {
+                    val pad = 3.dp.toPx()
+                    val gap = 6.dp.toPx()
+                    val swatch = 6.dp.toPx()
+                    val swatchGap = 3.dp.toPx()
+                    val labels = present
+                        .groupBy { (_, _, p) -> p.label }
+                        .map { (label, at) ->
+                            ValueLabel(
+                                text = measurer.measure(label, valueStyle),
+                                colors = at.map { (board, _, _) -> colors.getValue(board) },
+                                y = yOf(at.first().third.value),
+                                swatchWidth = swatch + swatchGap,
+                            )
+                        }
+                        .sortedBy { it.y }
+                    val dotRadius = 6.dp.toPx()
+                    val clusterRight = present.maxOf { (_, lane, _) -> xOf(selected, lane) } + dotRadius
+                    val clusterLeft = present.minOf { (_, lane, _) -> xOf(selected, lane) } - dotRadius
+                    val onRight = clusterRight + gap + 2 * pad + labels.maxOf { it.width } <= size.width
+                    // Each label as close to its value as the ones above it allow…
+                    val tops = FloatArray(labels.size)
+                    var lastBottom = Float.NEGATIVE_INFINITY
+                    labels.forEachIndexed { i, label ->
+                        tops[i] = max(label.y - label.height / 2f, lastBottom + pad)
+                        lastBottom = tops[i] + label.height
+                    }
+                    // …and the column pulled back up where it runs past the plot.
+                    var limit = plotHeight.toPx() - pad / 2f
+                    for (i in labels.indices.reversed()) {
+                        tops[i] = min(tops[i], limit - labels[i].height)
+                        limit = tops[i] - pad
+                    }
+                    labels.forEachIndexed { i, label ->
+                        val x = if (onRight) clusterRight + gap + pad else max(pad, clusterLeft - gap - pad - label.width)
+                        val top = tops[i]
+                        drawRoundRect(
+                            card,
+                            topLeft = Offset(x - pad, top - pad / 2f),
+                            size = Size(label.width + 2 * pad, label.height + pad),
+                            cornerRadius = CornerRadius(4.dp.toPx()),
+                        )
+                        label.colors.forEachIndexed { j, color ->
+                            drawCircle(
+                                color,
+                                radius = swatch / 2f,
+                                center = Offset(x + j * label.swatchWidth + swatch / 2f, top + label.height / 2f),
+                            )
+                        }
+                        drawText(label.text, topLeft = Offset(x + label.colors.size * label.swatchWidth, top))
+                    }
+                }
+
+                // Month axis: as many labels as fit, always the selected month.
+                if (monthLabels != null) {
+                    val axisTop = plotHeight.toPx() + 4.dp.toPx()
+                    val measured = monthLabels.mapIndexed { i, label ->
+                        measurer.measure(label, if (i == selected) selectedAxisStyle else axisStyle)
+                    }
+                    val widest = measured.maxOf { it.size.width } + 8.dp.toPx()
+                    val every = max(1, ceil(widest / band).toInt())
+                    fun drawMonth(i: Int, layout: TextLayoutResult) {
+                        val x = (band * (i + 0.5f) - layout.size.width / 2f)
+                            .coerceIn(0f, size.width - layout.size.width)
+                        drawText(layout, topLeft = Offset(x, axisTop))
+                    }
+                    measured.forEachIndexed { i, layout ->
+                        if (i != selected && i % every == 0 && abs(i - selected) * band >= widest) drawMonth(i, layout)
+                    }
+                    drawMonth(selected, measured[selected])
+                }
+            }
+        }
+    }
+}
+
+// Narrower months than this scroll instead of squeezing their dots together.
+private val MIN_MONTH_BAND = 28.dp

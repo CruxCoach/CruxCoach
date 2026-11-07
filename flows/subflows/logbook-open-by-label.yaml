@@ -1,0 +1,15 @@
+appId: com.cruxcoach.android
+name: subflow-logbook-open-by-label
+---
+# From the board browser into the logbook, by labels only. The logbook is a
+# direct header action on wide screens and sits in the overflow menu on
+# narrow ones.
+- runFlow:
+    when:
+      notVisible: "Logbuch"
+    commands:
+      - tapOn: "Weitere Optionen"
+- tapOn: "Logbuch"
+- extendedWaitUntil:
+    visible: "Logbuch-Optionen"
+    timeout: 15000
