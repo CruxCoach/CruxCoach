@@ -334,7 +334,7 @@
              its telemetry to Microsoft with a device id. CruxCoach sends no
              telemetry: the provider is removed, and the runtime is started
              only for the hold model, with telemetry switched off
-             (HoldModelRuntime). -->
+             (OnnxHoldDetector.environment). -->
         <provider
             android:name="ai.onnxruntime.TelemetryInitializer"
             android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
