@@ -429,7 +429,10 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                     focus == PreferenceLearning.DONT_KNOW -> {
                         val from = e.slugs.getOrNull(0)
                         val to = e.slugs.getOrNull(1)
-                        if (from != null && to != null) swapsToday[originalOf(from)] = to
+                        if (from != null && to != null) {
+                            val key = originalOf(from)
+                            if (key == to) swapsToday.remove(key) else swapsToday[key] = to
+                        }
                     }
                     focus.startsWith(PreferenceLearning.CHOSEN_LEVEL) -> levelShift = (e.value?.toInt() ?: 0).coerceIn(-1, 1)
                     focus == PreferenceLearning.CHOSEN_MINUTES -> minutesToday = e.value?.toInt()
@@ -801,7 +804,11 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     fun familiarSwap(slug: String): com.cruxcoach.athlete.catalog.ExerciseDefinition? {
         val input = lastInput ?: return null
         val s = _state.value.suggestion ?: return null
-        return runCatching { SessionSuggester.familiarSwap(input, s.routine.items, s.focus, slug) }.getOrNull()
+        return runCatching {
+            // What was swapped away or left out elsewhere on the card today stays away; the slot's own pick may come back.
+            val away = swapsToday.keys.toSet() - originalOf(slug)
+            SessionSuggester.familiarSwap(input, s.routine.items, s.focus, slug, exclude = away)
+        }.getOrNull()
     }
 
     /**
@@ -815,7 +822,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             synchronized(refreshLock) {
                 val key = originalOf(from)
                 undo.key = key; undo.previous = swapsToday[key]
-                swapsToday[key] = to
+                // Back to the coach's own pick of the slot: no swap left.
+                if (key == to) swapsToday.remove(key) else swapsToday[key] = to
                 undo.eventId = service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.DONT_KNOW, listOf(from, to))
                 lastInputs?.let { refreshUnlocked(it) }
             }

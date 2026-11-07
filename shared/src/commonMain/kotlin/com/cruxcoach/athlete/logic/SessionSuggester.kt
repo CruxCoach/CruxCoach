@@ -1322,7 +1322,10 @@ object SessionSuggester {
         (keptLevel(input, focus) + input.levelShift.coerceIn(-1, 1)).coerceIn(-1, 1)
 
     /** Athlete level from what is known about them, with the step for [focus]; keeps beginners away from one-arm and campus work. */
-    private fun level(input: SuggestionInput, focus: SuggestionFocus): Int {
+    private fun level(input: SuggestionInput, focus: SuggestionFocus): Int = (baseLevel(input) + shift(input, focus)).coerceAtLeast(1)
+
+    /** [level] before the step kept for a kind of training and today's "easier"/"harder": who the athlete is. */
+    private fun baseLevel(input: SuggestionInput): Int {
         var level = 2
         if (input.benchmarkSlugs.size >= 3) level++
         if ("pull.weighted_pull_up" in input.benchmarkSlugs && "finger.max_hang" in input.benchmarkSlugs) level++
@@ -1331,12 +1334,15 @@ object SessionSuggester {
         // 2026-10-17). The grade sets the level, the years cap it; the novice and youth guardrails still apply.
         climbingLevel(input.coach, input.logbookDifficulty)?.let { level = max(level, it) }
         if (input.coach.goal == CoachGoal.COMEBACK) level--
-        return (level + shift(input, focus)).coerceAtLeast(1)
+        return level.coerceAtLeast(1)
     }
 
-    /** Which levels of familiarity the athlete gets for [focus] ([ExerciseFamiliarity.group]). */
-    private fun familiarityGroup(input: SuggestionInput, focus: SuggestionFocus): ExerciseFamiliarity.Group =
-        ExerciseFamiliarity.group(input.coach, level(input, focus),
+    /**
+     * Which levels of familiarity the athlete gets ([ExerciseFamiliarity.group]): from who they are, not from today's
+     * "easier"/"harder", which change how hard the work is, not which exercises they know.
+     */
+    private fun familiarityGroup(input: SuggestionInput): ExerciseFamiliarity.Group =
+        ExerciseFamiliarity.group(input.coach, baseLevel(input),
             hasPerformanceValue = input.benchmarkSlugs.isNotEmpty() || input.benchmarks.isNotEmpty(),
             grade = input.coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: input.logbookDifficulty)
 
@@ -1386,6 +1392,7 @@ object SessionSuggester {
             withoutClimbing = !allowWall,
         )
         val level = level(input, focus)
+        val group = familiarityGroup(input)
         val guard = guardrails(input)
         val fingerFocus = focus == SuggestionFocus.FINGER_STRENGTH || focus == SuggestionFocus.INJURY_SAFE
         val result = mutableListOf<RoutineItem>()
@@ -1420,7 +1427,7 @@ object SessionSuggester {
             val withinLevel = if (level < 3 || slot !in LEVELLED_SLOTS) ceiling
                 else ceiling.filter { it.difficulty >= level - 1 || it.slug in input.favorites }.ifEmpty { ceiling }
             // Well-known exercises first (issue #68): the athlete's levels of familiarity, at most one new exercise a session.
-            var familiar = ExerciseFamiliarity.candidates(input, familiarityGroup(input, focus), withinLevel, taken)
+            var familiar = ExerciseFamiliarity.candidates(input, group, withinLevel, taken)
             // The session already has its new exercise and only new ones are left this close to the athlete's level: one
             // difficulty step easier, a Basic or known exercise comes first (training simulation, issue #68).
             if (familiar.isNotEmpty() && familiar.all { ExerciseFamiliarity.countsAsNew(input, it) } && !ExerciseFamiliarity.roomForNew(input, taken)) {
@@ -1430,7 +1437,7 @@ object SessionSuggester {
             val kept = input.kept.firstNotNullOfOrNull { k -> fresh.firstOrNull { it.slug == k } }
                 ?.takeIf { k -> input.levelShift == 0 || withinLevel.any { it.slug == k.slug } }
             if (kept != null) ctx.reasons += SuggestionReason.KEPT_CHOICE
-            val choice = kept ?: familiar.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus, mains) }.thenBy { it.slug })
+            val choice = kept ?: familiar.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus, mains, group) }.thenBy { it.slug })
                 ?: continue
             taken += choice.slug
             if (slot == Slot.WARMUP) result.add(0, WorkoutPlanner.itemFor(choice).copy(warmup = true, sets = min(WorkoutPlanner.itemFor(choice).sets, 4)))
@@ -1485,6 +1492,7 @@ object SessionSuggester {
         slot: Slot,
         focus: SuggestionFocus,
         mains: List<ExerciseDefinition> = emptyList(),
+        group: ExerciseFamiliarity.Group = familiarityGroup(input),
     ): Double {
         val coach = input.coach
         val variety = (coach.variety ?: 50).coerceIn(0, 100)
@@ -1502,7 +1510,7 @@ object SessionSuggester {
         // Variety 0 is a fixed routine (owner 2026-10-19): no pull towards the new at all; 50 keeps the classic bonus.
         val noveltyWeight = if (variety < 50) variety / 50.0 else 0.5 + variety / 100.0
         // Only within the athlete's levels of familiarity (issue #68): the bonus pulled exactly the unknown exercises in.
-        val withinLevels = ExerciseFamiliarity.withinLevels(familiarityGroup(input, focus), def) || ExerciseFamiliarity.isKnown(input, def)
+        val withinLevels = ExerciseFamiliarity.withinLevels(group, def) || ExerciseFamiliarity.isKnown(input, def)
         if (affinity >= DISLIKED && withinLevels) s += novelty * noveltyWeight
         if (coach.exerciseChoice == ExerciseChoice.OPEN && def.familiarity == Familiarity.SPECIAL) s += ExerciseFamiliarity.OPEN_SPECIAL_BONUS
         if (variety < 50 && last != null && (input.today.toEpochDays() - last.toEpochDays()).toLong() <= 14) s += (50 - variety) / 50.0 * 1.5
@@ -1615,6 +1623,7 @@ object SessionSuggester {
         val original = catalog.fallbackFor(slug)
         val slot = slotOf(original, item.warmup)
         val mains = items.filter { !it.warmup }.map { catalog.fallbackFor(it.slug) }
+        val group = familiarityGroup(input)
         val candidates = swapCandidates(input, items, item, focus)
         // Turned down lately ([SuggestionInput.resting]): offered last, so the athlete still finds them but the
         // coach does not lead with what they rejected (comparison review #1/#11).
@@ -1625,7 +1634,7 @@ object SessionSuggester {
         val chain = chainAll.filter { it.def.slug !in input.resting }
         val rest = candidates.filter { c -> chain.none { it.def.slug == c.slug } }
             .sortedWith(compareBy<ExerciseDefinition> { it.slug in input.resting }
-                .thenByDescending { score(input, it, slot, focus, mains) }.thenBy { it.slug })
+                .thenByDescending { score(input, it, slot, focus, mains, group) }.thenBy { it.slug })
         // Device review 2026-10-16: a diamond push-up got only harder push-ups. An easier one comes first when the
         // chain has none, then exercises about as hard, then the rest — each marked easier or harder.
         val fresh = rest.filter { it.slug !in input.resting }
@@ -1640,17 +1649,22 @@ object SessionSuggester {
 
     /**
      * "Don't know it" (issue #68): the best exercise for [slug]'s place that is Basic or known to the athlete, through
-     * the same filters as a swap ([alternatives]); null when there is none. Exercises turned down lately come last.
+     * the same filters as a swap ([alternatives]); null when there is none. Exercises turned down lately come last;
+     * [exclude] are other picks the athlete swapped away or left out today, which must not come back this way.
      */
-    fun familiarSwap(input: SuggestionInput, items: List<RoutineItem>, focus: SuggestionFocus, slug: String): ExerciseDefinition? {
+    fun familiarSwap(
+        input: SuggestionInput, items: List<RoutineItem>, focus: SuggestionFocus, slug: String, exclude: Set<String> = emptySet(),
+    ): ExerciseDefinition? {
         val item = items.firstOrNull { it.slug == slug } ?: return null
         val slot = slotOf(input.catalog.fallbackFor(slug), item.warmup)
         val mains = items.filter { !it.warmup }.map { input.catalog.fallbackFor(it.slug) }
+        val group = familiarityGroup(input)
         return swapCandidates(input, items, item, focus)
-            .filter { !ExerciseFamiliarity.isNew(input, it) }
-            .sortedWith(compareBy<ExerciseDefinition> { it.slug in input.resting }
-                .thenByDescending { score(input, it, slot, focus, mains) }.thenBy { it.slug })
-            .firstOrNull()
+            .filter { it.slug !in exclude && !ExerciseFamiliarity.isNew(input, it) }
+            .map { it to score(input, it, slot, focus, mains, group) }
+            .sortedWith(compareBy<Pair<ExerciseDefinition, Double>> { it.first.slug in input.resting }
+                .thenByDescending { it.second }.thenBy { it.first.slug })
+            .firstOrNull()?.first
     }
 
     /** What may take [item]'s place: the same filters as a pick, and work that spares the fingers stays finger-free. */

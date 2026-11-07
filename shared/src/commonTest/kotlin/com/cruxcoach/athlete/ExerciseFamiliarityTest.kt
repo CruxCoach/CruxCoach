@@ -159,11 +159,19 @@ class ExerciseFamiliarityTest {
 
     @Test
     fun anExerciseMarkedUnknownIsNotTheNewPickWhileSomethingElseFits() {
-        val base = input(coach = intermediate)
-        val first = SessionSuggester.suggest(base)
-        val new = newOnes(base, first).firstOrNull() ?: return
-        val again = SessionSuggester.suggest(input(coach = intermediate, unfamiliar = setOf(new.slug)))
-        assertFalse(new.slug in again.routine.items.map { it.slug }, "${new.slug} came back: ${again.routine.items.map { it.slug }}")
+        // Open to unusual exercises: the new ones come in many variants, so their absence below means something.
+        val coach = advanced.copy(exerciseChoice = ExerciseChoice.OPEN)
+        // The Pallof press; the dead bug stays, so the core slots always have something else.
+        val unusualCore = setOf("core.pallof_press")
+        // Legs and core: the core slots come while there is still room for new exercises.
+        fun legsCore(v: Int, unfamiliar: Set<String> = emptySet()) =
+            SessionSuggester.suggest(input(coach = coach, variant = v, wish = SuggestionFocus.LEGS_CORE, unfamiliar = unfamiliar)).routine.items.map { it.slug }
+        val before = (0 until 8).flatMap { v -> legsCore(v) }
+        assertTrue(before.any { it in unusualCore }, "$before")
+        (0 until 8).forEach { v ->
+            val again = legsCore(v, unusualCore)
+            assertTrue(again.none { it in unusualCore }, "variant $v: $again")
+        }
     }
 
     @Test

@@ -69,6 +69,7 @@ class ExerciseChoiceTest : AthleteScreenTest() {
         }
         val to = assertNotNull(vm.familiarSwap(slug))
         assertTrue(to.familiarity == Familiarity.BASIC, to.slug)
+        val count = items().size
         render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
         scrollTo("today_list", hasTestTag("today_item_$slug"))
         waitForTag("today_new_$slug")
@@ -76,6 +77,8 @@ class ExerciseChoiceTest : AthleteScreenTest() {
         waitForTag("today_swap_steps")
         click("today_swap_dont_know")
         until { items().any { it.slug == to.slug } && items().none { it.slug == slug } }
+        // The slot stays: one exercise for another, never a gap (also when the replacement is the coach's own pick).
+        assertEquals(count, items().size)
         // Recorded as "don't know it", not as a swap: nothing counts against the exercise or for its replacement.
         val day = service.today().toString()
         val events = repo.suggestionEventsForDay(day)

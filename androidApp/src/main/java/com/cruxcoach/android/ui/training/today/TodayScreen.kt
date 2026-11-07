@@ -362,7 +362,7 @@ fun TodayScreen(
     swapFor?.let { slug ->
         val alternatives = remember(slug, state.suggestion) { viewModel.alternatives(slug) }
         val isNew = slug in state.newToYou
-        val familiar = remember(slug, state.suggestion) { if (isNew) viewModel.familiarSwap(slug) else null }
+        val familiar = remember(slug, state.suggestion, isNew) { if (isNew) viewModel.familiarSwap(slug) else null }
         SwapSheet(
             state = state, slug = slug, alternatives = alternatives,
             isNew = isNew, familiar = familiar,
@@ -1414,8 +1414,8 @@ private fun DailySuggestionCard(
                                 // New to the athlete (issue #68): one tap to the steps; the row itself still swaps.
                                 if (item.slug in state.newToYou) {
                                     val how = stringResource(R.string.trt_new_how)
-                                    Row(Modifier.clip(CruxCoachDesign.shapes.small).clickable(onClickLabel = how) { onOpenSteps(item.slug) }
-                                        .padding(vertical = 2.dp).testTag("today_new_${item.slug}")) {
+                                    Row(Modifier.heightIn(min = 32.dp).clip(CruxCoachDesign.shapes.small).clickable(onClickLabel = how) { onOpenSteps(item.slug) }
+                                        .padding(end = 8.dp).testTag("today_new_${item.slug}"), verticalAlignment = Alignment.CenterVertically) {
                                         Text(stringResource(R.string.trt_new_to_you) + " · ", style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Text(how, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,

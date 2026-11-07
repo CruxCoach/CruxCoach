@@ -95,9 +95,13 @@ object ExerciseFamiliarity {
 
     fun newPerSession(choice: ExerciseChoice?): Int = if (choice == ExerciseChoice.OPEN) NEW_PER_SESSION_OPEN else NEW_PER_SESSION
 
-    /** The session's picks so far ([taken]) leave room for one more new exercise. */
+    /**
+     * The session's picks so far ([taken]) leave room for one more new exercise. Warm-ups do not use it up: they are
+     * picked last, and a board day's fixed warm-up would otherwise take the block after climbing's new exercise unseen.
+     */
     fun roomForNew(input: SuggestionInput, taken: Collection<String>): Boolean =
-        taken.mapNotNull { input.catalog[it] }.count { countsAsNew(input, it) } < newPerSession(input.coach.exerciseChoice)
+        taken.mapNotNull { input.catalog[it] }.count { it.category != ExerciseCategoryV2.WARMUP && countsAsNew(input, it) } <
+            newPerSession(input.coach.exerciseChoice)
 
     /** Within the levels of [group]: such exercises keep the novelty bonus, the others get none. */
     fun withinLevels(group: Group, def: ExerciseDefinition): Boolean = when (group) {

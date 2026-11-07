@@ -139,7 +139,10 @@ object Checks {
             }
 
             // From its open stage on, a comeback plan lets training outside the plan load the injured spot again, marked (owner 2026-10-20).
-            d.activeInjuries.filter { it.severity >= 4 && (it.plan?.stage ?: -1) < comebackOpenStage(it.region) }.forEach { injury ->
+            d.activeInjuries.filter { inj ->
+                val plan = inj.activePlan?.takeIf { it.source == com.cruxcoach.athlete.model.PlanSource.CRUXCOACH }
+                inj.severity >= 4 && (plan?.stage ?: -1) < comebackOpenStage(inj.region)
+            }.forEach { injury ->
                 val hit = defs.filter { def -> injury.region.bodyRegions.any { it in def.contraindications } ||
                     (injury.region.domains.any { it in def.domains } && injury.climbingPaused && def.kind == ExerciseKind.CLIMB) }
                 if (hit.isNotEmpty()) flags += Flag(Check.CONTRAINDICATED, d.day,
