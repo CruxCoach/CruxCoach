@@ -97,6 +97,7 @@ class ShinyWallSyncEngine @Inject constructor(
         const val MAX_EXTERNAL_ID_LENGTH = 100
         const val MAX_LIST_NAME_LENGTH = 200
         const val MAX_ANGLE = 70
+        const val MAX_ATTEMPTS = 100_000L
 
         /** Variant preference when a list route has no variant of its own. */
         val VARIANT_ORDER = listOf(
@@ -117,13 +118,16 @@ class ShinyWallSyncEngine @Inject constructor(
             return prefix + "#" + hash.joinToString("") { "%02x".format(it) }
         }
 
+        /** Attempts of a send from "more than nine" on. */
+        const val MAX_SEND_ATTEMPTS = 10L
+
         /** (attempt_id, bid_count) of a send, or null when the entry is a project. */
         fun sendShape(sent: Int): Pair<Long, Long>? = when {
             sent < 0 -> null
             sent == 0 || sent == 1 -> 0L to 1L
             sent in 2..9 -> 1L to sent.toLong()
             sent == ShinyWallParsers.SENT_UNKNOWN_ATTEMPTS -> 1L to 1L
-            else -> 1L to 10L
+            else -> 1L to MAX_SEND_ATTEMPTS
         }
 
         fun epochMs(timestamp: String?): Long? =
@@ -185,7 +189,7 @@ class ShinyWallSyncEngine @Inject constructor(
         /** Local date of [climbedAt]. */
         val day: String get() = climbedAt.substringBefore('T')
         /** Attempts of a project. */
-        val attempts: Long get() = if (sent < 0) -sent.toLong() else 1L
+        val attempts: Long get() = if (sent < 0) (-sent.toLong()).coerceAtMost(MAX_ATTEMPTS) else 1L
     }
 
     /** A send with the attempts (`sent < 0`) before it on the same route and angle, back to the previous send. */
@@ -211,6 +215,9 @@ class ShinyWallSyncEngine @Inject constructor(
             val history = client.fetchHistory(session.uid).getOrElse { return@withLock Result.failure<ShinyWallImportResult>(it) }
             val plan = logbookStep { plan(session.uid, history) }.getOrElse { return@withLock Result.failure(it) }
             logbookStep { write(plan) }.getOrElse { return@withLock Result.failure(it) }
+            // Right after the write, before the lists suspend: cancelled there, the logbook
+            // still knows what it holds.
+            tokenStore.recordImport(session.uid, System.currentTimeMillis(), plan.newestMs, plan.placed)
             val lists = try {
                 importLists(session.uid, history, listNames)
             } catch (e: CancellationException) {
@@ -219,7 +226,6 @@ class ShinyWallSyncEngine @Inject constructor(
                 Log.w(TAG, "List import failed, logbook import kept", e)
                 0
             }
-            tokenStore.recordImport(session.uid, System.currentTimeMillis(), plan.newestMs, plan.placed)
             Log.i(
                 TAG,
                 "Imported ${plan.logs.size} entries (${plan.duplicates} known, ${plan.deleted} deleted here, " +
@@ -326,6 +332,14 @@ class ShinyWallSyncEngine @Inject constructor(
                 continue
             }
             val own = ownAttemptsBefore[p] ?: 0L
+            val shape = sendShape(p.sent)
+            val send = when {
+                shape == null || own == 0L -> shape
+                p.sent == ShinyWallParsers.SENT_UNKNOWN_ATTEMPTS -> shape
+                // After attempts on other days the send is no flash, and carries what is left
+                // of Shiny's count (before the cap).
+                else -> 1L to (p.sent - own).coerceIn(1L, MAX_SEND_ATTEMPTS)
+            }
             planned += PlannedLog(
                 entry = p.entry,
                 variant = p.variant,
@@ -333,10 +347,7 @@ class ShinyWallSyncEngine @Inject constructor(
                 uuid = p.uuid,
                 angle = p.angle,
                 climbedAt = p.climbedAt,
-                // After attempts on other days the send is no flash, and carries what is left.
-                send = sendShape(p.sent)?.let { (attemptId, count) ->
-                    if (own > 0) 1L to maxOf(1L, count - own) else attemptId to count
-                },
+                send = send,
                 attempts = p.attempts,
             )
         }
@@ -346,11 +357,11 @@ class ShinyWallSyncEngine @Inject constructor(
 
         // Every placed entry is dealt with now: in the logbook, deleted there, or part of its send.
         // Entries before the next import's window are never looked at again, so they need no record.
-        val nextWatermark = listOfNotNull(newestMs, lastWatermark).maxOrNull()
-        val keepFrom = nextWatermark?.minus(WATERMARK_OVERLAP_MS) ?: Long.MIN_VALUE
+        // The window may move back (newer entries gone from Shiny Wall): keep the wider one.
+        val keepFrom = listOfNotNull(newestMs, lastWatermark).minOrNull()?.minus(WATERMARK_OVERLAP_MS) ?: Long.MIN_VALUE
         val placedNow = (placedBefore + placed.mapNotNull { p -> p.ms?.let { p.uuid to it } })
             .filterValues { it >= keepFrom }
-        return Plan(unique, duplicates, skipped, history.size, nextWatermark, catalogue, merged, deletedHere, placedNow)
+        return Plan(unique, duplicates, skipped, history.size, newestMs, catalogue, merged, deletedHere, placedNow)
     }
 
     /**

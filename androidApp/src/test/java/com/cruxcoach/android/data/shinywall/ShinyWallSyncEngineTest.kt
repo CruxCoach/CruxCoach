@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.nio.file.Files
 import java.sql.DriverManager
+import java.time.ZoneOffset
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -100,6 +101,8 @@ class ShinyWallSyncEngineTest {
         coEvery { client.fetchOwnRoutes("uid1") } returns Result.success(emptyList())
 
         engine = ShinyWallSyncEngine(client, store, board, repo, db)
+        // Logbook days in UTC, whatever zone the test runs in.
+        engine.zone = { ZoneOffset.UTC }
     }
 
     @AfterTest
@@ -148,7 +151,7 @@ class ShinyWallSyncEngineTest {
         assertEquals(null, h0.quality)         // star ratings stay in Shiny Wall
         assertEquals(17L, h0.difficulty)       // 6A+
         assertEquals(null, h0.comment)
-        assertEquals(ShinyWallSyncEngine.localClimbedAt(t), h0.climbedAt)
+        assertEquals(ShinyWallSyncEngine.localClimbedAt(t, ZoneOffset.UTC), h0.climbedAt)
         assertEquals("Route one", h0.name)
         assertEquals(18.5, h0.diffAvg)
         assertEquals(0L to 1L, rows.getValue("shinywall:history:h1").let { it.attemptId to it.bidCount })
@@ -318,12 +321,11 @@ class ShinyWallSyncEngineTest {
     @Test
     fun a_send_after_travelling_still_replaces_its_attempts() = runTest {
         // Attempts imported at home, the send imported in another time zone, the same day in both.
-        engine.zone = { java.time.ZoneOffset.UTC }
         coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts))
         engine.importAll(names).getOrThrow()
         assertEquals(listOf("shinywall:history:rev1" to 2L), bids())
 
-        engine.zone = { java.time.ZoneOffset.ofHours(9) }
+        engine.zone = { ZoneOffset.ofHours(9) }
         coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, revSend))
         val again = engine.importAll(names).getOrThrow()
         assertEquals(1 to 0, again.newAscents to again.newProjects)
@@ -333,7 +335,6 @@ class ShinyWallSyncEngineTest {
 
     @Test
     fun attempts_of_earlier_days_stay_entries_of_their_own() = runTest {
-        engine.zone = { java.time.ZoneOffset.UTC }
         val monday = realEntry("mon", "r3", -3, grade = null, ts = "2026-10-26T18:00:00Z")
         // Monday: three attempts. The import that evening logs a project.
         coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(monday))
@@ -354,7 +355,7 @@ class ShinyWallSyncEngineTest {
         repo.deleteBid(ShinyWallSyncEngine.logUuid("mon"))
         repo.deleteAscent(ShinyWallSyncEngine.logUuid("fri2"))
         val fresh = ShinyWallSyncEngine(client, InMemoryShinyWallTokenStorage(store.session()), board, repo, db)
-        fresh.zone = { java.time.ZoneOffset.UTC }
+        fresh.zone = { ZoneOffset.UTC }
         assertEquals(1 to 1, fresh.importAll(names).getOrThrow().let { it.newAscents to it.newProjects })
         assertEquals(listOf("shinywall:history:mon" to 3L), bids())
         assertEquals(listOf(Triple("shinywall:history:fri2", 1L, 2L)), ascentCounts())
@@ -372,8 +373,23 @@ class ShinyWallSyncEngineTest {
     }
 
     @Test
+    fun a_long_project_leaves_its_send_the_rest_of_a_large_count() = runTest {
+        // Shiny counts on past nine; the logbook stops at 10, but only after the earlier days are taken off.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(
+                realEntry("p1", "r1", -12, grade = null, ts = "2026-10-20T18:00:00Z"),
+                realEntry("s1", "r1", 15, ts = "2026-10-27T18:00:00Z"),
+                realEntry("p3", "r3", -5, grade = null, ts = "2026-10-20T18:00:00Z"),
+                realEntry("s3", "r3", 25, ts = "2026-10-27T18:00:00Z"),
+            )
+        )
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf(Triple("shinywall:history:s1", 1L, 3L), Triple("shinywall:history:s3", 1L, 10L)), ascentCounts())
+        assertEquals(listOf("shinywall:history:p1" to 12L, "shinywall:history:p3" to 5L), bids())
+    }
+
+    @Test
     fun a_later_send_replaces_the_attempts_an_earlier_import_logged() = runTest {
-        engine.zone = { java.time.ZoneOffset.UTC }
         // First import: only the morning's attempts, plus a newer entry that puts them behind the watermark.
         val revAttempts = realEntry("rev1", reventaera, -2, grade = null, ts = "2026-10-23T08:00:00Z")
         val revSend = realEntry("rev2", reventaera, 3, ts = "2026-10-23T18:00:00Z")
