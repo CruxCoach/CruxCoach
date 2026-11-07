@@ -8,7 +8,8 @@ tags:
 # Matchers are German texts and content descriptions (config.yaml): Compose
 # test tags do not surface as resource ids (docs/testing.md), and the logbook
 # tags of 0.2.2 are gone. The shared launch and open subflows still use them,
-# so this root launches and navigates by labels on its own.
+# so this root launches and navigates by labels on its own. The logbook shows
+# a comment in quotes, so the markers are matched as part of their text.
 #
 # Infrastructure attempts share E2E_RUN_ID. Pre-clean only markers from a
 # possible prior attempt so replay cannot change the first-contact semantics.
@@ -27,7 +28,7 @@ tags:
 - runFlow: subflows/logbook-open-by-label.yaml
 - runFlow:
     when:
-      visible: "E2E-HONEST-SEND-${E2E_RUN_ID}"
+      visible: ".*E2E-HONEST-SEND-${E2E_RUN_ID}.*"
     commands:
       - tapOn:
           text: ".+ auswählen"
@@ -35,7 +36,7 @@ tags:
       - runFlow: subflows/logbook-delete-selected.yaml
 - runFlow:
     when:
-      visible: "E2E-HONEST-ATTEMPT-${E2E_RUN_ID}"
+      visible: ".*E2E-HONEST-ATTEMPT-${E2E_RUN_ID}.*"
     commands:
       - tapOn:
           text: ".+ auswählen"
@@ -83,18 +84,26 @@ tags:
 # climbing day and the send just logged. Existing unrelated logbook rows may
 # increase the values, so these assertions prove lower bounds instead of
 # pinning disposable-device totals.
-- assertVisible: "Auf einen Blick"
+# The overview grows in once the whole logbook is read: several seconds for
+# a long one on a mid-range phone.
+- extendedWaitUntil:
+    visible: "Auf einen Blick"
+    timeout: 30000
 - assertVisible: "Letzte 30 Tage"
 - assertVisible: "Klettertage, [1-9][0-9]*(, .*)?"
 - assertVisible: "Begehungen, [1-9][0-9]*(, .*)?"
 - scrollUntilVisible:
-    element: "E2E-HONEST-ATTEMPT-${E2E_RUN_ID}"
+    element: ".*E2E-HONEST-ATTEMPT-${E2E_RUN_ID}.*"
     direction: DOWN
     timeout: 15000
-- assertVisible: "E2E-HONEST-SEND-${E2E_RUN_ID}"
+- assertVisible: ".*E2E-HONEST-SEND-${E2E_RUN_ID}.*"
 - assertVisible: "Offen · 3 Versuche"
 - assertVisible: "Top · 1. Versuch"
-- assertNotVisible: "Flash"
+# The send's result stands above its comment; older flashes further down the
+# list do not count.
+- assertNotVisible:
+    text: "Flash"
+    above: ".*E2E-HONEST-SEND-${E2E_RUN_ID}.*"
 # The day's recap opens and can be shared.
 - tapOn: "Session-Rückblick, .*"
 - extendedWaitUntil:
@@ -130,7 +139,7 @@ tags:
 - pressKey: Back
 # Cleanup exactly the two entries created above: the newest two of the list.
 - scrollUntilVisible:
-    element: "E2E-HONEST-ATTEMPT-${E2E_RUN_ID}"
+    element: ".*E2E-HONEST-ATTEMPT-${E2E_RUN_ID}.*"
     direction: DOWN
     timeout: 15000
 - tapOn:
@@ -141,8 +150,8 @@ tags:
     index: 1
 - runFlow: subflows/logbook-delete-selected.yaml
 - extendedWaitUntil:
-    notVisible: "E2E-HONEST-SEND-${E2E_RUN_ID}"
+    notVisible: ".*E2E-HONEST-SEND-${E2E_RUN_ID}.*"
     timeout: 10000
-- assertNotVisible: "E2E-HONEST-ATTEMPT-${E2E_RUN_ID}"
+- assertNotVisible: ".*E2E-HONEST-ATTEMPT-${E2E_RUN_ID}.*"
 - tapOn: "Zurück"
 - assertVisible: "Filter"

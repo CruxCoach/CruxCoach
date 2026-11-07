@@ -235,6 +235,8 @@ class StatsHighlightsUiReviewTest {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 LogbookOverviewCard(glance, milestones, boards, onOpenStats = {})
                 PeriodNumbers(BoardStatsComputer.computeStats(logbook, StatsTimeInterval.DAYS_30, scale, clock = clock), scale)
+                // Four-digit counts keep one line.
+                BoardAngleDistChart(listOf(AngleDistEntry(30, 92), AngleDistEntry(40, 2974)))
             }
         }
     }

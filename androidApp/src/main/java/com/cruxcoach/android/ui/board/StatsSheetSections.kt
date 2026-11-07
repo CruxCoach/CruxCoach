@@ -556,7 +556,8 @@ private fun ProgressChart(
         var lastBottom = Float.NEGATIVE_INFINITY
         ends.forEach { (i, y, text) ->
             val natural = y - text.size.height / 2f
-            val labelTop = max(natural, lastBottom + 1.dp.toPx())
+            // Inside the chart: a line ending at its top must not push its label off the card.
+            val labelTop = max(max(natural, lastBottom + 1.dp.toPx()), 0f)
                 .coerceAtMost(PROGRESS_PLOT_HEIGHT.toPx() - text.size.height)
             val x = right + 8.dp.toPx()
             // A label pushed off its line gets its board's dot, so it is still clear whose it is.

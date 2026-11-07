@@ -318,6 +318,12 @@ internal fun BoardAngleDistChart(
     modifier: Modifier = Modifier
 ) {
     val total = entries.sumOf { it.count }.toFloat().coerceAtLeast(1f)
+    val countStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+    // As wide as the largest count, so it keeps one line at any font size and the bars stay aligned.
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val countWidth = with(androidx.compose.ui.platform.LocalDensity.current) {
+        maxOf(measurer.measure("${entries.maxOfOrNull { it.count } ?: 0}", countStyle).size.width.toDp(), 28.dp)
+    }
 
     Column(modifier = modifier) {
         entries.forEach { entry ->
@@ -363,9 +369,9 @@ internal fun BoardAngleDistChart(
 
                 Text(
                     text = "${entry.count}",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.width(28.dp),
+                    style = countStyle,
+                    maxLines = 1,
+                    modifier = Modifier.width(countWidth),
                     textAlign = TextAlign.End
                 )
             }
