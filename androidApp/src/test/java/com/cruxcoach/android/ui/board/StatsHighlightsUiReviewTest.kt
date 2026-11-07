@@ -184,8 +184,8 @@ class StatsHighlightsUiReviewTest {
     @Test
     fun weekly() = shoot("stats-weekly") {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            ActivityCard(ActivityView.DAYS_PER_WEEK, onSelect = {}, stats.activityMap, stats.daysPerWeek, stats.entriesOverTime, stats.sendsOverTime, StatsTimeInterval.ALL)
-            ActivityCard(ActivityView.SENDS, onSelect = {}, stats.activityMap, stats.daysPerWeek, stats.entriesOverTime, stats.sendsOverTime, StatsTimeInterval.ALL)
+            ActivityCard(ActivityView.DAYS_PER_WEEK, onSelect = {}, stats.activityMap, stats.daysPerWeek, stats.entriesOverTime, stats.sendsOverTime, StatsTimeInterval.ALL, stats.period, stats.personalRecords.daysPerWeek)
+            ActivityCard(ActivityView.SENDS, onSelect = {}, stats.activityMap, stats.daysPerWeek, stats.entriesOverTime, stats.sendsOverTime, StatsTimeInterval.ALL, stats.period, stats.personalRecords.daysPerWeek)
         }
     }
 
@@ -211,6 +211,53 @@ class StatsHighlightsUiReviewTest {
         compose.onNodeWithText("MoonBoard").performClick()
     }) {
         CrossBoardSection(cross, CrossBoardView.TRIES_UNTIL_SEND, onViewSelect = {}, allBoards = boards)
+    }
+
+    /** Three years with a break of four months and some sends without a grade. */
+    private val longLogbook: List<AscentWithClimb> = buildList {
+        val start = today.minusDays(1100)
+        (0 until 110).forEach { i ->
+            val day = start.plusDays(i * 10L)
+            if (day.isAfter(today.minusDays(500)) && day.isBefore(today.minusDays(380))) return@forEach
+            val board = if (i % 3 == 0) "moonboard" else "kilter"
+            add(entry(board, "long-$i", day, 14.0 + i % 8, 1 + i % 4, isSend = true))
+            if (i % 5 == 0) add(entry(board, "ungraded-$i", day, 14.0, 1, isSend = true).copy(difficultyAverage = null))
+        }
+    }
+
+    /** At the largest font size: the overview and the period numbers with their bests. */
+    @Test
+    fun largestFont() = shoot("largest-font") {
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale = 2f),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                LogbookOverviewCard(glance, milestones, boards, onOpenStats = {})
+                PeriodNumbers(BoardStatsComputer.computeStats(logbook, StatsTimeInterval.DAYS_30, scale, clock = clock), scale)
+            }
+        }
+    }
+
+    /** A long logbook: tries per month scroll sideways with the gap kept, sends over time per month. */
+    @Test
+    fun longLogbook() {
+        val longCross = CrossBoardStatsComputer.compute(longLogbook, StatsTimeInterval.ALL, scale, clock = clock)
+        val longStats = BoardStatsComputer.computeStats(longLogbook, StatsTimeInterval.ALL, scale, clock = clock)
+        shoot("long-logbook") {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                CrossBoardSection(longCross, CrossBoardView.PER_MONTH, onViewSelect = {}, allBoards = listOf("kilter", "moonboard"))
+                ActivityCard(ActivityView.SENDS, onSelect = {}, longStats.activityMap, longStats.daysPerWeek, longStats.entriesOverTime, longStats.sendsOverTime, StatsTimeInterval.ALL, longStats.period, longStats.personalRecords.daysPerWeek)
+                ActivityCard(ActivityView.DAYS_PER_WEEK, onSelect = {}, longStats.activityMap, longStats.daysPerWeek, longStats.entriesOverTime, longStats.sendsOverTime, StatsTimeInterval.ALL, longStats.period, longStats.personalRecords.daysPerWeek)
+            }
+        }
+    }
+
+    @Test
+    fun gradeSendsOpen() = shoot("stats-grade-sends-open", before = {
+        compose.onNodeWithText(stats.gradePyramid.maxBy { it.count }.grade).performClick()
+    }) {
+        GradesCard(stats.gradeOutcomes, stats.gradePyramid, zones, GradesView.SENDS, onSelect = {})
     }
 
     @Test

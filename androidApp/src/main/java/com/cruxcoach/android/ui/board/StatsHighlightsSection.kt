@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -86,23 +89,30 @@ internal fun LogbookOverviewCard(
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val title = stringResource(R.string.board_stats_glance_title)
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.semantics { heading() },
-                )
-                InfoButton(
-                    title,
-                    stringResource(R.string.board_stats_glance_help, StatsHighlightsComputer.RECENT_DAYS.toInt()) +
-                        "\n\n" + stringResource(R.string.board_stats_milestones_help, StatsHighlightsComputer.BIGGEST_DAY_MIN),
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    stringResource(R.string.board_stats_title),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = OrangeAccent,
-                )
+                // The title may wrap; the link to the statistics keeps its line.
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f, fill = false).semantics { heading() },
+                    )
+                    InfoButton(
+                        title,
+                        stringResource(R.string.board_stats_glance_help, StatsHighlightsComputer.RECENT_DAYS.toInt()) +
+                            "\n\n" + stringResource(R.string.board_stats_milestones_help, StatsHighlightsComputer.BIGGEST_DAY_MIN),
+                    )
+                }
+                // At the largest font sizes the arrow alone stands for the link:
+                // the whole card opens the statistics and says so to screen readers.
+                if (LocalDensity.current.fontScale < LARGE_FONT_SCALE) {
+                    Text(
+                        stringResource(R.string.board_stats_title),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = OrangeAccent,
+                        maxLines = 1,
+                    )
+                }
                 Icon(
                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null,
@@ -141,6 +151,29 @@ internal fun LogbookOverviewCard(
                         MilestoneChip(milestone, colors.takeIf { boards.size > 1 })
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * From this font scale on, the overview's header drops the words of its link
+ * and the rows of numbers put two to a row, so their labels keep whole words.
+ */
+internal const val LARGE_FONT_SCALE = 1.5f
+
+/**
+ * [cells] in equal columns, [perRow] to a row, or two to a row from
+ * [LARGE_FONT_SCALE] on. Each cell gets its column's modifier.
+ */
+@Composable
+internal fun NumberGrid(cells: List<@Composable (Modifier) -> Unit>, perRow: Int) {
+    val columns = if (LocalDensity.current.fontScale >= LARGE_FONT_SCALE) minOf(2, perRow) else perRow
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        cells.chunked(columns).forEach { row ->
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                row.forEach { cell -> cell(Modifier.weight(1f).fillMaxHeight()) }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -190,6 +223,7 @@ internal fun BoardTag(board: String, color: Color) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RecentRow(recent: RecentComparison) {
     val days = StatsHighlightsComputer.RECENT_DAYS.toInt()
@@ -199,12 +233,17 @@ private fun RecentRow(recent: RecentComparison) {
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
             .padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // The comparison moves below the title when both do not fit on one line.
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
             Text(
                 stringResource(R.string.board_stats_glance_recent, days),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.padding(end = 8.dp),
             )
             if (recent.hasPrevious) {
                 Text(
@@ -216,31 +255,42 @@ private fun RecentRow(recent: RecentComparison) {
         }
         Spacer(Modifier.height(8.dp))
         // Climbing days, sends and the hardest grade side by side.
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-            val column = Modifier.weight(1f).fillMaxHeight()
-            DeltaColumn(
-                value = "${recent.sessions}",
-                label = stringResource(R.string.board_logbook_sessions),
-                delta = (recent.sessions - recent.previousSessions).takeIf { recent.hasPrevious }?.let { d ->
-                    Delta(signed(d), better = d > 0, worse = d < 0)
+        val sessions = stringResource(R.string.board_logbook_sessions)
+        val sends = stringResource(R.string.board_sends)
+        val hardest = stringResource(R.string.board_stats_glance_hardest)
+        NumberGrid(
+            perRow = 3,
+            cells = listOf<@Composable (Modifier) -> Unit>(
+                { column ->
+                    DeltaColumn(
+                        value = "${recent.sessions}",
+                        label = sessions,
+                        delta = (recent.sessions - recent.previousSessions).takeIf { recent.hasPrevious }?.let { d ->
+                            Delta(signed(d), better = d > 0, worse = d < 0)
+                        },
+                        modifier = column,
+                    )
                 },
-                modifier = column,
-            )
-            DeltaColumn(
-                value = "${recent.sends}",
-                label = stringResource(R.string.board_sends),
-                delta = (recent.sends - recent.previousSends).takeIf { recent.hasPrevious }?.let { d ->
-                    Delta(signed(d), better = d > 0, worse = d < 0)
+                { column ->
+                    DeltaColumn(
+                        value = "${recent.sends}",
+                        label = sends,
+                        delta = (recent.sends - recent.previousSends).takeIf { recent.hasPrevious }?.let { d ->
+                            Delta(signed(d), better = d > 0, worse = d < 0)
+                        },
+                        modifier = column,
+                    )
                 },
-                modifier = column,
-            )
-            DeltaColumn(
-                value = recent.hardest?.grade ?: "–",
-                label = stringResource(R.string.board_stats_glance_hardest),
-                delta = recent.hardestStep?.let { d -> Delta(signed(d), better = d > 0, worse = d < 0) },
-                modifier = column,
-            )
-        }
+                { column ->
+                    DeltaColumn(
+                        value = recent.hardest?.grade ?: "–",
+                        label = hardest,
+                        delta = recent.hardestStep?.let { d -> Delta(signed(d), better = d > 0, worse = d < 0) },
+                        modifier = column,
+                    )
+                },
+            ),
+        )
     }
 }
 

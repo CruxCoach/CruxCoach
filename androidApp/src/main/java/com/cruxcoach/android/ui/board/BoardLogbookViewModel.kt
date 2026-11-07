@@ -16,6 +16,7 @@ import android.content.Context
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,7 +46,9 @@ enum class LogbookOutcomeFilter { ALL, SENDS, ATTEMPTS }
 data class BoardGradePyramidEntry(
     val grade: String,
     val count: Int,
-    val difficultyInt: Int
+    val difficultyInt: Int,
+    /** Distinct problems among the sends, so count − problems are the repeats. */
+    val problems: Int = count,
 )
 
 data class AngleDistEntry(
@@ -69,6 +72,8 @@ data class BoardLogbookStats(
     val activityMap: Map<LocalDate, Int> = emptyMap(),
     // Extended stats
     val gradeOutcomes: List<GradeOutcomeEntry> = emptyList(),
+    /** The days the numbers cover; null without entries. */
+    val period: StatsPeriod? = null,
     /** Climbing days per week over the period, weeks without a session included. */
     val daysPerWeek: List<DaysPerWeek> = emptyList(),
     /** All log entries and only the sends, per week or per month. */
@@ -223,6 +228,7 @@ class BoardLogbookViewModel @Inject constructor(
     val state: StateFlow<BoardLogbookState> = _state.asStateFlow()
 
     private var allAscents: List<AscentWithClimb> = emptyList()
+    private var statsJob: Job? = null
 
     companion object {
         private const val PAGE_SIZE = 50
@@ -663,7 +669,10 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     private fun recomputeStats() {
-        viewModelScope.safeLaunch(TAG) {
+        // Only the newest choice may land: a slow "All" started before a tap on
+        // "30 days" must not overwrite it when it finishes later.
+        statsJob?.cancel()
+        statsJob = viewModelScope.safeLaunch(TAG) {
             try {
                 val s = _state.value
                 // Per-board split: restrict to the selected family when set.

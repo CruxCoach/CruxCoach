@@ -1,10 +1,12 @@
 package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -27,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,11 +38,11 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.pluralStringResource
@@ -55,6 +58,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import java.time.Month
+import java.time.YearMonth
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -466,32 +470,50 @@ private class ValueLabel(val text: TextLayoutResult, val colors: List<Color>, va
     val height: Float = text.size.height.toFloat()
 }
 
+/** One month of the period, with its row when a problem was first sent in it. */
+private class MonthSlot(val month: YearMonth, val row: CrossBoardMonthRow?)
+
+/**
+ * Every month from the start of the period to its end, oldest first, so the
+ * months without a first send stay visible as gaps.
+ */
+private fun monthSlots(stats: CrossBoardStats): List<MonthSlot> {
+    if (stats.months.isEmpty()) return emptyList()
+    val byMonth = stats.months.associateBy { it.month }
+    val first = listOfNotNull(stats.period?.start?.let { YearMonth.from(it) }, byMonth.keys.min()).min()
+    val last = listOfNotNull(stats.period?.end?.let { YearMonth.from(it) }, byMonth.keys.max()).max()
+    return generateSequence(first) { it.plusMonths(1) }
+        .takeWhile { !it.isAfter(last) }
+        .map { MonthSlot(it, byMonth[it]) }
+        .toList()
+}
+
 @Composable
 private fun MonthCharts(stats: CrossBoardStats, colors: Map<String, Color>) {
-    // The model lists the newest month first; a chart reads left to right.
-    val months = remember(stats.months) { stats.months.reversed() }
+    val months = remember(stats.months, stats.period) { monthSlots(stats) }
     if (months.isEmpty()) return
-    var selected by remember(months) { mutableIntStateOf(months.lastIndex) }
+    // The newest month with a value; a new period starts there again.
+    var selected by remember(months) { mutableIntStateOf(months.indexOfLast { it.row != null }) }
 
     val triesSeries = stats.boards.associateWith { board ->
-        months.mapIndexedNotNull { index, row ->
-            val tries = row.byBoard[board]?.tries ?: return@mapIndexedNotNull null
+        months.mapIndexedNotNull { index, slot ->
+            val tries = slot.row?.byBoard?.get(board)?.tries ?: return@mapIndexedNotNull null
             MonthPoint(index, tries.averageTries, triesNumber(tries), tries.isSmallSample())
         }
     }
-    val monthLabels = months.mapIndexed { index, row ->
-        val name = stringResource(MONTH_RES_IDS[row.month.monthValue - 1])
-        if (index == 0 || row.month.month == Month.JANUARY) "$name '${row.month.year % 100}" else name
+    val monthLabels = months.mapIndexed { index, slot ->
+        val name = stringResource(MONTH_RES_IDS[slot.month.monthValue - 1])
+        if (index == 0 || slot.month.month == Month.JANUARY) "$name '${slot.month.year % 100}" else name
     }
-    val description = months.mapIndexed { index, row ->
+    val description = months.mapIndexedNotNull { index, slot ->
+        val row = slot.row ?: return@mapIndexedNotNull null
         monthLabels[index] + ": " + stats.boards.filter { it in row.byBoard }.map { board ->
-            val cell = row.byBoard.getValue(board)
-            boardBrandLabel(board) + " " + triesDetail(cell.tries)
+            boardBrandLabel(board) + " " + triesDetail(row.byBoard.getValue(board).tries)
         }.joinToString("; ")
     }.joinToString(". ")
 
     Column(Modifier.semantics { contentDescription = description }) {
-        val top = triesScaleMax(months.maxOf { row -> row.byBoard.values.maxOf { it.tries.averageTries } })
+        val top = triesScaleMax(stats.months.maxOf { row -> row.byBoard.values.maxOf { it.tries.averageTries } })
         val middle = ((1 + top) / 2).let { if (it == floor(it)) it else null }
         MonthLineChart(
             monthCount = months.size,
@@ -511,10 +533,13 @@ private fun MonthCharts(stats: CrossBoardStats, colors: Map<String, Color>) {
 
 /**
  * A line per board over evenly spaced months, with dots on the months that
- * have a value. Boards sit a few dp apart inside a month, so equal values do
- * not hide each other. The selected month is shaded and its values stand in
- * one column beside its dots, each led by its board's colour; equal values
- * share one label.
+ * have a value; across months without one the line turns into a faint dashed
+ * one, so a gap stays a gap. Boards sit a few dp apart inside a month, so
+ * equal values do not hide each other. The selected month is shaded and its
+ * values stand in one column beside its dots, each led by its board's colour;
+ * equal values share one label. When the months do not fit, the chart
+ * scrolls sideways with the value axis standing still, starting at the
+ * newest month.
  */
 @Composable
 private fun MonthLineChart(
@@ -542,151 +567,172 @@ private fun MonthLineChart(
     val card = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         .compositeOver(MaterialTheme.colorScheme.surface)
     val axisHeight = if (monthLabels != null) MONTH_AXIS_HEIGHT else 0.dp
+    // The tap handler outlives recompositions; it must call the newest onSelect.
+    val currentOnSelect by rememberUpdatedState(onSelect)
 
-    Canvas(
-        Modifier
-            .fillMaxWidth()
-            .height(plotHeight + axisHeight)
-            .pointerInput(monthCount) {
-                detectTapGestures { tap ->
-                    val left = Y_AXIS_WIDTH.toPx()
-                    val band = (size.width - left) / monthCount
-                    if (tap.x >= left) onSelect(((tap.x - left) / band).toInt().coerceIn(0, monthCount - 1))
-                }
-            },
-    ) {
-        val left = Y_AXIS_WIDTH.toPx()
-        val inset = 8.dp.toPx()
-        val plotTop = inset
-        val plotBottom = plotHeight.toPx() - inset
-        val band = (size.width - left) / monthCount
-        // Wide enough that equal values show as dots side by side, not as one blot.
-        val dodgeStep = min(10.dp.toPx(), band * 0.2f)
-        fun xOf(month: Int, lane: Int) =
-            left + band * (month + 0.5f) + (lane - (boards.size - 1) / 2f) * dodgeStep
-        fun yOf(value: Double) =
-            plotBottom - ((value - yMin) / (yMax - yMin)).toFloat() * (plotBottom - plotTop)
-        val hairline = 1.dp.toPx()
+    val inset = 8.dp
+    fun DrawScope.yOf(value: Double): Float {
+        val plotTop = inset.toPx()
+        val plotBottom = plotHeight.toPx() - inset.toPx()
+        return plotBottom - ((value - yMin) / (yMax - yMin)).toFloat() * (plotBottom - plotTop)
+    }
 
-        // Grid and value axis.
-        ticks.forEach { (value, label) ->
-            val y = yOf(value)
-            drawLine(ink.copy(alpha = 0.10f), Offset(left, y), Offset(size.width, y), hairline)
-            val text = measurer.measure(label, axisStyle)
-            drawText(text, topLeft = Offset(0f, y - text.size.height / 2f))
-        }
-
-        // The selected month.
-        drawRoundRect(
-            ink.copy(alpha = 0.06f),
-            topLeft = Offset(left + band * selected + 2.dp.toPx(), 0f),
-            size = Size(band - 4.dp.toPx(), plotHeight.toPx()),
-            cornerRadius = CornerRadius(6.dp.toPx()),
-        )
-
-        boards.forEachIndexed { lane, board ->
-            val points = series[board].orEmpty()
-            if (points.size < 2) return@forEachIndexed
-            val path = Path()
-            points.forEachIndexed { i, p ->
-                if (i == 0) path.moveTo(xOf(p.month, lane), yOf(p.value)) else path.lineTo(xOf(p.month, lane), yOf(p.value))
-            }
-            drawPath(
-                path,
-                colors.getValue(board),
-                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-        }
-        boards.forEachIndexed { lane, board ->
-            val color = colors.getValue(board)
-            series[board].orEmpty().forEach { p ->
-                val center = Offset(xOf(p.month, lane), yOf(p.value))
-                drawCircle(card, radius = 6.dp.toPx(), center = center)
-                if (p.hollow) {
-                    drawCircle(color, radius = 3.dp.toPx(), center = center, style = Stroke(2.dp.toPx()))
-                } else {
-                    drawCircle(color, radius = 4.dp.toPx(), center = center)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val available = maxWidth - Y_AXIS_WIDTH
+        val bandWidth = maxOf(available / monthCount, MIN_MONTH_BAND)
+        val scrolls = bandWidth * monthCount > available
+        Row {
+            // Value axis, standing still while the months scroll.
+            Canvas(Modifier.width(Y_AXIS_WIDTH).height(plotHeight + axisHeight)) {
+                ticks.forEach { (value, label) ->
+                    val text = measurer.measure(label, axisStyle)
+                    drawText(text, topLeft = Offset(0f, yOf(value) - text.size.height / 2f))
                 }
             }
-        }
+            // A new period starts at its newest month again.
+            val scroll = remember(monthCount) { ScrollState(Int.MAX_VALUE) }
+            Canvas(
+                Modifier
+                    .then(if (scrolls) Modifier.horizontalScroll(scroll) else Modifier)
+                    .width(if (scrolls) bandWidth * monthCount else available)
+                    .height(plotHeight + axisHeight)
+                    .pointerInput(monthCount) {
+                        detectTapGestures { tap ->
+                            val band = size.width.toFloat() / monthCount
+                            currentOnSelect((tap.x / band).toInt().coerceIn(0, monthCount - 1))
+                        }
+                    },
+            ) {
+                val band = size.width / monthCount
+                // Wide enough that equal values show as dots side by side, not as one blot.
+                val dodgeStep = min(10.dp.toPx(), band * 0.2f)
+                fun xOf(month: Int, lane: Int) =
+                    band * (month + 0.5f) + (lane - (boards.size - 1) / 2f) * dodgeStep
+                val hairline = 1.dp.toPx()
 
-        // Values of the selected month in one column beside all of its dots, so
-        // no label covers a dot. Each label starts with the colour of its board;
-        // equal values share one label with a dot per board.
-        val present = boards.withIndex().mapNotNull { (lane, board) ->
-            series[board].orEmpty().firstOrNull { it.month == selected }?.let { p -> Triple(board, lane, p) }
-        }
-        if (present.isNotEmpty()) {
-            val pad = 3.dp.toPx()
-            val gap = 6.dp.toPx()
-            val swatch = 6.dp.toPx()
-            val swatchGap = 3.dp.toPx()
-            val labels = present
-                .groupBy { (_, _, p) -> p.label }
-                .map { (label, at) ->
-                    ValueLabel(
-                        text = measurer.measure(label, valueStyle),
-                        colors = at.map { (board, _, _) -> colors.getValue(board) },
-                        y = yOf(at.first().third.value),
-                        swatchWidth = swatch + swatchGap,
-                    )
+                // Grid.
+                ticks.forEach { (value, _) ->
+                    val y = yOf(value)
+                    drawLine(ink.copy(alpha = 0.10f), Offset(0f, y), Offset(size.width, y), hairline)
                 }
-                .sortedBy { it.y }
-            val dotRadius = 6.dp.toPx()
-            val clusterRight = present.maxOf { (_, lane, _) -> xOf(selected, lane) } + dotRadius
-            val clusterLeft = present.minOf { (_, lane, _) -> xOf(selected, lane) } - dotRadius
-            val onRight = clusterRight + gap + 2 * pad + labels.maxOf { it.width } <= size.width
-            // Each label as close to its value as the ones above it allow…
-            val tops = FloatArray(labels.size)
-            var lastBottom = Float.NEGATIVE_INFINITY
-            labels.forEachIndexed { i, label ->
-                tops[i] = max(label.y - label.height / 2f, lastBottom + pad)
-                lastBottom = tops[i] + label.height
-            }
-            // …and the column pulled back up where it runs past the plot.
-            var limit = plotHeight.toPx() - pad / 2f
-            for (i in labels.indices.reversed()) {
-                tops[i] = min(tops[i], limit - labels[i].height)
-                limit = tops[i] - pad
-            }
-            labels.forEachIndexed { i, label ->
-                val x = if (onRight) clusterRight + gap + pad else max(pad, clusterLeft - gap - pad - label.width)
-                val top = tops[i]
+
+                // The selected month.
                 drawRoundRect(
-                    card,
-                    topLeft = Offset(x - pad, top - pad / 2f),
-                    size = Size(label.width + 2 * pad, label.height + pad),
-                    cornerRadius = CornerRadius(4.dp.toPx()),
+                    ink.copy(alpha = 0.06f),
+                    topLeft = Offset(band * selected + 2.dp.toPx(), 0f),
+                    size = Size(band - 4.dp.toPx(), plotHeight.toPx()),
+                    cornerRadius = CornerRadius(6.dp.toPx()),
                 )
-                label.colors.forEachIndexed { j, color ->
-                    drawCircle(
-                        color,
-                        radius = swatch / 2f,
-                        center = Offset(x + j * label.swatchWidth + swatch / 2f, top + label.height / 2f),
-                    )
-                }
-                drawText(label.text, topLeft = Offset(x + label.colors.size * label.swatchWidth, top))
-            }
-        }
 
-        // Month axis: as many labels as fit, always the selected month.
-        if (monthLabels != null) {
-            val axisTop = plotHeight.toPx() + 4.dp.toPx()
-            val measured = monthLabels.mapIndexed { i, label ->
-                measurer.measure(label, if (i == selected) selectedAxisStyle else axisStyle)
+                boards.forEachIndexed { lane, board ->
+                    val color = colors.getValue(board)
+                    series[board].orEmpty().zipWithNext().forEach { (a, b) ->
+                        val from = Offset(xOf(a.month, lane), yOf(a.value))
+                        val to = Offset(xOf(b.month, lane), yOf(b.value))
+                        if (b.month - a.month == 1) {
+                            drawLine(color, from, to, 2.dp.toPx(), cap = StrokeCap.Round)
+                        } else {
+                            drawLine(
+                                color.copy(alpha = 0.45f), from, to, 1.5.dp.toPx(),
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx())),
+                            )
+                        }
+                    }
+                }
+                boards.forEachIndexed { lane, board ->
+                    val color = colors.getValue(board)
+                    series[board].orEmpty().forEach { p ->
+                        val center = Offset(xOf(p.month, lane), yOf(p.value))
+                        drawCircle(card, radius = 6.dp.toPx(), center = center)
+                        if (p.hollow) {
+                            drawCircle(color, radius = 3.dp.toPx(), center = center, style = Stroke(2.dp.toPx()))
+                        } else {
+                            drawCircle(color, radius = 4.dp.toPx(), center = center)
+                        }
+                    }
+                }
+
+                // Values of the selected month in one column beside all of its dots, so
+                // no label covers a dot. Each label starts with the colour of its board;
+                // equal values share one label with a dot per board.
+                val present = boards.withIndex().mapNotNull { (lane, board) ->
+                    series[board].orEmpty().firstOrNull { it.month == selected }?.let { p -> Triple(board, lane, p) }
+                }
+                if (present.isNotEmpty()) {
+                    val pad = 3.dp.toPx()
+                    val gap = 6.dp.toPx()
+                    val swatch = 6.dp.toPx()
+                    val swatchGap = 3.dp.toPx()
+                    val labels = present
+                        .groupBy { (_, _, p) -> p.label }
+                        .map { (label, at) ->
+                            ValueLabel(
+                                text = measurer.measure(label, valueStyle),
+                                colors = at.map { (board, _, _) -> colors.getValue(board) },
+                                y = yOf(at.first().third.value),
+                                swatchWidth = swatch + swatchGap,
+                            )
+                        }
+                        .sortedBy { it.y }
+                    val dotRadius = 6.dp.toPx()
+                    val clusterRight = present.maxOf { (_, lane, _) -> xOf(selected, lane) } + dotRadius
+                    val clusterLeft = present.minOf { (_, lane, _) -> xOf(selected, lane) } - dotRadius
+                    val onRight = clusterRight + gap + 2 * pad + labels.maxOf { it.width } <= size.width
+                    // Each label as close to its value as the ones above it allow…
+                    val tops = FloatArray(labels.size)
+                    var lastBottom = Float.NEGATIVE_INFINITY
+                    labels.forEachIndexed { i, label ->
+                        tops[i] = max(label.y - label.height / 2f, lastBottom + pad)
+                        lastBottom = tops[i] + label.height
+                    }
+                    // …and the column pulled back up where it runs past the plot.
+                    var limit = plotHeight.toPx() - pad / 2f
+                    for (i in labels.indices.reversed()) {
+                        tops[i] = min(tops[i], limit - labels[i].height)
+                        limit = tops[i] - pad
+                    }
+                    labels.forEachIndexed { i, label ->
+                        val x = if (onRight) clusterRight + gap + pad else max(pad, clusterLeft - gap - pad - label.width)
+                        val top = tops[i]
+                        drawRoundRect(
+                            card,
+                            topLeft = Offset(x - pad, top - pad / 2f),
+                            size = Size(label.width + 2 * pad, label.height + pad),
+                            cornerRadius = CornerRadius(4.dp.toPx()),
+                        )
+                        label.colors.forEachIndexed { j, color ->
+                            drawCircle(
+                                color,
+                                radius = swatch / 2f,
+                                center = Offset(x + j * label.swatchWidth + swatch / 2f, top + label.height / 2f),
+                            )
+                        }
+                        drawText(label.text, topLeft = Offset(x + label.colors.size * label.swatchWidth, top))
+                    }
+                }
+
+                // Month axis: as many labels as fit, always the selected month.
+                if (monthLabels != null) {
+                    val axisTop = plotHeight.toPx() + 4.dp.toPx()
+                    val measured = monthLabels.mapIndexed { i, label ->
+                        measurer.measure(label, if (i == selected) selectedAxisStyle else axisStyle)
+                    }
+                    val widest = measured.maxOf { it.size.width } + 8.dp.toPx()
+                    val every = max(1, ceil(widest / band).toInt())
+                    fun drawMonth(i: Int, layout: TextLayoutResult) {
+                        val x = (band * (i + 0.5f) - layout.size.width / 2f)
+                            .coerceIn(0f, size.width - layout.size.width)
+                        drawText(layout, topLeft = Offset(x, axisTop))
+                    }
+                    measured.forEachIndexed { i, layout ->
+                        if (i != selected && i % every == 0 && abs(i - selected) * band >= widest) drawMonth(i, layout)
+                    }
+                    drawMonth(selected, measured[selected])
+                }
             }
-            val widest = measured.maxOf { it.size.width } + 8.dp.toPx()
-            val every = max(1, ceil(widest / band).toInt())
-            val selectedLayout = measured[selected]
-            fun drawMonth(i: Int, layout: TextLayoutResult) {
-                val x = (left + band * (i + 0.5f) - layout.size.width / 2f)
-                    .coerceIn(left, size.width - layout.size.width)
-                drawText(layout, topLeft = Offset(x, axisTop))
-            }
-            measured.forEachIndexed { i, layout ->
-                if (i != selected && i % every == 0 && abs(i - selected) * band >= widest) drawMonth(i, layout)
-            }
-            drawMonth(selected, selectedLayout)
         }
     }
 }
+
+// Narrower months than this scroll instead of squeezing their dots together.
+private val MIN_MONTH_BAND = 28.dp

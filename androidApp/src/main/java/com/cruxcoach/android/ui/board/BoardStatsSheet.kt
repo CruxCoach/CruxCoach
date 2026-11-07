@@ -211,6 +211,8 @@ internal fun BoardStatsSheet(
                 entries = stats.entriesOverTime,
                 sends = stats.sendsOverTime,
                 interval = statsInterval,
+                period = stats.period,
+                averageDaysPerWeek = stats.personalRecords.daysPerWeek,
             )
 
             // At which angles.

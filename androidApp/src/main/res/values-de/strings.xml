@@ -1714,9 +1714,17 @@
     <string name="board_logbook_filter_period">Zeitraum</string>
     <string name="board_stats_period_versus">Änderung gegenüber dem gleich langen Zeitraum davor</string>
     <string name="board_stats_grade_sends_title">Begehungen je Grad</string>
-    <string name="board_stats_grade_sends_help">Jede Begehung im gewählten Zeitraum zählt, auch Wiederholungen.\n\nDie Farben sind deine Intensitätszonen: Aufwärmen, optimal und Limit, berechnet aus den Graden, die du loggst. Zum Vergleich zählt „Boulder je Grad“ jeden Boulder einmal.</string>
+    <string name="board_stats_grade_sends_help">Jede Begehung im gewählten Zeitraum zählt, auch Wiederholungen.\n\nDie Farben sind deine Intensitätszonen: Aufwärmen, optimal und Limit, berechnet aus den Graden, die du loggst.\n\nTippe auf einen Grad, um seine Begehungen und die Boulder dahinter zu sehen: der Unterschied sind deine Wiederholungen.</string>
     <string name="board_stats_days_per_week">Klettertage pro Woche</string>
     <string name="board_stats_days_per_week_average">Ø %1$.1f pro Woche</string>
+    <string name="board_stats_bests">Bestwerte im Zeitraum</string>
+    <string name="board_stats_best_per_week">Klettertage pro Woche</string>
+    <string name="board_stats_best_streak">Wochen in Folge</string>
+    <string name="board_stats_grade_ungraded">Ohne Grad</string>
+    <plurals name="board_stats_grade_sends_count">
+        <item quantity="one">%d Begehung</item>
+        <item quantity="other">%d Begehungen</item>
+    </plurals>
     <string name="board_stats_entries_over_time">Einträge im Zeitverlauf</string>
     <string name="board_stats_sends_over_time">Begehungen im Zeitverlauf</string>
     <string name="board_stats_glance_per_week">Klettertage pro Woche</string>
@@ -3065,7 +3073,7 @@
     <string name="ux_account_help">Kontozugang\nDein privater Schlüssel funktioniert wie ein Passwort. Halte ihn geheim und bewahre ihn außerhalb dieses Handys auf. Er lässt sich nicht zurücksetzen.\n\nDeine Daten\nEine Schlüsselkopie ist kein Daten-Backup. Logbuch und Listen benötigen eine zusätzliche Sicherung.\n\nOptionale Hilfen\nAmber kann deinen Schlüssel in einer eigenen App verwalten. Deine öffentliche Konto-ID darfst du teilen; sie stellt den Zugang aber nicht wieder her.</string>
     <string name="ux_lists_help">Listen\nJede Liste enthält einen Boulder höchstens einmal. Favoriten sind eine integrierte Liste.\n\nAbspielen\nEin optionaler Ablauf ergänzt Wiederholungen, Winkel und Pausen. Ein abgespielter Schritt ist noch keine Begehung. Versuche und erfolgreiche Begehungen erfasst du im Logbuch.\n\nVerlauf\nDer Verlauf erfasst an die Board-LEDs übertragene Boulder. Er ist vom Kletterlogbuch getrennt.</string>
     <string name="ux_logbook_help">Einträge\nBegehungen sind erfolgreiche Logeinträge, auch Wiederholungen. Versuche meint hier Einträge ohne erfolgreiche Begehung. Ein Eintrag kann mehrere Kletterversuche enthalten.\n\nFilter\nZeitraum, Ergebnis, Board und Winkel grenzen diese Liste ein. Die Übersicht über der Liste gilt immer für das ganze Logbuch, und die Statistik hat ihren eigenen Zeitraum und Board-Filter. Einen Boulder am Board aufleuchten zu lassen erfasst keinen Kletterversuch.</string>
-    <string name="ux_stats_help">Filter\nBoard und Zeitraum oben gelten für alle Karten darunter. Die Board-Karte und die Versuche-Karte zeigen immer alle Boards nebeneinander.\n\nZahlen\nBegehungen zählen erfolgreiche Einträge, auch Wiederholungen. Versuche summieren die erfassten Kletterversuche aller Einträge einschließlich erfolgreicher Begehungen; jeder Eintrag zählt mindestens einmal. Klettertage sind Tage mit mindestens einem Eintrag. Boulder zählen jeden Boulder einmal je Board.\n\nFlash\nFür einen Flash muss der erste erfasste Eintrag zu diesem Boulder bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch. Frühere erfolglose Einträge schließen ihn aus, auch außerhalb des gewählten Zeitraums; fehlende Einträge begrenzen diese Aussage.\n\nAktivität\nKalender und Wochendiagramm zählen Logeinträge, auch erfolglose.</string>
+    <string name="ux_stats_help">Filter\nBoard und Zeitraum oben gelten für alle Karten darunter. Die Board-Karte und die Versuche-Karte zeigen immer alle Boards nebeneinander.\n\nZahlen\nBegehungen zählen erfolgreiche Einträge, auch Wiederholungen. Versuche summieren die erfassten Kletterversuche aller Einträge einschließlich erfolgreicher Begehungen; jeder Eintrag zählt mindestens einmal. Klettertage sind Tage mit mindestens einem Eintrag. Boulder zählen jeden Boulder einmal je Board.\n\nBestwerte\nDer schwerste Flash, die meisten Begehungen an einem Tag, Klettertage pro Woche über den ganzen Zeitraum und die meisten Wochen in Folge mit einem Klettertag, alle im gewählten Zeitraum. Der Zeitraum beginnt frühestens mit deinem ersten Eintrag.\n\nFlash\nFür einen Flash muss der erste erfasste Eintrag zu diesem Boulder bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch. Frühere erfolglose Einträge schließen ihn aus, auch außerhalb des gewählten Zeitraums; fehlende Einträge begrenzen diese Aussage.\n\nAktivität\nKalender und Wochendiagramm zählen Logeinträge, auch erfolglose.</string>
     <string name="ux_restore_consequence">Wiederherstellen nutzt das bisherige Konto und aktiviert das verschlüsselte Backup. Den Kontowechsel bestätigst du vor dem Fortfahren.</string>
     <string name="ux_logbook_unsent_attempts">Ohne Begehung</string>
     <string name="ux_later_send">Später geschafft</string>

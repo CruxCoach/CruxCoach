@@ -46,13 +46,16 @@ enum class MilestoneKind { NEW_GRADE, SENDS, BIGGEST_DAY, WEEK_STREAK }
 /**
  * Something worth a badge. [count] is the number of sends for [MilestoneKind.SENDS]
  * and [MilestoneKind.BIGGEST_DAY], and of weeks for [MilestoneKind.WEEK_STREAK],
- * which runs until now and so has no [date].
+ * which runs until now and so has no [date]. [reachedBy] is the send that
+ * reached it (for the biggest day, the send that brought the day to [count]),
+ * so a session can tell its own milestones from earlier ones on the same day.
  */
 data class Milestone(
     val kind: MilestoneKind,
     val date: LocalDate?,
     val count: Int = 0,
     val grade: SentGrade? = null,
+    val reachedBy: String? = null,
 )
 
 /** One of the hardest problems sent in a session. */
@@ -174,13 +177,14 @@ object StatsHighlightsComputer {
                         GradeDisplayHelper.formatDifficulty(rounded.toDouble(), gradeScale) !=
                         GradeDisplayHelper.formatDifficulty(previous.toDouble(), gradeScale)
                     if (newGrade && day != firstDay) {
-                        found += Milestone(MilestoneKind.NEW_GRADE, day, grade = sentGrade(top, gradeScale))
+                        found += Milestone(MilestoneKind.NEW_GRADE, day, grade = sentGrade(top, gradeScale), reachedBy = top.uuid)
                     }
                 }
             }
 
         SEND_COUNTS.filter { it <= sends.size }.forEach { count ->
-            found += Milestone(MilestoneKind.SENDS, dayOf(sends[count - 1]), count = count)
+            val send = sends[count - 1]
+            found += Milestone(MilestoneKind.SENDS, dayOf(send), count = count, reachedBy = send.uuid)
         }
 
         // The record stands from the first day that reached it.
@@ -188,7 +192,9 @@ object StatsHighlightsComputer {
             .entries
             .maxWithOrNull(compareBy<Map.Entry<LocalDate, List<AscentWithClimb>>> { it.value.size }.thenByDescending { it.key })
             ?.takeIf { it.value.size >= BIGGEST_DAY_MIN }
-            ?.let { found += Milestone(MilestoneKind.BIGGEST_DAY, it.key, count = it.value.size) }
+            ?.let {
+                found += Milestone(MilestoneKind.BIGGEST_DAY, it.key, count = it.value.size, reachedBy = it.value.last().uuid)
+            }
 
         val dated = found.sortedWith(
             compareByDescending<Milestone> { it.date }.thenBy { it.kind.ordinal },
@@ -215,8 +221,8 @@ object StatsHighlightsComputer {
 
     /**
      * The recap of a timed session: [rows] are its entries, [history] the
-     * whole logbook. Its day is the day it ended; the milestones are those of
-     * that day.
+     * whole logbook with attempts. Its day is the day it ended; the milestones
+     * are only those its own sends reached, not earlier ones of the same day.
      */
     fun recapOf(
         rows: List<AscentWithClimb>,
@@ -225,7 +231,8 @@ object StatsHighlightsComputer {
         flashUuids: Set<String> = BoardStatsComputer.trueFlashUuids(history),
     ): SessionRecap? {
         val day = rows.mapNotNull { dayOf(it) }.maxOrNull() ?: return null
-        return recapOfRows(rows, day, gradeScale, flashUuids, milestones(history, gradeScale).filter { it.date == day })
+        val own = rows.mapTo(HashSet()) { it.uuid }
+        return recapOfRows(rows, day, gradeScale, flashUuids, milestones(history, gradeScale).filter { it.reachedBy in own })
             .copy(loggedBoards = history.map { it.boardBrand }.distinct())
     }
 

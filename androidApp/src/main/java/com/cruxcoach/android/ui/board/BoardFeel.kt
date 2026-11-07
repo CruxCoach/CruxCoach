@@ -113,15 +113,24 @@ object BoardFeelEstimator {
         return BoardOffset(offset, sqrt(variance.coerceAtLeast(0.0)))
     }
 
-    /** Difficulty units per displayed grade around [difficulty]: 1 for Font, more where grades are wider. */
+    /**
+     * Difficulty units per displayed grade around [difficulty]: 1 for Font,
+     * more where grades are wider. The window stays inside the graded range:
+     * below its bottom every difficulty shows as the lowest grade, which made
+     * the grades near V0 look three times as wide as they are.
+     */
     internal fun unitsPerGrade(difficulty: Double, gradeScale: GradeScale): Double {
-        val center = Math.round(difficulty).toInt()
         val span = 6
-        val grades = (center - span / 2..center + span / 2)
+        val low = (Math.round(difficulty).toInt() - span / 2).coerceIn(LOWEST_GRADED, HIGHEST_GRADED - span)
+        val grades = (low..low + span)
             .map { GradeDisplayHelper.formatDifficulty(it.toDouble(), gradeScale) }
             .distinct().size
         return span.toDouble() / (grades - 1).coerceAtLeast(1)
     }
+
+    // The difficulties the grade tables cover (KilterGradeMapper: 10 = V0 / 4a, 34 = V17 / 9a).
+    private const val LOWEST_GRADED = 10
+    private const val HIGHEST_GRADED = 34
 
     private fun median(values: List<Double>): Double {
         val sorted = values.sorted()

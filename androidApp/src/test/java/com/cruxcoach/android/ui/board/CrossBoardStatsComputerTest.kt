@@ -150,6 +150,9 @@ class CrossBoardStatsComputerTest {
         assertEquals(listOf("kilter"), stats.boards)
         assertEquals(TriesToSend(problems = 1, tries = 6), stats.grades.single().byBoard["kilter"])
         assertEquals(listOf(YearMonth.of(2026, 3)), stats.months.map { it.month })
+        // The months chart spans the whole 30 days, February included.
+        assertEquals(java.time.LocalDate.of(2026, 2, 14), stats.period!!.start)
+        assertEquals(java.time.LocalDate.of(2026, 3, 15), stats.period!!.end)
     }
 
     @Test

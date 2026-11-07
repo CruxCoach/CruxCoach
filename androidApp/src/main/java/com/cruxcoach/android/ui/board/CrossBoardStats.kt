@@ -55,8 +55,9 @@ data class TriesBuckets(val counts: List<Int>) {
 
 /**
  * Stats across boards (#44): how many tries a grade takes on each board, and
- * how the tries develop month by month. Boards are the
- * raw wire values, ordered by first sends in the interval, most first.
+ * how the tries develop month by month ([months] holds only months with a
+ * first send, newest first). Boards are the raw wire values, ordered by first
+ * sends in the interval, most first.
  */
 data class CrossBoardStats(
     val boards: List<String> = emptyList(),
@@ -66,6 +67,8 @@ data class CrossBoardStats(
     val sendCurve: Map<String, TriesBuckets> = emptyMap(),
     /** How hard the boards feel against the main one; null without enough data. */
     val feel: BoardFeel? = null,
+    /** The days of the chosen period, so the months without a first send still show. */
+    val period: StatsPeriod? = null,
 )
 
 /**
@@ -146,6 +149,11 @@ object CrossBoardStatsComputer {
             months = months,
             sendCurve = sendCurve,
             feel = BoardFeelEstimator.estimate(firstSends, gradeScale),
+            period = BoardStatsComputer.periodOf(
+                ascents,
+                BoardStatsComputer.filterByInterval(ascents, interval, customFrom, customTo, clock),
+                interval, customFrom, customTo, clock,
+            ),
         )
     }
 

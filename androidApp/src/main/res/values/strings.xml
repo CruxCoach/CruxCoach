@@ -1671,9 +1671,17 @@
     <string name="board_logbook_filter_period">Period</string>
     <string name="board_stats_period_versus">Changes against the period of the same length before</string>
     <string name="board_stats_grade_sends_title">Sends per grade</string>
-    <string name="board_stats_grade_sends_help">Every send in the chosen period counts, repeats included.\n\nThe colours are your intensity zones: warm-up, optimal and limit, worked out from the grades you log. Compare with \"Problems per grade\", which counts each problem once.</string>
+    <string name="board_stats_grade_sends_help">Every send in the chosen period counts, repeats included.\n\nThe colours are your intensity zones: warm-up, optimal and limit, worked out from the grades you log.\n\nTap a grade to see its sends and the problems behind them: the difference are your repeats.</string>
     <string name="board_stats_days_per_week">Climbing days per week</string>
     <string name="board_stats_days_per_week_average">Ø %1$.1f a week</string>
+    <string name="board_stats_bests">Bests in this period</string>
+    <string name="board_stats_best_per_week">Climbing days a week</string>
+    <string name="board_stats_best_streak">Weeks in a row</string>
+    <string name="board_stats_grade_ungraded">No grade</string>
+    <plurals name="board_stats_grade_sends_count">
+        <item quantity="one">%d send</item>
+        <item quantity="other">%d sends</item>
+    </plurals>
     <string name="board_stats_entries_over_time">Entries over time</string>
     <string name="board_stats_sends_over_time">Sends over time</string>
     <string name="board_stats_glance_per_week">climbing days a week</string>
@@ -3066,7 +3074,7 @@
     <string name="ux_account_help">Account access\nYour private key works like a password. Keep it secret and store it outside this phone. It cannot be reset.\n\nYour data\nA key copy is not a data backup. Your logbook and lists need a separate backup.\n\nOptional tools\nAmber can manage your key in a separate app. Your public account ID can be shared, but cannot restore access.</string>
     <string name="ux_lists_help">Lists\nA list contains each climb once. Favourites are a built-in list.\n\nPlayback\nAn optional plan adds repeated climbs, angles and rests. Playing it does not automatically mean you climbed its steps. Record attempts and sends in the logbook.\n\nHistory\nHistory records climbs sent to the board LEDs. It is separate from your climbing logbook.</string>
     <string name="ux_logbook_help">Entries\nSends are successful log entries, including repeats. Attempts here are entries without a send. An entry can include several tries.\n\nFilters\nPeriod, outcome, board and angle narrow this list. The overview above the list always covers the whole logbook, and the statistics have their own period and board filter. Lighting a climb on the board does not log a climbing attempt.</string>
-    <string name="ux_stats_help">Filters\nThe board and the period at the top apply to every card below. The boards card and the tries card always show every board side by side.\n\nNumbers\nSends count successful entries, including repeats. Attempts add up the recorded tries of all entries, including sends; each entry counts at least once. Climbing days are days with at least one entry. Problems count each climb once per board.\n\nFlash\nA flash needs the first recorded entry for that climb at that angle to be a send with at most one try. Earlier attempts rule it out, even outside the chosen period, so missing history limits this.\n\nActivity\nThe calendar and the weekly chart count log entries, including unsuccessful ones.</string>
+    <string name="ux_stats_help">Filters\nThe board and the period at the top apply to every card below. The boards card and the tries card always show every board side by side.\n\nNumbers\nSends count successful entries, including repeats. Attempts add up the recorded tries of all entries, including sends; each entry counts at least once. Climbing days are days with at least one entry. Problems count each climb once per board.\n\nBests\nThe hardest flash, the most sends in one day, climbing days a week over the whole period and the most weeks in a row with a climbing day, all in the chosen period. The period starts with your first entry at the earliest.\n\nFlash\nA flash needs the first recorded entry for that climb at that angle to be a send with at most one try. Earlier attempts rule it out, even outside the chosen period, so missing history limits this.\n\nActivity\nThe calendar and the weekly chart count log entries, including unsuccessful ones.</string>
     <string name="ux_restore_consequence">Restoring uses the previous account and enables encrypted backup. You will confirm the account change before continuing.</string>
     <string name="ux_logbook_unsent_attempts">Without a send</string>
     <string name="ux_later_send">Later send</string>

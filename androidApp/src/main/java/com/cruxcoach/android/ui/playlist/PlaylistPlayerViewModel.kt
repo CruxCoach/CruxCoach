@@ -241,14 +241,12 @@ class PlaylistPlayerViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             val gradeScale = userPreferences.gradeScale.first()
             val summary = withContext(Dispatchers.IO) {
-                val ascents = com.cruxcoach.android.ui.board.SessionSummaryBuilder.sessionRows(
-                    personalBoardRepo, finished.startedAt, finished.endedAt ?: finished.startedAt
+                // True flashes need the FULL history with its attempts — a
+                // first-try repeat of an old project must not count as a flash.
+                SessionSummaryBuilder.forSession(
+                    personalBoardRepo, finished.startedAt, finished.endedAt ?: finished.startedAt,
+                    zoneManager.zones.value, gradeScale,
                 )
-                // True flashes need the FULL history — a first-try repeat of
-                // an old project must not count as a flash.
-                val history = personalBoardRepo.getUserAscentsAll()
-                val flashUuids = com.cruxcoach.android.ui.board.BoardStatsComputer.trueFlashUuids(history)
-                SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale, flashUuids, history)
             }
             _state.update { it.copy(summary = summary, zones = zoneManager.zones.value) }
         }

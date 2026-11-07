@@ -43,9 +43,11 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -80,11 +82,19 @@ import kotlin.math.min
  * sends, tries and climbing days; distinct problems, the hardest grade and
  * the flash rate. For a period with a length, each shows its change against
  * the period of the same length before (the hardest grade in grade steps).
- * Everything below explains these numbers.
+ * Below them the period's bests. Everything further down explains these numbers.
  */
 @Composable
 internal fun PeriodNumbers(stats: BoardLogbookStats, gradeScale: GradeScale) {
     if (stats.totalSends == 0 && stats.totalAttempts == 0) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        PeriodTotalsCard(stats, gradeScale)
+        PeriodBests(stats.personalRecords)
+    }
+}
+
+@Composable
+private fun PeriodTotalsCard(stats: BoardLogbookStats, gradeScale: GradeScale) {
     val sends = if (stats.routeSends > 0) "${stats.boulderSends}B / ${stats.routeSends}R" else "${stats.totalSends}"
     val before = stats.previous
     val flash = Math.round(stats.flashRate)
@@ -97,38 +107,33 @@ internal fun PeriodNumbers(stats: BoardLogbookStats, gradeScale: GradeScale) {
             .padding(vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-            val column = Modifier.weight(1f).fillMaxHeight()
-            PeriodNumber(sends, stringResource(R.string.board_sends), before?.let { stats.totalSends - it.sends }, column)
-            PeriodNumber(
-                "${stats.totalAttempts}", stringResource(R.string.board_session_summary_attempts),
-                before?.let { stats.totalAttempts - it.attempts }, column,
-            )
-            PeriodNumber(
-                "${stats.sessionCount}", stringResource(R.string.board_logbook_sessions),
-                before?.let { stats.sessionCount - it.sessions }, column,
-            )
-        }
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-            val column = Modifier.weight(1f).fillMaxHeight()
-            PeriodNumber(
-                "${stats.uniqueClimbs}", stringResource(R.string.board_stats_problems),
-                before?.let { stats.uniqueClimbs - it.problems }, column,
-            )
-            PeriodNumber(
-                stats.hardestGrade ?: "–", stringResource(R.string.board_stats_glance_hardest),
-                if (hardestNow != null && hardestBefore != null) {
-                    StatsHighlightsComputer.gradeSteps(hardestBefore, hardestNow, gradeScale)
-                } else {
-                    null
+        val sendsLabel = stringResource(R.string.board_sends)
+        val triesLabel = stringResource(R.string.board_session_summary_attempts)
+        val daysLabel = stringResource(R.string.board_logbook_sessions)
+        val problemsLabel = stringResource(R.string.board_stats_problems)
+        val hardestLabel = stringResource(R.string.board_stats_glance_hardest)
+        val flashLabel = stringResource(R.string.board_logbook_flash)
+        NumberGrid(
+            perRow = 3,
+            cells = listOf<@Composable (Modifier) -> Unit>(
+                { column -> PeriodNumber(sends, sendsLabel, before?.let { stats.totalSends - it.sends }, column) },
+                { column -> PeriodNumber("${stats.totalAttempts}", triesLabel, before?.let { stats.totalAttempts - it.attempts }, column) },
+                { column -> PeriodNumber("${stats.sessionCount}", daysLabel, before?.let { stats.sessionCount - it.sessions }, column) },
+                { column -> PeriodNumber("${stats.uniqueClimbs}", problemsLabel, before?.let { stats.uniqueClimbs - it.problems }, column) },
+                { column ->
+                    PeriodNumber(
+                        stats.hardestGrade ?: "–", hardestLabel,
+                        if (hardestNow != null && hardestBefore != null) {
+                            StatsHighlightsComputer.gradeSteps(hardestBefore, hardestNow, gradeScale)
+                        } else {
+                            null
+                        },
+                        column,
+                    )
                 },
-                column,
-            )
-            PeriodNumber(
-                "$flash %", stringResource(R.string.board_logbook_flash),
-                before?.let { flash - Math.round(it.flashRate) }, column, unit = " %",
-            )
-        }
+                { column -> PeriodNumber("$flash %", flashLabel, before?.let { flash - Math.round(it.flashRate) }, column, unit = " %") },
+            ),
+        )
         if (before != null) {
             Text(
                 stringResource(R.string.board_stats_period_versus),
@@ -137,6 +142,72 @@ internal fun PeriodNumbers(stats: BoardLogbookStats, gradeScale: GradeScale) {
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
         }
+    }
+}
+
+/**
+ * The bests of the chosen period and boards, as 0.2.4's records row: the
+ * hardest flash, the most sends in one day, climbing days a week over the
+ * whole period and the most weeks in a row with a climbing day.
+ */
+@Composable
+private fun PeriodBests(records: PersonalRecords) {
+    val items = buildList<Triple<String, String, String?>> {
+        records.hardestFlashGrade?.let { add(Triple(it, stringResource(R.string.board_stats_glance_hardest_flash), null)) }
+        if (records.mostSendsInDay > 0) {
+            val date = records.mostSendsDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            add(Triple("${records.mostSendsInDay}", stringResource(R.string.board_stats_milestone_biggest_day), date?.let { milestoneDate(it) }))
+        }
+        if (records.daysPerWeek > 0.0) {
+            add(Triple(stringResource(R.string.board_stats_glance_per_week_value, records.daysPerWeek), stringResource(R.string.board_stats_best_per_week), null))
+        }
+        if (records.longestWeekStreak > 0) {
+            add(Triple("${records.longestWeekStreak}", stringResource(R.string.board_stats_best_streak), null))
+        }
+    }
+    if (items.isEmpty()) return
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+            .padding(top = 8.dp, bottom = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            stringResource(R.string.board_stats_bests),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 12.dp).semantics { heading() },
+        )
+        NumberGrid(
+            perRow = 4,
+            cells = items.map<Triple<String, String, String?>, @Composable (Modifier) -> Unit> { (value, label, date) ->
+                { column ->
+                    Column(
+                        column
+                            .padding(horizontal = 4.dp)
+                            .clearAndSetSemantics { contentDescription = listOfNotNull(label, value, date).joinToString(", ") },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                        if (date != null) {
+                            Text(
+                                date,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -207,14 +278,20 @@ internal fun GradesCard(
         ),
     ) {
         when (view) {
-            GradesView.PROBLEMS -> ProblemsPerGrade(outcomes)
+            GradesView.PROBLEMS -> ProblemsPerGrade(outcomes, sends)
             GradesView.SENDS -> SendsPerGrade(sends, zones)
         }
     }
 }
 
+/** "7 sends · 3 problems": a grade's sends with repeats and the problems behind them, so the repeats show. */
 @Composable
-private fun ProblemsPerGrade(entries: List<GradeOutcomeEntry>) {
+private fun sendsAndProblems(entry: BoardGradePyramidEntry): String =
+    pluralStringResource(R.plurals.board_stats_grade_sends_count, entry.count, entry.count) + " · " +
+        pluralStringResource(R.plurals.board_stats_cross_board_problems, entry.problems, entry.problems)
+
+@Composable
+private fun ProblemsPerGrade(entries: List<GradeOutcomeEntry>, sends: List<BoardGradePyramidEntry>) {
     if (entries.isEmpty()) return
     val ramp = triesRamp()
     val shades = listOf(ramp[0], ramp[2], MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f))
@@ -223,13 +300,15 @@ private fun ProblemsPerGrade(entries: List<GradeOutcomeEntry>) {
         stringResource(R.string.ux_later_send),
         stringResource(R.string.board_stats_grades_open),
     )
+    val sendsByGrade = sends.associateBy { it.grade }
     SwatchLegend(labels.zip(shades))
     Spacer(Modifier.height(10.dp))
     // Hardest grade on top, like a pyramid.
     GradeRows(
         rows = entries.asReversed().map { entry ->
             val counts = listOf(entry.flashCount, entry.redpointCount, entry.attemptCount)
-            GradeRow(entry.grade, counts.zip(shades), counts.indices.filter { counts[it] > 0 }.joinToString(" · ") { "${labels[it]} ${counts[it]}" })
+            val outcomes = counts.indices.filter { counts[it] > 0 }.joinToString(" · ") { "${labels[it]} ${counts[it]}" }
+            GradeRow(entry.grade, counts.zip(shades), listOfNotNull(sendsByGrade[entry.grade]?.let { sendsAndProblems(it) }, outcomes))
         },
     )
 }
@@ -248,17 +327,16 @@ private fun SendsPerGrade(entries: List<BoardGradePyramidEntry>, zones: Intensit
         )
         Spacer(Modifier.height(10.dp))
     }
-    val sendsLabel = stringResource(R.string.board_sends)
     GradeRows(
         rows = entries.asReversed().map { entry ->
             val color = zoneColorForDifficulty(entry.difficultyInt.toDouble(), zones)
-            GradeRow(entry.grade, listOf(entry.count to color), "$sendsLabel ${entry.count}")
+            GradeRow(entry.grade, listOf(entry.count to color), listOf(sendsAndProblems(entry)))
         },
     )
 }
 
-/** One grade row: its segments, each a count and a colour, and the detail shown on tap. */
-private class GradeRow(val grade: String, val segments: List<Pair<Int, Color>>, val detail: String) {
+/** One grade row: its segments, each a count and a colour, and the detail lines shown on tap. */
+private class GradeRow(val grade: String, val segments: List<Pair<Int, Color>>, val details: List<String>) {
     val total: Int get() = segments.sumOf { it.first }
 }
 
@@ -275,7 +353,7 @@ private fun GradeRows(rows: List<GradeRow>) {
                     .clip(RoundedCornerShape(8.dp))
                     .background(if (expanded) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f) else Color.Transparent)
                     .clickable { selected = if (expanded) null else row.grade }
-                    .semantics { contentDescription = "${row.grade}: ${row.detail}" }
+                    .semantics { contentDescription = "${row.grade}: ${row.details.joinToString("; ")}" }
                     .padding(vertical = 4.dp, horizontal = 4.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -306,12 +384,14 @@ private fun GradeRows(rows: List<GradeRow>) {
                     )
                 }
                 if (expanded) {
-                    Text(
-                        row.detail,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 44.dp, top = 4.dp),
-                    )
+                    row.details.forEachIndexed { i, detail ->
+                        Text(
+                            detail,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 44.dp, top = if (i == 0) 4.dp else 2.dp),
+                        )
+                    }
                 }
             }
         }
@@ -543,8 +623,9 @@ private fun activityViewLabel(view: ActivityView): String = when (view) {
 }
 
 /**
- * When you climbed: the days as a calendar, or all entries or only the sends
- * per week (per month over long periods) by grade band.
+ * When you climbed: the days as a calendar, climbing days per week, or all
+ * entries or only the sends per week (per month over long periods) by grade
+ * band. The charts over time span the whole [period].
  */
 @Composable
 internal fun ActivityCard(
@@ -555,6 +636,8 @@ internal fun ActivityCard(
     entries: List<VolumeBucket>,
     sends: List<VolumeBucket>,
     interval: StatsTimeInterval,
+    period: StatsPeriod? = null,
+    averageDaysPerWeek: Double = 0.0,
 ) {
     if (activityMap.isEmpty() && entries.isEmpty()) return
     ChartSectionWithSelector(
@@ -569,24 +652,26 @@ internal fun ActivityCard(
                 Spacer(Modifier.height(8.dp))
                 HeatmapLegend()
             }
-            ActivityView.DAYS_PER_WEEK -> DaysPerWeekChart(daysPerWeek)
-            ActivityView.ENTRIES -> VolumeChart(entries, stringResource(R.string.board_stats_entries_over_time))
-            ActivityView.SENDS -> VolumeChart(sends, stringResource(R.string.board_stats_sends_over_time))
+            ActivityView.DAYS_PER_WEEK -> DaysPerWeekChart(daysPerWeek, averageDaysPerWeek)
+            ActivityView.ENTRIES -> VolumeChart(entries, stringResource(R.string.board_stats_entries_over_time), period)
+            ActivityView.SENDS -> VolumeChart(sends, stringResource(R.string.board_stats_sends_over_time), period)
         }
     }
 }
 
 /**
- * Columns per week or month on a time axis, so time off stays visible as
- * gaps, stacked by grade band in the grade colours.
+ * Columns per week or month on a time axis over the whole [period], so time
+ * off stays visible as gaps, stacked by grade band in the grade colours and
+ * topped by the entries without a grade in grey.
  */
 @Composable
-private fun VolumeChart(entries: List<VolumeBucket>, title: String) {
+private fun VolumeChart(entries: List<VolumeBucket>, title: String, period: StatsPeriod?) {
     if (entries.isEmpty()) return
-    val bands = listOf(GradeEasy, GradeMedium, GradeHard, GradeElite)
+    val bands = listOf(GradeEasy, GradeMedium, GradeHard, GradeElite, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f))
     val used = listOf(
         entries.any { it.easyCount > 0 }, entries.any { it.mediumCount > 0 },
         entries.any { it.hardCount > 0 }, entries.any { it.eliteCount > 0 },
+        entries.any { it.ungradedCount > 0 },
     )
     // Only the bands that occur.
     SwatchLegend(
@@ -595,6 +680,7 @@ private fun VolumeChart(entries: List<VolumeBucket>, title: String) {
             stringResource(R.string.board_stats_grade_medium),
             stringResource(R.string.board_stats_grade_hard),
             stringResource(R.string.board_stats_grade_elite),
+            stringResource(R.string.board_stats_grade_ungraded),
         ).zip(bands).filterIndexed { i, _ -> used[i] },
     )
     Spacer(Modifier.height(10.dp))
@@ -603,8 +689,8 @@ private fun VolumeChart(entries: List<VolumeBucket>, title: String) {
     val ink = MaterialTheme.colorScheme.onSurface
     val months = MONTH_LABELS.map { stringResource(it) }
     val most = entries.maxOf { it.total }.coerceAtLeast(1)
-    val first = entries.first().start
-    val last = entries.last().let { it.start.plusDays(it.days - 1L) }
+    val first = minOf(period?.axisStart ?: entries.first().start, entries.first().start)
+    val last = maxOf(period?.axisEnd ?: entries.last().start, entries.last().let { it.start.plusDays(it.days - 1L) })
     val days = (last.toEpochDay() - first.toEpochDay() + 1).toFloat()
     val description = "$title: " + entries.joinToString("; ") { "${it.start}: ${it.total}" }
 
@@ -640,7 +726,7 @@ private fun VolumeChart(entries: List<VolumeBucket>, title: String) {
             val barWidth = (span - gap).coerceAtLeast(1.dp.toPx())
             val x = xOf(entry.start) + gap / 2
             var y = bottom
-            val counts = listOf(entry.easyCount, entry.mediumCount, entry.hardCount, entry.eliteCount)
+            val counts = listOf(entry.easyCount, entry.mediumCount, entry.hardCount, entry.eliteCount, entry.ungradedCount)
             val topBand = counts.indexOfLast { it > 0 }
             counts.forEachIndexed { i, n ->
                 if (n == 0) return@forEachIndexed
@@ -663,12 +749,12 @@ private fun VolumeChart(entries: List<VolumeBucket>, title: String) {
 private val WEEKLY_PLOT_HEIGHT = 112.dp
 
 /**
- * Climbing days per week as columns on a time axis, per week or, over long
- * periods, as the weekly average of each month. A faint line marks the
- * average over the whole period.
+ * Climbing days per week as columns on a time axis over the whole period,
+ * per week or, over long periods, as the weekly average of each month. A
+ * faint line marks the [average] over the whole period.
  */
 @Composable
-private fun DaysPerWeekChart(entries: List<DaysPerWeek>) {
+private fun DaysPerWeekChart(entries: List<DaysPerWeek>, average: Double) {
     if (entries.isEmpty()) return
     val measurer = rememberTextMeasurer()
     val axisStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -678,9 +764,7 @@ private fun DaysPerWeekChart(entries: List<DaysPerWeek>) {
     val first = entries.first().start
     val last = entries.last().let { it.start.plusDays(it.days - 1L) }
     val days = (last.toEpochDay() - first.toEpochDay() + 1).toFloat()
-    // Weighted by length, so short months do not count as much as long ones.
-    val average = entries.sumOf { it.perWeek * it.days } / entries.sumOf { it.days }
-    val top = max(3.0, ceil(entries.maxOf { it.perWeek })).coerceAtMost(7.0)
+    val top = max(3.0, ceil(max(entries.maxOf { it.perWeek }, average))).coerceAtMost(7.0)
     val averageLabel = stringResource(R.string.board_stats_days_per_week_average, average)
     val description = stringResource(R.string.board_stats_days_per_week) + ": " + averageLabel + ". " +
         entries.joinToString("; ") { "${it.start}: ${"%.1f".format(it.perWeek)}" }

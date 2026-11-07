@@ -58,6 +58,16 @@ class BoardFeelEstimatorTest {
     }
 
     @Test
+    fun `the grade width near the bottom of the scale only counts graded difficulties`() {
+        // Below 10 everything shows as V0 / 4a, which made V0 look six units wide.
+        // From 10 to 16: V0 V0 V0 V1 V1 V2 V3, four grades over six units.
+        assertEquals(2.0, BoardFeelEstimator.unitsPerGrade(11.0, GradeScale.V_SCALE), 1e-9)
+        assertEquals(2.0, BoardFeelEstimator.unitsPerGrade(10.0, GradeScale.V_SCALE), 1e-9)
+        assertEquals(1.0, BoardFeelEstimator.unitsPerGrade(10.0, GradeScale.FRENCH), 1e-9)
+        assertEquals(1.0, BoardFeelEstimator.unitsPerGrade(34.0, GradeScale.FRENCH), 1e-9)
+    }
+
+    @Test
     fun `too few problems or no shared grades say nothing`() {
         val few = board("kilter", 0.0, spread) + board("moonboard", 2.0, spread.take(BoardFeelEstimator.MIN_PROBLEMS - 1))
         assertNull(BoardFeelEstimator.estimate(few, GradeScale.FRENCH))

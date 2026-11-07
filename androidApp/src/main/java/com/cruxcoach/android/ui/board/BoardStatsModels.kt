@@ -1,5 +1,34 @@
 package com.cruxcoach.android.ui.board
 
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+import java.time.temporal.TemporalAdjusters
+
+/**
+ * The days the statistics cover: the chosen period, from the first entry at
+ * the earliest, up to today or the end of a custom range. Its length decides
+ * whether the charts over time count per week or, over more than half a
+ * year, per month.
+ */
+data class StatsPeriod(val start: LocalDate, val end: LocalDate) {
+    val days: Int get() = (ChronoUnit.DAYS.between(start, end) + 1).toInt()
+    val perMonth: Boolean get() = days > WEEKLY_MAX_DAYS
+
+    /** The first day the charts draw: the Monday of the first week, or the first of the first month. */
+    val axisStart: LocalDate
+        get() = if (perMonth) start.withDayOfMonth(1) else start.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+
+    /** The last day the charts draw: the Sunday of the last week, or the last of the last month. */
+    val axisEnd: LocalDate
+        get() = if (perMonth) end.with(TemporalAdjusters.lastDayOfMonth()) else end.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
+
+    companion object {
+        /** Periods longer than this are counted per month instead of per week. */
+        const val WEEKLY_MAX_DAYS = 26 * 7
+    }
+}
+
 /** Distinct problems per grade, classified by best outcome: flash / sent / attempted. */
 data class GradeOutcomeEntry(
     val grade: String,
@@ -24,7 +53,8 @@ data class PeriodTotals(
 /**
  * Log entries of one time bucket by grade band: a week (from its Monday) or,
  * over long periods, a month (from its first day). Buckets without entries
- * are left out.
+ * are left out. Entries without a grade count apart, so the buckets add up
+ * to all entries.
  */
 data class VolumeBucket(
     val start: java.time.LocalDate,
@@ -33,9 +63,10 @@ data class VolumeBucket(
     val easyCount: Int,
     val mediumCount: Int,
     val hardCount: Int,
-    val eliteCount: Int
+    val eliteCount: Int,
+    val ungradedCount: Int = 0,
 ) {
-    val total: Int get() = easyCount + mediumCount + hardCount + eliteCount
+    val total: Int get() = easyCount + mediumCount + hardCount + eliteCount + ungradedCount
 }
 
 /** Rolling performance level from the best distinct sends in the preceding
@@ -46,20 +77,19 @@ data class GradeProgressionPoint(
     val performanceDifficulty: Double,
 )
 
-/** Personal records across all time */
+/** The bests of the chosen period and board. */
 data class PersonalRecords(
     val hardestFlashGrade: String? = null,
     val hardestFlashDifficulty: Int = 0,
     val mostSendsInDay: Int = 0,
     val mostSendsDate: String? = null,
-    /** Average training sessions (distinct active days, sends OR attempts)
-     *  per week over the last 8 weeks — day-streaks are meaningless for
-     *  climbing (rest days are part of training); consistency per week is
-     *  the honest signal. */
-    val avgSessionsPerWeek: Double = 0.0,
-    /** Consecutive calendar weeks (ISO, Mon–Sun) with ≥1 session, counting
-     *  only if the run reaches into this or the previous week. */
-    val weekStreak: Int = 0
+    /** Climbing days (days with sends OR attempts) per week on average over
+     *  the period — day-streaks are meaningless for climbing (rest days are
+     *  part of training); consistency per week is the honest signal. */
+    val daysPerWeek: Double = 0.0,
+    /** The most consecutive calendar weeks (ISO, Mon–Sun) with at least one
+     *  climbing day inside the period. */
+    val longestWeekStreak: Int = 0
 )
 
 /** One board family's headline numbers for the multi-board comparison row
@@ -73,10 +103,13 @@ data class BoardComparisonEntry(
     val hardestDifficultyInt: Int
 )
 
-/** Climbing days per week in one week, or on average in one month over long periods. */
+/**
+ * Climbing days in one week, or per week on average in one month over long
+ * periods; a month the period only partly covers counts only its days inside.
+ */
 data class DaysPerWeek(
     val start: java.time.LocalDate,
-    /** Length in days of the week or month. */
+    /** Length in days of the week or month, for its place on a time axis. */
     val days: Int,
     val perWeek: Double,
 )

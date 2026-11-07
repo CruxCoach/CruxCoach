@@ -195,6 +195,29 @@ class StatsHighlightsComputerTest {
     }
 
     @Test
+    fun `a timed session's recap keeps only the milestones its own sends reached`() {
+        val morning = (1..6).map { row("m$it", "2026-03-10", difficulty = 14.0, time = "09:0$it:00") } +
+            listOf(row("hard", "2026-03-10", difficulty = 22.0, time = "09:30:00"))
+        val evening = listOf(
+            row("e1", "2026-03-10", difficulty = 14.0, time = "19:00:00"),
+            row("e2", "2026-03-10", isSend = false, tries = 3, difficulty = 16.0, time = "19:10:00"),
+        )
+        val history = listOf(row("first", "2026-03-01", difficulty = 14.0)) + morning + evening
+        // The morning reached the new grade; the evening added to the biggest day.
+        val eveningRecap = StatsHighlightsComputer.recapOf(evening, history, scale)!!
+        assertEquals(listOf(MilestoneKind.BIGGEST_DAY), eveningRecap.milestones.map { it.kind })
+        assertEquals(8, eveningRecap.milestones.single().count)
+        val morningRecap = StatsHighlightsComputer.recapOf(morning, history.filterNot { it in evening }, scale)!!
+        assertEquals(setOf(MilestoneKind.NEW_GRADE, MilestoneKind.BIGGEST_DAY), morningRecap.milestones.map { it.kind }.toSet())
+        // An evening of attempts only reaches nothing.
+        val attempts = listOf(evening[1])
+        assertTrue(StatsHighlightsComputer.recapOf(attempts, history.filterNot { it == evening[0] }, scale)!!.milestones.isEmpty())
+        // The day's recap in the logbook still shows the whole day.
+        val day = StatsHighlightsComputer.sessionRecap(history, LocalDate.parse("2026-03-10"), scale)!!
+        assertEquals(setOf(MilestoneKind.NEW_GRADE, MilestoneKind.BIGGEST_DAY), day.milestones.map { it.kind }.toSet())
+    }
+
+    @Test
     fun `the recap carries the milestones of its day`() {
         val rows = listOf(
             row("a", "2026-03-01", difficulty = 16.0),

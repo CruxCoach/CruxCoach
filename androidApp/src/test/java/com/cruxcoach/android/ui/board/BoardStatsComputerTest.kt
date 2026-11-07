@@ -112,6 +112,20 @@ class BoardStatsComputerTest {
     }
 
     @Test
+    fun `30 days are today and the 29 days before`() {
+        val ascents = listOf(
+            ascent(climbedAt = "${today.minusDays(29)}T10:00:00"),
+            ascent(climbedAt = "${today.minusDays(30)}T10:00:00"),
+        )
+        val out = BoardStatsComputer.filterByInterval(ascents, StatsTimeInterval.DAYS_30, clock = fixedClock)
+        assertEquals(listOf("${today.minusDays(29)}T10:00:00"), out.map { it.climbedAt })
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.DAYS_30, GradeScale.V_SCALE, clock = fixedClock)
+        assertEquals(30, stats.period!!.days)
+        // The day before the period belongs to the 30 days before it.
+        assertEquals(1, stats.previous!!.sends)
+    }
+
+    @Test
     fun `filterByInterval custom range overrides interval`() {
         val ascents = listOf(
             ascent(climbedAt = "2026-03-01T10:00:00"),
@@ -302,24 +316,37 @@ class BoardStatsComputerTest {
     }
 
     @Test
-    fun `weeklyVolume bands difficulty into easy medium hard elite`() {
+    fun `weeklyVolume bands difficulty into easy medium hard elite and keeps ungraded entries`() {
         val ascents = listOf(
             ascent(climbedAt = "2026-03-02T10:00:00", difficulty = 12.0), // easy
             ascent(climbedAt = "2026-03-03T10:00:00", difficulty = 18.0), // medium
             ascent(climbedAt = "2026-03-04T10:00:00", difficulty = 23.0), // hard
             ascent(climbedAt = "2026-03-05T10:00:00", difficulty = 28.0), // elite
-            ascent(climbedAt = "2026-03-06T10:00:00", difficulty = null), // dropped
+            ascent(climbedAt = "2026-03-06T10:00:00", difficulty = null), // no grade
         )
-        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock)
         // All five ascents are in ISO week 10 of 2026 (Mon 2026-03-02 .. Sun 2026-03-08).
-        assertEquals(1, stats.entriesOverTime.size)
+        assertEquals(LocalDate.of(2026, 3, 2), stats.entriesOverTime[0].start)
         val wk = stats.entriesOverTime[0]
-        assertEquals(LocalDate.of(2026, 3, 2), wk.start)
         assertEquals(7, wk.days)
         assertEquals(1, wk.easyCount)
         assertEquals(1, wk.mediumCount)
         assertEquals(1, wk.hardCount)
         assertEquals(1, wk.eliteCount)
+        assertEquals(1, wk.ungradedCount)
+    }
+
+    @Test
+    fun `sends over time add up to the sends, ungraded ones included`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2026-02-02T10:00:00", difficulty = null),
+            ascent(climbedAt = "2026-02-03T10:00:00", difficulty = 18.0),
+            ascent(climbedAt = "2026-03-04T10:00:00", difficulty = null),
+            ascent(climbedAt = "2026-03-05T10:00:00", isSend = false, difficulty = 18.0),
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock)
+        assertEquals(stats.totalSends, stats.sendsOverTime.sumOf { it.total })
+        assertEquals(ascents.size, stats.entriesOverTime.sumOf { it.total })
     }
 
     @Test
@@ -329,39 +356,73 @@ class BoardStatsComputerTest {
             ascent(climbedAt = "2025-01-20T10:00:00", difficulty = 14.0),
             ascent(climbedAt = "2025-09-03T10:00:00", difficulty = 14.0),
         )
-        val buckets = BoardStatsComputer.computeVolume(ascents)
+        val period = StatsPeriod(LocalDate.of(2025, 1, 15), LocalDate.of(2025, 9, 30))
+        val buckets = BoardStatsComputer.computeVolume(ascents, period)
         assertEquals(listOf(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 9, 1)), buckets.map { it.start })
         assertEquals(listOf(31, 30), buckets.map { it.days })
         assertEquals(listOf(2, 1), buckets.map { it.total })
+        // The period decides, not the entries: two entries in one week of a long period still count per month.
+        val sameWeek = BoardStatsComputer.computeVolume(ascents.take(2), period)
+        assertEquals(listOf(LocalDate.of(2025, 1, 1)), sameWeek.map { it.start })
     }
 
     @Test
-    fun `days per week count each climbing day once and keep weeks off as zero`() {
+    fun `days per week count each climbing day once and span every week of the period`() {
         val ascents = listOf(
             ascent(climbedAt = "2026-03-02T10:00:00"),
             ascent(climbedAt = "2026-03-02T18:00:00"),
             ascent(climbedAt = "2026-03-04T10:00:00", isSend = false),
-            ascent(climbedAt = "2026-03-18T10:00:00"),
+            ascent(climbedAt = "2026-03-11T10:00:00"),
+            // Before the 30 days.
+            ascent(climbedAt = "2026-01-05T10:00:00"),
         )
-        val weeks = BoardStatsComputer.computeDaysPerWeek(ascents)
-        assertEquals(listOf(2.0, 0.0, 1.0), weeks.map { it.perWeek })
-        assertEquals(LocalDate.of(2026, 3, 9), weeks[1].start)
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.DAYS_30, GradeScale.V_SCALE, clock = fixedClock)
+        // 30 days up to Sun 2026-03-15 start on Sat 2026-02-14: weeks from Mon 2026-02-09.
+        assertEquals(LocalDate.of(2026, 2, 14), stats.period!!.start)
+        assertEquals(
+            listOf(LocalDate.of(2026, 2, 9), LocalDate.of(2026, 2, 16), LocalDate.of(2026, 2, 23), LocalDate.of(2026, 3, 2), LocalDate.of(2026, 3, 9)),
+            stats.daysPerWeek.map { it.start },
+        )
+        assertEquals(listOf(0.0, 0.0, 0.0, 2.0, 1.0), stats.daysPerWeek.map { it.perWeek })
+        // Three climbing days over the whole 30 days, not over the two active weeks.
+        assertEquals(3 * 7.0 / 30, stats.personalRecords.daysPerWeek, 1e-9)
     }
 
     @Test
-    fun `days per week over a long span are the weekly average of each month`() {
-        val ascents = (1..10).map { ascent(climbedAt = "2025-01-%02dT10:00:00".format(it * 3)) } +
-            listOf(ascent(climbedAt = "2025-08-01T10:00:00"))
-        val months = BoardStatsComputer.computeDaysPerWeek(ascents)
+    fun `days per week over a long period count only the days of each month inside it`() {
+        val ascents = (1..10).map { ascent(climbedAt = "2025-01-%02dT10:00:00".format(it + 20)) } +
+            listOf(ascent(climbedAt = "2025-08-01T10:00:00"), ascent(climbedAt = "2025-08-03T10:00:00"))
+        // The period runs from the first entry on 21 January to 5 August.
+        val period = StatsPeriod(LocalDate.of(2025, 1, 21), LocalDate.of(2025, 8, 5))
+        val months = BoardStatsComputer.computeDaysPerWeek(ascents, period)
         assertEquals(8, months.size)
-        assertEquals(10 * 7.0 / 31, months.first().perWeek, 1e-9)
+        assertEquals(LocalDate.of(2025, 1, 1), months.first().start)
+        // Ten climbing days in the 11 days of January inside the period, two in the 5 days of August.
+        assertEquals(10 * 7.0 / 11, months.first().perWeek, 1e-9)
         assertEquals(0.0, months[1].perWeek, 1e-9)
+        assertEquals(2 * 7.0 / 5, months.last().perWeek, 1e-9)
+    }
+
+    @Test
+    fun `the whole logbook starts with its first entry and runs until today`() {
+        val ascents = listOf(ascent(climbedAt = "2026-01-10T10:00:00"), ascent(climbedAt = "2026-02-01T10:00:00"))
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock)
+        assertEquals(StatsPeriod(LocalDate.of(2026, 1, 10), today), stats.period)
+        // A year with a younger logbook starts at its first entry too.
+        val year = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.YEAR_1, GradeScale.V_SCALE, clock = fixedClock)
+        assertEquals(LocalDate.of(2026, 1, 10), year.period!!.start)
+        // A custom range keeps its end.
+        val custom = BoardStatsComputer.computeStats(
+            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE,
+            customFrom = LocalDate.of(2025, 12, 1), customTo = LocalDate.of(2026, 2, 28), clock = fixedClock,
+        )
+        assertEquals(StatsPeriod(LocalDate.of(2026, 1, 10), LocalDate.of(2026, 2, 28)), custom.period)
     }
 
     @Test
     fun `a period with a length is compared with the same length before`() {
         val ascents = listOf(
-            // 30 days back from 2026-03-15 starts at 2026-02-13; the period before is 2026-01-14 .. 2026-02-12.
+            // 30 days up to 2026-03-15 start at 2026-02-14; the period before is 2026-01-15 .. 2026-02-13.
             ascent(uuid = "p1", climbUuid = "a", climbedAt = "2026-01-20T10:00:00", bidCount = 1),
             ascent(uuid = "p2", climbUuid = "b", climbedAt = "2026-02-10T10:00:00", isSend = false, bidCount = 3),
             ascent(uuid = "c1", climbUuid = "c", climbedAt = "2026-03-01T10:00:00"),
@@ -510,7 +571,7 @@ class BoardStatsComputerTest {
         assertEquals("2026-03-05", stats.personalRecords.mostSendsDate)
     }
 
-    // -- Session consistency (avg sessions/week + week streak) --
+    // -- Session consistency of the logbook overview (avg sessions/week + running week streak) --
     // fixedClock "today" 2026-03-15 is a SUNDAY; its ISO week starts Mon 2026-03-09.
 
     @Test
@@ -525,10 +586,7 @@ class BoardStatsComputerTest {
             ascent(climbedAt = "${today.minusDays(20)}T10:00:00"),
             ascent(climbedAt = "${today.minusDays(40)}T10:00:00"),
         )
-        val stats = BoardStatsComputer.computeStats(
-            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
-        )
-        assertEquals(0.5, stats.personalRecords.avgSessionsPerWeek, 0.001)
+        assertEquals(0.5, BoardStatsComputer.sessionsPerWeekOf(ascents, fixedClock), 0.001)
     }
 
     @Test
@@ -541,10 +599,7 @@ class BoardStatsComputerTest {
             ascent(climbedAt = "${today.minusDays(21)}T10:00:00"),
             ascent(climbedAt = "${today}T10:00:00"),
         )
-        val stats = BoardStatsComputer.computeStats(
-            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
-        )
-        assertEquals(0.25, stats.personalRecords.avgSessionsPerWeek, 0.001)
+        assertEquals(0.25, BoardStatsComputer.sessionsPerWeekOf(ascents, fixedClock), 0.001)
     }
 
     @Test
@@ -552,10 +607,7 @@ class BoardStatsComputerTest {
         val ascents = listOf(
             ascent(isSend = false, climbedAt = "${today.minusDays(2)}T10:00:00"),
         )
-        val stats = BoardStatsComputer.computeStats(
-            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
-        )
-        assertTrue(stats.personalRecords.avgSessionsPerWeek > 0.0)
+        assertTrue(BoardStatsComputer.sessionsPerWeekOf(ascents, fixedClock) > 0.0)
     }
 
     @Test
@@ -566,10 +618,7 @@ class BoardStatsComputerTest {
             ascent(climbedAt = "2026-02-25T10:00:00"), // week before
             ascent(climbedAt = "2026-01-05T10:00:00"), // long ago — gap, not part of streak
         )
-        val stats = BoardStatsComputer.computeStats(
-            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
-        )
-        assertEquals(3, stats.personalRecords.weekStreak)
+        assertEquals(3, BoardStatsComputer.weekStreakOf(ascents, fixedClock))
     }
 
     @Test
@@ -578,10 +627,7 @@ class BoardStatsComputerTest {
             ascent(climbedAt = "2026-02-10T10:00:00"),
             ascent(climbedAt = "2026-02-17T10:00:00"),
         )
-        val stats = BoardStatsComputer.computeStats(
-            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
-        )
-        assertEquals(0, stats.personalRecords.weekStreak)
+        assertEquals(0, BoardStatsComputer.weekStreakOf(ascents, fixedClock))
     }
 
     @Test
@@ -589,10 +635,63 @@ class BoardStatsComputerTest {
         val ascents = listOf(
             ascent(climbedAt = "2026-03-06T10:00:00"), // last week (Mon 03-02)
         )
-        val stats = BoardStatsComputer.computeStats(
-            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
+        assertEquals(1, BoardStatsComputer.weekStreakOf(ascents, fixedClock))
+    }
+
+    // -- Bests of the period --
+
+    @Test
+    fun `the bests follow the chosen period`() {
+        val ascents = listOf(
+            // Outside the 30 days: a harder flash and a bigger day.
+            ascent(uuid = "old-flash", climbUuid = "o1", climbedAt = "2026-01-05T10:00:00", difficulty = 28.0),
+            ascent(uuid = "old-2", climbUuid = "o2", climbedAt = "2026-01-05T11:00:00"),
+            ascent(uuid = "old-3", climbUuid = "o3", climbedAt = "2026-01-05T12:00:00"),
+            // Inside: one climbing day in each of the weeks of Mon 02-23, 03-02 and 03-09.
+            ascent(uuid = "f", climbUuid = "n1", climbedAt = "2026-02-24T10:00:00", difficulty = 20.0),
+            ascent(uuid = "b", climbUuid = "n2", climbedAt = "2026-03-03T10:00:00"),
+            ascent(uuid = "c", climbUuid = "n3", climbedAt = "2026-03-03T11:00:00", isSend = false),
+            ascent(uuid = "d", climbUuid = "n4", climbedAt = "2026-03-10T10:00:00"),
         )
-        assertEquals(1, stats.personalRecords.weekStreak)
+        val records = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.DAYS_30, GradeScale.V_SCALE, clock = fixedClock)
+            .personalRecords
+        assertEquals(20, records.hardestFlashDifficulty)
+        assertEquals(1, records.mostSendsInDay)
+        assertEquals("2026-02-24", records.mostSendsDate)
+        assertEquals(3, records.longestWeekStreak)
+        assertEquals(3 * 7.0 / 30, records.daysPerWeek, 1e-9)
+
+        val all = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock)
+            .personalRecords
+        assertEquals(28, all.hardestFlashDifficulty)
+        assertEquals(3, all.mostSendsInDay)
+        assertEquals("2026-01-05", all.mostSendsDate)
+    }
+
+    @Test
+    fun `the longest week streak is the longest run in the period, not the running one`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2026-01-05T10:00:00"), // Mon 01-05
+            ascent(climbedAt = "2026-01-14T10:00:00"), // week of 01-12
+            ascent(climbedAt = "2026-01-21T10:00:00"), // week of 01-19
+            ascent(climbedAt = "2026-01-25T10:00:00"), // same week, a rest day later
+            ascent(climbedAt = "2026-03-10T10:00:00"), // a gap, then this week
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock)
+        assertEquals(3, stats.personalRecords.longestWeekStreak)
+        assertEquals(1, BoardStatsComputer.weekStreakOf(ascents, fixedClock))
+    }
+
+    @Test
+    fun `the most sends in a day keep the first day that reached them`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2026-03-05T10:00:00", climbUuid = "c1"),
+            ascent(climbedAt = "2026-03-05T11:00:00", climbUuid = "c2"),
+            ascent(climbedAt = "2026-03-01T10:00:00", climbUuid = "c3"),
+            ascent(climbedAt = "2026-03-01T11:00:00", climbUuid = "c4"),
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock)
+        assertEquals("2026-03-01", stats.personalRecords.mostSendsDate)
     }
 
     // -- Outcome distribution --

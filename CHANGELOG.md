@@ -32,17 +32,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Statistics, reorganised so every number and chart appears once: the period
   and board filters on top (each board chip shows its sends and best grade),
   the period in six numbers with the change against the period before (sends,
-  tries, climbing days, problems, hardest grade, flash rate), then progress (the rolling level,
-  one line per board), grades (problems per grade by flash, later send or still
-  open, or every send with repeats in your intensity-zone colours), tries,
-  activity (calendar, climbing days per week, entries or sends over time),
-  angles and holds.
+  tries, climbing days, problems, hardest grade, flash rate) and its bests
+  (hardest flash, most sends in one day, climbing days a week, most weeks in a
+  row), then progress (the rolling level, one line per board), grades (problems
+  per grade by flash, later send or still open, or every send with repeats in
+  your intensity-zone colours; tap a grade for its sends and the problems behind
+  them), tries, activity (calendar, climbing days per week, entries or sends over
+  time), angles and holds. The charts over time span the whole period, from your
+  first entry at the earliest until today, and count sends without a grade too.
 - Tries until the send: per board, how many of your problems you flashed or sent
   on the 2nd, 3rd, 4th–5th or a later try. Tries from earlier sessions count, so a
   send after attempts on an earlier day is no flash.
 - Stats across boards: if you climb on more than one board, the statistics show
   how many tries you need to send each grade on each board, as bars side by side,
-  and the average tries per month as a small line chart. Tries from earlier
+  and the average tries per month as a small line chart (months without a first
+  send stay as gaps; a long logbook scrolls sideways). Tries from earlier
   sessions count until the first send; repeats do not. Values that rest on fewer
   than three problems are drawn hollow; tap a board, grade or month for its
   numbers. Each board keeps one colour everywhere. With enough data on two
@@ -51,9 +55,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   grades. The tries views also show if you climb on one board. Works with your
   existing logbook.
 - Session recap: the button beside each day in the logbook, and the summary at
-  the end of a timed session, show one card with sends, flashes, tries, the
-  hardest grade, the grades you sent and the milestones of the day, ready to
-  share as an image.
+  the end of a timed session, show one card with sends, flashes, tries, your
+  three hardest sends, the grades you sent and the milestones you reached,
+  ready to share as an image. Tries from earlier days count here too, so a
+  first-go send of an old project is no flash, and the card at the end of a
+  timed session shows only the milestones of that session.
 - Wall games, from the main menu or a problem's menu ("Play as a game"):
   "Floor is lava" (lit rows rise from the bottom, five speeds), "Endurance" (a
   problem appears row by row, five waiting times), "Hold thief" (a random
