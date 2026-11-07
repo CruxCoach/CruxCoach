@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Board scan (#65): point the camera at a lit board to find the problem -->
+    <string name="board_scan_open">Scan the board</string>
+    <string name="board_scan_title">Scan the board</string>
+    <string name="board_scan_experimental">Experimental</string>
+    <string name="board_scan_permission">To scan the board, CruxCoach needs the camera. Frames stay in memory on this phone and are never stored or sent.</string>
+    <string name="board_scan_permission_allow">Allow the camera</string>
+    <string name="board_scan_preparing">Preparing the problems of this board…</string>
+    <plurals name="board_scan_problems">
+        <item quantity="one">%1$s problem on this board</item>
+        <item quantity="other">%1$s problems on this board</item>
+    </plurals>
+    <string name="board_scan_unsupported">Scanning works on the Kilter Original and on the MoonBoard 2016 and 2024 for now.</string>
+    <string name="board_scan_no_catalogue">There are no problems of this board on the phone yet. Download its catalogue first.</string>
+    <string name="board_scan_hint">Light a problem, hold the phone upright, get the whole board in view and tap Scan.</string>
+    <string name="board_scan_button">Scan</string>
+    <string name="board_scan_stop">Stop</string>
+    <string name="board_scan_looking">Looking… frame %1$d</string>
+    <string name="board_scan_camera_error">The camera gives no picture. Close the scan and open it again.</string>
+    <string name="board_scan_sure">It is this problem</string>
+    <string name="board_scan_not_sure">Not sure. The most likely three:</string>
+    <string name="board_scan_nothing">No lit problem found. Get the whole board in view and try again.</string>
+    <string name="board_scan_mirrored">mirrored</string>
+    <string name="board_scan_holds_seen">%1$d of %2$d holds seen</string>
+    <string name="board_scan_details">%1$d lit holds seen · %2$s s</string>
+    <string name="board_scan_failed">The scan stopped with an error. Try again.</string>
+    <string name="board_scan_again">Scan again</string>
+    <string name="board_scan_unnamed">Unnamed problem</string>
+    <!-- Test mode: the user confirms or picks the lit problem after each scan -->
+    <string name="board_scan_test_mode">Test mode</string>
+    <string name="board_scan_test_climber">Climber in front</string>
+    <string name="board_scan_test_results">Results</string>
+    <string name="board_scan_test_right">Right</string>
+    <string name="board_scan_test_wrong">Wrong</string>
+    <string name="board_scan_test_tap_lit">Tap the problem that was lit, or find it by name.</string>
+    <string name="board_scan_test_search">Problem name</string>
+    <string name="board_scan_test_lit_mirrored">Lit mirrored</string>
+    <string name="board_scan_test_on_board">Lit from CruxCoach: %1$s</string>
+    <string name="board_scan_test_lit_by_app">Lit from CruxCoach</string>
+    <string name="board_scan_test_not_in_catalogue">Not in the catalogue</string>
+    <string name="board_scan_test_skip">Don\'t count</string>
+    <string name="board_scan_test_saved">Saved: %1$d this time</string>
+    <string name="board_scan_test_empty">No test scans yet.</string>
+    <string name="board_scan_test_free">Free-view scans: %1$d of %2$d</string>
+    <string name="board_scan_test_top">Right problem first: %1$d · among the three: %2$d</string>
+    <string name="board_scan_test_sure">Sure: %1$d · sure and wrong: %2$d</string>
+    <string name="board_scan_test_time">Median time: %1$s s</string>
+    <string name="board_scan_test_all">All scans incl. climber in front: %1$d</string>
+    <string name="board_scan_test_note">Only numbers and problem names are kept, never camera images.</string>
+    <string name="board_scan_test_export">Export</string>
+    <string name="board_scan_test_clear">Delete results</string>
+    <string name="board_scan_test_clear_confirm">Delete all test results on this phone?</string>
+    <string name="board_scan_test_share_title">Board scan test results</string>
+    <string name="board_scan_close">Close</string>
+    <string name="board_scan_cancel">Cancel</string>
+    <string name="board_scan_delete">Delete</string>
+</resources>

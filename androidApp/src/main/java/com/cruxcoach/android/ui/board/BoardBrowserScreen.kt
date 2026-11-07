@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
@@ -73,6 +74,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.ui.onboarding.*
 import com.cruxcoach.android.R
+import com.cruxcoach.android.boardscan.ScanBoard
 import com.cruxcoach.android.util.PerfLogger
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,6 +89,7 @@ fun BoardBrowserScreen(
     onNavigateToSettings: () -> Unit = {},
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
+    onNavigateToScan: () -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
@@ -838,7 +841,7 @@ fun BoardBrowserScreen(
             }
         }
     }
-        // Floating action stack: Search (bottom) + Create-climb (top).
+        // Floating action stack: Search (bottom) + Create-climb + Scan-the-board (top, boards it works on).
         if (state.hasBoardData) {
             androidx.compose.foundation.layout.Column(
                 modifier = Modifier
@@ -847,6 +850,15 @@ fun BoardBrowserScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.End,
             ) {
+                if (ScanBoard(state.filter.boardBrand, state.filter.layoutId, state.boardSize?.id?.toInt() ?: 0, state.filter.angle).isSupported) {
+                    SmallFloatingActionButton(
+                        onClick = onNavigateToScan,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.testTag("board_scan_fab"),
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = stringResource(R.string.board_scan_open))
+                    }
+                }
                 // Climb authoring is supported for every interactive board:
                 // Kilter (also mirrors to the user's own Kilter account),
                 // MoonBoard, and the Aurora family (Tension / Grasshopper /
