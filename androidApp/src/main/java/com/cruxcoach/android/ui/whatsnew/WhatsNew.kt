@@ -74,6 +74,11 @@ object WhatsNewItems {
     /** 0.2.4: Kilter-built boards connect, the Kilter upload works, board map and hold cleaning. */
     val RELEASE_024 = WhatsNewItem(id = "release-0.2.4", sinceVersionCode = 10)
 
+    /** 0.2.5. Not registered yet: the release preparation adds it to [registry]
+     *  together with versionCode 11 (an entry newer than the build never fires,
+     *  and ReleaseMetadataTest forbids it). Features add their line to whatsnew_025_body. */
+    val RELEASE_025 = WhatsNewItem(id = "release-0.2.5", sinceVersionCode = 11)
+
     /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
      *  upgrading from 0.1.4 have no other entry point to discover the
      *  new map icon in the BoardBrowser search header. */
@@ -205,6 +210,8 @@ fun WhatsNewHost(
             Release023WhatsNewDialog(onDismiss = { vm.dismissCurrent() })
         WhatsNewItems.RELEASE_024.id ->
             Release024WhatsNewDialog(onDismiss = { vm.dismissCurrent() })
+        WhatsNewItems.RELEASE_025.id ->
+            Release025WhatsNewDialog(onDismiss = { vm.dismissCurrent() })
         WhatsNewItems.RELEASE_022.id ->
             Release022WhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
