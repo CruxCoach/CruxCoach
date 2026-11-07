@@ -9,7 +9,8 @@ import com.cruxcoach.domain.board.BoardBrand
  * box does not report its size.
  *
  * Shares count boards: a Kilter gym with two walls counts twice, every other brand has one
- * entry per gym. An option the gym list says nothing about gets no share, never a guess.
+ * entry per gym. An option the gym list does not mention has none of its boards; a group of
+ * fewer than [MIN_BOARDS] boards gets no shares at all.
  */
 class BoardGymShares(
     /** Kilter product_size_id → walls of that size. */

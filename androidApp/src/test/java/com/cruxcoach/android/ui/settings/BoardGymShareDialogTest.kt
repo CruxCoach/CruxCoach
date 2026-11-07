@@ -30,8 +30,10 @@ class BoardGymShareDialogTest {
     @get:Rule val compose = createComposeRule()
 
     // MoonBoard: the procedural previews need no image loading (Kilter's loading spinner never
-    // lets Compose idle under Robolectric). 2016 common, Mini 2020 rare.
-    private val mini = MoonBoardVariant.entries.first { it.layoutId == 6L }
+    // lets Compose idle under Robolectric). 2016 and Masters 2017 common; Mini 2020 rare; Masters
+    // 2019, 2010 and the new 2024 and Mini 2025 not in the list.
+    private val mini = MoonBoardVariant.MINI_2020
+    private val newMini = MoonBoardVariant.MINI_2025
     private val shares = BoardGymShares.from(
         sizeWalls = mapOf(10 to 90L),
         locations = mapOf(("moonboard" to 2) to 60L, ("moonboard" to 4) to 39L, ("moonboard" to 6) to 1L),
@@ -67,21 +69,30 @@ class BoardGymShareDialogTest {
         return done()
     }
 
-    @Test fun `each version shows its share and a rare one may just be new`() {
+    @Test fun `each version shows its share, a rare old one is flagged and a new one may just be new`() {
         val confirmed = mutableListOf<MoonBoardVariant>()
         show(shares, confirmed)
         assertTrue(compose.onAllNodesWithText("In Gyms:", substring = true).fetchSemanticsNodes().isNotEmpty())
-        // Few gyms list the newest versions yet: a version is never called rare.
-        compose.onAllNodesWithText("Selten in Gyms:", substring = true).assertCountEquals(0)
+        // Rare: Masters 2019, Mini 2020 and 2010. Few gyms list 2024 and Mini 2025 yet: never called rare.
+        compose.onAllNodesWithText("Selten in Gyms:", substring = true).assertCountEquals(3)
         compose.onNodeWithTag("board_gym_share_rare_hint").assertDoesNotExist()
 
         compose.onNodeWithText(mini.displayName).performScrollTo().performClick()
         assertTrue("hint never appeared", advanceUntil(2_000) { shown("board_gym_share_rare_hint") })
-        assertTrue(compose.onAllNodesWithText("vielleicht weil sie neu ist", substring = true).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(compose.onAllNodesWithText("wirklich deins", substring = true).fetchSemanticsNodes().isNotEmpty())
+        compose.onAllNodesWithText("vielleicht weil sie neu ist", substring = true).assertCountEquals(0)
+
+        compose.onNodeWithText(newMini.displayName).performScrollTo().performClick()
+        assertTrue(
+            "new-version hint never appeared",
+            advanceUntil(2_000) {
+                compose.onAllNodesWithText("vielleicht weil sie neu ist", substring = true).fetchSemanticsNodes().isNotEmpty()
+            },
+        )
         // The hint only asks; the rare version can still be confirmed.
         compose.onNodeWithText("Bestätigen").performClick()
         compose.mainClock.advanceTimeBy(FRAME_MS)
-        assertEquals(listOf(mini), confirmed)
+        assertEquals(listOf(newMini), confirmed)
     }
 
     @Test fun `without the gym list the picker shows no shares`() {

@@ -644,12 +644,17 @@ internal fun BoardSelectionDialog(
                             onSelect = { mbVariant = variant },
                             brand = BoardBrand.MOONBOARD, sizeId = 0L, layoutId = variant.layoutId,
                             gymShare = gymShares?.moonBoard(variant.layoutId),
-                            // Few gyms list the newest versions yet: rare may only mean new.
-                            flagRareShare = false,
+                            flagRareShare = variant !in NEW_MOONBOARD_VARIANTS,
                         )
                     }
-                    mbVariant?.let { gymShares?.moonBoard(it.layoutId) }?.let {
-                        RareBoardHint(it, R.string.board_gym_share_rare_version_hint)
+                    mbVariant?.let { variant ->
+                        gymShares?.moonBoard(variant.layoutId)?.let {
+                            RareBoardHint(
+                                it,
+                                if (variant in NEW_MOONBOARD_VARIANTS) R.string.board_gym_share_rare_version_hint
+                                else R.string.board_gym_share_rare_hint,
+                            )
+                        }
                     }
                 } else {
                     Text(
@@ -818,6 +823,9 @@ internal fun BoardImageChoiceRow(
 }
 
 private class BoardMenuOption(val label: String, val gymShare: Double?, val onSelect: () -> Unit)
+
+/** Versions the gym list lags behind: few gyms may list them only because they are new, not rare. */
+private val NEW_MOONBOARD_VARIANTS = setOf(MoonBoardVariant.MOONBOARD_2024, MoonBoardVariant.MINI_2025)
 
 /** "In gyms: 82 %", or "Rare in gyms: < 1 %" in the accent colour. */
 @Composable
