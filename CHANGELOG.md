@@ -20,6 +20,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   answer. The wall shows each hold as a photo, laid out the way the Shiny Wall
   app draws it, instead of dots: on problem pages, in the editor and in the
   board picker.
+- Shiny Wall account (Settings → Imports): sign in with your Shiny Wall email
+  and password and import your Shiny Wall logbook (sends with their attempts,
+  projects, your grade, rating and comment), your favorites, your lists and
+  your own routes. Read-only: CruxCoach never changes anything in your Shiny
+  Wall account, keeps only a sign-in token on the phone, and "Import new
+  entries" fetches what is new without duplicating or restoring what you
+  deleted. Standard walls only; accounts that sign in with Google can't connect.
 - Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
   data is refreshed (2,933 venues).
 - Wall games, from the main menu or a problem's menu ("Play as a game"):

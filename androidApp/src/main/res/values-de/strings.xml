@@ -3388,4 +3388,41 @@
     <string name="wall_games_no_holds">Die Griffpositionen dieses Boards sind noch nicht auf dem Gerät. Lade zuerst seinen Katalog.</string>
     <string name="wall_games_sound_turn_off">Countdown-Ton ausschalten</string>
     <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
+    <!-- Shiny-Wall-Konto (Logbuch-Import, nur lesend) -->
+    <string name="shinywall_section_title">Shiny-Wall-Konto</string>
+    <string name="shinywall_connect_desc">Übernimmt dein Shiny-Wall-Logbuch (Begehungen und Projekte), deine Favoriten, Listen und eigenen Routen in CruxCoach. Nur lesend: CruxCoach ändert nichts an deinem Shiny-Wall-Konto. Nur Standard-Wände.</string>
+    <string name="shinywall_connect_button">Shiny-Wall-Konto verbinden</string>
+    <string name="shinywall_login_title">Bei Shiny Wall anmelden</string>
+    <string name="shinywall_login_privacy">Dein Passwort geht nur an den Anmeldedienst von Shiny Wall. CruxCoach speichert auf diesem Handy ein Anmelde-Token, nie das Passwort. Konten mit Google-Anmeldung lassen sich nicht verbinden.</string>
+    <string name="shinywall_email_label">E-Mail</string>
+    <string name="shinywall_password_label">Passwort</string>
+    <string name="shinywall_login_button">Anmelden</string>
+    <string name="shinywall_connected_as">Verbunden als: %1$s</string>
+    <string name="shinywall_last_import">Letzter Import: %1$s</string>
+    <string name="shinywall_import_new">Neue Einträge importieren</string>
+    <string name="shinywall_disconnect">Verbindung trennen</string>
+    <string name="shinywall_disconnect_confirm">CruxCoach vergisst die Shiny-Wall-Anmeldung auf diesem Handy. Importierte Einträge und Listen bleiben.</string>
+    <string name="shinywall_preview_title">Import aus Shiny Wall</string>
+    <string name="shinywall_preview_found">%1$d Einträge gefunden: %2$d neue Begehungen, %3$d neue Projekte, %4$d schon in CruxCoach.</string>
+    <string name="shinywall_preview_skipped">%1$d Einträge lassen sich nicht importieren (eigene Wände, von dir erstellte Routen, unvollständige Einträge).</string>
+    <string name="shinywall_import_button">Importieren</string>
+    <string name="shinywall_import_lists_button">Listen aktualisieren</string>
+    <string name="shinywall_import_empty">Noch keine Einträge in deinem Shiny-Wall-Logbuch gefunden.</string>
+    <string name="shinywall_import_part_ascents">%1$d Begehungen</string>
+    <string name="shinywall_import_part_projects">%1$d Projekte</string>
+    <string name="shinywall_import_part_lists">%1$d Listen</string>
+    <string name="shinywall_import_part_known">%1$d schon importiert</string>
+    <string name="shinywall_import_part_skipped">%1$d übersprungen</string>
+    <string name="shinywall_auth_invalid_credentials">E-Mail oder Passwort stimmt nicht. Meldest du dich bei Shiny Wall mit Google an, kann CruxCoach sich nicht verbinden.</string>
+    <string name="shinywall_auth_disabled">Dieses Shiny-Wall-Konto ist gesperrt.</string>
+    <string name="shinywall_auth_throttled">Zu viele Versuche. Bitte warte kurz und versuche es dann noch einmal.</string>
+    <string name="shinywall_auth_network">Keine Verbindung zu Shiny Wall. Prüfe deine Internetverbindung.</string>
+    <string name="shinywall_auth_http_failure" formatted="false">Anmeldung fehlgeschlagen (HTTP %1$d).</string>
+    <string name="shinywall_auth_unexpected">Shiny Wall hat unerwartet geantwortet. Bitte versuche es später noch einmal.</string>
+    <string name="shinywall_import_error_auth">Deine Shiny-Wall-Anmeldung ist abgelaufen. Trenne die Verbindung und melde dich neu an.</string>
+    <string name="shinywall_import_error_denied">Shiny Wall hat das Lesen deines Logbuchs nicht erlaubt.</string>
+    <string name="shinywall_import_error_network">Keine Verbindung zu Shiny Wall. Prüfe deine Internetverbindung.</string>
+    <string name="shinywall_import_error_generic">Der Import ist fehlgeschlagen. Bitte versuche es noch einmal.</string>
+    <string name="shinywall_list_favorites">Shiny-Wall-Favoriten</string>
+    <string name="shinywall_list_own_routes">Meine Shiny-Wall-Routen</string>
 </resources>
