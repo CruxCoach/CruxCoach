@@ -176,9 +176,13 @@ class BoardSizeCheckSession(private val source: Source) {
         }
     }
 
-    /** Lights the points once the board is there, unless they already are. */
+    /**
+     * Lights the points once the board is there, unless they already are or another frame
+     * replaced them: the board turns ready again after every send, also another sender's.
+     */
     suspend fun lightIfDark() {
-        if (!mutableState.value.lit) light()
+        val current = mutableState.value
+        if (!current.lit && !current.replaced) light()
     }
 
     /**

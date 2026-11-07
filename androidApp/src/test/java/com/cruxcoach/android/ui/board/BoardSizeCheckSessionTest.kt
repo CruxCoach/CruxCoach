@@ -233,6 +233,37 @@ class BoardSizeCheckSessionTest {
         assertEquals(BoardSizeCheckStep.PICK_OTHER, session.state.value.step)
     }
 
+    @Test fun `another sender's climb is not lit over when the board is ready again`() = runTest {
+        val source = FakeSource(listOf(size(10), size(7)))
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.KILTER, 10, null)
+        // Another sender: SENDING marks the holds replaced, CONNECTED makes the sheet ask again.
+        session.replaced()
+        session.lightIfDark()
+        assertEquals(1, source.lit.size, "the other sender's frame stays on the board")
+        assertTrue(session.state.value.replaced)
+        // Also after the link drops and comes back.
+        session.boardGone()
+        session.lightIfDark()
+        assertEquals(1, source.lit.size)
+
+        session.light()
+        assertEquals(2, source.lit.size)
+        assertFalse(session.state.value.replaced)
+    }
+
+    @Test fun `switching size lights the new size over another sender's frame`() = runTest {
+        val source = FakeSource(listOf(size(10), size(7)))
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.KILTER, 10, null)
+        session.reject()
+        session.replaced()
+        session.test(7)
+        assertEquals(listOf(700, 701, 702), source.lit.last())
+        assertTrue(session.state.value.lit)
+        assertFalse(session.state.value.replaced)
+    }
+
     @Test fun `closing leaves nothing of the finished check for the next sheet`() = runTest {
         val session = BoardSizeCheckSession(FakeSource(listOf(size(10), size(7))))
         session.open(BoardBrand.KILTER, 10, null)
