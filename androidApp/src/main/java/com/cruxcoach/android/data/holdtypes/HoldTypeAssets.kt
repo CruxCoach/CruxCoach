@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data.holdtypes
 
 import android.content.Context
+import com.cruxcoach.domain.holdtypes.HoldCheckSession
 import com.cruxcoach.domain.holdtypes.HoldReviewSession
 import com.cruxcoach.domain.holdtypes.HoldTypeDataset
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -25,8 +26,15 @@ class HoldTypeAssets @Inject constructor(@ApplicationContext private val context
         null
     }
 
+    /** Boards this build ships hold types for, in the order of [BOARD_ORDER]. */
+    fun boards(): List<String> {
+        val files = context.assets.list(DIR).orEmpty().filter { it.endsWith(".json") }.map { it.removeSuffix(".json") }
+        return files.sortedBy { BOARD_ORDER.indexOf(it).let { i -> if (i < 0) Int.MAX_VALUE else i } }
+    }
+
     companion object {
         const val DIR = "hold_types"
+        val BOARD_ORDER = listOf("kilter", "moonboard", "tension", "grasshopper", "decoy", "soill", "touchstone", "shinywall")
     }
 }
 
@@ -44,6 +52,35 @@ class HoldReviewStore @Inject constructor(@ApplicationContext private val contex
     }
 
     fun save(session: HoldReviewSession) {
+        val target = file(session.board)
+        target.parentFile?.mkdirs()
+        val tmp = File(target.parentFile, "${target.name}.tmp")
+        tmp.writeText(session.toJson())
+        if (!tmp.renameTo(target)) {
+            target.writeText(session.toJson())
+            tmp.delete()
+        }
+    }
+
+    fun clear(board: String) {
+        file(board).delete()
+    }
+
+    private companion object {
+        const val DIR = "hold_review"
+    }
+}
+
+/** The label checks of one board ("looks right", corrections), one JSON file per board next to the reference file. */
+@Singleton
+class HoldCheckStore @Inject constructor(@ApplicationContext private val context: Context) {
+    private fun file(board: String) = File(File(context.filesDir, DIR), "$board-check.json")
+
+    fun load(board: String): HoldCheckSession? = file(board).takeIf { it.exists() }?.let {
+        runCatching { HoldCheckSession.fromJson(it.readText()) }.getOrNull()
+    }
+
+    fun save(session: HoldCheckSession) {
         val target = file(session.board)
         target.parentFile?.mkdirs()
         val tmp = File(target.parentFile, "${target.name}.tmp")

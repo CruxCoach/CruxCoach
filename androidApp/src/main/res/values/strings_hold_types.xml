@@ -48,4 +48,37 @@
     <string name="hold_review_missing">This build has no hold types.</string>
     <string name="hold_review_no_board">The board geometry has not loaded yet.</string>
     <string name="hold_review_dataset">Labels version %1$s</string>
+
+    <!-- Hold-type label check: test builds only -->
+    <string name="settings_hold_check_title">Check hold labels</string>
+    <string name="settings_hold_check_desc">Test builds only: confirm or correct the hold types of every board</string>
+    <string name="hold_check_title">Hold types: check labels</string>
+    <string name="hold_check_review_list">Review list (%1$d)</string>
+    <string name="hold_check_all">All holds (%1$d)</string>
+    <string name="hold_check_progress">Hold %1$d of %2$d · layout %3$d · #%4$d</string>
+    <string name="hold_check_proposed">Proposed label</string>
+    <string name="hold_check_second">Second grip: %1$s</string>
+    <string name="hold_check_size">Size: %1$s</string>
+    <string name="hold_check_confidence">Confidence: type %1$s, direction %2$s</string>
+    <string name="hold_check_why">On the review list: %1$s</string>
+    <string name="hold_check_looks_right">Looks right</string>
+    <string name="hold_check_correct">Correct it</string>
+    <string name="hold_check_save_correction">Save correction</string>
+    <string name="hold_check_yours">Your check: %1$s</string>
+    <string name="hold_check_verdict_confirmed">looks right</string>
+    <string name="hold_check_verdict_corrected">corrected</string>
+    <string name="hold_check_summary">Checked %1$d: %2$d right, %3$d corrected (type %4$d, direction %5$d, feet only %6$d), can\'t tell %7$d</string>
+    <string name="hold_check_none">Nothing to check here.</string>
+    <string name="hold_check_start_over_confirm">Delete all checks of this board?</string>
+    <string name="hold_size_small">small</string>
+    <string name="hold_size_medium">medium</string>
+    <string name="hold_size_large">large</string>
+    <string name="hold_conf_high">high</string>
+    <string name="hold_conf_medium">medium</string>
+    <string name="hold_conf_low">low</string>
+    <string name="hold_reason_type">type uncertain</string>
+    <string name="hold_reason_direction">direction uncertain</string>
+    <string name="hold_reason_low_res">low-resolution image</string>
+    <string name="hold_reason_touching">touches another hold in the image</string>
+    <string name="hold_reason_placeholder">the app\'s image shows a placeholder</string>
 </resources>

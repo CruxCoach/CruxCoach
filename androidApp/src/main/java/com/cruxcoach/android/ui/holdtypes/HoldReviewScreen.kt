@@ -3,25 +3,18 @@ package com.cruxcoach.android.ui.holdtypes
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -41,52 +34,26 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.board.BoardImageCache
-import com.cruxcoach.android.ui.board.KilterBoardVisualization
-import com.cruxcoach.android.ui.board.boardImageCandidatePaths
-import com.cruxcoach.android.ui.theme.OrangeAccent
-import com.cruxcoach.domain.board.BoardBrand
-import com.cruxcoach.domain.board.BoardHold
-import com.cruxcoach.domain.board.BoardZone
-import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.holdtypes.CANT_TELL
-import com.cruxcoach.domain.holdtypes.FOOT_ONLY_NO
-import com.cruxcoach.domain.holdtypes.FOOT_ONLY_YES
 import com.cruxcoach.domain.holdtypes.FieldSummary
-import com.cruxcoach.domain.holdtypes.HoldDirection
-import com.cruxcoach.domain.holdtypes.HoldType
-import com.cruxcoach.domain.holdtypes.HoldTypeEntry
 import com.cruxcoach.domain.holdtypes.ReviewField
 import com.cruxcoach.domain.holdtypes.Verdict
 import com.cruxcoach.domain.holdtypes.computedValue
 import com.cruxcoach.domain.holdtypes.reviewerValue
 import kotlin.math.roundToInt
-
-/** Inches of board around the hold in the close-up. */
-private const val CLOSE_UP_INCHES = 10f
-private val MarkerColor = Color(0xFFFFC107)
 
 /**
  * Hold-type review (#63), test builds only. Round one is blind: the reviewer answers type, direction and
@@ -168,82 +135,13 @@ private fun StageTabs(state: HoldReviewUiState, onOpen: (ReviewStage) -> Unit) {
 }
 
 @Composable
-private fun HoldViews(state: HoldReviewUiState) {
-    val entry = state.entry ?: return
-    val board = state.board
-    if (board == null) {
-        Text(stringResource(R.string.hold_review_no_board))
-        return
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-        HoldCloseUp(entry, board, Modifier.weight(0.6f))
-        val placement = board.placements[entry.placement]
-        val role = if (entry.layoutId == KILTER_HOMEWALL_LAYOUT) HoldRole.ROUTE_START else HoldRole.START
-        Box(Modifier.weight(0.4f)) {
-            KilterBoardVisualization(
-                holds = listOf(BoardHold(entry.placement, role)),
-                placements = board.placements,
-                boardSize = board.boardSize,
-                boardImages = board.boardImages,
-                zone = placement?.let { BoardZone(it.x - 6, it.x + 6, it.y - 6, it.y + 6) },
-            )
-        }
-    }
-}
-
-/** The board image around one hold, cut from the same asset the board view draws, with a ring on the hold. */
-@Composable
-private fun HoldCloseUp(entry: HoldTypeEntry, board: HoldBoardView, modifier: Modifier) {
-    val context = LocalContext.current
-    val layoutId = board.boardImages.firstOrNull()?.layoutId ?: entry.layoutId.toLong()
-    val paths = remember(board.boardSize.id, layoutId) {
-        boardImageCandidatePaths(BoardBrand.KILTER, board.boardSize.id, layoutId)
-    }
-    var image by remember(paths) { mutableStateOf<ImageBitmap?>(BoardImageCache.get(paths.first())) }
-    LaunchedEffect(paths) { image = BoardImageCache.getOrDecode(paths, context.assets) }
-    val placement = board.placements[entry.placement]
-    val size = board.boardSize
-    Canvas(
-        modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.Black),
-    ) {
-        val img = image ?: return@Canvas
-        val p = placement ?: return@Canvas
-        val boardWidth = (size.edgeRight - size.edgeLeft).toFloat()
-        val boardHeight = (size.edgeTop - size.edgeBottom).toFloat()
-        val px = (p.x - size.edgeLeft) / boardWidth * img.width
-        val py = img.height - (p.y - size.edgeBottom) / boardHeight * img.height
-        val window = (CLOSE_UP_INCHES / boardWidth * img.width).roundToInt()
-            .coerceAtMost(minOf(img.width, img.height))
-        val left = (px - window / 2f).roundToInt().coerceIn(0, img.width - window)
-        val top = (py - window / 2f).roundToInt().coerceIn(0, img.height - window)
-        drawImage(
-            image = img,
-            srcOffset = IntOffset(left, top),
-            srcSize = IntSize(window, window),
-            dstSize = IntSize(this.size.width.roundToInt(), this.size.height.roundToInt()),
-        )
-        val scale = this.size.width / window
-        val ringRadius = 2.6f / boardWidth * img.width * scale
-        drawCircle(
-            color = MarkerColor,
-            radius = ringRadius,
-            center = Offset((px - left) * scale, (py - top) * scale),
-            style = Stroke(width = 2.dp.toPx()),
-        )
-    }
-}
-
-@Composable
 private fun BlindRound(state: HoldReviewUiState, viewModel: HoldReviewViewModel) {
     val entry = state.entry ?: return
     Text(
         stringResource(R.string.hold_review_progress, state.index + 1, state.referenceSize, entry.placement),
         fontWeight = FontWeight.SemiBold,
     )
-    HoldViews(state)
+    HoldViews(state.entry, state.board)
     Text(
         stringResource(R.string.hold_review_blind_hint),
         style = MaterialTheme.typography.bodySmall,
@@ -292,7 +190,7 @@ private fun DecideRound(state: HoldReviewUiState, viewModel: HoldReviewViewModel
         stringResource(R.string.hold_review_progress, state.index + 1, state.disagreementHolds.size, entry.placement),
         fontWeight = FontWeight.SemiBold,
     )
-    HoldViews(state)
+    HoldViews(state.entry, state.board)
     Text(
         stringResource(R.string.hold_review_decide_hint),
         style = MaterialTheme.typography.bodySmall,
@@ -425,158 +323,3 @@ private fun Results(state: HoldReviewUiState, viewModel: HoldReviewViewModel) {
 }
 
 private fun percent(s: FieldSummary): Int = ((s.blindAgreement ?: 0.0) * 100).roundToInt()
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun TypeChooser(selected: String?, enabled: Boolean, withCantTell: Boolean = true, onSelect: (String) -> Unit) {
-    Text(stringResource(R.string.hold_review_q_type), style = MaterialTheme.typography.labelLarge)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        HoldType.entries.forEach { type ->
-            FilterChip(
-                selected = selected == type.wire,
-                enabled = enabled,
-                onClick = { onSelect(type.wire) },
-                label = { Text(typeName(type)) },
-            )
-        }
-        if (withCantTell) {
-            FilterChip(
-                selected = selected == CANT_TELL,
-                enabled = enabled,
-                onClick = { onSelect(CANT_TELL) },
-                label = { Text(stringResource(R.string.hold_review_cant_tell)) },
-            )
-        }
-    }
-}
-
-/** Eight arrows around an "all round" circle, laid out like the directions they stand for. */
-@Composable
-private fun DirectionChooser(selected: String?, enabled: Boolean, withCantTell: Boolean = true, onSelect: (String) -> Unit) {
-    Text(stringResource(R.string.hold_review_q_direction), style = MaterialTheme.typography.labelLarge)
-    val grid = listOf(
-        listOf(HoldDirection.UP_LEFT, HoldDirection.UP, HoldDirection.UP_RIGHT),
-        listOf(HoldDirection.LEFT, HoldDirection.ALL_ROUND, HoldDirection.RIGHT),
-        listOf(HoldDirection.DOWN_LEFT, HoldDirection.DOWN, HoldDirection.DOWN_RIGHT),
-    )
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            grid.forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    row.forEach { direction ->
-                        DirectionCell(direction, selected == direction.wire, enabled) { onSelect(direction.wire) }
-                    }
-                }
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            val current = HoldDirection.fromWire(selected)
-            if (current == HoldDirection.ALL_ROUND) Text(stringResource(R.string.hold_direction_all_round))
-            if (withCantTell) {
-                FilterChip(
-                    selected = selected == CANT_TELL,
-                    enabled = enabled,
-                    onClick = { onSelect(CANT_TELL) },
-                    label = { Text(stringResource(R.string.hold_review_cant_tell)) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DirectionCell(direction: HoldDirection, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(8.dp)
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .clip(shape)
-            .background(if (selected) OrangeAccent else MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            arrow(direction),
-            fontSize = 20.sp,
-            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun FootOnlyChooser(selected: String?, enabled: Boolean, onSelect: (String) -> Unit) {
-    Text(stringResource(R.string.hold_review_q_foot_only), style = MaterialTheme.typography.labelLarge)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(
-            FOOT_ONLY_YES to R.string.hold_review_yes,
-            FOOT_ONLY_NO to R.string.hold_review_no,
-            CANT_TELL to R.string.hold_review_cant_tell,
-        ).forEach { (value, label) ->
-            FilterChip(
-                selected = selected == value,
-                enabled = enabled,
-                onClick = { onSelect(value) },
-                label = { Text(stringResource(label)) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun NavRow(onPrevious: () -> Unit, onNext: () -> Unit, nextEnabled: Boolean, previousEnabled: Boolean) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        TextButton(onClick = onPrevious, enabled = previousEnabled) { Text("‹ " + stringResource(R.string.action_back)) }
-        Button(onClick = onNext, enabled = nextEnabled) { Text(stringResource(R.string.action_next) + " ›") }
-    }
-}
-
-private fun arrow(direction: HoldDirection): String = when (direction) {
-    HoldDirection.UP -> "↑"
-    HoldDirection.UP_RIGHT -> "↗"
-    HoldDirection.RIGHT -> "→"
-    HoldDirection.DOWN_RIGHT -> "↘"
-    HoldDirection.DOWN -> "↓"
-    HoldDirection.DOWN_LEFT -> "↙"
-    HoldDirection.LEFT -> "←"
-    HoldDirection.UP_LEFT -> "↖"
-    HoldDirection.ALL_ROUND -> "◯"
-}
-
-@Composable
-private fun typeName(type: HoldType): String = stringResource(
-    when (type) {
-        HoldType.JUG -> R.string.hold_type_jug
-        HoldType.EDGE -> R.string.hold_type_edge
-        HoldType.SLOPER -> R.string.hold_type_sloper
-        HoldType.PINCH -> R.string.hold_type_pinch
-        HoldType.POCKET -> R.string.hold_type_pocket
-        HoldType.VOLUME -> R.string.hold_type_volume
-        HoldType.FOOT_CHIP -> R.string.hold_type_foot_chip
-    },
-)
-
-@Composable
-private fun fieldName(field: ReviewField): String = stringResource(
-    when (field) {
-        ReviewField.TYPE -> R.string.hold_review_q_type
-        ReviewField.DIRECTION -> R.string.hold_review_field_direction
-        ReviewField.FOOT_ONLY -> R.string.hold_review_q_foot_only
-    },
-)
-
-@Composable
-private fun valueName(field: ReviewField, value: String?): String = when {
-    value == null -> "–"
-    value == CANT_TELL -> stringResource(R.string.hold_review_cant_tell)
-    field == ReviewField.TYPE -> HoldType.fromWire(value)?.let { typeName(it) } ?: value
-    field == ReviewField.DIRECTION -> HoldDirection.fromWire(value)?.let {
-        if (it == HoldDirection.ALL_ROUND) stringResource(R.string.hold_direction_all_round) else arrow(it)
-    } ?: value
-    value == FOOT_ONLY_YES -> stringResource(R.string.hold_review_yes)
-    value == FOOT_ONLY_NO -> stringResource(R.string.hold_review_no)
-    else -> value
-}
-
-private const val KILTER_HOMEWALL_LAYOUT = 8

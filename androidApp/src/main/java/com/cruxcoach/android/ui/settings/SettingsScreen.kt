@@ -54,6 +54,7 @@ internal fun SettingsScreen(
     onNavigateToAppShare: () -> Unit,
     onNavigateToLicenses: () -> Unit = {},
     onNavigateToHoldTypeReview: () -> Unit = {},
+    onNavigateToHoldTypeCheck: () -> Unit = {},
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
@@ -485,13 +486,19 @@ internal fun SettingsScreen(
                     icon = Icons.Outlined.Gavel,
                     onClick = onNavigateToLicenses,
                 )
-                // #63: the hold-type review is test-build tooling; release builds never show it.
+                // #63: the hold-type review and label check are test-build tooling; release builds never show them.
                 if (BuildConfig.DEBUG) {
                     SettingsDestinationRow(
                         title = stringResource(R.string.settings_hold_review_title),
                         summary = stringResource(R.string.settings_hold_review_desc),
                         icon = Icons.Outlined.Checklist,
                         onClick = onNavigateToHoldTypeReview,
+                    )
+                    SettingsDestinationRow(
+                        title = stringResource(R.string.settings_hold_check_title),
+                        summary = stringResource(R.string.settings_hold_check_desc),
+                        icon = Icons.Outlined.Checklist,
+                        onClick = onNavigateToHoldTypeCheck,
                     )
                 }
                 SettingsDestinationRow(
