@@ -474,6 +474,36 @@ class ShinyWallSyncEngineTest {
     }
 
     @Test
+    fun long_names_and_ids_stay_within_what_a_backup_takes() = runTest {
+        // A backup with an external id over 100 characters or a list name over 200 cannot be restored.
+        val longName = "Projects for the winter season on the forty degree wall, ".repeat(5)
+        val longId = "h".repeat(120)
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(entry(longId, "r1", "st1", 2), entry("steep", "r3", "st1", 2, angle = 75))
+        )
+        coEvery { client.fetchProfile("uid1") } returns Result.success(
+            ShinyWallProfile(null, emptyList(), mapOf(longName to listOf(ShinyWallRouteRef("r1", null)), "Power" to listOf(ShinyWallRouteRef("r3", null))))
+        )
+        val result = engine.importAll(names).getOrThrow()
+        // An angle the backup does not take is skipped like an incomplete entry.
+        assertEquals(1 to 1, result.newAscents to result.skipped)
+
+        fun lists() = query("SELECT external_id, name FROM climb_lists WHERE external_id LIKE 'shinywall:%' ORDER BY name") { rs ->
+            rs.getString(1) to rs.getString(2)
+        }
+        val ids = ascents().mapNotNull { it.externalId } + lists().map { it.first }
+        assertTrue(ids.all { it.length <= ShinyWallSyncEngine.MAX_EXTERNAL_ID_LENGTH }, ids.toString())
+        assertEquals("shinywall:list:Power", ShinyWallSyncEngine.listExternalId("Power"), "a short name stays readable")
+        assertTrue(lists().all { it.second.length <= ShinyWallSyncEngine.MAX_LIST_NAME_LENGTH })
+        assertEquals(longName.take(ShinyWallSyncEngine.MAX_LIST_NAME_LENGTH), lists().single { it.first != "shinywall:list:Power" }.second)
+
+        // The shortened ids are stable: a second import finds the same entry and list.
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(0 to 1, again.newAscents to again.duplicates)
+        assertEquals(2, lists().size)
+    }
+
+    @Test
     fun a_failing_list_import_keeps_the_logbook_import() = runTest {
         coEvery { client.fetchProfile("uid1") } throws IllegalStateException("boom")
         val result = engine.importAll(names).getOrThrow()

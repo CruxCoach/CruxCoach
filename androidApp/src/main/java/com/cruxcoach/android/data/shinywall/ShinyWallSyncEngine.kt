@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -59,14 +60,15 @@ data class ShinyWallListNames(val favorites: String, val ownRoutes: String)
  *   a local edit is never overwritten. Entries the user deleted locally stay
  *   deleted: the import keeps its own record of the entries it has placed
  *   ([ShinyWallTokenStorage.placedLogs]), and one the logbook lacks is never
- *   written again. Kilter's deletion queue is no help here: an entry leaves
- *   it once Kilter confirms the deletion. Entries older than the last import (minus
- *   [WATERMARK_OVERLAP_MS]) are not looked at again, so the record only
- *   keeps that window.
+ *   written again (Kilter's deletion queue only holds Kilter's entries).
+ *   Entries older than the last import (minus [WATERMARK_OVERLAP_MS]) are
+ *   not looked at again, so the record only keeps that window.
  * - Favourites, own lists and own published routes → local lists
  *   (`shinywall:favorites`, `shinywall:list:<name>`, `shinywall:own-routes`),
  *   refreshed on every import. Best effort: a failure there never fails
  *   the logbook import.
+ * - An external id that would not fit into a backup carries a hash of the
+ *   entry id or list name instead ([MAX_EXTERNAL_ID_LENGTH]).
  *
  * Only standard walls are supported. A route is the catalogue climb
  * [ShinyWallSnapshot.climbUuid] of its variant; entries of custom walls
@@ -91,6 +93,11 @@ class ShinyWallSyncEngine @Inject constructor(
         /** History entries this close before the last import's newest entry are re-checked (deduped by uuid). */
         const val WATERMARK_OVERLAP_MS = 7L * 24 * 60 * 60 * 1000
 
+        // What a backup takes back (CruxCoachBackup): a longer value makes the whole backup unrestorable.
+        const val MAX_EXTERNAL_ID_LENGTH = 100
+        const val MAX_LIST_NAME_LENGTH = 200
+        const val MAX_ANGLE = 70
+
         /** Variant preference when a list route has no variant of its own. */
         val VARIANT_ORDER = listOf(
             ShinyWallVariant.ST1, ShinyWallVariant.ST5, ShinyWallVariant.ST2, ShinyWallVariant.ST4, ShinyWallVariant.ST0,
@@ -98,6 +105,17 @@ class ShinyWallSyncEngine @Inject constructor(
 
         fun logUuid(docId: String): String =
             UUID.nameUUIDFromBytes("shinywall-log:$docId".encodeToByteArray()).toString()
+
+        fun historyExternalId(docId: String): String = boundedExternalId(EXTERNAL_ID_PREFIX, docId)
+        fun listExternalId(name: String): String = boundedExternalId(LIST_PREFIX, name)
+
+        /** [prefix] + [key], or [prefix] + `#` + the SHA-256 of [key] when that is too long for a backup. */
+        private fun boundedExternalId(prefix: String, key: String): String {
+            val plain = prefix + key
+            if (plain.length <= MAX_EXTERNAL_ID_LENGTH) return plain
+            val hash = MessageDigest.getInstance("SHA-256").digest(key.encodeToByteArray())
+            return prefix + "#" + hash.joinToString("") { "%02x".format(it) }
+        }
 
         /** (attempt_id, bid_count) of a send, or null when the entry is a project. */
         fun sendShape(sent: Int): Pair<Long, Long>? = when {
@@ -247,7 +265,7 @@ class ShinyWallSyncEngine @Inject constructor(
                 else -> options.firstOrNull { (v, r) -> ShinyWallSnapshot.climbUuid(r, v) in catalogue }?.first
             }
             val sent = entry.sent
-            val angle = entry.angle?.takeIf { it in 0..90 }
+            val angle = entry.angle?.takeIf { it in 0..MAX_ANGLE }
             val climbedAt = localClimbedAt(entry.timestamp, zone)
             if (variant == null || sent == null || angle == null || climbedAt == null) {
                 skipped++
@@ -332,7 +350,7 @@ class ShinyWallSyncEngine @Inject constructor(
      */
     private fun asImported(attempt: Placed): Boolean {
         val row = secureDb.bidsQueries.selectBidContent(attempt.uuid).executeAsOneOrNull() ?: return false
-        return row.external_id == EXTERNAL_ID_PREFIX + attempt.entry.docId &&
+        return row.external_id == historyExternalId(attempt.entry.docId) &&
             row.bid_count == attempt.attempts &&
             row.comment.isNullOrBlank()
     }
@@ -419,7 +437,7 @@ class ShinyWallSyncEngine @Inject constructor(
                         framesCount = climb?.framesCount ?: 1L,
                         boardBrand = BRAND,
                         layoutId = log.variant.layoutId,
-                        externalId = EXTERNAL_ID_PREFIX + log.entry.docId,
+                        externalId = historyExternalId(log.entry.docId),
                     )
                 } else {
                     personalBoardRepo.insertBid(
@@ -435,7 +453,7 @@ class ShinyWallSyncEngine @Inject constructor(
                         difficultyAverage = diffAvg,
                         boardBrand = BRAND,
                         layoutId = log.variant.layoutId,
-                        externalId = EXTERNAL_ID_PREFIX + log.entry.docId,
+                        externalId = historyExternalId(log.entry.docId),
                     )
                 }
             }
@@ -467,7 +485,7 @@ class ShinyWallSyncEngine @Inject constructor(
             lists[LIST_FAVORITES] = names.favorites to refs.map { it.routeId to null }
         }
         profile?.customLists?.forEach { (name, refs) ->
-            lists[LIST_PREFIX + name] = name to refs.map { it.routeId to null }
+            lists[listExternalId(name)] = name.take(MAX_LIST_NAME_LENGTH) to refs.map { it.routeId to null }
         }
         if (ownRoutes.isNotEmpty()) {
             lists[LIST_OWN_ROUTES] = names.ownRoutes to ownRoutes.map {
