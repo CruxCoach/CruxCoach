@@ -243,9 +243,13 @@ class ShinyWallSyncEngineTest {
 
     private fun bids() = query("SELECT external_id, bid_count FROM bids ORDER BY external_id") { rs -> rs.getString(1) to rs.getLong(2) }
 
-    /** A route logged in the original app: two attempts first, later sent on the third. */
+    private fun ascentCounts() = query("SELECT external_id, attempt_id, bid_count FROM ascents ORDER BY external_id") { rs ->
+        Triple(rs.getString(1), rs.getLong(2), rs.getLong(3))
+    }
+
+    /** A route logged in the original app: two attempts first, an hour later sent on the third. */
     private val reventaera = "Iwxw8cNqqjt02mmtdWHQ"
-    private val revAttempts = realEntry("rev1", reventaera, -2, grade = null, ts = tOld)
+    private val revAttempts = realEntry("rev1", reventaera, -2, grade = null, ts = "2026-10-31T08:00:00Z")
     private val revSend = realEntry("rev2", reventaera, 3, ts = tNew)
 
     @Test
@@ -277,8 +281,8 @@ class ShinyWallSyncEngineTest {
 
     @Test
     fun an_edited_attempt_stays_when_its_send_arrives() = runTest {
-        val attemptsR3 = realEntry("p1", "r3", -2, grade = null, ts = tOld)
-        val countEdited = realEntry("p2", "r1", -1, grade = null, ts = tOld)
+        val attemptsR3 = realEntry("p1", "r3", -2, grade = null, ts = "2026-10-31T07:00:00Z")
+        val countEdited = realEntry("p2", "r1", -1, grade = null, ts = "2026-10-31T07:00:00Z")
         coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, attemptsR3, countEdited))
         engine.importAll(names).getOrThrow()
         // The user notes something on one attempt, changes the count of another; one stays as imported.
@@ -291,13 +295,52 @@ class ShinyWallSyncEngineTest {
                 revSend, realEntry("s1", "r3", 3, ts = tNew), realEntry("s2", "r1", 2, ts = tNew),
             )
         )
-        assertEquals(3, engine.importAll(names).getOrThrow().newAscents)
-        // Only the untouched attempt gave way; the edited ones stay, counted twice rather than lost.
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(3, again.newAscents)
+        assertEquals(2, again.duplicates)
+        // Only the untouched attempt gave way; the edited ones stay, and their sends carry the rest.
         assertEquals(listOf("shinywall:history:p2" to 4L, "shinywall:history:rev1" to 2L), bids())
         assertEquals(
             "almost had the crux",
             query("SELECT comment FROM bids WHERE external_id = 'shinywall:history:rev1'") { rs -> rs.getString(1) }.single(),
         )
+        assertEquals(
+            listOf(
+                Triple("shinywall:history:rev2", 1L, 1L), // 3 − the 2 that stay
+                Triple("shinywall:history:s1", 1L, 3L),
+                Triple("shinywall:history:s2", 1L, 1L),   // 2 − the 1 Shiny logged
+            ),
+            ascentCounts(),
+        )
+    }
+
+    @Test
+    fun attempts_of_earlier_days_stay_entries_of_their_own() = runTest {
+        engine.zone = { java.time.ZoneOffset.UTC }
+        val monday = realEntry("mon", "r3", -3, grade = null, ts = "2026-10-26T18:00:00Z")
+        // Monday: three attempts. The import that evening logs a project.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(monday))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:mon" to 3L), bids())
+
+        // Friday: one more attempt, then the send on the fifth overall.
+        val fridayTry = realEntry("fri1", "r3", -1, grade = null, ts = "2026-10-30T17:00:00Z")
+        val fridaySend = realEntry("fri2", "r3", 5, ts = "2026-10-30T17:30:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(monday, fridayTry, fridaySend))
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 0, again.newAscents to again.newProjects)
+        // Monday stays; Friday's attempt is part of the send, which keeps the 2 of Friday.
+        assertEquals(listOf("shinywall:history:mon" to 3L), bids())
+        assertEquals(listOf(Triple("shinywall:history:fri2", 1L, 2L)), ascentCounts())
+
+        // The same history in one go on a new phone gives the same logbook.
+        repo.deleteBid(ShinyWallSyncEngine.logUuid("mon"))
+        repo.deleteAscent(ShinyWallSyncEngine.logUuid("fri2"))
+        val fresh = ShinyWallSyncEngine(client, InMemoryShinyWallTokenStorage(store.session()), board, repo, db)
+        fresh.zone = { java.time.ZoneOffset.UTC }
+        assertEquals(1 to 1, fresh.importAll(names).getOrThrow().let { it.newAscents to it.newProjects })
+        assertEquals(listOf("shinywall:history:mon" to 3L), bids())
+        assertEquals(listOf(Triple("shinywall:history:fri2", 1L, 2L)), ascentCounts())
     }
 
     @Test
@@ -313,13 +356,16 @@ class ShinyWallSyncEngineTest {
 
     @Test
     fun a_later_send_replaces_the_attempts_an_earlier_import_logged() = runTest {
-        // First import: only the attempts, plus a newer entry that puts them behind the watermark.
-        val other = realEntry("o1", "r1", 1, ts = t)
+        engine.zone = { java.time.ZoneOffset.UTC }
+        // First import: only the morning's attempts, plus a newer entry that puts them behind the watermark.
+        val revAttempts = realEntry("rev1", reventaera, -2, grade = null, ts = "2026-10-23T08:00:00Z")
+        val revSend = realEntry("rev2", reventaera, 3, ts = "2026-10-23T18:00:00Z")
+        val other = realEntry("o1", "r1", 1, ts = "2026-10-30T12:00:00Z")
         coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, other))
         engine.importAll(names).getOrThrow()
         assertEquals(listOf("shinywall:history:rev1" to 2L), bids())
 
-        // The send comes later; the whole history is read again, so the old attempts go.
+        // The evening's send reaches Shiny Wall later; the whole history is read again, so the old attempts go.
         coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, other, revSend))
         assertEquals(1, engine.previewImport().getOrThrow().newAscents)
         val again = engine.importAll(names).getOrThrow()

@@ -49,10 +49,11 @@ data class ShinyWallListNames(val favorites: String, val ownRoutes: String)
  * Read-only towards Shiny Wall: nothing is uploaded, changed or deleted there.
  *
  * - Activity history → logbook. Sends become ascents, projects become
- *   attempts. Attempts before a send on the same route and angle are part
- *   of it (Shiny's attempt count already includes them): no entry of their
- *   own, and an attempt an earlier import logged gives way to the send
- *   unless the user edited it.
+ *   attempts. Shiny's attempt count of a send includes the attempts before
+ *   it on the same route and angle. Those of the send's day are part of it:
+ *   no entry of their own, and an attempt an earlier import logged gives way
+ *   to the send unless the user edited it. Those of earlier days stay
+ *   entries of their own, and the send keeps the rest of the count.
  *   Each history entry gets a stable uuid and the external id
  *   `shinywall:history:<entry id>`, so a re-import never duplicates it and
  *   a local edit is never overwritten. Entries the user deleted locally stay
@@ -123,6 +124,9 @@ class ShinyWallSyncEngine @Inject constructor(
 
     private val importMutex = Mutex()
 
+    /** Time zone of the logbook dates; tests travel with it. */
+    internal var zone: () -> ZoneId = ZoneId::systemDefault
+
     /** One history entry the import would write. */
     internal data class PlannedLog(
         val entry: ShinyWallHistoryEntry,
@@ -160,7 +164,14 @@ class ShinyWallSyncEngine @Inject constructor(
     ) {
         val climbUuid: String get() = ShinyWallSnapshot.climbUuid(entry.routeId, variant)
         val uuid: String get() = logUuid(entry.docId)
+        /** Local date of [climbedAt]. */
+        val day: String get() = climbedAt.substringBefore('T')
+        /** Attempts of a project. */
+        val attempts: Long get() = if (sent < 0) -sent.toLong() else 1L
     }
+
+    /** A send with the attempts (`sent < 0`) before it on the same route and angle, back to the previous send. */
+    private class SendRun(val send: Placed, val attempts: List<Placed>)
 
     suspend fun previewImport(): Result<ShinyWallImportPreview> = withContext(Dispatchers.IO) {
         val session = tokenStore.session() ?: return@withContext notSignedIn<ShinyWallImportPreview>()
@@ -212,6 +223,7 @@ class ShinyWallSyncEngine @Inject constructor(
         Result.failure(ShinyWallApiException(ShinyWallApiException.Reason.NotAuthenticated, "not signed in"))
 
     internal fun plan(uid: String, history: List<ShinyWallHistoryEntry>): Plan {
+        val zone = zone()
         val existing = personalBoardRepo.getExistingLogUuids()
         val deleted = personalBoardRepo.pendingLogDeletions().toHashSet()
         val placedBefore = tokenStore.placedLogs(uid)
@@ -236,7 +248,7 @@ class ShinyWallSyncEngine @Inject constructor(
             }
             val sent = entry.sent
             val angle = entry.angle?.takeIf { it in 0..90 }
-            val climbedAt = localClimbedAt(entry.timestamp)
+            val climbedAt = localClimbedAt(entry.timestamp, zone)
             if (variant == null || sent == null || angle == null || climbedAt == null) {
                 skipped++
                 continue
@@ -251,17 +263,30 @@ class ShinyWallSyncEngine @Inject constructor(
         // An entry an earlier import placed is in the logbook, or the user deleted it there.
         fun isNew(p: Placed) = p.uuid !in existing && p.uuid !in deleted && p.uuid !in placedBefore &&
             (watermark == null || p.ms == null || p.ms >= watermark)
-        val sendOf = sendsOfAttempts(placed)
+
+        // Attempts of the send's day are part of it: no entry of their own, and one an earlier
+        // import logged gives way to a new send unless it was edited since. Attempts of earlier
+        // days stay entries of their own, and Shiny's count for the send, which includes them,
+        // loses theirs. Once a send is in the logbook, what stands beside it stays.
+        val partOfSend = HashSet<Placed>()
+        val merged = mutableSetOf<String>()
+        val ownAttemptsBefore = HashMap<Placed, Long>()
+        for (run in sendRuns(placed)) {
+            var own = run.attempts.filter { it.day != run.send.day }.sumOf { it.attempts }
+            for (attempt in run.attempts.filter { it.day == run.send.day }) {
+                partOfSend += attempt
+                if (attempt.uuid !in existing || !isNew(run.send)) continue
+                if (asImported(attempt)) merged += attempt.uuid else own += attempt.attempts
+            }
+            if (own > 0) ownAttemptsBefore[run.send] = own
+        }
+
         var duplicates = 0
         var deletedHere = 0
         val planned = mutableListOf<PlannedLog>()
-        val merged = mutableSetOf<String>()
         for (p in placed) {
-            val send = sendOf[p]
-            if (send != null) {
-                // Part of the send: never an entry of its own; one an earlier import logged goes,
-                // unless it was edited since.
-                if (p.uuid in existing && (send.uuid in existing || isNew(send)) && asImported(p)) merged += p.uuid
+            if (p in partOfSend) {
+                if (p.uuid in existing && p.uuid !in merged) duplicates++
                 continue
             }
             if (p.uuid in existing) {
@@ -272,6 +297,7 @@ class ShinyWallSyncEngine @Inject constructor(
                 deletedHere++
                 continue
             }
+            val own = ownAttemptsBefore[p] ?: 0L
             planned += PlannedLog(
                 entry = p.entry,
                 variant = p.variant,
@@ -279,8 +305,11 @@ class ShinyWallSyncEngine @Inject constructor(
                 uuid = p.uuid,
                 angle = p.angle,
                 climbedAt = p.climbedAt,
-                send = sendShape(p.sent),
-                attempts = if (p.sent < 0) -p.sent.toLong() else 1L,
+                // After attempts on other days the send is no flash, and carries what is left.
+                send = sendShape(p.sent)?.let { (attemptId, count) ->
+                    if (own > 0) 1L to maxOf(1L, count - own) else attemptId to count
+                },
+                attempts = p.attempts,
             )
         }
         // One entry per uuid even if Shiny lists an id twice.
@@ -305,13 +334,9 @@ class ShinyWallSyncEngine @Inject constructor(
             row.climbed_at == attempt.climbedAt
     }
 
-    /**
-     * The send each attempt entry belongs to: attempts (`sent < 0`) on the same
-     * route and angle before a send, back to the previous send. Attempts no send
-     * follows are missing from the map and stay projects.
-     */
-    private fun sendsOfAttempts(placed: List<Placed>): Map<Placed, Placed> {
-        val out = HashMap<Placed, Placed>()
+    /** Every send with the attempts before it. Attempts no send follows are in no run and stay projects. */
+    private fun sendRuns(placed: List<Placed>): List<SendRun> {
+        val runs = mutableListOf<SendRun>()
         for (group in placed.groupBy { it.climbUuid to it.angle }.values) {
             val waiting = mutableListOf<Placed>()
             // At the same moment the attempt comes first, so it belongs to the send.
@@ -319,12 +344,12 @@ class ShinyWallSyncEngine @Inject constructor(
                 if (p.sent < 0) {
                     waiting += p
                 } else {
-                    waiting.forEach { out[it] = p }
+                    runs += SendRun(p, waiting.toList())
                     waiting.clear()
                 }
             }
         }
-        return out
+        return runs
     }
 
     /** (variant, routeId) options: the entry's own standard variant, or every supported one for an entry without a wall. */
