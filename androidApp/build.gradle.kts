@@ -448,6 +448,13 @@ android {
             // Android extracts the DEX files during installation instead.
             useLegacyPackaging = true
         }
+        jniLibs {
+            // Same trade for native libraries: stored uncompressed they can be
+            // mapped from the APK, but ONNX Runtime alone (FEAT-078, the
+            // spray-wall hold model) is 34 MB uncompressed and 13 MB deflated.
+            // Compressed, Android extracts them once at install time instead.
+            useLegacyPackaging = true
+        }
     }
 
 }
