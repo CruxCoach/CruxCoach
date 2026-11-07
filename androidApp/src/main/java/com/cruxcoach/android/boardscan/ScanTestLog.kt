@@ -31,10 +31,48 @@ data class ScanTestRecord(
     val leds: Int,
     val device: String,
     val appVersion: String,
+    val diagnostics: ScanDiagnostics = ScanDiagnostics(),
 ) {
     val correct: Boolean get() = truthRank == 1
     val sureAndWrong: Boolean get() = sure && !correct
 }
+
+/**
+ * Numbers that tell why a test scan went as it did: whether the lit problem's LEDs were seen, placed and ranked.
+ * Null where they do not apply (no answer, no lit problem named, no gravity sensor).
+ */
+data class ScanDiagnostics(
+    /** The LED colours the scan read the board in: "kilter", "cruxcoach" or "moonboard". */
+    val palette: String? = null,
+    val answerHolds: Int? = null,
+    val answerMatched: Int? = null,
+    val answerMissing: Int? = null,
+    val answerExtra: Int? = null,
+    /** Mean distance of the answer's matched LEDs from its holds, in hole spacings. */
+    val answerResid: Double? = null,
+    /** The first answer's score minus the second's. */
+    val answerMargin: Double? = null,
+    val truthHolds: Int? = null,
+    /** Place of the lit problem in the whole ranking, not only the three offered; 0 when it was not ranked. */
+    val truthRankAll: Int? = null,
+    /** The lit problem's own fit: from the ranking, or searched on its own when it was not ranked. */
+    val truthMatched: Int? = null,
+    val truthMissing: Int? = null,
+    val truthExtra: Int? = null,
+    /** From the camera to the board's centre, as the scan placed the board. */
+    val distanceM: Double? = null,
+    /** How far the camera looked up from level (negative: down). */
+    val pitchDeg: Double? = null,
+    /** Mean brightness of the frame, 0-255. */
+    val brightness: Int? = null,
+    val ledPeakMedian: Int? = null,
+    val ledChromaMedian: Int? = null,
+    val detectMs: Long? = null,
+    val matchMs: Long? = null,
+    val tiers: Int? = null,
+    val frameW: Int? = null,
+    val frameH: Int? = null,
+)
 
 /** Per-board counts for the real-board gate (free-view scans, no sure-and-wrong answer). */
 data class ScanTestSummary(
@@ -58,7 +96,24 @@ class ScanTestLog(private val file: File) {
     fun append(r: ScanTestRecord) {
         file.parentFile?.mkdirs()
         val newFile = !file.exists() || file.length() == 0L
+        if (!newFile) widenOlderLog()
         file.appendText((if (newFile) HEADER + "\n" else "") + toCsv(r) + "\n")
+    }
+
+    /**
+     * A log from an earlier test build has fewer columns: give its rows the new ones, empty, under the new header.
+     * Written to a new file that then replaces the old one, so a failure leaves the old log as it was.
+     */
+    private fun widenOlderLog() {
+        val old = file.bufferedReader().use { it.readLine() } ?: return
+        if (old == HEADER || !HEADER.startsWith("$old,")) return
+        val pad = ",".repeat(COLUMNS - splitCsv(old).size)
+        val tmp = File(file.path + ".new")
+        tmp.writeText(file.readLines().drop(1).filter { it.isNotBlank() }.joinToString("") { it + pad + "\n" }.let { HEADER + "\n" + it })
+        if (!tmp.renameTo(file)) {
+            tmp.delete()
+            throw java.io.IOException("cannot replace ${file.name}")
+        }
     }
 
     fun read(): List<ScanTestRecord> {
@@ -82,7 +137,11 @@ class ScanTestLog(private val file: File) {
 
     companion object {
         const val HEADER = "time_utc,brand,layout_id,size_id,angle,view,answer_uuid,answer_name,answer_mirrored,sure," +
-            "truth_uuid,truth_name,truth_mirrored,truth_rank,correct,ms_to_answer,frames,leds,device,app_version"
+            "truth_uuid,truth_name,truth_mirrored,truth_rank,correct,ms_to_answer,frames,leds,device,app_version," +
+            "palette,answer_holds,answer_matched,answer_missing,answer_extra,answer_resid,answer_margin," +
+            "truth_holds,truth_rank_all,truth_matched,truth_missing,truth_extra," +
+            "distance_m,pitch_deg,brightness,led_peak_median,led_chroma_median,detect_ms,match_ms,tiers,frame_w,frame_h"
+        private val COLUMNS = HEADER.count { it == ',' } + 1
 
         fun summarise(records: List<ScanTestRecord>): List<ScanTestSummary> =
             records.groupBy { it.board.copy(angle = 0) }.map { (_, rs) ->
@@ -114,7 +173,32 @@ class ScanTestLog(private val file: File) {
             r.answerUuid.orEmpty(), r.answerName.orEmpty(), r.answerMirrored.bit(), r.sure.bit(),
             r.truthUuid.orEmpty(), r.truthName.orEmpty(), r.truthMirrored.bit(), r.truthRank, r.correct.bit(),
             r.msToAnswer, r.frames, r.leds, r.device, r.appVersion,
-        ).joinToString(",") { csvField(it.toString()) }
+        ).joinToString(",") { csvField(it.toString()) } + "," + diagnosticsCsv(r.diagnostics)
+
+        /** Numbers as they are (a negative one is no formula); the palette name like any text. */
+        private fun diagnosticsCsv(d: ScanDiagnostics): String = csvField(d.palette.orEmpty()) + "," + listOf(
+            d.answerHolds, d.answerMatched, d.answerMissing, d.answerExtra, d.answerResid?.fmt(2),
+            d.answerMargin?.fmt(2), d.truthHolds, d.truthRankAll, d.truthMatched, d.truthMissing, d.truthExtra,
+            d.distanceM?.fmt(1), d.pitchDeg?.fmt(0), d.brightness, d.ledPeakMedian, d.ledChromaMedian, d.detectMs,
+            d.matchMs, d.tiers, d.frameW, d.frameH,
+        ).joinToString(",") { it?.toString().orEmpty() }
+
+        private fun Double.fmt(decimals: Int) = String.format(Locale.ROOT, "%.${decimals}f", this)
+
+        private fun diagnosticsOf(f: List<String>): ScanDiagnostics {
+            fun s(i: Int) = f.getOrNull(i)?.ifEmpty { null }
+            return ScanDiagnostics(
+                palette = s(20), answerHolds = s(21)?.toIntOrNull(), answerMatched = s(22)?.toIntOrNull(),
+                answerMissing = s(23)?.toIntOrNull(), answerExtra = s(24)?.toIntOrNull(),
+                answerResid = s(25)?.toDoubleOrNull(), answerMargin = s(26)?.toDoubleOrNull(),
+                truthHolds = s(27)?.toIntOrNull(), truthRankAll = s(28)?.toIntOrNull(),
+                truthMatched = s(29)?.toIntOrNull(), truthMissing = s(30)?.toIntOrNull(), truthExtra = s(31)?.toIntOrNull(),
+                distanceM = s(32)?.toDoubleOrNull(), pitchDeg = s(33)?.toDoubleOrNull(), brightness = s(34)?.toIntOrNull(),
+                ledPeakMedian = s(35)?.toIntOrNull(), ledChromaMedian = s(36)?.toIntOrNull(),
+                detectMs = s(37)?.toLongOrNull(), matchMs = s(38)?.toLongOrNull(), tiers = s(39)?.toIntOrNull(),
+                frameW = s(40)?.toIntOrNull(), frameH = s(41)?.toIntOrNull(),
+            )
+        }
 
         internal fun fromCsv(line: String): ScanTestRecord? {
             val f = splitCsv(line)
@@ -137,6 +221,7 @@ class ScanTestLog(private val file: File) {
                     leds = f[17].toInt(),
                     device = f[18],
                     appVersion = f[19],
+                    diagnostics = diagnosticsOf(f),
                 )
             }.getOrNull()
         }

@@ -6,8 +6,11 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.hardware.camera2.CameraCharacteristics
+import android.os.Build
 import android.util.Log
 import android.util.Size
+import android.view.Surface
+import android.view.WindowManager
 import androidx.annotation.OptIn
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
@@ -48,7 +51,7 @@ class ScanFrameGrabber {
     /** Focal length over the sensor's long side (mm / mm); the frame's focal length in pixels follows from it. */
     @Volatile var focalPerLongSide: Double? = null
 
-    /** The latest gravity reading in the phone's coordinates (x right, y up, z out of the screen); points up. */
+    /** The latest gravity reading in the screen's coordinates (x right, y up, z out of the screen); points up. */
     @Volatile var gravity: FloatArray? = null
 
     /** The next camera frame after this call. */
@@ -172,9 +175,28 @@ private fun focalPerLongSide(camera: Camera): Double? = runCatching {
     if (focal == null || sensor == null || focal <= 0f) null else focal.toDouble() / max(sensor.width, sensor.height)
 }.getOrNull()
 
+/**
+ * A sensor vector in the device's natural axes, turned into the axes of the screen as it is shown at [rotation]
+ * (a `Surface.ROTATION_*`): the camera frames come upright for the screen, so gravity must be read the same way.
+ * Phones show this portrait-only app at rotation 0; a tablet whose natural orientation is landscape does not.
+ */
+internal fun toScreenAxes(v: FloatArray, rotation: Int): FloatArray = when (rotation) {
+    Surface.ROTATION_90 -> floatArrayOf(-v[1], v[0], v[2])
+    Surface.ROTATION_180 -> floatArrayOf(-v[0], -v[1], v[2])
+    Surface.ROTATION_270 -> floatArrayOf(v[1], -v[0], v[2])
+    else -> v.copyOf(3)
+}
+
+@Suppress("DEPRECATION")
+private fun displayRotation(context: Context): Int =
+    runCatching { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) context.display?.rotation else null }.getOrNull()
+        ?: runCatching { (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation }
+            .getOrDefault(Surface.ROTATION_0)
+
 /** Keeps [ScanFrameGrabber.gravity] current: the gravity sensor, or a smoothed accelerometer where there is none. */
 private class GravityListener(context: Context, private val grabber: ScanFrameGrabber) : SensorEventListener {
     private val sensors = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val rotation = displayRotation(context)
     private val gravitySensor = sensors.getDefaultSensor(Sensor.TYPE_GRAVITY)
     private val sensor = gravitySensor ?: sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val smoothed = FloatArray(3)
@@ -188,13 +210,13 @@ private class GravityListener(context: Context, private val grabber: ScanFrameGr
 
     override fun onSensorChanged(event: SensorEvent) {
         if (gravitySensor != null) {
-            grabber.gravity = event.values.copyOf(3)
+            grabber.gravity = toScreenAxes(event.values, rotation)
             return
         }
         val a = if (seen) 0.1f else 1f
         for (i in 0 until 3) smoothed[i] += a * (event.values[i] - smoothed[i])
         seen = true
-        grabber.gravity = smoothed.copyOf()
+        grabber.gravity = toScreenAxes(smoothed, rotation)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit

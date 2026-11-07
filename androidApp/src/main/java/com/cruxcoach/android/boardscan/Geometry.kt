@@ -150,6 +150,26 @@ class Hom(val m: DoubleArray) {
 class RectPair(val fwd: Hom, val back: Hom)
 
 /**
+ * Distance from the camera to the board point ([bx], [by]) in metres, from a board -> image pose [h] (board units,
+ * [metresPerUnit]), the focal length [f] and the principal point ([cx], [cy]) in pixels: K^-1 H is [r1 r2 t] up to
+ * scale, the scale is the mean length of its first two columns.
+ */
+fun cameraDistance(h: Hom, f: Double, cx: Double, cy: Double, metresPerUnit: Double, bx: Double, by: Double): Double? {
+    val m = h.m
+    // K^-1 H, column by column
+    fun col(j: Int) = doubleArrayOf((m[j] - cx * m[6 + j]) / f, (m[3 + j] - cy * m[6 + j]) / f, m[6 + j])
+    val c0 = col(0); val c1 = col(1); val c2 = col(2)
+    val s = 0.5 * (hypot3(c0) + hypot3(c1)) / metresPerUnit
+    if (s <= 1e-12) return null
+    // the board point in camera coordinates (metres) is (c0 bx + c1 by + c2) / s
+    val p = DoubleArray(3) { c0[it] * bx + c1[it] * by + c2[it] }
+    val d = hypot3(p) / s
+    return if (d.isFinite()) d else null
+}
+
+private fun hypot3(v: DoubleArray) = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+
+/**
  * Image -> rectified homographies: the rectified view looks straight at the board, so board coordinates map to
  * it by a similarity. Built from the gravity direction in camera coordinates (x right, y down, z forward), the
  * board's overhang and a guess of the camera's heading relative to the board.

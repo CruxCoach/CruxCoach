@@ -1,6 +1,8 @@
 package com.cruxcoach.android.boardscan
 
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -46,5 +48,28 @@ class GeometryTest {
         val t = DoubleArray(2)
         r.apply(100.0, 200.0, t)
         assertTrue(abs(t[0] - 100.0) < 1e-6 && abs(t[1] - 200.0) < 1e-6)
+    }
+
+    @Test
+    fun theCameraDistanceComesBackFromAPose() {
+        // a camera 4.5 m in front of the board centre, looking 20 degrees to the side; board units of 1 cm
+        val f = 1000.0; val cx = 360.0; val cy = 640.0; val mpu = 0.01; val d = 4.5
+        val a = Math.toRadians(20.0)
+        val r = doubleArrayOf(cos(a), 0.0, sin(a), 0.0, 1.0, 0.0, -sin(a), 0.0, cos(a))
+        // board point (u, v) units -> camera: R (mpu (u - 100), mpu (v - 150), 0) + (0, 0, d)
+        val c0 = doubleArrayOf(r[0] * mpu, r[3] * mpu, r[6] * mpu)
+        val c1 = doubleArrayOf(r[1] * mpu, r[4] * mpu, r[7] * mpu)
+        val c2 = DoubleArray(3) { -100.0 * c0[it] - 150.0 * c1[it] + if (it == 2) d else 0.0 }
+        val h = Hom(doubleArrayOf(
+            f * c0[0] + cx * c0[2], f * c1[0] + cx * c1[2], f * c2[0] + cx * c2[2],
+            f * c0[1] + cy * c0[2], f * c1[1] + cy * c1[2], f * c2[1] + cy * c2[2],
+            c0[2], c1[2], c2[2],
+        ))
+        // any overall scale of the homography gives the same distance
+        val scaled = Hom(DoubleArray(9) { -3.0 * h.m[it] })
+        for (pose in listOf(h, scaled)) {
+            val dist = assertNotNull(cameraDistance(pose, f, cx, cy, mpu, 100.0, 150.0))
+            assertTrue(abs(dist - d) < 1e-6, "distance $dist")
+        }
     }
 }

@@ -1165,6 +1165,10 @@ LIMIT 500;
 -- hold set is not). Read in pages after the last rowid: Android's cursor
 -- re-runs a query from its first row for every 2 MB window it fills, which
 -- made one query over a whole Kilter catalogue take minutes on older phones.
+-- The unary + keeps SQLite off the is_listed/frames_count and is_deleted
+-- indexes: with bound parameters it chose them, so every page scanned and
+-- sorted the whole catalogue again (35 s for a MoonBoard on a 2018 phone);
+-- the brand index walks the rows in rowid order and stops after one page.
 getClimbsForBoardScan:
 SELECT CAST(c.rowid AS INTEGER) AS row_id, c.uuid, c.frames,
        COALESCE((SELECT MAX(cs.ascensionist_count) FROM climb_stats cs
@@ -1173,9 +1177,9 @@ FROM climbs c
 WHERE c.rowid > :afterRowid
   AND c.board_brand = :boardBrand
   AND c.layout_id = :layoutId
-  AND c.frames_count = 1
-  AND c.is_listed = 1
-  AND c.is_deleted = 0
+  AND +c.frames_count = 1
+  AND +c.is_listed = 1
+  AND +c.is_deleted = 0
   AND LENGTH(c.frames) > 0
   AND (:angle IS NULL OR EXISTS (SELECT 1 FROM climb_stats cs2
                                  WHERE cs2.climb_uuid = c.uuid AND cs2.angle = :angle))
@@ -1183,7 +1187,8 @@ ORDER BY c.rowid
 LIMIT :pageSize;
 
 -- Board scan test mode: find the lit problem by name among the same problems
--- (on Kilter at every angle, unlike the browser's per-angle search).
+-- (on Kilter at every angle, unlike the browser's per-angle search). The
+-- unary + keeps SQLite on the brand index, so only this board's rows are read.
 searchClimbsForBoardScan:
 SELECT c.uuid, c.name,
        COALESCE((SELECT MAX(cs.ascensionist_count) FROM climb_stats cs
@@ -1191,8 +1196,8 @@ SELECT c.uuid, c.name,
 FROM climbs c
 WHERE c.board_brand = :boardBrand
   AND c.layout_id = :layoutId
-  AND c.frames_count = 1
-  AND c.is_deleted = 0
+  AND +c.frames_count = 1
+  AND +c.is_deleted = 0
   AND c.name LIKE :pattern ESCAPE '\'
   AND (:angle IS NULL OR EXISTS (SELECT 1 FROM climb_stats cs2
                                  WHERE cs2.climb_uuid = c.uuid AND cs2.angle = :angle))

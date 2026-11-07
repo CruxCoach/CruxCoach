@@ -5,6 +5,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -122,6 +123,28 @@ class BoardMatcherTest {
     }
 
     @Test
+    fun explainTellsHowManyOfANamedProblemsHoldsWereSeen() {
+        val board = kilterBoard(Random(7))
+        val ix = index(board, 8.0, doubleArrayOf(0.0, 144.0, 0.0, 168.0), 0.0254)
+        val m = matcher(ix)
+        val h = boardToImage(3.6, 72.0, 84.0)
+        val climb = 77
+        val holds = board.climbs[climb]
+        // the two highest holds hidden (a climber in front)
+        val seen = holds.sortedBy { board.y[it.first] }.dropLast(2)
+        val pts = seen.map { (hole, role) -> Triple(board.x[hole].toDouble(), board.y[hole].toDouble(), Palette.KILTER.hues[role]) }
+        val b = blobs(h, pts)
+        val pal = listOf(Palette.KILTER)
+        val fit = assertNotNull(m.explain(climb, b, frameW, frameH, f, up, overhang, pal))
+        assertEquals(seen.size, fit.matched)
+        assertEquals(0, fit.extra)
+        // a problem that is not lit fits these LEDs worse than the lit one, on every count
+        val other = (0 until ix.size).first { c -> board.climbs[c].none { hr -> holds.any { it.first == hr.first } } }
+        val wrong = m.explain(other, b, frameW, frameH, f, up, overhang, pal)
+        assertTrue(wrong == null || (wrong.matched < fit.matched && wrong.score < fit.score), "unlit problem fits: ${wrong?.matched}")
+    }
+
+    @Test
     fun isNeverSureWithTooFewLeds() {
         val board = kilterBoard(Random(7))
         val ix = index(board, 8.0, doubleArrayOf(0.0, 144.0, 0.0, 168.0), 0.0254)
@@ -172,5 +195,9 @@ class BoardMatcherTest {
         assertTrue(r.sure)
         // read directly from the board, without the catalogue search
         assertEquals(0, r.tiers)
+        // the lit problem named on its own: every hold seen, nothing else lit
+        val fit = assertNotNull(m.explain(climb, blobs, frameW, frameH, f, up, overhang, listOf(Palette.MOONBOARD)))
+        assertEquals(lit.size, fit.matched)
+        assertEquals(0, fit.extra)
     }
 }

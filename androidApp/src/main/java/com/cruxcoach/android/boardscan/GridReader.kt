@@ -140,11 +140,16 @@ class GridReader(private val ix: ClimbIndex, private val marks: List<StaticMark>
         return good.filter { it.s >= sMax / 1.05 }.maxByOrNull { it.coherence }
     }
 
-    /** Candidates from reading the board directly, or empty when the board cannot be pinned down. */
-    /** [poseFound]: the board's position is known from the grid and its coloured holds; [cands] may still be empty. */
-    class Result(val cands: List<Candidate>, val poseFound: Boolean)
+    /**
+     * Candidates from reading the board directly, or empty when the board cannot be pinned down. [poseFound]: the
+     * board's position is known from the grid and its coloured holds; [cands] may still be empty. [focus]: the problem
+     * asked for in [read], scored on its own (null when the board was not pinned down or too few holes were lit).
+     */
+    class Result(val cands: List<Candidate>, val poseFound: Boolean, val focus: Candidate? = null)
 
-    fun read(blobs: List<Blob>, roles: IntArray, pal: Palette, rects: List<RectPair>, frameW: Int, frameH: Int): Result {
+    fun read(
+        blobs: List<Blob>, roles: IntArray, pal: Palette, rects: List<RectPair>, frameW: Int, frameH: Int, focus: Int = -1,
+    ): Result {
         val none = Result(emptyList(), false)
         if (!usable) return none
         val use = blobs.indices.filter { roles[it] >= 0 || hueDist(blobs[it].hue, staticHue) < 25 }
@@ -284,9 +289,7 @@ class GridReader(private val ix: ClimbIndex, private val marks: List<StaticMark>
             }
             vis[h] = if (sw > 0) ss / sw else 0.7
         }
-        val out = ArrayList<Candidate>()
-        for (c in 0 until ix.size) {
-            if (hit[c] < minHit) continue
+        fun score(c: Int): Candidate {
             var score = 0.0; var matched = 0; var missing = 0
             for (sl in ix.offsets[c] until ix.offsets[c + 1]) {
                 val h = ix.holes[sl].toInt(); val role = ix.roles[sl].toInt()
@@ -300,10 +303,12 @@ class GridReader(private val ix: ClimbIndex, private val marks: List<StaticMark>
                 for (sl in ix.offsets[c] until ix.offsets[c + 1]) if (ix.holes[sl].toInt() == h && cls[ix.roles[sl].toInt()] == litRole[h]) { inClimb = true; break }
                 if (!inClimb) score -= W_EXTRA[min(3, litRole[h])]
             }
-            out.add(Candidate(c, pal.name, score, matched, missing, extra, 0.0, hm, score))
+            return Candidate(c, pal.name, score, matched, missing, extra, 0.0, hm, score)
         }
+        val out = ArrayList<Candidate>()
+        for (c in 0 until ix.size) if (hit[c] >= minHit) out.add(score(c))
         out.sortWith(compareBy<Candidate>({ -it.score }, { -ix.ascents[it.climb] }))
         val seen = HashSet<Long>()
-        return Result(out.filter { seen.add(ix.sig[it.climb]) }.take(40), true)
+        return Result(out.filter { seen.add(ix.sig[it.climb]) }.take(40), true, if (focus in 0 until ix.size) score(focus) else null)
     }
 }

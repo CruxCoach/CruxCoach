@@ -36,6 +36,8 @@
     <string name="board_scan_test_tap_lit">Tippe auf das Problem, das geleuchtet hat, oder such es nach Namen.</string>
     <string name="board_scan_test_search">Name des Problems</string>
     <string name="board_scan_test_lit_mirrored">Gespiegelt geleuchtet</string>
+    <string name="board_scan_test_on_board">Von CruxCoach beleuchtet: %1$s</string>
+    <string name="board_scan_test_lit_by_app">Von CruxCoach beleuchtet</string>
     <string name="board_scan_test_not_in_catalogue">Nicht im Katalog</string>
     <string name="board_scan_test_skip">Nicht zählen</string>
     <string name="board_scan_test_saved">Gespeichert: %1$d in dieser Runde</string>

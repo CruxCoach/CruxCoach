@@ -194,13 +194,45 @@ class BoardMatcher(
     }
 
     /**
-     * With the board pinned down, the lit holes are read directly: sure when they are exactly one problem's holds
-     * (every lit hole explained, no visible hold of it dark) and no other problem fits as well.
+     * How well one given problem fits the frame on its own: searched and verified like every other, but alone, so
+     * a lit problem that was not offered shows whether its LEDs were seen at all (test mode). Null when it cannot be
+     * placed on the frame. Mirrored problems: pass the mirrored frame, as [recogniseWithMirror] does.
      */
+    fun explain(
+        climb: Int, blobs: List<Blob>, frameW: Int, frameH: Int, f: Double, rects: List<Hom>, palettes: List<Palette>,
+        fineRects: List<Hom> = rects,
+    ): Candidate? {
+        if (blobs.size < 3 || climb !in 0 until ix.size) return null
+        val flip = Hom.diag(1.0, -1.0, 1.0)
+        val fine = fineRects.map { r -> val fwd = flip * r; RectPair(fwd, fwd.inverse()) }
+        val labelled = palettes.map { it to labelRoles(blobs, it) }.sortedBy { it.second.cost }
+        val usePal = labelled.filter { it.second.cost <= labelled[0].second.cost * 1.15 + 1e-9 }
+        val gr = grid?.read(blobs, usePal[0].second.roles, usePal[0].first, fine, frameW, frameH, focus = climb)
+        if (gr != null && gr.poseFound) return gr.focus
+        val pool = HashMap<Long, Pair<Double, Hom>>()
+        for ((pi, pl) in usePal.withIndex()) for (hr in rects) coarse(blobs, pl.second.roles, pl.first.classes, hr, f, climb, climb + 1, pi, pool)
+        return pool.entries.map { e ->
+            val (pal, lab) = usePal[(e.key and 15).toInt()]
+            verify(climb, e.value.second, blobs, lab.roles, pal, frameW, frameH, fine)
+        }.maxByOrNull { it.score }
+    }
+
+    /** Overload of [explain] with the camera's gravity reading, as in [recognise]. */
+    fun explain(
+        climb: Int, blobs: List<Blob>, frameW: Int, frameH: Int, f: Double, upCam: DoubleArray, overhangDeg: Double,
+        palettes: List<Palette>,
+    ): Candidate? = explain(climb, blobs, frameW, frameH, f,
+        Rectifier.rects(f, frameW / 2.0, frameH / 2.0, upCam, overhangDeg, p.headings), palettes,
+        Rectifier.rects(f, frameW / 2.0, frameH / 2.0, upCam, overhangDeg, p.fineHeadings))
+
     private fun checkInterrupted() {
         if (Thread.currentThread().isInterrupted) throw InterruptedException()
     }
 
+    /**
+     * With the board pinned down, the lit holes are read directly: sure when they are exactly one problem's holds
+     * (every lit hole explained, no visible hold of it dark) and no other problem fits as well.
+     */
     fun isSureGrid(r: List<Candidate>): Boolean {
         if (r.isEmpty()) return false
         val b = r[0]

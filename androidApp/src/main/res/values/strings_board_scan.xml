@@ -36,6 +36,8 @@
     <string name="board_scan_test_tap_lit">Tap the problem that was lit, or find it by name.</string>
     <string name="board_scan_test_search">Problem name</string>
     <string name="board_scan_test_lit_mirrored">Lit mirrored</string>
+    <string name="board_scan_test_on_board">Lit from CruxCoach: %1$s</string>
+    <string name="board_scan_test_lit_by_app">Lit from CruxCoach</string>
     <string name="board_scan_test_not_in_catalogue">Not in the catalogue</string>
     <string name="board_scan_test_skip">Don\'t count</string>
     <string name="board_scan_test_saved">Saved: %1$d this time</string>

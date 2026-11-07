@@ -50,6 +50,12 @@ internal fun AnswerPanel(state: BoardScanState, viewModel: BoardScanViewModel, o
     }
     Text(stringResource(R.string.board_scan_details, state.leds, seconds(state.msToAnswer)),
         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (state.testMode && state.sure && !state.choosing) {
+        state.onBoard?.let { lit ->
+            Text(stringResource(R.string.board_scan_test_on_board, lit.name ?: stringResource(R.string.board_scan_unnamed)),
+                style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("board_scan_test_on_board"))
+        }
+    }
     if (!state.testMode) {
         Button(onClick = viewModel::scanAgain, modifier = Modifier.fillMaxWidth().testTag("board_scan_again")) {
             Text(stringResource(R.string.board_scan_again))
@@ -87,6 +93,11 @@ private fun PickLitProblem(state: BoardScanState, viewModel: BoardScanViewModel)
             modifier = Modifier.testTag("board_scan_test_mirrored"),
         )
     }
+    // the problem CruxCoach lit, unless it is offered above already
+    state.onBoard?.takeIf { lit -> state.candidates.none { it.uuid.equals(lit.uuid, ignoreCase = true) && !it.mirrored } }?.let { lit ->
+        CandidateRow(lit, enabled = true, note = stringResource(R.string.board_scan_test_lit_by_app),
+            modifier = Modifier.testTag("board_scan_test_pick_on_board")) { viewModel.pick(lit, mirrored = false) }
+    }
     state.searchResults.forEachIndexed { i, c ->
         CandidateRow(c, enabled = true, modifier = Modifier.testTag("board_scan_search_$i")) { viewModel.pick(c) }
     }
@@ -106,6 +117,8 @@ internal fun CandidateRow(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
+    /** Shown instead of the holds seen. */
+    note: String? = null,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(10.dp)
@@ -120,7 +133,7 @@ internal fun CandidateRow(
         Column(Modifier.weight(1f)) {
             Text(c.name ?: stringResource(R.string.board_scan_unnamed), fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val detail = listOfNotNull(
+            val detail = note ?: listOfNotNull(
                 c.mirrored.takeIf { it }?.let { stringResource(R.string.board_scan_mirrored) },
                 c.holds.takeIf { it > 0 }?.let { stringResource(R.string.board_scan_holds_seen, c.matched, it) },
             ).joinToString(" · ")
@@ -157,7 +170,7 @@ internal fun ScanResultsDialog(state: BoardScanState, onExport: () -> Unit, onCl
                 if (state.summaries.isEmpty()) Text(stringResource(R.string.board_scan_test_empty))
                 state.summaries.forEachIndexed { i, s ->
                     if (i > 0) HorizontalDivider()
-                    SummaryBlock(s, if (s.board.copy(angle = 0) == state.board?.copy(angle = 0)) state.boardLabel else null)
+                    SummaryBlock(s, if (s.board.copy(angle = 0) == state.board?.copy(angle = 0)) state.boardLabel else state.summaryLabels[s.board])
                 }
                 Text(stringResource(R.string.board_scan_test_note), style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)

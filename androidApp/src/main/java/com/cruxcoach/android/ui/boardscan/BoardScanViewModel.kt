@@ -8,15 +8,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.boardscan.BoardScanner
+import com.cruxcoach.android.boardscan.Candidate
 import com.cruxcoach.android.boardscan.FrameOutcome
 import com.cruxcoach.android.boardscan.MatchResult
 import com.cruxcoach.android.boardscan.ScanBoard
 import com.cruxcoach.android.boardscan.ScanCatalogue
 import com.cruxcoach.android.boardscan.ScanCatalogueLoader
+import com.cruxcoach.android.boardscan.ScanDiagnostics
 import com.cruxcoach.android.boardscan.ScanTestLog
 import com.cruxcoach.android.boardscan.ScanTestRecord
 import com.cruxcoach.android.boardscan.ScanTestSummary
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.data.BoardStateManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.util.GradeDisplayHelper
@@ -27,6 +30,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,6 +78,8 @@ data class BoardScanState(
     val choosing: Boolean = false,
     val searchResults: List<ScanCandidate> = emptyList(),
     val summaries: List<ScanTestSummary> = emptyList(),
+    /** The boards of [summaries] as the board screen names them. */
+    val summaryLabels: Map<ScanBoard, String> = emptyMap(),
     /** Test scans saved in this visit. */
     val saved: Int = 0,
     val cameraError: Boolean = false,
@@ -85,6 +91,11 @@ data class BoardScanState(
     val mirrorable: Boolean = false,
     /** Debuggable builds: frames come from files instead of the camera ([FileFrames]). */
     val fileFed: Boolean = false,
+    /**
+     * Test mode: the problem CruxCoach last lit on this board (from this phone or a nearby one), so the lit problem
+     * is one tap away. The scan itself never sees it.
+     */
+    val onBoard: ScanCandidate? = null,
     /** An exported log waiting for the share sheet. */
     val shareFile: File? = null,
 )
@@ -99,6 +110,7 @@ class BoardScanViewModel @Inject constructor(
     private val preferences: UserPreferences,
     private val repository: BoardRepository,
     private val loader: ScanCatalogueLoader,
+    private val boardState: BoardStateManager,
 ) : ViewModel() {
     val grabber = ScanFrameGrabber()
     private val _state = MutableStateFlow(BoardScanState())
@@ -116,12 +128,36 @@ class BoardScanViewModel @Inject constructor(
     /** The running scan: its start, its best frame so far and the latest partial ranking. */
     private var started = 0L
     @Volatile private var best: FrameOutcome? = null
-    @Volatile private var partial: MatchResult? = null
-    @Volatile private var partialLeds = 0
+    @Volatile private var partial: FrameOutcome? = null
     private var frames = 0
+    /** The frame the shown answer comes from: its LEDs, for test mode's look at the lit problem. */
+    private var answered: FrameOutcome? = null
+
+    private var litByApp: BoardStateManager.LastBoardClimb? = null
 
     init {
         viewModelScope.launch { prepare() }
+        viewModelScope.launch {
+            boardState.lastClimb.collect {
+                litByApp = it
+                updateOnBoard()
+            }
+        }
+    }
+
+    /** The problem CruxCoach lit, if it is one of this board's scan catalogue. */
+    private suspend fun updateOnBoard() {
+        val lit = litByApp
+        val cat = catalogue
+        val found = if (lit == null || cat == null) null else withContext(Dispatchers.Default) {
+            val row = cat.rowOf(lit.uuid)
+            if (row < 0) null else {
+                val grade = runCatching { withContext(Dispatchers.IO) { lookUp(listOf(cat.uuids[row])) } }.getOrNull()
+                    ?.firstOrNull()?.difficultyAverage?.let { GradeDisplayHelper.formatDifficulty(it, gradeScale) }
+                ScanCandidate(cat.uuids[row], lit.name, grade, row = row)
+            }
+        }
+        if (litByApp === lit) _state.update { it.copy(onBoard = found) }
     }
 
     private suspend fun prepare() {
@@ -144,6 +180,7 @@ class BoardScanViewModel @Inject constructor(
         catalogue = cat
         scanner = BoardScanner(cat, board.angle, threads = Runtime.getRuntime().availableProcessors().coerceIn(1, MAX_THREADS))
         _state.update { it.copy(phase = BoardScanPhase.READY, problems = cat.size, mirrorable = cat.searchMirrored) }
+        updateOnBoard()
     }
 
     /** The board as the board screen names it, e.g. "Kilter Original · 14x12 Super Tall, with Kickboard · 40°". */
@@ -168,7 +205,7 @@ class BoardScanViewModel @Inject constructor(
         started = SystemClock.elapsedRealtime()
         best = null
         partial = null
-        partialLeds = 0
+        answered = null
         frames = 0
         searchJob?.cancel()
         fileFrames?.startScan()
@@ -207,17 +244,16 @@ class BoardScanViewModel @Inject constructor(
             _state.update { it.copy(frame = frames) }
             val frameStart = SystemClock.elapsedRealtime()
             val outcome = runInterruptible(Dispatchers.Default) {
-                sc.scan(frame) { leds, r ->
-                    partialLeds = leds
-                    partial = r
+                sc.scan(frame) { o ->
+                    partial = o
                     // from the search thread: show it on the main thread, unless the scan has ended meanwhile
-                    viewModelScope.launch { if (_state.value.phase == BoardScanPhase.SCANNING) showGuesses(r) }
+                    viewModelScope.launch { if (_state.value.phase == BoardScanPhase.SCANNING) showGuesses(o.result) }
                 }
             }
             partial = null
             val r = outcome.result
-            Log.i(TAG, "frame $frames: ${outcome.leds} LEDs, detect ${outcome.detectMs} ms, match ${outcome.matchMs} ms " +
-                "(coarse ${r.coarseMs}, verify ${r.verifyMs}, tiers ${r.tiers}), sure ${r.sure}")
+            Log.i(TAG, "frame $frames: ${outcome.leds} LEDs, brightness ${outcome.brightness}, detect ${outcome.detectMs} ms, " +
+                "match ${outcome.matchMs} ms (coarse ${r.coarseMs}, verify ${r.verifyMs}, tiers ${r.tiers}), sure ${r.sure}")
             val b = best
             if (b == null || r.sure || topScore(r) > topScore(b.result)) best = outcome
             if (r.sure) break
@@ -247,11 +283,12 @@ class BoardScanViewModel @Inject constructor(
         val p = partial
         val b = best
         // a stopped scan: the partial ranking of the frame it stopped in may be better than the finished frames
-        val result = if (p != null && (b == null || topScore(p) > topScore(b.result))) p else b?.result
-        val leds = if (p != null && result === p) partialLeds else b?.leds ?: 0
+        val shown = if (p != null && (b == null || topScore(p.result) > topScore(b.result))) p else b
+        answered = shown
+        val result = shown?.result
         val sure = result?.sure == true
         _state.update {
-            it.copy(phase = BoardScanPhase.ANSWER, candidates = candidates(result), sure = sure, leds = leds,
+            it.copy(phase = BoardScanPhase.ANSWER, candidates = candidates(result), sure = sure, leds = shown?.leds ?: 0,
                 msToAnswer = ms, frames = frames, choosing = false)
         }
         resolveNames()
@@ -318,7 +355,8 @@ class BoardScanViewModel @Inject constructor(
     fun search(query: String) {
         searchJob?.cancel()
         val board = _state.value.board ?: return
-        if (query.isBlank()) {
+        // one letter matches most of a catalogue: seconds of searching for nothing useful on an older phone
+        if (query.trim().length < MIN_SEARCH_CHARS) {
             _state.update { it.copy(searchResults = emptyList()) }
             return
         }
@@ -334,10 +372,13 @@ class BoardScanViewModel @Inject constructor(
         }
     }
 
-    /** The lit problem, picked from the search; on Kilter it may have been lit mirrored. */
-    fun pick(c: ScanCandidate) {
+    /**
+     * The lit problem, picked from the search; on Kilter it may have been lit mirrored. The problem CruxCoach lit is
+     * never mirrored: the app does not light problems mirrored.
+     */
+    fun pick(c: ScanCandidate, mirrored: Boolean = _state.value.truthMirrored) {
         val row = catalogue?.rowOf(c.uuid) ?: -1
-        record(c.copy(row = row, mirrored = _state.value.truthMirrored))
+        record(c.copy(row = row, mirrored = mirrored))
     }
 
     /** The lit problem is not in the catalogue on the phone. */
@@ -355,7 +396,9 @@ class BoardScanViewModel @Inject constructor(
         val rank = if (truth == null || truth.row < 0) 0 else s.candidates.indexOfFirst {
             it.mirrored == truth.mirrored && cat.index.sig[it.row] == cat.index.sig[truth.row]
         } + 1
-        val rec = ScanTestRecord(
+        val outcome = answered
+        val sc = scanner
+        val rec0 = ScanTestRecord(
             timeMs = System.currentTimeMillis(), board = board, climberInFront = s.climberInFront,
             answerUuid = answer?.uuid, answerName = answer?.name, answerMirrored = answer?.mirrored == true, sure = s.sure,
             truthUuid = truth?.uuid, truthName = truth?.name, truthMirrored = truth?.mirrored == true, truthRank = rank,
@@ -363,13 +406,67 @@ class BoardScanViewModel @Inject constructor(
             device = "${Build.MANUFACTURER} ${Build.MODEL}", appVersion = BuildConfig.VERSION_NAME,
         )
         viewModelScope.launch {
-            val ok = logLock.withLock {
-                withContext(Dispatchers.IO) { runCatching { log.append(rec) }.onFailure { Log.w(TAG, "log write failed", it) }.isSuccess }
+            // the scan is saved even when the screen closes meanwhile; a failed look at the frame costs the numbers only
+            val ok = withContext(NonCancellable) {
+                val diag = if (outcome == null || sc == null) ScanDiagnostics() else withContext(Dispatchers.Default) {
+                    runCatching { diagnose(sc, cat, outcome, truth?.takeIf { it.row >= 0 }) }
+                        .onFailure { Log.w(TAG, "diagnostics failed", it) }.getOrDefault(ScanDiagnostics())
+                }
+                val rec = rec0.copy(diagnostics = diag)
+                logLock.withLock {
+                    withContext(Dispatchers.IO) { runCatching { log.append(rec) }.onFailure { Log.w(TAG, "log write failed", it) }.isSuccess }
+                }
             }
             if (ok) _state.update { it.copy(saved = it.saved + 1) }
             refreshSummary()
         }
         scanAgain()
+    }
+
+    /**
+     * Test mode: the numbers behind a scan. The answer's fit and the lit problem's, from the ranking or, when it was
+     * not ranked, searched on its own in the same frame; the board's distance, the camera's pitch and the frame's
+     * brightness. Only numbers derived from the frame's LEDs; the frame itself is long gone.
+     */
+    private fun diagnose(sc: BoardScanner, cat: ScanCatalogue, o: FrameOutcome, truth: ScanCandidate?): ScanDiagnostics {
+        val ix = cat.index
+        fun holds(c: Int) = ix.offsets[c + 1] - ix.offsets[c]
+        val ranked = o.result.ranked
+        val top = ranked.firstOrNull()
+        val at = truth?.let { t -> ranked.indexOfFirst { it.mirrored == t.mirrored && ix.sig[it.climb] == ix.sig[t.row] } } ?: -1
+        val truthFit: Candidate? = when {
+            truth == null -> null
+            at >= 0 -> ranked[at]
+            else -> sc.explain(o, truth.row, truth.mirrored)
+        }
+        // the lit problem's pose places the board best; the answer's when the lit problem is unknown
+        val pose = truthFit ?: top
+        val peaks = o.blobs.map { it.peak }.sorted()
+        val chroma = o.blobs.map { it.chroma }.sorted()
+        return ScanDiagnostics(
+            palette = o.result.palette,
+            answerHolds = top?.let { holds(it.climb) },
+            answerMatched = top?.matched,
+            answerMissing = top?.missing,
+            answerExtra = top?.extra,
+            answerResid = top?.resid,
+            answerMargin = if (ranked.size >= 2) ranked[0].score - ranked[1].score else null,
+            truthHolds = truth?.let { holds(it.row) },
+            truthRankAll = truth?.let { at + 1 },
+            truthMatched = truthFit?.matched,
+            truthMissing = truthFit?.missing,
+            truthExtra = truthFit?.extra,
+            distanceM = pose?.let { sc.distanceM(o, it) },
+            pitchDeg = o.up?.let { BoardScanner.cameraPitchDeg(it) },
+            brightness = o.brightness,
+            ledPeakMedian = peaks.getOrNull(peaks.size / 2),
+            ledChromaMedian = chroma.getOrNull(chroma.size / 2)?.toInt(),
+            detectMs = o.detectMs,
+            matchMs = o.matchMs,
+            tiers = o.result.tiers,
+            frameW = o.width,
+            frameH = o.height,
+        )
     }
 
     private suspend fun refreshSummary() {
@@ -378,7 +475,10 @@ class BoardScanViewModel @Inject constructor(
         // the board in use first
         val summaries = ScanTestLog.summarise(records)
             .sortedByDescending { board != null && it.board.copy(angle = 0) == board.copy(angle = 0) }
-        _state.update { it.copy(summaries = summaries) }
+        val labels = withContext(Dispatchers.IO) {
+            summaries.associate { s -> s.board to runCatching { boardLabel(s.board) }.getOrDefault("") }.filterValues { it.isNotEmpty() }
+        }
+        _state.update { it.copy(summaries = summaries, summaryLabels = labels) }
     }
 
     fun export() {
@@ -416,7 +516,9 @@ class BoardScanViewModel @Inject constructor(
         const val MAX_FRAMES = 3
         const val BUDGET_MS = 10_000L
         const val FRAME_TIMEOUT_MS = 5_000L
-        const val SEARCH_DEBOUNCE_MS = 250L
+        /** A search reads the whole catalogue (seconds on an older phone): wait until typing pauses. */
+        const val SEARCH_DEBOUNCE_MS = 600L
         const val SEARCH_LIMIT = 30
+        const val MIN_SEARCH_CHARS = 2
     }
 }
