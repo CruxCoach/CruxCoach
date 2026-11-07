@@ -66,7 +66,10 @@ class HoldCheckViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val boards = withContext(Dispatchers.IO) { assets.boards() }
+            // Only boards with at least one typed hold: there is nothing to confirm on the others.
+            val boards = withContext(Dispatchers.IO) {
+                assets.boards().filter { b -> assets.dataset(b)?.holds?.any { it.type != null } == true }
+            }
             _state.update { it.copy(boards = boards) }
             boards.firstOrNull()?.let { selectBoard(it) } ?: _state.update { it.copy(loading = false) }
         }

@@ -17,7 +17,7 @@
     <string name="hold_review_stage_blind">1 · Blind %1$d/%2$d</string>
     <string name="hold_review_stage_decide">2 · Entscheiden %1$d</string>
     <string name="hold_review_stage_results">Ergebnis</string>
-    <string name="hold_review_progress">Griff %1$d von %2$d · #%3$d</string>
+    <string name="hold_review_progress">Griff %1$d von %2$d · %3$s</string>
     <string name="hold_review_blind_hint">Erst antworten. Das berechnete Label erscheint nach deiner Antwort, und dann gilt deine Antwort.</string>
     <string name="hold_review_decide_hint">Nur die Felder, in denen du und das berechnete Label abweichen. Wer lag richtig?</string>
     <string name="hold_review_decide_locked">Erst die Blindrunde beenden.</string>
@@ -55,7 +55,8 @@
     <string name="hold_check_title">Griffarten: Labels prüfen</string>
     <string name="hold_check_review_list">Prüfliste (%1$d)</string>
     <string name="hold_check_all">Alle Griffe (%1$d)</string>
-    <string name="hold_check_progress">Griff %1$d von %2$d · Layout %3$d · #%4$d</string>
+    <string name="hold_check_progress">Griff %1$d von %2$d · %3$s</string>
+    <string name="hold_check_mirrored">Vom spiegelbildlichen Griff übernommen, links und rechts getauscht</string>
     <string name="hold_check_proposed">Vorgeschlagenes Label</string>
     <string name="hold_check_second">Zweiter Griff: %1$s</string>
     <string name="hold_check_size">Größe: %1$s</string>

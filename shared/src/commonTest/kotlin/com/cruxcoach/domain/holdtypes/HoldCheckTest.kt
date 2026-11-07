@@ -53,6 +53,14 @@ class HoldCheckTest {
     }
 
     @Test
+    fun moonBoardGridNames() {
+        assertEquals("A1", moonBoardGridName(1))
+        assertEquals("K1", moonBoardGridName(11))
+        assertEquals("A2", moonBoardGridName(12))
+        assertEquals("K18", moonBoardGridName(198))
+    }
+
+    @Test
     fun moonBoardReferenceKeysCarryTheLayout() {
         val entry = dataset[4, 5]!!
         assertEquals(4005, dataset.referenceKey(entry))

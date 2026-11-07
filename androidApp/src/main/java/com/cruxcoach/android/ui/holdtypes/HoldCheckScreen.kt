@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +66,9 @@ internal fun HoldCheckScreen(
     viewModel: HoldCheckViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val scroll = rememberScrollState()
+    // A new hold starts at the top, so its picture is in view before it is checked.
+    LaunchedEffect(state.board, state.reviewListOnly, state.index) { scroll.scrollTo(0) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -81,7 +85,7 @@ internal fun HoldCheckScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -145,7 +149,7 @@ private fun QueueChooser(state: HoldCheckUiState, onSelect: (Boolean) -> Unit) {
 private fun CheckHold(state: HoldCheckUiState, viewModel: HoldCheckViewModel) {
     val entry = state.entry ?: return
     Text(
-        stringResource(R.string.hold_check_progress, state.index + 1, state.queueSize, entry.layoutId, entry.placement),
+        stringResource(R.string.hold_check_progress, state.index + 1, state.queueSize, holdName(state.board.orEmpty(), entry)),
         fontWeight = FontWeight.SemiBold,
     )
     HoldViews(entry, state.view)
@@ -198,6 +202,9 @@ private fun ProposedLabel(entry: HoldTypeEntry) {
             entry.size?.let { Text(stringResource(R.string.hold_check_size, sizeName(it))) }
             Text("${fieldName(ReviewField.DIRECTION)}: ${valueName(ReviewField.DIRECTION, entry.direction)}")
             Text("${fieldName(ReviewField.FOOT_ONLY)}: ${valueName(ReviewField.FOOT_ONLY, if (entry.footOnly) FOOT_ONLY_YES else FOOT_ONLY_NO)}")
+            if (entry.source["type"] == SOURCE_MIRRORED) {
+                Text(stringResource(R.string.hold_check_mirrored), style = MaterialTheme.typography.bodySmall)
+            }
             Text(
                 stringResource(
                     R.string.hold_check_confidence,
@@ -282,6 +289,9 @@ private fun CheckResults(state: HoldCheckUiState, viewModel: HoldCheckViewModel)
         )
     }
 }
+
+/** Source of a label copied from its mirror partner (left and right swapped). */
+private const val SOURCE_MIRRORED = "mirrored"
 
 @Composable
 private fun sizeName(size: String): String = when (size) {
