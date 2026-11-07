@@ -28,11 +28,17 @@ interface ShinyWallTokenStorage {
     /** Wall clock (ms) of the last successful import, or null. */
     fun lastImportAtMs(): Long?
 
-    /** Newest history timestamp (epoch ms) seen by an import of [uid], or null. */
+    /** Newest timestamp (epoch ms) of a history entry an import of [uid] placed in the logbook, or null. */
     fun historyWatermarkMs(uid: String): Long?
-    fun recordImport(uid: String, atMs: Long, watermarkMs: Long?)
 
-    /** Forget the session; the per-account watermark stays (see [ShinyWallSyncEngine]). */
+    /**
+     * Logbook uuids of the history entries imports of [uid] have placed, by entry time
+     * (epoch ms). One the logbook lacks was deleted there, or went into its send.
+     */
+    fun placedLogs(uid: String): Map<String, Long>
+    fun recordImport(uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>)
+
+    /** Forget the session; the per-account watermark and placed entries stay (see [ShinyWallSyncEngine]). */
     fun clearSession()
 }
 
@@ -60,8 +66,15 @@ class ShinyWallTokenStore(
     private val keyExpiry = "${pubkeyPrefix}_id_token_expiry"
     private val keyDisplayName = "${pubkeyPrefix}_display_name"
     private val keyLastImport = "${pubkeyPrefix}_last_import"
-    private val keyWatermarkPrefix = "${pubkeyPrefix}_watermark_"
+    // Versioned: when the import learns to place entries it used to skip, the
+    // next version drops the older watermark, which may lie past them. v1 (no
+    // suffix) also counted skipped entries.
+    private val keyWatermarkPrefix = "${pubkeyPrefix}_watermark_v2_"
+    private val keyOldWatermarkPrefix = "${pubkeyPrefix}_watermark_"
     private fun keyWatermark(uid: String) = keyWatermarkPrefix + uid
+    // "<uuid> <epoch ms>" per entry.
+    private val keyPlacedPrefix = "${pubkeyPrefix}_placed_v1_"
+    private fun keyPlaced(uid: String) = keyPlacedPrefix + uid
 
     private val prefs: SharedPreferences by lazy { openOrRecreatePrefs() }
 
@@ -124,8 +137,17 @@ class ShinyWallTokenStore(
 
     override fun historyWatermarkMs(uid: String): Long? = prefs.getLong(keyWatermark(uid), 0L).takeIf { it > 0 }
 
-    override fun recordImport(uid: String, atMs: Long, watermarkMs: Long?) {
-        val edit = prefs.edit().putLong(keyLastImport, atMs)
+    override fun placedLogs(uid: String): Map<String, Long> =
+        prefs.getStringSet(keyPlaced(uid), null).orEmpty().mapNotNull { item ->
+            val (uuid, ms) = item.split(' ').takeIf { it.size == 2 } ?: return@mapNotNull null
+            ms.toLongOrNull()?.let { uuid to it }
+        }.toMap()
+
+    override fun recordImport(uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>) {
+        val edit = prefs.edit()
+            .putLong(keyLastImport, atMs)
+            .remove(keyOldWatermarkPrefix + uid)
+            .putStringSet(keyPlaced(uid), placedLogs.map { (uuid, ms) -> "$uuid $ms" }.toSet())
         if (watermarkMs != null) edit.putLong(keyWatermark(uid), watermarkMs)
         edit.apply()
     }

@@ -8,11 +8,12 @@ fun formatShinyWallImportSummary(context: Context, r: ShinyWallImportResult): St
     if (r.newAscents == 0 && r.newProjects == 0 && r.duplicates == 0 && r.lists == 0) {
         return context.getString(R.string.shinywall_import_empty)
     }
+    val res = context.resources
     val parts = mutableListOf(
-        context.getString(R.string.shinywall_import_part_ascents, r.newAscents),
-        context.getString(R.string.shinywall_import_part_projects, r.newProjects),
+        res.getQuantityString(R.plurals.shinywall_import_part_ascents, r.newAscents, r.newAscents),
+        res.getQuantityString(R.plurals.shinywall_import_part_projects, r.newProjects, r.newProjects),
     )
-    if (r.lists > 0) parts += context.getString(R.string.shinywall_import_part_lists, r.lists)
+    if (r.lists > 0) parts += res.getQuantityString(R.plurals.shinywall_import_part_lists, r.lists, r.lists)
     if (r.duplicates > 0) parts += context.getString(R.string.shinywall_import_part_known, r.duplicates)
     if (r.skipped > 0) parts += context.getString(R.string.shinywall_import_part_skipped, r.skipped)
     return parts.joinToString(" · ")

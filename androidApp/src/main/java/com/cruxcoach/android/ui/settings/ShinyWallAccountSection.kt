@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -290,10 +291,13 @@ private fun ShinyWallPreviewDialog(
         title = { Text(stringResource(R.string.shinywall_preview_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Only what lands in CruxCoach: attempts that belong to a send are in no count.
                 Text(
                     stringResource(
                         R.string.shinywall_preview_found,
-                        preview.totalEntries, preview.newAscents, preview.newProjects, preview.duplicates,
+                        pluralStringResource(R.plurals.shinywall_preview_new_ascents, preview.newAscents, preview.newAscents),
+                        pluralStringResource(R.plurals.shinywall_preview_new_projects, preview.newProjects, preview.newProjects),
+                        stringResource(R.string.shinywall_preview_known, preview.duplicates),
                     )
                 )
                 if (preview.skipped > 0) {

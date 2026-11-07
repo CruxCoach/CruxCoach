@@ -83,6 +83,36 @@ class ShinyWallParsersTest {
     }
 
     @Test
+    fun history_entry_takes_the_variant_from_the_wall_id() {
+        // The shape real entries have: `standard` is a boolean, the variant is the wallId prefix.
+        val real = ShinyWallParsers.historyEntry(
+            "h1",
+            fields(
+                """{"routeId":{"stringValue":"r1"},"angle":{"integerValue":"40"},"sent":{"integerValue":"1"},
+                    "grade":{"stringValue":"6B+"},"timestamp":{"timestampValue":"2026-11-02T13:20:11.123Z"},
+                    "wallId":{"stringValue":"STP_Wall"},"standard":{"booleanValue":true},"type":{"stringValue":"route"}}"""
+            ),
+        )!!
+        assertEquals(ShinyWallHistoryEntry("h1", "r1", "STP_Wall", "st1", "6B+", 40, 1, "route", "2026-11-02T13:20:11.123Z"), real)
+        assertFalse(ShinyWallParsers.isCreation(real))
+
+        fun standard(standard: String, wallId: String) = ShinyWallParsers.historyEntry(
+            "h", fields("""{"routeId":{"stringValue":"r"},"wallId":{"stringValue":"$wallId"},"standard":$standard}"""),
+        )!!.standard
+        val yes = """{"booleanValue":true}"""
+        assertEquals("st0", standard(yes, "ST0_Gym"))
+        assertEquals("st2", standard(yes, "STM_Gym"))
+        assertEquals("st4", standard(yes, "STF_Gym"))
+        assertEquals("st5", standard(yes, "STMF_Gym"))
+        // A code in `standard` wins over the prefix.
+        assertEquals("st5", standard("""{"stringValue":"ST5"}""", "STP_Gym"))
+        // Custom walls stay unresolved, so the import skips them.
+        assertEquals("true", standard(yes, "CTM_Home"))
+        assertEquals("true", standard(yes, "HomeWall"))
+        assertEquals("false", standard("""{"booleanValue":false}""", "STP_Gym"))
+    }
+
+    @Test
     fun route_refs_split_angle_suffix_only_when_it_is_an_angle() {
         assertEquals(ShinyWallRouteRef("AbC123", 40), ShinyWallParsers.routeRef("AbC123-40"))
         assertEquals(ShinyWallRouteRef("AbC123", null), ShinyWallParsers.routeRef("AbC123"))
@@ -126,13 +156,6 @@ class ShinyWallParsersTest {
         assertEquals(setOf("Board day"), p.customLists.keys)
         assertNull(ShinyWallParsers.ownRoute("d1", mapOf("id" to "d1", "draft" to true)))
         assertEquals(ShinyWallOwnRoute("r1", "st5"), ShinyWallParsers.ownRoute("r1", mapOf("originSt" to "ST5")))
-    }
-
-    @Test
-    fun rating_drops_empty_votes() {
-        val r = ShinyWallParsers.rating("r1", 40, mapOf("grade" to "6B", "punctuation" to 0L, "comment" to "  "))
-        assertEquals(ShinyWallRating("r1", 40, "6B", null, null), r)
-        assertEquals(4.0, ShinyWallParsers.rating("r1", 40, mapOf("punctuation" to 4L)).punctuation)
     }
 
     @Test

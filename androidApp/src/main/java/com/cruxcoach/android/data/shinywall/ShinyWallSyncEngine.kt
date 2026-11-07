@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -22,7 +23,6 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.roundToLong
 
 data class ShinyWallImportPreview(
     val totalEntries: Int,
@@ -50,16 +50,25 @@ data class ShinyWallListNames(val favorites: String, val ownRoutes: String)
  * Read-only towards Shiny Wall: nothing is uploaded, changed or deleted there.
  *
  * - Activity history → logbook. Sends become ascents, projects become
- *   attempts. Each history entry gets a stable uuid and the external id
+ *   attempts. Shiny's attempt count of a send includes the attempts before
+ *   it on the same route and angle. Those of the send's day are part of it:
+ *   no entry of their own, and an attempt an earlier import logged gives way
+ *   to the send unless the user edited it. Those of earlier days stay
+ *   entries of their own, and the send keeps the rest of the count.
+ *   Each history entry gets a stable uuid and the external id
  *   `shinywall:history:<entry id>`, so a re-import never duplicates it and
  *   a local edit is never overwritten. Entries the user deleted locally stay
- *   deleted ([PersonalBoardRepository.pendingLogDeletions]); entries older
- *   than the last import (minus [WATERMARK_OVERLAP_MS]) are not looked at
- *   again, which keeps them deleted even once a tombstone is gone.
+ *   deleted: the import keeps its own record of the entries it has placed
+ *   ([ShinyWallTokenStorage.placedLogs]), and one the logbook lacks is never
+ *   written again (Kilter's deletion queue only holds Kilter's entries).
+ *   Entries older than the last import (minus [WATERMARK_OVERLAP_MS]) are
+ *   not looked at again, so the record only keeps that window.
  * - Favourites, own lists and own published routes → local lists
  *   (`shinywall:favorites`, `shinywall:list:<name>`, `shinywall:own-routes`),
  *   refreshed on every import. Best effort: a failure there never fails
  *   the logbook import.
+ * - An external id that would not fit into a backup carries a hash of the
+ *   entry id or list name instead ([MAX_EXTERNAL_ID_LENGTH]).
  *
  * Only standard walls are supported. A route is the catalogue climb
  * [ShinyWallSnapshot.climbUuid] of its variant; entries of custom walls
@@ -84,6 +93,12 @@ class ShinyWallSyncEngine @Inject constructor(
         /** History entries this close before the last import's newest entry are re-checked (deduped by uuid). */
         const val WATERMARK_OVERLAP_MS = 7L * 24 * 60 * 60 * 1000
 
+        // What a backup takes back (CruxCoachBackup): a longer value makes the whole backup unrestorable.
+        const val MAX_EXTERNAL_ID_LENGTH = 100
+        const val MAX_LIST_NAME_LENGTH = 200
+        const val MAX_ANGLE = 70
+        const val MAX_ATTEMPTS = 100_000L
+
         /** Variant preference when a list route has no variant of its own. */
         val VARIANT_ORDER = listOf(
             ShinyWallVariant.ST1, ShinyWallVariant.ST5, ShinyWallVariant.ST2, ShinyWallVariant.ST4, ShinyWallVariant.ST0,
@@ -92,13 +107,27 @@ class ShinyWallSyncEngine @Inject constructor(
         fun logUuid(docId: String): String =
             UUID.nameUUIDFromBytes("shinywall-log:$docId".encodeToByteArray()).toString()
 
+        fun historyExternalId(docId: String): String = boundedExternalId(EXTERNAL_ID_PREFIX, docId)
+        fun listExternalId(name: String): String = boundedExternalId(LIST_PREFIX, name)
+
+        /** [prefix] + [key], or [prefix] + `#` + the SHA-256 of [key] when that is too long for a backup. */
+        private fun boundedExternalId(prefix: String, key: String): String {
+            val plain = prefix + key
+            if (plain.length <= MAX_EXTERNAL_ID_LENGTH) return plain
+            val hash = MessageDigest.getInstance("SHA-256").digest(key.encodeToByteArray())
+            return prefix + "#" + hash.joinToString("") { "%02x".format(it) }
+        }
+
+        /** Attempts of a send from "more than nine" on. */
+        const val MAX_SEND_ATTEMPTS = 10L
+
         /** (attempt_id, bid_count) of a send, or null when the entry is a project. */
         fun sendShape(sent: Int): Pair<Long, Long>? = when {
             sent < 0 -> null
             sent == 0 || sent == 1 -> 0L to 1L
             sent in 2..9 -> 1L to sent.toLong()
             sent == ShinyWallParsers.SENT_UNKNOWN_ATTEMPTS -> 1L to 1L
-            else -> 1L to 10L
+            else -> 1L to MAX_SEND_ATTEMPTS
         }
 
         fun epochMs(timestamp: String?): Long? =
@@ -117,6 +146,9 @@ class ShinyWallSyncEngine @Inject constructor(
 
     private val importMutex = Mutex()
 
+    /** Time zone of the logbook dates; tests travel with it. */
+    internal var zone: () -> ZoneId = ZoneId::systemDefault
+
     /** One history entry the import would write. */
     internal data class PlannedLog(
         val entry: ShinyWallHistoryEntry,
@@ -127,21 +159,46 @@ class ShinyWallSyncEngine @Inject constructor(
         val climbedAt: String,
         /** (attempt_id, bid_count) for a send, null for a project. */
         val send: Pair<Long, Long>?,
+        /** Attempts of a project. */
+        val attempts: Long = 1,
     )
 
     internal data class Plan(
         val logs: List<PlannedLog>,
+        /** Entries the logbook holds already. */
         val duplicates: Int,
         val skipped: Int,
         val total: Int,
         val newestMs: Long?,
         val catalogue: Map<String, ClimbWithStats>,
+        /** Attempts an earlier import logged, unedited, that are now part of a send: removed on import. */
+        val mergedAttempts: Set<String> = emptySet(),
+        /** Entries an earlier import placed that the logbook lacks now: deleted there, never written again. */
+        val deleted: Int = 0,
+        /** What [ShinyWallTokenStorage.placedLogs] holds after this import. */
+        val placed: Map<String, Long> = emptyMap(),
     )
+
+    /** A history entry the logbook can take. */
+    private data class Placed(
+        val entry: ShinyWallHistoryEntry, val variant: ShinyWallVariant, val sent: Int, val angle: Int,
+        val climbedAt: String, val ms: Long?,
+    ) {
+        val climbUuid: String get() = ShinyWallSnapshot.climbUuid(entry.routeId, variant)
+        val uuid: String get() = logUuid(entry.docId)
+        /** Local date of [climbedAt]. */
+        val day: String get() = climbedAt.substringBefore('T')
+        /** Attempts of a project. */
+        val attempts: Long get() = if (sent < 0) (-sent.toLong()).coerceAtMost(MAX_ATTEMPTS) else 1L
+    }
+
+    /** A send with the attempts (`sent < 0`) before it on the same route and angle, back to the previous send. */
+    private class SendRun(val send: Placed, val attempts: List<Placed>)
 
     suspend fun previewImport(): Result<ShinyWallImportPreview> = withContext(Dispatchers.IO) {
         val session = tokenStore.session() ?: return@withContext notSignedIn<ShinyWallImportPreview>()
-        client.fetchHistory(session.uid).map { history ->
-            val plan = plan(session.uid, history)
+        val history = client.fetchHistory(session.uid).getOrElse { return@withContext Result.failure(it) }
+        logbookStep { plan(session.uid, history) }.map { plan ->
             ShinyWallImportPreview(
                 totalEntries = plan.total,
                 newAscents = plan.logs.count { it.send != null },
@@ -156,10 +213,11 @@ class ShinyWallSyncEngine @Inject constructor(
         importMutex.withLock {
             val session = tokenStore.session() ?: return@withLock notSignedIn<ShinyWallImportResult>()
             val history = client.fetchHistory(session.uid).getOrElse { return@withLock Result.failure<ShinyWallImportResult>(it) }
-            val plan = plan(session.uid, history)
-            val ratings = if (plan.logs.isEmpty()) emptyMap() else
-                client.fetchOwnRatings(session.uid, plan.logs.map { it.entry.routeId to it.angle })
-            write(plan, ratings)
+            val plan = logbookStep { plan(session.uid, history) }.getOrElse { return@withLock Result.failure(it) }
+            logbookStep { write(plan) }.getOrElse { return@withLock Result.failure(it) }
+            // Right after the write, before the lists suspend: cancelled there, the logbook
+            // still knows what it holds.
+            tokenStore.recordImport(session.uid, System.currentTimeMillis(), plan.newestMs, plan.placed)
             val lists = try {
                 importLists(session.uid, history, listNames)
             } catch (e: CancellationException) {
@@ -168,8 +226,11 @@ class ShinyWallSyncEngine @Inject constructor(
                 Log.w(TAG, "List import failed, logbook import kept", e)
                 0
             }
-            tokenStore.recordImport(session.uid, System.currentTimeMillis(), plan.newestMs)
-            Log.i(TAG, "Imported ${plan.logs.size} entries (${plan.duplicates} known, ${plan.skipped} skipped), $lists list(s)")
+            Log.i(
+                TAG,
+                "Imported ${plan.logs.size} entries (${plan.duplicates} known, ${plan.deleted} deleted here, " +
+                    "${plan.skipped} skipped, ${plan.mergedAttempts.size} attempts merged into sends), $lists list(s)",
+            )
             Result.success(
                 ShinyWallImportResult(
                     newAscents = plan.logs.count { it.send != null },
@@ -185,11 +246,26 @@ class ShinyWallSyncEngine @Inject constructor(
     private fun <T> notSignedIn(): Result<T> =
         Result.failure(ShinyWallApiException(ShinyWallApiException.Reason.NotAuthenticated, "not signed in"))
 
+    /** Runs a step on the logbook database; a database error fails the import instead of crashing the app. */
+    private inline fun <T> logbookStep(block: () -> T): Result<T> = try {
+        Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Logbook step failed (${e.javaClass.simpleName})")
+        Result.failure(e)
+    }
+
     internal fun plan(uid: String, history: List<ShinyWallHistoryEntry>): Plan {
+        val zone = zone()
         val existing = personalBoardRepo.getExistingLogUuids()
         val deleted = personalBoardRepo.pendingLogDeletions().toHashSet()
-        val watermark = tokenStore.historyWatermarkMs(uid)?.minus(WATERMARK_OVERLAP_MS)
-        val newestMs = history.mapNotNull { epochMs(it.timestamp) }.maxOrNull()
+        val placedBefore = tokenStore.placedLogs(uid)
+        val lastWatermark = tokenStore.historyWatermarkMs(uid)
+        val watermark = lastWatermark?.minus(WATERMARK_OVERLAP_MS)
+        // Only entries the logbook holds or gets move the watermark, so skipped entries
+        // newer than those stay in view (older ones need a new watermark key).
+        var newestMs: Long? = null
 
         // Variant candidates per entry; the catalogue decides when the entry names none.
         val logs = history.filterNot { ShinyWallParsers.isCreation(it) }
@@ -197,8 +273,7 @@ class ShinyWallSyncEngine @Inject constructor(
         val catalogue = lookupCatalogue(candidates.values.flatten().map { (variant, routeId) -> ShinyWallSnapshot.climbUuid(routeId, variant) })
 
         var skipped = history.size - logs.size
-        var duplicates = 0
-        val planned = mutableListOf<PlannedLog>()
+        val placed = mutableListOf<Placed>()
         for (entry in logs) {
             val options = candidates[entry].orEmpty()
             val variant = when {
@@ -206,32 +281,117 @@ class ShinyWallSyncEngine @Inject constructor(
                 else -> options.firstOrNull { (v, r) -> ShinyWallSnapshot.climbUuid(r, v) in catalogue }?.first
             }
             val sent = entry.sent
-            val angle = entry.angle?.takeIf { it in 0..90 }
-            val climbedAt = localClimbedAt(entry.timestamp)
+            val angle = entry.angle?.takeIf { it in 0..MAX_ANGLE }
+            val climbedAt = localClimbedAt(entry.timestamp, zone)
             if (variant == null || sent == null || angle == null || climbedAt == null) {
                 skipped++
                 continue
             }
-            val uuid = logUuid(entry.docId)
             val ms = epochMs(entry.timestamp)
-            if (uuid in existing || uuid in deleted || (watermark != null && ms != null && ms < watermark)) {
+            if (ms != null) newestMs = maxOf(newestMs ?: ms, ms)
+            placed += Placed(entry, variant, sent, angle, climbedAt, ms)
+        }
+
+        // The whole history, not only what is past the watermark: a send can come after
+        // attempts an earlier import has logged already.
+        // An entry an earlier import placed is in the logbook, or the user deleted it there.
+        fun isNew(p: Placed) = p.uuid !in existing && p.uuid !in deleted && p.uuid !in placedBefore &&
+            (watermark == null || p.ms == null || p.ms >= watermark)
+
+        // Attempts of the send's day are part of it: no entry of their own, and one an earlier
+        // import logged gives way to a new send unless it was edited since. Attempts of earlier
+        // days stay entries of their own, and Shiny's count for the send, which includes them,
+        // loses theirs. Once a send is in the logbook, what stands beside it stays.
+        val partOfSend = HashSet<Placed>()
+        val merged = mutableSetOf<String>()
+        val ownAttemptsBefore = HashMap<Placed, Long>()
+        for (run in sendRuns(placed)) {
+            var own = run.attempts.filter { it.day != run.send.day }.sumOf { it.attempts }
+            for (attempt in run.attempts.filter { it.day == run.send.day }) {
+                partOfSend += attempt
+                if (attempt.uuid !in existing || !isNew(run.send)) continue
+                if (asImported(attempt)) merged += attempt.uuid else own += attempt.attempts
+            }
+            if (own > 0) ownAttemptsBefore[run.send] = own
+        }
+
+        var duplicates = 0
+        var deletedHere = 0
+        val planned = mutableListOf<PlannedLog>()
+        for (p in placed) {
+            if (p in partOfSend) {
+                if (p.uuid in existing && p.uuid !in merged) duplicates++
+                continue
+            }
+            if (p.uuid in existing) {
                 duplicates++
                 continue
             }
+            if (!isNew(p)) {
+                deletedHere++
+                continue
+            }
+            val own = ownAttemptsBefore[p] ?: 0L
+            val shape = sendShape(p.sent)
+            val send = when {
+                shape == null || own == 0L -> shape
+                p.sent == ShinyWallParsers.SENT_UNKNOWN_ATTEMPTS -> shape
+                // After attempts on other days the send is no flash, and carries what is left
+                // of Shiny's count (before the cap).
+                else -> 1L to (p.sent - own).coerceIn(1L, MAX_SEND_ATTEMPTS)
+            }
             planned += PlannedLog(
-                entry = entry,
-                variant = variant,
-                climbUuid = ShinyWallSnapshot.climbUuid(entry.routeId, variant),
-                uuid = uuid,
-                angle = angle,
-                climbedAt = climbedAt,
-                send = sendShape(sent),
+                entry = p.entry,
+                variant = p.variant,
+                climbUuid = p.climbUuid,
+                uuid = p.uuid,
+                angle = p.angle,
+                climbedAt = p.climbedAt,
+                send = send,
+                attempts = p.attempts,
             )
         }
         // One entry per uuid even if Shiny lists an id twice.
         val unique = planned.distinctBy { it.uuid }
         duplicates += planned.size - unique.size
-        return Plan(unique, duplicates, skipped, history.size, newestMs, catalogue)
+
+        // Every placed entry is dealt with now: in the logbook, deleted there, or part of its send.
+        // Entries before the next import's window are never looked at again, so they need no record.
+        // The window may move back (newer entries gone from Shiny Wall): keep the wider one.
+        val keepFrom = listOfNotNull(newestMs, lastWatermark).minOrNull()?.minus(WATERMARK_OVERLAP_MS) ?: Long.MIN_VALUE
+        val placedNow = (placedBefore + placed.mapNotNull { p -> p.ms?.let { p.uuid to it } })
+            .filterValues { it >= keepFrom }
+        return Plan(unique, duplicates, skipped, history.size, newestMs, catalogue, merged, deletedHere, placedNow)
+    }
+
+    /**
+     * True while [attempt]'s row is still as the import wrote it: the same entry, same attempts,
+     * no comment. Not the date: the import writes it in the time zone of the day, so after
+     * travelling the same entry has another one, and the app has no way to change it.
+     */
+    private fun asImported(attempt: Placed): Boolean {
+        val row = secureDb.bidsQueries.selectBidContent(attempt.uuid).executeAsOneOrNull() ?: return false
+        return row.external_id == historyExternalId(attempt.entry.docId) &&
+            row.bid_count == attempt.attempts &&
+            row.comment.isNullOrBlank()
+    }
+
+    /** Every send with the attempts before it. Attempts no send follows are in no run and stay projects. */
+    private fun sendRuns(placed: List<Placed>): List<SendRun> {
+        val runs = mutableListOf<SendRun>()
+        for (group in placed.groupBy { it.climbUuid to it.angle }.values) {
+            val waiting = mutableListOf<Placed>()
+            // At the same moment the attempt comes first, so it belongs to the send.
+            for (p in group.sortedWith(compareBy({ it.ms ?: Long.MIN_VALUE }, { it.sent >= 0 }))) {
+                if (p.sent < 0) {
+                    waiting += p
+                } else {
+                    runs += SendRun(p, waiting.toList())
+                    waiting.clear()
+                }
+            }
+        }
+        return runs
     }
 
     /** (variant, routeId) options: the entry's own standard variant, or every supported one for an entry without a wall. */
@@ -260,8 +420,8 @@ class ShinyWallSyncEngine @Inject constructor(
         return wanted.mapNotNull { uuid -> byKey[ClimbUuid.normKey(uuid)]?.let { uuid to it } }.toMap()
     }
 
-    private fun write(plan: Plan, ratings: Map<Pair<String, Int>, ShinyWallRating>) {
-        if (plan.logs.isEmpty()) return
+    private fun write(plan: Plan) {
+        if (plan.logs.isEmpty() && plan.mergedAttempts.isEmpty()) return
         val difficultyByAngle = mutableMapOf<Pair<String, Int>, Double>()
         for (angle in plan.logs.map { it.angle }.distinct()) {
             val uuids = plan.logs.filter { it.angle == angle }.map { it.climbUuid }.distinct()
@@ -272,12 +432,10 @@ class ShinyWallSyncEngine @Inject constructor(
             }
         }
         personalBoardRepo.runInTransaction {
+            plan.mergedAttempts.forEach { personalBoardRepo.deleteBid(it) }
             for (log in plan.logs) {
                 val climb = plan.catalogue[log.climbUuid]
-                val rating = ratings[log.entry.routeId to log.angle]
-                val grade = log.entry.grade ?: rating?.grade
-                val difficulty = ShinyWallCatalogue.difficultyForGrade(grade)?.toLong()
-                val quality = ShinyWallCatalogue.qualityForAverageVote(rating?.punctuation)?.roundToLong()
+                val difficulty = ShinyWallCatalogue.difficultyForGrade(log.entry.grade)?.toLong()
                 val diffAvg = difficultyByAngle[ClimbUuid.normKey(log.climbUuid) to log.angle]
                 val send = log.send
                 if (send != null) {
@@ -288,10 +446,10 @@ class ShinyWallSyncEngine @Inject constructor(
                         isMirror = false,
                         attemptId = send.first,
                         bidCount = send.second,
-                        quality = quality,
+                        quality = null,
                         difficulty = difficulty,
                         isBenchmark = false,
-                        comment = rating?.comment,
+                        comment = null,
                         climbedAt = log.climbedAt,
                         synced = true,
                         climbName = climb?.name.orEmpty(),
@@ -300,7 +458,7 @@ class ShinyWallSyncEngine @Inject constructor(
                         framesCount = climb?.framesCount ?: 1L,
                         boardBrand = BRAND,
                         layoutId = log.variant.layoutId,
-                        externalId = EXTERNAL_ID_PREFIX + log.entry.docId,
+                        externalId = historyExternalId(log.entry.docId),
                     )
                 } else {
                     personalBoardRepo.insertBid(
@@ -308,15 +466,15 @@ class ShinyWallSyncEngine @Inject constructor(
                         climbUuid = log.climbUuid,
                         angle = log.angle.toLong(),
                         isMirror = false,
-                        bidCount = 1L,
-                        comment = rating?.comment,
+                        bidCount = log.attempts,
+                        comment = null,
                         climbedAt = log.climbedAt,
                         synced = true,
                         climbName = climb?.name.orEmpty(),
                         difficultyAverage = diffAvg,
                         boardBrand = BRAND,
                         layoutId = log.variant.layoutId,
-                        externalId = EXTERNAL_ID_PREFIX + log.entry.docId,
+                        externalId = historyExternalId(log.entry.docId),
                     )
                 }
             }
@@ -348,7 +506,7 @@ class ShinyWallSyncEngine @Inject constructor(
             lists[LIST_FAVORITES] = names.favorites to refs.map { it.routeId to null }
         }
         profile?.customLists?.forEach { (name, refs) ->
-            lists[LIST_PREFIX + name] = name to refs.map { it.routeId to null }
+            lists[listExternalId(name)] = name.take(MAX_LIST_NAME_LENGTH) to refs.map { it.routeId to null }
         }
         if (ownRoutes.isNotEmpty()) {
             lists[LIST_OWN_ROUTES] = names.ownRoutes to ownRoutes.map {
