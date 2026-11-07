@@ -63,6 +63,7 @@ import com.cruxcoach.domain.holdtypes.HoldDirection
 import com.cruxcoach.domain.holdtypes.HoldType
 import com.cruxcoach.domain.holdtypes.HoldTypeEntry
 import com.cruxcoach.domain.holdtypes.ReviewField
+import com.cruxcoach.domain.holdtypes.moonBoardGridName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -117,6 +118,15 @@ class HoldBoardViews @Inject constructor(private val boardRepository: BoardRepos
         return view
     }
 }
+
+/** How a hold is named on screen: generation and grid position on MoonBoard, the placement number elsewhere. */
+internal fun holdName(board: String, entry: HoldTypeEntry): String =
+    if (BoardBrand.fromWireOrNull(board) == BoardBrand.MOONBOARD) {
+        val generation = MoonBoardVariant.fromLayoutId(entry.layoutId.toLong())?.displayName ?: "#${entry.layoutId}"
+        "$generation · ${moonBoardGridName(entry.placement)}"
+    } else {
+        "#${entry.placement}"
+    }
 
 /** A close-up of the hold next to the whole board with the hold marked. */
 @Composable

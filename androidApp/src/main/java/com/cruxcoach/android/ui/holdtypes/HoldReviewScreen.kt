@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +69,9 @@ internal fun HoldReviewScreen(
     viewModel: HoldReviewViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val scroll = rememberScrollState()
+    // A new hold starts at the top, so its picture is in view before anything is answered.
+    LaunchedEffect(state.selectedBoard, state.stage, state.index) { scroll.scrollTo(0) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -84,7 +88,7 @@ internal fun HoldReviewScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -154,7 +158,7 @@ private fun StageTabs(state: HoldReviewUiState, onOpen: (ReviewStage) -> Unit) {
 private fun BlindRound(state: HoldReviewUiState, viewModel: HoldReviewViewModel) {
     val entry = state.entry ?: return
     Text(
-        stringResource(R.string.hold_review_progress, state.index + 1, state.referenceSize, entry.placement),
+        stringResource(R.string.hold_review_progress, state.index + 1, state.referenceSize, holdName(state.selectedBoard, entry)),
         fontWeight = FontWeight.SemiBold,
     )
     HoldViews(state.entry, state.board)
@@ -203,7 +207,7 @@ private fun DecideRound(state: HoldReviewUiState, viewModel: HoldReviewViewModel
     }
     val entry = state.entry ?: return
     Text(
-        stringResource(R.string.hold_review_progress, state.index + 1, state.disagreementHolds.size, entry.placement),
+        stringResource(R.string.hold_review_progress, state.index + 1, state.disagreementHolds.size, holdName(state.selectedBoard, entry)),
         fontWeight = FontWeight.SemiBold,
     )
     HoldViews(state.entry, state.board)

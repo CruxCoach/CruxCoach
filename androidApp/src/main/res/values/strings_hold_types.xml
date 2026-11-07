@@ -17,7 +17,7 @@
     <string name="hold_review_stage_blind">1 · Blind %1$d/%2$d</string>
     <string name="hold_review_stage_decide">2 · Decide %1$d</string>
     <string name="hold_review_stage_results">Results</string>
-    <string name="hold_review_progress">Hold %1$d of %2$d · #%3$d</string>
+    <string name="hold_review_progress">Hold %1$d of %2$d · %3$s</string>
     <string name="hold_review_blind_hint">Answer first. The computed label appears after you answer, and your answer is final then.</string>
     <string name="hold_review_decide_hint">Only the fields where you and the computed label differ. Who was right?</string>
     <string name="hold_review_decide_locked">Finish the blind round first.</string>
@@ -55,7 +55,8 @@
     <string name="hold_check_title">Hold types: check labels</string>
     <string name="hold_check_review_list">Review list (%1$d)</string>
     <string name="hold_check_all">All holds (%1$d)</string>
-    <string name="hold_check_progress">Hold %1$d of %2$d · layout %3$d · #%4$d</string>
+    <string name="hold_check_progress">Hold %1$d of %2$d · %3$s</string>
+    <string name="hold_check_mirrored">Copied from its mirror-image hold, left and right swapped</string>
     <string name="hold_check_proposed">Proposed label</string>
     <string name="hold_check_second">Second grip: %1$s</string>
     <string name="hold_check_size">Size: %1$s</string>
