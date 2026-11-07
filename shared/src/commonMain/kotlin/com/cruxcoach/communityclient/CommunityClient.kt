@@ -258,7 +258,8 @@ class CommunityClient(
 
     /**
      * A thread: its head and every reply, live. The head lookup runs next to the
-     * reply subscription, so a slow lookup never holds the replies back. Edits,
+     * reply subscription and gives up after a few seconds, so a lost head never holds
+     * the replies back for long. Edits,
      * deletions and reactions of a reply tag only that reply, so they come from a
      * lookup by the replies' ids and from the room's live aux stream.
      */
@@ -270,7 +271,8 @@ class CommunityClient(
         var rootLoaded = false
         var error: String? = null
         suspend fun update(change: () -> Boolean) = lock.withLock {
-            if (change() && repliesLoaded) {
+            // First show waits for the head too (it has its own short timeout), so it does not jump in later.
+            if (change() && repliesLoaded && rootLoaded) {
                 // Every row of the reply subscription tags the root, so all but the root are replies.
                 val all = buffer.messages()
                 send(ThreadView(all.firstOrNull { it.id == rootId }, all.filter { it.id != rootId }, loading = !rootLoaded, error = error))

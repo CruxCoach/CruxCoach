@@ -111,7 +111,7 @@ class CommunityServerIntegrationTest {
             // The joiner posts and replies in the owner's thread; the thread shows the reply.
             assertAccepted(joiner.sendMessage(streamId, "hello from CruxCoach"))
             val reply = joiner.sendMessage(streamId, "a reply", ThreadRef(ownerMessage.id, ownerMessage.id)).also { assertAccepted(it) }.event
-            val thread = withTimeout(30_000) { joiner.thread(streamId, ownerMessage.id).first { t -> t.replies.any { it.id == reply.id } } }
+            val thread = withTimeout(30_000) { joiner.thread(streamId, ownerMessage.id).first { t -> !t.loading && t.replies.any { it.id == reply.id } } }
             assertEquals(ownerMessage.id, thread.root?.id)
             val counted = withTimeout(30_000) { joiner.streamTimeline(streamId).first { s -> (s.threads[ownerMessage.id]?.replyCount ?: 0) >= 1 } }
             assertTrue(counted.messages.none { it.id == reply.id }, "replies stay out of the channel timeline")
