@@ -1,7 +1,6 @@
 package com.cruxcoach.android.ui.devcontact
 
 import android.os.Build
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,7 +30,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -59,9 +57,6 @@ fun BugReportScreen(
     viewModel: DevContactViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val sentMessage = stringResource(R.string.devcontact_bug_sent)
-    val sendFailedMessage = stringResource(R.string.devcontact_send_failed)
 
     var title by rememberSaveable { mutableStateOf(initialTitle) }
     var description by rememberSaveable { mutableStateOf(initialDescription) }
@@ -70,16 +65,14 @@ fun BugReportScreen(
     // Freeze the preview when the form opens; background attempts cannot replace it.
     val diagnostics = rememberSaveable { viewModel.uploadDiagnosticSnapshot() }
 
-    LaunchedEffect(state.sendSuccess) {
-        if (state.sendSuccess == true) {
-            Toast.makeText(context, sentMessage, Toast.LENGTH_SHORT).show()
-            viewModel.dismissSendResult()
-            onNavigateBack()
-        } else if (state.sendSuccess == false) {
-            Toast.makeText(context, sendFailedMessage, Toast.LENGTH_SHORT).show()
-            viewModel.dismissSendResult()
-        }
-    }
+    ReportSentHandler(
+        sendSuccess = state.sendSuccess,
+        sentTitle = stringResource(R.string.devcontact_bug_sent),
+        offersCommunity = viewModel::offersCommunityAfterReport,
+        hideForGood = viewModel::hideCommunityHintForGood,
+        onResultConsumed = viewModel::dismissSendResult,
+        onNavigateBack = onNavigateBack,
+    )
 
     Scaffold(
         topBar = {

@@ -2979,6 +2979,9 @@
     <string name="whatsnew_024_title">Neu in 0.2.4</string>
     <string name="whatsnew_024_body">• Neuere Kilter-Boards – Boards, die nur als „Kilter Board“ erscheinen, verbinden sich jetzt.\n• Kilter-Logbuch-Upload – funktioniert wieder, ohne Doppelte, und versucht es selbst erneut.\n• Board-Karte – klarere Markierungen, eine Liste der Orte im Ausschnitt, „Mein Standort“ und Hallen in deiner Nähe.\n• Griffe putzen – das Logbuch-Menü leuchtet die Griffe deiner heute geloggten Probleme zum Bürsten.</string>
     <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
+    <!-- 0.2.5: eine Zeile je Feature; die Release-Vorbereitung ergänzt die anderen und registriert den Dialog. -->
+    <string name="whatsnew_025_title">Neu in 0.2.5</string>
+    <string name="whatsnew_025_body">• Community – tritt der CruxCoach-Community auf Buzz bei, unter Einstellungen → Community.</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 
@@ -3009,6 +3012,19 @@
     <string name="settings_summary_support">Fehler melden, Funktionen vorschlagen und den Entwickler kontaktieren. Benachrichtigungen und automatische Absturzberichte einstellen.</string>
     <string name="settings_page_about">Über CruxCoach</string>
     <string name="settings_summary_about">Version, Lizenzen, Datenschutz und Quellcode oder die App teilen.</string>
+    <!-- Community auf Buzz (0.2.5): Der Link öffnet nur den Browser; es wird nichts gesendet. -->
+    <string name="settings_page_community">Community</string>
+    <string name="settings_summary_community">Tritt der CruxCoach-Community auf Buzz bei: Sprich mit den Entwicklern, teste neue Versionen zuerst und bestimme mit, was als Nächstes kommt.</string>
+    <string name="community_join_title">Werde Teil der CruxCoach-Community</string>
+    <string name="community_point_talk">Sprich mit den Entwicklern</string>
+    <string name="community_point_test">Teste neue Versionen zuerst</string>
+    <string name="community_point_shape">Bestimme mit, was als Nächstes kommt</string>
+    <string name="community_join_action">Auf Buzz beitreten</string>
+    <string name="community_join_note">Buzz ist eine eigene App mit eigenem Konto. Von CruxCoach wird nichts weitergegeben.</string>
+    <string name="community_report_hint">Verfolge deine Meldung und teste die Lösung früh: Tritt der Community auf Buzz bei</string>
+    <string name="community_report_hint_join">Beitreten</string>
+    <string name="community_report_hint_member">Bereits Mitglied</string>
+    <string name="link_open_failed">Keine App kann diesen Link öffnen.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Hell</string>
     <string name="settings_theme_dark">Dunkel</string>

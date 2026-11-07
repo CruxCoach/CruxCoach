@@ -31,6 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Countdown with beeps and a stopwatch; for Shiny Wall, Kilter, the other
   Aurora boards and MoonBoard (not Quantum). Without a connected board the
   game runs on the screen; games are never logged.
+- Community: Settings → Community explains the CruxCoach community on Buzz
+  (talk to the developers, test new builds first, help shape what comes next)
+  and "Join on Buzz" opens community.cruxcoach.org/join in the browser. After a
+  new bug report or feature request, the confirmation offers the same link;
+  "Already a member" hides it for good. Buzz is a separate app with its own
+  account: nothing from CruxCoach is shared and nothing is sent.
 - Training beyond the board. A "Today" hub and an "Exercises"
   library inside the new training area. The library has over 200 exercises written for
   climbers – fingers, pulling, pushing and antagonists, core, legs and hips,
@@ -491,6 +497,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first year. Below 10 kg a load rises by at most one step per training.
 - Comeback plan: a strength session starts from the last strength session's loads, no longer from the
   light tendon holds done earlier the same day (and the other way round).
+- "Privacy notice" and "Source code" in Settings → About no longer close the app on a
+  phone without a browser; a short message says that no app can open the link. The
+  community links do the same.
 
 ## [0.2.4] - 2026-10-25
 
