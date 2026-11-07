@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.settings
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -9,6 +10,8 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.data.BoardGymShares
 import com.cruxcoach.android.ui.board.ZoomableBoardPreview
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.data.BoardSizeCheckPoints
@@ -111,6 +115,9 @@ internal fun BoardSelectionDialog(
     prefill: BoardPickerPrefill? = null,
     mismatch: BoardConfigurationMismatch? = null,
     frequency: Map<Int, Long> = emptyMap(),
+    /** How common each board, Kilter size and MoonBoard version is in gyms. A rare pick
+     *  asks for a second look; null shows no shares. */
+    gymShares: BoardGymShares? = null,
     /** "Don't know your board? find it via your gym" — FEAT-007 gym
      *  search. Shown in the Kilter categories only; null hides it. */
     onFindViaGym: (() -> Unit)? = null,
@@ -222,7 +229,7 @@ internal fun BoardSelectionDialog(
     // the active size when it belongs to this variant's product, else the
     // variant default; null when no size tier is shown (pre-sync / single-size).
     var auroraSizeId by remember { mutableStateOf<Int?>(null) }
-    // Optional board-size check opened from below a size list. A size confirmed there
+    // Optional board-size check opened from above a size list. A size confirmed there
     // only selects it here; Confirm still saves, as for a tapped size.
     var sizeCheck by remember { mutableStateOf<BoardSizeCheckRequest?>(null) }
     LaunchedEffect(auroraVariant, auroraBrand, auroraBrandSizes) {
@@ -269,10 +276,13 @@ internal fun BoardSelectionDialog(
     } else {
         BoardConstants.KILTER_PRODUCT_ID
     }
-    val shownSizes = remember(category, productSizes, frequency) {
+    // Most common first, ranked once per product: counts that arrive later (the gym list after
+    // the bundled numbers) update the shares but must not move a size under the finger.
+    val sizeRank = remember(kilterProductId, isKilter) { frequency }
+    val shownSizes = remember(category, productSizes, sizeRank) {
         productSizes
             .filter { it.productId.toInt() == kilterProductId }
-            .sortedByDescending { frequency[it.id.toInt()] ?: 0L }
+            .sortedByDescending { sizeRank[it.id.toInt()] ?: 0L }
     }
     val kilterEmpty = isKilter && shownSizes.isEmpty()
 
@@ -381,30 +391,30 @@ internal fun BoardSelectionDialog(
                 val shinyWallLabel = BoardBrand.SHINYWALL.displayName
                 val chooseBoardLabel = stringResource(R.string.board_mismatch_choose_detail)
                 val boardOptions = buildList {
-                    add(kilterOriginalLabel to {
+                    add(BoardMenuOption(kilterOriginalLabel, gymShares?.board(BoardBrand.KILTER, BoardConstants.KILTER_PRODUCT_ID)) {
                         category = BoardCategory.KILTER_ORIGINAL; auroraBrand = null; kilterSelection = 0
                     })
-                    add(kilterHomewallLabel to {
+                    add(BoardMenuOption(kilterHomewallLabel, gymShares?.board(BoardBrand.KILTER, BoardConstants.KILTER_HOMEWALL_PRODUCT_ID)) {
                         category = BoardCategory.KILTER_HOMEWALL; auroraBrand = null; kilterSelection = 0
                     })
-                    add(moonBoardLabel to {
+                    add(BoardMenuOption(moonBoardLabel, gymShares?.board(BoardBrand.MOONBOARD)) {
                         category = BoardCategory.MOONBOARD
                         auroraBrand = null
                         mbVariant = MoonBoardVariant.MOONBOARD_2016
                     })
-                    add(quantumLabel to {
+                    add(BoardMenuOption(quantumLabel, gymShares?.board(BoardBrand.QUANTUM)) {
                         category = BoardCategory.QUANTUM
                         auroraBrand = null
                         quantumModel = QuantumBoardModel.XL
                     })
-                    add(shinyWallLabel to {
+                    add(BoardMenuOption(shinyWallLabel, gymShares?.board(BoardBrand.SHINYWALL)) {
                         category = BoardCategory.SHINYWALL
                         auroraBrand = null
                         shinyVariant = ShinyWallVariant.ST1
                     })
                     if (showAuroraBoards) {
                         AURORA_PICK_BRANDS.forEach { brand ->
-                            add(brand.displayName to { auroraBrand = brand })
+                            add(BoardMenuOption(brand.displayName, gymShares?.board(brand)) { auroraBrand = brand })
                         }
                     }
                 }
@@ -444,10 +454,17 @@ internal fun BoardSelectionDialog(
                         // stays on-screen and scrolls instead of overflowing.
                         modifier = Modifier.heightIn(max = 280.dp),
                     ) {
-                        boardOptions.forEach { (label, onSelect) ->
+                        boardOptions.forEach { option ->
                             DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = { onSelect(); boardMenuExpanded = false },
+                                text = {
+                                    Column {
+                                        Text(option.label)
+                                        // Brands only show their share: the name is on the board,
+                                        // so a rare brand is no reason to doubt the pick.
+                                        option.gymShare?.let { GymShareText(it, flagRare = false) }
+                                    }
+                                },
+                                onClick = { option.onSelect(); boardMenuExpanded = false },
                             )
                         }
                     }
@@ -493,20 +510,20 @@ internal fun BoardSelectionDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        auroraSizes.forEach { size ->
-                            BoardImageChoiceRow(
-                                label = BoardConstants.auroraSizeLabel(auroraBrand!!, size),
-                                selected = auroraSizeId == size.id.toInt(),
-                                onSelect = { auroraSizeId = size.id.toInt() },
-                                brand = auroraBrand!!, sizeId = size.id, layoutId = auroraVariant?.layoutId?.toLong(),
-                            )
-                        }
                         BoardSizeCheckLink {
                             sizeCheck = BoardSizeCheckRequest(
                                 auroraBrand!!,
                                 auroraSizeId?.takeIf { id -> auroraSizes.any { it.id.toInt() == id } }
                                     ?: auroraSizes.first().id.toInt(),
                                 auroraVariant?.layoutId,
+                            )
+                        }
+                        auroraSizes.forEach { size ->
+                            BoardImageChoiceRow(
+                                label = BoardConstants.auroraSizeLabel(auroraBrand!!, size),
+                                selected = auroraSizeId == size.id.toInt(),
+                                onSelect = { auroraSizeId = size.id.toInt() },
+                                brand = auroraBrand!!, sizeId = size.id, layoutId = auroraVariant?.layoutId?.toLong(),
                             )
                         }
                     }
@@ -544,20 +561,6 @@ internal fun BoardSelectionDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        shownSizes.forEach { size ->
-                            BoardImageChoiceRow(
-                                label = BoardConstants.sizeLabel(size.id, size.name),
-                                selected = kilterSelection == size.id.toInt(),
-                                onSelect = { kilterSelection = size.id.toInt() },
-                                brand = BoardBrand.KILTER, sizeId = size.id,
-                                layoutId = if (category == BoardCategory.KILTER_HOMEWALL) 8L else 1L,
-                            )
-                        }
-                        Text(
-                            stringResource(R.string.board_model_dialog_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                         if (BoardSizeCheckPoints.offered(BoardBrand.KILTER, shownSizes.size)) {
                             BoardSizeCheckLink {
                                 sizeCheck = BoardSizeCheckRequest(
@@ -568,6 +571,22 @@ internal fun BoardSelectionDialog(
                                 )
                             }
                         }
+                        shownSizes.forEach { size ->
+                            BoardImageChoiceRow(
+                                label = BoardConstants.sizeLabel(size.id, size.name),
+                                selected = kilterSelection == size.id.toInt(),
+                                onSelect = { kilterSelection = size.id.toInt() },
+                                brand = BoardBrand.KILTER, sizeId = size.id,
+                                layoutId = if (category == BoardCategory.KILTER_HOMEWALL) 8L else 1L,
+                                gymShare = gymShares?.kilterSize(size.id.toInt()),
+                            )
+                        }
+                        gymShares?.kilterSize(kilterSelection)?.let { RareBoardHint(it) }
+                        Text(
+                            stringResource(R.string.board_model_dialog_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 } else if (isQuantum) {
                     Text(
@@ -624,7 +643,13 @@ internal fun BoardSelectionDialog(
                             selected = mbVariant == variant,
                             onSelect = { mbVariant = variant },
                             brand = BoardBrand.MOONBOARD, sizeId = 0L, layoutId = variant.layoutId,
+                            gymShare = gymShares?.moonBoard(variant.layoutId),
+                            // Few gyms list the newest versions yet: rare may only mean new.
+                            flagRareShare = false,
                         )
+                    }
+                    mbVariant?.let { gymShares?.moonBoard(it.layoutId) }?.let {
+                        RareBoardHint(it, R.string.board_gym_share_rare_version_hint)
                     }
                 } else {
                     Text(
@@ -752,6 +777,8 @@ internal fun BoardImageChoiceRow(
     brand: BoardBrand,
     sizeId: Long,
     layoutId: Long?,
+    gymShare: Double? = null,
+    flagRareShare: Boolean = true,
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -782,10 +809,47 @@ internal fun BoardImageChoiceRow(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                gymShare?.let { GymShareText(it, flagRare = flagRareShare) }
                 RadioButton(selected = selected, onClick = null,
                     colors = RadioButtonDefaults.colors(selectedColor = OrangeAccent))
             }
         }
+    }
+}
+
+private class BoardMenuOption(val label: String, val gymShare: Double?, val onSelect: () -> Unit)
+
+/** "In gyms: 82 %", or "Rare in gyms: < 1 %" in the accent colour. */
+@Composable
+private fun GymShareText(share: Double, flagRare: Boolean = true) {
+    val rare = flagRare && BoardGymShares.isRare(share)
+    val percent = java.text.NumberFormat.getPercentInstance(LocalConfiguration.current.locales[0])
+    // Under half a percent rounds to "0 %", which reads as "none": say "< 1 %" instead.
+    val value = if (share < 0.005) "< " + percent.format(0.01) else percent.format(share)
+    Text(
+        stringResource(if (rare) R.string.board_gym_share_rare else R.string.board_gym_share, value),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (rare) OrangeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+        fontWeight = if (rare) FontWeight.SemiBold else null,
+        modifier = Modifier.testTag("board_gym_share"),
+    )
+}
+
+/** Second look for a rare pick: few gyms have it, so a wrong choice is more likely than a rare board. */
+@Composable
+private fun RareBoardHint(share: Double, @StringRes text: Int = R.string.board_gym_share_rare_hint) {
+    if (!BoardGymShares.isRare(share)) return
+    Row(
+        Modifier.fillMaxWidth().testTag("board_gym_share_rare_hint"),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(Icons.Outlined.Info, contentDescription = null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            stringResource(text),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 

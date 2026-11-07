@@ -41,15 +41,22 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -159,38 +166,51 @@ internal fun BoardSizeCheckContent(
         when (state.step) {
             BoardSizeCheckStep.LOADING -> LinearProgressIndicator(Modifier.fillMaxWidth())
             BoardSizeCheckStep.NO_DATA -> Text(stringResource(R.string.board_size_check_no_data))
-            BoardSizeCheckStep.ASK -> when {
-                otherBoardConnected -> ConnectPrompt(
-                    stringResource(R.string.board_size_check_other_board, brand.displayName), onConnect,
-                )
-                !connected -> ConnectPrompt(stringResource(R.string.board_size_check_connect_hint), onConnect)
-                else -> {
+            BoardSizeCheckStep.ASK -> {
+                val lookAlikeOf = state.startsWithLookAlike
+                if (lookAlikeOf != null && size != null) {
                     Text(
-                        stringResource(R.string.board_size_check_question),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        stringResource(
+                            R.string.board_size_check_look_alike_first,
+                            boardSizeCheckLabel(brand, lookAlikeOf),
+                            boardSizeCheckLabel(brand, size),
+                        ),
+                        modifier = Modifier.testTag("board_size_check_look_alike"),
                     )
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(
-                            onClick = onYes,
-                            enabled = ready && state.lit && !state.busy,
-                            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                            modifier = Modifier.weight(1f).testTag("board_size_check_yes"),
-                        ) { Text(stringResource(R.string.board_size_check_yes)) }
-                        OutlinedButton(
-                            onClick = onNo,
-                            enabled = !state.busy,
-                            modifier = Modifier.weight(1f).testTag("board_size_check_no"),
-                        ) { Text(stringResource(R.string.board_size_check_no)) }
-                    }
-                    TextButton(
-                        onClick = onLight,
-                        enabled = ready && !state.busy,
-                        modifier = Modifier.testTag("board_size_check_relight"),
-                    ) { Text(stringResource(R.string.board_size_check_relight)) }
-                    if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    if (state.sendFailed) {
-                        Text(stringResource(R.string.board_size_check_send_failed), color = MaterialTheme.colorScheme.error)
+                }
+                when {
+                    otherBoardConnected -> ConnectPrompt(
+                        stringResource(R.string.board_size_check_other_board, brand.displayName), onConnect,
+                    )
+                    !connected -> ConnectPrompt(stringResource(R.string.board_size_check_connect_hint), onConnect)
+                    else -> {
+                        Text(
+                            stringResource(R.string.board_size_check_question),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(
+                                onClick = onYes,
+                                enabled = ready && state.lit && !state.busy && state.canConfirm,
+                                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                                modifier = Modifier.weight(1f).testTag("board_size_check_yes"),
+                            ) { Text(stringResource(R.string.board_size_check_yes)) }
+                            OutlinedButton(
+                                onClick = onNo,
+                                enabled = !state.busy,
+                                modifier = Modifier.weight(1f).testTag("board_size_check_no"),
+                            ) { Text(stringResource(R.string.board_size_check_no)) }
+                        }
+                        TextButton(
+                            onClick = onLight,
+                            enabled = ready && !state.busy,
+                            modifier = Modifier.testTag("board_size_check_relight"),
+                        ) { Text(stringResource(R.string.board_size_check_relight)) }
+                        if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        if (state.sendFailed) {
+                            Text(stringResource(R.string.board_size_check_send_failed), color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }
@@ -212,8 +232,9 @@ internal fun BoardSizeCheckContent(
                 val label = size?.let { boardSizeCheckLabel(brand, it) }.orEmpty()
                 Text(
                     when {
-                        state.confirmedChange && applyOnConfirm -> stringResource(R.string.board_size_check_saved, label)
-                        state.confirmedChange -> stringResource(R.string.board_size_check_selected, label)
+                        // In the picker nothing is saved before Confirm, also not the size it had selected.
+                        !applyOnConfirm -> stringResource(R.string.board_size_check_selected, label)
+                        state.confirmedChange -> stringResource(R.string.board_size_check_saved, label)
                         else -> stringResource(R.string.board_size_check_fits, label)
                     },
                     style = MaterialTheme.typography.bodyLarge,
@@ -274,29 +295,48 @@ private fun BoardSizeCheckImage(
     val placeholder = MaterialTheme.colorScheme.surfaceVariant
     val description = stringResource(R.string.board_size_check_image_cd, boardSizeCheckLabel(brand, boardSize))
     Box(
-        Modifier.fillMaxWidth().aspectRatio(width / height).clip(RoundedCornerShape(12.dp))
+        Modifier.fillMaxWidth().aspectRatio(width / height)
             .semantics { contentDescription = description }
             .testTag("board_size_check_image"),
     ) {
         Canvas(Modifier.matchParentSize()) {
-            val target = IntSize(size.width.roundToInt(), size.height.roundToInt())
-            if (layers.isNullOrEmpty()) drawRect(placeholder) else layers.forEach { drawImage(it, dstSize = target) }
-            val scaleX = size.width / width
-            val scaleY = size.height / height
-            val radius = maxOf(minOf(width, height) / 36f * minOf(scaleX, scaleY), 6.dp.toPx())
+            val stroke = 3.dp.toPx()
+            // Holds sit right at the edge of the picture: inset it by a ring so the corner
+            // rings show whole instead of being cut by the frame.
+            val fullScale = minOf(size.width / width, size.height / height)
+            val inset = ringRadius(width, height, fullScale) + stroke
+            val scale = minOf((size.width - 2 * inset) / width, (size.height - 2 * inset) / height)
+                .coerceAtLeast(0.01f)
+            val picture = Size(width * scale, height * scale)
+            val origin = Offset((size.width - picture.width) / 2f, (size.height - picture.height) / 2f)
+            val frame = Path().apply { addRoundRect(RoundRect(Rect(origin, picture), CornerRadius(12.dp.toPx()))) }
+            clipPath(frame) {
+                if (layers.isNullOrEmpty()) {
+                    drawRect(placeholder, origin, picture)
+                } else {
+                    val target = IntSize(picture.width.roundToInt(), picture.height.roundToInt())
+                    val at = IntOffset(origin.x.roundToInt(), origin.y.roundToInt())
+                    layers.forEach { drawImage(it, dstOffset = at, dstSize = target) }
+                }
+            }
+            val radius = ringRadius(width, height, scale)
             points.forEach { point ->
                 val centre = Offset(
-                    (point.x - boardSize.edgeLeft) * scaleX,
-                    size.height - (point.y - boardSize.edgeBottom) * scaleY,
+                    origin.x + (point.x - boardSize.edgeLeft) * scale,
+                    origin.y + picture.height - (point.y - boardSize.edgeBottom) * scale,
                 )
                 drawCircle(Color.White.copy(alpha = 0.3f), radius, centre)
-                drawCircle(OrangeAccent, radius, centre, style = Stroke(width = 3.dp.toPx()))
+                drawCircle(OrangeAccent, radius, centre, style = Stroke(width = stroke))
             }
         }
     }
 }
 
-/** Quiet entry below a size list: "Not sure which size? Check on your board". */
+/** Ring around a marked hold: about one hold spacing wide, never smaller than 6 dp. */
+private fun DrawScope.ringRadius(width: Float, height: Float, scale: Float): Float =
+    maxOf(minOf(width, height) / 36f * scale, 6.dp.toPx())
+
+/** Quiet entry right above a size list: "Not sure which size? Check on your board". */
 @Composable
 internal fun BoardSizeCheckLink(onClick: () -> Unit) {
     TextButton(

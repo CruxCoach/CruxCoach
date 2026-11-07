@@ -45,9 +45,16 @@ class BoardSizeCheckViewModel @Inject constructor(
     val connectionState: StateFlow<ConnectionState> = connection.connectionState
     val connectedBrand: StateFlow<BoardBrand?> = connection.connectedBoardBrand
 
+    private val link = BoardSizeCheckConnection(connection)
     private val session = BoardSizeCheckSession(Source())
     val state: StateFlow<BoardSizeCheckState> = session.state
     private val lock = Mutex()
+
+    init {
+        viewModelScope.launch {
+            connection.connectionState.collect { if (it == ConnectionState.DISCONNECTED) serial { session.boardGone() } }
+        }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val savedBoard: StateFlow<SavedBoardForCheck?> = combine(
@@ -66,7 +73,11 @@ class BoardSizeCheckViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
 
-    fun open(brand: BoardBrand, sizeId: Int, layoutHint: Int?) = serial { session.open(brand, sizeId, layoutHint) }
+    /** Starts a check; the board link stays up until [close]. */
+    fun open(brand: BoardBrand, sizeId: Int, layoutHint: Int?) = serial {
+        link.hold()
+        session.open(brand, sizeId, layoutHint)
+    }
 
     fun light() = serial { session.light() }
 
@@ -81,9 +92,21 @@ class BoardSizeCheckViewModel @Inject constructor(
         session.confirm(applyChange = apply)?.let(onConfirmed)
     }
 
-    /** Clears what the check lit. Runs to the end even when the screen goes away. */
+    /** Clears what the check lit and lets the link go. Runs to the end even when the screen goes away. */
     fun close() {
-        viewModelScope.launch { withContext(NonCancellable) { lock.withLock { session.close() } } }
+        viewModelScope.launch {
+            withContext(NonCancellable) {
+                lock.withLock {
+                    session.close()
+                    link.release()
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        // A close that never got to run must not keep the board connected for good.
+        link.release()
     }
 
     private fun serial(block: suspend () -> Unit) {
@@ -123,22 +146,19 @@ class BoardSizeCheckViewModel @Inject constructor(
                 }
             }
 
-        override suspend fun points(brand: BoardBrand, size: BoardSize, layoutId: Int?): List<BoardSizeCheckPoint> =
+        override suspend fun holds(brand: BoardBrand, size: BoardSize, layoutId: Int?): List<BoardSizeCheckPoint> =
             withContext(Dispatchers.IO) {
                 val wire = brand.wireValue
                 val placements = layoutId?.let { boardRepository.getPlacementsForLayout(size.id.toInt(), it, wire) }
                     ?: boardRepository.getAllPlacements(wire)
-                BoardSizeCheckPoints.pick(placements, boardRepository.getPlacementLedMap(size.id.toInt(), wire))
+                BoardSizeCheckPoints.candidates(placements, boardRepository.getPlacementLedMap(size.id.toInt(), wire))
             }
 
-        override fun ready(brand: BoardBrand): Boolean =
-            connection.connectionState.value == ConnectionState.CONNECTED &&
-                connection.connectedBoardBrand.value == brand
+        override fun ready(brand: BoardBrand): Boolean = link.ready(brand)
 
-        override suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean =
-            connection.sendRawLeds(leds, expectedBrand = brand)
+        override suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean = link.light(brand, leds)
 
-        override suspend fun clear(brand: BoardBrand): Boolean = connection.clearBoard(expectedBrand = brand)
+        override suspend fun clear(brand: BoardBrand): Boolean = link.clear(brand)
 
         override suspend fun apply(brand: BoardBrand, layoutId: Int?, sizeId: Int) {
             val layout = layoutId ?: userPreferences.boardLayoutId.first()
