@@ -249,6 +249,50 @@ class ExerciseFamiliarityTest {
     }
 
     @Test
+    fun aChangeByHandAfterDontKnowItIsAskedAbout() {
+        val day = "2026-10-05"
+        var t = 1_000L
+        fun ev(kind: SuggestionEventKind, slugs: List<String>, focus: String? = "PULL_PUSH", workout: String? = null,
+               feedback: SuggestionFeedback? = null, value: Double? = null) =
+            SuggestionEvent("e$t", day, t++, kind, focus, slugs, feedback, workout, value)
+        fun dontKnow() = ev(SuggestionEventKind.FEEDBACK, listOf("core.front_plank", "core.side_plank"), focus = PreferenceLearning.DONT_KNOW)
+        fun started(vararg slugs: String) = ev(SuggestionEventKind.STARTED, listOf("pull.table_row", *slugs), workout = "w")
+        val plankTo = { chosen: String? -> listOf(PreferenceLearning.Change("core.front_plank", chosen)) }
+
+        // "Kenne ich nicht" alone asks nothing: the coach picked the side plank.
+        assertEquals(emptyList(), PreferenceLearning.changes(listOf(dontKnow(), started("core.side_plank")), "w"))
+        // Then the athlete swaps the coach's pick by hand on the card: asked, from the suggested exercise.
+        assertEquals(plankTo("core.dead_bug"), PreferenceLearning.changes(listOf(
+            dontKnow(), ev(SuggestionEventKind.SWAPPED, listOf("core.side_plank", "core.dead_bug")), started("core.dead_bug"),
+        ), "w"))
+        // … or leaves it out on the card.
+        assertEquals(plankTo(null), PreferenceLearning.changes(listOf(
+            dontKnow(),
+            ev(SuggestionEventKind.NEXT, listOf("core.side_plank"), feedback = SuggestionFeedback.DISLIKE_EXERCISE, value = PreferenceLearning.LEFT_OUT),
+            started(),
+        ), "w"))
+        // … or swaps it during the training.
+        assertEquals(plankTo("core.dead_bug"), PreferenceLearning.changes(listOf(
+            dontKnow(), started("core.side_plank"),
+            ev(SuggestionEventKind.SWAPPED, listOf("core.side_plank", "core.dead_bug"), focus = null, workout = "w"),
+        ), "w"))
+        // … or skips or removes it during the training.
+        assertEquals(plankTo(null), PreferenceLearning.changes(listOf(
+            dontKnow(), started("core.side_plank"), ev(SuggestionEventKind.SKIPPED_SET, listOf("core.side_plank"), focus = null, workout = "w"),
+        ), "w"))
+        assertEquals(plankTo(null), PreferenceLearning.changes(listOf(
+            dontKnow(), started("core.side_plank"),
+            ev(SuggestionEventKind.FEEDBACK, listOf("core.side_plank"), focus = PreferenceLearning.REMOVED, workout = "w"),
+        ), "w"))
+        // A swap back to the suggested exercise cancels out and asks nothing.
+        assertEquals(emptyList(), PreferenceLearning.changes(listOf(
+            dontKnow(), started("core.side_plank"),
+            ev(SuggestionEventKind.SWAPPED, listOf("core.side_plank", "core.dead_bug"), focus = null, workout = "w"),
+            ev(SuggestionEventKind.SWAPPED, listOf("core.dead_bug", "core.front_plank"), focus = null, workout = "w"),
+        ), "w"))
+    }
+
+    @Test
     fun dontKnowItStaysWithinTheCoachsRules() {
         // An intermediate athlete (level 2 without a grade): nothing above the level, nothing from another pick's chain,
         // nothing made for the comeback plan only.

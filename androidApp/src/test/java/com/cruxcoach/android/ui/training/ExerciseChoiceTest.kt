@@ -124,6 +124,28 @@ class ExerciseChoiceTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `a swap by hand after don't know it is asked about again`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        fun items() = vm.state.value.suggestion!!.routine.items
+        val first = items().first { !it.warmup && service.catalog.fallbackFor(it.slug).familiarity == Familiarity.BASIC }
+        val x = vm.alternatives(first.slug).first { it.def.familiarity != Familiarity.BASIC }.def.slug
+        vm.swapExercise(first.slug, x)
+        until { x in vm.state.value.newToYou }
+        val to = assertNotNull(vm.familiarSwap(x))
+        vm.dontKnowExercise(x, to.slug)
+        until { items().any { it.slug == to.slug } && items().none { it.slug == x } }
+        // Then the athlete swaps the coach's pick by hand: a choice of their own, so the training asks about it.
+        val y = vm.alternatives(to.slug).first { it.def.slug != first.slug && it.def.slug != x }.def.slug
+        vm.swapExercise(to.slug, y)
+        until { items().any { it.slug == y } }
+        vm.startSuggestion("Training")
+        until { repo.openWorkout() != null }
+        assertEquals(listOf(PreferenceLearning.Change(first.slug, y)), service.keepQuestion(repo.openWorkout()!!))
+    }
+
+    @Test
     fun `exercise choice is chosen in the training settings and changes the suggestion`() {
         val vm = loaded(AthleteSettingsViewModel(service))
         render { AthleteSettingsScreen({}, viewModel = vm, section = SettingsSection.PROFILE) }
