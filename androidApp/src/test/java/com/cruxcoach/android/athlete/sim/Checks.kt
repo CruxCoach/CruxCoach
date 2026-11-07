@@ -5,6 +5,7 @@ import com.cruxcoach.athlete.catalog.ExerciseCatalog
 import com.cruxcoach.athlete.catalog.ExerciseCategoryV2
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
+import com.cruxcoach.athlete.catalog.Familiarity
 import com.cruxcoach.athlete.catalog.LoadDomain
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.BlockPhase
@@ -48,6 +49,15 @@ enum class Check(val group: String, val title: String) {
     DAYS_LEFT("Plan", "Recovery suggested although training days are left"),
     VARIETY("Plan", "Too little variety"),
     STACKING("Stacking", "Reductions stacked into a pointless session"),
+    SPECIAL_FOR_BEGINNER("Choice", "Special exercise for a beginner who does not know it (weeks 1–4)"),
+    FEW_FAMILIAR("Choice", "Too few well-known exercises for a beginner (weeks 1–4) or with “Mostly classics”"),
+    NEW_PER_SESSION("Choice", "More new exercises in a training than allowed"),
+    UNUSUAL_FOR_ADVANCED("Choice", "Too few Common or Special exercises for an advanced athlete"),
+    OPEN_WITHOUT_SPECIAL("Choice", "“Open to unusual exercises” brought too few Special exercises"),
+    SPECIAL_WITH_CLASSICS("Choice", "Special exercise with “Mostly classics” that the athlete does not know"),
+    DONT_KNOW_UNFAMILIAR("Choice", "“Don't know it” gave something unknown, or counted against the exercise"),
+    DONT_KNOW_BACK("Choice", "An exercise marked “Don't know it” came back as a new pick within 14 days"),
+    NEW_FORCED("Info", "More new exercises because nothing known fitted the slot (reported, not a fault)"),
 }
 
 object Checks {
@@ -67,6 +77,25 @@ object Checks {
     const val COMEBACK_STRENGTH_GAP_H = 46
     /** A stage that stayed calm this long should have offered the next one (a stage is a week or two). */
     const val COMEBACK_STUCK_DAYS = 21
+    /** Issue #68: a beginner's first weeks, in which well-known exercises come first. */
+    const val BEGINNER_WEEKS = 4
+    /** Share of a beginner's main exercises in those weeks that are Basic or already known to them. */
+    const val BEGINNER_FAMILIAR_SHARE = 0.7
+    /** With "Mostly classics": the same share outside the finger work, for the whole run. */
+    const val CLASSICS_FAMILIAR_SHARE = 0.8
+    /** An advanced athlete still gets variety: this share of their main exercises is Common or Special. */
+    const val ADVANCED_UNUSUAL_SHARE = 0.3
+    /** "Open to unusual exercises": a Special exercise in at least this share of all two-week stretches. */
+    const val OPEN_SPECIAL_STRETCHES = 0.5
+    /** "Don't know it" gives something Basic or known in at least this share of the taps. */
+    const val DONT_KNOW_FAMILIAR_SHARE = 0.95
+    /** Logged in this many trainings, an exercise is known to the athlete. */
+    const val KNOWN_AFTER_TRAININGS = 2
+
+    /** The comeback stage from which training outside the plan may load the injured spot again (the app's own constants). */
+    fun comebackOpenStage(region: com.cruxcoach.athlete.model.InjuryRegion): Int =
+        if (region == com.cruxcoach.athlete.model.InjuryRegion.FINGER) com.cruxcoach.athlete.logic.InjuryAdvisor.FINGER_OPEN_STAGE
+        else com.cruxcoach.athlete.logic.InjuryAdvisor.REGION_OPEN_STAGE
 
     fun isMaxFinger(def: ExerciseDefinition): Boolean =
         (LoadDomain.FINGER in def.domains && (def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL) &&
@@ -111,7 +140,11 @@ object Checks {
             }
 
             d.activeInjuries.filter { it.severity >= 4 }.forEach { injury ->
-                val hit = defs.filter { def -> injury.region.bodyRegions.any { it in def.contraindications } ||
+                // From its open stage on, a running CruxCoach comeback plan lets training outside the plan load the injured
+                // spot again, marked (owner 2026-10-20): only the contraindication is allowed then, climbing while it is paused never.
+                val plan = injury.activePlan?.takeIf { it.source == com.cruxcoach.athlete.model.PlanSource.CRUXCOACH }
+                val open = plan != null && plan.stage >= comebackOpenStage(injury.region)
+                val hit = defs.filter { def -> (!open && injury.region.bodyRegions.any { it in def.contraindications }) ||
                     (injury.region.domains.any { it in def.domains } && injury.climbingPaused && def.kind == ExerciseKind.CLIMB) }
                 if (hit.isNotEmpty()) flags += Flag(Check.CONTRAINDICATED, d.day,
                     "${hit.joinToString { it.slug }} loads the open ${injury.region.name.lowercase()} injury")
@@ -266,7 +299,108 @@ object Checks {
             }
         }
         comeback(r, flags)
+        familiarity(r, flags)
         return flags
+    }
+
+    /**
+     * Well-known exercises first (issue #68), from the catalogue's levels and what the athlete logged: an exercise is
+     * known after [KNOWN_AFTER_TRAININGS] trainings with it, Basic ones are known to everyone. The coach's own picks are
+     * judged, before the athlete's "Don't know it" swaps.
+     */
+    private fun familiarity(r: SimRun, flags: MutableList<Flag>) {
+        val catalog = r.catalog
+        val p = r.persona
+        val choice = p.coach.exerciseChoice
+        val days = r.days.filter { !it.away }
+        // Trainings per exercise before each day.
+        val trainings = mutableMapOf<String, Int>()
+        val knownOn = mutableMapOf<Int, Set<String>>()
+        r.days.forEach { d ->
+            knownOn[d.day] = trainings.filterValues { it >= KNOWN_AFTER_TRAININGS }.keys.toSet()
+            if (d.trained) d.sets.map { it.slug }.distinct().forEach { trainings.merge(it, 1, Int::plus) }
+        }
+        fun known(day: Int, def: ExerciseDefinition) = def.familiarity == Familiarity.BASIC || def.slug in knownOn[day].orEmpty() || def.custom
+        fun coachItems(d: DayTrace) = d.suggestion?.items.orEmpty().map { item -> d.dontKnow.firstOrNull { it.to == item.slug }?.let { item.copy(slug = it.from) } ?: item }
+        fun main(d: DayTrace) = coachItems(d).filter { !it.warmup }.mapNotNull { catalog[it.slug] }
+            .filter { it.category != ExerciseCategoryV2.MOBILITY && it.category != ExerciseCategoryV2.WARMUP }
+        fun counted(d: DayTrace) = coachItems(d).mapNotNull { item -> catalog[item.slug]?.let { item to it } }.filter { (item, def) ->
+            !known(d.day, def) && (def.familiarity == Familiarity.SPECIAL ||
+                (!item.warmup && def.category != ExerciseCategoryV2.MOBILITY && def.category != ExerciseCategoryV2.WARMUP))
+        }.map { it.second }
+        val beginner = p.level == Level.BEGINNER
+        val early = days.filter { it.day < BEGINNER_WEEKS * 7 && it.suggestion != null && it.suggestion.focus != SuggestionFocus.REST }
+
+        if (beginner || choice == com.cruxcoach.athlete.model.ExerciseChoice.CLASSICS) {
+            val judged = if (choice == com.cruxcoach.athlete.model.ExerciseChoice.CLASSICS) days.filter { it.suggestion != null } else early
+            judged.forEach { d ->
+                val special = main(d).filter { it.familiarity == Familiarity.SPECIAL && !known(d.day, it) }
+                if (special.isNotEmpty()) flags += Flag(if (beginner) Check.SPECIAL_FOR_BEGINNER else Check.SPECIAL_WITH_CLASSICS, d.day,
+                    "${special.joinToString { it.slug }} (${d.suggestion!!.focus.name.lowercase()})")
+            }
+            val share = if (beginner) BEGINNER_FAMILIAR_SHARE else CLASSICS_FAMILIAR_SHARE
+            val pairs = judged.flatMap { d -> main(d).filter { beginner || it.category != ExerciseCategoryV2.FINGER }.map { d to it } }
+            if (pairs.isNotEmpty()) {
+                val familiar = pairs.count { (d, def) -> known(d.day, def) }.toDouble() / pairs.size
+                if (familiar < share) flags += Flag(Check.FEW_FAMILIAR, judged.last().day,
+                    "%.0f %% of %d main exercises Basic or known (at least %.0f %%); not: %s".format(familiar * 100, pairs.size, share * 100,
+                        pairs.filter { (d, def) -> !known(d.day, def) }.map { it.second.slug }.groupingBy { it }.eachCount()
+                            .entries.sortedByDescending { it.value }.take(4).joinToString { "${it.key} ×${it.value}" }))
+            }
+        }
+
+        // At most one new exercise per training (two with "Open"); more only where nothing known fitted the slot.
+        val limit = if (choice == com.cruxcoach.athlete.model.ExerciseChoice.OPEN) 2 else 1
+        days.filter { it.trained && it.suggestion != null && !it.suggestion.board }.forEach { d ->
+            val new = counted(d)
+            if (new.size <= limit) return@forEach
+            val owned = d.equipmentToday ?: p.equipment
+            val inSession = coachItems(d).map { it.slug }.toSet()
+            // The catalogue's progression chains: one chain per training.
+            val chains = inSession.flatMap { s -> catalog.chainOf(s).map { it.slug } }.toSet()
+            // Forced: nothing Basic or known of the same kind fits the place, outside the training's chains, and at
+            // most one difficulty step easier than the new pick (which stands for the athlete's level).
+            val forced = new.drop(limit).all { def ->
+                catalog.all.none { o -> o.category == def.category && o.slug !in inSession && o.slug !in chains && known(d.day, o) &&
+                    o.difficulty >= def.difficulty - 1 && !o.needsClimbingWall && ExerciseDefinition.TAG_COMEBACK !in o.tags &&
+                    o.equipment.all { EquipmentV2.satisfied(it, owned) } && (LoadDomain.FINGER in def.domains || LoadDomain.FINGER !in o.domains) }
+            }
+            flags += Flag(if (forced) Check.NEW_FORCED else Check.NEW_PER_SESSION, d.day,
+                "${new.size} new (${new.joinToString { "${it.slug} ${it.familiarity.name.lowercase()}" }}), allowed $limit")
+        }
+
+        if (p.level == Level.ADVANCED && choice != com.cruxcoach.athlete.model.ExerciseChoice.CLASSICS) {
+            val all = days.flatMap { main(it) }
+            if (all.isNotEmpty()) {
+                val unusual = all.count { it.familiarity != Familiarity.BASIC }.toDouble() / all.size
+                if (unusual < ADVANCED_UNUSUAL_SHARE) flags += Flag(Check.UNUSUAL_FOR_ADVANCED, days.last().day,
+                    "%.0f %% of %d main exercises Common or Special (at least %.0f %%)".format(unusual * 100, all.size, ADVANCED_UNUSUAL_SHARE * 100))
+            }
+        }
+
+        if (choice == com.cruxcoach.athlete.model.ExerciseChoice.OPEN) {
+            val stretches = days.groupBy { it.day / 14 }.values.filter { it.size == 14 }
+            val withSpecial = stretches.count { st -> st.any { d -> main(d).any { it.familiarity == Familiarity.SPECIAL } } }
+            if (stretches.isNotEmpty() && withSpecial < stretches.size * OPEN_SPECIAL_STRETCHES) flags += Flag(Check.OPEN_WITHOUT_SPECIAL,
+                days.last().day, "a Special exercise in $withSpecial of ${stretches.size} two-week stretches")
+        }
+
+        // "Don't know it": something known instead, nothing learned against the exercise, and it stays away for 14 days.
+        val taps = days.flatMap { d -> d.dontKnow.map { d to it } }
+        if (taps.isNotEmpty()) {
+            val familiar = taps.count { (d, t) -> catalog[t.to]?.let { known(d.day, it) } == true }
+            if (familiar < taps.size * DONT_KNOW_FAMILIAR_SHARE) flags += Flag(Check.DONT_KNOW_UNFAMILIAR, taps.last().first.day,
+                "$familiar of ${taps.size} replacements Basic or known: " +
+                    taps.filter { (d, t) -> catalog[t.to]?.let { known(d.day, it) } != true }.joinToString { "${it.second.from} → ${it.second.to}" })
+            taps.filter { (_, t) -> kotlin.math.abs(t.affinityChange) > 1e-9 || t.resting }.forEach { (d, t) ->
+                flags += Flag(Check.DONT_KNOW_UNFAMILIAR, d.day, "${t.from}: preference changed by %.2f%s".format(t.affinityChange, if (t.resting) ", rests" else ""))
+            }
+            taps.forEach { (d, t) ->
+                val back = days.firstOrNull { o -> o.day in (d.day + 1) until (d.day + 14) &&
+                    coachItems(o).any { it.slug == t.from } && catalog[t.from]?.let { known(o.day, it) } != true }
+                if (back != null) flags += Flag(Check.DONT_KNOW_BACK, back.day, "${t.from} again ${back.day - d.day} day(s) after “Don't know it”")
+            }
+        }
     }
 
     /** The comeback plan's sessions, prompts and climbing, against the truth of the injured tissue ([SimInjury]). */

@@ -22,6 +22,13 @@ data class ExerciseDefinition(
     val domains: List<LoadDomain> = emptyList(),
     val muscles: Muscles = Muscles(),
     val difficulty: Int = 1,
+    /**
+     * How well known the exercise is, apart from how hard it is ([difficulty]): the coach starts with
+     * [Familiarity.BASIC] and brings in the others with experience (issue #68, see
+     * [com.cruxcoach.athlete.logic.ExerciseFamiliarity]). Every catalogue exercise has one; without it an exercise
+     * counts as Basic, which leaves the coach's choice as it was.
+     */
+    val familiarity: Familiarity = Familiarity.BASIC,
     val easier: String? = null,
     val harder: String? = null,
     val defaults: Prescription = Prescription(),
@@ -63,6 +70,17 @@ data class ExerciseDefinition(
         /** The load is the reading of a force gauge, not a weight on the implement. */
         const val TAG_FORCE_GAUGE = "force_gauge"
     }
+}
+
+/** How much explaining an exercise needs (issue #68); independent of [ExerciseDefinition.difficulty]. */
+@Serializable
+enum class Familiarity {
+    /** Anyone who climbs, went to a gym or had PE knows it, and the name says what to do. */
+    BASIC,
+    /** People who train know it; one look at the steps is enough. */
+    COMMON,
+    /** Read the steps first: an unusual name, a special set-up or a movement that needs learning. */
+    SPECIAL,
 }
 
 @Serializable

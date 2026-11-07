@@ -492,6 +492,17 @@ enum class AgeBand { UNDER_16, Y16_17, Y18_39, Y40_54, Y55_PLUS }
 @Serializable
 enum class SetupState { NOT_STARTED, IN_PROGRESS, DONE, DISMISSED }
 
+/** "Exercise choice" (issue #68): which exercises are in the coach's pool; how often they change is [CoachProfile.variety]. */
+@Serializable
+enum class ExerciseChoice {
+    /** Well-known classics first for everyone, as for a beginner. */
+    CLASSICS,
+    /** Follows experience: beginners get the classics, experienced athletes more unusual exercises too. */
+    BALANCED,
+    /** All levels for everyone, more new exercises per session, unusual ones a little more often. */
+    OPEN,
+}
+
 /**
  * What the athlete told the coach. Missing answers stay null/empty — the
  * engine then falls back to conservative defaults and says so; nothing is
@@ -528,6 +539,8 @@ data class CoachProfile(
     val intensityStyle: Int? = null,
     /** 0 = fixed routine … 100 = lots of variety; null = no preference. */
     val variety: Int? = null,
+    /** Which exercises the coach picks (issue #68); null = [ExerciseChoice.BALANCED]. */
+    val exerciseChoice: ExerciseChoice? = null,
     val setupState: SetupState = SetupState.NOT_STARTED,
     val setupUpdatedAt: Long = 0,
     /** First day of the current training block (periodisation). */

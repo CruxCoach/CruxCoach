@@ -24,6 +24,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "finger.bodyweight_hang",
    "defaults": {
@@ -112,6 +113,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -195,6 +197,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -277,6 +280,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -361,6 +365,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -443,6 +448,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "finger.assisted_hang",
    "harder": "finger.max_hang",
    "defaults": {
@@ -524,6 +530,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -607,6 +614,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -692,6 +700,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "finger.two_arm_pickup",
    "harder": null,
    "defaults": {
@@ -782,6 +791,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -866,6 +876,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -953,6 +964,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "finger.one_arm_pickup",
    "defaults": {
@@ -1039,6 +1051,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1120,6 +1133,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "finger.bodyweight_hang",
    "harder": "finger.max_hang_small_edge",
    "defaults": {
@@ -1203,6 +1217,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1284,6 +1299,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1364,6 +1380,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1452,6 +1469,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1532,6 +1550,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1613,6 +1632,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "finger.max_hang",
    "harder": "finger.min_edge_hang",
    "defaults": {
@@ -1695,6 +1715,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "finger.max_hang_small_edge",
    "harder": null,
    "defaults": {
@@ -1778,6 +1799,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "finger.one_arm_assisted_hang",
    "defaults": {
@@ -1864,6 +1886,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": "finger.offset_hang",
    "harder": "finger.one_arm_hang",
    "defaults": {
@@ -1952,6 +1975,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "finger.one_arm_assisted_hang",
    "harder": null,
    "defaults": {
@@ -2035,6 +2059,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "pull.scapular_pull_up",
    "defaults": {
@@ -2122,6 +2147,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -2209,6 +2235,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "pull.scapular_pull_up",
    "harder": "pull.band_assisted_pull_up",
    "defaults": {
@@ -2298,6 +2325,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "defaults": {
     "sets": 3,
     "repsMin": 8,
@@ -2385,6 +2413,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -2471,6 +2500,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "pull.dead_hang",
    "harder": "pull.inverted_row",
    "defaults": {
@@ -2559,6 +2589,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "pull.inverted_row",
    "harder": "pull.negative_pull_up",
    "defaults": {
@@ -2647,6 +2678,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -2734,6 +2766,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "pull.frenchies",
    "defaults": {
@@ -2818,6 +2851,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "pull.band_assisted_pull_up",
    "harder": "pull.pull_up",
    "defaults": {
@@ -2906,6 +2940,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "pull.negative_pull_up",
    "harder": "pull.weighted_pull_up",
    "defaults": {
@@ -2992,6 +3027,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "SPECIAL",
    "easier": "pull.lock_off_hold",
    "harder": "pull.one_arm_lock_off",
    "defaults": {
@@ -3078,6 +3114,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "pull.advanced_tuck_front_lever",
    "defaults": {
@@ -3165,6 +3202,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": "pull.pull_up",
    "harder": null,
    "defaults": {
@@ -3249,6 +3287,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -3334,6 +3373,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "pull.tuck_front_lever",
    "harder": "pull.straddle_front_lever",
    "defaults": {
@@ -3418,6 +3458,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "pull.typewriter_pull_up",
    "harder": "pull.assisted_one_arm_pull_up",
    "defaults": {
@@ -3504,6 +3545,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "pull.archer_pull_up",
    "harder": "pull.one_arm_negative",
    "defaults": {
@@ -3590,6 +3632,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -3676,6 +3719,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "pull.frenchies",
    "harder": null,
    "defaults": {
@@ -3761,6 +3805,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "pull.advanced_tuck_front_lever",
    "harder": "pull.front_lever",
    "defaults": {
@@ -3847,6 +3892,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "pull.archer_pull_up",
    "defaults": {
@@ -3933,6 +3979,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "pull.straddle_front_lever",
    "harder": null,
    "defaults": {
@@ -4018,6 +4065,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "pull.assisted_one_arm_pull_up",
    "harder": null,
    "defaults": {
@@ -4102,6 +4150,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -4194,6 +4243,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -4284,6 +4334,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "push.dip",
    "defaults": {
@@ -4374,6 +4425,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "push.push_up",
    "defaults": {
@@ -4461,6 +4513,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "push.push_up",
    "harder": "push.archer_push_up",
    "defaults": {
@@ -4548,6 +4601,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "push.bench_dip",
    "harder": "push.ring_dip",
    "defaults": {
@@ -4636,6 +4690,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -4725,6 +4780,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -4816,6 +4872,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -4905,6 +4962,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "push.elevated_pike_push_up",
    "defaults": {
@@ -4992,6 +5050,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "push.incline_push_up",
    "harder": "push.diamond_push_up",
    "defaults": {
@@ -5079,6 +5138,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": "antagonist.scapular_push_up",
    "harder": null,
    "defaults": {
@@ -5167,6 +5227,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "push.diamond_push_up",
    "harder": "push.pseudo_planche_push_up",
    "defaults": {
@@ -5253,6 +5314,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "push.pike_push_up",
    "harder": "push.wall_handstand_push_up",
    "defaults": {
@@ -5342,6 +5404,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "push.dip",
    "harder": null,
    "defaults": {
@@ -5431,6 +5494,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": "push.archer_push_up",
    "harder": null,
    "defaults": {
@@ -5520,6 +5584,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "push.elevated_pike_push_up",
    "harder": null,
    "defaults": {
@@ -5609,6 +5674,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -5696,6 +5762,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -5782,6 +5849,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "antagonist.side_lying_external_rotation",
    "defaults": {
@@ -5867,6 +5935,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "antagonist.face_pull",
    "defaults": {
@@ -5951,6 +6020,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "antagonist.reverse_wrist_curl",
    "harder": null,
    "defaults": {
@@ -6036,6 +6106,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "antagonist.band_pull_apart",
    "harder": null,
    "defaults": {
@@ -6119,6 +6190,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -6204,6 +6276,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -6290,6 +6363,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "antagonist.prone_iyt_bench",
    "defaults": {
@@ -6373,6 +6447,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -6457,6 +6532,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "antagonist.eccentric_wrist_extension",
    "defaults": {
@@ -6544,6 +6620,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "push.push_up_plus",
    "defaults": {
@@ -6630,6 +6707,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "antagonist.wall_lower_trap_raise",
    "defaults": {
@@ -6715,6 +6793,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "antagonist.band_external_rotation",
    "harder": "antagonist.cuban_press",
    "defaults": {
@@ -6799,6 +6878,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": "antagonist.serratus_wall_slide",
    "harder": null,
    "defaults": {
@@ -6885,6 +6965,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -6976,6 +7057,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7063,6 +7145,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": "antagonist.side_lying_external_rotation",
    "harder": null,
    "defaults": {
@@ -7150,6 +7233,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "antagonist.prone_ytw",
    "harder": null,
    "defaults": {
@@ -7242,6 +7326,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7331,6 +7416,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7418,6 +7504,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7498,6 +7585,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "core.tuck_hollow_hold",
    "defaults": {
@@ -7580,6 +7668,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7660,6 +7749,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "core.body_saw",
    "defaults": {
@@ -7741,6 +7831,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7819,6 +7910,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "core.hanging_knee_raise",
    "defaults": {
@@ -7895,6 +7987,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7975,6 +8068,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "core.back_extension",
    "defaults": {
@@ -8053,6 +8147,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "core.dead_bug",
    "harder": "core.hollow_hold",
    "defaults": {
@@ -8130,6 +8225,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "core.superman",
    "harder": null,
    "defaults": {
@@ -8210,6 +8306,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": "core.front_plank",
    "harder": "core.ab_wheel_kneeling",
    "defaults": {
@@ -8291,6 +8388,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "core.reverse_crunch",
    "harder": "core.hanging_leg_raise",
    "defaults": {
@@ -8367,6 +8465,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "core.tuck_hollow_hold",
    "harder": "core.hollow_rocks",
    "defaults": {
@@ -8445,6 +8544,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "core.tuck_l_sit",
    "defaults": {
@@ -8530,6 +8630,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "core.seated_pike_compression",
    "harder": "core.l_sit",
    "defaults": {
@@ -8611,6 +8712,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": "core.body_saw",
    "harder": "core.ab_wheel_standing",
    "defaults": {
@@ -8698,6 +8800,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": "core.hanging_knee_raise",
    "harder": "core.toes_to_bar",
    "defaults": {
@@ -8776,6 +8879,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "core.hollow_hold",
    "harder": null,
    "defaults": {
@@ -8855,6 +8959,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "core.tuck_l_sit",
    "harder": "core.v_sit",
    "defaults": {
@@ -8935,6 +9040,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "core.dragon_flag",
    "defaults": {
@@ -9016,6 +9122,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "core.hanging_leg_raise",
    "harder": "core.windshield_wipers",
    "defaults": {
@@ -9096,6 +9203,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "BASIC",
    "easier": "core.ab_wheel_kneeling",
    "harder": null,
    "defaults": {
@@ -9178,6 +9286,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "SPECIAL",
    "easier": "core.dragon_flag_negative",
    "harder": null,
    "defaults": {
@@ -9258,6 +9367,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "core.l_sit",
    "harder": null,
    "defaults": {
@@ -9340,6 +9450,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "SPECIAL",
    "easier": "core.toes_to_bar",
    "harder": null,
    "defaults": {
@@ -9418,6 +9529,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "core.weighted_sit_up",
    "defaults": {
@@ -9503,6 +9615,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "core.sit_up",
    "harder": null,
    "defaults": {
@@ -9592,6 +9705,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.goblet_squat",
    "defaults": {
@@ -9675,6 +9789,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.single_leg_calf_raise",
    "defaults": {
@@ -9753,6 +9868,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -9837,6 +9953,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.single_leg_glute_bridge",
    "defaults": {
@@ -9916,6 +10033,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -10001,6 +10119,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.walking_lunge",
    "defaults": {
@@ -10082,6 +10201,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.high_step_mantle",
    "defaults": {
@@ -10161,6 +10281,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -10242,6 +10363,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -10323,6 +10445,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "legs.copenhagen_plank_long",
    "defaults": {
@@ -10404,6 +10527,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -10485,6 +10609,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "legs.air_squat",
    "harder": "legs.back_squat",
    "defaults": {
@@ -10569,6 +10694,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": "legs.step_up",
    "harder": null,
    "defaults": {
@@ -10656,6 +10782,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "legs.single_leg_glute_bridge",
    "harder": null,
    "defaults": {
@@ -10739,6 +10866,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.box_jump",
    "defaults": {
@@ -10826,6 +10954,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "legs.single_leg_rdl",
    "defaults": {
@@ -10907,6 +11036,7 @@
     "secondary": []
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "legs.calf_raise",
    "harder": null,
    "defaults": {
@@ -10984,6 +11114,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "legs.glute_bridge",
    "harder": "legs.hip_thrust",
    "defaults": {
@@ -11061,6 +11192,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "legs.reverse_lunge",
    "harder": "legs.bulgarian_split_squat",
    "defaults": {
@@ -11142,6 +11274,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "legs.box_pistol",
    "harder": "legs.pistol_squat",
    "defaults": {
@@ -11226,6 +11359,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": "legs.goblet_squat",
    "harder": "legs.front_squat",
    "defaults": {
@@ -11312,6 +11446,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": "legs.jump_squat",
    "harder": null,
    "defaults": {
@@ -11392,6 +11527,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "legs.bulgarian_split_squat",
    "harder": "legs.assisted_pistol",
    "defaults": {
@@ -11476,6 +11612,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "legs.walking_lunge",
    "harder": "legs.box_pistol",
    "defaults": {
@@ -11562,6 +11699,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -11646,6 +11784,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "SPECIAL",
    "easier": "legs.copenhagen_plank_short",
    "harder": null,
    "defaults": {
@@ -11726,6 +11865,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "legs.nordic_curl",
    "defaults": {
@@ -11809,6 +11949,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "legs.romanian_deadlift",
    "harder": null,
    "defaults": {
@@ -11895,6 +12036,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "BASIC",
    "easier": "legs.back_squat",
    "harder": null,
    "defaults": {
@@ -11975,6 +12117,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "legs.assisted_pistol",
    "harder": null,
    "defaults": {
@@ -12057,6 +12200,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "legs.nordic_curl_assisted",
    "harder": null,
    "defaults": {
@@ -12135,6 +12279,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12218,6 +12363,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12299,6 +12445,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "mobility.frog_stretch",
    "defaults": {
@@ -12375,6 +12522,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12455,6 +12603,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12538,6 +12687,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12619,6 +12769,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "mobility.sleeper_stretch",
    "defaults": {
@@ -12700,6 +12851,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12780,6 +12932,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12858,6 +13011,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12940,6 +13094,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13020,6 +13175,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13105,6 +13261,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13185,6 +13342,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13268,6 +13426,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13351,6 +13510,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13434,6 +13594,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13515,6 +13676,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13595,6 +13757,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13676,6 +13839,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13759,6 +13923,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "mobility.butterfly_stretch",
    "harder": "mobility.pancake_stretch",
    "defaults": {
@@ -13842,6 +14007,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13927,6 +14093,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14009,6 +14176,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14092,6 +14260,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14174,6 +14343,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "mobility.cross_body_shoulder_stretch",
    "harder": null,
    "defaults": {
@@ -14256,6 +14426,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "mobility.frog_stretch",
    "harder": null,
    "defaults": {
@@ -14339,6 +14510,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14422,6 +14594,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14502,6 +14675,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14585,6 +14759,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14667,6 +14842,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14753,6 +14929,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14830,6 +15007,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14912,6 +15090,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14994,6 +15173,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15076,6 +15256,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15157,6 +15338,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15237,6 +15419,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15328,6 +15511,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15412,6 +15596,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15500,6 +15685,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "power.double_dynos",
    "defaults": {
@@ -15582,6 +15768,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15667,6 +15854,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "power.campus_ladders",
    "defaults": {
@@ -15751,6 +15939,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15835,6 +16024,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "power.foot_on_campus",
    "harder": "power.campus_touches",
    "defaults": {
@@ -15917,6 +16107,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": "power.campus_ladders",
    "harder": "power.campus_max_reach",
    "defaults": {
@@ -16002,6 +16193,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "power.dynos",
    "harder": null,
    "defaults": {
@@ -16086,6 +16278,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "power.campus_touches",
    "harder": null,
    "defaults": {
@@ -16167,6 +16360,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "endurance.traversing",
    "harder": null,
    "defaults": {
@@ -16249,6 +16443,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "endurance.arc",
    "defaults": {
@@ -16332,6 +16527,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16413,6 +16609,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16499,6 +16696,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16582,6 +16780,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16661,6 +16860,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "technique.silent_feet",
    "defaults": {
@@ -16741,6 +16941,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16820,6 +17021,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16899,6 +17101,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16977,6 +17180,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17055,6 +17259,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "technique.sticky_feet",
    "harder": null,
    "defaults": {
@@ -17132,6 +17337,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17213,6 +17419,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17290,6 +17497,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17377,6 +17585,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17460,6 +17669,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17545,6 +17755,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17628,6 +17839,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17713,6 +17925,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17798,6 +18011,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {

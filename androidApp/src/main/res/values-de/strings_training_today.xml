@@ -152,6 +152,14 @@
     <string name="trt_swap_harder">schwerer</string>
     <string name="trt_swap_drop">Heute weglassen</string>
     <string name="trt_swap_exclude">Nie vorschlagen</string>
+    <!-- Bekannte Übungen zuerst (Issue #68): eine für dich neue Übung, und „Kenne ich nicht“ (keine Abneigung). -->
+    <string name="trt_new_to_you">Neu für dich</string>
+    <string name="trt_new_how">So geht\'s</string>
+    <string name="trt_dont_know">Kenne ich nicht</string>
+    <string name="trt_dont_know_to">Kenne ich nicht: stattdessen %1$s</string>
+    <string name="trt_dont_know_hint">Tauscht sie gegen eine Übung, die du kennst. Das zählt nicht gegen diese Übung.</string>
+    <string name="trt_dont_know_none">Heute passt hier nichts, was du schon kennst.</string>
+    <string name="trt_dont_know_undo">Heute „%1$s“ statt „%2$s“, ohne gegen die Übung zu zählen</string>
     <string name="trt_show_less">Weniger zeigen</string>
     <string name="trt_next_place">Wo trainierst du?</string>
     <string name="trt_next_level">Heute lieber</string>

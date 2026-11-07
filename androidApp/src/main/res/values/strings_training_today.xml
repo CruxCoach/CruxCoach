@@ -152,6 +152,14 @@
     <string name="trt_swap_harder">harder</string>
     <string name="trt_swap_drop">Leave out today</string>
     <string name="trt_swap_exclude">Never suggest</string>
+    <!-- Well-known exercises first (issue #68): an exercise new to the athlete, and "Don't know it" (no dislike). -->
+    <string name="trt_new_to_you">New to you</string>
+    <string name="trt_new_how">How it works</string>
+    <string name="trt_dont_know">Don\'t know it</string>
+    <string name="trt_dont_know_to">Don\'t know it: %1$s instead</string>
+    <string name="trt_dont_know_hint">Swaps it for an exercise you know. It doesn\'t count against this one.</string>
+    <string name="trt_dont_know_none">Nothing you already know fits here today.</string>
+    <string name="trt_dont_know_undo">“%1$s” instead of “%2$s” today, without counting against it</string>
     <string name="trt_show_less">Show less</string>
     <string name="trt_next_place">Where are you training?</string>
     <string name="trt_next_level">Intensity today</string>

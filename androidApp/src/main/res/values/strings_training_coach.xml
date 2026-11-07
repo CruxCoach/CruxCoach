@@ -103,6 +103,15 @@
     <string name="trc_favorites_remove">Remove %1$s</string>
     <string name="trc_style_routine">fixed routine</string>
     <string name="trc_style_varied">lots of variety</string>
+    <!-- Exercise choice (issue #68): which exercises are in the pool; "Routine or variety" sets how often they change. -->
+    <string name="trc_exercise_choice">Exercise choice</string>
+    <string name="trc_exercise_choice_help">Which exercises the coach picks: well-known classics, or more unusual ones that you may need to read up on first. Safety rules apply either way.</string>
+    <string name="trc_exercise_choice_classics">Mostly classics</string>
+    <string name="trc_exercise_choice_balanced">Balanced</string>
+    <string name="trc_exercise_choice_open">Open to unusual exercises</string>
+    <string name="trc_preview_choice_classics">Mostly well-known exercises; others once you know them.</string>
+    <string name="trc_preview_choice_balanced">Well-known exercises first; unusual ones come with experience, at most one new exercise per training.</string>
+    <string name="trc_preview_choice_open">Unusual exercises too, up to two new ones per training.</string>
     <string name="trc_no_preference">No preference</string>
     <string name="trc_equipment">Equipment</string>
     <string name="trc_equipment_none">Not set up yet – the coach assumes body weight only.</string>

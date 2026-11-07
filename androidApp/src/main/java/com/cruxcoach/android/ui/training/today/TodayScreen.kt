@@ -31,7 +31,10 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -90,6 +93,8 @@ fun TodayScreen(
     onOpenLearned: () -> Unit = {},
     /** An injury's comeback plan (owner 2026-10-20). */
     onOpenComeback: (injuryId: String) -> Unit = {},
+    /** An exercise's page with its steps ("So geht's" for an exercise new to the athlete, issue #68). */
+    onOpenExercise: (slug: String) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val comebacks by viewModel.comebacks.collectAsStateWithLifecycle()
@@ -115,6 +120,7 @@ fun TodayScreen(
     val neverDoneText = stringResource(R.string.trt_never_done)
     val swappedText = stringResource(R.string.trt_swapped_undo)
     val droppedText = stringResource(R.string.trt_dropped_undo)
+    val dontKnowText = stringResource(R.string.trt_dont_know_undo)
     val screenLanguage = catalogLanguage()
     val glass = FuelUnits.waterPresetsMl(state.profile.units).first()
     val waterAddedText = stringResource(R.string.tru_water_added, amountText(glass.toDouble(), FuelUnits.unitFor(state.profile.units, drink = true)))
@@ -212,6 +218,7 @@ fun TodayScreen(
                         onMoreCheckin = { showCheckin = true },
                         onChooseMinutes = viewModel::chooseMinutes,
                         onExercise = { swapFor = it },
+                        onOpenSteps = onOpenExercise,
                         onChooseCircuit = viewModel::chooseCircuit,
                         onSetCircuit = viewModel::setCircuit,
                         onLighter = { viewModel.chooseLevel(-1) },
@@ -357,8 +364,21 @@ fun TodayScreen(
     }
     swapFor?.let { slug ->
         val alternatives = remember(slug, state.suggestion) { viewModel.alternatives(slug) }
+        val isNew = slug in state.newToYou
+        val familiar = remember(slug, state.suggestion, isNew) { if (isNew) viewModel.familiarSwap(slug) else null }
         SwapSheet(
             state = state, slug = slug, alternatives = alternatives,
+            isNew = isNew, familiar = familiar,
+            onDontKnow = { to ->
+                swapFor = null
+                viewModel.dontKnowExercise(slug, to)
+                val text = dontKnowText.format(state.catalog.fallbackFor(to).name(screenLanguage), state.catalog.fallbackFor(slug).name(screenLanguage))
+                snackScope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoCardChange()
+                }
+            },
+            onOpenSteps = { swapFor = null; onOpenExercise(slug) },
             onDismiss = { swapFor = null },
             onSwap = { to ->
                 swapFor = null
@@ -1283,6 +1303,8 @@ private fun DailySuggestionCard(
     onChooseMinutes: (Int?) -> Unit = {},
     /** A tap on an exercise: swap it, leave it out today or never suggest it. */
     onExercise: (String) -> Unit = {},
+    /** "So geht's" under an exercise new to the athlete: its page with the steps. */
+    onOpenSteps: (String) -> Unit = {},
     /** "Als Zirkel" for today (owner 2026-10-17), and its rounds and rests. */
     onChooseCircuit: (Boolean) -> Unit = {},
     onSetCircuit: (Int?, Int?, Int?) -> Unit = { _, _, _ -> },
@@ -1389,8 +1411,27 @@ private fun DailySuggestionCard(
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                             Spacer(Modifier.width(4.dp))
-                            Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Column(Modifier.weight(1f)) {
+                                Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                // New to the athlete (issue #68): one tap to the steps; the row itself still swaps.
+                                if (item.slug in state.newToYou) {
+                                    val how = stringResource(R.string.trt_new_how)
+                                    val label = stringResource(R.string.trt_new_to_you)
+                                    val accent = CruxCoachDesign.colors.brandAccent
+                                    // One text, so it wraps as a whole at the largest font size.
+                                    Text(
+                                        buildAnnotatedString {
+                                            append("$label · ")
+                                            withStyle(SpanStyle(color = accent, fontWeight = FontWeight.SemiBold)) { append(how) }
+                                        },
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.heightIn(min = 32.dp).clip(CruxCoachDesign.shapes.small)
+                                            .clickable(onClickLabel = how) { onOpenSteps(item.slug) }
+                                            .padding(end = 8.dp, top = 6.dp, bottom = 6.dp).testTag("today_new_${item.slug}"),
+                                    )
+                                }
+                            }
                             // The sets the training will plan: today's form may take one off (audit W7: card ≠ player).
                             val planned = state.dayForm?.let { com.cruxcoach.athlete.logic.ReadinessModifiers.applyToItem(item, def, it) } ?: item
                             Text(com.cruxcoach.android.ui.training.workouts.routineItemSummary(planned, def, state.profile.units, short = true),
@@ -1413,7 +1454,7 @@ private fun DailySuggestionCard(
                 val why = stringResource(R.string.tru_why)
                 val accent = CruxCoachDesign.colors.brandAccent
                 Text(
-                    androidx.compose.ui.text.buildAnnotatedString {
+                    buildAnnotatedString {
                         append(suggestionReasonText(it, state))
                         append("  ")
                         pushStyle(androidx.compose.ui.text.SpanStyle(color = accent, fontWeight = FontWeight.SemiBold))
@@ -1891,6 +1932,12 @@ private fun SwapSheet(
     onSwap: (String) -> Unit,
     onDrop: () -> Unit,
     onExclude: () -> Unit,
+    /** The exercise is new to the athlete (issue #68): "Kenne ich nicht" and its steps come first. */
+    isNew: Boolean = false,
+    /** What "Kenne ich nicht" puts in its place; null when nothing the athlete knows fits. */
+    familiar: com.cruxcoach.athlete.catalog.ExerciseDefinition? = null,
+    onDontKnow: (String) -> Unit = {},
+    onOpenSteps: () -> Unit = {},
 ) {
     val language = catalogLanguage()
     val name = state.catalog.fallbackFor(slug).name(language)
@@ -1900,6 +1947,27 @@ private fun SwapSheet(
             Text(stringResource(R.string.trt_swap_title, name), style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp))
             Spacer(Modifier.height(8.dp))
+            if (isNew) {
+                // Not knowing an exercise is no dislike: it is swapped for one the athlete knows, and nothing counts against it.
+                if (familiar != null) {
+                    ListItem(
+                        leadingContent = { com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(familiar, Modifier.size(40.dp)) },
+                        headlineContent = { Text(stringResource(R.string.trt_dont_know_to, familiar.name(language))) },
+                        supportingContent = { Text(stringResource(R.string.trt_dont_know_hint)) },
+                        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                        modifier = Modifier.clickable { onDontKnow(familiar.slug) }.testTag("today_swap_dont_know"),
+                    )
+                } else {
+                    Text(stringResource(R.string.trt_dont_know_none), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag("today_swap_dont_know_none"))
+                }
+                TextButton(onClick = onOpenSteps, modifier = Modifier.padding(horizontal = 8.dp).testTag("today_swap_steps")) {
+                    Icon(Icons.Default.Info, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.trt_new_how))
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
             if (alternatives.isEmpty()) {
                 Text(stringResource(R.string.trt_swap_none), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
