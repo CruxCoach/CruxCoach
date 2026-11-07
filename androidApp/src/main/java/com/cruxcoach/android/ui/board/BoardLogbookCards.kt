@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.outlined.Summarize
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -281,8 +282,9 @@ internal fun EmptyLogbookMessage() {
     }
 }
 
+/** A logbook day's date and entry count; [onRecap] adds the button that opens its recap. */
 @Composable
-internal fun DayHeader(dateKey: String, count: Int) {
+internal fun DayHeader(dateKey: String, count: Int, onRecap: (() -> Unit)? = null) {
     val dayNames = arrayOf(
         stringResource(R.string.day_mo), stringResource(R.string.day_tu),
         stringResource(R.string.day_we), stringResource(R.string.day_th),
@@ -319,98 +321,19 @@ internal fun DayHeader(dateKey: String, count: Int) {
             Text(
                 text = pluralStringResource(R.plurals.board_logbook_day_entries, count, count),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.weight(1f),
             )
-        }
-    }
-}
-
-@Composable
-internal fun StatsSummaryRow(stats: BoardLogbookStats) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SummaryCard(
-                value = stats.hardestGrade ?: "-",
-                label = stringResource(R.string.board_logbook_best_grade),
-                color = GradeHard,
-                modifier = Modifier.weight(1f)
-            )
-            val sendsLabel = if (stats.routeSends > 0) {
-                "${stats.boulderSends}B / ${stats.routeSends}R"
-            } else {
-                "${stats.totalSends}"
+            if (onRecap != null) {
+                IconButton(onClick = onRecap, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Outlined.Summarize,
+                        contentDescription = stringResource(R.string.board_session_recap_open) + ", " + label,
+                        tint = OrangeAccent.copy(alpha = 0.85f),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
-            SummaryCard(
-                value = sendsLabel,
-                label = stringResource(R.string.board_sends),
-                color = SuccessGreen,
-                modifier = Modifier.weight(1f)
-            )
-            SummaryCard(
-                value = "${stats.totalAttempts}",
-                label = stringResource(R.string.board_logbook_attempts),
-                color = ErrorRed,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SummaryCard(
-                value = "${stats.sessionCount}",
-                label = stringResource(R.string.board_logbook_sessions),
-                color = OrangeAccent,
-                modifier = Modifier.weight(1f)
-            )
-            SummaryCard(
-                value = "${stats.uniqueClimbs}",
-                label = stringResource(R.string.board_logbook_unique_climbs),
-                color = WarningYellow,
-                modifier = Modifier.weight(1f)
-            )
-            SummaryCard(
-                value = if (stats.totalSends > 0) "${"%.0f".format(stats.flashRate)}%" else "-",
-                label = stringResource(R.string.board_logbook_flash),
-                color = InfoBlue,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-@Composable
-internal fun SummaryCard(
-    value: String,
-    label: String,
-    color: androidx.compose.ui.graphics.Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = color.copy(alpha = 0.15f)
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = color
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
