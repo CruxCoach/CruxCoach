@@ -367,6 +367,11 @@ fun BoardClimbDetailScreen(
             state = ledEffects,
             onSelect = viewModel::selectLedEffect,
             onStrobeNoticeSeen = viewModel::confirmLedStrobeNotice,
+            onConnect = {
+                showLedEffects = false
+                showBleSheet = true
+            },
+            onSendAgain = viewModel::sendToBoard,
             onDismiss = { showLedEffects = false },
         )
     }

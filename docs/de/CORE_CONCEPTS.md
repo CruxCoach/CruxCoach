@@ -211,12 +211,14 @@ Private Schlüssel bleiben beim Import zunächst verdeckt; der Screenshot-Schutz
 solange ein Board mit Effekten verbunden ist) bringen den leuchtenden Boulder in
 Bewegung. Standard ist **Keine**: Der Boulder behält seine normalen Farben.
 Bei **Puls** wird jeder Griff in seiner Farbe heller und dunkler, **Regenbogen**
-lässt alle Farben langsam durch den Farbkreis wandern, **Zwei-Phasen-Stroboskop**
+lässt alle Farben langsam durch den Farbkreis wandern, **Wechselblitz**
 wechselt blinkend zwischen den CruxCoach- und den Kilter-Farben, und beim
-**Chaos-Stroboskop** springen die Farben, wobei Startgriffe, Zwischengriffe,
-Topgriffe und Tritte unterscheidbar bleiben. Eine Auswahl wirkt sofort an der
-Wand, die Wand ist also die Vorschau. Eine Statuszeile sagt, was der Effekt gerade
-tut (läuft, wartet auf einen Boulder, pausiert, beendet, kein Board). Die Effekte
+**Chaosblitz** springen die Farben, wobei Startgriffe, Zwischengriffe,
+Topgriffe und Tritte unterscheidbar bleiben. Die sanften Effekte stehen vorn, die
+blinkenden hinten mit Blitz-Symbol; was jeder Effekt tut, erklärt das Info-Symbol
+der Karte. Eine Auswahl wirkt sofort an der Wand, die Wand ist also die Vorschau.
+Eine Statuszeile sagt, was der Effekt gerade tut (läuft, wartet auf einen Boulder,
+pausiert, beendet, kein Board – dann mit „Board verbinden“). Die Effekte
 sehen aus und laufen genau wie beigetragen; einen Tempo-Regler gibt es nicht.
 
 Effekte zeigt ein verbundenes Kilter Board, bei Bouldern mit bis zu 120
@@ -236,7 +238,7 @@ pausiert. Effekt-Frames zählen nicht als Aktivität: Das automatische Trennen g
 ein Board, das nur ein Handy zulässt, weiterhin pünktlich frei, und vorher werden
 die normalen Farben des Boulders zurückgeschrieben. Nach 15 Minuten auf demselben
 Boulder endet ein Effekt (erneut senden startet ihn neu). Beim Verlassen der App
-endet er mit den normalen Farben, außer *In anderen Apps weiterlaufen* ist an
+endet er mit den normalen Farben, außer *Läuft in anderen Apps weiter* ist an
 (Standard: aus): Dann hält eine Benachrichtigung mit **Stopp** ihn für diese
 15 Minuten am Laufen, nur solange Benachrichtigungen sichtbar sind. Das Handy
 bleibt so lange mit dem Board verbunden, und es gibt keinen Wake Lock – hält

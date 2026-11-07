@@ -205,9 +205,11 @@ that shows effects is connected) keep the lit climb moving. The default is
 brighter and dimmer in its own color, **Rainbow** moves every color slowly
 around the color wheel, **Two-phase strobe** flashes between the CruxCoach and
 the Kilter colors, and **Chaotic strobe** jumps the colors around while start,
-hand, top and foot holds stay apart. A choice shows on the wall at once, so the
-wall is the preview. A status line says what the effect is doing (running,
-waiting for a climb, paused, ended, no board). The effects look and move exactly
+hand, top and foot holds stay apart. The gentle effects come first, the flashing
+ones last with a flash mark; what each effect does is behind the card's info
+symbol. A choice shows on the wall at once, so the wall is the preview. A status
+line says what the effect is doing (running, waiting for a climb, paused, ended,
+no board, then with "Connect board"). The effects look and move exactly
 as contributed; there is no tempo control.
 
 Effects show on a connected Kilter Board, on climbs of up to 120 lit LEDs; other
