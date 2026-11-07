@@ -88,6 +88,8 @@ import javax.inject.Inject
 data class SprayWallPhotoState(
     val wallId: String? = null,
     val wallName: String = "",
+    /** A reset of a public wall: the new photo will be published too. */
+    val wallPublic: Boolean = false,
     val photo: SprayWallPhotoStore.StoredPhoto? = null,
     val preview: ImageBitmap? = null,
     val importing: Boolean = false,
@@ -128,7 +130,7 @@ class SprayWallPhotoViewModel @Inject constructor(
         if (wallId != null) viewModelScope.launch {
             val wall = repository.wall(wallId)
             if (wall == null || !wall.isMine) _state.update { it.copy(notFound = true) }
-            else _state.update { it.copy(wallName = wall.name) }
+            else _state.update { it.copy(wallName = wall.name, wallPublic = wall.visibility == SprayWallVisibility.PUBLIC) }
         }
     }
 
@@ -318,7 +320,7 @@ fun SprayWallPhotoScreen(
             if (state.photo == null && !state.importing) {
                 Text(stringResource(R.string.spray_wall_photo_missing), style = MaterialTheme.typography.bodySmall)
             }
-            Text(stringResource(R.string.spray_wall_photo_privacy), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(if (state.wallPublic) R.string.spray_wall_photo_public else R.string.spray_wall_photo_privacy), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     val preview = state.preview

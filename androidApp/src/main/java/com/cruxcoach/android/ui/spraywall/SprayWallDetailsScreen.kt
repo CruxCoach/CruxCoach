@@ -47,6 +47,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.spraywall.SprayWallPublisher
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.spraywall.SprayWithdrawal
 import com.cruxcoach.android.ui.map.MapVenue
 import com.cruxcoach.domain.spraywall.SprayGym
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
@@ -77,8 +78,12 @@ data class SprayWallDetailsState(
     val venues: List<MapVenue>? = null,
     val pickingGym: Boolean = false,
     val dialog: Dialog? = null,
+    /** The last withdrawal did not work: the wall is still public (and still here, when it was to be deleted). */
+    val withdrawFailed: WithdrawFailure? = null,
 ) {
     enum class Dialog { CONFIRM_PUBLIC, NO_IDENTITY, CONFIRM_WITHDRAW }
+
+    data class WithdrawFailure(val reason: SprayWithdrawal, val deleting: Boolean)
 
     val canSave: Boolean get() = !loading && !saving && name.isNotBlank()
 
@@ -145,6 +150,7 @@ class SprayWallDetailsViewModel @Inject constructor(
     }
 
     fun dismissDialog() = _state.update { it.copy(dialog = null) }
+    fun dismissWithdrawFailure() = _state.update { it.copy(withdrawFailed = null) }
 
     fun openGymPicker() {
         _state.update { it.copy(pickingGym = true) }
@@ -166,8 +172,8 @@ class SprayWallDetailsViewModel @Inject constructor(
         if (!s.canSave) return
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
-            // Taking a published wall back: tombstones first, while it is still known as public.
-            if (s.published && s.visibility == SprayWallVisibility.PRIVATE) publisher.withdrawWall(wallId)
+            // Taking a published wall back: tombstones and photos first, while it is still known as public.
+            if (s.published && s.visibility == SprayWallVisibility.PRIVATE && !withdraw(deleting = false)) return@launch
             repository.updateWallDetails(wallId, s.name, s.angle, s.visibility, s.gym)
             if (s.visibility == SprayWallVisibility.PUBLIC) publisher.publishSoon()
             _events.emit(SprayWallDetailsEvent.Saved)
@@ -175,12 +181,28 @@ class SprayWallDetailsViewModel @Inject constructor(
     }
 
     fun delete() {
+        if (_state.value.saving) return
+        _state.update { it.copy(saving = true) }
         viewModelScope.launch {
-            // A published wall is taken back from Nostr first; afterwards nothing here could withdraw it.
-            if (_state.value.published) publisher.withdrawWall(wallId)
+            // A published wall is taken back first; afterwards nothing here could withdraw it, so it stays until that worked.
+            if (_state.value.published && !withdraw(deleting = true)) return@launch
             repository.deleteWall(wallId)
             _events.emit(SprayWallDetailsEvent.Deleted)
         }
+    }
+
+    /** True when the wall is off Nostr and Blossom; else the screen says why and the wall stays public. */
+    private suspend fun withdraw(deleting: Boolean): Boolean {
+        val result = publisher.withdrawWall(wallId)
+        if (result == SprayWithdrawal.DONE) return true
+        _state.update {
+            it.copy(
+                saving = false,
+                visibility = SprayWallVisibility.PUBLIC,
+                withdrawFailed = SprayWallDetailsState.WithdrawFailure(result, deleting),
+            )
+        }
+        return false
     }
 }
 
@@ -284,7 +306,7 @@ fun SprayWallDetailsScreen(
                 Text(stringResource(if (state.first) R.string.action_done else R.string.action_save))
             }
             if (!state.first && !state.loading) {
-                TextButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag("spray_wall_delete")) {
+                TextButton(onClick = { confirmDelete = true }, enabled = !state.saving, modifier = Modifier.testTag("spray_wall_delete")) {
                     Text(stringResource(R.string.spray_wall_delete), color = MaterialTheme.colorScheme.error)
                 }
             }
@@ -296,7 +318,8 @@ fun SprayWallDetailsScreen(
     when (state.dialog) {
         SprayWallDetailsState.Dialog.CONFIRM_PUBLIC -> SprayConfirmDialog(
             title = stringResource(R.string.spray_publish_confirm_title),
-            text = stringResource(R.string.spray_publish_confirm_text),
+            // The one line about people sits apart, so it is not lost in the paragraph.
+            text = stringResource(R.string.spray_publish_confirm_text) + "\n\n" + stringResource(R.string.spray_publish_no_people),
             confirmLabel = stringResource(R.string.spray_publish_confirm),
             onConfirm = viewModel::confirmDialog,
             onDismiss = viewModel::dismissDialog,
@@ -316,6 +339,24 @@ fun SprayWallDetailsScreen(
             onDismiss = viewModel::dismissDialog,
         )
         null -> Unit
+    }
+    state.withdrawFailed?.let { failure ->
+        val reason = stringResource(
+            when (failure.reason) {
+                SprayWithdrawal.NO_IDENTITY -> R.string.spray_withdraw_failed_identity
+                SprayWithdrawal.SIGNING_FAILED -> R.string.spray_withdraw_failed_signing
+                SprayWithdrawal.PHOTOS_LEFT -> R.string.spray_withdraw_failed_photos
+                else -> R.string.spray_withdraw_failed_relays
+            },
+        )
+        SprayConfirmDialog(
+            title = stringResource(if (failure.deleting) R.string.spray_delete_failed_title else R.string.spray_withdraw_failed_title),
+            text = if (failure.deleting) reason + " " + stringResource(R.string.spray_delete_failed_note) else reason,
+            confirmLabel = stringResource(R.string.action_ok),
+            onConfirm = viewModel::dismissWithdrawFailure,
+            onDismiss = viewModel::dismissWithdrawFailure,
+            dismissLabel = null,
+        )
     }
     if (confirmDelete) {
         SprayConfirmDialog(

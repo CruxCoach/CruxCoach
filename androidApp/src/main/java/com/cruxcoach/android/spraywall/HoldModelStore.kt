@@ -22,21 +22,30 @@ import javax.inject.Singleton
  * The hold segmentation model (FEAT-078): BoardSesh's published RF-DETR-Seg
  * nano export (Apache-2.0; trained on the Roboflow climbing-holds-and-volumes
  * set, CC BY 4.0, with masks from d12's MIT model). Not part of the APK: the
- * app downloads it once when the climber asks, from a Blossom mirror when it
- * holds the file and else from the publisher, and runs it only after its size
- * and SHA-256 match the pin below.
+ * app downloads it once when the climber asks, from the same Blossom mirrors
+ * as the board catalogues (never from the publisher's servers), and runs it
+ * only after its size and SHA-256 match the pin below. The climber can
+ * delete it again.
  */
 object HoldModel {
     const val VERSION = "2026-09-18-seg"
     const val FILE_NAME = "hold-seg-2026-09-18-int8.onnx"
     const val SHA256 = "04847246ceaef144759cd7e1edb00268217a71c1a32709813c2957318572fcb1"
     const val BYTES = 32_536_853L
-    const val SOURCE_URL = "https://media.boardsesh.com/models/hold-detector/$VERSION/model-int8.onnx"
 
-    /** Blossom serves a file under its SHA-256, so a hit is the pinned file by construction (still verified). */
-    val MIRRORS = listOf("https://blossom.cruxcoach.org")
+    /**
+     * Tried in this order: the board catalogues' mirrors that hold the file
+     * (blossom.primal.net, the fourth catalogue mirror, refuses CruxCoach's
+     * uploads). Blossom serves a file under its SHA-256, so a hit is the
+     * pinned file by construction; it is still checked against the pin.
+     */
+    val MIRRORS = listOf(
+        "https://blossom.cruxcoach.org",
+        "https://cdn.hzrd149.com",
+        "https://blossom-01.uid.ovh",
+    )
 
-    val urls: List<String> get() = MIRRORS.map { "${it.trimEnd('/')}/$SHA256" } + SOURCE_URL
+    val urls: List<String> get() = MIRRORS.map { "${it.trimEnd('/')}/$SHA256" }
 }
 
 @Singleton
@@ -108,8 +117,12 @@ class HoldModelStore @Inject constructor(
         }
     }
 
-    fun remove() {
-        file.delete()
+    /** Deletes the downloaded model; hold finding falls back to the classical detector until it is downloaded again. */
+    suspend fun remove() = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            file.delete()
+            File(file.parentFile, "${HoldModel.FILE_NAME}.part").delete()
+        }
         _state.value = State.Missing
     }
 

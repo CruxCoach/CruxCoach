@@ -342,6 +342,16 @@ class SprayWallRepository @Inject constructor(
         io { queries.setPhotoBlob(sha256, url, wallId, photoFile) }
     }
 
+    /** After a withdrawal deleted the photos from Blossom: they are uploaded again if the wall goes public again. */
+    suspend fun clearPhotoBlobs(wallId: String) {
+        io { queries.clearPhotoBlobs(wallId) }
+    }
+
+    /** Whether another public wall of mine still uses this Blossom photo (then it stays on the servers). */
+    suspend fun photoUsedElsewhere(sha256: String, wallId: String): Boolean = io {
+        queries.countPublishedPhotoUses(sha256, wallId).executeAsOne() > 0
+    }
+
     suspend fun markPublished(wallId: String, version: Int) {
         io { queries.setPublishedVersion(version.toLong(), wallId) }
         changed()

@@ -27,7 +27,7 @@
     <string name="spray_wall_delete">Delete wall</string>
     <string name="spray_wall_delete_confirm_title">Delete %1$s?</string>
     <string name="spray_wall_delete_confirm_text">This removes the photo, all holds, climbs and their logbook entries from this phone. It can\'t be undone.</string>
-    <string name="spray_wall_delete_public_note">The wall is also withdrawn from Nostr; copies others already have can stay.</string>
+    <string name="spray_wall_delete_public_note">The wall is also withdrawn from Nostr and its photos are deleted from the Blossom servers; copies others already have can stay.</string>
 
     <!-- Hold editor -->
     <string name="spray_holds_title">Mark holds</string>
@@ -116,6 +116,7 @@
     <string name="spray_step_holds">Holds</string>
     <string name="spray_step_details">Details</string>
     <string name="spray_wall_photo_privacy">The photo is shrunk and stored without camera data (place, device). It stays on this phone.</string>
+    <string name="spray_wall_photo_public">The photo is shrunk and stored without camera data (place, device). This wall is public: the new photo is published with it, so it must not show people.</string>
     <string name="spray_adjust_title">Crop and rotate</string>
     <string name="spray_adjust_hint">Drag the corners or edges to crop to the wall. Turn the photo until the wall stands upright.</string>
     <string name="spray_adjust_rotate">Turn</string>
@@ -132,17 +133,21 @@
     <string name="spray_detect_running">Looking for holds…</string>
     <string name="spray_detect_suggestions">Suggested holds: %1$d</string>
     <string name="spray_detect_none_open">No open suggestions. More sensitive shows less sure ones.</string>
-    <string name="spray_detect_hint">Dashed rings are suggestions. Tap one to take it, or take all. More sensitive shows more, including doubtful ones.</string>
+    <string name="spray_detect_hint">Orange outlines are suggestions. Tap one to take it, or take all. More sensitive shows more, including doubtful ones.</string>
     <string name="spray_detect_sensitivity">Sensitivity</string>
     <string name="spray_detect_accept_all">Take all</string>
     <string name="spray_detect_dismiss">Hide suggestions</string>
     <string name="spray_detect_none">No holds found. Mark them by hand: press and hold the wall, or switch on Add.</string>
     <string name="spray_model_title">Better hold finding</string>
-    <string name="spray_model_text">Download the hold model once (33 MB). It finds holds of every colour with their real shape and then runs on this phone without internet.</string>
+    <string name="spray_model_text">Download the hold model once (33 MB). It finds holds of every colour with their real shape and then runs on this phone without internet. You can remove it again in Settings under Delete local data.</string>
     <string name="spray_model_download">Download</string>
     <string name="spray_model_downloading">Downloading … %1$d %%</string>
     <string name="spray_model_failed">The download did not work. Check the connection and try again.</string>
+    <string name="spray_settings_title">Spray walls on this phone</string>
+    <string name="spray_settings_model">Hold model: %1$s</string>
+    <string name="spray_settings_model_hint">Downloaded for hold finding on spray walls. Without it the simpler detector suggests holds; it can be downloaded again at any time.</string>
     <string name="spray_detect_failed">Looking for holds did not work on this photo. Mark them by hand.</string>
+    <string name="spray_model_run_failed">The hold model could not run on this photo. These suggestions come from the simpler detector.</string>
     <plurals name="spray_detect_found">
         <item quantity="one">%d hold found. Check it and take it.</item>
         <item quantity="other">%d holds found. Check them and take them.</item>
@@ -178,12 +183,20 @@
     <string name="spray_publish_confirm_title">Make this wall public?</string>
     <string name="spray_publish_confirm_text">The photo of every version of this wall, its holds and the climbs on it become public under your CruxCoach account. You can withdraw the wall later, but copies others already have can stay. Your logbook is never published.</string>
     <string name="spray_publish_confirm">Make public</string>
+    <string name="spray_publish_no_people">The photos must not show people.</string>
     <string name="spray_publish_no_identity_title">No account key yet</string>
     <string name="spray_publish_no_identity_text">Publishing a wall needs your CruxCoach account key. Set it up in Settings under CruxCoach Account, then make the wall public.</string>
     <string name="spray_publish_failed">This wall is not published yet: no connection to the relays or the photo server. Try again later.</string>
     <string name="spray_withdraw_title">Withdraw this wall?</string>
-    <string name="spray_withdraw_text">Relays are asked to delete the wall, all its versions and your climbs on it. Copies others already have can stay. The wall stays on this phone as a private wall.</string>
+    <string name="spray_withdraw_text">Relays are asked to delete the wall, all its versions and your climbs on it, and its photos are deleted from the Blossom servers they were uploaded to. Copies others already have can stay. The wall stays on this phone as a private wall.</string>
     <string name="spray_withdraw_confirm">Withdraw</string>
+    <string name="spray_withdraw_failed_title">Wall not withdrawn</string>
+    <string name="spray_delete_failed_title">Wall not deleted</string>
+    <string name="spray_withdraw_failed_relays">No relay confirmed the withdrawal, so the wall is still public. Check the connection and try again.</string>
+    <string name="spray_withdraw_failed_photos">The relays took the withdrawal, but a photo could not be deleted from its Blossom server, so the wall stays public here. Check the connection and try again.</string>
+    <string name="spray_withdraw_failed_signing">Signing did not work or was declined in your signer app, so the wall is still public. Try again and confirm the requests.</string>
+    <string name="spray_withdraw_failed_identity">Withdrawing needs the CruxCoach account key the wall was published with. Set it up in Settings under CruxCoach Account, then try again.</string>
+    <string name="spray_delete_failed_note">A public wall is deleted here only once it is withdrawn.</string>
     <string name="spray_gym_title">Gym</string>
     <string name="spray_gym_pick_title">Where is the wall?</string>
     <string name="spray_gym_search">Search gyms by name or town</string>

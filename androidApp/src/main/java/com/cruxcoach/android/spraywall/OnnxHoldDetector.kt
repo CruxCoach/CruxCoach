@@ -2,6 +2,7 @@ package com.cruxcoach.android.spraywall
 
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtException
 import ai.onnxruntime.OrtSession
 import android.graphics.Bitmap
 import com.cruxcoach.domain.spraywall.detect.HoldCandidate
@@ -11,24 +12,25 @@ import com.cruxcoach.domain.spraywall.detect.SegOutputs
 import com.cruxcoach.domain.spraywall.detect.SegPipeline
 import com.cruxcoach.domain.spraywall.detect.SegSettings
 import com.cruxcoach.domain.spraywall.detect.SegTile
-import java.io.Closeable
 import java.io.File
 import java.nio.FloatBuffer
+import java.util.concurrent.CancellationException
 
 /**
  * Runs the hold segmentation model on a photo (FEAT-078): resize to the
  * working size, cut into overlapping tiles, one inference per tile, then
  * decode, trace the outlines and merge the tiles ([SegPipeline]).
  *
- * Holds one ONNX Runtime session; close it when done. Not thread-safe: one
- * photo at a time.
+ * Holds one ONNX Runtime session; close it when done, and never while a
+ * photo is running ([HoldModelSession] takes care of both). One photo at a
+ * time; [stop] may come from another thread.
  */
 class OnnxHoldDetector(
     modelFile: File,
     threads: Int = DEFAULT_THREADS,
     /** Execution provider: CPU (default), or XNNPACK / NNAPI where ONNX Runtime can place the model's operators. */
     provider: Provider = Provider.CPU,
-) : Closeable {
+) : HoldModelSession.Runner {
     enum class Provider { CPU, XNNPACK, NNAPI }
 
     /** Where the time of one photo went, in milliseconds. */
@@ -38,7 +40,7 @@ class OnnxHoldDetector(
 
     class Result(val candidates: List<HoldCandidate>, val timing: Timing, val tiles: Int)
 
-    private val env = OrtEnvironment.getEnvironment()
+    private val env = environment()
     private val session: OrtSession = env.createSession(
         modelFile.path,
         OrtSession.SessionOptions().apply {
@@ -54,38 +56,62 @@ class OnnxHoldDetector(
     )
     private val inputName = session.inputNames.first()
 
+    /** The inference running right now, so [stop] can end it mid-tile. */
+    private val runLock = Any()
+    private var running: OrtSession.RunOptions? = null
+
     /**
      * [photo] at any size at or above the working size; it is resampled here,
      * with Android's own bitmap scaling for [SegSettings.Resampler.NATIVE].
-     * [onTile] hears after every tile (done, total).
+     * [onTile] hears after every tile (done, total). Once [isCancelled] says
+     * so, or after [stop], the run ends with a [CancellationException].
      */
-    fun detect(photo: Bitmap, settings: SegSettings = SegSettings(), onTile: (Int, Int) -> Unit = { _, _ -> }): Result {
+    fun detect(
+        photo: Bitmap,
+        settings: SegSettings = SegSettings(),
+        isCancelled: () -> Boolean = { false },
+        onTile: (Int, Int) -> Unit = { _, _ -> },
+    ): Result {
         if (settings.resampler != SegSettings.Resampler.NATIVE) {
             val pixels = IntArray(photo.width * photo.height)
             photo.getPixels(pixels, 0, photo.width, 0, 0, photo.width, photo.height)
-            return detect(RgbImage(photo.width, photo.height, pixels), settings, onTile)
+            return detect(RgbImage(photo.width, photo.height, pixels), settings, isCancelled, onTile)
         }
         val started = System.nanoTime()
         val (workWidth, workHeight) = SegPipeline.workingSize(photo.width, photo.height, settings.longSide)
         val work = if (photo.width == workWidth && photo.height == workHeight) photo else Bitmap.createScaledBitmap(photo, workWidth, workHeight, true)
         val size = settings.input
         val pixels = IntArray(size * size)
-        return runTiles(workWidth, workHeight, settings, started, onTile) { tile ->
-            val crop = Bitmap.createBitmap(work, tile.x0, tile.y0, tile.width, tile.height)
-            val stretched = Bitmap.createScaledBitmap(crop, size, size, true)
-            stretched.getPixels(pixels, 0, size, 0, 0, size, size)
-            if (stretched !== crop) stretched.recycle()
-            if (crop !== work) crop.recycle()
-            SegPipeline.normalize(pixels, size)
-        }.also { if (work !== photo) work.recycle() }
+        try {
+            return runTiles(workWidth, workHeight, settings, started, isCancelled, onTile) { tile ->
+                val crop = Bitmap.createBitmap(work, tile.x0, tile.y0, tile.width, tile.height)
+                val stretched = Bitmap.createScaledBitmap(crop, size, size, true)
+                stretched.getPixels(pixels, 0, size, 0, 0, size, size)
+                if (stretched !== crop) stretched.recycle()
+                if (crop !== work) crop.recycle()
+                SegPipeline.normalize(pixels, size)
+            }
+        } finally {
+            if (work !== photo) work.recycle()
+        }
     }
 
     /** [photo] at any size at or above the working size; it is resampled here in Kotlin. */
-    fun detect(photo: RgbImage, settings: SegSettings = SegSettings(), onTile: (Int, Int) -> Unit = { _, _ -> }): Result {
+    fun detect(
+        photo: RgbImage,
+        settings: SegSettings = SegSettings(),
+        isCancelled: () -> Boolean = { false },
+        onTile: (Int, Int) -> Unit = { _, _ -> },
+    ): Result {
         val started = System.nanoTime()
         val (workWidth, workHeight) = SegPipeline.workingSize(photo.width, photo.height, settings.longSide)
         val work = Resampling.resize(photo, workWidth, workHeight, settings.resampler)
-        return runTiles(workWidth, workHeight, settings, started, onTile) { tile -> SegPipeline.inputTensor(work, tile, settings) }
+        return runTiles(workWidth, workHeight, settings, started, isCancelled, onTile) { tile -> SegPipeline.inputTensor(work, tile, settings) }
+    }
+
+    /** Ends the running photo as soon as possible, also in the middle of a tile. */
+    override fun stop() {
+        synchronized(runLock) { running?.setTerminate(true) }
     }
 
     private fun runTiles(
@@ -93,6 +119,7 @@ class OnnxHoldDetector(
         workHeight: Int,
         settings: SegSettings,
         started: Long,
+        isCancelled: () -> Boolean,
         onTile: (Int, Int) -> Unit,
         input: (SegTile) -> FloatArray,
     ): Result {
@@ -101,10 +128,11 @@ class OnnxHoldDetector(
         var inferNs = 0L
         var postNs = 0L
         val perTile = tiles.mapIndexed { index, tile ->
+            if (isCancelled()) throw CancellationException("hold detection stopped")
             val t0 = System.nanoTime()
             val tensor = input(tile)
             val t1 = System.nanoTime()
-            val outputs = infer(tensor, settings.input)
+            val outputs = infer(tensor, settings.input, isCancelled)
             val t2 = System.nanoTime()
             val decoded = SegPipeline.decode(outputs, tile, settings)
             val t3 = System.nanoTime()
@@ -125,9 +153,26 @@ class OnnxHoldDetector(
         return Result(candidates, Timing(resizeNs / MS, inferNs / MS, postNs / MS), tiles.size)
     }
 
-    private fun infer(input: FloatArray, size: Int): SegOutputs {
+    private fun infer(input: FloatArray, size: Int, isCancelled: () -> Boolean): SegOutputs {
+        val options = OrtSession.RunOptions()
+        synchronized(runLock) { running = options }
+        // A stop between the check before this tile and here would miss the new run: look again.
+        if (isCancelled()) options.setTerminate(true)
+        try {
+            return infer(input, size, options)
+        } catch (e: OrtException) {
+            // A terminated run ends with an error from the runtime: report it as what it is.
+            if (isCancelled()) throw CancellationException("hold detection stopped")
+            throw e
+        } finally {
+            synchronized(runLock) { running = null }
+            options.close()
+        }
+    }
+
+    private fun infer(input: FloatArray, size: Int, options: OrtSession.RunOptions): SegOutputs {
         OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, size.toLong(), size.toLong())).use { tensor ->
-            session.run(mapOf(inputName to tensor)).use { result ->
+            session.run(mapOf(inputName to tensor), options).use { result ->
                 var boxes: Pair<FloatArray, LongArray>? = null
                 var logits: Pair<FloatArray, LongArray>? = null
                 var masks: Pair<FloatArray, LongArray>? = null
@@ -162,6 +207,14 @@ class OnnxHoldDetector(
     override fun close() = session.close()
 
     companion object {
+        /**
+         * ONNX Runtime's one environment, with its telemetry to Microsoft
+         * switched off before the first session. The manifest also removes
+         * the runtime's own start-up provider, which would set that telemetry
+         * up on every app start (see AndroidManifest.xml).
+         */
+        fun environment(): OrtEnvironment = OrtEnvironment.getEnvironment().also { it.setTelemetry(false) }
+
         /**
          * Every core, up to 8: on the test phone (8 slow cores) 8 threads ran
          * the model 2.7× faster than 4.

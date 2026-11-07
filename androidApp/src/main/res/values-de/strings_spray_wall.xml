@@ -27,7 +27,7 @@
     <string name="spray_wall_delete">Wand löschen</string>
     <string name="spray_wall_delete_confirm_title">%1$s löschen?</string>
     <string name="spray_wall_delete_confirm_text">Das entfernt Foto, alle Griffe, Boulder und ihre Logbucheinträge von diesem Telefon. Das lässt sich nicht rückgängig machen.</string>
-    <string name="spray_wall_delete_public_note">Die Wand wird auch von Nostr zurückgezogen; Kopien, die andere schon haben, können bleiben.</string>
+    <string name="spray_wall_delete_public_note">Die Wand wird auch von Nostr zurückgezogen und ihre Fotos werden von den Blossom-Servern gelöscht; Kopien, die andere schon haben, können bleiben.</string>
 
     <!-- Griffe markieren -->
     <string name="spray_holds_title">Griffe markieren</string>
@@ -116,6 +116,7 @@
     <string name="spray_step_holds">Griffe</string>
     <string name="spray_step_details">Details</string>
     <string name="spray_wall_photo_privacy">Das Foto wird verkleinert und ohne Kameradaten (Ort, Gerät) gespeichert. Es bleibt auf diesem Telefon.</string>
+    <string name="spray_wall_photo_public">Das Foto wird verkleinert und ohne Kameradaten (Ort, Gerät) gespeichert. Diese Wand ist öffentlich: Das neue Foto wird mit ihr veröffentlicht, darf also keine Menschen zeigen.</string>
     <string name="spray_adjust_title">Zuschneiden und drehen</string>
     <string name="spray_adjust_hint">Zieh an den Ecken oder Kanten, um auf die Wand zuzuschneiden. Dreh das Foto, bis die Wand aufrecht steht.</string>
     <string name="spray_adjust_rotate">Drehen</string>
@@ -132,17 +133,21 @@
     <string name="spray_detect_running">Griffe werden gesucht …</string>
     <string name="spray_detect_suggestions">Vorgeschlagene Griffe: %1$d</string>
     <string name="spray_detect_none_open">Keine offenen Vorschläge. Empfindlicher zeigt auch unsichere.</string>
-    <string name="spray_detect_hint">Gestrichelte Ringe sind Vorschläge. Tippe einen an, um ihn zu übernehmen, oder übernimm alle. Empfindlicher zeigt mehr, auch unsichere.</string>
+    <string name="spray_detect_hint">Orange umrandete Griffe sind Vorschläge. Tippe einen an, um ihn zu übernehmen, oder übernimm alle. Empfindlicher zeigt mehr, auch unsichere.</string>
     <string name="spray_detect_sensitivity">Empfindlichkeit</string>
     <string name="spray_detect_accept_all">Alle übernehmen</string>
     <string name="spray_detect_dismiss">Vorschläge ausblenden</string>
     <string name="spray_detect_none">Keine Griffe gefunden. Markiere sie von Hand: Wand gedrückt halten oder Hinzufügen einschalten.</string>
     <string name="spray_model_title">Bessere Griffsuche</string>
-    <string name="spray_model_text">Lade einmal das Griff-Modell herunter (33 MB). Es findet Griffe in jeder Farbe mit ihrer echten Form und läuft danach ohne Internet auf diesem Telefon.</string>
+    <string name="spray_model_text">Lade einmal das Griff-Modell herunter (33 MB). Es findet Griffe in jeder Farbe mit ihrer echten Form und läuft danach ohne Internet auf diesem Telefon. Du kannst es in den Einstellungen unter Lokale Daten löschen wieder entfernen.</string>
     <string name="spray_model_download">Herunterladen</string>
     <string name="spray_model_downloading">Wird heruntergeladen … %1$d %%</string>
     <string name="spray_model_failed">Der Download hat nicht geklappt. Prüfe die Verbindung und versuch es noch einmal.</string>
+    <string name="spray_settings_title">Spraywände auf diesem Telefon</string>
+    <string name="spray_settings_model">Griff-Modell: %1$s</string>
+    <string name="spray_settings_model_hint">Für die Griffsuche auf Spraywänden heruntergeladen. Ohne es schlägt die einfachere Griffsuche Griffe vor; es lässt sich jederzeit wieder herunterladen.</string>
     <string name="spray_detect_failed">Die Griffsuche hat bei diesem Foto nicht geklappt. Markiere die Griffe von Hand.</string>
+    <string name="spray_model_run_failed">Das Griff-Modell konnte auf diesem Foto nicht laufen. Diese Vorschläge kommen von der einfacheren Griffsuche.</string>
     <plurals name="spray_detect_found">
         <item quantity="one">%d Griff gefunden. Prüfe ihn und übernimm ihn.</item>
         <item quantity="other">%d Griffe gefunden. Prüfe sie und übernimm sie.</item>
@@ -178,12 +183,20 @@
     <string name="spray_publish_confirm_title">Wand öffentlich machen?</string>
     <string name="spray_publish_confirm_text">Das Foto jeder Version dieser Wand, ihre Griffe und die Boulder darauf werden unter deinem CruxCoach-Account öffentlich. Du kannst die Wand später zurückziehen, aber Kopien, die andere schon haben, können bleiben. Dein Logbuch wird nie veröffentlicht.</string>
     <string name="spray_publish_confirm">Öffentlich machen</string>
+    <string name="spray_publish_no_people">Auf den Fotos dürfen keine Menschen zu sehen sein.</string>
     <string name="spray_publish_no_identity_title">Noch kein Kontoschlüssel</string>
     <string name="spray_publish_no_identity_text">Zum Veröffentlichen braucht die Wand deinen CruxCoach-Kontoschlüssel. Richte ihn in den Einstellungen unter CruxCoach Account ein und mach die Wand dann öffentlich.</string>
     <string name="spray_publish_failed">Diese Wand ist noch nicht veröffentlicht: keine Verbindung zu den Relays oder zum Fotoserver. Versuch es später noch einmal.</string>
     <string name="spray_withdraw_title">Wand zurückziehen?</string>
-    <string name="spray_withdraw_text">Die Relays werden gebeten, die Wand, alle ihre Versionen und deine Boulder darauf zu löschen. Kopien, die andere schon haben, können bleiben. Die Wand bleibt als private Wand auf diesem Telefon.</string>
+    <string name="spray_withdraw_text">Die Relays werden gebeten, die Wand, alle ihre Versionen und deine Boulder darauf zu löschen, und ihre Fotos werden von den Blossom-Servern gelöscht, auf die sie hochgeladen wurden. Kopien, die andere schon haben, können bleiben. Die Wand bleibt als private Wand auf diesem Telefon.</string>
     <string name="spray_withdraw_confirm">Zurückziehen</string>
+    <string name="spray_withdraw_failed_title">Wand nicht zurückgezogen</string>
+    <string name="spray_delete_failed_title">Wand nicht gelöscht</string>
+    <string name="spray_withdraw_failed_relays">Kein Relay hat das Zurückziehen bestätigt, die Wand ist also noch öffentlich. Prüfe die Verbindung und versuch es noch einmal.</string>
+    <string name="spray_withdraw_failed_photos">Die Relays haben das Zurückziehen angenommen, aber ein Foto ließ sich nicht von seinem Blossom-Server löschen. Die Wand bleibt hier deshalb öffentlich. Prüfe die Verbindung und versuch es noch einmal.</string>
+    <string name="spray_withdraw_failed_signing">Das Signieren hat nicht geklappt oder wurde in deiner Signer-App abgelehnt, die Wand ist also noch öffentlich. Versuch es noch einmal und bestätige die Anfragen.</string>
+    <string name="spray_withdraw_failed_identity">Zum Zurückziehen braucht es den Schlüssel des CruxCoach-Accounts, mit dem die Wand veröffentlicht wurde. Richte ihn in den Einstellungen unter CruxCoach Account ein und versuch es dann noch einmal.</string>
+    <string name="spray_delete_failed_note">Eine öffentliche Wand wird hier erst gelöscht, wenn sie zurückgezogen ist.</string>
     <string name="spray_gym_title">Halle</string>
     <string name="spray_gym_pick_title">Wo hängt die Wand?</string>
     <string name="spray_gym_search">Hallen nach Name oder Ort suchen</string>

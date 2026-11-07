@@ -139,6 +139,16 @@ UPDATE spray_wall_version SET hold_count = ? WHERE wall_id = ? AND version = ?;
 setPhotoBlob:
 UPDATE spray_wall_version SET photo_sha256 = ?, photo_url = ? WHERE wall_id = ? AND photo_file = ?;
 
+-- A withdrawn wall's photos were deleted from Blossom: publishing it again uploads them anew.
+clearPhotoBlobs:
+UPDATE spray_wall_version SET photo_sha256 = NULL, photo_url = NULL WHERE wall_id = ?;
+
+-- Another public wall of mine still shows this photo on Blossom.
+countPublishedPhotoUses:
+SELECT COUNT(*) FROM spray_wall_version v JOIN spray_wall w ON w.id = v.wall_id
+WHERE v.photo_sha256 = ? AND v.wall_id != ? AND w.owner_pubkey IS NULL
+  AND w.visibility = 'public' AND w.published_version IS NOT NULL;
+
 selectPhotoFiles:
 SELECT DISTINCT photo_file FROM spray_wall_version WHERE wall_id = ?;
 

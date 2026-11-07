@@ -75,7 +75,8 @@ fun SprayConfirmDialog(
     confirmLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
-    dismissLabel: String = stringResource(R.string.action_cancel),
+    /** Null for a dialog that only informs: then it has the one button. */
+    dismissLabel: String? = stringResource(R.string.action_cancel),
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -84,7 +85,7 @@ fun SprayConfirmDialog(
         confirmButton = {
             TextButton(onClick = onConfirm, modifier = Modifier.testTag("spray_confirm")) { Text(confirmLabel) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(dismissLabel) } },
+        dismissButton = dismissLabel?.let { label -> { TextButton(onClick = onDismiss) { Text(label) } } },
     )
 }
 

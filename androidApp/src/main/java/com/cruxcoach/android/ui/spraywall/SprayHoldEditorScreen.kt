@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.spraywall
 
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -68,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.spraywall.HoldModel
+import com.cruxcoach.android.spraywall.HoldModelSession
 import com.cruxcoach.android.spraywall.HoldModelStore
 import com.cruxcoach.android.spraywall.OnnxHoldDetector
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
@@ -77,6 +79,7 @@ import com.cruxcoach.domain.spraywall.SprayHoldEditorState
 import com.cruxcoach.domain.spraywall.SpraySuggestion
 import com.cruxcoach.domain.spraywall.SprayVersionKind
 import com.cruxcoach.domain.spraywall.SprayWall
+import com.cruxcoach.domain.spraywall.detect.HoldCandidate
 import com.cruxcoach.domain.spraywall.detect.RgbImage
 import com.cruxcoach.domain.spraywall.detect.SegSettings
 import com.cruxcoach.domain.spraywall.detect.SprayHoldDetector
@@ -129,6 +132,8 @@ sealed interface SprayHoldEditorMessage {
     data object Limit : SprayHoldEditorMessage
     data class Detected(val count: Int) : SprayHoldEditorMessage
     data object DetectFailed : SprayHoldEditorMessage
+    /** The hold model could not run: the suggestions come from the classical detector. */
+    data object ModelFailed : SprayHoldEditorMessage
 }
 
 /** Canvas ids for suggestions, far away from real (positive) and new (small negative) hold ids. */
@@ -147,7 +152,8 @@ class SprayHoldEditorViewModel @Inject constructor(
     private val _messages = MutableSharedFlow<SprayHoldEditorMessage>(extraBufferCapacity = 4)
     val messages: SharedFlow<SprayHoldEditorMessage> = _messages.asSharedFlow()
 
-    private var segmentation: OnnxHoldDetector? = null
+    /** Loaded on the first model run, freed when the screen is gone and no run is going. */
+    private val segmentation = HoldModelSession { OnnxHoldDetector(models.file) }
 
     init {
         viewModelScope.launch { models.state.collect { model -> _state.update { it.copy(model = model) } } }
@@ -173,21 +179,25 @@ class SprayHoldEditorViewModel @Inject constructor(
         val wall = _state.value.wall ?: return
         if (_state.value.detecting) return
         _state.update { it.copy(detecting = true) }
+        // Leaving the screen cancels viewModelScope: a model run stops mid-tile, and its session is freed after.
         viewModelScope.launch {
             try {
-                val useModel = models.isReady()
-                val found = withContext(Dispatchers.Default) {
-                    val candidates = if (useModel) {
-                        val image = photos.bitmap(wall.photoFile, MODEL_SETTINGS.longSide) ?: return@withContext emptyList()
-                        val detector = segmentation ?: OnnxHoldDetector(models.file).also { segmentation = it }
-                        detector.detect(image, MODEL_SETTINGS) { done, total -> _state.update { it.copy(detectProgress = done to total) } }
-                            .candidates.also { image.recycle() }
-                    } else {
-                        val (w, h, pixels) = photos.pixels(wall.photoFile, DETECT_LONG_SIDE) ?: return@withContext emptyList()
-                        SprayHoldDetector.detect(RgbImage(w, h, pixels))
+                var byModel = models.isReady()
+                val candidates = if (byModel) {
+                    try {
+                        modelCandidates(wall)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        modelFailed(e)
+                    } catch (e: OutOfMemoryError) {
+                        modelFailed(e)
                     }
-                    candidates.map { SpraySuggestion(it.x, it.y, it.radius, it.confidence, it.outline) }
+                } else {
+                    null
                 }
+                if (candidates == null) byModel = false
+                val found = (candidates ?: classicCandidates(wall)).map { SpraySuggestion(it.x, it.y, it.radius, it.confidence, it.outline) }
                 _state.update {
                     val editor = it.editor.withSuggestions(found, wall.aspectRatio)
                     // The model's scores mean something else than the classical detector's: start at its own threshold.
@@ -195,7 +205,7 @@ class SprayHoldEditorViewModel @Inject constructor(
                         detecting = false,
                         detected = true,
                         detectProgress = null,
-                        editor = if (useModel) editor.setThreshold(MODEL_SETTINGS.threshold) else editor,
+                        editor = if (byModel) editor.setThreshold(MODEL_SETTINGS.threshold) else editor,
                     )
                 }
                 _messages.emit(SprayHoldEditorMessage.Detected(_state.value.editor.visibleSuggestions.size))
@@ -206,6 +216,33 @@ class SprayHoldEditorViewModel @Inject constructor(
                 _messages.emit(SprayHoldEditorMessage.DetectFailed)
             }
         }
+    }
+
+    /** The model's holds with their outlines; null when the model could not run on this phone or photo. */
+    private suspend fun modelCandidates(wall: SprayWall): List<HoldCandidate> {
+        val image = withContext(Dispatchers.Default) { photos.bitmap(wall.photoFile, MODEL_SETTINGS.longSide) } ?: return emptyList()
+        try {
+            return segmentation.run { detector, isCancelled ->
+                detector.detect(image, MODEL_SETTINGS, isCancelled) { done, total ->
+                    _state.update { it.copy(detectProgress = done to total) }
+                }.candidates
+            }
+        } finally {
+            image.recycle()
+        }
+    }
+
+    private suspend fun classicCandidates(wall: SprayWall): List<HoldCandidate> = withContext(Dispatchers.Default) {
+        val (w, h, pixels) = photos.pixels(wall.photoFile, DETECT_LONG_SIDE) ?: return@withContext emptyList()
+        SprayHoldDetector.detect(RgbImage(w, h, pixels))
+    }
+
+    /** A broken download, a runtime error or too little memory: say so, and let the classical detector take over. */
+    private suspend fun modelFailed(e: Throwable): List<HoldCandidate>? {
+        Log.w(TAG, "hold model failed, using the classical detector", e)
+        _state.update { it.copy(detectProgress = null) }
+        _messages.emit(SprayHoldEditorMessage.ModelFailed)
+        return null
     }
 
     private fun addAt(x: Float, y: Float) {
@@ -305,28 +342,29 @@ class SprayHoldEditorViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        segmentation?.close()
+        segmentation.close()
     }
 
     private companion object {
         /**
-         * Tuned on 28 labelled wall photos: 3×3 tiles of a 1536 px working
-         * photo find small holds the published 2×2 setting misses, a stricter
-         * overlap (0.3) drops duplicates from neighbouring tiles, and 0.5 is
-         * the best default threshold. Holds cut by a tile edge take the shape
-         * of their uncut copy. The floor keeps unsure holds for the
-         * sensitivity slider.
+         * The published 2×2 tiling of a 1024 px working photo: about 11 s a
+         * photo on the 8-core test phone, against 25 s for 3×3 at 1536 px.
+         * Tuned on 28 labelled wall photos: a stricter overlap (0.3) drops
+         * duplicates from neighbouring tiles, and 0.4 is the best default
+         * threshold for it. Holds cut by a tile edge take the shape of their
+         * uncut copy. The floor keeps unsure holds for the sensitivity slider.
          */
         val MODEL_SETTINGS = SegSettings(
-            longSide = 1536,
-            rows = 3,
-            cols = 3,
-            threshold = 0.5f,
+            longSide = 1024,
+            rows = 2,
+            cols = 2,
+            threshold = 0.4f,
             floor = 0.3f,
             nmsIou = 0.3f,
             resampler = SegSettings.Resampler.NATIVE,
             seamAware = true,
         )
+        const val TAG = "SprayHoldEditor"
         const val DETECT_LONG_SIDE = 1024
     }
 }
@@ -366,6 +404,7 @@ fun SprayHoldEditorScreen(
                     if (message.count > 0) context.resources.getQuantityString(R.plurals.spray_detect_found, message.count, message.count)
                     else context.getString(R.string.spray_detect_none)
                 SprayHoldEditorMessage.DetectFailed -> context.getString(R.string.spray_detect_failed)
+                SprayHoldEditorMessage.ModelFailed -> context.getString(R.string.spray_model_run_failed)
             }
             snackbar.showSnackbar(text)
         }

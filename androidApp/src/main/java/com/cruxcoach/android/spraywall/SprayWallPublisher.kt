@@ -5,13 +5,13 @@ import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.SignerMode
+import com.cruxcoach.android.nostr.backup.BlossomUploader
 import com.cruxcoach.android.nostr.profile.ProfileImageUploader
 import com.cruxcoach.domain.spraywall.SprayClimb
 import com.cruxcoach.domain.spraywall.SprayNostrEvent
 import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVersion
-import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +47,7 @@ class SprayWallPublisher @Inject constructor(
     private val keyStore: NostrKeyStore,
     private val pool: NostrRelayPool,
     private val uploader: ProfileImageUploader,
+    private val blossom: BlossomUploader,
 ) {
     sealed interface Outcome {
         data class Done(val versions: Int, val climbs: Int) : Outcome
@@ -147,31 +148,24 @@ class SprayWallPublisher @Inject constructor(
         }
     }
 
-    /**
-     * Takes a public wall back: every event it published (head, versions,
-     * my climbs on it) is replaced by a tombstone and named in a kind-5
-     * deletion. The wall turns private on this phone either way; returns
-     * false when no relay confirmed.
-     */
-    suspend fun withdrawWall(wallId: String): Boolean = mutex.withLock {
-        val wall = repository.wall(wallId) ?: return false
-        val me = myPubkey()
-        var accepted = 0
-        if (me != null && wall.isMine && wall.publishedVersion != null) {
-            val address = SprayWallNostr.wallAddress(me, wallId)
-            val dTags = buildList {
-                add(SprayWallNostr.wallDTag(me, wallId) to SprayWallNostr.LABEL_WALL)
-                repository.versions(wallId).filter { it.number <= wall.publishedVersion!! }.forEach {
-                    add(SprayWallNostr.versionDTag(me, wallId, it.number) to SprayWallNostr.LABEL_VERSION)
-                }
-                repository.publishedClimbs(wallId).forEach { add(SprayWallNostr.climbDTag(me, it.uuid) to SprayWallNostr.LABEL_CLIMB) }
+    private val withdrawal = SprayWallWithdrawal(
+        repository = repository,
+        send = ::send,
+        deletePhoto = { sha, servers ->
+            val result = blossom.delete(sha, servers)
+            when {
+                result.authFailed -> SprayWallWithdrawal.PhotoDeletion.NOT_AUTHORISED
+                result.fullySucceeded() -> SprayWallWithdrawal.PhotoDeletion.DELETED
+                else -> SprayWallWithdrawal.PhotoDeletion.LEFT
             }
-            for ((d, label) in dTags) accepted = maxOf(accepted, send(SprayWallNostr.tombstone(stamp(d), d, label, address)))
-            accepted = maxOf(accepted, send(SprayWallNostr.deletion(me, now(), dTags.map { it.first })))
-        }
-        repository.updateWallDetails(wallId, wall.name, wall.angle, SprayWallVisibility.PRIVATE, wall.gym)
-        accepted > 0
-    }
+        },
+        stamp = ::stamp,
+        now = ::now,
+        defaultServers = BlossomUploader.DEFAULT_SERVERS,
+    )
+
+    /** Takes a public wall back, photos included ([SprayWallWithdrawal]); the wall stays public when that fails. */
+    suspend fun withdrawWall(wallId: String): SprayWithdrawal = mutex.withLock { withdrawal.run(myPubkey(), wallId) }
 
     /** Withdraws one published climb of mine (it was deleted here). */
     fun withdrawClimbSoon(climb: SprayClimb, wallOwner: String?) {
@@ -189,12 +183,19 @@ class SprayWallPublisher @Inject constructor(
     }
 
     private suspend fun send(event: SprayNostrEvent): Int {
-        val signed = nostrSigner.signer.sign<Event>(
-            createdAt = event.createdAt,
-            kind = event.kind,
-            tags = event.tags.map { it.toTypedArray() }.toTypedArray(),
-            content = event.content,
-        )
+        val signed = try {
+            nostrSigner.signer.sign<Event>(
+                createdAt = event.createdAt,
+                kind = event.kind,
+                tags = event.tags.map { it.toTypedArray() }.toTypedArray(),
+                content = event.content,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Amber declined, timed out or could not be reached; a local key that cannot sign.
+            throw SprayEventSigningFailed(e)
+        }
         val (attempted, accepted) = pool.sendEventWithStats(signed)
         Log.i(TAG, "kind=${event.kind} attempted=$attempted accepted=$accepted")
         return accepted

@@ -32,7 +32,8 @@ import kotlin.math.max
  *
  * Extras: mode (seg|classic), longSide, rows, cols, overlap, threshold, floor,
  * nms, outlines, upsample, tolerance, maxPoints, resampler (lanczos3|bilinear|native),
- * seam, threads, ep (cpu|xnnpack|nnapi), repeat (timing passes per photo), only (comma-separated photo names).
+ * seam, threads, ep (cpu|xnnpack|nnapi), repeat (timing passes per photo), only (comma-separated photo names),
+ * model (a file name in `files/bench`, to compare another model version with the downloaded one).
  */
 class HoldBenchActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,8 +93,11 @@ class HoldBenchActivity : Activity() {
                 it.substringBefore("=") to it.substringAfter("=")
             }))
             .put("rssStartKb", status("VmRSS")).put("hwmStartKb", status("VmHWM"))
-        val model = File(filesDir, "${HoldModelStore.DIR}/${HoldModel.FILE_NAME}").takeIf { it.length() == HoldModel.BYTES }
+        val other = x.getStringExtra("model")?.takeIf { it.matches(Regex("[A-Za-z0-9._-]{1,80}")) }
+        val model = other?.let { File(dir, it) }
+            ?: File(filesDir, "${HoldModelStore.DIR}/${HoldModel.FILE_NAME}").takeIf { it.length() == HoldModel.BYTES }
             ?: File(dir, "model.onnx")
+        json.put("model", model.name).put("modelBytes", model.length())
         val t0 = System.nanoTime()
         val provider = when (x.getStringExtra("ep")) {
             "xnnpack" -> OnnxHoldDetector.Provider.XNNPACK
