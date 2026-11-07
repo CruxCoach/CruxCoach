@@ -275,10 +275,13 @@ internal fun BoardSelectionDialog(
     } else {
         BoardConstants.KILTER_PRODUCT_ID
     }
-    val shownSizes = remember(category, productSizes, frequency) {
+    // Most common first, ranked once per product: counts that arrive later (the gym list after
+    // the bundled numbers) update the shares but must not move a size under the finger.
+    val sizeRank = remember(kilterProductId, isKilter) { frequency }
+    val shownSizes = remember(category, productSizes, sizeRank) {
         productSizes
             .filter { it.productId.toInt() == kilterProductId }
-            .sortedByDescending { frequency[it.id.toInt()] ?: 0L }
+            .sortedByDescending { sizeRank[it.id.toInt()] ?: 0L }
     }
     val kilterEmpty = isKilter && shownSizes.isEmpty()
 
