@@ -4,10 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.holdtypes.HoldReviewStore
 import com.cruxcoach.android.data.holdtypes.HoldTypeAssets
-import com.cruxcoach.data.repository.BoardImage
-import com.cruxcoach.data.repository.BoardPlacement
-import com.cruxcoach.data.repository.BoardRepository
-import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.holdtypes.BlindAnswer
 import com.cruxcoach.domain.holdtypes.ComputedSnapshot
 import com.cruxcoach.domain.holdtypes.Disagreement
@@ -30,13 +26,6 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 enum class ReviewStage { BLIND, DECIDE, RESULTS }
-
-/** The board around one hold: size, its hold-set images and the placements of its layout. */
-data class HoldBoardView(
-    val boardSize: BoardSize,
-    val boardImages: List<BoardImage>,
-    val placements: Map<Int, BoardPlacement>,
-)
 
 /** The reviewer's selections for the hold on screen, before they are saved. */
 data class AnswerDraft(val type: String? = null, val direction: String? = null, val footOnly: String? = null) {
@@ -68,7 +57,7 @@ data class HoldReviewUiState(
 class HoldReviewViewModel @Inject constructor(
     private val assets: HoldTypeAssets,
     private val store: HoldReviewStore,
-    private val boardRepository: BoardRepository,
+    private val boardViews: HoldBoardViews,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HoldReviewUiState())
@@ -76,7 +65,6 @@ class HoldReviewViewModel @Inject constructor(
 
     private var dataset: HoldTypeDataset? = null
     private var session: HoldReviewSession = HoldReviewSession(BOARD, "")
-    private val boardViews = mutableMapOf<Int, HoldBoardView?>()
     /** Saves run one at a time, in the order they were made. */
     private val saveDispatcher = Dispatchers.IO.limitedParallelism(1)
 
@@ -97,20 +85,7 @@ class HoldReviewViewModel @Inject constructor(
 
     private fun reference(): List<Int> = dataset?.referenceSet.orEmpty()
 
-    private suspend fun boardFor(entry: HoldTypeEntry): HoldBoardView? {
-        if (boardViews.containsKey(entry.viewSizeId)) return boardViews[entry.viewSizeId]
-        val view = withContext(Dispatchers.IO) {
-            val size = boardRepository.getProductSize(entry.viewSizeId, BOARD) ?: return@withContext null
-            HoldBoardView(
-                boardSize = size,
-                boardImages = boardRepository.getBoardImages(entry.viewSizeId, entry.layoutId, BOARD),
-                placements = boardRepository.getPlacementsForLayout(entry.viewSizeId, entry.layoutId, BOARD)
-                    .associateBy { it.placementId.toInt() },
-            )
-        }
-        boardViews[entry.viewSizeId] = view
-        return view
-    }
+    private suspend fun boardFor(entry: HoldTypeEntry): HoldBoardView? = boardViews.viewFor(BOARD, entry)
 
     private fun baseState(stage: ReviewStage) = _state.value.copy(
         loading = false,
