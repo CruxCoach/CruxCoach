@@ -1,6 +1,5 @@
 package com.cruxcoach.android.ui.board
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,7 +8,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.GradeScale
 import androidx.compose.ui.res.stringResource
@@ -17,11 +15,10 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.domain.board.BoardBrand
-import com.cruxcoach.domain.board.IntensityZones
 import java.time.LocalDate
 
 @Composable
-private fun statsTimeIntervalLabel(interval: StatsTimeInterval): String = when (interval) {
+internal fun statsTimeIntervalLabel(interval: StatsTimeInterval): String = when (interval) {
     StatsTimeInterval.ALL -> stringResource(R.string.board_stats_interval_all)
     StatsTimeInterval.DAYS_30 -> stringResource(R.string.board_stats_interval_30d)
     StatsTimeInterval.DAYS_90 -> stringResource(R.string.board_stats_interval_90d)
@@ -40,27 +37,7 @@ private fun heatmapModeLabel(mode: HeatmapMode): String = when (mode) {
 }
 
 @Composable
-private fun gradeChartViewLabel(view: GradeChartView): String = when (view) {
-    GradeChartView.PYRAMID -> stringResource(R.string.board_stats_grade_pyramid)
-    GradeChartView.FLASH_SEND_ATTEMPT -> stringResource(R.string.board_stats_flash_send_attempt)
-    GradeChartView.OUTCOME_DONUT -> stringResource(R.string.board_stats_outcome_distribution)
-    GradeChartView.UNIQUE_CLIMBS -> stringResource(R.string.ux_sent_climbs_grade)
-}
-
-@Composable
-private fun timeChartViewLabel(view: TimeChartView): String = when (view) {
-    TimeChartView.SENDS_OVER_TIME -> stringResource(R.string.board_stats_sends_over_time)
-    TimeChartView.WEEKLY_VOLUME -> stringResource(R.string.board_stats_weekly_volume)
-}
-
-@Composable
-private fun distributionChartViewLabel(view: DistributionChartView): String = when (view) {
-    DistributionChartView.ANGLE -> stringResource(R.string.board_stats_angle_distribution)
-    DistributionChartView.PERIOD_COMPARISON -> stringResource(R.string.board_stats_period_comparison)
-}
-
-@Composable
-private fun boardBrandLabel(brand: String): String = when (val b = BoardBrand.fromWire(brand)) {
+internal fun boardBrandLabel(brand: String): String = when (val b = BoardBrand.fromWire(brand)) {
     BoardBrand.KILTER -> stringResource(R.string.board_selection_brand_kilter)
     BoardBrand.MOONBOARD -> stringResource(R.string.board_selection_brand_moonboard)
     // Aurora-family + any future brand: the proper-noun display name (e.g.
@@ -69,123 +46,49 @@ private fun boardBrandLabel(brand: String): String = when (val b = BoardBrand.fr
 }
 
 /** Board-family selector for the per-board stats split. "Alle" (null) +
- *  one chip per board the user has logged on. Only shown for multi-board
- *  users (the caller gates on availableBoardBrands.size > 1). */
+ *  one chip per board the user has logged on, each with its sends in the
+ *  period, so the chips double as the comparison of how much you climb on
+ *  each board. Only shown for multi-board users (the caller gates on
+ *  availableBoardBrands.size > 1). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BoardFilterChips(
     brands: List<String>,
+    comparison: List<BoardComparisonEntry>,
     selected: String?,
     onSelect: (String?) -> Unit,
 ) {
+    val byBoard = comparison.associateBy { it.boardBrand }
+    val hardest = comparison.filter { it.hardestGrade != null }.maxByOrNull { it.hardestDifficultyInt }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(
             selected = selected == null,
             onClick = { onSelect(null) },
-            label = { Text(stringResource(R.string.map_filter_show_all)) },
+            label = {
+                BoardChipLabel(stringResource(R.string.map_filter_show_all), comparison.sumOf { it.sendCount }, hardest?.hardestGrade)
+            },
         )
         brands.forEach { brand ->
             FilterChip(
                 selected = selected == brand,
                 onClick = { onSelect(brand) },
-                label = { Text(boardBrandLabel(brand)) },
+                label = { BoardChipLabel(boardBrandLabel(brand), byBoard[brand]?.sendCount ?: 0, byBoard[brand]?.hardestGrade) },
             )
         }
     }
 }
 
-/** Compact per-board comparison: one row per board the user has logged on,
- *  showing sends and hardest sent grade over the current interval. Rows are
- *  tappable to scope the stats to that board (mirrors the filter chips), and
- *  the active board's row is highlighted. Kept as a summary list (not a chart)
- *  so it stays light at the top of the sheet. */
+/** "Kilter 11 · 7a": the board, its sends and its best grade in the period. */
 @Composable
-private fun BoardComparisonSection(
-    entries: List<BoardComparisonEntry>,
-    selected: String?,
-    onSelect: (String?) -> Unit,
-) {
-    // Wide enough for "Begehungen" on one line at the default font scale.
-    val SENDS_COLUMN_WIDTH = 88.dp
-    val GRADE_COLUMN_WIDTH = 76.dp
-    ChartSection(stringResource(R.string.board_stats_board_comparison)) {
-        // Column header.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-        ) {
-            Text(
-                stringResource(R.string.board_stats_board_comparison_board),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                stringResource(R.string.board_sends),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                // A single long word has no wrap point, so a narrow column split it into
-                // "Begehunge / n". Keep the header on one line and shorten it if it must.
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(SENDS_COLUMN_WIDTH),
-                textAlign = androidx.compose.ui.text.style.TextAlign.End,
-            )
-            Text(
-                stringResource(R.string.board_logbook_best_grade),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(GRADE_COLUMN_WIDTH),
-                textAlign = androidx.compose.ui.text.style.TextAlign.End,
-            )
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        entries.forEach { entry ->
-            val isActive = selected == entry.boardBrand
-            Surface(
-                color = if (isActive) OrangeAccent.copy(alpha = 0.15f)
-                        else androidx.compose.ui.graphics.Color.Transparent,
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        // Toggle: tapping the active board returns to "all".
-                        onSelect(if (isActive) null else entry.boardBrand)
-                    },
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
-                    Text(
-                        boardBrandLabel(entry.boardBrand),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isActive) OrangeAccent else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        "${entry.sendCount}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = SuccessGreen,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        modifier = Modifier.width(SENDS_COLUMN_WIDTH),
-                    )
-                    Text(
-                        entry.hardestGrade ?: "-",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = GradeHard,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        modifier = Modifier.width(GRADE_COLUMN_WIDTH),
-                    )
-                }
-            }
-        }
+private fun BoardChipLabel(name: String, sends: Int, best: String?) {
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(name)
+        Spacer(Modifier.width(6.dp))
+        Text(
+            listOfNotNull("$sends", best).joinToString(" · "),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -194,11 +97,8 @@ private fun BoardComparisonSection(
 internal fun BoardStatsSheet(
     stats: BoardLogbookStats,
     statsInterval: StatsTimeInterval,
-    gradeChartView: GradeChartView,
-    timeChartView: TimeChartView,
-    distributionChartView: DistributionChartView,
     gradeScale: GradeScale,
-    zones: IntensityZones? = null,
+    zones: com.cruxcoach.domain.board.IntensityZones? = null,
     customDateFrom: LocalDate? = null,
     customDateTo: LocalDate? = null,
     heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
@@ -209,16 +109,23 @@ internal fun BoardStatsSheet(
     boardFilter: String? = null,
     availableBoardBrands: List<String> = emptyList(),
     boardComparison: List<BoardComparisonEntry> = emptyList(),
+    crossBoard: CrossBoardStats = CrossBoardStats(),
+    crossBoardView: CrossBoardView = CrossBoardView.TRIES_UNTIL_SEND,
+    onCrossBoardViewSelect: (CrossBoardView) -> Unit = {},
+    progressionByBoard: Map<String, List<GradeProgressionPoint>> = emptyMap(),
+    activityView: ActivityView = ActivityView.CALENDAR,
+    onActivityViewSelect: (ActivityView) -> Unit = {},
+    gradesView: GradesView = GradesView.PROBLEMS,
+    onGradesViewSelect: (GradesView) -> Unit = {},
     heatmapBoardOptions: List<com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption> = emptyList(),
     heatmapBoardSelection: com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption? = null,
     onHeatmapBoardSelect: (com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption?) -> Unit = {},
     onBoardFilterSelect: (String?) -> Unit = {},
     onIntervalSelect: (StatsTimeInterval) -> Unit,
-    onGradeChartViewSelect: (GradeChartView) -> Unit,
-    onTimeChartViewSelect: (TimeChartView) -> Unit,
-    onDistributionChartViewSelect: (DistributionChartView) -> Unit,
     onCustomDateRange: (LocalDate, LocalDate) -> Unit,
     onHeatmapModeSelect: (HeatmapMode) -> Unit = {},
+    /** The year in review's place in the statistics (#64). */
+    yearReview: @Composable () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -238,27 +145,9 @@ internal fun BoardStatsSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             InfoHeading(stringResource(R.string.board_stats_title), stringResource(R.string.ux_stats_help))
+            yearReview()
 
-            // Per-board split: only when the user has logged on >1 board.
-            if (availableBoardBrands.size > 1) {
-                BoardFilterChips(
-                    brands = availableBoardBrands,
-                    selected = boardFilter,
-                    onSelect = onBoardFilterSelect,
-                )
-                // Compact board comparison: sends / top grade per board, so a
-                // multi-board user can size them up side by side. Tapping a row
-                // scopes the stats to that board (same as its filter chip).
-                if (boardComparison.size > 1) {
-                    BoardComparisonSection(
-                        entries = boardComparison,
-                        selected = boardFilter,
-                        onSelect = onBoardFilterSelect,
-                    )
-                }
-            }
-
-            // Time interval chips + custom date
+            // Filters first: everything below follows the period and the board.
             StatsIntervalChips(
                 selected = statsInterval,
                 customDateFrom = customDateFrom,
@@ -266,129 +155,71 @@ internal fun BoardStatsSheet(
                 onSelect = onIntervalSelect,
                 onCustomDateRange = onCustomDateRange
             )
-
-            // Personal Records (always visible, compact)
-            BoardPersonalRecordsRow(stats.personalRecords)
-
-            // Central performance signal: a rolling four-week level based on
-            // the best distinct sends, deliberately separate from volume.
-            if (stats.gradeProgression.size >= 2) {
-                ChartSection(
-                    stringResource(R.string.board_stats_grade_progression),
-                    help = stringResource(R.string.ux_grade_progression_help),
-                ) {
-                    BoardGradeProgressionChart(
-                        entries = stats.gradeProgression,
-                        gradeScale = gradeScale,
-                    )
-                }
+            if (availableBoardBrands.size > 1) {
+                BoardFilterChips(
+                    brands = availableBoardBrands,
+                    comparison = boardComparison,
+                    selected = boardFilter,
+                    onSelect = onBoardFilterSelect,
+                )
             }
 
-            // Activity heatmap (no dropdown — always the same)
-            if (stats.activityMap.isNotEmpty()) {
-                ChartSection(stringResource(R.string.board_stats_activity)) {
-                    BoardActivityHeatmap(
-                        activityMap = stats.activityMap,
-                        interval = statsInterval
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    HeatmapLegend()
-                }
+            // The period in six numbers; the cards below explain them.
+            PeriodNumbers(stats, gradeScale)
+
+            // How the boards feel against each other, when there is enough
+            // data. Spans every board whatever the board filter is.
+            crossBoard.feel?.let { feel ->
+                BoardsCard(feel = feel, feelOrder = crossBoard.boards, allBoards = availableBoardBrands)
             }
 
-            // --- Grad-Analyse (dropdown) ---
-            if (stats.gradePyramid.isNotEmpty() || stats.gradeOutcomes.isNotEmpty()) {
-                ChartSectionWithSelector(
-                    options = GradeChartView.entries.toTypedArray(),
-                    selected = gradeChartView,
-                    onSelect = onGradeChartViewSelect,
-                    labelOf = { gradeChartViewLabel(it) }
-                ) {
-                    if (gradeChartView == GradeChartView.FLASH_SEND_ATTEMPT ||
-                        gradeChartView == GradeChartView.OUTCOME_DONUT
-                    ) {
-                        Text(
-                            text = stringResource(
-                                if (gradeChartView == GradeChartView.OUTCOME_DONUT) R.string.ux_outcome_donut_hint
-                                else R.string.board_stats_problem_outcomes_hint,
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    when (gradeChartView) {
-                        GradeChartView.PYRAMID -> {
-                            BoardGradePyramidChart(
-                                entries = stats.gradePyramid,
-                                zones = zones,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height((stats.gradePyramid.size * 36 + 20).dp)
-                            )
-                        }
-                        GradeChartView.FLASH_SEND_ATTEMPT -> {
-                            BoardGradeOutcomeChart(entries = stats.gradeOutcomes)
-                        }
-                        GradeChartView.OUTCOME_DONUT -> {
-                            BoardOutcomeDonutChart(distribution = stats.outcomeDistribution)
-                        }
-                        GradeChartView.UNIQUE_CLIMBS -> {
-                            BoardUniqueClimbsChart(entries = stats.uniqueClimbsByGrade)
-                        }
-                    }
-                }
+            // How hard: the rolling level over time, one line per board when
+            // several are shown together.
+            if (stats.gradeProgression.size >= 2 || progressionByBoard.values.any { it.size >= 2 }) {
+                ProgressCard(
+                    single = stats.gradeProgression,
+                    byBoard = progressionByBoard,
+                    boardFilter = boardFilter,
+                    allBoards = availableBoardBrands,
+                    gradeScale = gradeScale,
+                )
             }
 
-            // --- Zeitverlauf (dropdown) ---
-            if (stats.sendsOverTime.size >= 2 || stats.weeklyVolume.isNotEmpty()) {
-                ChartSectionWithSelector(
-                    options = TimeChartView.entries.toTypedArray(),
-                    selected = timeChartView,
-                    onSelect = onTimeChartViewSelect,
-                    labelOf = { timeChartViewLabel(it) }
-                ) {
-                    when (timeChartView) {
-                        TimeChartView.SENDS_OVER_TIME -> {
-                            BoardSendsOverTimeChart(
-                                entries = stats.sendsOverTime,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(160.dp)
-                            )
-                        }
-                        TimeChartView.WEEKLY_VOLUME -> {
-                            BoardWeeklyVolumeChart(entries = stats.weeklyVolume)
-                        }
-                    }
-                }
+            // Which grades: every problem once (flashed, sent later or open),
+            // or every send with its repeats in the intensity-zone colours.
+            GradesCard(
+                outcomes = stats.gradeOutcomes,
+                sends = stats.gradePyramid,
+                zones = zones,
+                view = gradesView,
+                onSelect = onGradesViewSelect,
+            )
+
+            // How many tries: until the send, per grade, per month (#44).
+            if (crossBoard.boards.isNotEmpty()) {
+                CrossBoardSection(
+                    stats = crossBoard,
+                    view = crossBoardView,
+                    onViewSelect = onCrossBoardViewSelect,
+                    allBoards = availableBoardBrands,
+                )
             }
 
-            // --- Verteilungen (dropdown) ---
-            if (stats.angleDistribution.isNotEmpty() || stats.periodComparison != null) {
-                ChartSectionWithSelector(
-                    options = DistributionChartView.entries.toTypedArray(),
-                    selected = distributionChartView,
-                    onSelect = onDistributionChartViewSelect,
-                    labelOf = { distributionChartViewLabel(it) }
-                ) {
-                    when (distributionChartView) {
-                        DistributionChartView.ANGLE -> {
-                            BoardAngleDistChart(entries = stats.angleDistribution)
-                        }
-                        DistributionChartView.PERIOD_COMPARISON -> {
-                            val comparison = stats.periodComparison
-                            if (comparison != null) {
-                                BoardPeriodComparisonCard(comparison)
-                            } else {
-                                Text(
-                                    stringResource(R.string.board_stats_select_period),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
+            // When: the days as a calendar, or all entries or the sends over time.
+            ActivityCard(
+                view = activityView,
+                onSelect = onActivityViewSelect,
+                activityMap = stats.activityMap,
+                daysPerWeek = stats.daysPerWeek,
+                entries = stats.entriesOverTime,
+                sends = stats.sendsOverTime,
+                interval = statsInterval,
+            )
+
+            // At which angles.
+            if (stats.angleDistribution.isNotEmpty()) {
+                ChartSection(stringResource(R.string.board_stats_angle_distribution)) {
+                    BoardAngleDistChart(entries = stats.angleDistribution)
                 }
             }
 

@@ -28,7 +28,7 @@ class BoardStatsComputerTest {
     // Pin "now" so fixture construction and the production code under
     // test see exactly the same instant. Without this a midnight-boundary
     // race made `filterByInterval DAYS_30 drops ascents older than cutoff`
-    // and the periodComparison cases potentially flaky.
+    // potentially flaky.
     private val fixedClock: Clock = Clock.fixed(Instant.parse("2026-03-15T12:00:00Z"), ZoneOffset.UTC)
     private val today: LocalDate = LocalDate.now(fixedClock)
 
@@ -67,12 +67,11 @@ class BoardStatsComputerTest {
     private fun nextId(): Int = ++idCounter
 
     @Test
-    fun `send timeline excludes attempts but retains repeat sends`() {
+    fun `sends exclude attempts but retain repeat sends`() {
         val rows = listOf(ascent(isSend = false, bidCount = 4), ascent(), ascent())
         val stats = BoardStatsComputer.computeStats(rows, StatsTimeInterval.ALL, GradeScale.FRENCH, clock = fixedClock)
-        assertEquals(2, stats.sendsOverTime.sumOf { it.count })
+        assertEquals(2, stats.totalSends)
         assertEquals(6, stats.totalAttempts)
-        assertTrue(BoardStatsComputer.computeSendsOverTime(rows.take(1), StatsTimeInterval.ALL).isEmpty())
     }
 
     // -- filterByInterval --
@@ -155,9 +154,8 @@ class BoardStatsComputerTest {
         assertEquals(0, stats.totalAttempts)
         assertEquals(0, stats.sessionCount)
         assertEquals(0, stats.uniqueClimbs)
-        assertTrue(stats.gradePyramid.isEmpty())
+        assertTrue(stats.gradeOutcomes.isEmpty())
         assertNull(stats.hardestGrade)
-        assertNull(stats.periodComparison)
     }
 
     // -- computeStats: send / bid split --
@@ -267,9 +265,9 @@ class BoardStatsComputerTest {
             ascent(climbUuid = "b", difficulty = 15.0),
             ascent(climbUuid = "c", difficulty = 20.0),
         )
-        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
-        assertEquals(3, stats.gradePyramid.size)
-        val diffs = stats.gradePyramid.map { it.difficultyInt }
+        val pyramid = BoardStatsComputer.computeGradePyramid(ascents, GradeScale.V_SCALE)
+        assertEquals(3, pyramid.size)
+        val diffs = pyramid.map { it.difficultyInt }
         assertEquals(diffs.sorted(), diffs)
     }
 
@@ -314,36 +312,82 @@ class BoardStatsComputerTest {
         )
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         // All five ascents are in ISO week 10 of 2026 (Mon 2026-03-02 .. Sun 2026-03-08).
-        assertEquals(1, stats.weeklyVolume.size)
-        val wk = stats.weeklyVolume[0]
+        assertEquals(1, stats.entriesOverTime.size)
+        val wk = stats.entriesOverTime[0]
+        assertEquals(LocalDate.of(2026, 3, 2), wk.start)
+        assertEquals(7, wk.days)
         assertEquals(1, wk.easyCount)
         assertEquals(1, wk.mediumCount)
         assertEquals(1, wk.hardCount)
         assertEquals(1, wk.eliteCount)
     }
 
-    // -- Period comparison --
-
     @Test
-    fun `periodComparison is null for interval ALL`() {
-        val stats = BoardStatsComputer.computeStats(
-            ascents = listOf(ascent()),
-            interval = StatsTimeInterval.ALL,
-            gradeScale = GradeScale.V_SCALE,
+    fun `entries over more than half a year are counted per month`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2025-01-15T10:00:00", difficulty = 14.0),
+            ascent(climbedAt = "2025-01-20T10:00:00", difficulty = 14.0),
+            ascent(climbedAt = "2025-09-03T10:00:00", difficulty = 14.0),
         )
-        assertNull(stats.periodComparison)
+        val buckets = BoardStatsComputer.computeVolume(ascents)
+        assertEquals(listOf(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 9, 1)), buckets.map { it.start })
+        assertEquals(listOf(31, 30), buckets.map { it.days })
+        assertEquals(listOf(2, 1), buckets.map { it.total })
     }
 
     @Test
-    fun `periodComparison is null when neither period has data`() {
-        val veryOld = today.minusDays(400).toString()
-        val stats = BoardStatsComputer.computeStats(
-            ascents = listOf(ascent(climbedAt = "${veryOld}T10:00:00")),
-            clock = fixedClock,
-            interval = StatsTimeInterval.DAYS_30,
-            gradeScale = GradeScale.V_SCALE,
+    fun `days per week count each climbing day once and keep weeks off as zero`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2026-03-02T10:00:00"),
+            ascent(climbedAt = "2026-03-02T18:00:00"),
+            ascent(climbedAt = "2026-03-04T10:00:00", isSend = false),
+            ascent(climbedAt = "2026-03-18T10:00:00"),
         )
-        assertNull(stats.periodComparison)
+        val weeks = BoardStatsComputer.computeDaysPerWeek(ascents)
+        assertEquals(listOf(2.0, 0.0, 1.0), weeks.map { it.perWeek })
+        assertEquals(LocalDate.of(2026, 3, 9), weeks[1].start)
+    }
+
+    @Test
+    fun `days per week over a long span are the weekly average of each month`() {
+        val ascents = (1..10).map { ascent(climbedAt = "2025-01-%02dT10:00:00".format(it * 3)) } +
+            listOf(ascent(climbedAt = "2025-08-01T10:00:00"))
+        val months = BoardStatsComputer.computeDaysPerWeek(ascents)
+        assertEquals(8, months.size)
+        assertEquals(10 * 7.0 / 31, months.first().perWeek, 1e-9)
+        assertEquals(0.0, months[1].perWeek, 1e-9)
+    }
+
+    @Test
+    fun `a period with a length is compared with the same length before`() {
+        val ascents = listOf(
+            // 30 days back from 2026-03-15 starts at 2026-02-13; the period before is 2026-01-14 .. 2026-02-12.
+            ascent(uuid = "p1", climbUuid = "a", climbedAt = "2026-01-20T10:00:00", bidCount = 1),
+            ascent(uuid = "p2", climbUuid = "b", climbedAt = "2026-02-10T10:00:00", isSend = false, bidCount = 3),
+            ascent(uuid = "c1", climbUuid = "c", climbedAt = "2026-03-01T10:00:00"),
+            ascent(uuid = "old", climbUuid = "d", climbedAt = "2025-12-01T10:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.DAYS_30, GradeScale.V_SCALE, clock = fixedClock)
+        val before = stats.previous!!
+        assertEquals(1, before.sends)
+        assertEquals(4, before.attempts)
+        assertEquals(2, before.sessions)
+        assertEquals(2, before.problems)
+        assertEquals(100f, before.flashRate, 0.01f)
+        assertEquals(18.5, before.hardestDifficulty!!, 1e-9)
+        assertNull(BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock).previous)
+    }
+
+    @Test
+    fun `sends per grade count repeats`() {
+        val ascents = listOf(
+            ascent(uuid = "s1", climbUuid = "a", difficulty = 18.0),
+            ascent(uuid = "s2", climbUuid = "a", difficulty = 18.0, climbedAt = "2026-03-06T10:00:00"),
+            ascent(uuid = "b1", climbUuid = "b", difficulty = 18.0, isSend = false),
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock)
+        assertEquals(2, stats.gradePyramid.single().count)
+        assertEquals(1, stats.gradeOutcomes.single().redpointCount + stats.gradeOutcomes.single().flashCount)
     }
 
     // -- Rolling grade-performance progression --
@@ -414,7 +458,7 @@ class BoardStatsComputerTest {
     }
 
     @Test
-    fun `inactive weeks remain real proportional gaps in model and chart`() {
+    fun `inactive weeks remain real gaps in the model`() {
         val points = statsForProgression(
             ascent(climbUuid = "w1", climbedAt = "2026-01-05T10:00:00"),
             ascent(climbUuid = "w2", climbedAt = "2026-01-12T10:00:00"),
@@ -424,9 +468,6 @@ class BoardStatsComputerTest {
             listOf(LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 12), LocalDate.of(2026, 2, 2)),
             points.map { it.weekStart },
         )
-        assertEquals(0f, progressionXFraction(points, 0), 0.001f)
-        assertEquals(0.25f, progressionXFraction(points, 1), 0.001f)
-        assertEquals(1f, progressionXFraction(points, 2), 0.001f)
     }
 
     private fun statsForProgression(vararg ascents: AscentWithClimb) =
@@ -565,9 +606,9 @@ class BoardStatsComputerTest {
             ascent(uuid = "bid", climbUuid = "c-4", isSend = false, bidCount = 3L),
         )
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
-        assertEquals(2, stats.outcomeDistribution.flashes)
-        assertEquals(1, stats.outcomeDistribution.redpoints)
-        assertEquals(1, stats.outcomeDistribution.attempts)
+        assertEquals(2, stats.gradeOutcomes.sumOf { it.flashCount })
+        assertEquals(1, stats.gradeOutcomes.sumOf { it.redpointCount })
+        assertEquals(1, stats.gradeOutcomes.sumOf { it.attemptCount })
     }
 
     @Test
@@ -581,8 +622,8 @@ class BoardStatsComputerTest {
                 climbedAt = "2026-03-10T18:00:00"),
         )
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
-        assertEquals(0, stats.outcomeDistribution.flashes)
-        assertEquals(1, stats.outcomeDistribution.redpoints)
+        assertEquals(0, stats.gradeOutcomes.sumOf { it.flashCount })
+        assertEquals(1, stats.gradeOutcomes.sumOf { it.redpointCount })
         assertEquals(0f, stats.flashRate)
         assertNull(stats.personalRecords.hardestFlashGrade)
     }
@@ -596,7 +637,7 @@ class BoardStatsComputerTest {
                 climbedAt = "2026-03-10T18:00:00"),
         )
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
-        assertEquals(1, stats.outcomeDistribution.flashes)
+        assertEquals(1, stats.gradeOutcomes.sumOf { it.flashCount })
     }
 
     // -- Grade pyramid label fidelity --
@@ -610,35 +651,9 @@ class BoardStatsComputerTest {
             ascent(uuid = "s1", climbUuid = "c-7b", difficulty = 24.0),
             ascent(uuid = "s2", climbUuid = "c-7bp", difficulty = 25.0),
         )
-        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.FRENCH)
-        val labels = stats.gradePyramid.map { it.grade }
-        assertEquals(listOf("7b", "7b+"), labels)
-        assertTrue(stats.gradePyramid.all { it.count == 1 })
-    }
-
-    // -- Sends-over-time buckets --
-
-    @Test
-    fun `computeSendsOverTime DAYS_30 buckets by day`() {
-        val ascents = listOf(
-            ascent(climbedAt = "2026-03-05T10:00:00"),
-            ascent(climbedAt = "2026-03-05T11:00:00"),
-            ascent(climbedAt = "2026-03-06T10:00:00"),
-        )
-        val out = BoardStatsComputer.computeSendsOverTime(ascents, StatsTimeInterval.DAYS_30)
-        // 2 distinct dates → 2 buckets
-        assertEquals(2, out.size)
-    }
-
-    @Test
-    fun `computeSendsOverTime unparseable dates are dropped`() {
-        val ascents = listOf(
-            ascent(climbedAt = "totally-not-a-date"),
-            ascent(climbedAt = "2026-03-05T10:00:00"),
-        )
-        val out = BoardStatsComputer.computeSendsOverTime(ascents, StatsTimeInterval.YEAR_1)
-        assertEquals(1, out.size)
-        assertFalse(out[0].label.isEmpty())
+        val pyramid = BoardStatsComputer.computeGradePyramid(ascents, GradeScale.FRENCH)
+        assertEquals(listOf("7b", "7b+"), pyramid.map { it.grade })
+        assertTrue(pyramid.all { it.count == 1 })
     }
 
     // -- Board comparison --
@@ -721,8 +736,8 @@ class BoardStatsComputerTest {
                 climbedAt = "2026-03-07T18:00:00"),
         )
         val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE)
-        assertEquals(OutcomeDistribution(1, 1, 1), stats.outcomeDistribution)
-        assertEquals(1, stats.gradeOutcomes.single().attemptCount)
+        val outcome = stats.gradeOutcomes.single()
+        assertEquals(listOf(1, 1, 1), listOf(outcome.flashCount, outcome.redpointCount, outcome.attemptCount))
         assertEquals(3, stats.gradeOutcomes.single().total)
         assertEquals(23, stats.totalAttempts)
         assertEquals(4, stats.totalSends)
@@ -736,18 +751,19 @@ class BoardStatsComputerTest {
         )
         val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE,
             customFrom = LocalDate.parse("2026-03-01"), customTo = LocalDate.parse("2026-03-10"))
-        assertEquals(OutcomeDistribution(0, 1, 0), stats.outcomeDistribution)
+        val outcome = stats.gradeOutcomes.single()
+        assertEquals(listOf(0, 1, 0), listOf(outcome.flashCount, outcome.redpointCount, outcome.attemptCount))
     }
 
     @Test
-    fun `ungraded attempts count once in donut and same ids on different boards stay separate`() {
+    fun `ungraded attempts count once per problem and same ids on different boards stay separate`() {
         val logs = listOf(
             ascent(uuid = "one", isSend = false, difficulty = null, bidCount = 7),
             ascent(uuid = "two", isSend = false, difficulty = null, angle = 30),
             ascent(uuid = "moon", isSend = false, difficulty = null, boardBrand = "moonboard"),
         )
         val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE)
-        assertEquals(2, stats.outcomeDistribution.attempts)
+        assertEquals(2, stats.uniqueClimbs)
         assertTrue(stats.gradeOutcomes.isEmpty())
     }
 

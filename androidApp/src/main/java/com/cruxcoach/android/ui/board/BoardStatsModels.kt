@@ -11,18 +11,25 @@ data class GradeOutcomeEntry(
     val total: Int get() = flashCount + redpointCount + attemptCount
 }
 
-/** Distinct problem outcomes across all grades, including ungraded problems. */
-data class OutcomeDistribution(
-    val flashes: Int,
-    val redpoints: Int,
-    val attempts: Int
-) {
-    val total: Int get() = flashes + redpoints + attempts
-}
+/** The period's headline numbers, for the comparison with the period before. */
+data class PeriodTotals(
+    val sends: Int,
+    val attempts: Int,
+    val sessions: Int,
+    val problems: Int,
+    val flashRate: Float,
+    val hardestDifficulty: Double? = null,
+)
 
-/** Weekly volume entry grouped by grade band */
-data class WeeklyVolumeEntry(
-    val weekLabel: String,
+/**
+ * Log entries of one time bucket by grade band: a week (from its Monday) or,
+ * over long periods, a month (from its first day). Buckets without entries
+ * are left out.
+ */
+data class VolumeBucket(
+    val start: java.time.LocalDate,
+    /** Length in days, so a chart can place the bucket on a time axis. */
+    val days: Int,
     val easyCount: Int,
     val mediumCount: Int,
     val hardCount: Int,
@@ -37,24 +44,6 @@ data class GradeProgressionPoint(
     val label: String,
     val weekStart: java.time.LocalDate,
     val performanceDifficulty: Double,
-)
-
-/** Unique climb count vs total sends per grade */
-data class UniqueClimbEntry(
-    val grade: String,
-    val difficultyInt: Int,
-    val uniqueCount: Int,
-    val totalSends: Int
-)
-
-/** Period-over-period comparison deltas */
-data class PeriodComparison(
-    val totalSendsDelta: Int,
-    val flashRateDelta: Float,
-    val hardestGradeDelta: Int,
-    val uniqueClimbsDelta: Int,
-    val currentLabel: String,
-    val previousLabel: String
 )
 
 /** Personal records across all time */
@@ -84,22 +73,35 @@ data class BoardComparisonEntry(
     val hardestDifficultyInt: Int
 )
 
-/** Chart view selectors for dropdown sections */
-enum class GradeChartView {
-    PYRAMID,
-    FLASH_SEND_ATTEMPT,
-    OUTCOME_DONUT,
-    UNIQUE_CLIMBS
+/** Climbing days per week in one week, or on average in one month over long periods. */
+data class DaysPerWeek(
+    val start: java.time.LocalDate,
+    /** Length in days of the week or month. */
+    val days: Int,
+    val perWeek: Double,
+)
+
+/**
+ * The views of the activity card: the days as a calendar, climbing days per
+ * week over time, all entries or only the sends over time.
+ */
+enum class ActivityView {
+    CALENDAR,
+    DAYS_PER_WEEK,
+    ENTRIES,
+    SENDS,
 }
 
-enum class TimeChartView {
-    SENDS_OVER_TIME,
-    WEEKLY_VOLUME,
+/** The views of the grades card: each problem once, or every send with repeats. */
+enum class GradesView {
+    PROBLEMS,
+    SENDS,
 }
 
-enum class DistributionChartView {
-    ANGLE,
-    PERIOD_COMPARISON
+enum class CrossBoardView {
+    TRIES_UNTIL_SEND,
+    TRIES_PER_GRADE,
+    PER_MONTH,
 }
 
 /** Enhanced session summary for end-of-session sheet */
@@ -114,7 +116,9 @@ data class EnhancedSessionSummary(
     val totalSends: Int = 0,
     val totalAttempts: Int = 0,
     val uniqueClimbs: Int = 0,
-    val gradeDistribution: List<BoardGradePyramidEntry> = emptyList()
+    val gradeDistribution: List<BoardGradePyramidEntry> = emptyList(),
+    /** The shareable card of this session; null without the logbook history. */
+    val recap: SessionRecap? = null,
 ) {
     val zoneTotal: Int get() = warmupCount + optimalCount + limitCount
 }

@@ -246,9 +246,9 @@ class PlaylistPlayerViewModel @Inject constructor(
                 )
                 // True flashes need the FULL history — a first-try repeat of
                 // an old project must not count as a flash.
-                val flashUuids = com.cruxcoach.android.ui.board.BoardStatsComputer
-                    .trueFlashUuids(personalBoardRepo.getUserAscentsAll())
-                SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale, flashUuids)
+                val history = personalBoardRepo.getUserAscentsAll()
+                val flashUuids = com.cruxcoach.android.ui.board.BoardStatsComputer.trueFlashUuids(history)
+                SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale, flashUuids, history)
             }
             _state.update { it.copy(summary = summary, zones = zoneManager.zones.value) }
         }

@@ -23,20 +23,6 @@ object BoardStatsComputer {
     private val DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE
     private val WEEK_FIELD = WeekFields.ISO.weekOfWeekBasedYear()
     private val WEEK_BASED_YEAR_FIELD = WeekFields.ISO.weekBasedYear()
-    private val MONTH_NAMES_FALLBACK = arrayOf("", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
-    private val MONTH_RES_IDS = arrayOf(
-        0, R.string.month_jan, R.string.month_feb, R.string.month_mar,
-        R.string.month_apr, R.string.month_may, R.string.month_jun,
-        R.string.month_jul, R.string.month_aug, R.string.month_sep,
-        R.string.month_oct, R.string.month_nov, R.string.month_dec
-    )
-
-    private fun monthName(month: Int, context: Context?): String {
-        if (month < 1 || month > 12) return ""
-        return context?.getString(MONTH_RES_IDS[month]) ?: MONTH_NAMES_FALLBACK[month]
-    }
 
     // Grade band thresholds (Kilter difficulty values)
     // Easy: V0-V2 (diff < 16), Medium: V3-V5 (16..20), Hard: V6-V8 (21..26), Elite: V9+ (27+)
@@ -67,16 +53,15 @@ object BoardStatsComputer {
         val flashUuids = trueFlashUuids(ascents)
         val flashCount = sends.count { it.uuid in flashUuids }
         val flashRate = if (totalSends > 0) flashCount.toFloat() / totalSends * 100f else 0f
-        val uniqueClimbs = filtered.map { it.climbUuid }.distinct().size
+        // A problem is a climb on one board, as in the grades chart.
+        val uniqueClimbs = filtered.map { it.boardBrand to it.climbUuid }.distinct().size
         val sessionCount = filtered.map { it.climbedAt.take(10) }.distinct().size
 
         val hardestDiff = sends.mapNotNull { it.difficultyAverage }.maxOrNull()
         val hardestGrade = hardestDiff?.let { GradeDisplayHelper.formatDifficulty(it, gradeScale) }
         val hardestDiffInt = hardestDiff?.toInt() ?: 0
 
-        val gradePyramid = computeGradePyramid(sends, gradeScale)
         val angleDist = computeAngleDistribution(filtered)
-        val sendsOverTime = computeSendsOverTime(filtered, interval, context)
         val activityMap = computeActivityMap(filtered)
 
         // New extended stats
@@ -84,17 +69,16 @@ object BoardStatsComputer {
         val outcomeSends = problemOutcomes.filter { it.isSend }
         val outcomeBids = problemOutcomes.filterNot { it.isSend }
         val gradeOutcomes = computeGradeOutcomes(outcomeSends, outcomeBids, gradeScale, flashUuids)
-        val outcomeDistribution = computeOutcomeDistribution(outcomeSends, outcomeBids, flashUuids)
-        val weeklyVolume = computeWeeklyVolume(filtered)
+        val daysPerWeek = computeDaysPerWeek(filtered)
+        val entriesOverTime = computeVolume(filtered)
+        val sendsOverTime = computeVolume(sends)
         val gradeProgression = computeGradeProgression(sends, interval, context)
-        val uniqueClimbsByGrade = computeUniqueClimbsByGrade(sends, gradeScale)
-        val periodComparison =
-            computePeriodComparison(ascents, interval, gradeScale, context, clock, flashUuids)
         val personalRecords = computePersonalRecords(ascents, gradeScale, clock, flashUuids)
 
         return BoardLogbookStats(
             hardestGrade = hardestGrade,
             hardestDifficultyInt = hardestDiffInt,
+            hardestDifficulty = hardestDiff,
             totalSends = totalSends,
             // bidCount is attempts-to-outcome for both open bids and sends.
             // Counting rows made a consolidated "X, X, send" sequence look
@@ -105,19 +89,57 @@ object BoardStatsComputer {
             flashRate = flashRate,
             uniqueClimbs = uniqueClimbs,
             sessionCount = sessionCount,
-            gradePyramid = gradePyramid,
             angleDistribution = angleDist,
-            sendsOverTime = sendsOverTime,
             activityMap = activityMap,
             gradeOutcomes = gradeOutcomes,
-            outcomeDistribution = outcomeDistribution,
-            weeklyVolume = weeklyVolume,
+            daysPerWeek = daysPerWeek,
+            entriesOverTime = entriesOverTime,
+            sendsOverTime = sendsOverTime,
+            gradePyramid = computeGradePyramid(sends, gradeScale),
+            previous = previousTotals(ascents, interval, customFrom, customTo, clock, flashUuids),
             gradeProgression = gradeProgression,
-            uniqueClimbsByGrade = uniqueClimbsByGrade,
-            periodComparison = periodComparison,
             personalRecords = personalRecords
         )
     }
+
+    /**
+     * The headline numbers of the period just before the chosen one, of the
+     * same length: for 30 or 90 days, a year or a custom range. Null for the
+     * whole logbook, or when nothing was logged in that period.
+     */
+    private fun previousTotals(
+        ascents: List<AscentWithClimb>,
+        interval: StatsTimeInterval,
+        customFrom: LocalDate?,
+        customTo: LocalDate?,
+        clock: Clock,
+        flashUuids: Set<String>,
+    ): PeriodTotals? {
+        val (from, to) = if (customFrom != null && customTo != null) {
+            val days = ChronoUnit.DAYS.between(customFrom, customTo) + 1
+            customFrom.minusDays(days) to customFrom.minusDays(1)
+        } else {
+            val days = interval.days?.toLong() ?: return null
+            // The chosen period starts at today minus [days], see filterByInterval.
+            val start = LocalDate.now(clock).minusDays(days)
+            start.minusDays(days) to start.minusDays(1)
+        }
+        val before = ascents.filter { it.climbedAt.take(10) in from.toString()..to.toString() }
+        if (before.isEmpty()) return null
+        val sends = before.filter { it.isSend }
+        return PeriodTotals(
+            sends = sends.size,
+            attempts = before.sumOf { it.bidCount.coerceAtLeast(1L) }.toInt(),
+            sessions = before.map { it.climbedAt.take(10) }.distinct().size,
+            problems = before.map { it.boardBrand to it.climbUuid }.distinct().size,
+            flashRate = if (sends.isNotEmpty()) sends.count { it.uuid in flashUuids } * 100f / sends.size else 0f,
+            hardestDifficulty = sends.mapNotNull { it.difficultyAverage }.maxOrNull(),
+        )
+    }
+
+    /** Sessions per week over the last eight weeks, as in the records (see [computeAvgSessionsPerWeek]). */
+    fun sessionsPerWeekOf(ascents: List<AscentWithClimb>, clock: Clock = Clock.systemDefaultZone()): Double =
+        computeAvgSessionsPerWeek(ascents.mapNotNull { parseDate(it.climbedAt) }.distinct().sorted(), clock)
 
     /**
      * Per-board summary for the multi-board comparison row in the stats sheet:
@@ -154,6 +176,28 @@ object BoardStatsComputer {
             .sortedWith(compareByDescending<BoardComparisonEntry> { it.sendCount }
                 .thenByDescending { it.attemptCount })
     }
+
+    /**
+     * The rolling level of [computeGradeProgression] for each board over the
+     * interval, so a progress chart can draw one line per board.
+     */
+    fun gradeProgressionByBoard(
+        ascents: List<AscentWithClimb>,
+        interval: StatsTimeInterval,
+        customFrom: LocalDate? = null,
+        customTo: LocalDate? = null,
+        context: Context? = null,
+        clock: Clock = Clock.systemDefaultZone(),
+    ): Map<String, List<GradeProgressionPoint>> =
+        filterByInterval(ascents, interval, customFrom, customTo, clock)
+            .filter { it.isSend }
+            .groupBy { it.boardBrand }
+            .mapValues { (_, sends) -> computeGradeProgression(sends, interval, context) }
+            .filterValues { it.isNotEmpty() }
+
+    /** Consecutive weeks with a session up to now, over [ascents] (see [computeWeekStreak]). */
+    fun weekStreakOf(ascents: List<AscentWithClimb>, clock: Clock = Clock.systemDefaultZone()): Int =
+        computeWeekStreak(ascents.mapNotNull { parseDate(it.climbedAt) }.distinct().sorted(), clock)
 
     fun filterByInterval(
         ascents: List<AscentWithClimb>,
@@ -206,40 +250,6 @@ object BoardStatsComputer {
             .groupBy { it.angle.toInt() }
             .map { (angle, list) -> AngleDistEntry(angle, list.size) }
             .sortedBy { it.angle }
-    }
-
-    fun computeSendsOverTime(
-        ascents: List<AscentWithClimb>,
-        interval: StatsTimeInterval,
-        context: Context? = null
-    ): List<TimeBucketEntry> {
-        if (ascents.isEmpty()) return emptyList()
-        val parsed = ascents.filter { it.isSend }.mapNotNull { parseDate(it.climbedAt) }
-        if (parsed.isEmpty()) return emptyList()
-
-        return when (interval) {
-            StatsTimeInterval.DAYS_30 -> {
-                val dayFmt = DateTimeFormatter.ofPattern("dd.MM")
-                parsed.groupBy { it }
-                    .map { (date, list) -> TimeBucketEntry(date.format(dayFmt), list.size) }
-                    .sortedBy { it.label }
-            }
-            StatsTimeInterval.DAYS_90 -> {
-                parsed.groupBy {
-                    context?.getString(R.string.calendar_week_short, it.get(WEEK_FIELD))
-                        ?: "CW ${it.get(WEEK_FIELD)}"
-                }
-                    .toSortedMap()
-                    .map { (label, list) -> TimeBucketEntry(label, list.size) }
-            }
-            StatsTimeInterval.YEAR_1, StatsTimeInterval.ALL -> {
-                parsed.groupBy { it.year to it.monthValue }
-                    .toSortedMap(compareBy({ it.first }, { it.second }))
-                    .map { (key, list) ->
-                        TimeBucketEntry("${monthName(key.second, context)} '${key.first % 100}", list.size)
-                    }
-            }
-        }
     }
 
     private fun computeActivityMap(
@@ -298,42 +308,60 @@ object BoardStatsComputer {
         }.sortedBy { it.difficultyInt }
     }
 
-    private fun computeOutcomeDistribution(
-        sends: List<AscentWithClimb>,
-        bids: List<AscentWithClimb>,
-        flashUuids: Set<String>,
-    ): OutcomeDistribution {
-        val flashes = sends.count { it.uuid in flashUuids }
-        val redpoints = sends.count { it.uuid !in flashUuids }
-        return OutcomeDistribution(
-            flashes = flashes,
-            redpoints = redpoints,
-            attempts = bids.size,
-        )
+    /**
+     * Climbing days per week from the first to the last active week, weeks
+     * without a session as zero; over more than half a year, the average per
+     * week of each month instead.
+     */
+    internal fun computeDaysPerWeek(entries: List<AscentWithClimb>): List<DaysPerWeek> {
+        val days = entries.mapNotNull { parseDate(it.climbedAt) }.distinct()
+        if (days.isEmpty()) return emptyList()
+        val first = days.min()
+        val last = days.max()
+        return if (ChronoUnit.DAYS.between(first, last) > WEEKLY_MAX_DAYS) {
+            val perMonth = days.groupingBy { it.withDayOfMonth(1) }.eachCount()
+            generateSequence(first.withDayOfMonth(1)) { it.plusMonths(1) }
+                .takeWhile { !it.isAfter(last) }
+                .map { month ->
+                    DaysPerWeek(month, month.lengthOfMonth(), (perMonth[month] ?: 0) * DAYS_PER_WEEK.toDouble() / month.lengthOfMonth())
+                }
+                .toList()
+        } else {
+            val toMonday = TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)
+            val perWeek = days.groupingBy { it.with(toMonday) }.eachCount()
+            generateSequence(first.with(toMonday)) { it.plusWeeks(1) }
+                .takeWhile { !it.isAfter(last) }
+                .map { week -> DaysPerWeek(week, DAYS_PER_WEEK.toInt(), (perWeek[week] ?: 0).toDouble()) }
+                .toList()
+        }
     }
 
-    private fun computeWeeklyVolume(
-        filtered: List<AscentWithClimb>
-    ): List<WeeklyVolumeEntry> {
-        if (filtered.isEmpty()) return emptyList()
+    /** Spans longer than this are counted per month instead of per week. */
+    private const val WEEKLY_MAX_DAYS = 26 * 7L
 
-        data class WeekKey(val year: Int, val week: Int) : Comparable<WeekKey> {
-            override fun compareTo(other: WeekKey): Int =
-                compareValuesBy(this, other, { it.year }, { it.week })
-        }
-
-        val withDate = filtered.mapNotNull { a ->
+    /**
+     * Entries per week by grade band, or per month when they span more than
+     * half a year, so a long logbook does not end up as hairline columns.
+     */
+    internal fun computeVolume(entries: List<AscentWithClimb>): List<VolumeBucket> {
+        val withDate = entries.mapNotNull { a ->
             val date = parseDate(a.climbedAt) ?: return@mapNotNull null
             val diff = a.difficultyAverage ?: return@mapNotNull null
-            Triple(WeekKey(date.get(WEEK_BASED_YEAR_FIELD), date.get(WEEK_FIELD)), diff, a)
+            date to diff
         }
-
-        return withDate.groupBy { it.first }
+        if (withDate.isEmpty()) return emptyList()
+        val first = withDate.minOf { it.first }
+        val last = withDate.maxOf { it.first }
+        val perMonth = ChronoUnit.DAYS.between(first, last) > WEEKLY_MAX_DAYS
+        val toMonday = TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)
+        return withDate
+            .groupBy { (date, _) -> if (perMonth) date.withDayOfMonth(1) else date.with(toMonday) }
             .toSortedMap()
-            .map { (weekKey, entries) ->
-                val diffs = entries.map { it.second }
-                WeeklyVolumeEntry(
-                    weekLabel = "KW ${weekKey.week}",
+            .map { (start, inBucket) ->
+                val diffs = inBucket.map { it.second }
+                VolumeBucket(
+                    start = start,
+                    days = if (perMonth) start.lengthOfMonth() else DAYS_PER_WEEK.toInt(),
                     easyCount = diffs.count { it < MEDIUM_THRESHOLD },
                     mediumCount = diffs.count { it >= MEDIUM_THRESHOLD && it < HARD_THRESHOLD },
                     hardCount = diffs.count { it >= HARD_THRESHOLD && it < ELITE_THRESHOLD },
@@ -389,72 +417,6 @@ object BoardStatsComputer {
             }
             GradeProgressionPoint(label, weekStart, level)
         }
-    }
-
-    private fun computeUniqueClimbsByGrade(
-        sends: List<AscentWithClimb>,
-        gradeScale: GradeScale
-    ): List<UniqueClimbEntry> {
-        // Group by displayed grade label (see computeGradePyramid).
-        return sends
-            .filter { it.difficultyAverage != null }
-            .groupBy { GradeDisplayHelper.formatDifficulty(it.difficultyAverage!!, gradeScale) }
-            .map { (grade, entries) ->
-                val diffInt = entries.minOf { Math.round(it.difficultyAverage!!).toInt() }
-                UniqueClimbEntry(
-                    grade = grade,
-                    difficultyInt = diffInt,
-                    uniqueCount = entries.map { it.climbUuid }.distinct().size,
-                    totalSends = entries.size
-                )
-            }
-            .sortedBy { it.difficultyInt }
-    }
-
-    private fun computePeriodComparison(
-        allAscents: List<AscentWithClimb>,
-        interval: StatsTimeInterval,
-        gradeScale: GradeScale,
-        context: Context? = null,
-        clock: Clock = Clock.systemDefaultZone(),
-        flashUuids: Set<String> = emptySet(),
-    ): PeriodComparison? {
-        val days = interval.days ?: return null // No comparison for "ALL"
-        val now = LocalDate.now(clock)
-        val currentStart = now.minusDays(days.toLong())
-        val previousStart = currentStart.minusDays(days.toLong())
-
-        val currentStr = currentStart.toString()
-        val previousStr = previousStart.toString()
-        val nowStr = now.toString()
-
-        val current = allAscents.filter { it.climbedAt.take(10) in currentStr..nowStr }
-        val previous = allAscents.filter { it.climbedAt.take(10) in previousStr..currentStr }
-
-        if (current.isEmpty() && previous.isEmpty()) return null
-
-        val curSends = current.count { it.isSend }
-        val prevSends = previous.count { it.isSend }
-        val curFlashes = current.count { it.isSend && it.uuid in flashUuids }
-        val prevFlashes = previous.count { it.isSend && it.uuid in flashUuids }
-        val curFlashRate = if (curSends > 0) curFlashes.toFloat() / curSends * 100f else 0f
-        val prevFlashRate = if (prevSends > 0) prevFlashes.toFloat() / prevSends * 100f else 0f
-        val curHardest = current.filter { it.isSend }.mapNotNull { it.difficultyAverage?.toInt() }.maxOrNull() ?: 0
-        val prevHardest = previous.filter { it.isSend }.mapNotNull { it.difficultyAverage?.toInt() }.maxOrNull() ?: 0
-        val curUnique = current.map { it.climbUuid }.distinct().size
-        val prevUnique = previous.map { it.climbUuid }.distinct().size
-
-        return PeriodComparison(
-            totalSendsDelta = curSends - prevSends,
-            flashRateDelta = curFlashRate - prevFlashRate,
-            hardestGradeDelta = curHardest - prevHardest,
-            uniqueClimbsDelta = curUnique - prevUnique,
-            currentLabel = context?.getString(interval.labelResId) ?: "",
-            previousLabel = context?.let { ctx ->
-                val label = ctx.getString(interval.labelResId)
-                ctx.getString(R.string.stats_previous_interval, label)
-            } ?: ""
-        )
     }
 
     private fun computePersonalRecords(

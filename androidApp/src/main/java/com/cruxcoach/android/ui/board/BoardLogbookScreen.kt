@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.board
 import com.cruxcoach.android.ui.onboarding.*
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -46,6 +47,7 @@ fun BoardLogbookScreen(
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
     onNavigateToSync: () -> Unit,
     onNavigateBack: () -> Unit,
+    onOpenYearReview: (year: Int) -> Unit = {},
     viewModel: BoardLogbookViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -144,9 +146,6 @@ fun BoardLogbookScreen(
         BoardStatsSheet(
             stats = state.stats,
             statsInterval = state.statsInterval,
-            gradeChartView = state.gradeChartView,
-            timeChartView = state.timeChartView,
-            distributionChartView = state.distributionChartView,
             gradeScale = state.gradeScale,
             zones = state.zones,
             customDateFrom = state.customDateFrom,
@@ -159,23 +158,39 @@ fun BoardLogbookScreen(
             boardFilter = state.boardFilter,
             availableBoardBrands = state.availableBoardBrands,
             boardComparison = state.boardComparison,
+            crossBoard = state.crossBoard,
+            crossBoardView = state.crossBoardView,
+            onCrossBoardViewSelect = { viewModel.setCrossBoardView(it) },
+            progressionByBoard = state.progressionByBoard,
+            activityView = state.activityView,
+            onActivityViewSelect = { viewModel.setActivityView(it) },
+            gradesView = state.gradesView,
+            onGradesViewSelect = { viewModel.setGradesView(it) },
             heatmapBoardOptions = state.heatmapBoardOptions,
             heatmapBoardSelection = state.heatmapBoardSelection,
             onHeatmapBoardSelect = { viewModel.setHeatmapBoardSelection(it) },
             onBoardFilterSelect = { viewModel.setBoardFilter(it) },
             onIntervalSelect = { viewModel.setStatsInterval(it) },
-            onGradeChartViewSelect = { viewModel.setGradeChartView(it) },
-            onTimeChartViewSelect = { viewModel.setTimeChartView(it) },
-            onDistributionChartViewSelect = { viewModel.setDistributionChartView(it) },
             onCustomDateRange = { from, to -> viewModel.setCustomDateRange(from, to) },
             onHeatmapModeSelect = { viewModel.setHeatmapMode(it) },
+            yearReview = {
+                com.cruxcoach.android.ui.yearreview.YearReviewStatsEntry(onOpen = {
+                    viewModel.toggleStatsSheet()
+                    onOpenYearReview(it)
+                })
+            },
             onDismiss = { viewModel.toggleStatsSheet() }
         )
+    }
+
+    state.sessionRecap?.let { recap ->
+        SessionRecapSheet(recap = recap, onDismiss = { viewModel.closeSessionRecap() })
     }
 
     if (showFilters) {
         LogbookFilterSheet(
             state = state,
+            onIntervalSelect = viewModel::setLogbookInterval,
             onOutcomeSelect = viewModel::setLogbookOutcomeFilter,
             onBoardSelect = viewModel::setLogbookBoardFilter,
             onAngleSelect = viewModel::setLogbookAngleFilter,
@@ -209,6 +224,7 @@ fun BoardLogbookScreen(
                                     Icons.Default.FilterList,
                                     contentDescription = stringResource(R.string.board_logbook_filters),
                                     tint = if (
+                                        state.logbookInterval != StatsTimeInterval.ALL ||
                                         state.logbookOutcomeFilter != LogbookOutcomeFilter.ALL ||
                                         state.logbookBoardFilter != null || state.logbookAngleFilter != null
                                     ) OrangeAccent else MaterialTheme.colorScheme.onSurface,
@@ -294,7 +310,7 @@ fun BoardLogbookScreen(
 
                 LaunchedEffect(tourStep, grouped) {
                     if (tourStep == TourStep.ENTRY) {
-                        var index = 2 // interval and statistics rows
+                        var index = 1 // the overview
                         for (entries in grouped.values) {
                             index++ // date heading
                             val entryIndex = entries.indexOfFirst { it.uuid == tourEntry }
@@ -309,17 +325,21 @@ fun BoardLogbookScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize().padding(padding)
                 ) {
-                    // Stats interval selector
-                    item(key = "interval") {
-                        StatsIntervalChips(
-                            selected = state.statsInterval,
-                            onSelect = { viewModel.setStatsInterval(it) }
-                        )
-                    }
-
-                    // Summary cards only (no charts)
-                    item(key = "stats") {
-                        StatsSummaryRow(state.stats)
+                    // Records, the last 30 days and the milestones; tapping
+                    // it opens the statistics. Not tied to the list filters.
+                    item(key = "overview") {
+                        // The overview is computed after the list loads; let it grow in
+                        // instead of pushing the entries down in one jump.
+                        Column(Modifier.fillMaxWidth().animateContentSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // The year in review's invitation in December and January (#64).
+                            com.cruxcoach.android.ui.yearreview.YearReviewEntryCard(onOpen = onOpenYearReview)
+                            LogbookOverviewCard(
+                                glance = state.atAGlance,
+                                milestones = state.milestones,
+                                boards = state.availableBoardBrands,
+                                onOpenStats = { viewModel.toggleStatsSheet() },
+                            )
+                        }
                     }
 
                     if (state.ascents.isEmpty()) {
@@ -336,7 +356,7 @@ fun BoardLogbookScreen(
                     // Ascent cards grouped by day
                     grouped.forEach { (dateKey, dayAscents) ->
                         item(key = "day_$dateKey") {
-                            DayHeader(dateKey, dayAscents.size)
+                            DayHeader(dateKey, dayAscents.size, onRecap = { viewModel.openSessionRecap(dateKey) })
                         }
                         items(dayAscents, key = { it.uuid }) { ascent ->
                             val isSelected = ascent.uuid in state.selectedUuids
@@ -402,6 +422,7 @@ fun BoardLogbookScreen(
 @Composable
 private fun LogbookFilterSheet(
     state: BoardLogbookState,
+    onIntervalSelect: (StatsTimeInterval) -> Unit,
     onOutcomeSelect: (LogbookOutcomeFilter) -> Unit,
     onBoardSelect: (String?) -> Unit,
     onAngleSelect: (Int?) -> Unit,
@@ -413,6 +434,17 @@ private fun LogbookFilterSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             InfoHeading(stringResource(R.string.board_logbook_filters), stringResource(R.string.ux_logbook_help))
+            Text(stringResource(R.string.board_logbook_filter_period), style = MaterialTheme.typography.titleSmall)
+            // Same chips as the other filters here, not the orange ones of the statistics.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatsTimeInterval.entries.forEach { interval ->
+                    FilterChip(
+                        selected = state.logbookInterval == interval,
+                        onClick = { onIntervalSelect(interval) },
+                        label = { Text(statsTimeIntervalLabel(interval)) },
+                    )
+                }
+            }
             Text(stringResource(R.string.board_logbook_filter_outcome), style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LogbookOutcomeFilter.entries.forEach { filter ->

@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Year in review (#64). -->
+<resources>
+    <!-- Entry card and year picker -->
+    <string name="yr_card_title">Your %1$d on the boards</string>
+    <string name="yr_card_title_so_far">Your %1$d so far</string>
+    <string name="yr_card_text">Your climbing year across all your boards, made on this phone.</string>
+    <string name="yr_card_open">Open</string>
+    <string name="yr_card_hide">Hide for this year</string>
+    <string name="yr_stats_entry_title">Year in review</string>
+    <string name="yr_so_far_title">Your %1$d so far</string>
+    <string name="yr_so_far_text">%1$s and %2$s so far. The full review opens once a year has %3$s or %4$s.</string>
+    <string name="yr_little_title">Your %1$d</string>
+    <string name="yr_little_text">%1$s and %2$s that year. The full review opens once a year has %3$s or %4$s.</string>
+    <string name="yr_test_date">Test date (feature builds only)</string>
+    <string name="yr_test_date_real">Today</string>
+
+    <!-- Pages: frame -->
+    <string name="yr_close">Close</string>
+    <string name="yr_share">Share</string>
+    <string name="yr_share_page">Share this page: %1$s</string>
+    <string name="yr_list_view">List view</string>
+    <string name="yr_page_view">Pages</string>
+    <string name="yr_page_of">Page %1$d of %2$d</string>
+    <string name="yr_previous">Previous page</string>
+    <string name="yr_next">Next page</string>
+    <string name="yr_how_calculated">How is this calculated?</string>
+    <string name="yr_eyebrow">%1$d on the boards</string>
+    <string name="yr_eyebrow_so_far">%1$d so far, up to %2$s</string>
+
+    <!-- Intro -->
+    <string name="yr_intro_title">Your year on the boards</string>
+    <string name="yr_intro_lead">Made on this phone. Nothing leaves it unless you share it.</string>
+    <string name="yr_intro_how">Counted from 1 January to 31 December in your time zone, from your logbook on every board, imported logbooks included, and from the climbing days and workouts you logged.</string>
+    <string name="yr_intro_how_so_far">Counted from 1 January up to today in your time zone, from your logbook on every board, imported logbooks included, and from the climbing days and workouts you logged. The year is not over yet: it counts on until 31 December.</string>
+
+    <!-- Volume -->
+    <string name="yr_volume_title">Your volume</string>
+    <string name="yr_volume_hero_label">climbing days</string>
+    <string name="yr_volume_days_row">Climbing days</string>
+    <string name="yr_volume_board_days">Days on the board</string>
+    <string name="yr_volume_sessions">Timed sessions</string>
+    <string name="yr_volume_session_time">%1$s on the board</string>
+    <string name="yr_volume_tries">Tries</string>
+    <string name="yr_volume_sends">Sends</string>
+    <string name="yr_volume_first_sends">New problems sent</string>
+    <string name="yr_volume_flashes">Flashes</string>
+    <string name="yr_volume_how">A climbing day is a day with a board entry or a climbing day you logged by hand. A send counts its tries, at least one. Sends are every successful entry, repeats included. A new problem is one you sent for the first time ever, per problem and angle; a flash is a new problem sent on the first try.</string>
+
+    <!-- Boards and angles -->
+    <string name="yr_boards_title">Your boards</string>
+    <string name="yr_boards_angle">mostly at %1$d° (%2$d%%)</string>
+    <string name="yr_boards_how">Entries are your sends and attempts on that board. The angle is the one you logged most there, with its share of the board\'s entries.</string>
+
+    <!-- Hardest -->
+    <string name="yr_hardest_title">Hardest sends</string>
+    <string name="yr_hardest_flash">flash</string>
+    <string name="yr_hardest_repeat">repeat</string>
+    <string name="yr_hardest_sample">out of %1$s with a grade</string>
+    <string name="yr_hardest_how">Per board, in the grade scale you chose, from the grade the problem has at its angle. Grades are never compared across boards. Each problem counts once; with few sends a grade says less.</string>
+
+    <!-- Compared with last year -->
+    <string name="yr_compared_title">Compared with %1$d</string>
+    <string name="yr_compared_value">%1$s (%2$s)</string>
+    <string name="yr_compared_hardest">Hardest send on the %1$s</string>
+    <string name="yr_compared_grades_up">%1$s up</string>
+    <string name="yr_compared_grades_down">%1$s down</string>
+    <string name="yr_compared_grades_same">same grade</string>
+    <string name="yr_compared_how">Last year from 1 January to %1$s, the same span as this year. Only your own earlier years count, never other climbers.</string>
+
+    <!-- Rhythm -->
+    <string name="yr_rhythm_title">Your rhythm</string>
+    <string name="yr_rhythm_hero_label">busiest month, %1$s</string>
+    <string name="yr_rhythm_weeks">Weeks with climbing</string>
+    <string name="yr_rhythm_weeks_value">%1$d of %2$d</string>
+    <string name="yr_rhythm_streak">Longest run</string>
+    <string name="yr_rhythm_streak_from">from %1$s</string>
+    <string name="yr_rhythm_weekday">Favourite day</string>
+    <string name="yr_rhythm_how">Weeks run from Monday to Sunday; a run counts weeks in a row with at least one climbing day. On a tie, the earlier month or weekday wins.</string>
+
+    <!-- Highlights -->
+    <string name="yr_highlights_title">Highlights</string>
+    <string name="yr_highlights_flash">Hardest flash on the %1$s</string>
+    <string name="yr_highlights_biggest_day">Biggest day</string>
+    <string name="yr_highlights_repeated">Most repeated</string>
+    <string name="yr_highlights_project">Longest project</string>
+    <string name="yr_highlights_project_detail">%1$s over %2$s</string>
+    <string name="yr_highlights_project_since">since %1$s</string>
+    <string name="yr_highlights_how">The biggest day is the one with the most sends. The most repeated problem is the one you sent most often this year. The longest project is the new problem that took the most tries, counted across all sessions up to the send, even from earlier years.</string>
+
+    <!-- Holds touched -->
+    <string name="yr_touched_title">Hold by hold</string>
+    <string name="yr_touched_hero_label">holds touched on your sends</string>
+    <string name="yr_touched_per_send">Per send</string>
+    <string name="yr_touched_holds_value">%1$s holds</string>
+    <string name="yr_touched_most">Most holds</string>
+    <string name="yr_touched_how">Every hold a problem marks counts once per send, repeats included: start, hand and finish holds, and foot holds where the board marks them. Tries without a send do not count. A rough count: on the wall you may skip a hold or use one twice.</string>
+    <string name="yr_touched_how_all">Counted from all your %1$s.</string>
+    <string name="yr_touched_how_some">Counted from %1$s of your %2$s; the holds of the other problems are not on this phone.</string>
+
+    <!-- Hold types -->
+    <string name="yr_holds_title">Your holds</string>
+    <string name="yr_holds_hero_label">your most tagged hold type</string>
+    <string name="yr_holds_how">From the hold types you tagged on the climbs you logged by hand: the share of those %1$s with each type. A climb can have several. Board problems will get their hold types later.</string>
+
+    <!-- Training -->
+    <string name="yr_training_title">Off the wall</string>
+    <string name="yr_training_hero_label">workouts</string>
+    <string name="yr_training_days">Workout days</string>
+    <string name="yr_training_time">Time</string>
+    <string name="yr_training_best">Newest best value</string>
+    <string name="yr_training_comeback">Back after a break</string>
+    <string name="yr_training_how">Finished workouts you logged in the training section, with their time. Best values are the newest you measured per exercise this year; quick estimates do not count.</string>
+
+    <!-- Climber type -->
+    <string name="yr_type_title">Your climber type</string>
+    <string name="yr_type_also">Also: %1$s</string>
+    <string name="yr_type_how">One of ten types, picked by rules on your own numbers: the type whose rule you exceed most wins. A comeback is only ever shown as a break, never why.</string>
+    <string name="yr_type_flash_machine">Flash Machine</string>
+    <string name="yr_type_flash_machine_line">Sees it, sends it.</string>
+    <string name="yr_type_projector">Projector</string>
+    <string name="yr_type_projector_line">Never lets a problem go.</string>
+    <string name="yr_type_mileage_monster">Mileage Monster</string>
+    <string name="yr_type_mileage_monster_line">More problems, more fun.</string>
+    <string name="yr_type_steep_specialist">Steep Specialist</string>
+    <string name="yr_type_steep_specialist_line">The steeper, the better.</string>
+    <string name="yr_type_board_hopper">Board Hopper</string>
+    <string name="yr_type_board_hopper_line">At home on every board.</string>
+    <string name="yr_type_clockwork">Clockwork</string>
+    <string name="yr_type_clockwork_line">Week in, week out.</string>
+    <string name="yr_type_rising_star">Rising Star</string>
+    <string name="yr_type_rising_star_line">Up the grades.</string>
+    <string name="yr_type_strength_lab">Strength Lab</string>
+    <string name="yr_type_strength_lab_line">Builds the engine off the wall.</string>
+    <string name="yr_type_comeback_kid">Comeback Kid</string>
+    <string name="yr_type_comeback_kid_line">Came back and kept climbing.</string>
+    <string name="yr_type_all_rounder">All-Rounder</string>
+    <string name="yr_type_all_rounder_line">A bit of everything. That\'s a style too.</string>
+    <!-- The rule with the user's number; %1$s is the user's value, %2$s the threshold. -->
+    <string name="yr_rule_flash">%1$s of your new problems were flashes. Flash Machines start at %2$s.</string>
+    <string name="yr_rule_projector_share">%1$s of your new problems took 10 tries or more. Projectors start at %2$s.</string>
+    <string name="yr_rule_projector_average">Your new problems took %1$s tries on average. Projectors start at %2$s.</string>
+    <string name="yr_rule_mileage">%1$s sends per day on the board. Mileage Monsters start at %2$s.</string>
+    <string name="yr_rule_steep">%1$s of your entries were at 45° or steeper (40° on a MoonBoard). Steep Specialists start at %2$s.</string>
+    <string name="yr_rule_hopper">Your third board had %1$s of your entries. Board Hoppers start at %2$s on three boards.</string>
+    <string name="yr_rule_clockwork_share">You climbed in %1$s of the weeks since your first climbing day this year. Clockworks start at %2$s.</string>
+    <string name="yr_rule_clockwork_streak">%1$s in a row with climbing. Clockworks start at %2$s.</string>
+    <string name="yr_rule_rising_last_year">%1$s above last year on your main board. Rising Stars start at %2$s.</string>
+    <string name="yr_rule_rising_within">%1$s from your first three months to your last three on your main board. Rising Stars start at %2$s.</string>
+    <string name="yr_rule_strength">Workouts on %1$s of your training days. Strength Labs start at %2$s, with 20 workouts.</string>
+    <string name="yr_rule_comeback_plan">Back after a break, and kept at it.</string>
+    <string name="yr_rule_comeback_break">Back after a break of %1$s, with %2$s since.</string>
+    <string name="yr_rule_all_rounder">No single rule stands out, so you are a bit of everything. Your closest: %1$s</string>
+    <string name="yr_rule_all_rounder_none">No single rule stands out, so you are a bit of everything.</string>
+
+    <!-- Summary -->
+    <string name="yr_summary_title">%1$d on the boards</string>
+    <string name="yr_summary_title_so_far">%1$d so far</string>
+    <string name="yr_summary_hardest">Hardest on the %1$s</string>
+    <string name="yr_summary_type">Climber type</string>
+    <string name="yr_summary_how">The year\'s headline numbers from the pages before.</string>
+
+    <!-- Sharing -->
+    <string name="yr_share_title">Share this page</string>
+    <string name="yr_share_show_name">Show my name</string>
+    <string name="yr_share_name_missing">Set a display name in the community settings to show it.</string>
+    <string name="yr_share_show_problems">Show problem names</string>
+    <string name="yr_share_show_dates">Show exact dates</string>
+    <string name="yr_share_hint">The image is drawn on this phone. It carries your numbers and a small CruxCoach wordmark, nothing else.</string>
+    <string name="yr_share_send">Share image</string>
+    <string name="yr_share_chooser">Share your year</string>
+    <string name="yr_share_failed">The image could not be shared.</string>
+    <string name="yr_share_name_header">%1$s\'s %2$d</string>
+    <string name="yr_share_problem_hidden">a %1$s</string>
+    <string name="yr_share_wordmark">CruxCoach</string>
+
+    <plurals name="yr_holds">
+        <item quantity="one">%s hold</item>
+        <item quantity="other">%s holds</item>
+    </plurals>
+    <plurals name="yr_days">
+        <item quantity="one">%s day</item>
+        <item quantity="other">%s days</item>
+    </plurals>
+    <plurals name="yr_climbing_days">
+        <item quantity="one">%s climbing day</item>
+        <item quantity="other">%s climbing days</item>
+    </plurals>
+    <plurals name="yr_weeks">
+        <item quantity="one">%s week</item>
+        <item quantity="other">%s weeks</item>
+    </plurals>
+    <plurals name="yr_entries">
+        <item quantity="one">%s entry</item>
+        <item quantity="other">%s entries</item>
+    </plurals>
+    <plurals name="yr_sends">
+        <item quantity="one">%s send</item>
+        <item quantity="other">%s sends</item>
+    </plurals>
+    <plurals name="yr_tries">
+        <item quantity="one">%s try</item>
+        <item quantity="other">%s tries</item>
+    </plurals>
+    <plurals name="yr_tries_after">
+        <item quantity="one">first try</item>
+        <item quantity="other">after %s tries</item>
+    </plurals>
+    <plurals name="yr_times">
+        <item quantity="one">sent once</item>
+        <item quantity="other">sent %s times</item>
+    </plurals>
+    <plurals name="yr_grades">
+        <item quantity="one">%s grade</item>
+        <item quantity="other">%s grades</item>
+    </plurals>
+    <plurals name="yr_sessions">
+        <item quantity="one">%s session</item>
+        <item quantity="other">%s sessions</item>
+    </plurals>
+</resources>
