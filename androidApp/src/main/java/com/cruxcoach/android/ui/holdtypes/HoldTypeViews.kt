@@ -69,8 +69,12 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
-/** Inches of board around the hold in the close-up. */
+/** Inches of board around the hold in the close-up, and the ring around it. */
 private const val CLOSE_UP_INCHES = 10f
+private const val RING_INCHES = 2.6f
+/** Shiny Wall: centimetres of wall around the hold (two and a half grid cells), and the ring around it. */
+private const val SHINY_CLOSE_UP_UNITS = 50f
+private const val SHINY_RING_UNITS = 11f
 /** MoonBoard close-up: grid cells of board around the hold. */
 private const val MOON_CLOSE_UP_CELLS = 3f
 private val MarkerColor = Color(0xFFFFC107)
@@ -148,7 +152,10 @@ internal fun HoldViews(entry: HoldTypeEntry?, board: HoldBoardView?) {
                     placements = board.placements,
                     boardSize = board.boardSize,
                     boardImages = board.boardImages,
-                    zone = placement?.let { BoardZone(it.x - 6, it.x + 6, it.y - 6, it.y + 6) },
+                    zone = placement?.let {
+                        val r = if (board.brand == BoardBrand.SHINYWALL) 15 else 6
+                        BoardZone(it.x - r, it.x + r, it.y - r, it.y + r)
+                    },
                 )
             }
         }
@@ -192,8 +199,12 @@ private fun HoldCloseUp(entry: HoldTypeEntry, board: HoldBoardView.Aurora, modif
         val boardHeight = (size.edgeTop - size.edgeBottom).toFloat()
         val px = (p.x - size.edgeLeft) / boardWidth * img.width
         val py = img.height - (p.y - size.edgeBottom) / boardHeight * img.height
-        val window = (CLOSE_UP_INCHES / boardWidth * img.width).roundToInt()
-        drawCloseUp(listOf(img), px, py, window, ringRadiusPx = 2.6f / boardWidth * img.width)
+        // Shiny Wall units are centimetres and a hold fills a 20-unit cell: a wider window and a bigger ring.
+        val shiny = board.brand == BoardBrand.SHINYWALL
+        val windowUnits = if (shiny) SHINY_CLOSE_UP_UNITS else CLOSE_UP_INCHES
+        val ringUnits = if (shiny) SHINY_RING_UNITS else RING_INCHES
+        val window = (windowUnits / boardWidth * img.width).roundToInt()
+        drawCloseUp(listOf(img), px, py, window, ringRadiusPx = ringUnits / boardWidth * img.width)
     }
 }
 
