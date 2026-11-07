@@ -74,6 +74,25 @@ object PreferenceLearning {
     const val ENDED_EARLY = "ended_early"
     /** Ledger [SuggestionEventKind.FEEDBACK] focus for "+ Satz"; slugs = the exercise, value = its work sets now. */
     const val EXTRA_SET = "extra_set"
+    /**
+     * Ledger [SuggestionEventKind.FEEDBACK] focus for "Kenne ich nicht" on the card (issue #68): slugs = [the exercise, its
+     * replacement]. It swaps the exercise for today like a swap but costs it nothing (no dislike, no rest), and the
+     * replacement earns nothing either: the coach picked it. The exercise is only not the coach's new pick for a while ([unfamiliar]).
+     */
+    const val DONT_KNOW = "dont_know"
+
+    /**
+     * Exercises the athlete marked "Kenne ich nicht" in the last [ExerciseFamiliarity.UNFAMILIAR_DAYS] days, today included;
+     * forgotten exercises start fresh.
+     */
+    fun unfamiliar(events: List<SuggestionEvent>, today: LocalDate, resets: Map<String, Long> = emptyMap()): Set<String> {
+        val from = today.minus(DatePeriod(days = ExerciseFamiliarity.UNFAMILIAR_DAYS))
+        return events.filter { it.kind == SuggestionEventKind.FEEDBACK && it.focus == DONT_KNOW }.mapNotNull { e ->
+            val slug = e.slugs.firstOrNull() ?: return@mapNotNull null
+            val day = runCatching { LocalDate.parse(e.day) }.getOrNull() ?: return@mapNotNull null
+            slug.takeIf { day > from && day <= today && e.createdAt > since(resets, exerciseKey(slug)) }
+        }.toSet()
+    }
 
     /** What the athlete chose again and again on one weekday: a kind of training and/or a duration. */
     data class UsualChoice(val isoDay: Int, val focus: SuggestionFocus?, val minutes: Int?)

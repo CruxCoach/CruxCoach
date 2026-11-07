@@ -3,6 +3,7 @@ package com.cruxcoach.android.athlete
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
 import com.cruxcoach.athlete.catalog.ExerciseCategoryV2
 import com.cruxcoach.athlete.catalog.ExerciseKind
+import com.cruxcoach.athlete.catalog.Familiarity
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.BuiltinRoutines
 import java.io.File
@@ -24,6 +25,22 @@ class ExerciseCatalogAssetTest {
     fun `catalogue is large and covers every category`() {
         assertTrue(catalog.all.size >= 180, "only ${catalog.all.size} exercises")
         assertEquals(ExerciseCategoryV2.entries.toSet(), catalog.all.map { it.category }.toSet())
+    }
+
+    @Test
+    fun `every exercise has a level of familiarity`() {
+        // Issue #68: written out for every exercise, so a missing one is not silently Basic.
+        val raw = kotlinx.serialization.json.Json.parseToJsonElement(File("src/main/assets/${ExerciseCatalogStore.ASSET}").readText())
+        val exercises = (raw as kotlinx.serialization.json.JsonObject)["exercises"] as kotlinx.serialization.json.JsonArray
+        exercises.forEach { e ->
+            val o = e as kotlinx.serialization.json.JsonObject
+            val level = (o["familiarity"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+            assertTrue(level in Familiarity.entries.map { it.name }, "${o["slug"]}: $level")
+        }
+        // Every kind of training has well-known exercises to start with (warm-ups for every session among them).
+        val basics = catalog.all.filter { it.familiarity == Familiarity.BASIC }.map { it.category }.toSet()
+        listOf(ExerciseCategoryV2.WARMUP, ExerciseCategoryV2.PULL, ExerciseCategoryV2.PUSH, ExerciseCategoryV2.CORE,
+            ExerciseCategoryV2.LEGS, ExerciseCategoryV2.MOBILITY).forEach { assertTrue(it in basics, "no Basic ${it.name}") }
     }
 
     @Test

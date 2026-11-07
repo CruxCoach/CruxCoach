@@ -133,7 +133,7 @@ getAllSets:
 SELECT * FROM exercise_set ORDER BY workout_id, block_index, set_index;
 
 getTrainedExerciseSlugs:
-SELECT exercise_slug, COUNT(*) AS cnt, MAX(completed_at) AS last_at
+SELECT exercise_slug, COUNT(*) AS cnt, MAX(completed_at) AS last_at, COUNT(DISTINCT workout_id) AS trainings
 FROM exercise_set WHERE coalesce(completed_at, 0) > 0
 GROUP BY exercise_slug;
 
