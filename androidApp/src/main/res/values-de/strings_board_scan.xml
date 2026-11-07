@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Board scan (#65): point the camera at a lit board to find the problem -->
+    <string name="board_scan_open">Board scannen</string>
+    <string name="board_scan_title">Board scannen</string>
+    <string name="board_scan_experimental">Experimentell</string>
+    <string name="board_scan_permission">Zum Scannen des Boards braucht CruxCoach die Kamera. Die Bilder bleiben im Speicher dieses Handys und werden nie gespeichert oder gesendet.</string>
+    <string name="board_scan_permission_allow">Kamera erlauben</string>
+    <string name="board_scan_preparing">Die Probleme dieses Boards werden vorbereitet …</string>
+    <plurals name="board_scan_problems">
+        <item quantity="one">%1$s Problem auf diesem Board</item>
+        <item quantity="other">%1$s Probleme auf diesem Board</item>
+    </plurals>
+    <string name="board_scan_unsupported">Scannen geht vorerst am Kilter Original und am MoonBoard 2016 und 2024.</string>
+    <string name="board_scan_no_catalogue">Von diesem Board sind noch keine Probleme auf dem Handy. Lade zuerst seinen Katalog herunter.</string>
+    <string name="board_scan_hint">Lass ein Problem leuchten, halte das Handy aufrecht, nimm das ganze Board ins Bild und tippe auf Scannen.</string>
+    <string name="board_scan_button">Scannen</string>
+    <string name="board_scan_stop">Stopp</string>
+    <string name="board_scan_looking">Suche … Bild %1$d</string>
+    <string name="board_scan_camera_error">Die Kamera liefert kein Bild. Schließe den Scan und öffne ihn wieder.</string>
+    <string name="board_scan_sure">Es ist dieses Problem</string>
+    <string name="board_scan_not_sure">Nicht sicher. Die drei wahrscheinlichsten:</string>
+    <string name="board_scan_nothing">Kein leuchtendes Problem gefunden. Nimm das ganze Board ins Bild und versuch es noch einmal.</string>
+    <string name="board_scan_mirrored">gespiegelt</string>
+    <string name="board_scan_holds_seen">%1$d von %2$d Griffen gesehen</string>
+    <string name="board_scan_details">%1$d leuchtende Griffe gesehen · %2$s s</string>
+    <string name="board_scan_failed">Der Scan ist mit einem Fehler abgebrochen. Versuch es noch einmal.</string>
+    <string name="board_scan_again">Noch einmal scannen</string>
+    <string name="board_scan_unnamed">Problem ohne Namen</string>
+    <!-- Test mode: the user confirms or picks the lit problem after each scan -->
+    <string name="board_scan_test_mode">Testmodus</string>
+    <string name="board_scan_test_climber">Jemand davor</string>
+    <string name="board_scan_test_results">Ergebnisse</string>
+    <string name="board_scan_test_right">Richtig</string>
+    <string name="board_scan_test_wrong">Falsch</string>
+    <string name="board_scan_test_tap_lit">Tippe auf das Problem, das geleuchtet hat, oder such es nach Namen.</string>
+    <string name="board_scan_test_search">Name des Problems</string>
+    <string name="board_scan_test_lit_mirrored">Gespiegelt geleuchtet</string>
+    <string name="board_scan_test_not_in_catalogue">Nicht im Katalog</string>
+    <string name="board_scan_test_skip">Nicht zählen</string>
+    <string name="board_scan_test_saved">Gespeichert: %1$d in dieser Runde</string>
+    <string name="board_scan_test_empty">Noch keine Testscans.</string>
+    <string name="board_scan_test_free">Scans mit freier Sicht: %1$d von %2$d</string>
+    <string name="board_scan_test_top">Richtiges Problem zuerst: %1$d · unter den dreien: %2$d</string>
+    <string name="board_scan_test_sure">Sicher: %1$d · sicher und falsch: %2$d</string>
+    <string name="board_scan_test_time">Mittlere Zeit: %1$s s</string>
+    <string name="board_scan_test_all">Alle Scans, auch mit jemandem davor: %1$d</string>
+    <string name="board_scan_test_note">Gespeichert werden nur Zahlen und Namen der Probleme, nie Kamerabilder.</string>
+    <string name="board_scan_test_export">Exportieren</string>
+    <string name="board_scan_test_clear">Ergebnisse löschen</string>
+    <string name="board_scan_test_clear_confirm">Alle Testergebnisse auf diesem Handy löschen?</string>
+    <string name="board_scan_test_share_title">Testergebnisse des Board-Scans</string>
+    <string name="board_scan_close">Schließen</string>
+    <string name="board_scan_cancel">Abbrechen</string>
+    <string name="board_scan_delete">Löschen</string>
+</resources>
