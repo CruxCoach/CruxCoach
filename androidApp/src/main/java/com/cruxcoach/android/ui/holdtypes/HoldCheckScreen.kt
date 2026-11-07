@@ -242,9 +242,9 @@ private fun CheckLine(check: HoldCheck) {
 @Composable
 private fun CheckResults(state: HoldCheckUiState, viewModel: HoldCheckViewModel) {
     val context = LocalContext.current
-    var saved by remember { mutableStateOf(false) }
-    var confirmReset by remember { mutableStateOf(false) }
     val board = state.board ?: return
+    var saved by remember(board) { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
             context.contentResolver.openOutputStream(uri)?.use { it.write(viewModel.resultsJson().toByteArray()) }

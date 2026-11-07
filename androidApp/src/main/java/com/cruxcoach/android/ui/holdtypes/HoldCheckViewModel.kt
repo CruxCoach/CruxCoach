@@ -17,6 +17,8 @@ import com.cruxcoach.domain.holdtypes.checkQueue
 import com.cruxcoach.domain.holdtypes.summary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,9 +61,14 @@ class HoldCheckViewModel @Inject constructor(
     private val _state = MutableStateFlow(HoldCheckUiState())
     val state: StateFlow<HoldCheckUiState> = _state.asStateFlow()
 
+    private var board: String? = null
     private var dataset: HoldTypeDataset? = null
     private var session: HoldCheckSession? = null
+    /** Each board's session once loaded: switching back never rereads a file that a queued save has not reached. */
+    private val sessions = mutableMapOf<String, HoldCheckSession>()
     private var queue: List<HoldTypeEntry> = emptyList()
+    /** The one load that may still change the screen; a newer board, list or hold cancels it. */
+    private var navJob: Job? = null
     private val saveDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     init {
@@ -75,22 +82,31 @@ class HoldCheckViewModel @Inject constructor(
         }
     }
 
-    fun selectBoard(board: String) {
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, board = board) }
-            val loaded = withContext(Dispatchers.IO) { assets.dataset(board) }
-            dataset = loaded
-            session = loaded?.let { withContext(Dispatchers.IO) { store.load(board) } ?: HoldCheckSession(board, it.version) }
-            rebuildQueue(_state.value.reviewListOnly)
+    private fun navigate(block: suspend () -> Unit) {
+        navJob?.cancel()
+        navJob = viewModelScope.launch { block() }
+    }
+
+    fun selectBoard(selected: String) = navigate {
+        _state.update { it.copy(loading = true, board = selected) }
+        val loaded = withContext(Dispatchers.IO) { assets.dataset(selected) }
+        val loadedSession = loaded?.let {
+            sessions[selected] ?: withContext(Dispatchers.IO) { store.load(selected) } ?: HoldCheckSession(selected, it.version)
         }
+        // Board, dataset and session change together, after every load, so nothing mixes two boards.
+        board = selected
+        dataset = loaded
+        session = loadedSession
+        loadedSession?.let { sessions[selected] = it }
+        rebuildQueueNow(_state.value.reviewListOnly)
     }
 
     fun setReviewListOnly(only: Boolean) {
         if (only == _state.value.reviewListOnly) return
-        rebuildQueue(only)
+        navigate { rebuildQueueNow(only) }
     }
 
-    private fun rebuildQueue(reviewListOnly: Boolean) {
+    private suspend fun rebuildQueueNow(reviewListOnly: Boolean) {
         val data = dataset
         queue = data?.checkQueue(reviewListOnly).orEmpty()
         val s = session
@@ -102,26 +118,26 @@ class HoldCheckViewModel @Inject constructor(
                 datasetVersion = data?.version.orEmpty(),
                 reviewListOnly = reviewListOnly,
                 reviewListSize = data?.checkQueue(true)?.size ?: 0,
-                labelledSize = data?.holds?.count { h -> h.type != null } ?: 0,
+                labelledSize = data?.checkQueue(false)?.size ?: 0,
                 queueSize = queue.size,
                 summary = s?.summary(),
                 session = s,
             )
         }
-        show(firstOpen)
+        showNow(firstOpen)
     }
 
-    private fun show(index: Int) {
+    private fun show(index: Int) = navigate { showNow(index) }
+
+    private suspend fun showNow(index: Int) {
         val entry = queue.getOrNull(index)
-        val board = _state.value.board ?: return
-        viewModelScope.launch {
-            val view = entry?.let { boardViews.viewFor(board, it) }
-            _state.update {
-                it.copy(
-                    index = index, entry = entry, view = view, correction = null,
-                    check = entry?.let { e -> session?.checkFor(e.layoutId, e.placement) },
-                )
-            }
+        val current = board ?: return
+        val view = entry?.let { boardViews.viewFor(current, it) }
+        _state.update {
+            it.copy(
+                index = index, entry = entry, view = view, correction = null,
+                check = entry?.let { e -> session?.checkFor(e.layoutId, e.placement) },
+            )
         }
     }
 
@@ -168,6 +184,8 @@ class HoldCheckViewModel @Inject constructor(
     private fun record(verdict: CheckVerdict, draft: AnswerDraft?) {
         val entry = _state.value.entry ?: return
         val current = session ?: return
+        // Only a hold of the board now loaded, as the dataset has it.
+        if (_state.value.board != board || dataset?.get(entry.layoutId, entry.placement) != entry) return
         val check = HoldCheck(
             layoutId = entry.layoutId,
             placement = entry.placement,
@@ -180,7 +198,9 @@ class HoldCheckViewModel @Inject constructor(
         )
         val updated = current.withCheck(check)
         session = updated
-        viewModelScope.launch(saveDispatcher) { store.save(updated) }
+        sessions[updated.board] = updated
+        // A save already made must survive leaving the screen.
+        viewModelScope.launch(saveDispatcher + NonCancellable) { store.save(updated) }
         _state.update { it.copy(check = check, correction = null, summary = updated.summary(), session = updated) }
         next()
     }
@@ -188,9 +208,9 @@ class HoldCheckViewModel @Inject constructor(
     fun resultsJson(): String = session?.toJson().orEmpty()
 
     fun startOver() {
-        val board = _state.value.board ?: return
-        session = HoldCheckSession(board, dataset?.version.orEmpty())
-        viewModelScope.launch(saveDispatcher) { store.clear(board) }
-        rebuildQueue(_state.value.reviewListOnly)
+        val cleared = board ?: return
+        session = HoldCheckSession(cleared, dataset?.version.orEmpty()).also { sessions[cleared] = it }
+        viewModelScope.launch(saveDispatcher + NonCancellable) { store.clear(cleared) }
+        navigate { rebuildQueueNow(_state.value.reviewListOnly) }
     }
 }
