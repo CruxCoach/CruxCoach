@@ -193,8 +193,8 @@ class ShinyWallSyncEngine @Inject constructor(
 
     suspend fun previewImport(): Result<ShinyWallImportPreview> = withContext(Dispatchers.IO) {
         val session = tokenStore.session() ?: return@withContext notSignedIn<ShinyWallImportPreview>()
-        client.fetchHistory(session.uid).map { history ->
-            val plan = plan(session.uid, history)
+        val history = client.fetchHistory(session.uid).getOrElse { return@withContext Result.failure(it) }
+        logbookStep { plan(session.uid, history) }.map { plan ->
             ShinyWallImportPreview(
                 totalEntries = plan.total,
                 newAscents = plan.logs.count { it.send != null },
@@ -209,8 +209,8 @@ class ShinyWallSyncEngine @Inject constructor(
         importMutex.withLock {
             val session = tokenStore.session() ?: return@withLock notSignedIn<ShinyWallImportResult>()
             val history = client.fetchHistory(session.uid).getOrElse { return@withLock Result.failure<ShinyWallImportResult>(it) }
-            val plan = plan(session.uid, history)
-            write(plan)
+            val plan = logbookStep { plan(session.uid, history) }.getOrElse { return@withLock Result.failure(it) }
+            logbookStep { write(plan) }.getOrElse { return@withLock Result.failure(it) }
             val lists = try {
                 importLists(session.uid, history, listNames)
             } catch (e: CancellationException) {
@@ -239,6 +239,16 @@ class ShinyWallSyncEngine @Inject constructor(
 
     private fun <T> notSignedIn(): Result<T> =
         Result.failure(ShinyWallApiException(ShinyWallApiException.Reason.NotAuthenticated, "not signed in"))
+
+    /** Runs a step on the logbook database; a database error fails the import instead of crashing the app. */
+    private inline fun <T> logbookStep(block: () -> T): Result<T> = try {
+        Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Logbook step failed (${e.javaClass.simpleName})")
+        Result.failure(e)
+    }
 
     internal fun plan(uid: String, history: List<ShinyWallHistoryEntry>): Plan {
         val zone = zone()

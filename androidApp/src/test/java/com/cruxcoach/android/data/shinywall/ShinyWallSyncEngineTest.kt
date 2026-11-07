@@ -5,6 +5,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.android.data.ShinyWallSnapshot
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepositoryImpl
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.board.ClimbUuid
@@ -513,6 +514,22 @@ class ShinyWallSyncEngineTest {
         coEvery { client.fetchProfile("uid1") } returns Result.failure(java.io.IOException("offline"))
         coEvery { client.fetchOwnRoutes("uid1") } returns Result.failure(java.io.IOException("offline"))
         assertEquals(0, engine.importAll(names).getOrThrow().lists)
+    }
+
+    @Test
+    fun a_database_error_fails_the_import_instead_of_crashing() = runTest {
+        val broken = mockk<PersonalBoardRepository>(relaxed = true)
+        every { broken.getExistingLogUuids() } throws IllegalStateException("database is locked")
+        val failing = ShinyWallSyncEngine(client, store, board, broken, db)
+        assertTrue(failing.previewImport().isFailure)
+        assertTrue(failing.importAll(names).isFailure)
+
+        every { broken.getExistingLogUuids() } returns emptySet()
+        every { broken.runInTransaction(any()) } throws IllegalStateException("disk I/O error")
+        assertTrue(failing.importAll(names).isFailure)
+        // Nothing counts as imported: the next import tries again.
+        assertEquals(null, store.historyWatermarkMs("uid1"))
+        assertTrue(store.placedLogs("uid1").isEmpty())
     }
 
     @Test
