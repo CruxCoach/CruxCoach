@@ -25,14 +25,23 @@ them with the people who climb on the same wall.
 1. **Add a wall in three steps**, each with a line that explains it:
    1. **Photo:** camera or photo library, then crop and turn in quarter turns.
    2. **Holds:** the phone looks for holds right away, with a scan running over the
-      photo. Suggestions are dashed rings. A sensitivity slider shows more or fewer.
+      photo (and a percentage while the hold model runs). Suggestions are orange
+      outlines: the hold's own shape from the hold model, a dashed ring from the
+      classical detector. A sensitivity slider shows more or fewer.
       "Take all" takes the visible ones; tapping one takes just that one. Then the
       climber fixes the rest by hand (see 3).
    3. **Details:** name (prefilled), angle (fixed per wall), private or public, gym.
    - The first marking can be saved as often as needed without adding history.
-2. **Hold detection on the phone:** no network, no model file, no new dependency
-   (section 4). It handles coloured, black and white holds on plywood or painted
-   panels, uneven light and touching holds. It does not suggest T-nut bolt holes.
+2. **Hold detection on the phone**, by one of two detectors (section 4):
+   - **The hold model**, a segmentation model the climber downloads once (33 MB)
+     from the editor's "Better hold finding" card. It finds holds of every colour
+     with their real outline and runs on the phone, offline, through ONNX Runtime
+     (section 4a). It can be removed again under Settings → Delete local data.
+   - **The classical detector**, without a model, network or dependency: used
+     until the model is downloaded, and whenever the model cannot run (an error,
+     too little memory), with a note saying so. It handles coloured, black and
+     white holds on plywood or painted panels, uneven light and touching holds,
+     and does not suggest T-nut bolt holes.
 3. **The hold editor:**
    - Tap to pick a hold, drag to move it, use the slider to size it.
    - Press and hold to add a hold, or switch on **Add** to place several in a row.
@@ -104,8 +113,15 @@ additive). Schema and queries: `SprayWalls.sq`.
 
 ## 4. Logic (shared, pure Kotlin, `com.cruxcoach.domain.spraywall`)
 
-- **`detect.SprayHoldDetector`** behind **`detect.HoldDetector`**, the seam for a
-  trained model later. It works on at most 1024 px:
+- **`detect.SegPipeline`:** everything around the hold model except the inference:
+  the working size, overlapping tiles, input normalisation, decoding boxes, scores
+  and masks, tracing each mask into an outline (`HoldOutline`), and merging the
+  tiles. Ported from BoardSesh's hold-detection package (Apache-2.0, see
+  `THIRD_PARTY_LICENSES.md`). `SegSettings` holds the tunable parts; where two tiles
+  saw a hold and the best copy is cut by a tile edge, the uncut copy's shape wins
+  (`seamAware`).
+- **`detect.SprayHoldDetector`** behind **`detect.HoldDetector`**, the classical
+  detector. It works on at most 1024 px:
   1. **Panel model:** the panel colour is the densest spot of the chroma histogram;
      its brightness is estimated per grid cell and interpolated, so a light gradient
      stays panel.
@@ -144,6 +160,35 @@ additive). Schema and queries: `SprayWalls.sq`.
 - **`SprayWallNostr`:** builders and parsers for the events in section 5, as pure
   functions.
 
+## 4a. The hold model on the phone (`androidApp/.../spraywall`)
+
+- **The model:** BoardSesh's published RF-DETR-Seg nano export "2026-09-18-seg"
+  (int8, 32,536,853 bytes, Apache-2.0; credits in `NOTICE` and
+  `THIRD_PARTY_LICENSES.md`). It is not in the APK.
+- **Download (`HoldModelStore`):** only when the climber asks, from the Blossom
+  mirrors of the board catalogues that hold the file, in this order:
+  `blossom.cruxcoach.org`, `cdn.hzrd149.com`, `blossom-01.uid.ovh`. Never from the
+  publisher's own servers. The file is kept only when its size and SHA-256 match the
+  pin. Settings → Delete local data → "Spray walls on this phone" removes it.
+- **Runtime:** ONNX Runtime for Android 1.31.1 (MIT; its third-party notices are
+  on the licence screen). Its manifest provider `ai.onnxruntime.TelemetryInitializer`
+  would load the 34 MB library on every app start and set up telemetry to Microsoft
+  with a device id. The app's manifest removes it, and `OnnxHoldDetector` switches
+  the runtime's telemetry off (`OrtEnvironment.setTelemetry(false)`) before its
+  first session. The runtime starts only when the hold model runs.
+- **Running (`OnnxHoldDetector`):** the photo at 1024 px on its long side, 2×2
+  tiles with 15 % overlap, each stretched to 312 × 312, one inference per tile on
+  every core (up to 8). Duplicates across tiles go at a box overlap of 0.3; the
+  default threshold is 0.4, holds down to 0.3 stay for the sensitivity slider.
+- **Leaving mid-run (`HoldModelSession`):** the editor's session is loaded on the
+  first run and kept for the next. Leaving the editor cancels the run: it stops
+  between tiles and, through the runtime's terminate flag, inside a tile. The
+  session is closed only after the run has stopped; a session that finishes
+  loading after the editor is gone is closed straight away.
+- **APK size:** native libraries are stored compressed in the APK
+  (`packaging.jniLibs.useLegacyPackaging`), so ONNX Runtime adds about 13 MB to
+  the download instead of 34 MB; Android extracts them once at install.
+
 ## 5. Publishing (`SprayWallPublisher`, `SprayWallFetcher`)
 
 Kind **30078** only, under the label namespace `L` = `com.cruxcoach.spraywall`: no new
@@ -161,13 +206,24 @@ kind and no new Amber permission.
 - Versions and climbs carry `["a","30078:<owner>:<wall d>"]`, so one request returns
   everything that belongs to a wall.
 - The largest wall (1,500 holds) stays far below 64 KB per event.
+- **Before publishing**, the confirmation says in its own line that the photos must
+  not show people; a reset of a public wall says the same under the new photo.
 - **Publishing:** photos go to Blossom through `ProfileImageUploader`. Then every
   version not yet published goes out, then the head, then the climbs on public walls.
   This runs after each save; on failure the wall shows "not published yet" with a
   retry. Signing and relays: `NostrSigner`, `NostrRelayPool.sendEventWithStats`.
-- **Withdrawing:** every event (head, versions, my climbs) is replaced by a tombstone
+- **Withdrawing (`SprayWallWithdrawal`):** every event (head, versions, my climbs) is replaced by a tombstone
   (`["deleted","true"]`, `{"deleted":true}`; climb tombstones keep the `a` tag) and
-  named in one kind-5 deletion, as `CommunityClimbDeleter` does.
+  named in one kind-5 deletion, as `CommunityClimbDeleter` does. Then each photo is
+  deleted (BUD-02 `DELETE`) from the Blossom server that took its upload, unless
+  another public wall of mine still shows it. Only when a relay confirmed and every
+  photo is gone does the wall turn private here; its photo references are cleared,
+  so publishing it again uploads the photos anew.
+  - Otherwise nothing changes on the phone: the wall stays public and the screen
+    says why (no relay confirmed, a photo left on its server, signing failed or was
+    declined in Amber, no account key). Deleting a public wall waits for a
+    withdrawal that worked.
+  - Signing errors (local key or Amber) are caught and reported, never thrown.
 - **Ingest** (`NostrRelayPool.fetchStored`, on demand only) uses the same checks as
   `CommunityClimbSubscriber`:
   - a size cap, id and signature verification, and a `d` tag that must belong to its
@@ -214,8 +270,14 @@ Strings: `strings_spray_wall.xml`, English and German.
 6. Making a wall public asks first and needs an account key. A second phone sees the
    wall under "Spray walls here" at its gym, adds it, and sees the climbs; a climb set
    there shows up on the first phone after reopening the wall.
-7. Withdrawing removes the wall from "Spray walls here".
-8. Spray walls appear in no board picker, offline share, community climb list or
+7. Withdrawing removes the wall from "Spray walls here" and deletes its photos from
+   Blossom. Without a connection, or when Amber declines, the wall stays public
+   and is not deleted.
+8. Leaving the hold editor while the model runs neither crashes nor keeps the
+   model in memory. If the model cannot run, the classical detector's suggestions
+   appear with a note.
+9. The app makes no connection to Microsoft, at start or after using spray walls.
+10. Spray walls appear in no board picker, offline share, community climb list or
    backup. Logbook entries never leave the phone.
 
 ## 8. Tests
@@ -235,6 +297,14 @@ Strings: `strings_spray_wall.xml`, English and German.
   - migration 16 → 17.
 - `SprayWallBackupExclusionTest.kt`: the photo folder is excluded from backup and
   device transfer.
+- `.../spraywall/detect/SegPipelineTest.kt` and `.../spraywall/HoldOutlineTest.kt`:
+  tiling, decoding, outline tracing, the merge across tiles and the outline encoding.
+- `androidApp/src/test/.../spraywall/HoldModelSessionTest.kt`: a run cancelled
+  mid-photo stops and closes the session only afterwards; a session that finishes
+  loading after close is closed.
+- `androidApp/src/test/.../spraywall/SprayWallWithdrawalTest.kt`: withdrawing sends the
+  tombstones and deletes the photos on their server; no relay, a photo left, a failing
+  or declining signer, a network error or no key keeps the wall public.
 
 Detector, measured on the synthetic scenarios at the default threshold (0.5):
 
@@ -261,6 +331,5 @@ next step.
 
 - Spray-wall sends in the global logbook, statistics and training load. They are kept
   separate for now, so a spray climb is never counted as a board climb.
-- A trained hold detector behind `HoldDetector`, tuned on real wall photos.
 - Live updates of public walls. They are fetched when a wall is opened or added.
 - Climbs spanning several walls, adjustable angles, LED retrofits.

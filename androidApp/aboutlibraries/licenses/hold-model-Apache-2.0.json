@@ -3,5 +3,5 @@
   "name": "Apache License 2.0 (hold model)",
   "url": "https://www.apache.org/licenses/LICENSE-2.0",
   "spdxId": "Apache-2.0",
-  "content": "Hold segmentation model \"2026-09-18-seg\" © BoardSesh contributors (https://github.com/boardsesh/boardsesh), licensed under the Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0). Built on RF-DETR © Roboflow, Apache License 2.0. The model is not distributed with CruxCoach; the app downloads the published file unchanged when the user sets up hold finding for spray walls."
+  "content": "Hold segmentation model \"2026-09-18-seg\" © BoardSesh contributors (https://github.com/boardsesh/boardsesh), licensed under the Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0). Built on RF-DETR © Roboflow, Apache License 2.0. The model is not distributed with CruxCoach; when the user sets up hold finding for spray walls, the app downloads the published file, unchanged, from the Blossom mirrors of CruxCoach's board catalogues."
 }

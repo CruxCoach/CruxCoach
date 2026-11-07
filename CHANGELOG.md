@@ -8,10 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Spray walls, from the main menu. Photograph your own wall (camera or photo
-  library, crop and turn), and the phone suggests the holds: on the phone, no
-  network. Take all or one by one with a sensitivity slider, then fix by hand
-  (tap to pick, drag to move, slider to size, press and hold or "Add" to place,
-  undo/redo, pinch to zoom). Set problems with start, hand, foot and finish
+  library, crop and turn), and the phone suggests the holds. Download the hold
+  model once (33 MB) and it finds holds of every colour with their real shape,
+  on the phone and offline from then on; without it, or if it cannot run, a
+  simpler detector suggests round holds. The model can be removed again under
+  Settings → Delete local data. Take all or one by one with a sensitivity
+  slider, then fix by hand (tap to pick, drag to move, slider to size, press
+  and hold or "Add" to place, undo/redo, pinch to zoom). Set problems with start, hand, foot and finish
   holds, a name, an optional grade ("Project" without one) and a description;
   sort and search them, and log sends and attempts in a private logbook. Every
   hold edit, reset with a new photo and restore is kept as a version: problems
@@ -20,8 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   be restored. A wall stays on the phone unless you make it public: then its
   photos, holds and problems are published with your CruxCoach account, others
   find it under "Spray walls here" at its gym on the map and set problems on
-  it. Your logbook is never published, and spray walls are not in Android
-  backups.
+  it. The photos of a public wall must not show people. Withdrawing a wall
+  also deletes its photos from the Blossom servers; if that does not work, the
+  wall stays public (and is not deleted) so you can try again. Your logbook is
+  never published, and spray walls are not in Android backups.
 - Shiny Wall support: pick your Shiny Wall Standard wall (Mini, Standard, Max,
   Full or Max Full), browse its problems with the usual filters (grade, angle
   0–60°, holds, benchmarks, status) plus its categories (technical, physical,
