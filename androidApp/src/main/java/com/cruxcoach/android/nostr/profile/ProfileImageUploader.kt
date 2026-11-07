@@ -51,6 +51,8 @@ class ProfileImageUploader @Inject constructor(
     suspend fun upload(
         blob: ByteArray,
         servers: List<String> = BlossomUploader.DEFAULT_SERVERS,
+        /** What the signed upload authorisation says the blob is. */
+        purpose: String = "CruxCoach profile image upload",
     ): Result {
         require(servers.isNotEmpty()) { "No Blossom servers configured" }
         val sha256 = sha256Hex(blob)
@@ -58,7 +60,7 @@ class ProfileImageUploader @Inject constructor(
             blossomUploader.blossomAuthHeader(
                 action = "upload",
                 sha256 = sha256,
-                content = "CruxCoach profile image upload",
+                content = purpose,
             )
         } catch (e: Exception) {
             Log.w(TAG, "Auth-event signing failed", e)

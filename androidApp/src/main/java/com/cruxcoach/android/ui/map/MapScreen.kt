@@ -61,6 +61,9 @@ fun MapScreen(
     onNavigateBack: () -> Unit,
     onNavigateToBoardBrowser: () -> Unit = {},
     onNavigateToBoardSync: () -> Unit = {},
+    /** A spray wall at a place: open it (after adding it) or set up a new one there. */
+    onOpenSprayWall: (wallId: String) -> Unit = {},
+    onNewSprayWall: (gym: com.cruxcoach.domain.spraywall.SprayGym) -> Unit = {},
     viewModel: MapViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -485,6 +488,9 @@ fun MapScreen(
         locating = locateMe.locating,
         onLocateMe = locateMe::locate,
         onChooseBoardAt = { chooseAt = it },
+        venueExtra = { venue ->
+            com.cruxcoach.android.ui.spraywall.SprayWallsAtVenue(venue, onOpen = onOpenSprayWall, onNew = onNewSprayWall)
+        },
     ) {
         MapView(
             styleUrl = styleUrl,

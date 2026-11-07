@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.*
 import android.Manifest
 import android.content.pm.PackageManager
@@ -69,6 +70,8 @@ import com.cruxcoach.android.ui.plan.SessionDetailScreen
 import com.cruxcoach.android.ui.plan.WeekOverviewScreen
 import com.cruxcoach.android.ui.exercises.ExerciseLibraryScreen
 import com.cruxcoach.android.ui.training.trainingGraph
+import com.cruxcoach.android.ui.spraywall.SprayWallRoutes
+import com.cruxcoach.android.ui.spraywall.sprayWallGraph
 import com.cruxcoach.android.ui.onboarding.OnboardingScreen
 import com.cruxcoach.android.ui.navigation.StartViewModel
 import com.cruxcoach.android.ui.whatsnew.WhatsNewHost
@@ -570,6 +573,9 @@ fun CruxCoachNavHost(
             // Training, body and fueling (FEAT-066..068)
             trainingGraph(navController)
 
+            // Spray walls: the climber's own photographed wall (FEAT-078)
+            sprayWallGraph(navController)
+
             composable(
                 Routes.BOARD_BROWSER,
                 // The browser and the climb detail are both expensive surfaces:
@@ -662,6 +668,8 @@ fun CruxCoachNavHost(
                             navController.popBackStack(Routes.BOARD_BROWSER, false)
                         },
                         onNavigateToBoardSync = { navController.navigate(Routes.BOARD_SYNC) },
+                        onOpenSprayWall = { navController.navigate(SprayWallRoutes.wall(it)) { launchSingleTop = true } },
+                        onNewSprayWall = { navController.navigate(SprayWallRoutes.new(it)) { launchSingleTop = true } },
                     )
                 }
             }
@@ -1215,6 +1223,7 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
                 // whose tab bar (Today, Training, Nutrition, Progress) organises the rest.
                 Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_training_nutrition, "menu_today"),
                 Triple(Routes.boardGames(), com.cruxcoach.android.R.string.wall_games_title, "menu_wall_games"),
+                Triple(SprayWallRoutes.LIST, com.cruxcoach.android.R.string.spray_walls_title, "menu_spray_walls"),
             )
             entries.forEach { (route, label, tag) ->
                 NavigationDrawerItem(
@@ -1224,6 +1233,7 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
                             com.cruxcoach.android.ui.training.TrainingRoutes.TODAY -> Icons.Default.FitnessCenter
                             Routes.BOARD_BROWSER -> Icons.Default.DeveloperBoard
                             Routes.boardGames() -> Icons.Default.SportsEsports
+                            SprayWallRoutes.LIST -> Icons.Default.Wallpaper
                             else -> Icons.Default.FitnessCenter
                         }, null)
                     },
