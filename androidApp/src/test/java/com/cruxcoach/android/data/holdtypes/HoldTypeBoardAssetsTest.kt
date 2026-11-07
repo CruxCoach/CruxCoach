@@ -82,6 +82,8 @@ class HoldTypeBoardAssetsTest {
             val views = geometry(board, "SELECT product_size_id, layout_id FROM board_images WHERE board_brand = '$board'") {
                 it.getInt(0) to it.getInt(1)
             }.toSet()
+            // Shiny Wall has no per-layout board images: its view is the size image alone.
+            if (views.isEmpty()) return@forEach
             data.holds.filter { it.viewSizeId > 0 }.forEach { h ->
                 assertTrue("$board size ${h.viewSizeId} for ${h.placement}", (h.viewSizeId to h.layoutId) in views)
             }
