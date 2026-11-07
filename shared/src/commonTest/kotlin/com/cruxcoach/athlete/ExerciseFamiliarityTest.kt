@@ -85,13 +85,15 @@ class ExerciseFamiliarityTest {
 
     @Test
     fun aSlotWithOnlyUnusualExercisesIsFilledAndMarked() {
-        // A beginner's antagonist slots have only Common and Special exercises: filled, Common first, and marked new.
+        // A beginner's antagonist slots have only Common and Special exercises: the first is filled, Common first, and
+        // marked new; the repeated one stays out rather than bringing a second new exercise.
         val i = input(catalog = onlyUnusualAntagonists)
         val s = SessionSuggester.suggest(i)
         val antagonists = s.routine.items.filter { !it.warmup }.map { onlyUnusualAntagonists.fallbackFor(it.slug) }
             .filter { it.category == ExerciseCategoryV2.ANTAGONIST }
-        assertEquals(listOf("antagonist.scapular_push_up", "antagonist.wall_lower_trap_raise"), antagonists.map { it.slug })
-        assertTrue(antagonists.all { SessionSuggester.isNewTo(i, it.slug) })
+        assertEquals(listOf("antagonist.scapular_push_up"), antagonists.map { it.slug })
+        assertTrue(SessionSuggester.isNewTo(i, antagonists.single().slug))
+        assertEquals(1, newOnes(i, s).size)
     }
 
     @Test

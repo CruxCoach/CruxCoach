@@ -1433,9 +1433,14 @@ object SessionSuggester {
             if (familiar.isNotEmpty() && familiar.all { ExerciseFamiliarity.countsAsNew(input, it) } && !ExerciseFamiliarity.roomForNew(input, taken)) {
                 ceiling.filter { it.difficulty >= level - 2 && !ExerciseFamiliarity.countsAsNew(input, it) }.takeIf { it.isNotEmpty() }?.let { familiar = it }
             }
+            val onlyNew = familiar.isNotEmpty() && familiar.all { ExerciseFamiliarity.countsAsNew(input, it) } && !ExerciseFamiliarity.roomForNew(input, taken)
             // Kept after a training (comparison review #3): the athlete's pick leads the slot, not the score.
             val kept = input.kept.firstNotNullOfOrNull { k -> fresh.firstOrNull { it.slug == k } }
                 ?.takeIf { k -> input.levelShift == 0 || withinLevel.any { it.slug == k.slug } }
+            // Still only new ones, and this kind of work already has its exercise in the session: the repeated slot stays out
+            // instead of bringing another new exercise; a longer session fills up with known work (phone check, issue #68).
+            if (onlyNew && kept == null && slot != Slot.WARMUP &&
+                taken.any { t -> input.catalog[t]?.let { fits(slot, it, fingerFocus) } == true }) continue
             if (kept != null) ctx.reasons += SuggestionReason.KEPT_CHOICE
             val choice = kept ?: familiar.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus, mains, group) }.thenBy { it.slug })
                 ?: continue
