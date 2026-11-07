@@ -7,6 +7,7 @@ import com.cruxcoach.athlete.model.ClimbingContext
 import com.cruxcoach.athlete.model.ClimbingDayKind
 import com.cruxcoach.athlete.model.CoachGoal
 import com.cruxcoach.athlete.model.CoachProfile
+import com.cruxcoach.athlete.model.ExerciseChoice
 import com.cruxcoach.athlete.model.ExperienceBand
 import com.cruxcoach.athlete.model.FingerPreference
 import com.cruxcoach.athlete.model.FocusArea
@@ -129,7 +130,9 @@ data class Persona(
         private fun board(minutes: Int, i: ClimbIntensity) = Climb(ClimbingDayKind.OTHER_BOARD, minutes, i)
 
         /** Every persona of the full run. */
-        val ALL: List<Persona> = listOf(
+        val ALL: List<Persona> get() = BASE + CHOICE
+
+        private val BASE: List<Persona> = listOf(
             Persona("beginner-board", "Beginner on the board, nothing else",
                 "Under a year of climbing, board three times a week, opens Today every day but does no other training.",
                 seed = 101, weeks = 12, level = Level.BEGINNER, bodyweightKg = 68.0,
@@ -232,8 +235,31 @@ data class Persona(
                 climbing = mapOf(6 to boulder(120, ClimbIntensity.VOLUME))),
         )
 
-        /** The fast subset for CI: four personas, three weeks each. */
-        val FAST: List<Persona> = listOf("home-hangboard", "youth-15", "pulley-injury", "pulley-comeback").map { id ->
+        /** Well-known exercises first (issue #68): the preference both ways, and a new user without the coach setup. */
+        private val CHOICE: List<Persona> = listOf(
+            Persona("open-home", "Intermediate at home, open to unusual exercises",
+                "3–5 years, boulders twice a week, trains three times at home with hangboard, bar, dumbbells and bands; " +
+                    "chose “Open to unusual exercises”.",
+                seed = 1313, weeks = 10, level = Level.INTERMEDIATE, bodyweightKg = 67.0,
+                coach = coach(CoachGoal.BUILD_STRENGTH, ExperienceBand.Y3_5, AgeBand.Y18_39, 5, setOf(2, 6),
+                    setOf(ClimbingContext.GYM_BOULDER), FingerPreference.HANGBOARD).copy(exerciseChoice = ExerciseChoice.OPEN),
+                equipment = HOME, trainingDays = setOf(1, 3, 5),
+                climbing = mapOf(2 to boulder(120, ClimbIntensity.HARD), 6 to boulder(120, ClimbIntensity.VOLUME))),
+            BASE.first { it.id == "home-hangboard" }.let { p ->
+                p.copy(id = "home-classics", title = "Intermediate with a hangboard at home, mostly classics",
+                    summary = p.summary + " Chose “Mostly classics”.", seed = 2020, weeks = 10,
+                    coach = p.coach.copy(exerciseChoice = ExerciseChoice.CLASSICS))
+            },
+            Persona("new-no-setup", "New user who skips the coach setup",
+                "Answers none of the coach setup; a pull-up bar and a mat at home, trains three times a week, boulders on Saturday.",
+                seed = 1414, weeks = 8, level = Level.BEGINNER, bodyweightKg = 63.0,
+                coach = CoachProfile(),
+                equipment = NOTHING + EquipmentV2.PULL_UP_BAR, trainingDays = setOf(1, 3, 5),
+                climbing = mapOf(6 to boulder(90, ClimbIntensity.VOLUME))),
+        )
+
+        /** The fast subset for CI: five personas, three weeks each. */
+        val FAST: List<Persona> = listOf("home-hangboard", "youth-15", "pulley-injury", "pulley-comeback", "new-no-setup").map { id ->
             ALL.first { it.id == id }.let { p ->
                 p.copy(weeks = 3, events = p.events.map { e -> if (e is Event.Injury) e.copy(day = 8, resolvedOn = e.resolvedOn?.let { 18 }) else e })
             }

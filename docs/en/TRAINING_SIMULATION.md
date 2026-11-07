@@ -37,6 +37,8 @@ Each persona starts in a fresh database with a simulated clock. Every day:
 4. In the evening the athlete opens Today. The suggestion is built exactly as Today builds it:
    `TodayCoach` gathers the block, weekly volume, return ramp, preferences and climbing, and then
    `SessionSuggester` runs. The athlete sees it every day, including days they do not train.
+   In the first two weeks, on a training day, they tap "Don't know it" on every Special exercise that is new
+   to them, the way the card sends it (`SessionSuggester.familiarSwap`, then the ledger entry and the swap).
 5. On a training day (unless they skip) the athlete starts the suggestion (`AthleteService.startSuggestion`).
    They do every set in the player's order. Each set goes through `completeSetDetailed`, then
    `adjustUpcomingSets`, then the reserve answer and `adjustUpcomingSets` again, as the player sends them.
@@ -55,7 +57,7 @@ now lives in shared code (`TodayCoach`), so the app and the simulation run the s
 
 Not simulated yet: the board logbook from the app's own board (board climbers log their sessions as
 climbing days), comeback plans for other regions than the fingers, a plan that starts later than the
-injury, and swaps or "another suggestion" on the card, except "too easy".
+injury, and swaps or "another suggestion" on the card, except "too easy" and "Don't know it".
 
 ## The simulated athlete
 
@@ -119,6 +121,9 @@ strength and apart from the plan's rules:
 | `skipper` | Plans four sessions a week and skips about half |
 | `always-easy` | Answers "3+" in reserve every time and taps "too easy" on the card |
 | `beginner-home-lb` | Beginner at home in pounds with 2.5 lb steps |
+| `open-home` | 3–5 years at home with hangboard, bar, dumbbells and bands; chose "Open to unusual exercises" |
+| `home-classics` | `home-hangboard` with "Mostly classics" |
+| `new-no-setup` | A new user who answers none of the coach setup; a pull-up bar and a mat |
 
 ## Checks and thresholds
 
@@ -129,7 +134,7 @@ that misfires is caught instead of confirmed.
 |---|---|---|
 | Safety | No max finger work (loaded strength hangs, campus) during an open finger injury, the return ramp, or for young or first-year climbers | Growing climbers risk finger growth-plate injuries (Morrison & Schöffl 2007; Schöffl et al. 2015) |
 | Safety | No max finger work within 48 h after a hard or limit climbing day (72 h at 55+) | Hörst 2016; longer recovery with age (Fell & Williams 2008) |
-| Safety | No suggested exercise that lists an open injury's region as a contraindication (injuries of pain ≥ 4) | – |
+| Safety | No suggested exercise that lists an open injury's region as a contraindication (injuries of pain ≥ 4), unless a comeback plan has reached the stage from which training outside the plan may load the spot again (fingers stage 5, other regions stage 3) | The comeback plan's own stages (owner 2026-10-20) |
 | Safety | Climbers under 18: no campus, no one-arm or max finger work | Morrison & Schöffl 2007 |
 | Safety | 55+: max finger sessions at least 72 h apart | Fell & Williams 2008 |
 | Safety | Comeback plan: the planned load of the injured hand stays within the stage's range of the athlete's reference (one step for rounding); where the stage asks for an effort instead, it feels at most 1.5 × that effort | The stage's own percentages and effort |
@@ -147,6 +152,12 @@ that misfires is caught instead of confirmed.
 | Plan | No full training is suggested once the week's training days (climbing included) are used up, and "training days done" is not said while days are left | – |
 | Plan | At least six different exercises in every eight full trainings (the block after climbing is meant to repeat) | – |
 | Stacking | A suggested training has at least three work sets and 12 minutes | – |
+| Choice | Beginners (personas of the beginner level), weeks 1–4: no Special exercise they do not know yet | Novices start with simple exercises and proper technique; complexity grows with training status (ACSM 2009) |
+| Choice | Beginners, weeks 1–4: at least 70 % of the main exercises (warm-ups and mobility aside) are Basic or known to them; with "Mostly classics" 80 % outside the finger work, for the whole run, and no Special exercise they do not know | ACSM 2009; the shares are the values of the proposal in issue #68 |
+| Choice | A training holds at most one exercise new to the athlete (two with "Open to unusual exercises"); warm-ups and mobility count only when Special. More, where nothing Basic or known of the same kind fits the equipment, is reported under Info and not counted | One new skill at a time keeps the session's attention on the work (ACSM 2009); the limits are those of issue #68 |
+| Choice | An advanced athlete still gets variety: at least 30 % of the main exercises are Common or Special (and the variety check above) | Issue #68 |
+| Choice | "Open to unusual exercises": a Special exercise in at least half of all two-week stretches | Issue #68 |
+| Choice | "Don't know it": the replacement is Basic or known in at least 95 % of the taps, the tap changes nothing in the learned preference for the exercise and does not make it rest, and the exercise does not come back as a new pick within 14 days | Issue #68 |
 
 ## Sources
 

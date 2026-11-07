@@ -66,6 +66,12 @@ data class DoneSet(
 
 data class LoadSnapshot(val acute: Double, val chronic: Double, val trend: LoadTrend)
 
+/**
+ * "Don't know it" on the card (issue #68): [from] swapped for [to]; [affinityChange] is what the tap changed in the
+ * learned preference for [from], [resting] whether it rests afterwards (neither should happen).
+ */
+data class DontKnowTrace(val from: String, val to: String, val affinityChange: Double, val resting: Boolean)
+
 data class DayTrace(
     val day: Int,
     val date: LocalDate,
@@ -89,6 +95,10 @@ data class DayTrace(
     val weekEnd: List<com.cruxcoach.athlete.logic.AreaProgress>? = null,
     /** While the athlete follows a comeback plan: its day. */
     val comeback: ComebackTrace? = null,
+    /** "Don't know it" taps of the day (issue #68). */
+    val dontKnow: List<DontKnowTrace> = emptyList(),
+    /** Where the athlete trained today had only this equipment (a trip); null = the persona's own. */
+    val equipmentToday: Set<com.cruxcoach.athlete.catalog.EquipmentV2>? = null,
 )
 
 /** A whole run of one persona. */
@@ -250,6 +260,28 @@ class Simulator(
             shown = again.first; built = again.second
             events += "too easy"
         }
+        // The first two weeks: "Don't know it" on every Special exercise new to the athlete (issue #68), the way the card sends it.
+        val dontKnow = mutableListOf<DontKnowTrace>()
+        if (wantsToTrain && !skipped && day < DONT_KNOW_DAYS) {
+            for (item in shown.routine.items.toList()) {
+                val def = service.catalog[item.slug] ?: continue
+                if (def.familiarity != com.cruxcoach.athlete.catalog.Familiarity.SPECIAL || !SessionSuggester.isNewTo(built.input, item.slug)) continue
+                val to = SessionSuggester.familiarSwap(built.input, shown.routine.items, shown.focus, item.slug) ?: continue
+                val sinceMs = clock.nowMs - com.cruxcoach.athlete.logic.PreferenceLearning.WINDOW_DAYS * 86_400_000L
+                fun learned(): Pair<Double, Boolean> {
+                    val events = repo.suggestionEventsSince(sinceMs)
+                    val affinity = com.cruxcoach.athlete.logic.PreferenceLearning.affinity(events, repo.completedSetsSince(sinceMs), today)
+                    val resting = com.cruxcoach.athlete.logic.PreferenceLearning.resting(events, today.plus(DatePeriod(days = 1)))
+                    return (affinity[item.slug] ?: 0.0) to (item.slug in resting)
+                }
+                val before = learned()
+                service.logSuggestion(SuggestionEventKind.FEEDBACK, com.cruxcoach.athlete.logic.PreferenceLearning.DONT_KNOW, listOf(item.slug, to.slug))
+                val after = learned()
+                shown = SessionSuggester.withSwaps(shown, mapOf(item.slug to to.slug), service.catalog)
+                dontKnow += DontKnowTrace(item.slug, to.slug, after.first - before.first, after.second && !before.second)
+            }
+            if (dontKnow.isNotEmpty()) events += "don't know: " + dontKnow.joinToString { "${it.from} → ${it.to}" }
+        }
         val returnState = built.input.returnState
         val trace = SuggestionTrace(shown.focus, shown.reasons, shown.routine.items.map {
             SuggestedItem(it.slug, it.sets, it.repsMax ?: it.repsMin, it.durationS, it.loadKg, it.warmup, it.edgeMm)
@@ -281,7 +313,8 @@ class Simulator(
         }.orEmpty()
         return DayTrace(day, date, events, checkin, readiness.level, block, returnState, injuries, climb, trace, trained, skipped,
             done, load, athlete.value.toMap(), away = false, weekEnd = weekEnd,
-            comeback = cb?.trace(cbPrompts, cbReviews, cbMorning, cbSessions, cbEnded))
+            comeback = cb?.trace(cbPrompts, cbReviews, cbMorning, cbSessions, cbEnded),
+            dontKnow = dontKnow, equipmentToday = trip?.equipment)
     }
 
     private fun checkIn(day: Int, ill: Boolean): Checkin {
@@ -388,6 +421,9 @@ class Simulator(
         }
     }
 }
+
+/** Days at the start in which the athlete taps "Don't know it" on every Special exercise new to them (issue #68). */
+const val DONT_KNOW_DAYS = 14
 
 /** The simulation's clock; the repository and the service read it. */
 class SimClock(var nowMs: Long = 0L)
