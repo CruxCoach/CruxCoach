@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -60,7 +61,10 @@ import com.cruxcoach.android.moonboard.MoonBoardAccessibilityBridge
 import com.cruxcoach.android.moonboard.MoonBoardAccessibilityService
 import com.cruxcoach.android.moonboard.installedMoonBoardVersion
 import com.cruxcoach.android.moonboard.moonBoardBugReportDescription
+import com.cruxcoach.android.ui.common.openUriOrToast
 import com.cruxcoach.android.ui.theme.OrangeAccent
+
+private const val MOON_SUPPORT_EMAIL = "moonboardsupport@moonclimbing.com"
 
 /**
  * Whether the official Moon app is reachable from here. The manifest declares
@@ -414,8 +418,13 @@ fun MoonBoardCsvImportScreen(
             OutlinedButton(
                 onClick = {
                     clipboard.setText(AnnotatedString(requestBody))
-                    uriHandler.openUri(
-                        "mailto:moonboardsupport@moonclimbing.com?subject=${Uri.encode(requestSubject)}",
+                    // No mail app (common on phones without Google apps): the request
+                    // is already copied, so the toast names the address to send it to.
+                    uriHandler.openUriOrToast(
+                        context,
+                        "mailto:$MOON_SUPPORT_EMAIL?subject=${Uri.encode(requestSubject)}",
+                        failMessage = context.getString(R.string.moon_csv_no_mail_app, MOON_SUPPORT_EMAIL),
+                        duration = Toast.LENGTH_LONG,
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),

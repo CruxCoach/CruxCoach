@@ -2832,6 +2832,7 @@
     <string name="moon_csv_fallback">CSV-Ausweichweg</string>
     <string name="moon_csv_request_data">Kontodaten bei Moon anfordern</string>
     <string name="moon_csv_request_hint">Der Anfragetext wird kopiert, bevor sich dein Mailprogramm öffnet. Füge ihn in die Nachricht ein und ergänze die Platzhalter.</string>
+    <string name="moon_csv_no_mail_app">Keine Mail-App gefunden. Der Anfragetext ist kopiert: schick ihn an %1$s.</string>
     <string name="moon_csv_request_subject">Subject access request – MoonBoard account data</string>
     <string name="moon_csv_request_body">Name: [vollständiger Name]\nMoonBoard username: [Nutzername]\nAccount email: [E-Mail-Adresse]\n\nPlease treat this as a UK GDPR subject access request and, where applicable, a data portability request. Please provide all personal data linked to my MoonBoard account, including profile and account identifiers; problems I created or logged; sends, ascents, grades, repeats, attempts, dates and session history; favourites, lists, saved and custom problems; and related metadata.\n\nWhere technically feasible, please provide the export as CSV or JSON, or another structured, commonly used, machine-readable format. If identity verification or a secure delivery method is required, please let me know promptly. Please confirm receipt and the expected response date.\n\nKind regards,\n[name]</string>
     <string name="moon_csv_angle_note">Die MoonBoard-CSV enthält keinen Boardwinkel. Ist ein Boulder für beide Winkel verfügbar, importiert CruxCoach ihn mit 40°.</string>
