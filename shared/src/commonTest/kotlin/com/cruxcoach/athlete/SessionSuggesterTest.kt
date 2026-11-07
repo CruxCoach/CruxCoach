@@ -223,6 +223,12 @@ class SessionSuggesterTest {
         val both = fourDays.mapValues { (_, a) -> a.copy(workoutMinutes = 68, comebackMinutes = 8) }
         assertEquals(SuggestionFocus.MOBILITY_RECOVERY,
             SessionSuggester.suggest(input(profile = fourPerWeek, activities = both).copy(today = friday, weekStart = monday)).focus)
+        // "Train anyway" on the recovery card (owner 2026-11-06): the training without the day limit, nothing else changes.
+        val anyway = SessionSuggester.suggest(input(profile = fourPerWeek, activities = fourDays).copy(today = friday, weekStart = monday, beyondWeekDays = true))
+        assertTrue(anyway.focus != SuggestionFocus.MOBILITY_RECOVERY && SuggestionReason.WEEK_DAYS_DONE !in anyway.reasons, "${anyway.focus} ${anyway.reasons}")
+        val sevenPerWeek = profile.copy(coach = CoachProfile(trainingDaysPerWeek = 7))
+        val unlimited = SessionSuggester.suggest(input(profile = sevenPerWeek, activities = fourDays).copy(today = friday, weekStart = monday))
+        assertEquals(unlimited.routine.items.map { it.slug }, anyway.routine.items.map { it.slug })
     }
 
     @Test

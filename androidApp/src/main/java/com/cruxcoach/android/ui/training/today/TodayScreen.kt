@@ -215,6 +215,7 @@ fun TodayScreen(
                         onChooseCircuit = viewModel::chooseCircuit,
                         onSetCircuit = viewModel::setCircuit,
                         onLighter = { viewModel.chooseLevel(-1) },
+                        onTrainAnyway = viewModel::trainAnyway,
                     )
                 }
                 state.durationHint?.let { minutes ->
@@ -1287,6 +1288,8 @@ private fun DailySuggestionCard(
     onSetCircuit: (Int?, Int?, Int?) -> Unit = { _, _, _ -> },
     /** "Leichter" from the energy hint (holistic audit P2-17): today's easier level, as in "another suggestion". */
     onLighter: () -> Unit = {},
+    /** "Trotzdem trainieren" on the recovery card once the week's training days are done (owner 2026-11-06). */
+    onTrainAnyway: () -> Unit = {},
 ) {
     val s = state.suggestion ?: return
     var circuitSheet by remember { mutableStateOf(false) }
@@ -1446,6 +1449,13 @@ private fun DailySuggestionCard(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).testTag("today_suggestion_start")) {
                     Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp))
                     Text(stringResource(if (climbDay) R.string.trt_warmup_start else R.string.trsg_start))
+                }
+                // Only when the week's training days are done, not when an area's volume is: one tap trains anyway.
+                if (s.reasons.firstOrNull() == SuggestionReason.WEEK_DAYS_DONE) {
+                    OutlinedButton(onClick = onTrainAnyway, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_train_anyway")) {
+                        Icon(Icons.Default.FitnessCenter, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.trv_train_anyway))
+                    }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {

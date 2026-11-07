@@ -60,6 +60,8 @@ class TodayCoach(
         val ignoreHabit: Boolean = false,
         /** "The coach decides" for today: the weekday's usual kind does not apply. */
         val ignoreUsualKind: Boolean = false,
+        /** "Train anyway" on the recovery card: the week's training days do not limit today. */
+        val trainAnyway: Boolean = false,
     )
 
     /** The engine input plus what the card shows next to it. */
@@ -120,14 +122,17 @@ class TodayCoach(
     }
 
     /** The return ramp after a break or a healed finger injury ([ReturnToTraining]); null when training normally. */
-    fun returnState(activities: Map<String, DayActivity>, today: LocalDate): ReturnState? = runCatching {
+    fun returnState(activities: Map<String, DayActivity>, today: LocalDate): ReturnState? = returnStateResult(activities, today).getOrNull()
+
+    /** The return ramp after a break or an injury (null: none), or the failure that kept it from being worked out. */
+    fun returnStateResult(activities: Map<String, DayActivity>, today: LocalDate): Result<ReturnState?> = runCatching {
         val since = today.minus(DatePeriod(days = 120))
         val days120 = repo.workoutsBetween(since.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
         val sets120 = repo.completedSetsSince(now() - 120L * 24 * 3600 * 1000)
             .mapNotNull { set -> days120[set.workoutId]?.let { it to set } }
         ReturnToTraining.state(activities, repo.pauses(), repo.allInjuries(), today,
             maxFingerBefore = ReturnToTraining.maxFingerBefore(sets120, catalog, today))
-    }.getOrNull()
+    }
 
     /** Today's engine input from all the coach knows. */
     fun build(
@@ -229,6 +234,7 @@ class TodayCoach(
             wishLearned = choices.wish == null && usualWish != null,
             minutesLearned = choices.minutesToday == null && usualMinutes != null,
             kept = kept.preferred,
+            beyondWeekDays = choices.trainAnyway,
         )
         return Built(input, habit, levelOffers, usual)
     }
