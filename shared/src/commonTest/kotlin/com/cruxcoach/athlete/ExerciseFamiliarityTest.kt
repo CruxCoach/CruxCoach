@@ -223,6 +223,79 @@ class ExerciseFamiliarityTest {
     }
 
     @Test
+    fun dontKnowItAfterAHandSwapTakesTheSwapBack() {
+        val day = "2026-10-05"
+        var t = 1_000L
+        fun ev(kind: SuggestionEventKind, slugs: List<String>, focus: String? = "PULL_PUSH", workout: String? = null) =
+            SuggestionEvent("e$t", day, t++, kind, focus, slugs, null, workout)
+        val events = listOf(
+            // The athlete swaps the plank for the Pallof press by hand, then says they don't know the Pallof press.
+            ev(SuggestionEventKind.SWAPPED, listOf("core.front_plank", "core.pallof_press")),
+            ev(SuggestionEventKind.FEEDBACK, listOf("core.pallof_press", "core.side_plank"), focus = PreferenceLearning.DONT_KNOW),
+            ev(SuggestionEventKind.STARTED, listOf("pull.table_row", "core.side_plank"), workout = "w"),
+        )
+        // No "from now on like this?" for that slot: the coach picked the side plank.
+        assertEquals(emptyList(), PreferenceLearning.changes(events, "w"))
+        // The swap teaches nothing: no point for the Pallof press, none against the plank, and the plank does not rest.
+        val today = LocalDate.parse(day)
+        val affinity = PreferenceLearning.affinity(events, emptyList(), today)
+        assertNull(affinity["core.pallof_press"])
+        assertNull(affinity["core.front_plank"])
+        assertTrue(PreferenceLearning.resting(events, LocalDate.parse("2026-10-06")).isEmpty())
+        // Back to the coach's own pick: the same, and still no question.
+        val back = listOf(events[0], ev(SuggestionEventKind.FEEDBACK, listOf("core.pallof_press", "core.front_plank"), focus = PreferenceLearning.DONT_KNOW),
+            ev(SuggestionEventKind.STARTED, listOf("pull.table_row", "core.front_plank"), workout = "w2"))
+        assertEquals(emptyList(), PreferenceLearning.changes(back, "w2"))
+    }
+
+    @Test
+    fun dontKnowItStaysWithinTheCoachsRules() {
+        // An intermediate athlete (level 2 without a grade): nothing above the level, nothing from another pick's chain,
+        // nothing made for the comeback plan only.
+        val hard = ex("core.ab_wheel_standing", ExerciseCategoryV2.CORE, Familiarity.BASIC, difficulty = 5)
+        val knee = ex("core.knee_raise", ExerciseCategoryV2.CORE, Familiarity.BASIC).copy(harder = "core.leg_raise")
+        val leg = ex("core.leg_raise", ExerciseCategoryV2.CORE, Familiarity.BASIC, difficulty = 2).copy(easier = "core.knee_raise", harder = "core.toes_to_bar")
+        val toes = ex("core.toes_to_bar", ExerciseCategoryV2.CORE, Familiarity.BASIC, difficulty = 2).copy(easier = "core.leg_raise")
+        val comeback = ex("core.balance_hold", ExerciseCategoryV2.CORE, Familiarity.BASIC, tags = listOf(ExerciseDefinition.TAG_COMEBACK))
+        val cat = ExerciseCatalog(1, listOf(
+            ex("core.pallof_press", ExerciseCategoryV2.CORE, Familiarity.SPECIAL), hard, knee, leg, toes, comeback,
+            ex("pull.table_row", ExerciseCategoryV2.PULL, Familiarity.BASIC),
+        ))
+        val i = input(coach = intermediate, catalog = cat)
+        // With toes-to-bar in the session: the ab wheel is too hard, the knee and leg raises are in its chain, the balance
+        // hold is for the comeback plan only.
+        val items = listOf(RoutineItem("pull.table_row"), RoutineItem("core.pallof_press"), RoutineItem("core.toes_to_bar"))
+        assertNull(SessionSuggester.familiarSwap(i, items, SuggestionFocus.PULL_PUSH, "core.pallof_press"))
+        val withoutChain = listOf(RoutineItem("pull.table_row"), RoutineItem("core.pallof_press"))
+        assertTrue(SessionSuggester.familiarSwap(i, withoutChain, SuggestionFocus.PULL_PUSH, "core.pallof_press")?.slug in
+            setOf("core.knee_raise", "core.leg_raise", "core.toes_to_bar"))
+    }
+
+    @Test
+    fun theGroupFollowsTheStepKeptForAKindOfTraining() {
+        // Over five years: all levels. "From now on easier" kept for legs and core makes that kind level 1: classics first there.
+        val cores = ExerciseCatalog(1, catalog.all.filter { it.category == ExerciseCategoryV2.CORE })
+        fun firstCore(kept: Map<String, Int>, v: Int): String {
+            val profile = AthleteProfile(equipment = floor, equipmentConfigured = true, sessionMinutes = 60, coach = advanced, keptLevels = kept)
+            val i = SuggestionInput(cores, profile, monday, ReadinessEvaluator.evaluate(null, emptyList()), emptyList(),
+                wish = SuggestionFocus.LEGS_CORE, variant = v)
+            return SessionSuggester.suggest(i).routine.items.first { !it.warmup }.slug
+        }
+        val open = (0 until 8).map { firstCore(emptyMap(), it) }
+        assertTrue(open.any { cores.fallbackFor(it).familiarity != Familiarity.BASIC }, "$open")
+        val easier = (0 until 8).map { firstCore(mapOf(SuggestionFocus.LEGS_CORE.name to -1), it) }
+        assertTrue(easier.all { cores.fallbackFor(it).familiarity == Familiarity.BASIC }, "$easier")
+        // Another kind keeps its own group: pull and push with the legs-and-core step stays open.
+        val pullPush = (0 until 8).map { v ->
+            val profile = AthleteProfile(equipment = floor, equipmentConfigured = true, sessionMinutes = 60, coach = advanced,
+                keptLevels = mapOf(SuggestionFocus.LEGS_CORE.name to -1))
+            SessionSuggester.suggest(SuggestionInput(catalog, profile, monday, ReadinessEvaluator.evaluate(null, emptyList()), emptyList(),
+                wish = SuggestionFocus.PULL_PUSH, variant = v)).routine.items.filter { !it.warmup }.map { it.slug }
+        }.flatten()
+        assertTrue(pullPush.any { catalog.fallbackFor(it).familiarity != Familiarity.BASIC }, "$pullPush")
+    }
+
+    @Test
     fun dontKnowItIsNoDislike() {
         val day = "2026-10-01"
         val events = listOf(SuggestionEvent("e1", day, 1_000L, SuggestionEventKind.FEEDBACK, PreferenceLearning.DONT_KNOW,

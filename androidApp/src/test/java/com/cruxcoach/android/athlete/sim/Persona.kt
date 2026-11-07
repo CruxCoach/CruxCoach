@@ -258,8 +258,8 @@ data class Persona(
                 climbing = mapOf(6 to boulder(90, ClimbIntensity.VOLUME))),
         )
 
-        /** The fast subset for CI: five personas, three weeks each. */
-        val FAST: List<Persona> = listOf("home-hangboard", "youth-15", "pulley-injury", "pulley-comeback", "new-no-setup").map { id ->
+        /** The fast subset for CI: six personas, three weeks each. */
+        val FAST: List<Persona> = listOf("home-hangboard", "youth-15", "pulley-injury", "pulley-comeback", "new-no-setup", "open-home").map { id ->
             ALL.first { it.id == id }.let { p ->
                 p.copy(weeks = 3, events = p.events.map { e -> if (e is Event.Injury) e.copy(day = 8, resolvedOn = e.resolvedOn?.let { 18 }) else e })
             }

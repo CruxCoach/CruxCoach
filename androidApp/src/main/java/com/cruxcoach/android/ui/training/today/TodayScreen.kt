@@ -31,7 +31,10 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -1414,13 +1417,19 @@ private fun DailySuggestionCard(
                                 // New to the athlete (issue #68): one tap to the steps; the row itself still swaps.
                                 if (item.slug in state.newToYou) {
                                     val how = stringResource(R.string.trt_new_how)
-                                    Row(Modifier.heightIn(min = 32.dp).clip(CruxCoachDesign.shapes.small).clickable(onClickLabel = how) { onOpenSteps(item.slug) }
-                                        .padding(end = 8.dp).testTag("today_new_${item.slug}"), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(stringResource(R.string.trt_new_to_you) + " · ", style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(how, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
-                                            color = CruxCoachDesign.colors.brandAccent)
-                                    }
+                                    val label = stringResource(R.string.trt_new_to_you)
+                                    val accent = CruxCoachDesign.colors.brandAccent
+                                    // One text, so it wraps as a whole at the largest font size.
+                                    Text(
+                                        buildAnnotatedString {
+                                            append("$label · ")
+                                            withStyle(SpanStyle(color = accent, fontWeight = FontWeight.SemiBold)) { append(how) }
+                                        },
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.heightIn(min = 32.dp).clip(CruxCoachDesign.shapes.small)
+                                            .clickable(onClickLabel = how) { onOpenSteps(item.slug) }
+                                            .padding(end = 8.dp, top = 6.dp, bottom = 6.dp).testTag("today_new_${item.slug}"),
+                                    )
                                 }
                             }
                             // The sets the training will plan: today's form may take one off (audit W7: card ≠ player).
@@ -1445,7 +1454,7 @@ private fun DailySuggestionCard(
                 val why = stringResource(R.string.tru_why)
                 val accent = CruxCoachDesign.colors.brandAccent
                 Text(
-                    androidx.compose.ui.text.buildAnnotatedString {
+                    buildAnnotatedString {
                         append(suggestionReasonText(it, state))
                         append("  ")
                         pushStyle(androidx.compose.ui.text.SpanStyle(color = accent, fontWeight = FontWeight.SemiBold))

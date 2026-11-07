@@ -92,9 +92,10 @@ object Checks {
     /** Logged in this many trainings, an exercise is known to the athlete. */
     const val KNOWN_AFTER_TRAININGS = 2
 
-    /** The comeback stage from which training outside the plan may load the injured spot again: fingers 5, other regions 3. */
+    /** The comeback stage from which training outside the plan may load the injured spot again (the app's own constants). */
     fun comebackOpenStage(region: com.cruxcoach.athlete.model.InjuryRegion): Int =
-        if (region == com.cruxcoach.athlete.model.InjuryRegion.FINGER) 5 else 3
+        if (region == com.cruxcoach.athlete.model.InjuryRegion.FINGER) com.cruxcoach.athlete.logic.InjuryAdvisor.FINGER_OPEN_STAGE
+        else com.cruxcoach.athlete.logic.InjuryAdvisor.REGION_OPEN_STAGE
 
     fun isMaxFinger(def: ExerciseDefinition): Boolean =
         (LoadDomain.FINGER in def.domains && (def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL) &&
@@ -138,12 +139,12 @@ object Checks {
                     "${maxFinger.first().slug} ${d.day - hardBefore.day} day(s) after ${hardBefore.climbed!!.intensity.name.lowercase()} climbing")
             }
 
-            // From its open stage on, a comeback plan lets training outside the plan load the injured spot again, marked (owner 2026-10-20).
-            d.activeInjuries.filter { inj ->
-                val plan = inj.activePlan?.takeIf { it.source == com.cruxcoach.athlete.model.PlanSource.CRUXCOACH }
-                inj.severity >= 4 && (plan?.stage ?: -1) < comebackOpenStage(inj.region)
-            }.forEach { injury ->
-                val hit = defs.filter { def -> injury.region.bodyRegions.any { it in def.contraindications } ||
+            d.activeInjuries.filter { it.severity >= 4 }.forEach { injury ->
+                // From its open stage on, a running CruxCoach comeback plan lets training outside the plan load the injured
+                // spot again, marked (owner 2026-10-20): only the contraindication is allowed then, climbing while it is paused never.
+                val plan = injury.activePlan?.takeIf { it.source == com.cruxcoach.athlete.model.PlanSource.CRUXCOACH }
+                val open = plan != null && plan.stage >= comebackOpenStage(injury.region)
+                val hit = defs.filter { def -> (!open && injury.region.bodyRegions.any { it in def.contraindications }) ||
                     (injury.region.domains.any { it in def.domains } && injury.climbingPaused && def.kind == ExerciseKind.CLIMB) }
                 if (hit.isNotEmpty()) flags += Flag(Check.CONTRAINDICATED, d.day,
                     "${hit.joinToString { it.slug }} loads the open ${injury.region.name.lowercase()} injury")

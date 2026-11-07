@@ -147,7 +147,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   coach setup: with a routine they are in almost every suggestion they fit,
   with variety they come back regularly. The suggestion card stars them.
 - Well-known exercises first: the coach starts with exercises everyone knows and brings in more unusual
-  ones with experience, with at most one exercise new to you per training. Today's card marks such an
+  ones with experience, with at most one exercise new to you per training (two with "Open to unusual
+  exercises"). Today's card marks such an
   exercise "New to you" with its steps one tap away, and the player opens with its steps the first time.
   "Don't know it" in the swap sheet puts an exercise you know in its place without counting against it.
   "Exercise choice" in the coach setup and the training settings: "Mostly classics", "Balanced" (the

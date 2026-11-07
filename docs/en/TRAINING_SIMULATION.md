@@ -8,7 +8,7 @@ Code: `androidApp/src/test/java/com/cruxcoach/android/athlete/sim/`.
 
 ## How to run
 
-- **Fast subset** (CI): five personas for three weeks each, about 25 s. It runs with the unit tests and fails
+- **Fast subset** (CI): six personas for three weeks each, about 30 s. It runs with the unit tests and fails
   on any safety or exercise-choice flag.
 
   ```

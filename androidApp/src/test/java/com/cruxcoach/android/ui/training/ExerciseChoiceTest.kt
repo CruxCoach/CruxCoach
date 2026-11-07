@@ -25,6 +25,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.datetime.plus
 
 /**
  * Well-known exercises first (issue #68): an exercise new to the athlete is marked on Today's card with the way to
@@ -91,6 +92,35 @@ class ExerciseChoiceTest : AthleteScreenTest() {
         val again = loaded(TodayViewModel(service))
         until { again.state.value.suggestion?.routine?.items?.any { it.slug == to.slug } == true }
         assertTrue(again.state.value.suggestion!!.routine.items.none { it.slug == slug })
+    }
+
+    @Test
+    fun `don't know it after a hand swap asks nothing afterwards and takes the swap back`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        fun items() = vm.state.value.suggestion!!.routine.items
+        // A Basic pick swapped by hand for one the athlete has never done …
+        val first = items().first { !it.warmup && service.catalog.fallbackFor(it.slug).familiarity == Familiarity.BASIC }
+        val x = vm.alternatives(first.slug).first { it.def.familiarity != Familiarity.BASIC }.def.slug
+        vm.swapExercise(first.slug, x)
+        until { x in vm.state.value.newToYou }
+        // … then "Kenne ich nicht" on it.
+        val to = assertNotNull(vm.familiarSwap(x))
+        vm.dontKnowExercise(x, to.slug)
+        until { items().any { it.slug == to.slug } && items().none { it.slug == x } }
+        // The training from the card asks no "from now on like this?" for that slot: the athlete never trained the swap.
+        vm.startSuggestion("Training")
+        until { repo.openWorkout() != null }
+        val workout = repo.openWorkout()!!
+        assertTrue(service.keepQuestion(workout).none { it.replaced == first.slug || it.chosen == x }, "${service.keepQuestion(workout)}")
+        // The swap teaches nothing: no point for the unknown pick, none against the swapped exercise, and it does not rest.
+        val today = service.today()
+        val events = repo.suggestionEventsForDay(today.toString())
+        val affinity = PreferenceLearning.affinity(events.filter { it.kind != SuggestionEventKind.STARTED }, emptyList(), today)
+        assertNull(affinity[x])
+        assertNull(affinity[first.slug])
+        assertTrue(first.slug !in PreferenceLearning.resting(events, today.plus(kotlinx.datetime.DatePeriod(days = 1))))
     }
 
     @Test

@@ -67,7 +67,7 @@ class TrainingSimulationTest {
     }
 
     /**
-     * CI: five personas, three weeks each. The safety and exercise-choice checks must hold; everything else is reported.
+     * CI: six personas, three weeks each. The safety and exercise-choice checks must hold; everything else is reported.
      */
     @Test
     fun `fast subset keeps the safety rules`() {

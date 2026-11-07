@@ -806,7 +806,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         val s = _state.value.suggestion ?: return null
         return runCatching {
             // What was swapped away or left out elsewhere on the card today stays away; the slot's own pick may come back.
-            val away = swapsToday.keys.toSet() - originalOf(slug)
+            // Read under the lock: the swaps change on the IO thread.
+            val away = synchronized(refreshLock) { swapsToday.keys.toSet() - originalOf(slug) }
             SessionSuggester.familiarSwap(input, s.routine.items, s.focus, slug, exclude = away)
         }.getOrNull()
     }
