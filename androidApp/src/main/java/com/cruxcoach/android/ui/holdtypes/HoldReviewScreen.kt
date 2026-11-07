@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.holdtypes.CANT_TELL
 import com.cruxcoach.domain.holdtypes.FieldSummary
 import com.cruxcoach.domain.holdtypes.ReviewField
@@ -93,6 +94,7 @@ internal fun HoldReviewScreen(
                 }
                 state.missingDataset -> Text(stringResource(R.string.hold_review_missing))
                 else -> {
+                    if (state.boards.size > 1) BoardTabs(state, viewModel::selectBoard)
                     StageTabs(state, viewModel::openStage)
                     when (state.stage) {
                         ReviewStage.BLIND -> BlindRound(state, viewModel)
@@ -106,6 +108,20 @@ internal fun HoldReviewScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BoardTabs(state: HoldReviewUiState, onSelect: (String) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        state.boards.forEach { board ->
+            FilterChip(
+                selected = state.selectedBoard == board,
+                onClick = { onSelect(board) },
+                label = { Text(BoardBrand.fromWireOrNull(board)?.displayName ?: board) },
+            )
         }
     }
 }
@@ -291,7 +307,7 @@ private fun Results(state: HoldReviewUiState, viewModel: HoldReviewViewModel) {
     }
     Spacer(Modifier.height(4.dp))
     Button(
-        onClick = { saveLauncher.launch("hold-types-${HoldReviewViewModel.BOARD}-review.json") },
+        onClick = { saveLauncher.launch(viewModel.resultsFileName()) },
         modifier = Modifier.fillMaxWidth(),
     ) { Text(stringResource(R.string.hold_review_save_file)) }
     OutlinedButton(
