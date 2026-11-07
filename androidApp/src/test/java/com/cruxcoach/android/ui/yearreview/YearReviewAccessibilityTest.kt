@@ -17,6 +17,7 @@ import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -93,7 +94,9 @@ class YearReviewAccessibilityTest {
             compose.onNodeWithContentDescription("Share this page: ${page.title}").assertHasClickAction()
             compose.onNodeWithContentDescription("Show information about ${page.title}").assertHasClickAction()
             page.months?.let {
-                compose.onNode(hasText("January: ${it[0]} day", substring = true) and hasText("February: ${it[1]} day", substring = true)).assertExists("month chart as text")
+                // The month chart as rows of text, one per month.
+                assertTrue("month chart as text", compose.onAllNodesWithText("January").fetchSemanticsNodes().isNotEmpty())
+                assertTrue("month chart as text", compose.onAllNodesWithText("December").fetchSemanticsNodes().isNotEmpty())
             }
         }
         compose.onNodeWithContentDescription("Pages").assertHasClickAction()

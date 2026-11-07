@@ -151,7 +151,12 @@ private fun boards(review: YearReview, eyebrow: String, f: Formats): ReviewPage?
                 value = pluralStringResource(R.plurals.yr_entries, b.entries, f.number(b.entries)),
                 detail = listOfNotNull(
                     pluralStringResource(R.plurals.yr_days, b.days, f.number(b.days)),
-                    angle?.let { stringResource(R.string.yr_boards_angle, it.angle, (100.0 * it.entries / b.entries).roundToInt()) },
+                    angle?.let {
+                        val share = (100.0 * it.entries / b.entries).roundToInt()
+                        // "mostly at 40° (100 %)" says nothing that "at 40°" does not.
+                        if (share >= 100) stringResource(R.string.yr_boards_angle_only, it.angle)
+                        else stringResource(R.string.yr_boards_angle, it.angle, share)
+                    },
                 ).joinToString(" · "),
                 board = b.board,
             )

@@ -174,15 +174,15 @@ class YearReviewUiReviewTest {
             val p = reviewPages(soFar, GradeScale.FRENCH, context)
             Backdrop { ReviewPager(p, p.lastIndex, onIndex = {}, onClose = {}, onShare = {}, onList = {}, boardColors = reviewBoardColors(soFar)) }
         }
-        shoot("list-top") { Backdrop { ReviewList(reviewPages(review, GradeScale.FRENCH, context), littleTitle(2026, review), onClose = {}, onShare = {}, onPages = {}, boardColors = reviewBoardColors(review)) } }
-        shoot("list-rhythm") { Backdrop { ReviewList(reviewPages(review, GradeScale.FRENCH, context), littleTitle(2026, review), onClose = {}, onShare = {}, onPages = {}, startAt = 5, boardColors = reviewBoardColors(review)) } }
+        shoot("list-top") { Backdrop { ReviewList(reviewPages(review, GradeScale.FRENCH, context), reviewTitle(review), onClose = {}, onShare = {}, onPages = {}, boardColors = reviewBoardColors(review)) } }
+        shoot("list-rhythm") { Backdrop { ReviewList(reviewPages(review, GradeScale.FRENCH, context), reviewTitle(review), onClose = {}, onShare = {}, onPages = {}, startAt = 5, boardColors = reviewBoardColors(review)) } }
         if (width == 411 && fontScale == 1f) {
             // The review stays dark when the app is light.
             shoot("page-02-volume-app-light", dark = false) {
                 Backdrop { ReviewPager(reviewPages(review, GradeScale.FRENCH, context), 1, onIndex = {}, onClose = {}, onShare = {}, onList = {}, boardColors = reviewBoardColors(review)) }
             }
             shoot("list-top-app-light", dark = false) {
-                Backdrop { ReviewList(reviewPages(review, GradeScale.FRENCH, context), littleTitle(2026, review), onClose = {}, onShare = {}, onPages = {}, boardColors = reviewBoardColors(review)) }
+                Backdrop { ReviewList(reviewPages(review, GradeScale.FRENCH, context), reviewTitle(review), onClose = {}, onShare = {}, onPages = {}, boardColors = reviewBoardColors(review)) }
             }
         }
 
@@ -190,7 +190,7 @@ class YearReviewUiReviewTest {
         shoot("state-little-so-far") { Backdrop { SoFar(2026, little, onClose = {}) } }
         shoot("state-little-final") { Backdrop { SoFar(2026, littleFinal, onClose = {}) } }
         shoot("state-empty") { Backdrop { SoFar(2026, empty, onClose = {}) } }
-        shoot("state-loading") { Backdrop { Loading(onClose = {}) } }
+        shoot("state-loading") { Backdrop { Loading(2026, onClose = {}) } }
         shoot("state-failed") { Backdrop { LoadFailed(onRetry = {}, onClose = {}) } }
 
         // What follows the app's theme: the entries and the share sheet.
@@ -219,7 +219,7 @@ class YearReviewUiReviewTest {
                 }
             }
             shoot("share-sheet-$t", dark) {
-                val page = reviewPages(review, GradeScale.FRENCH, context, SharePrivacy(problemNames = false, exactDates = false))[1]
+                val page = reviewPages(review, GradeScale.FRENCH, context, SharePrivacy(problemNames = false, exactDates = false)).first { it.kind == ReviewPageKind.HIGHLIGHTS }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
                     ShareSheetContent(
                         YearShareImage.render(page, null, "CruxCoach", reviewBoardColors(review).mapValues { it.value.toArgb() }), page.title,

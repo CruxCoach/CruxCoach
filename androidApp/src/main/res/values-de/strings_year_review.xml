@@ -12,10 +12,11 @@
     <string name="yr_test_date">Testdatum (nur Test-Apps)</string>
     <string name="yr_test_date_real">Heute</string>
     <string name="yr_failed">Dein Jahr ließ sich nicht laden</string>
+    <string name="yr_minimum_so_far">Der ganze Rückblick öffnet sich, sobald du %1$s oder %2$s hast.</string>
+    <string name="yr_minimum_final">Für den ganzen Rückblick war %1$d zu wenig eingetragen.</string>
     <string name="yr_empty_so_far">In %1$d noch nichts eingetragen</string>
     <string name="yr_empty">In %1$d nichts eingetragen</string>
     <string name="yr_of">%1$s von %2$s</string>
-    <string name="yr_minimum_how">Der ganze Rückblick öffnet sich, sobald ein Jahr %1$s oder %2$s hat. Bis dahin siehst du hier deine Zahlen.</string>
 
     <!-- Pages: frame -->
     <string name="yr_close">Schließen</string>
@@ -53,6 +54,7 @@
     <!-- Boards and angles -->
     <string name="yr_boards_title">Deine Boards</string>
     <string name="yr_boards_angle">meist bei %1$d° (%2$d&#160;%%)</string>
+    <string name="yr_boards_angle_only">bei %1$d°</string>
     <string name="yr_boards_how">Einträge sind deine Begehungen und Versuche an diesem Board. Der Winkel ist der, den du dort am häufigsten erfasst hast, mit seinem Anteil an den Einträgen des Boards.</string>
 
     <!-- Hardest -->
@@ -64,7 +66,7 @@
 
     <!-- Compared with last year -->
     <string name="yr_compared_title">Im Vergleich zu %1$d</string>
-    <string name="yr_compared_before">%1$s in %2$d</string>
+    <string name="yr_compared_before">%2$d: %1$s</string>
     <string name="yr_compared_hardest">Schwerste Begehung am %1$s</string>
     <string name="yr_compared_grades_up">%1$s höher</string>
     <string name="yr_compared_grades_down">%1$s tiefer</string>
@@ -157,7 +159,7 @@
     <!-- Summary -->
     <string name="yr_summary_title">%1$d an den Boards</string>
     <string name="yr_summary_title_so_far">%1$d bisher</string>
-    <string name="yr_summary_hardest">Am schwersten am %1$s</string>
+    <string name="yr_summary_hardest">Schwerste am %1$s</string>
     <string name="yr_summary_type">Klettertyp</string>
     <string name="yr_summary_how">Die wichtigsten Zahlen des Jahres von den Seiten davor.</string>
 
@@ -165,7 +167,7 @@
     <string name="yr_share_title">Diese Seite teilen</string>
     <string name="yr_share_show_name">Meinen Namen zeigen</string>
     <string name="yr_share_show_problems">Namen der Boulder zeigen</string>
-    <string name="yr_share_show_dates">Genaue Daten zeigen</string>
+    <string name="yr_share_show_dates">Genaues Datum zeigen</string>
     <string name="yr_share_hint">Das Bild entsteht auf diesem Handy. Es enthält deine Zahlen und einen kleinen CruxCoach-Schriftzug, sonst nichts.</string>
     <string name="yr_share_send">Bild teilen</string>
     <string name="yr_share_chooser">Dein Jahr teilen</string>

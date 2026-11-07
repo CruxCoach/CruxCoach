@@ -111,19 +111,20 @@ object YearShareImage {
     private fun rows(canvas: Canvas, rows: List<ReviewRow>, top: Float, width: Float, footer: Float, colors: Map<String, Int>): Float {
         var y = top
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        // When any row has a board's dot, every row keeps its slot, so the labels line up.
+        val indent = if (rows.any { row -> row.board?.let { colors[it] } != null }) 32f else 0f
         for (row in rows) {
             val valueWidth = width * 0.42f
-            val labelWidth = width - valueWidth - 24f
+            val labelWidth = width - valueWidth - 24f - indent
             val labelLayout = layout(row.label, labelWidth, 40f, MUTED, bold = false, maxLines = 2)
             val valueLayout = layout(row.value, valueWidth, 46f, TEXT, bold = true, maxLines = 2, align = Layout.Alignment.ALIGN_OPPOSITE)
-            val detailLayout = row.detail?.takeIf { it.isNotBlank() }?.let { layout(it, width, 34f, FAINT, bold = false, maxLines = 2) }
+            val detailLayout = row.detail?.takeIf { it.isNotBlank() }?.let { layout(it, width - indent, 34f, FAINT, bold = false, maxLines = 2) }
             val height = maxOf(labelLayout.height, valueLayout.height) + (detailLayout?.height?.plus(6) ?: 0)
             if (y + height > footer) break
-            var x = MARGIN
+            val x = MARGIN + indent
             row.board?.let { colors[it] }?.let { color ->
                 paint.color = color
                 canvas.drawCircle(MARGIN + 10f, y + 26f, 10f, paint)
-                x += 32f
             }
             draw(canvas, labelLayout, x, y)
             draw(canvas, valueLayout, MARGIN + width - valueWidth, y)
@@ -139,14 +140,21 @@ object YearShareImage {
         return y
     }
 
-    /** The summary's numbers in two columns. */
+    /** The summary's numbers in two columns; a board's colour only as a dot before its label. */
     private fun grid(canvas: Canvas, rows: List<ReviewRow>, top: Float, width: Float, colors: Map<String, Int>) {
         val column = (width - 40f) / 2
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         rows.take(6).forEachIndexed { i, row ->
             val x = MARGIN + (i % 2) * (column + 40f)
             val y = top + (i / 2) * 230f
-            val valueBottom = fitted(canvas, row.value, x, y, column, 96f, row.board?.let { colors[it] } ?: TEXT)
-            text(canvas, row.label, x, valueBottom + 4f, column, 36f, MUTED, maxLines = 2)
+            val valueBottom = fitted(canvas, row.value, x, y, column, 96f, TEXT)
+            val color = row.board?.let { colors[it] }
+            if (color != null) {
+                paint.color = color
+                canvas.drawCircle(x + 9f, valueBottom + 26f, 9f, paint)
+            }
+            val labelX = if (color != null) x + 28f else x
+            text(canvas, row.label, labelX, valueBottom + 4f, column - (labelX - x), 36f, MUTED, maxLines = 2)
         }
     }
 

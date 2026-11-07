@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -20,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,7 +38,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import kotlinx.datetime.LocalDate
@@ -59,25 +61,24 @@ fun YearReviewEntryCard(onOpen: (Int) -> Unit, modifier: Modifier = Modifier, vi
 /** The card itself: "your year so far" in December, the finished year in January. */
 @Composable
 internal fun YearReviewCard(year: Int, soFar: Boolean, onOpen: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier) {
-    // The same card as "At a glance" in the logbook; the orange button is its one accent.
+    // The same card as "At a glance" in the logbook, with its orange text link: it invites
+    // without competing with the screen's own main action.
     Card(
         onClick = onOpen,
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
         shape = RoundedCornerShape(16.dp),
     ) {
-        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 12.dp, end = 4.dp), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    stringResource(if (soFar) R.string.yr_card_title_so_far else R.string.yr_card_title, year),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Button(
-                    onClick = onOpen,
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
-                    shape = RoundedCornerShape(12.dp),
-                ) { Text(stringResource(R.string.yr_card_open), fontWeight = FontWeight.Bold) }
+        Row(Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(if (soFar) R.string.yr_card_title_so_far else R.string.yr_card_title, year),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+            )
+            TextButton(onClick = onOpen) {
+                Text(stringResource(R.string.yr_card_open), color = OrangeAccent, fontWeight = FontWeight.Bold)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
             }
             IconButton(onClick = onHide) {
                 Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.yr_card_hide), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -119,37 +120,24 @@ internal fun YearReviewStatsContent(
     ) {
         Text(stringResource(R.string.yr_stats_entry_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         if (review != null && review.hasEnoughData) {
-            // Only years with a full review are offered; the button opens the one picked.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (state.years.size > 1) {
-                    FlowRow(Modifier.weight(1f).padding(end = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        state.years.forEach { year ->
-                            FilterChip(selected = year == selected, onClick = { onSelect(year) }, label = { Text(year.toString()) })
-                        }
-                    }
-                } else {
-                    Text(
-                        stringResource(if (review.isFinal) R.string.yr_card_title else R.string.yr_card_title_so_far, selected),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f).padding(end = 8.dp),
-                    )
+            // Only years with a full review are offered; the chip names the year, the button opens it.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                state.years.forEach { year ->
+                    FilterChip(selected = year == selected, onClick = { onSelect(year) }, label = { Text(year.toString()) })
                 }
-                Button(
-                    onClick = { onOpen(selected) },
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
-                    shape = RoundedCornerShape(12.dp),
-                ) { Text(stringResource(R.string.yr_card_open), fontWeight = FontWeight.Bold) }
             }
+            Button(
+                onClick = { onOpen(selected) },
+                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
+                shape = RoundedCornerShape(12.dp),
+            ) { Text(stringResource(R.string.yr_card_open), fontWeight = FontWeight.Bold) }
         } else if (review != null) {
-            // No year has a full review yet: how far this one got.
-            val title = littleTitle(selected, review)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                InfoButton(title, minimumNote())
-            }
+            // No year has a full review yet: how far this one gets, and what opens it.
+            Text(littleTitle(selected, review), style = MaterialTheme.typography.bodyMedium)
             if (review.isEmpty()) {
                 Text(emptyText(selected, review), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
+                Text(minimumLine(review), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 littleRows(review).forEach { row ->
                     Row {
                         Text(row.label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))

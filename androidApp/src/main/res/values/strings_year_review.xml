@@ -12,10 +12,11 @@
     <string name="yr_test_date">Test date (feature builds only)</string>
     <string name="yr_test_date_real">Today</string>
     <string name="yr_failed">Your year could not be loaded</string>
+    <string name="yr_minimum_so_far">The full review opens once you have %1$s or %2$s.</string>
+    <string name="yr_minimum_final">Too little logged in %1$d for the full review.</string>
     <string name="yr_empty_so_far">Nothing logged in %1$d yet</string>
     <string name="yr_empty">Nothing logged in %1$d</string>
     <string name="yr_of">%1$s of %2$s</string>
-    <string name="yr_minimum_how">The full review opens once a year has %1$s or %2$s. Until then you see your numbers here.</string>
 
     <!-- Pages: frame -->
     <string name="yr_close">Close</string>
@@ -53,6 +54,7 @@
     <!-- Boards and angles -->
     <string name="yr_boards_title">Your boards</string>
     <string name="yr_boards_angle">mostly at %1$d° (%2$d%%)</string>
+    <string name="yr_boards_angle_only">at %1$d°</string>
     <string name="yr_boards_how">Entries are your sends and attempts on that board. The angle is the one you logged most there, with its share of the board\'s entries.</string>
 
     <!-- Hardest -->
@@ -64,7 +66,7 @@
 
     <!-- Compared with last year -->
     <string name="yr_compared_title">Compared with %1$d</string>
-    <string name="yr_compared_before">%1$s in %2$d</string>
+    <string name="yr_compared_before">%2$d: %1$s</string>
     <string name="yr_compared_hardest">Hardest send on the %1$s</string>
     <string name="yr_compared_grades_up">%1$s up</string>
     <string name="yr_compared_grades_down">%1$s down</string>
