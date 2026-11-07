@@ -116,6 +116,20 @@ Implementation references: [BackupRepository](androidApp/src/main/java/com/cruxc
   failures retry on a 6-hour periodic worker; the token is refreshed on
   401/expired-token responses.
 
+### Shiny Wall Account Import (0.2.5+)
+- **Shiny Wall account import (read-only).** When the user connects a Shiny
+  Wall account, the app signs in with the user's email and password at
+  Google's Firebase servers, which run Shiny Wall's sign-in
+  (`identitytoolkit.googleapis.com`; tokens are renewed at
+  `securetoken.googleapis.com`). It keeps only the resulting refresh and ID
+  tokens, in EncryptedSharedPreferences (`shinywall_secure_prefs`, excluded
+  from backup and device transfer); the password is never stored. It reads
+  only the signed-in user's own profile, activity history and own published
+  routes from Shiny Wall's database on Google's servers
+  (`firestore.googleapis.com`), and never writes to the account.
+  Disconnecting deletes the tokens on the device. Token leakage from
+  `ShinyWallAccountClient`/`ShinyWallTokenStore` is in scope.
+
 ### User Responsibility — Key Storage
 The Nostr key (= the CruxCoach Account key, surfaced in *Settings → CruxCoach Account*) is a **single point of recovery** for both the account and any cloud backup encrypted with it. The app warns about this prominently on every backup-enable surface (onboarding, *what's new*, settings) and on the account screen, with a single canonical place to view + copy the key.
 
