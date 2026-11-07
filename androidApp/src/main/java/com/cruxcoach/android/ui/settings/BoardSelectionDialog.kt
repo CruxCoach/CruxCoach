@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.settings
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -643,9 +644,13 @@ internal fun BoardSelectionDialog(
                             onSelect = { mbVariant = variant },
                             brand = BoardBrand.MOONBOARD, sizeId = 0L, layoutId = variant.layoutId,
                             gymShare = gymShares?.moonBoard(variant.layoutId),
+                            // Few gyms list the newest versions yet: rare may only mean new.
+                            flagRareShare = false,
                         )
                     }
-                    mbVariant?.let { gymShares?.moonBoard(it.layoutId) }?.let { RareBoardHint(it) }
+                    mbVariant?.let { gymShares?.moonBoard(it.layoutId) }?.let {
+                        RareBoardHint(it, R.string.board_gym_share_rare_version_hint)
+                    }
                 } else {
                     Text(
                         stringResource(R.string.board_mismatch_choose_detail),
@@ -773,6 +778,7 @@ internal fun BoardImageChoiceRow(
     sizeId: Long,
     layoutId: Long?,
     gymShare: Double? = null,
+    flagRareShare: Boolean = true,
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -803,7 +809,7 @@ internal fun BoardImageChoiceRow(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                gymShare?.let { GymShareText(it) }
+                gymShare?.let { GymShareText(it, flagRare = flagRareShare) }
                 RadioButton(selected = selected, onClick = null,
                     colors = RadioButtonDefaults.colors(selectedColor = OrangeAccent))
             }
@@ -831,7 +837,7 @@ private fun GymShareText(share: Double, flagRare: Boolean = true) {
 
 /** Second look for a rare pick: few gyms have it, so a wrong choice is more likely than a rare board. */
 @Composable
-private fun RareBoardHint(share: Double) {
+private fun RareBoardHint(share: Double, @StringRes text: Int = R.string.board_gym_share_rare_hint) {
     if (!BoardGymShares.isRare(share)) return
     Row(
         Modifier.fillMaxWidth().testTag("board_gym_share_rare_hint"),
@@ -840,7 +846,7 @@ private fun RareBoardHint(share: Double) {
         Icon(Icons.Outlined.Info, contentDescription = null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
         Text(
-            stringResource(R.string.board_gym_share_rare_hint),
+            stringResource(text),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface,
         )

@@ -67,15 +67,17 @@ class BoardGymShareDialogTest {
         return done()
     }
 
-    @Test fun `each version shows its share in gyms and a rare pick asks for a second look`() {
+    @Test fun `each version shows its share and a rare one may just be new`() {
         val confirmed = mutableListOf<MoonBoardVariant>()
         show(shares, confirmed)
         assertTrue(compose.onAllNodesWithText("In Gyms:", substring = true).fetchSemanticsNodes().isNotEmpty())
-        assertTrue(compose.onAllNodesWithText("Selten in Gyms:", substring = true).fetchSemanticsNodes().isNotEmpty())
+        // Few gyms list the newest versions yet: a version is never called rare.
+        compose.onAllNodesWithText("Selten in Gyms:", substring = true).assertCountEquals(0)
         compose.onNodeWithTag("board_gym_share_rare_hint").assertDoesNotExist()
 
         compose.onNodeWithText(mini.displayName).performScrollTo().performClick()
         assertTrue("hint never appeared", advanceUntil(2_000) { shown("board_gym_share_rare_hint") })
+        assertTrue(compose.onAllNodesWithText("vielleicht weil sie neu ist", substring = true).fetchSemanticsNodes().isNotEmpty())
         // The hint only asks; the rare version can still be confirmed.
         compose.onNodeWithText("Bestätigen").performClick()
         compose.mainClock.advanceTimeBy(FRAME_MS)

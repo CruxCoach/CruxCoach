@@ -3415,4 +3415,5 @@
     <string name="board_gym_share">In Gyms: %1$s</string>
     <string name="board_gym_share_rare">Selten in Gyms: %1$s</string>
     <string name="board_gym_share_rare_hint">Nur wenige Gyms haben dieses Board. Prüfe bitte, ob es wirklich deins ist.</string>
+    <string name="board_gym_share_rare_version_hint">Nur wenige Gyms führen diese Version, vielleicht weil sie neu ist. Prüfe, ob sie zu den Griffen an deinem Board passt.</string>
 </resources>

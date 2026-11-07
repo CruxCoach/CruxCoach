@@ -3416,4 +3416,5 @@
     <string name="board_gym_share">In gyms: %1$s</string>
     <string name="board_gym_share_rare">Rare in gyms: %1$s</string>
     <string name="board_gym_share_rare_hint">Few gyms have this board. Please check that it is really yours.</string>
+    <string name="board_gym_share_rare_version_hint">Few gyms list this version, maybe because it is new. Check that it matches the holds on your board.</string>
 </resources>
