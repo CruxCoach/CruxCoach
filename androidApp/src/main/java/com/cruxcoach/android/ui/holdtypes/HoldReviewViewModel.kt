@@ -17,6 +17,8 @@ import com.cruxcoach.domain.holdtypes.disagreements
 import com.cruxcoach.domain.holdtypes.summary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,6 +71,10 @@ class HoldReviewViewModel @Inject constructor(
     private var board: String = DEFAULT_BOARD
     private var dataset: HoldTypeDataset? = null
     private var session: HoldReviewSession = HoldReviewSession(DEFAULT_BOARD, "")
+    /** Each board's session once loaded: switching back never rereads a file that a queued save has not reached. */
+    private val sessions = mutableMapOf<String, HoldReviewSession>()
+    /** The one load that may still change the screen; a newer board or hold cancels it. */
+    private var navJob: Job? = null
     /** Saves run one at a time, in the order they were made. */
     private val saveDispatcher = Dispatchers.IO.limitedParallelism(1)
 
@@ -82,26 +88,44 @@ class HoldReviewViewModel @Inject constructor(
         }
     }
 
+    private fun navigate(block: suspend () -> Unit) {
+        navJob?.cancel()
+        navJob = viewModelScope.launch { block() }
+    }
+
     /** Each board keeps its own reference round; switching boards keeps every answer. */
-    fun selectBoard(selected: String) {
-        viewModelScope.launch {
+    fun selectBoard(selected: String) = navigate {
+        _state.update { it.copy(loading = true, selectedBoard = selected) }
+        val loaded = withContext(Dispatchers.IO) { assets.dataset(selected) }
+        if (loaded == null || loaded.referenceSet.isEmpty()) {
             board = selected
-            _state.update { it.copy(loading = true, selectedBoard = selected) }
-            val loaded = withContext(Dispatchers.IO) { assets.dataset(selected) }
-            if (loaded == null || loaded.referenceSet.isEmpty()) {
-                dataset = null
-                _state.update { it.copy(loading = false, missingDataset = true) }
-                return@launch
-            }
-            dataset = loaded
-            session = withContext(Dispatchers.IO) { store.load(selected) } ?: HoldReviewSession(selected, loaded.version)
-            _state.update { it.copy(missingDataset = false) }
-            val firstOpen = loaded.referenceSet.indexOfFirst { session.answerFor(it) == null }
-            if (firstOpen >= 0) showBlind(firstOpen) else showStageAfterBlind()
+            dataset = null
+            _state.update { it.copy(loading = false, missingDataset = true) }
+            return@navigate
         }
+        val loadedSession = sessions[selected]
+            ?: withContext(Dispatchers.IO) { store.load(selected) } ?: HoldReviewSession(selected, loaded.version)
+        // Board, dataset and session change together, after every load, so nothing mixes two boards.
+        board = selected
+        dataset = loaded
+        session = loadedSession
+        sessions[selected] = loadedSession
+        _state.update { it.copy(missingDataset = false) }
+        val firstOpen = loaded.referenceSet.indexOfFirst { session.answerFor(it) == null }
+        if (firstOpen >= 0) showBlindNow(firstOpen) else showStageAfterBlindNow()
     }
 
     private fun reference(): List<Int> = dataset?.referenceSet.orEmpty()
+
+    /** The session limited to the current reference set, for every count and the decide round. */
+    private fun scoped(): HoldReviewSession {
+        val keys = reference().toSet()
+        return session.copy(answers = session.answers.filter { it.placement in keys })
+    }
+
+    /** Disagreeing holds of the decide round, in answer order; keys this dataset cannot show are left out. */
+    private fun decideHolds(): List<Int> =
+        scoped().disagreements().map { it.placement }.distinct().filter { dataset?.referenceEntry(it) != null }
 
     private suspend fun boardFor(entry: HoldTypeEntry): HoldBoardView? = boardViews.viewFor(board, entry)
 
@@ -112,45 +136,52 @@ class HoldReviewViewModel @Inject constructor(
         referenceSize = reference().size,
         answered = reference().count { session.answerFor(it) != null },
         session = session,
-        disagreementHolds = session.disagreements().map { it.placement }.distinct(),
-        summary = session.summary(),
+        disagreementHolds = decideHolds(),
+        summary = scoped().summary(),
     )
 
-    private fun showBlind(index: Int) {
+    private fun showBlind(index: Int) = navigate { showBlindNow(index) }
+
+    private suspend fun showBlindNow(index: Int) {
         val key = reference().getOrNull(index) ?: return
         val entry = dataset?.referenceEntry(key) ?: return
-        viewModelScope.launch {
-            val view = boardFor(entry)
-            val answer = session.answerFor(key)
-            _state.value = baseState(ReviewStage.BLIND).copy(
-                index = index, entry = entry, board = view, answer = answer,
-                draft = answer?.let { AnswerDraft(it.type, it.direction, it.footOnly) } ?: AnswerDraft(),
-                disagreementsHere = emptyList(),
-            )
-        }
+        val view = boardFor(entry)
+        val answer = session.answerFor(key)
+        _state.value = baseState(ReviewStage.BLIND).copy(
+            index = index, entry = entry, board = view, answer = answer,
+            draft = answer?.let { AnswerDraft(it.type, it.direction, it.footOnly) } ?: AnswerDraft(),
+            disagreementsHere = emptyList(),
+        )
     }
 
-    private fun showDecide(index: Int) {
-        val holds = session.disagreements().map { it.placement }.distinct()
-        val key = holds.getOrNull(index) ?: return showResults()
-        val entry = dataset?.referenceEntry(key) ?: return
-        viewModelScope.launch {
-            val view = boardFor(entry)
-            _state.value = baseState(ReviewStage.DECIDE).copy(
-                index = index, entry = entry, board = view, answer = session.answerFor(key),
-                disagreementsHere = session.disagreements().filter { it.placement == key },
-            )
-        }
+    private fun showDecide(index: Int) = navigate { showDecideNow(index) }
+
+    private suspend fun showDecideNow(index: Int) {
+        val key = decideHolds().getOrNull(index) ?: return showResultsNow()
+        val entry = dataset?.referenceEntry(key) ?: return showResultsNow()
+        val view = boardFor(entry)
+        _state.value = baseState(ReviewStage.DECIDE).copy(
+            index = index, entry = entry, board = view, answer = session.answerFor(key),
+            disagreementsHere = scoped().disagreements().filter { it.placement == key },
+        )
     }
 
     private fun showResults() {
+        navJob?.cancel()
+        showResultsNow()
+    }
+
+    private fun showResultsNow() {
         _state.value = baseState(ReviewStage.RESULTS).copy(entry = null, board = null, answer = null)
     }
 
-    private fun showStageAfterBlind() {
-        val holds = session.disagreements().map { it.placement }.distinct()
-        val open = holds.indexOfFirst { p -> session.disagreements().any { it.placement == p && session.decisionFor(p, it.field) == null } }
-        if (open >= 0) showDecide(open) else showResults()
+    private suspend fun showStageAfterBlindNow() {
+        val holds = decideHolds()
+        val scopedSession = scoped()
+        val open = holds.indexOfFirst { p ->
+            scopedSession.disagreements().any { it.placement == p && session.decisionFor(p, it.field) == null }
+        }
+        if (open >= 0) showDecideNow(open) else showResultsNow()
     }
 
     fun selectType(value: String) = editDraft { it.copy(type = value) }
@@ -163,15 +194,26 @@ class HoldReviewViewModel @Inject constructor(
         _state.update { it.copy(draft = change(it.draft)) }
     }
 
+    /** The reference key of the hold on screen, or null when it does not belong to the board now loaded. */
+    private fun currentKey(): Int? {
+        val current = _state.value
+        val entry = current.entry ?: return null
+        val data = dataset ?: return null
+        if (current.selectedBoard != board) return null
+        val key = data.referenceKey(entry)
+        return key.takeIf { data.referenceEntry(it) == entry && it in data.referenceSet }
+    }
+
     /** Saves the blind answer and reveals the computed label. */
     fun submit() {
         val current = _state.value
         val entry = current.entry ?: return
+        val key = currentKey() ?: return
         val draft = current.draft
         if (!draft.complete || current.answer != null) return
         val answer = BlindAnswer(
             // the reference key: the placement id, or layout and hold id on MoonBoard
-            placement = dataset?.referenceKey(entry) ?: entry.placement,
+            placement = key,
             type = draft.type!!, direction = draft.direction!!, footOnly = draft.footOnly!!,
             computed = ComputedSnapshot(entry.type, entry.direction, entry.footOnly, dataset?.version.orEmpty()),
             answeredAtEpochMs = System.currentTimeMillis(),
@@ -188,7 +230,7 @@ class HoldReviewViewModel @Inject constructor(
                 val ref = reference()
                 val nextOpen = (current.index + 1 until ref.size).firstOrNull { session.answerFor(ref[it]) == null }
                     ?: ref.indices.firstOrNull { session.answerFor(ref[it]) == null }
-                if (nextOpen != null) showBlind(nextOpen) else showStageAfterBlind()
+                if (nextOpen != null) showBlind(nextOpen) else navigate { showStageAfterBlindNow() }
             }
             ReviewStage.DECIDE -> showDecide(current.index + 1)
             ReviewStage.RESULTS -> Unit
@@ -217,12 +259,11 @@ class HoldReviewViewModel @Inject constructor(
     }
 
     fun decide(field: ReviewField, verdict: String, corrected: String? = null) {
-        val entry = _state.value.entry ?: return
-        val key = dataset?.referenceKey(entry) ?: return
+        val key = currentKey() ?: return
         session = session.withDecision(ReviewDecision(key, field.wire, verdict, corrected))
         persist()
         _state.update {
-            it.copy(session = session, summary = session.summary())
+            it.copy(session = session, summary = scoped().summary())
         }
     }
 
@@ -233,13 +274,16 @@ class HoldReviewViewModel @Inject constructor(
     fun startOver() {
         val cleared = board
         session = HoldReviewSession(cleared, dataset?.version.orEmpty())
-        viewModelScope.launch(saveDispatcher) { store.clear(cleared) }
+        sessions[cleared] = session
+        viewModelScope.launch(saveDispatcher + NonCancellable) { store.clear(cleared) }
         showBlind(0)
     }
 
     private fun persist() {
         val snapshot = session
-        viewModelScope.launch(saveDispatcher) { store.save(snapshot) }
+        sessions[snapshot.board] = snapshot
+        // A save already made must survive leaving the screen.
+        viewModelScope.launch(saveDispatcher + NonCancellable) { store.save(snapshot) }
     }
 
     companion object {

@@ -55,10 +55,12 @@ data class HoldCheckSession(
 
 /**
  * The holds to check, in order: those on the review list first, least confident first, then the rest. Holds
- * without a computed type (no picture of them) have nothing to confirm and are left out.
+ * without a computed type (no picture of them) have nothing to confirm and are left out, and so are the reference
+ * holds: their labels must stay hidden until they are answered in the blind round.
  */
 fun HoldTypeDataset.checkQueue(reviewListOnly: Boolean): List<HoldTypeEntry> {
-    val labelled = holds.filter { it.type != null }
+    val reference = referenceSet.toSet()
+    val labelled = holds.filter { it.type != null && referenceKey(it) !in reference }
     val flagged = labelled.filter { it.review.isNotEmpty() }
         .sortedWith(compareBy<HoldTypeEntry> { minOf(it.confidence.type, it.confidence.direction) }
             .thenBy { it.layoutId }.thenBy { it.placement })
