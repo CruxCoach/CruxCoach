@@ -6,7 +6,7 @@
     <string name="board_scan_experimental">Experimentell</string>
     <string name="board_scan_permission">Zum Scannen des Boards braucht CruxCoach die Kamera. Die Bilder bleiben im Speicher dieses Handys und werden nie gespeichert oder gesendet.</string>
     <string name="board_scan_permission_allow">Kamera erlauben</string>
-    <string name="board_scan_preparing">Die Probleme dieses Boards werden vorbereitet …</string>
+    <string name="board_scan_preparing">Die Probleme dieses Boards werden vorbereitet …</string>
     <plurals name="board_scan_problems">
         <item quantity="one">%1$s Problem auf diesem Board</item>
         <item quantity="other">%1$s Probleme auf diesem Board</item>
@@ -16,7 +16,7 @@
     <string name="board_scan_hint">Lass ein Problem leuchten, halte das Handy aufrecht, nimm das ganze Board ins Bild und tippe auf Scannen.</string>
     <string name="board_scan_button">Scannen</string>
     <string name="board_scan_stop">Stopp</string>
-    <string name="board_scan_looking">Suche … Bild %1$d</string>
+    <string name="board_scan_looking">Suche … Bild %1$d</string>
     <string name="board_scan_camera_error">Die Kamera liefert kein Bild. Schließe den Scan und öffne ihn wieder.</string>
     <string name="board_scan_sure">Es ist dieses Problem</string>
     <string name="board_scan_not_sure">Nicht sicher. Die drei wahrscheinlichsten:</string>

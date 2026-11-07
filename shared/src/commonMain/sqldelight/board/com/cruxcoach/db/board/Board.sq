@@ -1162,20 +1162,25 @@ LIMIT 500;
 -- frames and popularity, for the on-device recogniser's search index. A
 -- MoonBoard catalogue has one row per problem and wall angle, so the scan
 -- passes the angle in use; Kilter passes NULL (its stats are per angle, the
--- hold set is not).
+-- hold set is not). Read in pages after the last rowid: Android's cursor
+-- re-runs a query from its first row for every 2 MB window it fills, which
+-- made one query over a whole Kilter catalogue take minutes on older phones.
 getClimbsForBoardScan:
-SELECT c.uuid, c.frames,
+SELECT CAST(c.rowid AS INTEGER) AS row_id, c.uuid, c.frames,
        COALESCE((SELECT MAX(cs.ascensionist_count) FROM climb_stats cs
                  WHERE cs.climb_uuid = c.uuid), 0) AS popularity
 FROM climbs c
-WHERE c.board_brand = :boardBrand
+WHERE c.rowid > :afterRowid
+  AND c.board_brand = :boardBrand
   AND c.layout_id = :layoutId
   AND c.frames_count = 1
   AND c.is_listed = 1
   AND c.is_deleted = 0
   AND LENGTH(c.frames) > 0
   AND (:angle IS NULL OR EXISTS (SELECT 1 FROM climb_stats cs2
-                                 WHERE cs2.climb_uuid = c.uuid AND cs2.angle = :angle));
+                                 WHERE cs2.climb_uuid = c.uuid AND cs2.angle = :angle))
+ORDER BY c.rowid
+LIMIT :pageSize;
 
 -- Board scan test mode: find the lit problem by name among the same problems
 -- (on Kilter at every angle, unlike the browser's per-angle search).

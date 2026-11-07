@@ -9,13 +9,18 @@ import java.io.File
 /**
  * Device checks without a lit board in front of the phone: in debuggable builds only, frames come from image files in
  * the app's private `board_scan/debug/` folder instead of the camera. `frames.txt` lists one frame per line:
- * `<file> <focal length px> [<up x> <up y> <up z>]`, served in turn.
+ * `<file> <focal length px> [<up x> <up y> <up z>]`. Each scan takes the next line and reads that one file for all
+ * its frames.
  */
 internal class FileFrames private constructor(private val dir: File, private val lines: List<String>) {
-    private var next = 0
+    private var current = -1
+
+    fun startScan() {
+        current++
+    }
 
     fun next(): ScanFrame {
-        val v = lines[next++ % lines.size].trim().split(Regex("\\s+"))
+        val v = lines[current.coerceAtLeast(0) % lines.size].trim().split(Regex("\\s+"))
         val bmp = requireNotNull(BitmapFactory.decodeFile(File(dir, v[0]).path)) { "cannot read ${v[0]}" }
         val w = bmp.width
         val h = bmp.height

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -48,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -83,8 +85,10 @@ fun BoardScanScreen(
         val file = state.shareFile ?: return@LaunchedEffect
         try {
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            // a broad type, so every app that takes files is offered; the CSV type travels as metadata
             val send = Intent(Intent.ACTION_SEND).apply {
-                type = "text/csv"
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/csv"))
                 putExtra(Intent.EXTRA_STREAM, uri)
                 clipData = ClipData.newRawUri(file.name, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -98,7 +102,9 @@ fun BoardScanScreen(
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black).testTag("board_scan_screen")) {
-        if (state.fileFed) {
+        if (state.board == null) {
+            // the camera starts once it is known whether this build reads frames from files instead
+        } else if (state.fileFed) {
             Text("File frames", color = Color.White, modifier = Modifier.align(Alignment.Center))
         } else if (granted) {
             ScanCameraView(viewModel.grabber, onCameraError = viewModel::onCameraError, modifier = Modifier.fillMaxSize())
@@ -199,9 +205,15 @@ private fun ScanPanel(
 @Composable
 private fun TestModeRow(state: BoardScanState, viewModel: BoardScanViewModel, onShowResults: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Switch(state.testMode, viewModel::setTestMode, Modifier.testTag("board_scan_test_mode"))
-        Spacer(Modifier.width(8.dp))
-        Text(stringResource(R.string.board_scan_test_mode), Modifier.weight(1f))
+        Row(
+            Modifier.weight(1f).toggleable(state.testMode, role = Role.Switch, onValueChange = viewModel::setTestMode)
+                .testTag("board_scan_test_mode"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Switch(state.testMode, onCheckedChange = null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.board_scan_test_mode))
+        }
         if (state.testMode) {
             TextButton(onClick = onShowResults, modifier = Modifier.testTag("board_scan_results")) {
                 Text(stringResource(R.string.board_scan_test_results))

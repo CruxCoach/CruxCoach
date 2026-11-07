@@ -16,6 +16,7 @@ import com.cruxcoach.android.boardscan.ScanCatalogueLoader
 import com.cruxcoach.android.boardscan.ScanTestLog
 import com.cruxcoach.android.boardscan.ScanTestRecord
 import com.cruxcoach.android.boardscan.ScanTestSummary
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.util.GradeDisplayHelper
@@ -145,9 +146,12 @@ class BoardScanViewModel @Inject constructor(
         _state.update { it.copy(phase = BoardScanPhase.READY, problems = cat.size, mirrorable = cat.searchMirrored) }
     }
 
+    /** The board as the board screen names it, e.g. "Kilter Original · 14x12 Super Tall, with Kickboard · 40°". */
     private fun boardLabel(board: ScanBoard): String {
-        val name = board.moonBoardVariant?.displayName
-            ?: listOfNotNull("Kilter", repository.getProductSize(board.sizeId, board.brand)?.name).joinToString(" ")
+        val name = board.moonBoardVariant?.displayName ?: run {
+            val size = repository.getProductSize(board.sizeId, board.brand)
+            listOfNotNull("Kilter Original", size?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) }).joinToString(" · ")
+        }
         return "$name · ${board.angle}°"
     }
 
@@ -167,6 +171,7 @@ class BoardScanViewModel @Inject constructor(
         partialLeds = 0
         frames = 0
         searchJob?.cancel()
+        fileFrames?.startScan()
         _state.update {
             it.copy(phase = BoardScanPhase.SCANNING, frame = 1, candidates = emptyList(), sure = false, choosing = false,
                 searchResults = emptyList(), truthMirrored = false, cameraError = false, scanFailed = false)
@@ -200,6 +205,7 @@ class BoardScanViewModel @Inject constructor(
             }
             frames++
             _state.update { it.copy(frame = frames) }
+            val frameStart = SystemClock.elapsedRealtime()
             val outcome = runInterruptible(Dispatchers.Default) {
                 sc.scan(frame) { leds, r ->
                     partialLeds = leds
@@ -209,10 +215,15 @@ class BoardScanViewModel @Inject constructor(
                 }
             }
             partial = null
+            val r = outcome.result
+            Log.i(TAG, "frame $frames: ${outcome.leds} LEDs, detect ${outcome.detectMs} ms, match ${outcome.matchMs} ms " +
+                "(coarse ${r.coarseMs}, verify ${r.verifyMs}, tiers ${r.tiers}), sure ${r.sure}")
             val b = best
-            if (b == null || outcome.result.sure || topScore(outcome.result) > topScore(b.result)) best = outcome
-            if (outcome.result.sure) break
-            if (frames >= MAX_FRAMES || SystemClock.elapsedRealtime() - started >= BUDGET_MS) break
+            if (b == null || r.sure || topScore(r) > topScore(b.result)) best = outcome
+            if (r.sure) break
+            // another frame only when it can finish within the budget
+            val now = SystemClock.elapsedRealtime()
+            if (frames >= MAX_FRAMES || now - started + (now - frameStart) > BUDGET_MS) break
             showGuesses(outcome.result)
         }
         finish()

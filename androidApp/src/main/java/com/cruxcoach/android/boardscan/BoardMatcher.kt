@@ -283,7 +283,7 @@ class BoardMatcher(
                 val a0i = ix.offsets[c]
                 val m = ix.offsets[c + 1] - a0i
                 var best = 0
-                val mf = ix.nonFoot[c]
+                val mf = ix.nonFoot[c].toInt()
                 val need = max(3, (mf + 1) / 2)
                 for (i in tb) {
                     val ri = rb[i]
@@ -294,10 +294,10 @@ class BoardMatcher(
                         val vby = ry[i] - ry[j]
                         val lb2 = vbx * vbx + vby * vby
                         for (ra in rolesOfClass[ri]) for (a in 0 until 2) {
-                            val ta = ix.topSlots[c * 8 + ra * 2 + a]
+                            val ta = ix.topSlots[c * 8 + ra * 2 + a].toInt()
                             if (ta < 0) break
                             for (rbb in rolesOfClass[rj]) for (b in 0 until 3) {
-                                val tbh = ix.bottomSlots[c * 12 + rbb * 3 + b]
+                                val tbh = ix.bottomSlots[c * 12 + rbb * 3 + b].toInt()
                                 if (tbh < 0) break
                                 if (tbh == ta) continue
                                 val vhx = (ix.holdX[a0i + ta] - ix.holdX[a0i + tbh]).toDouble()

@@ -99,61 +99,96 @@ internal class ScanGeometry(
         }
 }
 
-/** One catalogue problem as hole indices and recogniser roles ([Roles]). */
-internal class ScanClimb(val uuid: String, val holes: ShortArray, val roles: ByteArray, val ascents: Int)
-
 /**
- * Reads a "p{placement}r{role}…" frame into hole indices and recogniser roles. Null when a hold is not on this
- * board, its role is unknown, or the problem has fewer than 3 or more than [MAX_HOLDS] holds: such a problem cannot
- * be the one lit on this board, or is too big to tell apart. Also null for the Kilter API's "h{hole}p{role}" form:
- * its numbers are hole ids, which overlap placement ids, so read as placements they would light other holds.
+ * Reads a "p{placement}r{role}…" frame into [holes] (hole indices) and [roles] (recogniser roles, [Roles]) and
+ * returns the number of holds, or -1 when a hold is not on this board, its role is unknown, or the problem has fewer
+ * than 3 or more than [MAX_HOLDS] holds: such a problem cannot be the one lit on this board, or is too big to tell
+ * apart. Also -1 for the Kilter API's "h{hole}p{role}" form: its numbers are hole ids, which overlap placement ids,
+ * so read as placements they would light other holds.
  */
-internal fun parseScanClimb(uuid: String, frames: String, holeOf: IntArray, ascents: Int): ScanClimb? {
-    val holes = ShortArray(MAX_HOLDS)
-    val roles = ByteArray(MAX_HOLDS)
-    var n = 0
-    fun add(placement: Int, role: Int): Boolean {
-        val h = if (placement in holeOf.indices) holeOf[placement] else -1
-        val r = HoldRole.roleClass(role) - HoldRole.START
-        if (h < 0 || r !in 0..3 || n >= MAX_HOLDS) return false
-        holes[n] = h.toShort(); roles[n] = r.toByte(); n++
-        return true
-    }
-    if (!frames.startsWith('p')) return null
+internal fun parseScanFrames(frames: String, holeOf: IntArray, holes: ShortArray, roles: ByteArray): Int {
+    if (!frames.startsWith('p')) return -1
     // hand-rolled: the regex parser is too slow for a whole catalogue on an older phone
+    var n = 0
     var i = 0
     val len = frames.length
     while (i < len) {
-        if (frames[i] != 'p') return null
+        if (frames[i] != 'p') return -1
         i++
         var pl = 0
         while (i < len && frames[i].isDigit()) { pl = pl * 10 + (frames[i] - '0'); i++ }
-        if (i >= len || frames[i] != 'r') return null
+        if (i >= len || frames[i] != 'r') return -1
         i++
         var ro = 0
         while (i < len && frames[i].isDigit()) { ro = ro * 10 + (frames[i] - '0'); i++ }
-        if (!add(pl, ro)) return null
+        val h = if (pl in holeOf.indices) holeOf[pl] else -1
+        val r = HoldRole.roleClass(ro) - HoldRole.START
+        if (h < 0 || r !in 0..3 || n >= MAX_HOLDS) return -1
+        holes[n] = h.toShort()
+        roles[n] = r.toByte()
+        n++
     }
-    if (n < 3) return null
-    return ScanClimb(uuid, holes.copyOf(n), roles.copyOf(n), ascents)
+    return if (n < 3) -1 else n
 }
 
-/** Packs the problems, most climbed first, into the recogniser's index. */
-internal fun buildScanIndex(geo: ScanGeometry, climbs: List<ScanClimb>): Pair<ClimbIndex, Array<String>> {
-    val sorted = climbs.sortedByDescending { it.ascents }
-    val offsets = IntArray(sorted.size + 1)
-    for ((i, c) in sorted.withIndex()) offsets[i + 1] = offsets[i] + c.holes.size
-    val holes = ShortArray(offsets.last())
-    val roles = ByteArray(offsets.last())
-    for ((i, c) in sorted.withIndex()) {
-        c.holes.copyInto(holes, offsets[i])
-        c.roles.copyInto(roles, offsets[i])
+/**
+ * Collects a board's problems straight into primitive arrays (no object per problem: a Kilter catalogue has over
+ * 200,000), then packs them, most climbed first, into the recogniser's index.
+ */
+internal class ScanIndexBuilder(private val geo: ScanGeometry) {
+    private var offsets = IntArray(1024)
+    private var ascents = IntArray(1024)
+    private var holes = ShortArray(16384)
+    private var roles = ByteArray(16384)
+    private val uuids = ArrayList<String>()
+    private val h = ShortArray(MAX_HOLDS)
+    private val r = ByteArray(MAX_HOLDS)
+
+    val size: Int get() = uuids.size
+
+    /** Adds one problem; false when it cannot be lit on this board ([parseScanFrames]). */
+    fun add(uuid: String, frames: String, ascentCount: Int): Boolean {
+        val m = parseScanFrames(frames, geo.holeOf, h, r)
+        if (m < 0) return false
+        val c = uuids.size
+        if (c + 2 > offsets.size) {
+            offsets = offsets.copyOf(offsets.size * 2)
+            ascents = ascents.copyOf(ascents.size * 2)
+        }
+        val o = offsets[c]
+        if (o + m > holes.size) {
+            holes = holes.copyOf(holes.size * 2)
+            roles = roles.copyOf(roles.size * 2)
+        }
+        h.copyInto(holes, o, 0, m)
+        r.copyInto(roles, o, 0, m)
+        offsets[c + 1] = o + m
+        ascents[c] = ascentCount
+        uuids.add(uuid)
+        return true
     }
-    val index = ClimbIndex(
-        geo.holeX, geo.holeY, offsets, holes, roles, IntArray(sorted.size) { sorted[it].ascents },
-        geo.spacing, geo.minHoleDist, geo.extent, geo.metresPerUnit,
-    )
-    return index to Array(sorted.size) { sorted[it].uuid }
+
+    fun build(): Pair<ClimbIndex, Array<String>> {
+        val n = uuids.size
+        // most climbed first, ties in reading order: sort (descending ascents, index) packed into longs
+        val keys = LongArray(n) { ((Int.MAX_VALUE - ascents[it]).toLong() shl 32) or it.toLong() }
+        keys.sort()
+        val order = IntArray(n) { (keys[it] and 0xffffffffL).toInt() }
+        val off = IntArray(n + 1)
+        for (k in 0 until n) off[k + 1] = off[k] + (offsets[order[k] + 1] - offsets[order[k]])
+        val hs = ShortArray(off[n])
+        val rs = ByteArray(off[n])
+        for (k in 0 until n) {
+            val c = order[k]
+            holes.copyInto(hs, off[k], offsets[c], offsets[c + 1])
+            roles.copyInto(rs, off[k], offsets[c], offsets[c + 1])
+        }
+        val index = ClimbIndex(
+            geo.holeX, geo.holeY, off, hs, rs, IntArray(n) { ascents[order[it]] },
+            geo.spacing, geo.minHoleDist, geo.extent, geo.metresPerUnit,
+        )
+        return index to Array(n) { uuids[order[it]] }
+    }
 }
 
 /**
@@ -268,18 +303,30 @@ class ScanCatalogueLoader @Inject constructor(
         val variant = board.moonBoardVariant
         val geo = if (variant != null) moonBoardGeometry(variant) else kilterGeometry(board)
         geo ?: return null
-        val climbs = database.boardQueries.getClimbsForBoardScan(
-            boardBrand = board.brand,
-            layoutId = board.layoutId.toLong(),
-            angle = if (variant != null) board.angle.toLong() else null,
-        ) { uuid, frames, popularity ->
-            parseScanClimb(uuid, frames, geo.holeOf, popularity.toInt()) ?: SKIPPED
-        }.executeAsList().filter { it !== SKIPPED }
-        val (index, uuids) = buildScanIndex(geo, climbs)
+        val builder = ScanIndexBuilder(geo)
+        var after = 0L
+        while (true) {
+            val page = database.boardQueries.getClimbsForBoardScan(
+                afterRowid = after,
+                boardBrand = board.brand,
+                layoutId = board.layoutId.toLong(),
+                angle = if (variant != null) board.angle.toLong() else null,
+                pageSize = PAGE_SIZE,
+            ) { rowid, uuid, frames, popularity ->
+                builder.add(uuid, frames, popularity.toInt())
+                rowid
+            }.executeAsList()
+            if (page.isEmpty()) break
+            after = page.last()
+            if (page.size < PAGE_SIZE) break
+        }
+        val t1 = System.nanoTime()
+        val (index, uuids) = builder.build()
         val marks = variant?.let { v ->
             context.assets.open(ScanBoard.marksAsset(v)).bufferedReader().use { parseStaticMarks(it.readText()) }
         } ?: emptyList()
-        Log.i(TAG, "catalogue $board: ${index.size} problems in ${(System.nanoTime() - t0) / 1_000_000} ms")
+        Log.i(TAG, "catalogue $board: ${index.size} problems in ${(System.nanoTime() - t0) / 1_000_000} ms " +
+            "(read ${(t1 - t0) / 1_000_000} ms)")
         return ScanCatalogue(
             board, index, uuids,
             palettes = if (variant != null) listOf(Palette.MOONBOARD) else listOf(Palette.KILTER, Palette.CRUXCOACH),
@@ -321,6 +368,7 @@ class ScanCatalogueLoader @Inject constructor(
 
     private companion object {
         const val TAG = "BoardScan"
-        val SKIPPED = ScanClimb("", ShortArray(0), ByteArray(0), 0)
+        /** Rows per page: well inside one 2 MB cursor window. */
+        const val PAGE_SIZE = 4000L
     }
 }

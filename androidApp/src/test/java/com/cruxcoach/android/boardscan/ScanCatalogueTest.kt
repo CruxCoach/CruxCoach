@@ -17,25 +17,32 @@ class ScanCatalogueTest {
         spacing = 4.0, extent = doubleArrayOf(-2.0, 10.0, -2.0, 18.0), metresPerUnit = 0.0254,
     )
 
+    private val h = ShortArray(MAX_HOLDS)
+    private val r = ByteArray(MAX_HOLDS)
+
+    private fun parse(frames: String): Pair<ShortArray, ByteArray>? {
+        val n = parseScanFrames(frames, geo.holeOf, h, r)
+        return if (n < 0) null else h.copyOf(n) to r.copyOf(n)
+    }
+
     @Test
     fun parsesAFrameIntoHolesAndRoles() {
-        val c = assertNotNull(parseScanClimb("u1", "p1090r12p1200r13p1400r14p1100r15", geo.holeOf, 7))
-        assertContentEquals(shortArrayOf(0, 2, 4, 1), c.holes)
-        assertContentEquals(byteArrayOf(Roles.START.toByte(), Roles.HAND.toByte(), Roles.FINISH.toByte(), Roles.FOOT.toByte()), c.roles)
-        assertEquals(7, c.ascents)
+        val (holes, roles) = assertNotNull(parse("p1090r12p1200r13p1400r14p1100r15"))
+        assertContentEquals(shortArrayOf(0, 2, 4, 1), holes)
+        assertContentEquals(byteArrayOf(Roles.START.toByte(), Roles.HAND.toByte(), Roles.FINISH.toByte(), Roles.FOOT.toByte()), roles)
     }
 
     @Test
     fun routeRolesFoldToTheBoulderRoles() {
-        val route = assertNotNull(parseScanClimb("u", "p1090r42p1200r43p1400r44", geo.holeOf, 0))
-        val boulder = assertNotNull(parseScanClimb("u", "p1090r12p1200r13p1400r14", geo.holeOf, 0))
-        assertContentEquals(boulder.holes, route.holes)
-        assertContentEquals(boulder.roles, route.roles)
+        val route = assertNotNull(parse("p1090r42p1200r43p1400r44"))
+        val boulder = assertNotNull(parse("p1090r12p1200r13p1400r14"))
+        assertContentEquals(boulder.first, route.first)
+        assertContentEquals(boulder.second, route.second)
     }
 
     @Test
     fun theApiFormIsLeftOutBecauseItsNumbersAreHoleIds() {
-        assertNull(parseScanClimb("u", "h1090p12h1200p13h1400p14", geo.holeOf, 0))
+        assertNull(parse("h1090p12h1200p13h1400p14"))
     }
 
     @Test
@@ -46,23 +53,35 @@ class ScanCatalogueTest {
 
     @Test
     fun aProblemWithAHoldOffThisBoardOrTooFewHoldsIsLeftOut() {
-        assertNull(parseScanClimb("u", "p1090r12p9999r13p1400r14", geo.holeOf, 0), "hold not on this size")
-        assertNull(parseScanClimb("u", "p1090r12p1400r14", geo.holeOf, 0), "two holds")
-        assertNull(parseScanClimb("u", "p1090r12p1200r99p1400r14", geo.holeOf, 0), "unknown role")
-        assertNull(parseScanClimb("u", "p1090r12p1200x13", geo.holeOf, 0), "malformed")
+        assertNull(parse("p1090r12p9999r13p1400r14"), "hold not on this size")
+        assertNull(parse("p1090r12p1400r14"), "two holds")
+        assertNull(parse("p1090r12p1200r99p1400r14"), "unknown role")
+        assertNull(parse("p1090r12p1200x13"), "malformed")
     }
 
     @Test
     fun theIndexPutsTheMostClimbedFirstAndKeepsUuidsAligned() {
-        val climbs = listOf(
-            assertNotNull(parseScanClimb("rare", "p1090r12p1200r13p1400r14", geo.holeOf, 3)),
-            assertNotNull(parseScanClimb("popular", "p1100r12p1300r13p1400r14", geo.holeOf, 900)),
-        )
-        val (ix, uuids) = buildScanIndex(geo, climbs)
-        assertEquals(2, ix.size)
-        assertContentEquals(arrayOf("popular", "rare"), uuids)
-        assertEquals(900, ix.ascents[0])
+        val b = ScanIndexBuilder(geo)
+        assertTrue(b.add("rare", "p1090r12p1200r13p1400r14", 3))
+        assertTrue(!b.add("off-board", "p1090r12p9999r13p1400r14", 5000))
+        assertTrue(b.add("popular", "p1100r12p1300r13p1400r14p1090r15", 900))
+        assertTrue(b.add("tie", "p1100r12p1200r13p1400r14", 3))
+        val (ix, uuids) = b.build()
+        assertEquals(3, ix.size)
+        assertContentEquals(arrayOf("popular", "rare", "tie"), uuids)
+        assertContentEquals(intArrayOf(900, 3, 3), ix.ascents)
+        assertEquals(4, ix.offsets[1] - ix.offsets[0], "the popular problem keeps its four holds")
         assertTrue(abs(ix.minHoleDist - hypot4()) < 1e-9)
+    }
+
+    @Test
+    fun theBuilderGrowsPastItsFirstArrays() {
+        val b = ScanIndexBuilder(geo)
+        repeat(5000) { assertTrue(b.add("u$it", "p1090r12p1200r13p1400r14p1100r15p1300r15", it)) }
+        val (ix, uuids) = b.build()
+        assertEquals(5000, ix.size)
+        assertEquals("u4999", uuids[0])
+        assertEquals(5 * 5000, ix.offsets[5000])
     }
 
     private fun hypot4() = kotlin.math.hypot(4.0, 4.0)
