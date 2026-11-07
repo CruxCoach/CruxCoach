@@ -2,8 +2,13 @@ package com.cruxcoach.android.ui.yearreview
 
 import android.app.Application
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -11,10 +16,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
@@ -40,10 +47,12 @@ import org.robolectric.annotation.GraphicsMode
 import kotlin.random.Random
 
 /**
- * Design review of the year in review: renders every page, the list view and
- * every share image of a made-up year on three boards into
- * `CRUXCOACH_UI_REVIEW_DIR`, in English and German, at normal and the largest
- * font size. Skipped unless that variable is set.
+ * Design review of the year in review: renders every page with its controls,
+ * the list view, the short "so far", loading and error screens, the share sheet,
+ * every share image and both entries (the December/January card and the place in
+ * the statistics) of a made-up year on three boards into `CRUXCOACH_UI_REVIEW_DIR`,
+ * one folder per language, width and font size, in the dark and light theme where
+ * the theme shows. Skipped unless that variable is set.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, qualifiers = "en-w411dp-h891dp-xhdpi")
@@ -57,7 +66,7 @@ class YearReviewUiReviewTest {
     @Before
     fun onlyOnRequest() = Assume.assumeTrue(dir != null)
 
-    private val review: YearReview = run {
+    private val input: YearReviewComputer.Input = run {
         val random = Random(64)
         var id = 0
         val entries = mutableListOf<AscentWithClimb>()
@@ -85,36 +94,42 @@ class YearReviewUiReviewTest {
         }
         val tagged = listOf(listOf("CRIMP"), listOf("CRIMP", "PINCH"), listOf("SLOPER"), listOf("CRIMP"), listOf("JUG", "CRIMP"), listOf("UNDERCLING"))
             .mapIndexed { i, tags -> TaggedSend(LocalDate(2026, 3, 1).plus(i * 9, DateTimeUnit.DAY).toString(), tags) }
-        YearReviewComputer.compute(
-            YearReviewComputer.Input(entries = entries, workouts = workouts, taggedSends = tagged), 2026, LocalDate(2027, 1, 10), TimeZone.UTC,
-        )
+        YearReviewComputer.Input(entries = entries, workouts = workouts, taggedSends = tagged)
     }
 
-    private var shown: @Composable () -> Unit by mutableStateOf({})
-    private var view: android.view.View? = null
-    private var pages: List<ReviewPage> = emptyList()
-    private var shared: List<ReviewPage> = emptyList()
+    private val january = LocalDate(2027, 1, 10)
+    private val december = LocalDate(2026, 12, 1)
+    private val review: YearReview = YearReviewComputer.compute(input, 2026, january, TimeZone.UTC)
+    private val soFar: YearReview = YearReviewComputer.compute(input, 2026, december, TimeZone.UTC)
+    private val littleInput = YearReviewComputer.Input(entries = input.entries.filter { it.climbedAt.startsWith("2026-03") }.take(9))
+    private val little: YearReview = YearReviewComputer.compute(littleInput, 2026, december, TimeZone.UTC)
+    private val littleFinal: YearReview = YearReviewComputer.compute(littleInput, 2026, january, TimeZone.UTC)
+    private val empty: YearReview = YearReviewComputer.compute(YearReviewComputer.Input(), 2026, december, TimeZone.UTC)
+    private val emptyNewYear: YearReview = YearReviewComputer.compute(YearReviewComputer.Input(), 2027, january, TimeZone.UTC)
 
-    /** One composition per test (the rule allows only one); [shoot] swaps what it shows. */
+    private var shown: @Composable () -> Unit by mutableStateOf({})
+    private var theme: DarkModeSetting by mutableStateOf(DarkModeSetting.DARK)
+    private var view: android.view.View? = null
+    private var folder = ""
+
+    /** One composition per test (the rule allows only one); [shoot] swaps what it shows and the theme. */
     private fun start(fontScale: Float) {
         compose.setContent {
             view = LocalView.current
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
-                CruxCoachTheme(DarkModeSetting.DARK) {
-                    val context = TrainingContext(null, null, null)
-                    pages = reviewPages(review, GradeScale.FRENCH, context)
-                    shared = reviewPages(review, GradeScale.FRENCH, context, SharePrivacy(problemNames = false, exactDates = false))
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(DarkBackground, DarkSurface)))) { shown() }
-                }
+                CruxCoachTheme(theme) { Box(Modifier.fillMaxSize()) { shown() } }
             }
         }
         compose.waitForIdle()
     }
 
-    private fun shoot(name: String, content: @Composable () -> Unit) {
+    /** Renders [content] into `name.png`; a name starting with "_" only composes, to read what the pages say. */
+    private fun shoot(name: String, dark: Boolean = true, content: @Composable () -> Unit) {
+        theme = if (dark) DarkModeSetting.DARK else DarkModeSetting.LIGHT
         shown = content
         compose.waitForIdle()
+        if (name.startsWith("_")) return
         compose.runOnIdle {
             val root = requireNotNull(view)
             val bitmap = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
@@ -125,35 +140,141 @@ class YearReviewUiReviewTest {
     }
 
     private fun save(name: String, bitmap: android.graphics.Bitmap) {
-        java.io.File(dir!!).mkdirs()
-        java.io.File(dir, "$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        val out = java.io.File(dir!!, folder).apply { mkdirs() }
+        java.io.File(out, "$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    private fun pagesAndImages(language: String, fontScale: Float) {
+    /** The review's own dark backdrop, as on the phone. */
+    @Composable
+    private fun Backdrop(content: @Composable () -> Unit) =
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(DarkBackground, DarkSurface)))) { content() }
+
+    /** A plain screen in the app's theme, for what sits on the start screen, in the statistics or in a sheet. */
+    @Composable
+    private fun Screen(content: @Composable () -> Unit) =
+        Surface(Modifier.fillMaxSize()) { Box(Modifier.padding(16.dp)) { content() } }
+
+    private fun everything(language: String, width: Int, fontScale: Float) {
+        folder = "$language-$width-${if (fontScale > 1f) "large" else "normal"}"
         start(fontScale)
-        val suffix = if (fontScale > 1f) "-large" else ""
+        val context = TrainingContext(null, null, null)
+
+        // The pages with their controls, then the list view: dark in both themes.
+        var pages: List<ReviewPage> = emptyList()
+        shoot("_probe") { pages = reviewPages(review, GradeScale.FRENCH, context) }
         pages.forEachIndexed { i, page ->
-            shoot("$language-page-${i + 1}-${page.kind.name.lowercase()}$suffix") { PageContent(page, i, pages.size) }
-        }
-        if (fontScale == 1f) {
-            shared.forEach { page ->
-                save("$language-share-${page.kind.name.lowercase()}", YearShareImage.render(page, null, "CruxCoach", mapOf("kilter" to 0xFFFF6D00.toInt())))
+            shoot("page-${(i + 1).toString().padStart(2, '0')}-${page.kind.name.lowercase()}") {
+                Backdrop { ReviewPager(reviewPages(review, GradeScale.FRENCH, context), i, onIndex = {}, onClose = {}, onShare = {}, onList = {}, boardColors = reviewBoardColors(review)) }
             }
-            shoot("$language-list") { ReviewList(pages, onClose = {}, onShare = {}, onPages = {}) }
+        }
+        shoot("page-so-far-intro") {
+            Backdrop { ReviewPager(reviewPages(soFar, GradeScale.FRENCH, context), 0, onIndex = {}, onClose = {}, onShare = {}, onList = {}, boardColors = reviewBoardColors(soFar)) }
+        }
+        shoot("page-so-far-summary") {
+            val p = reviewPages(soFar, GradeScale.FRENCH, context)
+            Backdrop { ReviewPager(p, p.lastIndex, onIndex = {}, onClose = {}, onShare = {}, onList = {}, boardColors = reviewBoardColors(soFar)) }
+        }
+        shoot("list-top") { Backdrop { ReviewList(reviewPages(review, GradeScale.FRENCH, context), littleTitle(2026, review), onClose = {}, onShare = {}, onPages = {}, boardColors = reviewBoardColors(review)) } }
+        shoot("list-rhythm") { Backdrop { ReviewList(reviewPages(review, GradeScale.FRENCH, context), littleTitle(2026, review), onClose = {}, onShare = {}, onPages = {}, startAt = 5, boardColors = reviewBoardColors(review)) } }
+        if (width == 411 && fontScale == 1f) {
+            // The review stays dark when the app is light.
+            shoot("page-02-volume-app-light", dark = false) {
+                Backdrop { ReviewPager(reviewPages(review, GradeScale.FRENCH, context), 1, onIndex = {}, onClose = {}, onShare = {}, onList = {}, boardColors = reviewBoardColors(review)) }
+            }
+            shoot("list-top-app-light", dark = false) {
+                Backdrop { ReviewList(reviewPages(review, GradeScale.FRENCH, context), littleTitle(2026, review), onClose = {}, onShare = {}, onPages = {}, boardColors = reviewBoardColors(review)) }
+            }
+        }
+
+        // Below the minimum, nothing at all, loading and a failed load.
+        shoot("state-little-so-far") { Backdrop { SoFar(2026, little, onClose = {}) } }
+        shoot("state-little-final") { Backdrop { SoFar(2026, littleFinal, onClose = {}) } }
+        shoot("state-empty") { Backdrop { SoFar(2026, empty, onClose = {}) } }
+        shoot("state-loading") { Backdrop { Loading(onClose = {}) } }
+        shoot("state-failed") { Backdrop { LoadFailed(onRetry = {}, onClose = {}) } }
+
+        // What follows the app's theme: the entries and the share sheet.
+        for (dark in listOf(true, false)) {
+            val t = if (dark) "dark" else "light"
+            shoot("entry-card-$t", dark) {
+                Screen {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        YearReviewCard(2026, soFar = true, onOpen = {}, onHide = {})
+                        YearReviewCard(2026, soFar = false, onOpen = {}, onHide = {})
+                    }
+                }
+            }
+            shoot("entry-stats-$t", dark) {
+                Screen {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        YearReviewStatsContent(
+                            YearReviewEntryViewModel.State(today = january, years = listOf(2026, 2025), selectedYear = 2026, selected = review),
+                            onOpen = {}, onSelect = {}, onTestDate = {},
+                        )
+                        YearReviewStatsContent(
+                            YearReviewEntryViewModel.State(today = january, years = emptyList(), selectedYear = 2027, selected = emptyNewYear),
+                            onOpen = {}, onSelect = {}, onTestDate = {},
+                        )
+                    }
+                }
+            }
+            shoot("share-sheet-$t", dark) {
+                val page = reviewPages(review, GradeScale.FRENCH, context, SharePrivacy(problemNames = false, exactDates = false))[1]
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    ShareSheetContent(
+                        YearShareImage.render(page, null, "CruxCoach", reviewBoardColors(review).mapValues { it.value.toArgb() }), page.title,
+                        nameAvailable = false, showName = false, showProblems = false, showDates = false,
+                        onShowName = {}, onShowProblems = {}, onShowDates = {}, onSend = {},
+                    )
+                }
+            }
+        }
+
+        // The share images have a fixed size, so one set per language is enough.
+        if (width == 411 && fontScale == 1f) {
+            var shared: List<ReviewPage> = emptyList()
+            var open: List<ReviewPage> = emptyList()
+            shoot("_probe") {
+                shared = reviewPages(review, GradeScale.FRENCH, context, SharePrivacy(problemNames = false, exactDates = false))
+                open = reviewPages(review, GradeScale.FRENCH, context, SharePrivacy(name = "Alex Example", problemNames = true, exactDates = true))
+            }
+            val colors = reviewBoardColors(review).mapValues { it.value.toArgb() }
+            shared.forEachIndexed { i, page ->
+                save("image-${(i + 1).toString().padStart(2, '0')}-${page.kind.name.lowercase()}", YearShareImage.render(page, null, "CruxCoach", colors))
+            }
+            open.filter { it.kind == ReviewPageKind.HIGHLIGHTS || it.kind == ReviewPageKind.SUMMARY }.forEach { page ->
+                save("image-open-${page.kind.name.lowercase()}", YearShareImage.render(page, "Alex Example · 2026", "CruxCoach", colors))
+            }
         }
     }
 
     @Test
-    fun english() = pagesAndImages("en", 1f)
+    fun english() = everything("en", 411, 1f)
 
     @Test
-    fun englishLargestFont() = pagesAndImages("en", 2f)
+    fun englishLargestFont() = everything("en", 411, 2f)
+
+    @Test
+    @Config(qualifiers = "en-w320dp-h640dp-xhdpi")
+    fun englishNarrow() = everything("en", 320, 1f)
+
+    @Test
+    @Config(qualifiers = "en-w320dp-h640dp-xhdpi")
+    fun englishNarrowLargestFont() = everything("en", 320, 2f)
 
     @Test
     @Config(qualifiers = "de-w411dp-h891dp-xhdpi")
-    fun german() = pagesAndImages("de", 1f)
+    fun german() = everything("de", 411, 1f)
 
     @Test
     @Config(qualifiers = "de-w411dp-h891dp-xhdpi")
-    fun germanLargestFont() = pagesAndImages("de", 2f)
+    fun germanLargestFont() = everything("de", 411, 2f)
+
+    @Test
+    @Config(qualifiers = "de-w320dp-h640dp-xhdpi")
+    fun germanNarrow() = everything("de", 320, 1f)
+
+    @Test
+    @Config(qualifiers = "de-w320dp-h640dp-xhdpi")
+    fun germanNarrowLargestFont() = everything("de", 320, 2f)
 }
