@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -70,6 +71,7 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.communityclient.ChannelType
 import com.cruxcoach.communityclient.CommunityMessage
 import com.cruxcoach.communityclient.CommunityProfile
+import com.cruxcoach.communityclient.MAX_DISPLAY_NAME_LENGTH
 import com.cruxcoach.communityclient.RoomListItem
 import com.cruxcoach.communityclient.SessionState
 import com.cruxcoach.communityclient.SystemNotice
@@ -123,7 +125,15 @@ fun CommunityHomeScreen(
                 !state.enabled -> IntroPane(state, onTurnOn = { viewModel.setEnabled(true) })
                 !state.joined -> JoinPane(state, viewModel)
                 state.session is SessionState.NotMember -> NotMemberPane(onUseInvite = viewModel::forgetCommunity)
-                else -> RoomListPane(state, onOpenRoom, onJoin = { viewModel.joinRoom(it) }, onTurnOff = { viewModel.setEnabled(false) })
+                state.askName -> NamePane(state.name, onSave = viewModel::saveName, onSkip = viewModel::skipName)
+                else -> RoomListPane(
+                    state,
+                    onOpenRoom,
+                    onJoin = { viewModel.joinRoom(it) },
+                    onTurnOff = { viewModel.setEnabled(false) },
+                    onSaveName = viewModel::saveName,
+                    onClearNameError = viewModel::clearNameError,
+                )
             }
         }
     }
@@ -152,6 +162,7 @@ private fun IntroPane(state: CommunityHomeState, onTurnOn: () -> Unit) {
             Text(stringResource(R.string.community_client_intro_preview), style = MaterialTheme.typography.bodyMedium)
             IdentityRow(state)
         }
+        if (state.usesAmber) AmberCard()
         Button(onClick = onTurnOn, modifier = Modifier.fillMaxWidth().testTag("community_turn_on")) {
             Text(stringResource(R.string.community_client_turn_on))
         }
@@ -178,6 +189,7 @@ private fun EnterInvitePane(step: JoinStep.EnterInvite, identity: CommunityHomeS
         Text(stringResource(R.string.community_client_join_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
         Text(stringResource(R.string.community_client_join_body), style = MaterialTheme.typography.bodyMedium)
         IdentityRow(identity)
+        if (identity.usesAmber) AmberCard()
         OutlinedTextField(
             value = link,
             onValueChange = { link = it },
@@ -238,6 +250,101 @@ private fun RulesPane(step: JoinStep.Rules, onAccept: (Boolean) -> Unit, onCance
     }
 }
 
+/** Right after joining: the name people see, prefilled from the app's own profile. */
+@Composable
+private fun NamePane(name: NameEdit, onSave: (String) -> Unit, onSkip: () -> Unit) {
+    var text by rememberSaveable { mutableStateOf("") }
+    var prefilled by rememberSaveable { mutableStateOf(false) }
+    // The suggestion is read in the background; it must not overwrite what the user typed meanwhile.
+    LaunchedEffect(name.suggested) {
+        if (!prefilled && name.suggested.isNotBlank() && text.isEmpty()) text = name.suggested.take(MAX_DISPLAY_NAME_LENGTH)
+        if (name.suggested.isNotBlank()) prefilled = true
+    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(stringResource(R.string.community_client_name_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+        Text(stringResource(R.string.community_client_name_body), style = MaterialTheme.typography.bodyMedium)
+        NameField(text, onChange = { text = it }, error = name.error, fromProfile = name.suggested.isNotBlank() && text == name.suggested)
+        Button(
+            onClick = { onSave(text) },
+            enabled = text.isNotBlank() && !name.saving,
+            modifier = Modifier.fillMaxWidth().testTag("community_name_save"),
+        ) { Text(stringResource(R.string.community_client_name_save)) }
+        TextButton(onClick = onSkip, enabled = !name.saving, modifier = Modifier.fillMaxWidth().testTag("community_name_skip")) {
+            Text(stringResource(R.string.community_client_name_skip))
+        }
+    }
+}
+
+@Composable
+private fun NameField(text: String, onChange: (String) -> Unit, error: String?, fromProfile: Boolean) {
+    OutlinedTextField(
+        value = text,
+        onValueChange = { if (it.length <= MAX_DISPLAY_NAME_LENGTH) onChange(it) },
+        label = { Text(stringResource(R.string.community_client_name_label)) },
+        singleLine = true,
+        isError = error != null,
+        supportingText = when {
+            error != null -> { { Text(stringResource(R.string.community_client_name_failed, error)) } }
+            fromProfile -> { { Text(stringResource(R.string.community_client_name_from_profile)) } }
+            else -> null
+        },
+        modifier = Modifier.fillMaxWidth().testTag("community_name_field"),
+    )
+}
+
+/** The user's name on the community, with a dialog to change it. */
+@Composable
+private fun NameRow(myName: String?, name: NameEdit, onSave: (String) -> Unit, onClearError: () -> Unit) {
+    var editing by rememberSaveable { mutableStateOf(false) }
+    var openedAt by rememberSaveable { mutableStateOf(0) }
+    var text by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(name.savedCount) { if (editing && name.savedCount != openedAt) editing = false }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            myName?.let { stringResource(R.string.community_client_name_row, it) } ?: stringResource(R.string.community_client_name_none),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(
+            onClick = {
+                text = myName ?: name.suggested.take(MAX_DISPLAY_NAME_LENGTH)
+                openedAt = name.savedCount
+                onClearError()
+                editing = true
+            },
+            modifier = Modifier.testTag("community_name_change"),
+        ) { Text(stringResource(R.string.community_client_name_change)) }
+    }
+    if (editing) {
+        AlertDialog(
+            onDismissRequest = { if (!name.saving) editing = false },
+            title = { Text(stringResource(R.string.community_client_name_title)) },
+            text = { NameField(text, onChange = { text = it }, error = name.error, fromProfile = false) },
+            confirmButton = {
+                TextButton(onClick = { onSave(text) }, enabled = text.isNotBlank() && !name.saving && text.trim() != myName) {
+                    Text(stringResource(R.string.action_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editing = false }, enabled = !name.saving) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+}
+
+/** For Amber users: which signatures to allow permanently, and which not. */
+@Composable
+private fun AmberCard() {
+    InfoCard {
+        Text(stringResource(R.string.community_client_amber_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text(stringResource(R.string.community_client_amber_body), style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
 /** How long the accept button waits at most for the rules text to render. */
 private const val RULES_RENDER_FALLBACK_MS = 3_000L
 
@@ -255,6 +362,8 @@ private fun RoomListPane(
     onOpenRoom: (String, String) -> Unit,
     onJoin: (String) -> Unit,
     onTurnOff: () -> Unit,
+    onSaveName: (String) -> Unit,
+    onClearNameError: () -> Unit,
 ) {
     val rooms = state.rooms
     if (rooms.rooms.isEmpty()) {
@@ -281,7 +390,9 @@ private fun RoomListPane(
                 state.joinRoomError?.let {
                     Text(stringResource(R.string.community_client_join_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
+                NameRow(state.myName, state.name, onSaveName, onClearNameError)
                 IdentityRow(state)
+                if (state.usesAmber) AmberCard()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.community_client_enabled_switch), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = true, onCheckedChange = { if (!it) onTurnOff() })

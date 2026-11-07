@@ -92,4 +92,19 @@
         <item quantity="one">%d Kommentar</item>
         <item quantity="other">%d Kommentare</item>
     </plurals>
+    <!-- Anzeigename beim Beitritt und in der Raumliste -->
+    <string name="community_client_name_title">Dein Name in der Community</string>
+    <string name="community_client_name_body">Die anderen sehen diesen Namen neben deinen Nachrichten. Du kannst ihn später am Ende der Raumliste ändern.</string>
+    <string name="community_client_name_from_profile">Aus deinem CruxCoach-Profil übernommen.</string>
+    <string name="community_client_name_label">Name</string>
+    <string name="community_client_name_save">Namen speichern</string>
+    <string name="community_client_name_skip">Jetzt nicht</string>
+    <string name="community_client_name_row">Dein Name hier: %1$s</string>
+    <string name="community_client_name_none">Du hast hier noch keinen Namen.</string>
+    <string name="community_client_name_change">Ändern</string>
+    <string name="community_client_name_failed">Nicht gespeichert: %1$s</string>
+
+    <!-- Amber: welche Unterschriften die Community braucht -->
+    <string name="community_client_amber_title">Unterschreiben mit Amber</string>
+    <string name="community_client_amber_body">Die Community braucht drei Arten von Unterschriften immer wieder: Anmelden (Kind 22242), Nachrichten über HTTP laden (Kind 27235) und Bilder laden (Kind 24242). Erlaube diese drei in Amber dauerhaft, dann fragt Amber nicht jedes Mal. Erlaube nicht „alles unterschreiben“: Vor jeder Nachricht, die du schreibst, soll Amber weiter fragen.</string>
 </resources>

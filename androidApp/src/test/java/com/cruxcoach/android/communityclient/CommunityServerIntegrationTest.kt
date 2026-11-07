@@ -100,6 +100,11 @@ class CommunityServerIntegrationTest {
             assertAccepted(joiner.joinRoom(forumId))
             withTimeout(20_000) { joiner.rooms.first { s -> s.rooms.count { it.isMember && it.channel.id in setOf(streamId, forumId) } == 2 } }
 
+            // The joiner sets the name people see; the owner's client shows it.
+            assertAccepted(joiner.setDisplayName("CI joiner"))
+            owner.requestProfiles(listOf(joinerSigner.pubkey))
+            withTimeout(30_000) { owner.profiles.first { it[joinerSigner.pubkey]?.label == "CI joiner" } }
+
             // Live: the owner's message reaches the joiner's open timeline.
             val timeline = joiner.streamTimeline(streamId)
             val firstState = withTimeout(30_000) { timeline.first { !it.loading } }
