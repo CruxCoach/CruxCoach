@@ -13,8 +13,12 @@ package com.cruxcoach.domain.holdtypes
  * the logbook and the catalogue and passes [TypedClimb]s in.
  */
 object HoldTypeStats {
-    /** Medium confidence and up, as the reports and the review screens count it. */
-    const val MIN_CONFIDENCE = 0.4
+    /**
+     * Every typed hold counts until the blind rounds calibrate the confidences. The first-pass values are lower for
+     * the types that are harder to see in a picture: every Kilter sloper and all but two Kilter pinches are below
+     * medium (0.4), so a threshold there would leave only edges and jugs in the stats.
+     */
+    const val MIN_CONFIDENCE = 0.0
 
     /** A type dominates a problem when at least this share of its typed hand holds has it. */
     const val DOMINANCE = 0.4

@@ -82,4 +82,24 @@
     <string name="hold_reason_low_res">Bild mit wenig Auflösung</string>
     <string name="hold_reason_touching">berührt im Bild einen anderen Griff</string>
     <string name="hold_reason_placeholder">das Bild der App zeigt einen Platzhalter</string>
+
+    <!-- Grifftypen in den Logbuch-Statistiken -->
+    <string name="board_stats_hold_types_title">Grifftypen</string>
+    <string name="board_stats_hold_types_title_board">Grifftypen · %1$s</string>
+    <string name="board_stats_hold_types_help">Welche Griffe\nDer Anteil jedes Typs an den Handgriffen der Boulder, die du im gewählten Zeitraum geloggt hast: Start-, Zwischen- und Topgriffe, keine Tritte. Jeder Boulder zählt gleich viel.\n\nBoard\nDie Marke zeigt denselben Anteil bei den Bouldern des Boards in deinen Graden. So zeigt der Vergleich, welche Griffe du wählst, nicht wie schwer du kletterst.\n\nStark und schwach\nWie viele der Boulder, bei denen ein Typ mindestens 40 Prozent der Handgriffe ausmacht, du geschafft hast, gegen alle deine Boulder an diesem Board. Dafür braucht es mindestens fünf solche Boulder und 15 Prozentpunkte Unterschied.\n\nWoher die Typen kommen\nSie sind aus den Board-Bildern berechnet, nicht von dir markiert, und können falsch sein. Die Karte zeigt immer ein Board: Boards werden verglichen, sobald die Einstufungen jedes Boards geprüft sind.\n\nTippe auf einen Typ, um seine Zahlen zu sehen.</string>
+    <string name="board_stats_hold_types_you">Du</string>
+    <string name="board_stats_hold_types_board">Board in deinen Graden</string>
+    <string name="board_stats_hold_types_strong">stark</string>
+    <string name="board_stats_hold_types_weak">schwach</string>
+    <string name="board_stats_hold_types_board_share">Board: %1$d %%</string>
+    <plurals name="board_stats_hold_types_send_rate">
+        <item quantity="one">%1$d %% von %2$d Boulder geschafft, bei dem er überwiegt, %3$d %% von allen</item>
+        <item quantity="other">%1$d %% von %2$d Bouldern geschafft, bei denen er überwiegt, %3$d %% von allen</item>
+    </plurals>
+    <string name="board_stats_hold_types_hardest">Schwerste Begehung dort: %1$s</string>
+    <string name="board_stats_hold_types_too_few">Zu wenige Boulder für stark oder schwach</string>
+    <plurals name="board_stats_hold_types_basis">
+        <item quantity="one">%1$d Boulder · %2$d von %3$d Handgriffen bestimmt</item>
+        <item quantity="other">%1$d Boulder · %2$d von %3$d Handgriffen bestimmt</item>
+    </plurals>
 </resources>
