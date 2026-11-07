@@ -95,6 +95,7 @@ import com.cruxcoach.android.ui.board.BoardClimbHistoryScreen
 import com.cruxcoach.android.ui.board.BoardListDetailScreen
 import com.cruxcoach.android.ui.board.BoardListsScreen
 import com.cruxcoach.android.ui.board.BoardLogbookScreen
+import com.cruxcoach.android.ui.boardscan.BoardScanScreen
 import com.cruxcoach.android.ui.map.MapScreen
 import com.cruxcoach.android.ui.board.sync.BoardSyncScreen
 import com.cruxcoach.android.ui.common.LocalBleShareManager
@@ -148,6 +149,7 @@ object Routes {
         return if (qs.isEmpty()) "climb_creator" else "climb_creator?${qs.joinToString("&")}"
     }
     const val BOARD_LOGBOOK = "board_logbook"
+    const val BOARD_SCAN = "board_scan"
     const val BOARD_SYNC = "board_sync"
     const val BOARD_LISTS = "board_lists"
     const val BOARD_LOGBOOK_HISTORY = "board_logbook_history"
@@ -233,7 +235,7 @@ private val bottomBarRoutes = emptySet<String>()
 private val wakeLockRoutes = setOf(
     Routes.BOARD_BROWSER, Routes.BOARD_CLIMB_DETAIL, Routes.BOARD_LOGBOOK,
     Routes.BOARD_LISTS, Routes.BOARD_LIST_DETAIL, Routes.BOARD_SYNC,
-    Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER, Routes.BOARD_GAMES,
+    Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER, Routes.BOARD_GAMES, Routes.BOARD_SCAN,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -616,8 +618,23 @@ fun CruxCoachNavHost(
                         onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                         onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
                         onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
+                        onNavigateToScan = { navController.navigate(Routes.BOARD_SCAN) { launchSingleTop = true } },
                         onNavigateToSetter = { pubkey ->
                             navController.navigate(Routes.setterDetail(pubkey))
+                        },
+                    )
+                }
+            }
+
+            composable(Routes.BOARD_SCAN) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "BoardScan",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    BoardScanScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onOpenClimb = { climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                         },
                     )
                 }

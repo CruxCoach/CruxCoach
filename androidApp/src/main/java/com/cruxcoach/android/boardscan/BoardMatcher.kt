@@ -103,10 +103,12 @@ class BoardMatcher(
      */
     fun recogniseWithMirror(
         blobs: List<Blob>, frameW: Int, frameH: Int, f: Double, upCam: DoubleArray, overhangDeg: Double,
-        palettes: List<Palette>,
+        palettes: List<Palette>, onProgress: ((MatchResult) -> Unit)? = null,
     ): MatchResult {
-        val a = recognise(blobs, frameW, frameH, f, upCam, overhangDeg, palettes)
+        val a = recognise(blobs, frameW, frameH, f, upCam, overhangDeg, palettes, onProgress)
         if (a.sure) return a
+        onProgress?.invoke(a)
+        checkInterrupted()
         val mb = blobs.map { Blob(frameW - 1 - it.x, it.y, it.hue, it.chroma, it.area, it.peak) }
         val b = recognise(mb, frameW, frameH, f, doubleArrayOf(-upCam[0], upCam[1], upCam[2]), overhangDeg, palettes)
         val flipX = Hom(doubleArrayOf(-1.0, 0.0, frameW - 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0))
@@ -122,19 +124,21 @@ class BoardMatcher(
 
     fun recognise(
         blobs: List<Blob>, frameW: Int, frameH: Int, f: Double, upCam: DoubleArray, overhangDeg: Double,
-        palettes: List<Palette>,
+        palettes: List<Palette>, onProgress: ((MatchResult) -> Unit)? = null,
     ): MatchResult = recognise(blobs, frameW, frameH, f,
         Rectifier.rects(f, frameW / 2.0, frameH / 2.0, upCam, overhangDeg, p.headings), palettes,
-        Rectifier.rects(f, frameW / 2.0, frameH / 2.0, upCam, overhangDeg, p.fineHeadings))
+        Rectifier.rects(f, frameW / 2.0, frameH / 2.0, upCam, overhangDeg, p.fineHeadings), onProgress)
 
     /**
      * [rects]: image -> rectified homographies to try (from sensors, or a sweep when there are none).
      * [fineRects]: a denser set for the final fit; the pose is one of them followed by an affine map, which stays
      * well constrained with few or clustered holds where a free homography would not.
+     * [onProgress] gets the ranking after each search tier that was not sure, while the next one runs. An interrupt
+     * of the calling thread stops the search between tiers with an [InterruptedException].
      */
     fun recognise(
         blobs: List<Blob>, frameW: Int, frameH: Int, f: Double, rects: List<Hom>, palettes: List<Palette>,
-        fineRects: List<Hom> = rects,
+        fineRects: List<Hom> = rects, onProgress: ((MatchResult) -> Unit)? = null,
     ): MatchResult {
         val flip = Hom.diag(1.0, -1.0, 1.0)
         val fine = fineRects.map { r -> val fwd = flip * r; RectPair(fwd, fwd.inverse()) }
@@ -181,6 +185,10 @@ class BoardMatcher(
             // on a board that can be read directly, a search that could not pin the board down is never sure
             if (grid == null && isSure(ranked)) return MatchResult(ranked, true, coarseMs, verifyMs, tiers, usePal[0].first.name)
             from = to
+            if (from < ix.size) {
+                onProgress?.invoke(MatchResult(ranked, false, coarseMs, verifyMs, tiers, usePal[0].first.name))
+                checkInterrupted()
+            }
         }
         return MatchResult(ranked, false, coarseMs, verifyMs, tiers, usePal[0].first.name)
     }
@@ -189,6 +197,10 @@ class BoardMatcher(
      * With the board pinned down, the lit holes are read directly: sure when they are exactly one problem's holds
      * (every lit hole explained, no visible hold of it dark) and no other problem fits as well.
      */
+    private fun checkInterrupted() {
+        if (Thread.currentThread().isInterrupted) throw InterruptedException()
+    }
+
     fun isSureGrid(r: List<Candidate>): Boolean {
         if (r.isEmpty()) return false
         val b = r[0]
@@ -264,125 +276,141 @@ class BoardMatcher(
         val minAnchor2 = (1.5 * sp) * (1.5 * sp)
         val smin2 = sr[0] * sr[0]
         val smax2 = sr[1] * sr[1]
-        fun run(c0: Int, c1: Int) = (c0 until c1).forEach { c ->
-            val a0i = ix.offsets[c]
-            val m = ix.offsets[c + 1] - a0i
-            var best = 0
-            val mf = ix.nonFoot[c]
-            val need = max(3, (mf + 1) / 2)
-            for (i in tb) {
-                val ri = rb[i]
-                for (j in bb) {
-                    if (i == j) continue
-                    val rj = rb[j]
-                    val vbx = rx[i] - rx[j]
-                    val vby = ry[i] - ry[j]
-                    val lb2 = vbx * vbx + vby * vby
-                    for (ra in rolesOfClass[ri]) for (a in 0 until 2) {
-                        val ta = ix.topSlots[c * 8 + ra * 2 + a]
-                        if (ta < 0) break
-                        for (rbb in rolesOfClass[rj]) for (b in 0 until 3) {
-                            val tbh = ix.bottomSlots[c * 12 + rbb * 3 + b]
-                            if (tbh < 0) break
-                            if (tbh == ta) continue
-                            val vhx = (ix.holdX[a0i + ta] - ix.holdX[a0i + tbh]).toDouble()
-                            val vhy = (ix.holdY[a0i + ta] - ix.holdY[a0i + tbh]).toDouble()
-                            val lh2 = vhx * vhx + vhy * vhy
-                            if (lh2 < minAnchor2) continue
-                            val s2 = lb2 / lh2
-                            if (s2 < smin2 || s2 > smax2) continue
-                            // similarity mapping vh onto vb: sc = s cos d, ss = s sin d
-                            val sc = (vhx * vbx + vhy * vby) / lh2
-                            val ss = (vhx * vby - vhy * vbx) / lh2
-                            if (sc <= 0 || abs(ss) > tanRot * sc) continue
-                            val s = sqrt(s2)
-                            val bx = ix.holdX[a0i + tbh].toDouble()
-                            val by = ix.holdY[a0i + tbh].toDouble()
-                            val tx = rx[j] - (sc * bx - ss * by)
-                            val ty = ry[j] - (ss * bx + sc * by)
-                            // loose role-aware assignment -> affine normal equations
-                            val r1 = (p.loose * sp * s).let { it * it }
-                            var sxx = 0.0; var sxy = 0.0; var syy = 0.0; var sx = 0.0; var sy = 0.0
-                            var sxu = 0.0; var syu = 0.0; var su = 0.0; var sxv = 0.0; var syv = 0.0; var sv = 0.0
-                            var npair = 0
-                            var h = 0
-                            while (h < m) {
-                                val hx = ix.holdX[a0i + h].toDouble()
-                                val hy = ix.holdY[a0i + h].toDouble()
-                                val px = sc * hx - ss * hy + tx
-                                val py = ss * hx + sc * hy + ty
-                                var bd = r1
-                                var bq = -1
-                                for (q in byRole[ix.roles[a0i + h].toInt()]) {
-                                    val dx = px - rx[q]
-                                    val dy = py - ry[q]
-                                    val d2 = dx * dx + dy * dy
-                                    if (d2 < bd) { bd = d2; bq = q }
+        fun run(c0: Int, c1: Int) {
+            for (c in c0 until c1) {
+                // a stopped scan: leave the rest of this chunk, the caller throws
+                if ((c and 511) == 0 && Thread.currentThread().isInterrupted) return
+                val a0i = ix.offsets[c]
+                val m = ix.offsets[c + 1] - a0i
+                var best = 0
+                val mf = ix.nonFoot[c]
+                val need = max(3, (mf + 1) / 2)
+                for (i in tb) {
+                    val ri = rb[i]
+                    for (j in bb) {
+                        if (i == j) continue
+                        val rj = rb[j]
+                        val vbx = rx[i] - rx[j]
+                        val vby = ry[i] - ry[j]
+                        val lb2 = vbx * vbx + vby * vby
+                        for (ra in rolesOfClass[ri]) for (a in 0 until 2) {
+                            val ta = ix.topSlots[c * 8 + ra * 2 + a]
+                            if (ta < 0) break
+                            for (rbb in rolesOfClass[rj]) for (b in 0 until 3) {
+                                val tbh = ix.bottomSlots[c * 12 + rbb * 3 + b]
+                                if (tbh < 0) break
+                                if (tbh == ta) continue
+                                val vhx = (ix.holdX[a0i + ta] - ix.holdX[a0i + tbh]).toDouble()
+                                val vhy = (ix.holdY[a0i + ta] - ix.holdY[a0i + tbh]).toDouble()
+                                val lh2 = vhx * vhx + vhy * vhy
+                                if (lh2 < minAnchor2) continue
+                                val s2 = lb2 / lh2
+                                if (s2 < smin2 || s2 > smax2) continue
+                                // similarity mapping vh onto vb: sc = s cos d, ss = s sin d
+                                val sc = (vhx * vbx + vhy * vby) / lh2
+                                val ss = (vhx * vby - vhy * vbx) / lh2
+                                if (sc <= 0 || abs(ss) > tanRot * sc) continue
+                                val s = sqrt(s2)
+                                val bx = ix.holdX[a0i + tbh].toDouble()
+                                val by = ix.holdY[a0i + tbh].toDouble()
+                                val tx = rx[j] - (sc * bx - ss * by)
+                                val ty = ry[j] - (ss * bx + sc * by)
+                                // loose role-aware assignment -> affine normal equations
+                                val r1 = (p.loose * sp * s).let { it * it }
+                                var sxx = 0.0; var sxy = 0.0; var syy = 0.0; var sx = 0.0; var sy = 0.0
+                                var sxu = 0.0; var syu = 0.0; var su = 0.0; var sxv = 0.0; var syv = 0.0; var sv = 0.0
+                                var npair = 0
+                                var h = 0
+                                while (h < m) {
+                                    val hx = ix.holdX[a0i + h].toDouble()
+                                    val hy = ix.holdY[a0i + h].toDouble()
+                                    val px = sc * hx - ss * hy + tx
+                                    val py = ss * hx + sc * hy + ty
+                                    var bd = r1
+                                    var bq = -1
+                                    for (q in byRole[ix.roles[a0i + h].toInt()]) {
+                                        val dx = px - rx[q]
+                                        val dy = py - ry[q]
+                                        val d2 = dx * dx + dy * dy
+                                        if (d2 < bd) { bd = d2; bq = q }
+                                    }
+                                    if (bq >= 0) {
+                                        npair++
+                                        val u = rx[bq]; val v = ry[bq]
+                                        sxx += hx * hx; sxy += hx * hy; syy += hy * hy; sx += hx; sy += hy
+                                        sxu += hx * u; syu += hy * u; su += u; sxv += hx * v; syv += hy * v; sv += v
+                                    } else if (h < mf && (h + 1 - npair) > mf - need) break
+                                    h++
                                 }
-                                if (bq >= 0) {
-                                    npair++
-                                    val u = rx[bq]; val v = ry[bq]
-                                    sxx += hx * hx; sxy += hx * hy; syy += hy * hy; sx += hx; sy += hy
-                                    sxu += hx * u; syu += hy * u; su += u; sxv += hx * v; syv += hy * v; sv += v
-                                } else if (h < mf && (h + 1 - npair) > mf - need) break
-                                h++
-                            }
-                            if (h < m || npair < need || npair <= best) continue
-                            val nn = npair.toDouble()
-                            val det = sxx * (syy * nn - sy * sy) - sxy * (sxy * nn - sy * sx) + sx * (sxy * sy - syy * sx)
-                            if (abs(det) < 1e-9 * (sxx * syy * nn + 1.0)) continue
-                            val i00 = (syy * nn - sy * sy) / det
-                            val i01 = -(sxy * nn - sx * sy) / det
-                            val i02 = (sxy * sy - sx * syy) / det
-                            val i11 = (sxx * nn - sx * sx) / det
-                            val i12 = -(sxx * sy - sx * sxy) / det
-                            val i22 = (sxx * syy - sxy * sxy) / det
-                            val a0 = i00 * sxu + i01 * syu + i02 * su
-                            val a1 = i01 * sxu + i11 * syu + i12 * su
-                            val a2 = i02 * sxu + i12 * syu + i22 * su
-                            val b0 = i00 * sxv + i01 * syv + i02 * sv
-                            val b1 = i01 * sxv + i11 * syv + i12 * sv
-                            val b2 = i02 * sxv + i12 * syv + i22 * sv
-                            val sa = sqrt(abs(a0 * b1 - a1 * b0))
-                            if (sa < sr[0] * 0.5 || sa > sr[1] * 2.0) continue
-                            val r2 = (p.tight * sp * sa).let { it * it }
-                            var cnt = 0
-                            var miss = 0
-                            for (h2 in 0 until m) {
-                                val hx = ix.holdX[a0i + h2].toDouble()
-                                val hy = ix.holdY[a0i + h2].toDouble()
-                                val px = a0 * hx + a1 * hy + a2
-                                val py = b0 * hx + b1 * hy + b2
-                                var hit = false
-                                for (q in byRole[ix.roles[a0i + h2].toInt()]) {
-                                    val dx = px - rx[q]
-                                    val dy = py - ry[q]
-                                    if (dx * dx + dy * dy < r2) { hit = true; break }
+                                if (h < m || npair < need || npair <= best) continue
+                                val nn = npair.toDouble()
+                                val det = sxx * (syy * nn - sy * sy) - sxy * (sxy * nn - sy * sx) + sx * (sxy * sy - syy * sx)
+                                if (abs(det) < 1e-9 * (sxx * syy * nn + 1.0)) continue
+                                val i00 = (syy * nn - sy * sy) / det
+                                val i01 = -(sxy * nn - sx * sy) / det
+                                val i02 = (sxy * sy - sx * syy) / det
+                                val i11 = (sxx * nn - sx * sx) / det
+                                val i12 = -(sxx * sy - sx * sxy) / det
+                                val i22 = (sxx * syy - sxy * sxy) / det
+                                val a0 = i00 * sxu + i01 * syu + i02 * su
+                                val a1 = i01 * sxu + i11 * syu + i12 * su
+                                val a2 = i02 * sxu + i12 * syu + i22 * su
+                                val b0 = i00 * sxv + i01 * syv + i02 * sv
+                                val b1 = i01 * sxv + i11 * syv + i12 * sv
+                                val b2 = i02 * sxv + i12 * syv + i22 * sv
+                                val sa = sqrt(abs(a0 * b1 - a1 * b0))
+                                if (sa < sr[0] * 0.5 || sa > sr[1] * 2.0) continue
+                                val r2 = (p.tight * sp * sa).let { it * it }
+                                var cnt = 0
+                                var miss = 0
+                                for (h2 in 0 until m) {
+                                    val hx = ix.holdX[a0i + h2].toDouble()
+                                    val hy = ix.holdY[a0i + h2].toDouble()
+                                    val px = a0 * hx + a1 * hy + a2
+                                    val py = b0 * hx + b1 * hy + b2
+                                    var hit = false
+                                    for (q in byRole[ix.roles[a0i + h2].toInt()]) {
+                                        val dx = px - rx[q]
+                                        val dy = py - ry[q]
+                                        if (dx * dx + dy * dy < r2) { hit = true; break }
+                                    }
+                                    if (hit) cnt++ else {
+                                        miss++
+                                        if (m - miss <= best) break
+                                    }
                                 }
-                                if (hit) cnt++ else {
-                                    miss++
-                                    if (m - miss <= best) break
+                                if (cnt > best) {
+                                    best = cnt
+                                    val o = (c - from) * 6
+                                    trans[o] = a0; trans[o + 1] = a1; trans[o + 2] = a2
+                                    trans[o + 3] = b0; trans[o + 4] = b1; trans[o + 5] = b2
                                 }
-                            }
-                            if (cnt > best) {
-                                best = cnt
-                                val o = (c - from) * 6
-                                trans[o] = a0; trans[o + 1] = a1; trans[o + 2] = a2
-                                trans[o + 3] = b0; trans[o + 4] = b1; trans[o + 5] = b2
                             }
                         }
                     }
                 }
+                count[c - from] = best
             }
-            count[c - from] = best
         }
         val nThreads = p.threads
+        checkInterrupted()
         if (nThreads <= 1 || to - from < 4096) run(from, to)
         else {
             val chunk = (to - from + nThreads * 4 - 1) / (nThreads * 4)
-            val futures = (from until to step chunk).map { c0 -> pool0.submit { run(c0, min(to, c0 + chunk)) } }
-            futures.forEach { it.get() }
+            val futures = try {
+                (from until to step chunk).map { c0 -> pool0.submit { run(c0, min(to, c0 + chunk)) } }
+            } catch (e: java.util.concurrent.RejectedExecutionException) {
+                // the matcher was closed while this search ran
+                throw InterruptedException("matcher closed").apply { initCause(e) }
+            }
+            try {
+                futures.forEach { it.get() }
+            } catch (e: InterruptedException) {
+                futures.forEach { it.cancel(true) }
+                throw e
+            }
         }
+        checkInterrupted()
         // keep the best per rectification, merge into the pool. Rank by matched holds minus a share of the
         // unmatched ones, so big climbs that half-match do not crowd out a small climb that matches fully.
         fun cs(k: Int): Double {
