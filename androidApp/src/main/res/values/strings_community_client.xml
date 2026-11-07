@@ -92,4 +92,19 @@
         <item quantity="one">%d comment</item>
         <item quantity="other">%d comments</item>
     </plurals>
+    <!-- Display name at joining and in the room list -->
+    <string name="community_client_name_title">Your name in the community</string>
+    <string name="community_client_name_body">People in the community see this name next to your messages. You can change it later at the end of the room list.</string>
+    <string name="community_client_name_from_profile">Taken from your CruxCoach profile.</string>
+    <string name="community_client_name_label">Name</string>
+    <string name="community_client_name_save">Save name</string>
+    <string name="community_client_name_skip">Not now</string>
+    <string name="community_client_name_row">Your name here: %1$s</string>
+    <string name="community_client_name_none">You have no name here yet.</string>
+    <string name="community_client_name_change">Change</string>
+    <string name="community_client_name_failed">Not saved: %1$s</string>
+
+    <!-- Amber: which signatures the community needs -->
+    <string name="community_client_amber_title">Signing with Amber</string>
+    <string name="community_client_amber_body">The community needs three kinds of signatures that come up again and again: signing in (kind 22242), loading messages over HTTP (kind 27235) and loading images (kind 24242). Allow these three permanently in Amber, so it does not ask every time. Do not allow signing everything: Amber should still ask before each message you write.</string>
 </resources>

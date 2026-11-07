@@ -20,6 +20,7 @@ import com.cruxcoach.communityclient.StreamTimeline
 import com.cruxcoach.communityclient.ThreadRef
 import com.cruxcoach.communityclient.ThreadView
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,6 +62,20 @@ data class CommunityHomeState(
     val usesAmber: Boolean = false,
     /** Why the last room join failed, until the next try. */
     val joinRoomError: String? = null,
+    /** Just joined: ask for the name people see. */
+    val askName: Boolean = false,
+    /** The user's display name on the community, if set. */
+    val myName: String? = null,
+    val name: NameEdit = NameEdit(),
+)
+
+/** Setting the display name: the suggestion from the app's profile, and the save in progress. */
+data class NameEdit(
+    val suggested: String = "",
+    val saving: Boolean = false,
+    val error: String? = null,
+    /** Names saved from this screen; a name dialog closes when this goes up. */
+    val savedCount: Int = 0,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -70,15 +85,32 @@ class CommunityHomeViewModel @Inject constructor(
 ) : ViewModel() {
     private val join = MutableStateFlow<JoinStep>(JoinStep.EnterInvite())
     private val joinRoomError = MutableStateFlow<String?>(null)
+    private val nameEdit = MutableStateFlow(NameEdit())
+
+    init {
+        // The local profile lives in the encrypted database: read it off the main thread.
+        viewModelScope.launch(Dispatchers.IO) {
+            val suggested = holder.profileName()
+            nameEdit.value = nameEdit.value.copy(suggested = suggested)
+        }
+    }
 
     val state: StateFlow<CommunityHomeState> = holder.setup.flatMapLatest { setup ->
         val client = holder.client()
-        val base = CommunityHomeState(enabled = setup.enabled, joined = client != null, pubkey = holder.pubkey, npub = holder.npub, usesAmber = holder.usesAmber)
+        val base = CommunityHomeState(
+            enabled = setup.enabled,
+            joined = client != null,
+            pubkey = holder.pubkey,
+            npub = holder.npub,
+            usesAmber = holder.usesAmber,
+            askName = setup.askName,
+        )
         if (client == null) {
-            join.map { base.copy(join = it) }
+            combine(join, nameEdit) { step, name -> base.copy(join = step, name = name) }
         } else {
-            combine(client.session.state, client.rooms, joinRoomError) { session, rooms, joinError ->
-                base.copy(session = session, rooms = rooms, joinRoomError = joinError)
+            client.requestProfiles(listOf(client.me))
+            combine(client.session.state, client.rooms, joinRoomError, client.profiles, nameEdit) { session, rooms, joinError, profiles, name ->
+                base.copy(session = session, rooms = rooms, joinRoomError = joinError, myName = profiles[client.me]?.label, name = name)
             }
         }
     }.stateIn(
@@ -133,7 +165,7 @@ class CommunityHomeViewModel @Inject constructor(
             )
             if (error == null) {
                 join.value = JoinStep.EnterInvite()
-                holder.markJoined(step.invite.endpoint)
+                holder.markJoined(step.invite.endpoint, askName = true)
             } else {
                 join.value = step.copy(error = error)
             }
@@ -153,6 +185,24 @@ class CommunityHomeViewModel @Inject constructor(
     fun refreshRooms() {
         val client = holder.client() ?: return
         viewModelScope.launch { client.refreshRooms() }
+    }
+
+    /** Publishes [name] as the user's display name on the community. */
+    fun saveName(name: String) {
+        val client = holder.client() ?: return
+        if (nameEdit.value.saving) return
+        nameEdit.value = nameEdit.value.copy(saving = true, error = null)
+        viewModelScope.launch {
+            val error = publishError { client.setDisplayName(name) }
+            nameEdit.value = nameEdit.value.let { it.copy(saving = false, error = error, savedCount = it.savedCount + if (error == null) 1 else 0) }
+            if (error == null) holder.nameAsked()
+        }
+    }
+
+    fun skipName() = holder.nameAsked()
+
+    fun clearNameError() {
+        nameEdit.value = nameEdit.value.copy(error = null)
     }
 
     fun joinRoom(channelId: String) {

@@ -8,6 +8,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.communityclient.CommunityApi
 import com.cruxcoach.communityclient.CommunityClient
 import com.cruxcoach.communityclient.CommunityEndpoint
@@ -38,6 +39,8 @@ data class CommunitySetup(
     val enabled: Boolean,
     /** The community this key joined, if any. */
     val joined: CommunityEndpoint?,
+    /** Just joined with an invite: ask for the name people see, once. */
+    val askName: Boolean = false,
 )
 
 /**
@@ -49,6 +52,7 @@ data class CommunitySetup(
 class CommunityClientHolder @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val nostrSigner: NostrSigner,
+    private val profileManager: NostrProfileManager,
     @param:Named("nostr") private val okHttpClient: OkHttpClient,
 ) {
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -110,19 +114,30 @@ class CommunityClientHolder @Inject constructor(
         _setup.value = readSetup()
     }
 
-    /** Remembers that this key is a member of [endpoint]. */
-    fun markJoined(endpoint: CommunityEndpoint) {
-        prefs.edit()
+    /** Remembers that this key is a member of [endpoint]; [askName] after a fresh invite. */
+    fun markJoined(endpoint: CommunityEndpoint, askName: Boolean = false) {
+        val edit = prefs.edit()
             .putString(KEY_HOST, endpoint.host)
             .putBoolean(KEY_SECURE, endpoint.secure)
             .putString(KEY_JOINED_PUBKEY, signer.pubkey)
-            .apply()
+        if (askName) edit.putString(KEY_ASK_NAME_PUBKEY, signer.pubkey) else edit.remove(KEY_ASK_NAME_PUBKEY)
+        edit.apply()
         _setup.value = readSetup()
     }
 
+    /** The name step is done (saved or skipped). */
+    fun nameAsked() {
+        prefs.edit().remove(KEY_ASK_NAME_PUBKEY).apply()
+        _setup.value = readSetup()
+    }
+
+    /** The display name of the app's own Nostr profile, from the local database only. */
+    fun profileName(): String =
+        runCatching { profileManager.getProfileFromCache(signer.pubkey)?.displayName }.getOrNull()?.trim().orEmpty()
+
     /** Forgets the joined community on this device (membership on the server stays). */
     fun forgetCommunity() {
-        prefs.edit().remove(KEY_HOST).remove(KEY_SECURE).remove(KEY_JOINED_PUBKEY).apply()
+        prefs.edit().remove(KEY_HOST).remove(KEY_SECURE).remove(KEY_JOINED_PUBKEY).remove(KEY_ASK_NAME_PUBKEY).apply()
         closeClient()
         _setup.value = readSetup()
     }
@@ -186,7 +201,11 @@ class CommunityClientHolder @Inject constructor(
         } else {
             null
         }
-        return CommunitySetup(enabled = prefs.getBoolean(KEY_ENABLED, false), joined = joined)
+        return CommunitySetup(
+            enabled = prefs.getBoolean(KEY_ENABLED, false),
+            joined = joined,
+            askName = joined != null && prefs.getString(KEY_ASK_NAME_PUBKEY, null) == joinedBy,
+        )
     }
 
     companion object {
@@ -204,5 +223,6 @@ class CommunityClientHolder @Inject constructor(
         private const val KEY_HOST = "host"
         private const val KEY_SECURE = "secure"
         private const val KEY_JOINED_PUBKEY = "joined_pubkey"
+        private const val KEY_ASK_NAME_PUBKEY = "ask_name_pubkey"
     }
 }
