@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Hold types in the logbook statistics: which kinds of hand holds (jug, edge,
+  sloper, pinch, pocket, volume) the problems you logged use, with a mark for
+  the same share on the board's problems in your grades, and the types where
+  your send rate is clearly higher or lower than usual. Tap a type for its
+  numbers. The types are computed from the board pictures for Kilter,
+  MoonBoard, Tension, Grasshopper, Decoy and Shiny Wall; the card shows one
+  board at a time.
 - Spray walls, from the main menu. Photograph your own wall (camera or photo
   library, crop and turn), and the phone suggests the holds. Download the hold
   model once (33 MB) and it finds holds of every colour with their real shape,

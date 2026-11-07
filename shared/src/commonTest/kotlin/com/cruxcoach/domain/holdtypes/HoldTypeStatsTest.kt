@@ -16,7 +16,7 @@ class HoldTypeStatsTest {
         format = HoldTypeDataset.FORMAT, board = "kilter", version = "v1",
         holds = listOf(
             hold(1, "jug"), hold(2, "jug"), hold(3, "edge"), hold(4, "edge"), hold(5, "sloper"),
-            hold(6, "pinch", conf = 0.3),          // too unsure to count
+            hold(6, "pinch", conf = 0.3),          // low confidence counts until the blind rounds calibrate it
             hold(7, "foot_chip"),                  // a foot chip is never a hand type
             hold(8, "edge", footOnly = true),      // foot only
             hold(9, null),                         // no picture
@@ -37,10 +37,10 @@ class HoldTypeStatsTest {
     }
 
     @Test
-    fun onlyConfidentHandTypesCount() {
+    fun typedHandTypesCount() {
         val climb = TypedClimb("kilter", 1, handHolds = (1..9).toList())
         assertEquals(
-            listOf(HoldType.JUG, HoldType.JUG, HoldType.EDGE, HoldType.EDGE, HoldType.SLOPER),
+            listOf(HoldType.JUG, HoldType.JUG, HoldType.EDGE, HoldType.EDGE, HoldType.SLOPER, HoldType.PINCH),
             HoldTypeStats.countedTypes(climb, kilter),
         )
     }

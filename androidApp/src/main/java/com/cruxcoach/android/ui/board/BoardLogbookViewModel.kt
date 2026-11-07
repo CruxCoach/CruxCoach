@@ -33,6 +33,10 @@ import com.cruxcoach.android.community.OwnKilterClimbPublisher
 import com.cruxcoach.android.community.isCommunityPublished
 import com.cruxcoach.android.community.normalizeClimbUuid
 import com.cruxcoach.android.util.safeLaunch
+import com.cruxcoach.android.data.holdtypes.HoldTypeAssets
+import com.cruxcoach.domain.holdtypes.HoldMix
+import com.cruxcoach.domain.holdtypes.HoldTypeStats
+import java.util.concurrent.ConcurrentHashMap
 
 enum class StatsTimeInterval(@param:androidx.annotation.StringRes val labelResId: Int, val days: Int?) {
     ALL(com.cruxcoach.android.R.string.stats_interval_all, null),
@@ -162,6 +166,9 @@ data class BoardLogbookState(
     // Like [boardComparison] it spans all boards; with one board it shows just that.
     val crossBoard: CrossBoardStats = CrossBoardStats(),
     val crossBoardView: CrossBoardView = CrossBoardView.TRIES_UNTIL_SEND,
+    // Hold types (#63): the mix and the strong and weak types of one board in
+    // the period; null while computing, without labels or without typed holds.
+    val holdTypes: HoldTypeCardStats? = null,
     // The overview at the top of the logbook: records, the last 30 days and
     // the badges, over all boards and the whole logbook.
     val atAGlance: AtAGlance = AtAGlance(),
@@ -221,6 +228,7 @@ class BoardLogbookViewModel @Inject constructor(
      *  navigating to the correct detail screen — confusing UX. */
     private val climbNameResolver: com.cruxcoach.android.data.ClimbNameResolver,
     private val ownClimbPublisher: com.cruxcoach.android.community.OwnKilterClimbPublisher,
+    private val holdTypeAssets: HoldTypeAssets,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -229,6 +237,14 @@ class BoardLogbookViewModel @Inject constructor(
 
     private var allAscents: List<AscentWithClimb> = emptyList()
     private var statsJob: Job? = null
+
+    // Hold types: the logbook with its frames (allAscents has none), loaded
+    // when the card is first computed and dropped when the logbook reloads,
+    // and the board's mix per layout and grade range, which only changes
+    // with the catalogue.
+    @Volatile private var framedAscents: List<AscentWithClimb>? = null
+    private var holdTypesJob: Job? = null
+    private val boardMixCache = ConcurrentHashMap<BoardMixKey, HoldMix>()
 
     companion object {
         private const val PAGE_SIZE = 50
@@ -404,6 +420,7 @@ class BoardLogbookViewModel @Inject constructor(
                     personalBoardRepo.getUserLogbookAllLight()
                 }
                 allAscents = all
+                framedAscents = null
                 // True-flash set needs the FULL history (prior-session
                 // attempts disqualify), so it is derived here, not per page.
                 _state.update { it.copy(flashUuids = BoardStatsComputer.trueFlashUuids(all)) }
@@ -654,6 +671,8 @@ class BoardLogbookViewModel @Inject constructor(
         val opening = !_state.value.showStatsSheet
         _state.update { it.copy(showStatsSheet = opening) }
         if (opening && allAscents.isEmpty()) preloadStats()
+        else if (opening) recomputeHoldTypes()
+        else holdTypesJob?.cancel()
     }
 
     /**
@@ -719,12 +738,67 @@ class BoardLogbookViewModel @Inject constructor(
                     )
                 }
                 recomputeHeatmap()
+                recomputeHoldTypes()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "recomputeStats failed", e)
             }
         }
+    }
+
+    /**
+     * The hold-type card for the period and board of the statistics. Only while
+     * the sheet is open: the board's side reads the catalogue's problems.
+     */
+    private fun recomputeHoldTypes() {
+        holdTypesJob?.cancel()
+        val s = _state.value
+        if (!s.showStatsSheet) return
+        holdTypesJob = viewModelScope.safeLaunch(TAG) {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val all = framedAscents ?: personalBoardRepo.getUserAscentsAll().also { framedAscents = it }
+                    val period = BoardStatsComputer.filterByInterval(all, s.statsInterval, s.customDateFrom, s.customDateTo)
+                    val board = HoldTypeStatsComputer.cardBoard(period, s.boardFilter, holdTypeAssets.boards().toSet())
+                        ?: return@withContext null
+                    val dataset = holdTypeAssets.dataset(board) ?: return@withContext null
+                    val yours = HoldTypeStatsComputer.problems(period, board)
+                    val boardMixes = HoldTypeStatsComputer.gradeRanges(yours).mapValues { (layoutId, grades) ->
+                        boardMixCache.getOrPut(BoardMixKey(board, layoutId, grades)) {
+                            // Problems somebody has climbed; every listed one when the catalogue has no ascents.
+                            val climbed = boardMix(board, layoutId, grades, minAscensionists = 1, dataset)
+                            if (climbed.problems > 0) climbed else boardMix(board, layoutId, grades, minAscensionists = 0, dataset)
+                        }
+                    }
+                    HoldTypeStatsComputer.compute(board, dataset, yours, boardMixes)
+                }
+                _state.update { it.copy(holdTypes = result) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "recomputeHoldTypes failed", e)
+                _state.update { it.copy(holdTypes = null) }
+            }
+        }
+    }
+
+    private fun boardMix(
+        board: String,
+        layoutId: Int,
+        grades: ClosedFloatingPointRange<Double>,
+        minAscensionists: Int,
+        dataset: com.cruxcoach.domain.holdtypes.HoldTypeDataset,
+    ): HoldMix {
+        val climbs = boardRepository.getAllFramesForHeatmapAllAngles(
+            layoutId = layoutId,
+            boardBrand = board,
+            minDifficulty = grades.start,
+            maxDifficulty = grades.endInclusive,
+            minAscensionists = minAscensionists,
+            climbType = ClimbTypeFilter.ALL,
+        ).map { HoldTypeStatsComputer.typedClimb(board, layoutId, it.frames) }
+        return HoldTypeStats.holdMix(climbs, mapOf(board to dataset))
     }
 
     fun setHeatmapMode(mode: HeatmapMode) {
@@ -1018,6 +1092,9 @@ class BoardLogbookViewModel @Inject constructor(
         }
     }
 }
+
+/** A board's problems on one layout within a grade range, whose hold mix [BoardLogbookViewModel] keeps. */
+private data class BoardMixKey(val board: String, val layoutId: Int, val grades: ClosedFloatingPointRange<Double>)
 
 /** Everything [BoardLogbookViewModel] computes for the statistics in one pass. */
 private class ComputedStats(
