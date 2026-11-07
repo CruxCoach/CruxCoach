@@ -12,7 +12,9 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
@@ -23,6 +25,7 @@ class BoardSizeCheckConnectionTest {
     private val otherBoard = board.copy(address = "CC:DD")
     private val state = MutableStateFlow(ConnectionState.CONNECTED)
     private val descriptor = MutableStateFlow<DiscoveredBoard?>(board)
+    private val writes = MutableStateFlow(0L)
     private val ble = mockk<BoardBleConnection>(relaxed = true)
     private val leds = listOf(1 to 0xFF)
 
@@ -30,7 +33,8 @@ class BoardSizeCheckConnectionTest {
         every { ble.connectionState } returns state
         every { ble.connectedBoardBrand } returns MutableStateFlow(BoardBrand.KILTER)
         every { ble.connectedBoardDescriptor } returns descriptor
-        coEvery { ble.sendRawLeds(any(), any()) } returns true
+        every { ble.boardWrites } returns writes
+        coEvery { ble.sendRawFrame(any(), any()) } answers { ++writes.value }
         coEvery { ble.clearBoard(any()) } returns true
         every { ble.hasOtherKeepAliveOwners(any()) } returns false
     }
@@ -92,6 +96,48 @@ class BoardSizeCheckConnectionTest {
         assertFalse(link.clear(BoardBrand.KILTER))
         coVerify(exactly = 0) { ble.clearBoard(any()) }
         verify(exactly = 0) { ble.connect(any(), any()) }
+    }
+
+    @Test fun `it knows whether its frame is still on the board`() = runTest {
+        val link = BoardSizeCheckConnection(ble)
+        assertFalse(link.showsCheckFrame())
+        link.light(BoardBrand.KILTER, leds)
+        assertTrue(link.showsCheckFrame())
+        writes.value++ // a climb, the relay, a clear
+        assertFalse(link.showsCheckFrame())
+    }
+
+    @Test fun `closing while the board reconnects waits for it and clears it`() = runTest {
+        val link = BoardSizeCheckConnection(ble)
+        link.light(BoardBrand.KILTER, leds)
+        state.value = ConnectionState.CONNECTING
+        val cleared = async { link.clear(BoardBrand.KILTER) }
+        runCurrent()
+        coVerify(exactly = 0) { ble.clearBoard(any()) }
+        state.value = ConnectionState.CONNECTED
+        assertTrue(cleared.await())
+        coVerify(exactly = 1) { ble.clearBoard(BoardBrand.KILTER) }
+        verify(exactly = 0) { ble.disconnect() } // the user asked for that connection
+    }
+
+    @Test fun `a board lit before the link moved is cleared once the link is free`() = runTest {
+        val link = BoardSizeCheckConnection(ble)
+        link.light(BoardBrand.KILTER, leds)
+        descriptor.value = otherBoard // dropped, then the user connected the neighbouring wall
+        link.light(BoardBrand.KILTER, leds)
+        assertFalse(link.clear(BoardBrand.KILTER), "the first wall cannot be reached without dropping the second")
+        coVerify(exactly = 1) { ble.clearBoard(BoardBrand.KILTER) }
+        verify(exactly = 0) { ble.connect(any(), any()) }
+
+        dropLink()
+        every { ble.connect(board, 1) } answers {
+            descriptor.value = board
+            state.value = ConnectionState.CONNECTED
+        }
+        every { ble.disconnect() } answers { dropLink() }
+        assertTrue(link.clear(BoardBrand.KILTER))
+        coVerify(exactly = 2) { ble.clearBoard(BoardBrand.KILTER) }
+        verify(exactly = 0) { ble.connect(otherBoard, any()) }
     }
 
     @Test fun `a session that wants the board after the reconnect keeps it connected`() = runTest {

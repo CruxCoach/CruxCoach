@@ -37,8 +37,10 @@ data class BoardSizeCheckState(
     val tried: Set<Int> = emptySet(),
     /** Sizes the user answered "No" for. */
     val rejected: Set<Int> = emptySet(),
-    /** The points of the size under test are on the connected board. */
+    /** The points of the size under test are on the connected board: only then an answer counts. */
     val lit: Boolean = false,
+    /** Something else was sent to the board since the points were lit. */
+    val replaced: Boolean = false,
     /** Something the check lit may still be on the board and must be cleared when it ends. */
     val onBoard: Boolean = false,
     val busy: Boolean = false,
@@ -145,6 +147,7 @@ class BoardSizeCheckSession(private val source: Source) {
                 points = plan.points,
                 step = if (plan.points.isEmpty()) BoardSizeCheckStep.NO_DATA else BoardSizeCheckStep.ASK,
                 lit = false,
+                replaced = false,
                 sendFailed = false,
                 confirmedSizeId = null,
             )
@@ -168,7 +171,9 @@ class BoardSizeCheckSession(private val source: Source) {
             false
         }
         // A failed send may still have left the previous frame up: keep it marked for clearing.
-        mutableState.update { it.copy(busy = false, lit = sent, onBoard = sent || it.onBoard, sendFailed = !sent) }
+        mutableState.update {
+            it.copy(busy = false, lit = sent, replaced = false, onBoard = sent || it.onBoard, sendFailed = !sent)
+        }
     }
 
     /** Lights the points once the board is there, unless they already are. */
@@ -185,22 +190,36 @@ class BoardSizeCheckSession(private val source: Source) {
     }
 
     /**
+     * Another frame replaced the points (a session, the relay, another screen): no answer counts
+     * until the user lights them again. Not relit on its own, so the check does not fight a sender.
+     */
+    fun replaced() {
+        mutableState.update { if (it.lit) it.copy(lit = false, replaced = true) else it }
+    }
+
+    /**
      * "Yes, these holds are lit." Returns the confirmed size. With [applyChange] a size other
-     * than the current one becomes the user's board. Refused while a look-alike is still open.
+     * than the current one becomes the user's board. Refused while a look-alike is still open
+     * or the points are not known to be on the board.
      */
     suspend fun confirm(applyChange: Boolean): Int? {
         val current = mutableState.value
         val brand = current.brand ?: return null
         val id = current.size?.id?.toInt() ?: return null
-        if (current.step != BoardSizeCheckStep.ASK || !current.canConfirm) return null
+        if (current.step != BoardSizeCheckStep.ASK || !current.lit || !current.canConfirm) return null
         mutableState.update { it.copy(step = BoardSizeCheckStep.CONFIRMED, confirmedSizeId = id) }
         if (applyChange && id != current.currentSizeId) source.apply(brand, current.layoutId, id)
         return id
     }
 
-    /** "No": offer the other sizes. */
+    /**
+     * "No": offer the other sizes. Only while the points are on the board: a "No" to holds that
+     * never lit would rule out a size the board was not asked about, and unlock its look-alikes.
+     */
     fun reject() {
-        val size = mutableState.value.size ?: return
+        val current = mutableState.value
+        val size = current.size ?: return
+        if (current.step != BoardSizeCheckStep.ASK || !current.lit) return
         val id = size.id.toInt()
         mutableState.update { it.copy(step = BoardSizeCheckStep.PICK_OTHER, tried = it.tried + id, rejected = it.rejected + id) }
     }
@@ -217,7 +236,10 @@ class BoardSizeCheckSession(private val source: Source) {
     /** Leaves the board dark if the check lit it. Safe to call more than once. */
     suspend fun close() {
         val brand = mutableState.value.brand ?: return
-        if (!mutableState.value.onBoard) return
+        val onBoard = mutableState.value.onBoard
+        // A sheet opened while the board is cleared shows nothing of this check.
+        mutableState.value = BoardSizeCheckState(brand = brand, onBoard = onBoard)
+        if (!onBoard) return
         val cleared = try {
             source.clear(brand)
         } catch (cancelled: CancellationException) {
@@ -226,6 +248,6 @@ class BoardSizeCheckSession(private val source: Source) {
             false
         }
         // Not cleared: the next check of this board keeps it marked and tries again.
-        mutableState.update { it.copy(lit = false, onBoard = !cleared) }
+        mutableState.update { it.copy(onBoard = !cleared) }
     }
 }

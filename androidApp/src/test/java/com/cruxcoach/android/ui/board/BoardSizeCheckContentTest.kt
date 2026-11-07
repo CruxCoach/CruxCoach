@@ -70,9 +70,17 @@ class BoardSizeCheckContentTest {
         compose.onNodeWithTag("board_size_check_yes").assertDoesNotExist()
     }
 
-    @Test fun `yes waits until the holds are lit`() {
+    @Test fun `yes and no wait until the holds are lit`() {
         show(ask(lit = false))
         compose.onNodeWithTag("board_size_check_yes").assertIsNotEnabled()
+        compose.onNodeWithTag("board_size_check_no").assertIsNotEnabled()
+        compose.onNodeWithTag("board_size_check_relight").assertIsEnabled()
+    }
+
+    @Test fun `holds replaced by another frame ask to be lit again`() {
+        show(ask(lit = false).copy(replaced = true))
+        compose.onNodeWithTag("board_size_check_replaced").performScrollTo().assertExists()
+        compose.onNodeWithTag("board_size_check_no").assertIsNotEnabled()
     }
 
     @Test fun `lit holds can be answered yes or no`() {

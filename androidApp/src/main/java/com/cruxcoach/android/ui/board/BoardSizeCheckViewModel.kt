@@ -54,6 +54,10 @@ class BoardSizeCheckViewModel @Inject constructor(
         viewModelScope.launch {
             connection.connectionState.collect { if (it == ConnectionState.DISCONNECTED) serial { session.boardGone() } }
         }
+        viewModelScope.launch {
+            // Checked under the lock: the check's own frame counts as a write while it is sent.
+            connection.boardWrites.collect { serial { if (state.value.lit && !link.showsCheckFrame()) session.replaced() } }
+        }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

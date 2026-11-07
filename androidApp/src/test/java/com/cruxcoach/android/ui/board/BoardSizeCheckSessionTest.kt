@@ -130,9 +130,9 @@ class BoardSizeCheckSessionTest {
         val source = FakeSource(listOf(size(10), size(7)))
         val session = BoardSizeCheckSession(source)
         session.open(BoardBrand.KILTER, 10, null)
+        session.reject()
         source.ready = false
         session.boardGone()
-        session.reject()
         session.test(7)
         assertEquals(0, source.clears)
         assertFalse(session.state.value.lit)
@@ -189,13 +189,59 @@ class BoardSizeCheckSessionTest {
         assertEquals(3, session.confirm(applyChange = true))
     }
 
-    @Test fun `yes on a size with an open look-alike is refused`() = runTest {
-        val session = BoardSizeCheckSession(tension())
-        session.open(BoardBrand.TENSION, 1, null)
-        // Forced onto Half Kickboard without ruling out Full Wall: the holds cannot tell.
-        val forced = session.state.value.plans.getValue(2)
-        assertFalse(session.state.value.copy(size = forced.size).canConfirm)
-        assertEquals(1, session.confirm(applyChange = false), "Full Wall itself can be confirmed")
+    @Test fun `before the larger kit is ruled out, yes can only confirm the kit`() = runTest {
+        val source = tension()
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.TENSION, 2, null)
+        session.test(2) // Half Kickboard while Full Wall is open: refused
+        assertEquals(1, session.state.value.size?.id?.toInt())
+        assertEquals(1, session.confirm(applyChange = true), "the board lit Full Wall's holds, its kickboard hold too")
+        assertEquals(listOf(1), source.applied)
+    }
+
+    @Test fun `a no to holds that are not lit rules nothing out`() = runTest {
+        val source = tension().apply { lightWorks = false }
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.TENSION, 2, null)
+        session.reject()
+        assertEquals(BoardSizeCheckStep.ASK, session.state.value.step)
+        assertTrue(session.state.value.rejected.isEmpty())
+        assertTrue(session.state.value.otherSizes.isEmpty(), "Half Kickboard stays locked")
+        assertNull(session.confirm(applyChange = true))
+
+        source.lightWorks = true
+        session.light()
+        session.reject()
+        assertEquals(listOf(2), session.state.value.otherSizes.map { it.id.toInt() })
+    }
+
+    @Test fun `another frame over the holds blocks the answer until they are lit again`() = runTest {
+        val source = tension()
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.TENSION, 2, null)
+        session.replaced()
+        assertFalse(session.state.value.lit)
+        assertTrue(session.state.value.replaced)
+        session.reject()
+        assertTrue(session.state.value.rejected.isEmpty())
+        assertNull(session.confirm(applyChange = true))
+
+        session.light()
+        assertTrue(session.state.value.lit)
+        assertFalse(session.state.value.replaced)
+        session.reject()
+        assertEquals(BoardSizeCheckStep.PICK_OTHER, session.state.value.step)
+    }
+
+    @Test fun `closing leaves nothing of the finished check for the next sheet`() = runTest {
+        val session = BoardSizeCheckSession(FakeSource(listOf(size(10), size(7))))
+        session.open(BoardBrand.KILTER, 10, null)
+        session.confirm(applyChange = true)
+        session.close()
+        val state = session.state.value
+        assertEquals(BoardSizeCheckStep.LOADING, state.step)
+        assertNull(state.confirmedSizeId)
+        assertNull(state.size)
     }
 
     @Test fun `a failed send is reported and blocks no retry`() = runTest {

@@ -13,15 +13,18 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * While the sheet is open the link stays up ([hold]): the user walks to the board and back, and
  * an idle disconnect in between would leave the marked holds lit with no way to clear them. An
- * Aurora controller keeps its last frame after the link drops, so [clear] reconnects once to the
+ * Aurora controller keeps its last frame after the link drops, so [clear] reconnects once to each
  * board the check lit when the link is gone, and disconnects again afterwards.
  */
 internal class BoardSizeCheckConnection(
     private val connection: BoardBleConnection,
     private val reconnectTimeoutMs: Long = RECONNECT_TIMEOUT_MS,
 ) {
-    /** The board the check's points were last sent to, until they are cleared. */
-    private var litBoard: DiscoveredBoard? = null
+    /** Boards the check's points were sent to, by address, until they are cleared. */
+    private val litBoards = linkedMapOf<String, DiscoveredBoard>()
+
+    /** [BoardBleConnection.boardWrites] of the check's last frame. */
+    private var litWrite: Long? = null
 
     fun hold() = connection.acquireKeepAlive(BoardConnectionOwner.SIZE_CHECK)
 
@@ -33,24 +36,44 @@ internal class BoardSizeCheckConnection(
 
     suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean {
         val board = connection.connectedBoardDescriptor.value
-        val sent = connection.sendRawLeds(leds, expectedBrand = brand)
-        if (sent) litBoard = board
-        return sent
+        val write = connection.sendRawFrame(leds, expectedBrand = brand)
+        litWrite = write
+        if (write != null && board != null) litBoards[board.address] = board
+        return write != null
     }
 
+    /** The check's last frame is still what the board shows: nothing was written since. */
+    fun showsCheckFrame(): Boolean = litWrite != null && litWrite == connection.boardWrites.value
+
     /**
-     * Clears the check's frame from the board it was sent to. Another board connected meanwhile
-     * is left alone: clearing it would wipe what that board shows.
+     * Clears the check's frames from the boards they were sent to. Another board connected
+     * meanwhile is left alone: clearing it would wipe what that board shows, and leaving it to
+     * reach an earlier board would drop a link the user made.
      */
     suspend fun clear(brand: BoardBrand): Boolean {
-        val board = litBoard ?: return true
-        val cleared = when {
-            connection.connectedBoardDescriptor.value?.address == board.address -> connection.clearBoard(expectedBrand = brand)
-            connection.connectionState.value == ConnectionState.DISCONNECTED -> clearAfterReconnect(board, brand)
-            else -> false
+        litWrite = null
+        connection.connectedBoardDescriptor.value?.let { connected ->
+            val board = litBoards[connected.address] ?: return@let
+            if (clearConnected(board, brand)) litBoards.remove(board.address)
         }
-        if (cleared) litBoard = null
-        return cleared
+        for (board in litBoards.values.toList()) {
+            if (connection.connectionState.value != ConnectionState.DISCONNECTED) break
+            if (clearAfterReconnect(board, brand)) litBoards.remove(board.address)
+        }
+        return litBoards.isEmpty()
+    }
+
+    /** The link is up or on its way to [board]: a connect the user started is waited for, not undone. */
+    private suspend fun clearConnected(board: DiscoveredBoard, brand: BoardBrand): Boolean {
+        if (connection.connectionState.value == ConnectionState.CONNECTING) {
+            val state = withTimeoutOrNull(reconnectTimeoutMs) {
+                connection.connectionState.first { it != ConnectionState.CONNECTING }
+            }
+            if (state != ConnectionState.CONNECTED || connection.connectedBoardDescriptor.value?.address != board.address) {
+                return false
+            }
+        }
+        return connection.clearBoard(expectedBrand = brand)
     }
 
     private suspend fun clearAfterReconnect(board: DiscoveredBoard, brand: BoardBrand): Boolean {

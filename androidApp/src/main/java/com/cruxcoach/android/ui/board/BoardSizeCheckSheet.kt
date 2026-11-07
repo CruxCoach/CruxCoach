@@ -198,7 +198,8 @@ internal fun BoardSizeCheckContent(
                             ) { Text(stringResource(R.string.board_size_check_yes)) }
                             OutlinedButton(
                                 onClick = onNo,
-                                enabled = !state.busy,
+                                // A "No" to holds that are not lit would rule out a size the board was not asked about.
+                                enabled = ready && state.lit && !state.busy,
                                 modifier = Modifier.weight(1f).testTag("board_size_check_no"),
                             ) { Text(stringResource(R.string.board_size_check_no)) }
                         }
@@ -210,6 +211,11 @@ internal fun BoardSizeCheckContent(
                         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                         if (state.sendFailed) {
                             Text(stringResource(R.string.board_size_check_send_failed), color = MaterialTheme.colorScheme.error)
+                        } else if (state.replaced) {
+                            Text(
+                                stringResource(R.string.board_size_check_replaced),
+                                modifier = Modifier.testTag("board_size_check_replaced"),
+                            )
                         }
                     }
                 }

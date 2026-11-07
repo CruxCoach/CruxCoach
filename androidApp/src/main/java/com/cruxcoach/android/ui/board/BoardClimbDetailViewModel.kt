@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionCapacity
+import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.BoardLayerBoardIdentity
@@ -671,6 +672,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val climbState = _state.value
                     if (connState == ConnectionState.CONNECTED &&
                         wasDisconnectedOrConnecting &&
+                        // The size check connected to light its own holds: the climb would replace them.
+                        !bleConnection.isKeptAliveBy(BoardConnectionOwner.SIZE_CHECK) &&
                         BoardProjectionPolicy.hasSendablePayload(
                             brand = climbState.climb?.brand,
                             holdCount = climbState.holds.size,

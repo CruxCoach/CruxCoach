@@ -605,6 +605,10 @@ class BoardBleConnection(
     private var writeCount = 0L
     /** [writeCount] right after the last animation frame went out. */
     private var animationFrameWrite = -1L
+    private val _boardWrites = MutableStateFlow(0L)
+    /** Started [writeChunks] calls, failed ones included: once it moves on, the board may show
+     *  something other than the frame written at an earlier count. Written under [writeMutex]. */
+    val boardWrites: StateFlow<Long> = _boardWrites.asStateFlow()
     private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
 
     private val cleaningStorage = BoardCleaningStorage(context)
@@ -771,6 +775,9 @@ class BoardBleConnection(
     /** True when disconnecting for [owner] would interrupt another feature. */
     fun hasOtherKeepAliveOwners(owner: String): Boolean =
         synchronized(keepAliveLock) { keepAliveOwners.any { it != owner } }
+
+    fun isKeptAliveBy(owner: String): Boolean =
+        synchronized(keepAliveLock) { owner in keepAliveOwners }
 
     private fun isKeepAliveHeld(): Boolean =
         synchronized(keepAliveLock) { keepAliveOwners.isNotEmpty() }
@@ -1918,6 +1925,7 @@ class BoardBleConnection(
     ): Boolean {
         val characteristic = writeCharacteristic ?: return false
         val currentGatt = gatt ?: return false
+        _boardWrites.value++
         if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
             for ((i, chunk) in chunks.withIndex()) {
                 delay(shinyWallGapBeforeMs(chunk))
@@ -2454,23 +2462,29 @@ class BoardBleConnection(
     suspend fun sendRawLeds(
         leds: List<Pair<Int, Int>>,
         expectedBrand: BoardBrand? = null,
-    ): Boolean = writeMutex.withLock {
-        if (cleaningState.value.active) return false
+    ): Boolean = sendRawFrame(leds, expectedBrand) != null
+
+    /** [sendRawLeds] that returns the [boardWrites] count of the frame it put up, or null. */
+    suspend fun sendRawFrame(
+        leds: List<Pair<Int, Int>>,
+        expectedBrand: BoardBrand? = null,
+    ): Long? = writeMutex.withLock {
+        if (cleaningState.value.active) return null
         val ticket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED ||
             !auroraPacketsAllowed(_connectedBoardBrand.value) ||
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
-        ) return false
+        ) return null
         if (encoder.litNothing(leds)) {
             Log.w(TAG, "Refusing an API-2 frame of ${leds.size} LEDs: the 18 W budget would light none of them")
-            return false
+            return null
         }
         val chunks = encoder.encodeClimb(leds)
         val success = writeChunks(chunks)
         // The easter frames replace whatever climb was lit.
         _litFrame.value = null
         if (success) cleaning.projected(ticket, chunks)
-        return success
+        return if (success) _boardWrites.value else null
     }
 
     /**
