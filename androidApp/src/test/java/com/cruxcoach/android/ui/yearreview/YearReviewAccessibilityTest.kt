@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
@@ -17,6 +18,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
@@ -80,7 +82,7 @@ class YearReviewAccessibilityTest {
         lateinit var pages: List<ReviewPage>
         compose.setContent {
             pages = reviewPages(review, GradeScale.FRENCH, TrainingContext(null, null, null))
-            ReviewList(pages, onClose = {}, onShare = {}, onPages = {})
+            ReviewList(pages, "Your 2026", onClose = {}, onShare = {}, onPages = {})
         }
         compose.waitForIdle()
         assertTrue("a review with enough data has pages", pages.size >= 8)
@@ -89,8 +91,9 @@ class YearReviewAccessibilityTest {
             list.performScrollToIndex(i)
             compose.onNode(hasText(page.title) and isHeading()).assertExists("heading of ${page.kind}")
             compose.onNodeWithContentDescription("Share this page: ${page.title}").assertHasClickAction()
+            compose.onNodeWithContentDescription("Show information about ${page.title}").assertHasClickAction()
             page.months?.let {
-                compose.onNode(hasText("January ${it[0]}, February ${it[1]}", substring = true)).assertExists("month chart as text")
+                compose.onNode(hasText("January: ${it[0]} day", substring = true) and hasText("February: ${it[1]} day", substring = true)).assertExists("month chart as text")
             }
         }
         compose.onNodeWithContentDescription("Pages").assertHasClickAction()
@@ -108,6 +111,7 @@ class YearReviewAccessibilityTest {
         compose.waitForIdle()
         compose.onNode(hasContentDescription("Page 1 of ${pages.size}")).assertExists()
         compose.onNode(hasText(pages[0].title) and isHeading()).assertExists()
+        compose.onNodeWithContentDescription("Show information about ${pages[0].title}").assertHasClickAction()
 
         fun action(label: String) = compose.runOnIdle {
             val node = compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.CustomActions)).fetchSemanticsNode()
@@ -138,11 +142,12 @@ class YearReviewAccessibilityTest {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
                 page = reviewPages(review, GradeScale.FRENCH, TrainingContext(null, null, null)).first { it.kind == ReviewPageKind.HOLDS_TOUCHED }
-                PageContent(page, index = 0, count = 1)
+                ReviewPager(listOf(page), 0, onIndex = {}, onClose = {}, onShare = {}, onList = {})
             }
         }
-        compose.onNodeWithText("How is this calculated?").performClick()
-        compose.onNode(hasText(page.howCalculated!!) and hasScrollAction()).assertExists()
+        compose.onNodeWithContentDescription("Show information about ${page.title}").performClick()
+        compose.onNodeWithText(page.howCalculated!!).assertExists()
+        compose.onNodeWithTag("info_dialog_content").assert(hasScrollAction())
     }
 
     @Test

@@ -4,16 +4,18 @@
     <!-- Entry card and year picker -->
     <string name="yr_card_title">Your %1$d on the boards</string>
     <string name="yr_card_title_so_far">Your %1$d so far</string>
-    <string name="yr_card_text">Your climbing year across all your boards, made on this phone.</string>
     <string name="yr_card_open">Open</string>
     <string name="yr_card_hide">Hide for this year</string>
     <string name="yr_stats_entry_title">Year in review</string>
     <string name="yr_so_far_title">Your %1$d so far</string>
-    <string name="yr_so_far_text">%1$s and %2$s so far. The full review opens once a year has %3$s or %4$s.</string>
     <string name="yr_little_title">Your %1$d</string>
-    <string name="yr_little_text">%1$s and %2$s that year. The full review opens once a year has %3$s or %4$s.</string>
     <string name="yr_test_date">Test date (feature builds only)</string>
     <string name="yr_test_date_real">Today</string>
+    <string name="yr_failed">Your year could not be loaded</string>
+    <string name="yr_empty_so_far">Nothing logged in %1$d yet</string>
+    <string name="yr_empty">Nothing logged in %1$d</string>
+    <string name="yr_of">%1$s of %2$s</string>
+    <string name="yr_minimum_how">The full review opens once a year has %1$s or %2$s. Until then you see your numbers here.</string>
 
     <!-- Pages: frame -->
     <string name="yr_close">Close</string>
@@ -22,9 +24,9 @@
     <string name="yr_list_view">List view</string>
     <string name="yr_page_view">Pages</string>
     <string name="yr_page_of">Page %1$d of %2$d</string>
+    <string name="yr_label_value">%1$s: %2$s</string>
     <string name="yr_previous">Previous page</string>
     <string name="yr_next">Next page</string>
-    <string name="yr_how_calculated">How is this calculated?</string>
     <string name="yr_eyebrow">%1$d on the boards</string>
     <string name="yr_eyebrow_so_far">%1$d so far, up to %2$s</string>
 
@@ -33,6 +35,7 @@
     <string name="yr_intro_lead">Made on this phone. Nothing leaves it unless you share it.</string>
     <string name="yr_intro_how">Counted from 1 January to 31 December in your time zone, from your logbook on every board, imported logbooks included, and from the climbing days and workouts you logged.</string>
     <string name="yr_intro_how_so_far">Counted from 1 January up to today in your time zone, from your logbook on every board, imported logbooks included, and from the climbing days and workouts you logged. The year is not over yet: it counts on until 31 December.</string>
+    <string name="yr_intro_so_far">so far, up to %1$s</string>
 
     <!-- Volume -->
     <string name="yr_volume_title">Your volume</string>
@@ -61,7 +64,7 @@
 
     <!-- Compared with last year -->
     <string name="yr_compared_title">Compared with %1$d</string>
-    <string name="yr_compared_value">%1$s (%2$s)</string>
+    <string name="yr_compared_before">%1$s in %2$d</string>
     <string name="yr_compared_hardest">Hardest send on the %1$s</string>
     <string name="yr_compared_grades_up">%1$s up</string>
     <string name="yr_compared_grades_down">%1$s down</string>
@@ -84,7 +87,6 @@
     <string name="yr_highlights_biggest_day">Biggest day</string>
     <string name="yr_highlights_repeated">Most repeated</string>
     <string name="yr_highlights_project">Longest project</string>
-    <string name="yr_highlights_project_detail">%1$s over %2$s</string>
     <string name="yr_highlights_project_since">since %1$s</string>
     <string name="yr_highlights_how">The biggest day is the one with the most sends. The most repeated problem is the one you sent most often this year. The longest project is the new problem that took the most tries, counted across all sessions up to the send, even from earlier years.</string>
 
@@ -100,8 +102,8 @@
 
     <!-- Hold types -->
     <string name="yr_holds_title">Your holds</string>
-    <string name="yr_holds_hero_label">your most tagged hold type</string>
-    <string name="yr_holds_how">From the hold types you tagged on the climbs you logged by hand: the share of those %1$s with each type. A climb can have several. Board problems will get their hold types later.</string>
+    <string name="yr_holds_hero_label">on %1$s of the %2$s you tagged</string>
+    <string name="yr_holds_how">From the hold types you tagged on the climbs you logged by hand: how many of those %1$s carry each type. A climb can have several. Board problems will get their hold types later.</string>
 
     <!-- Training -->
     <string name="yr_training_title">Off the wall</string>
@@ -163,7 +165,6 @@
     <!-- Sharing -->
     <string name="yr_share_title">Share this page</string>
     <string name="yr_share_show_name">Show my name</string>
-    <string name="yr_share_name_missing">Set a display name in the community settings to show it.</string>
     <string name="yr_share_show_problems">Show problem names</string>
     <string name="yr_share_show_dates">Show exact dates</string>
     <string name="yr_share_hint">The image is drawn on this phone. It carries your numbers and a small CruxCoach wordmark, nothing else.</string>

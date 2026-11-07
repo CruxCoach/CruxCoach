@@ -4,16 +4,18 @@
     <!-- Entry card and year picker -->
     <string name="yr_card_title">Dein %1$d an den Boards</string>
     <string name="yr_card_title_so_far">Dein %1$d bisher</string>
-    <string name="yr_card_text">Dein Kletterjahr über alle deine Boards, gemacht auf diesem Handy.</string>
     <string name="yr_card_open">Öffnen</string>
     <string name="yr_card_hide">Für dieses Jahr ausblenden</string>
     <string name="yr_stats_entry_title">Jahresrückblick</string>
     <string name="yr_so_far_title">Dein %1$d bisher</string>
-    <string name="yr_so_far_text">Bisher %1$s und %2$s. Der ganze Rückblick öffnet sich, sobald ein Jahr %3$s oder %4$s hat.</string>
     <string name="yr_little_title">Dein %1$d</string>
-    <string name="yr_little_text">Insgesamt %1$s und %2$s. Der ganze Rückblick öffnet sich, sobald ein Jahr %3$s oder %4$s hat.</string>
     <string name="yr_test_date">Testdatum (nur Test-Apps)</string>
     <string name="yr_test_date_real">Heute</string>
+    <string name="yr_failed">Dein Jahr ließ sich nicht laden</string>
+    <string name="yr_empty_so_far">In %1$d noch nichts eingetragen</string>
+    <string name="yr_empty">In %1$d nichts eingetragen</string>
+    <string name="yr_of">%1$s von %2$s</string>
+    <string name="yr_minimum_how">Der ganze Rückblick öffnet sich, sobald ein Jahr %1$s oder %2$s hat. Bis dahin siehst du hier deine Zahlen.</string>
 
     <!-- Pages: frame -->
     <string name="yr_close">Schließen</string>
@@ -22,17 +24,18 @@
     <string name="yr_list_view">Listenansicht</string>
     <string name="yr_page_view">Seiten</string>
     <string name="yr_page_of">Seite %1$d von %2$d</string>
+    <string name="yr_label_value">%1$s: %2$s</string>
     <string name="yr_previous">Vorherige Seite</string>
     <string name="yr_next">Nächste Seite</string>
-    <string name="yr_how_calculated">Wie wird das berechnet?</string>
     <string name="yr_eyebrow">%1$d an den Boards</string>
     <string name="yr_eyebrow_so_far">%1$d bisher, bis %2$s</string>
 
     <!-- Intro -->
     <string name="yr_intro_title">Dein Jahr an den Boards</string>
-    <string name="yr_intro_lead">Gemacht auf diesem Handy. Nichts verlässt es, außer du teilst es.</string>
+    <string name="yr_intro_lead">Auf diesem Handy erstellt. Nichts verlässt es, außer du teilst es.</string>
     <string name="yr_intro_how">Gezählt vom 1. Januar bis 31. Dezember in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen und Workouts, die du erfasst hast.</string>
     <string name="yr_intro_how_so_far">Gezählt vom 1. Januar bis heute in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen und Workouts, die du erfasst hast. Das Jahr ist noch nicht vorbei: Es zählt bis zum 31. Dezember weiter.</string>
+    <string name="yr_intro_so_far">bisher, bis %1$s</string>
 
     <!-- Volume -->
     <string name="yr_volume_title">Dein Umfang</string>
@@ -61,7 +64,7 @@
 
     <!-- Compared with last year -->
     <string name="yr_compared_title">Im Vergleich zu %1$d</string>
-    <string name="yr_compared_value">%1$s (%2$s)</string>
+    <string name="yr_compared_before">%1$s in %2$d</string>
     <string name="yr_compared_hardest">Schwerste Begehung am %1$s</string>
     <string name="yr_compared_grades_up">%1$s höher</string>
     <string name="yr_compared_grades_down">%1$s tiefer</string>
@@ -82,9 +85,8 @@
     <string name="yr_highlights_title">Highlights</string>
     <string name="yr_highlights_flash">Schwerster Flash am %1$s</string>
     <string name="yr_highlights_biggest_day">Stärkster Tag</string>
-    <string name="yr_highlights_repeated">Am öftesten wiederholt</string>
+    <string name="yr_highlights_repeated">Am häufigsten wiederholt</string>
     <string name="yr_highlights_project">Längstes Projekt</string>
-    <string name="yr_highlights_project_detail">%1$s in %2$s</string>
     <string name="yr_highlights_project_since">seit %1$s</string>
     <string name="yr_highlights_how">Der stärkste Tag ist der mit den meisten Begehungen. Am öftesten wiederholt ist der Boulder, den du in diesem Jahr am häufigsten geklettert hast. Das längste Projekt ist der neue Boulder mit den meisten Versuchen, gezählt über alle Sessions bis zur Begehung, auch aus früheren Jahren.</string>
 
@@ -100,8 +102,8 @@
 
     <!-- Hold types -->
     <string name="yr_holds_title">Deine Griffe</string>
-    <string name="yr_holds_hero_label">dein am häufigsten markierter Grifftyp</string>
-    <string name="yr_holds_how">Aus den Grifftypen, die du bei selbst erfassten Bouldern markiert hast: der Anteil dieser %1$s mit jedem Typ. Ein Boulder kann mehrere haben. Board-Boulder bekommen ihre Grifftypen später.</string>
+    <string name="yr_holds_hero_label">bei %1$s der %2$s, die du markiert hast</string>
+    <string name="yr_holds_how">Aus den Grifftypen, die du bei selbst erfassten Bouldern markiert hast: wie viele dieser %1$s jeden Typ tragen. Ein Boulder kann mehrere haben. Board-Boulder bekommen ihre Grifftypen später.</string>
 
     <!-- Training -->
     <string name="yr_training_title">Abseits der Wand</string>
@@ -162,7 +164,6 @@
     <!-- Sharing -->
     <string name="yr_share_title">Diese Seite teilen</string>
     <string name="yr_share_show_name">Meinen Namen zeigen</string>
-    <string name="yr_share_name_missing">Leg in den Community-Einstellungen einen Anzeigenamen fest, um ihn zu zeigen.</string>
     <string name="yr_share_show_problems">Namen der Boulder zeigen</string>
     <string name="yr_share_show_dates">Genaue Daten zeigen</string>
     <string name="yr_share_hint">Das Bild entsteht auf diesem Handy. Es enthält deine Zahlen und einen kleinen CruxCoach-Schriftzug, sonst nichts.</string>

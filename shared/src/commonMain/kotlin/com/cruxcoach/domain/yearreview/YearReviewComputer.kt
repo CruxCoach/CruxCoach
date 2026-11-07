@@ -149,6 +149,20 @@ object YearReviewComputer {
     }
 
     /**
+     * The years of [years] that reach the full review ([MIN_CLIMBING_DAYS] climbing
+     * days or [MIN_TRIES] tries), newest first: what the statistics offer to open.
+     * Counts only what decides that, without computing each review.
+     */
+    fun yearsWithReview(input: Input, today: LocalDate, zone: TimeZone): List<Int> {
+        val history = History(input, zone)
+        return years(input, today, zone).filter { year ->
+            val span = Span(LocalDate(year, 1, 1), minOf(today, LocalDate(year, 12, 31)))
+            history.climbingDays(span).size >= MIN_CLIMBING_DAYS ||
+                history.rows.filter { it.day in span }.sumOf { it.tries } >= MIN_TRIES
+        }
+    }
+
+    /**
      * The local day of a logbook timestamp. Entries logged in the app and Kilter
      * syncs without a zone are already local; an instant (`Z` or an offset) is
      * moved into [zone]. A MoonBoard import stores only the day, as noon UTC, and

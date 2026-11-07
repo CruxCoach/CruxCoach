@@ -412,4 +412,21 @@ class YearReviewComputerTest {
         )
         assertEquals(listOf(2026, 2025, 2024, 2023), YearReviewComputer.years(input, LocalDate(2026, 12, 1), utc))
     }
+
+    @Test
+    fun theStatisticsOfferOnlyYearsWithAFullReview() {
+        // 2024: eight climbing days; 2025: 30 tries on two days; 2026: three days, a few tries.
+        val input = Input(
+            entries = (1..8).map { entry("2024-03-0${it}T18:00:00", "a$it") } +
+                listOf(entry("2025-05-01T18:00:00", "b", tries = 20), entry("2025-05-02T18:00:00", "c", tries = 10)) +
+                (1..3).map { entry("2026-02-0${it}T18:00:00", "d$it", tries = 2) },
+        )
+        val today = LocalDate(2026, 12, 1)
+        assertEquals(listOf(2025, 2024), YearReviewComputer.yearsWithReview(input, today, utc))
+        // The same answer as computing each review.
+        assertEquals(
+            YearReviewComputer.years(input, today, utc).filter { review(input, it, today).hasEnoughData },
+            YearReviewComputer.yearsWithReview(input, today, utc),
+        )
+    }
 }

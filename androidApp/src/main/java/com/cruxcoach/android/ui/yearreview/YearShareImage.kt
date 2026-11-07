@@ -63,7 +63,7 @@ object YearShareImage {
         val width = WIDTH - 2 * MARGIN
         if (square) {
             var y = 90f
-            y = text(canvas, header ?: page.eyebrow, MARGIN, y, width, 40f, ACCENT, bold = true, maxLines = 1) + 18f
+            (header ?: page.eyebrow).takeIf { it.isNotEmpty() }?.let { y = text(canvas, it, MARGIN, y, width, 40f, ACCENT, bold = true, maxLines = 1) + 18f }
             y = text(canvas, page.title, MARGIN, y, width, 64f, TEXT, bold = true, maxLines = 2) + 40f
             grid(canvas, page.rows, y, width, boardColors)
         } else {
@@ -72,7 +72,7 @@ object YearShareImage {
             val layer = Bitmap.createBitmap(WIDTH, room.toInt(), Bitmap.Config.ARGB_8888)
             val content = Canvas(layer)
             var y = 0f
-            y = text(content, header ?: page.eyebrow, MARGIN, y, width, 40f, ACCENT, bold = true, maxLines = 1) + 18f
+            (header ?: page.eyebrow).takeIf { it.isNotEmpty() }?.let { y = text(content, it, MARGIN, y, width, 40f, ACCENT, bold = true, maxLines = 1) + 18f }
             y = text(content, page.title, MARGIN, y, width, 76f, TEXT, bold = true, maxLines = 2) + 40f
             page.hero?.let { y = fitted(content, it, MARGIN, y, width, 210f, ACCENT) + 8f }
             page.heroLabel?.let { y = text(content, it, MARGIN, y, width, 46f, MUTED, maxLines = 2) + 40f }

@@ -37,6 +37,7 @@ data class ReviewRow(val label: String, val value: String, val detail: String? =
  */
 data class ReviewPage(
     val kind: ReviewPageKind,
+    /** The small line above the title on a shared image ("2026 on the boards"); empty where the title says it. */
     val eyebrow: String,
     val title: String,
     val hero: String? = null,
@@ -55,9 +56,11 @@ data class SharePrivacy(
     val name: String? = null,
     val problemNames: Boolean = true,
     val exactDates: Boolean = true,
+    /** For a shared image rather than the screen. */
+    val image: Boolean = true,
 ) {
     companion object {
-        val SCREEN = SharePrivacy()
+        val SCREEN = SharePrivacy(image = false)
     }
 }
 
@@ -77,7 +80,7 @@ fun reviewPages(
     val eyebrow = if (review.isFinal) stringResource(R.string.yr_eyebrow, review.year)
         else stringResource(R.string.yr_eyebrow_so_far, review.year, f.fullDate(review.until))
     return listOfNotNull(
-        intro(review, eyebrow),
+        intro(review, f, forImage = privacy.image),
         volume(review, eyebrow, f),
         boards(review, eyebrow, f),
         hardest(review, eyebrow, f),
@@ -95,12 +98,15 @@ fun reviewPages(
 // ── The pages ────────────────────────────────────────────────────────
 
 @Composable
-private fun intro(review: YearReview, eyebrow: String) = ReviewPage(
+private fun intro(review: YearReview, f: Formats, forImage: Boolean) = ReviewPage(
     kind = ReviewPageKind.INTRO,
-    eyebrow = eyebrow,
+    // The year is the page's big number, so no line above it repeats it.
+    eyebrow = "",
     title = stringResource(R.string.yr_intro_title),
     hero = review.year.toString(),
-    lead = stringResource(R.string.yr_intro_lead),
+    heroLabel = if (review.isFinal) null else stringResource(R.string.yr_intro_so_far, f.fullDate(review.until)),
+    // "Nothing leaves this phone" is true on the phone, not on an image that was shared.
+    lead = if (forImage) null else stringResource(R.string.yr_intro_lead),
     howCalculated = stringResource(if (review.isFinal) R.string.yr_intro_how else R.string.yr_intro_how_so_far),
 )
 
@@ -114,7 +120,8 @@ private fun volume(review: YearReview, eyebrow: String, f: Formats): ReviewPage 
         hero = f.number(v.climbingDays),
         heroLabel = stringResource(R.string.yr_volume_hero_label),
         rows = listOfNotNull(
-            ReviewRow(stringResource(R.string.yr_volume_board_days), f.number(v.boardDays)),
+            // Only when it differs from the climbing days above: days logged by hand count there, not here.
+            ReviewRow(stringResource(R.string.yr_volume_board_days), f.number(v.boardDays)).takeIf { v.boardDays != v.climbingDays },
             v.timedSessions.takeIf { it > 0 }?.let {
                 ReviewRow(
                     stringResource(R.string.yr_volume_sessions), f.number(it),
@@ -191,9 +198,10 @@ private fun compared(review: YearReview, eyebrow: String, f: Formats): ReviewPag
     val previous = review.previous ?: return null
     val now = review.volume
     val then = previous.totals
+    // The change, with last year's number below; this year's numbers are on the volume page already.
     @Composable
     fun row(label: Int, current: Int, before: Int) =
-        ReviewRow(stringResource(label), stringResource(R.string.yr_compared_value, f.number(current), f.signed(current - before)))
+        ReviewRow(stringResource(label), f.signed(current - before), stringResource(R.string.yr_compared_before, f.number(before), previous.year))
     return ReviewPage(
         kind = ReviewPageKind.COMPARED,
         eyebrow = eyebrow,
@@ -282,14 +290,12 @@ private fun highlights(review: YearReview, eyebrow: String, f: Formats): ReviewP
             add(
                 ReviewRow(
                     stringResource(R.string.yr_highlights_project),
-                    stringResource(
-                        R.string.yr_highlights_project_detail,
-                        pluralStringResource(R.plurals.yr_tries, p.tries, f.number(p.tries)),
-                        pluralStringResource(R.plurals.yr_sessions, p.sessions, f.number(p.sessions)),
-                    ),
+                    pluralStringResource(R.plurals.yr_tries, p.tries, f.number(p.tries)),
                     listOfNotNull(
                         f.problem(p.send),
                         p.send.difficulty?.let { f.grade(it) },
+                        f.board(p.send.board),
+                        pluralStringResource(R.plurals.yr_sessions, p.sessions, f.number(p.sessions)),
                         stringResource(R.string.yr_highlights_project_since, f.date(p.firstTry)),
                     ).joinToString(" · "),
                     p.send.board,
@@ -337,15 +343,17 @@ private fun holdsTouched(review: YearReview, eyebrow: String, f: Formats): Revie
 @Composable
 private fun holdTypes(review: YearReview, eyebrow: String, f: Formats): ReviewPage? {
     if (review.holdTypes.isEmpty()) return null
-    val tagged = review.holdTypes.first().taggedSends
+    val top = review.holdTypes.first()
+    val tagged = top.taggedSends
+    // Counts, not shares: a climb can carry several types, so shares would add up to more than all.
     return ReviewPage(
         kind = ReviewPageKind.HOLD_TYPES,
         eyebrow = eyebrow,
         title = stringResource(R.string.yr_holds_title),
-        hero = holdName(review.holdTypes.first().tag),
-        heroLabel = stringResource(R.string.yr_holds_hero_label),
-        rows = review.holdTypes.take(MAX_HOLD_TYPES).map {
-            ReviewRow(holdName(it.tag), f.percent(it.sends.toDouble() / tagged), pluralStringResource(R.plurals.yr_sends, it.sends, f.number(it.sends)))
+        hero = holdName(top.tag),
+        heroLabel = stringResource(R.string.yr_holds_hero_label, f.number(top.sends), pluralStringResource(R.plurals.yr_sends, tagged, f.number(tagged))),
+        rows = review.holdTypes.drop(1).take(MAX_HOLD_TYPES - 1).map {
+            ReviewRow(holdName(it.tag), pluralStringResource(R.plurals.yr_sends, it.sends, f.number(it.sends)))
         },
         howCalculated = stringResource(R.string.yr_holds_how, pluralStringResource(R.plurals.yr_sends, tagged, f.number(tagged))),
     )
@@ -380,7 +388,8 @@ private fun training(review: YearReview, eyebrow: String, f: Formats, context: T
         hero = f.number(t.workouts),
         heroLabel = stringResource(R.string.yr_training_hero_label),
         rows = listOfNotNull(
-            ReviewRow(stringResource(R.string.yr_training_days), f.number(t.workoutDays)).takeIf { t.workouts > 0 },
+            // Only when some days had more than one workout; otherwise it repeats the big number.
+            ReviewRow(stringResource(R.string.yr_training_days), f.number(t.workoutDays)).takeIf { t.workouts > 0 && t.workoutDays != t.workouts },
             ReviewRow(stringResource(R.string.yr_training_time), f.duration(t.workoutMinutes)).takeIf { t.workoutMinutes > 0 },
             best,
             ReviewRow(stringResource(R.string.yr_training_comeback), "✓").takeIf { t.comebacksCompleted > 0 },
@@ -399,7 +408,7 @@ private fun climberType(review: YearReview, eyebrow: String, f: Formats): Review
         hero = typeName(result.type),
         heroLabel = typeLine(result.type),
         lead = typeRule(result, f),
-        rows = listOfNotNull(result.also?.let { ReviewRow(stringResource(R.string.yr_type_also, typeName(it.type)), "") }),
+        rows = listOfNotNull(result.also?.let { ReviewRow(stringResource(R.string.yr_type_also, typeName(it.type)), "", typeLine(it.type)) }),
         howCalculated = stringResource(R.string.yr_type_how),
     )
 }
@@ -410,7 +419,8 @@ private fun summary(review: YearReview, f: Formats): ReviewPage {
     val main = review.boards.firstOrNull { it.hardest.isNotEmpty() }
     return ReviewPage(
         kind = ReviewPageKind.SUMMARY,
-        eyebrow = stringResource(R.string.yr_intro_title),
+        // The title names the year already.
+        eyebrow = "",
         title = stringResource(if (review.isFinal) R.string.yr_summary_title else R.string.yr_summary_title_so_far, review.year),
         rows = listOfNotNull(
             ReviewRow(stringResource(R.string.yr_volume_days_row), f.number(v.climbingDays)),
@@ -537,7 +547,11 @@ class Formats(val locale: Locale, private val gradeScale: GradeScale, val privac
     /** A problem's name, or nothing when names are hidden or it has none. */
     fun problem(send: YearSend): String? = send.name.takeIf { privacy.problemNames && it.isNotBlank() }
 
-    fun duration(minutes: Int): String = if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min"
+    fun duration(minutes: Int): String = when {
+        minutes < 60 -> "$minutes min"
+        minutes % 60 == 0 -> "${minutes / 60} h"
+        else -> "${minutes / 60} h ${minutes % 60} min"
+    }
 }
 
 private const val MAX_BOARDS = 4

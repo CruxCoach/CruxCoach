@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.yearreview
 
+import android.app.Activity
 import android.content.Context
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -22,14 +24,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -37,7 +41,6 @@ import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ViewCarousel
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,9 +52,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -69,33 +72,42 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.board.boardSeriesColors
+import com.cruxcoach.android.ui.board.BoardSeriesColors
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.DarkSurface
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.domain.yearreview.YearReview
+import com.cruxcoach.domain.yearreview.YearReviewComputer
 import kotlinx.coroutines.launch
 
 private val PageText = Color.White
 private val PageMuted = Color.White.copy(alpha = 0.7f)
 private val PageFaint = Color.White.copy(alpha = 0.5f)
+
+/** The pages' side margin: the app's 16 dp, in line with the icons of the top bar. */
+private val PageMargin = 16.dp
 
 /**
  * The year in review (#64): full-screen pages you tap through, left for back and
@@ -108,27 +120,55 @@ fun YearReviewScreen(onClose: () -> Unit, viewModel: YearReviewViewModel = hiltV
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val review = state.review
+    LightSystemBarIcons()
     Box(
         Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(DarkBackground, DarkSurface))),
     ) {
         when {
-            state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = OrangeAccent)
+            state.loading -> Loading(onClose)
+            state.failed -> LoadFailed(onRetry = viewModel::retry, onClose = onClose)
             review == null || !review.hasEnoughData -> SoFar(state.year, review, onClose)
             else -> {
                 val pages = reviewPages(review, state.gradeScale, state.training)
+                val colors = reviewBoardColors(review)
                 var listView by rememberSaveable { mutableStateOf(screenReaderOn(context)) }
                 var sharing by remember { mutableStateOf<ReviewPageKind?>(null) }
                 // The page stays when switching between the pages and the list.
                 var index by rememberSaveable { mutableIntStateOf(0) }
                 if (listView) {
-                    ReviewList(pages, onClose, onShare = { sharing = it }, onPages = { listView = false }, startAt = index)
+                    ReviewList(pages, littleTitle(review.year, review), onClose, onShare = { sharing = it }, onPages = { listView = false }, startAt = index, boardColors = colors)
                 } else {
-                    ReviewPager(pages, index, onIndex = { index = it }, onClose, onShare = { sharing = it }, onList = { listView = true })
+                    ReviewPager(pages, index, onIndex = { index = it }, onClose, onShare = { sharing = it }, onList = { listView = true }, boardColors = colors)
                 }
                 sharing?.let { kind -> ShareSheet(review, state, kind, onDismiss = { sharing = null }) }
             }
+        }
+    }
+}
+
+/**
+ * Each board's colour as in the statistics, always in its dark step: the review
+ * is dark in both themes, and its share images are too.
+ */
+internal fun reviewBoardColors(review: YearReview): Map<String, Color> =
+    BoardSeriesColors.slots(review.boards.map { it.board }).mapValues { (_, slot) -> BoardSeriesColors.color(slot, dark = true, fallback = PageMuted) }
+
+/** The review is dark in both themes, so the status and navigation bar icons turn light while it shows. */
+@Composable
+private fun LightSystemBarIcons() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.context as? Activity)?.window
+        val bars = window?.let { WindowCompat.getInsetsController(it, view) }
+        val status = bars?.isAppearanceLightStatusBars
+        val navigation = bars?.isAppearanceLightNavigationBars
+        bars?.isAppearanceLightStatusBars = false
+        bars?.isAppearanceLightNavigationBars = false
+        onDispose {
+            status?.let { bars?.isAppearanceLightStatusBars = it }
+            navigation?.let { bars?.isAppearanceLightNavigationBars = it }
         }
     }
 }
@@ -138,6 +178,27 @@ internal fun screenReaderOn(context: Context): Boolean =
 
 private fun animationsOn(context: Context): Boolean =
     Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
+
+/** Close on the left, an optional title, and the screen's actions on the right: the same bar on every screen of the review. */
+@Composable
+private fun ReviewTopBar(onClose: () -> Unit, title: String? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onClose) { Icon(Icons.Filled.Close, stringResource(R.string.yr_close), tint = PageText) }
+        if (title != null) {
+            Text(
+                title,
+                color = PageText,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(horizontal = 4.dp).semantics { heading() },
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
+        actions()
+    }
+}
 
 // ── Pages ────────────────────────────────────────────────────────────
 
@@ -149,6 +210,7 @@ internal fun ReviewPager(
     onClose: () -> Unit,
     onShare: (ReviewPageKind) -> Unit,
     onList: () -> Unit,
+    boardColors: Map<String, Color> = emptyMap(),
 ) {
     val current by androidx.compose.runtime.rememberUpdatedState(index)
     var held by remember { mutableStateOf(false) }
@@ -163,14 +225,12 @@ internal fun ReviewPager(
     ) {
         // Holding a page hides the controls without moving the page.
         Column(Modifier.alpha(if (held) 0f else 1f)) {
-            Column {
-                ProgressSegments(pages.size, index)
-                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onClose) { Icon(Icons.Filled.Close, stringResource(R.string.yr_close), tint = PageText) }
-                    Spacer(Modifier.weight(1f))
-                    IconButton(onClick = onList) { Icon(Icons.AutoMirrored.Filled.ViewList, stringResource(R.string.yr_list_view), tint = PageText) }
-                    IconButton(onClick = { onShare(page.kind) }) { Icon(Icons.Filled.Share, stringResource(R.string.yr_share), tint = PageText) }
-                }
+            ProgressSegments(pages.size, index)
+            ReviewTopBar(onClose) {
+                // How the page counts, on demand, beside the page's other actions.
+                page.howCalculated?.let { InfoButton(page.title, it, tint = PageText) }
+                IconButton(onClick = onList) { Icon(Icons.AutoMirrored.Filled.ViewList, stringResource(R.string.yr_list_view), tint = PageText) }
+                IconButton(onClick = { onShare(page.kind) }) { Icon(Icons.Filled.Share, stringResource(R.string.yr_share), tint = PageText) }
             }
         }
         Box(
@@ -198,7 +258,7 @@ internal fun ReviewPager(
                     )
                 },
         ) {
-            PageContent(page, index, pages.size)
+            PageContent(page, index, pages.size, boardColors)
         }
     }
 }
@@ -226,124 +286,119 @@ private fun ProgressSegments(count: Int, current: Int) {
 }
 
 @Composable
-internal fun PageContent(page: ReviewPage, index: Int, count: Int) {
+internal fun PageContent(page: ReviewPage, index: Int, count: Int, boardColors: Map<String, Color> = emptyMap()) {
     val context = LocalContext.current
     val animate = remember { animationsOn(context) }
     val appear = remember(index) { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(index) { if (animate) appear.animateTo(1f, tween(450)) }
-    var explaining by remember(index) { mutableStateOf(false) }
     // Each page starts at its top, also after a long page was scrolled down.
     val scroll = remember(index) { ScrollState(0) }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .padding(horizontal = 28.dp, vertical = 16.dp)
-            .alpha(appear.value),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(page.eyebrow, color = OrangeAccent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        Text(page.title, color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
-        page.hero?.let {
-            Text(it, color = OrangeAccent, style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Black)
-        }
-        page.heroLabel?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.titleMedium) }
-        page.lead?.let { Text(it, color = PageText, style = MaterialTheme.typography.bodyLarge) }
-        page.months?.let { MonthBars(it, page.busiestMonth) }
-        if (page.rows.isNotEmpty()) Spacer(Modifier.height(4.dp))
-        RowsList(page.rows)
-        page.howCalculated?.let {
-            TextButton(onClick = { explaining = true }) {
-                Text(stringResource(R.string.yr_how_calculated), color = PageMuted)
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(scroll)
+                .padding(horizontal = PageMargin, vertical = 8.dp)
+                .alpha(appear.value),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // The page's line above the title is for the shared image; here the progress bar and the title say where you are.
+            Text(page.title, color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+            page.hero?.let {
+                Text(it, color = OrangeAccent, style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Black)
             }
+            page.heroLabel?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.titleMedium) }
+            page.lead?.let { Text(it, color = PageText, style = MaterialTheme.typography.bodyLarge) }
+            page.months?.let { MonthBars(it, page.busiestMonth) }
+            if (page.rows.isNotEmpty()) Spacer(Modifier.height(4.dp))
+            RowsList(page.rows, boardColors)
+            Spacer(Modifier.height(32.dp))
         }
-        Spacer(Modifier.height(24.dp))
-    }
-    if (explaining) {
-        AlertDialog(
-            onDismissRequest = { explaining = false },
-            confirmButton = { TextButton(onClick = { explaining = false }) { Text(stringResource(android.R.string.ok)) } },
-            title = { Text(stringResource(R.string.yr_how_calculated)) },
-            // Long notes scroll, so the largest font size never cuts them off.
-            text = { Text(page.howCalculated.orEmpty(), modifier = Modifier.verticalScroll(rememberScrollState())) },
-        )
-    }
-}
-
-@Composable
-private fun RowsList(rows: List<ReviewRow>) {
-    val colors = boardSeriesColors(rows.mapNotNull { it.board })
-    rows.forEachIndexed { i, row ->
-        if (i > 0) HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
-        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
-            row.board?.let { board ->
-                Box(
-                    Modifier
-                        .padding(top = 6.dp, end = 10.dp)
-                        .size(10.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(colors[board] ?: PageMuted),
-                )
-            }
-            LabelValue(
-                Modifier.weight(1f),
-                label = {
-                    Column {
-                        Text(row.label, color = PageMuted, style = MaterialTheme.typography.bodyLarge)
-                        row.detail?.takeIf { it.isNotBlank() }?.let {
-                            Text(it, color = PageFaint, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                },
-                value = {
-                    if (row.value.isNotEmpty()) {
-                        Text(row.value, color = PageText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
-                    }
-                },
+        // A long page fades out at the bottom, so it shows that it scrolls on.
+        if (scroll.canScrollForward) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, DarkSurface))),
             )
         }
     }
 }
 
 /**
- * The label on the left and the value on the right, the value taking at most about half the
- * width. When that would leave the label too narrow for its longest word (large fonts, long
- * German words), the value moves under the label instead of breaking words apart.
+ * Label and value per row, the detail under both at full width. One decision for
+ * the whole list: when any label would have to break a word beside its value (large
+ * fonts, long German words, narrow phones), every value moves under its label.
  */
 @Composable
-private fun LabelValue(modifier: Modifier, label: @Composable () -> Unit, value: @Composable () -> Unit) {
-    Layout(contents = listOf(label, value), modifier = modifier) { (labelPart, valuePart), constraints ->
-        val label = labelPart.first()
-        val value = valuePart.firstOrNull()
-        val width = constraints.maxWidth
-        val gap = 12.dp.roundToPx()
-        val valueWidth = value?.let {
-            val cap = maxOf(width * 55 / 100, it.minIntrinsicWidth(Constraints.Infinity))
-            minOf(it.maxIntrinsicWidth(Constraints.Infinity), cap)
-        } ?: 0
-        val stacked = label.minIntrinsicWidth(Constraints.Infinity) + gap + valueWidth > width
-        if (value != null && stacked) {
-            val l = label.measure(Constraints(maxWidth = width))
-            val v = value.measure(Constraints(maxWidth = width))
-            layout(width, l.height + v.height) {
-                l.place(0, 0)
-                v.place(width - v.width, l.height)
-            }
-        } else {
-            val v = value?.measure(Constraints(maxWidth = valueWidth.coerceAtMost(width)))
-            val l = label.measure(Constraints(maxWidth = (width - (v?.let { it.width + gap } ?: 0)).coerceAtLeast(0)))
-            layout(width, maxOf(l.height, v?.height ?: 0)) {
-                l.place(0, 0)
-                v?.place(width - v.width, 0)
+private fun RowsList(rows: List<ReviewRow>, colors: Map<String, Color>, textColor: Color = PageText, labelColor: Color = PageMuted, detailColor: Color = PageFaint) {
+    if (rows.isEmpty()) return
+    // Rows of one list share the same leading slot, dot or not, so their text lines up.
+    val dots = rows.any { it.board != null }
+    val labelStyle = MaterialTheme.typography.bodyLarge
+    val valueStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val gap = with(density) { 12.dp.roundToPx() }
+        val width = constraints.maxWidth - if (dots) with(density) { DotSlot.roundToPx() } else 0
+        val stacked = rows.any { row ->
+            if (row.value.isEmpty()) return@any false
+            val longestWord = row.label.split(' ').maxOf { measurer.measure(it, labelStyle).size.width }
+            longestWord + gap + measurer.measure(row.value.unbroken(), valueStyle).size.width > width
+        }
+        Column {
+            rows.forEachIndexed { i, row ->
+                if (i > 0) HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
+                    if (dots) {
+                        Box(Modifier.width(DotSlot).padding(top = 7.dp)) {
+                            row.board?.let { board ->
+                                Box(
+                                    Modifier
+                                        .size(10.dp)
+                                        .clip(RoundedCornerShape(5.dp))
+                                        .background(colors[board] ?: labelColor),
+                                )
+                            }
+                        }
+                    }
+                    Column(Modifier.weight(1f)) {
+                        val value: @Composable () -> Unit = {
+                            Text(row.value.unbroken(), color = textColor, style = valueStyle, textAlign = TextAlign.End)
+                        }
+                        if (row.value.isEmpty()) {
+                            Text(row.label, color = labelColor, style = labelStyle)
+                        } else if (stacked) {
+                            Text(row.label, color = labelColor, style = labelStyle)
+                            Box(Modifier.fillMaxWidth().wrapContentWidth(Alignment.End)) { value() }
+                        } else {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text(row.label, color = labelColor, style = labelStyle, modifier = Modifier.weight(1f).padding(end = 12.dp))
+                                value()
+                            }
+                        }
+                        row.detail?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, color = detailColor, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
             }
         }
     }
 }
 
+private val DotSlot = 20.dp
+
+/** A value stays on one line: "324 entries", never "324" over "entries". */
+private fun String.unbroken(): String = replace(' ', '\u00A0')
+
 @Composable
 private fun MonthBars(perMonth: List<Int>, busiest: Int?) {
     val most = (perMonth.maxOrNull() ?: 0).coerceAtLeast(1)
-    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    val locale = LocalConfiguration.current.locales[0]
     Row(
         Modifier
             .fillMaxWidth()
@@ -379,69 +434,110 @@ private fun MonthBars(perMonth: List<Int>, busiest: Int?) {
 @Composable
 internal fun ReviewList(
     pages: List<ReviewPage>,
+    title: String,
     onClose: () -> Unit,
     onShare: (ReviewPageKind) -> Unit,
     onPages: () -> Unit,
     startAt: Int = 0,
+    boardColors: Map<String, Color> = emptyMap(),
 ) {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = startAt.coerceIn(0, pages.lastIndex.coerceAtLeast(0)))
+    val locale = LocalConfiguration.current.locales[0]
     Column(
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, stringResource(R.string.yr_close), tint = PageText) }
-            Spacer(Modifier.weight(1f))
+        ReviewTopBar(onClose, title) {
             IconButton(onClick = onPages) { Icon(Icons.Filled.ViewCarousel, stringResource(R.string.yr_page_view), tint = PageText) }
         }
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 24.dp), state = listState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = PageMargin), state = listState, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(pages, key = { it.kind }) { page ->
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(page.title, color = PageText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
-                    val hero = listOfNotNull(page.hero, page.heroLabel).joinToString(" ")
-                    if (hero.isNotBlank()) Text(hero, color = OrangeAccent, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(page.title, color = PageText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).semantics { heading() })
+                        page.howCalculated?.let { InfoButton(page.title, it, tint = PageMuted) }
+                        // A screen reader hears which page the button shares, not just "Share" twelve times.
+                        IconButton(onClick = { onShare(page.kind) }) {
+                            Icon(Icons.Filled.Share, stringResource(R.string.yr_share_page, page.title), tint = PageMuted)
+                        }
+                    }
+                    page.hero?.let { Text(it, color = OrangeAccent, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                    page.heroLabel?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.bodyLarge) }
                     page.lead?.let { Text(it, color = PageText, style = MaterialTheme.typography.bodyLarge) }
                     page.months?.let { months ->
-                        val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
                         Text(
                             months.mapIndexed { i, days ->
-                                java.time.Month.of(i + 1).getDisplayName(java.time.format.TextStyle.FULL_STANDALONE, locale) + " " + days
+                                stringResource(
+                                    R.string.yr_label_value,
+                                    java.time.Month.of(i + 1).getDisplayName(java.time.format.TextStyle.FULL_STANDALONE, locale),
+                                    pluralStringResource(R.plurals.yr_days, days, days.toString()),
+                                )
                             }.joinToString(", "),
                             color = PageMuted,
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
-                    RowsList(page.rows)
-                    page.howCalculated?.let { Text(it, color = PageFaint, style = MaterialTheme.typography.bodyMedium) }
-                    // A screen reader hears which page the button shares, not just "Share" ten times.
-                    val shareLabel = stringResource(R.string.yr_share_page, page.title)
-                    TextButton(onClick = { onShare(page.kind) }, modifier = Modifier.semantics { contentDescription = shareLabel }) {
-                        Text(stringResource(R.string.yr_share), color = OrangeAccent)
-                    }
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.25f))
+                    RowsList(page.rows, boardColors)
+                    HorizontalDivider(Modifier.padding(top = 4.dp), color = Color.White.copy(alpha = 0.25f))
                 }
             }
         }
     }
 }
 
-// ── Below the minimum ────────────────────────────────────────────────
+// ── Loading, below the minimum, failed ───────────────────────────────
 
 @Composable
-private fun SoFar(year: Int, review: YearReview?, onClose: () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        IconButton(onClick = onClose) { Icon(Icons.Filled.Close, stringResource(R.string.yr_close), tint = PageText) }
-        Text(littleTitle(year, review), color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(soFarText(review), color = PageMuted, style = MaterialTheme.typography.bodyLarge)
+internal fun Loading(onClose: () -> Unit) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        ReviewTopBar(onClose)
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = OrangeAccent)
+        }
+    }
+}
+
+/** A year below the minimum: how far it got, and on demand what opens the full review. */
+@Composable
+internal fun SoFar(year: Int, review: YearReview?, onClose: () -> Unit) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        ReviewTopBar(onClose)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = PageMargin, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            val title = littleTitle(year, review)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).semantics { heading() })
+                InfoButton(title, minimumNote(), tint = PageText)
+            }
+            if (review == null || review.isEmpty()) {
+                Text(emptyText(year, review), color = PageMuted, style = MaterialTheme.typography.bodyLarge)
+            } else {
+                RowsList(littleRows(review), emptyMap())
+            }
+        }
+    }
+}
+
+/** The logbook could not be read: say so, rather than show an empty year. */
+@Composable
+internal fun LoadFailed(onRetry: () -> Unit, onClose: () -> Unit) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        ReviewTopBar(onClose)
+        Column(Modifier.padding(horizontal = PageMargin, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(stringResource(R.string.yr_failed), color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Button(
+                onClick = onRetry,
+                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
+                shape = RoundedCornerShape(12.dp),
+            ) { Text(stringResource(R.string.action_retry), fontWeight = FontWeight.Bold) }
+        }
     }
 }
 
@@ -450,19 +546,33 @@ private fun SoFar(year: Int, review: YearReview?, onClose: () -> Unit) {
 fun littleTitle(year: Int, review: YearReview?): String =
     stringResource(if (review?.isFinal == true) R.string.yr_little_title else R.string.yr_so_far_title, year)
 
-/** "3 climbing days and 12 sends so far", without judgement, and what opens the full review. */
+internal fun YearReview.isEmpty(): Boolean = volume.climbingDays == 0 && volume.tries == 0
+
+/** "Nothing logged in 2026 yet", or for a year that is over "Nothing logged in 2025". */
 @Composable
-fun soFarText(review: YearReview?): String {
-    val days = review?.volume?.climbingDays ?: 0
-    val sends = review?.volume?.sends ?: 0
-    return stringResource(
-        if (review?.isFinal == true) R.string.yr_little_text else R.string.yr_so_far_text,
-        pluralStringResource(R.plurals.yr_climbing_days, days, days.toString()),
-        pluralStringResource(R.plurals.yr_sends, sends, sends.toString()),
-        pluralStringResource(R.plurals.yr_climbing_days, com.cruxcoach.domain.yearreview.YearReviewComputer.MIN_CLIMBING_DAYS, com.cruxcoach.domain.yearreview.YearReviewComputer.MIN_CLIMBING_DAYS.toString()),
-        pluralStringResource(R.plurals.yr_tries, com.cruxcoach.domain.yearreview.YearReviewComputer.MIN_TRIES, com.cruxcoach.domain.yearreview.YearReviewComputer.MIN_TRIES.toString()),
-    )
-}
+internal fun emptyText(year: Int, review: YearReview?): String =
+    stringResource(if (review?.isFinal == true) R.string.yr_empty else R.string.yr_empty_so_far, year)
+
+/** Climbing days and tries against what opens the full review: "2 of 8", "12 of 30". */
+@Composable
+internal fun littleRows(review: YearReview): List<ReviewRow> = listOf(
+    ReviewRow(
+        stringResource(R.string.yr_volume_days_row),
+        stringResource(R.string.yr_of, review.volume.climbingDays.toString(), YearReviewComputer.MIN_CLIMBING_DAYS.toString()),
+    ),
+    ReviewRow(
+        stringResource(R.string.yr_volume_tries),
+        stringResource(R.string.yr_of, review.volume.tries.toString(), YearReviewComputer.MIN_TRIES.toString()),
+    ),
+)
+
+/** What opens the full review, for the info button. */
+@Composable
+internal fun minimumNote(): String = stringResource(
+    R.string.yr_minimum_how,
+    pluralStringResource(R.plurals.yr_climbing_days, YearReviewComputer.MIN_CLIMBING_DAYS, YearReviewComputer.MIN_CLIMBING_DAYS.toString()),
+    pluralStringResource(R.plurals.yr_tries, YearReviewComputer.MIN_TRIES, YearReviewComputer.MIN_TRIES.toString()),
+)
 
 // ── Sharing ──────────────────────────────────────────────────────────
 
@@ -479,62 +589,104 @@ private fun ShareSheet(review: YearReview, state: YearReviewViewModel.State, kin
     val page = reviewPages(review, state.gradeScale, state.training, privacy).firstOrNull { it.kind == kind } ?: return
     val header = privacy.name?.let { stringResource(R.string.yr_share_name_header, it.take(MAX_NAME), review.year) }
     val wordmark = stringResource(R.string.yr_share_wordmark)
-    val colors = boardSeriesColors(review.boards.map { it.board }).mapValues { it.value.toArgb() }
+    val colors = reviewBoardColors(review).mapValues { it.value.toArgb() }
     val bitmap = remember(page, header, colors) { YearShareImage.render(page, header, wordmark, colors) }
     val chooser = stringResource(R.string.yr_share_chooser)
     val failed = stringResource(R.string.yr_share_failed)
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        ShareSheetContent(
+            bitmap = bitmap,
+            description = page.title,
+            nameAvailable = state.displayName.isNotEmpty(),
+            showName = showName,
+            showProblems = showProblems,
+            showDates = showDates,
+            onShowName = { showName = it },
+            onShowProblems = { showProblems = it },
+            onShowDates = { showDates = it },
+            onSend = {
+                scope.launch {
+                    val ok = runCatching { YearShareImage.share(context, bitmap, "cruxcoach-${review.year}-${kind.name.lowercase()}", chooser) }.isSuccess
+                    if (!ok) Toast.makeText(context, failed, Toast.LENGTH_SHORT).show()
+                }
+            },
+        )
+    }
+}
+
+/**
+ * The share sheet's body: the image as it will be sent and what it shows, with the
+ * send button pinned below, so it stays in reach at any font size.
+ */
+@Composable
+internal fun ShareSheetContent(
+    bitmap: android.graphics.Bitmap,
+    description: String,
+    nameAvailable: Boolean,
+    showName: Boolean,
+    showProblems: Boolean,
+    showDates: Boolean,
+    onShowName: (Boolean) -> Unit,
+    onShowProblems: (Boolean) -> Unit,
+    onShowDates: (Boolean) -> Unit,
+    onSend: () -> Unit,
+) {
+    // The preview takes about a third of the screen, the switches the rest.
+    val previewHeight = (LocalConfiguration.current.screenHeightDp * 0.34f).dp
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
         Column(
             Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(stringResource(R.string.yr_share_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            val title = stringResource(R.string.yr_share_title)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).semantics { heading() })
+                InfoButton(title, stringResource(R.string.yr_share_hint))
+            }
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Image(
                     bitmap.asImageBitmap(),
-                    contentDescription = page.title,
+                    contentDescription = description,
                     modifier = Modifier
-                        .heightIn(max = 420.dp)
+                        .heightIn(max = previewHeight)
                         .aspectRatio(bitmap.width.toFloat() / bitmap.height)
                         .clip(RoundedCornerShape(12.dp)),
                 )
             }
-            Toggle(stringResource(R.string.yr_share_show_name), showName, enabled = state.displayName.isNotEmpty()) { showName = it }
-            if (state.displayName.isEmpty()) {
-                Text(stringResource(R.string.yr_share_name_missing), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Toggle(stringResource(R.string.yr_share_show_problems), showProblems) { showProblems = it }
-            Toggle(stringResource(R.string.yr_share_show_dates), showDates) { showDates = it }
-            Text(stringResource(R.string.yr_share_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(
-                onClick = {
-                    scope.launch {
-                        val ok = runCatching { YearShareImage.share(context, bitmap, "cruxcoach-${review.year}-${kind.name.lowercase()}", chooser) }.isSuccess
-                        if (!ok) Toast.makeText(context, failed, Toast.LENGTH_SHORT).show()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.yr_share_send), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+            // Without a display name there is nothing to show, so no switch.
+            if (nameAvailable) Toggle(stringResource(R.string.yr_share_show_name), showName, onChange = onShowName)
+            Toggle(stringResource(R.string.yr_share_show_problems), showProblems, onChange = onShowProblems)
+            Toggle(stringResource(R.string.yr_share_show_dates), showDates, onChange = onShowDates)
+        }
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = onSend,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.yr_share_send), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 @Composable
-private fun Toggle(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, Modifier.weight(1f).padding(end = 12.dp), style = MaterialTheme.typography.bodyLarge)
+        // The row toggles; the switch only shows the state.
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

@@ -51,12 +51,24 @@ class YearReviewViewModel @Inject constructor(
         /** The community display name, for the share image; empty when none is set. */
         val displayName: String = "",
         val training: TrainingContext = TrainingContext(null, null, null),
+        /** The logbook could not be read; the screen says so instead of showing an empty year. */
+        val failed: Boolean = false,
     )
 
     private val _state = MutableStateFlow(State(year = savedStateHandle.get<Int>(ARG_YEAR) ?: source.today().year))
     val state: StateFlow<State> = _state.asStateFlow()
 
     init {
+        load()
+    }
+
+    /** After a failed load. */
+    fun retry() {
+        _state.update { it.copy(loading = true, failed = false) }
+        load()
+    }
+
+    private fun load() {
         viewModelScope.launch {
             try {
                 val scale = userPreferences.gradeScale.first()
@@ -79,7 +91,7 @@ class YearReviewViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "year review failed", e)
-                _state.update { it.copy(loading = false) }
+                _state.update { it.copy(loading = false, failed = true) }
             }
         }
     }
@@ -102,7 +114,7 @@ class YearReviewEntryViewModel @Inject constructor(
 
     data class State(
         val today: LocalDate? = null,
-        /** Years with data, newest first; always the current one. */
+        /** Years with a full review, newest first: what the statistics offer to open. */
         val years: List<Int> = emptyList(),
         /** The year the card invites to, when it should show now. */
         val cardYear: Int? = null,
@@ -158,10 +170,16 @@ class YearReviewEntryViewModel @Inject constructor(
             val loaded = source.load()
             input = loaded
             val today = source.today()
-            val years = YearReviewComputer.years(loaded, today, source.zone)
+            val years = withContext(Dispatchers.Default) { YearReviewComputer.yearsWithReview(loaded, today, source.zone) }
             _state.update { it.copy(today = today, years = years) }
             refreshCard(userPreferences.yearReviewHiddenYears.first())
-            select(_state.value.selectedYear?.takeIf { it in years } ?: YearReviewWindow.invitedYear(today) ?: today.year)
+            // Without any full review the current year shows how far it got.
+            select(
+                _state.value.selectedYear?.takeIf { it in years }
+                    ?: YearReviewWindow.invitedYear(today)?.takeIf { it in years }
+                    ?: years.firstOrNull()
+                    ?: today.year,
+            )
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
