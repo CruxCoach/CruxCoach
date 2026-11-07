@@ -156,8 +156,11 @@ class BoardMatcher(
         val gr = grid?.read(blobs, usePal[0].second.roles, usePal[0].first, fine, frameW, frameH)
         verifyMs += (System.nanoTime() - tg) / 1_000_000
         // once the board itself is pinned down, its reading is the answer: a search that ignores the board's own
-        // holds can only add poses that disagree with it
-        if (gr != null && gr.poseFound) return MatchResult(gr.cands, isSureGrid(gr.cands), 0, verifyMs, 0, usePal[0].first.name)
+        // holds can only add poses that disagree with it. Unless lit holes were read but they fit no problem at all
+        // (the grid placed a row or column off): then the catalogue is searched as if the board had not been pinned.
+        if (gr != null && gr.poseFound && (gr.cands.isNotEmpty() || gr.litHoles < 3)) {
+            return MatchResult(gr.cands, isSureGrid(gr.cands), 0, verifyMs, 0, usePal[0].first.name)
+        }
         val gridCands = gr?.cands ?: emptyList()
         var ranked: List<Candidate> = emptyList()
         var tiers = 0

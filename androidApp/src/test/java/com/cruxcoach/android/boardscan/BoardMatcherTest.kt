@@ -156,8 +156,10 @@ class BoardMatcherTest {
         assertFalse(m.recognise(blobs(h, pts), frameW, frameH, f, up, overhang, listOf(Palette.KILTER)).sure)
     }
 
-    @Test
-    fun readsAGridBoardByItsColouredHolds() {
+    /** A MoonBoard-like board: 11 x 18 holes, 40 of them with a coloured hold of the board's own. */
+    private class GridBoard(val board: Board, val ix: ClimbIndex, val markCells: Set<Int>, val marks: List<StaticMark>)
+
+    private fun gridBoard(): GridBoard {
         val rnd = Random(3)
         val cols = 11
         val rows = 18
@@ -177,7 +179,33 @@ class BoardMatcherTest {
         val ix = index(board, 70.0, doubleArrayOf(0.0, 1002.0, 0.0, 1430.0), 0.00283)
         val markCells = (0 until cols * rows).shuffled(rnd).take(40).toSet()
         val marks = markCells.map { StaticMark(xs[it].toDouble(), ys[it].toDouble(), 50.0) }
-        val m = matcher(ix, marks)
+        return GridBoard(board, ix, markCells, marks)
+    }
+
+    @Test
+    fun aGridBoardWithNothingLitIsNotSearched() {
+        val g = gridBoard()
+        val m = matcher(g.ix, g.marks)
+        val h = boardToImage(0.42, 501.0, 690.0)
+        val t = DoubleArray(2)
+        val blobs = g.markCells.map { cell ->
+            h.apply(g.board.x[cell].toDouble(), g.board.y[cell].toDouble(), t)
+            Blob(t[0], t[1], 50.0, 100.0, 40, 200)
+        }
+        val r = m.recognise(blobs, frameW, frameH, f, up, overhang, listOf(Palette.MOONBOARD))
+        assertTrue(r.ranked.isEmpty())
+        assertEquals(0, r.tiers, "no lit holes on a pinned board: nothing to search for")
+    }
+
+    @Test
+    fun readsAGridBoardByItsColouredHolds() {
+        val g = gridBoard()
+        val ix = g.ix
+        val markCells = g.markCells
+        val xs = g.board.x
+        val ys = g.board.y
+        val climbs = g.board.climbs
+        val m = matcher(g.ix, g.marks)
         val h = boardToImage(0.42, 501.0, 690.0)
         val climb = 321
         val lit = climbs[climb].toMap()

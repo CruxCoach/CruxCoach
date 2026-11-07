@@ -142,10 +142,11 @@ class GridReader(private val ix: ClimbIndex, private val marks: List<StaticMark>
 
     /**
      * Candidates from reading the board directly, or empty when the board cannot be pinned down. [poseFound]: the
-     * board's position is known from the grid and its coloured holds; [cands] may still be empty. [focus]: the problem
-     * asked for in [read], scored on its own (null when the board was not pinned down or too few holes were lit).
+     * board's position is known from the grid and its coloured holds; [cands] may still be empty. [litHoles]: the lit
+     * holes read off the pinned board. [focus]: the problem asked for in [read], scored on its own (null when the board
+     * was not pinned down or too few holes were lit).
      */
-    class Result(val cands: List<Candidate>, val poseFound: Boolean, val focus: Candidate? = null)
+    class Result(val cands: List<Candidate>, val poseFound: Boolean, val focus: Candidate? = null, val litHoles: Int = 0)
 
     fun read(
         blobs: List<Blob>, roles: IntArray, pal: Palette, rects: List<RectPair>, frameW: Int, frameH: Int, focus: Int = -1,
@@ -251,7 +252,7 @@ class GridReader(private val ix: ClimbIndex, private val marks: List<StaticMark>
             if (blobs[b].peak > litPeak[h]) { litPeak[h] = blobs[b].peak; litRole[h] = cls[roles[b]] }
         }
         val lit = litRole.indices.filter { litRole[it] >= 0 }
-        if (lit.size < 3) return Result(emptyList(), true)
+        if (lit.size < 3) return Result(emptyList(), true, litHoles = lit.size)
         // catalogue: climbs that contain the lit holes with the right colour
         val hit = IntArray(ix.size)
         for (h in lit) for (e in invOff[h] until invOff[h + 1]) if (cls[invRole[e].toInt()] == litRole[h]) hit[invClimb[e]]++
@@ -309,6 +310,7 @@ class GridReader(private val ix: ClimbIndex, private val marks: List<StaticMark>
         for (c in 0 until ix.size) if (hit[c] >= minHit) out.add(score(c))
         out.sortWith(compareBy<Candidate>({ -it.score }, { -ix.ascents[it.climb] }))
         val seen = HashSet<Long>()
-        return Result(out.filter { seen.add(ix.sig[it.climb]) }.take(40), true, if (focus in 0 until ix.size) score(focus) else null)
+        return Result(out.filter { seen.add(ix.sig[it.climb]) }.take(40), true, if (focus in 0 until ix.size) score(focus) else null,
+            lit.size)
     }
 }
