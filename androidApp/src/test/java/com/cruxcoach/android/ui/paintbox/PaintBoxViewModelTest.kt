@@ -22,13 +22,18 @@ class PaintBoxViewModelTest {
     private val pictures = mockk<PaintRepository>(relaxed = true)
     private val projector = mockk<PaintProjector>()
     private val connection = MutableStateFlow(ConnectionState.CONNECTED)
+    private val savedBrand = MutableStateFlow("kilter")
+    private val savedLayout = MutableStateFlow(1)
+    private val savedSize = MutableStateFlow(10)
     private lateinit var vm: PaintBoxViewModel
 
     @Before fun setup() {
         Dispatchers.setMain(dispatcher)
-        every { prefs.boardBrand } returns flowOf("kilter")
-        every { prefs.boardLayoutId } returns flowOf(1)
-        every { prefs.boardProductSizeId } returns flowOf(10)
+        every { prefs.boardBrand } returns savedBrand
+        every { prefs.boardLayoutId } returns savedLayout
+        every { prefs.boardProductSizeId } returns savedSize
+        every { boards.getProductSize(12, "kilter") } returns BoardSize(12, 1, "Other", 0, 100, 0, 100, null)
+        every { boards.getPlacementsForLayout(12, 1, "kilter") } returns listOf(BoardPlacement(3, 3, 1, 30, 30))
         every { boards.getProductSize(10, "kilter") } returns BoardSize(10, 1, "Test", 0, 100, 0, 100, null)
         every { boards.getPlacementsForLayout(10, 1, "kilter") } returns listOf(
             BoardPlacement(1, 1, 1, 10, 10), BoardPlacement(2, 2, 1, 20, 20))
@@ -154,6 +159,43 @@ class PaintBoxViewModelTest {
         assertNull(vm.state.value.imageImport!!.background)
         vm.imageBackgroundTool()
         assertTrue(vm.state.value.imageImport!!.pickingBackground)
+    }
+    @Test fun `a picked board opens once the picker has saved it`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.paint(setOf(1))
+        vm.boardPicked()
+        advanceUntilIdle()
+        // The picker saves in the background: until then the picture stays.
+        assertEquals(10, vm.state.value.document!!.board.sizeId)
+        assertEquals(mapOf(1 to 28), vm.state.value.document!!.colors)
+        savedSize.value = 12
+        advanceUntilIdle()
+        assertEquals(12, vm.state.value.document!!.board.sizeId)
+        assertEquals(setOf(3), vm.state.value.placements.keys)
+        assertTrue(vm.state.value.document!!.colors.isEmpty())
+    }
+    @Test fun `a saved board change the user did not pick here keeps the picture`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.paint(setOf(1))
+        savedSize.value = 12
+        advanceUntilIdle()
+        assertEquals(10, vm.state.value.document!!.board.sizeId)
+        assertEquals(mapOf(1 to 28), vm.state.value.document!!.colors)
+    }
+    @Test fun `a board PaintBox cannot light opens as not supported and paints nothing`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.boardPicked()
+        savedBrand.value = "shinywall"
+        advanceUntilIdle()
+        val state = vm.state.value
+        assertTrue(state.unsupportedBoard)
+        assertFalse(state.missingBoard)
+        assertFalse(state.boardReady)
+        vm.paint(setOf(1))
+        vm.sendOnce()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.document!!.colors.isEmpty())
+        coVerify(exactly = 0) { projector.send(any(), any(), any()) }
     }
     @Test fun `cancel fences an in flight preview and restores after transport finishes`() = runTest(dispatcher) {
         vm.state.first { !it.loading }

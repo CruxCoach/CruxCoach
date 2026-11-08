@@ -27,6 +27,7 @@
     <string name="paintbox_empty">Noch keine gespeicherten Bilder.</string>
     <string name="paintbox_unreadable">%1$d Bilddateien konnten nicht gelesen werden. Sie bleiben erhalten.</string>
     <string name="paintbox_missing_board">Boarddaten fehlen. Passenden Katalog herunterladen und erneut versuchen.</string>
+    <string name="paintbox_unsupported_board">PaintBox funktioniert noch nicht mit %1$s.</string>
     <string name="paintbox_download">Board-Kataloge</string>
     <string name="paintbox_retry">Erneut versuchen</string>
     <string name="paintbox_load_error">Bild oder Boarddaten konnten nicht geladen werden.</string>

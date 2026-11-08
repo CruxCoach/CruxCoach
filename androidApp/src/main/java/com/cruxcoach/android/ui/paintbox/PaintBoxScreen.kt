@@ -98,7 +98,7 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
                 actions = {
                     IconToggleButton(checked = state.imageImport != null, onCheckedChange = {
                         imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }, enabled = document != null && !state.loading && !state.saving && !state.missingBoard && !state.imageLoading,
+                    }, enabled = document != null && !state.loading && !state.saving && state.boardReady && !state.imageLoading,
                         modifier = Modifier.testTag("paintbox_image_import")) {
                         Icon(Icons.Outlined.Image, stringResource(R.string.paintbox_image_import))
                     }
@@ -106,7 +106,7 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
                         Icon(Icons.Outlined.Bluetooth, stringResource(R.string.paintbox_bluetooth))
                     }
                     IconToggleButton(checked = state.live, onCheckedChange = { viewModel.toggleLive() },
-                        enabled = document != null && !state.loading && !state.missingBoard) {
+                        enabled = document != null && !state.loading && state.boardReady) {
                         Icon(if (state.live) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
                             stringResource(if (state.live) R.string.paintbox_live_on else R.string.paintbox_live_off))
                     }
@@ -146,6 +146,10 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
                     state.imageLoading -> CircularProgressIndicator()
                     state.imageImport != null -> PaintImageEditor(state, viewModel)
                     state.loading -> CircularProgressIndicator()
+                    state.unsupportedBoard -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.paintbox_unsupported_board, brand.displayName))
+                        TextButton(onClick = { navigate { boardPicker = true } }) { Text(stringResource(R.string.paintbox_board)) }
+                    }
                     state.missingBoard -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.paintbox_missing_board))
                         TextButton(onClick = { navigate(onDownloadBoards) }) { Text(stringResource(R.string.paintbox_download)) }
@@ -174,10 +178,10 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
             }
             if (state.sending) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { name = document?.name.orEmpty(); saveCopy = false; saveDialog = true }, enabled = !importing && document != null && !state.loading && !state.saving) { Text(stringResource(R.string.paintbox_save)) }
-                TextButton(onClick = { name = document?.name.orEmpty(); saveCopy = true; saveDialog = true }, enabled = !importing && document != null && !state.loading && !state.saving) { Text(stringResource(R.string.paintbox_save_as)) }
+                TextButton(onClick = { name = document?.name.orEmpty(); saveCopy = false; saveDialog = true }, enabled = !importing && document != null && !state.loading && !state.saving && !state.unsupportedBoard) { Text(stringResource(R.string.paintbox_save)) }
+                TextButton(onClick = { name = document?.name.orEmpty(); saveCopy = true; saveDialog = true }, enabled = !importing && document != null && !state.loading && !state.saving && !state.unsupportedBoard) { Text(stringResource(R.string.paintbox_save_as)) }
                 TextButton(onClick = { viewModel.refreshLibrary(); library = true }, enabled = !importing) { Text(stringResource(R.string.paintbox_load)) }
-                TextButton(onClick = viewModel::sendOnce, enabled = connection == ConnectionState.CONNECTED && !state.loading && !state.sending && !state.missingBoard && !state.imageLoading && (state.imageImport == null || state.imageImport?.ready == true)) { Text(stringResource(R.string.paintbox_send)) }
+                TextButton(onClick = viewModel::sendOnce, enabled = connection == ConnectionState.CONNECTED && !state.loading && !state.sending && state.boardReady && !state.imageLoading && (state.imageImport == null || state.imageImport?.ready == true)) { Text(stringResource(R.string.paintbox_send)) }
             }
         }
     }
@@ -186,7 +190,7 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
         if (importing) viewModel.cancelImage()
         navigate { boardPicker = true }
     })
-    if (boardPicker) BoardPickerDialog(onDismiss = { boardPicker = false }, onSelected = { boardPicker = false; viewModel.selectCurrentBoard() })
+    if (boardPicker) BoardPickerDialog(onDismiss = { boardPicker = false }, onSelected = { boardPicker = false; viewModel.boardPicked() })
     if (colorPicker) ColorPickerBottomSheet(
         roleLabel = stringResource(R.string.paintbox_brush), currentByte = state.brush,
         onColorSelected = { viewModel.brush(it); colorPicker = false }, onDismiss = { colorPicker = false },

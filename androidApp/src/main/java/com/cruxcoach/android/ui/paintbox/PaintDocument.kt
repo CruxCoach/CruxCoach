@@ -15,6 +15,14 @@ data class PaintBoard(
     val label: String = "",
 )
 
+/** Boards PaintBox can light: the Aurora family, MoonBoard and Quantum. */
+val BoardBrand.supportsPaintBox: Boolean
+    get() = usesAuroraProtocol || this == BoardBrand.MOONBOARD || this == BoardBrand.QUANTUM
+
+/** Same physical board configuration; the label is only display text. */
+fun PaintBoard.sameBoardAs(other: PaintBoard): Boolean =
+    brand == other.brand && layoutId == other.layoutId && sizeId == other.sizeId && holdSets == other.holdSets
+
 fun PaintBoard.moonHoldIds(): Set<Int> {
     val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong()) ?: return emptySet()
     val mounted = holdSets.ifEmpty { MoonBoardHoldSets.setIdsFor(variant) }
@@ -33,7 +41,7 @@ data class PaintDocument(
     fun validate() {
         require(version == 1)
         UUID.fromString(id)
-        require(BoardBrand.entries.any { it.wireValue == board.brand && it.isInteractive })
+        require(BoardBrand.entries.any { it.wireValue == board.brand && it.supportsPaintBox })
         require(board.layoutId > 0 && board.sizeId >= 0)
         require(colors.keys.all { it > 0 })
         require(colors.values.all { it in PaintPalette.forBoard(BoardBrand.fromWire(board.brand)) })

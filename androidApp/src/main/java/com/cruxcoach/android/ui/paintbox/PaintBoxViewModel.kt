@@ -27,6 +27,8 @@ data class PaintBoxState(
     val loading: Boolean = true,
     val saving: Boolean = false,
     val missingBoard: Boolean = false,
+    /** A board family PaintBox cannot light yet, e.g. Shiny Wall. */
+    val unsupportedBoard: Boolean = false,
     val dirty: Boolean = false,
     val brush: Int = 0x1c,
     val eraser: Boolean = false,
@@ -36,7 +38,9 @@ data class PaintBoxState(
     val canRedo: Boolean = false,
     val library: PaintLibrary = PaintLibrary(emptyList(), 0),
     val message: Int? = null,
-)
+) {
+    val boardReady: Boolean get() = !missingBoard && !unsupportedBoard
+}
 
 @HiltViewModel
 class PaintBoxViewModel @Inject constructor(
@@ -58,38 +62,63 @@ class PaintBoxViewModel @Inject constructor(
     private var previewAddress: String? = null
     val connection = ble.connectionState
 
+    private var boardPickPending = false
+
     init {
-        selectCurrentBoard()
+        viewModelScope.launch {
+            // The board picker saves its choice in the background, so follow the saved
+            // board instead of reading it once when the picker closes.
+            savedBoard().collect { board ->
+                val open = state.value.document?.board
+                if (open == null || boardPickPending && !open.sameBoardAs(board)) {
+                    boardPickPending = false
+                    openBoard(board)
+                }
+            }
+        }
         viewModelScope.launch {
             connection.collect { if (it != ConnectionState.CONNECTED && it != ConnectionState.SENDING) pause() }
         }
     }
-    fun selectCurrentBoard() {
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    private fun savedBoard(): Flow<PaintBoard> =
+        combine(preferences.boardBrand, preferences.boardLayoutId, preferences.boardProductSizeId, ::Triple)
+            // One saved selection reaches the three flows one after the other.
+            .debounce(SELECTION_SETTLE_MS)
+            .flatMapLatest { (brand, layout, size) ->
+                val variant = MoonBoardVariant.fromLayoutId(layout.toLong())
+                if (brand == BoardBrand.MOONBOARD.wireValue && variant != null) {
+                    preferences.moonBoardHoldSets(variant).map { PaintBoard(brand, layout, size, it) }
+                } else flowOf(PaintBoard(brand, layout, size))
+            }
+            .distinctUntilChanged()
+    /** The picker confirmed a board. It opens once the picker has saved it; picking the open board keeps the picture. */
+    fun boardPicked() {
+        pause()
+        boardPickPending = true
+    }
+    private fun openBoard(board: PaintBoard) {
         pause()
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            try {
-                val brand = preferences.boardBrand.first()
-                val layout = preferences.boardLayoutId.first()
-                val variant = MoonBoardVariant.fromLayoutId(layout.toLong())
-                val sets = if (brand == "moonboard" && variant != null) preferences.getMoonBoardHoldSets(variant) else emptyList()
-                open(PaintDocument(board = PaintBoard(brand, layout, preferences.boardProductSizeId.first(), sets)), false)
-            } catch (e: CancellationException) { throw e }
+            try { open(PaintDocument(board = board), false) }
+            catch (e: CancellationException) { throw e }
             catch (_: Exception) { mutable.update { it.copy(loading = false, message = R.string.paintbox_load_error) } }
         }
     }
     private suspend fun open(document: PaintDocument, persisted: Boolean) {
-        document.validate()
+        val supported = BoardBrand.fromWire(document.board.brand).supportsPaintBox
+        if (supported) document.validate()
         mutable.update { it.copy(loading = true) }
         val board = document.board
         val geometry = withContext(Dispatchers.IO) {
-            if (board.brand == "moonboard") Triple(null, emptyList(), emptyList())
+            if (board.brand == "moonboard" || !supported) Triple(null, emptyList(), emptyList())
             else Triple(boards.getProductSize(board.sizeId, board.brand),
                 boards.getPlacementsForLayout(board.sizeId, board.layoutId, board.brand),
                 boards.getBoardImages(board.sizeId, board.layoutId, board.brand))
         }
         val leds = withContext(Dispatchers.IO) {
-            if (board.brand == "moonboard") emptyMap() else boards.getPlacementLedMap(board.sizeId, board.brand)
+            if (board.brand == "moonboard" || !supported) emptyMap() else boards.getPlacementLedMap(board.sizeId, board.brand)
         }
         val brand = BoardBrand.fromWire(board.brand)
         val detail = when (brand) {
@@ -107,11 +136,13 @@ class PaintBoxViewModel @Inject constructor(
         mutable.value = PaintBoxState(document = labelled, boardSize = geometry.first,
             placements = geometry.second.associateBy { it.placementId.toInt() }, images = geometry.third,
             ledMap = leds, loading = false,
-            missingBoard = board.brand != "moonboard" && (geometry.first == null || geometry.second.isEmpty()),
+            missingBoard = supported && board.brand != "moonboard" && (geometry.first == null || geometry.second.isEmpty()),
+            unsupportedBoard = !supported,
             library = mutable.value.library)
     }
     fun load(document: PaintDocument) {
         pause()
+        boardPickPending = false
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             try {
@@ -189,7 +220,7 @@ class PaintBoxViewModel @Inject constructor(
     fun paint(ids: Set<Int>) {
         val s = state.value
         val document = s.document ?: return
-        if (s.loading || s.missingBoard) return
+        if (s.loading || !s.boardReady) return
         val valid = ids.filter { if (document.board.brand == "moonboard") it in document.board.moonHoldIds() else it in s.placements }
         val colors = document.colors.toMutableMap()
         valid.forEach { if (s.eraser) colors.remove(it) else colors[it] = s.brush }
@@ -241,7 +272,7 @@ class PaintBoxViewModel @Inject constructor(
                 val address = ble.connectedBoard?.address
                 mutable.update { it.copy(sending = true) }
                 try {
-                    if (snapshot.missingBoard) throw PaintProjectionException(R.string.paintbox_missing_board)
+                    if (!snapshot.boardReady) throw PaintProjectionException(R.string.paintbox_missing_board)
                     if (image != null) previewAddress = address
                     val sent = projector.send(document, snapshot.ledMap) {
                         generation == ticket && ble.connectedBoard?.address == address
@@ -303,4 +334,8 @@ class PaintBoxViewModel @Inject constructor(
         catch (_: Exception) { null }
     }
     override fun onCleared() { leave(); super.onCleared() }
+
+    private companion object {
+        const val SELECTION_SETTLE_MS = 50L
+    }
 }
