@@ -39,7 +39,7 @@
     <string name="trwo_text_label">Übungen</string>
     <string name="trwo_text_placeholder">Klimmzüge 5×5 +20 kg, Liegestütze 3×15
 Zirkel 3 Runden: Dips 10, Sit-ups 20, Plank 30 s</string>
-    <string name="trwo_text_hint">Schreib einfach, wie du es sagen würdest – mehrere Übungen pro Zeile, mit Komma, „und“ oder „dann“. Zahlen davor oder dahinter: Sätze × Wiederholungen oder Sekunden, Gewicht (+ Zusatz, − Entlastung), Leiste in mm, Pause, „links und rechts“. Zirkel: „Zirkel 3 Runden: …“, „… als Zirkel“ oder „im Wechsel mit“, Pausen „zwischen den Übungen“ und „nach jeder Runde“. „Aufwärmen:“ markiert das Aufwärmen, eine erste Zeile ohne Zahlen wird der Name. Tippfehler sind kein Problem; Unbekanntes wird neu angelegt.</string>
+    <string name="trwo_text_hint">Schreib einfach, wie du es sagen würdest – mehrere Übungen pro Zeile, mit Komma, „und“ oder „dann“. Zahlen davor oder dahinter: Sätze × Wiederholungen oder Sekunden, Gewicht (+ Zusatz, − Entlastung, „2×16 kg“ für zwei Hanteln), Leiste in mm, Pause, „links und rechts“. Zirkel: „Zirkel 3 Runden: …“, „… als Zirkel“ oder „im Wechsel mit“, Pausen „zwischen den Übungen“ und „nach jeder Runde“. „Aufwärmen:“ markiert das Aufwärmen, eine erste Zeile ohne Zahlen wird der Name. Tippfehler sind kein Problem; Unbekanntes wird neu angelegt.</string>
     <string name="trwo_text_name">Name: %1$s</string>
     <string name="trwo_text_new">Neue Übung · %1$s</string>
     <plurals name="trwo_text_apply">
@@ -49,10 +49,9 @@ Zirkel 3 Runden: Dips 10, Sit-ups 20, Plank 30 s</string>
     <string name="trwo_text_apply_none">Übernehmen</string>
     <string name="trwo_text_warmup">Aufwärmen</string>
     <string name="trwo_text_name_join">" &amp; "</string>
-    <string name="trwo_field_load">Last</string>
     <string name="trwo_load_auto">Automatisch</string>
     <string name="trwo_load_auto_short">auto</string>
-    <string name="trwo_load_hint">Automatisch: CruxCoach plant die Last aus deinem Leistungswert und dem letzten Training. Ein Wert hier gilt immer.</string>
+    <string name="trwo_load_hint">Automatisch: CruxCoach plant das Gewicht aus deinem Leistungswert und dem letzten Training. Ein Wert hier gilt immer.</string>
     <string name="trwo_load_hint_added">Zusatzgewicht: 0 = Körpergewicht, negativ = Entlastung. Automatisch: CruxCoach plant es aus deinem Leistungswert und dem letzten Training. Ein Wert hier gilt immer.</string>
     <string name="trwo_editor_unsaved_title">Änderungen verwerfen?</string>
     <string name="trwo_editor_unsaved_text">Deine Änderungen an diesem Workout sind noch nicht gespeichert.</string>
@@ -61,6 +60,7 @@ Zirkel 3 Runden: Dips 10, Sit-ups 20, Plank 30 s</string>
     <string name="trwo_move_down">Nach unten</string>
     <string name="trwo_remove">Entfernen</string>
     <string name="trwo_field_sets">Sätze</string>
+    <string name="trwo_field_sets_per_side">Sätze pro Seite</string>
     <string name="trwo_field_reps_min">Wdh. von</string>
     <string name="trwo_field_reps_max">Wdh. bis</string>
     <string name="trwo_field_seconds">Sekunden</string>

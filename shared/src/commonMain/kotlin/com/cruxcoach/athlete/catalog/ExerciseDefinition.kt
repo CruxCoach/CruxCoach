@@ -22,6 +22,13 @@ data class ExerciseDefinition(
     val domains: List<LoadDomain> = emptyList(),
     val muscles: Muscles = Muscles(),
     val difficulty: Int = 1,
+    /**
+     * How well known the exercise is, apart from how hard it is ([difficulty]): the coach starts with
+     * [Familiarity.BASIC] and brings in the others with experience (issue #68, see
+     * [com.cruxcoach.athlete.logic.ExerciseFamiliarity]). Every catalogue exercise has one; without it an exercise
+     * counts as Basic, which leaves the coach's choice as it was.
+     */
+    val familiarity: Familiarity = Familiarity.BASIC,
     val easier: String? = null,
     val harder: String? = null,
     val defaults: Prescription = Prescription(),
@@ -30,6 +37,13 @@ data class ExerciseDefinition(
     val i18n: Map<String, ExerciseText> = emptyMap(),
     /** True for exercises the user created; never part of the packaged catalogue. */
     val custom: Boolean = false,
+    /**
+     * How many identical dumbbells or kettlebells an [LoadMode.EXTERNAL] exercise uses at once (issue #58):
+     * 2 for a bench press with two dumbbells. The logged load is then the weight of one of them, and totals
+     * (volume, % body weight, the one-rep max estimate) count it this many times. 1 for everything else;
+     * see [com.cruxcoach.athlete.logic.LoadRules].
+     */
+    val implements: Int = 1,
 ) {
     fun text(language: String): ExerciseText =
         i18n[language] ?: i18n["en"] ?: i18n.values.firstOrNull() ?: ExerciseText(name = slug)
@@ -53,7 +67,20 @@ data class ExerciseDefinition(
         /** Made for the comeback plan: never picked by the suggestion, still in the catalogue to add by hand. */
         const val TAG_COMEBACK = "comeback"
         const val TAG_HOME = "home"
+        /** The load is the reading of a force gauge, not a weight on the implement. */
+        const val TAG_FORCE_GAUGE = "force_gauge"
     }
+}
+
+/** How much explaining an exercise needs (issue #68); independent of [ExerciseDefinition.difficulty]. */
+@Serializable
+enum class Familiarity {
+    /** Anyone who climbs, went to a gym or had PE knows it, and the name says what to do. */
+    BASIC,
+    /** People who train know it; one look at the steps is enough. */
+    COMMON,
+    /** Read the steps first: an unusual name, a special set-up or a movement that needs learning. */
+    SPECIAL,
 }
 
 @Serializable
@@ -109,14 +136,17 @@ enum class ExerciseKind {
     CLIMB,
 }
 
-/** How the load field is read. */
+/** How the load field is read; what exactly the number refers to is [com.cruxcoach.athlete.logic.LoadRules]. */
 @Serializable
 enum class LoadMode {
     NONE,
     BODYWEIGHT,
     /** Bodyweight plus added kg; negative values mean assistance (pulley, band, feet). */
     BODYWEIGHT_PLUS,
-    /** Absolute lifted kg (pick-up blocks, dumbbells, barbells). */
+    /**
+     * Absolute lifted kg: a pick-up block with everything on it, a barbell with the bar, a cable stack, or
+     * one dumbbell or kettlebell ([ExerciseDefinition.implements] of them at once).
+     */
     EXTERNAL,
 }
 

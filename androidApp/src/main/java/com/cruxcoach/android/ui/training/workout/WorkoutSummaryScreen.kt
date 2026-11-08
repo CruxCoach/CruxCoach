@@ -135,7 +135,7 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                 val def = catalog.fallbackFor(s.exerciseSlug)
                 val loaded = def.load == LoadMode.EXTERNAL || def.load == LoadMode.BODYWEIGHT_PLUS
                 if ((def.kind == ExerciseKind.REPS || def.kind == ExerciseKind.LOAD_REPS) && loaded)
-                    (com.cruxcoach.athlete.logic.StrengthMath.effectiveLoad(def.load, s.loadKg, s.bodyweightKg) ?: 0.0) * (s.reps ?: 0)
+                    (com.cruxcoach.athlete.logic.StrengthMath.effectiveLoad(def, s.loadKg, s.bodyweightKg) ?: 0.0) * (s.reps ?: 0)
                 else 0.0
             }
             val hang = work.sumOf { s ->
@@ -420,7 +420,7 @@ fun WorkoutSummaryScreen(
                 state.ownLoads.forEach { b ->
                     item(key = "own_${b.id}") {
                         val def = state.catalog.fallbackFor(b.exerciseSlug)
-                        val load = b.loadKg?.let { formatMass(it, state.units, signed = def.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS) }
+                        val load = b.loadKg?.let { weightText(def, it, state.units) }
                         Text(listOfNotNull(def.name(language), b.side?.let { sideLabel(it) }, load).joinToString(" · "),
                             style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("summary_own_load_${b.exerciseSlug}"))
                     }
@@ -542,16 +542,13 @@ private fun SuggestionRow(
     language: String,
     onOpenExercise: (String) -> Unit,
 ) {
-    val signed = def.load == LoadMode.BODYWEIGHT_PLUS
     Card(Modifier.fillMaxWidth().testTag("summary_suggestion_${def.slug}")) {
         Column(Modifier.padding(12.dp)) {
             Text(def.name(language), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Text(stringResource(if (s.verdict == ProgressionVerdict.TOO_EASY) R.string.trw_too_easy else R.string.trw_too_hard),
                 style = MaterialTheme.typography.bodySmall)
             s.nextLoadKg?.let { next ->
-                val text = if (signed && next == 0.0) stringResource(R.string.tr_bodyweight)
-                    else if (signed && next < 0) stringResource(R.string.trw_load_assisted, formatMass(-next, state.units))
-                    else formatMass(next, state.units, signed = signed)
+                val text = weightText(def, next, state.units)
                 Text(stringResource(if (s.verdict == ProgressionVerdict.TOO_EASY) R.string.trw_sugg_more_load else R.string.trw_sugg_less_load, text),
                     style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
             }
@@ -674,13 +671,7 @@ private fun setLine(def: ExerciseDefinition, s: ExerciseSet, units: UnitSystem):
             (s.workS ?: 0.0).roundToInt(), (s.restBetweenS ?: 0.0).roundToInt(), s.repsPerSet ?: 0)
     }
     if (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) {
-        s.loadKg?.let { load ->
-            parts += when {
-                def.load == LoadMode.BODYWEIGHT_PLUS && load == 0.0 -> stringResource(R.string.tr_bodyweight)
-                def.load == LoadMode.BODYWEIGHT_PLUS && load < 0 -> stringResource(R.string.trw_load_assisted, formatMass(-load, units))
-                else -> formatMass(load, units, signed = def.load == LoadMode.BODYWEIGHT_PLUS)
-            }
-        }
+        s.loadKg?.let { load -> parts += weightText(def, load, units) }
     }
     s.edgeMm?.let { parts += stringResource(R.string.tr_format_mm, formatNumber(it)) }
     s.grip?.let { parts += gripLabel(it) }

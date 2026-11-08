@@ -150,12 +150,12 @@ class BodyViewModel @Inject constructor(private val service: AthleteService) : V
                 .mapNotNull { set ->
                     val bw = set.bodyweightKg ?: fallbackBw ?: return@mapNotNull null
                     val percent = if (def.kind == ExerciseKind.LOAD_REPS) {
-                        val load = StrengthMath.effectiveLoad(def.load, set.loadKg, bw) ?: return@mapNotNull null
+                        val load = StrengthMath.effectiveLoad(def, set.loadKg, bw) ?: return@mapNotNull null
                         val reps = set.reps?.takeIf { it > 0 } ?: return@mapNotNull null
                         StrengthMath.epley(load, reps) / bw * 100.0
                     } else {
                         if ((set.durationS ?: 0.0) < 5.0) return@mapNotNull null
-                        StrengthMath.percentBodyweight(def.load, set.loadKg, bw) ?: return@mapNotNull null
+                        StrengthMath.percentBodyweight(def, set.loadKg, bw) ?: return@mapNotNull null
                     }
                     val local = java.time.Instant.ofEpochMilli(set.completedAt ?: return@mapNotNull null)
                         .atZone(zone).toLocalDate()

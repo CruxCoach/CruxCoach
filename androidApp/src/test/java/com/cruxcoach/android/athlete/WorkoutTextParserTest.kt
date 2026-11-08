@@ -257,6 +257,39 @@ class WorkoutTextParserTest {
     }
 
     @Test
+    fun `a dumbbell pair is the weight of one, everything else the total`() {
+        // Issue #58: dumbbells are logged per dumbbell, so "2x16 kg" and "16 kg" on a bench press are both 2 × 16 kg.
+        val pair = one("Kurzhantel-Bankdrücken 3x10 2x16 kg")
+        assertEquals("push.dumbbell_bench_press", pair.item.slug)
+        assertEquals(16.0, pair.item.loadKg)
+        assertEquals(16.0, one("Kurzhantel-Bankdrücken 3x10 16 kg").item.loadKg)
+        // Two 20 kg blocks on a two-arm pick-up are 40 kg in total.
+        val blocks = one("Blockheben beidarmig 5x10s 2x20 kg")
+        assertEquals("finger.two_arm_pickup", blocks.item.slug)
+        assertEquals(40.0, blocks.item.loadKg)
+        // Body-weight work counts everything carried as added weight.
+        assertEquals(20.0, one("Ausfallschritte gehend 3x12 2x10kg").item.loadKg)
+        // One dumbbell per side stays the dumbbell; "3x10 kg" is not three dumbbells.
+        val row = one("Einarmiges Kurzhantelrudern 3x10 2x20kg")
+        assertEquals("pull.dumbbell_row", row.item.slug)
+        assertEquals(20.0, row.item.loadKg)
+        assertEquals(10.0, one("Ausfallschritte gehend 3x12 3x10kg").item.loadKg)
+    }
+
+    @Test
+    fun `a new exercise with a dumbbell pair becomes a pair`() {
+        val shrugs = one("Kurzhantel-Shrugs 3x12 2x20 kg")
+        assertNull(shrugs.match)
+        assertEquals(2, shrugs.guess.implements)
+        assertEquals(20.0, shrugs.item.loadKg)
+        // Without dumbbells or kettlebells there is no pair to log one of: the weight is the total.
+        val farmer = one("Farmer Walk 3x40s 2x24kg")
+        assertNull(farmer.match)
+        assertEquals(1, farmer.guess.implements)
+        assertEquals(48.0, farmer.item.loadKg)
+    }
+
+    @Test
     fun `empty and number-only text gives nothing`() {
         assertTrue(WorkoutTextParser.parse("", catalog).lines.isEmpty())
         assertTrue(WorkoutTextParser.parse("5x5", catalog).lines.isEmpty())

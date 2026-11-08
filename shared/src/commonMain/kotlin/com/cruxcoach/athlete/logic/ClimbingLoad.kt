@@ -2,6 +2,7 @@ package com.cruxcoach.athlete.logic
 
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
 import com.cruxcoach.athlete.catalog.ExerciseCategoryV2
+import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadDomain
 import com.cruxcoach.athlete.catalog.LoadMode
@@ -58,6 +59,11 @@ object ClimbingLoad {
     private const val CHRONIC_DAYS = 28
     /** Below this mean daily load there is no meaningful baseline to compare against. */
     private const val MIN_CHRONIC = 0.5
+    /**
+     * Days of logged history before the athlete's own normal counts (owner 2026-11-06, issue #59). Until then
+     * any real load reads as rising: the careful start, no max finger work.
+     */
+    const val CAREFUL_START_DAYS = 14
 
     const val RISING_RATIO = 1.3
     const val SPIKE_RATIO = 1.5
@@ -183,13 +189,13 @@ object ClimbingLoad {
                     ExerciseKind.HANG, ExerciseKind.TIME -> s.durationS ?: s.targetDurationS ?: 10.0
                     else -> (s.reps ?: 5) * 2.0
                 }
-                finger += seconds / 10.0 * relativeLoad(def.load, s.loadKg, bw, def.unilateral)
+                finger += seconds / 10.0 * relativeLoad(def, s.loadKg, bw)
             }
             if (def.category == ExerciseCategoryV2.PULL || def.category == ExerciseCategoryV2.PUSH ||
                 (LoadDomain.SHOULDER in def.domains && def.category != ExerciseCategoryV2.FINGER)
             ) {
                 val reps = s.reps?.toDouble() ?: ((s.durationS ?: 0.0) / 5.0)
-                shoulder += reps / 5.0 * relativeLoad(def.load, s.loadKg, bw, def.unilateral)
+                shoulder += reps / 5.0 * relativeLoad(def, s.loadKg, bw)
             }
         }
         return mapOf(LoadStructure.FINGER to finger, LoadStructure.SKIN to skin, LoadStructure.SHOULDER to shoulder)
@@ -198,13 +204,13 @@ object ClimbingLoad {
     /** Steeper boards load the shoulder girdle more; 40° is the reference. */
     private fun angleWeight(angle: Int): Double = (angle / 40.0).coerceIn(0.5, 1.5)
 
-    /** Load relative to body weight (1 = body weight); per hand for one-arm external loads. */
-    private fun relativeLoad(mode: LoadMode, loadKg: Double?, bodyweightKg: Double?, unilateral: Boolean): Double {
+    /** Load relative to body weight (1 = body weight); per hand for one-arm external loads, both dumbbells of a pair. */
+    private fun relativeLoad(def: ExerciseDefinition, loadKg: Double?, bodyweightKg: Double?): Double {
         val bw = bodyweightKg ?: return 1.0
-        return when (mode) {
+        return when (def.load) {
             LoadMode.BODYWEIGHT_PLUS -> (bw + (loadKg ?: 0.0)) / bw
             LoadMode.BODYWEIGHT -> 1.0
-            LoadMode.EXTERNAL -> (loadKg ?: 0.0) / (if (unilateral) bw / 2.0 else bw)
+            LoadMode.EXTERNAL -> LoadRules.lifted(def, loadKg ?: 0.0) / (if (def.unilateral) bw / 2.0 else bw)
             LoadMode.NONE -> 0.5
         }.coerceIn(0.2, 2.5)
     }
@@ -212,16 +218,22 @@ object ClimbingLoad {
     /**
      * Acute (7 days) against chronic (28 days) per structure, plus the daily
      * series of the last [SERIES_DAYS] days for the chart. Days without an
-     * entry count as zero — rest days are part of the average.
+     * entry count as zero — rest days are part of the average. Days before the
+     * first logged load are not rest, they are unknown: the normal counts from
+     * the first logged day, and only once [CAREFUL_START_DAYS] are logged
+     * (training simulation, issue #59: every new user who climbed regularly
+     * read "rising" for four weeks).
      */
     fun status(daily: Map<LocalDate, Map<LoadStructure, Double>>, today: LocalDate): LoadStatus {
         val days = (SERIES_DAYS + LEAD_DAYS - 1 downTo 0).map { today.minus(DatePeriod(days = it)) }
         val series = LoadStructure.entries.associateWith { s -> days.map { d -> d to (daily[d]?.get(s) ?: 0.0) } }
+        val first = daily.filter { (d, units) -> d <= today && units.values.any { it > 0.0 } }.keys.minOrNull()
+        val known = first?.let { (today.toEpochDays() - it.toEpochDays()).toInt() + 1 } ?: 0
         val structures = series.mapValues { (_, points) ->
             val values = points.map { it.second }
             val acute = values.takeLast(ACUTE_DAYS).average()
-            val chronic = values.takeLast(CHRONIC_DAYS).average()
-            val ratio = if (chronic < MIN_CHRONIC) null else acute / chronic
+            val chronic = values.takeLast(known.coerceIn(1, CHRONIC_DAYS)).average()
+            val ratio = if (known < CAREFUL_START_DAYS || chronic < MIN_CHRONIC) null else acute / chronic
             val trend = when {
                 ratio == null -> if (acute >= 1.0) LoadTrend.RISING else LoadTrend.LOW
                 ratio >= SPIKE_RATIO -> LoadTrend.SPIKE

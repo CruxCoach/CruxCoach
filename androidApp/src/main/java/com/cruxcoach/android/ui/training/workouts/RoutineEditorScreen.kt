@@ -455,7 +455,9 @@ private fun ItemCard(
             }
             Column(Modifier.padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (!inCircuit) {
-                    EditorStepper(stringResource(R.string.trwo_field_sets), item.sets, 1, 1, 20, "sets_${row.key}") { v ->
+                    // One-sided work: three sets are three on each side.
+                    val setsLabel = if (def.unilateral && item.sides == SideMode.BOTH) R.string.trwo_field_sets_per_side else R.string.trwo_field_sets
+                    EditorStepper(stringResource(setsLabel), item.sets, 1, 1, 20, "sets_${row.key}") { v ->
                         onChange { it.copy(sets = v) }
                     }
                 }
@@ -492,7 +494,7 @@ private fun ItemCard(
                     }
                 }
                 if ((def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) && def.kind != ExerciseKind.CLIMB && !item.test) {
-                    LoadField(item.loadKg, def.load, units, incrementKg, "load_${row.key}") { v -> onChange { it.copy(loadKg = v) } }
+                    LoadField(item.loadKg, def, units, incrementKg, "load_${row.key}") { v -> onChange { it.copy(loadKg = v) } }
                 }
                 if (!inCircuit) {
                     EditorStepper(stringResource(R.string.trwo_field_rest), item.restS ?: def.defaults.restS ?: 90, 15, 0, 1800, "rest_${row.key}",
@@ -577,21 +579,22 @@ private fun CircuitCard(circuit: Int, items: List<com.cruxcoach.athlete.model.Ro
 @Composable
 private fun LoadField(
     loadKg: Double?,
-    mode: LoadMode,
+    def: ExerciseDefinition,
     units: com.cruxcoach.athlete.model.UnitSystem,
     incrementKg: Double,
     tag: String,
     onChange: (Double?) -> Unit,
 ) {
-    val label = stringResource(R.string.trwo_field_load)
+    val mode = def.load
+    // What the number is ("Weight per dumbbell", "Added weight"); the value is then the plain number typed.
+    val label = weightLabel(def)
     val step = incrementKg.coerceAtLeast(0.25)
     val min = if (mode == LoadMode.BODYWEIGHT_PLUS) -200.0 else 0.0
     var editing by remember { mutableStateOf(false) }
     val shown = when {
         loadKg == null -> stringResource(R.string.trwo_load_auto_short)
-        mode == LoadMode.BODYWEIGHT_PLUS && loadKg < 0 -> stringResource(R.string.trw_load_assisted, formatMass(-loadKg, units))
-        mode == LoadMode.BODYWEIGHT_PLUS && loadKg == 0.0 -> stringResource(R.string.tr_bodyweight)
-        else -> formatMass(loadKg, units, signed = mode == LoadMode.BODYWEIGHT_PLUS)
+        mode == LoadMode.BODYWEIGHT_PLUS -> weightText(def, loadKg, units)
+        else -> formatMass(loadKg, units)
     }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -612,7 +615,7 @@ private fun LoadField(
         val parsed = parseDecimal(text)?.takeIf { mode == LoadMode.BODYWEIGHT_PLUS || it >= 0 }
         AlertDialog(
             onDismissRequest = { editing = false },
-            title = { Text(stringResource(R.string.trw_load_input, com.cruxcoach.athlete.logic.Units.massUnit(units))) },
+            title = { Text(weightInputTitle(def, units)) },
             text = {
                 Column {
                     OutlinedTextField(value = text, onValueChange = { text = it.take(8) }, singleLine = true,

@@ -151,10 +151,11 @@ class AthleteRepository(
     fun completedSetsSince(epochMillis: Long): List<ExerciseSet> =
         training.getCompletedSetsSince(epochMillis).executeAsList().map { it.toModel() }
 
-    data class TrainedExercise(val slug: String, val sets: Long, val lastAt: Long?)
+    /** [trainings]: how many trainings the exercise was logged in (issue #68: known after two). */
+    data class TrainedExercise(val slug: String, val sets: Long, val lastAt: Long?, val trainings: Long = 0)
 
     fun trainedExercises(): List<TrainedExercise> =
-        training.getTrainedExerciseSlugs().executeAsList().map { TrainedExercise(it.exercise_slug, it.cnt, it.last_at) }
+        training.getTrainedExerciseSlugs().executeAsList().map { TrainedExercise(it.exercise_slug, it.cnt, it.last_at, it.trainings) }
 
     // ── Routines ─────────────────────────────────────────────────────
 

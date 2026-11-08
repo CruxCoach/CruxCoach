@@ -143,6 +143,22 @@
     <string name="tr_format_percent_bw">%1$d %% BW</string>
     <string name="tr_bodyweight">Bodyweight</string>
     <string name="tr_assisted">assisted</string>
+    <!-- Weight fields: what the number refers to (issue #58) -->
+    <string name="tr_weight">Weight</string>
+    <string name="tr_weight_added">Added weight</string>
+    <string name="tr_weight_per_dumbbell">Weight per dumbbell</string>
+    <string name="tr_weight_per_kettlebell">Weight per kettlebell</string>
+    <string name="tr_weight_dumbbell">Dumbbell weight</string>
+    <string name="tr_weight_kettlebell">Kettlebell weight</string>
+    <string name="tr_weight_barbell">Total incl. bar</string>
+    <string name="tr_weight_pickup">Total incl. block</string>
+    <string name="tr_weight_pickup_both">Total, both hands</string>
+    <string name="tr_weight_stack">Weight on the stack</string>
+    <string name="tr_weight_force">Gauge reading</string>
+    <string name="tr_weight_input">%1$s in %2$s</string>
+    <string name="tr_format_pair">%1$d × %2$s</string>
+    <string name="tr_format_per_dumbbell">%1$s per dumbbell</string>
+    <string name="tr_format_per_kettlebell">%1$s per kettlebell</string>
 
     <!-- Common actions -->
     <string name="tr_action_start">Start</string>

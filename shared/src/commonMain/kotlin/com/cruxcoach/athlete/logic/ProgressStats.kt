@@ -23,7 +23,8 @@ data class SessionPoint(
     val capacity: Map<Side?, Double>,
     /**
      * The same capacity the way the athlete reads it: added (or assisted)
-     * kilos for bodyweight-plus work, otherwise the capacity itself.
+     * kilos for bodyweight-plus work, one dumbbell of a pair, otherwise the
+     * capacity itself ([ProgressStats.displayValue]).
      */
     val display: Map<Side?, Double>,
     val volume: Double,
@@ -79,19 +80,24 @@ object ProgressStats {
         kotlin.time.Instant.fromEpochMilliseconds(epochMillis).toLocalDateTime(zone).date
 
     /**
-     * Value shown for a capacity: bodyweight-plus work in added kilos
-     * (negative = assisted) when the body weight is known, else the capacity.
+     * Value shown for a capacity, in the number the athlete logs ([LoadRules]): bodyweight-plus work in
+     * added kilos (negative = assisted) when the body weight is known, paired dumbbells per dumbbell,
+     * else the capacity.
      */
-    fun displayValue(def: ExerciseDefinition, kind: CapacityKind?, capacity: Double, bodyweightKg: Double?): Double =
-        if (def.load == LoadMode.BODYWEIGHT_PLUS && bodyweightKg != null &&
-            (kind == CapacityKind.E1RM_TOTAL || kind == CapacityKind.TEN_SECOND_MAX)) capacity - bodyweightKg
-        else capacity
+    fun displayValue(def: ExerciseDefinition, kind: CapacityKind?, capacity: Double, bodyweightKg: Double?): Double {
+        if (kind != CapacityKind.E1RM_TOTAL && kind != CapacityKind.TEN_SECOND_MAX) return capacity
+        return when (def.load) {
+            LoadMode.BODYWEIGHT_PLUS -> if (bodyweightKg != null) capacity - bodyweightKg else capacity
+            LoadMode.EXTERNAL -> LoadRules.logged(def, capacity)
+            else -> capacity
+        }
+    }
 
-    /** Work done in one set, in the unit that makes sense for the exercise kind. */
+    /** Work done in one set, in the unit that makes sense for the exercise kind; loads count both dumbbells of a pair. */
     fun volume(def: ExerciseDefinition, set: ExerciseSet, bodyweightKg: Double?): Double {
         if (!set.isCompleted || set.setType == SetType.WARMUP) return 0.0
         val bw = set.bodyweightKg ?: bodyweightKg
-        fun load(): Double? = StrengthMath.effectiveLoad(def.load, set.loadKg, bw)
+        fun load(): Double? = StrengthMath.effectiveLoad(def, set.loadKg, bw)
         return when (def.kind) {
             ExerciseKind.LOAD_REPS -> (set.reps ?: 0) * (load() ?: set.loadKg ?: 0.0)
             ExerciseKind.REPS, ExerciseKind.CLIMB -> (set.reps ?: 0).toDouble()

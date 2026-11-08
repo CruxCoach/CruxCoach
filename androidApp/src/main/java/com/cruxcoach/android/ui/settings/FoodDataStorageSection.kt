@@ -90,7 +90,7 @@ internal fun FoodDataStorageSection(viewModel: FoodDataStorageViewModel) {
 }
 
 @Composable
-private fun StorageRow(label: String, hint: String, enabled: Boolean, tag: String, onRemove: () -> Unit) {
+internal fun StorageRow(label: String, hint: String, enabled: Boolean, tag: String, onRemove: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyMedium)

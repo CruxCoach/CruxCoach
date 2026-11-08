@@ -353,7 +353,7 @@ class CoachSetupViewModel @Inject constructor(
             2 -> into.copy(contexts = from.contexts, experience = from.experience, ageBand = from.ageBand,
                 currentGrade = from.currentGrade, currentFlashGrade = from.currentFlashGrade, ropeGrade = from.ropeGrade)
             3 -> into.copy(focus = from.focus, fingerPreference = from.fingerPreference, intensityStyle = from.intensityStyle,
-                variety = from.variety)
+                variety = from.variety, exerciseChoice = from.exerciseChoice)
             else -> into
         }
 
@@ -808,6 +808,9 @@ private fun PreferencesCard(
         onChange = { v -> update { it.copy(variety = v) } },
     )
     FavoritesQuestion(state, onPickFavorites, onRemoveFavorite)
+    // Which exercises, next to how often they change; after the favourites, which belong right below "Routine or variety".
+    QuestionLabel(stringResource(R.string.trc_exercise_choice))
+    ExerciseChoiceChips(d.exerciseChoice) { c -> update { it.copy(exerciseChoice = c) } }
     QuestionLabel(stringResource(R.string.trc_equipment))
     val owned = state.profile.equipment.filter { it != EquipmentV2.NONE && it != EquipmentV2.MAT }
     Text(
@@ -887,6 +890,13 @@ private fun preferencesPreview(d: CoachProfile): String {
     }
     d.variety?.let {
         parts += stringResource(if (it < 40) R.string.trc_preview_routine else if (it > 60) R.string.trc_preview_varied else R.string.trc_preview_some_variety)
+    }
+    d.exerciseChoice?.let {
+        parts += stringResource(when (it) {
+            ExerciseChoice.CLASSICS -> R.string.trc_preview_choice_classics
+            ExerciseChoice.BALANCED -> R.string.trc_preview_choice_balanced
+            ExerciseChoice.OPEN -> R.string.trc_preview_choice_open
+        })
     }
     if (d.fingerPreference == FingerPreference.NONE) parts += stringResource(R.string.trc_preview_no_finger)
     return parts.joinToString(" ")

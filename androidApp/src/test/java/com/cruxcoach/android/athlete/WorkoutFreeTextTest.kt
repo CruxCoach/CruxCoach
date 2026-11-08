@@ -211,7 +211,8 @@ class WorkoutFreeTextTest {
         assertTrue(r.lines[0].item.warmup && r.lines[1].item.warmup && !r.lines[2].item.warmup)
         assertEquals(1, r.lines[0].item.sets)
         assertEquals(600, r.lines[3].item.durationS)
-        assertEquals(16.0, parse("Bulgarian Split Squats 3x8 pro Seite mit 2x16kg").lines.single().item.loadKg)
+        // Added weight is everything carried (issue #58): two 16 kg dumbbells are +32 kg.
+        assertEquals(32.0, parse("Bulgarian Split Squats 3x8 pro Seite mit 2x16kg").lines.single().item.loadKg)
         val prose = parse("Heute Oberkörper. Erst 10 min warm machen auf dem Rad, dann Klimmzüge 5x5 mit 15 kg, " +
             "danach Dips 4x8 und zum Schluss Bauch: Hanging Leg Raises 3x10")
         assertTrue(prose.lines[0].item.warmup)

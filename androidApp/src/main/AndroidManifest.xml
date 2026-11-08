@@ -328,6 +328,17 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <!-- FEAT-078: ONNX Runtime's manifest adds this provider. It loads the
+             34 MB runtime on every app start, on the main thread, and sets up
+             its telemetry to Microsoft with a device id. CruxCoach sends no
+             telemetry: the provider is removed, and the runtime is started
+             only for the hold model, with telemetry switched off
+             (HoldModelRuntime). -->
+        <provider
+            android:name="ai.onnxruntime.TelemetryInitializer"
+            android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
+            tools:node="remove" />
     </application>
 
 </manifest>

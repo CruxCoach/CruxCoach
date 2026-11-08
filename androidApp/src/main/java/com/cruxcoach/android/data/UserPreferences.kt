@@ -457,6 +457,8 @@ object PreferenceKeys {
     val LAST_CLIMB_PROJECTION_SURVIVES_DISCONNECT =
         booleanPreferencesKey("last_climb_projection_survives_disconnect")
     val CRASH_REPORT_OPT_IN = booleanPreferencesKey("crash_report_opt_in")
+    // "Already a member" on the community hint after a report: hides it for good. Stays on the phone.
+    val COMMUNITY_REPORT_HINT_OFF = booleanPreferencesKey("community_report_hint_off")
     val LAST_ANNOUNCEMENT_CHECK = stringPreferencesKey("last_announcement_check")
     val ANNOUNCEMENTS_ENABLED = booleanPreferencesKey("announcements_enabled")
     val ANNOUNCEMENT_CAT_RELEASE = booleanPreferencesKey("announcement_cat_release")
@@ -1685,6 +1687,14 @@ class UserPreferences(
 
     suspend fun setCrashReportOptIn(enabled: Boolean) {
         dataStore.edit { it[PreferenceKeys.CRASH_REPORT_OPT_IN] = enabled }
+    }
+
+    val communityReportHintOff: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.COMMUNITY_REPORT_HINT_OFF] ?: false
+    }
+
+    suspend fun setCommunityReportHintOff() {
+        dataStore.edit { it[PreferenceKeys.COMMUNITY_REPORT_HINT_OFF] = true }
     }
 
     val lastAnnouncementCheck: Flow<Long?> = dataStore.data.map {

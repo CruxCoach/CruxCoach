@@ -21,7 +21,6 @@
     <string name="trbm_ten_second_max">10-s max %1$s (%2$d %% BW)</string>
     <string name="trbm_max_reps">max. %1$d reps</string>
     <string name="trbm_max_seconds">max. %1$d s</string>
-    <string name="trbm_assisted">assisted %1$s</string>
     <string name="trbm_hint_e1rm">The heaviest set you can do cleanly: load and reps (1–30). From that CruxCoach estimates your one-rep max.</string>
     <string name="trbm_hint_hang">The most you can hold: load, hold time and edge. 10 s is the reference; other times are converted.</string>
     <string name="trbm_hint_reps">Your maximum number of clean reps in one set.</string>
@@ -36,8 +35,6 @@
     <string name="trbm_sets_reps">%1$d × %2$d reps</string>
     <string name="trbm_max_reps_about">max. about %1$d reps</string>
     <string name="trbm_max_seconds_about">max. about %1$d s</string>
-    <string name="trbm_load_added">Added weight (%1$s)</string>
-    <string name="trbm_load_total">Load (%1$s)</string>
     <string name="trbm_load_added_hint">0 = body weight, negative = assisted (pulley, band)</string>
     <string name="trbm_reps">Reps</string>
     <string name="trbm_seconds">Seconds</string>

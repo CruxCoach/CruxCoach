@@ -7,6 +7,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Spray walls, from the main menu. Photograph your own wall (camera or photo
+  library, crop and turn), and the phone suggests the holds. Download the hold
+  model once (33 MB) and it finds holds of every colour with their real shape,
+  on the phone and offline from then on; without it, or if it cannot run, a
+  simpler detector suggests round holds. The model can be removed again under
+  Settings → Delete local data. Take all or one by one with a sensitivity
+  slider, then fix by hand (tap to pick, drag to move, slider to size, press
+  and hold or "Add" to place, undo/redo, pinch to zoom). Set problems with start, hand, foot and finish
+  holds, a name, an optional grade ("Project" without one) and a description;
+  sort and search them, and log sends and attempts in a private logbook. Every
+  hold edit, reset with a new photo and restore is kept as a version: problems
+  that lost a hold show "1 hold gone" with the hold drawn dashed, problems from
+  before a reset move to "Earlier" and open on their photo, and any version can
+  be restored. A wall stays on the phone unless you make it public: then its
+  photos, holds and problems are published with your CruxCoach account, others
+  find it under "Spray walls here" at its gym on the map and set problems on
+  it. The photos of a public wall must not show people. Withdrawing a wall
+  also deletes its photos from the Blossom servers; if that does not work, the
+  wall stays public (and is not deleted) so you can try again. Your logbook is
+  never published, and spray walls are not in Android backups.
 - Board size check: not sure which size your Kilter or other Aurora-family board is,
   or other holds light up than the app shows? The board picker and the climb's ⋯ menu
   now light a few marked holds for a size, so you can compare with the board and switch
@@ -30,6 +50,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   board picker.
 - Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
   data is refreshed (2,933 venues).
+- Logbook overview: the logbook now opens with one card instead of six tiles:
+  your hardest send and hardest flash, the last 30 days against the 30 before
+  (climbing days, sends and hardest grade; green means more or harder), your
+  climbing days per week and your milestones (new grades, 50, 100, 250 and more
+  sends, your biggest day, weeks in a row). Tap it for the statistics. The period
+  filter of the list moved into the logbook filter, next to result, board and
+  angle.
+- Statistics, reorganised so every number and chart appears once: the period
+  and board filters on top (each board chip shows its sends and best grade),
+  the period in six numbers with the change against the period before (sends,
+  tries, climbing days, problems, hardest grade, flash rate) and its bests
+  (hardest flash, most sends in one day, climbing days a week, most weeks in a
+  row), then progress (the rolling level, one line per board), grades (problems
+  per grade by flash, later send or still open, or every send with repeats in
+  your intensity-zone colours; tap a grade for its sends and the problems behind
+  them), tries, activity (calendar, climbing days per week, entries or sends over
+  time), angles and holds. The charts over time span the whole period, from your
+  first entry at the earliest until today, and count sends without a grade too.
+- Tries until the send: per board, how many of your problems you flashed or sent
+  on the 2nd, 3rd, 4th–5th or a later try. Tries from earlier sessions count, so a
+  send after attempts on an earlier day is no flash.
+- Stats across boards: if you climb on more than one board, the statistics show
+  how many tries you need to send each grade on each board, as bars side by side,
+  and the average tries per month as a small line chart (months without a first
+  send stay as gaps; a long logbook scrolls sideways). Tries from earlier
+  sessions count until the first send; repeats do not. Values that rest on fewer
+  than three problems are drawn hollow; tap a board, grade or month for its
+  numbers. Each board keeps one colour everywhere. With enough data on two
+  boards, the statistics say how they feel for you ("MoonBoard feels about one
+  grade harder for you than Kilter"), estimated from your tries at the same
+  grades. The tries views also show if you climb on one board. Works with your
+  existing logbook.
+- Session recap: the button beside each day in the logbook, and the summary at
+  the end of a timed session, show one card with sends, flashes, tries, your
+  three hardest sends, the grades you sent and the milestones you reached,
+  ready to share as an image. Tries from earlier days count here too, so a
+  first-go send of an old project is no flash, and the card at the end of a
+  timed session shows only the milestones of that session.
 - Wall games, from the main menu or a problem's menu ("Play as a game"):
   "Floor is lava" (lit rows rise from the bottom, five speeds), "Endurance" (a
   problem appears row by row, five waiting times), "Hold thief" (a random
@@ -39,6 +97,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Countdown with beeps and a stopwatch; for Shiny Wall, Kilter, the other
   Aurora boards and MoonBoard (not Quantum). Without a connected board the
   game runs on the screen; games are never logged.
+- Community: Settings → Community explains the CruxCoach community on Buzz
+  (talk to the developers, test new builds first, help shape what comes next)
+  and "Join on Buzz" opens community.cruxcoach.org/join in the browser. After a
+  new bug report or feature request, the confirmation offers the same link;
+  "Already a member" hides it for good. Buzz is a separate app with its own
+  account: nothing from CruxCoach is shared and nothing is sent.
 - Training beyond the board. A "Today" hub and an "Exercises"
   library inside the new training area. The library has over 200 exercises written for
   climbers – fingers, pulling, pushing and antagonists, core, legs and hips,
@@ -154,6 +218,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Favourite exercises are chosen right next to "routine or variety" in the
   coach setup: with a routine they are in almost every suggestion they fit,
   with variety they come back regularly. The suggestion card stars them.
+- Well-known exercises first: the coach starts with exercises everyone knows and brings in more unusual
+  ones with experience, with at most one exercise new to you per training (two with "Open to unusual
+  exercises"). Today's card marks such an
+  exercise "New to you" with its steps one tap away, and the player opens with its steps the first time.
+  "Don't know it" in the swap sheet puts an exercise you know in its place without counting against it.
+  "Exercise choice" in the coach setup and the training settings: "Mostly classics", "Balanced" (the
+  default) or "Open to unusual exercises".
 - Today's card lists every exercise with its sets ("3 × 8"), the whole list
   one tap away, and a tap on an exercise swaps it: its easier and harder
   variant and the best other exercises of the same kind – through the same
@@ -471,6 +542,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Catalogue updates no longer wait 15 seconds per board when one Nostr relay accepts the
   connection but never answers. Once two relays have sent the catalogue's signed manifest,
   the others get two more seconds, then the update goes on with the newest manifest it has.
+- Training: every weight field now says what the number means, on every screen, in
+  English and German, kg and lb. The labels read "Weight per dumbbell", "Dumbbell weight",
+  "Total incl. bar", "Total incl. block", "Total, both hands", "Weight on the stack" and
+  "Added weight", and values read the way you enter them: "2 × 16 kg", "+12 kg",
+  "15 kg assisted". Dumbbells are logged per dumbbell. Volume, % body weight, the
+  estimated one-rep max and records count both dumbbells of a pair, so a set of 2 × 16 kg
+  no longer counts as 16 kg; older dumbbell sets are read the same way. Exercise steps
+  say what to log, one-sided exercises show "Sets per side" in the workout editor, and
+  your own dumbbell or kettlebell exercises can use one or two. In typed workouts,
+  "2x16 kg" is 16 kg per dumbbell on dumbbell work, +32 kg added on body-weight work
+  and 32 kg in total on a two-arm pick-up.
+- Training: a suggested training no longer plans more of an area than the week still allows. One
+  legs-and-core day could hold 16 leg sets against a weekly maximum of 10, and the short block after
+  climbing could add antagonist sets on every climbing day. In a week with no room left for that kind of
+  work, the coach suggests an easy 20-minute mobility session instead of a few sets. Found by a new
+  simulation that runs synthetic athletes through the training logic for months.
+- Training: new users who climb regularly no longer see "finger load rising" in their first four weeks.
+  The 28-day normal now counts from the first logged day once 14 days are logged; until then the careful
+  start (no max finger work) stays.
+- Training: once the week's training days (climbing included) are used up, Today suggests mobility or
+  rest. "Train anyway" on that card gives the training Today would have suggested without the day limit,
+  for the rest of the day. The short daily sessions of a comeback plan do not use up a day.
+- Training: after a training in which every work set of a strength exercise was answered "3+", the next
+  one plans at least two weight steps more, so a start that was too light catches up. Not for finger work,
+  and not during an injury, the return after a break, a comeback plan or for climbers under 18 or in their
+  first year. Below 10 kg a load rises by at most one step per training.
+- Comeback plan: a strength session starts from the last strength session's loads, no longer from the
+  light tendon holds done earlier the same day (and the other way round).
+- "Privacy notice" and "Source code" in Settings → About no longer close the app on a
+  phone without a browser; a short message says that no app can open the link. The
+  community links do the same.
 
 ## [0.2.4] - 2026-10-25
 

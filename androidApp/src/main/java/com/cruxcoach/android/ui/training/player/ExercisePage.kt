@@ -266,6 +266,10 @@ private fun PageIntro(
         val set = active ?: first
         val def = state.def(set.exerciseSlug) ?: return
         state.dayForm?.let { m -> DayFormLine(page, state, m, onAsPlanned) }
+        // The first time an exercise new to the athlete comes up, its steps are open (issue #68).
+        page.blockIndexes.mapNotNull { b -> page.sets.firstOrNull { it.blockIndex == b }?.exerciseSlug }.distinct()
+            .filter { it in state.firstTime }.mapNotNull { state.def(it) }
+            .forEach { d -> FirstTimeSteps(d, page, language) }
         if (active?.setType == SetType.WORK) learningBadge(def.slug, Modifier.padding(bottom = 4.dp))
         val details = listOfNotNull(
             perBlockText(set, def, units),
@@ -277,6 +281,28 @@ private fun PageIntro(
         if (details.isNotEmpty()) {
             Text(details.joinToString(" · "), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp).testTag("player_target_detail"))
+        }
+    }
+}
+
+/** The steps of an exercise done for the first time, open until the athlete folds them. */
+@Composable
+private fun FirstTimeSteps(def: ExerciseDefinition, page: PlayerPage, language: String) {
+    val steps = def.text(language).steps
+    if (steps.isEmpty()) return
+    var open by rememberSaveable(page.key, def.slug) { mutableStateOf(true) }
+    Column(Modifier.fillMaxWidth().padding(bottom = 6.dp).testTag("player_steps_${def.slug}")) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(MaterialTheme.shapes.small).clickable { open = !open },
+        ) {
+            Text(stringResource(R.string.trt_new_to_you) + " · " + stringResource(R.string.trx_steps) +
+                (if (page.circuit != null) ": " + def.name(language) else ""),
+                style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            Icon(if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, Modifier.size(20.dp))
+        }
+        if (open) steps.forEachIndexed { i, step ->
+            Text("${i + 1}. $step", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(bottom = 2.dp))
         }
     }
 }
@@ -601,7 +627,7 @@ private fun LatestDoneExtras(set: ExerciseSet, def: ExerciseDefinition, state: P
             }
         }
         state.adjustment?.let { adj ->
-            Text(adjustmentText(adj, units, set.side), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+            Text(adjustmentText(adj, def, units, set.side), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("player_adjustment"))
         }

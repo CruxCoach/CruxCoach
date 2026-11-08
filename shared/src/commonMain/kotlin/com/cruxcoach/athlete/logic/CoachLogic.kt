@@ -61,7 +61,8 @@ object CoachLogic {
             if (slugs.any { it in PULL_SLUGS }) add(CoachStep.START_VALUE_PULL)
             if (!fingerAsked || slugs.any { it in FINGER_SLUGS }) add(CoachStep.START_VALUE_FINGER)
             if (c.experience != null || c.ageBand != null) add(CoachStep.EXPERIENCE)
-            if (c.focus.isNotEmpty() || c.fingerPreference != null || c.intensityStyle != null || c.variety != null) add(CoachStep.PREFERENCES)
+            if (c.focus.isNotEmpty() || c.fingerPreference != null || c.intensityStyle != null || c.variety != null ||
+                c.exerciseChoice != null) add(CoachStep.PREFERENCES)
             if (c.currentGrade != null || logbook.hasGrades) add(CoachStep.GRADE)
         }
         val score = done.sumOf { WEIGHTS[it] ?: 0 }.coerceIn(0, 100)

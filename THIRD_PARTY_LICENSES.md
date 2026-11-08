@@ -59,6 +59,20 @@ Used to show which holds a MoonBoard hold set covers, and to derive the
 `climbs.hsm` hold-set mask for locally authored and peer-received MoonBoard
 climbs (FEAT-049).
 
+### Hold segmentation pipeline — BoardSesh
+
+- **Location:** [`SegPipeline.kt`](shared/src/commonMain/kotlin/com/cruxcoach/domain/spraywall/detect/SegPipeline.kt)
+- **Upstream:** https://github.com/boardsesh/boardsesh — `packages/shared/hold-detection/src`
+  (`tiles.ts`, `decode.ts`, `outline.ts`, `nms.ts`, `candidates.ts`)
+- **License:** Apache License 2.0
+- **License text:** https://www.apache.org/licenses/LICENSE-2.0
+- **Changes:** ported to Kotlin; a resampler replaces libvips; a score floor
+  below the threshold keeps unsure holds for the sensitivity slider; the ring
+  point limit is a setting.
+
+Turns the hold segmentation model's output into spray-wall holds with their
+outlines (FEAT-078).
+
 ---
 
 ## Bundled Assets
@@ -249,6 +263,28 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 
 ## Downloaded on Request (not in the APK)
 
+### Hold segmentation model "2026-09-18-seg" — BoardSesh
+
+- **Used in:** spray walls (FEAT-078), hold suggestions with outlines, only
+  after the user starts the download in the hold editor. Can be removed again
+  under Settings → Delete local data.
+- **File:** `model-int8.onnx` (RF-DETR-Seg nano, int8), pinned to size and
+  SHA-256 in [`HoldModelStore.kt`](androidApp/src/main/java/com/cruxcoach/android/spraywall/HoldModelStore.kt).
+  The app downloads it only from the Blossom mirrors of CruxCoach's board
+  catalogues, never from BoardSesh's servers; the file is BoardSesh's
+  published release, unchanged.
+- **License:** Apache License 2.0 (model weights, BoardSesh; RF-DETR code and
+  base weights, Roboflow).
+- **Training data:** "Climbing Holds and Volumes" v14, Roboflow Universe
+  (https://universe.roboflow.com/blackcreed-xpgxh/climbing-holds-and-volumes),
+  licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+- **Mask teacher:** d12, crux-climbing-hold-segmentation-models v1.0.0
+  (https://github.com/d12/crux-climbing-hold-segmentation-models), MIT License.
+  Its training data is unclear: the model card says the models were trained
+  on climbing-wall images found on the internet and annotated by hand, and
+  that the images, their source and their licensing are not published.
+- **Runtime:** ONNX Runtime for Android, see [Native Runtime Libraries](#native-runtime-libraries).
+
 ### Qwen3.5 2B / 4B vision-language models — Qwen Team, Alibaba Cloud
 
 - **Used in:** food photo recognition (FEAT-069), only after the user starts
@@ -311,6 +347,29 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
   satisfies this in two places: (1) the MapLibre default attribution
   control rendered inside the map UI, and (2) this file plus the root
   [`NOTICE`](NOTICE) in the distribution.
+
+---
+
+## Native Runtime Libraries
+
+A Gradle dependency, listed here because its licence asks for its notices.
+
+### ONNX Runtime for Android (1.31.1) — Microsoft
+
+- **Used in:** [`OnnxHoldDetector.kt`](androidApp/src/main/java/com/cruxcoach/android/spraywall/OnnxHoldDetector.kt),
+  runs the hold segmentation model above. A Gradle dependency
+  (`com.microsoft.onnxruntime:onnxruntime-android`); its native library
+  `libonnxruntime.so` ships in the APK.
+- **Upstream:** https://github.com/microsoft/onnxruntime (tag `v1.31.1`)
+- **License:** MIT License, Copyright (c) Microsoft Corporation.
+- **Third-party notices:** the release's
+  [`ThirdPartyNotices.txt`](https://github.com/microsoft/onnxruntime/blob/v1.31.1/ThirdPartyNotices.txt)
+  (SHA-256 `143764b9…6c83de3`) is reproduced unchanged, after the MIT
+  licence, in [`onnxruntime-MIT.json`](androidApp/aboutlibraries/licenses/onnxruntime-MIT.json)
+  and shown on the in-app licence screen.
+- **Telemetry:** off. The manifest removes the runtime's
+  `TelemetryInitializer` provider, and the app switches the runtime's
+  telemetry off before its first session.
 
 ---
 

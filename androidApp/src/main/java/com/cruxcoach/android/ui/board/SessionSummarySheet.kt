@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +29,10 @@ internal fun SessionSummarySheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // The session's card, the same one the logbook shares; without the
+    // logbook history the sheet falls back to its own tiles.
+    val recap = summary?.recap
+    val recapLayer = rememberGraphicsLayer()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -49,77 +54,81 @@ internal fun SessionSummarySheet(
                 fontWeight = FontWeight.Bold
             )
 
-            // Highlight cards row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                HighlightCard(
-                    value = "${session.ascentCount}",
-                    label = stringResource(R.string.board_sends),
-                    color = SuccessGreen,
-                    modifier = Modifier.weight(1f)
-                )
-                HighlightCard(
-                    // Same definition as the logbook stats: every logged row counts at least one try.
-                    value = "${summary?.totalAttempts ?: session.bidCount}",
-                    label = stringResource(R.string.board_session_summary_attempts),
-                    color = OrangeAccent,
-                    modifier = Modifier.weight(1f)
-                )
-                if (summary != null && summary.flashCount > 0) {
-                    HighlightCard(
-                        value = "${summary.flashCount}",
-                        label = stringResource(R.string.board_session_flashes),
-                        color = GradeElite,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                if (summary?.uniqueClimbs != null && summary.uniqueClimbs > 0) {
-                    HighlightCard(
-                        value = "${summary.uniqueClimbs}",
-                        label = stringResource(R.string.board_stats_unique),
-                        color = Slate80,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-
-            // Hardest send
-            summary?.hardestSendGrade?.let { grade ->
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = OrangeAccent.copy(alpha = 0.12f)
-                    ),
-                    shape = RoundedCornerShape(12.dp)
+            if (recap != null) {
+                SessionRecapImage(recap, recapLayer)
+            } else {
+                // Highlight cards row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(
-                                stringResource(R.string.board_session_summary_hardest_send),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            summary.hardestSendName?.let { name ->
-                                Text(
-                                    name,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                        Text(
-                            grade,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = OrangeAccent
+                    HighlightCard(
+                        value = "${session.ascentCount}",
+                        label = stringResource(R.string.board_sends),
+                        color = SuccessGreen,
+                        modifier = Modifier.weight(1f)
+                    )
+                    HighlightCard(
+                        // Same definition as the logbook stats: every logged row counts at least one try.
+                        value = "${summary?.totalAttempts ?: session.bidCount}",
+                        label = stringResource(R.string.board_session_summary_attempts),
+                        color = OrangeAccent,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (summary != null && summary.flashCount > 0) {
+                        HighlightCard(
+                            value = "${summary.flashCount}",
+                            label = stringResource(R.string.board_session_flashes),
+                            color = GradeElite,
+                            modifier = Modifier.weight(1f)
                         )
+                    }
+                    if (summary?.uniqueClimbs != null && summary.uniqueClimbs > 0) {
+                        HighlightCard(
+                            value = "${summary.uniqueClimbs}",
+                            label = stringResource(R.string.board_stats_unique),
+                            color = Slate80,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // Hardest send
+                summary?.hardestSendGrade?.let { grade ->
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = OrangeAccent.copy(alpha = 0.12f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    stringResource(R.string.board_session_summary_hardest_send),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                summary.hardestSendName?.let { name ->
+                                    Text(
+                                        name,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                            Text(
+                                grade,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = OrangeAccent
+                            )
+                        }
                     }
                 }
             }
@@ -144,8 +153,8 @@ internal fun SessionSummarySheet(
                 }
             }
 
-            // Mini grade pyramid
-            if (summary != null && summary.gradeDistribution.isNotEmpty()) {
+            // Mini grade pyramid, when there is no card that shows the grades
+            if (recap == null && summary != null && summary.gradeDistribution.isNotEmpty()) {
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
@@ -208,6 +217,8 @@ internal fun SessionSummarySheet(
                     }
                 }
             }
+
+            if (recap != null) ShareRecapButton(recap, recapLayer, filled = false)
 
             // OK button
             Button(

@@ -39,7 +39,7 @@
     <string name="trwo_text_label">Exercises</string>
     <string name="trwo_text_placeholder">Pull-ups 5×5 +20 kg, push-ups 3×15
 Circuit 3 rounds: dips 10, sit-ups 20, plank 30 s</string>
-    <string name="trwo_text_hint">Write it the way you would say it – several exercises per line, with commas, “and” or “then”. Numbers before or after: sets × reps or seconds, load (+ added, − assisted), edge in mm, rest, “left and right”. Circuits: “Circuit 3 rounds: …”, “… as a circuit” or “alternating with”, rests “between exercises” and “after each round”. “Warm-up:” marks the warm-up, a first line without numbers names the workout. Typos are fine; anything unknown becomes a new exercise.</string>
+    <string name="trwo_text_hint">Write it the way you would say it – several exercises per line, with commas, “and” or “then”. Numbers before or after: sets × reps or seconds, weight (+ added, − assisted, “2×16 kg” for two dumbbells), edge in mm, rest, “left and right”. Circuits: “Circuit 3 rounds: …”, “… as a circuit” or “alternating with”, rests “between exercises” and “after each round”. “Warm-up:” marks the warm-up, a first line without numbers names the workout. Typos are fine; anything unknown becomes a new exercise.</string>
     <string name="trwo_text_name">Name: %1$s</string>
     <string name="trwo_text_new">New exercise · %1$s</string>
     <plurals name="trwo_text_apply">
@@ -49,11 +49,10 @@ Circuit 3 rounds: dips 10, sit-ups 20, plank 30 s</string>
     <string name="trwo_text_apply_none">Add</string>
     <string name="trwo_text_warmup">warm-up</string>
     <string name="trwo_text_name_join">" &amp; "</string>
-    <string name="trwo_field_load">Load</string>
     <string name="trwo_load_auto">Automatic</string>
     <string name="trwo_load_auto_short">auto</string>
-    <string name="trwo_load_hint">Automatic: CruxCoach plans the load from your performance value and last time. A value here always wins.</string>
-    <string name="trwo_load_hint_added">Added load: 0 = body weight, negative = assisted. Automatic: CruxCoach plans it from your performance value and last time. A value here always wins.</string>
+    <string name="trwo_load_hint">Automatic: CruxCoach plans the weight from your performance value and last time. A value here always wins.</string>
+    <string name="trwo_load_hint_added">Added weight: 0 = body weight, negative = assisted. Automatic: CruxCoach plans it from your performance value and last time. A value here always wins.</string>
     <string name="trwo_editor_unsaved_title">Discard changes?</string>
     <string name="trwo_editor_unsaved_text">Your changes to this workout are not saved yet.</string>
     <string name="trwo_editor_discard">Discard</string>
@@ -61,6 +60,7 @@ Circuit 3 rounds: dips 10, sit-ups 20, plank 30 s</string>
     <string name="trwo_move_down">Move down</string>
     <string name="trwo_remove">Remove</string>
     <string name="trwo_field_sets">Sets</string>
+    <string name="trwo_field_sets_per_side">Sets per side</string>
     <string name="trwo_field_reps_min">Reps from</string>
     <string name="trwo_field_reps_max">Reps to</string>
     <string name="trwo_field_seconds">Seconds</string>

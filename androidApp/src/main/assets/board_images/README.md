@@ -46,6 +46,11 @@ Each source image was extracted from the Kilter Board app's own data files
 (`image_filename` column in the `product_sizes` table) and re-encoded as
 WebP to reduce APK size. They are **not** CruxCoach's original work.
 
+`board_25.webp` (Homewall 10x12) comes from the layout image of the current
+Kilter Board app (2.11.3, 2026-11). The older copy showed placeholder discs at
+24 positions on the lower rows, where the current image shows the real holds.
+Its grey background was levelled to black, like the other Homewall images.
+
 ## Rights holder
 
 The Kilter Board product, its hardware layouts, and the official layout

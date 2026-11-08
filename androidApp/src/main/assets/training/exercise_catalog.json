@@ -24,6 +24,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "finger.bodyweight_hang",
    "defaults": {
@@ -112,6 +113,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -142,7 +144,8 @@
      "steps": [
       "Belade den Block moderat und greif eine große Leiste mit geradem Handgelenk.",
       "Steh aufrecht, den Arm locker gestreckt, und halte 20–30 s.",
-      "Geh optional ein paar Schritte, dann wechsle die Seite."
+      "Geh optional ein paar Schritte, dann wechsle die Seite.",
+      "Trag das Gesamtgewicht pro Seite ein, Block und Pin inklusive."
      ],
      "cues": [
       "Handgelenk in Verlängerung des Unterarms"
@@ -161,7 +164,8 @@
      "steps": [
       "Load the block moderately and grip a large edge with a neutral wrist.",
       "Stand tall, arm long and relaxed, and hold 20–30 s.",
-      "Optionally walk a few steps, then switch sides."
+      "Optionally walk a few steps, then switch sides.",
+      "Log the total per side, block and pin included."
      ],
      "cues": [
       "Wrist in line with the forearm"
@@ -193,6 +197,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -258,6 +263,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -274,6 +280,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -304,7 +311,8 @@
      "steps": [
       "Setz dich, leg den Unterarm auf den Oberschenkel, Handfläche nach oben, Kurzhantel in der Hand.",
       "Lass die Hantel langsam bis in die Fingerspitzen rollen.",
-      "Roll sie mit den Fingern wieder ein und beuge zum Schluss leicht das Handgelenk."
+      "Roll sie mit den Fingern wieder ein und beuge zum Schluss leicht das Handgelenk.",
+      "Eine Hantel pro Hand, gleichzeitig oder nacheinander: Trag das Gewicht einer Hantel und die Wiederholungen einer Hand ein."
      ],
      "cues": [
       "Langsam ablassen, kontrolliert einrollen"
@@ -323,7 +331,8 @@
      "steps": [
       "Sit with your forearm on your thigh, palm up, dumbbell in hand.",
       "Let the dumbbell roll slowly down to your fingertips.",
-      "Curl it back up with your fingers, finishing with a slight wrist curl."
+      "Curl it back up with your fingers, finishing with a slight wrist curl.",
+      "One dumbbell per hand, both at once or one after the other: log the weight of one dumbbell and the reps of one hand."
      ],
      "cues": [
       "Lower slowly, curl with control"
@@ -356,6 +365,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -438,6 +448,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "finger.assisted_hang",
    "harder": "finger.max_hang",
    "defaults": {
@@ -519,6 +530,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -602,6 +614,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -617,7 +630,8 @@
    "tags": [
     "strength",
     "no_climbing",
-    "home"
+    "home",
+    "force_gauge"
    ],
    "i18n": {
     "de": {
@@ -686,6 +700,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "finger.two_arm_pickup",
    "harder": null,
    "defaults": {
@@ -718,7 +733,7 @@
       "Belade den Block mit Hantelscheiben oder einer Kettlebell, Leiste 20 mm.",
       "Stell dich seitlich daneben, greif halb aufgestellt und heb ihn mit geradem Rücken an.",
       "Halte 10 s knapp über dem Boden, Schulter tief, Handgelenk gerade.",
-      "Setz kontrolliert ab und trag das Gewicht pro Seite ein."
+      "Setz kontrolliert ab und trag das Gesamtgewicht pro Seite ein, Block und Pin inklusive."
      ],
      "cues": [
       "Der Block hängt senkrecht unter der Hand",
@@ -740,7 +755,7 @@
       "Load the block with plates or a kettlebell; use a 20 mm edge.",
       "Stand beside it, half crimp, and lift with a neutral back.",
       "Hold 10 s just off the floor, shoulder down, wrist straight.",
-      "Lower under control and log the weight per side."
+      "Lower under control and log the total per side, block and pin included."
      ],
      "cues": [
       "Block hangs straight below the hand",
@@ -776,6 +791,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -803,7 +819,8 @@
      "steps": [
       "Belade den Zangenblock mit Hantelscheiben oder einer Kettlebell.",
       "Greif den Block mit dem Daumen auf der einen und den Fingern auf der anderen Seite.",
-      "Heb ihn an und halte 10 s mit geradem Handgelenk, dann wechsle die Seite."
+      "Heb ihn an und halte 10 s mit geradem Handgelenk, dann wechsle die Seite.",
+      "Trag das Gesamtgewicht pro Seite ein, Block und Pin inklusive."
      ],
      "cues": [
       "Daumen kräftig dagegen drücken"
@@ -822,7 +839,8 @@
      "steps": [
       "Load the pinch block with plates or a kettlebell.",
       "Grip with your thumb on one side and your fingers on the other.",
-      "Lift and hold 10 s with a straight wrist, then switch sides."
+      "Lift and hold 10 s with a straight wrist, then switch sides.",
+      "Log the total per side, block and pin included."
      ],
      "cues": [
       "Drive the thumb hard into the block"
@@ -858,6 +876,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -886,7 +905,8 @@
      "steps": [
       "Belade den Block und stell die Leiste auf etwa 20 mm ein.",
       "Greif mit offener Hand, die Mittelgelenke flach, und heb den Block an.",
-      "Halte 10 s, ohne aufzustellen; setz ab und wechsle die Seite."
+      "Halte 10 s, ohne aufzustellen; setz ab und wechsle die Seite.",
+      "Trag das Gesamtgewicht pro Seite ein, Block und Pin inklusive."
      ],
      "cues": [
       "Mittelgelenke flach halten"
@@ -905,7 +925,8 @@
      "steps": [
       "Load the block and set the edge to about 20 mm.",
       "Grip open-handed with flat middle knuckles and lift the block.",
-      "Hold 10 s without crimping; lower and switch sides."
+      "Hold 10 s without crimping; lower and switch sides.",
+      "Log the total per side, block and pin included."
      ],
      "cues": [
       "Keep middle knuckles flat"
@@ -943,6 +964,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "finger.one_arm_pickup",
    "defaults": {
@@ -975,7 +997,7 @@
      "steps": [
       "Belade zwei Blöcke (einen pro Hand) oder einen Block mit Leiste für beide Hände mit Hantelscheiben oder einer Kettlebell, Leiste 20 mm.",
       "Stell dich mittig davor, greif halb aufgestellt und heb mit geradem Rücken an.",
-      "Halte 10 s knapp über dem Boden, setz kontrolliert ab und trag das Gesamtgewicht beider Hände ein."
+      "Halte 10 s knapp über dem Boden, setz kontrolliert ab und trag das Gesamtgewicht beider Hände ein, Blöcke und Pins inklusive."
      ],
      "cues": [
       "Aus den Beinen heben, nicht aus dem Rücken"
@@ -995,7 +1017,7 @@
      "steps": [
       "Load two blocks (one per hand) or one block with an edge for both hands with plates or a kettlebell; use a 20 mm edge.",
       "Stand centred over them, half crimp, and lift with a neutral back.",
-      "Hold 10 s just off the floor, lower under control and log the total for both hands."
+      "Hold 10 s just off the floor, lower under control and log the total for both hands, blocks and pins included."
      ],
      "cues": [
       "Lift with your legs, not your back"
@@ -1029,6 +1051,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1110,6 +1133,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "finger.bodyweight_hang",
    "harder": "finger.max_hang_small_edge",
    "defaults": {
@@ -1193,6 +1217,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1274,6 +1299,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1354,6 +1380,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1442,6 +1469,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1522,6 +1550,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -1603,6 +1632,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "finger.max_hang",
    "harder": "finger.min_edge_hang",
    "defaults": {
@@ -1685,6 +1715,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "finger.max_hang_small_edge",
    "harder": null,
    "defaults": {
@@ -1768,6 +1799,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "finger.one_arm_assisted_hang",
    "defaults": {
@@ -1854,6 +1886,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": "finger.offset_hang",
    "harder": "finger.one_arm_hang",
    "defaults": {
@@ -1942,6 +1975,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "finger.one_arm_assisted_hang",
    "harder": null,
    "defaults": {
@@ -2025,6 +2059,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "pull.scapular_pull_up",
    "defaults": {
@@ -2112,6 +2147,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -2199,6 +2235,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "pull.scapular_pull_up",
    "harder": "pull.band_assisted_pull_up",
    "defaults": {
@@ -2288,6 +2325,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "defaults": {
     "sets": 3,
     "repsMin": 8,
@@ -2375,6 +2413,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -2405,7 +2444,8 @@
      "steps": [
       "Setz dich an den Kabelzug, Oberschenkel unter den Polstern, Stange breit greifen.",
       "Zieh die Stange zur oberen Brust und die Schulterblätter nach unten.",
-      "Lass sie kontrolliert hoch, bis die Arme gestreckt sind."
+      "Lass sie kontrolliert hoch, bis die Arme gestreckt sind.",
+      "Trag das Gewicht ein, das am Kabelzug steht – nicht die Nummer der Platte."
      ],
      "cues": [
       "Brust raus, leicht zurückgelehnt"
@@ -2424,7 +2464,8 @@
      "steps": [
       "Sit at the cable station, thighs under the pads, grab the bar wide.",
       "Pull the bar to your upper chest and draw your shoulder blades down.",
-      "Let it rise with control until your arms are straight."
+      "Let it rise with control until your arms are straight.",
+      "Log the weight shown on the stack, not the plate number."
      ],
      "cues": [
       "Chest up, lean back slightly"
@@ -2459,6 +2500,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "pull.dead_hang",
    "harder": "pull.inverted_row",
    "defaults": {
@@ -2547,6 +2589,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "pull.inverted_row",
    "harder": "pull.negative_pull_up",
    "defaults": {
@@ -2577,7 +2620,8 @@
      "steps": [
       "Häng ein Widerstandsband an die Stange und stell Fuß oder Knie hinein.",
       "Starte aus dem aktiven Hang und zieh das Kinn über die Stange.",
-      "Lass dich langsam ab, bis die Arme gestreckt sind."
+      "Lass dich langsam ab, bis die Arme gestreckt sind.",
+      "Trag die Hilfe des Bands als negatives Zusatzgewicht ein; geschätzt reicht (z. B. −20 kg für ein starkes Band)."
      ],
      "cues": [
       "Nimm ein leichteres Band, sobald 8 saubere Wiederholungen klappen"
@@ -2597,7 +2641,8 @@
      "steps": [
       "Loop a resistance band over the bar and put a foot or knee in it.",
       "Start from an active hang and pull your chin over the bar.",
-      "Lower slowly until your arms are straight."
+      "Lower slowly until your arms are straight.",
+      "Log the band's help as negative added weight; an estimate is fine (e.g. −20 kg for a strong band)."
      ],
      "cues": [
       "Switch to a lighter band once 8 clean reps feel easy"
@@ -2633,6 +2678,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -2720,6 +2766,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "pull.frenchies",
    "defaults": {
@@ -2804,6 +2851,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "pull.band_assisted_pull_up",
    "harder": "pull.pull_up",
    "defaults": {
@@ -2892,6 +2940,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "pull.negative_pull_up",
    "harder": "pull.weighted_pull_up",
    "defaults": {
@@ -2978,6 +3027,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "SPECIAL",
    "easier": "pull.lock_off_hold",
    "harder": "pull.one_arm_lock_off",
    "defaults": {
@@ -3064,6 +3114,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "pull.advanced_tuck_front_lever",
    "defaults": {
@@ -3151,6 +3202,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": "pull.pull_up",
    "harder": null,
    "defaults": {
@@ -3177,7 +3229,7 @@
      ],
      "why": "Steigert gezielt deine maximale Zugkraft, die dir bei harten Einzelzügen und steilen Bouldern hilft.",
      "steps": [
-      "Häng Gewicht an einen Dip-Gürtel oder zieh eine Gewichtsweste an.",
+      "Häng Gewicht an einen Dip-Gürtel oder zieh eine Gewichtsweste an; trag nur das Zusatzgewicht ein.",
       "Zieh dich sauber hoch, bis das Kinn über der Stange ist.",
       "Lass dich kontrolliert ab; steigere das Gewicht nur bei sauberer Technik."
      ],
@@ -3196,7 +3248,7 @@
      ],
      "why": "Targets maximal pulling strength, which helps on hard single moves and steep boulders.",
      "steps": [
-      "Hang weight from a dip belt or wear a weight vest.",
+      "Hang weight from a dip belt or wear a weight vest; log only the added weight.",
       "Pull up cleanly until your chin is over the bar.",
       "Lower with control; only add weight while your form stays clean."
      ],
@@ -3235,6 +3287,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -3320,6 +3373,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "pull.tuck_front_lever",
    "harder": "pull.straddle_front_lever",
    "defaults": {
@@ -3404,6 +3458,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "pull.typewriter_pull_up",
    "harder": "pull.assisted_one_arm_pull_up",
    "defaults": {
@@ -3490,6 +3545,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "pull.archer_pull_up",
    "harder": "pull.one_arm_negative",
    "defaults": {
@@ -3576,6 +3632,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -3662,6 +3719,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "pull.frenchies",
    "harder": null,
    "defaults": {
@@ -3747,6 +3805,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "pull.advanced_tuck_front_lever",
    "harder": "pull.front_lever",
    "defaults": {
@@ -3833,6 +3892,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "pull.archer_pull_up",
    "defaults": {
@@ -3919,6 +3979,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "pull.straddle_front_lever",
    "harder": null,
    "defaults": {
@@ -4004,6 +4065,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "pull.assisted_one_arm_pull_up",
    "harder": null,
    "defaults": {
@@ -4088,6 +4150,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -4118,7 +4181,8 @@
      "steps": [
       "Setz dich etwas seitlich versetzt an den Kabelzug und greif den Einzelgriff mit einer Hand.",
       "Zieh den Griff zur Schulter, Ellbogen nach unten und hinten, Schulterblatt nach unten.",
-      "Lass ihn kontrolliert hoch, bis der Arm gestreckt ist; dann die Seite wechseln."
+      "Lass ihn kontrolliert hoch, bis der Arm gestreckt ist; dann die Seite wechseln.",
+      "Trag das Gewicht ein, das am Kabelzug steht – nicht die Nummer der Platte."
      ],
      "cues": [
       "Oberkörper ruhig, nicht mitdrehen",
@@ -4140,7 +4204,8 @@
      "steps": [
       "Sit slightly off-centre at the cable station and take the single handle in one hand.",
       "Pull the handle to your shoulder, elbow down and back, shoulder blade down.",
-      "Let it rise under control until the arm is straight; then switch sides."
+      "Let it rise under control until the arm is straight; then switch sides.",
+      "Log the weight shown on the stack, not the plate number."
      ],
      "cues": [
       "Keep the torso still, do not twist",
@@ -4178,6 +4243,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -4209,7 +4275,8 @@
      "steps": [
       "Setz dich an den Kabelzug, Füße an der Platte, Knie leicht gebeugt, Rücken aufrecht.",
       "Zieh den Griff zum Bauch und die Schulterblätter zusammen.",
-      "Lass ihn kontrolliert nach vorn, bis die Arme gestreckt sind, ohne den Rücken zu runden."
+      "Lass ihn kontrolliert nach vorn, bis die Arme gestreckt sind, ohne den Rücken zu runden.",
+      "Trag das Gewicht ein, das am Kabelzug steht – nicht die Nummer der Platte."
      ],
      "cues": [
       "Brust raus, Schultern weg von den Ohren"
@@ -4230,7 +4297,8 @@
      "steps": [
       "Sit at the cable station, feet on the plate, knees slightly bent, back upright.",
       "Pull the handle to your belly and squeeze the shoulder blades together.",
-      "Let it go forward under control until the arms are straight, without rounding the back."
+      "Let it go forward under control until the arms are straight, without rounding the back.",
+      "Log the weight shown on the stack, not the plate number."
      ],
      "cues": [
       "Chest up, shoulders away from the ears"
@@ -4266,6 +4334,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "push.dip",
    "defaults": {
@@ -4356,6 +4425,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "push.push_up",
    "defaults": {
@@ -4443,6 +4513,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "push.push_up",
    "harder": "push.archer_push_up",
    "defaults": {
@@ -4530,6 +4601,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "push.bench_dip",
    "harder": "push.ring_dip",
    "defaults": {
@@ -4598,6 +4670,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL",
     "BENCH"
@@ -4617,6 +4690,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -4647,7 +4721,8 @@
      "steps": [
       "Leg dich auf die Bank, Füße fest am Boden, Hanteln neben der Brust.",
       "Drück die Hanteln nach oben, bis die Arme fast gestreckt sind.",
-      "Senk sie langsam ab, Ellbogen etwa 45° vom Körper."
+      "Senk sie langsam ab, Ellbogen etwa 45° vom Körper.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Schulterblätter zurück und nach unten"
@@ -4666,7 +4741,8 @@
      "steps": [
       "Lie on the bench, feet planted, dumbbells beside your chest.",
       "Press the dumbbells up until your arms are nearly straight.",
-      "Lower slowly, elbows about 45° from your body."
+      "Lower slowly, elbows about 45° from your body.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Shoulder blades back and down"
@@ -4684,6 +4760,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -4703,6 +4780,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -4734,7 +4812,8 @@
      "steps": [
       "Stell dich hüftbreit hin, Hanteln auf Schulterhöhe, Rumpf fest.",
       "Drück die Hanteln über den Kopf, bis die Arme gestreckt sind.",
-      "Senk sie kontrolliert auf Schulterhöhe; mit der Langhantel geht es genauso."
+      "Senk sie kontrolliert auf Schulterhöhe.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Rippen unten, kein Hohlkreuz"
@@ -4754,7 +4833,8 @@
      "steps": [
       "Stand hip-width apart, dumbbells at shoulder height, trunk braced.",
       "Press the dumbbells overhead until your arms are straight.",
-      "Lower them with control to shoulder height; a barbell works the same way."
+      "Lower them with control to shoulder height.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Ribs down, no arched back"
@@ -4792,6 +4872,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -4881,6 +4962,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "push.elevated_pike_push_up",
    "defaults": {
@@ -4968,6 +5050,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "push.incline_push_up",
    "harder": "push.diamond_push_up",
    "defaults": {
@@ -5055,6 +5138,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": "antagonist.scapular_push_up",
    "harder": null,
    "defaults": {
@@ -5143,6 +5227,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "push.diamond_push_up",
    "harder": "push.pseudo_planche_push_up",
    "defaults": {
@@ -5229,6 +5314,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "push.pike_push_up",
    "harder": "push.wall_handstand_push_up",
    "defaults": {
@@ -5318,6 +5404,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "push.dip",
    "harder": null,
    "defaults": {
@@ -5407,6 +5494,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": "push.archer_push_up",
    "harder": null,
    "defaults": {
@@ -5496,6 +5584,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "push.elevated_pike_push_up",
    "harder": null,
    "defaults": {
@@ -5565,6 +5654,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL",
     "BENCH"
@@ -5584,6 +5674,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -5615,7 +5706,8 @@
      "steps": [
       "Stell die Bank auf 30–45° und setz dich mit den Hanteln auf den Oberschenkeln hin.",
       "Leg dich zurück und drück die Hanteln über der oberen Brust nach oben.",
-      "Senk sie kontrolliert neben die Brust, Ellbogen etwa 45° vom Körper."
+      "Senk sie kontrolliert neben die Brust, Ellbogen etwa 45° vom Körper.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Schulterblätter zurück und nach unten",
@@ -5637,7 +5729,8 @@
      "steps": [
       "Set the bench to 30–45° and sit down with the dumbbells on your thighs.",
       "Lie back and press the dumbbells up over your upper chest.",
-      "Lower them under control beside your chest, elbows about 45° from your body."
+      "Lower them under control beside your chest, elbows about 45° from your body.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Shoulder blades back and down",
@@ -5669,6 +5762,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -5699,7 +5793,8 @@
      "steps": [
       "Stell dich vor den Kabelzug und greif Seil oder Stange auf Brusthöhe, Ellbogen am Körper.",
       "Streck die Arme nach unten, bis sie ganz gestreckt sind.",
-      "Lass den Griff langsam bis etwa Brusthöhe zurück; die Ellbogen bleiben an Ort und Stelle."
+      "Lass den Griff langsam bis etwa Brusthöhe zurück; die Ellbogen bleiben an Ort und Stelle.",
+      "Trag das Gewicht ein, das am Kabelzug steht – nicht die Nummer der Platte."
      ],
      "cues": [
       "Oberarme ruhig an der Seite"
@@ -5720,7 +5815,8 @@
      "steps": [
       "Stand facing the cable station, rope or bar at chest height, elbows at your sides.",
       "Straighten the arms down until they are fully extended.",
-      "Let the handle return slowly to about chest height; the elbows stay where they are."
+      "Let the handle return slowly to about chest height; the elbows stay where they are.",
+      "Log the weight shown on the stack, not the plate number."
      ],
      "cues": [
       "Upper arms still at your sides"
@@ -5753,6 +5849,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "antagonist.side_lying_external_rotation",
    "defaults": {
@@ -5838,6 +5935,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "antagonist.face_pull",
    "defaults": {
@@ -5922,6 +6020,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "antagonist.reverse_wrist_curl",
    "harder": null,
    "defaults": {
@@ -6007,6 +6106,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "antagonist.band_pull_apart",
    "harder": null,
    "defaults": {
@@ -6090,6 +6190,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -6175,6 +6276,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -6261,6 +6363,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "antagonist.prone_iyt_bench",
    "defaults": {
@@ -6344,6 +6447,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -6411,6 +6515,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -6427,6 +6532,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "antagonist.eccentric_wrist_extension",
    "defaults": {
@@ -6457,7 +6563,8 @@
      "steps": [
       "Leg den Unterarm auf Oberschenkel oder Bank, Handfläche nach unten, Hand über der Kante.",
       "Heb die Hantel nur aus dem Handgelenk so weit wie möglich an.",
-      "Senk sie langsam wieder ab."
+      "Senk sie langsam wieder ab.",
+      "Eine Hantel pro Hand, gleichzeitig oder nacheinander: Trag das Gewicht einer Hantel und die Wiederholungen einer Hand ein."
      ],
      "cues": [
       "Unterarm bleibt liegen"
@@ -6476,7 +6583,8 @@
      "steps": [
       "Rest your forearm on your thigh or a bench, palm down, hand past the edge.",
       "Lift the dumbbell as far as you can using only the wrist.",
-      "Lower it slowly."
+      "Lower it slowly.",
+      "One dumbbell per hand, both at once or one after the other: log the weight of one dumbbell and the reps of one hand."
      ],
      "cues": [
       "Forearm stays down"
@@ -6512,6 +6620,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "push.push_up_plus",
    "defaults": {
@@ -6598,6 +6707,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "antagonist.wall_lower_trap_raise",
    "defaults": {
@@ -6683,6 +6793,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "antagonist.band_external_rotation",
    "harder": "antagonist.cuban_press",
    "defaults": {
@@ -6767,6 +6878,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": "antagonist.serratus_wall_slide",
    "harder": null,
    "defaults": {
@@ -6835,6 +6947,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -6852,6 +6965,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -6882,7 +6996,8 @@
      "steps": [
       "Leg den Unterarm auf Oberschenkel oder Bank, Handfläche nach oben, Hand über der Kante.",
       "Lass das Handgelenk kontrolliert nach unten sinken.",
-      "Beug es so weit wie möglich nach oben und senk langsam ab."
+      "Beug es so weit wie möglich nach oben und senk langsam ab.",
+      "Eine Hantel pro Hand, gleichzeitig oder nacheinander: Trag das Gewicht einer Hantel und die Wiederholungen einer Hand ein."
      ],
      "cues": [
       "Hantel fest, aber ohne zu quetschen"
@@ -6902,7 +7017,8 @@
      "steps": [
       "Rest your forearm on your thigh or a bench, palm up, hand past the edge.",
       "Let the wrist sink down with control.",
-      "Curl it up as far as you can, then lower slowly."
+      "Curl it up as far as you can, then lower slowly.",
+      "One dumbbell per hand, both at once or one after the other: log the weight of one dumbbell and the reps of one hand."
      ],
      "cues": [
       "Hold the dumbbell firmly without squeezing hard"
@@ -6941,6 +7057,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7009,6 +7126,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -7027,6 +7145,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": "antagonist.side_lying_external_rotation",
    "harder": null,
    "defaults": {
@@ -7056,7 +7175,8 @@
      "steps": [
       "Halte leichte Hanteln und zieh die Ellbogen seitlich auf Schulterhöhe hoch.",
       "Dreh die Unterarme nach oben, bis sie senkrecht stehen.",
-      "Drück die Hanteln über den Kopf, dann alle Schritte rückwärts zurück."
+      "Drück die Hanteln über den Kopf, dann alle Schritte rückwärts zurück.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Ellbogen bleiben beim Drehen auf Schulterhöhe"
@@ -7075,7 +7195,8 @@
      "steps": [
       "Hold light dumbbells and raise your elbows out to shoulder height.",
       "Rotate the forearms up until they are vertical.",
-      "Press the dumbbells overhead, then reverse each step."
+      "Press the dumbbells overhead, then reverse each step.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Elbows stay at shoulder height while rotating"
@@ -7093,6 +7214,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "BENCH",
     "DUMBBELL"
@@ -7111,6 +7233,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "antagonist.prone_ytw",
    "harder": null,
    "defaults": {
@@ -7140,7 +7263,8 @@
      "steps": [
       "Leg dich bäuchlings auf eine Schrägbank, leichte Hanteln in den Händen, Arme hängen.",
       "Heb die gestreckten Arme nach vorn (I), schräg nach oben (Y) und seitlich (T).",
-      "Halte jede Position kurz und senk die Arme langsam ab."
+      "Halte jede Position kurz und senk die Arme langsam ab.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Daumen zeigen nach oben"
@@ -7160,7 +7284,8 @@
      "steps": [
       "Lie face down on an incline bench with light dumbbells, arms hanging.",
       "Raise the straight arms forward (I), diagonally up (Y) and out to the side (T).",
-      "Hold each position briefly and lower slowly."
+      "Hold each position briefly and lower slowly.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Thumbs point up"
@@ -7201,6 +7326,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7272,6 +7398,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -7289,6 +7416,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7320,7 +7448,8 @@
      "steps": [
       "Beug dich mit geradem Rücken weit nach vorn, leichte Hanteln hängen unter den Schultern.",
       "Heb die Arme leicht gebeugt seitlich bis auf Schulterhöhe.",
-      "Senk sie langsam wieder ab, ohne Schwung."
+      "Senk sie langsam wieder ab, ohne Schwung.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Schulterblätter zusammen, Nacken lang"
@@ -7340,7 +7469,8 @@
      "steps": [
       "Hinge forward with a straight back, light dumbbells hanging under your shoulders.",
       "Raise the arms out to the sides, elbows slightly bent, up to shoulder height.",
-      "Lower them slowly again, without momentum."
+      "Lower them slowly again, without momentum.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Shoulder blades together, long neck"
@@ -7374,6 +7504,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7403,7 +7534,7 @@
      "steps": [
       "Geh in den Vierfüßlerstand, Hände unter den Schultern, Knie unter der Hüfte.",
       "Streck einen Arm nach vorn und das gegenüberliegende Bein nach hinten.",
-      "Halte kurz, ohne dass die Hüfte kippt, dann wechsle die Seite."
+      "Halte kurz, ohne dass die Hüfte kippt, dann wechsle die Seite; jede Seite zählt als eine Wiederholung."
      ],
      "cues": [
       "Stell dir ein Wasserglas auf deinem Rücken vor"
@@ -7422,7 +7553,7 @@
      "steps": [
       "Kneel on all fours, hands under shoulders, knees under hips.",
       "Reach one arm forward and the opposite leg back.",
-      "Pause briefly without the hips tilting, then switch sides."
+      "Pause briefly without the hips tilting, then switch sides; each side counts as one rep."
      ],
      "cues": [
       "Imagine a glass of water on your back"
@@ -7454,6 +7585,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "core.tuck_hollow_hold",
    "defaults": {
@@ -7482,7 +7614,7 @@
       "Leg dich auf den Rücken, Arme senkrecht nach oben, Hüfte und Knie im 90°-Winkel.",
       "Drück den unteren Rücken sanft in den Boden.",
       "Streck langsam einen Arm und das gegenüberliegende Bein aus, ohne dass der Rücken abhebt.",
-      "Kehr zurück und wechsle die Seite."
+      "Kehr zurück und wechsle die Seite; jede Seite zählt als eine Wiederholung."
      ],
      "cues": [
       "Ausatmen beim Strecken",
@@ -7501,7 +7633,7 @@
       "Lie on your back, arms pointing up, hips and knees bent to 90°.",
       "Gently press your lower back into the floor.",
       "Slowly extend one arm and the opposite leg without your back lifting.",
-      "Return and switch sides."
+      "Return and switch sides; each side counts as one rep."
      ],
      "cues": [
       "Exhale as you extend",
@@ -7536,6 +7668,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7616,6 +7749,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "core.body_saw",
    "defaults": {
@@ -7697,6 +7831,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7775,6 +7910,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "core.hanging_knee_raise",
    "defaults": {
@@ -7851,6 +7987,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -7931,6 +8068,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "core.back_extension",
    "defaults": {
@@ -8009,6 +8147,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "core.dead_bug",
    "harder": "core.hollow_hold",
    "defaults": {
@@ -8086,6 +8225,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "core.superman",
    "harder": null,
    "defaults": {
@@ -8114,7 +8254,7 @@
      "steps": [
       "Leg dich bäuchlings auf eine Rückenstrecker- oder Flachbank, Füße fixiert, Hüfte an der Kante.",
       "Senk den Oberkörper mit geradem Rücken ab.",
-      "Richte dich auf, bis der Körper eine Linie bildet; für Zusatzlast eine Scheibe an die Brust drücken."
+      "Richte dich auf, bis der Körper eine Linie bildet; für mehr eine Scheibe an die Brust drücken und als Zusatzgewicht eintragen."
      ],
      "cues": [
       "Bewegung aus Hüfte und Gesäß"
@@ -8132,7 +8272,7 @@
      "steps": [
       "Lie face down on a back-extension or flat bench, feet anchored, hips at the edge.",
       "Lower your torso with a straight back.",
-      "Rise until your body forms a line; for extra load, hug a plate to your chest."
+      "Rise until your body forms a line; for more, hug a plate to your chest and log it as added weight."
      ],
      "cues": [
       "Drive from hips and glutes"
@@ -8166,6 +8306,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": "core.front_plank",
    "harder": "core.ab_wheel_kneeling",
    "defaults": {
@@ -8247,6 +8388,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "core.reverse_crunch",
    "harder": "core.hanging_leg_raise",
    "defaults": {
@@ -8323,6 +8465,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "core.tuck_hollow_hold",
    "harder": "core.hollow_rocks",
    "defaults": {
@@ -8401,6 +8544,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "core.tuck_l_sit",
    "defaults": {
@@ -8486,6 +8630,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "core.seated_pike_compression",
    "harder": "core.l_sit",
    "defaults": {
@@ -8567,6 +8712,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": "core.body_saw",
    "harder": "core.ab_wheel_standing",
    "defaults": {
@@ -8654,6 +8800,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": "core.hanging_knee_raise",
    "harder": "core.toes_to_bar",
    "defaults": {
@@ -8732,6 +8879,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "core.hollow_hold",
    "harder": null,
    "defaults": {
@@ -8811,6 +8959,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "core.tuck_l_sit",
    "harder": "core.v_sit",
    "defaults": {
@@ -8891,6 +9040,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "core.dragon_flag",
    "defaults": {
@@ -8972,6 +9122,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "core.hanging_leg_raise",
    "harder": "core.windshield_wipers",
    "defaults": {
@@ -9052,6 +9203,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "BASIC",
    "easier": "core.ab_wheel_kneeling",
    "harder": null,
    "defaults": {
@@ -9134,6 +9286,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "SPECIAL",
    "easier": "core.dragon_flag_negative",
    "harder": null,
    "defaults": {
@@ -9214,6 +9367,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "core.l_sit",
    "harder": null,
    "defaults": {
@@ -9296,6 +9450,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "SPECIAL",
    "easier": "core.toes_to_bar",
    "harder": null,
    "defaults": {
@@ -9374,6 +9529,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "core.weighted_sit_up",
    "defaults": {
@@ -9459,6 +9615,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "core.sit_up",
    "harder": null,
    "defaults": {
@@ -9511,7 +9668,7 @@
      "steps": [
       "Hold a plate or dumbbell against your chest, feet hooked or flat on the floor.",
       "Roll up under control until your torso is upright.",
-      "Lower yourself slowly; log the weight as added load."
+      "Lower yourself slowly; log the weight as added weight."
      ],
      "cues": [
       "Keep the weight close to your body",
@@ -9548,6 +9705,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.goblet_squat",
    "defaults": {
@@ -9631,6 +9789,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.single_leg_calf_raise",
    "defaults": {
@@ -9709,6 +9868,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -9793,6 +9953,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.single_leg_glute_bridge",
    "defaults": {
@@ -9872,6 +10033,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -9957,6 +10119,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.walking_lunge",
    "defaults": {
@@ -10038,6 +10201,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.high_step_mantle",
    "defaults": {
@@ -10117,6 +10281,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -10198,6 +10363,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -10279,6 +10445,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": "legs.copenhagen_plank_long",
    "defaults": {
@@ -10360,6 +10527,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -10441,6 +10609,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "legs.air_squat",
    "harder": "legs.back_squat",
    "defaults": {
@@ -10525,6 +10694,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": "legs.step_up",
    "harder": null,
    "defaults": {
@@ -10612,6 +10782,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "legs.single_leg_glute_bridge",
    "harder": null,
    "defaults": {
@@ -10641,7 +10812,8 @@
      "steps": [
       "Setz dich mit dem oberen Rücken an eine Bank, die Langhantel gepolstert über der Hüfte.",
       "Stell die Füße hüftbreit auf und drück die Hüfte hoch, bis der Oberkörper waagerecht ist.",
-      "Halte oben kurz und senk kontrolliert ab."
+      "Halte oben kurz und senk kontrolliert ab.",
+      "Trag das Gesamtgewicht inklusive Stange ein."
      ],
      "cues": [
       "Kinn leicht zur Brust, Rippen runter"
@@ -10659,7 +10831,8 @@
      "steps": [
       "Sit with your upper back against a bench, padded barbell across your hips.",
       "Plant your feet hip-width and drive your hips up until your torso is horizontal.",
-      "Pause at the top and lower under control."
+      "Pause at the top and lower under control.",
+      "Log the total weight including the bar."
      ],
      "cues": [
       "Chin slightly tucked, ribs down"
@@ -10693,6 +10866,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "legs.box_jump",
    "defaults": {
@@ -10760,6 +10934,7 @@
    "kind": "LOAD_REPS",
    "load": "EXTERNAL",
    "unilateral": false,
+   "implements": 2,
    "equipment": [
     "DUMBBELL"
    ],
@@ -10779,6 +10954,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "legs.single_leg_rdl",
    "defaults": {
@@ -10806,9 +10982,10 @@
      ],
      "why": "Stärkt die hintere Kette für Fersenhaken und eine belastbare Hüfte beim Hochziehen der Füße.",
      "steps": [
-      "Halte Kurzhanteln oder eine Langhantel vor den Oberschenkeln, Knie leicht gebeugt.",
+      "Halte zwei Kurzhanteln vor den Oberschenkeln, Knie leicht gebeugt.",
       "Schieb die Hüfte nach hinten und führ die Last dicht an den Beinen nach unten.",
-      "Stopp bei deutlicher Dehnung hinten im Oberschenkel und richte dich über die Hüfte auf."
+      "Stopp bei deutlicher Dehnung hinten im Oberschenkel und richte dich über die Hüfte auf.",
+      "Trag das Gewicht einer Hantel ein."
      ],
      "cues": [
       "Rücken neutral, Last nah am Körper"
@@ -10825,9 +11002,10 @@
      ],
      "why": "Strengthens the posterior chain for heel hooks and robust hips when hauling your feet up.",
      "steps": [
-      "Hold dumbbells or a barbell in front of your thighs, knees soft.",
+      "Hold two dumbbells in front of your thighs, knees soft.",
       "Push your hips back and slide the load down close to your legs.",
-      "Stop at a strong hamstring stretch and stand up by driving the hips forward."
+      "Stop at a strong hamstring stretch and stand up by driving the hips forward.",
+      "Log the weight of one dumbbell."
      ],
      "cues": [
       "Neutral back, load close"
@@ -10858,6 +11036,7 @@
     "secondary": []
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "legs.calf_raise",
    "harder": null,
    "defaults": {
@@ -10885,7 +11064,7 @@
      "steps": [
       "Stell dich mit einem Fußballen auf eine Stufe und halt dich leicht an der Wand fest.",
       "Senk die Ferse langsam ab und drück dich auf einem Bein ganz hoch.",
-      "Alle Wiederholungen pro Seite, dann wechseln; für mehr Last eine Hantel halten."
+      "Alle Wiederholungen pro Seite, dann wechseln; für mehr eine Hantel halten und als Zusatzgewicht eintragen."
      ],
      "cues": [
       "Druck über den großen Zeh"
@@ -10901,7 +11080,7 @@
      "steps": [
       "Stand on one forefoot on a step, lightly holding a wall.",
       "Lower the heel slowly, then rise all the way up on one leg.",
-      "Do all reps on one side, then switch; hold a dumbbell for more load."
+      "Do all reps on one side, then switch; hold a dumbbell for more and log it as added weight."
      ],
      "cues": [
       "Press through the big toe"
@@ -10935,6 +11114,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "legs.glute_bridge",
    "harder": "legs.hip_thrust",
    "defaults": {
@@ -11012,6 +11192,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": "legs.reverse_lunge",
    "harder": "legs.bulgarian_split_squat",
    "defaults": {
@@ -11093,6 +11274,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "legs.box_pistol",
    "harder": "legs.pistol_squat",
    "defaults": {
@@ -11177,6 +11359,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": "legs.goblet_squat",
    "harder": "legs.front_squat",
    "defaults": {
@@ -11207,7 +11390,8 @@
      "steps": [
       "Leg die Langhantel im Rack auf den oberen Rücken und tritt einen Schritt zurück.",
       "Atme ein, spann den Rumpf an und geh kontrolliert tief.",
-      "Drück dich mit stabilem Rücken nach oben."
+      "Drück dich mit stabilem Rücken nach oben.",
+      "Trag das Gesamtgewicht inklusive Stange ein."
      ],
      "cues": [
       "Rumpf vor jeder Wiederholung fest machen"
@@ -11226,7 +11410,8 @@
      "steps": [
       "Set the barbell on your upper back in the rack and step back.",
       "Breathe in, brace your trunk and squat down under control.",
-      "Drive up with a stable back."
+      "Drive up with a stable back.",
+      "Log the total weight including the bar."
      ],
      "cues": [
       "Brace before every rep"
@@ -11261,6 +11446,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": "legs.jump_squat",
    "harder": null,
    "defaults": {
@@ -11341,6 +11527,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "legs.bulgarian_split_squat",
    "harder": "legs.assisted_pistol",
    "defaults": {
@@ -11425,6 +11612,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "legs.walking_lunge",
    "harder": "legs.box_pistol",
    "defaults": {
@@ -11453,7 +11641,7 @@
      "steps": [
       "Leg den hinteren Fußrücken auf eine Bank oder einen Stuhl, den vorderen Fuß gut einen Schritt davor.",
       "Senk dich senkrecht ab, bis der vordere Oberschenkel etwa waagerecht ist.",
-      "Drück dich über das vordere Bein hoch; bei Bedarf Kurzhanteln oder Rucksack als Zusatzlast."
+      "Drück dich über das vordere Bein hoch; bei Bedarf Kurzhanteln oder Rucksack dazu, zusammen als Zusatzgewicht eingetragen."
      ],
      "cues": [
       "Gewicht auf dem vorderen Bein"
@@ -11472,7 +11660,7 @@
      "steps": [
       "Rest the top of your back foot on a bench or chair, front foot a good step ahead.",
       "Lower straight down until the front thigh is about parallel.",
-      "Drive up through the front leg; add dumbbells or a backpack if needed."
+      "Drive up through the front leg; add dumbbells or a backpack if needed and log them together as added weight."
      ],
      "cues": [
       "Weight on the front leg"
@@ -11511,6 +11699,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -11539,7 +11728,8 @@
      "steps": [
       "Stell dich hüftbreit hin, die Stange über der Fußmitte, und greif knapp außerhalb der Knie.",
       "Spann Rumpf und Lats an, Rücken gerade, Hüfte etwas über den Knien.",
-      "Drück den Boden weg, streck Hüfte und Knie gemeinsam und setz kontrolliert ab."
+      "Drück den Boden weg, streck Hüfte und Knie gemeinsam und setz kontrolliert ab.",
+      "Trag das Gesamtgewicht inklusive Stange ein."
      ],
      "cues": [
       "Stange bleibt am Schienbein"
@@ -11558,7 +11748,8 @@
      "steps": [
       "Stand hip-width with the bar over mid-foot and grip just outside your knees.",
       "Brace trunk and lats, back straight, hips slightly above the knees.",
-      "Push the floor away, extend hips and knees together, and lower under control."
+      "Push the floor away, extend hips and knees together, and lower under control.",
+      "Log the total weight including the bar."
      ],
      "cues": [
       "Bar stays against your shins"
@@ -11593,6 +11784,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "SPECIAL",
    "easier": "legs.copenhagen_plank_short",
    "harder": null,
    "defaults": {
@@ -11673,6 +11865,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "legs.nordic_curl",
    "defaults": {
@@ -11756,6 +11949,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "legs.romanian_deadlift",
    "harder": null,
    "defaults": {
@@ -11842,6 +12036,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "BASIC",
    "easier": "legs.back_squat",
    "harder": null,
    "defaults": {
@@ -11869,7 +12064,8 @@
      "steps": [
       "Leg die Langhantel vorn auf die Schultern, Ellbogen hoch (oder Arme gekreuzt).",
       "Geh mit aufrechtem Oberkörper tief in die Hocke.",
-      "Drück dich hoch, ohne dass die Ellbogen absinken."
+      "Drück dich hoch, ohne dass die Ellbogen absinken.",
+      "Trag das Gesamtgewicht inklusive Stange ein."
      ],
      "cues": [
       "Ellbogen hoch, Brust raus"
@@ -11885,7 +12081,8 @@
      "steps": [
       "Rest the barbell on the front of your shoulders, elbows high (or arms crossed).",
       "Squat deep with an upright torso.",
-      "Drive up without letting the elbows drop."
+      "Drive up without letting the elbows drop.",
+      "Log the total weight including the bar."
      ],
      "cues": [
       "Elbows up, chest proud"
@@ -11920,6 +12117,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "legs.assisted_pistol",
    "harder": null,
    "defaults": {
@@ -12002,6 +12200,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "legs.nordic_curl_assisted",
    "harder": null,
    "defaults": {
@@ -12080,6 +12279,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12163,6 +12363,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12244,6 +12445,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "mobility.frog_stretch",
    "defaults": {
@@ -12320,6 +12522,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12400,6 +12603,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12483,6 +12687,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12564,6 +12769,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "mobility.sleeper_stretch",
    "defaults": {
@@ -12645,6 +12851,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12725,6 +12932,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12803,6 +13011,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12885,6 +13094,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -12965,6 +13175,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13050,6 +13261,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13130,6 +13342,7 @@
     "secondary": []
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13213,6 +13426,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13296,6 +13510,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13379,6 +13594,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13460,6 +13676,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13540,6 +13757,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13621,6 +13839,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13704,6 +13923,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "mobility.butterfly_stretch",
    "harder": "mobility.pancake_stretch",
    "defaults": {
@@ -13787,6 +14007,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13872,6 +14093,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -13901,7 +14123,7 @@
      "steps": [
       "Setz dich mit beiden Knien im 90°-Winkel hin, ein Bein vorn, eins seitlich.",
       "Richte dich auf, heb beide Knie und dreh sie zur anderen Seite in die gespiegelte Position.",
-      "Halte jede Position kurz und bewege dich langsam."
+      "Halte jede Position kurz und bewege dich langsam; jeder Wechsel zählt als eine Wiederholung."
      ],
      "cues": [
       "Stütz dich anfangs mit den Händen hinter dir ab"
@@ -13921,7 +14143,7 @@
      "steps": [
       "Sit with both knees bent to 90°, one leg in front of you, one to the side.",
       "Sit tall, lift both knees and rotate them to the other side into the mirrored position.",
-      "Pause briefly in each position and keep the movement slow."
+      "Pause briefly in each position and keep the movement slow; each switch counts as one rep."
      ],
      "cues": [
       "Use your hands behind you for support at first"
@@ -13954,6 +14176,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14037,6 +14260,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14119,6 +14343,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "mobility.cross_body_shoulder_stretch",
    "harder": null,
    "defaults": {
@@ -14201,6 +14426,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": "mobility.frog_stretch",
    "harder": null,
    "defaults": {
@@ -14284,6 +14510,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14367,6 +14594,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14447,6 +14675,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14530,6 +14759,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14612,6 +14842,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14698,6 +14929,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14775,6 +15007,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14857,6 +15090,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -14939,6 +15173,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15021,6 +15256,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15102,6 +15338,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15182,6 +15419,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15273,6 +15511,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15357,6 +15596,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15445,6 +15685,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "power.double_dynos",
    "defaults": {
@@ -15527,6 +15768,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15612,6 +15854,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "power.campus_ladders",
    "defaults": {
@@ -15696,6 +15939,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -15780,6 +16024,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "power.foot_on_campus",
    "harder": "power.campus_touches",
    "defaults": {
@@ -15862,6 +16107,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "SPECIAL",
    "easier": "power.campus_ladders",
    "harder": "power.campus_max_reach",
    "defaults": {
@@ -15947,6 +16193,7 @@
     ]
    },
    "difficulty": 4,
+   "familiarity": "COMMON",
    "easier": "power.dynos",
    "harder": null,
    "defaults": {
@@ -16031,6 +16278,7 @@
     ]
    },
    "difficulty": 5,
+   "familiarity": "COMMON",
    "easier": "power.campus_touches",
    "harder": null,
    "defaults": {
@@ -16112,6 +16360,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": "endurance.traversing",
    "harder": null,
    "defaults": {
@@ -16194,6 +16443,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": "endurance.arc",
    "defaults": {
@@ -16277,6 +16527,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16358,6 +16609,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16444,6 +16696,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16527,6 +16780,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16606,6 +16860,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": "technique.silent_feet",
    "defaults": {
@@ -16686,6 +16941,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16765,6 +17021,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16844,6 +17101,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -16922,6 +17180,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17000,6 +17259,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "COMMON",
    "easier": "technique.sticky_feet",
    "harder": null,
    "defaults": {
@@ -17077,6 +17337,7 @@
     ]
    },
    "difficulty": 2,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17158,6 +17419,7 @@
     ]
    },
    "difficulty": 3,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17235,6 +17497,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17322,6 +17585,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17405,6 +17669,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17490,6 +17755,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "SPECIAL",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17573,6 +17839,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17658,6 +17925,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "BASIC",
    "easier": null,
    "harder": null,
    "defaults": {
@@ -17743,6 +18011,7 @@
     ]
    },
    "difficulty": 1,
+   "familiarity": "COMMON",
    "easier": null,
    "harder": null,
    "defaults": {

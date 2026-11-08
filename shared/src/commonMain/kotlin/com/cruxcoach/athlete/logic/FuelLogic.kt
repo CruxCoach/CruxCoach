@@ -15,6 +15,8 @@ data class DayActivity(
     /** Logged tries (a send counts its tries, a flash one); used to estimate time when no session was recorded. */
     val climbingEfforts: Int = 0,
     val workoutMinutes: Int = 0,
+    /** The part of [workoutMinutes] spent in comeback-plan sessions (rehab, not one of the week's training days). */
+    val comebackMinutes: Int = 0,
     /** Session RPE × minutes of logged trainings (Foster's session load). */
     val workoutLoad: Int = 0,
     /** Hardest climbing of the day relative to the athlete's own level; null without graded climbing. */

@@ -103,6 +103,15 @@
     <string name="trc_favorites_remove">%1$s entfernen</string>
     <string name="trc_style_routine">feste Routine</string>
     <string name="trc_style_varied">viel Abwechslung</string>
+    <!-- Übungsauswahl (Issue #68): welche Übungen in Frage kommen; „Routine oder Abwechslung“ sagt, wie oft sie wechseln. -->
+    <string name="trc_exercise_choice">Übungsauswahl</string>
+    <string name="trc_exercise_choice_help">Welche Übungen der Coach auswählt: bekannte Klassiker oder auch ungewöhnlichere, die du dir vielleicht erst durchlesen musst. Die Sicherheitsregeln gelten immer.</string>
+    <string name="trc_exercise_choice_classics">Vor allem Klassiker</string>
+    <string name="trc_exercise_choice_balanced">Ausgewogen</string>
+    <string name="trc_exercise_choice_open">Gern auch Ausgefallenes</string>
+    <string name="trc_preview_choice_classics">Vor allem bekannte Übungen; andere, sobald du sie kennst.</string>
+    <string name="trc_preview_choice_balanced">Bekannte Übungen zuerst; ausgefallenere kommen mit der Erfahrung, höchstens eine neue Übung pro Training.</string>
+    <string name="trc_preview_choice_open">Auch ausgefallene Übungen, bis zu zwei neue pro Training.</string>
     <string name="trc_no_preference">Keine Vorliebe</string>
     <string name="trc_equipment">Ausrüstung</string>
     <string name="trc_equipment_none">Noch nicht eingerichtet – der Coach geht nur vom Körpergewicht aus.</string>
@@ -140,7 +149,7 @@
     <string name="trc_estimate_pull_8_12">8–12</string>
     <string name="trc_estimate_pull_13">13+</string>
     <string name="trc_estimate_pull_weighted">Mit Zusatzgewicht</string>
-    <string name="trc_estimate_added">Zusatz (%1$s)</string>
+    <string name="trc_estimate_added">Zusatzgewicht (%1$s)</string>
     <string name="trc_estimate_reps">Wdh.</string>
     <string name="trc_estimate_hang">10 s an einer 20-mm-Leiste, beide Hände?</string>
     <string name="trc_estimate_hang_no">Geht nicht</string>
@@ -148,7 +157,7 @@
     <string name="trc_estimate_hang_easy">Locker</string>
     <string name="trc_estimate_hang_weighted">Mit Zusatzgewicht</string>
     <string name="trc_estimate_hang_cannot">Kein Problem – Fingerarbeit startet dann an einer größeren Leiste oder entlastet.</string>
-    <string name="trc_estimate_pickup">Blockheben einarmig 10 s, je Hand</string>
+    <string name="trc_estimate_pickup">Blockheben einarmig 10 s, je Hand, inkl. Block</string>
     <string name="trc_estimate_healthy_side">Nur die gesunde Hand, solange deine Verletzung offen ist.</string>
     <string name="trc_estimate_injury_skip">Übersprungen – deine Verletzung schließt beidarmiges Hängen gerade aus.</string>
     <string name="trc_estimate_no_weight">Trag dein Körpergewicht ein, dann rechnet der Coach auch in Prozent des Körpergewichts.</string>

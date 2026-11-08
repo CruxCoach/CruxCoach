@@ -250,7 +250,7 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
             if (s.records.isEmpty()) Text(stringResource(R.string.tra_review_no_records), style = MaterialTheme.typography.bodySmall)
             s.records.forEach { (def, pr) ->
                 ListItem(headlineContent = { Text(def.name(lang)) },
-                    supportingContent = { Text(recordText(pr, s.profile)) })
+                    supportingContent = { Text(recordText(def, pr, s.profile)) })
             }
             if (s.domainDays.isNotEmpty()) {
                 SectionTitle(stringResource(R.string.tra_review_load))
@@ -321,10 +321,16 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
     }
 }
 
+/** Body-weight work as the total with body weight, free weights the way they are loaded ("2 × 20 kg"). */
 @Composable
-private fun recordText(pr: PersonalRecord, profile: AthleteProfile): String = when (pr.kind) {
-    RecordKind.LOAD -> formatMass(pr.value, profile.units)
-    RecordKind.ESTIMATED_MAX -> stringResource(R.string.tra_review_e1rm, formatMass(pr.value, profile.units))
+private fun recordText(def: com.cruxcoach.athlete.catalog.ExerciseDefinition, pr: PersonalRecord, profile: AthleteProfile): String = when (pr.kind) {
+    RecordKind.LOAD -> recordLoad(def, pr.value, profile)
+    RecordKind.ESTIMATED_MAX -> stringResource(R.string.tra_review_e1rm, recordLoad(def, pr.value, profile))
     RecordKind.REPS -> pluralStringResource(R.plurals.tra_reps, pr.value.roundToInt(), pr.value.roundToInt())
     RecordKind.DURATION -> stringResource(R.string.tr_format_seconds, pr.value.roundToInt())
 }
+
+@Composable
+private fun recordLoad(def: com.cruxcoach.athlete.catalog.ExerciseDefinition, totalKg: Double, profile: AthleteProfile): String =
+    if (def.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS) stringResource(R.string.trw_record_total, formatMass(totalKg, profile.units))
+    else weightTextOfTotal(def, totalKg, profile.units)

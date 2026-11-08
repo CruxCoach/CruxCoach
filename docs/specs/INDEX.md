@@ -99,6 +99,7 @@ spec file so other branches see the reservation.
 | FEAT-075 | Delete training, body & nutrition data; honest import counts | v0.2.6 | backlog | `backlog/FEAT-075-delete-training-body-nutrition.md` |
 | FEAT-076 | Smaller APK: product database and photo library on demand | backlog | backlog | `backlog/FEAT-076-smaller-apk-product-database-on-demand.md` |
 | FEAT-077 | Board database: remove the dead VACUUM, reclaim space without blocking | backlog | backlog | `backlog/FEAT-077-board-database-vacuum-cleanup.md` |
+| FEAT-078 | Spray walls: photograph your own wall, mark holds, set and log climbs | v0.2.5 | implemented-on-branch | `0.2.5/FEAT-078-spray-walls.md` |
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
@@ -174,7 +175,7 @@ renumbering those is likely cheaper than renumbering the shipped side.
 
 ## Next free
 
-**FEAT-078** is the next unallocated ID (FEAT-073 reserved for the social/privacy concept, FEAT-074 LED animations; FEAT-075–077 are the backlog items from the 0.2.5 training review, 2026-10-25). FEAT-066–072 (training, body, nutrition, food photos, coach, comeback plan) target 0.2.5 on `feat/0.2.5-training-nutrition`, rebased onto v0.2.4 on 2026-10-25 (they first targeted 0.2.4 on `feat/0.2.4-training-nutrition` and `feat/0.2.4-training-nutrition-ux-review`). The Kilter logbook upload fixes and hold cleaning shipped in 0.2.4 without a FEAT number (see `docs/research/2026-09-29-kilter-upload-500.md` and `docs/releases/0.2.4-board-cleaning.md`). FEAT-060 and FEAT-061 are reserved in
+**FEAT-079** is the next unallocated ID (FEAT-073 reserved for the social/privacy concept, FEAT-074 LED animations; FEAT-075–077 are the backlog items from the 0.2.5 training review, 2026-10-25; FEAT-078 spray walls, `feat/0.2.5-spray-wall`, 2026-11-01). FEAT-066–072 (training, body, nutrition, food photos, coach, comeback plan) target 0.2.5 on `feat/0.2.5-training-nutrition`, rebased onto v0.2.4 on 2026-10-25 (they first targeted 0.2.4 on `feat/0.2.4-training-nutrition` and `feat/0.2.4-training-nutrition-ux-review`). The Kilter logbook upload fixes and hold cleaning shipped in 0.2.4 without a FEAT number (see `docs/research/2026-09-29-kilter-upload-500.md` and `docs/releases/0.2.4-board-cleaning.md`). FEAT-060 and FEAT-061 are reserved in
 the parallel `social-layer-specs` worktree; FEAT-062 is reserved by the
 personal-sharing worktrees. Verify against unmerged branches before allocating
 — a branch this worktree cannot see may still hold the next apparent gap.
@@ -183,7 +184,7 @@ personal-sharing worktrees. Verify against unmerged branches before allocating
 (`0.2.5/FEAT-074-led-animations.md`, `feat/0.2.5-led-animations`). The
 contribution first carried FEAT-067 on `feat/led-animations` (PR #21), which
 collided with Body tracking v2; FEAT-073 is reserved for the 0.2.5
-social/privacy concept. FEAT-075–077 followed as backlog items; **FEAT-078** is the next unallocated ID.
+social/privacy concept. FEAT-075–077 followed as backlog items, FEAT-078 went to spray walls on 2026-11-01; **FEAT-079** is the next unallocated ID.
 
 ### Allocation of FEAT-058 (2026-08-09) — and why not FEAT-051
 
