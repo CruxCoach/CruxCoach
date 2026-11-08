@@ -3391,7 +3391,7 @@
     <string name="wall_games_sound_turn_on">Turn countdown sound on</string>
     <!-- Shiny Wall account (read-only logbook import) -->
     <string name="shinywall_section_title">Shiny Wall account</string>
-    <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (ascents and projects), favorites, lists and your own routes into CruxCoach. Star ratings and comments stay in Shiny Wall. Read-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only. What you delete in CruxCoach stays deleted, entries and lists alike. To import everything again, delete your Shiny Wall logbook data under Settings → Delete local data.</string>
+    <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (ascents and projects), favorites, lists and your own routes into CruxCoach. Star ratings and comments stay in Shiny Wall.\n\nRead-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only.\n\nWhat you delete in CruxCoach stays deleted, entries and lists alike. To import everything again, delete your Shiny Wall logbook data under Settings → Delete local data.</string>
     <string name="shinywall_connect_button">Connect Shiny Wall account</string>
     <string name="shinywall_login_title">Sign in to Shiny Wall</string>
     <string name="shinywall_login_privacy">Your email and password go to Google’s Firebase servers, which run Shiny Wall’s sign-in.</string>

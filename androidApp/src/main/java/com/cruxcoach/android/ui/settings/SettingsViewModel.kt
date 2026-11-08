@@ -172,7 +172,7 @@ class SettingsViewModel @Inject constructor(
     private val kilterTokenStore: com.cruxcoach.android.data.kilter.KilterTokenStore,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
     private val kilterApiClient: com.cruxcoach.android.data.kilter.KilterApiClient,
-    private val shinyWallTokenStore: com.cruxcoach.android.data.shinywall.ShinyWallTokenStorage,
+    private val shinyWallSyncEngine: com.cruxcoach.android.data.shinywall.ShinyWallSyncEngine,
     private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
     private val ledAnimationEngine: LedAnimationEngine,
     private val ledEffectsController: LedEffectsController,
@@ -946,7 +946,7 @@ class SettingsViewModel @Inject constructor(
                 // The Shiny Wall import keeps what it has placed, so deleted entries stay deleted.
                 // With the logbook cleared, a fresh import brings everything in again.
                 if (BoardBrand.SHINYWALL in brands) {
-                    runCatching { shinyWallTokenStore.resetImportRecords() }
+                    shinyWallSyncEngine.resetImportRecords()
                         .onFailure { Log.w(TAG, "Shiny Wall import record not reset (${it.javaClass.simpleName})") }
                 }
             }

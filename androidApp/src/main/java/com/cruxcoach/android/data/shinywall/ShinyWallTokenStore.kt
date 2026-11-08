@@ -24,7 +24,8 @@ interface ShinyWallTokenStorage {
 
     /** New tokens of [uid]'s session; nothing when that session is gone (a refresh that ends after a disconnect). */
     fun updateTokens(uid: String, idToken: String, refreshToken: String, expiresInSeconds: Long)
-    fun updateDisplayName(displayName: String)
+    /** Like [updateTokens]: nothing when [uid]'s session is gone. */
+    fun updateDisplayName(uid: String, displayName: String)
     fun hasSession(): Boolean = session() != null
 
     /** Wall clock (ms) of the last successful import, or null. */
@@ -153,8 +154,11 @@ class ShinyWallTokenStore internal constructor(
         }
     }
 
-    override fun updateDisplayName(displayName: String) {
-        prefs.edit().putString(keyDisplayName, displayName).apply()
+    override fun updateDisplayName(uid: String, displayName: String) {
+        synchronized(lock) {
+            if (prefs.getString(keyUid, null) != uid) return
+            prefs.edit().putString(keyDisplayName, displayName).apply()
+        }
     }
 
     override fun lastImportAtMs(): Long? = prefs.getLong(keyLastImport, 0L).takeIf { it > 0 }
@@ -168,12 +172,15 @@ class ShinyWallTokenStore internal constructor(
         }.toMap()
 
     override fun recordImport(uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>) {
-        val edit = prefs.edit()
-            .putLong(keyLastImport, atMs)
-            .remove(keyOldWatermarkPrefix + uid)
-            .putStringSet(keyPlaced(uid), placedLogs.map { (uuid, ms) -> "$uuid $ms" }.toSet())
-        if (watermarkMs != null) edit.putLong(keyWatermark(uid), watermarkMs)
-        edit.apply()
+        synchronized(lock) {
+            val edit = prefs.edit()
+                .remove(keyOldWatermarkPrefix + uid)
+                .putStringSet(keyPlaced(uid), placedLogs.map { (uuid, ms) -> "$uuid $ms" }.toSet())
+            // The record stays after a disconnect; the time of the last import goes with the session.
+            if (prefs.getString(keyUid, null) == uid) edit.putLong(keyLastImport, atMs)
+            if (watermarkMs != null) edit.putLong(keyWatermark(uid), watermarkMs)
+            edit.apply()
+        }
     }
 
     override fun importedLists(uid: String): Set<String> = prefs.getStringSet(keyLists(uid), null).orEmpty().toSet()

@@ -417,6 +417,60 @@ class ShinyWallSyncEngineTest {
         assertEquals(emptyList(), bids())
     }
 
+    /** Logging attempts again in Shiny adds an entry with the counter's new total; it does not replace the old one. */
+    private val firstTry = realEntry("x1", "r3", -1, grade = null, ts = "2026-11-08T11:50:00Z")
+    private val secondTry = realEntry("x2", "r3", -2, grade = null, ts = "2026-11-08T11:53:00Z")
+
+    @Test
+    fun attempts_logged_again_are_a_running_total() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(secondTry, firstTry))
+        val result = engine.importAll(names).getOrThrow()
+        // One project of 2 attempts, not 1 + 2.
+        assertEquals(0 to 1, result.newAscents to result.newProjects)
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+        assertEquals(0 to 1, engine.importAll(names).getOrThrow().let { it.newProjects to it.duplicates })
+    }
+
+    @Test
+    fun the_days_later_total_replaces_the_row_an_earlier_import_logged() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x1" to 1L), bids())
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        assertEquals(1 to 0, engine.previewImport().getOrThrow().let { it.newProjects to it.duplicates })
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 0, again.newProjects to again.duplicates)
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+    }
+
+    @Test
+    fun an_edited_row_of_the_day_stays_and_the_later_total_carries_the_rest() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry))
+        engine.importAll(names).getOrThrow()
+        repo.updateBid(ShinyWallSyncEngine.logUuid("x1"), 1, "warm-up")
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x1" to 1L, "shinywall:history:x2" to 1L), bids())
+    }
+
+    @Test
+    fun a_running_total_carries_over_to_the_next_day_and_the_send() = runTest {
+        val nextDay = realEntry("x3", "r3", -3, grade = null, ts = "2026-11-09T18:00:00Z")
+        val send = realEntry("x4", "r3", 4, ts = "2026-11-09T18:30:00Z")
+        // An update without a change on the next day: the same total, no new attempts.
+        val unchanged = realEntry("y2", "r1", -2, grade = null, ts = "2026-11-09T18:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(firstTry, secondTry, nextDay, send, realEntry("y1", "r1", -2, grade = null, ts = "2026-11-08T11:00:00Z"), unchanged)
+        )
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 2, result.newAscents to result.newProjects)
+        // Day one: 2 attempts. Day two: 1 more, part of the send on the 4th go, which keeps 4 − 2.
+        assertEquals(listOf("shinywall:history:x2" to 2L, "shinywall:history:y1" to 2L), bids())
+        assertEquals(listOf(Triple("shinywall:history:x4", 1L, 2L)), ascentCounts())
+    }
+
     @Test
     fun real_entries_import_on_their_wall_id_variant() = runTest {
         coEvery { client.fetchHistory("uid1") } returns Result.success(
@@ -586,9 +640,9 @@ class ShinyWallSyncEngineTest {
         val wrongDate = entry("future", "r3", "st1", 2, ts = "2027-03-01T10:00:00Z")
         val first = listOf(entry("today", "r1", "st1", 2, ts = t), wrongDate)
         coEvery { client.fetchHistory("uid1") } returns Result.success(first)
-        engine.clock = { ShinyWallSyncEngine.epochMs(t)!! }
+        engine.clock = { ShinyWallSyncEngine.epochMs(tNew)!! }
         assertEquals(2, engine.importAll(names).getOrThrow().newAscents)
-        // The watermark stops at the time of the import, not at the wrong date.
+        // The watermark is the newest entry that is not in the future.
         assertEquals(ShinyWallSyncEngine.epochMs(t), store.historyWatermarkMs("uid1"))
 
         coEvery { client.fetchHistory("uid1") } returns Result.success(first + entry("next", "r2", "st5", 3, angle = 30, ts = tNew))

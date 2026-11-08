@@ -3390,7 +3390,7 @@
     <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
     <!-- Shiny-Wall-Konto (Logbuch-Import, nur lesend) -->
     <string name="shinywall_section_title">Shiny-Wall-Konto</string>
-    <string name="shinywall_connect_desc">Übernimmt dein Shiny-Wall-Logbuch (Begehungen und Projekte), deine Favoriten, Listen und eigenen Routen in CruxCoach. Sterne und Kommentare bleiben in Shiny Wall. Nur lesend: CruxCoach ändert nichts an deinem Shiny-Wall-Konto. Nur Standard-Wände. Was du in CruxCoach löschst, bleibt gelöscht, Einträge wie Listen. Um alles neu zu importieren, lösche deine Shiny-Wall-Logbuchdaten unter Einstellungen → Lokale Daten löschen.</string>
+    <string name="shinywall_connect_desc">Übernimmt dein Shiny-Wall-Logbuch (Begehungen und Projekte), deine Favoriten, Listen und eigenen Routen in CruxCoach. Sterne und Kommentare bleiben in Shiny Wall.\n\nNur lesend: CruxCoach ändert nichts an deinem Shiny-Wall-Konto. Nur Standard-Wände.\n\nWas du in CruxCoach löschst, bleibt gelöscht, Einträge wie Listen. Um alles neu zu importieren, lösche deine Shiny-Wall-Logbuchdaten unter Einstellungen → Lokale Daten löschen.</string>
     <string name="shinywall_connect_button">Shiny-Wall-Konto verbinden</string>
     <string name="shinywall_login_title">Bei Shiny Wall anmelden</string>
     <string name="shinywall_login_privacy">Deine E-Mail-Adresse und dein Passwort gehen an die Firebase-Server von Google, über die Shiny Wall die Anmeldung abwickelt.</string>

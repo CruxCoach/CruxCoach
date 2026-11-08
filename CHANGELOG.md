@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and password and import your Shiny Wall logbook (sends with their attempts,
   projects and your grade), your favorites, your lists and your own routes.
   Attempts on the day of a send count towards it; attempts on earlier days
-  stay projects of their own. Star ratings and comments stay in Shiny Wall.
+  stay projects of their own, one per day. Star ratings and comments stay in Shiny Wall.
   Email and password go to Google's Firebase servers, which run Shiny Wall's
   sign-in and data. Read-only: CruxCoach never changes anything in your Shiny
   Wall account, keeps a sign-in token on the phone (never the password), and

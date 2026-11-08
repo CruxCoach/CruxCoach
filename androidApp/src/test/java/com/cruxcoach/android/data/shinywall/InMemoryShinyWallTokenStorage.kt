@@ -20,12 +20,14 @@ class InMemoryShinyWallTokenStorage(
             idTokenExpiresAtMs = now() + expiresInSeconds * 1000,
         )
     }
-    override fun updateDisplayName(displayName: String) { current = current?.copy(displayName = displayName) }
+    override fun updateDisplayName(uid: String, displayName: String) {
+        current = current?.let { if (it.uid == uid) it.copy(displayName = displayName) else it }
+    }
     override fun lastImportAtMs(): Long? = lastImport
     override fun historyWatermarkMs(uid: String): Long? = watermarks[uid]
     override fun placedLogs(uid: String): Map<String, Long> = placed[uid].orEmpty()
     override fun recordImport(uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>) {
-        lastImport = atMs
+        if (current?.uid == uid) lastImport = atMs
         if (watermarkMs != null) watermarks[uid] = watermarkMs
         placed[uid] = placedLogs
     }

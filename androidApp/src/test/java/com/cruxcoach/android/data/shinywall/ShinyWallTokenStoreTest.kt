@@ -26,8 +26,14 @@ class ShinyWallTokenStoreTest {
         store.storeSession(session)
         store.clearSession()
         store.updateTokens("uid1", "id2", "refresh2", 3600)
+        store.updateDisplayName("uid1", "climber")
         assertNull(store.session())
-        assertTrue(prefs.all.keys.none { it.endsWith("_refresh_token") || it.endsWith("_id_token") })
+        assertTrue(prefs.all.keys.none { it.endsWith("_refresh_token") || it.endsWith("_id_token") || it.endsWith("_display_name") })
+
+        // An import that ends after the disconnect keeps its record, not the time of the last import.
+        store.recordImport("uid1", 5L, 100L, mapOf("log" to 90L))
+        assertNull(store.lastImportAtMs())
+        assertEquals(100L, store.historyWatermarkMs("uid1"))
     }
 
     @Test
