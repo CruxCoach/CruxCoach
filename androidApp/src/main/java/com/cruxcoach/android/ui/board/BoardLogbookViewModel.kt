@@ -375,16 +375,13 @@ class BoardLogbookViewModel @Inject constructor(
         refreshOwnPublishable()
     }
 
-    private fun loadAscents(silent: Boolean = false) {
+    private fun loadAscents(silent: Boolean = false, afterRepair: Boolean = false) {
         viewModelScope.safeLaunch(TAG) {
             val limit = if (silent) maxOf(PAGE_SIZE, _state.value.ascents.size) else PAGE_SIZE
             if (!silent) _state.update { it.copy(isLoading = true, error = null) }
-            try {
+            val page = try {
                 val (ascents, count) = withContext(Dispatchers.IO) {
-                    val list = personalBoardRepo.getUserLogbookPage(limit, 0).toMutableList()
-                    val total = personalBoardRepo.countUserLogbook()
-                    repairMissingDenormalized(list)
-                    list to total
+                    personalBoardRepo.getUserLogbookPage(limit, 0) to personalBoardRepo.countUserLogbook()
                 }
                 _state.update { it.copy(
                     isLoading = false,
@@ -395,8 +392,24 @@ class BoardLogbookViewModel @Inject constructor(
                 ) }
                 // Preload stats data in background so sheet opens instantly
                 preloadStats()
+                ascents
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message) }
+                return@safeLaunch
+            }
+            // Missing climb names and grades are filled in from the catalogue after
+            // the list shows: a climb the catalogue lacks costs full scans of it,
+            // seconds each on a phone, and the list and the overview do not wait for
+            // that. When an entry really changed, the logbook loads once more to show it.
+            try {
+                val repaired = withContext(Dispatchers.IO) { repairMissingDenormalized(page.toMutableList()) }
+                if (repaired && !afterRepair) loadAscents(silent = true, afterRepair = true)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "repairMissingDenormalized failed", e)
             }
         }
     }
@@ -536,9 +549,11 @@ class BoardLogbookViewModel @Inject constructor(
     /**
      * Self-healing: when logbook entries have empty denormalized fields
      * (e.g. Kilter sync ran before board sync), fill them from BoardDB
-     * and persist the fix so it doesn't recur.
+     * and persist the fix so it doesn't recur. True when a name or grade was
+     * filled in; a climb without a grade in the catalogue stays without one.
      */
-    private fun repairMissingDenormalized(entries: MutableList<AscentWithClimb>) {
+    private fun repairMissingDenormalized(entries: MutableList<AscentWithClimb>): Boolean {
+        var changed = false
         for (i in entries.indices) {
             val entry = entries[i]
             if (entry.climbName.isNotBlank() && entry.difficultyAverage != null) continue
@@ -546,6 +561,11 @@ class BoardLogbookViewModel @Inject constructor(
             // uppercase-no-hyphens, our climbs table stores lowercase
             // canonical form. Raw getClimbByUuid would silently miss those.
             val climb = climbNameResolver.resolveClimb(entry.climbUuid, entry.angle.toInt()) ?: continue
+            if ((entry.climbName.isBlank() && climb.name.isNotBlank()) ||
+                (entry.difficultyAverage == null && climb.difficultyAverage != null)
+            ) {
+                changed = true
+            }
             // Fix in-memory for immediate display
             entries[i] = entry.copy(
                 climbName = climb.name,
@@ -567,6 +587,7 @@ class BoardLogbookViewModel @Inject constructor(
                 )
             }
         }
+        return changed
     }
 
     // --- Stats ---

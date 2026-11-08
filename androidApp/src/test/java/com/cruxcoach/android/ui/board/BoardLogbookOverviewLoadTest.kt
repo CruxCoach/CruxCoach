@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import android.content.Context
 import com.cruxcoach.android.community.OwnKilterClimbPublisher
+import com.cruxcoach.android.data.ClimbNameResolver
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.UserPreferences
@@ -10,6 +11,7 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.domain.board.IntensityZones
 import io.mockk.every
+import io.mockk.verify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,10 +24,14 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import java.time.LocalDate
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The overview at the top of the logbook is computed on its own, before the
@@ -80,13 +86,13 @@ class BoardLogbookOverviewLoadTest {
         climbName = "Problem $climb", climbFrames = "", difficultyAverage = 20.0, isSend = isSend,
     )
 
-    private fun buildViewModel() = BoardLogbookViewModel(
+    private fun buildViewModel(climbNameResolver: ClimbNameResolver = mockk(relaxed = true)) = BoardLogbookViewModel(
         personalBoardRepo = personalBoardRepo,
         boardRepository = mockk<BoardRepository>(relaxed = true),
         userPreferences = userPreferences,
         zoneManager = zoneManager,
         climbNavState = mockk(relaxed = true),
-        climbNameResolver = mockk(relaxed = true),
+        climbNameResolver = climbNameResolver,
         ownClimbPublisher = ownClimbPublisher,
         context = context,
     )
@@ -112,5 +118,33 @@ class BoardLogbookOverviewLoadTest {
         val after = vm.state.first { it.statsReady }
         assertEquals(0, after.stats.totalSends)
         assertNotNull(after.atAGlance.hardestSend)
+    }
+
+    @Test
+    fun listAndOverviewDoNotWaitForTheCatalogueLookup() = runTest {
+        // An entry without a name or grade is looked up in the catalogue; a climb the
+        // catalogue lacks takes seconds there. Here the lookup holds until released.
+        val unnamed = entry("u1", "missing", today.minusDays(1), isSend = true, tries = 2)
+            .copy(climbName = "", difficultyAverage = null)
+        val withUnnamed = logbook + unnamed
+        every { personalBoardRepo.getUserLogbookPage(any(), any()) } returns withUnnamed
+        every { personalBoardRepo.getUserLogbookAllLight() } returns withUnnamed
+        val release = CountDownLatch(1)
+        val lookupDone = AtomicBoolean(false)
+        val resolver = mockk<ClimbNameResolver>()
+        every { resolver.resolveClimb(any(), any()) } answers {
+            release.await(10, TimeUnit.SECONDS)
+            lookupDone.set(true)
+            null
+        }
+        val vm = buildViewModel(resolver)
+        try {
+            val s = vm.state.first { !it.isLoading && it.ascents.isNotEmpty() && it.atAGlance.hardestSend != null }
+            assertFalse(lookupDone.get())
+            assertEquals(4, s.ascents.size)
+        } finally {
+            release.countDown()
+        }
+        verify(timeout = 5_000) { resolver.resolveClimb("missing", 40) }
     }
 }
