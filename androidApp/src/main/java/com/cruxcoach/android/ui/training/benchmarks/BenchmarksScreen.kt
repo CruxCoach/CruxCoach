@@ -228,6 +228,7 @@ fun BenchmarksScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BenchmarkRowCard(
     row: BenchmarkRow,
@@ -246,9 +247,10 @@ private fun BenchmarkRowCard(
     var deleting by remember { mutableStateOf<Benchmark?>(null) }
     Card(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("benchmark_row_${row.def.slug}")) {
         Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            LabelBesideOrAbove(label = {
                 Text(row.def.name(lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f))
+                    modifier = Modifier.padding(end = 8.dp))
+            }) {
                 com.cruxcoach.android.ui.training.coach.learningLabel(row.learning)?.let { label ->
                     SuggestionChip(onClick = {}, label = { Text(label) }, modifier = Modifier.testTag("benchmark_learning_${row.def.slug}"))
                 }
@@ -281,7 +283,8 @@ private fun BenchmarkRowCard(
                 Text(stringResource(R.string.trbm_paused_injury), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
             }
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Wraps instead of standing "Testen" letter by letter at the largest font.
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = onEnter, modifier = Modifier.testTag("benchmark_enter_${row.def.slug}")) {
                     Text(stringResource(R.string.trbm_enter))
                 }
@@ -591,6 +594,7 @@ class BenchmarkCardViewModel @Inject constructor(private val service: AthleteSer
 }
 
 /** Performance value of one exercise: what is known, what it plans, enter or test. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BenchmarkCard(
     slug: String,
@@ -625,7 +629,7 @@ fun BenchmarkCard(
                     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = { entering = true }, modifier = Modifier.testTag("exercise_benchmark_enter")) {
                     Text(stringResource(R.string.trbm_enter))
                 }

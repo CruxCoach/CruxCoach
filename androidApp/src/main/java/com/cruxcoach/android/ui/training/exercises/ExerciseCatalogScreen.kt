@@ -244,7 +244,7 @@ fun ExerciseCatalogScreen(
         onBack = onBack,
         bottomBar = { if (pickForWorkout == null) tabBar() },
         subHeader = { if (pickForWorkout == null) header() },
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
         floatingActionButton = {
             if (pickForWorkout == null) {
                 // The FAB's merged node carries no text of its own (device dump 2026-10-19): TalkBack needs the label.
@@ -435,49 +435,9 @@ private fun ExerciseRow(
                 )
             }
         }
-        Row(Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(def, Modifier.testTag("exercise_thumb_${def.slug}"))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        name,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (def.custom) {
-                        Spacer(Modifier.width(6.dp))
-                        Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
-                            Text(stringResource(R.string.trx_custom_badge))
-                        }
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        categoryLabel(def.category) + " · ",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    DifficultyDots(def.difficulty)
-                }
-                Text(
-                    equipmentSummary(def),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                InjuryBadge(advice)
-                if (excluded) {
-                    Badge(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp).testTag("exercise_excluded_${def.slug}")) {
-                        Text(stringResource(R.string.tre_excluded_badge))
-                    }
-                }
-            }
+        // At a large font the buttons go under the text: beside it they left the name a few letters wide.
+        val stacked = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
+        val buttons: @Composable () -> Unit = {
             if (pickMode) {
                 IconButton(onClick = onOpenDetail, modifier = Modifier.testTag("exercise_info_${def.slug}")) {
                     Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.trx_open_detail, name))
@@ -495,6 +455,56 @@ private fun ExerciseRow(
                     tint = if (favorite) CruxCoachDesign.colors.brandAccent else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+        Column(Modifier.padding(start = 12.dp, top = 8.dp, bottom = if (stacked) 0.dp else 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(def, Modifier.testTag("exercise_thumb_${def.slug}"))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f).padding(end = if (stacked) 12.dp else 0.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            name,
+                            // Hyphens: long German names broke mid-word at the largest font.
+                            style = MaterialTheme.typography.titleSmall.copy(hyphens = androidx.compose.ui.text.style.Hyphens.Auto),
+                            fontWeight = FontWeight.SemiBold,
+                            // Two lines (three at a large font): long German names lost their key word ("… mit neutralem Han…").
+                            maxLines = if (stacked) 3 else 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (def.custom) {
+                            Spacer(Modifier.width(6.dp))
+                            Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
+                                Text(stringResource(R.string.trx_custom_badge))
+                            }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            categoryLabel(def.category) + " · ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        DifficultyDots(def.difficulty)
+                    }
+                    Text(
+                        equipmentSummary(def),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    InjuryBadge(advice)
+                    if (excluded) {
+                        Badge(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp).testTag("exercise_excluded_${def.slug}")) {
+                            Text(stringResource(R.string.tre_excluded_badge))
+                        }
+                    }
+                }
+                if (!stacked) buttons()
+            }
+            if (stacked) Row(Modifier.align(Alignment.End)) { buttons() }
         }
     }
 }

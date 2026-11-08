@@ -99,6 +99,7 @@ internal fun buildWeek(
 }
 
 /** "Diese Woche": seven tappable days with plan and status. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WeekCalendarCard(
     cells: List<WeekDayCell>,
@@ -135,7 +136,8 @@ fun WeekCalendarCard(
                     Text(stringResource(R.string.trwo_week_plan_empty), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp))
                 }
-                Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Wraps: at the largest font "Tage planen" was pushed out of the card.
+                FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = onEditPlan, modifier = Modifier.testTag("workouts_week_plan_edit")) {
                         Text(stringResource(R.string.trwo_week_plan_edit))
                     }

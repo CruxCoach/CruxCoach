@@ -159,7 +159,7 @@
     <string name="trt_dont_know_to">Don\'t know it: %1$s instead</string>
     <string name="trt_dont_know_hint">Swaps it for an exercise you know. It doesn\'t count against this one.</string>
     <string name="trt_dont_know_none">Nothing you already know fits here today.</string>
-    <string name="trt_dont_know_undo">“%1$s” instead of “%2$s” today, without counting against it</string>
+    <string name="trt_dont_know_undo">“%1$s” instead of “%2$s” today</string>
     <string name="trt_show_less">Show less</string>
     <string name="trt_next_place">Where are you training?</string>
     <string name="trt_next_level">Intensity today</string>

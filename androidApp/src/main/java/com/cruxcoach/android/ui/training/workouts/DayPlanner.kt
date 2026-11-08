@@ -256,14 +256,16 @@ fun DayPlannerSheet(onDismiss: () -> Unit, viewModel: DayPlannerViewModel = hilt
             }
             state.days.forEach { day ->
                 HorizontalDivider()
-                Row(
+                // At a large font the day above its plan: beside it, the plan shrank to a few words per line
+                // ("Tomorro/w", "Aufwärme/n").
+                DayAbovePlan(
                     Modifier.fillMaxWidth().clickable { choosing = day.date }.padding(vertical = 10.dp)
                         .testTag("day_planner_day_${day.date}"),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(plannerDayLabel(day.date, today), style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (day.date == today) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.width(112.dp))
-                    Column(Modifier.weight(1f)) {
+                    day = {
+                        Text(plannerDayLabel(day.date, today), style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (day.date == today) FontWeight.Bold else FontWeight.Normal, modifier = it)
+                    },
+                ) { planModifier -> Column(planModifier) {
                         val label = when {
                             day.entry != null -> planEntryLabel(day.entry, state.routines)
                             day.hint == DayPlans.Hint.CLIMB -> stringResource(R.string.trdp_usual_climb)
@@ -414,3 +416,22 @@ internal fun climbPlanLabel(climb: DayPlans.Climb): String =
 /** Short weekday name for the plan's labels. */
 internal fun shortWeekday(date: LocalDate): String =
     java.time.DayOfWeek.of(date.dayOfWeek.isoDayNumber).getDisplayName(TextStyle.SHORT, Locale.getDefault())
+
+/**
+ * A day and its plan: the day in a fixed column beside the plan, or above it at a large font, where the column grew
+ * with the day's name and left the plan a few words per line (UI pass 0.2.5).
+ */
+@Composable
+internal fun DayAbovePlan(
+    modifier: Modifier,
+    dayWidth: androidx.compose.ui.unit.Dp = 112.dp,
+    day: @Composable (Modifier) -> Unit,
+    plan: @Composable (Modifier) -> Unit,
+) {
+    if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) {
+        Column(modifier) { day(Modifier); plan(Modifier.fillMaxWidth()) }
+    } else Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        day(Modifier.width(dayWidth))
+        plan(Modifier.weight(1f))
+    }
+}
