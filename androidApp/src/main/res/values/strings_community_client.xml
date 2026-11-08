@@ -92,4 +92,26 @@
         <item quantity="one">%d comment</item>
         <item quantity="other">%d comments</item>
     </plurals>
+    <!-- Display name at joining and in the room list -->
+    <string name="community_client_name_title">Your name in the community</string>
+    <string name="community_client_name_body">Every member sees this name next to your messages. It belongs to your key, not to this phone. You can change it later at the end of the room list.</string>
+    <string name="community_client_name_from_profile">Taken from your public profile.</string>
+    <string name="community_client_name_label">Name</string>
+    <string name="community_client_name_save">Save name</string>
+    <string name="community_client_name_skip">Not now</string>
+    <string name="community_client_name_row">Your name here: %1$s</string>
+    <string name="community_client_name_none">You have no name here yet.</string>
+    <string name="community_client_name_change">Change</string>
+    <string name="community_client_name_failed">Not saved: %1$s</string>
+
+    <!-- Amber: which signatures the community needs -->
+    <string name="community_client_amber_title">Signing with Amber</string>
+    <string name="community_client_amber_body">The community needs two kinds of signatures again and again: signing in (kind 22242) and loading messages over HTTP (kind 27235). When Amber asks for one of them the first time, choose “Always” under “Remember my choice for”, so it does not ask every time.\n\nDo not allow signing everything: Amber should still ask before each message you write.</string>
+
+    <!-- Why a message, a room join or the name was not saved -->
+    <string name="community_client_publish_sign_refused">Signing was refused.</string>
+    <string name="community_client_publish_not_allowed">The community does not allow this.</string>
+    <string name="community_client_publish_refused">The community did not accept it.</string>
+    <string name="community_client_publish_profile_unavailable">Your public profile could not be loaded. Try again.</string>
+    <string name="community_client_rooms_failed">The rooms could not be loaded. Tap refresh to try again.</string>
 </resources>

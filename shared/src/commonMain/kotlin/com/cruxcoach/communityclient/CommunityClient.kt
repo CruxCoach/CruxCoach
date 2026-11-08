@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** The room list as the screen shows it. */
 data class RoomsState(
@@ -206,6 +207,24 @@ class CommunityClient(
         }
     }
 
+    /**
+     * Sets the user's display name on this community. Reads the newest profile first, so
+     * the other fields (picture, about, set in a Buzz app) and tags stay as they are. With
+     * no profile here yet, it starts from [firstBase], the user's public profile.
+     */
+    suspend fun setDisplayName(displayName: String, firstBase: suspend () -> ProfileBase? = { null }): PublishResult {
+        withTimeoutOrNull(READY_TIMEOUT_MS) { awaitReady() } ?: throw CommunityException("offline: not connected to the community")
+        val current = ownNewestProfile(session.query(listOf(CommunityFilters.profiles(listOf(me)))), me)
+        val base = current?.let(ProfileBase::of) ?: firstBase()
+        val result = session.publish(CommunityEventTemplates.displayName(base, displayName, clock.nowSeconds()))
+        if (result.accepted) {
+            CommunityProfile.fromEvent(result.event)?.let { profile ->
+                profilesLock.withLock { _profiles.value = _profiles.value + (me to profile) }
+            }
+        }
+        return result
+    }
+
     /** Joins an open room (kind:9021). */
     suspend fun joinRoom(channelId: String): PublishResult {
         val result = session.publish(CommunityEventTemplates.joinRequest(channelId, clock.nowSeconds()))
@@ -344,6 +363,9 @@ class CommunityClient(
 
 /** How long a thread waits for its head before showing the replies without it. */
 private const val ROOT_LOOKUP_TIMEOUT_MS = 8_000L
+
+/** How long a user action waits for the connection before it gives up. */
+private const val READY_TIMEOUT_MS = 15_000L
 
 /** Reply ids per aux lookup, to keep one filter small. */
 private const val AUX_LOOKUP_CHUNK = 200

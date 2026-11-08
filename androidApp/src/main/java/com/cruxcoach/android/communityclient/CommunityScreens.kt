@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -66,10 +67,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.communityclient.ChannelType
 import com.cruxcoach.communityclient.CommunityMessage
 import com.cruxcoach.communityclient.CommunityProfile
+import com.cruxcoach.communityclient.MAX_DISPLAY_NAME_LENGTH
 import com.cruxcoach.communityclient.RoomListItem
 import com.cruxcoach.communityclient.SessionState
 import com.cruxcoach.communityclient.SystemNotice
@@ -123,7 +126,22 @@ fun CommunityHomeScreen(
                 !state.enabled -> IntroPane(state, onTurnOn = { viewModel.setEnabled(true) })
                 !state.joined -> JoinPane(state, viewModel)
                 state.session is SessionState.NotMember -> NotMemberPane(onUseInvite = viewModel::forgetCommunity)
-                else -> RoomListPane(state, onOpenRoom, onJoin = { viewModel.joinRoom(it) }, onTurnOff = { viewModel.setEnabled(false) })
+                state.askName -> NamePane(
+                    state.myName,
+                    state.name,
+                    onShown = viewModel::loadSuggestion,
+                    onSave = viewModel::saveName,
+                    onSkip = viewModel::skipName,
+                )
+                else -> RoomListPane(
+                    state,
+                    onOpenRoom,
+                    onJoin = { viewModel.joinRoom(it) },
+                    onTurnOff = { viewModel.setEnabled(false) },
+                    onLoadSuggestion = viewModel::loadSuggestion,
+                    onSaveName = viewModel::saveName,
+                    onClearNameError = viewModel::clearNameError,
+                )
             }
         }
     }
@@ -238,6 +256,110 @@ private fun RulesPane(step: JoinStep.Rules, onAccept: (Boolean) -> Unit, onCance
     }
 }
 
+/**
+ * Right after joining: the name people see. Prefilled from the name the user already has
+ * here, else from their public profile, never from fields saved only on this device.
+ */
+@Composable
+private fun NamePane(myName: String?, name: NameEdit, onShown: () -> Unit, onSave: (String) -> Unit, onSkip: () -> Unit) {
+    var text by rememberSaveable { mutableStateOf("") }
+    // The prefill last put into the field; while the text still equals it, the user has not typed.
+    var applied by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(Unit) { onShown() }
+    // Both arrive in the background, the public name often first; the name here wins when it comes.
+    val prefill = (myName?.takeIf { it.isNotBlank() } ?: name.suggested).take(MAX_DISPLAY_NAME_LENGTH)
+    LaunchedEffect(prefill) {
+        if (prefill.isNotBlank() && text == applied) {
+            text = prefill
+            applied = prefill
+        }
+    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(stringResource(R.string.community_client_name_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+        Text(stringResource(R.string.community_client_name_body), style = MaterialTheme.typography.bodyMedium)
+        NameField(text, onChange = { text = it }, error = name.error, fromProfile = myName == null && name.suggested.isNotBlank() && text == name.suggested)
+        Button(
+            onClick = { onSave(text) },
+            enabled = text.isNotBlank() && !name.saving,
+            modifier = Modifier.fillMaxWidth().testTag("community_name_save"),
+        ) { Text(stringResource(R.string.community_client_name_save)) }
+        TextButton(onClick = onSkip, enabled = !name.saving, modifier = Modifier.fillMaxWidth().testTag("community_name_skip")) {
+            Text(stringResource(R.string.community_client_name_skip))
+        }
+    }
+}
+
+@Composable
+private fun NameField(text: String, onChange: (String) -> Unit, error: PublishError?, fromProfile: Boolean) {
+    OutlinedTextField(
+        value = text,
+        onValueChange = { if (it.length <= MAX_DISPLAY_NAME_LENGTH) onChange(it) },
+        label = { Text(stringResource(R.string.community_client_name_label)) },
+        singleLine = true,
+        isError = error != null,
+        supportingText = when {
+            error != null -> { { Text(stringResource(R.string.community_client_name_failed, publishErrorText(error))) } }
+            fromProfile -> { { Text(stringResource(R.string.community_client_name_from_profile)) } }
+            else -> null
+        },
+        modifier = Modifier.fillMaxWidth().testTag("community_name_field"),
+    )
+}
+
+/** The user's name on the community, with a dialog to change it. */
+@Composable
+private fun NameRow(
+    myName: String?,
+    name: NameEdit,
+    onLoadSuggestion: () -> Unit,
+    onSave: (String) -> Unit,
+    onClearError: () -> Unit,
+) {
+    var editing by rememberSaveable { mutableStateOf(false) }
+    var openedAt by rememberSaveable { mutableStateOf(0) }
+    var text by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(name.savedCount) { if (editing && name.savedCount != openedAt) editing = false }
+    // Without a name here the dialog suggests the public one, which may arrive after it opened.
+    LaunchedEffect(name.suggested) { if (editing && myName == null && text.isEmpty()) text = name.suggested }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            myName?.let { stringResource(R.string.community_client_name_row, it) } ?: stringResource(R.string.community_client_name_none),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(
+            onClick = {
+                // A longer name set in a Buzz app would not be editable in the capped field.
+                text = (myName ?: name.suggested).take(MAX_DISPLAY_NAME_LENGTH)
+                openedAt = name.savedCount
+                onClearError()
+                if (myName == null) onLoadSuggestion()
+                editing = true
+            },
+            modifier = Modifier.testTag("community_name_change"),
+        ) { Text(stringResource(R.string.community_client_name_change)) }
+    }
+    if (editing) {
+        AlertDialog(
+            onDismissRequest = { if (!name.saving) editing = false },
+            title = { Text(stringResource(R.string.community_client_name_title)) },
+            text = { NameField(text, onChange = { text = it }, error = name.error, fromProfile = false) },
+            confirmButton = {
+                TextButton(onClick = { onSave(text) }, enabled = text.isNotBlank() && !name.saving && text.trim() != myName) {
+                    Text(stringResource(R.string.action_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editing = false }, enabled = !name.saving) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+}
+
 /** How long the accept button waits at most for the rules text to render. */
 private const val RULES_RENDER_FALLBACK_MS = 3_000L
 
@@ -255,15 +377,11 @@ private fun RoomListPane(
     onOpenRoom: (String, String) -> Unit,
     onJoin: (String) -> Unit,
     onTurnOff: () -> Unit,
+    onLoadSuggestion: () -> Unit,
+    onSaveName: (String) -> Unit,
+    onClearNameError: () -> Unit,
 ) {
     val rooms = state.rooms
-    if (rooms.rooms.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (rooms.loading) CircularProgressIndicator()
-            else Text(rooms.error ?: stringResource(R.string.community_client_no_rooms), modifier = Modifier.padding(32.dp))
-        }
-        return
-    }
     val streams = rooms.rooms.filter { it.channel.type != ChannelType.FORUM }
     val forums = rooms.rooms.filter { it.channel.type == ChannelType.FORUM }
     LazyColumn(Modifier.fillMaxSize().testTag("community_room_list"), contentPadding = PaddingValues(vertical = 8.dp)) {
@@ -275,12 +393,30 @@ private fun RoomListPane(
             item { SectionHeader(stringResource(R.string.community_client_section_forums)) }
             items(forums, key = { it.channel.id }) { RoomRow(it, onOpenRoom, onJoin) }
         }
-        item {
-            Column(Modifier.padding(16.dp)) {
-                rooms.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                state.joinRoomError?.let {
-                    Text(stringResource(R.string.community_client_join_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        if (rooms.rooms.isEmpty()) {
+            // Loading, empty or failed (also while offline): below it the name and key as with rooms.
+            item(key = "status") {
+                if (rooms.loading) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                } else {
+                    Text(
+                        stringResource(if (rooms.error != null) R.string.community_client_rooms_failed else R.string.community_client_no_rooms),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 32.dp).testTag("community_rooms_empty"),
+                    )
                 }
+            }
+        }
+        // A fixed key keeps the name dialog open while rooms reload around it.
+        item(key = "footer") {
+            Column(Modifier.padding(16.dp)) {
+                if (rooms.rooms.isNotEmpty() && rooms.error != null) {
+                    Text(stringResource(R.string.community_client_rooms_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                state.joinRoomError?.let {
+                    Text(stringResource(R.string.community_client_join_failed, publishErrorText(it)), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                NameRow(state.myName, state.name, onLoadSuggestion, onSaveName, onClearNameError)
                 IdentityRow(state)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.community_client_enabled_switch), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
@@ -588,7 +724,7 @@ private fun NoticeRow(notice: SystemNotice, createdAt: Long, profiles: Map<Strin
 }
 
 @Composable
-private fun Composer(hint: String, sending: Boolean, error: String?, sentCount: Int, onSend: (String) -> Unit) {
+private fun Composer(hint: String, sending: Boolean, error: PublishError?, sentCount: Int, onSend: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
     // The text stays until the relay took it, so a failed send can be retried.
     var clearedAt by rememberSaveable { mutableStateOf(sentCount) }
@@ -600,7 +736,7 @@ private fun Composer(hint: String, sending: Boolean, error: String?, sentCount: 
     }
     Column(Modifier.fillMaxWidth().imePadding()) {
         error?.let {
-            Text(stringResource(R.string.community_client_send_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
+            Text(stringResource(R.string.community_client_send_failed, publishErrorText(it)), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
         }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -633,19 +769,19 @@ private fun Composer(hint: String, sending: Boolean, error: String?, sentCount: 
 }
 
 @Composable
-private fun JoinBar(onJoin: () -> Unit, joining: Boolean, error: String?) {
+private fun JoinBar(onJoin: () -> Unit, joining: Boolean, error: PublishError?) {
     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        error?.let { Text(stringResource(R.string.community_client_join_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        error?.let { Text(stringResource(R.string.community_client_join_failed, publishErrorText(it)), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Button(onClick = onJoin, enabled = !joining, modifier = Modifier.fillMaxWidth().testTag("community_join_room")) { Text(stringResource(R.string.community_client_join_to_write)) }
     }
 }
 
 /** An announce room: anyone may read, joiners are guests who cannot write. */
 @Composable
-private fun ReadOnlyBar(onJoin: (() -> Unit)?, joining: Boolean = false, error: String? = null) {
+private fun ReadOnlyBar(onJoin: (() -> Unit)?, joining: Boolean = false, error: PublishError? = null) {
     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.community_client_read_only), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        error?.let { Text(stringResource(R.string.community_client_join_failed, it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        error?.let { Text(stringResource(R.string.community_client_join_failed, publishErrorText(it)), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         if (onJoin != null) {
             OutlinedButton(onClick = onJoin, enabled = !joining, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.community_client_follow_room)) }
         }
@@ -666,6 +802,10 @@ private fun IdentityRow(state: CommunityHomeState) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
         )
+        // Which signatures to allow for good in Amber, and which not.
+        if (state.usesAmber) {
+            InfoButton(stringResource(R.string.community_client_amber_title), stringResource(R.string.community_client_amber_body))
+        }
         TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(state.npub)) }, modifier = Modifier.testTag("community_copy_npub")) {
             Text(stringResource(R.string.community_client_copy_key))
         }
@@ -704,6 +844,18 @@ private fun joinErrorText(error: JoinError): String = stringResource(
         JoinError.NETWORK -> R.string.community_client_error_network
         JoinError.SERVER -> R.string.community_client_error_server
         JoinError.NOT_MEMBER -> R.string.community_client_not_member
+    },
+)
+
+@Composable
+private fun publishErrorText(error: PublishError): String = stringResource(
+    when (error) {
+        PublishError.SIGN_REFUSED -> R.string.community_client_publish_sign_refused
+        PublishError.NETWORK -> R.string.community_client_error_network
+        PublishError.RATE_LIMITED -> R.string.community_client_error_rate_limited
+        PublishError.NOT_ALLOWED -> R.string.community_client_publish_not_allowed
+        PublishError.REFUSED -> R.string.community_client_publish_refused
+        PublishError.PROFILE_UNAVAILABLE -> R.string.community_client_publish_profile_unavailable
     },
 )
 

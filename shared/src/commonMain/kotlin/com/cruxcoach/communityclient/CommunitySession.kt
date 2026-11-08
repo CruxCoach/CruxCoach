@@ -252,7 +252,8 @@ class CommunitySession(
         timerJob?.cancel()
         socket?.close()
         socket = null
-        failPending(reason)
+        // Pending events failed with the connection, whatever ended it.
+        failPending("offline: $reason")
     }
 
     private fun onLost(reason: String) {

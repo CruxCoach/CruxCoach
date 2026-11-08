@@ -92,4 +92,26 @@
         <item quantity="one">%d Kommentar</item>
         <item quantity="other">%d Kommentare</item>
     </plurals>
+    <!-- Anzeigename beim Beitritt und in der Raumliste -->
+    <string name="community_client_name_title">Dein Name in der Community</string>
+    <string name="community_client_name_body">Alle Mitglieder sehen diesen Namen neben deinen Nachrichten. Er gehört zu deinem Schlüssel, nicht zu diesem Handy. Du kannst ihn später am Ende der Raumliste ändern.</string>
+    <string name="community_client_name_from_profile">Aus deinem öffentlichen Profil übernommen.</string>
+    <string name="community_client_name_label">Name</string>
+    <string name="community_client_name_save">Namen speichern</string>
+    <string name="community_client_name_skip">Jetzt nicht</string>
+    <string name="community_client_name_row">Dein Name hier: %1$s</string>
+    <string name="community_client_name_none">Du hast hier noch keinen Namen.</string>
+    <string name="community_client_name_change">Ändern</string>
+    <string name="community_client_name_failed">Nicht gespeichert: %1$s</string>
+
+    <!-- Amber: welche Unterschriften die Community braucht -->
+    <string name="community_client_amber_title">Unterschreiben mit Amber</string>
+    <string name="community_client_amber_body">Die Community braucht zwei Arten von Unterschriften immer wieder: Anmelden (Typ 22242) und Nachrichten über HTTP laden (Typ 27235). Wenn Amber zum ersten Mal danach fragt, wähle unter „Meine Wahl speichern für“ „Immer“, dann fragt Amber nicht jedes Mal.\n\nErlaube nicht „alles unterschreiben“: Vor jeder Nachricht, die du schreibst, soll Amber weiter fragen.</string>
+
+    <!-- Warum eine Nachricht, ein Raumbeitritt oder der Name nicht gespeichert wurde -->
+    <string name="community_client_publish_sign_refused">Die Unterschrift wurde abgelehnt.</string>
+    <string name="community_client_publish_not_allowed">Die Community erlaubt das nicht.</string>
+    <string name="community_client_publish_refused">Die Community hat es nicht angenommen.</string>
+    <string name="community_client_publish_profile_unavailable">Dein öffentliches Profil konnte nicht geladen werden. Versuch es noch einmal.</string>
+    <string name="community_client_rooms_failed">Die Räume konnten nicht geladen werden. Tippe auf Aktualisieren, um es noch einmal zu versuchen.</string>
 </resources>

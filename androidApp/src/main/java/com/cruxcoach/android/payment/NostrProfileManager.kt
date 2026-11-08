@@ -16,6 +16,17 @@ import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** What the read relays hold as a user's published Kind-0. */
+sealed interface PublishedProfileLookup {
+    data class Found(val event: Event) : PublishedProfileLookup
+
+    /** The relays answered without one. */
+    data object None : PublishedProfileLookup
+
+    /** No relay answered in time. */
+    data object Unreachable : PublishedProfileLookup
+}
+
 @Singleton
 class NostrProfileManager @Inject constructor(
     private val eventBuilder: NostrPublicEventBuilder,
@@ -269,32 +280,70 @@ class NostrProfileManager @Inject constructor(
         }
     }
 
+    /**
+     * The newest verified Kind-0 of [pubkey] on the read relays, as signed. Reads
+     * only: the cache stays as it is, so locally saved fields never mix into it.
+     * Tells "no relay has one" apart from "no relay answered", so a caller does
+     * not mistake an offline moment for an empty profile.
+     */
+    suspend fun fetchPublishedProfile(pubkey: String): PublishedProfileLookup {
+        // Without read relays nothing is published where this app could look.
+        if (relayPool.readRelays().isEmpty()) return PublishedProfileLookup.None
+        return try {
+            val filter = """{"kinds":[0],"authors":["$pubkey"],"limit":1}"""
+            // Same one-shot query as fetchProfileFromRelays; null when it timed out.
+            val collected: List<String>? = withTimeoutOrNull(NostrConfig.RELAY_TIMEOUT_MS) {
+                relayPool.subscribe(filter, skipDedup = true, closeOnEose = true).toList()
+            }
+            val newest = collected.orEmpty()
+                .mapNotNull { runCatching { verifiedProfileEvent(pubkey, it) }.getOrNull() }
+                .maxByOrNull { it.createdAt }
+            when {
+                newest != null -> PublishedProfileLookup.Found(newest)
+                // A failed relay also counts as done, so "done" alone is not an answer:
+                // at least one relay must be connected.
+                collected != null && relayPool.connectedRelayCount.value > 0 -> PublishedProfileLookup.None
+                else -> PublishedProfileLookup.Unreachable
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch the published profile for ${pubkey.take(8)}", e)
+            PublishedProfileLookup.Unreachable
+        }
+    }
+
+    /**
+     * The event in [eventJson] if it is a valid Kind-0 of [pubkey]. Relay is
+     * untrusted: verify pubkey, kind, and Schnorr signature before trusting the
+     * profile content. Without this, any relay can return a forged kind:0 that
+     * overwrites the cached lud16 and redirects zaps to an attacker wallet.
+     */
+    private fun verifiedProfileEvent(pubkey: String, eventJson: String): Event? {
+        val event = runCatching { Event.fromJson(eventJson) }.getOrNull() ?: return null
+        val signatureValid = event.verifySignature()
+        val idValid = signatureValid && event.verifyId()
+        if (!NostrEventPolicy.accepts(
+                actualPubkey = event.pubKey,
+                actualKind = event.kind,
+                expectedPubkey = pubkey,
+                expectedKind = KIND_METADATA,
+                signatureValid = signatureValid,
+                idValid = idValid,
+            )
+        ) {
+            Log.w(TAG, "Profile event author/kind/signature/id invalid for ${pubkey.take(8)}")
+            return null
+        }
+        val nowSeconds = System.currentTimeMillis() / 1000
+        if (!NostrEventPolicy.isCreatedAtAcceptable(event.createdAt, nowSeconds)) {
+            Log.w(TAG, "Profile event timestamp too far in future for ${pubkey.take(8)}")
+            return null
+        }
+        return event
+    }
+
     private fun parseAndCacheProfile(pubkey: String, eventJson: String): NostrProfileData? {
         return try {
-            // Relay is untrusted: verify pubkey, kind, and Schnorr signature
-            // before trusting the profile content. Without this, any relay
-            // can return a forged kind:0 that overwrites the cached lud16
-            // and redirects zaps to an attacker wallet.
-            val event = Event.fromJson(eventJson)
-            val signatureValid = event.verifySignature()
-            val idValid = signatureValid && event.verifyId()
-            if (!NostrEventPolicy.accepts(
-                    actualPubkey = event.pubKey,
-                    actualKind = event.kind,
-                    expectedPubkey = pubkey,
-                    expectedKind = KIND_METADATA,
-                    signatureValid = signatureValid,
-                    idValid = idValid,
-                )
-            ) {
-                Log.w(TAG, "Profile event author/kind/signature/id invalid for ${pubkey.take(8)}")
-                return null
-            }
-            val nowSeconds = System.currentTimeMillis() / 1000
-            if (!NostrEventPolicy.isCreatedAtAcceptable(event.createdAt, nowSeconds)) {
-                Log.w(TAG, "Profile event timestamp too far in future for ${pubkey.take(8)}")
-                return null
-            }
+            val event = verifiedProfileEvent(pubkey, eventJson) ?: return null
 
             val content = JSONObject(event.content)
             val displayName = content.optString("name").takeIf { it.isNotBlank() }
