@@ -105,7 +105,10 @@ class BoardSizeCheckSession(private val source: Source) {
 
         suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean
 
-        /** Clears what the check lit, also when the link dropped since; a frame sent over it stays. */
+        /**
+         * Clears what the check lit, also when the link dropped shortly before; a frame sent over
+         * it stays. Returns whether nothing is left to clear.
+         */
         suspend fun clear(brand: BoardBrand): Boolean
 
         /** Makes [sizeId] the user's board. */
@@ -259,7 +262,8 @@ class BoardSizeCheckSession(private val source: Source) {
     /**
      * The app went to the background (phone locked, another app): a gym board takes one phone
      * at a time, so it is left dark and free. The check keeps its size and answers; [resume]
-     * lights the points again unless something else was sent meanwhile.
+     * lights the points again unless something else was sent meanwhile, or [resume] is told the
+     * board may show something else by now.
      */
     suspend fun pause() {
         val brand = mutableState.value.brand ?: return
@@ -267,9 +271,9 @@ class BoardSizeCheckSession(private val source: Source) {
         clearBoard(brand)
     }
 
-    suspend fun resume() {
+    suspend fun resume(boardMayHaveChanged: Boolean = false) {
         if (!mutableState.value.paused) return
-        mutableState.update { it.copy(paused = false) }
+        mutableState.update { it.copy(paused = false, replaced = it.replaced || boardMayHaveChanged) }
         lightIfDark()
     }
 
@@ -290,7 +294,8 @@ class BoardSizeCheckSession(private val source: Source) {
         } catch (_: Exception) {
             false
         }
-        // Not cleared: the next check of this board keeps it marked and tries again.
+        // Left on a board the link cannot reach now: the next check of this board keeps it
+        // marked and tries again.
         mutableState.update { it.copy(onBoard = !cleared) }
     }
 }

@@ -20,12 +20,14 @@ import io.mockk.verify
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -40,15 +42,27 @@ class BoardSizeCheckViewModelTest {
 
     private val board = DiscoveredBoard("Kilter Board#1", "1", 3, "AA:BB", -50)
     private val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
+    private val descriptor = MutableStateFlow<DiscoveredBoard?>(board)
     private val writes = MutableStateFlow(0L)
+    private var time = 0L
     private val connection = mockk<BoardBleConnection>(relaxed = true) {
         every { connectionState } returns this@BoardSizeCheckViewModelTest.connectionState
         every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.KILTER)
-        every { connectedBoardDescriptor } returns MutableStateFlow(board)
+        every { connectedBoardDescriptor } returns descriptor
         every { boardWrites } returns writes
         coEvery { sendRawFrame(any(), any()) } answers { BoardWrite(true, ++writes.value) }
-        coEvery { clearBoardWrite(any()) } answers { BoardWrite(true, ++writes.value) }
+        coEvery { clearBoardWrite(any(), any()) } answers { BoardWrite(true, ++writes.value) }
         every { hasOtherKeepAliveOwners(any()) } returns false
+        every { disconnect() } answers { dropLink() }
+        every { connect(any(), any()) } answers {
+            descriptor.value = firstArg()
+            this@BoardSizeCheckViewModelTest.connectionState.value = ConnectionState.CONNECTED
+        }
+    }
+
+    private fun dropLink() {
+        connectionState.value = ConnectionState.DISCONNECTED
+        descriptor.value = null
     }
 
     private fun kilter(id: Int) = BoardSize(id.toLong(), BoardConstants.KILTER_PRODUCT_ID.toLong(), "size $id", 0, 144, 0, 156, null)
@@ -80,7 +94,8 @@ class BoardSizeCheckViewModelTest {
     @Before fun setUp() = Dispatchers.setMain(dispatcher)
     @After fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel() = BoardSizeCheckViewModel(connection, repository, preferences, locations, dispatcher)
+    private fun viewModel(io: CoroutineDispatcher = dispatcher) =
+        BoardSizeCheckViewModel(connection, repository, preferences, locations, io, now = { time })
 
     private fun openLit(): BoardSizeCheckViewModel = viewModel().apply {
         open(BoardBrand.KILTER, 10, null)
@@ -104,7 +119,7 @@ class BoardSizeCheckViewModelTest {
         viewModel.lightIfDark()
         viewModel.closeAndWait(releases = 1)
         coVerify(exactly = 1) { connection.sendRawFrame(any(), any()) }
-        coVerify(exactly = 0) { connection.clearBoardWrite(any()) }
+        coVerify(exactly = 0) { connection.clearBoardWrite(any(), any()) }
     }
 
     @Test fun `the check's own frames are not someone else's`() {
@@ -114,18 +129,20 @@ class BoardSizeCheckViewModelTest {
         viewModel.await { it.step == BoardSizeCheckStep.PICK_OTHER }
         viewModel.closeAndWait(releases = 1)
         coVerify(exactly = 2) { connection.sendRawFrame(any(), any()) }
-        coVerify(exactly = 1) { connection.clearBoardWrite(BoardBrand.KILTER) }
+        coVerify(exactly = 1) { connection.clearBoardWrite(BoardBrand.KILTER, any()) }
     }
 
     @Test fun `in the background the board is dark and free, back in the app it lights again`() {
         val viewModel = openLit()
         viewModel.pause()
         verify(timeout = 5_000L, exactly = 1) { connection.releaseKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
-        coVerify(exactly = 1) { connection.clearBoardWrite(BoardBrand.KILTER) }
+        coVerify(exactly = 1) { connection.clearBoardWrite(BoardBrand.KILTER, any()) }
+        verify(exactly = 1) { connection.disconnect() }
         assertTrue(viewModel.state.value.paused)
 
         viewModel.resume() // after its own clear was noted: a wrong "replaced" would keep it dark
         viewModel.await { it.lit }
+        verify(exactly = 1) { connection.connect(board, any()) }
         verify(exactly = 2) { connection.acquireKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
         coVerify(exactly = 2) { connection.sendRawFrame(any(), any()) }
     }
@@ -141,15 +158,67 @@ class BoardSizeCheckViewModelTest {
         coVerify(exactly = 1) { connection.sendRawFrame(any(), any()) }
     }
 
-    @Test fun `a check that opens while the app is away goes dark at once`() {
+    @Test fun `a check that opens while the app is away stays dark until it is back`() {
         val viewModel = viewModel()
         viewModel.pause() // ON_STOP before the sheet's first open ran
         viewModel.open(BoardBrand.KILTER, 10, null)
         verify(timeout = 5_000L, exactly = 1) { connection.releaseKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
         assertTrue(viewModel.state.value.paused)
-        coVerify(exactly = 1) { connection.clearBoardWrite(BoardBrand.KILTER) }
+        coVerify(exactly = 0) { connection.sendRawFrame(any(), any()) }
+        coVerify(exactly = 0) { connection.clearBoardWrite(any(), any()) }
+        verify(exactly = 1) { connection.disconnect() } // free for other phones, as on ON_STOP
         viewModel.resume()
         viewModel.await { it.lit && !it.paused }
+        verify(exactly = 2) { connection.acquireKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
+    }
+
+    @Test fun `a check the user is back for before it has opened lights and keeps the link`() {
+        val io = StandardTestDispatcher(dispatcher.scheduler)
+        val viewModel = viewModel(io)
+        viewModel.pause()
+        viewModel.open(BoardBrand.KILTER, 10, null) // waits for the catalogue
+        viewModel.resume()
+        viewModel.pause() // locked and unlocked again while it still opens
+        viewModel.resume()
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.await { it.lit && !it.paused }
+        verify(exactly = 1) { connection.acquireKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
+        verify(exactly = 0) { connection.releaseKeepAlive(any()) }
+        verify(exactly = 0) { connection.disconnect() }
+    }
+
+    @Test fun `back after a long time away, the holds wait for a tap`() {
+        val viewModel = openLit()
+        viewModel.pause()
+        verify(timeout = 5_000L, exactly = 1) { connection.disconnect() }
+        time = BoardSizeCheckConnection.GONE_LIMIT_MS + 1 // another phone may have used the board
+        viewModel.resume()
+        verify(timeout = 5_000L, exactly = 1) { connection.connect(board, any()) }
+        val back = viewModel.await { !it.paused }
+        assertTrue(back.replaced)
+        assertFalse(back.lit)
+        viewModel.lightIfDark()
+        coVerify(exactly = 1) { connection.sendRawFrame(any(), any()) }
+        viewModel.light()
+        viewModel.await { it.lit }
+    }
+
+    @Test fun `a board whose link dropped long before closing is not reconnected to`() {
+        val viewModel = openLit()
+        dropLink() // the view model notes when
+        time = BoardSizeCheckConnection.GONE_LIMIT_MS + 1
+        viewModel.closeAndWait(releases = 1)
+        verify(exactly = 0) { connection.connect(any(), any()) }
+        coVerify(exactly = 0) { connection.clearBoardWrite(any(), any()) }
+    }
+
+    @Test fun `a board whose link dropped just before closing is cleared`() {
+        val viewModel = openLit()
+        dropLink()
+        time = BoardSizeCheckConnection.GONE_LIMIT_MS - 1
+        viewModel.closeAndWait(releases = 1)
+        verify(exactly = 1) { connection.connect(board, 1) }
+        coVerify(exactly = 1) { connection.clearBoardWrite(BoardBrand.KILTER, 1L) }
     }
 
     @Test fun `kilter sizes are listed most common first`() {

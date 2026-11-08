@@ -3473,7 +3473,7 @@
     <string name="board_size_check_selected">Ausgewählt. Tippe in der Board-Auswahl auf „Bestätigen“, um es zu behalten.</string>
     <string name="board_size_check_fits">Passt: Dein Board ist richtig eingestellt.</string>
     <string name="board_size_check_send_failed">Die Griffe konnten nicht leuchten. Prüfe die Verbindung und versuch es nochmal.</string>
-    <string name="board_size_check_replaced">Inzwischen hat etwas anderes das Board beleuchtet.</string>
+    <string name="board_size_check_replaced">Das Board zeigt inzwischen vielleicht etwas anderes.</string>
     <string name="board_size_check_no_data">Für dieses Board sind noch keine LED-Daten auf deinem Handy.</string>
     <string name="board_size_check_done">Fertig</string>
     <string name="board_size_check_back_to_picker">Zurück zur Board-Auswahl</string>

@@ -2681,8 +2681,16 @@ class BoardBleConnection(
      * long-running producers such as Kilter animations across board swaps. */
     suspend fun clearBoard(expectedBrand: BoardBrand? = null): Boolean = clearBoardWrite(expectedBrand).done
 
-    /** [clearBoard] that also tells which [boardWrites] count its last write had. */
-    suspend fun clearBoardWrite(expectedBrand: BoardBrand? = null): BoardWrite = writeMutex.withLock {
+    /**
+     * [clearBoard] that also tells which [boardWrites] count its last write had. With [ifLastWrite]
+     * it clears only while that is still the last count, checked under the write lock: a frame
+     * written since is someone else's and stays.
+     */
+    suspend fun clearBoardWrite(
+        expectedBrand: BoardBrand? = null,
+        ifLastWrite: Long? = null,
+    ): BoardWrite = writeMutex.withLock {
+        if (ifLastWrite != null && _boardWrites.value != ifLastWrite) return BoardWrite.NONE
         if (cleaningState.value.active) return BoardWrite.NONE
         val connectedBrand = _connectedBoardBrand.value
         if (_connectionState.value != ConnectionState.CONNECTED ||

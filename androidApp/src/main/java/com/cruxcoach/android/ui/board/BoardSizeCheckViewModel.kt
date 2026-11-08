@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
@@ -47,28 +48,34 @@ class BoardSizeCheckViewModel internal constructor(
     private val boardLocationRepository: BoardLocationRepository,
     /** Where the catalogue is read; tests read it in place. */
     private val io: CoroutineDispatcher,
+    now: () -> Long,
 ) : ViewModel() {
     @Inject constructor(
         connection: BoardBleConnection,
         boardRepository: BoardRepository,
         userPreferences: UserPreferences,
         boardLocationRepository: BoardLocationRepository,
-    ) : this(connection, boardRepository, userPreferences, boardLocationRepository, Dispatchers.IO)
+    ) : this(connection, boardRepository, userPreferences, boardLocationRepository, Dispatchers.IO, SystemClock::elapsedRealtime)
 
     val connectionState: StateFlow<ConnectionState> = connection.connectionState
     val connectedBrand: StateFlow<BoardBrand?> = connection.connectedBoardBrand
 
-    private val link = BoardSizeCheckConnection(connection)
+    private val link = BoardSizeCheckConnection(connection, now = now)
     private val session = BoardSizeCheckSession(Source())
     val state: StateFlow<BoardSizeCheckState> = session.state
     private val lock = Mutex()
 
-    /** Between ON_STOP and ON_START: a check that opens meanwhile goes dark at once. */
+    /** Between ON_STOP and ON_START: nothing is lit, and a check that opens meanwhile starts paused. */
     private var inBackground = false
 
     init {
         viewModelScope.launch {
-            connection.connectionState.collect { if (it == ConnectionState.DISCONNECTED) serial { session.boardGone() } }
+            connection.connectionState.collect {
+                serial {
+                    link.noteLink()
+                    if (it == ConnectionState.DISCONNECTED) session.boardGone()
+                }
+            }
         }
         viewModelScope.launch {
             // Checked under the lock: the check's own writes count while they are sent.
@@ -100,7 +107,10 @@ class BoardSizeCheckViewModel internal constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
 
-    /** Starts a check; the board link stays up until [close]. */
+    /**
+     * Starts a check; the board link stays up until [close]. In the background it lights nothing
+     * and waits for [resume]; held meanwhile, as the user may be back before it has opened.
+     */
     fun open(brand: BoardBrand, sizeId: Int, layoutHint: Int?) = serial {
         link.hold()
         session.open(brand, sizeId, layoutHint)
@@ -113,25 +123,28 @@ class BoardSizeCheckViewModel internal constructor(
 
     fun reject() = serial { session.reject() }
 
-    /** The app went to the background: the board goes dark and the link is let go until [resume]. */
+    /**
+     * The app went to the background: the board goes dark and is disconnected until [resume],
+     * unless a session or the relay holds the link. A gym board takes one phone at a time.
+     */
     fun pause() {
         inBackground = true
-        serial { pauseNow() }
+        // Back already (a quick lock and unlock while the board was busy): nothing to do.
+        serial { if (inBackground) pauseNow() }
     }
 
     fun resume() {
         inBackground = false
         serial {
-            if (!state.value.paused) return@serial
-            link.hold()
-            session.resume()
+            if (inBackground || !state.value.paused) return@serial
+            session.resume(boardMayHaveChanged = !link.resume())
         }
     }
 
     private suspend fun pauseNow() {
         if (state.value.brand == null || state.value.paused) return
         session.pause()
-        link.release()
+        link.pause()
     }
 
     fun test(sizeId: Int) = serial { session.test(sizeId) }
@@ -217,7 +230,9 @@ class BoardSizeCheckViewModel internal constructor(
                 BoardSizeCheckPoints.candidates(placements, boardRepository.getPlacementLedMap(size.id.toInt(), wire))
             }
 
-        override fun ready(brand: BoardBrand): Boolean = link.ready(brand)
+        // Nothing goes to the board while the app is in the background, also from a check that
+        // opens or switches sizes then.
+        override fun ready(brand: BoardBrand): Boolean = !inBackground && link.ready(brand)
 
         override suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean = link.light(brand, leds)
 
