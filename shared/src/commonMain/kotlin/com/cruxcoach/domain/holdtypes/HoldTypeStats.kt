@@ -15,8 +15,8 @@ package com.cruxcoach.domain.holdtypes
 object HoldTypeStats {
     /**
      * Every typed hold counts until the blind rounds calibrate the confidences. The first-pass values are lower for
-     * the types that are harder to see in a picture: every Kilter sloper and all but two Kilter pinches are below
-     * medium (0.4), so a threshold there would leave only edges and jugs in the stats.
+     * the types that are harder to see in a picture: 77 of the 78 Kilter slopers and 48 of the 51 Kilter pinches are
+     * below medium (0.4), so a threshold there would leave only edges and jugs in the stats.
      */
     const val MIN_CONFIDENCE = 0.0
 
@@ -50,7 +50,7 @@ object HoldTypeStats {
      * Option 1: the share of each type among the counted hand holds of [climbs], each problem weighted equally (a
      * problem with eight holds does not count twice as much as one with four).
      */
-    fun holdMix(climbs: List<TypedClimb>, datasets: Map<String, HoldTypeDataset>): HoldMix {
+    fun holdMix(climbs: Iterable<TypedClimb>, datasets: Map<String, HoldTypeDataset>): HoldMix {
         val weights = HAND_TYPES.associateWith { 0.0 }.toMutableMap()
         var problems = 0
         var holds = 0

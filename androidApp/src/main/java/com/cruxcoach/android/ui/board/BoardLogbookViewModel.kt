@@ -17,6 +17,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -167,7 +168,8 @@ data class BoardLogbookState(
     val crossBoard: CrossBoardStats = CrossBoardStats(),
     val crossBoardView: CrossBoardView = CrossBoardView.TRIES_UNTIL_SEND,
     // Hold types (#63): the mix and the strong and weak types of one board in
-    // the period; null while computing, without labels or without typed holds.
+    // the period; null while a new period or board computes, without labels
+    // or without typed holds.
     val holdTypes: HoldTypeCardStats? = null,
     // The overview at the top of the logbook: records, the last 30 days and
     // the badges, over all boards and the whole logbook.
@@ -238,11 +240,15 @@ class BoardLogbookViewModel @Inject constructor(
     private var allAscents: List<AscentWithClimb> = emptyList()
     private var statsJob: Job? = null
 
-    // Hold types: the logbook with its frames (allAscents has none), loaded
-    // when the card is first computed and dropped when the logbook reloads,
-    // and the board's mix per layout and grade range, which only changes
-    // with the catalogue.
-    @Volatile private var framedAscents: List<AscentWithClimb>? = null
+    // Hold types. allAscents has no frames: the sends' frames come from the
+    // logbook (dropped when it reloads), an attempted problem's from the
+    // catalogue ("" when it has none). The board's mix per layout and grade
+    // range only changes with the catalogue. The card is kept while its
+    // period, board and logbook stay the same.
+    @Volatile private var sendFrames: Map<String, String>? = null
+    private val catalogueFrames = ConcurrentHashMap<String, String>()
+    @Volatile private var logbookVersion = 0
+    private var holdTypesKey: HoldTypesKey? = null
     private var holdTypesJob: Job? = null
     private val boardMixCache = ConcurrentHashMap<BoardMixKey, HoldMix>()
 
@@ -420,7 +426,8 @@ class BoardLogbookViewModel @Inject constructor(
                     personalBoardRepo.getUserLogbookAllLight()
                 }
                 allAscents = all
-                framedAscents = null
+                sendFrames = null
+                logbookVersion++
                 // True-flash set needs the FULL history (prior-session
                 // attempts disqualify), so it is derived here, not per page.
                 _state.update { it.copy(flashUuids = BoardStatsComputer.trueFlashUuids(all)) }
@@ -755,16 +762,28 @@ class BoardLogbookViewModel @Inject constructor(
         holdTypesJob?.cancel()
         val s = _state.value
         if (!s.showStatsSheet) return
+        val key = HoldTypesKey(s.statsInterval, s.customDateFrom, s.customDateTo, s.boardFilter, logbookVersion)
+        if (key == holdTypesKey && s.holdTypes != null) return
+        if (key != holdTypesKey) {
+            // Never show the numbers of another period or board while the new ones compute.
+            holdTypesKey = key
+            _state.update { it.copy(holdTypes = null) }
+        }
+        val entries = allAscents
         holdTypesJob = viewModelScope.safeLaunch(TAG) {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    val all = framedAscents ?: personalBoardRepo.getUserAscentsAll().also { framedAscents = it }
-                    val period = BoardStatsComputer.filterByInterval(all, s.statsInterval, s.customDateFrom, s.customDateTo)
-                    val board = HoldTypeStatsComputer.cardBoard(period, s.boardFilter, holdTypeAssets.boards().toSet())
-                        ?: return@withContext null
+                    val period = BoardStatsComputer.filterByInterval(entries, s.statsInterval, s.customDateFrom, s.customDateTo)
+                    val board = HoldTypeStatsComputer.cardBoard(period, s.boardFilter) { candidate ->
+                        holdTypeAssets.boards().contains(candidate) &&
+                            holdTypeAssets.dataset(candidate)?.holds?.any { it.type != null } == true
+                    } ?: return@withContext null
                     val dataset = holdTypeAssets.dataset(board) ?: return@withContext null
-                    val yours = HoldTypeStatsComputer.problems(period, board)
+                    val frames = holdTypeFrames(period.filter { it.boardBrand == board }, key.logbook)
+                    ensureActive()
+                    val yours = HoldTypeStatsComputer.problems(period, board, frames)
                     val boardMixes = HoldTypeStatsComputer.gradeRanges(yours).mapValues { (layoutId, grades) ->
+                        ensureActive()
                         boardMixCache.getOrPut(BoardMixKey(board, layoutId, grades)) {
                             // Problems somebody has climbed; every listed one when the catalogue has no ascents.
                             val climbed = boardMix(board, layoutId, grades, minAscensionists = 1, dataset)
@@ -783,6 +802,30 @@ class BoardLogbookViewModel @Inject constructor(
         }
     }
 
+    /**
+     * The frames of the climbs in [entries], by normalized climb uuid: from the
+     * logbook's sends, else from the catalogue. The sends' frames are kept only
+     * while the logbook is still at [version].
+     */
+    private fun holdTypeFrames(entries: List<AscentWithClimb>, version: Int): Map<String, String> {
+        val sends = sendFrames ?: personalBoardRepo.getUserAscentsAll()
+            .filter { it.climbFrames.isNotBlank() }
+            .associate { normalizeClimbUuid(it.climbUuid) to it.climbFrames }
+            .also { if (version == logbookVersion) sendFrames = it }
+        val missing = entries.map { it.climbUuid }.distinct()
+            .filter { normalizeClimbUuid(it) !in sends && !catalogueFrames.containsKey(normalizeClimbUuid(it)) }
+        if (missing.isNotEmpty()) {
+            // Logged uuids can differ in case from the catalogue's spelling.
+            val found = boardRepository.getClimbFramesByUuids(missing.flatMap { listOf(it, it.lowercase(), it.uppercase()) })
+                .entries.associate { (uuid, frames) -> normalizeClimbUuid(uuid) to frames }
+            missing.forEach { uuid ->
+                val normalized = normalizeClimbUuid(uuid)
+                catalogueFrames[normalized] = found[normalized].orEmpty()
+            }
+        }
+        return catalogueFrames + sends
+    }
+
     private fun boardMix(
         board: String,
         layoutId: Int,
@@ -797,8 +840,8 @@ class BoardLogbookViewModel @Inject constructor(
             maxDifficulty = grades.endInclusive,
             minAscensionists = minAscensionists,
             climbType = ClimbTypeFilter.ALL,
-        ).map { HoldTypeStatsComputer.typedClimb(board, layoutId, it.frames) }
-        return HoldTypeStats.holdMix(climbs, mapOf(board to dataset))
+        ).asSequence().map { HoldTypeStatsComputer.typedClimb(board, layoutId, it.frames) }
+        return HoldTypeStats.holdMix(climbs.asIterable(), mapOf(board to dataset))
     }
 
     fun setHeatmapMode(mode: HeatmapMode) {
@@ -1092,6 +1135,15 @@ class BoardLogbookViewModel @Inject constructor(
         }
     }
 }
+
+/** The period, board filter and logbook state a hold-type card was computed for. */
+private data class HoldTypesKey(
+    val interval: StatsTimeInterval,
+    val from: LocalDate?,
+    val to: LocalDate?,
+    val boardFilter: String?,
+    val logbook: Int,
+)
 
 /** A board's problems on one layout within a grade range, whose hold mix [BoardLogbookViewModel] keeps. */
 private data class BoardMixKey(val board: String, val layoutId: Int, val grades: ClosedFloatingPointRange<Double>)

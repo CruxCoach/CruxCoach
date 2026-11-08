@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.community.normalizeClimbUuid
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
@@ -9,6 +10,8 @@ import com.cruxcoach.domain.holdtypes.HoldType
 import com.cruxcoach.domain.holdtypes.HoldTypeDataset
 import com.cruxcoach.domain.holdtypes.HoldTypeStats
 import com.cruxcoach.domain.holdtypes.TypedClimb
+import kotlin.math.ceil
+import kotlin.math.floor
 
 /**
  * The hold-type card of the statistics (#63): stats 1 and 2 of [HoldTypeStats] for one board, from the logbook
@@ -26,22 +29,28 @@ object HoldTypeStatsComputer {
     /** Layout id of problems whose layout is unknown: they count for you, but not in the board comparison. */
     const val UNKNOWN_LAYOUT = 0
 
-    /** The board the card shows: [boardFilter] when it has labels, else the labelled board with the most problems. */
-    fun cardBoard(ascents: List<AscentWithClimb>, boardFilter: String?, labelled: Set<String>): String? {
-        if (boardFilter != null) return boardFilter.takeIf { it in labelled }
-        return ascents.filter { it.boardBrand in labelled }
-            .groupBy { it.boardBrand }
+    /**
+     * The board the card shows: [boardFilter] when it has typed holds, else the board with typed holds that has the
+     * most problems in [ascents]. [hasTypes] is asked board by board, most problems first, so only the boards that
+     * matter get their labels loaded.
+     */
+    fun cardBoard(ascents: List<AscentWithClimb>, boardFilter: String?, hasTypes: (String) -> Boolean): String? {
+        if (boardFilter != null) return boardFilter.takeIf(hasTypes)
+        return ascents.groupBy { it.boardBrand }
             .mapValues { (_, entries) -> entries.distinctBy { it.climbUuid }.size }
             .entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { BoardBrand.fromWire(it.key).ordinal })
-            .firstOrNull()?.key
+            .map { it.key }
+            .firstOrNull(hasTypes)
     }
 
     /**
-     * One entry per problem on [board], as the other stats count problems: per climb, across angles. A problem is
-     * sent when any entry is a send; its grade is that of its hardest send, or of its hardest entry when not sent.
+     * One entry per problem on [board], as the other stats count problems: per climb, across angles. [ascents] are
+     * sends and attempts; a problem is sent when any entry is a send, and its grade is that of its hardest send, or
+     * of its hardest entry when not sent. Entries without frames (attempts have none) take them from [frames], by
+     * [normalizeClimbUuid].
      */
-    fun problems(ascents: List<AscentWithClimb>, board: String): List<TypedClimb> =
+    fun problems(ascents: List<AscentWithClimb>, board: String, frames: Map<String, String> = emptyMap()): List<TypedClimb> =
         ascents.filter { it.boardBrand == board }
             .groupBy { it.climbUuid }
             .mapNotNull { (_, entries) ->
@@ -53,7 +62,8 @@ object HoldTypeStatsComputer {
                 typedClimb(
                     board = board,
                     layoutId = layoutId,
-                    frames = entries.firstOrNull { it.climbFrames.isNotBlank() }?.climbFrames.orEmpty(),
+                    frames = entries.firstOrNull { it.climbFrames.isNotBlank() }?.climbFrames
+                        ?: frames[normalizeClimbUuid(entries.first().climbUuid)].orEmpty(),
                     sent = sends.isNotEmpty(),
                     grade = graded.mapNotNull { it.difficultyAverage }.maxOrNull(),
                 )
@@ -77,7 +87,8 @@ object HoldTypeStatsComputer {
 
     /**
      * Per known layout of [problems], the grades to compare against: from your easiest to your hardest problem
-     * there, [GRADE_MARGIN] wider on each side. Every grade when none of your problems there has one.
+     * there, [GRADE_MARGIN] wider on each side and out to whole steps, so that the range, and the catalogue read
+     * behind it, changes only when your grades do. Every grade when none of your problems there has one.
      */
     fun gradeRanges(problems: List<TypedClimb>): Map<Int, ClosedFloatingPointRange<Double>> =
         problems.filter { it.layoutId != UNKNOWN_LAYOUT }
@@ -85,7 +96,7 @@ object HoldTypeStatsComputer {
             .mapValues { (_, onLayout) ->
                 val grades = onLayout.mapNotNull { it.grade }
                 if (grades.isEmpty()) 0.0..Double.MAX_VALUE
-                else (grades.min() - GRADE_MARGIN).coerceAtLeast(0.0)..(grades.max() + GRADE_MARGIN)
+                else floor(grades.min() - GRADE_MARGIN).coerceAtLeast(0.0)..ceil(grades.max() + GRADE_MARGIN)
             }
 
     /**
