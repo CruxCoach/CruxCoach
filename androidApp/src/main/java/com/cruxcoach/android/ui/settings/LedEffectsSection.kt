@@ -138,9 +138,16 @@ internal fun LedEffectStatusLine(
         horizontalArrangement = Arrangement.SpaceBetween,
         itemVerticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             // Like the board's Bluetooth mark: green on the icon, the words in text colour.
-            if (running) Icon(Icons.Outlined.AutoAwesome, null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
+            if (running) {
+                Icon(
+                    Icons.Outlined.AutoAwesome,
+                    null,
+                    tint = SuccessGreen,
+                    modifier = Modifier.size(18.dp).padding(top = 1.dp),
+                )
+            }
             Text(
                 stringResource(text),
                 style = MaterialTheme.typography.bodyMedium,
@@ -150,7 +157,7 @@ internal fun LedEffectStatusLine(
         }
         val action = when {
             status == LedEffectStatus.NO_BOARD -> R.string.board_browser_connect to onConnect
-            status == LedEffectStatus.ENDED && onSendAgain != null -> R.string.led_effect_send_again to onSendAgain
+            status == LedEffectStatus.ENDED && onSendAgain != null -> R.string.led_effect_restart to onSendAgain
             else -> null
         }
         action?.let { (label, onClick) ->
@@ -163,7 +170,7 @@ internal fun LedEffectStatusLine(
 
 /**
  * The effects as chips; what each one does is in the card's info. Flashing
- * effects keep their flash mark, also when chosen, and ask once before their
+ * effects carry a flash mark at the end, also when chosen, and ask once before their
  * first use — and every time while Android's "Remove animations" is on, which is
  * a warning, not a lock.
  */
@@ -197,14 +204,15 @@ internal fun LedEffectChooser(
                     }
                 },
                 label = { Text(label) },
-                leadingIcon = when {
-                    effect.photosensitive -> {
-                        { Icon(Icons.Outlined.FlashOn, null, modifier = Modifier.size(18.dp)) }
-                    }
-                    selected -> {
-                        { Icon(Icons.Outlined.Check, null, modifier = Modifier.size(18.dp)) }
-                    }
-                    else -> null
+                leadingIcon = if (selected) {
+                    { Icon(Icons.Outlined.Check, null, modifier = Modifier.size(18.dp)) }
+                } else {
+                    null
+                },
+                trailingIcon = if (effect.photosensitive) {
+                    { Icon(Icons.Outlined.FlashOn, null, modifier = Modifier.size(18.dp)) }
+                } else {
+                    null
                 },
                 modifier = Modifier
                     .heightIn(min = 48.dp)
@@ -226,12 +234,12 @@ internal fun LedEffectChooser(
                 Icons.Default.Warning,
                 null,
                 tint = CruxCoachDesign.colors.caution,
-                modifier = Modifier.size(18.dp).padding(top = 2.dp),
+                modifier = Modifier.size(18.dp).padding(top = 1.dp),
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 stringResource(R.string.settings_led_effects_remove_animations_note),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
             )
         }
     }
@@ -241,16 +249,14 @@ internal fun LedEffectChooser(
             onDismissRequest = { pendingStrobe = null },
             title = { Text(stringResource(R.string.led_strobe_notice_title)) },
             text = {
-                // Why it asks again goes first: below a long text it would sit out of sight at large fonts.
-                val notice = stringResource(
-                    R.string.led_strobe_notice_text,
-                    stringResource(LedAnimationRegistry.byId(id).labelResId),
-                )
+                // One short paragraph, so the risk stays in sight at large fonts; with
+                // "Remove animations" on it also says why it asks again.
+                val label = stringResource(LedAnimationRegistry.byId(id).labelResId)
                 Text(
                     if (state.systemAnimationsRemoved) {
-                        stringResource(R.string.led_strobe_notice_remove_animations) + "\n\n" + notice
+                        stringResource(R.string.led_strobe_notice_remove_animations, label)
                     } else {
-                        notice
+                        stringResource(R.string.led_strobe_notice_text, label)
                     },
                 )
             },
@@ -292,7 +298,7 @@ private fun LedEffectBackgroundRow(checked: Boolean, onCheckedChange: (Boolean) 
         notificationsOk = LedAnimationService.notificationsVisible(context)
         if (granted && notificationsOk) onCheckedChange(true)
     }
-    // What it costs is in the card's info. Without notifications it cannot run, so it shows off.
+    // The details are in the card's info. Without notifications it cannot run, so it shows off.
     SettingsToggleRow(
         title = stringResource(R.string.settings_led_effects_background),
         description = "",
@@ -308,10 +314,19 @@ private fun LedEffectBackgroundRow(checked: Boolean, onCheckedChange: (Boolean) 
         },
         modifier = Modifier.testTag("led_effects_background"),
     )
+    if (checked && notificationsOk) {
+        // The consequence for others at a shared wall belongs next to the switch, not only in the info.
+        Text(
+            stringResource(R.string.settings_led_effects_background_on),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("led_effects_background_on"),
+        )
+    }
     if (!notificationsOk && (checked || asked)) {
         Text(
             stringResource(R.string.settings_led_effects_needs_notifications),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         TextButton(

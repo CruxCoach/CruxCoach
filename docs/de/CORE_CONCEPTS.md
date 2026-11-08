@@ -238,7 +238,7 @@ pausiert. Effekt-Frames zählen nicht als Aktivität: Das automatische Trennen g
 ein Board, das nur ein Handy zulässt, weiterhin pünktlich frei, und vorher werden
 die normalen Farben des Boulders zurückgeschrieben. Nach 15 Minuten auf demselben
 Boulder endet ein Effekt (erneut senden startet ihn neu). Beim Verlassen der App
-endet er mit den normalen Farben, außer *Läuft in anderen Apps weiter* ist an
+endet er mit den normalen Farben, außer *Auch in anderen Apps* ist an
 (Standard: aus): Dann hält eine Benachrichtigung mit **Stopp** ihn für diese
 15 Minuten am Laufen, nur solange Benachrichtigungen sichtbar sind. Das Handy
 bleibt so lange mit dem Board verbunden, und es gibt keinen Wake Lock – hält

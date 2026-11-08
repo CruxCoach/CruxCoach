@@ -15,6 +15,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -89,14 +90,14 @@ class LedEffectsSectionTest {
         state.value = LedEffectsState(systemAnimationsRemoved = true, strobeNoticeSeen = true)
         show()
         compose.onNodeWithTag("led_effect_chaotic_strobe").performScrollTo().assertIsEnabled().performClick()
-        compose.onNodeWithText("In Android ist", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("auch wenn „Animationen entfernen“", substring = true).assertIsDisplayed()
         compose.runOnIdle { assertTrue(selected.isEmpty()) }
         compose.onNodeWithTag("led_strobe_notice_confirm").performClick()
         compose.runOnIdle { assertEquals(listOf("chaotic_strobe"), selected) }
         compose.onNodeWithTag("led_effects_remove_animations_note").assertIsDisplayed()
 
         compose.onNodeWithTag("led_effect_two_phase_strobe").performScrollTo().performClick()
-        compose.onNodeWithText("In Android ist", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("auch wenn „Animationen entfernen“", substring = true).assertIsDisplayed()
     }
 
     @Test fun `without notifications the background switch shows off and offers them`() {
@@ -106,6 +107,14 @@ class LedEffectsSectionTest {
         show()
         compose.onNodeWithTag("led_effects_background").performScrollTo().assertIsOff()
         compose.onNodeWithTag("led_effects_allow_notifications").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun `while it may run in other apps the card says the board stays connected`() {
+        state.value = LedEffectsState(keepRunningInBackground = true)
+        show()
+        compose.onNodeWithTag("led_effects_background").performScrollTo().assertIsOn()
+        compose.onNodeWithText("In anderen Apps bleibt das Board mit diesem Handy verbunden.").performScrollTo()
+            .assertIsDisplayed()
     }
 
     @Test fun `the gentle effects come first and the ones that flash last`() {
