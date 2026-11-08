@@ -289,6 +289,8 @@ private fun RecapTile(value: String, label: String, tint: androidx.compose.ui.gr
 @Composable
 private fun TopClimbs(climbs: List<RecapClimb>, boardColors: Map<String, androidx.compose.ui.graphics.Color>?) {
     val flashLabel = stringResource(R.string.board_logbook_flash)
+    // Large font: the flash joins the board line, so the name keeps the row's width.
+    val large = androidx.compose.ui.platform.LocalDensity.current.fontScale >= LARGE_FONT_SCALE
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             stringResource(R.string.board_session_recap_hardest),
@@ -332,10 +334,21 @@ private fun TopClimbs(climbs: List<RecapClimb>, boardColors: Map<String, android
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
+                        if (large && climb.flash) {
+                            Text(
+                                flashLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = triesRamp().first(),
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
-                if (climb.flash) {
+                if (climb.flash && !large) {
                     Text(
                         flashLabel,
                         style = MaterialTheme.typography.labelMedium,

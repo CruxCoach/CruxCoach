@@ -74,6 +74,7 @@ import java.time.format.DateTimeFormatter
  * green as well. [boards] are all boards the user has logged on; with more
  * than one, each record names its board. Tapping it opens the statistics.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun LogbookOverviewCard(
     glance: AtAGlance,
@@ -149,7 +150,14 @@ internal fun LogbookOverviewCard(
                 Spacer(Modifier.height(8.dp))
                 RecentRow(recent)
             }
-            if (milestones.isNotEmpty() || glance.sessionsPerWeek > 0.0) {
+            if ((milestones.isNotEmpty() || glance.sessionsPerWeek > 0.0) && LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
+                // Large font: the chips wrap, as one hardly fits beside another.
+                Spacer(Modifier.height(10.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (glance.sessionsPerWeek > 0.0) PerWeekChip(glance.sessionsPerWeek)
+                    milestones.forEach { milestone -> MilestoneChip(milestone, colors.takeIf { boards.size > 1 }) }
+                }
+            } else if (milestones.isNotEmpty() || glance.sessionsPerWeek > 0.0) {
                 Spacer(Modifier.height(10.dp))
                 // Scrolls under the card's edges, so a cut chip reads as "more to the side".
                 LazyRow(

@@ -276,6 +276,7 @@ private fun SendCurveRow(
     val small = buckets.problems < CrossBoardStatsComputer.SMALL_SAMPLE
     val measurer = rememberTextMeasurer()
     val percentStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+    val ink = MaterialTheme.colorScheme.onSurface
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -319,6 +320,11 @@ private fun SendCurveRow(
                             cornerRadius = radius,
                             style = Stroke(stroke),
                         )
+                        // Few problems: the count instead of a share.
+                        val count = measurer.measure("$n", percentStyle.copy(color = ink))
+                        if (count.size.width + 6.dp.toPx() < w) {
+                            drawText(count, topLeft = Offset(x + (w - count.size.width) / 2, (size.height - count.size.height) / 2))
+                        }
                     } else {
                         drawRoundRect(ramp[i], Offset(x, 0f), Size(w, size.height), radius)
                         // Shares at a glance; the counts behind them stand below once the row is open.
@@ -339,7 +345,7 @@ private fun SendCurveRow(
         }
         if (expanded) {
             // Every bucket's count, also those too narrow for a number in the bar.
-            val shown = buckets.counts.withIndex().filter { it.value > 0 }.joinToString(" · ") { (i, n) -> "${labels[i]} $n" }
+            val shown = buckets.counts.withIndex().filter { it.value > 0 }.joinToString(" · ") { (i, n) -> "${labels[i]}: $n" }
             Text(
                 "$shown ($problems)",
                 style = MaterialTheme.typography.labelMedium,
@@ -365,6 +371,8 @@ private fun TriesPerGradeChart(stats: CrossBoardStats, colors: Map<String, Color
         BAR_LABEL_RESERVE,
         widestText(stats.grades.flatMap { it.byBoard.values }.map { triesNumber(it) }, labelStyle) + 8.dp,
     )
+    // Lanes as tall as their value labels, so the labels of one grade do not overlap.
+    val laneHeight = maxOf(LANE_HEIGHT, textLineHeight(labelStyle))
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         // Hardest grade on top, as in the grades card.
         stats.grades.asReversed().forEach { row ->
@@ -375,6 +383,7 @@ private fun TriesPerGradeChart(stats: CrossBoardStats, colors: Map<String, Color
                 scaleMax = scaleMax,
                 gradeWidth = gradeWidth,
                 labelReserve = labelReserve,
+                laneHeight = laneHeight,
                 expanded = selected == row.grade,
                 onClick = { selected = if (selected == row.grade) null else row.grade },
             )
@@ -390,6 +399,7 @@ private fun GradeRow(
     scaleMax: Double,
     gradeWidth: Dp,
     labelReserve: Dp,
+    laneHeight: Dp,
     expanded: Boolean,
     onClick: () -> Unit,
 ) {
@@ -419,7 +429,7 @@ private fun GradeRow(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 // Only boards with sends at this grade; the colour says which board it is.
                 present.forEach { board ->
-                    TriesBar(row.byBoard.getValue(board), colors.getValue(board), scaleMax, labelReserve)
+                    TriesBar(row.byBoard.getValue(board), colors.getValue(board), scaleMax, labelReserve, laneHeight)
                 }
             }
         }
@@ -446,9 +456,9 @@ private fun GradeRow(
 }
 
 @Composable
-private fun TriesBar(tries: TriesToSend, color: Color, scaleMax: Double, labelReserve: Dp) {
+private fun TriesBar(tries: TriesToSend, color: Color, scaleMax: Double, labelReserve: Dp, laneHeight: Dp) {
     val label = triesNumber(tries)
-    BoxWithConstraints(Modifier.fillMaxWidth().height(LANE_HEIGHT)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(laneHeight)) {
         val small = tries.isSmallSample()
         // Rounded at the value end, square at the baseline.
         val shape = RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)

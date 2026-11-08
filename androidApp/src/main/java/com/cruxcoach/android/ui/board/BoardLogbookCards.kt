@@ -51,7 +51,7 @@ internal fun AscentCard(
     /** False under a day header that already names the day. */
     showDate: Boolean = true,
 ) {
-    val large = LocalDensity.current.fontScale >= LARGE_FONT_SCALE
+    val fontLarge = LocalDensity.current.fontScale >= LARGE_FONT_SCALE
     val grade = ascent.difficultyAverage?.let {
         GradeDisplayHelper.formatDifficulty(it, gradeScale)
     } ?: "?"
@@ -87,7 +87,7 @@ internal fun AscentCard(
             ascent.climbName,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
-            maxLines = if (large) 2 else 1,
+            maxLines = if (fontLarge) 2 else 1,
             overflow = TextOverflow.Ellipsis
         )
     }
@@ -137,41 +137,33 @@ internal fun AscentCard(
             )
         }
     }
+    val outcomeText = when {
+        !ascent.isSend && ascent.bidCount > 1L -> stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
+        !ascent.isSend -> stringResource(R.string.board_ascent_open_one)
+        isTrueFlash -> "Flash"
+        ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
+        else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
+    }
+    val outcomeColor = when {
+        !ascent.isSend -> ErrorRed
+        isTrueFlash -> SuccessGreen
+        else -> OrangeAccent
+    }
+    val outcomeStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+    val outcomeWidth = widestText(listOf(outcomeText), outcomeStyle)
+    val stars: @Composable () -> Unit = {
+        ascent.quality?.let {
+            Text(
+                "$it★",
+                style = MaterialTheme.typography.labelSmall,
+                color = WarningYellow
+            )
+        }
+    }
     val outcome: @Composable (Alignment.Horizontal) -> Unit = { alignment ->
         Column(horizontalAlignment = alignment) {
-            if (ascent.isSend) {
-                val attemptsLabel = when {
-                    isTrueFlash -> "Flash"
-                    ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
-                    else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
-                }
-                val attemptsColor = if (isTrueFlash) SuccessGreen else OrangeAccent
-                Text(
-                    attemptsLabel,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = attemptsColor
-                )
-            } else {
-                val attemptsText = if (ascent.bidCount > 1L) {
-                    stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
-                } else {
-                    stringResource(R.string.board_ascent_open_one)
-                }
-                Text(
-                    attemptsText,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = ErrorRed
-                )
-            }
-            ascent.quality?.let {
-                Text(
-                    "$it★",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = WarningYellow
-                )
-            }
+            Text(outcomeText, style = outcomeStyle, color = outcomeColor)
+            stars()
         }
     }
     val edit: @Composable () -> Unit = {
@@ -194,51 +186,65 @@ internal fun AscentCard(
         )
     }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("logbook_ascent_card"),
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        if (large) {
-            // Large font: the controls on top, the text below at full width, so the name,
-            // the result and the meta line never shrink to a column of single letters.
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    checkbox()
-                    Spacer(modifier = Modifier.width(8.dp))
-                    gradeBox()
-                    Spacer(modifier = Modifier.weight(1f))
-                    edit()
-                }
-                name()
-                outcome(Alignment.Start)
-                meta()
-                comment()
-            }
-        } else {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                checkbox()
-                Spacer(modifier = Modifier.width(8.dp))
-                gradeBox()
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // Stacked at large fonts, and whenever the result would leave the name less than 96 dp.
+        val large = fontLarge || maxWidth - ROW_FIXED_WIDTH - outcomeWidth < 96.dp
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("logbook_ascent_card"),
+            onClick = onClick,
+            colors = CardDefaults.cardColors(containerColor = containerColor),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            if (large) {
+                // Large font: the controls on top, the text below at full width, so the name,
+                // the result and the meta line never shrink to a column of single letters.
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        checkbox()
+                        Spacer(modifier = Modifier.width(8.dp))
+                        gradeBox()
+                        Spacer(modifier = Modifier.weight(1f))
+                        edit()
+                    }
                     name()
+                    // The result and its stars on one line, wrapping as whole items.
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        itemVerticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(outcomeText, style = outcomeStyle, color = outcomeColor)
+                        stars()
+                    }
                     meta()
                     comment()
                 }
-                outcome(Alignment.End)
-                Spacer(modifier = Modifier.width(4.dp))
-                edit()
+            } else {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    checkbox()
+                    Spacer(modifier = Modifier.width(8.dp))
+                    gradeBox()
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        name()
+                        meta()
+                        comment()
+                    }
+                    outcome(Alignment.End)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    edit()
+                }
             }
         }
     }
 }
+
+/** What an entry row needs beside its name and result: padding, checkbox, grade, gaps and the edit button. */
+private val ROW_FIXED_WIDTH = (12 + 36 + 8 + 48 + 12 + 4 + 48 + 12).dp
 
 /** Tiny, muted pill naming the board family a logbook entry was logged on.
  *  Uses [BoardBrand.displayName] (proper noun, not localized) so a newly

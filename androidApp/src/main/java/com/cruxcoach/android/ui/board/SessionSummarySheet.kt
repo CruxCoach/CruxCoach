@@ -70,41 +70,26 @@ internal fun SessionSummaryContent(
         if (recap != null) {
             SessionRecapImage(recap, recapLayer)
         } else {
-            // Highlight cards row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                HighlightCard(
-                    value = "${session.ascentCount}",
-                    label = stringResource(R.string.board_sends),
-                    color = SuccessGreen,
-                    modifier = Modifier.weight(1f)
-                )
-                HighlightCard(
-                    // Same definition as the logbook stats: every logged row counts at least one try.
-                    value = "${summary?.totalAttempts ?: session.bidCount}",
-                    label = stringResource(R.string.board_session_summary_attempts),
-                    color = OrangeAccent,
-                    modifier = Modifier.weight(1f)
-                )
+            // Highlight cards, in as many columns as keep their labels whole
+            val tiles = buildList<Triple<String, String, androidx.compose.ui.graphics.Color>> {
+                add(Triple("${session.ascentCount}", stringResource(R.string.board_sends), SuccessGreen))
+                // Same definition as the logbook stats: every logged row counts at least one try.
+                add(Triple("${summary?.totalAttempts ?: session.bidCount}", stringResource(R.string.board_session_summary_attempts), OrangeAccent))
                 if (summary != null && summary.flashCount > 0) {
-                    HighlightCard(
-                        value = "${summary.flashCount}",
-                        label = stringResource(R.string.board_session_flashes),
-                        color = GradeElite,
-                        modifier = Modifier.weight(1f)
-                    )
+                    add(Triple("${summary.flashCount}", stringResource(R.string.board_session_flashes), GradeElite))
                 }
                 if (summary?.uniqueClimbs != null && summary.uniqueClimbs > 0) {
-                    HighlightCard(
-                        value = "${summary.uniqueClimbs}",
-                        label = stringResource(R.string.board_stats_unique),
-                        color = Slate80,
-                        modifier = Modifier.weight(1f)
-                    )
+                    add(Triple("${summary.uniqueClimbs}", stringResource(R.string.board_stats_unique), Slate80))
                 }
             }
+            NumberGrid(
+                perRow = tiles.size,
+                labels = tiles.map { it.second },
+                spacing = 8.dp,
+                cells = tiles.map<Triple<String, String, androidx.compose.ui.graphics.Color>, @Composable (Modifier) -> Unit> {
+                    (value, label, color) -> { cell -> HighlightCard(value = value, label = label, color = color, modifier = cell) }
+                },
+            )
 
             // Hardest send
             summary?.hardestSendGrade?.let { grade ->

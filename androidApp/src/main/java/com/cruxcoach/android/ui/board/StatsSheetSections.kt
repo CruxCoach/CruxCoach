@@ -172,7 +172,8 @@ private fun PeriodTotalsCard(stats: BoardLogbookStats, gradeScale: GradeScale) {
                 stringResource(R.string.board_stats_period_versus),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                modifier = Modifier.align(Alignment.CenterHorizontally),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 12.dp),
             )
         }
     }
