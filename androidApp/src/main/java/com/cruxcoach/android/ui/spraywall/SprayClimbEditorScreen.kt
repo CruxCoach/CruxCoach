@@ -42,8 +42,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -117,6 +122,8 @@ sealed interface SprayClimbEditorEvent {
     data object Deleted : SprayClimbEditorEvent
     data object RoleLimit : SprayClimbEditorEvent
     data object Failed : SprayClimbEditorEvent
+    /** Save found something to fix: the screen brings the problems into view. */
+    data object NotSaved : SprayClimbEditorEvent
 }
 
 @HiltViewModel
@@ -198,6 +205,7 @@ class SprayClimbEditorViewModel @Inject constructor(
         if (s.saving || s.loading) return
         if (s.problems.isNotEmpty()) {
             _state.update { it.copy(showProblems = true) }
+            _events.tryEmit(SprayClimbEditorEvent.NotSaved)
             return
         }
         _state.update { it.copy(saving = true) }
@@ -242,10 +250,20 @@ fun SprayClimbEditorScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     val leave: () -> Unit = { if (state.dirty) { confirmLeave = true } else { onBack() } }
     BackHandler(enabled = state.dirty) { confirmLeave = true }
+    val formScroll = rememberScrollState()
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 is SprayClimbEditorEvent.Saved -> onSaved(event.uuid)
+                // Save sits in the app bar; the problems are at the top of the form, under the photo. With the keyboard
+                // open or the form scrolled down they would be out of sight, so Save would seem to do nothing.
+                SprayClimbEditorEvent.NotSaved -> {
+                    focus.clearFocus()
+                    keyboard?.hide()
+                    formScroll.animateScrollTo(0)
+                }
                 SprayClimbEditorEvent.Deleted -> onDeleted()
                 SprayClimbEditorEvent.RoleLimit -> snackbar.showSnackbar(context.getString(R.string.spray_climb_role_limit))
                 SprayClimbEditorEvent.Failed -> snackbar.showSnackbar(context.getString(R.string.spray_climb_save_failed))
@@ -289,7 +307,7 @@ fun SprayClimbEditorScreen(
                 modifier = Modifier.sprayPhotoSize(version.aspectRatio, maxCanvasHeight),
             )
             Column(
-                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+                Modifier.fillMaxWidth().verticalScroll(formScroll).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 // A wall being withdrawn publishes nothing until that is finished, and then it is private.
@@ -304,7 +322,12 @@ fun SprayClimbEditorScreen(
                 // What a save left open stays at the top, next to the photo: the save button is in the app bar.
                 if (state.showProblems) {
                     state.problems.forEach { problem ->
-                        Text(problemText(problem), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("spray_climb_problem"))
+                        Text(
+                            problemText(problem),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("spray_climb_problem"),
+                        )
                     }
                 }
                 // How the role chips paint holds sits at their side, not in the app bar, so a 320 dp bar keeps its title.
