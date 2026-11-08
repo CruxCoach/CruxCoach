@@ -60,6 +60,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -226,7 +227,7 @@ internal fun BoardSizeCheckContent(
                             onClick = onLight,
                             enabled = ready && !state.busy,
                             modifier = Modifier.fillMaxWidth().testTag("board_size_check_relight"),
-                        ) { Text(stringResource(R.string.board_size_check_relight)) }
+                        ) { Text(stringResource(R.string.board_size_check_relight), textAlign = TextAlign.Center) }
                         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                     state.sendFailed || state.replaced -> {
@@ -242,7 +243,7 @@ internal fun BoardSizeCheckContent(
                             onClick = onLight,
                             enabled = ready && !state.busy,
                             modifier = Modifier.fillMaxWidth().testTag("board_size_check_relight"),
-                        ) { Text(stringResource(R.string.board_size_check_relight)) }
+                        ) { Text(stringResource(R.string.board_size_check_relight), textAlign = TextAlign.Center) }
                         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                     // Sending, or about to: the sheet lights them as soon as the board is free.
@@ -256,7 +257,7 @@ internal fun BoardSizeCheckContent(
                             TextButton(
                                 onClick = onLight,
                                 modifier = Modifier.fillMaxWidth().testTag("board_size_check_relight"),
-                            ) { Text(stringResource(R.string.board_size_check_relight)) }
+                            ) { Text(stringResource(R.string.board_size_check_relight), textAlign = TextAlign.Center) }
                         }
                     }
                 }
