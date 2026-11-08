@@ -186,7 +186,7 @@
     <string name="spray_publish_no_identity_title">Noch kein CruxCoach-Account</string>
     <string name="spray_publish_setup_account">Account einrichten</string>
     <string name="spray_publish_no_identity_text">Zum Veröffentlichen einer Wand brauchst du einen CruxCoach-Account.</string>
-    <string name="spray_publish_failed">Nicht veröffentlicht: keine Verbindung. Die Wand ist auf diesem Handy gespeichert.</string>
+    <string name="spray_publish_failed">Hochladen fehlgeschlagen: keine Verbindung. Die Wand ist auf diesem Handy gespeichert.</string>
     <string name="spray_withdraw_title">Wand zurückziehen?</string>
     <string name="spray_withdraw_text">Die Wand, ihre Versionen, deine Boulder darauf und ihre Fotos werden von den Servern gelöscht. Kopien, die andere schon haben, können bleiben. Die Wand bleibt als private Wand auf diesem Handy.</string>
     <string name="spray_withdraw_confirm">Zurückziehen</string>
