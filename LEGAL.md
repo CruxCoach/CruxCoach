@@ -2,7 +2,7 @@
 
 ## What This Project Is
 
-CruxCoach is a free, open-source climbing app for use with the Kilter Board, MoonBoard and Shiny Wall climbing training systems. It provides climb browsing, BLE board control, session tracking, logbook management, progress analytics, Kilter account sync, and CruxCoach-community climb authoring. It is non-commercial and maintained by volunteers.
+CruxCoach is a free, open-source climbing app for use with the Kilter Board, MoonBoard and Shiny Wall climbing training systems. It provides climb browsing, BLE board control, session tracking, logbook management, progress analytics, Kilter account sync, a read-only Shiny Wall account import, and CruxCoach-community climb authoring. It is non-commercial and maintained by volunteers.
 
 The legal reasoning below is written primarily around the Kilter Board (the project's original target). The same principles — factual/functional climb data, community-created content, referential trademark use, and interoperability via BLE — apply equally to the MoonBoard and Shiny Wall. MoonBoard-specific provenance details are still being documented; the Shiny Wall catalogue, wall images and geometry have their own sections below.
 
