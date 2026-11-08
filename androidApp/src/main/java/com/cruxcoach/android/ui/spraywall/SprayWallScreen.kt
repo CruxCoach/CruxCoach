@@ -72,6 +72,7 @@ import com.cruxcoach.android.spraywall.SprayWallFetcher
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallPublisher
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.spraywall.SprayWithdrawal
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.domain.spraywall.SprayClimb
 import com.cruxcoach.domain.spraywall.SprayClimbFilter
@@ -108,6 +109,10 @@ data class SprayWallUiState(
     /** Why a public wall of mine is not on Nostr yet (null = nothing pending or no attempt). */
     val publishProblem: PublishProblem? = null,
     val publishing: Boolean = false,
+    /** Trying again to take back a wall the relays took part of. */
+    val withdrawing: Boolean = false,
+    /** Why the last try did not finish it (null = no try, or it worked). */
+    val withdrawFailed: SprayWithdrawal? = null,
 ) {
     enum class PublishProblem { NO_IDENTITY, FAILED }
 
@@ -156,6 +161,16 @@ class SprayWallViewModel @Inject constructor(
         viewModelScope.launch {
             publisher.publishPending()
             _state.update { it.copy(publishing = false) }
+        }
+    }
+
+    /** A withdrawal the relays took part of: tries the rest again; done, the wall turns private. */
+    fun withdrawAgain() {
+        if (_state.value.withdrawing) return
+        _state.update { it.copy(withdrawing = true, withdrawFailed = null) }
+        viewModelScope.launch {
+            val result = publisher.withdrawWall(wallId)
+            _state.update { it.copy(withdrawing = false, withdrawFailed = result.takeIf { r -> r != SprayWithdrawal.DONE }) }
         }
     }
 
@@ -307,6 +322,17 @@ fun SprayWallScreen(
             }
             item { WallFacts(wall) }
             if (!wall.isMine) item { FollowedNote(wall) }
+            // Nothing of a wall the relays took back in part is published: finishing the withdrawal is what is left.
+            if (wall.isMine && wall.withdrawStarted != null) {
+                item {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        WithdrawUnfinishedCard(withdrawing = state.withdrawing, enabled = true, onRetry = viewModel::withdrawAgain)
+                        state.withdrawFailed?.let {
+                            Text(withdrawFailureReason(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
             val problem = state.publishProblem
             if (wall.needsPublish && problem != null) {
                 item { PublishCard(problem, state.publishing, viewModel::publishNow) }

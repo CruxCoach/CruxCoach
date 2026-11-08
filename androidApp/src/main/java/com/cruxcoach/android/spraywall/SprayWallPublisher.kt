@@ -69,6 +69,9 @@ class SprayWallPublisher @Inject constructor(
     /** The identity's public key, or null without one. */
     fun myPubkey(): String? = if (hasIdentity()) runCatching { nostrSigner.getPublicKeyHex() }.getOrNull() else null
 
+    /** Walls whose head the signer declined since the app started: not asked again before the next start. */
+    private val headsDeclined = HashSet<String>()
+
     /** Publishes whatever is pending, in the background (after a save). */
     fun publishSoon() {
         scope.launch { publishPending() }
@@ -91,8 +94,9 @@ class SprayWallPublisher @Inject constructor(
         // A wall without holds yet (a reset still being marked) waits: published, it could no longer be corrected in place.
         val walls = repository.wallsNeedingPublish().filter { it.current.holdCount > 0 }
         val heads = repository.wallsWithHeadPending()
-        val publicWalls = repository.publicWalls()
-        if (walls.isEmpty() && heads.isEmpty() && publicWalls.none { repository.unpublishedClimbs(it.id).isNotEmpty() }) return Outcome.Done(0, 0)
+        // A wall the relays already took part of (an unfinished withdrawal) is left out of all three.
+        val climbWalls = repository.wallsTakingClimbs()
+        if (walls.isEmpty() && heads.isEmpty() && climbWalls.none { repository.unpublishedClimbs(it.id).isNotEmpty() }) return Outcome.Done(0, 0)
         val me = myPubkey() ?: return Outcome.NoIdentity
         var versions = 0
         for (wall in walls) {
@@ -115,10 +119,19 @@ class SprayWallPublisher @Inject constructor(
         var headsLeft = 0
         for (wall in repository.wallsWithHeadPending()) {
             val pending = wall.headPending ?: continue
-            if (wall.needsPublish) continue
+            if (wall.needsPublish || wall.id in headsDeclined) continue
             if (wall.visibility == SprayWallVisibility.PUBLIC && wall.publishedVersion != null) {
-                // A head no relay took holds up neither the other walls nor the climbs; it goes out next time.
-                if (send(SprayWallNostr.wallHead(me, stamp(SprayWallNostr.wallDTag(me, wall.id)), wall)) == 0) {
+                // A head no relay took, or one the signer declined, holds up neither the other walls nor the climbs.
+                // It goes out next time; a declined one only after the next start, so the signer is not asked on
+                // every change.
+                val taken = try {
+                    send(SprayWallNostr.wallHead(me, stamp(SprayWallNostr.wallDTag(me, wall.id)), wall))
+                } catch (e: SprayEventSigningFailed) {
+                    Log.w(TAG, "signing a wall head failed", e)
+                    headsDeclined += wall.id
+                    0
+                }
+                if (taken == 0) {
                     headsLeft++
                     continue
                 }
@@ -126,7 +139,7 @@ class SprayWallPublisher @Inject constructor(
             repository.clearHeadPending(wall.id, pending)
         }
         var climbs = 0
-        for (wall in repository.publicWalls()) {
+        for (wall in repository.wallsTakingClimbs()) {
             val owner = wall.ownerPubkey ?: me
             for (climb in repository.unpublishedClimbs(wall.id)) {
                 val event = SprayWallNostr.climb(me, stamp(SprayWallNostr.climbDTag(me, climb.uuid)), climb, owner)

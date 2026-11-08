@@ -104,6 +104,8 @@ class SprayWallRepository @Inject constructor(
                     queries.setPublishedVersion(null, id)
                     queries.clearClimbsPublished(id)
                     queries.dropHeadPending(id)
+                    // Private is where a withdrawal ends.
+                    queries.clearWithdrawStarted(id)
                 } else if (sendHead) {
                     queries.markHeadPending(id)
                 }
@@ -117,9 +119,18 @@ class SprayWallRepository @Inject constructor(
         queries.selectWallsWithHeadPending().executeAsList().mapNotNull { it.toModel() }
     }
 
-    /** The wall is being taken back: a head waiting to go out would bring it back. */
-    suspend fun dropHeadPending(id: String) {
-        io { queries.dropHeadPending(id) }
+    /**
+     * A relay took the first tombstone of withdrawing [id]: the relays no longer show the wall, so nothing of it is
+     * published (a head waiting to go out is dropped) until the withdrawal is done and the wall is private.
+     */
+    suspend fun markWithdrawStarted(id: String) {
+        io { queries.markWithdrawStarted(now(), id) }
+        changed()
+    }
+
+    /** Public walls my climbs may go out on: not one the relays already took back. */
+    suspend fun wallsTakingClimbs(): List<SprayWall> = io {
+        queries.selectWallsTakingClimbs().executeAsList().mapNotNull { it.toModel() }
     }
 
     /** A relay took the head built while [pending] was the wall's mark; a change since then stays pending. */
@@ -509,6 +520,7 @@ class SprayWallRepository @Inject constructor(
             publishedVersion = published_version?.toInt(),
             createdAt = created_at, updatedAt = updated_at,
             headPending = head_pending,
+            withdrawStarted = withdraw_started,
         )
     }
 

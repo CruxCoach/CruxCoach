@@ -198,6 +198,8 @@
     <string name="spray_withdraw_failed_signing">Signing did not work or was declined in your signer app, so the wall is still public. Try again and confirm the requests.</string>
     <string name="spray_withdraw_failed_identity">Withdrawing needs the CruxCoach account key the wall was published with. Set it up in Settings under CruxCoach Account, then try again.</string>
     <string name="spray_delete_failed_note">A public wall is deleted here only once it is withdrawn.</string>
+    <string name="spray_withdraw_unfinished">Withdrawing did not finish. Until it does, nothing of this wall is published.</string>
+    <string name="spray_withdraw_again">Try withdrawing again</string>
     <string name="spray_withdraw_failed_kept_edits">Your other changes are saved.</string>
     <string name="spray_gym_title">Gym</string>
     <string name="spray_gym_pick_title">Where is the wall?</string>

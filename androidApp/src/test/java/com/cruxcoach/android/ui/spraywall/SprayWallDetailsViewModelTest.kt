@@ -27,6 +27,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Saving a public wall's details: a published wall's head goes out again, also when taking the wall back failed and the relays still show it. */
@@ -68,10 +69,16 @@ class SprayWallDetailsViewModelTest {
         return vm
     }
 
-    /** A published wall, renamed and set to private, but the withdrawal ends with [result]. */
-    private suspend fun renameAndWithdraw(result: SprayWithdrawal): Pair<String, SprayWallDetailsState> {
+    /**
+     * A published wall, renamed and set to private, but the withdrawal ends with [result]; [tombstonesTaken] = a relay
+     * took a tombstone before it failed (the withdrawal marks the wall then).
+     */
+    private suspend fun renameAndWithdraw(result: SprayWithdrawal, tombstonesTaken: Boolean = false): Pair<String, SprayWallDetailsState> {
         val id = publishedWall()
-        coEvery { publisher.withdrawWall(id) } returns result
+        coEvery { publisher.withdrawWall(id) } coAnswers {
+            if (tombstonesTaken) repository.markWithdrawStarted(id)
+            result
+        }
         val vm = detailsOf(id)
         vm.setName("Wall B")
         vm.setAngle(45)
@@ -156,20 +163,66 @@ class SprayWallDetailsViewModelTest {
 
     @Test
     fun `no head after the relays took the tombstones and a photo stayed on Blossom`() = runTest {
-        val (id, state) = renameAndWithdraw(SprayWithdrawal.PHOTOS_LEFT)
+        val (id, state) = renameAndWithdraw(SprayWithdrawal.PHOTOS_LEFT, tombstonesTaken = true)
 
         assertEditsKept(id, state)
         assertFalse(headPending(id))
+        assertTrue(state.withdrawStarted)
         verify(exactly = 0) { publisher.publishSoon() }
     }
 
     @Test
-    fun `no head right after the signer declined`() = runTest {
-        val (id, state) = renameAndWithdraw(SprayWithdrawal.SIGNING_FAILED)
+    fun `no head after the signer declined once the relays took a tombstone`() = runTest {
+        val (id, state) = renameAndWithdraw(SprayWithdrawal.SIGNING_FAILED, tombstonesTaken = true)
 
         assertEditsKept(id, state)
         assertFalse(headPending(id))
-        verify(exactly = 0) { publisher.publishSoon() }
+        assertTrue(state.withdrawStarted)
+    }
+
+    @Test
+    fun `a rename kept after the signer declined the first tombstone keeps its head to send`() = runTest {
+        // Nothing left the phone: the wall is fully public, and the relays get the new name.
+        val (id, state) = renameAndWithdraw(SprayWithdrawal.SIGNING_FAILED)
+
+        assertEditsKept(id, state)
+        assertTrue(headPending(id))
+        assertFalse(state.withdrawStarted)
+    }
+
+    @Test
+    fun `a wall the relays took back in part offers trying again, and done it is private`() = runTest {
+        val id = publishedWall()
+        repository.markWithdrawStarted(id)
+        coEvery { publisher.withdrawWall(id) } coAnswers {
+            repository.updateWallDetails(id, "Wall", 40, SprayWallVisibility.PRIVATE, null)
+            SprayWithdrawal.DONE
+        }
+        val vm = detailsOf(id)
+        assertTrue(vm.state.value.withdrawStarted)
+
+        vm.withdrawAgain()
+        val done = vm.state.first { !it.withdrawStarted }
+
+        assertEquals(SprayWallVisibility.PRIVATE, done.visibility)
+        assertFalse(done.published)
+        assertEquals(SprayWallVisibility.PRIVATE, repository.wall(id)!!.visibility)
+        assertNull(repository.wall(id)!!.withdrawStarted)
+    }
+
+    @Test
+    fun `a rename of a wall the relays took back in part waits for the withdrawal`() = runTest {
+        val id = publishedWall()
+        repository.markWithdrawStarted(id)
+        val vm = detailsOf(id)
+        vm.setName("Wall B")
+        vm.events.test {
+            vm.save()
+            assertEquals(SprayWallDetailsEvent.Saved, awaitItem())
+        }
+
+        assertEquals("Wall B", repository.wall(id)!!.name)
+        assertFalse(headPending(id))
     }
 
     private companion object {

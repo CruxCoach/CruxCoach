@@ -25,7 +25,10 @@ CREATE TABLE spray_wall (
     updated_at INTEGER NOT NULL,
     -- A head with new details still to send (migration 17); NULL = none, else a
     -- counter per change, so a head sent clears only the change it carried.
-    head_pending INTEGER
+    head_pending INTEGER,
+    -- A withdrawal the relays took part of (migration 17); while set, nothing of
+    -- the wall is published. NULL = none, else when it started (ms).
+    withdraw_started INTEGER
 );
 
 -- photo_file is shared by the versions on the same photo. photo_sha256 and
@@ -114,9 +117,11 @@ SELECT * FROM spray_wall WHERE id = ?;
 selectWalls:
 SELECT * FROM spray_wall ORDER BY updated_at DESC;
 
+-- (COALESCE rather than IS NULL / IS NOT NULL in these selects, so the rows stay spray_wall rows.)
 selectWallsNeedingPublish:
 SELECT * FROM spray_wall
-WHERE owner_pubkey IS NULL AND visibility = 'public' AND COALESCE(published_version, 0) < current_version;
+WHERE owner_pubkey IS NULL AND visibility = 'public' AND COALESCE(published_version, 0) < current_version
+  AND COALESCE(withdraw_started, 0) = 0;
 
 -- The name, angle or gym of a published wall changed: its head goes out again.
 markHeadPending:
@@ -129,9 +134,19 @@ UPDATE spray_wall SET head_pending = NULL WHERE id = ? AND head_pending = ?;
 dropHeadPending:
 UPDATE spray_wall SET head_pending = NULL WHERE id = ?;
 
--- (COALESCE rather than IS NOT NULL, so the rows stay spray_wall rows.)
 selectWallsWithHeadPending:
-SELECT * FROM spray_wall WHERE owner_pubkey IS NULL AND COALESCE(head_pending, 0) > 0;
+SELECT * FROM spray_wall WHERE owner_pubkey IS NULL AND COALESCE(head_pending, 0) > 0 AND COALESCE(withdraw_started, 0) = 0;
+
+-- A relay took the first tombstone: the relays no longer show the wall, and a waiting head would bring it back.
+markWithdrawStarted:
+UPDATE spray_wall SET withdraw_started = ?, head_pending = NULL WHERE id = ? AND withdraw_started IS NULL;
+
+clearWithdrawStarted:
+UPDATE spray_wall SET withdraw_started = NULL WHERE id = ?;
+
+-- Public walls whose climbs of mine may go out: not one the relays already took back.
+selectWallsTakingClimbs:
+SELECT * FROM spray_wall WHERE visibility = 'public' AND COALESCE(withdraw_started, 0) = 0 ORDER BY updated_at DESC;
 
 countClimbsPerWall:
 SELECT wall_id, COUNT(*) AS climbs FROM spray_climb GROUP BY wall_id;

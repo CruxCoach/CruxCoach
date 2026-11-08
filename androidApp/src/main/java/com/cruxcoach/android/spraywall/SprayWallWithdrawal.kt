@@ -30,7 +30,9 @@ class SprayEventSigningFailed(cause: Throwable) : Exception(cause.message, cause
  * the Blossom server that took it. That includes what a publish that failed
  * partway left behind: versions past the published one and their photos. Only
  * when all of that worked does the wall turn private here; otherwise it stays
- * public, so the climber can try again, and nothing is deleted. Never throws,
+ * public, so the climber can try again, and nothing is deleted. Once a relay
+ * took a tombstone, the wall is marked as being withdrawn: nothing of it is
+ * published until a later try finishes. Never throws,
  * also not when the signer fails.
  *
  * Signing, relays and Blossom come in as functions ([SprayWallPublisher]
@@ -119,9 +121,9 @@ class SprayWallWithdrawal(
         }
         var accepted = 0
         suspend fun sent(taken: Int) {
-            // From the first tombstone a relay took, the wall is off Nostr, even if the rest fails:
-            // a head still waiting to go out would bring it back.
-            if (accepted == 0 && taken > 0) repository.dropHeadPending(wallId)
+            // From the first tombstone a relay took, the wall is off Nostr, even if the rest fails: nothing of it
+            // is published until a later try finishes (a waiting head, a climb or a version would bring it back).
+            if (accepted == 0 && taken > 0) repository.markWithdrawStarted(wallId)
             accepted = maxOf(accepted, taken)
         }
         for ((d, label) in dTags) sent(send(SprayWallNostr.tombstone(stamp(d), d, label, address)))

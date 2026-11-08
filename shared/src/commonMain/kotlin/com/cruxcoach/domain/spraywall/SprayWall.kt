@@ -81,14 +81,17 @@ data class SprayWall(
     val updatedAt: Long,
     /** New name, angle or gym of a published wall still to send in its head; null = none (see SprayWalls.sq). */
     val headPending: Long? = null,
+    /** A withdrawal the relays took part of; while set, nothing of the wall is published (see SprayWalls.sq). */
+    val withdrawStarted: Long? = null,
 ) {
     val isMine: Boolean get() = ownerPubkey == null
     val photoFile: String get() = current.photoFile
     val photoWidth: Int get() = current.photoWidth
     val photoHeight: Int get() = current.photoHeight
     val aspectRatio: Float get() = current.aspectRatio
-    /** A public wall with a newer version than the one on Nostr. */
-    val needsPublish: Boolean get() = isMine && visibility == SprayWallVisibility.PUBLIC && (publishedVersion ?: 0) < current.number
+    /** A public wall with a newer version than the one on Nostr (not one whose withdrawal is unfinished). */
+    val needsPublish: Boolean get() =
+        isMine && visibility == SprayWallVisibility.PUBLIC && (publishedVersion ?: 0) < current.number && withdrawStarted == null
 }
 
 /** A wall in the list, with its counts. */

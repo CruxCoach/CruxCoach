@@ -276,6 +276,63 @@ class SprayWallWithdrawalTest {
     }
 
     @Test
+    fun `a withdrawal the relays took part of marks the wall, finishing it clears the mark`() = runTest {
+        val id = publishedWall()
+        photoResult = SprayWallWithdrawal.PhotoDeletion.LEFT
+
+        assertEquals(SprayWithdrawal.PHOTOS_LEFT, withdrawal.run(ME, id))
+        assertNotNull(repository.wall(id)!!.withdrawStarted)
+
+        photoResult = SprayWallWithdrawal.PhotoDeletion.DELETED
+        assertEquals(SprayWithdrawal.DONE, withdrawal.run(ME, id))
+        val wall = repository.wall(id)!!
+        assertEquals(SprayWallVisibility.PRIVATE, wall.visibility)
+        assertNull(wall.withdrawStarted)
+    }
+
+    @Test
+    fun `a photo deletion declined after the tombstones went out marks the wall`() = runTest {
+        val id = publishedWall()
+        photoResult = SprayWallWithdrawal.PhotoDeletion.NOT_AUTHORISED
+
+        assertEquals(SprayWithdrawal.SIGNING_FAILED, withdrawal.run(ME, id))
+        assertNotNull(repository.wall(id)!!.withdrawStarted)
+    }
+
+    @Test
+    fun `a signer declining the first tombstone leaves the wall as it was`() = runTest {
+        val id = publishedWall()
+        signing = { throw IllegalStateException("declined") }
+
+        assertEquals(SprayWithdrawal.SIGNING_FAILED, withdrawal.run(ME, id))
+        assertNull(repository.wall(id)!!.withdrawStarted)
+    }
+
+    @Test
+    fun `nothing of a wall the relays took back in part is published, also after a restart`() = runTest {
+        val id = publishedWall()
+        photoResult = SprayWallWithdrawal.PhotoDeletion.LEFT
+        assertEquals(SprayWithdrawal.PHOTOS_LEFT, withdrawal.run(ME, id))
+
+        // A rename, a new climb and a hold edit (a new version, as a climb is set on version 1).
+        renamedOffline(id)
+        repository.saveClimb(null, id, "Line", "", 20, mapOf(1L to SprayHoldRole.START))
+        val holds = repository.saveHolds(id, listOf(EditableHold(1, 0.5f, 0.5f, 0.02f), EditableHold(-1, 0.3f, 0.3f, 0.02f)))
+        assertTrue(holds.newVersion)
+
+        // What the publisher sends: versions, heads, climbs.
+        suspend fun assertNothingToSend(repo: SprayWallRepository) {
+            assertTrue(repo.wallsNeedingPublish().none { it.id == id })
+            assertTrue(repo.wallsWithHeadPending().none { it.id == id })
+            assertTrue(repo.wallsTakingClimbs().none { it.id == id })
+            assertTrue(!repo.wall(id)!!.needsPublish)
+        }
+        assertNothingToSend(repository)
+        // A restart: a new repository on the same database.
+        assertNothingToSend(SprayWallRepository(SecureDatabase(driver), mockk(relaxed = true)))
+    }
+
+    @Test
     fun `a climb edited since it went out is taken back too`() = runTest {
         val id = publishedWall()
         // Edited climbs are not marked published until they went out again; their old event is on the relays.

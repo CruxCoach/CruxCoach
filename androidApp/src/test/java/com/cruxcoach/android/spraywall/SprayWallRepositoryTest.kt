@@ -335,7 +335,7 @@ class SprayWallRepositoryTest {
     }
 
     @Test
-    fun `migration 17 keeps the walls and adds the pending head`() = runTest {
+    fun `migration 17 keeps the walls and adds the pending head and the unfinished withdrawal`() = runTest {
         listOf("spray_ascent", "spray_climb", "spray_wall_hold", "spray_wall_version", "spray_wall").forEach {
             driver.execute(null, "DROP TABLE $it", 0)
         }
@@ -358,6 +358,7 @@ class SprayWallRepositoryTest {
         val wall = repository.wall("w1")!!
         assertEquals("Before upgrade", wall.name)
         assertNull(wall.headPending)
+        assertNull(wall.withdrawStarted)
         repository.updateWallDetails("w1", "After upgrade", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
         assertEquals(listOf("After upgrade"), repository.wallsWithHeadPending().map { it.name })
     }

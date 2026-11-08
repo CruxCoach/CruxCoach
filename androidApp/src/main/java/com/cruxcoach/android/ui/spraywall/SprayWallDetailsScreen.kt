@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
@@ -76,6 +78,8 @@ data class SprayWallDetailsState(
     val gym: SprayGym? = null,
     /** On Nostr right now: going private withdraws it. */
     val published: Boolean = false,
+    /** The relays took part of a withdrawal that did not finish: the only way on is to try withdrawing again. */
+    val withdrawStarted: Boolean = false,
     val saving: Boolean = false,
     /** Taking the wall off the relays and Blossom: that waits for them, up to half a minute. */
     val withdrawing: Boolean = false,
@@ -133,6 +137,7 @@ class SprayWallDetailsViewModel @Inject constructor(
                 it.copy(
                     loading = false, name = wall.name, angle = wall.angle, visibility = wall.visibility, gym = wall.gym,
                     published = wall.visibility == SprayWallVisibility.PUBLIC && wall.publishedVersion != null,
+                    withdrawStarted = wall.withdrawStarted != null,
                 )
             }
         }
@@ -188,13 +193,14 @@ class SprayWallDetailsViewModel @Inject constructor(
                 val result = withdraw()
                 if (result != SprayWithdrawal.DONE) {
                     // It stays public, but the name, angle and gym edits are not lost.
-                    failed(result, deleting = false, keptEdits = keepEdits(s, result))
+                    failed(result, deleting = false, keptEdits = keepEdits(s))
                     return@launch
                 }
             }
             // A public wall's name, angle and gym are in its head event, which only a new version would send again.
-            // Any public wall: one whose first publish ends while this screen is open is published by now.
-            val sendHead = s.visibility == SprayWallVisibility.PUBLIC && before != null && !before.hasDetails(s)
+            // Any public wall: one whose first publish ends while this screen is open is published by now. Not one
+            // the relays already took back in part: it waits for the withdrawal to finish.
+            val sendHead = s.visibility == SprayWallVisibility.PUBLIC && before != null && !before.hasDetails(s) && before.withdrawStarted == null
             repository.updateWallDetails(wallId, s.name, s.angle, s.visibility, s.gym, sendHead)
             if (s.visibility == SprayWallVisibility.PUBLIC) publisher.publishSoon()
             _events.emit(SprayWallDetailsEvent.Saved)
@@ -218,6 +224,23 @@ class SprayWallDetailsViewModel @Inject constructor(
         }
     }
 
+    /** A withdrawal the relays took part of: tries the rest again; done, the wall is private. */
+    fun withdrawAgain() {
+        if (_state.value.saving) return
+        _state.update { it.copy(saving = true) }
+        viewModelScope.launch {
+            val result = withdraw()
+            if (result != SprayWithdrawal.DONE) {
+                failed(result, deleting = false, keptEdits = false)
+                return@launch
+            }
+            storedPublic = false
+            _state.update {
+                it.copy(saving = false, visibility = SprayWallVisibility.PRIVATE, published = false, withdrawStarted = false)
+            }
+        }
+    }
+
     /** [SprayWithdrawal.DONE] when the wall is off Nostr and Blossom; anything else left it public. */
     private suspend fun withdraw(): SprayWithdrawal {
         _state.update { it.copy(withdrawing = true) }
@@ -226,25 +249,29 @@ class SprayWallDetailsViewModel @Inject constructor(
         return result
     }
 
-    /** The screen says why the withdrawal did not work; the wall stays public. */
-    private fun failed(result: SprayWithdrawal, deleting: Boolean, keptEdits: Boolean) = _state.update {
-        it.copy(
-            saving = false,
-            visibility = SprayWallVisibility.PUBLIC,
-            withdrawFailed = SprayWallDetailsState.WithdrawFailure(result, deleting, keptEdits),
-        )
+    /** The screen says why the withdrawal did not work; the wall stays public (and may now be withdrawn in part). */
+    private suspend fun failed(result: SprayWithdrawal, deleting: Boolean, keptEdits: Boolean) {
+        val started = repository.wall(wallId)?.withdrawStarted != null
+        _state.update {
+            it.copy(
+                saving = false,
+                visibility = SprayWallVisibility.PUBLIC,
+                withdrawStarted = started,
+                withdrawFailed = SprayWallDetailsState.WithdrawFailure(result, deleting, keptEdits),
+            )
+        }
     }
 
     /**
-     * Saves the name, angle and gym of a wall that stays public after [result]; true when any of them changed.
-     * The wall sends its head again, as a Save without the withdrawal would, unless the relays took the
-     * tombstones (a head alone would bring back a wall without its versions) or the signer just declined (it would be
-     * asked again at once); then the edits go out with the wall's next version.
+     * Saves the name, angle and gym of a wall that stays public after a failed withdrawal; true when any of them
+     * changed. The head goes out with them, as on a Save without the withdrawal, if no relay took a tombstone (the
+     * relays still show the wall, whatever the reason: no relay, no identity, the signer declining the first one).
+     * Once a relay took one, the wall waits for the withdrawal to finish and nothing of it goes out.
      */
-    private suspend fun keepEdits(s: SprayWallDetailsState, result: SprayWithdrawal): Boolean {
+    private suspend fun keepEdits(s: SprayWallDetailsState): Boolean {
         val wall = repository.wall(wallId) ?: return false
         if (wall.hasDetails(s)) return false
-        val sendHead = result != SprayWithdrawal.PHOTOS_LEFT && result != SprayWithdrawal.SIGNING_FAILED
+        val sendHead = wall.withdrawStarted == null
         repository.updateWallDetails(wallId, s.name, s.angle, SprayWallVisibility.PUBLIC, s.gym, sendHead)
         if (sendHead) publisher.publishSoon()
         return true
@@ -313,7 +340,9 @@ fun SprayWallDetailsScreen(
                 )
                 Text(stringResource(R.string.spray_wall_angle_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (state.withdrawStarted) {
+                WithdrawUnfinishedCard(withdrawing = state.withdrawing, enabled = !state.saving, onRetry = viewModel::withdrawAgain)
+            } else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(R.string.spray_visibility_title), style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
@@ -394,14 +423,7 @@ fun SprayWallDetailsScreen(
         null -> Unit
     }
     state.withdrawFailed?.let { failure ->
-        val reason = stringResource(
-            when (failure.reason) {
-                SprayWithdrawal.NO_IDENTITY -> R.string.spray_withdraw_failed_identity
-                SprayWithdrawal.SIGNING_FAILED -> R.string.spray_withdraw_failed_signing
-                SprayWithdrawal.PHOTOS_LEFT -> R.string.spray_withdraw_failed_photos
-                else -> R.string.spray_withdraw_failed_relays
-            },
-        )
+        val reason = withdrawFailureReason(failure.reason)
         SprayConfirmDialog(
             title = stringResource(if (failure.deleting) R.string.spray_delete_failed_title else R.string.spray_withdraw_failed_title),
             text = buildString {
@@ -424,5 +446,40 @@ fun SprayWallDetailsScreen(
             onConfirm = { confirmDelete = false; viewModel.delete() },
             onDismiss = { confirmDelete = false },
         )
+    }
+}
+
+/** Why taking a wall back did not work, in one sentence. */
+@Composable
+internal fun withdrawFailureReason(reason: SprayWithdrawal): String = stringResource(
+    when (reason) {
+        SprayWithdrawal.NO_IDENTITY -> R.string.spray_withdraw_failed_identity
+        SprayWithdrawal.SIGNING_FAILED -> R.string.spray_withdraw_failed_signing
+        SprayWithdrawal.PHOTOS_LEFT -> R.string.spray_withdraw_failed_photos
+        else -> R.string.spray_withdraw_failed_relays
+    },
+)
+
+/**
+ * A withdrawal the relays took part of (a photo left on its server, a declined signature): nothing of the wall is
+ * published until it is finished, so trying again is the one thing offered.
+ */
+@Composable
+internal fun WithdrawUnfinishedCard(withdrawing: Boolean, enabled: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        modifier = modifier.fillMaxWidth().testTag("spray_withdraw_unfinished"),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.spray_withdraw_unfinished))
+            Button(onClick = onRetry, enabled = enabled && !withdrawing, modifier = Modifier.testTag("spray_withdraw_again")) {
+                if (withdrawing) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text(stringResource(R.string.spray_wall_withdrawing), modifier = Modifier.padding(start = 8.dp))
+                } else {
+                    Text(stringResource(R.string.spray_withdraw_again))
+                }
+            }
+        }
     }
 }
