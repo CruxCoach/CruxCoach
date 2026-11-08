@@ -1383,7 +1383,9 @@ private fun DailySuggestionCard(
             }
             if (main.isNotEmpty()) {
                 // Each exercise with its sets; a tap swaps it (owner 2026-10-16: overridable with little effort).
-                var expanded by rememberSaveable(s.routine.items.size) { mutableStateOf(false) }
+                // Open from the start when an exercise new to the athlete would sit behind "+N more" (issue #68): its
+                // steps and "Don't know it" belong before the start. It stays open after "Don't know it" on it.
+                var expanded by rememberSaveable(s.routine.items.size) { mutableStateOf(main.drop(4).any { it.slug in state.newToYou }) }
                 val shown = if (expanded) main else main.take(4)
                 Column(Modifier.padding(top = 4.dp).testTag("today_suggestion_items")) {
                     shown.forEachIndexed { index, item ->
