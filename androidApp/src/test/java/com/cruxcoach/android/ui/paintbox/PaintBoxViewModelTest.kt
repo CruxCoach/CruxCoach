@@ -169,10 +169,10 @@ class PaintBoxViewModelTest {
         assertEquals(10, vm.state.value.document!!.board.sizeId)
         assertEquals(mapOf(1 to 28), vm.state.value.document!!.colors)
         savedSize.value = 12
-        advanceUntilIdle()
-        assertEquals(12, vm.state.value.document!!.board.sizeId)
-        assertEquals(setOf(3), vm.state.value.placements.keys)
-        assertTrue(vm.state.value.document!!.colors.isEmpty())
+        // Board data loads on the IO dispatcher, outside the test scheduler.
+        val opened = vm.state.first { it.document?.board?.sizeId == 12 && !it.loading }
+        assertEquals(setOf(3), opened.placements.keys)
+        assertTrue(opened.document!!.colors.isEmpty())
     }
     @Test fun `a saved board change the user did not pick here keeps the picture`() = runTest(dispatcher) {
         vm.state.first { !it.loading }
@@ -186,8 +186,7 @@ class PaintBoxViewModelTest {
         vm.state.first { !it.loading }
         vm.boardPicked()
         savedBrand.value = "shinywall"
-        advanceUntilIdle()
-        val state = vm.state.value
+        val state = vm.state.first { it.document?.board?.brand == "shinywall" && !it.loading }
         assertTrue(state.unsupportedBoard)
         assertFalse(state.missingBoard)
         assertFalse(state.boardReady)
