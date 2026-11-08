@@ -188,7 +188,7 @@ class SprayWallDetailsViewModel @Inject constructor(
                 val result = withdraw()
                 if (result != SprayWithdrawal.DONE) {
                     // It stays public, but the name, angle and gym edits are not lost.
-                    failed(result, deleting = false, keptEdits = keepEdits(s))
+                    failed(result, deleting = false, keptEdits = keepEdits(s, result))
                     return@launch
                 }
             }
@@ -235,11 +235,18 @@ class SprayWallDetailsViewModel @Inject constructor(
         )
     }
 
-    /** Saves the name, angle and gym of a wall that stays public; true when any of them changed. */
-    private suspend fun keepEdits(s: SprayWallDetailsState): Boolean {
+    /**
+     * Saves the name, angle and gym of a wall that stays public after [result]; true when any of them changed.
+     * A published wall sends its head again, as a Save without the withdrawal would, unless the relays took the
+     * tombstones (a head alone would bring back a wall without its versions) or the signer just declined (it would be
+     * asked again at once); then the edits go out with the wall's next version.
+     */
+    private suspend fun keepEdits(s: SprayWallDetailsState, result: SprayWithdrawal): Boolean {
         val wall = repository.wall(wallId) ?: return false
         if (wall.hasDetails(s)) return false
         repository.updateWallDetails(wallId, s.name, s.angle, SprayWallVisibility.PUBLIC, s.gym)
+        val headAgain = result != SprayWithdrawal.PHOTOS_LEFT && result != SprayWithdrawal.SIGNING_FAILED
+        if (wall.publishedVersion != null && headAgain) publisher.publishHeadSoon(wallId)
         return true
     }
 

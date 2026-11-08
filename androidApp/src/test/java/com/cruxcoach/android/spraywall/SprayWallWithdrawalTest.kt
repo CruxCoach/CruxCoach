@@ -23,6 +23,7 @@ class SprayWallWithdrawalTest {
     private val photo = SprayWallPhotoStore.StoredPhoto("0b1c2d3e-photo.jpg", 3000, 2000)
     private val newPhoto = SprayWallPhotoStore.StoredPhoto("1c2d3e4f-photo.jpg", 3000, 2000)
     private val thirdPhoto = SprayWallPhotoStore.StoredPhoto("2d3e4f5a-photo.jpg", 3000, 2000)
+    private val twinPhoto = SprayWallPhotoStore.StoredPhoto("3e4f5a6b-photo.jpg", 3000, 2000)
 
     private val sent = mutableListOf<SprayNostrEvent>()
     private val deleted = mutableListOf<Pair<String, List<String>>>()
@@ -227,6 +228,50 @@ class SprayWallWithdrawalTest {
 
         assertEquals(1, deleted.size)
         assertTrue(repository.versions(id).all { it.photoSha256 != null })
+    }
+
+    /** A second wall on the same photo, public and uploaded but not on Nostr yet (its publish is still to come). */
+    private suspend fun unpublishedWallWithPhoto(sha: String): String {
+        val id = repository.createWall("Twin", 40, SprayWallVisibility.PUBLIC, null, twinPhoto, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
+        repository.setPhotoBlob(id, twinPhoto.fileName, sha, "https://cdn.example.org/$sha")
+        return id
+    }
+
+    @Test
+    fun `a photo deleted after a failed publish is forgotten by my other walls too`() = runTest {
+        val id = partlyPublishedWall()
+        val twin = unpublishedWallWithPhoto(SHA_2)
+
+        withdrawal.deleteUnpublishedPhotos(id)
+
+        assertEquals(listOf(SHA_2 to listOf("https://cdn.example.org")), deleted)
+        // Its publish uploads the photo anew instead of linking to the deleted one.
+        assertNull(repository.wall(twin)!!.current.photoSha256)
+        assertNull(repository.wall(twin)!!.current.photoUrl)
+    }
+
+    @Test
+    fun `a photo deleted by a withdrawal is forgotten by my other walls too`() = runTest {
+        val id = publishedWall()
+        val twin = unpublishedWallWithPhoto(SHA)
+
+        assertEquals(SprayWithdrawal.DONE, withdrawal.run(ME, id))
+
+        assertEquals(listOf(SHA to listOf("https://cdn.example.org")), deleted)
+        assertNull(repository.wall(twin)!!.current.photoSha256)
+        assertEquals(SprayWallVisibility.PUBLIC, repository.wall(twin)!!.visibility)
+    }
+
+    @Test
+    fun `a photo left on its server stays recorded in my other walls`() = runTest {
+        val id = partlyPublishedWall()
+        val twin = unpublishedWallWithPhoto(SHA_2)
+        photoResult = SprayWallWithdrawal.PhotoDeletion.LEFT
+
+        withdrawal.deleteUnpublishedPhotos(id)
+        assertEquals(SprayWithdrawal.PHOTOS_LEFT, withdrawal.run(ME, id))
+
+        assertEquals(SHA_2, repository.wall(twin)!!.current.photoSha256)
     }
 
     @Test

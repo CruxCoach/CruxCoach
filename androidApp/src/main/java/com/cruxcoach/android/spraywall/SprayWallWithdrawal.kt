@@ -77,8 +77,8 @@ class SprayWallWithdrawal(
 
     /**
      * After a publish of [wallId] failed partway: deletes the photos it uploaded
-     * that no published version shows, and forgets them once they are gone.
-     * A photo that could not be deleted stays recorded, so a later withdrawal
+     * that no published version shows, and forgets them in all my walls once
+     * they are gone. A photo that could not be deleted stays recorded, so a later withdrawal
      * deletes it (or the next publish uses it). Never throws.
      */
     suspend fun deleteUnpublishedPhotos(wallId: String) {
@@ -89,15 +89,16 @@ class SprayWallWithdrawal(
             val shown = versions.filter { it.number <= published }.mapNotNull { it.photoSha256 }.toSet()
             for ((sha, url) in uploads(wallId, versions)) {
                 if (sha in shown) continue
-                if (!repository.photoUsedElsewhere(sha, wallId)) {
-                    when (deletePhoto(sha, servers(url))) {
-                        PhotoDeletion.DELETED -> Unit
-                        PhotoDeletion.LEFT -> continue
-                        // The signer declined: asking again for every photo would not help.
-                        PhotoDeletion.NOT_AUTHORISED -> return
-                    }
+                if (repository.photoUsedElsewhere(sha, wallId)) {
+                    repository.clearPhotoBlob(wallId, sha)
+                    continue
                 }
-                repository.clearPhotoBlob(wallId, sha)
+                when (deletePhoto(sha, servers(url))) {
+                    PhotoDeletion.DELETED -> repository.forgetDeletedPhoto(sha)
+                    PhotoDeletion.LEFT -> Unit
+                    // The signer declined: asking again for every photo would not help.
+                    PhotoDeletion.NOT_AUTHORISED -> return
+                }
             }
         } catch (e: CancellationException) {
             throw e
@@ -123,7 +124,7 @@ class SprayWallWithdrawal(
         for ((sha, url) in uploads(wallId, versions)) {
             if (repository.photoUsedElsewhere(sha, wallId)) continue
             when (deletePhoto(sha, servers(url))) {
-                PhotoDeletion.DELETED -> Unit
+                PhotoDeletion.DELETED -> repository.forgetDeletedPhoto(sha)
                 PhotoDeletion.LEFT -> photosLeft = true
                 PhotoDeletion.NOT_AUTHORISED -> throw SprayEventSigningFailed(IllegalStateException("Blossom delete authorisation"))
             }

@@ -121,6 +121,10 @@ class SprayWallPublisher @Inject constructor(
                 publishWall(me, wall)
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: SprayEventSigningFailed) {
+                // A declined signature: deleting the photos would ask the signer again, and every later try
+                // would upload them anew. They stay recorded for the next try.
+                throw e
             } catch (e: Exception) {
                 // Photos uploaded before the failure do not stay on Blossom unused; the next try uploads them again.
                 withdrawal.deleteUnpublishedPhotos(wall.id)
@@ -180,7 +184,8 @@ class SprayWallPublisher @Inject constructor(
                 repository.setPhotoBlob(wallId, version.photoFile, hash, result.url)
                 return hash to result.url
             }
-            is ProfileImageUploader.Result.Failure -> error("photo upload: ${result.message}")
+            is ProfileImageUploader.Result.Failure ->
+                if (result.authFailed) throw SprayEventSigningFailed(IllegalStateException(result.message)) else error("photo upload: ${result.message}")
         }
     }
 
