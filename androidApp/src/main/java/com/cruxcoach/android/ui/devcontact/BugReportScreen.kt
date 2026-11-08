@@ -68,6 +68,7 @@ fun BugReportScreen(
     ReportSentHandler(
         sendSuccess = state.sendSuccess,
         sentTitle = stringResource(R.string.devcontact_bug_sent),
+        hintText = stringResource(R.string.community_report_hint),
         offersCommunity = viewModel::offersCommunityAfterReport,
         hideForGood = viewModel::hideCommunityHintForGood,
         onResultConsumed = viewModel::dismissSendResult,

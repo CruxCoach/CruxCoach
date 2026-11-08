@@ -2,12 +2,16 @@ package com.cruxcoach.android.ui.devcontact
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Forum
@@ -16,6 +20,7 @@ import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,16 +33,24 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.openUriOrToast
+import kotlin.math.ceil
 import kotlinx.coroutines.launch
 
 /**
@@ -52,37 +65,65 @@ internal fun CommunityJoinSection(onJoin: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             stringResource(R.string.community_join_title),
-            style = MaterialTheme.typography.titleMedium,
+            // Hyphenation lets "CruxCoach-Community" break after its hyphen at the largest
+            // font on a narrow screen, not in the middle of a word.
+            style = MaterialTheme.typography.titleMedium.copy(hyphens = Hyphens.Auto),
             fontWeight = FontWeight.Bold,
             modifier = Modifier.semantics { heading() },
         )
-        listOf(
-            Icons.Outlined.Forum to R.string.community_point_talk,
-            Icons.Outlined.Science to R.string.community_point_test,
-            Icons.Outlined.HowToVote to R.string.community_point_shape,
-        ).forEach { (icon, text) ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                Text(stringResource(text), style = MaterialTheme.typography.bodyLarge)
+        val style = MaterialTheme.typography.bodyLarge
+        val density = LocalDensity.current
+        // The gap grows with the font, so points that wrap at large font stay apart.
+        Column(verticalArrangement = Arrangement.spacedBy(with(density) { 12.sp.toDp() })) {
+            listOf(
+                Icons.Outlined.Forum to R.string.community_point_talk,
+                Icons.Outlined.Science to R.string.community_point_test,
+                Icons.Outlined.HowToVote to R.string.community_point_shape,
+            ).forEach { (icon, text) ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Centred on the first line, so a point that wraps still reads as a list.
+                    Box(Modifier.height(with(density) { style.lineHeight.toDp() }), contentAlignment = Alignment.Center) {
+                        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    }
+                    Text(stringResource(text), style = style)
+                }
             }
         }
         Button(onClick = onJoin, modifier = Modifier.fillMaxWidth().testTag("community_join")) {
             Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.community_join_action))
+            WrappedLabel(stringResource(R.string.community_join_action))
         }
         Text(
             stringResource(R.string.community_join_note),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
-/** The hint after a new report; its title confirms the report was sent. */
+/**
+ * A button label that wraps (German at large font) stays as wide as its
+ * longest line, so the leading icon stays next to it and the button centres both.
+ */
+@Composable
+private fun WrappedLabel(text: String) {
+    val style = LocalTextStyle.current
+    val measurer = rememberTextMeasurer()
+    Layout({ Text(text, textAlign = TextAlign.Center) }) { measurables, constraints ->
+        val lines = measurer.measure(text, style, constraints = Constraints(maxWidth = constraints.maxWidth))
+        val widest = (0 until lines.lineCount).maxOf { lines.getLineRight(it) - lines.getLineLeft(it) }
+        val width = ceil(widest).toInt().coerceIn(constraints.minWidth, constraints.maxWidth)
+        val label = measurables.single().measure(constraints.copy(minWidth = width, maxWidth = width))
+        layout(label.width, label.height) { label.placeRelative(0, 0) }
+    }
+}
+
+/** The hint after a new report; its title confirms the report was sent, [text] fits the kind of report. */
 @Composable
 internal fun CommunityReportHintDialog(
     title: String,
+    text: String,
     onJoin: () -> Unit,
     onAlreadyMember: () -> Unit,
     onClose: () -> Unit,
@@ -91,22 +132,51 @@ internal fun CommunityReportHintDialog(
         onDismissRequest = onClose,
         modifier = Modifier.testTag("community_report_hint"),
         title = { Text(title) },
-        text = { Text(stringResource(R.string.community_report_hint)) },
+        // At 320 dp and font size 2.0 the dialog fills the screen: the text scrolls instead of being cut off.
+        text = { Text(text, Modifier.verticalScroll(rememberScrollState())) },
         confirmButton = {
-            Button(onClick = onJoin, modifier = Modifier.testTag("community_report_hint_join")) {
-                Text(stringResource(R.string.community_report_hint_join))
-            }
-        },
-        // Two buttons in this slot: the dialog wraps all three when they do not fit in a row.
-        dismissButton = {
-            TextButton(onClick = onClose, modifier = Modifier.testTag("community_report_hint_close")) {
-                Text(stringResource(R.string.action_close))
-            }
-            TextButton(onClick = onAlreadyMember, modifier = Modifier.testTag("community_report_hint_member")) {
-                Text(stringResource(R.string.community_report_hint_member))
+            HintButtons {
+                TextButton(onClick = onAlreadyMember, modifier = Modifier.testTag("community_report_hint_member")) {
+                    Text(stringResource(R.string.community_report_hint_member))
+                }
+                TextButton(onClick = onClose, modifier = Modifier.testTag("community_report_hint_close")) {
+                    Text(stringResource(R.string.community_report_hint_later))
+                }
+                Button(onClick = onJoin, modifier = Modifier.testTag("community_report_hint_join")) {
+                    Text(stringResource(R.string.community_report_hint_join))
+                }
             }
         },
     )
+}
+
+/**
+ * The hint's three buttons: in one row when they fit, the rare "Already a
+ * member" at the start; otherwise stacked at the end with Join on top. Never
+ * split into a row of one and a row of two, where Close would move around.
+ */
+@Composable
+private fun HintButtons(content: @Composable () -> Unit) {
+    Layout(content) { measurables, constraints ->
+        val gap = 8.dp.roundToPx()
+        val buttons = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
+        val rowWidth = buttons.sumOf { it.width } + gap * (buttons.size - 1)
+        val width = constraints.maxWidth
+        if (rowWidth <= width) {
+            val height = buttons.maxOf { it.height }
+            layout(width, height) {
+                buttons.first().placeRelative(0, (height - buttons.first().height) / 2)
+                var x = width
+                buttons.drop(1).reversed().forEach { x -= it.width; it.placeRelative(x, (height - it.height) / 2); x -= gap }
+            }
+        } else {
+            val stacked = buttons.reversed()
+            layout(width, stacked.sumOf { it.height }) {
+                var y = 0
+                stacked.forEach { it.placeRelative(width - it.width, y); y += it.height }
+            }
+        }
+    }
 }
 
 /**
@@ -119,6 +189,7 @@ internal fun CommunityReportHintDialog(
 internal fun ReportSentHandler(
     sendSuccess: Boolean?,
     sentTitle: String,
+    hintText: String,
     offersCommunity: suspend () -> Boolean,
     hideForGood: suspend () -> Unit,
     onResultConsumed: () -> Unit,
@@ -156,6 +227,7 @@ internal fun ReportSentHandler(
         val leave = { if (showHint) { showHint = false; onNavigateBack() } }
         CommunityReportHintDialog(
             title = sentTitle,
+            text = hintText,
             onJoin = {
                 uriHandler.openUriOrToast(context, COMMUNITY_JOIN_URL)
                 leave()
