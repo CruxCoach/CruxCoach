@@ -17,7 +17,7 @@
     <string name="trp2_pain_title">What hurts?</string>
     <string name="trp2_pain_region">Where?</string>
     <string name="trp2_pain_side">Side</string>
-    <string name="trp2_pain_level">Pain: %1$d of 9</string>
+    <string name="trp2_pain_level">Pain: %1$d of 10</string>
     <string name="trp2_pain_action">What now?</string>
     <string name="trp2_action_swap">Swap to an exercise that spares it</string>
     <string name="trp2_action_lighter">Carry on lighter</string>
