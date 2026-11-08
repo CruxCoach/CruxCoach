@@ -22,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,8 +60,8 @@ fun YearReviewEntryCard(onOpen: (Int) -> Unit, modifier: Modifier = Modifier, vi
 /** The card itself: "your year so far" in December, the finished year in January. */
 @Composable
 internal fun YearReviewCard(year: Int, soFar: Boolean, onOpen: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier) {
-    // The same card as "At a glance" in the logbook, with its orange text link: it invites
-    // without competing with the screen's own main action.
+    // The same card as "At a glance" in the logbook, with an orange arrow like its
+    // "Statistics" link: it invites without competing with the screen's own main action.
     Card(
         onClick = onOpen,
         modifier = modifier.fillMaxWidth(),
@@ -76,10 +75,13 @@ internal fun YearReviewCard(year: Int, soFar: Boolean, onOpen: () -> Unit, onHid
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f).padding(vertical = 8.dp),
             )
-            TextButton(onClick = onOpen) {
-                Text(stringResource(R.string.yr_card_open), color = OrangeAccent, fontWeight = FontWeight.Bold)
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
-            }
+            // The whole card opens the review; the arrow says so without taking the title's room.
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = stringResource(R.string.yr_card_open),
+                tint = OrangeAccent,
+                modifier = Modifier.size(24.dp),
+            )
             IconButton(onClick = onHide) {
                 Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.yr_card_hide), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }

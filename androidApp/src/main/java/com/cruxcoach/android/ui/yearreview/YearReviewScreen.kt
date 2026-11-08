@@ -64,7 +64,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -89,6 +88,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -110,6 +110,9 @@ private val PageFaint = Color.White.copy(alpha = 0.5f)
 /** The pages' side margin: the app's 16 dp, in line with the icons of the top bar. */
 private val PageMargin = 16.dp
 
+/** The height of the progress bar above the pages, kept free on the other screens so their top bar sits at the same place. */
+private val ProgressRoom = 20.dp
+
 /**
  * The year in review (#64): full-screen pages you tap through, left for back and
  * right for on, with no automatic advance and no sound. Holding a page hides the
@@ -121,7 +124,7 @@ fun YearReviewScreen(onClose: () -> Unit, viewModel: YearReviewViewModel = hiltV
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val review = state.review
-    LightSystemBarIcons()
+    DarkSystemBars()
     Box(
         Modifier
             .fillMaxSize()
@@ -139,7 +142,7 @@ fun YearReviewScreen(onClose: () -> Unit, viewModel: YearReviewViewModel = hiltV
                 // The page stays when switching between the pages and the list.
                 var index by rememberSaveable { mutableIntStateOf(0) }
                 if (listView) {
-                    ReviewList(pages, reviewTitle(review), onClose, onShare = { sharing = it }, onPages = { listView = false }, startAt = index, boardColors = colors)
+                    ReviewList(pages, littleTitle(review.year, review), onClose, onShare = { sharing = it }, onPages = { listView = false }, startAt = index, boardColors = colors)
                 } else {
                     ReviewPager(pages, index, onIndex = { index = it }, onClose, onShare = { sharing = it }, onList = { listView = true }, boardColors = colors)
                 }
@@ -156,20 +159,33 @@ fun YearReviewScreen(onClose: () -> Unit, viewModel: YearReviewViewModel = hiltV
 internal fun reviewBoardColors(review: YearReview): Map<String, Color> =
     BoardSeriesColors.slots(review.boards.map { it.board }).mapValues { (_, slot) -> BoardSeriesColors.color(slot, dark = true, fallback = PageMuted) }
 
-/** The review is dark in both themes, so the status and navigation bar icons turn light while it shows. */
+/**
+ * The review is dark in both themes: while it shows, the status and navigation bars
+ * are dark with light icons, also when the app is light; leaving it restores them.
+ */
+@Suppress("DEPRECATION") // The app's theme still colours the bars this way.
 @Composable
-private fun LightSystemBarIcons() {
+private fun DarkSystemBars() {
     val view = LocalView.current
     DisposableEffect(view) {
         val window = (view.context as? Activity)?.window
         val bars = window?.let { WindowCompat.getInsetsController(it, view) }
-        val status = bars?.isAppearanceLightStatusBars
-        val navigation = bars?.isAppearanceLightNavigationBars
+        val statusIcons = bars?.isAppearanceLightStatusBars
+        val navigationIcons = bars?.isAppearanceLightNavigationBars
+        val statusColor = window?.statusBarColor
+        val navigationColor = window?.navigationBarColor
+        val contrast = window?.takeIf { android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q }?.isNavigationBarContrastEnforced
+        window?.statusBarColor = DarkBackground.toArgb()
+        window?.navigationBarColor = DarkSurface.toArgb()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) window?.isNavigationBarContrastEnforced = false
         bars?.isAppearanceLightStatusBars = false
         bars?.isAppearanceLightNavigationBars = false
         onDispose {
-            status?.let { bars?.isAppearanceLightStatusBars = it }
-            navigation?.let { bars?.isAppearanceLightNavigationBars = it }
+            statusColor?.let { window?.statusBarColor = it }
+            navigationColor?.let { window?.navigationBarColor = it }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) contrast?.let { window?.isNavigationBarContrastEnforced = it }
+            statusIcons?.let { bars?.isAppearanceLightStatusBars = it }
+            navigationIcons?.let { bars?.isAppearanceLightNavigationBars = it }
         }
     }
 }
@@ -259,7 +275,7 @@ internal fun ReviewPager(
                     )
                 },
         ) {
-            PageContent(page, index, pages.size, boardColors)
+            PageContent(page, index, pages.size, boardColors, onShare = { onShare(page.kind) })
         }
     }
 }
@@ -287,7 +303,7 @@ private fun ProgressSegments(count: Int, current: Int) {
 }
 
 @Composable
-internal fun PageContent(page: ReviewPage, index: Int, count: Int, boardColors: Map<String, Color> = emptyMap()) {
+internal fun PageContent(page: ReviewPage, index: Int, count: Int, boardColors: Map<String, Color> = emptyMap(), onShare: () -> Unit = {}) {
     val context = LocalContext.current
     val animate = remember { animationsOn(context) }
     val appear = remember(index) { Animatable(if (animate) 0f else 1f) }
@@ -300,11 +316,11 @@ internal fun PageContent(page: ReviewPage, index: Int, count: Int, boardColors: 
             Modifier
                 .fillMaxWidth()
                 .verticalScroll(scroll)
-                // A short page sits a little above the middle, as on its share image; a long one scrolls.
-                .heightIn(min = viewport)
-                .padding(horizontal = PageMargin, vertical = 8.dp)
+                // Every page's title starts at the same height, a little below the top bar, so
+                // nothing jumps while tapping through; a long page scrolls.
+                .padding(start = PageMargin, end = PageMargin, top = (viewport * 0.08f).coerceAtMost(64.dp), bottom = 8.dp)
                 .alpha(appear.value),
-            verticalArrangement = Arrangement.spacedBy(12.dp, BiasAlignment.Vertical(-0.4f)),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // The page's line above the title is for the shared image; here the progress bar and the title say where you are.
             Text(page.title, color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
@@ -316,7 +332,23 @@ internal fun PageContent(page: ReviewPage, index: Int, count: Int, boardColors: 
             page.months?.let { MonthBars(it, page.busiestMonth) }
             if (page.rows.isNotEmpty()) Spacer(Modifier.height(4.dp))
             // The summary is the year's recap card, a grid like its share image, not one more table.
-            if (page.kind == ReviewPageKind.SUMMARY) SummaryGrid(page.rows, boardColors) else RowsList(page.rows, boardColors)
+            if (page.kind == ReviewPageKind.SUMMARY) {
+                SummaryGrid(page.rows, boardColors)
+                // The last page's main action: the recap is the image most people share.
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = onShare,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.yr_share_send), fontWeight = FontWeight.Bold)
+                }
+            } else {
+                RowsList(page.rows, boardColors)
+            }
             Spacer(Modifier.height(32.dp))
         }
         // A long page fades out at the bottom, so it shows that it scrolls on.
@@ -332,28 +364,46 @@ internal fun PageContent(page: ReviewPage, index: Int, count: Int, boardColors: 
     }
 }
 
-/** The summary's numbers two by two: the value large, its label below. */
+/**
+ * The summary's numbers two by two, the value large and its label below; one
+ * column when a value or a word of a label would not fit in half the width.
+ */
 @Composable
 private fun SummaryGrid(rows: List<ReviewRow>, colors: Map<String, Color>) {
-    rows.chunked(2).forEach { pair ->
-        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            pair.forEach { row ->
-                Column(Modifier.weight(1f)) {
-                    Text(row.value, color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    BoardLabel(row, colors, PageMuted, MaterialTheme.typography.bodyMedium)
+    val valueStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+    val labelStyle = MaterialTheme.typography.bodyMedium
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val gap = with(density) { 16.dp.roundToPx() }
+        val cell = (constraints.maxWidth - gap) / 2
+        val dot = with(density) { DotSlot.roundToPx() }
+        val fits = rows.all { row ->
+            measurer.measure(row.value, valueStyle).size.width <= cell &&
+                row.label.split(' ').maxOf { measurer.measure(it, labelStyle).size.width } + (if (row.board != null) dot else 0) <= cell
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            rows.chunked(if (fits) 2 else 1).forEach { line ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    line.forEach { row ->
+                        Column(Modifier.weight(1f)) {
+                            Text(row.value, color = PageText, style = valueStyle)
+                            BoardLabel(row, colors, PageMuted, labelStyle)
+                        }
+                    }
+                    if (fits && line.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
-            if (pair.size == 1) Spacer(Modifier.weight(1f))
         }
     }
 }
 
 /**
- * Label and value per row, the detail below. A row keeps label and value side by
- * side when the label fits on one line beside the value; otherwise label, value
- * and detail stack at the left edge (large fonts, long German words, narrow
- * phones). A board's dot sits in front of its label, so every row starts at the
- * same edge.
+ * Label and value per row, the detail below. Label and value sit side by side, the
+ * label wrapping and the value on the right, as on the share images. One decision
+ * for the whole list: when some label would break a word or need more than two lines
+ * beside its value (largest fonts, long German words, narrow phones), every row
+ * stacks, its value under its label. A board's dot sits on the label's first line.
  */
 @Composable
 private fun RowsList(rows: List<ReviewRow>, colors: Map<String, Color>, textColor: Color = PageText, labelColor: Color = PageMuted, detailColor: Color = PageFaint) {
@@ -366,24 +416,29 @@ private fun RowsList(rows: List<ReviewRow>, colors: Map<String, Color>, textColo
         val gap = with(density) { 12.dp.roundToPx() }
         val dot = with(density) { DotSlot.roundToPx() }
         val width = constraints.maxWidth
+        val stacked = rows.any { row ->
+            if (row.value.isEmpty()) return@any false
+            val room = width - (if (row.board != null) dot else 0) - gap - measurer.measure(row.value.unbroken(), valueStyle).size.width
+            // A word that no longer fits, or a label squeezed into more than two lines.
+            row.label.split(' ').maxOf { measurer.measure(it, labelStyle).size.width } > room ||
+                measurer.measure(row.label, labelStyle, constraints = Constraints(maxWidth = room.coerceAtLeast(1))).lineCount > 2
+        }
         Column {
             rows.forEachIndexed { i, row ->
                 if (i > 0) HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
-                val side = row.value.isEmpty() ||
-                    measurer.measure(row.label, labelStyle).size.width + (if (row.board != null) dot else 0) + gap +
-                    measurer.measure(row.value.unbroken(), valueStyle).size.width <= width
                 Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                    if (side) {
+                    if (!stacked) {
                         Row(verticalAlignment = Alignment.Top) {
                             BoardLabel(row, colors, labelColor, labelStyle, Modifier.weight(1f).padding(end = 12.dp))
                             if (row.value.isNotEmpty()) Text(row.value.unbroken(), color = textColor, style = valueStyle)
                         }
                     } else {
                         BoardLabel(row, colors, labelColor, labelStyle)
-                        Text(row.value.unbroken(), color = textColor, style = valueStyle)
+                        // Under the label's text, not under its dot.
+                        Text(row.value.unbroken(), color = textColor, style = valueStyle, modifier = Modifier.padding(start = if (row.board != null) DotSlot else 0.dp))
                     }
                     row.detail?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, color = detailColor, style = MaterialTheme.typography.bodyMedium)
+                        Text(it, color = detailColor, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = if (row.board != null) DotSlot else 0.dp))
                     }
                 }
             }
@@ -391,18 +446,20 @@ private fun RowsList(rows: List<ReviewRow>, colors: Map<String, Color>, textColo
     }
 }
 
-/** A row's label, with its board's dot in front when it belongs to a board. */
+/** A row's label, with its board's dot in front, on the label's first line. */
 @Composable
 private fun BoardLabel(row: ReviewRow, colors: Map<String, Color>, color: Color, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+    val firstLine = with(LocalDensity.current) { style.lineHeight.toDp() }
+    Row(modifier, verticalAlignment = Alignment.Top) {
         row.board?.let { board ->
-            Box(
-                Modifier
-                    .padding(end = 8.dp)
-                    .size(10.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(colors[board] ?: color),
-            )
+            Box(Modifier.width(DotSlot).height(firstLine), contentAlignment = Alignment.CenterStart) {
+                Box(
+                    Modifier
+                        .size(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(colors[board] ?: color),
+                )
+            }
         }
         Text(row.label, color = color, style = style)
     }
@@ -518,6 +575,7 @@ internal fun ReviewList(
 @Composable
 internal fun Loading(year: Int, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        Spacer(Modifier.height(ProgressRoom))
         ReviewTopBar(onClose)
         Text(
             stringResource(R.string.yr_little_title, year),
@@ -536,6 +594,7 @@ internal fun Loading(year: Int, onClose: () -> Unit) {
 @Composable
 internal fun SoFar(year: Int, review: YearReview?, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        Spacer(Modifier.height(ProgressRoom))
         ReviewTopBar(onClose)
         Column(
             Modifier
@@ -560,6 +619,7 @@ internal fun SoFar(year: Int, review: YearReview?, onClose: () -> Unit) {
 @Composable
 internal fun LoadFailed(onRetry: () -> Unit, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+        Spacer(Modifier.height(ProgressRoom))
         ReviewTopBar(onClose)
         Column(Modifier.padding(horizontal = PageMargin, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.yr_failed), color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)

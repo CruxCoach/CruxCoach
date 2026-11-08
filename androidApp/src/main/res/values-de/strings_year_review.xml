@@ -36,7 +36,7 @@
     <string name="yr_intro_lead">Auf diesem Handy erstellt. Nichts verlässt es, außer du teilst es.</string>
     <string name="yr_intro_how">Gezählt vom 1. Januar bis 31. Dezember in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen und Workouts, die du erfasst hast.</string>
     <string name="yr_intro_how_so_far">Gezählt vom 1. Januar bis heute in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen und Workouts, die du erfasst hast. Das Jahr ist noch nicht vorbei: Es zählt bis zum 31. Dezember weiter.</string>
-    <string name="yr_intro_so_far">bisher, bis %1$s</string>
+    <string name="yr_intro_so_far">Stand %1$s</string>
 
     <!-- Volume -->
     <string name="yr_volume_title">Dein Umfang</string>
@@ -67,10 +67,6 @@
     <!-- Compared with last year -->
     <string name="yr_compared_title">Im Vergleich zu %1$d</string>
     <string name="yr_compared_before">%2$d: %1$s</string>
-    <string name="yr_compared_hardest">Schwerste Begehung am %1$s</string>
-    <string name="yr_compared_grades_up">%1$s höher</string>
-    <string name="yr_compared_grades_down">%1$s tiefer</string>
-    <string name="yr_compared_grades_same">gleicher Grad</string>
     <string name="yr_compared_how">Das letzte Jahr vom 1. Januar bis %1$s, derselbe Zeitraum wie in diesem Jahr. Es zählen nur deine eigenen früheren Jahre, nie andere Kletternde.</string>
 
     <!-- Rhythm -->

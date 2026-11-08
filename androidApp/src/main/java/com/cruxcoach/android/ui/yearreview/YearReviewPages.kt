@@ -146,11 +146,12 @@ private fun boards(review: YearReview, eyebrow: String, f: Formats): ReviewPage?
         title = stringResource(R.string.yr_boards_title),
         rows = review.boards.take(MAX_BOARDS).map { b ->
             val angle = b.angles.firstOrNull()
+            // Days are the value: they read like the climbing days before; entries are the detail.
             ReviewRow(
                 label = f.board(b.board),
-                value = pluralStringResource(R.plurals.yr_entries, b.entries, f.number(b.entries)),
+                value = pluralStringResource(R.plurals.yr_days, b.days, f.number(b.days)),
                 detail = listOfNotNull(
-                    pluralStringResource(R.plurals.yr_days, b.days, f.number(b.days)),
+                    pluralStringResource(R.plurals.yr_entries, b.entries, f.number(b.entries)),
                     angle?.let {
                         val share = (100.0 * it.entries / b.entries).roundToInt()
                         // "mostly at 40° (100 %)" says nothing that "at 40°" does not.
@@ -221,14 +222,11 @@ private fun compared(review: YearReview, eyebrow: String, f: Formats): ReviewPag
             .sortedBy { (board, _) -> review.boards.indexOfFirst { it.board == board } }
             .take(MAX_BOARDS)
             .map { (board, steps) ->
-                val grades = pluralStringResource(R.plurals.yr_grades, abs(steps), f.number(abs(steps)))
+                // Like the rows above: the change as the value, last year's grade below.
                 ReviewRow(
-                    label = stringResource(R.string.yr_compared_hardest, f.board(board)),
-                    value = when {
-                        steps > 0 -> stringResource(R.string.yr_compared_grades_up, grades)
-                        steps < 0 -> stringResource(R.string.yr_compared_grades_down, grades)
-                        else -> stringResource(R.string.yr_compared_grades_same)
-                    },
+                    label = stringResource(R.string.yr_summary_hardest, f.board(board)),
+                    value = pluralStringResource(R.plurals.yr_grades, abs(steps), f.signed(steps)),
+                    detail = then.hardestByBoard[board]?.let { stringResource(R.string.yr_compared_before, f.grade(it), previous.year) },
                     board = board,
                 )
             },

@@ -36,7 +36,7 @@
     <string name="yr_intro_lead">Made on this phone. Nothing leaves it unless you share it.</string>
     <string name="yr_intro_how">Counted from 1 January to 31 December in your time zone, from your logbook on every board, imported logbooks included, and from the climbing days and workouts you logged.</string>
     <string name="yr_intro_how_so_far">Counted from 1 January up to today in your time zone, from your logbook on every board, imported logbooks included, and from the climbing days and workouts you logged. The year is not over yet: it counts on until 31 December.</string>
-    <string name="yr_intro_so_far">so far, up to %1$s</string>
+    <string name="yr_intro_so_far">as of %1$s</string>
 
     <!-- Volume -->
     <string name="yr_volume_title">Your volume</string>
@@ -67,10 +67,6 @@
     <!-- Compared with last year -->
     <string name="yr_compared_title">Compared with %1$d</string>
     <string name="yr_compared_before">%2$d: %1$s</string>
-    <string name="yr_compared_hardest">Hardest send on the %1$s</string>
-    <string name="yr_compared_grades_up">%1$s up</string>
-    <string name="yr_compared_grades_down">%1$s down</string>
-    <string name="yr_compared_grades_same">same grade</string>
     <string name="yr_compared_how">Last year from 1 January to %1$s, the same span as this year. Only your own earlier years count, never other climbers.</string>
 
     <!-- Rhythm -->
