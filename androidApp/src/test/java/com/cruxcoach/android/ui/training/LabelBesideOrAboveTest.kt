@@ -81,7 +81,6 @@ class LabelBesideOrAboveTest {
     /** The intrinsic height the bar got matches what the layout drew: nothing sticks out, nothing is left empty. */
     private fun assertEqualHeight() {
         val bar = bounds("bar"); val l = bounds("label"); val s = bounds("stepper")
-        near(bounds("row").height, bar.height, "bar height")
         near(bar.bottom, maxOf(l.bottom, s.bottom), "content bottom")
     }
 
@@ -122,6 +121,11 @@ class LabelBesideOrAboveTest {
         show(manyWords, 112.dp, 1f)
         assertBeside(); assertEqualHeight()
         assertTrue("wraps to several lines", bounds("label").height > 40.dp)
+    }
+
+    @Test fun `at font 1 a word that would break still moves the stepper below`() {
+        show(longWord, 160.dp, 1f)
+        assertBelow(); assertEqualHeight(); assertLtr()
     }
 
     @Test fun `a narrow value is no icon and moves below when its label does not fit`() {

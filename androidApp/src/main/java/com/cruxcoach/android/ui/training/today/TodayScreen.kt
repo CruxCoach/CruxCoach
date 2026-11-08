@@ -1632,7 +1632,7 @@ private fun WhySheet(state: TodayState, onDismiss: () -> Unit, onOpenLearned: ()
             // Intro, deload, taper and event weeks already have their own reason line above.
             val blockNamed = s.reasons.any { it.name.startsWith("BLOCK_") }
             if (block != null && !blockNamed) {
-                SectionTitle(block) { InfoButton(block, stringResource(R.string.tre_block_info_text)) }
+                SectionTitle(block, keepBeside = true) { InfoButton(block, stringResource(R.string.tre_block_info_text)) }
             }
             // What the coach learned from the athlete's choices: visible and forgettable in one place.
             TextButton(onClick = onOpenLearned, modifier = Modifier.padding(top = 8.dp).testTag("today_why_learned")) {

@@ -211,7 +211,7 @@ private fun ExerciseHeader(
             ExerciseMenu(def, page, state, language, actions, canSwap, warmupAvailable)
         }
         // The badges and "It hurts" below the position when they do not fit beside it (320 dp, largest font).
-        // One line beside them or the full width below: wrapped, "1 / of 1" lost its meaning.
+        // At a large font one line beside them or the full width below: wrapped, "1 / of 1" lost its meaning.
         LabelBesideOrAbove(growth = 1f, label = {
             // Set x of y counts work sets only (warm-ups have their own row).
             val position = active?.let { set ->
@@ -690,8 +690,10 @@ private fun ActiveRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPag
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RowLabel(rowLabel(page, set), emphasis = true)
-                    // The target on one line, "% KG" below it when both do not fit ("Targe/t 5/reps" at the largest font).
-                    LabelBesideOrAbove(modifier = Modifier.weight(1f), growth = 1f, label = {
+                    // The target on one line, "% KG" below it when both do not fit ("Targe/t 5/reps" at the largest font);
+                    // the moved-set arrow alone stays beside it.
+                    val percent = percentText(set, def, state.bodyweight)
+                    LabelBesideOrAbove(modifier = Modifier.weight(1f), growth = 1f, keepBeside = percent == null, label = {
                         Column(Modifier.padding(end = 8.dp)) {
                             name?.let { Text(it, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                             targetLine(set, def)?.let {
@@ -700,7 +702,7 @@ private fun ActiveRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPag
                             }
                         }
                     }) {
-                        percentText(set, def, state.bodyweight)?.let {
+                        percent?.let {
                             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         MovedMarker(set, state)

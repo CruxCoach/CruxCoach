@@ -724,7 +724,7 @@ internal class StepperEdit(
 @Composable
 internal fun PlayerStepper(label: String, value: String, tag: String, onMinus: () -> Unit, onPlus: () -> Unit, edit: StepperEdit? = null) {
     var editing by remember { mutableStateOf(false) }
-    // One line beside the buttons or above them, the same for every stepper of the page.
+    // At a large font one line beside the buttons or above them, the same for every stepper of the page.
     LabelBesideOrAbove(growth = 1f, label = { Text(label, style = MaterialTheme.typography.titleSmall) }) {
         FilledTonalIconButton(onClick = onMinus, modifier = Modifier.size(56.dp).testTag("${tag}_minus")) {
             Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.trw_minus, label))
