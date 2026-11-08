@@ -294,7 +294,7 @@ private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
         rate > 0 -> R.string.trb_direction_up
         else -> R.string.trb_direction_down
     })
-    SectionTitle(stringResource(R.string.tr_metric_weight)) {
+    SectionTitle(stringResource(R.string.tr_metric_weight), keepBeside = true) {
         InfoButton(stringResource(R.string.tr_metric_weight), stringResource(R.string.trb_trend_info_text))
     }
     val trend = state.weight.lastOrNull()?.trend
@@ -424,7 +424,7 @@ private fun RecentRow(entry: BodyMeasurement, units: UnitSystem, hidden: Boolean
 
 @Composable
 private fun StrengthSection(state: BodyState, onOpenBenchmarks: () -> Unit = {}) {
-    SectionTitle(stringResource(R.string.trb_strength_title)) {
+    SectionTitle(stringResource(R.string.trb_strength_title), keepBeside = true) {
         InfoButton(stringResource(R.string.trb_strength_title), stringResource(R.string.trb_strength_info_text))
     }
     if (state.strength.isEmpty()) {

@@ -916,7 +916,6 @@ private fun QuickCheckin(onSave: (Int?, Set<com.cruxcoach.athlete.model.InjuryRe
                     onClick = { strength = if (strength == v) null else v },
                     label = { Text("$v", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
                     colors = chipColors,
-                    border = answerChipBorder(strength == v),
                     modifier = Modifier.weight(1f).testTag("today_quick_strength_$v"),
                 )
             }
@@ -928,9 +927,9 @@ private fun QuickCheckin(onSave: (Int?, Set<com.cruxcoach.athlete.model.InjuryRe
         Text(stringResource(R.string.trt_quick_hurts), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = hurts == false, onClick = { hurts = false; sore = emptyList() },
-                label = { Text(stringResource(R.string.trt_quick_no)) }, colors = chipColors, border = answerChipBorder(hurts == false), modifier = Modifier.testTag("today_quick_hurts_no"))
+                label = { Text(stringResource(R.string.trt_quick_no)) }, colors = chipColors, modifier = Modifier.testTag("today_quick_hurts_no"))
             FilterChip(selected = hurts == true, onClick = { hurts = true },
-                label = { Text(stringResource(R.string.trt_quick_yes)) }, colors = chipColors, border = answerChipBorder(hurts == true), modifier = Modifier.testTag("today_quick_hurts_yes"))
+                label = { Text(stringResource(R.string.trt_quick_yes)) }, colors = chipColors, modifier = Modifier.testTag("today_quick_hurts_yes"))
         }
         if (hurts == true) {
             Text(stringResource(R.string.trt_quick_where), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
@@ -953,13 +952,6 @@ private fun answerChipColors() = FilterChipDefaults.filterChipColors(
     selectedLabelColor = CruxCoachDesign.colors.onBrandAccent,
 )
 
-/** On the suggestion card the default outline almost vanished: the card's own text colour, softened (UI pass 0.2.5). */
-@Composable
-private fun answerChipBorder(selected: Boolean) = FilterChipDefaults.filterChipBorder(
-    enabled = true, selected = selected,
-    borderColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
-)
-
 /** Body areas as chips, several at once; the same ones as for an injury. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -977,7 +969,6 @@ private fun SoreChips(
                 onClick = { onChange(if (r in selected) selected - r else selected + r) },
                 label = { Text(regionLabel(r)) },
                 colors = colors,
-                border = if (accent) answerChipBorder(r in selected) else FilterChipDefaults.filterChipBorder(true, r in selected),
                 modifier = Modifier.testTag("today_sore_${r.name.lowercase()}"),
             )
         }
@@ -1631,7 +1622,7 @@ private fun WhySheet(state: TodayState, onDismiss: () -> Unit, onOpenLearned: ()
                     modifier = Modifier.padding(top = 8.dp).testTag("today_why_evidence"))
             }
             val confidenceTitle = stringResource(R.string.tre_conf_info_title)
-            SectionTitle(confidenceTitle + ": " + confidenceLabel(s.confidence)) {
+            SectionTitle(confidenceTitle + ": " + confidenceLabel(s.confidence), keepBeside = true) {
                 InfoButton(confidenceTitle, stringResource(R.string.tre_conf_info_text))
             }
             if (s.confidence == com.cruxcoach.athlete.logic.Confidence.LOW) {

@@ -292,7 +292,7 @@ fun StatsHubScreen(
                 // ── Calendar ────────────────────────────────────────────
                 // How to read a chart is behind the info icon at its title (design.md), not a line under it.
                 item {
-                    SectionTitle(stringResource(R.string.trs_calendar)) {
+                    SectionTitle(stringResource(R.string.trs_calendar), keepBeside = true) {
                         InfoButton(stringResource(R.string.trs_calendar), stringResource(R.string.trs_calendar_hint))
                     }
                 }
@@ -306,7 +306,7 @@ fun StatsHubScreen(
 
                 // ── Load per structure ──────────────────────────────────
                 item {
-                    SectionTitle(stringResource(R.string.trs_load_title)) {
+                    SectionTitle(stringResource(R.string.trs_load_title), keepBeside = true) {
                         InfoButton(stringResource(R.string.trs_load_title), stringResource(R.string.trs_load_hint))
                     }
                 }
@@ -343,7 +343,7 @@ fun StatsHubScreen(
             }
             if (s.strength.isNotEmpty()) {
                 item {
-                    SectionTitle(stringResource(R.string.trs_strength_title)) {
+                    SectionTitle(stringResource(R.string.trs_strength_title), keepBeside = true) {
                         InfoButton(stringResource(R.string.trs_strength_title), stringResource(R.string.trs_strength_hint))
                     }
                 }

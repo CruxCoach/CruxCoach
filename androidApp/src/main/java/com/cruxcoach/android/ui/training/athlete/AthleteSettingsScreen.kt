@@ -819,7 +819,7 @@ private fun ReminderSection(p: AthleteProfile, update: ((AthleteProfile) -> Athl
     var picking by rememberSaveable { mutableStateOf(false) }
     val timeText = String.format(java.util.Locale.ROOT, "%02d:%02d", p.weighReminderMinutes / 60, p.weighReminderMinutes % 60)
 
-    SectionTitle(stringResource(R.string.trr_title)) {
+    SectionTitle(stringResource(R.string.trr_title), keepBeside = true) {
         InfoButton(stringResource(R.string.trr_title), stringResource(R.string.trr_info_text))
     }
     SwitchRow(stringResource(R.string.trr_weigh), p.weighReminderEnabled, "weigh_reminder") { on ->
@@ -918,7 +918,7 @@ private fun TrainingReminderSection(p: AthleteProfile, onOpenWeekPlan: () -> Uni
     var picking by rememberSaveable { mutableStateOf(false) }
     val timeText = String.format(java.util.Locale.ROOT, "%02d:%02d", p.trainingReminderMinutes / 60, p.trainingReminderMinutes % 60)
 
-    SectionTitle(stringResource(R.string.trw_reminder_title)) {
+    SectionTitle(stringResource(R.string.trw_reminder_title), keepBeside = true) {
         InfoButton(stringResource(R.string.trw_reminder_title), stringResource(R.string.trw_reminder_info))
     }
     SwitchRow(stringResource(R.string.trw_reminder_switch), p.trainingReminderEnabled, "training_reminder") { on ->
@@ -975,7 +975,7 @@ private fun TrainingReminderSection(p: AthleteProfile, onOpenWeekPlan: () -> Uni
 
 @Composable
 private fun CoachProfileSection(p: AthleteProfile, completeness: com.cruxcoach.athlete.logic.Completeness?, onOpen: () -> Unit) {
-    SectionTitle(stringResource(R.string.trc_settings_title)) {
+    SectionTitle(stringResource(R.string.trc_settings_title), keepBeside = true) {
         InfoButton(stringResource(R.string.trc_settings_title), stringResource(R.string.trc_settings_info))
     }
     OutlinedCard(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("open_coach_setup")) {

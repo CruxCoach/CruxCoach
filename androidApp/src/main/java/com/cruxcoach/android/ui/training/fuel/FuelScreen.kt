@@ -749,16 +749,17 @@ private fun RingLabel(text: String) {
 /**
  * Inside a ring: the value big, the target small below, sized to the ring. A
  * small ring drops the unit from the target ("von 206"); the line under the
- * ring carries it ("noch 68 g").
+ * ring carries it ("noch 68 g"). Without a target the line is the unit alone ([unitOnly]).
  */
 @Composable
-private fun RingCenter(value: String, target: String, compactTarget: String, size: androidx.compose.ui.unit.Dp, valueTag: String? = null) {
+private fun RingCenter(value: String, target: String, compactTarget: String, size: androidx.compose.ui.unit.Dp, valueTag: String? = null,
+    unitOnly: Boolean = false) {
     val compact = size < 84.dp
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.widthIn(max = size - 18.dp)) {
         Text(value, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold, maxLines = 1, modifier = valueTag?.let { Modifier.testTag(it) } ?: Modifier)
-        // At a large font only the value fits inside; the target goes under the ring ([RingTarget]).
-        if (!largeRingFont()) FitText(if (compact) compactTarget else target, MaterialTheme.typography.labelSmall, MaterialTheme.colorScheme.onSurfaceVariant)
+        // At a large font only the value fits inside; the target goes under the ring ([RingTarget]), a unit alone stays.
+        if (unitOnly || !largeRingFont()) FitText(if (compact) compactTarget else target, MaterialTheme.typography.labelSmall, MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -808,7 +809,7 @@ private fun MacroRing(
                         modifier = Modifier.size(if (size < 84.dp) 14.dp else 18.dp))
                 }
                 RingCenter("${value.roundToInt()}", if (target != null) stringResource(R.string.tru_of_g, target) else "g",
-                    if (target != null) stringResource(R.string.tru_of_short, target) else "g", size)
+                    if (target != null) stringResource(R.string.tru_of_short, target) else "g", size, unitOnly = target == null)
             }
         }
         RingLabel(label)
@@ -848,7 +849,7 @@ private fun EnergyRing(
             RingCenter((if (estimated) "≈" else "") + value, if (target != null) stringResource(R.string.trn_of_kcal, target) else "kcal",
                 if (target != null) stringResource(R.string.tru_of_short, target) else "kcal",
                 // Four digits need a step smaller than grams.
-                size - 8.dp, valueTag = "fuel_kcal")
+                size - 8.dp, valueTag = "fuel_kcal", unitOnly = target == null)
         }
         RingLabel(stringResource(R.string.trn_energy))
         if (target != null) RingTarget(stringResource(R.string.trn_of_kcal, target))

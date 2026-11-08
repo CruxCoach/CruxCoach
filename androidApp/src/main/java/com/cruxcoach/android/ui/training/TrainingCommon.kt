@@ -117,8 +117,6 @@ fun TrainingTabBar(selected: TrainingTab, onSelect: (TrainingTab) -> Unit) {
                 icon = { Icon(icon, contentDescription = if (labels) null else stringResource(label)) },
                 // At a large font the labels do not fit ("Traini", "Ernäh", even the selected one): icons only.
                 label = if (labels) { { Text(stringResource(label), maxLines = 1) } } else null,
-                // The theme's default label colour for the selected tab is its muted secondary: dimmer than the others.
-                colors = NavigationBarItemDefaults.colors(selectedTextColor = MaterialTheme.colorScheme.onSurface),
                 modifier = Modifier.testTag("training_tab_${tab.name.lowercase()}"),
             )
         }
@@ -136,14 +134,12 @@ fun TrainingSnackbarHost(state: SnackbarHostState) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrainingSwitch(exercises: Boolean, onWorkouts: () -> Unit, onExercises: () -> Unit) {
-    // The selected half reads at least as clearly as the other one (the theme's default is muted).
-    val colors = SegmentedButtonDefaults.colors(activeContentColor = MaterialTheme.colorScheme.onSurface)
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        SegmentedButton(selected = !exercises, onClick = { if (exercises) onWorkouts() }, colors = colors,
+        SegmentedButton(selected = !exercises, onClick = { if (exercises) onWorkouts() },
             shape = SegmentedButtonDefaults.itemShape(0, 2), modifier = Modifier.testTag("training_switch_workouts")) {
             Text(stringResource(R.string.tr_tab_workouts))
         }
-        SegmentedButton(selected = exercises, onClick = { if (!exercises) onExercises() }, colors = colors,
+        SegmentedButton(selected = exercises, onClick = { if (!exercises) onExercises() },
             shape = SegmentedButtonDefaults.itemShape(1, 2), modifier = Modifier.testTag("training_switch_exercises")) {
             Text(stringResource(R.string.tr_tab_exercises))
         }
@@ -399,10 +395,17 @@ fun TrainingScaffold(
 }
 
 @Composable
-fun SectionTitle(text: String, modifier: Modifier = Modifier, trailing: @Composable RowScope.() -> Unit = {}) {
-    // The action below the title when both do not fit in a row ("Mein/e Work/outs" at 320 dp and the largest font).
+fun SectionTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+    keepBeside: Boolean = false,
+    trailing: @Composable RowScope.() -> Unit = {},
+) {
+    // The action below the title when both do not fit in a row ("Mein/e Work/outs" at 320 dp and the largest font);
+    // an ⓘ stays beside it ([keepBeside]).
     LabelBesideOrAbove(
         modifier = modifier.padding(top = 16.dp, bottom = 8.dp),
+        keepBeside = keepBeside,
         label = { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) },
         stepper = trailing,
     )
@@ -453,42 +456,45 @@ internal fun keptChangeText(replaced: String, chosen: String?, catalog: com.crux
     else stringResource(R.string.trk_without, catalog.fallbackFor(replaced).name(language))
 
 /**
- * The label beside its stepper (or badge, value, action) when it fits there without breaking a word and without
- * becoming a narrow column, above it otherwise, with the stepper at the end below: "Zusatzgewicht" or "Gewicht pro
- * Hantel" next to two 56 dp buttons broke mid-word at 360 dp, and a title beside a badge or a text button broke into
- * single letters at 320 dp and the largest font (UI pass 0.2.5).
+ * The label beside its stepper (or badge, value, action) when it fits there without breaking a word and, at a large
+ * font, without becoming a narrow column; above it otherwise, with the stepper at the end below: "Zusatzgewicht" or
+ * "Gewicht pro Hantel" next to two 56 dp buttons broke mid-word at 360 dp, and a title beside a badge or a text button
+ * broke into single letters at 320 dp and the largest font (UI pass 0.2.5). Below a font scale of 1.3 the label wraps
+ * beside the stepper as in a Row.
  *
- * [growth] is how much taller than on one line the label may get beside the stepper: 2 lets one line wrap to two,
- * 1.5 lets a title with one line under it grow by one line, 1 keeps it on one line.
+ * [growth] is how much taller than on one line the label may get beside the stepper at a large font: 2 lets one line
+ * wrap to two, 1.5 lets a title with one line under it grow by one line, 1 keeps it on one line. [keepBeside] keeps an
+ * icon (ⓘ, a menu) beside its label, which wraps next to it: below, it looked lost.
  */
 @Composable
 internal fun LabelBesideOrAbove(
     label: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     growth: Float = 2f,
+    keepBeside: Boolean = false,
     stepper: @Composable RowScope.() -> Unit,
 ) {
     val row: @Composable () -> Unit = { Row(verticalAlignment = Alignment.CenterVertically, content = stepper) }
-    val policy = remember(growth) { LabelBesideOrAbovePolicy(growth) }
+    val policy = remember(growth, keepBeside) { LabelBesideOrAbovePolicy(growth, keepBeside) }
     androidx.compose.ui.layout.Layout(contents = listOf(label, row), modifier = modifier.fillMaxWidth(), measurePolicy = policy)
 }
 
-private class LabelBesideOrAbovePolicy(private val growth: Float) : androidx.compose.ui.layout.MultiContentMeasurePolicy {
+private class LabelBesideOrAbovePolicy(private val growth: Float, private val keepBeside: Boolean) :
+    androidx.compose.ui.layout.MultiContentMeasurePolicy {
     private val INF = androidx.compose.ui.unit.Constraints.Infinity
 
     /**
-     * Beside when the label fits next to the stepper on one line, or wraps there without breaking a word to at most
-     * [growth] times its height on one line; an unbounded width always fits. Text with a line limit measures only up
-     * to its limit, so labels that may wrap far have none.
+     * Beside when the label fits next to the stepper on one line, or wraps there without breaking a word (at a large
+     * font to at most [growth] times its height on one line); an unbounded width always fits. Text with a line limit
+     * measures only up to its limit, so labels that may wrap far have none.
      */
     private fun androidx.compose.ui.unit.Density.beside(label: androidx.compose.ui.layout.IntrinsicMeasurable, stepperWidth: Int, width: Int): Boolean {
-        if (width == INF) return true
-        // An icon (ⓘ, a menu) stays beside its title, which wraps next to it: below, it looked lost.
-        if (stepperWidth <= 56.dp.roundToPx()) return true
+        if (width == INF || keepBeside) return true
         val room = width - stepperWidth
         if (room <= 0) return false
         if (label.maxIntrinsicWidth(INF) <= room) return true
         if (label.minIntrinsicWidth(INF) > room) return false
+        if (fontScale < 1.3f) return true
         // An eighth on top covers rounding: two lines measure a pixel more than twice one.
         val oneLine = label.maxIntrinsicHeight(INF)
         return label.maxIntrinsicHeight(room) <= oneLine * growth + oneLine / 8
@@ -501,23 +507,24 @@ private class LabelBesideOrAbovePolicy(private val growth: Float) : androidx.com
         val s = measurables[1].first().measure(constraints.copy(minWidth = 0, minHeight = 0))
         val l = measurables[0].first()
         val bounded = constraints.hasBoundedWidth
+        // placeRelative: in a right-to-left language the label starts on the right and the stepper sits on the left.
         return if (beside(l, s.width, if (bounded) constraints.maxWidth else INF)) {
-            val lp = l.measure(if (bounded) androidx.compose.ui.unit.Constraints(maxWidth = constraints.maxWidth - s.width)
+            val lp = l.measure(if (bounded) androidx.compose.ui.unit.Constraints(maxWidth = (constraints.maxWidth - s.width).coerceAtLeast(0))
                 else androidx.compose.ui.unit.Constraints())
             val width = if (bounded) constraints.maxWidth else lp.width + s.width
             // A minimum height (a 48 dp row) centres the content, as a Row would.
             val height = maxOf(lp.height, s.height, constraints.minHeight)
             layout(width, height) {
-                lp.place(0, (height - lp.height) / 2)
-                s.place(width - s.width, (height - s.height) / 2)
+                lp.placeRelative(0, (height - lp.height) / 2)
+                s.placeRelative(width - s.width, (height - s.height) / 2)
             }
         } else {
             val width = constraints.maxWidth
             val lp = l.measure(androidx.compose.ui.unit.Constraints(maxWidth = width))
             val top = maxOf(0, (constraints.minHeight - lp.height - s.height) / 2)
             layout(width, maxOf(lp.height + s.height, constraints.minHeight)) {
-                lp.place(0, top)
-                s.place(width - s.width, top + lp.height)
+                lp.placeRelative(0, top)
+                s.placeRelative(width - s.width, top + lp.height)
             }
         }
     }
@@ -528,7 +535,7 @@ private class LabelBesideOrAbovePolicy(private val growth: Float) : androidx.com
         val s = measurables[1].first()
         val sw = s.maxIntrinsicWidth(INF)
         val sh = s.maxIntrinsicHeight(sw)
-        return if (beside(l, sw, width)) maxOf(l.maxIntrinsicHeight(if (width == INF) INF else width - sw), sh)
+        return if (beside(l, sw, width)) maxOf(l.maxIntrinsicHeight(if (width == INF) INF else (width - sw).coerceAtLeast(0)), sh)
             else l.maxIntrinsicHeight(width) + sh
     }
 

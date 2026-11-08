@@ -413,7 +413,7 @@ fun WorkoutSummaryScreen(
             if (state.ownLoads.isNotEmpty()) {
                 // The athlete worked lighter than planned: next time plans their load (UX review 2026-10-16).
                 item {
-                    SectionTitle(stringResource(R.string.trw_own_loads_title)) {
+                    SectionTitle(stringResource(R.string.trw_own_loads_title), keepBeside = true) {
                         com.cruxcoach.android.ui.common.InfoButton(stringResource(R.string.trw_own_loads_title), stringResource(R.string.trw_own_loads_info))
                     }
                 }

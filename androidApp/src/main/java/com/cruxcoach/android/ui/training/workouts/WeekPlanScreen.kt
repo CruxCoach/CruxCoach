@@ -142,7 +142,7 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
                 }
             }
             item {
-                SectionTitle(stringResource(R.string.trwo_session_minutes)) {
+                SectionTitle(stringResource(R.string.trwo_session_minutes), keepBeside = true) {
                     com.cruxcoach.android.ui.common.InfoButton(stringResource(R.string.trwo_session_minutes), stringResource(R.string.trwo_session_minutes_hint))
                 }
             }
