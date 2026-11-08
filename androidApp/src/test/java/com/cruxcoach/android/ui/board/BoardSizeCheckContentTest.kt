@@ -123,7 +123,7 @@ class BoardSizeCheckContentTest {
 
     @Test fun `a check that starts with the larger kit says why`() {
         show(ask().copy(currentSizeId = 7))
-        compose.onNodeWithText("darum zuerst", substring = true).assertExists()
+        compose.onNodeWithText("zu unterscheiden", substring = true).assertExists()
         compose.onNodeWithTag("board_size_check_yes").assertIsEnabled()
     }
 
