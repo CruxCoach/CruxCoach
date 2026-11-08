@@ -151,6 +151,9 @@ object Routes {
         return if (qs.isEmpty()) "climb_creator" else "climb_creator?${qs.joinToString("&")}"
     }
     const val BOARD_LOGBOOK = "board_logbook"
+    /** The year in review (#64) of one year. */
+    const val YEAR_REVIEW = "year_review/{year}"
+    fun yearReview(year: Int) = "year_review/$year"
     const val BOARD_SYNC = "board_sync"
     const val BOARD_LISTS = "board_lists"
     const val BOARD_LOGBOOK_HISTORY = "board_logbook_history"
@@ -625,6 +628,7 @@ fun CruxCoachNavHost(
                         onNavigateToSetter = { pubkey ->
                             navController.navigate(Routes.setterDetail(pubkey))
                         },
+                        onOpenYearReview = { year -> navController.navigate(Routes.yearReview(year)) },
                     )
                 }
             }
@@ -729,8 +733,16 @@ fun CruxCoachNavHost(
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                     },
                     onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenYearReview = { year -> navController.navigate(Routes.yearReview(year)) },
                 )
+            }
+
+            composable(
+                Routes.YEAR_REVIEW,
+                arguments = listOf(navArgument(com.cruxcoach.android.ui.yearreview.YearReviewViewModel.ARG_YEAR) { type = NavType.IntType }),
+            ) {
+                com.cruxcoach.android.ui.yearreview.YearReviewScreen(onClose = { navController.popBackStack() })
             }
 
             composable(

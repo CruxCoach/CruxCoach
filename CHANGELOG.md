@@ -80,6 +80,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ready to share as an image. Tries from earlier days count here too, so a
   first-go send of an old project is no flash, and the card at the end of a
   timed session shows only the milestones of that session.
+- Year in review: your climbing year across all your boards, imported logbooks
+  included, as pages you tap through: volume, boards and angles, your hardest
+  send per board, last year over the same span, your rhythm, highlights, the
+  holds you touched on your sends, the hold types you tagged, off-board
+  training and your climber type (one of ten, picked by rules on your own
+  numbers, with the rule shown). Every page can be shared as an image drawn
+  on the phone, with your name, problem names and exact dates left out unless
+  you switch them on. From 1 December to 31 January a card on the start screen
+  and in the logbook invites you in (its X hides it for the year); all year the
+  statistics keep the review with a year picker. With little data it shows a
+  short "your year so far". A list view serves screen readers, and turning
+  animations off in the system turns them off here too. Computed on your phone;
+  nothing is uploaded.
 - Wall games, from the main menu or a problem's menu ("Play as a game"):
   "Floor is lava" (lit rows rise from the bottom, five speeds), "Endurance" (a
   problem appears row by row, five waiting times), "Hold thief" (a random
