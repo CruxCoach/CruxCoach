@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.training
 
 import android.app.Application
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen
 import com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel
 import com.cruxcoach.android.ui.training.athlete.SettingsSection
@@ -16,6 +17,7 @@ import com.cruxcoach.athlete.model.ExerciseChoice
 import com.cruxcoach.athlete.model.ExperienceBand
 import com.cruxcoach.athlete.model.SetupState
 import com.cruxcoach.athlete.model.SuggestionEventKind
+import com.cruxcoach.athlete.model.Workout
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,7 +27,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.plus
+
+/** The day the tests run on, whatever the real date: see [ExerciseChoiceTest.athlete]. */
+private const val DAY = "2026-11-07"
 
 /**
  * Well-known exercises first (issue #68): an exercise new to the athlete is marked on Today's card with the way to
@@ -38,10 +45,31 @@ class ExerciseChoiceTest : AthleteScreenTest() {
 
     @Before
     fun athlete() {
+        // A fixed day: the suggester's choice, and so which exercise is new and where it sits on the card, changes
+        // with the date. The clock keeps running from there, so the ledger stays in order (changes() sorts by time).
+        val start = LocalDate.parse(DAY).atStartOfDayIn(service.zone).toEpochMilliseconds() + 12 * 3_600_000L
+        val offset = start - System.currentTimeMillis()
+        service.clock = { System.currentTimeMillis() + offset }
         repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 70.0, "kg", 1))
         repo.updateProfile { it.copy(equipmentConfigured = true, equipment = setOf(EquipmentV2.NONE, EquipmentV2.MAT,
             EquipmentV2.PULL_UP_BAR, EquipmentV2.DUMBBELL, EquipmentV2.BANDS),
             coach = it.coach.copy(experience = ExperienceBand.Y3_5, setupState = SetupState.DONE)) }
+    }
+
+    /**
+     * A Basic main exercise of today's suggestion, from place [from] on, with an alternative new to the athlete, and that
+     * alternative. Which exercises a day brings changes with the date, so the tests take the first that has one.
+     */
+    private fun TodayViewModel.basicWithNewAlternative(from: Int = 0): Pair<String, String> =
+        state.value.suggestion!!.routine.items.filter { !it.warmup }.drop(from)
+            .filter { service.catalog.fallbackFor(it.slug).familiarity == Familiarity.BASIC }
+            .firstNotNullOf { item -> alternatives(item.slug).firstOrNull { it.def.familiarity != Familiarity.BASIC }?.let { item.slug to it.def.slug } }
+
+    /** Starts today's suggestion; waits until its start is in the ledger too, which is written after the workout. */
+    private fun TodayViewModel.startAndWait(): Workout {
+        startSuggestion("Training")
+        until { repo.openWorkout()?.let { w -> repo.suggestionEventsForDay(w.day).any { it.kind == SuggestionEventKind.STARTED && it.workoutId == w.id } } == true }
+        return repo.openWorkout()!!
     }
 
     private fun until(condition: () -> Boolean) = compose.waitUntil(WAIT_MS) {
@@ -62,9 +90,8 @@ class ExerciseChoiceTest : AthleteScreenTest() {
         assertTrue(main.any { service.catalog.fallbackFor(it.slug).familiarity == Familiarity.BASIC }, "${main.map { it.slug }}")
         // All Basic today: one swapped in by hand is just as new to the athlete.
         val slug = new.singleOrNull()?.slug ?: run {
-            val first = main.first()
-            val alt = vm.alternatives(first.slug).first { it.def.familiarity != Familiarity.BASIC }.def.slug
-            vm.swapExercise(first.slug, alt)
+            val (first, alt) = vm.basicWithNewAlternative()
+            vm.swapExercise(first, alt)
             until { alt in vm.state.value.newToYou }
             alt
         }
@@ -72,6 +99,7 @@ class ExerciseChoiceTest : AthleteScreenTest() {
         assertTrue(to.familiarity == Familiarity.BASIC, to.slug)
         val count = items().size
         render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        // Also behind "+N more" (the card shows four): the list is open then, so the hint is on the card.
         scrollTo("today_list", hasTestTag("today_item_$slug"))
         waitForTag("today_new_$slug")
         click("today_item_$slug")
@@ -95,32 +123,54 @@ class ExerciseChoiceTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `a new exercise behind more opens the list, and it stays open after don't know it`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        fun main() = vm.state.value.suggestion!!.routine.items.filter { !it.warmup }
+        assertTrue(main().size > 4, "${main().map { it.slug }}")
+        // One the athlete has never done behind "+N more": the coach's own, or one swapped in there.
+        val slug = main().drop(4).firstOrNull { it.slug in vm.state.value.newToYou }?.slug
+            ?: vm.basicWithNewAlternative(from = 4).let { (hidden, x) -> vm.swapExercise(hidden, x); x }
+        until { main().drop(4).any { it.slug == slug } && slug in vm.state.value.newToYou }
+        fun shown(tag: String) = compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        // The list is open from the start, with the hint.
+        scrollTo("today_list", hasTestTag("today_new_$slug"))
+        // "Don't know it" on it: the coach's pick takes its place, and the list stays open.
+        val to = assertNotNull(vm.familiarSwap(slug))
+        click("today_item_$slug")
+        click("today_swap_dont_know")
+        compose.waitUntil(WAIT_MS) { shown("today_item_${to.slug}") }
+        // "Show less" still closes it.
+        click("today_items_more")
+        compose.waitUntil(WAIT_MS) { !shown("today_item_${to.slug}") }
+    }
+
+    @Test
     fun `don't know it after a hand swap asks nothing afterwards and takes the swap back`() {
         val vm = loaded(TodayViewModel(service))
         vm.saveQuickCheckin(null, emptySet())
         until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
         fun items() = vm.state.value.suggestion!!.routine.items
         // A Basic pick swapped by hand for one the athlete has never done …
-        val first = items().first { !it.warmup && service.catalog.fallbackFor(it.slug).familiarity == Familiarity.BASIC }
-        val x = vm.alternatives(first.slug).first { it.def.familiarity != Familiarity.BASIC }.def.slug
-        vm.swapExercise(first.slug, x)
+        val (first, x) = vm.basicWithNewAlternative()
+        vm.swapExercise(first, x)
         until { x in vm.state.value.newToYou }
         // … then "Kenne ich nicht" on it.
         val to = assertNotNull(vm.familiarSwap(x))
         vm.dontKnowExercise(x, to.slug)
         until { items().any { it.slug == to.slug } && items().none { it.slug == x } }
         // The training from the card asks no "from now on like this?" for that slot: the athlete never trained the swap.
-        vm.startSuggestion("Training")
-        until { repo.openWorkout() != null }
-        val workout = repo.openWorkout()!!
-        assertTrue(service.keepQuestion(workout).none { it.replaced == first.slug || it.chosen == x }, "${service.keepQuestion(workout)}")
+        val workout = vm.startAndWait()
+        assertTrue(service.keepQuestion(workout).none { it.replaced == first || it.chosen == x }, "${service.keepQuestion(workout)}")
         // The swap teaches nothing: no point for the unknown pick, none against the swapped exercise, and it does not rest.
         val today = service.today()
         val events = repo.suggestionEventsForDay(today.toString())
         val affinity = PreferenceLearning.affinity(events.filter { it.kind != SuggestionEventKind.STARTED }, emptyList(), today)
         assertNull(affinity[x])
-        assertNull(affinity[first.slug])
-        assertTrue(first.slug !in PreferenceLearning.resting(events, today.plus(kotlinx.datetime.DatePeriod(days = 1))))
+        assertNull(affinity[first])
+        assertTrue(first !in PreferenceLearning.resting(events, today.plus(kotlinx.datetime.DatePeriod(days = 1))))
     }
 
     @Test
@@ -129,20 +179,17 @@ class ExerciseChoiceTest : AthleteScreenTest() {
         vm.saveQuickCheckin(null, emptySet())
         until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
         fun items() = vm.state.value.suggestion!!.routine.items
-        val first = items().first { !it.warmup && service.catalog.fallbackFor(it.slug).familiarity == Familiarity.BASIC }
-        val x = vm.alternatives(first.slug).first { it.def.familiarity != Familiarity.BASIC }.def.slug
-        vm.swapExercise(first.slug, x)
+        val (first, x) = vm.basicWithNewAlternative()
+        vm.swapExercise(first, x)
         until { x in vm.state.value.newToYou }
         val to = assertNotNull(vm.familiarSwap(x))
         vm.dontKnowExercise(x, to.slug)
         until { items().any { it.slug == to.slug } && items().none { it.slug == x } }
         // Then the athlete swaps the coach's pick by hand: a choice of their own, so the training asks about it.
-        val y = vm.alternatives(to.slug).first { it.def.slug != first.slug && it.def.slug != x }.def.slug
+        val y = vm.alternatives(to.slug).first { it.def.slug != first && it.def.slug != x }.def.slug
         vm.swapExercise(to.slug, y)
         until { items().any { it.slug == y } }
-        vm.startSuggestion("Training")
-        until { repo.openWorkout() != null }
-        assertEquals(listOf(PreferenceLearning.Change(first.slug, y)), service.keepQuestion(repo.openWorkout()!!))
+        assertEquals(listOf(PreferenceLearning.Change(first, y)), service.keepQuestion(vm.startAndWait()))
     }
 
     @Test

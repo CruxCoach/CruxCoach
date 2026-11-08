@@ -290,6 +290,17 @@ class ExerciseFamiliarityTest {
             ev(SuggestionEventKind.SWAPPED, listOf("core.side_plank", "core.dead_bug"), focus = null, workout = "w"),
             ev(SuggestionEventKind.SWAPPED, listOf("core.dead_bug", "core.front_plank"), focus = null, workout = "w"),
         ), "w"))
+        // A swap there and back to the coach's pick asks nothing either: the slot holds what the coach chose.
+        assertEquals(emptyList(), PreferenceLearning.changes(listOf(
+            dontKnow(), started("core.side_plank"),
+            ev(SuggestionEventKind.SWAPPED, listOf("core.side_plank", "core.dead_bug"), focus = null, workout = "w"),
+            ev(SuggestionEventKind.SWAPPED, listOf("core.dead_bug", "core.side_plank"), focus = null, workout = "w"),
+        ), "w"))
+        // The same on the card.
+        assertEquals(emptyList(), PreferenceLearning.changes(listOf(
+            dontKnow(), ev(SuggestionEventKind.SWAPPED, listOf("core.side_plank", "core.dead_bug")),
+            ev(SuggestionEventKind.SWAPPED, listOf("core.dead_bug", "core.side_plank")), started("core.side_plank"),
+        ), "w"))
     }
 
     @Test

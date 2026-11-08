@@ -351,7 +351,8 @@ object PreferenceLearning {
      * swaps and "leave out today" on the card before the start, swaps, skips and removals in the training. A swap back
      * cancels out, a swap of a swap counts once from the suggested exercise. Card changes an earlier training of the
      * day already asked about do not count again; only the suggestion's own exercises count. A slot answered with
-     * "Kenne ich nicht" asks nothing, unless the athlete swaps, leaves out or skips it afterwards.
+     * "Kenne ich nicht" asks nothing while it holds the coach's pick; a swap, leave-out or skip of it afterwards asks,
+     * a swap back to the coach's pick does not.
      */
     fun changes(dayEvents: List<SuggestionEvent>, workoutId: String): List<Change> {
         val sorted = dayEvents.sortedBy { it.createdAt }
@@ -362,9 +363,9 @@ object PreferenceLearning {
         val now = LinkedHashMap<String, String>()   // suggested slug → what took its place ("" = left out)
         val changedAt = mutableMapOf<String, Long>()
         val cardOriginals = mutableSetOf<String>()
-        // Slots where the athlete said "Kenne ich nicht": the coach picked what took their place, so they ask nothing
-        // until the athlete changes the slot again by hand.
-        val unknownSlots = mutableSetOf<String>()
+        // Slots where the athlete said "Kenne ich nicht" → the coach's pick that took their place: a slot that still
+        // holds it asks nothing, whatever the athlete swapped in between.
+        val unknownPick = mutableMapOf<String, String>()
         fun original(shown: String) = now.entries.firstOrNull { it.value == shown }?.key ?: shown
         for (e in sorted) {
             // The card's own changes come before the start and belong to no training; the summary's swap in the
@@ -379,7 +380,6 @@ object PreferenceLearning {
                     val key = original(from)
                     if (key == to) now.remove(key) else now[key] = to
                     changedAt[key] = e.createdAt
-                    unknownSlots -= key
                     if (card) cardOriginals += key
                 }
                 card && e.kind == SuggestionEventKind.FEEDBACK && e.focus == DONT_KNOW -> {
@@ -387,17 +387,17 @@ object PreferenceLearning {
                     val to = e.slugs.getOrNull(1) ?: continue
                     val key = original(from)
                     if (key == to) now.remove(key) else now[key] = to
-                    unknownSlots += key
+                    unknownPick[key] = to
                     cardOriginals += key
                 }
                 card && e.kind == SuggestionEventKind.NEXT && e.feedback == SuggestionFeedback.DISLIKE_EXERCISE && e.value == LEFT_OUT ->
-                    e.slugs.forEach { val key = original(it); now[key] = ""; changedAt[key] = e.createdAt; unknownSlots -= key; cardOriginals += key }
+                    e.slugs.forEach { val key = original(it); now[key] = ""; changedAt[key] = e.createdAt; cardOriginals += key }
                 training && (e.kind == SuggestionEventKind.SKIPPED_SET || (e.kind == SuggestionEventKind.FEEDBACK && e.focus == REMOVED)) ->
-                    e.slugs.forEach { val key = original(it); now[key] = ""; changedAt[key] = e.createdAt; unknownSlots -= key }
+                    e.slugs.forEach { val key = original(it); now[key] = ""; changedAt[key] = e.createdAt }
             }
         }
         val suggested = started.slugs.toSet() + cardOriginals
-        return now.entries.filter { (key, _) -> key in suggested && key !in unknownSlots && (changedAt[key] ?: Long.MIN_VALUE) > answeredAt }
+        return now.entries.filter { (key, to) -> key in suggested && unknownPick[key] != to && (changedAt[key] ?: Long.MIN_VALUE) > answeredAt }
             .map { (key, to) -> Change(key, to.ifEmpty { null }) }
     }
 
