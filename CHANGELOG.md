@@ -566,7 +566,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   phone without a browser; a short message says that no app can open the link. The
   community links do the same.
 - "Request account data from Moon" in the MoonBoard import no longer closes the app on
-  a phone without an email app; a message names the address to send the copied request to.
+  a phone without an email app; a message says so, and the screen names the address to
+  send the copied request to.
 
 ## [0.2.4] - 2026-10-25
 

@@ -418,12 +418,12 @@ fun MoonBoardCsvImportScreen(
             OutlinedButton(
                 onClick = {
                     clipboard.setText(AnnotatedString(requestBody))
-                    // No mail app (common on phones without Google apps): the request
-                    // is already copied, so the toast names the address to send it to.
+                    // No mail app (common on phones without Google apps): the request is
+                    // already copied and the address stands below, so a toast says so.
                     uriHandler.openUriOrToast(
                         context,
                         "mailto:$MOON_SUPPORT_EMAIL?subject=${Uri.encode(requestSubject)}",
-                        failMessage = context.getString(R.string.moon_csv_no_mail_app, MOON_SUPPORT_EMAIL),
+                        failMessage = context.getString(R.string.moon_csv_no_mail_app),
                         duration = Toast.LENGTH_LONG,
                     )
                 },
@@ -431,7 +431,7 @@ fun MoonBoardCsvImportScreen(
             ) {
                 Text(stringResource(R.string.moon_csv_request_data))
             }
-            Text(stringResource(R.string.import_moon_mail_short), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.import_moon_mail_short, MOON_SUPPORT_EMAIL), style = MaterialTheme.typography.bodyMedium)
             Button(
                 onClick = { picker.launch(arrayOf("text/csv", "text/comma-separated-values", "text/*")) },
                 enabled = !state.importing,
