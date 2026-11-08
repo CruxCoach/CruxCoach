@@ -86,7 +86,7 @@ authenticated WebSocket, "HTTP" a NIP-98 request.
 
 | Capability | Events / endpoints | Auth | What our client needs | Spike |
 |---|---|---|---|---|
-| Profiles | kind 0 (`display_name`, `name`, `picture`, `about`, `nip05` only on the community domain) | WS | Batch fetch by author. | ✅ names |
+| Profiles | kind 0 (`display_name`, `name`, `picture`, `about`, `nip05` only on the community domain) | WS | Batch fetch by author. Setting the name: on top of the user's own newest kind 0 (a relay may return anyone's), other fields and tags kept (an agent's `auth` tag too); the first write starts from the public profile, so the event loses nothing if it reaches public relays (it waits if no public relay answers). Later renames build on the community profile, so public changes made after the first write are not merged in; a separate key per community would end this. | ✅ names, own name |
 | Presence | kind 20001 (ephemeral, `online`/`away`/`offline`), owner-for-agents 20003, snapshot 40902 | WS | Optional. | — |
 | Typing | kind 20002 (ephemeral) | WS | Optional. | — |
 | Status | kind 30315 (NIP-38) | WS | Optional. | — |

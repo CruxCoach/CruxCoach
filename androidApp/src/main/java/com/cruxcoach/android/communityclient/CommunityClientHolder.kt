@@ -9,10 +9,14 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.payment.NostrProfileManager
+import com.cruxcoach.android.payment.PublishedProfileLookup
 import com.cruxcoach.communityclient.CommunityApi
 import com.cruxcoach.communityclient.CommunityClient
 import com.cruxcoach.communityclient.CommunityEndpoint
+import com.cruxcoach.communityclient.CommunityEvent
 import com.cruxcoach.communityclient.CommunityJoin
+import com.cruxcoach.communityclient.CommunityProfile
+import com.cruxcoach.communityclient.ProfileBase
 import com.cruxcoach.communityclient.UnixClock
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip19Bech32.toNpub
@@ -28,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import javax.inject.Inject
 import javax.inject.Named
@@ -42,6 +47,21 @@ data class CommunitySetup(
     /** Just joined with an invite: ask for the name people see, once. */
     val askName: Boolean = false,
 )
+
+/** The user's public profile, as the app's relays hold it. */
+sealed interface PublicProfile {
+    /** Its newest signed kind:0, and the name it shows (empty if none). */
+    data class Found(val base: ProfileBase, val name: String) : PublicProfile
+
+    /** The relays answered without one: a first write starts empty. */
+    data object None : PublicProfile
+
+    /** No relay answered: a first write must wait, it might wipe a profile that exists. */
+    data object Unavailable : PublicProfile
+}
+
+/** The first community profile would start without the public one. */
+class PublicProfileUnavailableException : Exception("public profile unavailable")
 
 /**
  * Owns the one [CommunityClient] of the app and the feature's own small settings
@@ -131,9 +151,25 @@ class CommunityClientHolder @Inject constructor(
         _setup.value = readSetup()
     }
 
-    /** The display name of the app's own Nostr profile, from the local database only. */
-    fun profileName(): String =
-        runCatching { profileManager.getProfileFromCache(signer.pubkey)?.displayName }.getOrNull()?.trim().orEmpty()
+    /**
+     * The user's public profile from the app's relays, as signed. Fields saved only on
+     * this device never come from here, so nothing private reaches the community.
+     */
+    suspend fun publicProfile(): PublicProfile = withContext(Dispatchers.IO) {
+        when (val lookup = profileManager.fetchPublishedProfile(signer.pubkey)) {
+            is PublishedProfileLookup.Found -> {
+                val event = lookup.event
+                val tags = event.tags.map { it.toList() }
+                val asCommunityEvent = CommunityEvent(event.id, event.pubKey, event.createdAt, event.kind, tags, event.content, event.sig)
+                PublicProfile.Found(
+                    base = ProfileBase(event.content, tags, event.createdAt),
+                    name = CommunityProfile.fromEvent(asCommunityEvent)?.label.orEmpty(),
+                )
+            }
+            PublishedProfileLookup.None -> PublicProfile.None
+            PublishedProfileLookup.Unreachable -> PublicProfile.Unavailable
+        }
+    }
 
     /** Forgets the joined community on this device (membership on the server stays). */
     fun forgetCommunity() {

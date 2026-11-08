@@ -12,6 +12,8 @@ import com.cruxcoach.communityclient.CommunityInvite
 import com.cruxcoach.communityclient.CommunityProfile
 import com.cruxcoach.communityclient.ForumView
 import com.cruxcoach.communityclient.JoinPolicy
+import com.cruxcoach.communityclient.MAX_DISPLAY_NAME_LENGTH
+import com.cruxcoach.communityclient.ProfileBase
 import com.cruxcoach.communityclient.PublishResult
 import com.cruxcoach.communityclient.RoomListItem
 import com.cruxcoach.communityclient.RoomsState
@@ -19,9 +21,10 @@ import com.cruxcoach.communityclient.SessionState
 import com.cruxcoach.communityclient.StreamTimeline
 import com.cruxcoach.communityclient.ThreadRef
 import com.cruxcoach.communityclient.ThreadView
+import com.cruxcoach.communityclient.relayReasonPrefix
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,6 +36,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -50,6 +54,9 @@ sealed interface JoinStep {
 /** User-facing join problems; the screen maps them to strings. */
 enum class JoinError { BAD_LINK, EXPIRED, USED_UP, INVALID, RATE_LIMITED, SIGN_REFUSED, NETWORK, SERVER, NOT_MEMBER }
 
+/** Why a message, a room join or a name was not saved; the screen maps them to strings. */
+enum class PublishError { SIGN_REFUSED, NETWORK, RATE_LIMITED, NOT_ALLOWED, REFUSED, PROFILE_UNAVAILABLE }
+
 /** State of the community home: off, joining, or the room list. */
 data class CommunityHomeState(
     val enabled: Boolean,
@@ -61,7 +68,7 @@ data class CommunityHomeState(
     val npub: String = "",
     val usesAmber: Boolean = false,
     /** Why the last room join failed, until the next try. */
-    val joinRoomError: String? = null,
+    val joinRoomError: PublishError? = null,
     /** Just joined: ask for the name people see. */
     val askName: Boolean = false,
     /** The user's display name on the community, if set. */
@@ -69,11 +76,11 @@ data class CommunityHomeState(
     val name: NameEdit = NameEdit(),
 )
 
-/** Setting the display name: the suggestion from the app's profile, and the save in progress. */
+/** Setting the display name: the suggestion from the public profile, and the save in progress. */
 data class NameEdit(
     val suggested: String = "",
     val saving: Boolean = false,
-    val error: String? = null,
+    val error: PublishError? = null,
     /** Names saved from this screen; a name dialog closes when this goes up. */
     val savedCount: Int = 0,
 )
@@ -84,16 +91,9 @@ class CommunityHomeViewModel @Inject constructor(
     private val holder: CommunityClientHolder,
 ) : ViewModel() {
     private val join = MutableStateFlow<JoinStep>(JoinStep.EnterInvite())
-    private val joinRoomError = MutableStateFlow<String?>(null)
+    private val joinRoomError = MutableStateFlow<PublishError?>(null)
     private val nameEdit = MutableStateFlow(NameEdit())
-
-    init {
-        // The local profile lives in the encrypted database: read it off the main thread.
-        viewModelScope.launch(Dispatchers.IO) {
-            val suggested = holder.profileName()
-            nameEdit.value = nameEdit.value.copy(suggested = suggested)
-        }
-    }
+    private var suggestionJob: Job? = null
 
     val state: StateFlow<CommunityHomeState> = holder.setup.flatMapLatest { setup ->
         val client = holder.client()
@@ -165,7 +165,9 @@ class CommunityHomeViewModel @Inject constructor(
             )
             if (error == null) {
                 join.value = JoinStep.EnterInvite()
-                holder.markJoined(step.invite.endpoint, askName = true)
+                // A key that was a member already has its name here; asking again would overwrite it.
+                val newMember = (result.getOrNull() as? ClaimResult.Joined)?.alreadyMember == false
+                holder.markJoined(step.invite.endpoint, askName = newMember)
             } else {
                 join.value = step.copy(error = error)
             }
@@ -187,22 +189,38 @@ class CommunityHomeViewModel @Inject constructor(
         viewModelScope.launch { client.refreshRooms() }
     }
 
+    /** Looks up the name to suggest in the public profile, once per screen (again after a miss). */
+    fun loadSuggestion() {
+        if (suggestionJob?.isActive == true || nameEdit.value.suggested.isNotEmpty()) return
+        suggestionJob = viewModelScope.launch {
+            val found = runCatching { holder.publicProfile() }.getOrNull() as? PublicProfile.Found
+            nameEdit.update { it.copy(suggested = found?.name.orEmpty().take(MAX_DISPLAY_NAME_LENGTH)) }
+        }
+    }
+
     /** Publishes [name] as the user's display name on the community. */
     fun saveName(name: String) {
         val client = holder.client() ?: return
         if (nameEdit.value.saving) return
-        nameEdit.value = nameEdit.value.copy(saving = true, error = null)
+        nameEdit.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
-            val error = publishError { client.setDisplayName(name) }
-            nameEdit.value = nameEdit.value.let { it.copy(saving = false, error = error, savedCount = it.savedCount + if (error == null) 1 else 0) }
+            val error = publishError { client.setDisplayName(name, firstBase = ::firstProfileBase) }
+            nameEdit.update { it.copy(saving = false, error = error, savedCount = it.savedCount + if (error == null) 1 else 0) }
             if (error == null) holder.nameAsked()
         }
+    }
+
+    /** The first community profile starts from the public one, so it loses nothing if it travels. */
+    private suspend fun firstProfileBase(): ProfileBase? = when (val profile = holder.publicProfile()) {
+        is PublicProfile.Found -> profile.base
+        PublicProfile.None -> null
+        PublicProfile.Unavailable -> throw PublicProfileUnavailableException()
     }
 
     fun skipName() = holder.nameAsked()
 
     fun clearNameError() {
-        nameEdit.value = nameEdit.value.copy(error = null)
+        nameEdit.update { it.copy(error = null) }
     }
 
     fun joinRoom(channelId: String) {
@@ -221,7 +239,7 @@ data class CommunityRoomState(
     val profiles: Map<String, CommunityProfile> = emptyMap(),
     val me: String = "",
     val sending: Boolean = false,
-    val sendError: String? = null,
+    val sendError: PublishError? = null,
     /** Messages sent from this screen; the composer clears its text when this goes up. */
     val sentCount: Int = 0,
     val joining: Boolean = false,
@@ -283,7 +301,7 @@ data class CommunityThreadState(
     val profiles: Map<String, CommunityProfile> = emptyMap(),
     val me: String = "",
     val sending: Boolean = false,
-    val sendError: String? = null,
+    val sendError: PublishError? = null,
     /** Replies sent from this screen; the composer clears its text when this goes up. */
     val sentCount: Int = 0,
 )
@@ -324,12 +342,28 @@ class CommunityThreadViewModel @Inject constructor(
     }
 }
 
-/** Null when the relay accepted the event, else why not (relay message or signer refusal). */
-private suspend fun publishError(block: suspend () -> PublishResult): String? =
+/** Null when the relay accepted the event, else why not (relay refusal, connection, or signer). */
+private suspend fun publishError(block: suspend () -> PublishResult): PublishError? =
     try {
-        block().let { if (it.accepted) null else it.message.ifBlank { "refused" } }
+        block().let { if (it.accepted) null else publishErrorOf(it.message) }
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
+    } catch (e: PublicProfileUnavailableException) {
+        PublishError.PROFILE_UNAVAILABLE
+    } catch (e: CommunityException) {
+        // offline, timeout, or a query the relay closed ("closed: <reason>")
+        publishErrorOf(e.message.orEmpty().removePrefix("closed:").trim())
+    } catch (e: java.io.IOException) {
+        PublishError.NETWORK
     } catch (e: Exception) {
-        e.message ?: e.javaClass.simpleName
+        // As in the join flow: anything else comes from the signer, e.g. a refusal in Amber.
+        PublishError.SIGN_REFUSED
     }
+
+/** The relay's machine-readable prefix (NIP-01) decides which text the user sees. */
+internal fun publishErrorOf(message: String): PublishError = when (relayReasonPrefix(message)) {
+    "offline", "timeout", "auth-required" -> PublishError.NETWORK
+    "rate-limited" -> PublishError.RATE_LIMITED
+    "restricted", "blocked" -> PublishError.NOT_ALLOWED
+    else -> PublishError.REFUSED
+}

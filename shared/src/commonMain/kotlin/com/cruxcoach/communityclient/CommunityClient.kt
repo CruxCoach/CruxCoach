@@ -209,12 +209,14 @@ class CommunityClient(
 
     /**
      * Sets the user's display name on this community. Reads the newest profile first, so
-     * the other fields (picture, about, set in a Buzz app) stay as they are.
+     * the other fields (picture, about, set in a Buzz app) and tags stay as they are. With
+     * no profile here yet, it starts from [firstBase], the user's public profile.
      */
-    suspend fun setDisplayName(displayName: String): PublishResult {
+    suspend fun setDisplayName(displayName: String, firstBase: suspend () -> ProfileBase? = { null }): PublishResult {
         withTimeoutOrNull(READY_TIMEOUT_MS) { awaitReady() } ?: throw CommunityException("offline: not connected to the community")
-        val current = session.query(listOf(CommunityFilters.profiles(listOf(me)))).maxByOrNull { it.createdAt }
-        val result = session.publish(CommunityEventTemplates.displayName(current, displayName, clock.nowSeconds()))
+        val current = ownNewestProfile(session.query(listOf(CommunityFilters.profiles(listOf(me)))), me)
+        val base = current?.let(ProfileBase::of) ?: firstBase()
+        val result = session.publish(CommunityEventTemplates.displayName(base, displayName, clock.nowSeconds()))
         if (result.accepted) {
             CommunityProfile.fromEvent(result.event)?.let { profile ->
                 profilesLock.withLock { _profiles.value = _profiles.value + (me to profile) }

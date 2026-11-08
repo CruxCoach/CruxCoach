@@ -164,7 +164,7 @@ class CommunityProtocolTest {
             content = """{"name":"alice","display_name":"Alice","picture":"https://img.example/a.png","about":"climbs"}""",
             createdAt = 2_000,
         )
-        val renamed = CommunityEventTemplates.displayName(current, "  Alice K.  ", createdAt = 1_500)
+        val renamed = CommunityEventTemplates.displayName(ProfileBase.of(current), "  Alice K.  ", createdAt = 1_500)
         assertEquals(CommunityKinds.PROFILE, renamed.kind)
         assertEquals(2_001, renamed.createdAt, "a clock behind the current profile must not lose the update")
         val fields = CommunityJson.parseToJsonElement(renamed.content).jsonObject
@@ -173,7 +173,7 @@ class CommunityProtocolTest {
         assertEquals("climbs", fields["about"]?.jsonPrimitive?.content)
         assertEquals("alice", fields["name"]?.jsonPrimitive?.content)
 
-        val cleared = CommunityJson.parseToJsonElement(CommunityEventTemplates.displayName(current, " ", 3_000).content).jsonObject
+        val cleared = CommunityJson.parseToJsonElement(CommunityEventTemplates.displayName(ProfileBase.of(current), " ", 3_000).content).jsonObject
         assertNull(cleared["display_name"])
         assertNull(cleared["name"])
         assertEquals("climbs", cleared["about"]?.jsonPrimitive?.content)
@@ -183,6 +183,44 @@ class CommunityProtocolTest {
         assertEquals("""{"display_name":"${"x".repeat(MAX_DISPLAY_NAME_LENGTH)}"}""", first.content)
         // A broken current profile counts as empty, not as an error.
         val broken = CommunityTestEvents.event(kind = CommunityKinds.PROFILE, tags = emptyList(), content = "not json")
-        assertEquals("""{"display_name":"Bo"}""", CommunityEventTemplates.displayName(broken, "Bo", 3_000).content)
+        assertEquals("""{"display_name":"Bo"}""", CommunityEventTemplates.displayName(ProfileBase.of(broken), "Bo", 3_000).content)
+    }
+
+    @Test
+    fun displayName_keepsTheTags_andStartsTheFirstWriteFromThePublicProfile() {
+        // An agent key's profile carries its NIP-OA auth tag; losing it would cut the agent off.
+        val auth = listOf("auth", CommunityTestEvents.BOB, "", CommunityTestEvents.SIG)
+        val agent = CommunityTestEvents.event(kind = CommunityKinds.PROFILE, tags = listOf(auth), content = """{"display_name":"Bot"}""")
+        assertEquals(listOf(auth), CommunityEventTemplates.displayName(ProfileBase.of(agent), "Bot 2", 3_000).tags)
+
+        // No profile on the community yet: the public one is the base, so name, lud16 and picture survive.
+        val public = ProfileBase(
+            content = """{"name":"alice","lud16":"alice@pay.example","picture":"https://img.example/a.png"}""",
+            tags = emptyList(),
+            createdAt = 1_000,
+        )
+        val first = CommunityJson.parseToJsonElement(CommunityEventTemplates.displayName(public, "Alice K.", 3_000).content).jsonObject
+        assertEquals("Alice K.", first["display_name"]?.jsonPrimitive?.content)
+        assertEquals("alice", first["name"]?.jsonPrimitive?.content)
+        assertEquals("alice@pay.example", first["lud16"]?.jsonPrimitive?.content)
+        assertEquals("https://img.example/a.png", first["picture"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun ownNewestProfile_ignoresProfilesOfOtherKeysAndOtherKinds() {
+        val mine = CommunityTestEvents.event(kind = CommunityKinds.PROFILE, tags = emptyList(), content = """{"display_name":"Alice"}""", createdAt = 1_000)
+        // A misbehaving relay hands back someone else's newer profile, or another kind.
+        val bobs = CommunityTestEvents.event(
+            kind = CommunityKinds.PROFILE,
+            tags = emptyList(),
+            content = """{"display_name":"Bob","nip05":"bob@example.org"}""",
+            pubkey = CommunityTestEvents.BOB,
+            createdAt = 2_000,
+        )
+        val note = CommunityTestEvents.event(kind = 1, tags = emptyList(), content = "{}", createdAt = 3_000)
+        assertEquals(mine, ownNewestProfile(listOf(bobs, note, mine), CommunityTestEvents.ALICE))
+        assertNull(ownNewestProfile(listOf(bobs, note), CommunityTestEvents.ALICE))
+        val newer = mine.copy(id = CommunityTestEvents.id(7), createdAt = 1_500)
+        assertEquals(newer, ownNewestProfile(listOf(mine, newer), CommunityTestEvents.ALICE))
     }
 }
