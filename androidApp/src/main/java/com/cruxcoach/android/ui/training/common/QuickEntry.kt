@@ -94,7 +94,9 @@ fun WeightSheet(
                     value = input, onValueChange = { input = it }, singleLine = true,
                     textStyle = MaterialTheme.typography.headlineMedium.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
                     suffix = { Text(Units.massUnit(units), style = MaterialTheme.typography.titleMedium) },
+                    // Dimmed: in full colour the example read as a value while "Save" stayed off (UI pass 0.2.5).
                     placeholder = { Text(if (units == UnitSystem.IMPERIAL) "150" else "70", style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
                     // "Fertig" on the keyboard saves, like the button.
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
@@ -303,7 +305,7 @@ fun ValueTile(
                 }
                 supporting?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2, modifier = Modifier.padding(top = 4.dp))
+                        maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }

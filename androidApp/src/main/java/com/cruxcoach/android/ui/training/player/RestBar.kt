@@ -15,6 +15,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -123,19 +124,32 @@ fun RestBar(
             if (!state.restFinished) {
                 // Narrow padding and one line each: at 360 dp "+15 s" broke into two lines.
                 val sidePadding = PaddingValues(horizontal = 14.dp)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                val minus: @Composable () -> Unit = {
                     OutlinedButton(onClick = onMinus, enabled = armed, contentPadding = sidePadding,
                         modifier = Modifier.heightIn(min = 52.dp).testTag("player_rest_minus")) {
                         Text(stringResource(R.string.trp_rest_minus), maxLines = 1, softWrap = false)
                     }
-                    Button(onClick = onEnd, modifier = Modifier.weight(1f).heightIn(min = 52.dp).testTag("player_rest_skip")) {
-                        Text(stringResource(if (finishedExercise) R.string.trpg_to_next else R.string.trpg_rest_on), maxLines = 1,
-                            overflow = TextOverflow.Ellipsis)
-                    }
+                }
+                val plus: @Composable () -> Unit = {
                     OutlinedButton(onClick = onPlus, enabled = armed, contentPadding = sidePadding,
                         modifier = Modifier.heightIn(min = 52.dp).testTag("player_rest_plus")) {
                         Text(stringResource(R.string.trp_rest_plus), maxLines = 1, softWrap = false)
                     }
+                }
+                val on: @Composable (Modifier) -> Unit = { modifier ->
+                    Button(onClick = onEnd, modifier = modifier.heightIn(min = 52.dp).testTag("player_rest_skip")) {
+                        Text(stringResource(if (finishedExercise) R.string.trpg_to_next else R.string.trpg_rest_on), maxLines = 2,
+                            overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                    }
+                }
+                if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) {
+                    // At a large font the three do not fit in one row ("Weiter" was only "…"): ±15 s above, the main one below.
+                    Row(verticalAlignment = Alignment.CenterVertically) { minus(); Spacer(Modifier.weight(1f)); plus() }
+                    on(Modifier.fillMaxWidth().padding(top = 8.dp))
+                } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    minus()
+                    on(Modifier.weight(1f))
+                    plus()
                 }
             }
         }

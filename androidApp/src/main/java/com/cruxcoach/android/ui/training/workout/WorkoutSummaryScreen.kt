@@ -353,7 +353,7 @@ fun WorkoutSummaryScreen(
     TrainingScaffold(
         title = stringResource(R.string.trw_summary_title),
         onBack = onBack,
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
         actions = {
             if (state.workout != null) {
                 IconButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag("summary_delete")) {

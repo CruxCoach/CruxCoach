@@ -437,12 +437,14 @@ private fun ItemCard(
       Row(Modifier.height(IntrinsicSize.Min)) {
         if (inCircuit) Box(Modifier.width(4.dp).fillMaxHeight().background(com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent))
         Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+            // The three buttons below the name when they leave it no room ("Klimmzu/g" at the largest font).
+            LabelBesideOrAbove(growth = 1.5f, label = {
+                Column {
                     Text(def.name(lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(categoryLabel(def.category), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }) {
                 IconButton(onClick = { onMove(-1) }, enabled = !isFirst) {
                     Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.trwo_move_up))
                 }
@@ -453,7 +455,8 @@ private fun ItemCard(
                     Icon(Icons.Default.Close, contentDescription = stringResource(R.string.trwo_remove))
                 }
             }
-            Column(Modifier.padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // 4 dp between the 48 dp steppers, so the "−" of one row is not right under the next.
+            Column(Modifier.padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (!inCircuit) {
                     // One-sided work: three sets are three on each side.
                     val setsLabel = if (def.unilateral && item.sides == SideMode.BOTH) R.string.trwo_field_sets_per_side else R.string.trwo_field_sets
@@ -598,7 +601,7 @@ private fun LoadField(
     }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        FilledTonalIconButton(onClick = { onChange(((loadKg ?: 0.0) - step).coerceAtLeast(min)) }, modifier = Modifier.size(44.dp).testTag("${tag}_minus")) {
+        FilledTonalIconButton(onClick = { onChange(((loadKg ?: 0.0) - step).coerceAtLeast(min)) }, modifier = Modifier.size(48.dp).testTag("${tag}_minus")) {
             Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.trwo_minus, label))
         }
         Text(
@@ -606,7 +609,7 @@ private fun LoadField(
             color = if (loadKg == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.width(76.dp).clickable(role = Role.Button) { editing = true }.testTag("${tag}_value"),
         )
-        FilledTonalIconButton(onClick = { onChange(((loadKg ?: 0.0) + step).coerceAtMost(500.0)) }, modifier = Modifier.size(44.dp).testTag("${tag}_plus")) {
+        FilledTonalIconButton(onClick = { onChange(((loadKg ?: 0.0) + step).coerceAtMost(500.0)) }, modifier = Modifier.size(48.dp).testTag("${tag}_plus")) {
             Icon(Icons.Default.Add, contentDescription = stringResource(R.string.trwo_plus, label))
         }
     }
@@ -656,14 +659,14 @@ internal fun EditorStepper(
     var editing by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        FilledTonalIconButton(onClick = { onChange((value - step).coerceIn(min, max)) }, modifier = Modifier.size(44.dp).testTag("${tag}_minus")) {
+        FilledTonalIconButton(onClick = { onChange((value - step).coerceIn(min, max)) }, modifier = Modifier.size(48.dp).testTag("${tag}_minus")) {
             Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.trwo_minus, label))
         }
         Text(
             format(value), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center,
             modifier = Modifier.width(76.dp).clickable(role = Role.Button) { editing = true }.testTag("${tag}_value"),
         )
-        FilledTonalIconButton(onClick = { onChange((value + step).coerceIn(min, max)) }, modifier = Modifier.size(44.dp).testTag("${tag}_plus")) {
+        FilledTonalIconButton(onClick = { onChange((value + step).coerceIn(min, max)) }, modifier = Modifier.size(48.dp).testTag("${tag}_plus")) {
             Icon(Icons.Default.Add, contentDescription = stringResource(R.string.trwo_plus, label))
         }
     }

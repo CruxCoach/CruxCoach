@@ -25,6 +25,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.athlete.ComebackService
+import com.cruxcoach.android.ui.training.LabelBesideOrAbove
 import com.cruxcoach.android.ui.training.SectionTitle
 import com.cruxcoach.android.ui.training.TrainingScaffold
 import com.cruxcoach.android.ui.training.catalogLanguage
@@ -127,7 +128,7 @@ private fun InjuryHeader(injury: Injury) {
     Column {
         Text(listOfNotNull(regionLabel(injury.region), injury.side?.let { injurySideLabel(it) }, injury.detail).joinToString(" · "),
             style = MaterialTheme.typography.titleLarge)
-        Text(stringResource(R.string.tra_injury_since, injury.startedOn), style = MaterialTheme.typography.bodySmall,
+        Text(stringResource(R.string.tra_injury_since, com.cruxcoach.android.ui.training.coach.formatIsoDay(injury.startedOn)), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         injury.check?.finding?.let { Text(txt(ComebackTexts.finding(it)), style = MaterialTheme.typography.bodyMedium) }
     }
@@ -160,7 +161,7 @@ private fun Setup(state: ComebackUiState, injury: Injury, vm: ComebackViewModel,
         injury.plan?.endedOn?.let { Text(stringResource(R.string.cb_end) + ": " + it, style = MaterialTheme.typography.bodySmall) }
         // 1 · About the injury
         StepCard(stringResource(R.string.cb_step_questions)) {
-            Text(injury.check?.answeredOn?.let { stringResource(R.string.cb_step_questions_done, it) } ?: stringResource(R.string.cb_step_questions_open),
+            Text(injury.check?.answeredOn?.let { stringResource(R.string.cb_step_questions_done, com.cruxcoach.android.ui.training.coach.formatIsoDay(it)) } ?: stringResource(R.string.cb_step_questions_open),
                 style = MaterialTheme.typography.bodySmall)
             OutlinedButton(onClick = onQuestions, modifier = Modifier.padding(top = 4.dp).testTag("comeback_open_questions")) {
                 Text(stringResource(R.string.cb_questions))
@@ -315,10 +316,15 @@ private fun BeforeStartDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
                 Text(stringResource(R.string.cb_before_text))
             }
         },
+        // The long confirmation and "Abbrechen" one under the other, at the end: side by side they overlapped.
         confirmButton = {
-            TextButton(onClick = onConfirm, modifier = Modifier.testTag("comeback_understood")) { Text(stringResource(R.string.cb_understood)) }
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                TextButton(onClick = onConfirm, modifier = Modifier.testTag("comeback_understood")) {
+                    Text(stringResource(R.string.cb_understood), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) } },
     )
 }
 
@@ -472,8 +478,9 @@ private fun SessionCard(d: DueSession, plan: ComebackPlan, injury: Injury, state
             )
             d.spec.items.filter { item -> item.side != SideTarget.HEALTHY || injury.side in setOf(com.cruxcoach.athlete.model.InjurySide.LEFT, com.cruxcoach.athlete.model.InjurySide.RIGHT) }
                 .forEach { item -> Text(itemLine(item, plan, state, language), style = MaterialTheme.typography.bodyMedium) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(statusText(d), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f).testTag("comeback_session_status_${d.index}"))
+            LabelBesideOrAbove(label = {
+                Text(statusText(d), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp).testTag("comeback_session_status_${d.index}"))
+            }) {
                 // Never locked: the status says what the stage suggests, the athlete decides.
                 Button(onClick = { onStart(name) }, modifier = Modifier.testTag("comeback_session_start_${d.index}")) {
                     Text(stringResource(R.string.cb_session_start))

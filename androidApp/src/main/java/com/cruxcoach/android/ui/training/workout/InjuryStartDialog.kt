@@ -62,7 +62,8 @@ fun InjuryStartDialog(pending: PendingInjuryStart, onResolve: (despite: Boolean?
         },
         dismissButton = {
             TextButton(onClick = { onResolve(true) }, modifier = Modifier.testTag("injury_start_anyway")) {
-                Text(stringResource(R.string.trwo_add_anyway))
+                // A start, not an add: "Start anyway" pairs with "Start without them" (UI pass 0.2.5).
+                Text(stringResource(R.string.trwo_injury_start_anyway))
             }
         },
         modifier = Modifier.testTag("injury_start_dialog"),

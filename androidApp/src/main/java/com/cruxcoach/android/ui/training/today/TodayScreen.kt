@@ -141,7 +141,7 @@ fun TodayScreen(
         title = stringResource(R.string.tr_nav_today),
         onBack = onBack,
         bottomBar = tabBar,
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
         actions = {
             IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("today_settings")) {
                 Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.tr_action_settings))
@@ -514,10 +514,13 @@ private fun SetupChecklistCard(steps: List<SetupStep>, justDone: Boolean, onDism
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.RocketLaunch, null, tint = CruxCoachDesign.colors.brandAccent)
                 Spacer(Modifier.width(10.dp))
-                Text(stringResource(R.string.tru_setup_title), style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Text(stringResource(R.string.tru_setup_progress, done, steps.size), style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LabelBesideOrAbove(modifier = Modifier.weight(1f), label = {
+                    Text(stringResource(R.string.tru_setup_title), style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(end = 8.dp))
+                }) {
+                    Text(stringResource(R.string.tru_setup_progress, done, steps.size), style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             LinearProgressIndicator(
                 progress = { done.toFloat() / steps.size },
@@ -804,15 +807,17 @@ private fun ReadinessResult(state: TodayState, onEdit: (() -> Unit)?) {
             ReadinessLevel.REST -> MaterialTheme.colorScheme.onSurfaceVariant
         })
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
+        // "Ändern" below the answers when they do not fit beside it (320 dp, large font).
+        LabelBesideOrAbove(modifier = Modifier.weight(1f), growth = 1.5f, label = { Column {
             Text(title, style = MaterialTheme.typography.titleSmall)
             if (answers.isNotEmpty()) {
                 Text(answers.joinToString(" · "), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("today_checkin_summary"))
             }
-        }
-        if (onEdit != null) TextButton(onClick = onEdit, modifier = Modifier.testTag("today_checkin_edit")) {
-            Text(stringResource(R.string.trt_checkin_change))
+        } }) {
+            if (onEdit != null) TextButton(onClick = onEdit, modifier = Modifier.testTag("today_checkin_edit")) {
+                Text(stringResource(R.string.trt_checkin_change))
+            }
         }
     }
     factor?.let {
@@ -911,6 +916,7 @@ private fun QuickCheckin(onSave: (Int?, Set<com.cruxcoach.athlete.model.InjuryRe
                     onClick = { strength = if (strength == v) null else v },
                     label = { Text("$v", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
                     colors = chipColors,
+                    border = answerChipBorder(strength == v),
                     modifier = Modifier.weight(1f).testTag("today_quick_strength_$v"),
                 )
             }
@@ -922,9 +928,9 @@ private fun QuickCheckin(onSave: (Int?, Set<com.cruxcoach.athlete.model.InjuryRe
         Text(stringResource(R.string.trt_quick_hurts), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = hurts == false, onClick = { hurts = false; sore = emptyList() },
-                label = { Text(stringResource(R.string.trt_quick_no)) }, colors = chipColors, modifier = Modifier.testTag("today_quick_hurts_no"))
+                label = { Text(stringResource(R.string.trt_quick_no)) }, colors = chipColors, border = answerChipBorder(hurts == false), modifier = Modifier.testTag("today_quick_hurts_no"))
             FilterChip(selected = hurts == true, onClick = { hurts = true },
-                label = { Text(stringResource(R.string.trt_quick_yes)) }, colors = chipColors, modifier = Modifier.testTag("today_quick_hurts_yes"))
+                label = { Text(stringResource(R.string.trt_quick_yes)) }, colors = chipColors, border = answerChipBorder(hurts == true), modifier = Modifier.testTag("today_quick_hurts_yes"))
         }
         if (hurts == true) {
             Text(stringResource(R.string.trt_quick_where), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
@@ -947,6 +953,13 @@ private fun answerChipColors() = FilterChipDefaults.filterChipColors(
     selectedLabelColor = CruxCoachDesign.colors.onBrandAccent,
 )
 
+/** On the suggestion card the default outline almost vanished: the card's own text colour, softened (UI pass 0.2.5). */
+@Composable
+private fun answerChipBorder(selected: Boolean) = FilterChipDefaults.filterChipBorder(
+    enabled = true, selected = selected,
+    borderColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
+)
+
 /** Body areas as chips, several at once; the same ones as for an injury. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -964,6 +977,7 @@ private fun SoreChips(
                 onClick = { onChange(if (r in selected) selected - r else selected + r) },
                 label = { Text(regionLabel(r)) },
                 colors = colors,
+                border = if (accent) answerChipBorder(r in selected) else FilterChipDefaults.filterChipBorder(true, r in selected),
                 modifier = Modifier.testTag("today_sore_${r.name.lowercase()}"),
             )
         }
@@ -1327,10 +1341,13 @@ private fun DailySuggestionCard(
         modifier = Modifier.fillMaxWidth().testTag("today_suggestion_card"),
     ) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.trt_today_hero), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+            LabelBesideOrAbove(label = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.trt_today_hero), style = MaterialTheme.typography.labelLarge)
+                }
+            }) {
                 // "Einstiegswoche" explains itself like every value: a tap opens the "Why?" sheet with the block.
                 state.block?.let {
                     Text(blockLabel(it), style = MaterialTheme.typography.labelMedium,
@@ -1397,43 +1414,47 @@ private fun DailySuggestionCard(
                         val def = state.catalog.fallbackFor(item.slug)
                         val name = def.name(language)
                         val swap = stringResource(R.string.trt_swap_action)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(CruxCoachDesign.shapes.small)
+                        // The sets beside the name, or below it when the name does not fit there (320 dp, large font); the
+                        // bullet stays on the name's first line.
+                        LabelBesideOrAbove(
+                            modifier = Modifier.heightIn(min = 40.dp).clip(CruxCoachDesign.shapes.small)
                                 .clickable(onClickLabel = swap) { onExercise(item.slug) }
                                 .testTag("today_item_${item.slug}"),
-                        ) {
-                            if (item.slug in state.favorites) {
-                                // A favourite carries its star, so it is clear why it keeps coming back.
-                                Icon(Icons.Default.Star, contentDescription = stringResource(R.string.trt_favorite), Modifier.size(16.dp)
-                                    .testTag("today_favorite_${item.slug}"), tint = CruxCoachDesign.colors.brandAccent)
-                            } else {
-                                Text("•", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(16.dp),
-                                    color = if (item.circuit != null) CruxCoachDesign.colors.brandAccent else androidx.compose.ui.graphics.Color.Unspecified,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                // New to the athlete (issue #68): one tap to the steps; the row itself still swaps.
-                                if (item.slug in state.newToYou) {
-                                    val how = stringResource(R.string.trt_new_how)
-                                    val label = stringResource(R.string.trt_new_to_you)
-                                    val accent = CruxCoachDesign.colors.brandAccent
-                                    // One text, so it wraps as a whole at the largest font size.
-                                    Text(
-                                        buildAnnotatedString {
-                                            append("$label · ")
-                                            withStyle(SpanStyle(color = accent, fontWeight = FontWeight.SemiBold)) { append(how) }
-                                        },
-                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.heightIn(min = 32.dp).clip(CruxCoachDesign.shapes.small)
-                                            .clickable(onClickLabel = how) { onOpenSteps(item.slug) }
-                                            .padding(end = 8.dp, top = 6.dp, bottom = 6.dp).testTag("today_new_${item.slug}"),
-                                    )
+                            label = {
+                                Row {
+                                    if (item.slug in state.favorites) {
+                                        // A favourite carries its star, so it is clear why it keeps coming back.
+                                        Icon(Icons.Default.Star, contentDescription = stringResource(R.string.trt_favorite), Modifier.padding(top = 2.dp).size(16.dp)
+                                            .testTag("today_favorite_${item.slug}"), tint = CruxCoachDesign.colors.brandAccent)
+                                    } else {
+                                        Text("•", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(16.dp),
+                                            color = if (item.circuit != null) CruxCoachDesign.colors.brandAccent else androidx.compose.ui.graphics.Color.Unspecified,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    Column {
+                                        Text(name, style = MaterialTheme.typography.bodyMedium)
+                                        // New to the athlete (issue #68): one tap to the steps; the row itself still swaps.
+                                        if (item.slug in state.newToYou) {
+                                            val how = stringResource(R.string.trt_new_how)
+                                            val label = stringResource(R.string.trt_new_to_you)
+                                            val accent = CruxCoachDesign.colors.brandAccent
+                                            // One text, so it wraps as a whole at the largest font size.
+                                            Text(
+                                                buildAnnotatedString {
+                                                    append("$label · ")
+                                                    withStyle(SpanStyle(color = accent, fontWeight = FontWeight.SemiBold)) { append(how) }
+                                                },
+                                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.heightIn(min = 32.dp).clip(CruxCoachDesign.shapes.small)
+                                                    .clickable(onClickLabel = how) { onOpenSteps(item.slug) }
+                                                    .padding(end = 8.dp, top = 6.dp, bottom = 6.dp).testTag("today_new_${item.slug}"),
+                                            )
+                                        }
+                                    }
                                 }
-                            }
+                            },
+                        ) {
                             // The sets the training will plan: today's form may take one off (audit W7: card ≠ player).
                             val planned = state.dayForm?.let { com.cruxcoach.athlete.logic.ReadinessModifiers.applyToItem(item, def, it) } ?: item
                             Text(com.cruxcoach.android.ui.training.workouts.routineItemSummary(planned, def, state.profile.units, short = true),
@@ -1463,7 +1484,8 @@ private fun DailySuggestionCard(
                         append(why)
                         pop()
                     },
-                    style = MaterialTheme.typography.bodySmall, maxLines = 3,
+                    // No line limit: at the largest font a limit cut off "Warum?" (UI pass 0.2.5).
+                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 8.dp).clickable(onClickLabel = why, onClick = onWhy).testTag("today_suggestion_reason"),
                 )
             }
@@ -1888,7 +1910,7 @@ private fun NextSuggestionSheet(
             }
             Text(stringResource(R.string.trt_next_level), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 FilterChip(selected = state.levelShift < 0, onClick = { onLevel(if (state.levelShift < 0) 0 else -1) },
                     label = { Text(stringResource(R.string.trt_level_easier)) }, modifier = Modifier.testTag("today_level_easier"))
                 FilterChip(selected = state.levelShift > 0, onClick = { onLevel(if (state.levelShift > 0) 0 else 1) },
@@ -1897,7 +1919,8 @@ private fun NextSuggestionSheet(
             Button(onClick = onShuffle, modifier = Modifier.fillMaxWidth().padding(top = 20.dp).heightIn(min = 52.dp).testTag("today_next_shuffle")) {
                 Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.trt_next_shuffle))
             }
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center) {
+            // Wraps at the largest font instead of cutting "Ausrüstung" to a few letters.
+            FlowRow(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center) {
                 TextButton(onClick = onHurts, modifier = Modifier.testTag("today_next_hurts")) {
                     Icon(Icons.Default.Healing, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trt_next_hurts))
                 }
@@ -2098,8 +2121,8 @@ private fun ComebackTodayCard(c: ComebackToday, onOpen: () -> Unit, onMorning: (
             c.due.forEach { d ->
                 val title = com.cruxcoach.android.ui.training.athlete.comeback.sessionTitle(d.spec.kind)
                 val name = stringResource(R.string.cb_session_name, title)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                // "Starten" below the session when it leaves no room for it ("Sehnen-Ei/nheit" at the largest font).
+                LabelBesideOrAbove(label = { Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 8.dp)) }) {
                     FilledTonalButton(onClick = { onStart(d.index, name) }, modifier = Modifier.testTag("today_comeback_start_${d.index}")) {
                         Text(stringResource(R.string.cb_session_start))
                     }

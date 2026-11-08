@@ -145,7 +145,7 @@ fun FuelScreen(
                 Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.tr_action_settings))
             }
         },
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
         // One way in for every kind of food: search, scan, describe, photo or plain values.
         floatingActionButton = {
             if (!state.loading) {
@@ -483,12 +483,19 @@ internal fun FoodAddActions(
     onQuick: () -> Unit,
 ) {
     val unavailable = stringResource(R.string.fvp_unavailable_short)
-    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        AddAction(Icons.Default.QrCodeScanner, stringResource(R.string.tru_add_scan), "fuel_scan_tile", onScan, Modifier.weight(1f))
-        AddAction(Icons.Default.EditNote, stringResource(R.string.trf_describe), "fuel_describe", onDescribe, Modifier.weight(1f))
-        AddAction(Icons.Default.PhotoCamera, stringResource(R.string.fvp_button), "fuel_photo", if (photoAvailable) onPhoto else onPhotoExplain,
-            Modifier.weight(1f).semantics { if (!photoAvailable) stateDescription = unavailable }, dimmed = !photoAvailable)
-        AddAction(Icons.Default.Bolt, stringResource(R.string.tru_add_quick), "fuel_quick_add", onQuick, Modifier.weight(1f))
+    // Four in a row; two by two at a large font, where four cut their labels ("Scann", "Besch").
+    val actions = listOf<@Composable (Modifier) -> Unit>(
+        { m -> AddAction(Icons.Default.QrCodeScanner, stringResource(R.string.tru_add_scan), "fuel_scan_tile", onScan, m) },
+        { m -> AddAction(Icons.Default.EditNote, stringResource(R.string.trf_describe), "fuel_describe", onDescribe, m) },
+        { m -> AddAction(Icons.Default.PhotoCamera, stringResource(R.string.fvp_button), "fuel_photo", if (photoAvailable) onPhoto else onPhotoExplain,
+            m.semantics { if (!photoAvailable) stateDescription = unavailable }, dimmed = !photoAvailable) },
+        { m -> AddAction(Icons.Default.Bolt, stringResource(R.string.tru_add_quick), "fuel_quick_add", onQuick, m) },
+    )
+    val perRow = if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) 2 else actions.size
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        actions.chunked(perRow).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { row.forEach { it(Modifier.weight(1f)) } }
+        }
     }
 }
 
@@ -595,26 +602,42 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit, onUpdat
     var explained by rememberSaveable { mutableStateOf<String?>(null) }
     Card(Modifier.fillMaxWidth().testTag("fuel_targets")) {
         BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 12.dp)) {
-            // The rings share the width; four still fit side by side on a narrow phone.
-            val ringSize = ((maxWidth - 12.dp * rings) / rings).coerceIn(60.dp, 92.dp)
-            Row(Modifier.fillMaxWidth()) {
-                val cell = Modifier.weight(1f)
-                if (showEnergy) {
+            // The rings share the width; four still fit side by side on a narrow phone. At a large font two per row,
+            // and bigger, so their values are not cut ("≈8" for 842 at 320 dp and the largest font).
+            val scale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+            val perRow = if (scale >= 1.3f) 2 else rings
+            val ringSize = ((maxWidth - 12.dp * perRow) / perRow).coerceIn(60.dp, 92.dp * scale.coerceIn(1f, 1.6f))
+            val cells = buildList<@Composable (Modifier) -> Unit> {
+                if (showEnergy) add { cell ->
                     // The shown day's plan: its deficit leaves room for that day's macro targets.
                     val plan = state.plan
                     EnergyRing(eaten = totals.kcal, estimated = totals.kcalEstimated,
                         target = com.cruxcoach.android.ui.training.common.energyTarget(state.need, plan, state.profile),
                         losing = plan != null && plan.paceDeficitKcal > 0, size = ringSize, onClick = onOpenEnergy, modifier = cell)
                 }
-                MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
-                    color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs", size = ringSize, modifier = cell,
-                    onClick = { explained = "carbs" })
-                MacroRing(label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
-                    color = CruxCoachDesign.colors.positive, tag = "fuel_protein", size = ringSize, modifier = cell,
-                    onClick = { explained = "protein" })
-                MacroRing(label = stringResource(R.string.trf_fat), value = totals.fat, target = t?.fatG,
-                    color = FatColor, tag = "fuel_fat", size = ringSize, modifier = cell,
-                    onClick = { explained = "fat" })
+                add { cell ->
+                    MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
+                        color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs", size = ringSize, modifier = cell,
+                        onClick = { explained = "carbs" })
+                }
+                add { cell ->
+                    MacroRing(label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
+                        color = CruxCoachDesign.colors.positive, tag = "fuel_protein", size = ringSize, modifier = cell,
+                        onClick = { explained = "protein" })
+                }
+                add { cell ->
+                    MacroRing(label = stringResource(R.string.trf_fat), value = totals.fat, target = t?.fatG,
+                        color = FatColor, tag = "fuel_fat", size = ringSize, modifier = cell,
+                        onClick = { explained = "fat" })
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                cells.chunked(perRow).forEach { row ->
+                    Row(Modifier.fillMaxWidth()) {
+                        row.forEach { it(Modifier.weight(1f)) }
+                        repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
             }
         }
         OwnTargetNotes(state, showEnergy)
@@ -734,8 +757,18 @@ private fun RingCenter(value: String, target: String, compactTarget: String, siz
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.widthIn(max = size - 18.dp)) {
         Text(value, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold, maxLines = 1, modifier = valueTag?.let { Modifier.testTag(it) } ?: Modifier)
-        FitText(if (compact) compactTarget else target, MaterialTheme.typography.labelSmall, MaterialTheme.colorScheme.onSurfaceVariant)
+        // At a large font only the value fits inside; the target goes under the ring ([RingTarget]).
+        if (!largeRingFont()) FitText(if (compact) compactTarget else target, MaterialTheme.typography.labelSmall, MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+@Composable
+private fun largeRingFont() = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
+
+/** The target under a ring's label at a large font, where it ran over the ring inside it ("von 1735 kc"). */
+@Composable
+private fun RingTarget(target: String) {
+    if (largeRingFont()) FitText(target, MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.fillMaxWidth())
 }
 
 /** One centred line that shrinks a little instead of wrapping or clipping. */
@@ -779,6 +812,7 @@ private fun MacroRing(
             }
         }
         RingLabel(label)
+        if (target != null) RingTarget(stringResource(R.string.tru_of_g, target))
         if (target != null) {
             FitText(remainingText(value, target), MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.onSurfaceVariant,
                 Modifier.fillMaxWidth())
@@ -817,6 +851,7 @@ private fun EnergyRing(
                 size - 8.dp, valueTag = "fuel_kcal")
         }
         RingLabel(stringResource(R.string.trn_energy))
+        if (target != null) RingTarget(stringResource(R.string.trn_of_kcal, target))
         FitText(
             when {
                 // Short enough for a quarter of a narrow phone; the click label keeps the full wording.
@@ -859,7 +894,8 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.WaterDrop, null, tint = blue, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
+                // The amount below the title when both do not fit in a row ("Was/ser" at the largest font).
+                LabelBesideOrAbove(modifier = Modifier.weight(1f), growth = 1.5f, label = { Column {
                     Text(stringResource(R.string.trf_water), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
                         if (reached) stringResource(R.string.tru_water_reached) else stringResource(R.string.tru_water_glass_hint, amountText(glass.toDouble(), volume)),
@@ -868,12 +904,13 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
                         fontWeight = if (reached) FontWeight.SemiBold else FontWeight.Normal,
                         modifier = Modifier.testTag("fuel_water_hint"),
                     )
+                } }) {
+                    Text(
+                        if (target != null) stringResource(R.string.trf_progress_volume, inputText(state.waterMl.toDouble(), volume), amountText(target.toDouble(), volume))
+                        else amountText(state.waterMl.toDouble(), volume),
+                        style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 8.dp).testTag("fuel_water_total"),
+                    )
                 }
-                Text(
-                    if (target != null) stringResource(R.string.trf_progress_volume, inputText(state.waterMl.toDouble(), volume), amountText(target.toDouble(), volume))
-                    else amountText(state.waterMl.toDouble(), volume),
-                    style = MaterialTheme.typography.titleSmall, modifier = Modifier.testTag("fuel_water_total"),
-                )
             }
             val addText = stringResource(R.string.trf_water_add, amountText(glass.toDouble(), volume))
             val removeText = stringResource(R.string.tru_water_remove)

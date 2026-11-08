@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.coroutineScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.training.EmptyHint
+import com.cruxcoach.android.ui.training.LabelBesideOrAbove
 import com.cruxcoach.android.ui.training.formatNumber
 import com.cruxcoach.android.ui.training.mealLabel
 import com.cruxcoach.android.ui.training.parseDecimal
@@ -227,10 +228,12 @@ fun FoodsSheet(
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_foods_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+            // The meal as one small choice next to the title, not six chips above the search; below it when both do
+            // not fit in a row ("Ess/en/eintr/age/n" at the largest font).
+            LabelBesideOrAbove(modifier = Modifier.padding(bottom = 8.dp), label = {
                 Text(title ?: stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f))
-                // The meal as one small choice next to the title, not six chips above the search.
+                    modifier = Modifier.padding(end = 8.dp))
+            }) {
                 if (meal != null) MealPicker(meal, onMealChange)
             }
             OutlinedTextField(
@@ -267,8 +270,10 @@ fun FoodsSheet(
                             ListItem(
                                 headlineContent = { Text(entry.name, maxLines = 1) },
                                 supportingContent = {
+                                    // Two lines with "…": one line lost the energy at the end at a large font.
                                     Text(listOfNotNull(amount, macrosText(entry.proteinG, entry.carbsG, entry.fatG,
-                                        com.cruxcoach.athlete.logic.MacroTotals.energy(entry), showCalories)).joinToString(" · "), maxLines = 1)
+                                        com.cruxcoach.athlete.logic.MacroTotals.energy(entry), showCalories)).joinToString(" · "), maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 },
                                 trailingContent = { Icon(Icons.Default.AddCircle, contentDescription = stringResource(R.string.trf_recent_log, entry.name)) },
                                 colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
@@ -278,8 +283,10 @@ fun FoodsSheet(
                     }
                     if (onCreate != null || onCreateRecipe != null) {
                         item(key = "own_title") {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                                Text(stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f))
+                            // The two actions below the title when they leave it no room ("Mein" at the largest font).
+                            LabelBesideOrAbove(modifier = Modifier.padding(top = 4.dp), label = {
+                                Text(stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(end = 8.dp))
+                            }) {
                                 onCreateRecipe?.let { create ->
                                     TextButton(onClick = create, modifier = Modifier.testTag("fuel_recipe_new")) {
                                         Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp))

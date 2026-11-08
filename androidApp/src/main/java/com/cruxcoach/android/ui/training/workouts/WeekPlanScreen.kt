@@ -111,7 +111,7 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
         Unit
     }
     // What the standard week is for: the app bar's info icon, not a paragraph above the days (design.md).
-    TrainingScaffold(title = stringResource(R.string.trwo_week_plan), onBack = onBack, snackbarHost = { SnackbarHost(snackbar) },
+    TrainingScaffold(title = stringResource(R.string.trwo_week_plan), onBack = onBack, snackbarHost = { TrainingSnackbarHost(snackbar) },
         actions = { com.cruxcoach.android.ui.common.InfoButton(stringResource(R.string.trwo_week_plan), stringResource(R.string.trwo_week_plan_intro)) }) { padding ->
         if (state.loading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -131,12 +131,13 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
                     onClick = { choosing = day },
                     modifier = Modifier.fillMaxWidth().testTag("week_plan_day_$day"),
                 ) {
-                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(weekdayName(day), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.width(120.dp))
+                    // The day above its plan at a large font ("Donnerst/ag" in a fixed column).
+                    DayAbovePlan(Modifier.padding(16.dp), dayWidth = 120.dp, day = {
+                        Text(weekdayName(day), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = it)
+                    }) {
                         Text(planEntryLabel(entry, state.routines), style = MaterialTheme.typography.bodyLarge,
                             color = if (entry == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.weight(1f))
+                            modifier = it)
                     }
                 }
             }
@@ -173,6 +174,7 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
 }
 
 /** "Vorschlag aus deinem Rhythmus": the coach's standard week, previewed, applied only on a tap. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ProposalCard(state: WeekPlanState, onApply: () -> Unit) {
     var open by rememberSaveable { mutableStateOf(false) }
@@ -185,16 +187,17 @@ private fun ProposalCard(state: WeekPlanState, onApply: () -> Unit) {
             if (open) {
                 Column(Modifier.padding(top = 8.dp)) {
                     (1..7).forEach { day ->
-                        Row(Modifier.padding(vertical = 2.dp)) {
-                            Text(weekdayName(day), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.width(112.dp))
-                            Text(planEntryLabel(state.proposal[day], state.routines), style = MaterialTheme.typography.bodyMedium)
+                        DayAbovePlan(Modifier.padding(vertical = 2.dp), day = {
+                            Text(weekdayName(day), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = it)
+                        }) {
+                            Text(planEntryLabel(state.proposal[day], state.routines), style = MaterialTheme.typography.bodyMedium, modifier = it)
                         }
                     }
                 }
             }
             if (!same) {
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Wraps at the largest font instead of squeezing "Übern/ehme/n" into a round blob.
+                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { open = !open }, modifier = Modifier.testTag("week_plan_proposal_preview")) {
                         Text(stringResource(if (open) R.string.trc_week_proposal_hide else R.string.trc_week_proposal_show))
                     }

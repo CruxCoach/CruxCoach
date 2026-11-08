@@ -304,8 +304,7 @@ fun AthleteSettingsScreen(
                     Stepper(stringResource(R.string.tra_weekly_goal, p.weeklyGoal), "weekly_goal",
                         onMinus = { viewModel.setWeeklyGoal(p.weeklyGoal - 1) }, onPlus = { viewModel.setWeeklyGoal(p.weeklyGoal + 1) })
                     // Which exercises the coach picks (issue #68); the same chips as in the coach setup.
-                    Text(stringResource(R.string.trc_exercise_choice), style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(top = 12.dp))
+                    com.cruxcoach.android.ui.training.coach.ExerciseChoiceTitle(Modifier.padding(top = 4.dp))
                     com.cruxcoach.android.ui.training.coach.ExerciseChoiceChips(p.coach.exerciseChoice) { c ->
                         viewModel.update { it.copy(coach = it.coach.copy(exerciseChoice = c)) }
                     }
@@ -317,9 +316,11 @@ fun AthleteSettingsScreen(
                         if (on) goalOpen = true else viewModel.saveWeightGoal(false, p.targetWeightKg, p.weeklyLossKg)
                     }
                     if (losing) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        // "Bearbeiten" below the summary when it squeezes it into a narrow column (largest font).
+                        LabelBesideOrAbove(label = {
                             Text(com.cruxcoach.android.ui.training.common.weightGoalSummary(p, state.plan), style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f).testTag("goal_summary"))
+                                modifier = Modifier.padding(end = 8.dp).testTag("goal_summary"))
+                        }) {
                             TextButton(onClick = { goalOpen = true }, modifier = Modifier.testTag("goal_edit")) { Text(stringResource(R.string.trn_goal_edit)) }
                         }
                         // Under 18 the running goal carries its own reason first, as on the energy card.
@@ -565,7 +566,8 @@ private fun SettingsOverview(state: AthleteSettingsState, onOpen: (SettingsSecti
         ListItem(
             leadingContent = { Icon(icon, null, tint = CruxCoachDesign.colors.brandAccent) },
             headlineContent = { Text(title) },
-            supportingContent = { Text(summary, maxLines = 2) },
+            // No line limit: the row is there to show the current value, and at the largest font it was cut.
+            supportingContent = { Text(summary) },
             trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
             colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
             modifier = Modifier.clickable(onClick = onClick).testTag(tag),
@@ -649,11 +651,11 @@ private fun LearnedSection(state: AthleteSettingsState, viewModel: AthleteSettin
     var confirmAll by rememberSaveable { mutableStateOf(false) }
     @Composable
     fun row(text: String, detail: String?, tag: String, onForget: () -> Unit) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(tag)) {
-            Column(Modifier.weight(1f)) {
-                Text(text, style = MaterialTheme.typography.bodyLarge)
-                detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
+        // "Vergessen" below the text when it leaves the text too narrow beside it (320 dp, largest font).
+        LabelBesideOrAbove(modifier = Modifier.heightIn(min = 48.dp).testTag(tag), growth = 1.5f, label = { Column {
+            Text(text, style = MaterialTheme.typography.bodyLarge)
+            detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        } }) {
             TextButton(onClick = onForget, modifier = Modifier.testTag("${tag}_forget")) { Text(stringResource(R.string.trlr_forget)) }
         }
     }
@@ -764,8 +766,8 @@ private fun focusChoiceLabel(focus: com.cruxcoach.athlete.logic.SuggestionFocus)
 
 @Composable
 private fun Stepper(label: String, tag: String, onMinus: () -> Unit, onPlus: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, modifier = Modifier.weight(1f))
+    // The buttons below the value when it does not fit beside them ("Trainingstag/e" at 320 dp and the largest font).
+    LabelBesideOrAbove(label = { Text(label) }) {
         OutlinedButton(onClick = onMinus, modifier = Modifier.testTag("${tag}_minus")) { Text("−") }
         Spacer(Modifier.width(8.dp))
         OutlinedButton(onClick = onPlus, modifier = Modifier.testTag("${tag}_plus")) { Text("+") }

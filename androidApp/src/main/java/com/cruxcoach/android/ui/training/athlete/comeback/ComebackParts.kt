@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
+import com.cruxcoach.android.ui.training.LabelBesideOrAbove
 import com.cruxcoach.android.ui.training.catalogLanguage
 import com.cruxcoach.athlete.logic.ComebackTexts
 import com.cruxcoach.athlete.logic.DayReading
@@ -46,9 +47,13 @@ internal fun ComebackNotice(onSigns: (() -> Unit)?, modifier: Modifier = Modifie
         Row(Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Info, null, Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.cb_not_a_substitute), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-            if (onSigns != null) {
-                TextButton(onClick = onSigns, modifier = Modifier.testTag("comeback_notice_signs")) { Text(stringResource(R.string.cb_warning_signs)) }
+            // "Warnzeichen" below the notice when it squeezes the notice into a narrow column (largest font).
+            LabelBesideOrAbove(modifier = Modifier.weight(1f), label = {
+                Text(stringResource(R.string.cb_not_a_substitute), style = MaterialTheme.typography.bodySmall)
+            }) {
+                if (onSigns != null) {
+                    TextButton(onClick = onSigns, modifier = Modifier.testTag("comeback_notice_signs")) { Text(stringResource(R.string.cb_warning_signs)) }
+                }
             }
         }
     }
@@ -103,6 +108,7 @@ internal fun sourceKindLabel(k: SourceKind): String = stringResource(when (k) {
  * The 14-day diary as three plain lines (morning, pressure, session) on a 0–10 scale. Descriptive only: no
  * traffic-light colours (research/safety-regulation.md §5 SHOULD).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ComebackChart(readings: List<DayReading>, modifier: Modifier = Modifier) {
     val morning = MaterialTheme.colorScheme.primary
@@ -138,7 +144,8 @@ internal fun ComebackChart(readings: List<DayReading>, modifier: Modifier = Modi
             series(readings.map { it.morningPain }, morning, dashed = false)
         }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 4.dp)) {
+        // Whole items wrap to a new line instead of breaking ("Se/ssi…" at the largest font).
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 4.dp)) {
             Legend(morning, stringResource(R.string.cb_chart_morning))
             Legend(pressure, stringResource(R.string.cb_chart_pressure))
             Legend(session, stringResource(R.string.cb_chart_session))
@@ -151,7 +158,7 @@ private fun Legend(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Canvas(Modifier.size(10.dp)) { drawCircle(color) }
         Spacer(Modifier.width(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall)
+        Text(label, style = MaterialTheme.typography.labelSmall, softWrap = false)
     }
 }
 

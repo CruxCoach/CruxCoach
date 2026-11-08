@@ -201,13 +201,18 @@ private fun ExerciseHeader(
         Row(verticalAlignment = Alignment.CenterVertically) {
             com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(def, Modifier.size(40.dp))
             Spacer(Modifier.width(10.dp))
-            Text(def.name(language), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            // Three lines and hyphens: long German names broke mid-word and lost their end at the largest font.
+            val large = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
+            Text(def.name(language), style = (if (large) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
+                .copy(hyphens = androidx.compose.ui.text.style.Hyphens.Auto),
+                fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).clickable(role = Role.Button) { actions.onOpenExercise(def.slug) }
                     .testTag("player_exercise_name"))
             ExerciseMenu(def, page, state, language, actions, canSwap, warmupAvailable)
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // The badges and "It hurts" below the position when they do not fit beside it (320 dp, largest font).
+        // One line beside them or the full width below: wrapped, "1 / of 1" lost its meaning.
+        LabelBesideOrAbove(growth = 1f, label = {
             // Set x of y counts work sets only (warm-ups have their own row).
             val position = active?.let { set ->
                 if (set.setType == SetType.WARMUP) stringResource(R.string.trpg_warmup_row,
@@ -220,9 +225,11 @@ private fun ExerciseHeader(
             val category = categoryLabel(def.category).takeIf {
                 !(def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.WARMUP && active?.setType == SetType.WARMUP)
             }
+            // No line limit: a cut "Satz 1 vo…" lost the count; below the badges it has the full width.
             Text(listOfNotNull(category, position).joinToString(" · "), style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).testTag("player_set_of"))
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 8.dp).testTag("player_set_of"))
+        }) {
             active?.side?.let { side ->
                 Surface(color = CruxCoachDesign.colors.brandAccent, shape = MaterialTheme.shapes.small) {
                     Text(sideLabel(side).uppercase(), color = CruxCoachDesign.colors.onBrandAccent,
@@ -357,10 +364,11 @@ private fun CircuitHeader(page: PlayerPage, state: PlayerState, actions: PageAct
         Text(stringResource(R.string.trpg_round_header, round, rounds.size.coerceAtLeast(1)),
             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
             modifier = Modifier.testTag("player_round_header"))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        LabelBesideOrAbove(label = {
             Text(firstWork?.let { stringResource(R.string.trpg_circuit_rests, restText(it.restS ?: 0), restText(it.roundRestS ?: 0)) } ?: "",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f).testTag("player_circuit_rests"))
+                modifier = Modifier.padding(end = 8.dp).testTag("player_circuit_rests"))
+        }) {
             if (page.open) PainChip(actions)
         }
     }
@@ -550,7 +558,8 @@ private fun resultText(set: ExerciseSet, def: ExerciseDefinition): String? = whe
 private fun RowLabel(text: String, emphasis: Boolean = false) {
     Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = if (emphasis) FontWeight.Bold else FontWeight.Normal,
         color = if (emphasis) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1, modifier = Modifier.width(if (text.isEmpty()) 8.dp else 44.dp))
+        // At least 44 dp, wider when the label needs it at a large font ("1 R10 Wdh." ran into the reps).
+        maxLines = 1, softWrap = false, modifier = if (text.isEmpty()) Modifier.width(8.dp) else Modifier.widthIn(min = 44.dp).padding(end = 4.dp))
 }
 
 @Composable
@@ -649,10 +658,12 @@ private fun EditingRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPa
             if (set.setType != SetType.WARMUP && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG)) {
                 ReserveChoice(set, actions, "player_review_rir_", Modifier.padding(top = 12.dp))
             }
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            // "Fertig" below when both do not fit in a row ("D/o" at the largest font).
+            LabelBesideOrAbove(modifier = Modifier.padding(top = 8.dp), label = {
                 TextButton(onClick = { actions.onReopen(set.id) }, modifier = Modifier.heightIn(min = 48.dp).testTag("player_reopen")) {
                     Text(stringResource(R.string.trp_reopen))
                 }
+            }) {
                 Button(onClick = { actions.onEdit(null) }, modifier = Modifier.heightIn(min = 48.dp).testTag("player_edit_ok")) {
                     Text(stringResource(R.string.tr_action_done))
                 }
@@ -679,17 +690,21 @@ private fun ActiveRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPag
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RowLabel(rowLabel(page, set), emphasis = true)
-                    Column(Modifier.weight(1f)) {
-                        name?.let { Text(it, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                        targetLine(set, def)?.let {
-                            Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.testTag("player_target"))
+                    // The target on one line, "% KG" below it when both do not fit ("Targe/t 5/reps" at the largest font).
+                    LabelBesideOrAbove(modifier = Modifier.weight(1f), growth = 1f, label = {
+                        Column(Modifier.padding(end = 8.dp)) {
+                            name?.let { Text(it, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            targetLine(set, def)?.let {
+                                Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.testTag("player_target"))
+                            }
                         }
+                    }) {
+                        percentText(set, def, state.bodyweight)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        MovedMarker(set, state)
                     }
-                    percentText(set, def, state.bodyweight)?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    MovedMarker(set, state)
                 }
                 ActiveValues(set, def, state, actions)
                 // Fewer or more than planned: one tap logs the set with that number (owner 2026-10-17).
@@ -845,7 +860,8 @@ private fun PlannedRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPa
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(MaterialTheme.shapes.small)
             .clickable(onClickLabel = stringResource(R.string.trp_next_set)) { actions.onFocus(set.id) }
             .semantics(mergeDescendants = true) { contentDescription = listOfNotNull(label, name, summary, planned).joinToString(", ") }
-            .padding(horizontal = 4.dp).testTag("player_row_${set.id}"),
+            // Some air above and below: two-line rows at a large font touched the next one.
+            .padding(horizontal = 4.dp, vertical = 4.dp).testTag("player_row_${set.id}"),
     ) {
         RowLabel(label)
         Column(Modifier.weight(1f)) {

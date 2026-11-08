@@ -389,8 +389,17 @@ private fun ProgressHub(
     onOpenBenchmarks: () -> Unit,
     onOpenHistory: () -> Unit,
 ) {
+    // Two by two; at a large font one under the other, where two side by side cut their labels ("Leistun", "Eintrag").
+    val stacked = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
+    @Composable
+    fun TilePair(first: @Composable (Modifier) -> Unit, second: @Composable (Modifier) -> Unit) {
+        if (stacked) { first(Modifier.fillMaxWidth()); second(Modifier.fillMaxWidth()) }
+        else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            first(Modifier.weight(1f).fillMaxHeight()); second(Modifier.weight(1f).fillMaxHeight())
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        TilePair({ m ->
             val w = s.latestWeightKg
             com.cruxcoach.android.ui.training.common.ValueTile(
                 icon = Icons.Default.MonitorWeight, tint = MaterialTheme.colorScheme.tertiary,
@@ -403,18 +412,19 @@ private fun ProgressHub(
                 valueIsAction = w == null,
                 supporting = stringResource(R.string.tru_hub_body),
                 tag = "stats_open_body_tile", onClick = if (w == null) onLogWeight else onOpenBody,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = m,
             )
+        }, { m ->
             com.cruxcoach.android.ui.training.common.ValueTile(
                 icon = Icons.Default.CalendarMonth, tint = CruxCoachDesign.colors.brandAccent,
                 label = stringResource(R.string.trt_weekly_review),
                 value = "${s.daysThisWeek} / ${s.profile.weeklyGoal}",
                 supporting = stringResource(R.string.trs_tile_training_days),
                 tag = "stats_weekly_review", onClick = onOpenWeeklyReview,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = m,
             )
-        }
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        })
+        TilePair({ m ->
             com.cruxcoach.android.ui.training.common.ValueTile(
                 icon = Icons.Default.Speed, tint = CruxCoachDesign.colors.positive,
                 label = stringResource(R.string.trbm_title),
@@ -423,8 +433,9 @@ private fun ProgressHub(
                 valueIsAction = s.benchmarkCount == 0,
                 supporting = stringResource(R.string.tru_hub_benchmarks),
                 tag = "stats_benchmarks", onClick = onOpenBenchmarks,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = m,
             )
+        }, { m ->
             com.cruxcoach.android.ui.training.common.ValueTile(
                 icon = Icons.Default.History, tint = MaterialTheme.colorScheme.secondary,
                 label = stringResource(R.string.trt_done_hero_history),
@@ -432,9 +443,9 @@ private fun ProgressHub(
                 supporting = pluralStringResource(R.plurals.tru_hub_history_days, s.trainingDaysInRange, rangeLabel(s.range)) + " · " +
                     pluralStringResource(R.plurals.tru_hub_records, s.recordsInRange, s.recordsInRange),
                 tag = "stats_history", onClick = onOpenHistory,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = m,
             )
-        }
+        })
     }
 }
 
