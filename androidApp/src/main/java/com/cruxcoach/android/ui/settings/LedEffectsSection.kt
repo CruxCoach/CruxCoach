@@ -22,7 +22,6 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.FlashOn
 import androidx.compose.material3.AlertDialog
@@ -49,6 +48,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.cruxcoach.android.R
@@ -138,23 +138,13 @@ internal fun LedEffectStatusLine(
         horizontalArrangement = Arrangement.SpaceBetween,
         itemVerticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Like the board's Bluetooth mark: green on the icon, the words in text colour.
-            if (running) {
-                Icon(
-                    Icons.Outlined.AutoAwesome,
-                    null,
-                    tint = SuccessGreen,
-                    modifier = Modifier.size(18.dp).padding(top = 1.dp),
-                )
-            }
-            Text(
-                stringResource(text),
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (running) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f, fill = false).testTag("led_effects_status"),
-            )
-        }
+        Text(
+            stringResource(text),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (running) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (running) FontWeight.SemiBold else null,
+            modifier = Modifier.testTag("led_effects_status"),
+        )
         val action = when {
             status == LedEffectStatus.NO_BOARD -> R.string.board_browser_connect to onConnect
             status == LedEffectStatus.ENDED && onSendAgain != null -> R.string.led_effect_restart to onSendAgain
@@ -240,6 +230,7 @@ internal fun LedEffectChooser(
             Text(
                 stringResource(R.string.settings_led_effects_remove_animations_note),
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
