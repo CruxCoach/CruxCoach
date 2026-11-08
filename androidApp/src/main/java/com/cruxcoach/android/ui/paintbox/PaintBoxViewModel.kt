@@ -133,7 +133,10 @@ class PaintBoxViewModel @Inject constructor(
         val labelled = document.copy(board = board.copy(label = label))
         history.clear()
         saved = labelled.takeIf { persisted }
-        mutable.value = PaintBoxState(document = labelled, boardSize = geometry.first,
+        // Keep the chosen tool and color when the new board can show that color.
+        val previous = mutable.value
+        val brush = previous.brush.takeIf { it in PaintPalette.forBoard(brand) } ?: PaintBoxState().brush
+        mutable.value = PaintBoxState(document = labelled, boardSize = geometry.first, brush = brush, eraser = previous.eraser,
             placements = geometry.second.associateBy { it.placementId.toInt() }, images = geometry.third,
             ledMap = leds, loading = false,
             missingBoard = supported && board.brand != "moonboard" && (geometry.first == null || geometry.second.isEmpty()),

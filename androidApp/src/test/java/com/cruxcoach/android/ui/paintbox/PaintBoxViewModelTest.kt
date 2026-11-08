@@ -174,6 +174,15 @@ class PaintBoxViewModelTest {
         assertEquals(setOf(3), opened.placements.keys)
         assertTrue(opened.document!!.colors.isEmpty())
     }
+    @Test fun `opening another board keeps the brush color it can show`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.brush(0xe0)
+        vm.boardPicked()
+        savedSize.value = 12
+        val opened = vm.state.first { it.document?.board?.sizeId == 12 && !it.loading }
+        assertEquals(0xe0, opened.brush)
+        assertFalse(opened.eraser)
+    }
     @Test fun `a saved board change the user did not pick here keeps the picture`() = runTest(dispatcher) {
         vm.state.first { !it.loading }
         vm.paint(setOf(1))
