@@ -21,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -140,16 +141,7 @@ fun SprayWallsAtVenue(
             }
             state.walls.isEmpty() -> Text(stringResource(R.string.spray_venue_none), style = MaterialTheme.typography.bodyMedium)
             else -> state.walls.forEach { listing ->
-                Row(Modifier.fillMaxWidth().testTag("spray_venue_wall"), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Wallpaper, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                        Text(listing.name, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            stringResource(R.string.spray_venue_wall_facts, listing.angle, state.ownerNames[listing.owner] ?: shortKey(listing.owner)),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                val action = @Composable {
                     if (state.adding == listing.wallId) {
                         CircularProgressIndicator(Modifier.size(20.dp))
                     } else {
@@ -157,6 +149,23 @@ fun SprayWallsAtVenue(
                             Text(stringResource(if (listing.alreadyHere) R.string.spray_venue_open else R.string.spray_venue_add))
                         }
                     }
+                }
+                // At the largest fonts the action goes under the name, so the name keeps the row's width.
+                val stacked = LocalDensity.current.fontScale >= 1.5f
+                Column(Modifier.fillMaxWidth().testTag("spray_venue_wall")) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Wallpaper, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                            Text(listing.name, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                stringResource(R.string.spray_venue_wall_facts, listing.angle, state.ownerNames[listing.owner] ?: shortKey(listing.owner)),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (!stacked) action()
+                    }
+                    if (stacked) action()
                 }
             }
         }

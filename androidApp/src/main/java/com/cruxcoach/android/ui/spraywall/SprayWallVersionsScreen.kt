@@ -245,7 +245,7 @@ private fun VersionRow(version: SprayWallVersion, current: Boolean, selected: Bo
                     stringResource(
                         R.string.spray_version_counts,
                         pluralStringResource(R.plurals.spray_holds_n, version.holdCount, version.holdCount),
-                        pluralStringResource(R.plurals.spray_climbs_n, climbs, climbs),
+                        pluralStringResource(R.plurals.spray_climbs_set_n, climbs, climbs),
                     ),
                 )
             }

@@ -34,6 +34,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -484,9 +485,9 @@ fun SprayHoldEditorScreen(
             HorizontalDivider()
             Surface {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    // The cards scroll within at most 40 % of the screen, so at the largest font on a small phone the
+                    // The cards scroll within at most 45 % of the screen, so at the largest font on a small phone the
                     // photo keeps its room; undo, redo and Add below stay in place.
-                    Column(Modifier.heightIn(max = screenHeightShare(0.4f)).verticalScroll(rememberScrollState())) {
+                    Column(Modifier.heightIn(max = screenHeightShare(0.45f)).verticalScroll(rememberScrollState())) {
                         // The model is offered where it helps, with suggestions or on a wall without holds, not while plain editing.
                         if (state.model !is HoldModelStore.State.Ready && (editor.suggestions.isNotEmpty() || editor.holds.isEmpty())) {
                             ModelCard(state.model, viewModel::downloadModel)
@@ -495,15 +496,13 @@ fun SprayHoldEditorScreen(
                         val selected = editor.selected
                         // The row keeps its height either way, so picking a hold does not shrink the photo under the finger.
                         if (selected == null) {
-                            // The full help sits at the end of this hint, so the app bar keeps room for its title.
-                            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.fillMaxWidth().heightIn(min = 48.dp), contentAlignment = Alignment.CenterStart) {
                                 Text(
                                     stringResource(R.string.spray_holds_size_hint),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.weight(1f).testTag("spray_hold_size_hint"),
+                                    modifier = Modifier.testTag("spray_hold_size_hint"),
                                 )
-                                InfoButton(stringResource(R.string.spray_holds_title), stringResource(R.string.spray_holds_help))
                             }
                         } else {
                             Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -526,28 +525,64 @@ fun SprayHoldEditorScreen(
                             }
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Undo, redo, the count, the help and Add. Where a line would leave the count only a few letters
+                    // (largest fonts on a narrow phone) the count and the help get their own line.
+                    val config = LocalConfiguration.current
+                    val fontScale = LocalDensity.current.fontScale
+                    val twoLines = config.screenWidthDp / fontScale < 250
+                    val count = @Composable { modifier: Modifier ->
+                        Text(
+                            pluralStringResource(R.plurals.spray_holds_n, editor.holds.size, editor.holds.size),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = modifier.testTag("spray_holds_count"),
+                        )
+                    }
+                    // The full help sits in this always visible bar, so the app bar keeps room for its title.
+                    val help = @Composable { InfoButton(stringResource(R.string.spray_holds_title), stringResource(R.string.spray_holds_help)) }
+                    val undoRedo = @Composable {
                         IconButton(onClick = viewModel::undo, enabled = editor.canUndo, modifier = Modifier.testTag("spray_holds_undo")) {
                             Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = stringResource(R.string.spray_holds_undo))
                         }
                         IconButton(onClick = viewModel::redo, enabled = editor.canRedo, modifier = Modifier.testTag("spray_holds_redo")) {
                             Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = stringResource(R.string.spray_holds_redo))
                         }
-                        Text(
-                            pluralStringResource(R.plurals.spray_holds_n, editor.holds.size, editor.holds.size),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f).padding(start = 8.dp).testTag("spray_holds_count"),
-                        )
-                        // At the largest fonts the chip keeps only its icon, so it is not cut off on a narrow phone.
+                    }
+                    // At the largest fonts or under 360 dp, Add is an icon toggle, so it is not cut off.
+                    val add = @Composable {
                         val addLabel = stringResource(R.string.spray_holds_mode_add)
-                        val iconOnly = LocalDensity.current.fontScale >= 1.5f || LocalConfiguration.current.screenWidthDp < 360
-                        FilterChip(
-                            selected = state.addMode,
-                            onClick = { viewModel.setAddMode(!state.addMode) },
-                            label = { if (!iconOnly) Text(addLabel) },
-                            leadingIcon = { Icon(Icons.Default.AddCircleOutline, contentDescription = addLabel.takeIf { iconOnly }) },
-                            modifier = Modifier.testTag("spray_holds_add_mode"),
-                        )
+                        if (fontScale >= 1.5f || config.screenWidthDp < 360) {
+                            FilledTonalIconToggleButton(
+                                checked = state.addMode,
+                                onCheckedChange = { viewModel.setAddMode(it) },
+                                modifier = Modifier.testTag("spray_holds_add_mode"),
+                            ) { Icon(Icons.Default.AddCircleOutline, contentDescription = addLabel) }
+                        } else {
+                            FilterChip(
+                                selected = state.addMode,
+                                onClick = { viewModel.setAddMode(!state.addMode) },
+                                label = { Text(addLabel) },
+                                leadingIcon = { Icon(Icons.Default.AddCircleOutline, contentDescription = null) },
+                                modifier = Modifier.testTag("spray_holds_add_mode"),
+                            )
+                        }
+                    }
+                    if (twoLines) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            count(Modifier.weight(1f))
+                            help()
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            undoRedo()
+                            Spacer(Modifier.weight(1f))
+                            add()
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            undoRedo()
+                            count(Modifier.weight(1f).padding(start = 8.dp))
+                            help()
+                            add()
+                        }
                     }
                 }
             }
@@ -572,12 +607,27 @@ fun SprayHoldEditorScreen(
 @Composable
 private fun ModelCard(model: HoldModelStore.State, onDownload: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("spray_model")) {
-        Column(Modifier.padding(start = 12.dp, end = 4.dp, bottom = 8.dp)) {
-            // What the model does and where it can be removed again sits behind the info symbol.
+        Column(Modifier.padding(start = 12.dp, end = 4.dp)) {
+            // One line: the offer, what it is (behind the info symbol) and the download; what the model does and where it
+            // can be removed again sits behind the info symbol.
+            val action = @Composable {
+                if (model is HoldModelStore.State.Downloading) {
+                    val percent = (model.doneBytes * 100 / HoldModel.BYTES).toInt()
+                    Text(stringResource(R.string.spray_model_downloading, percent), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(end = 8.dp, bottom = 8.dp))
+                } else {
+                    TextButton(onClick = onDownload, modifier = Modifier.testTag("spray_model_download")) {
+                        Text(stringResource(R.string.spray_model_download))
+                    }
+                }
+            }
+            // On a short line (narrow phone, large font) the download goes under the title, so the title keeps the width.
+            val oneLine = LocalConfiguration.current.screenWidthDp / LocalDensity.current.fontScale >= 400
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.spray_model_offer), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 InfoButton(stringResource(R.string.spray_model_title), stringResource(R.string.spray_model_text))
+                if (oneLine) action()
             }
+            if (!oneLine) action()
             if (model == HoldModelStore.State.Failed) {
                 Text(
                     stringResource(R.string.spray_model_failed),
@@ -585,14 +635,6 @@ private fun ModelCard(model: HoldModelStore.State, onDownload: () -> Unit) {
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(end = 8.dp, bottom = 8.dp),
                 )
-            }
-            if (model is HoldModelStore.State.Downloading) {
-                val percent = (model.doneBytes * 100 / HoldModel.BYTES).toInt()
-                Text(stringResource(R.string.spray_model_downloading, percent), style = MaterialTheme.typography.labelMedium)
-            } else {
-                TextButton(onClick = onDownload, modifier = Modifier.testTag("spray_model_download")) {
-                    Text(stringResource(R.string.spray_model_download))
-                }
             }
         }
     }

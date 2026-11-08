@@ -193,7 +193,7 @@
     <string name="spray_wall_withdrawing">Withdrawing the wall …</string>
     <string name="spray_withdraw_failed_title">Wall not withdrawn</string>
     <string name="spray_delete_failed_title">Wall not deleted</string>
-    <string name="spray_withdraw_failed_relays">No relay confirmed the withdrawal, so the wall is still public. Check the connection and try again.</string>
+    <string name="spray_withdraw_failed_relays">The servers did not confirm the withdrawal, so the wall is still public. Check the connection and try again.</string>
     <string name="spray_withdraw_failed_photos">The relays took the withdrawal, but a photo could not be deleted from its Blossom server, so the withdrawal is not finished. Until it is, nothing of this wall is published. Check the connection and try again.</string>
     <string name="spray_withdraw_failed_signing">Signing did not work or was declined in your signer app, so the wall is still public. Try again and confirm the requests.</string>
     <string name="spray_withdraw_failed_identity">Withdrawing needs the CruxCoach account key the wall was published with. Set it up in Settings under CruxCoach Account, then try again.</string>
@@ -233,6 +233,10 @@
     <plurals name="spray_climbs_n">
         <item quantity="one">%d climb</item>
         <item quantity="other">%d climbs</item>
+    </plurals>
+    <plurals name="spray_climbs_set_n">
+        <item quantity="one">%d climb set</item>
+        <item quantity="other">%d climbs set</item>
     </plurals>
     <plurals name="spray_tries_n">
         <item quantity="one">%d attempt</item>
