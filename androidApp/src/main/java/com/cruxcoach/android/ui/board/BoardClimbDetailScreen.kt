@@ -139,7 +139,6 @@ fun BoardClimbDetailScreen(
     var showLedEffects by remember { mutableStateOf(false) }
     // Help for "the board lights other holds": the usual cause is a wrong board size.
     val sizeCheckViewModel: BoardSizeCheckViewModel = hiltViewModel()
-    val sizeCheckBoard by sizeCheckViewModel.savedBoard.collectAsStateWithLifecycle()
     var sizeCheck by remember { mutableStateOf<SavedBoardForCheck?>(null) }
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
@@ -761,7 +760,9 @@ fun BoardClimbDetailScreen(
                                     )
                                 }
                                 // Wrong holds lit: the board-size check, for the
-                                // saved board when this climb is on it.
+                                // saved board when this climb is on it. Looked up
+                                // only while the menu is open.
+                                val sizeCheckBoard by sizeCheckViewModel.savedBoard.collectAsStateWithLifecycle()
                                 val sizeCheckOffer = sizeCheckBoard
                                 if (sizeCheckOffer != null && sizeCheckOffer.offered &&
                                     sizeCheckOffer.brand == state.climb?.brand

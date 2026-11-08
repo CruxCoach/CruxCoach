@@ -8,11 +8,13 @@ import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.BoardSizeCheckPoint
 import com.cruxcoach.android.data.BoardSizeCheckPoints
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.data.repository.BoardLocationRepository
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -41,6 +43,7 @@ class BoardSizeCheckViewModel @Inject constructor(
     private val connection: BoardBleConnection,
     private val boardRepository: BoardRepository,
     private val userPreferences: UserPreferences,
+    private val boardLocationRepository: BoardLocationRepository,
 ) : ViewModel() {
     val connectionState: StateFlow<ConnectionState> = connection.connectionState
     val connectedBrand: StateFlow<BoardBrand?> = connection.connectedBoardBrand
@@ -50,16 +53,25 @@ class BoardSizeCheckViewModel @Inject constructor(
     val state: StateFlow<BoardSizeCheckState> = session.state
     private val lock = Mutex()
 
+    /** Between ON_STOP and ON_START: a check that opens meanwhile goes dark at once. */
+    private var inBackground = false
+
     init {
         viewModelScope.launch {
             connection.connectionState.collect { if (it == ConnectionState.DISCONNECTED) serial { session.boardGone() } }
         }
         viewModelScope.launch {
-            // Checked under the lock: the check's own frame counts as a write while it is sent.
-            connection.boardWrites.collect { serial { if (state.value.lit && !link.showsCheckFrame()) session.replaced() } }
+            // Checked under the lock: the check's own writes count while they are sent.
+            connection.boardWrites.collect {
+                serial {
+                    link.noteWrites()
+                    if (!link.showsCheckFrame()) session.replaced()
+                }
+            }
         }
     }
 
+    /** Computed while collected: the climb screen collects it only while its ⋯ menu is open. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val savedBoard: StateFlow<SavedBoardForCheck?> = combine(
         userPreferences.boardBrand,
@@ -69,7 +81,8 @@ class BoardSizeCheckViewModel @Inject constructor(
         .distinctUntilChanged()
         .mapLatest { (brand, layoutId, sizeId) ->
             val sizeCount = if (brand.usesAuroraProtocol) {
-                withContext(Dispatchers.IO) { runCatching { sameProductSizes(brand, sizeId).size }.getOrDefault(0) }
+                // Two sizes with LED data are enough to offer the check.
+                withContext(Dispatchers.IO) { runCatching { sameProductSizes(brand, sizeId, atMost = 2).size }.getOrDefault(0) }
             } else {
                 0
             }
@@ -81,6 +94,7 @@ class BoardSizeCheckViewModel @Inject constructor(
     fun open(brand: BoardBrand, sizeId: Int, layoutHint: Int?) = serial {
         link.hold()
         session.open(brand, sizeId, layoutHint)
+        if (inBackground) pauseNow()
     }
 
     fun light() = serial { session.light() }
@@ -88,6 +102,27 @@ class BoardSizeCheckViewModel @Inject constructor(
     fun lightIfDark() = serial { session.lightIfDark() }
 
     fun reject() = serial { session.reject() }
+
+    /** The app went to the background: the board goes dark and the link is let go until [resume]. */
+    fun pause() {
+        inBackground = true
+        serial { pauseNow() }
+    }
+
+    fun resume() {
+        inBackground = false
+        serial {
+            if (!state.value.paused) return@serial
+            link.hold()
+            session.resume()
+        }
+    }
+
+    private suspend fun pauseNow() {
+        if (state.value.brand == null || state.value.paused) return
+        session.pause()
+        link.release()
+    }
 
     fun test(sizeId: Int) = serial { session.test(sizeId) }
 
@@ -117,7 +152,7 @@ class BoardSizeCheckViewModel @Inject constructor(
         viewModelScope.launch { lock.withLock { block() } }
     }
 
-    private fun sameProductSizes(brand: BoardBrand, sizeId: Int): List<BoardSize> {
+    private fun sameProductSizes(brand: BoardBrand, sizeId: Int, atMost: Int = Int.MAX_VALUE): List<BoardSize> {
         val wire = brand.wireValue
         val all = if (brand == BoardBrand.KILTER) {
             val known = BoardConstants.KILTER_KNOWN_SIZES
@@ -132,13 +167,27 @@ class BoardSizeCheckViewModel @Inject constructor(
                 .filter { it.productId == size.productId && !BoardConstants.isExcludedAuroraSize(brand, it.id.toInt()) } +
                 size
         }
-        return all.distinctBy { it.id }
+        return all.distinctBy { it.id }.asSequence()
             .filter { boardRepository.getPlacementLedMap(it.id.toInt(), wire).isNotEmpty() }
+            .take(atMost)
+            .toList()
     }
+
+    /** Kilter walls per size in gyms, the bundled numbers until the gym list is on the phone. */
+    private fun kilterSizeWalls(): Map<Int, Long> = try {
+        boardLocationRepository.productSizeFrequency()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        emptyMap()
+    }.ifEmpty { BoardConstants.DEFAULT_SIZE_FREQUENCY }
 
     private inner class Source : BoardSizeCheckSession.Source {
         override suspend fun sizes(brand: BoardBrand, sizeId: Int): List<BoardSize> =
-            withContext(Dispatchers.IO) { sameProductSizes(brand, sizeId) }
+            withContext(Dispatchers.IO) {
+                val sizes = sameProductSizes(brand, sizeId)
+                sizeCheckOrder(brand, sizes, if (brand == BoardBrand.KILTER) kilterSizeWalls() else emptyMap())
+            }
 
         override suspend fun layoutFor(brand: BoardBrand, size: BoardSize, hint: Int?): Int? =
             withContext(Dispatchers.IO) {
@@ -170,3 +219,11 @@ class BoardSizeCheckViewModel @Inject constructor(
         }
     }
 }
+
+/**
+ * The order the check lists sizes in, fixed when it opens. Kilter: most common in gyms first, like
+ * the picker, so "No" leads to the likeliest other size. Every other brand keeps the catalogue's
+ * order: the gym list has no sizes for it, and Kilter's numbers say nothing about its size ids.
+ */
+internal fun sizeCheckOrder(brand: BoardBrand, sizes: List<BoardSize>, kilterWalls: Map<Int, Long>): List<BoardSize> =
+    if (brand == BoardBrand.KILTER) sizes.sortedByDescending { kilterWalls[it.id.toInt()] ?: 0L } else sizes

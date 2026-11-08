@@ -3468,6 +3468,7 @@
     <string name="board_size_check_pick_other">Tap a size to light it on your board.</string>
     <string name="board_size_check_pick_other_offline">Tap a size to see its marked holds.</string>
     <string name="board_size_check_tried">Tried</string>
+    <string name="board_size_check_try_first">Try %1$s first</string>
     <string name="board_size_check_none_fit">None of them fits? Then your board may be set up differently from its catalogue.</string>
     <string name="board_size_check_saved">Saved: this is your board now.</string>
     <string name="board_size_check_selected">Selected. Tap Confirm in the board picker to keep it.</string>

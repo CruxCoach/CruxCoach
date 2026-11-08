@@ -498,6 +498,17 @@ enum class FrameSendResult {
 }
 
 /**
+ * The outcome of one write to the board: whether it went through, and the [BoardBleConnection.boardWrites]
+ * count of its last attempt, or null when nothing was written. A failed write may still have changed
+ * what the board shows.
+ */
+data class BoardWrite(val done: Boolean, val write: Long?) {
+    companion object {
+        val NONE = BoardWrite(false, null)
+    }
+}
+
+/**
  * Manages GATT connection to an Aurora Climbing board and sends hold/clear packets.
  *
  * Write flow control: waits for onCharacteristicWrite callback before sending
@@ -2462,29 +2473,31 @@ class BoardBleConnection(
     suspend fun sendRawLeds(
         leds: List<Pair<Int, Int>>,
         expectedBrand: BoardBrand? = null,
-    ): Boolean = sendRawFrame(leds, expectedBrand) != null
+    ): Boolean = sendRawFrame(leds, expectedBrand).done
 
-    /** [sendRawLeds] that returns the [boardWrites] count of the frame it put up, or null. */
+    /** [sendRawLeds] that also tells which [boardWrites] count its write had. */
     suspend fun sendRawFrame(
         leds: List<Pair<Int, Int>>,
         expectedBrand: BoardBrand? = null,
-    ): Long? = writeMutex.withLock {
-        if (cleaningState.value.active) return null
+    ): BoardWrite = writeMutex.withLock {
+        if (cleaningState.value.active) return BoardWrite.NONE
         val ticket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED ||
             !auroraPacketsAllowed(_connectedBoardBrand.value) ||
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
-        ) return null
+        ) return BoardWrite.NONE
         if (encoder.litNothing(leds)) {
             Log.w(TAG, "Refusing an API-2 frame of ${leds.size} LEDs: the 18 W budget would light none of them")
-            return null
+            return BoardWrite.NONE
         }
         val chunks = encoder.encodeClimb(leds)
+        val before = _boardWrites.value
         val success = writeChunks(chunks)
         // The easter frames replace whatever climb was lit.
         _litFrame.value = null
         if (success) cleaning.projected(ticket, chunks)
-        return if (success) _boardWrites.value else null
+        // Read under the lock: the next writer's count must not pass for this one.
+        return BoardWrite(success, _boardWrites.value.takeIf { it != before })
     }
 
     /**
@@ -2666,18 +2679,24 @@ class BoardBleConnection(
      * its global command removes every eWalls user, so only the distinctly
      * named explicit API below may authorize it. [expectedBrand] fences
      * long-running producers such as Kilter animations across board swaps. */
-    suspend fun clearBoard(expectedBrand: BoardBrand? = null): Boolean = writeMutex.withLock {
-        if (cleaningState.value.active) return false
+    suspend fun clearBoard(expectedBrand: BoardBrand? = null): Boolean = clearBoardWrite(expectedBrand).done
+
+    /** [clearBoard] that also tells which [boardWrites] count its last write had. */
+    suspend fun clearBoardWrite(expectedBrand: BoardBrand? = null): BoardWrite = writeMutex.withLock {
+        if (cleaningState.value.active) return BoardWrite.NONE
         val connectedBrand = _connectedBoardBrand.value
         if (_connectionState.value != ConnectionState.CONNECTED ||
             !boardScopedCommandAllowed(connectedBrand, expectedBrand) ||
             !genericBoardClearAllowed(connectedBrand)
-        ) return false
+        ) return BoardWrite.NONE
 
-        return clearConnectedBoardLocked(
+        val before = _boardWrites.value
+        val cleared = clearConnectedBoardLocked(
             allowQuantumGlobalClear = false,
             expectedQuantumBoard = null,
         )
+        // Read under the lock: the next writer's count must not pass for this one.
+        return BoardWrite(cleared, _boardWrites.value.takeIf { it != before })
     }
 
     /** Deliberate global Quantum clear. Callers must put this behind an

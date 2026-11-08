@@ -287,6 +287,100 @@ class BoardSizeCheckSessionTest {
         assertTrue(session.state.value.lit)
     }
 
+    @Test fun `after a failed send another sender's climb is not lit over`() = runTest {
+        val source = FakeSource(listOf(size(10), size(7)), lightWorks = false)
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.KILTER, 10, null)
+        assertTrue(session.state.value.sendFailed)
+        source.lightWorks = true
+        // Another sender's climb: SENDING, then CONNECTED makes the sheet ask again.
+        session.replaced()
+        session.lightIfDark()
+        assertTrue(source.lit.isEmpty(), "the other sender's climb stays on the board")
+        assertTrue(session.state.value.replaced)
+    }
+
+    @Test fun `after the link drops another sender's climb is not lit over`() = runTest {
+        val source = FakeSource(listOf(size(10), size(7)))
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.KILTER, 10, null)
+        session.boardGone()
+        assertTrue(session.state.value.onBoard)
+        session.replaced() // a session sends its climb once the board is back
+        session.lightIfDark()
+        assertEquals(1, source.lit.size)
+        assertTrue(session.state.value.replaced)
+    }
+
+    @Test fun `a frame before the first send is lit over once the board is there`() = runTest {
+        val source = FakeSource(listOf(size(10), size(7)), ready = false)
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.KILTER, 10, null)
+        session.replaced() // the board showed something before the check sent anything
+        source.ready = true
+        session.lightIfDark()
+        assertEquals(1, source.lit.size)
+    }
+
+    @Test fun `in the background the board is dark, back in the app the check goes on where it was`() = runTest {
+        val source = FakeSource(listOf(size(10), size(7)))
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.KILTER, 10, null)
+        session.reject()
+        session.test(7)
+        session.pause()
+        assertEquals(1, source.clears)
+        with(session.state.value) {
+            assertFalse(lit)
+            assertTrue(paused)
+            assertEquals(7, size?.id?.toInt())
+            assertTrue(10 in rejected)
+        }
+        session.lightIfDark() // the link comes and goes while the phone is locked
+        assertEquals(2, source.lit.size)
+
+        session.resume()
+        assertEquals(listOf(700, 701, 702), source.lit.last())
+        assertEquals(3, source.lit.size)
+        assertTrue(session.state.value.lit)
+        assertFalse(session.state.value.paused)
+        assertEquals(7, session.confirm(applyChange = true))
+    }
+
+    @Test fun `a climb sent while the app was in the background is not lit over`() = runTest {
+        val source = FakeSource(listOf(size(10), size(7)))
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.KILTER, 10, null)
+        session.pause()
+        session.replaced()
+        session.resume()
+        assertEquals(1, source.lit.size)
+        assertTrue(session.state.value.replaced)
+        session.close()
+        assertEquals(1, source.clears, "cleared once, when the app went away")
+    }
+
+    @Test fun `the smallest kit is listed with the size to try first`() = runTest {
+        val session = BoardSizeCheckSession(tension())
+        session.open(BoardBrand.TENSION, 3, null)
+        session.reject() // Full Wall
+        with(session.state.value) {
+            assertEquals(listOf(2), otherSizes.map { it.id.toInt() })
+            assertEquals(mapOf(3 to listOf(2)), waitingFor.mapValues { (_, open) -> open.map { it.id.toInt() } })
+        }
+        session.test(2)
+        session.reject()
+        assertTrue(session.state.value.waitingFor.isEmpty())
+        assertEquals(listOf(1, 3), session.state.value.otherSizes.map { it.id.toInt() })
+    }
+
+    @Test fun `the other sizes keep the order the source gave`() = runTest {
+        val session = BoardSizeCheckSession(FakeSource(listOf(size(27), size(10), size(7))))
+        session.open(BoardBrand.TENSION, 10, null)
+        session.reject()
+        assertEquals(listOf(27, 7), session.state.value.otherSizes.map { it.id.toInt() })
+    }
+
     @Test fun `no sizes with LED data means no check`() = runTest {
         val source = FakeSource(emptyList())
         val session = BoardSizeCheckSession(source)

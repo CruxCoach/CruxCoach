@@ -67,6 +67,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.ConnectionState
@@ -110,6 +113,20 @@ fun BoardSizeCheckSheet(
     val start = remember { BoardSizeCheckRequest(brand, sizeId, layoutId) }
     LaunchedEffect(start) { viewModel.open(start.brand, start.sizeId, start.layoutId) }
     DisposableEffect(viewModel) { onDispose { viewModel.close() } }
+    // A locked phone or another app leaves the board dark and free: a gym board takes one phone
+    // at a time, and a forgotten sheet would keep it lit and taken. Back here it lights again.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> viewModel.pause()
+                Lifecycle.Event.ON_START -> viewModel.resume()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val connected = connection == ConnectionState.CONNECTED || connection == ConnectionState.SENDING
     val ready = connection == ConnectionState.CONNECTED && connectedBrand == brand
     // Coming back from connecting lights the marked holds without another tap.
@@ -266,13 +283,25 @@ internal fun BoardSizeCheckContent(
                 // Without a board a tapped size only shows its holds here: connecting comes first.
                 if (!connected) ConnectPrompt(null, onConnect)
                 Supporting(stringResource(if (connected) R.string.board_size_check_pick_other else R.string.board_size_check_pick_other_offline))
-                // Most common first: the likeliest other size is the one at the top.
-                state.otherSizes.sortedByDescending { BoardConstants.DEFAULT_SIZE_FREQUENCY[it.id.toInt()] ?: 0L }.forEach { other ->
+                // In the order the check fixed when it opened (Kilter: most common first). A size
+                // that lights like one still open is listed with it, so it is not missed.
+                val waitingFor = state.waitingFor
+                state.sizes.filter { it in state.otherSizes || it.id.toInt() in waitingFor }.forEach { other ->
+                    val id = other.id.toInt()
+                    val after = waitingFor[id]
                     SizeOption(
                         label = boardSizeCheckLabel(brand, other),
-                        tried = other.id.toInt() in state.tried,
+                        note = when {
+                            after != null -> stringResource(
+                                R.string.board_size_check_try_first,
+                                after.joinToString { boardSizeCheckLabel(brand, it) },
+                            )
+                            id in state.tried -> stringResource(R.string.board_size_check_tried)
+                            else -> null
+                        },
+                        waiting = after != null,
                         enabled = !state.busy,
-                        onClick = { onTest(other.id.toInt()) },
+                        onClick = { onTest(id) },
                         modifier = Modifier.testTag("board_size_check_option_${other.id}"),
                     )
                 }
@@ -370,10 +399,17 @@ private fun ConnectPrompt(text: String?, onConnect: () -> Unit) {
 }
 
 @Composable
-private fun SizeOption(label: String, tried: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun SizeOption(
+    label: String,
+    note: String?,
+    waiting: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier,
+) {
     Surface(
         onClick = onClick,
-        enabled = enabled,
+        enabled = enabled && !waiting,
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -384,13 +420,14 @@ private fun SizeOption(label: String, tried: Boolean, enabled: Boolean, onClick:
             Modifier.heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            if (tried) {
-                Text(
-                    stringResource(R.string.board_size_check_tried),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (waiting) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+            )
+            note?.let {
+                Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

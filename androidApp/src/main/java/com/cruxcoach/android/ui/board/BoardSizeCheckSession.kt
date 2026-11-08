@@ -46,12 +46,26 @@ data class BoardSizeCheckState(
     val busy: Boolean = false,
     val sendFailed: Boolean = false,
     val confirmedSizeId: Int? = null,
+    /** The app is in the background: the board was cleared, the check keeps its place. */
+    val paused: Boolean = false,
 ) {
     val confirmedChange: Boolean get() = confirmedSizeId != null && confirmedSizeId != currentSizeId
 
     /** Sizes that can be tried now: each one's look-alikes are ruled out already. */
     val otherSizes: List<BoardSize> get() = sizes.filter { it.id != size?.id && testable(it.id.toInt()) }
     val allOthersTried: Boolean get() = otherSizes.isNotEmpty() && otherSizes.all { it.id.toInt() in tried }
+
+    /**
+     * Sizes that can be tried once the look-alikes named for each are ruled out: on Tension
+     * Board 1, No Kickboard after Half Kickboard. Only look-alikes that can be tried themselves.
+     */
+    val waitingFor: Map<Int, List<BoardSize>>
+        get() = sizes.filter { it.id != size?.id && !testable(it.id.toInt()) }.mapNotNull { waiting ->
+            val plan = plans[waiting.id.toInt()]?.takeIf { it.points.isNotEmpty() } ?: return@mapNotNull null
+            val open = sizes.filter { it.id.toInt() in plan.lookAlikes && it.id.toInt() !in rejected }
+            val reachable = open.all { plans[it.id.toInt()]?.points?.isNotEmpty() == true }
+            if (open.isEmpty() || !reachable) null else waiting.id.toInt() to open
+        }.toMap()
 
     /** "Yes" means the size under test only once no look-alike is left. */
     val canConfirm: Boolean get() = size?.let { testable(it.id.toInt()) } == true
@@ -91,7 +105,7 @@ class BoardSizeCheckSession(private val source: Source) {
 
         suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean
 
-        /** Clears what the check lit, also when the link dropped since. */
+        /** Clears what the check lit, also when the link dropped since; a frame sent over it stays. */
         suspend fun clear(brand: BoardBrand): Boolean
 
         /** Makes [sizeId] the user's board. */
@@ -170,9 +184,10 @@ class BoardSizeCheckSession(private val source: Source) {
         } catch (_: Exception) {
             false
         }
-        // A failed send may still have left the previous frame up: keep it marked for clearing.
+        // A failed send may have left part of its frame or the previous one up: keep it marked
+        // for clearing.
         mutableState.update {
-            it.copy(busy = false, lit = sent, replaced = false, onBoard = sent || it.onBoard, sendFailed = !sent)
+            it.copy(busy = false, lit = sent, replaced = false, onBoard = true, sendFailed = !sent)
         }
     }
 
@@ -182,7 +197,7 @@ class BoardSizeCheckSession(private val source: Source) {
      */
     suspend fun lightIfDark() {
         val current = mutableState.value
-        if (!current.lit && !current.replaced) light()
+        if (!current.lit && !current.replaced && !current.paused) light()
     }
 
     /**
@@ -194,11 +209,15 @@ class BoardSizeCheckSession(private val source: Source) {
     }
 
     /**
-     * Another frame replaced the points (a session, the relay, another screen): no answer counts
-     * until the user lights them again. Not relit on its own, so the check does not fight a sender.
+     * Another frame went to the board (a session, the relay, another screen): no answer counts
+     * until the user lights the points again. Not relit on its own, so the check does not fight
+     * a sender; that holds while they are lit, after a failed send, while something of the
+     * check may still be up and while the app is in the background.
      */
     fun replaced() {
-        mutableState.update { if (it.lit) it.copy(lit = false, replaced = true) else it }
+        mutableState.update {
+            if (it.lit || it.sendFailed || it.onBoard || it.paused) it.copy(lit = false, replaced = true) else it
+        }
     }
 
     /**
@@ -237,13 +256,33 @@ class BoardSizeCheckSession(private val source: Source) {
         show(brand, plan)
     }
 
+    /**
+     * The app went to the background (phone locked, another app): a gym board takes one phone
+     * at a time, so it is left dark and free. The check keeps its size and answers; [resume]
+     * lights the points again unless something else was sent meanwhile.
+     */
+    suspend fun pause() {
+        val brand = mutableState.value.brand ?: return
+        mutableState.update { it.copy(lit = false, paused = true) }
+        clearBoard(brand)
+    }
+
+    suspend fun resume() {
+        if (!mutableState.value.paused) return
+        mutableState.update { it.copy(paused = false) }
+        lightIfDark()
+    }
+
     /** Leaves the board dark if the check lit it. Safe to call more than once. */
     suspend fun close() {
         val brand = mutableState.value.brand ?: return
-        val onBoard = mutableState.value.onBoard
         // A sheet opened while the board is cleared shows nothing of this check.
-        mutableState.value = BoardSizeCheckState(brand = brand, onBoard = onBoard)
-        if (!onBoard) return
+        mutableState.value = BoardSizeCheckState(brand = brand, onBoard = mutableState.value.onBoard)
+        clearBoard(brand)
+    }
+
+    private suspend fun clearBoard(brand: BoardBrand) {
+        if (!mutableState.value.onBoard) return
         val cleared = try {
             source.clear(brand)
         } catch (cancelled: CancellationException) {

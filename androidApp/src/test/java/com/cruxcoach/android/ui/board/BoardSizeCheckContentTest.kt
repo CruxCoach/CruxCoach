@@ -110,10 +110,24 @@ class BoardSizeCheckContentTest {
         compose.onNodeWithTag("board_size_check_option_7").assertExists()
     }
 
-    @Test fun `a size its holds cannot tell from an open one is neither offered nor confirmable`() {
-        val waiting = ask(lookAlikesOf7 = setOf(10)).copy(step = BoardSizeCheckStep.PICK_OTHER, tried = setOf(10))
-        show(waiting)
-        compose.onNodeWithTag("board_size_check_option_7").assertDoesNotExist()
+    @Test fun `a size its holds cannot tell from an open one is listed after it, not testable`() {
+        val s8 = BoardSize(8, 1, "16 x 12", 0, 192, 0, 156, null)
+        val waiting = ask().copy(
+            sizes = listOf(s10, s8, s7),
+            plans = mapOf(
+                10 to BoardSizeCheckSizePlan(s10, 1, points, emptySet()),
+                8 to BoardSizeCheckSizePlan(s8, 1, points, emptySet()),
+                7 to BoardSizeCheckSizePlan(s7, 1, points, setOf(8)),
+            ),
+            step = BoardSizeCheckStep.PICK_OTHER, tried = setOf(10), rejected = setOf(10),
+        )
+        val events = mutableListOf<String>()
+        show(waiting, events = events)
+        compose.onNodeWithTag("board_size_check_option_7").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("probieren", substring = true).assertExists()
+        compose.onNodeWithTag("board_size_check_option_7").performClick()
+        compose.onNodeWithTag("board_size_check_option_8").performScrollTo().assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(listOf("test 8"), events) }
     }
 
     @Test fun `yes stays off for a size with an open look-alike`() {
