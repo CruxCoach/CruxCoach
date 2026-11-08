@@ -374,6 +374,12 @@ abstract class SprayWallUiReview(private val variant: String) {
         wallShot("wall-publish-failed", id)
     }
 
+    @Test fun wallWithdrawUnfinished() {
+        val id = mainWall()
+        runBlocking { repository.markWithdrawStarted(id) }
+        wallShot("wall-withdraw-unfinished", id)
+    }
+
     @Test fun wallUnfinishedReset() {
         val id = mainWall()
         runBlocking { repository.resetWall(id, wallPhoto(paintedHolds(seed = 21, count = 35), tint = 0xFFBCAAA4.toInt()), emptyList()) }
@@ -473,6 +479,12 @@ abstract class SprayWallUiReview(private val variant: String) {
             vm.save()
             settle({ vm.state.value.withdrawFailed != null })
         })
+    }
+
+    @Test fun detailsWithdrawUnfinished() {
+        val id = mainWall()
+        runBlocking { repository.markWithdrawStarted(id) }
+        detailsShot("details-withdraw-unfinished", detailsVm(id))
     }
 
     @Test fun detailsGymPicker() {
