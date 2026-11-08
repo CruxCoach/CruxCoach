@@ -147,6 +147,8 @@ internal fun BoardStatsSheetContent(
     onHeatmapModeSelect: (HeatmapMode) -> Unit = {},
     /** The year in review's place in the statistics (#64). */
     yearReview: @Composable () -> Unit = {},
+    /** Until the first numbers are in, the sheet shows a loading sign below its filters. */
+    loading: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -171,6 +173,14 @@ internal fun BoardStatsSheetContent(
                 selected = boardFilter,
                 onSelect = onBoardFilterSelect,
             )
+        }
+
+        // Until the first numbers are in, the sheet only shows that they are coming.
+        if (loading) {
+            Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                CircularProgressIndicator(color = OrangeAccent)
+            }
+            return@Column
         }
 
         // The period in six numbers; the cards below explain them.

@@ -878,4 +878,16 @@ class BoardStatsComputerTest {
         assertTrue(stats.gradeOutcomes.isEmpty())
     }
 
+    @Test
+    fun `parseDate reads the day like ISO_LOCAL_DATE`() {
+        val day = LocalDate.parse("2026-11-08")
+        assertEquals(day, BoardStatsComputer.parseDate("2026-11-08 18:00:00"))
+        assertEquals(day, BoardStatsComputer.parseDate("2026-11-08T18:00:00Z"))
+        assertEquals(day, BoardStatsComputer.parseDate("2026-11-08"))
+        assertEquals(LocalDate.parse("2024-02-29"), BoardStatsComputer.parseDate("2024-02-29 10:00:00"))
+        for (bad in listOf("2023-02-29", "2026-02-30", "2026-13-01", "2026-00-10", "2026-1-08", "2026/11/08", "2026-11-0", "", "abcd-ef-gh")) {
+            assertNull(bad, BoardStatsComputer.parseDate(bad))
+        }
+    }
+
 }

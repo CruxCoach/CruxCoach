@@ -123,6 +123,8 @@ data class BoardLogbookState(
     // Stats
     val statsInterval: StatsTimeInterval = StatsTimeInterval.ALL,
     val stats: BoardLogbookStats = BoardLogbookStats(),
+    /** The statistics have been computed once; until then the sheet shows that it is loading. */
+    val statsReady: Boolean = false,
     val showStatsSheet: Boolean = false,
     val zones: IntensityZones? = null,
     // Chart view selectors
@@ -228,6 +230,7 @@ class BoardLogbookViewModel @Inject constructor(
     val state: StateFlow<BoardLogbookState> = _state.asStateFlow()
 
     private var allAscents: List<AscentWithClimb> = emptyList()
+    private var overviewJob: Job? = null
     private var statsJob: Job? = null
 
     companion object {
@@ -240,6 +243,7 @@ class BoardLogbookViewModel @Inject constructor(
             userPreferences.gradeScale.collect { scale ->
                 _state.update { it.copy(gradeScale = scale) }
                 if (allAscents.isNotEmpty()) {
+                    recomputeOverview()
                     recomputeStats()
                 }
             }
@@ -404,9 +408,6 @@ class BoardLogbookViewModel @Inject constructor(
                     personalBoardRepo.getUserLogbookAllLight()
                 }
                 allAscents = all
-                // True-flash set needs the FULL history (prior-session
-                // attempts disqualify), so it is derived here, not per page.
-                _state.update { it.copy(flashUuids = BoardStatsComputer.trueFlashUuids(all)) }
                 // Boards the user has actually logged on — drives whether the
                 // per-board stats selector is shown. Kilter first, then the
                 // rest, for a stable chip order.
@@ -470,6 +471,10 @@ class BoardLogbookViewModel @Inject constructor(
                         heatmapBoardSelection = heatmapSel,
                     )
                 }
+                // The overview and the flash markers before the rest: they need
+                // only a small part of the statistics and are the first thing on
+                // screen. After the boards, which give the overview its colours.
+                recomputeOverview()
                 applyLogbookFilters()
                 // Load the heatmap canvas for the seeded/selected board (init no
                 // longer does this — the selection didn't exist yet). No-op for
@@ -668,6 +673,42 @@ class BoardLogbookViewModel @Inject constructor(
         recomputeStats()
     }
 
+    /**
+     * The overview at the top of the logbook and the true flashes (prior-session
+     * attempts disqualify, so they need the full history). Neither depends on the
+     * period or board of the statistics, so a filter change does not redo them.
+     */
+    private fun recomputeOverview() {
+        overviewJob?.cancel()
+        overviewJob = viewModelScope.safeLaunch(TAG) {
+            try {
+                val all = allAscents
+                val scale = _state.value.gradeScale
+                val result = withContext(Dispatchers.Default) {
+                    val flashes = BoardStatsComputer.trueFlashUuids(all)
+                    ComputedOverview(
+                        flashUuids = flashes,
+                        atAGlance = StatsHighlightsComputer.atAGlance(all, scale, flashes),
+                        milestones = StatsHighlightsComputer.milestones(
+                            all, scale, BoardStatsComputer.weekStreakOf(all),
+                        ),
+                    )
+                }
+                _state.update {
+                    it.copy(
+                        flashUuids = result.flashUuids,
+                        atAGlance = result.atAGlance,
+                        milestones = result.milestones,
+                    )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "recomputeOverview failed", e)
+            }
+        }
+    }
+
     private fun recomputeStats() {
         // Only the newest choice may land: a slow "All" started before a tap on
         // "30 days" must not overwrite it when it finishes later.
@@ -694,11 +735,6 @@ class BoardLogbookViewModel @Inject constructor(
                         allAscents, s.statsInterval, s.gradeScale,
                         s.customDateFrom, s.customDateTo, context
                     )
-                    // The logbook overview spans every board and the whole logbook.
-                    val glance = StatsHighlightsComputer.atAGlance(allAscents, s.gradeScale)
-                    val badges = StatsHighlightsComputer.milestones(
-                        allAscents, s.gradeScale, BoardStatsComputer.weekStreakOf(allAscents),
-                    )
                     val byBoard = if (s.boardFilter == null && s.availableBoardBrands.size > 1) {
                         BoardStatsComputer.gradeProgressionByBoard(
                             allAscents, s.statsInterval, s.customDateFrom, s.customDateTo, context,
@@ -706,15 +742,14 @@ class BoardLogbookViewModel @Inject constructor(
                     } else {
                         emptyMap()
                     }
-                    ComputedStats(st, cmp, cross, glance, badges, byBoard)
+                    ComputedStats(st, cmp, cross, byBoard)
                 }
                 _state.update {
                     it.copy(
                         stats = result.stats,
+                        statsReady = true,
                         boardComparison = result.comparison,
                         crossBoard = result.crossBoard,
-                        atAGlance = result.atAGlance,
-                        milestones = result.milestones,
                         progressionByBoard = result.progressionByBoard,
                     )
                 }
@@ -723,6 +758,8 @@ class BoardLogbookViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "recomputeStats failed", e)
+                // Show what there is rather than loading forever.
+                _state.update { it.copy(statsReady = true) }
             }
         }
     }
@@ -1024,7 +1061,12 @@ private class ComputedStats(
     val stats: BoardLogbookStats,
     val comparison: List<BoardComparisonEntry>,
     val crossBoard: CrossBoardStats,
+    val progressionByBoard: Map<String, List<GradeProgressionPoint>>,
+)
+
+/** The logbook overview and the flash markers of its entries: the whole logbook, every board. */
+private class ComputedOverview(
+    val flashUuids: Set<String>,
     val atAGlance: AtAGlance,
     val milestones: List<Milestone>,
-    val progressionByBoard: Map<String, List<GradeProgressionPoint>>,
 )

@@ -46,7 +46,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   your hardest send and hardest flash, the last 30 days against the 30 before
   (climbing days, sends and hardest grade; green means more or harder), your
   climbing days per week and your milestones (new grades, 50, 100, 250 and more
-  sends, your biggest day, weeks in a row). Tap it for the statistics. The period
+  sends, your biggest day, weeks in a row). It appears as soon as the logbook has
+  loaded; tap it for the statistics, which show a loading sign until they are ready. The period
   filter of the list moved into the logbook filter, next to result, board and
   angle. Entries no longer repeat the date of their day, and at the largest font
   sizes an entry puts its name and result below its grade instead of squeezing

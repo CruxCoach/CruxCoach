@@ -6,9 +6,9 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.AscentWithClimb
 import java.time.Clock
+import java.time.DateTimeException
 import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import java.time.temporal.WeekFields
@@ -20,7 +20,6 @@ import java.util.Locale
  */
 object BoardStatsComputer {
 
-    private val DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE
     private val WEEK_FIELD = WeekFields.ISO.weekOfWeekBasedYear()
     private val WEEK_BASED_YEAR_FIELD = WeekFields.ISO.weekBasedYear()
 
@@ -579,10 +578,30 @@ object BoardStatsComputer {
         return streak
     }
 
-    private fun parseDate(dateStr: String): LocalDate? {
+    /**
+     * The day of a logbook timestamp ("yyyy-MM-dd…"), or null when it has none.
+     * Read by hand rather than with [LocalDate.parse]: the statistics read the day
+     * of every entry several times, and the formatter took most of their time on a
+     * long logbook. Impossible dates are null, as with ISO_LOCAL_DATE.
+     */
+    internal fun parseDate(dateStr: String): LocalDate? {
+        if (dateStr.length < 10 || dateStr[4] != '-' || dateStr[7] != '-') return null
+        fun digits(from: Int, to: Int): Int {
+            var value = 0
+            for (i in from until to) {
+                val c = dateStr[i]
+                if (c !in '0'..'9') return -1
+                value = value * 10 + (c - '0')
+            }
+            return value
+        }
+        val year = digits(0, 4)
+        val month = digits(5, 7)
+        val day = digits(8, 10)
+        if (year < 0 || month < 0 || day < 0) return null
         return try {
-            LocalDate.parse(dateStr.take(10), DATE_FMT)
-        } catch (_: Exception) {
+            LocalDate.of(year, month, day)
+        } catch (_: DateTimeException) {
             null
         }
     }

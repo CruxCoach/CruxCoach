@@ -311,9 +311,5 @@ object StatsHighlightsComputer {
         date = dayOf(send),
     )
 
-    private fun dayOf(ascent: AscentWithClimb): LocalDate? = try {
-        LocalDate.parse(ascent.climbedAt.take(10))
-    } catch (_: Exception) {
-        null
-    }
+    private fun dayOf(ascent: AscentWithClimb): LocalDate? = BoardStatsComputer.parseDate(ascent.climbedAt)
 }
