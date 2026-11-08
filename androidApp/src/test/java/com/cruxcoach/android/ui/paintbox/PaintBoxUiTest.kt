@@ -50,9 +50,9 @@ class PaintBoxUiTest {
         compose.onNodeWithText("Eraser").assertDoesNotExist()
         compose.onNodeWithText("Brush").assertDoesNotExist()
         compose.onNodeWithText("Color").assertDoesNotExist()
-        compose.onNodeWithText("Pick Background Color").assertIsDisplayed()
+        compose.onNodeWithText("Tap the background color in the image.").assertIsDisplayed()
         compose.onNodeWithText("Save").assertIsNotEnabled()
-        compose.onNodeWithText("BG Color").performClick()
+        compose.onNodeWithText("Background").performClick()
         compose.onNodeWithText("OK").performClick()
         compose.onNodeWithText("Cancel").performClick()
         verify { vm.imageBackgroundTool(); vm.acceptImage(); vm.cancelImage() }

@@ -40,8 +40,8 @@
     <string name="paintbox_quantum_hint">Quantum: vier Farben, bis zu 92 LEDs je Farbe. Solange ein Bild auf dem Board ist, lassen sich keine Climbs beleuchten.</string>
     <string name="paintbox_image_import">Bild importieren</string>
     <string name="paintbox_image_ok">OK</string>
-    <string name="paintbox_image_bg">BG Color</string>
-    <string name="paintbox_image_pick_bg">Pick Background Color</string>
+    <string name="paintbox_image_bg">Hintergrund</string>
+    <string name="paintbox_image_pick_bg">Tippe im Bild auf die Hintergrundfarbe.</string>
     <string name="paintbox_image_gestures">Bild mit einem Finger verschieben; mit zwei Fingern zoomen und drehen.</string>
     <string name="paintbox_image_error">Das Bild konnte nicht geladen werden. Bitte wähle ein anderes Bild.</string>
     <string name="paintbox_quantum_picture_on_board">Auf dem Board ist ein PaintBox-Bild. Um einen Climb zu beleuchten, leere das Bild in PaintBox und sende es.</string>
