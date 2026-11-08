@@ -12,6 +12,7 @@ import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -210,15 +211,22 @@ class ShinyWallSyncEngine @Inject constructor(
         val attempts: Long get() = if (sent < 0) (-sent.toLong()).coerceAtMost(MAX_ATTEMPTS) else 1L
     }
 
-    /** An attempt entry a [LogRow] stands for, with the attempts it added to Shiny's counter. */
-    private class RowPart(val entry: Placed, val increment: Long, val daySoFar: Long)
+    /** An attempt entry a [LogRow] stands for, with the day's attempts up to and including it. */
+    private class RowPart(val entry: Placed, val daySoFar: Long)
 
     /**
      * A logbook row: a send, or the last attempt entry of a day. [parts] are the entries of the
-     * same day it stands for besides [entry]. A send carries Shiny's count less [earlierDays];
-     * a project its day's [attempts].
+     * same day it stands for besides [entry], in time order. A send carries Shiny's count less
+     * [earlierDays]; a project its day's [attempts]. [later] are the entries after a project's day
+     * up to the send.
      */
-    private class LogRow(val entry: Placed, val parts: List<RowPart>, val attempts: Long = 1, val earlierDays: Long = 0)
+    private class LogRow(
+        val entry: Placed,
+        val parts: List<RowPart>,
+        val attempts: Long = 1,
+        val earlierDays: Long = 0,
+        val later: List<Placed> = emptyList(),
+    )
 
     suspend fun previewImport(): Result<ShinyWallImportPreview> = withContext(Dispatchers.IO) {
         val session = storedSession().getOrElse { return@withContext Result.failure(it) }
@@ -284,11 +292,17 @@ class ShinyWallSyncEngine @Inject constructor(
     }
 
     /**
-     * Forgets what imports have placed, after the logbook was cleared. Waits for a running import,
-     * which would otherwise write its record back.
+     * Runs [deleteLogbook] while no import runs, then forgets what imports have placed, so the next
+     * import brings everything in again. Neither step can be cancelled half-way: a running import
+     * would write its record back over the reset, and a cancelled reset would leave every entry
+     * "won't be imported again" with the logbook already gone. A failed reset is the result; a
+     * failed delete throws, as it did without the lock.
      */
-    suspend fun resetImportRecords(): Result<Unit> = withContext(Dispatchers.IO) {
-        importMutex.withLock { keystoreStep { tokenStore.resetImportRecords() } }
+    suspend fun clearLogbook(deleteLogbook: () -> Unit): Result<Unit> = withContext(NonCancellable + Dispatchers.IO) {
+        importMutex.withLock {
+            deleteLogbook()
+            keystoreStep { tokenStore.resetImportRecords() }
+        }
     }
 
     private fun <T> notSignedIn(): Result<T> =
@@ -351,8 +365,10 @@ class ShinyWallSyncEngine @Inject constructor(
 
         // One row per send and one per day of attempts (see [rows]). An entry a row stands for
         // has none of its own, and one an earlier import logged gives way to a new row unless it
-        // was edited since; then it stays, and the new row carries the rest. Once a row is in the
+        // was edited since; then it stays, and the new row carries the rest. One the user deleted
+        // stays deleted: the new row carries only what came after it. Once a row is in the
         // logbook, what stands beside it stays.
+        fun known(e: Placed) = e.uuid in existing || e.uuid in placedBefore
         val partOfRow = HashSet<Placed>()
         val merged = mutableSetOf<String>()
         var duplicates = 0
@@ -366,20 +382,30 @@ class ShinyWallSyncEngine @Inject constructor(
                 continue
             }
             val fresh = isNew(p)
-            val (asWritten, edited) = row.parts
-                .filter { fresh && it.entry.uuid in existing }
-                .partition { asImported(it) }
-            val kept = edited.sumOf { it.increment }
-            val attempts = row.attempts - kept
-            // No new attempts that day, or the edited rows of the day hold them all already.
+            // A day that reached Shiny Wall after a later one was imported: that day's total holds
+            // its attempts already (the counter carries over), so it brings none of its own.
+            if (fresh && p.sent < 0 && row.later.any(::known)) {
+                deletedHere++
+                continue
+            }
+            // What the day's earlier rows hold: up to the latest kept one, or up to the latest one an
+            // import wrote if the user deleted it. Only rows after that give way to the new one.
+            val logged = if (fresh) row.parts.filter { it.entry.uuid in existing } else emptyList()
+            val (asWritten, edited) = logged.partition { asImported(it) }
+            val latestKnown = if (fresh) row.parts.lastOrNull { known(it.entry) } else null
+            val holder = latestKnown?.takeIf { it.entry.uuid !in existing } ?: edited.lastOrNull()
+            val held = holder?.daySoFar ?: 0L
+            val attempts = row.attempts - held
+            // No new attempts that day, or the day's other rows hold them all already.
             if (p.sent < 0 && attempts < 1) continue
             if (!fresh) {
                 deletedHere++
                 continue
             }
-            asWritten.forEach { merged += it.entry.uuid }
+            val heldUpTo = holder?.let { row.parts.indexOf(it) } ?: -1
+            asWritten.filter { row.parts.indexOf(it) > heldUpTo }.forEach { merged += it.entry.uuid }
             val send = if (p.sent < 0) null else {
-                val own = row.earlierDays + kept
+                val own = row.earlierDays + held
                 val shape = sendShape(p.sent)
                 when {
                     shape == null || own == 0L -> shape
@@ -417,14 +443,14 @@ class ShinyWallSyncEngine @Inject constructor(
 
     /**
      * True while [part]'s row is still as an import wrote it: the same entry, no comment, and the
-     * count an import gives it (Shiny's running total from an older version, or the day's attempts
-     * up to it). Not the date: the import writes it in the time zone of the day, so after travelling
-     * the same entry has another one, and the app has no way to change it.
+     * day's attempts up to it as its count. A row written with less (the rest after a kept row) or
+     * changed by hand counts as edited. Not the date: the import writes it in the time zone of the
+     * day, so after travelling the same entry has another one, and the app has no way to change it.
      */
     private fun asImported(part: RowPart): Boolean {
         val row = secureDb.bidsQueries.selectBidContent(part.entry.uuid).executeAsOneOrNull() ?: return false
         return row.external_id == historyExternalId(part.entry.entry.docId) &&
-            (row.bid_count == part.entry.attempts || row.bid_count == part.daySoFar) &&
+            row.bid_count == part.daySoFar &&
             row.comment.isNullOrBlank()
     }
 
@@ -461,20 +487,18 @@ class ShinyWallSyncEngine @Inject constructor(
         var before = 0L
         var earlierDays = 0L
         val sendParts = mutableListOf<RowPart>()
-        for (day in attempts.groupBy { it.day }.values) {
+        val days = attempts.groupBy { it.day }.values.toList()
+        days.forEachIndexed { i, day ->
             val last = day.last().attempts
             // A total that fell starts a count of its own; one that stayed added nothing.
             val base = if (last >= before) before else 0L
-            var previous = base
-            val parts = day.map { p ->
-                RowPart(p, increment = (p.attempts - previous).coerceAtLeast(0L), daySoFar = p.attempts - base)
-                    .also { previous = maxOf(previous, p.attempts) }
-            }
+            val parts = day.map { RowPart(it, daySoFar = it.attempts - base) }
             val dayAttempts = last - base
             if (send != null && day.first().day == send.day) {
                 sendParts += parts
             } else {
-                rows += LogRow(day.last(), parts.dropLast(1), attempts = dayAttempts)
+                val later = days.drop(i + 1).flatten() + listOfNotNull(send)
+                rows += LogRow(day.last(), parts.dropLast(1), attempts = dayAttempts, later = later)
                 earlierDays += dayAttempts
             }
             before = last

@@ -925,7 +925,7 @@ class SettingsViewModel @Inject constructor(
                 "destructive: deleteUserBoardData(brands=[$brandNames], allBoards=$allBoards) " +
                     "requested at ${System.currentTimeMillis() / 1000}"
             )
-            withContext(Dispatchers.IO) {
+            val deleteLogbook = {
                 if (allBoards) {
                     // Full selection keeps the historical behaviour: lists,
                     // brand-less board sessions and unresolvable list
@@ -943,12 +943,15 @@ class SettingsViewModel @Inject constructor(
                     val doomedEntries = entryUuids.filter { entryBrands[it] in wire }
                     personalBoardRepo.deleteUserBoardDataForBrands(wire, doomedEntries)
                 }
+            }
+            if (BoardBrand.SHINYWALL in brands) {
                 // The Shiny Wall import keeps what it has placed, so deleted entries stay deleted.
-                // With the logbook cleared, a fresh import brings everything in again.
-                if (BoardBrand.SHINYWALL in brands) {
-                    shinyWallSyncEngine.resetImportRecords()
-                        .onFailure { Log.w(TAG, "Shiny Wall import record not reset (${it.javaClass.simpleName})") }
-                }
+                // The engine deletes while no import runs and then resets that record, both past
+                // a cancellation (leaving Settings), so a fresh import brings everything in again.
+                shinyWallSyncEngine.clearLogbook(deleteLogbook)
+                    .onFailure { Log.w(TAG, "Shiny Wall import record not reset (${it.javaClass.simpleName})") }
+            } else {
+                withContext(Dispatchers.IO) { deleteLogbook() }
             }
             Log.i(TAG, "destructive: deleteUserBoardData(brands=[$brandNames]) done")
             _state.update { it.copy(deleteSuccess = context.getString(R.string.settings_delete_logbook_success)) }
