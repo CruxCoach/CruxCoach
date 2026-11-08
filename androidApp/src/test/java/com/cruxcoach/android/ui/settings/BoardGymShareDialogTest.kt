@@ -56,6 +56,12 @@ class BoardGymShareDialogTest {
             }
         }
         compose.mainClock.advanceTimeBy(FRAME_MS)
+        // The previews decode on Dispatchers.IO, and under the test's unconfined composition
+        // dispatcher their result is written from that thread. Composing meanwhile corrupts the
+        // composition (CI 2026-11-07: CalledFromWrongThreadException, SlotTable out of bounds),
+        // so the main thread waits until they are in.
+        Thread.sleep(PREVIEW_DECODE_MS)
+        compose.mainClock.advanceTimeBy(FRAME_MS)
     }
 
     private fun shown(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
@@ -103,5 +109,6 @@ class BoardGymShareDialogTest {
 
     private companion object {
         const val FRAME_MS = 16L
+        const val PREVIEW_DECODE_MS = 1_500L
     }
 }

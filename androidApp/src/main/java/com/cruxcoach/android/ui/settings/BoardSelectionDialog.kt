@@ -581,7 +581,14 @@ internal fun BoardSelectionDialog(
                                 gymShare = gymShares?.kilterSize(size.id.toInt()),
                             )
                         }
-                        gymShares?.kilterSize(kilterSelection)?.let { RareBoardHint(it) }
+                        gymShares?.kilterSize(kilterSelection)?.let { share ->
+                            // The hint asks for a second look: the check on the board is that look.
+                            RareBoardHint(share) {
+                                sizeCheck = BoardSizeCheckRequest(
+                                    BoardBrand.KILTER, kilterSelection, BoardConstants.layoutIdForProduct(kilterProductId),
+                                )
+                            }
+                        }
                         Text(
                             stringResource(R.string.board_model_dialog_hint),
                             style = MaterialTheme.typography.bodySmall,
@@ -845,7 +852,11 @@ private fun GymShareText(share: Double, flagRare: Boolean = true) {
 
 /** Second look for a rare pick: few gyms have it, so a wrong choice is more likely than a rare board. */
 @Composable
-private fun RareBoardHint(share: Double, @StringRes text: Int = R.string.board_gym_share_rare_hint) {
+private fun RareBoardHint(
+    share: Double,
+    @StringRes text: Int = R.string.board_gym_share_rare_hint,
+    onCheck: (() -> Unit)? = null,
+) {
     if (!BoardGymShares.isRare(share)) return
     Row(
         Modifier.fillMaxWidth().testTag("board_gym_share_rare_hint"),
@@ -853,11 +864,14 @@ private fun RareBoardHint(share: Double, @StringRes text: Int = R.string.board_g
     ) {
         Icon(Icons.Outlined.Info, contentDescription = null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
-        Text(
-            stringResource(text),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        Column {
+            Text(
+                stringResource(text),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            onCheck?.let { BoardSizeCheckLink(it) }
+        }
     }
 }
 

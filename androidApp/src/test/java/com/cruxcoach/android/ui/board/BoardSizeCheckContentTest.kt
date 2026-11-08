@@ -70,17 +70,21 @@ class BoardSizeCheckContentTest {
         compose.onNodeWithTag("board_size_check_yes").assertDoesNotExist()
     }
 
-    @Test fun `yes and no wait until the holds are lit`() {
+    @Test fun `until the holds are lit there is nothing to answer`() {
         show(ask(lit = false))
-        compose.onNodeWithTag("board_size_check_yes").assertIsNotEnabled()
-        compose.onNodeWithTag("board_size_check_no").assertIsNotEnabled()
+        compose.onNodeWithTag("board_size_check_yes").assertDoesNotExist()
+        compose.onNodeWithTag("board_size_check_no").assertDoesNotExist()
+        compose.onNodeWithTag("board_size_check_lighting").assertExists()
         compose.onNodeWithTag("board_size_check_relight").assertIsEnabled()
     }
 
     @Test fun `holds replaced by another frame ask to be lit again`() {
-        show(ask(lit = false).copy(replaced = true))
+        val events = mutableListOf<String>()
+        show(ask(lit = false).copy(replaced = true), events = events)
         compose.onNodeWithTag("board_size_check_replaced").performScrollTo().assertExists()
-        compose.onNodeWithTag("board_size_check_no").assertIsNotEnabled()
+        compose.onNodeWithTag("board_size_check_no").assertDoesNotExist()
+        compose.onNodeWithTag("board_size_check_relight").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf("light"), events) }
     }
 
     @Test fun `lit holds can be answered yes or no`() {
@@ -99,6 +103,13 @@ class BoardSizeCheckContentTest {
         compose.runOnIdle { assertEquals(listOf("test 7"), events) }
     }
 
+    @Test fun `after no the other sizes take the rejected size's place`() {
+        show(ask().copy(step = BoardSizeCheckStep.PICK_OTHER, tried = setOf(10)))
+        compose.onNodeWithTag("board_size_check_image").assertDoesNotExist()
+        compose.onNodeWithTag("board_size_check_size").assertDoesNotExist()
+        compose.onNodeWithTag("board_size_check_option_7").assertExists()
+    }
+
     @Test fun `a size its holds cannot tell from an open one is neither offered nor confirmable`() {
         val waiting = ask(lookAlikesOf7 = setOf(10)).copy(step = BoardSizeCheckStep.PICK_OTHER, tried = setOf(10))
         show(waiting)
@@ -112,7 +123,7 @@ class BoardSizeCheckContentTest {
 
     @Test fun `a check that starts with the larger kit says why`() {
         show(ask().copy(currentSizeId = 7))
-        compose.onNodeWithText("Prüfe zuerst", substring = true).assertExists()
+        compose.onNodeWithText("darum zuerst", substring = true).assertExists()
         compose.onNodeWithTag("board_size_check_yes").assertIsEnabled()
     }
 
