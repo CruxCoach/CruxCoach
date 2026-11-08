@@ -2833,6 +2833,7 @@
     <string name="moon_csv_fallback">CSV fallback</string>
     <string name="moon_csv_request_data">Request account data from Moon</string>
     <string name="moon_csv_request_hint">The request text is copied before your email app opens. Paste it into the message and fill in the placeholders.</string>
+    <string name="moon_csv_no_mail_app">No email app found. The request is copied.</string>
     <string name="moon_csv_request_subject">Subject access request – MoonBoard account data</string>
     <string name="moon_csv_request_body">Name: [full name]\nMoonBoard username: [username]\nAccount email: [email address]\n\nPlease treat this as a UK GDPR subject access request and, where applicable, a data portability request. Please provide all personal data linked to my MoonBoard account, including profile and account identifiers; problems I created or logged; sends, ascents, grades, repeats, attempts, dates and session history; favourites, lists, saved and custom problems; and related metadata.\n\nWhere technically feasible, please provide the export as CSV or JSON, or another structured, commonly used, machine-readable format. If identity verification or a secure delivery method is required, please let me know promptly. Please confirm receipt and the expected response date.\n\nKind regards,\n[name]</string>
     <string name="moon_csv_angle_note">MoonBoard’s CSV does not include the board angle. If a problem is available at both angles, CruxCoach imports it at 40°.</string>
@@ -3348,7 +3349,7 @@
     <string name="import_catalogue_pending_short">Names and grades appear after the catalogue download.</string>
     <string name="import_key_access_only">Restores account access. Data is restored separately from a backup.</string>
     <string name="import_moon_device_short">Android accessibility reads your Moon logbook on this device.</string>
-    <string name="import_moon_mail_short">Paste the copied request into the email.</string>
+    <string name="import_moon_mail_short">Paste the copied request into an email to %1$s.</string>
     <string name="account_amber_restore_summary">Choose your backup’s account in Amber. Your private key stays in Amber.</string>
     <string name="account_restore_key_method">With a key</string>
 
