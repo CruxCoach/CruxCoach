@@ -66,6 +66,8 @@ data class ExternalBoardLayer(
     val climbName: String? = null,
     /** Null means unknown, not an empty climb. */
     val holds: List<BoardHold>? = null,
+    /** A colour of this installation's PaintBox picture, not another climber. */
+    val paintBox: Boolean = false,
 )
 
 data class BoardLayerRouteDetails(
@@ -444,6 +446,7 @@ class BoardLayerManager @Inject constructor(
                     climbUuid = previous?.climbUuid,
                     climbName = previous?.climbName,
                     holds = previous?.holds,
+                    paintBox = ownsPaintIdentity(player.userId),
                 )
             }
             current.copy(

@@ -36,12 +36,13 @@
     <string name="paintbox_missing_led">Für einige bemalte Griffe fehlt die LED-Zuordnung. Es wurde nichts gesendet.</string>
     <string name="paintbox_send_error">Übertragung fehlgeschlagen oder nur teilweise abgeschlossen. Live-Malen ist pausiert; Board prüfen und erneut senden.</string>
     <string name="paintbox_quantum_limit">Quantum unterstützt derzeit bis zu 92 LEDs je Farbe.</string>
-    <string name="paintbox_quantum_occupied">Quantum zeigt andere aktive Ebenen. Deren Griffpositionen sind hier nicht überprüfbar. Vor dem Malen in der zugehörigen App entfernen.</string>
-    <string name="paintbox_quantum_hint">Quantum: vier Farben, bis zu 92 LEDs je Farbe. Andere aktive Ebenen müssen durch ihren Besitzer entfernt werden.</string>
+    <string name="paintbox_quantum_occupied">Auf diesem Quantum Board leuchten andere Layer. PaintBox kann deshalb nicht prüfen, welche Holds frei sind. Schalte sie zuerst aus. Deine eigenen Climbs schaltest du auf ihrer Climb-Seite aus.</string>
+    <string name="paintbox_quantum_hint">Quantum: vier Farben, bis zu 92 LEDs je Farbe. Solange ein Bild auf dem Board ist, lassen sich keine Climbs beleuchten.</string>
     <string name="paintbox_image_import">Bild importieren</string>
     <string name="paintbox_image_ok">OK</string>
     <string name="paintbox_image_bg">BG Color</string>
     <string name="paintbox_image_pick_bg">Pick Background Color</string>
     <string name="paintbox_image_gestures">Bild mit einem Finger verschieben; mit zwei Fingern zoomen und drehen.</string>
     <string name="paintbox_image_error">Das Bild konnte nicht geladen werden. Bitte wähle ein anderes Bild.</string>
+    <string name="paintbox_quantum_picture_on_board">Auf dem Board ist ein PaintBox-Bild. Um einen Climb zu beleuchten, leere das Bild in PaintBox und sende es.</string>
 </resources>

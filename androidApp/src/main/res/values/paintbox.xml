@@ -36,12 +36,13 @@
     <string name="paintbox_missing_led">Some painted holds have no LED mapping for this board. Nothing was sent.</string>
     <string name="paintbox_send_error">Transmission failed or was only partially completed. Live painting is paused; check the board and retry.</string>
     <string name="paintbox_quantum_limit">Quantum currently supports up to 92 LEDs per color.</string>
-    <string name="paintbox_quantum_occupied">Quantum has other active layers. Their hold positions cannot be verified here. Remove them using their owning app before painting.</string>
-    <string name="paintbox_quantum_hint">Quantum: four colors, up to 92 LEDs per color. Other active layers must be cleared by their owner.</string>
+    <string name="paintbox_quantum_occupied">Other layers are lit on this Quantum board, so PaintBox can’t check which holds are free. Turn them off first. Your own climbs can be turned off on their climb page.</string>
+    <string name="paintbox_quantum_hint">Quantum: four colors, up to 92 LEDs each. Climbs can’t be lit while a picture is on the board.</string>
     <string name="paintbox_image_import">Import image</string>
     <string name="paintbox_image_ok">OK</string>
     <string name="paintbox_image_bg">BG Color</string>
     <string name="paintbox_image_pick_bg">Pick Background Color</string>
     <string name="paintbox_image_gestures">Drag the image with one finger; zoom and rotate with two.</string>
     <string name="paintbox_image_error">Could not load this image. Please choose another image.</string>
+    <string name="paintbox_quantum_picture_on_board">A PaintBox picture is on the board. To light a climb, clear the picture in PaintBox and send it.</string>
 </resources>

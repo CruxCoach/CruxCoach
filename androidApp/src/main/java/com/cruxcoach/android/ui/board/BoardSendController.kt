@@ -566,6 +566,7 @@ internal class BoardSendController(
                 QuantumLayerSuggestionBlock.MULTI_FRAME_UNVERIFIED ->
                     R.string.board_layer_error_multi_frame_unverified
                 QuantumLayerSuggestionBlock.UNKNOWN_LAYER -> R.string.board_layer_error_external_unknown
+                QuantumLayerSuggestionBlock.PAINTBOX_PICTURE -> R.string.paintbox_quantum_picture_on_board
                 QuantumLayerSuggestionBlock.HOLD_CONFLICT -> R.string.board_layer_error_shared_hold
                 QuantumLayerSuggestionBlock.BOARD_FULL -> R.string.board_layer_error_board_full
                 QuantumLayerSuggestionBlock.NO_COLOR -> R.string.board_layer_error_color_taken
@@ -829,7 +830,7 @@ internal class BoardSendController(
         if (assessment.unknownLayerCount > 0) {
             boardLayerManager.failProjection(expectedPlan)
             updateForVariant(variant) { it.copy(
-                ble = it.ble.copy(error = R.string.board_layer_error_external_unknown),
+                ble = it.ble.copy(error = quantumLayerSuggestionBlockResource(controllerState.unknownLayerBlock())),
             ) }
             return false
         }

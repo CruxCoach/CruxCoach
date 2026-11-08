@@ -59,6 +59,27 @@ class BoardLayerManagerTest {
         assertEquals(4, manager.state.value.layers.size)
     }
 
+    @Test fun `a PaintBox colour stays a separate controller player marked as PaintBox`() {
+        val manager = BoardLayerManager(context)
+        manager.reconcile(listOf(
+            QuantumActivePlayer(
+                routeId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                userId = manager.paintIdentity(0),
+                remainingSeconds = 12,
+                color = 0x00ff00,
+            ),
+            QuantumActivePlayer(
+                routeId = "cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee",
+                userId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+                remainingSeconds = 12,
+                color = 0x123456,
+            ),
+        ))
+        assertTrue(manager.state.value.layers.isEmpty())
+        assertEquals(listOf(true, false), manager.state.value.externalLayers.map { it.paintBox })
+        assertEquals(2, manager.state.value.occupiedCount)
+    }
+
     @Test fun `foreign controller player consumes capacity but is never claimed or removed`() {
         val manager = BoardLayerManager(context)
         repeat(3) { manager.beginProjection(layer(manager, it)) }

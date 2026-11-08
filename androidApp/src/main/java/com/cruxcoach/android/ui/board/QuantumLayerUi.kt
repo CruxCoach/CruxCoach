@@ -73,6 +73,8 @@ internal enum class QuantumLayerSuggestionBlock {
     NO_HOLDS,
     MULTI_FRAME_UNVERIFIED,
     UNKNOWN_LAYER,
+    /** The only unknown layers are this phone's PaintBox picture. */
+    PAINTBOX_PICTURE,
     HOLD_CONFLICT,
     BOARD_FULL,
     NO_COLOR,
@@ -177,7 +179,7 @@ internal object QuantumLayerUiPolicy {
                 QuantumLayerSuggestionBlock.BOARD_FULL
             candidateSlot == null -> QuantumLayerSuggestionBlock.NO_SLOT
             !hasCapacity -> QuantumLayerSuggestionBlock.BOARD_FULL
-            assessment?.unknownLayerCount != 0 -> QuantumLayerSuggestionBlock.UNKNOWN_LAYER
+            assessment?.unknownLayerCount != 0 -> state.unknownLayerBlock()
             knownSharedHoldCount != 0 ->
                 QuantumLayerSuggestionBlock.HOLD_CONFLICT
             freeColor == null -> QuantumLayerSuggestionBlock.NO_COLOR
@@ -239,7 +241,7 @@ internal object QuantumLayerUiPolicy {
                 replacingSlot = target.slot,
             )
             if (assessment.unknownLayerCount > 0) {
-                return QuantumLayerSuggestionBlock.UNKNOWN_LAYER
+                return state.unknownLayerBlock()
             }
             if (assessment.sharedHoldCount > 0) {
                 return QuantumLayerSuggestionBlock.HOLD_CONFLICT
@@ -297,10 +299,21 @@ internal fun quantumLayerSuggestionBlockResource(block: QuantumLayerSuggestionBl
     QuantumLayerSuggestionBlock.MULTI_FRAME_UNVERIFIED ->
         R.string.board_layer_error_multi_frame_unverified
     QuantumLayerSuggestionBlock.UNKNOWN_LAYER -> R.string.board_layer_error_external_unknown
+    QuantumLayerSuggestionBlock.PAINTBOX_PICTURE -> R.string.paintbox_quantum_picture_on_board
     QuantumLayerSuggestionBlock.HOLD_CONFLICT -> R.string.board_layer_error_shared_hold
     QuantumLayerSuggestionBlock.BOARD_FULL -> R.string.board_layer_error_board_full
     QuantumLayerSuggestionBlock.NO_COLOR -> R.string.board_layer_error_color_taken
     QuantumLayerSuggestionBlock.NO_SLOT -> R.string.board_layer_error_all_assigned
+}
+
+/** PaintBox colours are unknown layers too, but the fix is in PaintBox, not the catalogue. */
+internal fun BoardLayerState.unknownLayerBlock(): QuantumLayerSuggestionBlock {
+    val unknown = externalLayers.filter { it.holds == null }
+    return if (unknown.isNotEmpty() && unknown.all(ExternalBoardLayer::paintBox)) {
+        QuantumLayerSuggestionBlock.PAINTBOX_PICTURE
+    } else {
+        QuantumLayerSuggestionBlock.UNKNOWN_LAYER
+    }
 }
 
 @StringRes

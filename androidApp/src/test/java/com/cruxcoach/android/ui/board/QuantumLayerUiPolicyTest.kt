@@ -88,6 +88,21 @@ class QuantumLayerUiPolicyTest {
         assertEquals(QuantumLayerSuggestionBlock.UNKNOWN_LAYER, result.suggestionBlock)
     }
 
+    @Test fun `a PaintBox picture still blocks but names PaintBox as the way out`() {
+        val paint = foreign(holds = null).copy(paintBox = true)
+        val paintOnly = BoardLayerState(brand = BoardBrand.QUANTUM, externalLayers = listOf(paint))
+
+        val result = QuantumLayerUiPolicy.summarize(
+            paintOnly, currentClimbUuid = "candidate", currentPlacements = setOf(20),
+        )
+
+        assertNull(result.suggestedSlot)
+        assertEquals(QuantumLayerSuggestionBlock.PAINTBOX_PICTURE, result.suggestionBlock)
+        // Another climber's unknown route keeps the catalogue message.
+        val mixed = paintOnly.copy(externalLayers = listOf(paint, foreign(holds = null).copy(userUuid = "other")))
+        assertEquals(QuantumLayerSuggestionBlock.UNKNOWN_LAYER, mixed.unknownLayerBlock())
+    }
+
     @Test fun `safe suggestion chooses one free slot and one unreserved color`() {
         val active = layer(slot = 0).copy(
             holds = listOf(BoardHold(10, 1)),
