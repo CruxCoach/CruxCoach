@@ -18,7 +18,8 @@ import kotlin.time.Instant
 
 /**
  * Everything the year in review (#64) reads, from the board logbook and the
- * training data on this phone. Nothing is written here.
+ * training data on this phone. Nothing is written here. Spray walls are not read
+ * yet: they join with the logbook statistics, and the intro says so.
  */
 @Singleton
 class YearReviewSource @Inject constructor(
@@ -37,6 +38,7 @@ class YearReviewSource @Inject constructor(
 
     suspend fun load(): YearReviewComputer.Input = withContext(Dispatchers.IO) {
         val athlete = athleteService.repo
+        val handLogged = climbRepository.getAll()
         YearReviewComputer.Input(
             // Sends with their problem's frames, for the holds touched; the light logbook has the attempts.
             entries = personalBoardRepo.getUserAscentsAll() + personalBoardRepo.getUserLogbookAllLight().filter { !it.isSend },
@@ -51,7 +53,8 @@ class YearReviewSource @Inject constructor(
             workouts = athlete.workoutsBetween("0000-01-01", "9999-12-31"),
             benchmarks = athlete.allBenchmarks(),
             injuries = athlete.allInjuries(),
-            taggedSends = climbRepository.getAll().filter { it.sent && it.holdTypes.isNotEmpty() }.map { TaggedSend(it.date, it.holdTypes) },
+            taggedSends = handLogged.filter { it.sent && it.holdTypes.isNotEmpty() }.map { TaggedSend(it.date, it.holdTypes) },
+            handLoggedDays = handLogged.map { it.date },
         )
     }
 }

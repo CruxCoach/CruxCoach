@@ -107,6 +107,11 @@ class YearReviewUiReviewTest {
     private val littleFinal: YearReview by lazy { YearReviewComputer.compute(littleInput, 2026, january, TimeZone.UTC) }
     private val empty: YearReview by lazy { YearReviewComputer.compute(YearReviewComputer.Input(), 2026, december, TimeZone.UTC) }
     private val emptyNewYear: YearReview by lazy { YearReviewComputer.compute(YearReviewComputer.Input(), 2027, january, TimeZone.UTC) }
+    /** The new year's first days, below the minimum, beside last year's full review. */
+    private val newYearLittle: YearReview by lazy {
+        val firstDays = input.entries.take(5).mapIndexed { i, e -> e.copy(uuid = "new$i", climbedAt = "2027-01-0${2 + i}T18:00:00") }
+        YearReviewComputer.compute(YearReviewComputer.Input(entries = input.entries + firstDays), 2027, january, TimeZone.UTC)
+    }
 
     private var shown: @Composable () -> Unit by mutableStateOf({})
     private var theme: DarkModeSetting by mutableStateOf(DarkModeSetting.DARK)
@@ -217,6 +222,14 @@ class YearReviewUiReviewTest {
                             onOpen = {}, onSelect = {}, onTestDate = {},
                         )
                     }
+                }
+            }
+            shoot("entry-stats-current-$t", dark) {
+                Screen {
+                    YearReviewStatsContent(
+                        YearReviewEntryViewModel.State(today = january, years = listOf(2026, 2025), selectedYear = 2026, selected = review, current = newYearLittle),
+                        onOpen = {}, onSelect = {}, onTestDate = {},
+                    )
                 }
             }
             shoot("share-sheet-$t", dark) {

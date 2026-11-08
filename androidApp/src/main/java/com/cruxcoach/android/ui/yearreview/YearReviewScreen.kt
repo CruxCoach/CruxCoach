@@ -97,7 +97,9 @@ import com.cruxcoach.android.ui.theme.DarkSurface
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.domain.yearreview.YearReview
 import com.cruxcoach.domain.yearreview.YearReviewComputer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val PageText = Color.White
 private val PageMuted = Color.White.copy(alpha = 0.7f)
@@ -204,7 +206,7 @@ internal fun ReviewPager(
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        // Holding a page hides the controls without moving the page.
+        // Holding a page hides the controls without moving the page; a tap leaves them alone.
         Column(Modifier.alpha(if (held) 0f else 1f)) {
             ProgressSegments(pages.size, index)
             ReviewTopBar(onClose) {
@@ -220,13 +222,13 @@ internal fun ReviewPager(
                 .fillMaxWidth()
                 .pointerInput(pages.size) {
                     detectTapGestures(
+                        // The controls come back when the finger lifts, also after a long hold.
                         onPress = {
-                            held = true
                             tryAwaitRelease()
                             held = false
                         },
-                        // A long hold only pauses; letting go does not turn the page.
-                        onLongPress = {},
+                        // Only a long hold hides them; letting go does not turn the page.
+                        onLongPress = { held = true },
                         onTap = { offset ->
                             onIndex(if (offset.x < size.width / 3f) (current - 1).coerceAtLeast(0) else (current + 1).coerceAtMost(pages.lastIndex))
                         },
@@ -666,13 +668,21 @@ private fun ShareSheet(review: YearReview, state: YearReviewViewModel.State, kin
     val header = privacy.name?.let { stringResource(R.string.yr_share_name_header, it.take(MAX_NAME), review.year) }
     val wordmark = stringResource(R.string.yr_share_wordmark)
     val colors = reviewBoardColors(review).mapValues { it.value.toArgb() }
-    val bitmap = remember(page, header, colors) { YearShareImage.render(page, header, wordmark, colors) }
+    // Drawn off the main thread; after a switch the last image stays until the new one is ready.
+    val wanted = Triple(page, header, colors)
+    var rendered by remember { mutableStateOf<Pair<Any, android.graphics.Bitmap>?>(null) }
+    LaunchedEffect(wanted) {
+        rendered = wanted to withContext(ShareImageDrawing) { YearShareImage.render(page, header, wordmark, colors) }
+    }
+    val bitmap = rendered?.second
     val chooser = stringResource(R.string.yr_share_chooser)
     val failed = stringResource(R.string.yr_share_failed)
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         ShareSheetContent(
             bitmap = bitmap,
+            square = kind == ReviewPageKind.SUMMARY,
+            ready = rendered?.first == wanted,
             description = page.title,
             nameAvailable = state.displayName.isNotEmpty(),
             showName = showName,
@@ -684,8 +694,9 @@ private fun ShareSheet(review: YearReview, state: YearReviewViewModel.State, kin
             onShowProblems = { showProblems = it },
             onShowDates = { showDates = it },
             onSend = {
+                val image = rendered?.takeIf { it.first == wanted }?.second ?: return@ShareSheetContent
                 scope.launch {
-                    val ok = runCatching { YearShareImage.share(context, bitmap, "cruxcoach-${review.year}-${kind.name.lowercase()}", chooser) }.isSuccess
+                    val ok = runCatching { YearShareImage.share(context, image, "cruxcoach-${review.year}-${kind.name.lowercase()}", chooser) }.isSuccess
                     if (!ok) Toast.makeText(context, failed, Toast.LENGTH_SHORT).show()
                 }
             },
@@ -699,7 +710,8 @@ private fun ShareSheet(review: YearReview, state: YearReviewViewModel.State, kin
  */
 @Composable
 internal fun ShareSheetContent(
-    bitmap: android.graphics.Bitmap,
+    /** Null while the image is drawn; [ready] once it shows the switches as they are. */
+    bitmap: android.graphics.Bitmap?,
     description: String,
     nameAvailable: Boolean,
     showName: Boolean,
@@ -711,6 +723,8 @@ internal fun ShareSheetContent(
     onShowProblems: (Boolean) -> Unit,
     onShowDates: (Boolean) -> Unit,
     onSend: () -> Unit,
+    square: Boolean = false,
+    ready: Boolean = bitmap != null,
 ) {
     // The preview takes about a third of the screen, the switches the rest.
     val previewHeight = (LocalConfiguration.current.screenHeightDp * 0.34f).dp
@@ -727,14 +741,16 @@ internal fun ShareSheetContent(
                 InfoButton(title, stringResource(R.string.yr_share_hint))
             }
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Image(
-                    bitmap.asImageBitmap(),
-                    contentDescription = description,
-                    modifier = Modifier
-                        .heightIn(max = previewHeight)
-                        .aspectRatio(bitmap.width.toFloat() / bitmap.height)
-                        .clip(RoundedCornerShape(12.dp)),
-                )
+                val ratio = YearShareImage.WIDTH.toFloat() / if (square) YearShareImage.SQUARE_HEIGHT else YearShareImage.STORY_HEIGHT
+                val frame = Modifier.heightIn(max = previewHeight).aspectRatio(ratio).clip(RoundedCornerShape(12.dp))
+                if (bitmap != null) {
+                    Image(bitmap.asImageBitmap(), contentDescription = description, modifier = frame)
+                } else {
+                    // The image's own room while it is drawn, so nothing below moves when it appears.
+                    Box(frame.background(DarkBackground), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = OrangeAccent, modifier = Modifier.size(32.dp))
+                    }
+                }
             }
             // Without a display name there is nothing to show, so no switch.
             if (nameAvailable) Toggle(stringResource(R.string.yr_share_show_name), showName, onChange = onShowName)
@@ -744,6 +760,7 @@ internal fun ShareSheetContent(
         Spacer(Modifier.height(12.dp))
         Button(
             onClick = onSend,
+            enabled = ready,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
             shape = RoundedCornerShape(12.dp),
@@ -772,3 +789,9 @@ private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit)
 
 /** Long display names are cut on the image. */
 private const val MAX_NAME = 24
+
+/**
+ * One share image at a time: switches flipped quickly queue up, and those already
+ * replaced are dropped before they start, so at most one image is drawn at once.
+ */
+private val ShareImageDrawing = Dispatchers.Default.limitedParallelism(1)

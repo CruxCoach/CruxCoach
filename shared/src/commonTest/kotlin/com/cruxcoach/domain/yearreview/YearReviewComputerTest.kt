@@ -377,6 +377,23 @@ class YearReviewComputerTest {
     }
 
     @Test
+    fun climbsLoggedByHandAreClimbingDays() {
+        // The hold types page counts climbs logged by hand, so their days are climbing days on every page.
+        val today = LocalDate(2027, 1, 10)
+        val input = Input(
+            entries = listOf(entry("2026-03-02T18:00:00", "k1")),
+            taggedSends = (1..5).map { TaggedSend("2026-04-0$it", listOf("CRIMP")) },
+            handLoggedDays = listOf("2026-03-02", "2026-04-01", "2026-04-02", "2026-04-03", "2026-04-04", "2026-04-05", "2026-04-05", "2025-12-31"),
+        )
+        val year = review(input, 2026, today)
+        assertEquals(6, year.volume.climbingDays)
+        assertEquals(1, year.volume.boardDays)
+        assertEquals(5, year.rhythm.daysPerMonth[3])
+        assertEquals(listOf(2026, 2025), YearReviewComputer.years(Input(handLoggedDays = listOf("2025-06-01")), LocalDate(2026, 3, 1), utc))
+        assertEquals(1, year.previous!!.totals.climbingDays)
+    }
+
+    @Test
     fun holdsTouchedCountEachMarkedHoldOncePerSendFromTenKnownSends() {
         val today = LocalDate(2026, 12, 31)
         val four = "p1r12p2r13p3r13p4r14"
@@ -441,5 +458,54 @@ class YearReviewComputerTest {
         )
         val kilter = review(input, 2026, LocalDate(2027, 1, 10)).boards.single()
         assertEquals(listOf("Problem flashed", "Problem worked", "Problem easier"), kilter.hardest.map { it.name })
+    }
+
+    @Test
+    fun theHardestSendGoesByTheShownGradeNotTheRawAverage() {
+        // 22.4 and 21.6 both show as the same grade: the flash beats twelve tries, also on an earlier day.
+        val input = Input(
+            entries = listOf(
+                entry("2026-02-01T18:00:00", "worked", tries = 12, difficulty = 22.4),
+                entry("2026-05-01T18:00:00", "flashed", tries = 1, difficulty = 21.6),
+            ),
+        )
+        val kilter = review(input, 2026, LocalDate(2027, 1, 10)).boards.single()
+        assertEquals(listOf("Problem flashed", "Problem worked"), kilter.hardest.map { it.name })
+        // A grade that is one step harder on the scale still comes first.
+        val harder = Input(input.entries + entry("2026-06-01T18:00:00", "harder", tries = 12, difficulty = 23.0))
+        assertEquals(
+            listOf("Problem harder", "Problem flashed", "Problem worked"),
+            review(harder, 2026, LocalDate(2027, 1, 10)).boards.single().hardest.map { it.name },
+        )
+    }
+
+    @Test
+    fun difficultiesWithTheSameLabelShareARank() {
+        // 21 and 22 show as one grade on this scale, so the flash on 21.4 beats the tries on 22.4.
+        val label = { d: Double -> if (d.roundToInt() in 21..22) "7a" else d.roundToInt().toString() }
+        val input = Input(
+            entries = listOf(
+                entry("2026-02-01T18:00:00", "worked", tries = 12, difficulty = 22.4),
+                entry("2026-05-01T18:00:00", "flashed", tries = 1, difficulty = 21.4),
+                entry("2026-03-01T18:00:00", "fewer", tries = 3, difficulty = 21.0),
+            ),
+        )
+        val kilter = review(input, 2026, LocalDate(2027, 1, 10), label = label).boards.single()
+        assertEquals(listOf("Problem flashed", "Problem fewer", "Problem worked"), kilter.hardest.map { it.name })
+    }
+
+    @Test
+    fun onTheSameGradeAndTriesTheEarlierSendThenTheHigherAverageWins() {
+        val input = Input(
+            entries = listOf(
+                entry("2026-05-01T18:00:00", "later", tries = 1, difficulty = 22.4),
+                entry("2026-02-01T18:00:00", "earlier", tries = 1, difficulty = 21.6),
+                entry("2026-02-01T19:00:00", "same day lower", tries = 1, difficulty = 21.5),
+            ),
+        )
+        val kilter = review(input, 2026, LocalDate(2027, 1, 10)).boards.single()
+        assertEquals(listOf("Problem earlier", "Problem same day lower", "Problem later"), kilter.hardest.map { it.name })
+        // The hardest flash of the highlights is that same send, so the page does not show it twice.
+        assertEquals(kilter.hardest.first(), review(input, 2026, LocalDate(2027, 1, 10)).highlights.hardestFlashes.single())
     }
 }

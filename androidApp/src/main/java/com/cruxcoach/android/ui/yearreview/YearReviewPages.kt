@@ -7,8 +7,10 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.ui.training.benchmarks.benchmarkSummary
+import com.cruxcoach.android.ui.training.weightText
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
+import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.yearreview.ClimberType
@@ -380,7 +382,14 @@ private fun training(review: YearReview, eyebrow: String, f: Formats, context: T
     val best = t.bestValues.firstNotNullOfOrNull { b ->
         val def = context.catalog?.get(b.exerciseSlug) ?: return@firstNotNullOfOrNull null
         val profile = context.profile ?: return@firstNotNullOfOrNull null
-        ReviewRow(stringResource(R.string.yr_training_best), def.name(language), benchmarkSummary(def, b, profile, context.bodyweight))
+        // A shared image names the exercise and the added load only: a total or a share of
+        // body weight beside it would give the body weight away.
+        val detail = if (f.privacy.image) {
+            b.loadKg?.takeIf { def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL }?.let { weightText(def, it, profile.units) }
+        } else {
+            benchmarkSummary(def, b, profile, context.bodyweight)
+        }
+        ReviewRow(stringResource(R.string.yr_training_best), def.name(language), detail)
     }
     return ReviewPage(
         kind = ReviewPageKind.TRAINING,

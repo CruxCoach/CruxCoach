@@ -58,6 +58,11 @@ object YearReviewComputer {
         val injuries: List<Injury> = emptyList(),
         /** Sends logged by hand with their hold type tags (until the board problems carry hold types, #63). */
         val taggedSends: List<TaggedSend> = emptyList(),
+        /**
+         * The days of every climb logged by hand, sent or not: climbing days like the board's,
+         * so the hold types page counts nothing from a day the other pages leave out.
+         */
+        val handLoggedDays: List<String> = emptyList(),
     )
 
     /**
@@ -96,7 +101,7 @@ object YearReviewComputer {
         )
         val totals = totalsOf(rows, firstSends, climbingDays)
         val hasEnoughData = volume.climbingDays >= MIN_CLIMBING_DAYS || volume.tries >= MIN_TRIES
-        val boards = boardsOf(rows, history)
+        val boards = boardsOf(rows, history, gradeLabel)
         val previous = previousOf(history, year, until, totals, gradeLabel)
         val rhythm = rhythmOf(climbingDays, span)
         val training = trainingOf(input, span, zone)
@@ -109,7 +114,7 @@ object YearReviewComputer {
             boards = boards,
             previous = previous,
             rhythm = rhythm,
-            highlights = highlightsOf(sends, firstSends, history),
+            highlights = highlightsOf(sends, firstSends, gradeLabel),
             holdTypes = holdTypesOf(input.taggedSends, span),
             holdsTouched = holdsTouchedOf(sends),
             training = training,
@@ -144,6 +149,7 @@ object YearReviewComputer {
     fun years(input: Input, today: LocalDate, zone: TimeZone): List<Int> {
         val days = input.entries.mapNotNull { localDay(it.climbedAt, zone) } +
             input.climbingDays.mapNotNull { parseDay(it.day) } +
+            input.handLoggedDays.mapNotNull { parseDay(it) } +
             input.workouts.mapNotNull { parseDay(it.day) }
         return (days.map { it.year } + today.year).filter { it <= today.year }.distinct().sortedDescending()
     }
@@ -195,7 +201,7 @@ object YearReviewComputer {
 
     // ── The pages ────────────────────────────────────────────────────
 
-    private fun boardsOf(rows: List<Row>, history: History): List<YearBoard> = rows
+    private fun boardsOf(rows: List<Row>, history: History, gradeLabel: (Double) -> String): List<YearBoard> = rows
         .groupBy { it.entry.boardBrand }
         .map { (board, onBoard) ->
             val sends = onBoard.filter { it.entry.isSend }
@@ -208,7 +214,7 @@ object YearReviewComputer {
                 angles = onBoard.groupingBy { it.entry.angle.toInt() }.eachCount()
                     .map { (angle, count) -> AngleCount(angle, count) }
                     .sortedWith(compareByDescending<AngleCount> { it.entries }.thenBy { it.angle }),
-                hardest = hardestProblems(sends, history).take(TOP_SENDS),
+                hardest = hardestProblems(sends, history, gradeLabel).take(TOP_SENDS),
                 gradedSends = sends.count { it.entry.difficultyAverage != null },
             )
         }
@@ -218,21 +224,47 @@ object YearReviewComputer {
      * Each problem sent once, as its first send when that was in [sends], hardest first.
      * On the same grade a flash comes first, then the send with fewer tries, then the earlier one.
      */
-    private fun hardestProblems(sends: List<Row>, history: History): List<YearSend> = sends
-        .filter { it.entry.difficultyAverage != null }
-        .groupBy { it.problem }
-        .values
-        .map { repeats ->
-            val first = repeats.firstOrNull { history.firstSendOf[it.entry.uuid] != null }
-            first?.let { history.firstSendOf.getValue(it.entry.uuid).toYearSend() }
-                ?: repeats.minWith(compareBy<Row> { it.day }.thenBy { it.entry.climbedAt }).toYearSend(flash = false, tries = null)
+    private fun hardestProblems(sends: List<Row>, history: History, gradeLabel: (Double) -> String): List<YearSend> {
+        val problems = sends
+            .filter { it.entry.difficultyAverage != null }
+            .groupBy { it.problem }
+            .values
+            .map { repeats ->
+                val first = repeats.firstOrNull { history.firstSendOf[it.entry.uuid] != null }
+                first?.let { history.firstSendOf.getValue(it.entry.uuid).toYearSend() }
+                    ?: repeats.minWith(compareBy<Row> { it.day }.thenBy { it.entry.climbedAt }).toYearSend(flash = false, tries = null)
+            }
+        return problems.sortedWith(hardestFirst(problems, gradeLabel))
+    }
+
+    /**
+     * Hardest first by the grade the page shows, not the raw average: 21.6 and 22.4
+     * both show as the same grade, so a flash of one beats twelve tries on the other.
+     * On the same grade a flash comes first, then fewer tries, then the earlier send,
+     * and only then the higher average.
+     */
+    private fun hardestFirst(sends: List<YearSend>, gradeLabel: (Double) -> String): Comparator<YearSend> {
+        val rank = gradeRanks(sends.mapNotNull { it.difficulty }, gradeLabel)
+        return compareByDescending<YearSend> { rank(it.difficulty!!) }
+            .thenByDescending { it.flash }
+            .thenBy { it.tries ?: Int.MAX_VALUE }
+            .thenBy { it.date }
+            .thenByDescending { it.difficulty!! }
+    }
+
+    /**
+     * The rank of a difficulty's displayed grade among [difficulties]: rounded like the
+     * grade itself, then counted in grades of the scale from the easiest one, so two
+     * difficulties with the same label have the same rank.
+     */
+    private fun gradeRanks(difficulties: List<Double>, gradeLabel: (Double) -> String): (Double) -> Int {
+        val low = difficulties.minOrNull()?.roundToInt() ?: return { 0 }
+        val ranks = mutableMapOf<Int, Int>()
+        return { difficulty ->
+            val rounded = difficulty.roundToInt()
+            ranks.getOrPut(rounded) { (low..maxOf(low, rounded)).map { gradeLabel(it.toDouble()) }.distinct().size - 1 }
         }
-        .sortedWith(
-            compareByDescending<YearSend> { it.difficulty!! }
-                .thenByDescending { it.flash }
-                .thenBy { it.tries ?: Int.MAX_VALUE }
-                .thenBy { it.date },
-        )
+    }
 
     private fun totalsOf(rows: List<Row>, firstSends: List<FirstSend>, climbingDays: Set<LocalDate>) = YearTotals(
         climbingDays = climbingDays.size,
@@ -303,13 +335,13 @@ object YearReviewComputer {
         )
     }
 
-    private fun highlightsOf(sends: List<Row>, firstSends: List<FirstSend>, history: History): YearHighlights {
+    private fun highlightsOf(sends: List<Row>, firstSends: List<FirstSend>, gradeLabel: (Double) -> String): YearHighlights {
+        // In the order of the hardest sends, so a board's hardest flash is the one its hardest send would show.
         val hardestFlashes = firstSends
             .filter { it.isFlash && it.row.entry.difficultyAverage != null }
             .groupBy { it.row.entry.boardBrand }
             .values
-            .map { flashes -> flashes.minWith(compareByDescending<FirstSend> { it.row.entry.difficultyAverage!! }.thenBy { it.row.day }) }
-            .map { it.toYearSend() }
+            .map { flashes -> flashes.map { it.toYearSend() }.let { all -> all.minWith(hardestFirst(all, gradeLabel)) } }
             .sortedWith(compareByDescending<YearSend> { it.difficulty!! }.thenBy { it.board })
 
         val biggestDay = sends.groupingBy { it.day }.eachCount().entries
@@ -496,7 +528,9 @@ object YearReviewComputer {
 
         val firstSendOf: Map<String, FirstSend> = firstSends.associateBy { it.row.entry.uuid }
 
-        private val manualDays: List<LocalDate> = input.climbingDays.mapNotNull { parseDay(it.day) }
+        /** Climbing days logged by hand and the days of climbs logged by hand. */
+        private val manualDays: List<LocalDate> =
+            input.climbingDays.mapNotNull { parseDay(it.day) } + input.handLoggedDays.mapNotNull { parseDay(it) }
 
         fun climbingDays(span: Span): Set<LocalDate> =
             (rows.asSequence().map { it.day } + manualDays.asSequence()).filter { it in span }.toSet()

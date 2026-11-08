@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +41,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.domain.yearreview.YearReview
+import kotlinx.coroutines.delay
 import kotlinx.datetime.LocalDate
 
 /**
@@ -50,7 +54,13 @@ import kotlinx.datetime.LocalDate
 fun YearReviewEntryCard(onOpen: (Int) -> Unit, modifier: Modifier = Modifier, viewModel: YearReviewEntryViewModel = hiltViewModel()) {
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner, viewModel) {
-        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.checkCard() }
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // Again at midnight while it stays on screen: on 1 January "so far" becomes the finished year.
+            while (true) {
+                viewModel.checkCard()
+                delay(viewModel.millisToNextDay())
+            }
+        }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val year = state.cardYear ?: return
@@ -90,9 +100,10 @@ internal fun YearReviewCard(year: Int, soFar: Boolean, onOpen: () -> Unit, onHid
 }
 
 /**
- * The review's permanent place in the statistics: a year picker, and below the
- * minimum a short "your year so far" instead of the button. Feature builds can
- * pretend another date to try the December and January cards.
+ * The review's permanent place in the statistics: a year picker, and while the
+ * running year is below the minimum a short "your year so far", below the earlier
+ * years' button or alone. Feature builds can pretend another date to try the
+ * December and January cards.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -133,22 +144,33 @@ internal fun YearReviewStatsContent(
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
                 shape = RoundedCornerShape(12.dp),
             ) { Text(stringResource(R.string.yr_card_open), fontWeight = FontWeight.Bold) }
+            // The running year counts on below the minimum: how far it got, under the earlier year's button.
+            state.current?.let { current ->
+                Spacer(Modifier.height(4.dp))
+                SoFarBlock(current.year, current)
+            }
         } else if (review != null) {
             // No year has a full review yet: how far this one gets, and what opens it.
-            Text(littleTitle(selected, review), style = MaterialTheme.typography.bodyMedium)
-            if (review.isEmpty()) {
-                Text(emptyText(selected, review), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Text(minimumLine(review), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                littleRows(review).forEach { row ->
-                    Row {
-                        Text(row.label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                        Text(row.value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
+            SoFarBlock(selected, review)
         }
         if (YearReviewTestDate.available) TestDates(state.today, onTestDate)
+    }
+}
+
+/** A year below the minimum: its title, what opens the full review, and how far it got. */
+@Composable
+private fun SoFarBlock(year: Int, review: YearReview) {
+    Text(littleTitle(year, review), style = MaterialTheme.typography.bodyMedium)
+    if (review.isEmpty()) {
+        Text(emptyText(year, review), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        Text(minimumLine(review), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        littleRows(review).forEach { row ->
+            Row {
+                Text(row.label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                Text(row.value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 

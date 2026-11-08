@@ -34,8 +34,8 @@
     <!-- Intro -->
     <string name="yr_intro_title">Dein Jahr an den Boards</string>
     <string name="yr_intro_lead">Auf diesem Handy erstellt. Nichts verlässt es, außer du teilst es.</string>
-    <string name="yr_intro_how">Gezählt vom 1. Januar bis 31. Dezember in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen und Workouts, die du erfasst hast.</string>
-    <string name="yr_intro_how_so_far">Gezählt vom 1. Januar bis heute in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen und Workouts, die du erfasst hast. Das Jahr ist noch nicht vorbei: Es zählt bis zum 31. Dezember weiter.</string>
+    <string name="yr_intro_how">Gezählt vom 1. Januar bis 31. Dezember in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen, Bouldern und Workouts, die du erfasst hast. Spraywände zählen noch nicht mit: Sie folgen mit der Logbuch-Statistik.</string>
+    <string name="yr_intro_how_so_far">Gezählt vom 1. Januar bis heute in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen, Bouldern und Workouts, die du erfasst hast. Spraywände zählen noch nicht mit: Sie folgen mit der Logbuch-Statistik. Das Jahr ist noch nicht vorbei: Es zählt bis zum 31. Dezember weiter.</string>
     <string name="yr_intro_so_far">Stand %1$s</string>
 
     <!-- Volume -->
@@ -49,7 +49,7 @@
     <string name="yr_volume_sends">Begehungen</string>
     <string name="yr_volume_first_sends">Neue Boulder geklettert</string>
     <string name="yr_volume_flashes">Flashes</string>
-    <string name="yr_volume_how">Ein Klettertag ist ein Tag mit einem Board-Eintrag oder einem Klettertag, den du selbst erfasst hast. Eine Begehung zählt ihre Versuche, mindestens einen. Begehungen sind alle erfolgreichen Einträge, Wiederholungen eingeschlossen. Ein neuer Boulder ist einer, den du zum ersten Mal überhaupt geklettert hast, je Boulder und Winkel; ein Flash ist ein neuer Boulder im ersten Versuch.</string>
+    <string name="yr_volume_how">Ein Klettertag ist ein Tag mit einem Board-Eintrag oder mit einem Klettertag oder Boulder, den du selbst erfasst hast. Eine Begehung zählt ihre Versuche, mindestens einen. Begehungen sind alle erfolgreichen Einträge, Wiederholungen eingeschlossen. Ein neuer Boulder ist einer, den du zum ersten Mal überhaupt geklettert hast, je Boulder und Winkel; ein Flash ist ein neuer Boulder im ersten Versuch.</string>
 
     <!-- Boards and angles -->
     <string name="yr_boards_title">Deine Boards</string>
