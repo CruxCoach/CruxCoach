@@ -2,36 +2,26 @@ appId: com.cruxcoach.android
 name: subflow-verify-and-clean-migration-markers
 ---
 # The run-scoped ascent and its favorite entity both crossed the upgrade.
-- tapOn:
-    id: "board_logbook_icon"
+# Matchers are German labels and content descriptions: Compose test tags do
+# not surface as resource ids (docs/testing.md). The logbook shows a comment
+# in quotes, so the marker is matched as part of its text.
+- runFlow: logbook-open-by-label.yaml
 - extendedWaitUntil:
-    visible: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
+    visible: ".*E2E-MIGRATION-${E2E_MIGRATION_MARKER}.*"
     timeout: 15000
 - assertVisible: "Top · 3 Versuche"
 - assertVisible: "4★"
-- tapOn: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
+- tapOn: ".*E2E-MIGRATION-${E2E_MIGRATION_MARKER}.*"
 - extendedWaitUntil:
-    visible:
-      id: "boarddetail_favorite_button"
+    visible: "Von Favoriten entfernen"
     timeout: 15000
-- assertVisible: "Von Favoriten entfernen"
 # Exact UI cleanup of both markers before the host's final package clear.
-- tapOn:
-    id: "boarddetail_favorite_button"
+- tapOn: "Von Favoriten entfernen"
 - assertVisible: "Zu Favoriten hinzufügen"
 - pressKey: Back
-- tapOn:
-    id: "logbook_ascent_select_.*"
-    index: 0
-- tapOn:
-    id: "logbook_delete_selected"
-- assertVisible:
-    id: "logbook_delete_dialog"
-- tapOn:
-    id: "logbook_delete_confirm"
+- runFlow: delete-first-logbook-entry.yaml
 - extendedWaitUntil:
-    notVisible: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
+    notVisible: ".*E2E-MIGRATION-${E2E_MIGRATION_MARKER}.*"
     timeout: 10000
 - pressKey: Back
-- assertVisible:
-    id: "board_filter_toggle"
+- assertVisible: "Filter"

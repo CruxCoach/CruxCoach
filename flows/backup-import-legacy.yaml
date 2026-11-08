@@ -31,29 +31,35 @@ tags:
 - assertVisible:
     id: "board_filter_toggle"
 
-# Independent persisted-state proof: fixture UUIDs bind each rating and angle
-# to the intended row instead of accepting unrelated text elsewhere onscreen.
-- tapOn:
-    id: "board_logbook_icon"
+# Independent persisted-state proof: each rating and angle is bound to its
+# fixture row by position instead of accepting unrelated text elsewhere
+# onscreen. The fixture rows are the newest of the logbook (2099), in the
+# order Five Star, Four Star, Unrated, Attempt, so a value above the next
+# fixture's climb name belongs to the row before it.
+- runFlow: subflows/logbook-open-by-label.yaml
 - extendedWaitUntil:
-    visible:
-      id: "logbook_ascent_card_e2200140-0001-4001-8001-000000000001"
+    visible: "E2E Legacy 0\\.1\\.4 Five Star"
     timeout: 15000
-- assertVisible: "E2E Legacy 0.1.4 Five Star"
 - assertVisible:
-    id: "logbook_ascent_quality_e2200140-0001-4001-8001-000000000001"
     text: "5★"
+    above: "E2E Legacy 0\\.1\\.4 Four Star"
 - assertVisible:
-    id: "logbook_ascent_angle_e2200140-0001-4001-8001-000000000001"
     text: "40°"
-- assertVisible: "E2E Legacy 0.1.4 Four Star"
+    below: "E2E Legacy 0\\.1\\.4 Five Star"
+    above: "E2E Legacy 0\\.1\\.4 Four Star"
 - assertVisible:
-    id: "logbook_ascent_quality_e2200140-0002-4002-8002-000000000002"
     text: "4★"
-- assertVisible: "E2E Legacy 0.1.4 Unrated"
-- assertVisible: "E2E Legacy 0.1.4 Attempt"
+    below: "E2E Legacy 0\\.1\\.4 Five Star"
+    above: "E2E Legacy 0\\.1\\.4 Unrated"
+- assertVisible: "E2E Legacy 0\\.1\\.4 Unrated"
+# The attempt row can sit below the first screen.
+- scrollUntilVisible:
+    element: "E2E Legacy 0\\.1\\.4 Attempt"
+    direction: DOWN
+    timeout: 10000
 - assertVisible:
-    text: "(3 Versuche|3 attempts)"
+    text: "(Offen · 3 Versuche|Open · 3 attempts)"
+    below: "E2E Legacy 0\\.1\\.4 Unrated"
 - pressKey: Back
 - tapOn:
     id: "board_lists_button"

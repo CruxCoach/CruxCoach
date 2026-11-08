@@ -4,6 +4,8 @@ name: subflow-launch-browser
 # Every root gets a deterministic process start and browser route. A warm
 # foreground launch can inherit a nested navigation destination and does not
 # emit the startup evidence required by smoke.expects.
+# Matchers are German labels and content descriptions (config.yaml): Compose
+# test tags do not surface as resource ids (docs/testing.md).
 - launchApp:
     stopApp: true
 - runFlow:
@@ -13,11 +15,12 @@ name: subflow-launch-browser
       - tapOn: "Zulassen"
 - waitForAnimationToEnd:
     timeout: 5000
-- assertVisible:
-    id: "board_filter_toggle"
-- assertVisible:
-    id: "board_active_configuration"
 - extendedWaitUntil:
-    visible:
-      id: "board_climb_card"
+    visible: "Filter"
+    timeout: 30000
+# The active board's angle in the browser header.
+- assertVisible: "Winkel ändern, [0-9]+ Grad"
+# A climb card: every card shows its send count.
+- extendedWaitUntil:
+    visible: "[0-9]+ Begehung(en)?"
     timeout: 30000

@@ -2,11 +2,5 @@ appId: com.cruxcoach.android
 name: subflow-open-logbook
 ---
 - runFlow: launch-browser.yaml
-- tapOn:
-    id: "board_logbook_icon"
-- extendedWaitUntil:
-    visible: "Board Logbook"
-    timeout: 15000
-- assertVisible:
-    id: "logbook_back_button"
-
+- runFlow: logbook-open-by-label.yaml
+- assertVisible: "Zurück"

@@ -3,52 +3,43 @@ name: subflow-cleanup-legacy-logbook
 ---
 - runFlow: open-logbook.yaml
 # The fixture timestamps are deliberately in the future, so any residue from
-# an interrupted earlier run is in the first viewport. Select only fixture IDs;
-# never use Select All, which could remove unrelated test-phone logbook data.
+# an interrupted earlier run is in the first viewport. Select only fixture
+# entries, by the checkbox of their climb name ("<climb> auswählen"); never use
+# Select All, which could remove unrelated test-phone logbook data.
 - runFlow:
     when:
-      visible:
-        id: "logbook_ascent_select_e2200140-000[1-4]-.*"
+      visible: "E2E Legacy 0\\.1\\.4 .* auswählen"
     commands:
       - runFlow:
           when:
-            visible:
-              id: "logbook_ascent_select_e2200140-0001-4001-8001-000000000001"
+            visible: "E2E Legacy 0\\.1\\.4 Five Star auswählen"
           commands:
-            - tapOn:
-                id: "logbook_ascent_select_e2200140-0001-4001-8001-000000000001"
+            - tapOn: "E2E Legacy 0\\.1\\.4 Five Star auswählen"
       - runFlow:
           when:
-            visible:
-              id: "logbook_ascent_select_e2200140-0002-4002-8002-000000000002"
+            visible: "E2E Legacy 0\\.1\\.4 Four Star auswählen"
           commands:
-            - tapOn:
-                id: "logbook_ascent_select_e2200140-0002-4002-8002-000000000002"
+            - tapOn: "E2E Legacy 0\\.1\\.4 Four Star auswählen"
       - runFlow:
           when:
-            visible:
-              id: "logbook_ascent_select_e2200140-0003-4003-8003-000000000003"
+            visible: "E2E Legacy 0\\.1\\.4 Unrated auswählen"
           commands:
-            - tapOn:
-                id: "logbook_ascent_select_e2200140-0003-4003-8003-000000000003"
+            - tapOn: "E2E Legacy 0\\.1\\.4 Unrated auswählen"
+      # The oldest fixture row can sit at the screen edge, under the system
+      # bar: scroll it fully into view before tapping its checkbox.
+      - scrollUntilVisible:
+          element: "E2E Legacy 0\\.1\\.4 Attempt auswählen"
+          direction: DOWN
+          timeout: 10000
+          optional: true
       - runFlow:
           when:
-            visible:
-              id: "logbook_ascent_select_e2200140-0004-4004-8004-000000000004"
+            visible: "E2E Legacy 0\\.1\\.4 Attempt auswählen"
           commands:
-            - tapOn:
-                id: "logbook_ascent_select_e2200140-0004-4004-8004-000000000004"
-      - tapOn:
-          id: "logbook_delete_selected"
-      - assertVisible:
-          id: "logbook_delete_dialog"
-      - tapOn:
-          id: "logbook_delete_confirm"
+            - tapOn: "E2E Legacy 0\\.1\\.4 Attempt auswählen"
+      - runFlow: logbook-delete-selected.yaml
       - extendedWaitUntil:
-          notVisible:
-            id: "logbook_ascent_select_e2200140-000[1-4]-.*"
+          notVisible: "E2E Legacy 0\\.1\\.4 .* auswählen"
           timeout: 10000
 - pressKey: Back
-- assertVisible:
-    id: "board_filter_toggle"
-
+- assertVisible: "Filter"
