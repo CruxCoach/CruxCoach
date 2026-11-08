@@ -23,8 +23,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -150,31 +153,30 @@ internal fun LogbookOverviewCard(
                 Spacer(Modifier.height(8.dp))
                 RecentRow(recent)
             }
-            if ((milestones.isNotEmpty() || glance.sessionsPerWeek > 0.0) && LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
-                // Large font: the chips wrap, as one hardly fits beside another.
+            if (milestones.isNotEmpty() || glance.sessionsPerWeek > 0.0) {
                 Spacer(Modifier.height(10.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (glance.sessionsPerWeek > 0.0) PerWeekChip(glance.sessionsPerWeek)
-                    milestones.forEach { milestone -> MilestoneChip(milestone, colors.takeIf { boards.size > 1 }) }
-                }
-            } else if (milestones.isNotEmpty() || glance.sessionsPerWeek > 0.0) {
-                Spacer(Modifier.height(10.dp))
-                // Scrolls under the card's edges, so a cut chip reads as "more to the side".
-                LazyRow(
-                    Modifier.layout { measurable, constraints ->
-                        val edge = CARD_PADDING.roundToPx()
-                        val placeable = measurable.measure(constraints.copy(maxWidth = constraints.maxWidth + 2 * edge))
-                        layout(constraints.maxWidth, placeable.height) { placeable.place(-edge, 0) }
-                    },
-                    contentPadding = PaddingValues(horizontal = CARD_PADDING),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    // How regularly, then the badges.
-                    if (glance.sessionsPerWeek > 0.0) {
-                        item(key = "per-week") { PerWeekChip(glance.sessionsPerWeek) }
-                    }
-                    items(milestones, key = { "${it.kind}-${it.date}-${it.count}" }) { milestone ->
-                        MilestoneChip(milestone, colors.takeIf { boards.size > 1 })
+                // One row at every font size, so a long list of badges never pushes the
+                // entries down. It scrolls under the card's edges, so a cut chip reads as
+                // "more to the side"; a chip is at most as wide as the card and wraps its text.
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val chipMax = maxWidth
+                    Row(
+                        Modifier
+                            .layout { measurable, constraints ->
+                                val edge = CARD_PADDING.roundToPx()
+                                val placeable = measurable.measure(constraints.copy(maxWidth = constraints.maxWidth + 2 * edge))
+                                layout(constraints.maxWidth, placeable.height) { placeable.place(-edge, 0) }
+                            }
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = CARD_PADDING),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // How regularly, then the badges.
+                        if (glance.sessionsPerWeek > 0.0) PerWeekChip(glance.sessionsPerWeek, Modifier.widthIn(max = chipMax))
+                        milestones.forEach { milestone ->
+                            MilestoneChip(milestone, colors.takeIf { boards.size > 1 }, Modifier.widthIn(max = chipMax))
+                        }
                     }
                 }
             }
@@ -416,48 +418,76 @@ private fun DeltaColumn(value: String, label: String, delta: Delta?, modifier: M
 
 /** Climbing days per week over the last eight weeks, as a chip beside the milestones. */
 @Composable
-private fun PerWeekChip(perWeek: Double) {
+private fun PerWeekChip(perWeek: Double, modifier: Modifier = Modifier) {
     val value = stringResource(R.string.board_stats_glance_per_week_value, perWeek)
     val caption = stringResource(R.string.board_stats_glance_per_week)
-    Row(
-        Modifier
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f), RoundedCornerShape(50))
-            .padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-            .clearAndSetSemantics { contentDescription = "$caption: $value" },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = OrangeAccent, modifier = Modifier.size(16.dp))
-        Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        Text(caption, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-    }
+    OverviewChip(
+        icon = Icons.Filled.CalendarMonth,
+        tint = OrangeAccent,
+        value = value,
+        caption = caption,
+        description = "$caption: $value",
+        modifier = modifier,
+    )
 }
 
 /** A milestone as one small chip: its icon, what it is and when. */
 @Composable
-private fun MilestoneChip(milestone: Milestone, boardColors: Map<String, Color>?) {
-    val accent = milestone.grade?.let { gradeColorForDifficulty(it.difficulty) } ?: OrangeAccent
+private fun MilestoneChip(milestone: Milestone, boardColors: Map<String, Color>?, modifier: Modifier = Modifier) {
     val value = milestone.grade?.grade ?: "${milestone.count}"
     val caption = milestoneCaption(milestone)
     val date = milestone.date?.let { milestoneDate(it) }
+    val board = milestone.grade?.board
+    OverviewChip(
+        icon = milestoneIcon(milestone.kind),
+        tint = milestone.grade?.let { gradeColorForDifficulty(it.difficulty) } ?: OrangeAccent,
+        value = value,
+        caption = caption,
+        date = date,
+        // The board's dot before the date, when several boards are logged.
+        dot = board?.let { b -> boardColors?.let { it[b] ?: MaterialTheme.colorScheme.onSurfaceVariant } },
+        description = listOfNotNull(caption, value, date).joinToString(", "),
+        modifier = modifier,
+    )
+}
+
+/**
+ * The overview's chip: icon, value, caption and an optional date as one text,
+ * so a chip that is narrower than its text wraps instead of cutting words off.
+ */
+@Composable
+private fun OverviewChip(
+    icon: ImageVector,
+    tint: Color,
+    value: String,
+    caption: String,
+    description: String,
+    modifier: Modifier = Modifier,
+    date: String? = null,
+    dot: Color? = null,
+) {
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    val small = MaterialTheme.typography.labelMedium
+    val text = buildAnnotatedString {
+        withStyle(MaterialTheme.typography.labelLarge.toSpanStyle().copy(fontWeight = FontWeight.Bold)) { append(value) }
+        append(" ")
+        withStyle(small.toSpanStyle().copy(color = variant)) { append(caption) }
+        if (date != null) {
+            append(" ")
+            if (dot != null) withStyle(small.toSpanStyle().copy(color = dot)) { append("• ") }
+            withStyle(small.toSpanStyle().copy(color = variant.copy(alpha = 0.7f))) { append(date.replace(' ', '\u00A0')) }
+        }
+    }
     Row(
-        Modifier
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f), RoundedCornerShape(50))
+        modifier
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
             .padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-            .clearAndSetSemantics { contentDescription = listOfNotNull(caption, value, date).joinToString(", ") },
+            .clearAndSetSemantics { contentDescription = description },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Icon(milestoneIcon(milestone.kind), contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
-        Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        Text(caption, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        if (date != null) {
-            val board = milestone.grade?.board
-            if (board != null && boardColors != null) {
-                Spacer(Modifier.size(6.dp).background(boardColors[board] ?: MaterialTheme.colorScheme.onSurfaceVariant, CircleShape))
-            }
-            Text(date, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), maxLines = 1)
-        }
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+        Text(text, style = small)
     }
 }
 
