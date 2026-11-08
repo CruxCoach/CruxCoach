@@ -15,6 +15,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -39,12 +40,21 @@ data class SavedBoardForCheck(
 )
 
 @HiltViewModel
-class BoardSizeCheckViewModel @Inject constructor(
+class BoardSizeCheckViewModel internal constructor(
     private val connection: BoardBleConnection,
     private val boardRepository: BoardRepository,
     private val userPreferences: UserPreferences,
     private val boardLocationRepository: BoardLocationRepository,
+    /** Where the catalogue is read; tests read it in place. */
+    private val io: CoroutineDispatcher,
 ) : ViewModel() {
+    @Inject constructor(
+        connection: BoardBleConnection,
+        boardRepository: BoardRepository,
+        userPreferences: UserPreferences,
+        boardLocationRepository: BoardLocationRepository,
+    ) : this(connection, boardRepository, userPreferences, boardLocationRepository, Dispatchers.IO)
+
     val connectionState: StateFlow<ConnectionState> = connection.connectionState
     val connectedBrand: StateFlow<BoardBrand?> = connection.connectedBoardBrand
 
@@ -82,7 +92,7 @@ class BoardSizeCheckViewModel @Inject constructor(
         .mapLatest { (brand, layoutId, sizeId) ->
             val sizeCount = if (brand.usesAuroraProtocol) {
                 // Two sizes with LED data are enough to offer the check.
-                withContext(Dispatchers.IO) { runCatching { sameProductSizes(brand, sizeId, atMost = 2).size }.getOrDefault(0) }
+                withContext(io) { runCatching { sameProductSizes(brand, sizeId, atMost = 2).size }.getOrDefault(0) }
             } else {
                 0
             }
@@ -184,13 +194,13 @@ class BoardSizeCheckViewModel @Inject constructor(
 
     private inner class Source : BoardSizeCheckSession.Source {
         override suspend fun sizes(brand: BoardBrand, sizeId: Int): List<BoardSize> =
-            withContext(Dispatchers.IO) {
+            withContext(io) {
                 val sizes = sameProductSizes(brand, sizeId)
                 sizeCheckOrder(brand, sizes, if (brand == BoardBrand.KILTER) kilterSizeWalls() else emptyMap())
             }
 
         override suspend fun layoutFor(brand: BoardBrand, size: BoardSize, hint: Int?): Int? =
-            withContext(Dispatchers.IO) {
+            withContext(io) {
                 if (brand == BoardBrand.KILTER) {
                     BoardConstants.layoutIdForProduct(size.productId.toInt())
                 } else {
@@ -200,7 +210,7 @@ class BoardSizeCheckViewModel @Inject constructor(
             }
 
         override suspend fun holds(brand: BoardBrand, size: BoardSize, layoutId: Int?): List<BoardSizeCheckPoint> =
-            withContext(Dispatchers.IO) {
+            withContext(io) {
                 val wire = brand.wireValue
                 val placements = layoutId?.let { boardRepository.getPlacementsForLayout(size.id.toInt(), it, wire) }
                     ?: boardRepository.getAllPlacements(wire)

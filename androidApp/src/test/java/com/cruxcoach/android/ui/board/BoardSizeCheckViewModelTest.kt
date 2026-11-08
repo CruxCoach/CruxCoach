@@ -73,10 +73,16 @@ class BoardSizeCheckViewModelTest {
         every { productSizeFrequency() } returns mapOf(10 to 900L, 7 to 50L, 8 to 10L)
     }
 
-    @Before fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
+    // The catalogue is read on the same dispatcher: every call has run when it returns, and
+    // nothing is left to resume after the test.
+    private val dispatcher = UnconfinedTestDispatcher()
+
+    @Before fun setUp() = Dispatchers.setMain(dispatcher)
     @After fun tearDown() = Dispatchers.resetMain()
 
-    private fun openLit(): BoardSizeCheckViewModel = BoardSizeCheckViewModel(connection, repository, preferences, locations).apply {
+    private fun viewModel() = BoardSizeCheckViewModel(connection, repository, preferences, locations, dispatcher)
+
+    private fun openLit(): BoardSizeCheckViewModel = viewModel().apply {
         open(BoardBrand.KILTER, 10, null)
         await { it.lit }
     }
@@ -136,7 +142,7 @@ class BoardSizeCheckViewModelTest {
     }
 
     @Test fun `a check that opens while the app is away goes dark at once`() {
-        val viewModel = BoardSizeCheckViewModel(connection, repository, preferences, locations)
+        val viewModel = viewModel()
         viewModel.pause() // ON_STOP before the sheet's first open ran
         viewModel.open(BoardBrand.KILTER, 10, null)
         verify(timeout = 5_000L, exactly = 1) { connection.releaseKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
@@ -158,7 +164,7 @@ class BoardSizeCheckViewModelTest {
     }
 
     @Test fun `the climb menu learns whether to offer the check`() {
-        val viewModel = BoardSizeCheckViewModel(connection, repository, preferences, locations)
+        val viewModel = viewModel()
         val saved = runBlocking { withTimeout(5_000L) { viewModel.savedBoard.first { it != null } } }
         assertTrue(saved!!.offered)
         assertEquals(10, saved.sizeId)

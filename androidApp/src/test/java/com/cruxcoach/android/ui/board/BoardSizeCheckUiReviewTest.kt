@@ -94,6 +94,8 @@ class BoardSizeCheckUiReviewTest {
                 product, brand.wireValue, brand.wireValue,
             ) { BoardSize(it.getLong(0), it.getLong(1), it.getString(2), it.getLong(3), it.getLong(4), it.getLong(5), it.getLong(6), null, brand) }
                 .filter { brand == BoardBrand.KILTER || !BoardConstants.isExcludedAuroraSize(brand, it.id.toInt()) }
+                // In the order the app lists them: Kilter by the bundled gym counts.
+                .let { sizeCheckOrder(brand, it, BoardConstants.DEFAULT_SIZE_FREQUENCY) }
         }
 
         override suspend fun layoutFor(brand: BoardBrand, size: BoardSize, hint: Int?): Int? =
@@ -320,12 +322,14 @@ class BoardSizeCheckUiReviewTest {
         val selected = check { reject(); test(28); confirm(applyChange = false) }
         val tension = check(BoardBrand.TENSION, 2, 9)
         val tensionNext = check(BoardBrand.TENSION, 2, 9) { reject(); test(2) }
+        val tensionPick = check(BoardBrand.TENSION, 3, 9) { reject() }
         val homewall = check(sizeId = 25, layoutId = 8)
 
         for (isDark in listOf(true, false)) {
             shoot("sheet-01-no-board", isDark, end) { CheckSheet(dark, connected = false, ready = false) }
             shoot("sheet-02-lit", isDark, end) { CheckSheet(lit) }
             shoot("sheet-05-pick-other", isDark, end) { CheckSheet(pick) }
+            shoot("sheet-11b-tension-pick-other", isDark, end) { CheckSheet(tensionPick, BoardBrand.TENSION) }
             shoot("sheet-08-saved", isDark) { CheckSheet(saved) }
             shootDialog("picker-01-kilter", isDark) { Picker(BoardBrand.KILTER) }
         }
