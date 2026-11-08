@@ -3,7 +3,9 @@ package com.cruxcoach.domain.holdtypes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class HoldReviewTest {
 
@@ -114,5 +116,18 @@ class HoldReviewTest {
         assertEquals(HoldDirection.UP, dataset[2]?.holdDirection)
         assertNull(dataset[3]?.holdType)
         assertFailsWith<IllegalArgumentException> { HoldTypeDataset.parse(text.replace("-v1", "-v9")) }
+    }
+
+    @Test
+    fun dataset_showsInStatsOnlyAfterItsBlindRound() {
+        val text = """{"format":"cruxcoach-hold-types-v1","board":"kilter","version":"t",
+            "holds":[{"placement":2,"layoutId":1,"setId":1,"type":"jug"}]}"""
+        val round = """"blindRound":{"date":"2026-11-08","holds":153,"type":0.8,"direction":0.7},"""
+        assertFalse(HoldTypeDataset.parse(text).statsReady)
+        val checked = HoldTypeDataset.parse(text.replace("\"holds\":[", "$round\"holds\":["))
+        assertTrue(checked.statsReady)
+        assertEquals(HoldTypeBlindRound("2026-11-08", 153, type = 0.8, direction = 0.7), checked.blindRound)
+        // A round on a board without typed holds does not show it either.
+        assertFalse(checked.copy(holds = checked.holds.map { it.copy(type = null) }).statsReady)
     }
 }

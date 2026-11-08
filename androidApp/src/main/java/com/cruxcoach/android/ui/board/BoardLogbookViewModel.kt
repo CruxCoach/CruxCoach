@@ -775,8 +775,7 @@ class BoardLogbookViewModel @Inject constructor(
                 val result = withContext(Dispatchers.IO) {
                     val period = BoardStatsComputer.filterByInterval(entries, s.statsInterval, s.customDateFrom, s.customDateTo)
                     val board = HoldTypeStatsComputer.cardBoard(period, s.boardFilter) { candidate ->
-                        holdTypeAssets.boards().contains(candidate) &&
-                            holdTypeAssets.dataset(candidate)?.holds?.any { it.type != null } == true
+                        holdTypeAssets.boards().contains(candidate) && holdTypeAssets.dataset(candidate)?.statsReady == true
                     } ?: return@withContext null
                     val dataset = holdTypeAssets.dataset(board) ?: return@withContext null
                     val frames = holdTypeFrames(period.filter { it.boardBrand == board }, key.logbook)
