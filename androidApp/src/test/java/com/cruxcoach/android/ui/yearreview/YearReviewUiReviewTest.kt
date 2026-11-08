@@ -66,7 +66,8 @@ class YearReviewUiReviewTest {
     @Before
     fun onlyOnRequest() = Assume.assumeTrue(dir != null)
 
-    private val input: YearReviewComputer.Input = run {
+    // Computed only when a test renders: without CRUXCOACH_UI_REVIEW_DIR every test is skipped and costs nothing.
+    private val input: YearReviewComputer.Input by lazy {
         val random = Random(64)
         var id = 0
         val entries = mutableListOf<AscentWithClimb>()
@@ -99,13 +100,13 @@ class YearReviewUiReviewTest {
 
     private val january = LocalDate(2027, 1, 10)
     private val december = LocalDate(2026, 12, 1)
-    private val review: YearReview = YearReviewComputer.compute(input, 2026, january, TimeZone.UTC)
-    private val soFar: YearReview = YearReviewComputer.compute(input, 2026, december, TimeZone.UTC)
-    private val littleInput = YearReviewComputer.Input(entries = input.entries.filter { it.climbedAt.startsWith("2026-03") }.take(9))
-    private val little: YearReview = YearReviewComputer.compute(littleInput, 2026, december, TimeZone.UTC)
-    private val littleFinal: YearReview = YearReviewComputer.compute(littleInput, 2026, january, TimeZone.UTC)
-    private val empty: YearReview = YearReviewComputer.compute(YearReviewComputer.Input(), 2026, december, TimeZone.UTC)
-    private val emptyNewYear: YearReview = YearReviewComputer.compute(YearReviewComputer.Input(), 2027, january, TimeZone.UTC)
+    private val review: YearReview by lazy { YearReviewComputer.compute(input, 2026, january, TimeZone.UTC) }
+    private val soFar: YearReview by lazy { YearReviewComputer.compute(input, 2026, december, TimeZone.UTC) }
+    private val littleInput by lazy { YearReviewComputer.Input(entries = input.entries.filter { it.climbedAt.startsWith("2026-03") }.take(9)) }
+    private val little: YearReview by lazy { YearReviewComputer.compute(littleInput, 2026, december, TimeZone.UTC) }
+    private val littleFinal: YearReview by lazy { YearReviewComputer.compute(littleInput, 2026, january, TimeZone.UTC) }
+    private val empty: YearReview by lazy { YearReviewComputer.compute(YearReviewComputer.Input(), 2026, december, TimeZone.UTC) }
+    private val emptyNewYear: YearReview by lazy { YearReviewComputer.compute(YearReviewComputer.Input(), 2027, january, TimeZone.UTC) }
 
     private var shown: @Composable () -> Unit by mutableStateOf({})
     private var theme: DarkModeSetting by mutableStateOf(DarkModeSetting.DARK)
