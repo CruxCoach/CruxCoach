@@ -160,6 +160,7 @@ fun BoardLogbookScreen(
             crossBoard = state.crossBoard,
             crossBoardView = state.crossBoardView,
             onCrossBoardViewSelect = { viewModel.setCrossBoardView(it) },
+            holdTypes = state.holdTypes,
             progressionByBoard = state.progressionByBoard,
             activityView = state.activityView,
             onActivityViewSelect = { viewModel.setActivityView(it) },

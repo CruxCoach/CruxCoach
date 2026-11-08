@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Griffarten (#63): Namen der Arten -->
+    <string name="hold_type_jug">Henkel</string>
+    <string name="hold_type_edge">Leiste</string>
+    <string name="hold_type_sloper">Sloper</string>
+    <string name="hold_type_pinch">Zange</string>
+    <string name="hold_type_pocket">Loch</string>
+    <string name="hold_type_volume">Volumen</string>
+    <string name="hold_type_foot_chip">Tritt</string>
+    <string name="hold_direction_all_round">Rundum</string>
+
+    <!-- Griffarten prüfen: nur in Testversionen -->
+    <string name="settings_hold_review_title">Griffarten prüfen</string>
+    <string name="settings_hold_review_desc">Nur in Testversionen: berechnete Griffarten prüfen</string>
+    <string name="hold_review_title">Griffarten: Prüfung</string>
+    <string name="hold_review_stage_blind">1 · Blind %1$d/%2$d</string>
+    <string name="hold_review_stage_decide">2 · Entscheiden %1$d</string>
+    <string name="hold_review_stage_results">Ergebnis</string>
+    <string name="hold_review_progress">Griff %1$d von %2$d · %3$s</string>
+    <string name="hold_review_blind_hint">Erst antworten. Das berechnete Label erscheint nach deiner Antwort, und dann gilt deine Antwort.</string>
+    <string name="hold_review_decide_hint">Nur die Felder, in denen du und das berechnete Label abweichen. Wer lag richtig?</string>
+    <string name="hold_review_decide_locked">Erst die Blindrunde beenden.</string>
+    <string name="hold_review_q_type">Art</string>
+    <string name="hold_review_q_direction">Die nutzbare Seite zeigt nach</string>
+    <string name="hold_review_q_foot_only">Nur für die Füße</string>
+    <string name="hold_review_field_direction">Richtung</string>
+    <string name="hold_review_cant_tell">Nicht erkennbar</string>
+    <string name="hold_review_yes">Ja</string>
+    <string name="hold_review_no">Nein</string>
+    <string name="hold_review_show_label">Berechnetes Label zeigen</string>
+    <string name="hold_review_computed">Berechnet: %1$s</string>
+    <string name="hold_review_yours">Du: %1$s</string>
+    <string name="hold_review_verdict_reviewer">Ich lag richtig</string>
+    <string name="hold_review_verdict_computed">Berechnet lag richtig</string>
+    <string name="hold_review_verdict_both">Beide falsch</string>
+    <string name="hold_review_none_disagree">Keine Abweichungen.</string>
+    <string name="hold_review_results_blind">Blindrunde: Übereinstimmung</string>
+    <string name="hold_review_results_blind_row">%1$s: %2$d von %3$d (%4$d %%), nicht erkennbar %5$d</string>
+    <string name="hold_review_results_near">Richtung gleich oder einen Schritt daneben: %1$d von %2$d</string>
+    <string name="hold_review_results_decided">Nach der Entscheidung</string>
+    <string name="hold_review_results_decided_row">%1$s: berechnet falsch %2$d, du falsch %3$d (beide %4$d), offen %5$d</string>
+    <string name="hold_review_save_file">Als Datei speichern</string>
+    <string name="hold_review_share">Als Text teilen</string>
+    <string name="hold_review_saved">Gespeichert</string>
+    <string name="hold_review_start_over">Neu beginnen</string>
+    <string name="hold_review_start_over_confirm">Alle Antworten löschen und die Blindrunde neu beginnen?</string>
+    <string name="hold_review_missing">Diese Version enthält keine Griffarten.</string>
+    <string name="hold_review_no_board">Die Board-Geometrie ist noch nicht geladen.</string>
+    <string name="hold_review_dataset">Label-Version %1$s</string>
+
+    <!-- Griff-Labels prüfen: nur in Testversionen -->
+    <string name="settings_hold_check_title">Griff-Labels prüfen</string>
+    <string name="settings_hold_check_desc">Nur in Testversionen: Griffarten aller Boards bestätigen oder korrigieren</string>
+    <string name="hold_check_title">Griffarten: Labels prüfen</string>
+    <string name="hold_check_review_list">Prüfliste (%1$d)</string>
+    <string name="hold_check_all">Alle Griffe (%1$d)</string>
+    <string name="hold_check_progress">Griff %1$d von %2$d · %3$s</string>
+    <string name="hold_check_mirrored">Vom spiegelbildlichen Griff übernommen, links und rechts getauscht</string>
+    <string name="hold_check_proposed">Vorgeschlagenes Label</string>
+    <string name="hold_check_second">Zweiter Griff: %1$s</string>
+    <string name="hold_check_size">Größe: %1$s</string>
+    <string name="hold_check_confidence">Sicherheit: Art %1$s, Richtung %2$s</string>
+    <string name="hold_check_why">Auf der Prüfliste: %1$s</string>
+    <string name="hold_check_looks_right">Stimmt</string>
+    <string name="hold_check_correct">Korrigieren</string>
+    <string name="hold_check_save_correction">Korrektur speichern</string>
+    <string name="hold_check_yours">Deine Prüfung: %1$s</string>
+    <string name="hold_check_verdict_confirmed">stimmt</string>
+    <string name="hold_check_verdict_corrected">korrigiert</string>
+    <string name="hold_check_summary">Geprüft %1$d: %2$d stimmen, %3$d korrigiert (Art %4$d, Richtung %5$d, nur Füße %6$d), nicht erkennbar %7$d</string>
+    <string name="hold_check_none">Hier gibt es nichts zu prüfen.</string>
+    <string name="hold_check_start_over_confirm">Alle Prüfungen dieses Boards löschen?</string>
+    <string name="hold_size_small">klein</string>
+    <string name="hold_size_medium">mittel</string>
+    <string name="hold_size_large">groß</string>
+    <string name="hold_conf_high">hoch</string>
+    <string name="hold_conf_medium">mittel</string>
+    <string name="hold_conf_low">niedrig</string>
+    <string name="hold_reason_type">Art unsicher</string>
+    <string name="hold_reason_direction">Richtung unsicher</string>
+    <string name="hold_reason_low_res">Bild mit wenig Auflösung</string>
+    <string name="hold_reason_touching">berührt im Bild einen anderen Griff</string>
+    <string name="hold_reason_placeholder">das Bild der App zeigt einen Platzhalter</string>
+
+    <!-- Grifftypen in den Logbuch-Statistiken -->
+    <string name="board_stats_hold_types_title">Grifftypen</string>
+    <string name="board_stats_hold_types_title_board">Grifftypen · %1$s</string>
+    <string name="board_stats_hold_types_help">Welche Griffe\nDer Anteil jedes Typs an den Handgriffen der Boulder, die du im gewählten Zeitraum geloggt hast: Start-, Zwischen- und Topgriffe, keine Tritte. Jeder Boulder zählt gleich viel.\n\nBoard\nDie Marke zeigt denselben Anteil bei den Bouldern des Boards in deinen Graden. So zeigt der Vergleich, welche Griffe du wählst, nicht wie schwer du kletterst.\n\nStark und schwach\nWie viele der Boulder, bei denen ein Typ mindestens 40 Prozent der Handgriffe ausmacht, du geschafft hast, gegen alle deine Boulder an diesem Board. Dafür braucht es mindestens fünf solche Boulder und 15 Prozentpunkte Unterschied.\n\nWoher die Typen kommen\nSie sind aus den Board-Bildern berechnet, nicht von dir markiert, und an einer Stichprobe von Griffen von Hand geprüft. Sie können trotzdem falsch sein. Die Karte zeigt immer ein Board, und nur Boards, deren Prüfung fertig ist.\n\nTippe auf einen Typ, um seine Zahlen zu sehen.</string>
+    <string name="board_stats_hold_types_you">Du</string>
+    <string name="board_stats_hold_types_board">Board in deinen Graden</string>
+    <string name="board_stats_hold_types_strong">stark</string>
+    <string name="board_stats_hold_types_weak">schwach</string>
+    <string name="board_stats_hold_types_board_share">Board: %1$d %%</string>
+    <plurals name="board_stats_hold_types_send_rate">
+        <item quantity="one">%1$d %% von %2$d Boulder geschafft, bei dem er überwiegt, %3$d %% von allen</item>
+        <item quantity="other">%1$d %% von %2$d Bouldern geschafft, bei denen er überwiegt, %3$d %% von allen</item>
+    </plurals>
+    <string name="board_stats_hold_types_hardest">Schwerste Begehung dort: %1$s</string>
+    <string name="board_stats_hold_types_too_few">Zu wenige Boulder für stark oder schwach</string>
+    <plurals name="board_stats_hold_types_basis">
+        <item quantity="one">%1$d Boulder · %2$d von %3$d Handgriffen bestimmt</item>
+        <item quantity="other">%1$d Boulder · %2$d von %3$d Handgriffen bestimmt</item>
+    </plurals>
+</resources>
