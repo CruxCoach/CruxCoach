@@ -144,7 +144,7 @@ fun DashboardScreen(
                         StatMiniCard(
                             value = state.highestGrade?.let { GradeDisplayHelper.formatGrade(it, state.gradeScale) } ?: "--",
                             label = stringResource(R.string.dashboard_best_grade),
-                            color = GradeHard,
+                            color = ErrorRed,
                             modifier = Modifier.weight(1f)
                         )
 
@@ -545,6 +545,8 @@ private fun QuickActionCard(
     }
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun rpeColor(rpe: Double?): androidx.compose.ui.graphics.Color {
     return when {
         rpe == null -> SessionRest

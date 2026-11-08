@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -691,7 +692,7 @@ fun BoardBrowserScreen(
                             onClick = { viewModel.loadActiveBoardCatalogue() },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = OrangeAccent,
-                                contentColor = DarkBackground,
+                                contentColor = CruxCoachDesign.colors.onBrandAccent,
                             ),
                             modifier = Modifier.testTag("board_empty_load_catalogue")
                         ) {
@@ -865,7 +866,7 @@ fun BoardBrowserScreen(
                 FloatingActionButton(
                     onClick = onNavigateToClimbCreator,
                     containerColor = OrangeAccent,
-                    contentColor = DarkBackground,
+                    contentColor = CruxCoachDesign.colors.onBrandAccent,
                     modifier = Modifier.testTag("board_create_fab")
                 ) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.climb_creator_open))
@@ -877,7 +878,7 @@ fun BoardBrowserScreen(
                         searchVisible = !searchVisible
                     },
                     containerColor = OrangeAccent,
-                    contentColor = DarkBackground,
+                    contentColor = CruxCoachDesign.colors.onBrandAccent,
                     modifier = Modifier.testTag("board_search_fab")
                 ) {
                     Icon(

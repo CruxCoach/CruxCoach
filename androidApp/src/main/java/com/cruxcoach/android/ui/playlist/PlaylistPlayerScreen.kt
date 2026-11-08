@@ -89,6 +89,7 @@ import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -627,10 +628,10 @@ private fun ClimbingContent(
                 ) {
                     Icon(
                         Icons.Default.Check, contentDescription = null,
-                        tint = DarkBackground, modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp),
                     )
                     Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.playlist_log_send), color = DarkBackground)
+                    Text(stringResource(R.string.playlist_log_send), color = MaterialTheme.colorScheme.onPrimary)
                 }
             }
         }
@@ -803,7 +804,7 @@ private fun PlayerControls(
             enabled = playback.currentClimb != null,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = OrangeAccent,
-                contentColor = DarkBackground,
+                contentColor = CruxCoachDesign.colors.onBrandAccent,
             ),
             modifier = Modifier.size(60.dp).testTag(
                 if (playback.boardConnected) "player_lamp" else "player_connect",

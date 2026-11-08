@@ -63,7 +63,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.theme.DarkBackground
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.gradeColorForDifficulty
 import kotlinx.coroutines.Dispatchers
@@ -130,7 +130,7 @@ internal fun ShareRecapButton(recap: SessionRecap, layer: GraphicsLayer, filled:
             onClick = onClick,
             enabled = !sharing,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
+            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = CruxCoachDesign.colors.onBrandAccent),
             shape = RoundedCornerShape(12.dp),
             content = content,
         )

@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -2309,7 +2310,7 @@ private fun BoardDetailActionDock(
                 // between a red and an orange one read as the disabled one.
                 // The icon carries the difference.
                 color = OrangeAccent,
-                contentColor = DarkBackground,
+                contentColor = CruxCoachDesign.colors.onBrandAccent,
                 shadowElevation = 4.dp,
             ) {
                 DockButtonContent(
@@ -2334,7 +2335,7 @@ private fun BoardDetailActionDock(
                         ),
                     shape = RoundedCornerShape(18.dp),
                     color = OrangeAccent,
-                    contentColor = DarkBackground,
+                    contentColor = CruxCoachDesign.colors.onBrandAccent,
                     shadowElevation = 4.dp,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -2342,7 +2343,7 @@ private fun BoardDetailActionDock(
                             CircularProgressIndicator(
                                 modifier = Modifier.size(25.dp),
                                 strokeWidth = 2.5.dp,
-                                color = DarkBackground,
+                                color = CruxCoachDesign.colors.onBrandAccent,
                             )
                         } else {
                             DockButtonContent(

@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 import com.cruxcoach.domain.board.IntensityZone
 import com.cruxcoach.domain.board.IntensityZones
@@ -7,7 +9,22 @@ import com.cruxcoach.domain.board.IntensityZones
 // Primary: Orange accent for climbing energy
 val Orange80 = Color(0xFFFFB74D)
 val Orange40 = Color(0xFFE65100)
-val OrangeAccent = Color(0xFFFF6D00)
+
+/** The bright brand orange: the dark theme's accent. On light surfaces it is too faint (2.8:1 on white). */
+val BrandOrange = Color(0xFFFF6D00)
+
+/** The light theme's accent: deep enough for orange text on light surfaces and white labels on it (≥ 4.5:1). */
+val BrandOrangeDeep = Color(0xFFB83E00)
+
+/**
+ * The app's orange in the current theme: [BrandOrange] in the dark theme, [BrandOrangeDeep] in the
+ * light one, so orange text and icons and labels on orange stay readable in both. Labels on it take
+ * [CruxCoachColorTokens.onBrandAccent] (the theme's onPrimary).
+ */
+val OrangeAccent: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalCruxCoachColors.current.brandAccent
 
 // Secondary: Slate/Stone tones
 val Slate80 = Color(0xFFB0BEC5)
@@ -19,11 +36,30 @@ val DarkSurface = Color(0xFF1A1A2E)
 val DarkBackground = Color(0xFF121212)
 val DarkCard = Color(0xFF1E1E30)
 
-// Functional colors
-val SuccessGreen = Color(0xFF4CAF50)
-val WarningYellow = Color(0xFFFFC107)
-val ErrorRed = Color(0xFFEF5350)
-val InfoBlue = Color(0xFF42A5F5)
+// Functional colors: the bright tones of the dark theme. Screens use the theme-aware
+// [SuccessGreen], [WarningYellow], [ErrorRed] and [InfoBlue]; in the light theme they are deeper,
+// so text and icons in them reach 4.5:1 on light surfaces and white labels on them as well.
+val SuccessGreenBright = Color(0xFF4CAF50)
+val WarningYellowBright = Color(0xFFFFC107)
+val ErrorRedBright = Color(0xFFFF6E6A)
+val InfoBlueBright = Color(0xFF42A5F5)
+
+val SuccessGreen: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalCruxCoachColors.current.success
+val WarningYellow: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalCruxCoachColors.current.warning
+val ErrorRed: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalCruxCoachColors.current.error
+val InfoBlue: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalCruxCoachColors.current.info
 
 // Grade difficulty colors
 val GradeEasy = Color(0xFF66BB6A)

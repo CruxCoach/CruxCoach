@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -206,7 +207,7 @@ internal fun ClimbCard(
                                         "$boardPlaylistCount",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = DarkBackground,
+                                        color = CruxCoachDesign.colors.onBrandAccent,
                                         modifier = Modifier.padding(horizontal = 5.dp),
                                     )
                                 }

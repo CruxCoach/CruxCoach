@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -176,12 +177,12 @@ fun BoardListDetailScreen(
                     onClick = startPlaylist,
                     containerColor = OrangeAccent,
                     icon = {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = CruxCoachDesign.colors.onBrandAccent)
                     },
                     text = {
                         Text(
                             playLabel,
-                            color = DarkBackground,
+                            color = CruxCoachDesign.colors.onBrandAccent,
                             fontWeight = FontWeight.Bold,
                         )
                     },

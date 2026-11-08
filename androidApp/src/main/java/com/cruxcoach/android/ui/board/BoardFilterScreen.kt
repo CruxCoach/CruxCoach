@@ -61,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.InfoText
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.WarningYellow
 import com.cruxcoach.domain.board.QuantumOverlapFilter
@@ -276,8 +277,8 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                                 onClick = { viewModel.toggleQuantumRuleFilter(rule) },
                                 label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                                    selectedLabelColor = OrangeAccent
+                                    selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                                    selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                                 ),
                                 modifier = Modifier.heightIn(min = 48.dp)
                             )
@@ -309,8 +310,8 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                                     state.quantumLayers.available,
                                 label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                                    selectedLabelColor = OrangeAccent,
+                                    selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                                    selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer,
                                 ),
                                 modifier = Modifier
                                     .heightIn(min = 48.dp)
@@ -354,8 +355,8 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                                 onClick = { viewModel.toggleShinyWallTagFilter(tag) },
                                 label = { Text(stringResource(shinyWallTagLabel(tag)), style = MaterialTheme.typography.bodyLarge) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                                    selectedLabelColor = OrangeAccent
+                                    selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                                    selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                                 ),
                             )
                         }

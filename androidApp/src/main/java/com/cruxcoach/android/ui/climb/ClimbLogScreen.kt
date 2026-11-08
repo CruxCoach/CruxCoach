@@ -221,8 +221,8 @@ fun ClimbLogScreen(
                         onClick = { viewModel.toggleStyle(key) },
                         label = { Text(label) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                            selectedLabelColor = OrangeAccent
+                            selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                            selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                         )
                     )
                 }

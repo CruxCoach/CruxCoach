@@ -85,7 +85,7 @@ import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
-import com.cruxcoach.android.ui.theme.DarkBackground
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -411,12 +411,12 @@ fun PlaylistDetailScreen(
                     onClick = startPlaylist,
                     containerColor = OrangeAccent,
                     icon = {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = CruxCoachDesign.colors.onBrandAccent)
                     },
                     text = {
                         Text(
                             playLabel,
-                            color = DarkBackground,
+                            color = CruxCoachDesign.colors.onBrandAccent,
                             fontWeight = FontWeight.Bold,
                         )
                     },

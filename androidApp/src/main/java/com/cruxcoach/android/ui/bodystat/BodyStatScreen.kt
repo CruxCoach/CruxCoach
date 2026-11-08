@@ -306,6 +306,8 @@ internal fun StatCategoryCard(
     }
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun categoryColor(category: StatCategory) = when (category) {
     StatCategory.BODY_COMPOSITION -> InfoBlue
     StatCategory.CLIMBING_SPECIFIC -> OrangeAccent

@@ -65,7 +65,7 @@ import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.ui.settings.SettingsChoices
 import com.cruxcoach.android.ui.settings.SettingsGroupHeader
 import com.cruxcoach.android.ui.settings.SettingsSectionCard
-import com.cruxcoach.android.ui.theme.DarkBackground
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.WarningYellow
@@ -515,15 +515,15 @@ private fun GenerateBar(state: PlaylistGeneratorState, onGenerate: () -> Unit) {
                     // normal label gives no reason for being greyed out.
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
-                        color = DarkBackground,
+                        color = CruxCoachDesign.colors.onBrandAccent,
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = DarkBackground)
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = CruxCoachDesign.colors.onBrandAccent)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         stringResource(R.string.playlist_generator_generate),
-                        color = DarkBackground,
+                        color = CruxCoachDesign.colors.onBrandAccent,
                         fontWeight = FontWeight.Bold,
                     )
                 }

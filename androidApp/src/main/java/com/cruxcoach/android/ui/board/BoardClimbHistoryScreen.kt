@@ -183,8 +183,8 @@ private fun RetentionSelectorRow(
                 onClick = { onSelect(retention) },
                 label = { Text(label) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                    selectedLabelColor = OrangeAccent
+                    selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                    selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                 )
             )
         }

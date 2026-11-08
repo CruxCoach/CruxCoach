@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.LedHoldColors
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.BrandOrange
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
 import com.cruxcoach.data.repository.BoardPlacement
@@ -540,12 +541,12 @@ internal fun KilterBoardVisualization(
                     val bottom = (quantumCorners?.maxOf { it.y }
                         ?: size.height - (zoneToDraw.minY.toFloat() - edgeBottom) * yScale).plus(pad).coerceAtMost(size.height)
                     drawRect(
-                        color = OrangeAccent.copy(alpha = 0.15f),
+                        color = BrandOrange.copy(alpha = 0.15f),
                         topLeft = Offset(left, top),
                         size = androidx.compose.ui.geometry.Size(right - left, bottom - top)
                     )
                     drawRect(
-                        color = OrangeAccent,
+                        color = BrandOrange,
                         topLeft = Offset(left, top),
                         size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
                         style = Stroke(width = 2.dp.toPx())

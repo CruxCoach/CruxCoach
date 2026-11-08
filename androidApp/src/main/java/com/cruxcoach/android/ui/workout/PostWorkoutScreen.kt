@@ -280,7 +280,7 @@ private fun EmojiSelector(
                     onClick = { onSelect(value) },
                     label = { Text(emojis[index], style = MaterialTheme.typography.titleLarge) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = OrangeAccent.copy(alpha = 0.2f)
+                        selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
                     )
                 )
                 Text(
@@ -347,6 +347,8 @@ private fun FlowChips(
     }
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun rpeColor(rpe: Float): androidx.compose.ui.graphics.Color {
     return when {
         rpe <= 5f -> SuccessGreen

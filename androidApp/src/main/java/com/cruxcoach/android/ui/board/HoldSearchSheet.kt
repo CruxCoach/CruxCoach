@@ -154,7 +154,7 @@ internal fun HoldSearchSheet(
                             stringResource(R.string.board_holdsearch_climbs_found, matchCount),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (matchCount > 0) SuccessGreen else GradeHard
+                            color = if (matchCount > 0) SuccessGreen else ErrorRed
                         )
                     }
                     Button(

@@ -1297,6 +1297,8 @@ private fun BoardItem(
     }
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun rssiColor(rssi: Int) = when {
     rssi >= -60 -> SuccessGreen
     rssi >= -75 -> WarningYellow
