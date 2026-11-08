@@ -307,22 +307,24 @@ fun SprayClimbEditorScreen(
                         Text(problemText(problem), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("spray_climb_problem"))
                     }
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        SprayHoldRole.START to R.string.climb_creator_count_start,
-                        SprayHoldRole.HAND to R.string.climb_creator_count_hand,
-                        SprayHoldRole.FOOT to R.string.climb_creator_count_foot,
-                        SprayHoldRole.FINISH to R.string.climb_creator_count_finish,
-                    ).forEach { (role, label) ->
-                        FilterChip(
-                            selected = state.brush == role,
-                            onClick = { viewModel.setBrush(role) },
-                            label = { Text(stringResource(label, state.holds.values.count { it == role })) },
-                            leadingIcon = { Canvas(Modifier.size(12.dp)) { drawCircle(role.color()) } },
-                            modifier = Modifier.testTag("spray_brush_${role.wire}"),
-                        )
+                // How the role chips paint holds sits at their side, not in the app bar, so a 320 dp bar keeps its title.
+                Row {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                        listOf(
+                            SprayHoldRole.START to R.string.climb_creator_count_start,
+                            SprayHoldRole.HAND to R.string.climb_creator_count_hand,
+                            SprayHoldRole.FOOT to R.string.climb_creator_count_foot,
+                            SprayHoldRole.FINISH to R.string.climb_creator_count_finish,
+                        ).forEach { (role, label) ->
+                            FilterChip(
+                                selected = state.brush == role,
+                                onClick = { viewModel.setBrush(role) },
+                                label = { Text(stringResource(label, state.holds.values.count { it == role })) },
+                                leadingIcon = { Canvas(Modifier.size(12.dp)) { drawCircle(role.color()) } },
+                                modifier = Modifier.testTag("spray_brush_${role.wire}"),
+                            )
+                        }
                     }
-                    // How the role chips paint holds sits next to them, not in the app bar, so a 320 dp bar keeps its title.
                     InfoButton(stringResource(if (state.isEdit) R.string.spray_climb_edit_title else R.string.spray_climb_new_title), stringResource(R.string.spray_climb_brush_hint))
                 }
                 OutlinedTextField(

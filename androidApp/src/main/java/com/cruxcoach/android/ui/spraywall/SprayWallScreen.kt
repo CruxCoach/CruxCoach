@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.spraywall
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -40,15 +42,14 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -344,7 +345,8 @@ fun SprayWallScreen(
                 )
             }
             val problem = state.publishProblem
-            item { WallFacts(wall) }
+            // While the card below says why the upload failed, the facts line does not say it again.
+            item { WallFacts(wall, showPending = !(wall.needsPublish && problem != null)) }
             if (!wall.isMine) item { FollowedNote(wall, state.ownerName) }
             // Nothing of a wall the relays took back in part is published: finishing the withdrawal is what is left.
             if (wall.isMine && wall.withdrawStarted != null) {
@@ -370,7 +372,12 @@ fun SprayWallScreen(
                             Text(stringResource(R.string.spray_reset_unfinished_text))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = onEditHolds) { Text(stringResource(R.string.spray_holds_title)) }
-                                TextButton(onClick = viewModel::discardUnfinishedReset) { Text(stringResource(R.string.spray_reset_discard)) }
+                                // In the card's own text colour: orange text or a grey outline would fade into the card.
+                                OutlinedButton(
+                                    onClick = viewModel::discardUnfinishedReset,
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)),
+                                ) { Text(stringResource(R.string.spray_reset_discard)) }
                             }
                         }
                     }
@@ -406,7 +413,6 @@ fun SprayWallScreen(
             }
             items(rows, key = { it.climb.uuid }) { row ->
                 ClimbRow(row, state.gradeScale) { onOpenClimb(row.climb.uuid) }
-                HorizontalDivider()
             }
         }
     }
@@ -471,7 +477,7 @@ private fun PublishCard(problem: SprayWallUiState.PublishProblem, publishing: Bo
 internal fun shortKey(hex: String): String = if (hex.length > 12) "${hex.take(8)}…" else hex
 
 @Composable
-private fun WallFacts(wall: SprayWall) {
+private fun WallFacts(wall: SprayWall, showPending: Boolean) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -481,7 +487,7 @@ private fun WallFacts(wall: SprayWall) {
         Icon(if (public) Icons.Default.Public else Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
         val parts = listOfNotNull(
             stringResource(if (public) R.string.spray_visibility_public else R.string.spray_visibility_private),
-            stringResource(R.string.spray_publish_pending).takeIf { wall.needsPublish },
+            stringResource(R.string.spray_publish_pending).takeIf { wall.needsPublish && showPending },
             wall.gym?.name?.takeIf { it.isNotBlank() },
             "${wall.angle}°",
             // A wall with one version has nothing to tell apart.

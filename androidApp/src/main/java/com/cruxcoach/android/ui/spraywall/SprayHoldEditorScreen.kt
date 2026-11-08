@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
@@ -28,10 +30,10 @@ import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -59,7 +61,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -480,41 +484,45 @@ fun SprayHoldEditorScreen(
             HorizontalDivider()
             Surface {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    // The model is offered where it helps, with suggestions or on a wall without holds, not while plain editing.
-                    if (state.model !is HoldModelStore.State.Ready && (editor.suggestions.isNotEmpty() || editor.holds.isEmpty())) {
-                        ModelCard(state.model, viewModel::downloadModel)
-                    }
-                    if (editor.suggestions.isNotEmpty()) SuggestionBar(editor, viewModel)
-                    val selected = editor.selected
-                    // The row keeps its height either way, so picking a hold does not shrink the photo under the finger.
-                    if (selected == null) {
-                        // The full help sits at the end of this hint, so the app bar keeps room for its title.
-                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                stringResource(R.string.spray_holds_size_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f).testTag("spray_hold_size_hint"),
-                            )
-                            InfoButton(stringResource(R.string.spray_holds_title), stringResource(R.string.spray_holds_help))
+                    // The cards scroll within at most 40 % of the screen, so at the largest font on a small phone the
+                    // photo keeps its room; undo, redo and Add below stay in place.
+                    Column(Modifier.heightIn(max = screenHeightShare(0.4f)).verticalScroll(rememberScrollState())) {
+                        // The model is offered where it helps, with suggestions or on a wall without holds, not while plain editing.
+                        if (state.model !is HoldModelStore.State.Ready && (editor.suggestions.isNotEmpty() || editor.holds.isEmpty())) {
+                            ModelCard(state.model, viewModel::downloadModel)
                         }
-                    } else {
-                        Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.spray_holds_size), style = MaterialTheme.typography.labelLarge)
-                            Spacer(Modifier.width(12.dp))
-                            var resizing by remember(selected.id) { mutableStateOf(false) }
-                            Slider(
-                                value = selected.radius,
-                                onValueChange = {
-                                    if (!resizing) { resizing = true; viewModel.onResizeStart() }
-                                    viewModel.onResize(it)
-                                },
-                                onValueChangeFinished = { resizing = false },
-                                valueRange = SprayHoldEditorState.MIN_RADIUS..SprayHoldEditorState.MAX_RADIUS,
-                                modifier = Modifier.weight(1f).testTag("spray_hold_size"),
-                            )
-                            IconButton(onClick = viewModel::deleteSelected, modifier = Modifier.testTag("spray_hold_delete")) {
-                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.spray_holds_delete))
+                        if (editor.suggestions.isNotEmpty()) SuggestionBar(editor, viewModel)
+                        val selected = editor.selected
+                        // The row keeps its height either way, so picking a hold does not shrink the photo under the finger.
+                        if (selected == null) {
+                            // The full help sits at the end of this hint, so the app bar keeps room for its title.
+                            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    stringResource(R.string.spray_holds_size_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f).testTag("spray_hold_size_hint"),
+                                )
+                                InfoButton(stringResource(R.string.spray_holds_title), stringResource(R.string.spray_holds_help))
+                            }
+                        } else {
+                            Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.spray_holds_size), style = MaterialTheme.typography.labelLarge)
+                                Spacer(Modifier.width(12.dp))
+                                var resizing by remember(selected.id) { mutableStateOf(false) }
+                                Slider(
+                                    value = selected.radius,
+                                    onValueChange = {
+                                        if (!resizing) { resizing = true; viewModel.onResizeStart() }
+                                        viewModel.onResize(it)
+                                    },
+                                    onValueChangeFinished = { resizing = false },
+                                    valueRange = SprayHoldEditorState.MIN_RADIUS..SprayHoldEditorState.MAX_RADIUS,
+                                    modifier = Modifier.weight(1f).testTag("spray_hold_size"),
+                                )
+                                IconButton(onClick = viewModel::deleteSelected, modifier = Modifier.testTag("spray_hold_delete")) {
+                                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.spray_holds_delete))
+                                }
                             }
                         }
                     }
@@ -528,14 +536,16 @@ fun SprayHoldEditorScreen(
                         Text(
                             pluralStringResource(R.plurals.spray_holds_n, editor.holds.size, editor.holds.size),
                             style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
                             modifier = Modifier.weight(1f).padding(start = 8.dp).testTag("spray_holds_count"),
                         )
+                        // At the largest fonts the chip keeps only its icon, so it is not cut off on a narrow phone.
+                        val addLabel = stringResource(R.string.spray_holds_mode_add)
+                        val iconOnly = LocalDensity.current.fontScale >= 1.5f || LocalConfiguration.current.screenWidthDp < 360
                         FilterChip(
                             selected = state.addMode,
                             onClick = { viewModel.setAddMode(!state.addMode) },
-                            label = { Text(stringResource(R.string.spray_holds_mode_add)) },
-                            leadingIcon = { Icon(Icons.Default.AddCircleOutline, contentDescription = null) },
+                            label = { if (!iconOnly) Text(addLabel) },
+                            leadingIcon = { Icon(Icons.Default.AddCircleOutline, contentDescription = addLabel.takeIf { iconOnly }) },
                             modifier = Modifier.testTag("spray_holds_add_mode"),
                         )
                     }
@@ -617,8 +627,7 @@ private fun SuggestionBar(editor: SprayHoldEditorState, viewModel: SprayHoldEdit
                 )
             }
             if (editor.visibleSuggestions.isNotEmpty()) {
-                // Tonal: "Next" in the app bar stays the step's main action.
-                FilledTonalButton(
+                Button(
                     onClick = viewModel::acceptSuggestions,
                     modifier = Modifier.testTag("spray_suggestions_accept"),
                 ) { Text(stringResource(R.string.spray_detect_accept_all)) }

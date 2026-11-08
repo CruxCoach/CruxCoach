@@ -94,8 +94,8 @@
 
     <!-- Climb detail and logbook -->
     <plurals name="spray_climb_lost_banner">
-        <item quantity="one">%d hold is gone: drawn dashed.</item>
-        <item quantity="other">%d holds are gone: drawn dashed.</item>
+        <item quantity="one">%d hold missing (dashed)</item>
+        <item quantity="other">%d holds missing (dashed)</item>
     </plurals>
     <string name="spray_climb_edit">Edit climb</string>
     <string name="spray_log_send">Log a send</string>
@@ -133,7 +133,7 @@
     <string name="spray_detect">Find holds</string>
     <string name="spray_detect_running_progress">Looking for holds … %1$d %%</string>
     <string name="spray_detect_running">Looking for holds…</string>
-    <string name="spray_detect_suggestions">Suggested holds: %1$d</string>
+    <string name="spray_detect_suggestions">Suggestions: %1$d</string>
     <string name="spray_detect_none_open">No open suggestions. More sensitive shows less sure ones.</string>
     <string name="spray_detect_sensitivity">Sensitivity</string>
     <string name="spray_detect_accept_all">Take all</string>
@@ -185,7 +185,7 @@
     <string name="spray_publish_no_people">The photos must not show people.</string>
     <string name="spray_publish_no_identity_title">No CruxCoach account yet</string>
     <string name="spray_publish_setup_account">Set up account</string>
-    <string name="spray_publish_no_identity_text">Publishing a wall needs your CruxCoach account.</string>
+    <string name="spray_publish_no_identity_text">Publishing a wall needs a CruxCoach account.</string>
     <string name="spray_publish_failed">Not published: no connection. The wall is saved on this phone.</string>
     <string name="spray_withdraw_title">Withdraw this wall?</string>
     <string name="spray_withdraw_text">The wall, its versions, your climbs on it and its photos are deleted from the servers. Others may keep copies they already have. The wall stays on this phone as a private wall.</string>
@@ -225,7 +225,7 @@
     <string name="spray_venue_open">Open</string>
     <string name="spray_venue_failed">That did not work. Check the connection and try again.</string>
     <string name="spray_venue_new">Set up a spray wall here</string>
-    <string name="spray_reset_public_warning">The new photo is published too. Make sure no people are on it.</string>
+    <string name="spray_reset_public_warning">The new photo is published too. Make sure no people can be seen on it.</string>
     <plurals name="spray_holds_n">
         <item quantity="one">%d hold</item>
         <item quantity="other">%d holds</item>

@@ -94,8 +94,8 @@
 
     <!-- Boulder-Ansicht und Logbuch -->
     <plurals name="spray_climb_lost_banner">
-        <item quantity="one">%d Griff fehlt: gestrichelt gezeichnet.</item>
-        <item quantity="other">%d Griffe fehlen: gestrichelt gezeichnet.</item>
+        <item quantity="one">%d Griff fehlt (gestrichelt)</item>
+        <item quantity="other">%d Griffe fehlen (gestrichelt)</item>
     </plurals>
     <string name="spray_climb_edit">Boulder bearbeiten</string>
     <string name="spray_log_send">Begehung eintragen</string>
@@ -133,7 +133,7 @@
     <string name="spray_detect">Griffe finden</string>
     <string name="spray_detect_running_progress">Griffe werden gesucht … %1$d %%</string>
     <string name="spray_detect_running">Griffe werden gesucht …</string>
-    <string name="spray_detect_suggestions">Vorgeschlagene Griffe: %1$d</string>
+    <string name="spray_detect_suggestions">Vorschläge: %1$d</string>
     <string name="spray_detect_none_open">Keine offenen Vorschläge. Empfindlicher zeigt auch unsichere.</string>
     <string name="spray_detect_sensitivity">Empfindlichkeit</string>
     <string name="spray_detect_accept_all">Alle übernehmen</string>
@@ -185,7 +185,7 @@
     <string name="spray_publish_no_people">Auf den Fotos dürfen keine Menschen zu sehen sein.</string>
     <string name="spray_publish_no_identity_title">Noch kein CruxCoach-Account</string>
     <string name="spray_publish_setup_account">Account einrichten</string>
-    <string name="spray_publish_no_identity_text">Zum Veröffentlichen einer Wand brauchst du deinen CruxCoach-Account.</string>
+    <string name="spray_publish_no_identity_text">Zum Veröffentlichen einer Wand brauchst du einen CruxCoach-Account.</string>
     <string name="spray_publish_failed">Nicht veröffentlicht: keine Verbindung. Die Wand ist auf diesem Handy gespeichert.</string>
     <string name="spray_withdraw_title">Wand zurückziehen?</string>
     <string name="spray_withdraw_text">Die Wand, ihre Versionen, deine Boulder darauf und ihre Fotos werden von den Servern gelöscht. Kopien, die andere schon haben, können bleiben. Die Wand bleibt als private Wand auf diesem Handy.</string>
@@ -225,7 +225,7 @@
     <string name="spray_venue_open">Öffnen</string>
     <string name="spray_venue_failed">Das hat nicht geklappt. Prüfe die Verbindung und versuch es noch einmal.</string>
     <string name="spray_venue_new">Hier eine Spraywand einrichten</string>
-    <string name="spray_reset_public_warning">Das neue Foto wird mit veröffentlicht. Achte darauf, dass keine Menschen darauf sind.</string>
+    <string name="spray_reset_public_warning">Das neue Foto wird ebenfalls veröffentlicht. Achte darauf, dass keine Menschen zu sehen sind.</string>
     <plurals name="spray_holds_n">
         <item quantity="one">%d Griff</item>
         <item quantity="other">%d Griffe</item>
