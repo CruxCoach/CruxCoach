@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.spraywall
 
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -129,7 +131,13 @@ fun SprayPhotoAdjustDialog(
             )
             // Two rows: with long labels (German) four buttons in one row squeeze the last one.
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { turns = (turns + 1) % 4; crop = SprayCropBox.rotateClockwise(crop) }, modifier = Modifier.testTag("spray_adjust_rotate")) {
+                // The dialog is black in both themes: white outline and label, so the light theme's colours do not sink into it.
+                OutlinedButton(
+                    onClick = { turns = (turns + 1) % 4; crop = SprayCropBox.rotateClockwise(crop) },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
+                    modifier = Modifier.testTag("spray_adjust_rotate"),
+                ) {
                     Icon(Icons.Default.Rotate90DegreesCw, contentDescription = null)
                     Text(stringResource(R.string.spray_adjust_rotate), modifier = Modifier.padding(start = 6.dp))
                 }

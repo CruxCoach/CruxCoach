@@ -29,7 +29,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
+import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.android.spraywall.SprayWallFetcher
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.map.MapVenue
 import com.cruxcoach.domain.spraywall.SprayGym
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -49,12 +51,15 @@ data class SprayVenueWallsState(
     /** The wall being added right now. */
     val adding: String? = null,
     val failed: Boolean = false,
+    /** Account names of the walls' owners, by key, as they become known. */
+    val ownerNames: Map<String, String> = emptyMap(),
 )
 
 /** The public spray walls at one place of the map, fetched only when the climber asks. */
 @HiltViewModel
 class SprayVenueWallsViewModel @Inject constructor(
     private val fetcher: SprayWallFetcher,
+    private val profiles: NostrProfileManager,
 ) : ViewModel() {
     private val _state = MutableStateFlow(SprayVenueWallsState())
     val state: StateFlow<SprayVenueWallsState> = _state.asStateFlow()
@@ -75,6 +80,13 @@ class SprayVenueWallsViewModel @Inject constructor(
             _state.update {
                 if (it.venueId != venueId) it
                 else it.copy(loading = false, loaded = walls.isSuccess, walls = walls.getOrDefault(emptyList()), failed = walls.isFailure)
+            }
+            walls.getOrDefault(emptyList()).map { it.owner }.distinct().forEach { owner ->
+                launch {
+                    profiles.sprayOwnerName(owner)?.let { name ->
+                        _state.update { s -> if (s.venueId != venueId) s else s.copy(ownerNames = s.ownerNames + (owner to name)) }
+                    }
+                }
             }
         }
     }
@@ -112,13 +124,15 @@ fun SprayWallsAtVenue(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         HorizontalDivider()
-        Text(
-            stringResource(R.string.spray_venue_title),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp),
-        )
-        Text(stringResource(R.string.spray_venue_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.spray_venue_title),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            InfoButton(stringResource(R.string.spray_venue_title), stringResource(R.string.spray_venue_info))
+        }
         when {
             state.loading -> CircularProgressIndicator(Modifier.size(24.dp))
             !state.loaded -> OutlinedButton(onClick = viewModel::load, modifier = Modifier.testTag("spray_venue_show")) {
@@ -131,7 +145,7 @@ fun SprayWallsAtVenue(
                     Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                         Text(listing.name, style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            stringResource(R.string.spray_venue_wall_facts, listing.angle, shortKey(listing.owner)),
+                            stringResource(R.string.spray_venue_wall_facts, listing.angle, state.ownerNames[listing.owner] ?: shortKey(listing.owner)),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

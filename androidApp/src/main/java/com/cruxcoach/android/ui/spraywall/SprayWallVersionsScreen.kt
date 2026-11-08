@@ -1,7 +1,6 @@
 package com.cruxcoach.android.ui.spraywall
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -39,6 +38,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -49,6 +49,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.domain.spraywall.SprayHold
 import com.cruxcoach.domain.spraywall.SprayVersionKind
 import com.cruxcoach.domain.spraywall.SprayWall
@@ -159,12 +160,13 @@ fun SprayWallVersionsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.spray_versions_title)) },
+                title = { SprayBarTitle(stringResource(R.string.spray_versions_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
+                actions = { InfoButton(stringResource(R.string.spray_versions_title), stringResource(R.string.spray_versions_info)) },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -188,14 +190,11 @@ fun SprayWallVersionsScreen(
                     modifier = Modifier.sprayPhotoSize(shown.aspectRatio, screenHeightShare(0.4f)),
                 )
             }
-            item {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.spray_versions_explain), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (state.canRestore) {
-                        Button(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth().testTag("spray_version_restore")) {
-                            Icon(Icons.Default.History, contentDescription = null)
-                            Text(stringResource(R.string.spray_versions_restore, shown.number), modifier = Modifier.padding(start = 8.dp))
-                        }
+            if (state.canRestore) {
+                item {
+                    Button(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth().padding(16.dp).testTag("spray_version_restore")) {
+                        Icon(Icons.Default.History, contentDescription = null)
+                        Text(stringResource(R.string.spray_versions_restore, shown.number), modifier = Modifier.padding(start = 8.dp))
                     }
                 }
             }
@@ -240,7 +239,16 @@ private fun VersionRow(version: SprayWallVersion, current: Boolean, selected: Bo
             )
         },
         supportingContent = {
-            Text(listOf(what, date, stringResource(R.string.spray_version_counts, version.holdCount, climbs)).joinToString(" · "))
+            Column {
+                Text("$what · $date")
+                Text(
+                    stringResource(
+                        R.string.spray_version_counts,
+                        pluralStringResource(R.plurals.spray_holds_n, version.holdCount, version.holdCount),
+                        pluralStringResource(R.plurals.spray_climbs_n, climbs, climbs),
+                    ),
+                )
+            }
         },
         trailingContent = { if (current) Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
         colors = if (selected) ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.secondaryContainer) else ListItemDefaults.colors(),

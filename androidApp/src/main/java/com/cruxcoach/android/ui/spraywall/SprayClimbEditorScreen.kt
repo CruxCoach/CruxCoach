@@ -2,10 +2,11 @@ package com.cruxcoach.android.ui.spraywall
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,7 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -55,6 +56,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallPublisher
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.domain.spraywall.SprayClimbRules
 import com.cruxcoach.domain.spraywall.SprayHold
@@ -225,7 +227,7 @@ class SprayClimbEditorViewModel @Inject constructor(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SprayClimbEditorScreen(
     onBack: () -> Unit,
@@ -253,7 +255,7 @@ fun SprayClimbEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(if (state.isEdit) R.string.spray_climb_edit_title else R.string.spray_climb_new_title)) },
+                title = { SprayBarTitle(stringResource(if (state.isEdit) R.string.spray_climb_edit_title else R.string.spray_climb_new_title)) },
                 navigationIcon = {
                     IconButton(onClick = leave) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -290,14 +292,22 @@ fun SprayClimbEditorScreen(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(stringResource(R.string.spray_climb_brush_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // A wall being withdrawn publishes nothing until that is finished, and then it is private.
                 if (wall.visibility == SprayWallVisibility.PUBLIC && wall.withdrawStarted != null) {
                     Text(stringResource(R.string.spray_climb_withdrawing_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("spray_climb_withdrawing_note"))
                 } else if (wall.visibility == SprayWallVisibility.PUBLIC) {
-                    Text(stringResource(R.string.spray_climb_public_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("spray_climb_public_note"))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("spray_climb_public_note")) {
+                        Icon(Icons.Default.Public, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Text(stringResource(R.string.spray_climb_public_note), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+                    }
                 }
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // What a save left open stays at the top, next to the photo: the save button is in the app bar.
+                if (state.showProblems) {
+                    state.problems.forEach { problem ->
+                        Text(problemText(problem), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("spray_climb_problem"))
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
                         SprayHoldRole.START to R.string.climb_creator_count_start,
                         SprayHoldRole.HAND to R.string.climb_creator_count_hand,
@@ -312,6 +322,8 @@ fun SprayClimbEditorScreen(
                             modifier = Modifier.testTag("spray_brush_${role.wire}"),
                         )
                     }
+                    // How the role chips paint holds sits next to them, not in the app bar, so a 320 dp bar keeps its title.
+                    InfoButton(stringResource(if (state.isEdit) R.string.spray_climb_edit_title else R.string.spray_climb_new_title), stringResource(R.string.spray_climb_brush_hint))
                 }
                 OutlinedTextField(
                     value = state.name,
@@ -344,14 +356,6 @@ fun SprayClimbEditorScreen(
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth().testTag("spray_climb_description"),
                 )
-                if (state.showProblems) {
-                    state.problems.forEach { problem ->
-                        Text(problemText(problem), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("spray_climb_problem"))
-                    }
-                }
-                Button(onClick = viewModel::save, enabled = !state.saving, modifier = Modifier.fillMaxWidth().testTag("spray_climb_save_bottom")) {
-                    Text(stringResource(R.string.action_save))
-                }
                 if (state.isEdit) {
                     TextButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag("spray_climb_delete")) {
                         Text(stringResource(R.string.spray_climb_delete), color = MaterialTheme.colorScheme.error)

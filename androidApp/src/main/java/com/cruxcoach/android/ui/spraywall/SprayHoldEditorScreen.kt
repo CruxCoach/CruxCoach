@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -27,12 +28,12 @@ import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +61,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -74,6 +76,7 @@ import com.cruxcoach.android.spraywall.HoldModelStore
 import com.cruxcoach.android.spraywall.OnnxHoldDetector
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.domain.spraywall.EditableHold
 import com.cruxcoach.domain.spraywall.SprayHoldEditorState
 import com.cruxcoach.domain.spraywall.SpraySuggestion
@@ -380,7 +383,6 @@ fun SprayHoldEditorScreen(
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     var confirmLeave by remember { mutableStateOf(false) }
-    var showHelp by remember { mutableStateOf(false) }
     val askBeforeLeaving = state.dirty || state.unfinishedReset
     val leave: () -> Unit = { if (askBeforeLeaving) { confirmLeave = true } else { onBack() } }
     BackHandler(enabled = askBeforeLeaving) { confirmLeave = true }
@@ -400,9 +402,8 @@ fun SprayHoldEditorScreen(
                     context.getString(if (message.newVersion) R.string.spray_holds_saved_version else R.string.spray_holds_saved)
                 SprayHoldEditorMessage.Failed -> context.getString(R.string.spray_holds_save_failed)
                 SprayHoldEditorMessage.Limit -> context.getString(R.string.spray_holds_limit, SprayHoldEditorState.MAX_HOLDS)
-                is SprayHoldEditorMessage.Detected ->
-                    if (message.count > 0) context.resources.getQuantityString(R.plurals.spray_detect_found, message.count, message.count)
-                    else context.getString(R.string.spray_detect_none)
+                // Found holds show up with their number in the suggestion card; only an empty result needs saying.
+                is SprayHoldEditorMessage.Detected -> if (message.count > 0) return@collect else context.getString(R.string.spray_detect_none)
                 SprayHoldEditorMessage.DetectFailed -> context.getString(R.string.spray_detect_failed)
                 SprayHoldEditorMessage.ModelFailed -> context.getString(R.string.spray_model_run_failed)
             }
@@ -413,7 +414,7 @@ fun SprayHoldEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.spray_holds_title)) },
+                title = { SprayBarTitle(stringResource(R.string.spray_holds_title)) },
                 navigationIcon = {
                     IconButton(onClick = leave) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -422,9 +423,6 @@ fun SprayHoldEditorScreen(
                 actions = {
                     IconButton(onClick = viewModel::detect, enabled = !state.detecting && state.wall != null, modifier = Modifier.testTag("spray_detect")) {
                         Icon(Icons.Default.AutoAwesome, contentDescription = stringResource(R.string.spray_detect))
-                    }
-                    IconButton(onClick = { showHelp = !showHelp }) {
-                        Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.action_show_info, stringResource(R.string.spray_holds_title)))
                     }
                     TextButton(
                         onClick = viewModel::save,
@@ -449,7 +447,8 @@ fun SprayHoldEditorScreen(
         val visible = editor.visibleSuggestions
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.first) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { SprayStepLabel(step = 2) }
-            if (showHelp || (state.first && editor.holds.isEmpty() && editor.suggestions.isEmpty() && !state.detecting)) {
+            // On a first wall where nothing was found the help shows once in place; otherwise it is behind the info symbol.
+            if (state.first && editor.holds.isEmpty() && editor.suggestions.isEmpty() && !state.detecting) {
                 Text(
                     stringResource(R.string.spray_holds_help),
                     style = MaterialTheme.typography.bodySmall,
@@ -477,20 +476,27 @@ fun SprayHoldEditorScreen(
                 )
                 if (state.detecting) ScanOverlay(state.detectProgress, Modifier.fillMaxSize())
             }
-            Surface(tonalElevation = 3.dp) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    if (state.model !is HoldModelStore.State.Ready) ModelCard(state.model, viewModel::downloadModel)
+            // The app's plain surface under a divider: a tonal elevation would tint the panel orange.
+            HorizontalDivider()
+            Surface {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    // The model is offered where it helps, with suggestions or on a wall without holds, not while plain editing.
+                    if (state.model !is HoldModelStore.State.Ready && (editor.suggestions.isNotEmpty() || editor.holds.isEmpty())) {
+                        ModelCard(state.model, viewModel::downloadModel)
+                    }
                     if (editor.suggestions.isNotEmpty()) SuggestionBar(editor, viewModel)
                     val selected = editor.selected
                     // The row keeps its height either way, so picking a hold does not shrink the photo under the finger.
                     if (selected == null) {
-                        Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.CenterStart) {
+                        // The full help sits at the end of this hint, so the app bar keeps room for its title.
+                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 stringResource(R.string.spray_holds_size_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.testTag("spray_hold_size_hint"),
+                                modifier = Modifier.weight(1f).testTag("spray_hold_size_hint"),
                             )
+                            InfoButton(stringResource(R.string.spray_holds_title), stringResource(R.string.spray_holds_help))
                         }
                     } else {
                         Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -520,8 +526,9 @@ fun SprayHoldEditorScreen(
                             Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = stringResource(R.string.spray_holds_redo))
                         }
                         Text(
-                            stringResource(R.string.spray_holds_count, editor.holds.size),
+                            pluralStringResource(R.plurals.spray_holds_n, editor.holds.size, editor.holds.size),
                             style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
                             modifier = Modifier.weight(1f).padding(start = 8.dp).testTag("spray_holds_count"),
                         )
                         FilterChip(
@@ -555,18 +562,25 @@ fun SprayHoldEditorScreen(
 @Composable
 private fun ModelCard(model: HoldModelStore.State, onDownload: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("spray_model")) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(R.string.spray_model_title), style = MaterialTheme.typography.titleSmall)
-            Text(
-                stringResource(if (model == HoldModelStore.State.Failed) R.string.spray_model_failed else R.string.spray_model_text),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Column(Modifier.padding(start = 12.dp, end = 4.dp, bottom = 8.dp)) {
+            // What the model does and where it can be removed again sits behind the info symbol.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.spray_model_offer), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                InfoButton(stringResource(R.string.spray_model_title), stringResource(R.string.spray_model_text))
+            }
+            if (model == HoldModelStore.State.Failed) {
+                Text(
+                    stringResource(R.string.spray_model_failed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(end = 8.dp, bottom = 8.dp),
+                )
+            }
             if (model is HoldModelStore.State.Downloading) {
                 val percent = (model.doneBytes * 100 / HoldModel.BYTES).toInt()
                 Text(stringResource(R.string.spray_model_downloading, percent), style = MaterialTheme.typography.labelMedium)
             } else {
-                Button(onClick = onDownload, modifier = Modifier.testTag("spray_model_download")) {
+                TextButton(onClick = onDownload, modifier = Modifier.testTag("spray_model_download")) {
                     Text(stringResource(R.string.spray_model_download))
                 }
             }
@@ -591,9 +605,7 @@ private fun SuggestionBar(editor: SprayHoldEditorState, viewModel: SprayHoldEdit
                     Icon(Icons.Default.Close, contentDescription = stringResource(R.string.spray_detect_dismiss))
                 }
             }
-            if (editor.visibleSuggestions.isNotEmpty()) {
-                Text(stringResource(R.string.spray_detect_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            // The slider gets the whole width, and taking all is the card's one button, below it.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.spray_detect_sensitivity), style = MaterialTheme.typography.labelMedium)
                 // More sensitive = a lower confidence threshold.
@@ -601,14 +613,15 @@ private fun SuggestionBar(editor: SprayHoldEditorState, viewModel: SprayHoldEdit
                     value = 1f - editor.threshold,
                     onValueChange = { viewModel.setThreshold(1f - it) },
                     valueRange = 0.05f..0.95f,
-                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp).testTag("spray_detect_sensitivity"),
+                    modifier = Modifier.weight(1f).padding(start = 12.dp).testTag("spray_detect_sensitivity"),
                 )
-                if (editor.visibleSuggestions.isNotEmpty()) {
-                    Button(
-                        onClick = viewModel::acceptSuggestions,
-                        modifier = Modifier.testTag("spray_suggestions_accept"),
-                    ) { Text(stringResource(R.string.spray_detect_accept_all)) }
-                }
+            }
+            if (editor.visibleSuggestions.isNotEmpty()) {
+                // Tonal: "Next" in the app bar stays the step's main action.
+                FilledTonalButton(
+                    onClick = viewModel::acceptSuggestions,
+                    modifier = Modifier.testTag("spray_suggestions_accept"),
+                ) { Text(stringResource(R.string.spray_detect_accept_all)) }
             }
         }
     }

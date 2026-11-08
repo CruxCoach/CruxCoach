@@ -12,6 +12,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,6 +66,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.domain.spraywall.SprayClimbRules
 import com.cruxcoach.domain.spraywall.SprayCropRect
 import com.cruxcoach.domain.spraywall.SprayGym
@@ -216,7 +222,7 @@ class SprayWallPhotoViewModel @Inject constructor(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SprayWallPhotoScreen(
     onBack: () -> Unit,
@@ -251,7 +257,7 @@ fun SprayWallPhotoScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(if (state.isReset) R.string.spray_reset_title else R.string.spray_wall_new_title)) },
+                title = { SprayBarTitle(stringResource(if (state.isReset) R.string.spray_reset_title else R.string.spray_wall_new_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -271,12 +277,45 @@ fun SprayWallPhotoScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (state.isReset) {
-                Text(stringResource(R.string.spray_reset_explain, state.wallName), style = MaterialTheme.typography.bodyMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.spray_reset_explain, state.wallName), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    InfoButton(stringResource(R.string.spray_reset_title), stringResource(R.string.spray_reset_info))
+                }
+                // A public wall publishes the new photo too: this stays in view, not behind the info symbol.
+                if (state.wallPublic) {
+                    Row(modifier = Modifier.testTag("spray_reset_public_warning")) {
+                        Icon(Icons.Default.Public, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp).size(18.dp))
+                        // Orange only on the icon: small orange text is too faint on the light background.
+                        Text(
+                            stringResource(R.string.spray_reset_public_warning),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
             } else {
                 SprayStepLabel(step = 1)
             }
             PhotoTile(state.preview, state.importing, state.photo?.let { it.width.toFloat() / it.height } ?: (4f / 3f))
-            val continueButton = @Composable {
+            if (state.photoFailed) {
+                Text(stringResource(R.string.spray_wall_photo_failed), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("spray_photo_failed"))
+            }
+            val idle = !state.importing && !state.saving
+            val takePhoto = { if (cameraNeedsGrant(context)) cameraPermission.launch(Manifest.permission.CAMERA) else takePicture.launch(captureUri) }
+            val choosePhoto = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+            if (state.photo == null) {
+                // No photo yet: taking one is the main action, and how to take it sits right under the tile.
+                Text(stringResource(R.string.spray_wall_photo_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = takePhoto, enabled = idle, modifier = Modifier.fillMaxWidth().testTag("spray_take_photo")) {
+                    Icon(Icons.Default.PhotoCamera, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.spray_wall_take_photo))
+                }
+                OutlinedButton(onClick = choosePhoto, enabled = idle, modifier = Modifier.fillMaxWidth().testTag("spray_pick_photo")) {
+                    Icon(Icons.Default.PhotoLibrary, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.spray_wall_pick_photo))
+                }
+            } else {
+                // With a photo the next step is the main action; changing the photo comes after it.
                 Button(
                     onClick = { viewModel.continueWith(defaultName) },
                     enabled = state.canContinue,
@@ -284,42 +323,25 @@ fun SprayWallPhotoScreen(
                 ) {
                     Text(stringResource(R.string.spray_wall_continue))
                 }
-            }
-            // With a photo the next step sits right under it, above the long reset explanation's scroll edge.
-            if (state.photo != null) continueButton()
-            Text(stringResource(R.string.spray_wall_photo_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (state.photoFailed) {
-                Text(stringResource(R.string.spray_wall_photo_failed), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("spray_photo_failed"))
-            }
-            OutlinedButton(
-                onClick = { if (cameraNeedsGrant(context)) cameraPermission.launch(Manifest.permission.CAMERA) else takePicture.launch(captureUri) },
-                enabled = !state.importing && !state.saving,
-                modifier = Modifier.fillMaxWidth().testTag("spray_take_photo"),
-            ) {
-                Icon(Icons.Default.PhotoCamera, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.spray_wall_take_photo))
-            }
-            OutlinedButton(
-                onClick = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                enabled = !state.importing && !state.saving,
-                modifier = Modifier.fillMaxWidth().testTag("spray_pick_photo"),
-            ) {
-                Icon(Icons.Default.PhotoLibrary, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
-                Text(stringResource(if (state.photo == null) R.string.spray_wall_pick_photo else R.string.spray_wall_photo_change))
-            }
-            if (state.photo != null) {
                 OutlinedButton(
                     onClick = viewModel::openAdjust,
-                    enabled = !state.importing && !state.saving && state.preview != null,
+                    enabled = idle && state.preview != null,
                     modifier = Modifier.fillMaxWidth().testTag("spray_adjust_open"),
                 ) {
                     Icon(Icons.Default.Crop, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                     Text(stringResource(R.string.spray_adjust_title))
                 }
-            }
-            if (state.photo == null) continueButton()
-            if (state.photo == null && !state.importing) {
-                Text(stringResource(R.string.spray_wall_photo_missing), style = MaterialTheme.typography.bodySmall)
+                // Swapping the photo is the rare way out: lighter text buttons that wrap at 320 dp and large fonts.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = choosePhoto, enabled = idle, modifier = Modifier.testTag("spray_pick_photo")) {
+                        Icon(Icons.Default.PhotoLibrary, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.spray_wall_photo_change))
+                    }
+                    TextButton(onClick = takePhoto, enabled = idle, modifier = Modifier.testTag("spray_take_photo")) {
+                        Icon(Icons.Default.PhotoCamera, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.spray_wall_take_photo))
+                    }
+                }
             }
             Text(stringResource(if (state.wallPublic) R.string.spray_wall_photo_public else R.string.spray_wall_photo_privacy), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
