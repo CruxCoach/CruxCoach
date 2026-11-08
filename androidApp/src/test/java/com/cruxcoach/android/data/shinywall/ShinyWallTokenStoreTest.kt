@@ -37,6 +37,15 @@ class ShinyWallTokenStoreTest {
     }
 
     @Test
+    fun the_record_keeps_the_count_each_project_row_was_written_with() {
+        val store = store()
+        store.recordImport("uid1", 5L, 100L, mapOf("a" to 90L, "b" to 95L), mapOf("b" to 2L, "gone" to 3L))
+        assertEquals(mapOf("a" to 90L, "b" to 95L), store.placedLogs("uid1"))
+        // Only for placed entries: the record keeps one window.
+        assertEquals(mapOf("b" to 2L), store.writtenCounts("uid1"))
+    }
+
+    @Test
     fun a_refresh_of_another_account_leaves_the_session_alone() {
         val store = store()
         store.storeSession(session.copy(uid = "uid2"))

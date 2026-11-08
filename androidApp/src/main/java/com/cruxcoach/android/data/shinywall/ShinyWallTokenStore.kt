@@ -39,7 +39,12 @@ interface ShinyWallTokenStorage {
      * (epoch ms). One the logbook lacks was deleted there, or went into its send.
      */
     fun placedLogs(uid: String): Map<String, Long>
-    fun recordImport(uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>)
+
+    /** The count an import wrote for each of [placedLogs]' project rows; a row with another count was edited. */
+    fun writtenCounts(uid: String): Map<String, Long>
+    fun recordImport(
+        uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>, writtenCounts: Map<String, Long> = emptyMap(),
+    )
 
     /** External ids of the lists imports of [uid] have created. One the logbook lacks was deleted there. */
     fun importedLists(uid: String): Set<String>
@@ -108,7 +113,7 @@ class ShinyWallTokenStore internal constructor(
     private val keyWatermarkPrefix = "${pubkeyPrefix}_watermark_v2_"
     private val keyOldWatermarkPrefix = "${pubkeyPrefix}_watermark_"
     private fun keyWatermark(uid: String) = keyWatermarkPrefix + uid
-    // "<uuid> <epoch ms>" per entry.
+    // "<uuid> <epoch ms>" per entry, plus " <count>" for a project row the import wrote.
     private val keyPlacedPrefix = "${pubkeyPrefix}_placed_v1_"
     private fun keyPlaced(uid: String) = keyPlacedPrefix + uid
     private val keyListsPrefix = "${pubkeyPrefix}_lists_v1_"
@@ -165,17 +170,23 @@ class ShinyWallTokenStore internal constructor(
 
     override fun historyWatermarkMs(uid: String): Long? = prefs.getLong(keyWatermark(uid), 0L).takeIf { it > 0 }
 
-    override fun placedLogs(uid: String): Map<String, Long> =
-        prefs.getStringSet(keyPlaced(uid), null).orEmpty().mapNotNull { item ->
-            val (uuid, ms) = item.split(' ').takeIf { it.size == 2 } ?: return@mapNotNull null
-            ms.toLongOrNull()?.let { uuid to it }
-        }.toMap()
+    private fun placedItems(uid: String): List<List<String>> =
+        prefs.getStringSet(keyPlaced(uid), null).orEmpty().map { it.split(' ') }.filter { it.size in 2..3 }
 
-    override fun recordImport(uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>) {
+    override fun placedLogs(uid: String): Map<String, Long> =
+        placedItems(uid).mapNotNull { item -> item[1].toLongOrNull()?.let { item[0] to it } }.toMap()
+
+    override fun writtenCounts(uid: String): Map<String, Long> =
+        placedItems(uid).mapNotNull { item -> item.getOrNull(2)?.toLongOrNull()?.let { item[0] to it } }.toMap()
+
+    override fun recordImport(
+        uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>, writtenCounts: Map<String, Long>,
+    ) {
         synchronized(lock) {
+            val items = placedLogs.map { (uuid, ms) -> writtenCounts[uuid]?.let { "$uuid $ms $it" } ?: "$uuid $ms" }
             val edit = prefs.edit()
                 .remove(keyOldWatermarkPrefix + uid)
-                .putStringSet(keyPlaced(uid), placedLogs.map { (uuid, ms) -> "$uuid $ms" }.toSet())
+                .putStringSet(keyPlaced(uid), items.toSet())
             // The record stays after a disconnect; the time of the last import goes with the session.
             if (prefs.getString(keyUid, null) == uid) edit.putLong(keyLastImport, atMs)
             if (watermarkMs != null) edit.putLong(keyWatermark(uid), watermarkMs)

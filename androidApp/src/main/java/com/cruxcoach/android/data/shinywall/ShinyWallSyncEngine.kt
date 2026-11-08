@@ -196,6 +196,8 @@ class ShinyWallSyncEngine @Inject constructor(
         val deleted: Int = 0,
         /** What [ShinyWallTokenStorage.placedLogs] holds after this import. */
         val placed: Map<String, Long> = emptyMap(),
+        /** What [ShinyWallTokenStorage.writtenCounts] holds after this import. */
+        val written: Map<String, Long> = emptyMap(),
     )
 
     /** A history entry the logbook can take. */
@@ -253,7 +255,7 @@ class ShinyWallSyncEngine @Inject constructor(
             logbookStep { write(plan) }.getOrElse { return@withLock Result.failure(it) }
             // Right after the write, before the lists suspend: cancelled there, the logbook
             // still knows what it holds.
-            keystoreStep { tokenStore.recordImport(session.uid, clock(), plan.newestMs, plan.placed) }
+            keystoreStep { tokenStore.recordImport(session.uid, clock(), plan.newestMs, plan.placed, plan.written) }
                 .onFailure { Log.w(TAG, "Import record not saved, logbook import kept") }
             val lists = try {
                 importLists(session.uid, history, listNames)
@@ -323,6 +325,7 @@ class ShinyWallSyncEngine @Inject constructor(
         val existing = personalBoardRepo.getExistingLogUuids()
         val deleted = personalBoardRepo.pendingLogDeletions().toHashSet()
         val placedBefore = tokenStore.placedLogs(uid)
+        val writtenBefore = tokenStore.writtenCounts(uid)
         val now = clock()
         // Capped here too: a watermark an older version saved in the future heals.
         val lastWatermark = tokenStore.historyWatermarkMs(uid)?.coerceAtMost(now)
@@ -391,7 +394,7 @@ class ShinyWallSyncEngine @Inject constructor(
             // What the day's earlier rows hold: up to the latest kept one, or up to the latest one an
             // import wrote if the user deleted it. Only rows after that give way to the new one.
             val logged = if (fresh) row.parts.filter { it.entry.uuid in existing } else emptyList()
-            val (asWritten, edited) = logged.partition { asImported(it) }
+            val (asWritten, edited) = logged.partition { asImported(it, writtenBefore[it.entry.uuid]) }
             val latestKnown = if (fresh) row.parts.lastOrNull { known(it.entry) } else null
             val holder = latestKnown?.takeIf { it.entry.uuid !in existing } ?: edited.lastOrNull()
             val held = holder?.daySoFar ?: 0L
@@ -438,19 +441,22 @@ class ShinyWallSyncEngine @Inject constructor(
         val keepFrom = listOfNotNull(newestMs, lastWatermark).minOrNull()?.minus(WATERMARK_OVERLAP_MS) ?: Long.MIN_VALUE
         val placedNow = (placedBefore + placed.mapNotNull { p -> p.ms?.let { p.uuid to it } })
             .filterValues { it >= keepFrom }
-        return Plan(unique, duplicates, skipped, history.size, newestMs, catalogue, merged, deletedHere, placedNow)
+        // The count each project row was written with, so a count the user sets by hand is never taken for it.
+        val writtenNow = (writtenBefore + unique.filter { it.send == null }.associate { it.uuid to it.attempts })
+            .filterKeys { it in placedNow && it !in merged }
+        return Plan(unique, duplicates, skipped, history.size, newestMs, catalogue, merged, deletedHere, placedNow, writtenNow)
     }
 
     /**
      * True while [part]'s row is still as an import wrote it: the same entry, no comment, and the
-     * day's attempts up to it as its count. A row written with less (the rest after a kept row) or
-     * changed by hand counts as edited. Not the date: the import writes it in the time zone of the
-     * day, so after travelling the same entry has another one, and the app has no way to change it.
+     * count the import wrote ([written]; the day's attempts up to it for a row from before that
+     * record). Not the date: the import writes it in the time zone of the day, so after travelling
+     * the same entry has another one, and the app has no way to change it.
      */
-    private fun asImported(part: RowPart): Boolean {
+    private fun asImported(part: RowPart, written: Long?): Boolean {
         val row = secureDb.bidsQueries.selectBidContent(part.entry.uuid).executeAsOneOrNull() ?: return false
         return row.external_id == historyExternalId(part.entry.entry.docId) &&
-            row.bid_count == part.daySoFar &&
+            row.bid_count == (written ?: part.daySoFar) &&
             row.comment.isNullOrBlank()
     }
 
@@ -489,11 +495,16 @@ class ShinyWallSyncEngine @Inject constructor(
         val sendParts = mutableListOf<RowPart>()
         val days = attempts.groupBy { it.day }.values.toList()
         days.forEachIndexed { i, day ->
-            val last = day.last().attempts
-            // A total that fell starts a count of its own; one that stayed added nothing.
-            val base = if (last >= before) before else 0L
-            val parts = day.map { RowPart(it, daySoFar = it.attempts - base) }
-            val dayAttempts = last - base
+            // Each entry adds what its total rose by since the entry before it. A total that fell
+            // starts a count of its own; one that stayed added nothing. An entry's share never
+            // changes when later entries arrive, so rows written by earlier imports keep matching.
+            var soFar = 0L
+            val parts = day.map { p ->
+                soFar += if (p.attempts >= before) p.attempts - before else p.attempts
+                before = p.attempts
+                RowPart(p, daySoFar = soFar)
+            }
+            val dayAttempts = soFar
             if (send != null && day.first().day == send.day) {
                 sendParts += parts
             } else {
@@ -501,7 +512,6 @@ class ShinyWallSyncEngine @Inject constructor(
                 rows += LogRow(day.last(), parts.dropLast(1), attempts = dayAttempts, later = later)
                 earlierDays += dayAttempts
             }
-            before = last
         }
         if (send != null) rows += LogRow(send, sendParts, earlierDays = earlierDays)
         return rows

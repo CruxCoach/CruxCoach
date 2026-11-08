@@ -456,10 +456,48 @@ class ShinyWallSyncEngineTest {
         engine.importAll(names).getOrThrow()
         assertEquals(listOf("shinywall:history:x1" to 1L, "shinywall:history:x2" to 1L), bids())
 
-        // x2 holds less than the day's 2 so far: it stays too, and the next total adds only what is new.
+        // x2 is as the import wrote it (the rest after x1): it gives way to the next total, which
+        // carries what x1 does not hold.
         coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry))
         engine.importAll(names).getOrThrow()
-        assertEquals(listOf("shinywall:history:x1" to 1L, "shinywall:history:x2" to 1L, "shinywall:history:x3" to 1L), bids())
+        assertEquals(listOf("shinywall:history:x1" to 1L, "shinywall:history:x3" to 2L), bids())
+    }
+
+    @Test
+    fun a_count_set_by_hand_to_the_days_total_so_far_is_still_an_edit() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry))
+        engine.importAll(names).getOrThrow()
+        repo.updateBid(ShinyWallSyncEngine.logUuid("x1"), 1, "warm-up")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        // Written as 1, set to 2 by hand: the day's attempts so far, but not what the import wrote.
+        repo.updateBid(ShinyWallSyncEngine.logUuid("x2"), 2, null)
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x1" to 1L, "shinywall:history:x2" to 2L, "shinywall:history:x3" to 1L), bids())
+    }
+
+    @Test
+    fun a_total_that_falls_gives_the_same_logbook_however_the_imports_fall() = runTest {
+        val dayOne = realEntry("f1", "r3", -4, grade = null, ts = "2026-11-08T11:00:00Z")
+        val fell = realEntry("f2", "r3", -3, grade = null, ts = "2026-11-09T11:00:00Z")
+        val rose = realEntry("f3", "r3", -5, grade = null, ts = "2026-11-09T12:00:00Z")
+        val history = listOf(dayOne, fell, rose)
+        for (n in 1..3) {
+            coEvery { client.fetchHistory("uid1") } returns Result.success(history.take(n))
+            engine.importAll(names).getOrThrow()
+        }
+        // The fall starts a count of its own: 4 on day one, 3 + 2 on day two.
+        val expected = listOf("shinywall:history:f1" to 4L, "shinywall:history:f3" to 5L)
+        assertEquals(expected, bids())
+
+        // The same history in one go on a new phone.
+        repo.deleteAllUserBoardData()
+        val fresh = ShinyWallSyncEngine(client, InMemoryShinyWallTokenStorage(store.session()), board, repo, db)
+        fresh.zone = { ZoneOffset.UTC }
+        fresh.importAll(names).getOrThrow()
+        assertEquals(expected, bids())
     }
 
     @Test
@@ -718,8 +756,9 @@ class ShinyWallSyncEngineTest {
 
         // The record fails after the logbook is written: the import keeps what it wrote.
         val noRecord = object : ShinyWallTokenStorage by store {
-            override fun recordImport(uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>) =
-                throw SecurityException("Keystore unavailable")
+            override fun recordImport(
+                uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>, writtenCounts: Map<String, Long>,
+            ) = throw SecurityException("Keystore unavailable")
         }
         assertEquals(5, ShinyWallSyncEngine(client, noRecord, board, repo, db).importAll(names).getOrThrow().newAscents)
         assertEquals(5, ascents().size)
