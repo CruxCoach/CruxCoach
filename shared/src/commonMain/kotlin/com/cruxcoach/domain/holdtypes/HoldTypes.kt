@@ -94,6 +94,21 @@ data class HoldTypeEntry(
     val holdDirection: HoldDirection? get() = HoldDirection.fromWire(direction)
 }
 
+/**
+ * A finished blind round on a board's labels: a reviewer labelled the reference set without seeing the labels, and
+ * this is how often the two agreed (shares of the answered holds, 0 to 1).
+ */
+@Serializable
+data class HoldTypeBlindRound(
+    /** The day the round was evaluated, as an ISO date. */
+    val date: String,
+    /** Reference holds the reviewer answered. */
+    val holds: Int,
+    val type: Double,
+    val direction: Double? = null,
+    val footOnly: Double? = null,
+)
+
 @Serializable
 data class HoldTypeDataset(
     val format: String,
@@ -105,8 +120,16 @@ data class HoldTypeDataset(
      * `layoutId * 1000 + hold id` on MoonBoard, whose hold ids repeat across generations ([referenceKey]).
      */
     val referenceSet: List<Int> = emptyList(),
+    /** Set once a blind round on this board is evaluated; until then the statistics leave the board out. */
+    val blindRound: HoldTypeBlindRound? = null,
     val holds: List<HoldTypeEntry>,
 ) {
+    /**
+     * Whether the statistics show this board's hold types: only boards with typed holds and a finished blind round
+     * (owner, 2026-11-08), in every build.
+     */
+    val statsReady: Boolean get() = blindRound != null && holds.any { it.holdType != null }
+
     private val byPlacement: Map<Int, HoldTypeEntry> by lazy { holds.associateBy { it.placement } }
     private val byLayoutPlacement: Map<Pair<Int, Int>, HoldTypeEntry> by lazy {
         holds.associateBy { it.layoutId to it.placement }

@@ -18,7 +18,8 @@ import kotlin.math.floor
  * entries of the chosen period.
  *
  * Boards are not compared with each other until each board's blind round is done (owner, 2026-11-07), so the card
- * always shows one board: the board filter, or else the labelled board with the most problems in the period. The
+ * always shows one board: the board filter, or else the labelled board with the most problems in the period. Only
+ * boards whose blind round is done show at all ([HoldTypeDataset.statsReady], owner, 2026-11-08). The
  * board's own problems are limited to the grade range of your problems on each layout ([gradeRanges]), so the
  * comparison is about which holds you choose, not about how hard you climb.
  */
@@ -30,9 +31,9 @@ object HoldTypeStatsComputer {
     const val UNKNOWN_LAYOUT = 0
 
     /**
-     * The board the card shows: [boardFilter] when it has typed holds, else the board with typed holds that has the
-     * most problems in [ascents]. [hasTypes] is asked board by board, most problems first, so only the boards that
-     * matter get their labels loaded.
+     * The board the card shows: [boardFilter] when [hasTypes] accepts it, else the accepted board that has the most
+     * problems in [ascents]. [hasTypes] is asked board by board, most problems first, so only the boards that matter
+     * get their labels loaded.
      */
     fun cardBoard(ascents: List<AscentWithClimb>, boardFilter: String?, hasTypes: (String) -> Boolean): String? {
         if (boardFilter != null) return boardFilter.takeIf(hasTypes)
