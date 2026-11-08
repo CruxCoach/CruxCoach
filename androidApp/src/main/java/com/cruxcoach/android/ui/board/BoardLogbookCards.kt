@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -47,7 +48,10 @@ internal fun AscentCard(
     onToggleSelect: () -> Unit,
     onEdit: () -> Unit,
     highlightEdit: Boolean = false,
+    /** False under a day header that already names the day. */
+    showDate: Boolean = true,
 ) {
+    val large = LocalDensity.current.fontScale >= LARGE_FONT_SCALE
     val grade = ascent.difficultyAverage?.let {
         GradeDisplayHelper.formatDifficulty(it, gradeScale)
     } ?: "?"
@@ -60,6 +64,136 @@ internal fun AscentCard(
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
     }
 
+    val gradeBox: @Composable () -> Unit = {
+        Surface(
+            color = zoneColorForDifficulty(ascent.difficultyAverage ?: 0.0, zones),
+            shape = RoundedCornerShape(8.dp),
+            // Grows with a large font instead of cutting the grade.
+            modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 4.dp)) {
+                Text(
+                    grade,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = DarkBackground,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+    val name: @Composable () -> Unit = {
+        Text(
+            ascent.climbName,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = if (large) 2 else 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+    val meta: @Composable () -> Unit = {
+        // FlowRow (not Row): the meta items overflowed the card's
+        // weighted column when a mirror badge was present, squashing the
+        // last child to a sliver. FlowRow wraps to a second line instead.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            itemVerticalAlignment = Alignment.CenterVertically
+        ) {
+            // Board badge: tells a multi-board user at a glance which
+            // board this send was on (Kilter / Tension / MoonBoard …).
+            // Unobtrusive — same muted colour as the meta line.
+            BoardBrandBadge(BoardBrand.fromWire(ascent.boardBrand))
+            // Mirror indicator — placed right after the board badge (not
+            // last) so it's prioritised and never the clipped child. A
+            // filled accent pill so it reads as a distinct badge.
+            if (ascent.isMirror) MirrorBadge()
+            Text(
+                "${ascent.angle}°",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (showDate) {
+                Text(
+                    formatDate(ascent.climbedAt),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+    val comment: @Composable () -> Unit = {
+        // Optional log comment — shown beneath the meta line so the
+        // note the user wrote when logging is finally visible.
+        // Straight quotes on purpose: this is code, not a localized
+        // resource, so locale-specific quote glyphs don't apply.
+        ascent.comment?.takeIf { it.isNotBlank() }?.let { comment ->
+            Text(
+                "\"$comment\"",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+    val outcome: @Composable (Alignment.Horizontal) -> Unit = { alignment ->
+        Column(horizontalAlignment = alignment) {
+            if (ascent.isSend) {
+                val attemptsLabel = when {
+                    isTrueFlash -> "Flash"
+                    ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
+                    else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
+                }
+                val attemptsColor = if (isTrueFlash) SuccessGreen else OrangeAccent
+                Text(
+                    attemptsLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = attemptsColor
+                )
+            } else {
+                val attemptsText = if (ascent.bidCount > 1L) {
+                    stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
+                } else {
+                    stringResource(R.string.board_ascent_open_one)
+                }
+                Text(
+                    attemptsText,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = ErrorRed
+                )
+            }
+            ascent.quality?.let {
+                Text(
+                    "$it★",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = WarningYellow
+                )
+            }
+        }
+    }
+    val edit: @Composable () -> Unit = {
+        IconButton(onClick = onEdit, modifier = Modifier.size(48.dp).testTag("logbook_edit")
+            .then(if (highlightEdit) Modifier.tourTarget(TourTarget.EDIT) else Modifier)) {
+            Icon(
+                Icons.Default.Edit,
+                contentDescription = stringResource(R.string.cd_edit),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+    val checkbox: @Composable () -> Unit = {
+        Checkbox(
+            checked = isSelected,
+            onCheckedChange = { onToggleSelect() },
+            colors = CheckboxDefaults.colors(checkedColor = OrangeAccent),
+            modifier = Modifier.size(36.dp).semantics { contentDescription = selectLabel }
+        )
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -68,130 +202,39 @@ internal fun AscentCard(
         colors = CardDefaults.cardColors(containerColor = containerColor),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { onToggleSelect() },
-                colors = CheckboxDefaults.colors(checkedColor = OrangeAccent),
-                modifier = Modifier.size(36.dp).semantics { contentDescription = selectLabel }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Surface(
-                color = zoneColorForDifficulty(ascent.difficultyAverage ?: 0.0, zones),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.size(48.dp)
+        if (large) {
+            // Large font: the controls on top, the text below at full width, so the name,
+            // the result and the meta line never shrink to a column of single letters.
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    checkbox()
+                    Spacer(modifier = Modifier.width(8.dp))
+                    gradeBox()
+                    Spacer(modifier = Modifier.weight(1f))
+                    edit()
+                }
+                name()
+                outcome(Alignment.Start)
+                meta()
+                comment()
+            }
+        } else {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        grade,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = DarkBackground
-                    )
+                checkbox()
+                Spacer(modifier = Modifier.width(8.dp))
+                gradeBox()
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    name()
+                    meta()
+                    comment()
                 }
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    ascent.climbName,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                // FlowRow (not Row): the meta items overflowed the card's
-                // weighted column when a mirror badge was present, squashing the
-                // last child to a sliver. FlowRow wraps to a second line instead.
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    itemVerticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Board badge: tells a multi-board user at a glance which
-                    // board this send was on (Kilter / Tension / MoonBoard …).
-                    // Unobtrusive — same muted colour as the meta line.
-                    BoardBrandBadge(BoardBrand.fromWire(ascent.boardBrand))
-                    // Mirror indicator — placed right after the board badge (not
-                    // last) so it's prioritised and never the clipped child. A
-                    // filled accent pill so it reads as a distinct badge.
-                    if (ascent.isMirror) MirrorBadge()
-                    Text(
-                        "${ascent.angle}°",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        formatDate(ascent.climbedAt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                // Optional log comment — shown beneath the meta line so the
-                // note the user wrote when logging is finally visible.
-                // Straight quotes on purpose: this is code, not a localized
-                // resource, so locale-specific quote glyphs don't apply.
-                ascent.comment?.takeIf { it.isNotBlank() }?.let { comment ->
-                    Text(
-                        "\"$comment\"",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                if (ascent.isSend) {
-                    val attemptsLabel = when {
-                        isTrueFlash -> "Flash"
-                        ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
-                        else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
-                    }
-                    val attemptsColor = if (isTrueFlash) SuccessGreen else OrangeAccent
-                    Text(
-                        attemptsLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = attemptsColor
-                    )
-                } else {
-                    val attemptsText = if (ascent.bidCount > 1L) {
-                        stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
-                    } else {
-                        stringResource(R.string.board_ascent_open_one)
-                    }
-                    Text(
-                        attemptsText,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = ErrorRed
-                    )
-                }
-                ascent.quality?.let {
-                    Text(
-                        "$it★",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = WarningYellow
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(4.dp))
-            IconButton(onClick = onEdit, modifier = Modifier.size(48.dp).testTag("logbook_edit")
-                .then(if (highlightEdit) Modifier.tourTarget(TourTarget.EDIT) else Modifier)) {
-                Icon(
-                    Icons.Default.Edit,
-                    contentDescription = stringResource(R.string.cd_edit),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
+                outcome(Alignment.End)
+                Spacer(modifier = Modifier.width(4.dp))
+                edit()
             }
         }
     }
@@ -283,6 +326,7 @@ internal fun EmptyLogbookMessage() {
 }
 
 /** A logbook day's date and entry count; [onRecap] adds the button that opens its recap. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun DayHeader(dateKey: String, count: Int, onRecap: (() -> Unit)? = null) {
     val dayNames = arrayOf(
@@ -308,24 +352,29 @@ internal fun DayHeader(dateKey: String, count: Int, onRecap: (() -> Unit)? = nul
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp, bottom = 4.dp),
+                .heightIn(min = 48.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = OrangeAccent.copy(alpha = 0.85f)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = pluralStringResource(R.plurals.board_logbook_day_entries, count, count),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.weight(1f),
-            )
+            // The count moves below the date when both do not fit, instead of breaking.
+            FlowRow(
+                modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                itemVerticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = OrangeAccent.copy(alpha = 0.85f)
+                )
+                Text(
+                    text = pluralStringResource(R.plurals.board_logbook_day_entries, count, count),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
+            }
             if (onRecap != null) {
-                IconButton(onClick = onRecap, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = onRecap, modifier = Modifier.size(48.dp)) {
                     Icon(
                         Icons.Outlined.Summarize,
                         contentDescription = stringResource(R.string.board_session_recap_open) + ", " + label,

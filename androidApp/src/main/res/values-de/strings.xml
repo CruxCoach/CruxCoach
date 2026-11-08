@@ -1658,7 +1658,9 @@
     <string name="board_stats_heatmap_board_label">Board</string>
     <string name="board_stats_heatmap_pick_board">Wähle ein Board, um die Hold-Heatmap zu sehen.</string>
     <string name="board_stats_heatmap_unsupported">Dieses Board hat keine Hold-Heatmap.</string>
-    <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
+    <string name="board_stats_empty_period">In diesem Zeitraum ist nichts eingetragen.</string>
+    <string name="board_stats_show_all_time">Gesamten Zeitraum zeigen</string>
+    <string name="board_stats_angle_distribution">Winkelverteilung</string>
     <string name="board_stats_cross_board_tries">Versuche je Grad</string>
     <string name="board_stats_cross_board_months">Versuche je Monat</string>
     <string name="board_stats_cross_board_tries_help">Wie viele Versuche du im Schnitt gebraucht hast, bis du einen Boulder zum ersten Mal geschafft hast, je Board und Grad. Versuche aus früheren Sessions zählen mit, Wiederholungen nach der Begehung nicht.\n\nHohle Balken beruhen auf weniger als %1$d Bouldern und sagen wenig aus.\n\nTippe auf einen Grad, um zu sehen, wie viele Boulder hinter jedem Balken stehen.</string>

@@ -238,17 +238,23 @@ private fun SendCurveLegend(ramp: List<Color>, smallSamples: Boolean) {
 @Composable
 private fun SendCurveChart(stats: CrossBoardStats, colors: Map<String, Color>, ramp: List<Color>) {
     var selected by remember(stats.sendCurve) { mutableStateOf<String?>(null) }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        stats.boards.forEach { board ->
-            val buckets = stats.sendCurve[board] ?: return@forEach
-            SendCurveRow(
-                board = board,
-                buckets = buckets,
-                color = colors.getValue(board),
-                ramp = ramp,
-                expanded = selected == board,
-                onClick = { selected = if (selected == board) null else board },
-            )
+    val nameWidth = widestText(stats.boards.map { boardBrandLabel(it) }, MaterialTheme.typography.bodyMedium) + 18.dp
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // Names stand above their bars when they would take more than 40 % of the row.
+        val labelWidth = maxOf(SEND_CURVE_LABEL_WIDTH, nameWidth).takeIf { it <= maxWidth * 0.4f }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            stats.boards.forEach { board ->
+                val buckets = stats.sendCurve[board] ?: return@forEach
+                SendCurveRow(
+                    board = board,
+                    buckets = buckets,
+                    color = colors.getValue(board),
+                    ramp = ramp,
+                    labelWidth = labelWidth,
+                    expanded = selected == board,
+                    onClick = { selected = if (selected == board) null else board },
+                )
+            }
         }
     }
 }
@@ -259,6 +265,7 @@ private fun SendCurveRow(
     buckets: TriesBuckets,
     color: Color,
     ramp: List<Color>,
+    labelWidth: Dp?,
     expanded: Boolean,
     onClick: () -> Unit,
 ) {
@@ -278,15 +285,21 @@ private fun SendCurveRow(
             .semantics { contentDescription = "$name: $counts ($problems)" }
             .padding(vertical = 6.dp, horizontal = 4.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        val nameRow: @Composable (Modifier) -> Unit = { modifier ->
             Row(
-                Modifier.width(SEND_CURVE_LABEL_WIDTH),
+                modifier,
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Spacer(Modifier.size(8.dp).background(color, CircleShape))
                 Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+        }
+        if (labelWidth == null) {
+            nameRow(Modifier.padding(bottom = 4.dp))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (labelWidth != null) nameRow(Modifier.width(labelWidth))
             Canvas(Modifier.weight(1f).height(SEND_CURVE_BAR_HEIGHT)) {
                 val total = buckets.problems.toFloat()
                 if (total <= 0f) return@Canvas
@@ -308,9 +321,9 @@ private fun SendCurveRow(
                         )
                     } else {
                         drawRoundRect(ramp[i], Offset(x, 0f), Size(w, size.height), radius)
-                        // Shares at a glance, the counts behind them once the row is open.
+                        // Shares at a glance; the counts behind them stand below once the row is open.
                         val percent = measurer.measure(
-                            if (expanded) "$n" else "${Math.round(n * 100f / total)} %",
+                            "${Math.round(n * 100f / total)} %",
                             percentStyle.copy(color = if (ramp[i].luminance() > 0.3f) Color(0xFF0B0B0B) else Color.White),
                         )
                         if (percent.size.width + 6.dp.toPx() < w) {
@@ -325,11 +338,13 @@ private fun SendCurveRow(
             }
         }
         if (expanded) {
+            // Every bucket's count, also those too narrow for a number in the bar.
+            val shown = buckets.counts.withIndex().filter { it.value > 0 }.joinToString(" · ") { (i, n) -> "${labels[i]} $n" }
             Text(
-                problems,
+                "$shown ($problems)",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = SEND_CURVE_LABEL_WIDTH, top = 6.dp),
+                modifier = Modifier.padding(start = labelWidth ?: 0.dp, top = 6.dp),
             )
         }
     }
@@ -342,13 +357,24 @@ private fun TriesPerGradeChart(stats: CrossBoardStats, colors: Map<String, Color
     if (stats.grades.isEmpty()) return
     val scaleMax = triesScaleMax(stats.grades.maxOf { row -> row.byBoard.values.maxOf { it.averageTries } })
     var selected by remember(stats.grades) { mutableStateOf<String?>(null) }
+    // Wide enough for every grade and value at the current font size; one width for all rows keeps one scale.
+    val gradeStyle = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+    val gradeWidth = maxOf(GRADE_COLUMN_WIDTH, widestText(stats.grades.map { it.grade }, gradeStyle) + 8.dp)
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+    val labelReserve = maxOf(
+        BAR_LABEL_RESERVE,
+        widestText(stats.grades.flatMap { it.byBoard.values }.map { triesNumber(it) }, labelStyle) + 8.dp,
+    )
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        stats.grades.forEach { row ->
+        // Hardest grade on top, as in the grades card.
+        stats.grades.asReversed().forEach { row ->
             GradeRow(
                 row = row,
                 boards = stats.boards,
                 colors = colors,
                 scaleMax = scaleMax,
+                gradeWidth = gradeWidth,
+                labelReserve = labelReserve,
                 expanded = selected == row.grade,
                 onClick = { selected = if (selected == row.grade) null else row.grade },
             )
@@ -362,6 +388,8 @@ private fun GradeRow(
     boards: List<String>,
     colors: Map<String, Color>,
     scaleMax: Double,
+    gradeWidth: Dp,
+    labelReserve: Dp,
     expanded: Boolean,
     onClick: () -> Unit,
 ) {
@@ -386,18 +414,18 @@ private fun GradeRow(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                modifier = Modifier.width(GRADE_COLUMN_WIDTH),
+                modifier = Modifier.width(gradeWidth),
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 // Only boards with sends at this grade; the colour says which board it is.
                 present.forEach { board ->
-                    TriesBar(row.byBoard.getValue(board), colors.getValue(board), scaleMax)
+                    TriesBar(row.byBoard.getValue(board), colors.getValue(board), scaleMax, labelReserve)
                 }
             }
         }
         if (expanded) {
             Column(
-                modifier = Modifier.padding(start = GRADE_COLUMN_WIDTH, top = 8.dp),
+                modifier = Modifier.padding(start = gradeWidth, top = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 present.forEach { board ->
@@ -418,13 +446,13 @@ private fun GradeRow(
 }
 
 @Composable
-private fun TriesBar(tries: TriesToSend, color: Color, scaleMax: Double) {
+private fun TriesBar(tries: TriesToSend, color: Color, scaleMax: Double, labelReserve: Dp) {
     val label = triesNumber(tries)
     BoxWithConstraints(Modifier.fillMaxWidth().height(LANE_HEIGHT)) {
         val small = tries.isSmallSample()
         // Rounded at the value end, square at the baseline.
         val shape = RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)
-        val track = maxWidth - BAR_LABEL_RESERVE
+        val track = maxWidth - labelReserve
         val length = (track * (tries.averageTries / scaleMax).toFloat()).coerceAtLeast(BAR_THICKNESS)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Spacer(
@@ -566,7 +594,12 @@ private fun MonthLineChart(
     // The card's own colour: rings around dots and backdrops behind labels.
     val card = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         .compositeOver(MaterialTheme.colorScheme.surface)
-    val axisHeight = if (monthLabels != null) MONTH_AXIS_HEIGHT else 0.dp
+    val axisHeight = if (monthLabels != null) {
+        maxOf(MONTH_AXIS_HEIGHT, textLineHeight(selectedAxisStyle) + 6.dp)
+    } else {
+        0.dp
+    }
+    val yAxisWidth = maxOf(Y_AXIS_WIDTH, widestText(ticks.map { it.second }, axisStyle) + 6.dp)
     // The tap handler outlives recompositions; it must call the newest onSelect.
     val currentOnSelect by rememberUpdatedState(onSelect)
 
@@ -578,12 +611,12 @@ private fun MonthLineChart(
     }
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val available = maxWidth - Y_AXIS_WIDTH
+        val available = maxWidth - yAxisWidth
         val bandWidth = maxOf(available / monthCount, MIN_MONTH_BAND)
         val scrolls = bandWidth * monthCount > available
         Row {
             // Value axis, standing still while the months scroll.
-            Canvas(Modifier.width(Y_AXIS_WIDTH).height(plotHeight + axisHeight)) {
+            Canvas(Modifier.width(yAxisWidth).height(plotHeight + axisHeight)) {
                 ticks.forEach { (value, label) ->
                     val text = measurer.measure(label, axisStyle)
                     drawText(text, topLeft = Offset(0f, yOf(value) - text.size.height / 2f))

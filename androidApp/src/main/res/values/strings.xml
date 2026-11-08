@@ -1615,7 +1615,9 @@
     <string name="board_stats_heatmap_board_label">Board</string>
     <string name="board_stats_heatmap_pick_board">Pick a board to see the hold heatmap.</string>
     <string name="board_stats_heatmap_unsupported">This board has no hold heatmap.</string>
-    <string name="board_stats_angle_distribution">Angle Distribution</string>
+    <string name="board_stats_empty_period">Nothing logged in this period.</string>
+    <string name="board_stats_show_all_time">Show all time</string>
+    <string name="board_stats_angle_distribution">Angle distribution</string>
     <string name="board_stats_cross_board_tries">Tries per grade</string>
     <string name="board_stats_cross_board_months">Tries per month</string>
     <string name="board_stats_cross_board_tries_help">How many tries you needed on average to send a problem for the first time, per board and grade. Tries from earlier sessions count, repeats after the send do not.\n\nHollow bars rest on fewer than %1$d problems and say little.\n\nTap a grade to see how many problems each bar stands for.</string>
