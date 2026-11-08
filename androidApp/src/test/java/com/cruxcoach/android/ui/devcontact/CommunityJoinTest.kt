@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -101,6 +103,19 @@ class CommunityJoinTest {
             .assertExists()
         compose.onNodeWithText("Bereits Mitglied").assertIsDisplayed()
         compose.onNodeWithText("Später").assertIsDisplayed()
+    }
+
+    @Test fun `the hint text scrolls when the dialog fills the screen`() {
+        val text = "Follow your report and test the fix early: join the community on Buzz."
+        compose.setContent {
+            MaterialTheme {
+                CommunityReportHintDialog(
+                    title = "Bug report sent", text = text,
+                    onJoin = {}, onAlreadyMember = {}, onClose = {},
+                )
+            }
+        }
+        compose.onNode(hasText(text) and hasScrollAction()).assertExists()
     }
 
     @Test fun `a sent report shows the hint instead of leaving, and the hint survives recreation`() {

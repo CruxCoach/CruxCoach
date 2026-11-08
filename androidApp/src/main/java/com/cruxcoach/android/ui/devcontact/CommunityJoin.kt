@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Forum
@@ -130,7 +132,8 @@ internal fun CommunityReportHintDialog(
         onDismissRequest = onClose,
         modifier = Modifier.testTag("community_report_hint"),
         title = { Text(title) },
-        text = { Text(text) },
+        // At 320 dp and font size 2.0 the dialog fills the screen: the text scrolls instead of being cut off.
+        text = { Text(text, Modifier.verticalScroll(rememberScrollState())) },
         confirmButton = {
             HintButtons {
                 TextButton(onClick = onAlreadyMember, modifier = Modifier.testTag("community_report_hint_member")) {
