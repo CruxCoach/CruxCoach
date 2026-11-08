@@ -6,23 +6,22 @@ the board button above the picture switches to another one.
 
 ## Paint
 
-- Pick **Brush** or **Eraser** and a **Color**, then tap or swipe holds with one
+- Pick the brush or the eraser and a color, then tap or swipe holds with one
   finger. Two fingers zoom and move the board.
-- One stroke is one step for **Undo** and **Redo**. **Clear picture** removes all
-  colors and can be undone too.
-- **Save** and **Save as** keep the picture on your phone under a name.
-  **Pictures** lists them by board and loads one together with its board,
+- One stroke is one step for undo and redo. **Clear picture** in the ⋮ menu
+  removes all colors and can be undone too.
+- **Save** and **Save as** in the ⋮ menu keep the picture on your phone under a
+  name. **Pictures** lists them by board and loads one together with its board,
   including MoonBoard hold sets. Pictures are separate from climbs and are never
   shared or published.
 - If the board's catalogue is missing, PaintBox offers the catalogue settings.
 
 ## Light up the board
 
-- The Bluetooth button opens the usual connection sheet. Connecting never sends
-  a picture.
-- **Send now** sends the picture once. The bulb turns on live painting: the
-  board follows every stroke. Turning it off stops sending; the board keeps what
-  it shows.
+- **Connect board** at the bottom, or the Bluetooth button at the top, opens
+  the usual connection sheet. Connecting never sends a picture.
+- **Send** sends the picture once. **Live** makes the board follow every stroke.
+  Turning it off stops sending; the board keeps what it shows.
 - Live painting pauses when the connection drops, when you leave the screen or
   the app, and when you change boards. You turn it on again yourself.
 
@@ -35,8 +34,8 @@ the board button above the picture switches to another one.
 
 ## Turn a photo into a picture
 
-The image button next to Bluetooth opens Android's photo picker. The photo
-replaces the board photo while the holds stay in place:
+**Use a photo** in the ⋮ menu opens Android's photo picker. The photo replaces
+the board photo while the holds stay in place:
 
 - Drag it with one finger; zoom and turn it with two.
 - Each hold takes the board color nearest to the photo at its centre.
@@ -44,7 +43,7 @@ replaces the board photo while the holds stay in place:
 - **Background** leaves one color of the photo off, for photos without
   transparency: tap it, then tap that color in the photo. Tap **Background**
   again to undo the choice.
-- **OK** applies the photo as one undo step. **Cancel** or Back brings back the
+- **Apply** applies the photo as one undo step. ✕ or Back brings back the
   previous picture, on the board too if it showed the photo live.
 
 Only the hold colors are saved, never the photo.

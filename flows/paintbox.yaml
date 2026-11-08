@@ -13,7 +13,7 @@ tags:
 - tapOn: "PaintBox"
 - assertVisible: "Pinsel"
 - assertVisible: "Radierer"
-- assertVisible: "Ein Finger malt; zwei Finger zoomen und verschieben."
+- assertVisible: "Board verbinden"
 - tapOn: "Farbe"
 - assertVisible: "Grün"
 - pressKey: Back

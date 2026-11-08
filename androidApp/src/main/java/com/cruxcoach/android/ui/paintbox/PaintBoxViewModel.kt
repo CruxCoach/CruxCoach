@@ -243,7 +243,21 @@ class PaintBoxViewModel @Inject constructor(
         mutable.update { it.copy(live = false) }
         ble.releaseKeepAlive("paintbox")
     }
-    fun enter() { ble.pauseAutomaticProjection("paintbox") }
+    fun enter() {
+        ble.pauseAutomaticProjection("paintbox")
+        // Back from the catalogue settings: try the board again by itself.
+        if (state.value.missingBoard) retryBoard()
+    }
+    /** Opens the current picture's board again, e.g. once its catalogue is downloaded. */
+    private fun retryBoard() {
+        val document = state.value.document ?: return
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            try { open(document, persisted = saved?.id == document.id) }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { mutable.update { it.copy(loading = false, message = R.string.paintbox_load_error) } }
+        }
+    }
     fun leave() { pause(); ble.resumeAutomaticProjection("paintbox") }
     fun toggleLive() {
         if (state.value.live) pause() else {

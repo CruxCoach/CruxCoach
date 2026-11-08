@@ -32,7 +32,7 @@ import org.robolectric.annotation.Config
 class PaintBoxUiTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun `image mode replaces tools and exposes background picking and accept cancel`() {
+    @Test fun `photo mode replaces the tools and offers background, apply and cancel`() {
         val vm = mockk<PaintBoxViewModel>(relaxed = true)
         val bitmap = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888)
         val state = MutableStateFlow(PaintBoxState(
@@ -44,17 +44,14 @@ class PaintBoxUiTest {
         every { vm.state } returns state
         every { vm.connection } returns MutableStateFlow(ConnectionState.CONNECTED)
         compose.setContent { MaterialTheme { PaintBoxScreen({}, {}, vm) } }
-        compose.onNodeWithTag("paintbox_image_import").assertIsOn()
-        assertTrue(compose.onNodeWithTag("paintbox_image_import").fetchSemanticsNode().boundsInRoot.right <=
-            compose.onNodeWithContentDescription("Connect to board").fetchSemanticsNode().boundsInRoot.left)
-        compose.onNodeWithText("Eraser").assertDoesNotExist()
-        compose.onNodeWithText("Brush").assertDoesNotExist()
-        compose.onNodeWithText("Color").assertDoesNotExist()
+        compose.onNodeWithText("Photo").assertIsDisplayed()
+        compose.onNodeWithTag("paintbox_brush").assertDoesNotExist()
+        compose.onNodeWithTag("paintbox_menu").assertDoesNotExist()
+        compose.onNodeWithTag("paintbox_send").assertDoesNotExist()
         compose.onNodeWithText("Tap the background color in the image.").assertIsDisplayed()
-        compose.onNodeWithText("Save").assertIsNotEnabled()
         compose.onNodeWithText("Background").performClick()
-        compose.onNodeWithText("OK").performClick()
-        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Apply").performClick()
+        compose.onNodeWithContentDescription("Cancel").performClick()
         verify { vm.imageBackgroundTool(); vm.acceptImage(); vm.cancelImage() }
     }
 
@@ -88,21 +85,44 @@ class PaintBoxUiTest {
         compose.runOnIdle { assertTrue(state.value.imageImport!!.transform.zoom > 1f) }
     }
 
-    @Test fun `editor presents tools and a paused lamp without sending on entry`() {
+    private fun editor(connection: ConnectionState): PaintBoxViewModel {
         val vm = mockk<PaintBoxViewModel>(relaxed = true)
         every { vm.state } returns MutableStateFlow(PaintBoxState(
             document = PaintDocument(board = PaintBoard("kilter", 1, 10)), loading = false,
             boardSize = BoardSize(10, 1, "Test board", 0, 100, 0, 100, null),
             placements = mapOf(1 to BoardPlacement(1, 1, 1, 30, 30)),
         ))
-        every { vm.connection } returns MutableStateFlow(ConnectionState.CONNECTED)
+        every { vm.connection } returns MutableStateFlow(connection)
         compose.setContent { MaterialTheme { PaintBoxScreen({}, {}, vm) } }
-        compose.onNodeWithText("Brush").assertIsDisplayed()
-        compose.onNodeWithText("Eraser").performClick()
-        compose.onNodeWithContentDescription("Live painting off — send and enable").assertIsDisplayed()
+        return vm
+    }
+
+    @Test fun `editor presents tools and live off without sending on entry`() {
+        val vm = editor(ConnectionState.CONNECTED)
+        compose.onNodeWithContentDescription("Brush").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Eraser").performClick()
+        compose.onNodeWithTag("paintbox_live").assertIsOff()
+        compose.onNodeWithTag("paintbox_send").assertIsEnabled()
         verify { vm.eraser() }
         verify(exactly = 0) { vm.sendOnce() }
         verify(exactly = 0) { vm.toggleLive() }
+        compose.onNodeWithTag("paintbox_live").performClick()
+        verify { vm.toggleLive() }
+    }
+
+    @Test fun `without a connection the main action connects the board`() {
+        editor(ConnectionState.DISCONNECTED)
+        compose.onNodeWithTag("paintbox_connect").assertIsDisplayed().assertTextContains("Connect board")
+        compose.onNodeWithTag("paintbox_live").assertDoesNotExist()
+        compose.onNodeWithTag("paintbox_send").assertDoesNotExist()
+    }
+
+    @Test fun `rarer actions sit in the menu`() {
+        editor(ConnectionState.CONNECTED)
+        compose.onNodeWithTag("paintbox_menu").performClick()
+        listOf("Use a photo", "Pictures", "Save", "Save as", "Clear picture").forEach {
+            compose.onNodeWithText(it).assertIsDisplayed()
+        }
     }
 
     @Test fun `settings color picker limits MoonBoard choices and keeps selection semantics`() {
