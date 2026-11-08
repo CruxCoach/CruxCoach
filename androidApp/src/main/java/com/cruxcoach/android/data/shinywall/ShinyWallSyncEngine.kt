@@ -31,7 +31,10 @@ data class ShinyWallImportPreview(
     val duplicates: Int,
     /** Entries that are no climb log (route creations) or cannot be placed (custom walls, unknown variant). */
     val skipped: Int,
-    /** Entries an earlier import brought in that the user deleted in CruxCoach; they stay deleted. */
+    /**
+     * Entries the import does not bring in again: deleted in CruxCoach after an earlier import,
+     * or older than the last import's window (one that reached Shiny Wall late).
+     */
     val deleted: Int = 0,
 )
 
@@ -42,7 +45,7 @@ data class ShinyWallImportResult(
     val skipped: Int,
     /** Lists written (favourites, own lists, own routes). */
     val lists: Int,
-    /** Entries the user deleted in CruxCoach after an earlier import; not written again. */
+    /** Entries not written again, see [ShinyWallImportPreview.deleted]. */
     val deleted: Int = 0,
 )
 
@@ -66,11 +69,17 @@ data class ShinyWallListNames(val favorites: String, val ownRoutes: String)
  *   ([ShinyWallTokenStorage.placedLogs]), and one the logbook lacks is never
  *   written again (Kilter's deletion queue only holds Kilter's entries).
  *   Entries older than the last import (minus [WATERMARK_OVERLAP_MS]) are
- *   not looked at again, so the record only keeps that window.
+ *   not looked at again, so the record only keeps that window. The last
+ *   import never lies in the future: one entry with a wrong date would hide
+ *   every later one.
  * - Favourites, own lists and own published routes → local lists
  *   (`shinywall:favorites`, `shinywall:list:<name>`, `shinywall:own-routes`),
- *   refreshed on every import. Best effort: a failure there never fails
- *   the logbook import.
+ *   refreshed on every import. A list the user deleted stays deleted, like
+ *   an entry ([ShinyWallTokenStorage.importedLists]). Best effort: a failure
+ *   there never fails the logbook import.
+ * - Clearing the logbook in Settings resets these records
+ *   ([ShinyWallTokenStorage.resetImportRecords]): the next import brings
+ *   everything in again.
  * - An external id that would not fit into a backup carries a hash of the
  *   entry id or list name instead ([MAX_EXTERNAL_ID_LENGTH]).
  *
@@ -153,6 +162,9 @@ class ShinyWallSyncEngine @Inject constructor(
     /** Time zone of the logbook dates; tests travel with it. */
     internal var zone: () -> ZoneId = ZoneId::systemDefault
 
+    /** Wall clock (ms); caps the watermark. */
+    internal var clock: () -> Long = System::currentTimeMillis
+
     /** One history entry the import would write. */
     internal data class PlannedLog(
         val entry: ShinyWallHistoryEntry,
@@ -200,7 +212,8 @@ class ShinyWallSyncEngine @Inject constructor(
     private class SendRun(val send: Placed, val attempts: List<Placed>)
 
     suspend fun previewImport(): Result<ShinyWallImportPreview> = withContext(Dispatchers.IO) {
-        val session = tokenStore.session() ?: return@withContext notSignedIn<ShinyWallImportPreview>()
+        val session = storedSession().getOrElse { return@withContext Result.failure(it) }
+            ?: return@withContext notSignedIn<ShinyWallImportPreview>()
         val history = client.fetchHistory(session.uid).getOrElse { return@withContext Result.failure(it) }
         logbookStep { plan(session.uid, history) }.map { plan ->
             ShinyWallImportPreview(
@@ -216,13 +229,15 @@ class ShinyWallSyncEngine @Inject constructor(
 
     suspend fun importAll(listNames: ShinyWallListNames): Result<ShinyWallImportResult> = withContext(Dispatchers.IO) {
         importMutex.withLock {
-            val session = tokenStore.session() ?: return@withLock notSignedIn<ShinyWallImportResult>()
+            val session = storedSession().getOrElse { return@withLock Result.failure(it) }
+                ?: return@withLock notSignedIn<ShinyWallImportResult>()
             val history = client.fetchHistory(session.uid).getOrElse { return@withLock Result.failure<ShinyWallImportResult>(it) }
             val plan = logbookStep { plan(session.uid, history) }.getOrElse { return@withLock Result.failure(it) }
             logbookStep { write(plan) }.getOrElse { return@withLock Result.failure(it) }
             // Right after the write, before the lists suspend: cancelled there, the logbook
             // still knows what it holds.
-            tokenStore.recordImport(session.uid, System.currentTimeMillis(), plan.newestMs, plan.placed)
+            keystoreStep { tokenStore.recordImport(session.uid, clock(), plan.newestMs, plan.placed) }
+                .onFailure { Log.w(TAG, "Import record not saved, logbook import kept") }
             val lists = try {
                 importLists(session.uid, history, listNames)
             } catch (e: CancellationException) {
@@ -249,6 +264,16 @@ class ShinyWallSyncEngine @Inject constructor(
         }
     }
 
+    /** The stored session; a Keystore error fails the import instead of crashing the app. */
+    private fun storedSession(): Result<ShinyWallSession?> = keystoreStep { tokenStore.session() }
+
+    private inline fun <T> keystoreStep(block: () -> T): Result<T> = try {
+        Result.success(block())
+    } catch (e: Exception) {
+        Log.w(TAG, "Sign-in storage failed (${e.javaClass.simpleName})")
+        Result.failure(e)
+    }
+
     private fun <T> notSignedIn(): Result<T> =
         Result.failure(ShinyWallApiException(ShinyWallApiException.Reason.NotAuthenticated, "not signed in"))
 
@@ -267,7 +292,9 @@ class ShinyWallSyncEngine @Inject constructor(
         val existing = personalBoardRepo.getExistingLogUuids()
         val deleted = personalBoardRepo.pendingLogDeletions().toHashSet()
         val placedBefore = tokenStore.placedLogs(uid)
-        val lastWatermark = tokenStore.historyWatermarkMs(uid)
+        val now = clock()
+        // Capped here too: a watermark an older version saved in the future heals.
+        val lastWatermark = tokenStore.historyWatermarkMs(uid)?.coerceAtMost(now)
         val watermark = lastWatermark?.minus(WATERMARK_OVERLAP_MS)
         // Only entries the logbook holds or gets move the watermark, so skipped entries
         // newer than those stay in view (older ones need a new watermark key).
@@ -357,6 +384,10 @@ class ShinyWallSyncEngine @Inject constructor(
                 attempts = p.attempts,
             )
         }
+        // An entry dated in the future never moves the watermark past now: every later entry would
+        // fall before it.
+        newestMs = newestMs?.coerceAtMost(now)
+
         // One entry per uuid even if Shiny lists an id twice.
         val unique = planned.distinctBy { it.uuid }
         duplicates += planned.size - unique.size
@@ -487,7 +518,10 @@ class ShinyWallSyncEngine @Inject constructor(
         }
     }
 
-    /** Favourites, own lists and own routes → local lists. Returns how many lists were written. */
+    /**
+     * Favourites, own lists and own routes → local lists. Returns how many lists were written.
+     * A list an earlier import created that is gone now was deleted by the user: not created again.
+     */
     private suspend fun importLists(
         uid: String,
         history: List<ShinyWallHistoryEntry>,
@@ -527,6 +561,7 @@ class ShinyWallSyncEngine @Inject constructor(
         val catalogue = lookupCatalogue(allCandidates)
         val q = secureDb.climbListsQueries
         val now = DateTimeUtil.nowIso()
+        val created = tokenStore.importedLists(uid).toMutableSet()
         var written = 0
         secureDb.transaction {
             for ((externalId, value) in lists) {
@@ -535,7 +570,7 @@ class ShinyWallSyncEngine @Inject constructor(
                     (listOfNotNull(own) + order).map { ShinyWallSnapshot.climbUuid(routeId, it) }.firstOrNull { it in catalogue }
                 }.distinct()
                 val existingId = q.findClimbListByExternalId(externalId).executeAsOneOrNull()
-                if (existingId == null && climbUuids.isEmpty()) continue
+                if (existingId == null && (climbUuids.isEmpty() || externalId in created)) continue
                 val listId = if (existingId != null) {
                     q.updateAuroraClimbListMeta(name = name, description = null, color = null, id = existingId)
                     q.deleteClimbListEntries(existingId)
@@ -548,9 +583,11 @@ class ShinyWallSyncEngine @Inject constructor(
                     q.insertClimbListEntry(list_id = listId, climb_uuid = climbUuid, added_at = now)
                 }
                 q.prunePlaybackStepsOutsideMembership(listId)
+                created += externalId
                 written++
             }
         }
+        tokenStore.recordImportedLists(uid, created)
         return written
     }
 }

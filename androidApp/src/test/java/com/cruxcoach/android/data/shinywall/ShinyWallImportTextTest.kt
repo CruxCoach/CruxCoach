@@ -29,12 +29,21 @@ class ShinyWallImportTextTest {
     @Test
     fun entries_deleted_in_cruxcoach_are_counted() {
         assertEquals(
-            "Nothing new · 1 stays deleted",
+            "Nothing new · 1 won’t be imported again",
             formatShinyWallImportSummary(app, ShinyWallImportResult(0, 0, 0, 0, 0, deleted = 1)),
         )
         assertEquals(
-            "Nothing new · 2 lists · 4 already in CruxCoach · 2 stay deleted",
+            "Nothing new · 2 lists · 4 already in CruxCoach · 2 won’t be imported again",
             formatShinyWallImportSummary(app, ShinyWallImportResult(0, 0, 4, 0, 2, deleted = 2)),
+        )
+    }
+
+    /** Nor when its entries could only be skipped. */
+    @Test
+    fun skipped_entries_are_counted() {
+        assertEquals(
+            "Nothing new · 3 skipped",
+            formatShinyWallImportSummary(app, ShinyWallImportResult(0, 0, 0, 3, 0)),
         )
     }
 

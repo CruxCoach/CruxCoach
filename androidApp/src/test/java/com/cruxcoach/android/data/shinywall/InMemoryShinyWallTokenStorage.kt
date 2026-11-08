@@ -7,12 +7,14 @@ class InMemoryShinyWallTokenStorage(
     private var lastImport: Long? = null
     private val watermarks = mutableMapOf<String, Long>()
     private val placed = mutableMapOf<String, Map<String, Long>>()
+    private val lists = mutableMapOf<String, Set<String>>()
     var now: () -> Long = System::currentTimeMillis
 
     override fun session(): ShinyWallSession? = current
     override fun storeSession(session: ShinyWallSession) { current = session }
-    override fun updateTokens(idToken: String, refreshToken: String, expiresInSeconds: Long) {
-        current = current?.copy(
+    override fun updateTokens(uid: String, idToken: String, refreshToken: String, expiresInSeconds: Long) {
+        val session = current?.takeIf { it.uid == uid } ?: return
+        current = session.copy(
             idToken = idToken,
             refreshToken = refreshToken,
             idTokenExpiresAtMs = now() + expiresInSeconds * 1000,
@@ -27,5 +29,8 @@ class InMemoryShinyWallTokenStorage(
         if (watermarkMs != null) watermarks[uid] = watermarkMs
         placed[uid] = placedLogs
     }
+    override fun importedLists(uid: String): Set<String> = lists[uid].orEmpty()
+    override fun recordImportedLists(uid: String, externalIds: Set<String>) { lists[uid] = externalIds }
+    override fun resetImportRecords() { watermarks.clear(); placed.clear(); lists.clear() }
     override fun clearSession() { current = null; lastImport = null }
 }

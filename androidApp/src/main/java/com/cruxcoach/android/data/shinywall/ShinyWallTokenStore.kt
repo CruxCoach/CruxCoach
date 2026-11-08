@@ -21,7 +21,9 @@ data class ShinyWallSession(
 interface ShinyWallTokenStorage {
     fun session(): ShinyWallSession?
     fun storeSession(session: ShinyWallSession)
-    fun updateTokens(idToken: String, refreshToken: String, expiresInSeconds: Long)
+
+    /** New tokens of [uid]'s session; nothing when that session is gone (a refresh that ends after a disconnect). */
+    fun updateTokens(uid: String, idToken: String, refreshToken: String, expiresInSeconds: Long)
     fun updateDisplayName(displayName: String)
     fun hasSession(): Boolean = session() != null
 
@@ -38,7 +40,17 @@ interface ShinyWallTokenStorage {
     fun placedLogs(uid: String): Map<String, Long>
     fun recordImport(uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>)
 
-    /** Forget the session; the per-account watermark and placed entries stay (see [ShinyWallSyncEngine]). */
+    /** External ids of the lists imports of [uid] have created. One the logbook lacks was deleted there. */
+    fun importedLists(uid: String): Set<String>
+    fun recordImportedLists(uid: String, externalIds: Set<String>)
+
+    /**
+     * Forget what imports have placed, for every account: after the logbook is cleared, the
+     * next import brings everything in again. The session stays.
+     */
+    fun resetImportRecords()
+
+    /** Forget the session; the per-account watermark, placed entries and lists stay (see [ShinyWallSyncEngine]). */
     fun clearSession()
 }
 
@@ -51,13 +63,36 @@ interface ShinyWallTokenStorage {
  * with the Nostr pubkey prefix, so switching identities never shows another
  * identity's Shiny Wall session.
  */
-class ShinyWallTokenStore(
-    private val context: Context,
+class ShinyWallTokenStore internal constructor(
     pubkeyPrefix: String,
+    openPrefs: () -> SharedPreferences,
 ) : ShinyWallTokenStorage {
+    constructor(context: Context, pubkeyPrefix: String) : this(pubkeyPrefix, { openOrRecreatePrefs(context) })
+
     private companion object {
         const val TAG = "ShinyWallTokenStore"
         const val PREFS_FILE = "shinywall_secure_prefs"
+
+        fun openOrRecreatePrefs(context: Context): SharedPreferences = try {
+            createEncryptedPrefs(context)
+        } catch (e: Exception) {
+            Log.e(TAG, "EncryptedSharedPreferences corrupted, regenerating", e)
+            context.deleteSharedPreferences(PREFS_FILE)
+            createEncryptedPrefs(context)
+        }
+
+        fun createEncryptedPrefs(context: Context): SharedPreferences {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            return EncryptedSharedPreferences.create(
+                context,
+                PREFS_FILE,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+            )
+        }
     }
 
     private val keyUid = "${pubkeyPrefix}_uid"
@@ -75,29 +110,13 @@ class ShinyWallTokenStore(
     // "<uuid> <epoch ms>" per entry.
     private val keyPlacedPrefix = "${pubkeyPrefix}_placed_v1_"
     private fun keyPlaced(uid: String) = keyPlacedPrefix + uid
+    private val keyListsPrefix = "${pubkeyPrefix}_lists_v1_"
+    private fun keyLists(uid: String) = keyListsPrefix + uid
 
-    private val prefs: SharedPreferences by lazy { openOrRecreatePrefs() }
+    private val prefs: SharedPreferences by lazy(openPrefs)
 
-    private fun openOrRecreatePrefs(): SharedPreferences = try {
-        createEncryptedPrefs()
-    } catch (e: Exception) {
-        Log.e(TAG, "EncryptedSharedPreferences corrupted, regenerating", e)
-        context.deleteSharedPreferences(PREFS_FILE)
-        createEncryptedPrefs()
-    }
-
-    private fun createEncryptedPrefs(): SharedPreferences {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        return EncryptedSharedPreferences.create(
-            context,
-            PREFS_FILE,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
-    }
+    // A token refresh runs on another thread than a disconnect: check and write as one step.
+    private val lock = Any()
 
     override fun session(): ShinyWallSession? {
         val uid = prefs.getString(keyUid, null)?.takeIf { it.isNotBlank() } ?: return null
@@ -112,21 +131,26 @@ class ShinyWallTokenStore(
     }
 
     override fun storeSession(session: ShinyWallSession) {
-        prefs.edit()
-            .putString(keyUid, session.uid)
-            .putString(keyIdToken, session.idToken)
-            .putString(keyRefreshToken, session.refreshToken)
-            .putLong(keyExpiry, session.idTokenExpiresAtMs)
-            .putString(keyDisplayName, session.displayName)
-            .apply()
+        synchronized(lock) {
+            prefs.edit()
+                .putString(keyUid, session.uid)
+                .putString(keyIdToken, session.idToken)
+                .putString(keyRefreshToken, session.refreshToken)
+                .putLong(keyExpiry, session.idTokenExpiresAtMs)
+                .putString(keyDisplayName, session.displayName)
+                .apply()
+        }
     }
 
-    override fun updateTokens(idToken: String, refreshToken: String, expiresInSeconds: Long) {
-        prefs.edit()
-            .putString(keyIdToken, idToken)
-            .putString(keyRefreshToken, refreshToken)
-            .putLong(keyExpiry, System.currentTimeMillis() + expiresInSeconds * 1000)
-            .apply()
+    override fun updateTokens(uid: String, idToken: String, refreshToken: String, expiresInSeconds: Long) {
+        synchronized(lock) {
+            if (prefs.getString(keyUid, null) != uid) return
+            prefs.edit()
+                .putString(keyIdToken, idToken)
+                .putString(keyRefreshToken, refreshToken)
+                .putLong(keyExpiry, System.currentTimeMillis() + expiresInSeconds * 1000)
+                .apply()
+        }
     }
 
     override fun updateDisplayName(displayName: String) {
@@ -152,14 +176,31 @@ class ShinyWallTokenStore(
         edit.apply()
     }
 
+    override fun importedLists(uid: String): Set<String> = prefs.getStringSet(keyLists(uid), null).orEmpty().toSet()
+
+    override fun recordImportedLists(uid: String, externalIds: Set<String>) {
+        prefs.edit().putStringSet(keyLists(uid), externalIds).apply()
+    }
+
+    override fun resetImportRecords() {
+        val edit = prefs.edit()
+        prefs.all.keys
+            // Every watermark version shares the v1 prefix.
+            .filter { it.startsWith(keyOldWatermarkPrefix) || it.startsWith(keyPlacedPrefix) || it.startsWith(keyListsPrefix) }
+            .forEach { edit.remove(it) }
+        edit.apply()
+    }
+
     override fun clearSession() {
-        prefs.edit()
-            .remove(keyUid)
-            .remove(keyIdToken)
-            .remove(keyRefreshToken)
-            .remove(keyExpiry)
-            .remove(keyDisplayName)
-            .remove(keyLastImport)
-            .apply()
+        synchronized(lock) {
+            prefs.edit()
+                .remove(keyUid)
+                .remove(keyIdToken)
+                .remove(keyRefreshToken)
+                .remove(keyExpiry)
+                .remove(keyDisplayName)
+                .remove(keyLastImport)
+                .apply()
+        }
     }
 }

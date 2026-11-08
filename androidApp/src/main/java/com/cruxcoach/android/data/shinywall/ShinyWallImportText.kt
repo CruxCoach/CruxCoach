@@ -5,7 +5,7 @@ import com.cruxcoach.android.R
 
 /** Localized one-line result of a Shiny Wall import. */
 fun formatShinyWallImportSummary(context: Context, r: ShinyWallImportResult): String {
-    if (r.newAscents == 0 && r.newProjects == 0 && r.duplicates == 0 && r.lists == 0 && r.deleted == 0) {
+    if (r.newAscents == 0 && r.newProjects == 0 && r.duplicates == 0 && r.lists == 0 && r.deleted == 0 && r.skipped == 0) {
         return context.getString(R.string.shinywall_import_empty)
     }
     val res = context.resources

@@ -88,7 +88,14 @@ class ShinyWallAccountViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = client.signIn(current.loginEmail, current.loginPassword)) {
                 is ShinyWallAuthResult.Success -> {
-                    tokenStore.storeSession(result.session)
+                    // A Keystore error shows on the sheet instead of crashing the app.
+                    if (runCatching { tokenStore.storeSession(result.session) }.isFailure) {
+                        Log.w(TAG, "Sign-in not saved")
+                        _state.update {
+                            it.copy(isLoggingIn = false, loginError = context.getString(R.string.shinywall_auth_not_saved))
+                        }
+                        return@launch
+                    }
                     _state.update {
                         connectedState(it).copy(
                             isLoggingIn = false, showLoginSheet = false, loginPassword = "", sessionExpired = false,

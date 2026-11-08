@@ -561,4 +561,79 @@ class ShinyWallSyncEngineTest {
         val error = engine.importAll(names).exceptionOrNull() as ShinyWallApiException
         assertEquals(ShinyWallApiException.Reason.NotAuthenticated, error.reason)
     }
+
+    @Test
+    fun a_keystore_error_fails_the_import_instead_of_crashing() = runTest {
+        val noSession = object : ShinyWallTokenStorage by store {
+            override fun session(): ShinyWallSession? = throw SecurityException("Could not decrypt value")
+        }
+        val failing = ShinyWallSyncEngine(client, noSession, board, repo, db)
+        assertTrue(failing.previewImport().isFailure)
+        assertTrue(failing.importAll(names).isFailure)
+        assertTrue(ascents().isEmpty())
+
+        // The record fails after the logbook is written: the import keeps what it wrote.
+        val noRecord = object : ShinyWallTokenStorage by store {
+            override fun recordImport(uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>) =
+                throw SecurityException("Keystore unavailable")
+        }
+        assertEquals(5, ShinyWallSyncEngine(client, noRecord, board, repo, db).importAll(names).getOrThrow().newAscents)
+        assertEquals(5, ascents().size)
+    }
+
+    @Test
+    fun an_entry_dated_in_the_future_does_not_hide_later_ones() = runTest {
+        val wrongDate = entry("future", "r3", "st1", 2, ts = "2027-03-01T10:00:00Z")
+        val first = listOf(entry("today", "r1", "st1", 2, ts = t), wrongDate)
+        coEvery { client.fetchHistory("uid1") } returns Result.success(first)
+        engine.clock = { ShinyWallSyncEngine.epochMs(t)!! }
+        assertEquals(2, engine.importAll(names).getOrThrow().newAscents)
+        // The watermark stops at the time of the import, not at the wrong date.
+        assertEquals(ShinyWallSyncEngine.epochMs(t), store.historyWatermarkMs("uid1"))
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(first + entry("next", "r2", "st5", 3, angle = 30, ts = tNew))
+        engine.clock = { ShinyWallSyncEngine.epochMs(tNew)!! }
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 0, again.newAscents to again.deleted)
+        assertEquals(2, again.duplicates)
+    }
+
+    @Test
+    fun a_watermark_saved_in_the_future_heals() = runTest {
+        // What an earlier version saved after an entry with a wrong date.
+        store.recordImport("uid1", 0L, ShinyWallSyncEngine.epochMs("2027-03-01T10:00:00Z"), emptyMap())
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(entry("next", "r2", "st5", 3, angle = 30, ts = tNew)))
+        engine.clock = { ShinyWallSyncEngine.epochMs(tNew)!! }
+        assertEquals(1 to 0, engine.previewImport().getOrThrow().let { it.newAscents to it.deleted })
+        assertEquals(1, engine.importAll(names).getOrThrow().newAscents)
+    }
+
+    @Test
+    fun a_deleted_list_stays_deleted_until_the_logbook_is_cleared() = runTest {
+        coEvery { client.fetchProfile("uid1") } returns Result.success(
+            ShinyWallProfile(null, listOf(ShinyWallRouteRef("r1", null)), mapOf("Power" to listOf(ShinyWallRouteRef("r3", null))))
+        )
+        fun listIds() = query("SELECT external_id FROM climb_lists WHERE external_id LIKE 'shinywall:%' ORDER BY external_id") {
+            it.getString(1)
+        }
+        assertEquals(2, engine.importAll(names).getOrThrow().lists)
+        repo.deleteClimbList(db.climbListsQueries.findClimbListByExternalId("shinywall:list:Power").executeAsOne())
+        repo.deleteAscent(ShinyWallSyncEngine.logUuid("h1"))
+
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 1, again.lists to again.deleted)
+        assertEquals(listOf("shinywall:favorites"), listIds())
+
+        // Still so after a disconnect and a new sign-in.
+        store.clearSession()
+        store.storeSession(ShinyWallSession("uid1", "id", "refresh", Long.MAX_VALUE, "a@b.c"))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:favorites"), listIds())
+
+        // Clearing the logbook in Settings resets the records: the next import brings both back.
+        store.resetImportRecords()
+        val fresh = engine.importAll(names).getOrThrow()
+        assertEquals(Triple(2, 1, 0), Triple(fresh.lists, fresh.newAscents, fresh.deleted))
+        assertEquals(listOf("shinywall:favorites", "shinywall:list:Power"), listIds())
+    }
 }

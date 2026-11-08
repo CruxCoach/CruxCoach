@@ -172,6 +172,7 @@ class SettingsViewModel @Inject constructor(
     private val kilterTokenStore: com.cruxcoach.android.data.kilter.KilterTokenStore,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
     private val kilterApiClient: com.cruxcoach.android.data.kilter.KilterApiClient,
+    private val shinyWallTokenStore: com.cruxcoach.android.data.shinywall.ShinyWallTokenStorage,
     private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
     private val ledAnimationEngine: LedAnimationEngine,
     private val ledEffectsController: LedEffectsController,
@@ -941,6 +942,12 @@ class SettingsViewModel @Inject constructor(
                     val entryBrands = boardRepository.getClimbBrandsForUuids(entryUuids)
                     val doomedEntries = entryUuids.filter { entryBrands[it] in wire }
                     personalBoardRepo.deleteUserBoardDataForBrands(wire, doomedEntries)
+                }
+                // The Shiny Wall import keeps what it has placed, so deleted entries stay deleted.
+                // With the logbook cleared, a fresh import brings everything in again.
+                if (BoardBrand.SHINYWALL in brands) {
+                    runCatching { shinyWallTokenStore.resetImportRecords() }
+                        .onFailure { Log.w(TAG, "Shiny Wall import record not reset (${it.javaClass.simpleName})") }
                 }
             }
             Log.i(TAG, "destructive: deleteUserBoardData(brands=[$brandNames]) done")

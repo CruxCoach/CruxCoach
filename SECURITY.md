@@ -129,7 +129,8 @@ Implementation references: [BackupRepository](androidApp/src/main/java/com/cruxc
   published routes from Shiny Wall's database on Google's servers
   (`firestore.googleapis.com`), and never writes to the account.
   Disconnecting deletes the tokens and the account name on the device; the
-  import bookkeeping stays, so deleted entries are not imported again.
+  import bookkeeping stays, so deleted entries and lists are not imported
+  again. Deleting the Shiny Wall logbook data in Settings clears it.
   Token leakage from `ShinyWallAccountClient`/`ShinyWallTokenStore` is in
   scope.
 

@@ -29,7 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   sign-in and data. Read-only: CruxCoach never changes anything in your Shiny
   Wall account, keeps a sign-in token on the phone (never the password), and
   "Import new entries" fetches what is new without duplicating or restoring
-  what you deleted. Standard walls only; accounts that sign in with Google
+  the entries and lists you deleted (deleting your Shiny Wall logbook data in
+  Settings starts afresh). Standard walls only; accounts that sign in with Google
   can't connect.
 - Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
   data is refreshed (2,933 venues).

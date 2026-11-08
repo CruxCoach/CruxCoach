@@ -3391,10 +3391,11 @@
     <string name="wall_games_sound_turn_on">Turn countdown sound on</string>
     <!-- Shiny Wall account (read-only logbook import) -->
     <string name="shinywall_section_title">Shiny Wall account</string>
-    <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (ascents and projects), favorites, lists and your own routes into CruxCoach. Star ratings and comments stay in Shiny Wall. Read-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only.</string>
+    <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (ascents and projects), favorites, lists and your own routes into CruxCoach. Star ratings and comments stay in Shiny Wall. Read-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only. What you delete in CruxCoach stays deleted, entries and lists alike. To import everything again, delete your Shiny Wall logbook data under Settings → Delete local data.</string>
     <string name="shinywall_connect_button">Connect Shiny Wall account</string>
     <string name="shinywall_login_title">Sign in to Shiny Wall</string>
-    <string name="shinywall_login_privacy">Your email and password go to Google’s Firebase servers, which run Shiny Wall’s sign-in. CruxCoach reads your Shiny Wall data from the same Google servers. On this phone it keeps a sign-in token, never the password. Accounts that sign in with Google can’t be connected.</string>
+    <string name="shinywall_login_privacy">Your email and password go to Google’s Firebase servers, which run Shiny Wall’s sign-in.</string>
+    <string name="shinywall_login_privacy_more">CruxCoach reads your Shiny Wall data from the same Google servers. On this phone it keeps a sign-in token, never the password. Accounts that sign in with Google can’t be connected.</string>
     <string name="shinywall_email_label">Email</string>
     <string name="shinywall_password_label">Password</string>
     <string name="shinywall_login_button">Sign in</string>
@@ -3420,8 +3421,8 @@
         <item quantity="other">%1$d entries can’t be imported (custom walls, route creations, incomplete entries).</item>
     </plurals>
     <plurals name="shinywall_preview_deleted">
-        <item quantity="one">%1$d entry you deleted in CruxCoach stays deleted.</item>
-        <item quantity="other">%1$d entries you deleted in CruxCoach stay deleted.</item>
+        <item quantity="one">%1$d entry won’t be imported again.</item>
+        <item quantity="other">%1$d entries won’t be imported again.</item>
     </plurals>
     <string name="shinywall_import_button">Import</string>
     <string name="shinywall_import_lists_button">Update lists</string>
@@ -3441,8 +3442,8 @@
     <string name="shinywall_import_part_known">%1$d already in CruxCoach</string>
     <string name="shinywall_import_part_skipped">%1$d skipped</string>
     <plurals name="shinywall_import_part_deleted">
-        <item quantity="one">%1$d stays deleted</item>
-        <item quantity="other">%1$d stay deleted</item>
+        <item quantity="one">%1$d won’t be imported again</item>
+        <item quantity="other">%1$d won’t be imported again</item>
     </plurals>
     <string name="shinywall_import_part_nothing_new">Nothing new</string>
     <string name="shinywall_auth_invalid_credentials">Email or password is wrong. If you sign in to Shiny Wall with Google, CruxCoach can’t connect.</string>
@@ -3450,6 +3451,7 @@
     <string name="shinywall_auth_throttled">Too many attempts. Please wait a moment and try again.</string>
     <string name="shinywall_auth_network">No connection to Shiny Wall. Check your internet connection.</string>
     <string name="shinywall_auth_http_failure" formatted="false">Sign-in failed (HTTP %1$d).</string>
+    <string name="shinywall_auth_not_saved">CruxCoach couldn’t save the sign-in on this phone. Please try again.</string>
     <string name="shinywall_auth_unexpected">Shiny Wall sent an unexpected answer. Please try again later.</string>
     <string name="shinywall_session_expired">Session expired</string>
     <string name="shinywall_relogin_button">Sign in again</string>

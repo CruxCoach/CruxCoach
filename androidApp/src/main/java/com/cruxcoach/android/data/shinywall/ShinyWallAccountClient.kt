@@ -310,7 +310,7 @@ class ShinyWallAccountClient @Inject constructor(
             throw ShinyWallApiException(ShinyWallApiException.Reason.UnexpectedResponse, "refresh without id_token")
         }
         val expiresIn = obj?.string("expires_in")?.toLongOrNull() ?: 3600L
-        tokenStore.updateTokens(idToken, refreshToken, expiresIn)
+        tokenStore.updateTokens(session.uid, idToken, refreshToken, expiresIn)
         idToken
     }
 
