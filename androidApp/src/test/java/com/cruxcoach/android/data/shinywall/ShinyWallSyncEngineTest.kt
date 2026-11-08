@@ -190,10 +190,13 @@ class ShinyWallSyncEngineTest {
         val again = engine.importAll(names).getOrThrow()
         assertEquals(0, again.newAscents)
         assertEquals(0, again.newProjects)
-        // The deleted entry is not "already in CruxCoach".
+        // The deleted entry is not "already in CruxCoach"; it is counted as deleted there.
         assertEquals(5, again.duplicates)
+        assertEquals(1, again.deleted)
         assertEquals(4, ascents().size)
-        assertEquals(0, engine.previewImport().getOrThrow().let { it.newAscents + it.newProjects })
+        val preview = engine.previewImport().getOrThrow()
+        assertEquals(0, preview.newAscents + preview.newProjects)
+        assertEquals(1, preview.deleted)
     }
 
     @Test

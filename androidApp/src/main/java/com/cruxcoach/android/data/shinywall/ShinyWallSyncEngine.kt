@@ -31,6 +31,8 @@ data class ShinyWallImportPreview(
     val duplicates: Int,
     /** Entries that are no climb log (route creations) or cannot be placed (custom walls, unknown variant). */
     val skipped: Int,
+    /** Entries an earlier import brought in that the user deleted in CruxCoach; they stay deleted. */
+    val deleted: Int = 0,
 )
 
 data class ShinyWallImportResult(
@@ -40,6 +42,8 @@ data class ShinyWallImportResult(
     val skipped: Int,
     /** Lists written (favourites, own lists, own routes). */
     val lists: Int,
+    /** Entries the user deleted in CruxCoach after an earlier import; not written again. */
+    val deleted: Int = 0,
 )
 
 /** Names of the lists the import creates; localized by the caller. */
@@ -205,6 +209,7 @@ class ShinyWallSyncEngine @Inject constructor(
                 newProjects = plan.logs.count { it.send == null },
                 duplicates = plan.duplicates,
                 skipped = plan.skipped,
+                deleted = plan.deleted,
             )
         }
     }
@@ -238,6 +243,7 @@ class ShinyWallSyncEngine @Inject constructor(
                     duplicates = plan.duplicates,
                     skipped = plan.skipped,
                     lists = lists,
+                    deleted = plan.deleted,
                 )
             )
         }
