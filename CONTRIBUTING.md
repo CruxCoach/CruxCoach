@@ -179,11 +179,6 @@ regular app. See [community-publish.yml](.github/workflows/community-publish.yml
 
 ### Releases & CI (maintainer only)
 
-Pull requests targeting `main` or `feat/**` have hosted checks in
-[pr-ci.yml](.github/workflows/pr-ci.yml): Python tooling tests, shared/Android
-unit tests and debug APK compilation. Android lint is advisory. The workflow
-file establishes configured behavior, not the result of any particular run.
-
 Feature artifacts use a separate trusted-main APKTrack publisher; never give
 feature code signing keys or upload tokens. Stable publication belongs to the
 private operator plane. The repository's self-hosted release workflow and the
@@ -324,12 +319,29 @@ These are non-negotiable for all contributions.
 
 ## Submitting Changes
 
+### Base branch
+
+- A feature or fix planned for a release targets that release's branch,
+  `feat/<version>-release` (for example `feat/0.2.5-release`). Only the
+  maintainer merges into it.
+- Changes to CI, documentation and tooling target `main`.
+
 ### Branch Naming
 
-- `feat/<short-description>` for new features
-- `fix/<short-description>` for bug fixes
+- `feat/<version>-<name>` for a feature planned for a release, `feat/<name>`
+  while it has no release yet (see [Test builds from your fork](#test-builds-from-your-fork))
+- `fix/<version>-<name>` for a fix planned for a release, `fix/<name>` otherwise
 - `chore/<short-description>` for maintenance or refactoring
 - `docs/<short-description>` for documentation
+
+### Checks
+
+Every pull request into `main` or `feat/**` runs the checks in
+[pr-ci.yml](.github/workflows/pr-ci.yml): Python tooling tests, shared and
+Android unit tests, and a debug APK build. Android lint runs alongside and is
+advisory. A pull request from a fork gets its test build once these checks pass
+(see [Test builds from your fork](#test-builds-from-your-fork)). The workflow
+file describes the configured checks, not the result of any particular run.
 
 ### Commit Messages
 
