@@ -86,6 +86,19 @@ class HoldTypeStatsComputerTest {
     }
 
     @Test
+    fun problems_attemptsWithoutFrames_takeThemFromTheMap_byNormalizedUuid() {
+        // The logbook's attempts carry no frames; their climbs' frames come from the catalogue.
+        val problems = HoldTypeStatsComputer.problems(
+            listOf(ascent("ABC-1", "", send = false, grade = 19.0), ascent("ABC-1", "", send = false, grade = 19.0, angle = 45)),
+            board = "kilter",
+            frames = mapOf("abc1" to "p1r12p3r14p7r15"),
+        )
+        val problem = problems.single()
+        assertFalse(problem.sent)
+        assertEquals(listOf(1, 3), problem.handHolds)
+    }
+
+    @Test
     fun problems_layoutUnknown_kilterIsOriginal_moonBoardDropped_othersKeptWithoutComparison() {
         assertEquals(1, HoldTypeStatsComputer.problems(listOf(ascent("k", "p1r12", layoutId = null)), "kilter").single().layoutId)
         assertTrue(HoldTypeStatsComputer.problems(listOf(ascent("m", "p1r42", board = "moonboard", layoutId = null)), "moonboard").isEmpty())
@@ -103,11 +116,15 @@ class HoldTypeStatsComputerTest {
             ascent("m1", "", board = "moonboard"), ascent("m2", "", board = "moonboard"),
             ascent("t1", "", board = "touchstone"), ascent("t2", "", board = "touchstone"), ascent("t3", "", board = "touchstone"),
         )
-        val labelled = setOf("kilter", "moonboard")
-        assertEquals("moonboard", HoldTypeStatsComputer.cardBoard(ascents, null, labelled))
-        assertEquals("kilter", HoldTypeStatsComputer.cardBoard(ascents, "kilter", labelled))
-        assertNull(HoldTypeStatsComputer.cardBoard(ascents, "touchstone", labelled))
-        assertNull(HoldTypeStatsComputer.cardBoard(emptyList(), null, labelled))
+        val typed = setOf("kilter", "moonboard")
+        val asked = mutableListOf<String>()
+        val hasTypes = { board: String -> asked += board; board in typed }
+        // Touchstone has the most problems but no typed holds: the next board with typed holds wins.
+        assertEquals("moonboard", HoldTypeStatsComputer.cardBoard(ascents, null, hasTypes))
+        assertEquals(listOf("touchstone", "moonboard"), asked)
+        assertEquals("kilter", HoldTypeStatsComputer.cardBoard(ascents, "kilter", hasTypes))
+        assertNull(HoldTypeStatsComputer.cardBoard(ascents, "touchstone", hasTypes))
+        assertNull(HoldTypeStatsComputer.cardBoard(emptyList(), null, hasTypes))
     }
 
     @Test
@@ -121,8 +138,9 @@ class HoldTypeStatsComputerTest {
             ),
         )
         assertEquals(setOf(1, 8), ranges.keys)
+        // One step wider, out to whole steps.
         assertEquals(17.0, ranges.getValue(1).start, 0.0)
-        assertEquals(23.5, ranges.getValue(1).endInclusive, 0.0)
+        assertEquals(24.0, ranges.getValue(1).endInclusive, 0.0)
         assertEquals(0.0, ranges.getValue(8).start, 0.0)
         assertEquals(Double.MAX_VALUE, ranges.getValue(8).endInclusive, 0.0)
     }
