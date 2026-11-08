@@ -143,15 +143,15 @@ UPDATE spray_wall_version SET photo_sha256 = ?, photo_url = ? WHERE wall_id = ? 
 clearPhotoBlobs:
 UPDATE spray_wall_version SET photo_sha256 = NULL, photo_url = NULL WHERE wall_id = ?;
 
--- A wall forgets one photo of a publish that failed partway (another wall keeps it on Blossom).
+-- A wall forgets one Blossom photo (deleted, or kept on Blossom by another wall).
 clearPhotoBlob:
 UPDATE spray_wall_version SET photo_sha256 = NULL, photo_url = NULL WHERE wall_id = ? AND photo_sha256 = ?;
 
--- A photo was deleted from Blossom: none of my walls links to it any more (a
--- wall with the same photo that is public but not published yet uploads it anew).
-clearDeletedPhoto:
-UPDATE spray_wall_version SET photo_sha256 = NULL, photo_url = NULL
-WHERE photo_sha256 = ? AND wall_id IN (SELECT id FROM spray_wall WHERE owner_pubkey IS NULL);
+-- Where my walls recorded a Blossom photo: once it is deleted from a server,
+-- the walls that link to it there upload it anew.
+selectPhotoRecords:
+SELECT DISTINCT v.wall_id, v.photo_url FROM spray_wall_version v JOIN spray_wall w ON w.id = v.wall_id
+WHERE v.photo_sha256 = ? AND w.owner_pubkey IS NULL;
 
 -- Another public wall of mine still shows this photo on Blossom.
 countPublishedPhotoUses:

@@ -203,6 +203,8 @@ class SprayWallPublisher @Inject constructor(
         stamp = ::stamp,
         now = ::now,
         defaultServers = BlossomUploader.DEFAULT_SERVERS,
+        // Runs inside withdrawWall, under the mutex.
+        onTombstonesTaken = { headsPending -= it },
     )
 
     /** Takes a public wall back, photos included ([SprayWallWithdrawal]); the wall stays public when that fails. */

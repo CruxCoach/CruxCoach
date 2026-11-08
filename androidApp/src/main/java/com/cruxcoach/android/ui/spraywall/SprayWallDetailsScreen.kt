@@ -195,7 +195,8 @@ class SprayWallDetailsViewModel @Inject constructor(
             repository.updateWallDetails(wallId, s.name, s.angle, s.visibility, s.gym)
             if (s.visibility == SprayWallVisibility.PUBLIC) {
                 // A published wall's name, angle and gym are in its head event, which only a new version would send again.
-                if (s.published && before != null && !before.hasDetails(s)) publisher.publishHeadSoon(wallId) else publisher.publishSoon()
+                // Any public wall: one whose first publish ends while this screen is open is published by now.
+                if (before != null && !before.hasDetails(s)) publisher.publishHeadSoon(wallId) else publisher.publishSoon()
             }
             _events.emit(SprayWallDetailsEvent.Saved)
         }
@@ -237,7 +238,7 @@ class SprayWallDetailsViewModel @Inject constructor(
 
     /**
      * Saves the name, angle and gym of a wall that stays public after [result]; true when any of them changed.
-     * A published wall sends its head again, as a Save without the withdrawal would, unless the relays took the
+     * The wall sends its head again, as a Save without the withdrawal would, unless the relays took the
      * tombstones (a head alone would bring back a wall without its versions) or the signer just declined (it would be
      * asked again at once); then the edits go out with the wall's next version.
      */
@@ -245,8 +246,7 @@ class SprayWallDetailsViewModel @Inject constructor(
         val wall = repository.wall(wallId) ?: return false
         if (wall.hasDetails(s)) return false
         repository.updateWallDetails(wallId, s.name, s.angle, SprayWallVisibility.PUBLIC, s.gym)
-        val headAgain = result != SprayWithdrawal.PHOTOS_LEFT && result != SprayWithdrawal.SIGNING_FAILED
-        if (wall.publishedVersion != null && headAgain) publisher.publishHeadSoon(wallId)
+        if (result != SprayWithdrawal.PHOTOS_LEFT && result != SprayWithdrawal.SIGNING_FAILED) publisher.publishHeadSoon(wallId)
         return true
     }
 

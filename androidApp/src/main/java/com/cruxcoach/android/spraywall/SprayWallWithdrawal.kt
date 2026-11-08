@@ -45,6 +45,11 @@ class SprayWallWithdrawal(
     private val now: () -> Long,
     /** Where a photo goes when its upload server is unknown. */
     private val defaultServers: List<String>,
+    /**
+     * A relay took the first tombstone of [wallId]: from here the wall is off Nostr, even if the rest fails.
+     * A head still waiting to go out must not bring it back.
+     */
+    private val onTombstonesTaken: suspend (wallId: String) -> Unit = {},
 ) {
     enum class PhotoDeletion { DELETED, LEFT, NOT_AUTHORISED }
 
@@ -93,8 +98,9 @@ class SprayWallWithdrawal(
                     repository.clearPhotoBlob(wallId, sha)
                     continue
                 }
-                when (deletePhoto(sha, servers(url))) {
-                    PhotoDeletion.DELETED -> repository.forgetDeletedPhoto(sha)
+                val servers = servers(url)
+                when (deletePhoto(sha, servers)) {
+                    PhotoDeletion.DELETED -> forgetDeleted(sha, servers)
                     PhotoDeletion.LEFT -> Unit
                     // The signer declined: asking again for every photo would not help.
                     PhotoDeletion.NOT_AUTHORISED -> return
@@ -113,23 +119,40 @@ class SprayWallWithdrawal(
         val dTags = buildList {
             add(SprayWallNostr.wallDTag(me, wallId) to SprayWallNostr.LABEL_WALL)
             versions.forEach { add(SprayWallNostr.versionDTag(me, wallId, it.number) to SprayWallNostr.LABEL_VERSION) }
-            repository.publishedClimbs(wallId).forEach { add(SprayWallNostr.climbDTag(me, it.uuid) to SprayWallNostr.LABEL_CLIMB) }
+            // Every climb of mine, also one edited since it went out (its old event is still on the relays).
+            repository.myClimbs(wallId).forEach { add(SprayWallNostr.climbDTag(me, it.uuid) to SprayWallNostr.LABEL_CLIMB) }
         }
         var accepted = 0
-        for ((d, label) in dTags) accepted = maxOf(accepted, send(SprayWallNostr.tombstone(stamp(d), d, label, address)))
-        accepted = maxOf(accepted, send(SprayWallNostr.deletion(me, now(), dTags.map { it.first })))
+        suspend fun sent(taken: Int) {
+            if (accepted == 0 && taken > 0) onTombstonesTaken(wallId)
+            accepted = maxOf(accepted, taken)
+        }
+        for ((d, label) in dTags) sent(send(SprayWallNostr.tombstone(stamp(d), d, label, address)))
+        sent(send(SprayWallNostr.deletion(me, now(), dTags.map { it.first })))
         if (accepted == 0) return SprayWithdrawal.NOT_CONFIRMED
         // One deletion per photo, on the server that took the upload; a photo another public wall of mine shows stays.
         var photosLeft = false
         for ((sha, url) in uploads(wallId, versions)) {
             if (repository.photoUsedElsewhere(sha, wallId)) continue
-            when (deletePhoto(sha, servers(url))) {
-                PhotoDeletion.DELETED -> repository.forgetDeletedPhoto(sha)
+            val servers = servers(url)
+            when (deletePhoto(sha, servers)) {
+                PhotoDeletion.DELETED -> forgetDeleted(sha, servers)
                 PhotoDeletion.LEFT -> photosLeft = true
                 PhotoDeletion.NOT_AUTHORISED -> throw SprayEventSigningFailed(IllegalStateException("Blossom delete authorisation"))
             }
         }
         return if (photosLeft) SprayWithdrawal.PHOTOS_LEFT else SprayWithdrawal.DONE
+    }
+
+    /**
+     * The photo is gone from [servers]: every wall of mine that recorded it there (or on a server its URL does not
+     * name) uploads it anew. A wall that has the same photo on another server keeps it.
+     */
+    private suspend fun forgetDeleted(sha: String, servers: List<String>) {
+        for ((wallId, url) in repository.photoRecords(sha)) {
+            val server = url?.let(::blobServer)
+            if (server == null || server in servers) repository.clearPhotoBlob(wallId, sha)
+        }
     }
 
     /** Every photo of the wall that went to Blossom, once each: sha256 to its URL. */

@@ -4,7 +4,9 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.spraywall.EditableHold
+import com.cruxcoach.domain.spraywall.SprayHoldRole
 import com.cruxcoach.domain.spraywall.SprayNostrEvent
+import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -30,6 +32,7 @@ class SprayWallWithdrawalTest {
     private var relaysTaking = 1
     private var signing: (() -> Unit)? = null
     private var photoResult = SprayWallWithdrawal.PhotoDeletion.DELETED
+    private val tombstonesTaken = mutableListOf<String>()
     private lateinit var withdrawal: SprayWallWithdrawal
 
     @BeforeTest
@@ -49,6 +52,7 @@ class SprayWallWithdrawalTest {
             stamp = { clock++ },
             now = { clock++ },
             defaultServers = listOf("https://default.example.org"),
+            onTombstonesTaken = { tombstonesTaken += it },
         )
     }
 
@@ -231,10 +235,52 @@ class SprayWallWithdrawalTest {
     }
 
     /** A second wall on the same photo, public and uploaded but not on Nostr yet (its publish is still to come). */
-    private suspend fun unpublishedWallWithPhoto(sha: String): String {
+    private suspend fun unpublishedWallWithPhoto(sha: String, server: String = "https://cdn.example.org"): String {
         val id = repository.createWall("Twin", 40, SprayWallVisibility.PUBLIC, null, twinPhoto, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
-        repository.setPhotoBlob(id, twinPhoto.fileName, sha, "https://cdn.example.org/$sha")
+        repository.setPhotoBlob(id, twinPhoto.fileName, sha, "$server/$sha")
         return id
+    }
+
+    @Test
+    fun `a wall with the same photo on another server keeps it`() = runTest {
+        val id = publishedWall()
+        val twin = unpublishedWallWithPhoto(SHA, server = "https://other.example.org")
+
+        assertEquals(SprayWithdrawal.DONE, withdrawal.run(ME, id))
+
+        assertEquals(listOf(SHA to listOf("https://cdn.example.org")), deleted)
+        assertEquals("https://other.example.org/$SHA", repository.wall(twin)!!.current.photoUrl)
+    }
+
+    @Test
+    fun `the first tombstone a relay takes is reported, also when a photo stays`() = runTest {
+        val id = publishedWall()
+        photoResult = SprayWallWithdrawal.PhotoDeletion.LEFT
+
+        assertEquals(SprayWithdrawal.PHOTOS_LEFT, withdrawal.run(ME, id))
+        assertEquals(listOf(id), tombstonesTaken)
+    }
+
+    @Test
+    fun `no tombstone taken is not reported`() = runTest {
+        val id = publishedWall()
+        relaysTaking = 0
+
+        assertEquals(SprayWithdrawal.NOT_CONFIRMED, withdrawal.run(ME, id))
+        assertTrue(tombstonesTaken.isEmpty())
+    }
+
+    @Test
+    fun `a climb edited since it went out is taken back too`() = runTest {
+        val id = publishedWall()
+        // Edited climbs are not marked published until they went out again; their old event is on the relays.
+        val climb = repository.saveClimb(null, id, "Line", "", 20, mapOf(1L to SprayHoldRole.START))
+
+        assertEquals(SprayWithdrawal.DONE, withdrawal.run(ME, id))
+
+        val climbD = SprayWallNostr.climbDTag(ME, climb)
+        assertTrue(sent.any { e -> e.kind == 30078 && e.tags.any { it == listOf("d", climbD) } })
+        assertTrue(sent.single { it.kind == 5 }.tags.any { climbD in it.joinToString(":") })
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.spraywall
 
 import androidx.lifecycle.SavedStateHandle
+import app.cash.turbine.test
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
@@ -93,6 +94,22 @@ class SprayWallDetailsViewModelTest {
         val (id, state) = renameAndWithdraw(SprayWithdrawal.NO_IDENTITY)
 
         assertEditsKept(id, state)
+        verify(exactly = 1) { publisher.publishHeadSoon(id) }
+    }
+
+    @Test
+    fun `a rename sends the head of a wall whose first publish ended while the screen was open`() = runTest {
+        val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
+        val vm = SprayWallDetailsViewModel(SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to id)), repository, publisher, mockk(relaxed = true))
+        vm.state.first { !it.loading }
+        repository.markPublished(id, 1)
+
+        vm.setName("Wall B")
+        vm.events.test {
+            vm.save()
+            assertEquals(SprayWallDetailsEvent.Saved, awaitItem())
+        }
+
         verify(exactly = 1) { publisher.publishHeadSoon(id) }
     }
 

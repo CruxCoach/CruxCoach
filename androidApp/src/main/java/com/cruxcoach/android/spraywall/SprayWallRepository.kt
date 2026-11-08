@@ -347,14 +347,14 @@ class SprayWallRepository @Inject constructor(
         io { queries.clearPhotoBlobs(wallId) }
     }
 
-    /** [wallId] forgets one photo of a publish that failed partway (another wall keeps it on Blossom); the next publish uploads it anew. */
+    /** [wallId] forgets one Blossom photo (deleted from its server, or kept there by another wall); the next publish uploads it anew. */
     suspend fun clearPhotoBlob(wallId: String, sha256: String) {
         io { queries.clearPhotoBlob(wallId, sha256) }
     }
 
-    /** The photo was deleted from Blossom: every wall of mine that recorded it uploads it anew when it is published. */
-    suspend fun forgetDeletedPhoto(sha256: String) {
-        io { queries.clearDeletedPhoto(sha256) }
+    /** Which of my walls recorded this Blossom photo, and at which URL. */
+    suspend fun photoRecords(sha256: String): List<Pair<String, String?>> = io {
+        queries.selectPhotoRecords(sha256).executeAsList().map { it.wall_id to it.photo_url }
     }
 
     /** Whether another public wall of mine still uses this Blossom photo (then it stays on the servers). */
@@ -465,9 +465,9 @@ class SprayWallRepository @Inject constructor(
         queries.selectPublicWalls().executeAsList().mapNotNull { it.toModel() }
     }
 
-    /** My climbs on [wallId] that are on Nostr. */
-    suspend fun publishedClimbs(wallId: String): List<SprayClimb> = io {
-        queries.selectClimbs(wallId).executeAsList().map { it.toModel() }.filter { it.isMine && it.publishedAt != null }
+    /** My climbs on [wallId], published or not. */
+    suspend fun myClimbs(wallId: String): List<SprayClimb> = io {
+        queries.selectClimbs(wallId).executeAsList().map { it.toModel() }.filter { it.isMine }
     }
 
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }
