@@ -34,6 +34,7 @@
     <!-- Intro -->
     <string name="yr_intro_title">Dein Jahr an den Boards</string>
     <string name="yr_intro_lead">Auf diesem Handy erstellt. Nichts verlässt es, außer du teilst es.</string>
+    <string name="yr_intro_spray_walls">Spraywände zählen noch nicht mit.</string>
     <string name="yr_intro_how">Gezählt vom 1. Januar bis 31. Dezember in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen, Bouldern und Workouts, die du erfasst hast. Spraywände zählen noch nicht mit: Sie folgen mit der Logbuch-Statistik.</string>
     <string name="yr_intro_how_so_far">Gezählt vom 1. Januar bis heute in deiner Zeitzone, aus deinem Logbuch an allen Boards, importierte Logbücher eingeschlossen, und aus den Klettertagen, Bouldern und Workouts, die du erfasst hast. Spraywände zählen noch nicht mit: Sie folgen mit der Logbuch-Statistik. Das Jahr ist noch nicht vorbei: Es zählt bis zum 31. Dezember weiter.</string>
     <string name="yr_intro_so_far">Stand %1$s</string>

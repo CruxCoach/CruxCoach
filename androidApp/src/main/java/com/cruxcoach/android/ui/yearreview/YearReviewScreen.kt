@@ -295,6 +295,7 @@ internal fun PageContent(page: ReviewPage, index: Int, count: Int, boardColors: 
             }
             page.heroLabel?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.titleMedium) }
             page.lead?.let { Text(it, color = PageText, style = MaterialTheme.typography.bodyLarge) }
+            page.note?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.bodyMedium) }
             page.months?.let { MonthBars(it, page.busiestMonth) }
             if (page.rows.isNotEmpty()) Spacer(Modifier.height(4.dp))
             // The summary is the year's recap card, a grid like its share image, not one more table.
@@ -509,6 +510,7 @@ internal fun ReviewList(
                     page.hero?.let { Text(it, color = OrangeAccent, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                     page.heroLabel?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.bodyLarge) }
                     page.lead?.let { Text(it, color = PageText, style = MaterialTheme.typography.bodyLarge) }
+                    page.note?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.bodyMedium) }
                     // The month chart as rows of text.
                     page.months?.let { months ->
                         RowsList(

@@ -1,9 +1,12 @@
 package com.cruxcoach.android.ui.yearreview
 
+import app.cash.sqldelight.Query
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.data.repository.ClimbRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.db.athlete.AthleteDatabase
+import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.yearreview.TaggedSend
 import com.cruxcoach.domain.yearreview.TimedSession
 import com.cruxcoach.domain.yearreview.YearReviewComputer
@@ -12,6 +15,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Instant
@@ -26,6 +30,9 @@ class YearReviewSource @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val athleteService: AthleteService,
     private val climbRepository: ClimbRepository,
+    private val secureDb: SecureDatabase,
+    // Opened on first use, not with the start screen.
+    private val athleteDb: dagger.Lazy<AthleteDatabase>,
 ) {
     /** The review's clock: real time, unless a test moves it (see [YearReviewTestDate]). */
     @Volatile internal var clock: () -> Long = { System.currentTimeMillis() }
@@ -36,7 +43,25 @@ class YearReviewSource @Inject constructor(
     fun today(): LocalDate =
         YearReviewTestDate.today ?: Instant.fromEpochMilliseconds(clock()).toLocalDateTime(zone).date
 
+    private val writeCount = AtomicLong()
+
+    // SQLDelight calls a query's listeners after every write to its tables, in a transaction once it is done.
+    private val listening = lazy {
+        val listener = Query.Listener { writeCount.incrementAndGet() }
+        secureDb.ascentsQueries.countUserLogbook().addListener(listener) // sends and attempts
+        secureDb.climbLogsQueries.getAll().addListener(listener)
+        athleteDb.get().coachQueries.getAllClimbingDays().addListener(listener)
+    }
+
+    /**
+     * Goes up with every write to what decides whether a year reaches the full
+     * review: board sends and attempts, climbing days and climbs logged by hand.
+     * Counts from the first [load]; a read that starts at the same count is current.
+     */
+    fun writes(): Long = writeCount.get()
+
     suspend fun load(): YearReviewComputer.Input = withContext(Dispatchers.IO) {
+        listening.value
         val athlete = athleteService.repo
         val handLogged = climbRepository.getAll()
         YearReviewComputer.Input(

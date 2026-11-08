@@ -137,17 +137,19 @@ class YearReviewEntryViewModel @Inject constructor(
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var input: YearReviewComputer.Input? = null
+    /** [YearReviewSource.writes] when [input] was read: another count means the logbook changed since. */
+    private var readAt = 0L
     private var cardStarted = false
     private var statsStarted = false
     private val cardCheck = MutableStateFlow(0)
 
     /**
-     * For the card, each time its screen resumes and at midnight: the date may have
+     * For the card, each time it comes on screen and at midnight: the date may have
      * moved into December, or into January, while the app was open. Reads the
      * logbook only in December and January and while the card is not hidden, so the
-     * start screen stays light all year: again on a new day, and in December while
-     * the card waits for the minimum, since a new climbing day may have reached it.
-     * The statistics beside it read again on a new day, also with the card hidden.
+     * start screen stays light all year, and then only on a new day or after the
+     * logbook changed: a new climbing day may reach the minimum, an import may bring
+     * last year. The statistics beside it read again on a new day, also with the card hidden.
      */
     fun checkCard() {
         cardCheck.value++
@@ -163,13 +165,13 @@ class YearReviewEntryViewModel @Inject constructor(
                         _state.update { it.copy(cardYear = null) }
                         if (statsStarted && newDay) load()
                     }
-                    // In January the invited year is over: new climbing days cannot open it.
-                    input == null || newDay || (_state.value.cardYear == null && year == today.year) -> load()
-                    else -> refreshCard(hidden)
+                    newDay || changed() -> load()
                 }
             }
         }
     }
+
+    private fun changed() = input == null || source.writes() != readAt
 
     /** How long until the next local midnight, when the card checks again while it stays on screen. */
     fun millisToNextDay(): Long {
@@ -179,9 +181,9 @@ class YearReviewEntryViewModel @Inject constructor(
         return (midnight - now).inWholeMilliseconds.coerceAtLeast(0) + 1_000
     }
 
-    /** For the year picker in the statistics, each time it opens; it reads again on a new day. */
+    /** For the year picker in the statistics, each time it opens; it reads again on a new day or after the logbook changed. */
     fun startStats() {
-        if (statsStarted && _state.value.today == source.today()) return
+        if (statsStarted && _state.value.today == source.today() && !changed()) return
         statsStarted = true
         reload()
     }
@@ -193,8 +195,11 @@ class YearReviewEntryViewModel @Inject constructor(
 
     private suspend fun load() {
         try {
+            // Counted before the read: a write during it makes the next check read again.
+            val writes = source.writes()
             val loaded = source.load()
             input = loaded
+            readAt = writes
             val today = source.today()
             val years = withContext(Dispatchers.Default) { YearReviewComputer.yearsWithReview(loaded, today, source.zone) }
             // The running year below the minimum, beside the earlier years' reviews; empty, it says nothing.
@@ -208,7 +213,7 @@ class YearReviewEntryViewModel @Inject constructor(
             // The card alone needs no year picked; without any full review the current year shows how far it got.
             if (statsStarted) {
                 select(
-                    _state.value.selectedYear?.takeIf { it in years }
+                    picked?.takeIf { it in years }
                         ?: YearReviewWindow.invitedYear(today)?.takeIf { it in years }
                         ?: years.firstOrNull()
                         ?: today.year,
@@ -222,9 +227,15 @@ class YearReviewEntryViewModel @Inject constructor(
     }
 
     private var selecting: Job? = null
+    /** The year picked last, by a tap or by a reload; a reload keeps it while it has a review. */
+    private var picked: Int? = null
 
-    /** The newest choice wins: a reload's pick never overwrites a chip tapped after it. */
+    /**
+     * The newest choice wins: a reload's pick never overwrites a chip tapped after it,
+     * and a chip tapped while the reload reads is the one the reload picks.
+     */
     fun select(year: Int) {
+        picked = year
         val loaded = input ?: return
         selecting?.cancel()
         selecting = viewModelScope.launch {

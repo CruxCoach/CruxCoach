@@ -34,6 +34,7 @@
     <!-- Intro -->
     <string name="yr_intro_title">Your year on the boards</string>
     <string name="yr_intro_lead">Made on this phone. Nothing leaves it unless you share it.</string>
+    <string name="yr_intro_spray_walls">Spray walls are not counted yet.</string>
     <string name="yr_intro_how">Counted from 1 January to 31 December in your time zone, from your logbook on every board, imported logbooks included, and from the climbing days, climbs and workouts you logged. Spray walls are not counted yet: they follow with the logbook statistics.</string>
     <string name="yr_intro_how_so_far">Counted from 1 January up to today in your time zone, from your logbook on every board, imported logbooks included, and from the climbing days, climbs and workouts you logged. Spray walls are not counted yet: they follow with the logbook statistics. The year is not over yet: it counts on until 31 December.</string>
     <string name="yr_intro_so_far">as of %1$s</string>

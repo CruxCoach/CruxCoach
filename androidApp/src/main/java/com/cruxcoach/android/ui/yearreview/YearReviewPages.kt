@@ -7,10 +7,8 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.ui.training.benchmarks.benchmarkSummary
-import com.cruxcoach.android.ui.training.weightText
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
-import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.yearreview.ClimberType
@@ -45,6 +43,8 @@ data class ReviewPage(
     val hero: String? = null,
     val heroLabel: String? = null,
     val lead: String? = null,
+    /** A short muted line below the lead, on the screen only. */
+    val note: String? = null,
     val rows: List<ReviewRow> = emptyList(),
     /** Climbing days per month, January first, for the rhythm chart. */
     val months: List<Int>? = null,
@@ -109,6 +109,8 @@ private fun intro(review: YearReview, f: Formats, forImage: Boolean) = ReviewPag
     heroLabel = if (review.isFinal) null else stringResource(R.string.yr_intro_so_far, f.fullDate(review.until)),
     // "Nothing leaves this phone" is true on the phone, not on an image that was shared.
     lead = if (forImage) null else stringResource(R.string.yr_intro_lead),
+    // Also in the note behind the info symbol; here it is seen before the numbers.
+    note = if (forImage) null else stringResource(R.string.yr_intro_spray_walls),
     howCalculated = stringResource(if (review.isFinal) R.string.yr_intro_how else R.string.yr_intro_how_so_far),
 )
 
@@ -382,10 +384,11 @@ private fun training(review: YearReview, eyebrow: String, f: Formats, context: T
     val best = t.bestValues.firstNotNullOfOrNull { b ->
         val def = context.catalog?.get(b.exerciseSlug) ?: return@firstNotNullOfOrNull null
         val profile = context.profile ?: return@firstNotNullOfOrNull null
-        // A shared image names the exercise and the added load only: a total or a share of
-        // body weight beside it would give the body weight away.
+        // A shared image keeps the sets, reps, load, time and edge, but leaves out what is
+        // worked out from body weight (a total, a share of it, a max with it): next to the
+        // added load, each of these gives the body weight away.
         val detail = if (f.privacy.image) {
-            b.loadKg?.takeIf { def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL }?.let { weightText(def, it, profile.units) }
+            benchmarkSummary(def, b.copy(bodyweightKg = null), profile, bodyweight = null).ifEmpty { null }
         } else {
             benchmarkSummary(def, b, profile, context.bodyweight)
         }
