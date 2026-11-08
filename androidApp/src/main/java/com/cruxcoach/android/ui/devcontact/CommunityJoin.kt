@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -62,7 +63,9 @@ internal fun CommunityJoinSection(onJoin: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             stringResource(R.string.community_join_title),
-            style = MaterialTheme.typography.titleMedium,
+            // Hyphenation lets "CruxCoach-Community" break after its hyphen at the largest
+            // font on a narrow screen, not in the middle of a word.
+            style = MaterialTheme.typography.titleMedium.copy(hyphens = Hyphens.Auto),
             fontWeight = FontWeight.Bold,
             modifier = Modifier.semantics { heading() },
         )
