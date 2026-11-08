@@ -12,6 +12,7 @@ import com.cruxcoach.android.data.shinywall.ShinyWallListNames
 import com.cruxcoach.android.data.shinywall.ShinyWallSyncEngine
 import com.cruxcoach.android.data.shinywall.ShinyWallTokenStorage
 import com.cruxcoach.android.data.shinywall.formatShinyWallImportSummary
+import com.cruxcoach.android.data.shinywall.isShinyWallSessionExpired
 import com.cruxcoach.android.data.shinywall.localizeShinyWallImportError
 import com.cruxcoach.android.data.shinywall.localized
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,6 +37,8 @@ data class ShinyWallAccountState(
     val resultMessage: String? = null,
     val resultIsError: Boolean = false,
     val showDisconnectConfirm: Boolean = false,
+    /** Shiny Wall no longer accepts the stored sign-in; the card offers to sign in again. */
+    val sessionExpired: Boolean = false,
 )
 
 /**
@@ -87,7 +90,9 @@ class ShinyWallAccountViewModel @Inject constructor(
                 is ShinyWallAuthResult.Success -> {
                     tokenStore.storeSession(result.session)
                     _state.update {
-                        connectedState(it).copy(isLoggingIn = false, showLoginSheet = false, loginPassword = "")
+                        connectedState(it).copy(
+                            isLoggingIn = false, showLoginSheet = false, loginPassword = "", sessionExpired = false,
+                        )
                     }
                     loadPreview()
                 }
@@ -108,9 +113,7 @@ class ShinyWallAccountViewModel @Inject constructor(
                 .onSuccess { preview -> _state.update { it.copy(isImporting = false, preview = preview) } }
                 .onFailure { error ->
                     Log.w(TAG, "Preview failed (${error.javaClass.simpleName})")
-                    _state.update {
-                        it.copy(isImporting = false, resultMessage = localizeShinyWallImportError(context, error), resultIsError = true)
-                    }
+                    _state.update { it.failedWith(error) }
                 }
         }
     }
@@ -138,17 +141,15 @@ class ShinyWallAccountViewModel @Inject constructor(
                 }
                 .onFailure { error ->
                     Log.w(TAG, "Import failed (${error.javaClass.simpleName})")
-                    _state.update {
-                        it.copy(
-                            isImporting = false,
-                            preview = null,
-                            resultMessage = localizeShinyWallImportError(context, error),
-                            resultIsError = true,
-                        )
-                    }
+                    _state.update { it.failedWith(error).copy(preview = null) }
                 }
         }
     }
+
+    /** An expired sign-in shows on the card with its action; any other failure as a message. */
+    private fun ShinyWallAccountState.failedWith(error: Throwable): ShinyWallAccountState =
+        if (isShinyWallSessionExpired(error)) copy(isImporting = false, sessionExpired = true)
+        else copy(isImporting = false, resultMessage = localizeShinyWallImportError(context, error), resultIsError = true)
 
     fun showDisconnectConfirm() = _state.update { it.copy(showDisconnectConfirm = true) }
     fun dismissDisconnectConfirm() = _state.update { it.copy(showDisconnectConfirm = false) }
