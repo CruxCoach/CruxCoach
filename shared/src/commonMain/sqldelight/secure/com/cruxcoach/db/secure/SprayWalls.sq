@@ -22,7 +22,10 @@ CREATE TABLE spray_wall (
     current_version INTEGER NOT NULL,
     published_version INTEGER,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    -- A head with new details still to send (migration 17); NULL = none, else a
+    -- counter per change, so a head sent clears only the change it carried.
+    head_pending INTEGER
 );
 
 -- photo_file is shared by the versions on the same photo. photo_sha256 and
@@ -114,6 +117,21 @@ SELECT * FROM spray_wall ORDER BY updated_at DESC;
 selectWallsNeedingPublish:
 SELECT * FROM spray_wall
 WHERE owner_pubkey IS NULL AND visibility = 'public' AND COALESCE(published_version, 0) < current_version;
+
+-- The name, angle or gym of a published wall changed: its head goes out again.
+markHeadPending:
+UPDATE spray_wall SET head_pending = COALESCE(head_pending, 0) + 1 WHERE id = ?;
+
+-- A relay took the head built from this change; a later change stays pending.
+clearHeadPending:
+UPDATE spray_wall SET head_pending = NULL WHERE id = ? AND head_pending = ?;
+
+dropHeadPending:
+UPDATE spray_wall SET head_pending = NULL WHERE id = ?;
+
+-- (COALESCE rather than IS NOT NULL, so the rows stay spray_wall rows.)
+selectWallsWithHeadPending:
+SELECT * FROM spray_wall WHERE owner_pubkey IS NULL AND COALESCE(head_pending, 0) > 0;
 
 countClimbsPerWall:
 SELECT wall_id, COUNT(*) AS climbs FROM spray_climb GROUP BY wall_id;

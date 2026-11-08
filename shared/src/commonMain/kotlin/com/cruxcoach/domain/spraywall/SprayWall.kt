@@ -79,6 +79,8 @@ data class SprayWall(
     val publishedVersion: Int?,
     val createdAt: Long,
     val updatedAt: Long,
+    /** New name, angle or gym of a published wall still to send in its head; null = none (see SprayWalls.sq). */
+    val headPending: Long? = null,
 ) {
     val isMine: Boolean get() = ownerPubkey == null
     val photoFile: String get() = current.photoFile

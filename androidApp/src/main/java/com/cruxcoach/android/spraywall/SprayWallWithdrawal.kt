@@ -45,11 +45,6 @@ class SprayWallWithdrawal(
     private val now: () -> Long,
     /** Where a photo goes when its upload server is unknown. */
     private val defaultServers: List<String>,
-    /**
-     * A relay took the first tombstone of [wallId]: from here the wall is off Nostr, even if the rest fails.
-     * A head still waiting to go out must not bring it back.
-     */
-    private val onTombstonesTaken: suspend (wallId: String) -> Unit = {},
 ) {
     enum class PhotoDeletion { DELETED, LEFT, NOT_AUTHORISED }
 
@@ -124,7 +119,9 @@ class SprayWallWithdrawal(
         }
         var accepted = 0
         suspend fun sent(taken: Int) {
-            if (accepted == 0 && taken > 0) onTombstonesTaken(wallId)
+            // From the first tombstone a relay took, the wall is off Nostr, even if the rest fails:
+            // a head still waiting to go out would bring it back.
+            if (accepted == 0 && taken > 0) repository.dropHeadPending(wallId)
             accepted = maxOf(accepted, taken)
         }
         for ((d, label) in dTags) sent(send(SprayWallNostr.tombstone(stamp(d), d, label, address)))

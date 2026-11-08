@@ -1,0 +1,9 @@
+-- Migration 17 → 18: spray walls (FEAT-078) remember a wall head still to send.
+--
+-- A published wall's name, angle and gym are in its head event. When only they
+-- change, the head goes out on its own; head_pending keeps that until a relay
+-- takes it, also across a restart. NULL = nothing to send; otherwise a counter
+-- that rises with every such change, so a head that went out clears only the
+-- change it was built from. Purely additive.
+
+ALTER TABLE spray_wall ADD COLUMN head_pending INTEGER;

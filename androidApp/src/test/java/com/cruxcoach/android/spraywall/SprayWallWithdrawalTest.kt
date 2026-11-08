@@ -32,7 +32,6 @@ class SprayWallWithdrawalTest {
     private var relaysTaking = 1
     private var signing: (() -> Unit)? = null
     private var photoResult = SprayWallWithdrawal.PhotoDeletion.DELETED
-    private val tombstonesTaken = mutableListOf<String>()
     private lateinit var withdrawal: SprayWallWithdrawal
 
     @BeforeTest
@@ -52,7 +51,6 @@ class SprayWallWithdrawalTest {
             stamp = { clock++ },
             now = { clock++ },
             defaultServers = listOf("https://default.example.org"),
-            onTombstonesTaken = { tombstonesTaken += it },
         )
     }
 
@@ -252,22 +250,29 @@ class SprayWallWithdrawalTest {
         assertEquals("https://other.example.org/$SHA", repository.wall(twin)!!.current.photoUrl)
     }
 
+    /** A rename that has not reached a relay yet: its head waits. */
+    private suspend fun renamedOffline(id: String) =
+        repository.updateWallDetails(id, "Wall B", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+
     @Test
-    fun `the first tombstone a relay takes is reported, also when a photo stays`() = runTest {
+    fun `once a relay took a tombstone a waiting head is dropped, also when a photo stays`() = runTest {
         val id = publishedWall()
+        renamedOffline(id)
         photoResult = SprayWallWithdrawal.PhotoDeletion.LEFT
 
         assertEquals(SprayWithdrawal.PHOTOS_LEFT, withdrawal.run(ME, id))
-        assertEquals(listOf(id), tombstonesTaken)
+        // It would replace the tombstone at the next publish and bring the wall back.
+        assertTrue(repository.wallsWithHeadPending().isEmpty())
     }
 
     @Test
-    fun `no tombstone taken is not reported`() = runTest {
+    fun `a waiting head stays when no relay took a tombstone`() = runTest {
         val id = publishedWall()
+        renamedOffline(id)
         relaysTaking = 0
 
         assertEquals(SprayWithdrawal.NOT_CONFIRMED, withdrawal.run(ME, id))
-        assertTrue(tombstonesTaken.isEmpty())
+        assertEquals(listOf(id), repository.wallsWithHeadPending().map { it.id })
     }
 
     @Test

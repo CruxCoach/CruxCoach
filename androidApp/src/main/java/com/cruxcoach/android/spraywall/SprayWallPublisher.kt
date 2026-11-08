@@ -63,13 +63,6 @@ class SprayWallPublisher @Inject constructor(
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    init {
-        // Every save may leave something to publish; a burst of saves publishes once.
-        scope.launch {
-            repository.changes.drop(1).debounce(PUBLISH_DELAY_MS).collect { publishPending() }
-        }
-    }
-
     /** A local key or a configured Amber signer. Never creates one. */
     fun hasIdentity(): Boolean = nostrSigner.getStoredSignerMode() == SignerMode.AMBER || keyStore.hasKey()
 
@@ -79,21 +72,6 @@ class SprayWallPublisher @Inject constructor(
     /** Publishes whatever is pending, in the background (after a save). */
     fun publishSoon() {
         scope.launch { publishPending() }
-    }
-
-    /**
-     * Published walls whose name, angle or gym changed since their head went
-     * out, until a relay takes the new head. Only in memory: after a restart
-     * the change goes out with the wall's next version.
-     */
-    private val headsPending = HashSet<String>()
-
-    /** The name, angle or gym of a published wall changed: its head goes out again. */
-    fun publishHeadSoon(wallId: String) {
-        scope.launch {
-            mutex.withLock { headsPending += wallId }
-            publishPending()
-        }
     }
 
     suspend fun publishPending(): Outcome = mutex.withLock {
@@ -112,8 +90,9 @@ class SprayWallPublisher @Inject constructor(
     private suspend fun run(): Outcome {
         // A wall without holds yet (a reset still being marked) waits: published, it could no longer be corrected in place.
         val walls = repository.wallsNeedingPublish().filter { it.current.holdCount > 0 }
+        val heads = repository.wallsWithHeadPending()
         val publicWalls = repository.publicWalls()
-        if (walls.isEmpty() && headsPending.isEmpty() && publicWalls.none { repository.unpublishedClimbs(it.id).isNotEmpty() }) return Outcome.Done(0, 0)
+        if (walls.isEmpty() && heads.isEmpty() && publicWalls.none { repository.unpublishedClimbs(it.id).isNotEmpty() }) return Outcome.Done(0, 0)
         val me = myPubkey() ?: return Outcome.NoIdentity
         var versions = 0
         for (wall in walls) {
@@ -130,16 +109,21 @@ class SprayWallPublisher @Inject constructor(
                 withdrawal.deleteUnpublishedPhotos(wall.id)
                 throw e
             }
-            // Its head went out with the versions.
-            headsPending -= wall.id
         }
-        // Nothing new on these walls but their details: the head alone (a wall with versions still to go waits for them).
-        for (id in headsPending.toList()) {
-            val wall = repository.wall(id)
-            if (wall != null && wall.isMine && wall.visibility == SprayWallVisibility.PUBLIC && wall.publishedVersion == wall.current.number) {
-                check(send(SprayWallNostr.wallHead(me, stamp(SprayWallNostr.wallDTag(me, id)), wall)) > 0) { "no relay took the wall" }
+        // Nothing new on these walls but their details: the head alone. A wall with versions still to go (a reset
+        // being marked) sends it with them; the walls published above already did.
+        var headsLeft = 0
+        for (wall in repository.wallsWithHeadPending()) {
+            val pending = wall.headPending ?: continue
+            if (wall.needsPublish) continue
+            if (wall.visibility == SprayWallVisibility.PUBLIC && wall.publishedVersion != null) {
+                // A head no relay took holds up neither the other walls nor the climbs; it goes out next time.
+                if (send(SprayWallNostr.wallHead(me, stamp(SprayWallNostr.wallDTag(me, wall.id)), wall)) == 0) {
+                    headsLeft++
+                    continue
+                }
             }
-            headsPending -= id
+            repository.clearHeadPending(wall.id, pending)
         }
         var climbs = 0
         for (wall in repository.publicWalls()) {
@@ -152,7 +136,7 @@ class SprayWallPublisher @Inject constructor(
                 }
             }
         }
-        return Outcome.Done(versions, climbs)
+        return if (headsLeft > 0) Outcome.Failed("no relay took the wall") else Outcome.Done(versions, climbs)
     }
 
     /** Every version not on Nostr yet, then the head. Returns the number of versions sent. */
@@ -169,6 +153,8 @@ class SprayWallPublisher @Inject constructor(
         val fresh = repository.wall(wall.id) ?: return pending.size
         check(send(SprayWallNostr.wallHead(me, stamp(SprayWallNostr.wallDTag(me, wall.id)), fresh)) > 0) { "no relay took the wall" }
         repository.markPublished(wall.id, fresh.current.number)
+        // The head carried the wall's details as they were read: a change since then stays pending.
+        fresh.headPending?.let { repository.clearHeadPending(wall.id, it) }
         return pending.size
     }
 
@@ -203,8 +189,6 @@ class SprayWallPublisher @Inject constructor(
         stamp = ::stamp,
         now = ::now,
         defaultServers = BlossomUploader.DEFAULT_SERVERS,
-        // Runs inside withdrawWall, under the mutex.
-        onTombstonesTaken = { headsPending -= it },
     )
 
     /** Takes a public wall back, photos included ([SprayWallWithdrawal]); the wall stays public when that fails. */
@@ -250,6 +234,16 @@ class SprayWallPublisher @Inject constructor(
     private val stamps = HashMap<String, Long>()
     private fun stamp(dTag: String): Long = synchronized(stamps) {
         maxOf(now(), (stamps[dTag] ?: 0L) + 1).also { stamps[dTag] = it }
+    }
+
+    // Last, so the runs it starts find every property above set.
+    init {
+        // Every save may leave something to publish; a burst of saves publishes once.
+        scope.launch {
+            repository.changes.drop(1).debounce(PUBLISH_DELAY_MS).collect { publishPending() }
+        }
+        // What was still pending when the app closed (versions, a head with new details, climbs) goes out now.
+        scope.launch { publishPending() }
     }
 
     private companion object {

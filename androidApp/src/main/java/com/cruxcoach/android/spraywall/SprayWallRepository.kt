@@ -87,7 +87,15 @@ class SprayWallRepository @Inject constructor(
         id
     }.also { changed() }
 
-    suspend fun updateWallDetails(id: String, name: String, angle: Int, visibility: SprayWallVisibility, gym: SprayGym?) {
+    /** [sendHead]: the wall is published and its head goes out again with these details, also after a restart. */
+    suspend fun updateWallDetails(
+        id: String,
+        name: String,
+        angle: Int,
+        visibility: SprayWallVisibility,
+        gym: SprayGym?,
+        sendHead: Boolean = false,
+    ) {
         io {
             database.transaction {
                 queries.updateWallDetails(name.trim(), angle.toLong(), visibility.wire, gym?.id, gym?.name, now(), id)
@@ -95,10 +103,28 @@ class SprayWallRepository @Inject constructor(
                 if (visibility == SprayWallVisibility.PRIVATE) {
                     queries.setPublishedVersion(null, id)
                     queries.clearClimbsPublished(id)
+                    queries.dropHeadPending(id)
+                } else if (sendHead) {
+                    queries.markHeadPending(id)
                 }
             }
         }
         changed()
+    }
+
+    /** My published walls whose head still has to go out with new details. */
+    suspend fun wallsWithHeadPending(): List<SprayWall> = io {
+        queries.selectWallsWithHeadPending().executeAsList().mapNotNull { it.toModel() }
+    }
+
+    /** The wall is being taken back: a head waiting to go out would bring it back. */
+    suspend fun dropHeadPending(id: String) {
+        io { queries.dropHeadPending(id) }
+    }
+
+    /** A relay took the head built while [pending] was the wall's mark; a change since then stays pending. */
+    suspend fun clearHeadPending(id: String, pending: Long) {
+        io { queries.clearHeadPending(id, pending) }
     }
 
     /** Deletes the wall with everything on it, including its logbook entries, and photos no other wall uses. */
@@ -482,6 +508,7 @@ class SprayWallRepository @Inject constructor(
             current = version,
             publishedVersion = published_version?.toInt(),
             createdAt = created_at, updatedAt = updated_at,
+            headPending = head_pending,
         )
     }
 

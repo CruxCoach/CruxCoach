@@ -26,9 +26,10 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Saving a public wall's details when taking it back fails: the edits stay, and the relays get them when they still show the wall. */
+/** Saving a public wall's details: a published wall's head goes out again, also when taking the wall back failed and the relays still show it. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SprayWallDetailsViewModelTest {
     private lateinit var driver: SqlDriver
@@ -53,15 +54,25 @@ class SprayWallDetailsViewModelTest {
         driver.close()
     }
 
-    /** A public wall on Nostr; renamed and set to private, but the withdrawal ends with [result]. */
-    private suspend fun renameAndWithdraw(result: SprayWithdrawal): Pair<String, SprayWallDetailsState> {
+    /** A public wall with version 1 on Nostr. */
+    private suspend fun publishedWall(): String {
         val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
         repository.setPhotoBlob(id, photo.fileName, SHA, "https://cdn.example.org/$SHA")
         repository.markPublished(id, 1)
-        coEvery { publisher.withdrawWall(id) } returns result
+        return id
+    }
 
+    private suspend fun detailsOf(id: String): SprayWallDetailsViewModel {
         val vm = SprayWallDetailsViewModel(SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to id)), repository, publisher, mockk(relaxed = true))
         assertTrue(vm.state.first { !it.loading }.published)
+        return vm
+    }
+
+    /** A published wall, renamed and set to private, but the withdrawal ends with [result]. */
+    private suspend fun renameAndWithdraw(result: SprayWithdrawal): Pair<String, SprayWallDetailsState> {
+        val id = publishedWall()
+        coEvery { publisher.withdrawWall(id) } returns result
+        val vm = detailsOf(id)
         vm.setName("Wall B")
         vm.setAngle(45)
         vm.chooseVisibility(SprayWallVisibility.PRIVATE)
@@ -81,20 +92,50 @@ class SprayWallDetailsViewModelTest {
         assertEquals(1, wall.publishedVersion)
     }
 
+    /** The head with the new details waits in the database until a relay takes it, also across a restart. */
+    private suspend fun headPending(id: String): Boolean = repository.wallsWithHeadPending().any { it.id == id }
+
+    @Test
+    fun `renaming a published wall keeps its head to send`() = runTest {
+        val id = publishedWall()
+        val vm = detailsOf(id)
+        vm.setName("Wall B")
+        vm.events.test {
+            vm.save()
+            assertEquals(SprayWallDetailsEvent.Saved, awaitItem())
+        }
+
+        assertTrue(headPending(id))
+        verify { publisher.publishSoon() }
+    }
+
+    @Test
+    fun `saving a published wall unchanged sends no head`() = runTest {
+        val id = publishedWall()
+        val vm = detailsOf(id)
+        vm.events.test {
+            vm.save()
+            assertEquals(SprayWallDetailsEvent.Saved, awaitItem())
+        }
+
+        assertFalse(headPending(id))
+    }
+
     @Test
     fun `a rename kept after the relays did not confirm the withdrawal sends the head again`() = runTest {
         val (id, state) = renameAndWithdraw(SprayWithdrawal.NOT_CONFIRMED)
 
         assertEditsKept(id, state)
-        verify(exactly = 1) { publisher.publishHeadSoon(id) }
+        assertTrue(headPending(id))
+        verify { publisher.publishSoon() }
     }
 
     @Test
-    fun `a rename kept without an identity waits for the head to go out`() = runTest {
+    fun `a rename kept without an identity keeps its head to send`() = runTest {
         val (id, state) = renameAndWithdraw(SprayWithdrawal.NO_IDENTITY)
 
         assertEditsKept(id, state)
-        verify(exactly = 1) { publisher.publishHeadSoon(id) }
+        assertTrue(headPending(id))
     }
 
     @Test
@@ -110,7 +151,7 @@ class SprayWallDetailsViewModelTest {
             assertEquals(SprayWallDetailsEvent.Saved, awaitItem())
         }
 
-        verify(exactly = 1) { publisher.publishHeadSoon(id) }
+        assertTrue(headPending(id))
     }
 
     @Test
@@ -118,7 +159,8 @@ class SprayWallDetailsViewModelTest {
         val (id, state) = renameAndWithdraw(SprayWithdrawal.PHOTOS_LEFT)
 
         assertEditsKept(id, state)
-        verify(exactly = 0) { publisher.publishHeadSoon(any()) }
+        assertFalse(headPending(id))
+        verify(exactly = 0) { publisher.publishSoon() }
     }
 
     @Test
@@ -126,7 +168,8 @@ class SprayWallDetailsViewModelTest {
         val (id, state) = renameAndWithdraw(SprayWithdrawal.SIGNING_FAILED)
 
         assertEditsKept(id, state)
-        verify(exactly = 0) { publisher.publishHeadSoon(any()) }
+        assertFalse(headPending(id))
+        verify(exactly = 0) { publisher.publishSoon() }
     }
 
     private companion object {

@@ -325,12 +325,69 @@ class SprayWallRepositoryTest {
         listOf("spray_ascent", "spray_climb", "spray_wall_hold", "spray_wall_version", "spray_wall").forEach {
             driver.execute(null, "DROP TABLE $it", 0)
         }
-        // One step only: the database was created at the newest version, so a
-        // replay over later migrations would fail on existing tables.
-        SecureDatabase.Schema.migrate(driver, 16, 17)
+        // Only the spray-wall steps: the database was created at the newest
+        // version, so a replay over earlier migrations would fail on existing tables.
+        SecureDatabase.Schema.migrate(driver, 16, 18)
 
         val wall = newWall(listOf(hold(-1, 0.1f)), name = "After upgrade")
         assertEquals(listOf("After upgrade"), repository.walls().map { it.wall.name })
         assertEquals(1, repository.holds(wall, 1).size)
+    }
+
+    @Test
+    fun `migration 17 keeps the walls and adds the pending head`() = runTest {
+        listOf("spray_ascent", "spray_climb", "spray_wall_hold", "spray_wall_version", "spray_wall").forEach {
+            driver.execute(null, "DROP TABLE $it", 0)
+        }
+        SecureDatabase.Schema.migrate(driver, 16, 17)
+        driver.execute(
+            null,
+            "INSERT INTO spray_wall(id, name, angle, visibility, current_version, published_version, created_at, updated_at) " +
+                "VALUES ('w1', 'Before upgrade', 40, 'public', 1, 1, 1, 1)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO spray_wall_version(wall_id, version, kind, photo_file, photo_width, photo_height, hold_count, created_at) " +
+                "VALUES ('w1', 1, 'created', '${photo.fileName}', 3000, 2000, 0, 1)",
+            0,
+        )
+
+        SecureDatabase.Schema.migrate(driver, 17, 18)
+
+        val wall = repository.wall("w1")!!
+        assertEquals("Before upgrade", wall.name)
+        assertNull(wall.headPending)
+        repository.updateWallDetails("w1", "After upgrade", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+        assertEquals(listOf("After upgrade"), repository.wallsWithHeadPending().map { it.name })
+    }
+
+    @Test
+    fun `a pending head is cleared only for the change it carried`() = runTest {
+        val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(hold(-1, 0.1f)))
+        repository.markPublished(id, 1)
+        assertTrue(repository.wallsWithHeadPending().isEmpty())
+
+        repository.updateWallDetails(id, "Wall B", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+        val sent = repository.wall(id)!!.headPending!!
+        // Renamed again while that head was on its way.
+        repository.updateWallDetails(id, "Wall C", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+        repository.clearHeadPending(id, sent)
+        assertEquals(listOf("Wall C"), repository.wallsWithHeadPending().map { it.name })
+
+        repository.clearHeadPending(id, repository.wall(id)!!.headPending!!)
+        assertTrue(repository.wallsWithHeadPending().isEmpty())
+    }
+
+    @Test
+    fun `going private drops the pending head`() = runTest {
+        val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(hold(-1, 0.1f)))
+        repository.markPublished(id, 1)
+        repository.updateWallDetails(id, "Wall B", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+
+        repository.updateWallDetails(id, "Wall B", 40, SprayWallVisibility.PRIVATE, null)
+
+        assertTrue(repository.wallsWithHeadPending().isEmpty())
+        assertNull(repository.wall(id)!!.headPending)
     }
 }

@@ -192,12 +192,11 @@ class SprayWallDetailsViewModel @Inject constructor(
                     return@launch
                 }
             }
-            repository.updateWallDetails(wallId, s.name, s.angle, s.visibility, s.gym)
-            if (s.visibility == SprayWallVisibility.PUBLIC) {
-                // A published wall's name, angle and gym are in its head event, which only a new version would send again.
-                // Any public wall: one whose first publish ends while this screen is open is published by now.
-                if (before != null && !before.hasDetails(s)) publisher.publishHeadSoon(wallId) else publisher.publishSoon()
-            }
+            // A public wall's name, angle and gym are in its head event, which only a new version would send again.
+            // Any public wall: one whose first publish ends while this screen is open is published by now.
+            val sendHead = s.visibility == SprayWallVisibility.PUBLIC && before != null && !before.hasDetails(s)
+            repository.updateWallDetails(wallId, s.name, s.angle, s.visibility, s.gym, sendHead)
+            if (s.visibility == SprayWallVisibility.PUBLIC) publisher.publishSoon()
             _events.emit(SprayWallDetailsEvent.Saved)
         }
     }
@@ -245,8 +244,9 @@ class SprayWallDetailsViewModel @Inject constructor(
     private suspend fun keepEdits(s: SprayWallDetailsState, result: SprayWithdrawal): Boolean {
         val wall = repository.wall(wallId) ?: return false
         if (wall.hasDetails(s)) return false
-        repository.updateWallDetails(wallId, s.name, s.angle, SprayWallVisibility.PUBLIC, s.gym)
-        if (result != SprayWithdrawal.PHOTOS_LEFT && result != SprayWithdrawal.SIGNING_FAILED) publisher.publishHeadSoon(wallId)
+        val sendHead = result != SprayWithdrawal.PHOTOS_LEFT && result != SprayWithdrawal.SIGNING_FAILED
+        repository.updateWallDetails(wallId, s.name, s.angle, SprayWallVisibility.PUBLIC, s.gym, sendHead)
+        if (sendHead) publisher.publishSoon()
         return true
     }
 
