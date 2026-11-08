@@ -429,4 +429,17 @@ class YearReviewComputerTest {
             YearReviewComputer.yearsWithReview(input, today, utc),
         )
     }
+
+    @Test
+    fun onTheSameGradeTheFlashIsTheHardestSend() {
+        val input = Input(
+            entries = listOf(
+                entry("2026-02-01T18:00:00", "worked", tries = 4, difficulty = 24.0),
+                entry("2026-05-01T18:00:00", "flashed", tries = 1, difficulty = 24.0),
+                entry("2026-06-01T18:00:00", "easier", tries = 1, difficulty = 20.0),
+            ),
+        )
+        val kilter = review(input, 2026, LocalDate(2027, 1, 10)).boards.single()
+        assertEquals(listOf("Problem flashed", "Problem worked", "Problem easier"), kilter.hardest.map { it.name })
+    }
 }

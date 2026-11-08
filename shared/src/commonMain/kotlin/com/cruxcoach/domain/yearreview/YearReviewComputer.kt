@@ -214,7 +214,10 @@ object YearReviewComputer {
         }
         .sortedWith(compareByDescending<YearBoard> { it.entries }.thenBy { it.board })
 
-    /** Each problem sent once, as its first send when that was in [sends], hardest first; the earlier send wins a tie. */
+    /**
+     * Each problem sent once, as its first send when that was in [sends], hardest first.
+     * On the same grade a flash comes first, then the send with fewer tries, then the earlier one.
+     */
     private fun hardestProblems(sends: List<Row>, history: History): List<YearSend> = sends
         .filter { it.entry.difficultyAverage != null }
         .groupBy { it.problem }
@@ -224,7 +227,12 @@ object YearReviewComputer {
             first?.let { history.firstSendOf.getValue(it.entry.uuid).toYearSend() }
                 ?: repeats.minWith(compareBy<Row> { it.day }.thenBy { it.entry.climbedAt }).toYearSend(flash = false, tries = null)
         }
-        .sortedWith(compareByDescending<YearSend> { it.difficulty!! }.thenBy { it.date })
+        .sortedWith(
+            compareByDescending<YearSend> { it.difficulty!! }
+                .thenByDescending { it.flash }
+                .thenBy { it.tries ?: Int.MAX_VALUE }
+                .thenBy { it.date },
+        )
 
     private fun totalsOf(rows: List<Row>, firstSends: List<FirstSend>, climbingDays: Set<LocalDate>) = YearTotals(
         climbingDays = climbingDays.size,

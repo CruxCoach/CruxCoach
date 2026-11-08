@@ -76,7 +76,7 @@ fun reviewPages(
     privacy: SharePrivacy = SharePrivacy.SCREEN,
 ): List<ReviewPage> {
     if (!review.hasEnoughData) return emptyList()
-    val f = Formats(LocalConfiguration.current.locales[0], gradeScale, privacy)
+    val f = Formats(LocalConfiguration.current.locales[0], gradeScale, privacy, review.year)
     val eyebrow = if (review.isFinal) stringResource(R.string.yr_eyebrow, review.year)
         else stringResource(R.string.yr_eyebrow_so_far, review.year, f.fullDate(review.until))
     return listOfNotNull(
@@ -179,12 +179,9 @@ private fun hardest(review: YearReview, eyebrow: String, f: Formats): ReviewPage
             ReviewRow(
                 label = f.board(b.board),
                 value = f.grade(top.difficulty),
-                detail = listOfNotNull(
-                    f.problem(top),
-                    sendHow(top),
-                    f.date(top.date),
+                // The send on one line, how many sends the grade rests on below.
+                detail = listOfNotNull(f.problem(top), sendHow(top), f.date(top.date)).joinToString(" · ") + "\n" +
                     stringResource(R.string.yr_hardest_sample, pluralStringResource(R.plurals.yr_sends, b.gradedSends, f.number(b.gradedSends))),
-                ).joinToString(" · "),
                 board = b.board,
             )
         },
@@ -272,7 +269,8 @@ private fun rhythm(review: YearReview, eyebrow: String, f: Formats): ReviewPage?
 private fun highlights(review: YearReview, eyebrow: String, f: Formats): ReviewPage? {
     val h = review.highlights
     val rows = buildList {
-        h.hardestFlashes.take(2).forEach { flash ->
+        // A flash that is already a board's hardest send is not repeated here.
+        h.hardestFlashes.filter { flash -> review.boards.none { it.hardest.firstOrNull() == flash } }.take(2).forEach { flash ->
             add(ReviewRow(stringResource(R.string.yr_highlights_flash, f.board(flash.board)), f.grade(flash.difficulty), f.problem(flash), flash.board))
         }
         h.biggestDay?.let { day ->
@@ -523,7 +521,7 @@ private fun ruleText(m: TypeMatch, f: Formats): String = when (m.type) {
 // ── Formatting ───────────────────────────────────────────────────────
 
 /** Numbers, grades and dates in the user's language, with the share image's privacy applied. */
-class Formats(val locale: Locale, private val gradeScale: GradeScale, val privacy: SharePrivacy) {
+class Formats(val locale: Locale, private val gradeScale: GradeScale, val privacy: SharePrivacy, private val year: Int? = null) {
     private val integers = NumberFormat.getIntegerInstance(locale)
     private val decimals = NumberFormat.getNumberInstance(locale).apply { maximumFractionDigits = 1; minimumFractionDigits = 0 }
     private val percents = NumberFormat.getPercentInstance(locale)
@@ -538,9 +536,15 @@ class Formats(val locale: Locale, private val gradeScale: GradeScale, val privac
     fun weekday(day: kotlinx.datetime.DayOfWeek): String =
         java.time.DayOfWeek.of(day.ordinal + 1).getDisplayName(TextStyle.FULL_STANDALONE, locale)
 
-    /** A date, or its month when exact dates are hidden. */
-    fun date(day: LocalDate): String =
-        if (privacy.exactDates) fullDate(day) else javaDate(day).format(DateTimeFormatter.ofPattern("LLLL", locale))
+    /**
+     * A date, or its month when exact dates are hidden; within the review's own year
+     * without the year. It never breaks across lines.
+     */
+    fun date(day: LocalDate): String = when {
+        !privacy.exactDates -> javaDate(day).format(DateTimeFormatter.ofPattern("LLLL", locale))
+        day.year == year -> javaDate(day).format(DateTimeFormatter.ofPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, "dMMM"), locale))
+        else -> fullDate(day)
+    }.replace(' ', '\u00A0')
 
     /** A date that is shown either way: the span of the year, which tells nothing about the climber. */
     fun fullDate(day: LocalDate): String = javaDate(day).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
