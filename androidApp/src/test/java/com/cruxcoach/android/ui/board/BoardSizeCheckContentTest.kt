@@ -43,12 +43,13 @@ class BoardSizeCheckContentTest {
         ready: Boolean = true,
         otherBoard: Boolean = false,
         apply: Boolean = true,
+        connecting: Boolean = false,
         events: MutableList<String> = mutableListOf(),
     ) = compose.setContent {
         MaterialTheme {
             BoardSizeCheckContent(
                 state = state, brand = BoardBrand.KILTER, connected = connected, ready = ready,
-                otherBoardConnected = otherBoard, applyOnConfirm = apply,
+                otherBoardConnected = otherBoard, applyOnConfirm = apply, connecting = connecting,
                 onConnect = { events += "connect" }, onLight = { events += "light" },
                 onYes = { events += "yes" }, onNo = { events += "no" },
                 onTest = { events += "test $it" }, onClose = { events += "close" },
@@ -85,6 +86,20 @@ class BoardSizeCheckContentTest {
         compose.onNodeWithTag("board_size_check_no").assertDoesNotExist()
         compose.onNodeWithTag("board_size_check_relight").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf("light"), events) }
+    }
+
+    @Test fun `back after a long time away one tap takes the board again`() {
+        val events = mutableListOf<String>()
+        show(ask(lit = false).copy(away = true), connected = false, ready = false, events = events)
+        compose.onNodeWithTag("board_size_check_away").performScrollTo().assertExists()
+        compose.onNodeWithTag("board_size_check_connect").assertDoesNotExist()
+        compose.onNodeWithTag("board_size_check_relight").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf("light"), events) }
+    }
+
+    @Test fun `while it connects the tap waits`() {
+        show(ask(lit = false).copy(away = true), connected = false, ready = false, connecting = true)
+        compose.onNodeWithTag("board_size_check_relight").performScrollTo().assertIsNotEnabled()
     }
 
     @Test fun `lit holds can be answered yes or no`() {

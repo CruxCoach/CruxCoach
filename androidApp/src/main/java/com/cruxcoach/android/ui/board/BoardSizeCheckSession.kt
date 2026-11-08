@@ -48,6 +48,11 @@ data class BoardSizeCheckState(
     val confirmedSizeId: Int? = null,
     /** The app is in the background: the board was cleared, the check keeps its place. */
     val paused: Boolean = false,
+    /**
+     * Back after a long time away, the board is still let go: another phone may have used it.
+     * The user's tap connects and lights again.
+     */
+    val away: Boolean = false,
 ) {
     val confirmedChange: Boolean get() = confirmedSizeId != null && confirmedSizeId != currentSizeId
 
@@ -102,6 +107,12 @@ class BoardSizeCheckSession(private val source: Source) {
 
         /** Connected to a board of [brand] and free to send. */
         fun ready(brand: BoardBrand): Boolean
+
+        /**
+         * Whether the check may light again on its own: not after the board was let go for long
+         * enough that another phone may have used it.
+         */
+        fun mayRelight(): Boolean
 
         suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean
 
@@ -190,17 +201,25 @@ class BoardSizeCheckSession(private val source: Source) {
         // A failed send may have left part of its frame or the previous one up: keep it marked
         // for clearing.
         mutableState.update {
-            it.copy(busy = false, lit = sent, replaced = false, onBoard = true, sendFailed = !sent)
+            it.copy(busy = false, lit = sent, replaced = false, onBoard = true, sendFailed = !sent, away = false)
         }
     }
 
     /**
      * Lights the points once the board is there, unless they already are or another frame
-     * replaced them: the board turns ready again after every send, also another sender's.
+     * replaced them: the board turns ready again after every send, also another sender's. Asked
+     * when the light would happen, not before: a reconnect takes a while, and the board may have
+     * been away too long by then ([Source.mayRelight]). Then the user's tap lights it.
      */
     suspend fun lightIfDark() {
         val current = mutableState.value
-        if (!current.lit && !current.replaced && !current.paused) light()
+        val brand = current.brand ?: return
+        if (current.lit || current.replaced || current.paused || !source.ready(brand)) return
+        if (!source.mayRelight()) {
+            mutableState.update { it.copy(replaced = true, away = false) }
+            return
+        }
+        light()
     }
 
     /**
@@ -262,8 +281,8 @@ class BoardSizeCheckSession(private val source: Source) {
     /**
      * The app went to the background (phone locked, another app): a gym board takes one phone
      * at a time, so it is left dark and free. The check keeps its size and answers; [resume]
-     * lights the points again unless something else was sent meanwhile, or [resume] is told the
-     * board may show something else by now.
+     * lights the points again unless something else was sent meanwhile or the board stays
+     * let go ([BoardSizeCheckState.away]).
      */
     suspend fun pause() {
         val brand = mutableState.value.brand ?: return
@@ -271,9 +290,15 @@ class BoardSizeCheckSession(private val source: Source) {
         clearBoard(brand)
     }
 
-    suspend fun resume(boardMayHaveChanged: Boolean = false) {
+    /** The tap could not reach the board let go: the usual way to connect is offered. */
+    fun leaveAway() {
+        mutableState.update { it.copy(away = false) }
+    }
+
+    /** Back in the app; [away] when the board stays let go until the user's tap. */
+    suspend fun resume(away: Boolean = false) {
         if (!mutableState.value.paused) return
-        mutableState.update { it.copy(paused = false, replaced = it.replaced || boardMayHaveChanged) }
+        mutableState.update { it.copy(paused = false, away = away) }
         lightIfDark()
     }
 

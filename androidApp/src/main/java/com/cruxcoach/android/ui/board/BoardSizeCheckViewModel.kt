@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import android.content.Context
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,11 +10,14 @@ import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.BoardSizeCheckPoint
 import com.cruxcoach.android.data.BoardSizeCheckPoints
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.led.LedAnimationEngine
+import com.cruxcoach.android.led.LedAnimationService
 import com.cruxcoach.data.repository.BoardLocationRepository
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -49,18 +53,26 @@ class BoardSizeCheckViewModel internal constructor(
     /** Where the catalogue is read; tests read it in place. */
     private val io: CoroutineDispatcher,
     now: () -> Long,
+    /** An LED effect will keep running in other apps, so the board stays connected in the background. */
+    effectKeepsBoard: () -> Boolean,
 ) : ViewModel() {
     @Inject constructor(
         connection: BoardBleConnection,
         boardRepository: BoardRepository,
         userPreferences: UserPreferences,
         boardLocationRepository: BoardLocationRepository,
-    ) : this(connection, boardRepository, userPreferences, boardLocationRepository, Dispatchers.IO, SystemClock::elapsedRealtime)
+        ledEffects: LedAnimationEngine,
+        @ApplicationContext context: Context,
+    ) : this(
+        connection, boardRepository, userPreferences, boardLocationRepository, Dispatchers.IO, SystemClock::elapsedRealtime,
+        // As CruxCoachApp decides on the way out of the app.
+        effectKeepsBoard = { ledEffects.shouldKeepRunningInBackground() && LedAnimationService.notificationsVisible(context) },
+    )
 
     val connectionState: StateFlow<ConnectionState> = connection.connectionState
     val connectedBrand: StateFlow<BoardBrand?> = connection.connectedBoardBrand
 
-    private val link = BoardSizeCheckConnection(connection, now = now)
+    private val link = BoardSizeCheckConnection(connection, now = now, effectKeepsBoard = effectKeepsBoard)
     private val session = BoardSizeCheckSession(Source())
     val state: StateFlow<BoardSizeCheckState> = session.state
     private val lock = Mutex()
@@ -68,12 +80,20 @@ class BoardSizeCheckViewModel internal constructor(
     /** Between ON_STOP and ON_START: nothing is lit, and a check that opens meanwhile starts paused. */
     private var inBackground = false
 
+    /** The user's tap is connecting to the board let go in the background: it lights once the board is there. */
+    private var lightWhenReady = false
+
     init {
         viewModelScope.launch {
             connection.connectionState.collect {
                 serial {
                     link.noteLink()
-                    if (it == ConnectionState.DISCONNECTED) session.boardGone()
+                    if (it == ConnectionState.DISCONNECTED) {
+                        // The tap's connect failed: the usual connect prompt takes over.
+                        if (lightWhenReady) session.leaveAway()
+                        lightWhenReady = false
+                        session.boardGone()
+                    }
                 }
             }
         }
@@ -117,9 +137,19 @@ class BoardSizeCheckViewModel internal constructor(
         if (inBackground) pauseNow()
     }
 
-    fun light() = serial { session.light() }
+    /** The user's tap; back after a long time away it connects to the board first and lights once it is there. */
+    fun light() = serial {
+        if (state.value.away && link.connectPaused()) lightWhenReady = true else session.light()
+    }
 
-    fun lightIfDark() = serial { session.lightIfDark() }
+    fun lightIfDark() = serial {
+        if (lightWhenReady) {
+            lightWhenReady = false
+            session.light()
+        } else {
+            session.lightIfDark()
+        }
+    }
 
     fun reject() = serial { session.reject() }
 
@@ -137,14 +167,21 @@ class BoardSizeCheckViewModel internal constructor(
         inBackground = false
         serial {
             if (inBackground || !state.value.paused) return@serial
-            session.resume(boardMayHaveChanged = !link.resume())
+            // A frame sent while the pause's clear waited for the board is not lit over.
+            link.noteWrites()
+            if (link.sentOverSince()) session.replaced()
+            session.resume(away = !link.resume())
         }
     }
 
     private suspend fun pauseNow() {
-        if (state.value.brand == null || state.value.paused) return
+        val brand = state.value.brand ?: return
+        if (state.value.paused) return
+        lightWhenReady = false
         session.pause()
-        link.pause()
+        // Back while the board was being cleared: the link stays, and the resume queued next lights again.
+        if (!inBackground) return
+        link.pause(brand)
     }
 
     fun test(sizeId: Int) = serial { session.test(sizeId) }
@@ -159,6 +196,7 @@ class BoardSizeCheckViewModel internal constructor(
         viewModelScope.launch {
             withContext(NonCancellable) {
                 lock.withLock {
+                    lightWhenReady = false
                     session.close()
                     link.release()
                 }
@@ -233,6 +271,8 @@ class BoardSizeCheckViewModel internal constructor(
         // Nothing goes to the board while the app is in the background, also from a check that
         // opens or switches sizes then.
         override fun ready(brand: BoardBrand): Boolean = !inBackground && link.ready(brand)
+
+        override fun mayRelight(): Boolean = link.mayRelight()
 
         override suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean = link.light(brand, leds)
 

@@ -20,6 +20,7 @@ import io.mockk.verify
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -94,8 +95,8 @@ class BoardSizeCheckViewModelTest {
     @Before fun setUp() = Dispatchers.setMain(dispatcher)
     @After fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(io: CoroutineDispatcher = dispatcher) =
-        BoardSizeCheckViewModel(connection, repository, preferences, locations, io, now = { time })
+    private fun viewModel(io: CoroutineDispatcher = dispatcher, effectKeepsBoard: Boolean = false) =
+        BoardSizeCheckViewModel(connection, repository, preferences, locations, io, now = { time }, effectKeepsBoard = { effectKeepsBoard })
 
     private fun openLit(): BoardSizeCheckViewModel = viewModel().apply {
         open(BoardBrand.KILTER, 10, null)
@@ -187,20 +188,107 @@ class BoardSizeCheckViewModelTest {
         verify(exactly = 0) { connection.disconnect() }
     }
 
-    @Test fun `back after a long time away, the holds wait for a tap`() {
+    @Test fun `back after a long time away, the board is not taken until the user's tap`() {
         val viewModel = openLit()
         viewModel.pause()
         verify(timeout = 5_000L, exactly = 1) { connection.disconnect() }
-        time = BoardSizeCheckConnection.GONE_LIMIT_MS + 1 // another phone may have used the board
+        time = BoardSizeCheckConnection.GONE_LIMIT_MS + 1 // locked on the mat for a while
+        viewModel.resume()
+        val back = viewModel.await { !it.paused }
+        assertTrue(back.away)
+        assertFalse(back.lit)
+        verify(exactly = 0) { connection.connect(any(), any()) }
+        viewModel.lightIfDark()
+        coVerify(exactly = 1) { connection.sendRawFrame(any(), any()) }
+
+        viewModel.light() // connects to the board it let go
+        verify(timeout = 5_000L, exactly = 1) { connection.connect(board, any()) }
+        viewModel.lightIfDark() // the sheet, once the board is ready
+        val lit = viewModel.await { it.lit }
+        assertFalse(lit.away)
+        coVerify(exactly = 2) { connection.sendRawFrame(any(), any()) }
+    }
+
+    @Test fun `a reconnect that takes past the limit waits for a tap`() {
+        val viewModel = openLit()
+        every { connection.connect(any(), any()) } answers { connectionState.value = ConnectionState.CONNECTING }
+        viewModel.pause()
+        verify(timeout = 5_000L, exactly = 1) { connection.disconnect() }
+        time = 20_000L
         viewModel.resume()
         verify(timeout = 5_000L, exactly = 1) { connection.connect(board, any()) }
+        time = BoardSizeCheckConnection.GONE_LIMIT_MS + 5_000L
+        descriptor.value = board
+        connectionState.value = ConnectionState.CONNECTED
+        viewModel.lightIfDark() // the sheet, once the board is ready
+        val back = viewModel.await { it.replaced }
+        assertFalse(back.lit)
+        coVerify(exactly = 1) { connection.sendRawFrame(any(), any()) }
+    }
+
+    @Test fun `back while the board is being cleared, the link stays and the holds light again`() {
+        val viewModel = openLit()
+        val cleared = CompletableDeferred<Unit>()
+        coEvery { connection.clearBoardWrite(any(), any()) } coAnswers {
+            cleared.await()
+            BoardWrite(true, ++writes.value)
+        }
+        viewModel.pause()
+        coVerify(timeout = 5_000L, exactly = 1) { connection.clearBoardWrite(BoardBrand.KILTER, any()) }
+        viewModel.resume() // ON_START while the clear still runs
+        cleared.complete(Unit)
+        viewModel.await { it.lit && !it.paused }
+        verify(exactly = 0) { connection.disconnect() }
+        verify(exactly = 0) { connection.releaseKeepAlive(any()) }
+        coVerify(exactly = 2) { connection.sendRawFrame(any(), any()) }
+    }
+
+    @Test fun `a frame sent while the pause's clear waited is not lit over on return`() {
+        val viewModel = openLit()
+        val cleared = CompletableDeferred<Unit>()
+        coEvery { connection.clearBoardWrite(any(), any()) } coAnswers {
+            cleared.await()
+            BoardWrite.NONE // the session's frame came first: nothing of the check's to clear
+        }
+        viewModel.pause()
+        coVerify(timeout = 5_000L, exactly = 1) { connection.clearBoardWrite(BoardBrand.KILTER, any()) }
+        viewModel.resume()
+        writes.value++ // the session's climb, sent while the clear waited for the board
+        cleared.complete(Unit)
         val back = viewModel.await { !it.paused }
         assertTrue(back.replaced)
         assertFalse(back.lit)
-        viewModel.lightIfDark()
         coVerify(exactly = 1) { connection.sendRawFrame(any(), any()) }
+        verify(exactly = 0) { connection.disconnect() }
+    }
+
+    @Test fun `a tap that cannot reach the board offers the usual connect`() {
+        val viewModel = openLit()
+        viewModel.pause()
+        verify(timeout = 5_000L, exactly = 1) { connection.disconnect() }
+        time = BoardSizeCheckConnection.GONE_LIMIT_MS + 1
+        viewModel.resume()
+        viewModel.await { it.away }
+        every { connection.connect(any(), any()) } answers { connectionState.value = ConnectionState.CONNECTING }
         viewModel.light()
-        viewModel.await { it.lit }
+        verify(timeout = 5_000L, exactly = 1) { connection.connect(board, any()) }
+        connectionState.value = ConnectionState.DISCONNECTED // another phone has the board
+        viewModel.await { !it.away }
+        descriptor.value = board // connected through the connection sheet
+        connectionState.value = ConnectionState.CONNECTED
+        viewModel.lightIfDark()
+        viewModel.await { it.replaced }
+        coVerify(exactly = 1) { connection.sendRawFrame(any(), any()) }
+    }
+
+    @Test fun `an LED effect kept running in other apps keeps the board connected`() {
+        val viewModel = viewModel(effectKeepsBoard = true).apply {
+            open(BoardBrand.KILTER, 10, null)
+            await { it.lit }
+        }
+        viewModel.pause()
+        verify(timeout = 5_000L, exactly = 1) { connection.releaseKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
+        verify(exactly = 0) { connection.disconnect() }
     }
 
     @Test fun `a board whose link dropped long before closing is not reconnected to`() {

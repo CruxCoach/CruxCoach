@@ -316,7 +316,7 @@ class BoardSizeCheckConnectionTest {
         val link = link()
         link.hold()
         every { ble.disconnect() } answers { dropLink() }
-        link.pause()
+        link.pause(BoardBrand.KILTER)
         verify(exactly = 1) { ble.releaseKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
         verify(exactly = 1) { ble.disconnect() }
         link.resume()
@@ -328,7 +328,7 @@ class BoardSizeCheckConnectionTest {
         every { ble.hasOtherKeepAliveOwners(BoardConnectionOwner.SIZE_CHECK) } returns true
         val link = link()
         link.hold()
-        link.pause()
+        link.pause(BoardBrand.KILTER)
         link.resume()
         verify(exactly = 0) { ble.disconnect() }
         verify(exactly = 0) { ble.connect(any(), any()) }
@@ -337,7 +337,7 @@ class BoardSizeCheckConnectionTest {
     @Test fun `a link made while the app was away stays as it is`() {
         val link = link()
         every { ble.disconnect() } answers { dropLink() }
-        link.pause()
+        link.pause(BoardBrand.KILTER)
         descriptor.value = otherBoard
         state.value = ConnectionState.CONNECTED
         link.resume()
@@ -347,7 +347,7 @@ class BoardSizeCheckConnectionTest {
     @Test fun `closing in the background forgets the board to connect again`() {
         val link = link()
         every { ble.disconnect() } answers { dropLink() }
-        link.pause()
+        link.pause(BoardBrand.KILTER)
         link.release() // the sheet closed
         link.resume()
         verify(exactly = 0) { ble.connect(any(), any()) }
@@ -385,18 +385,78 @@ class BoardSizeCheckConnectionTest {
         coVerify(exactly = 1) { ble.clearBoardWrite(BoardBrand.KILTER, 1L) }
     }
 
-    @Test fun `back after the limit, the board may show something else`() {
+    @Test fun `back after the limit, the board waits for the user's tap`() {
+        val link = link()
+        link.hold()
+        every { ble.disconnect() } answers { dropLink() }
+        every { ble.connect(board, any()) } answers { state.value = ConnectionState.CONNECTING }
+        link.pause(BoardBrand.KILTER)
+        time = BoardSizeCheckConnection.GONE_LIMIT_MS + 1 // locked on the mat for a while
+        assertFalse(link.resume())
+        verify(exactly = 0) { ble.connect(any(), any()) }
+        assertFalse(link.mayRelight())
+        verify(exactly = 2) { ble.acquireKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
+
+        assertTrue(link.connectPaused()) // the tap
+        verify(exactly = 1) { ble.connect(board, any()) }
+        assertFalse(link.connectPaused(), "on its way already")
+    }
+
+    @Test fun `once lit again, the board is the check's again`() = runTest {
         val link = link()
         every { ble.disconnect() } answers { dropLink() }
-        link.pause()
+        link.pause(BoardBrand.KILTER)
+        time = BoardSizeCheckConnection.GONE_LIMIT_MS + 1
+        link.resume()
+        link.connectPaused()
+        descriptor.value = board
+        state.value = ConnectionState.CONNECTED
+        link.light(BoardBrand.KILTER, leds)
+        assertTrue(link.mayRelight())
+        dropLink()
+        assertFalse(link.connectPaused(), "nothing left to take back")
+    }
+
+    @Test fun `a second trip to the background keeps the board let go`() {
+        val link = link()
+        every { ble.disconnect() } answers { dropLink() }
+        link.pause(BoardBrand.KILTER)
         time = BoardSizeCheckConnection.GONE_LIMIT_MS + 1
         assertFalse(link.resume())
+        link.pause(BoardBrand.KILTER) // locked again before the tap
+        assertFalse(link.resume())
+        assertFalse(link.mayRelight())
+        assertTrue(link.connectPaused())
         verify(exactly = 1) { ble.connect(board, any()) }
+    }
 
-        state.value = ConnectionState.CONNECTED
-        descriptor.value = board
-        link.pause()
-        time += BoardSizeCheckConnection.GONE_LIMIT_MS
+    @Test fun `the relight limit counts until the light, not the return`() {
+        val link = link()
+        every { ble.disconnect() } answers { dropLink() }
+        link.pause(BoardBrand.KILTER)
+        time = 20_000L
         assertTrue(link.resume())
+        verify(exactly = 1) { ble.connect(board, any()) }
+        assertTrue(link.mayRelight())
+        time = BoardSizeCheckConnection.GONE_LIMIT_MS + 5_000L // the reconnect took a while
+        assertFalse(link.mayRelight())
+    }
+
+    @Test fun `a board of another brand stays connected in the background`() {
+        every { ble.connectedBoardBrand } returns MutableStateFlow(BoardBrand.TENSION)
+        val link = link()
+        link.pause(BoardBrand.KILTER)
+        verify(exactly = 1) { ble.releaseKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
+        verify(exactly = 0) { ble.disconnect() }
+        assertTrue(link.resume())
+        verify(exactly = 0) { ble.connect(any(), any()) }
+    }
+
+    @Test fun `an LED effect running in other apps keeps the board`() {
+        val link = BoardSizeCheckConnection(ble, now = { time }, effectKeepsBoard = { true })
+        link.pause(BoardBrand.KILTER)
+        verify(exactly = 1) { ble.releaseKeepAlive(BoardConnectionOwner.SIZE_CHECK) }
+        verify(exactly = 0) { ble.disconnect() }
+        assertTrue(link.mayRelight())
     }
 }

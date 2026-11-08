@@ -142,6 +142,7 @@ fun BoardSizeCheckSheet(
             state = state,
             brand = brand,
             connected = connected,
+            connecting = connection == ConnectionState.CONNECTING,
             ready = ready,
             otherBoardConnected = connected && connectedBrand != null && connectedBrand != brand,
             applyOnConfirm = applyOnConfirm,
@@ -162,6 +163,7 @@ internal fun BoardSizeCheckContent(
     connected: Boolean,
     ready: Boolean,
     otherBoardConnected: Boolean,
+    connecting: Boolean = false,
     applyOnConfirm: Boolean,
     onConnect: () -> Unit,
     onLight: () -> Unit,
@@ -217,6 +219,19 @@ internal fun BoardSizeCheckContent(
             BoardSizeCheckStep.NO_DATA -> Supporting(stringResource(R.string.board_size_check_no_data))
             BoardSizeCheckStep.ASK -> {
                 when {
+                    // Back after a long time away: the board was let go, and the tap takes it again.
+                    state.away && !connected -> {
+                        Supporting(
+                            stringResource(R.string.board_size_check_replaced),
+                            Modifier.testTag("board_size_check_away"),
+                        )
+                        Button(
+                            onClick = onLight,
+                            enabled = !connecting && !state.busy,
+                            modifier = Modifier.fillMaxWidth().testTag("board_size_check_relight"),
+                        ) { Text(stringResource(R.string.board_size_check_relight), textAlign = TextAlign.Center) }
+                        if (connecting) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    }
                     otherBoardConnected -> ConnectPrompt(
                         stringResource(R.string.board_size_check_other_board, brand.displayName), onConnect,
                     )

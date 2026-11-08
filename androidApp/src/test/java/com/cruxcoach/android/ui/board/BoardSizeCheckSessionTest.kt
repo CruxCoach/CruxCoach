@@ -19,6 +19,7 @@ class BoardSizeCheckSessionTest {
         val sizeList: List<BoardSize>,
         var ready: Boolean = true,
         var lightWorks: Boolean = true,
+        var mayRelight: Boolean = true,
         val holdsBySize: Map<Int, List<BoardSizeCheckPoint>> = emptyMap(),
     ) : BoardSizeCheckSession.Source {
         val lit = mutableListOf<List<Int>>()
@@ -31,6 +32,7 @@ class BoardSizeCheckSessionTest {
                 // Distinct LEDs per size, so a test can tell which size is on the board.
                 ?: (0 until 3).map { BoardSizeCheckPoint(it, it.toLong(), it.toLong(), size.id.toInt() * 100 + it) }
         override fun ready(brand: BoardBrand) = ready
+        override fun mayRelight() = mayRelight
         override suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>): Boolean {
             assertTrue(leds.all { it.second == BoardSizeCheckPoints.LIGHT_COLOR })
             if (lightWorks) lit += leds.map { it.first }.sorted()
@@ -358,6 +360,45 @@ class BoardSizeCheckSessionTest {
         assertTrue(session.state.value.replaced)
         session.close()
         assertEquals(1, source.clears, "cleared once, when the app went away")
+    }
+
+    @Test fun `a board that comes back too late is not lit on its own`() = runTest {
+        val source = FakeSource(listOf(size(10), size(7)))
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.KILTER, 10, null)
+        session.pause()
+        source.ready = false // reconnecting
+        session.resume()
+        source.mayRelight = false // the reconnect took past the limit
+        source.ready = true
+        session.lightIfDark()
+        assertEquals(1, source.lit.size)
+        assertTrue(session.state.value.replaced)
+        session.light() // the user's tap
+        assertEquals(2, source.lit.size)
+        assertTrue(session.state.value.lit)
+    }
+
+    @Test fun `back after a long time away, the board waits for the user`() = runTest {
+        val source = FakeSource(listOf(size(10), size(7)))
+        val session = BoardSizeCheckSession(source)
+        session.open(BoardBrand.KILTER, 10, null)
+        session.pause()
+        source.ready = false // let go, and not connected again
+        source.mayRelight = false
+        session.resume(away = true)
+        with(session.state.value) {
+            assertTrue(away)
+            assertFalse(paused)
+            assertFalse(lit)
+        }
+        source.ready = true // connected some other way
+        session.lightIfDark()
+        assertEquals(1, source.lit.size)
+        assertFalse(session.state.value.away)
+        assertTrue(session.state.value.replaced)
+        session.light()
+        assertTrue(session.state.value.lit)
     }
 
     @Test fun `the smallest kit is listed with the size to try first`() = runTest {

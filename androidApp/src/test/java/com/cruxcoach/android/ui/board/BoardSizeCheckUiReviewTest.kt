@@ -119,6 +119,9 @@ class BoardSizeCheckUiReviewTest {
         }
 
         override fun ready(brand: BoardBrand) = brand == this.brand
+
+        override fun mayRelight() = true
+
         override suspend fun light(brand: BoardBrand, leds: List<Pair<Int, Int>>) = true
         override suspend fun clear(brand: BoardBrand) = true
         override suspend fun apply(brand: BoardBrand, layoutId: Int?, sizeId: Int) = Unit
@@ -270,10 +273,11 @@ class BoardSizeCheckUiReviewTest {
         ready: Boolean = true,
         otherBoard: Boolean = false,
         applyOnConfirm: Boolean = true,
+        connecting: Boolean = false,
     ) = Sheet {
         BoardSizeCheckContent(
             state = state, brand = brand, connected = connected, ready = ready,
-            otherBoardConnected = otherBoard, applyOnConfirm = applyOnConfirm,
+            otherBoardConnected = otherBoard, applyOnConfirm = applyOnConfirm, connecting = connecting,
             onConnect = {}, onLight = {}, onYes = {}, onNo = {}, onTest = {}, onClose = {},
         )
     }
@@ -338,6 +342,10 @@ class BoardSizeCheckUiReviewTest {
         shoot("sheet-03-sending", scrollTo = end) { CheckSheet(dark.copy(busy = true)) }
         shoot("sheet-03b-replaced", scrollTo = end) { CheckSheet(dark.copy(replaced = true)) }
         shoot("sheet-03c-send-failed", scrollTo = end) { CheckSheet(dark.copy(sendFailed = true)) }
+        shoot("sheet-03d-away", scrollTo = end) { CheckSheet(dark.copy(away = true), connected = false, ready = false) }
+        shoot("sheet-03e-away-connecting", scrollTo = end) {
+            CheckSheet(dark.copy(away = true), connected = false, ready = false, connecting = true)
+        }
         shoot("sheet-04-no-data") { CheckSheet(BoardSizeCheckState(brand = BoardBrand.KILTER, step = BoardSizeCheckStep.NO_DATA)) }
         shoot("sheet-05b-pick-other-all-tried", scrollTo = end) { CheckSheet(allTried) }
         shoot("sheet-05c-pick-other-no-board", scrollTo = end) { CheckSheet(pick, connected = false, ready = false) }

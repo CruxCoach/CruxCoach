@@ -25,6 +25,8 @@ internal class BoardSizeCheckConnection(
     private val reconnectTimeoutMs: Long = RECONNECT_TIMEOUT_MS,
     private val goneLimitMs: Long = GONE_LIMIT_MS,
     private val now: () -> Long = SystemClock::elapsedRealtime,
+    /** An LED effect the user keeps running in other apps needs the link in the background. */
+    private val effectKeepsBoard: () -> Boolean = { false },
 ) {
     /**
      * A board the check's points went to, the [BoardBleConnection.boardWrites] count of the
@@ -38,44 +40,72 @@ internal class BoardSizeCheckConnection(
     /** [BoardBleConnection.boardWrites] count of the check's last write to any board: its points or a clear. */
     private var ownWrite: Long? = null
 
-    /** The board [pause] disconnected, to connect again on [resume], and when. */
+    /** The board [pause] disconnected, to connect again on [resume] or the user's tap ([connectPaused]). */
     private var pausedBoard: DiscoveredBoard? = null
-    private var pausedAt = 0L
+
+    /** When [pause] let the board go; null once the check lit it again. */
+    private var awaySince: Long? = null
 
     fun hold() = connection.acquireKeepAlive(BoardConnectionOwner.SIZE_CHECK)
 
     fun release() {
         pausedBoard = null
+        awaySince = null
         connection.releaseKeepAlive(BoardConnectionOwner.SIZE_CHECK)
     }
 
     /**
-     * The app went to the background: the link is let go, and disconnected unless a session or
-     * the relay needs it, so another phone can connect to the board. [resume] connects again.
+     * The app went to the background: the link is let go, and the check's board is disconnected
+     * so another phone can connect to it. It stays connected when a session, the relay or an LED
+     * effect running in other apps needs it, and when it is not a board of [brand]: the check did
+     * not connect it. [resume] connects again.
      */
-    fun pause() {
-        release()
-        if (connection.hasOtherKeepAliveOwners(BoardConnectionOwner.SIZE_CHECK)) return
+    fun pause(brand: BoardBrand) {
+        // A board let go on an earlier trip and not lit since stays let go, from then on.
+        connection.releaseKeepAlive(BoardConnectionOwner.SIZE_CHECK)
+        if (connection.hasOtherKeepAliveOwners(BoardConnectionOwner.SIZE_CHECK) || effectKeepsBoard()) return
         if (connection.connectionState.value == ConnectionState.DISCONNECTED) return
+        if (connection.connectedBoardBrand.value != brand) return
         val board = connection.connectedBoardDescriptor.value ?: return
         pausedBoard = board
-        pausedAt = now()
+        awaySince = awaySince ?: now()
         connection.disconnect()
     }
 
     /**
-     * Back in the app: holds the link again and connects to the board [pause] let go. Returns
-     * false when that was longer ago than [goneLimitMs]: another phone may have used the board
-     * meanwhile, and our write count cannot see it.
+     * Back in the app: holds the link again and connects to the board [pause] let go, but only
+     * within [goneLimitMs]: a phone left locked on the mat must not take the board the moment it
+     * is free, nor try after the user has left. Later the board waits for the user's tap
+     * ([connectPaused]); returns false then.
      */
     fun resume(): Boolean {
         hold()
         val board = pausedBoard ?: return true
-        pausedBoard = null
         // Connected meanwhile (a session, the relay): that link stays.
-        if (connection.connectionState.value == ConnectionState.DISCONNECTED) connection.connect(board)
-        return now() - pausedAt <= goneLimitMs
+        if (connection.connectionState.value != ConnectionState.DISCONNECTED) {
+            pausedBoard = null
+            return true
+        }
+        if (!mayRelight()) return false
+        pausedBoard = null
+        connection.connect(board)
+        return true
     }
+
+    /** The user asked to light the board [pause] let go: connects to it. False when there is none to connect. */
+    fun connectPaused(): Boolean {
+        val board = pausedBoard ?: return false
+        if (connection.connectionState.value != ConnectionState.DISCONNECTED) return false
+        connection.connect(board)
+        return true
+    }
+
+    /**
+     * Whether the board still shows what the check left on it, as far as the check can know: not
+     * once [pause] let it go for longer than [goneLimitMs], as another phone may have used it, and
+     * our write count cannot see that. Asked when the check would light again on its own.
+     */
+    fun mayRelight(): Boolean = awaySince.let { it == null || now() - it <= goneLimitMs }
 
     /** Connected to a board of [brand] and free to send. */
     fun ready(brand: BoardBrand): Boolean =
@@ -87,6 +117,9 @@ internal class BoardSizeCheckConnection(
         val sent = connection.sendRawFrame(leds, expectedBrand = brand)
         // A send that failed half way may have left part of its frame: that is the check's to clear too.
         sent.write?.let { write ->
+            // Lit again: what the board shows is the check's own now.
+            pausedBoard = null
+            awaySince = null
             ownWrite = write
             board?.let { litBoards[it.address] = Lit(it, write) }
         }
@@ -95,6 +128,9 @@ internal class BoardSizeCheckConnection(
 
     /** Nothing was written to any board since the check's last write. */
     fun showsCheckFrame(): Boolean = ownWrite != null && ownWrite == connection.boardWrites.value
+
+    /** Something was written to a board after the check's last write; false before the check wrote anything. */
+    fun sentOverSince(): Boolean = ownWrite.let { it != null && it != connection.boardWrites.value }
 
     /**
      * Accounts for the writes since the last call; call it on every [BoardBleConnection.boardWrites]
