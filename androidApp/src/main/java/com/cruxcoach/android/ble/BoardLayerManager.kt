@@ -66,8 +66,6 @@ data class ExternalBoardLayer(
     val climbName: String? = null,
     /** Null means unknown, not an empty climb. */
     val holds: List<BoardHold>? = null,
-    /** A colour of this installation's PaintBox picture, not another climber. */
-    val paintBox: Boolean = false,
 )
 
 data class BoardLayerRouteDetails(
@@ -430,7 +428,9 @@ class BoardLayerManager @Inject constructor(
             val previousExternal = current.externalLayers.associateBy {
                 BoardLayerControllerRouteKey(it.routeUuid, it.userUuid).normalized()
             }
-            val external = players.filterNot { it.userId.lowercase() in ownedIds }.map { player ->
+            // This phone's PaintBox picture is no other climber: a climb replaces it
+            // (see removePaintBoxLayers), so it neither blocks nor fills the rack.
+            val external = players.filterNot { it.userId.lowercase() in ownedIds || ownsPaintIdentity(it.userId) }.map { player ->
                 val previous = previousExternal[
                     BoardLayerControllerRouteKey(player.routeId, player.userId).normalized()
                 ]
@@ -446,7 +446,6 @@ class BoardLayerManager @Inject constructor(
                     climbUuid = previous?.climbUuid,
                     climbName = previous?.climbName,
                     holds = previous?.holds,
-                    paintBox = ownsPaintIdentity(player.userId),
                 )
             }
             current.copy(
@@ -633,4 +632,20 @@ object BoardLayerConflictPolicy {
             .flatMapTo(mutableSetOf()) { layer -> layer.holds.map { it.placementId } }
         return candidate.count { it.placementId in occupied }
     }
+}
+
+/**
+ * Turns off this phone's PaintBox picture on the connected Quantum board before
+ * a climb takes it, as a climb replaces a picture on every other board.
+ * Returns how many PaintBox layers were removed, or null if one could not be.
+ */
+internal suspend fun BoardBleConnection.removePaintBoxLayers(
+    layers: BoardLayerManager,
+    board: BoardLayerBoardIdentity,
+): Int? {
+    val paint = quantumControllerState.value.players.filter { layers.ownsPaintIdentity(it.userId) }
+    for (player in paint) {
+        if (!removeQuantumLayer(player.userId, player.routeId, board)) return null
+    }
+    return paint.size
 }

@@ -29,7 +29,7 @@ the board button above the picture switches to another one.
 | --- | --- |
 | Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Every board color. The board's power limits apply as for every climb. |
 | MoonBoard | Green, blue and red. |
-| Quantum | Four colors, up to 92 LEDs each. A picture uses its own layers, so other layers must be off before you paint. While a picture is on the board, climbs cannot be lit: clear the picture and send it to free the board. |
+| Quantum | Four colors, up to 92 LEDs each. A picture uses its own layers, so other layers must be off before you paint. Lighting a climb replaces the picture, as on the other boards. |
 | Shiny Wall | Not supported yet. |
 
 ## Turn a photo into a picture

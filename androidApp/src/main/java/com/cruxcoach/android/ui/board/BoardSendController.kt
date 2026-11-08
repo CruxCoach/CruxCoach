@@ -21,6 +21,7 @@ import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
 import com.cruxcoach.android.ble.hasConfirmableQuantumDiodeCount
 import com.cruxcoach.android.ble.matchesQuantumPlayers
 import com.cruxcoach.android.ble.planKey
+import com.cruxcoach.android.ble.removePaintBoxLayers
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.android.data.SessionQueueManager
@@ -566,7 +567,6 @@ internal class BoardSendController(
                 QuantumLayerSuggestionBlock.MULTI_FRAME_UNVERIFIED ->
                     R.string.board_layer_error_multi_frame_unverified
                 QuantumLayerSuggestionBlock.UNKNOWN_LAYER -> R.string.board_layer_error_external_unknown
-                QuantumLayerSuggestionBlock.PAINTBOX_PICTURE -> R.string.paintbox_quantum_picture_on_board
                 QuantumLayerSuggestionBlock.HOLD_CONFLICT -> R.string.board_layer_error_shared_hold
                 QuantumLayerSuggestionBlock.BOARD_FULL -> R.string.board_layer_error_board_full
                 QuantumLayerSuggestionBlock.NO_COLOR -> R.string.board_layer_error_color_taken
@@ -706,6 +706,18 @@ internal class BoardSendController(
             ) }
             return
         }
+        // Only a climb that will be sent takes the picture down: the preflight
+        // above never counts this phone's PaintBox layers. A climb that cannot
+        // map to LEDs leaves it on and fails in sendQuantumLayer as before.
+        if (quantumLayersMappable(requestedPlans, expectedBoard) && !replacePaintBoxPicture(expectedBoard)) {
+            updateForVariant(variant) { it.copy(
+                ble = it.ble.copy(
+                    isSending = false,
+                    error = R.string.board_layer_error_state_unavailable,
+                ),
+            ) }
+            return
+        }
         updateForVariant(variant) {
             it.copy(
                 ble = it.ble.copy(isSending = true, success = false, error = null, warning = null),
@@ -830,7 +842,7 @@ internal class BoardSendController(
         if (assessment.unknownLayerCount > 0) {
             boardLayerManager.failProjection(expectedPlan)
             updateForVariant(variant) { it.copy(
-                ble = it.ble.copy(error = quantumLayerSuggestionBlockResource(controllerState.unknownLayerBlock())),
+                ble = it.ble.copy(error = R.string.board_layer_error_external_unknown),
             ) }
             return false
         }
@@ -893,6 +905,27 @@ internal class BoardSendController(
     private fun quantumLayerPreflight(slots: List<Int>): Int? =
         QuantumLayerUiPolicy.planBlock(boardLayerManager.state.value, slots)
             ?.let(::quantumLayerSuggestionBlockResource)
+
+    /** Whether every requested layer can light on [board] (diode count and LED map). */
+    private suspend fun quantumLayersMappable(
+        plans: List<BoardLayerPlanKey>,
+        board: BoardLayerBoardIdentity,
+    ): Boolean {
+        val ledMap = withContext(ioDispatcher) {
+            boardRepository.getPlacementLedMap(board.productSizeId.toInt(), BoardBrand.QUANTUM.wireValue)
+        }
+        return plans.all { plan ->
+            val layer = boardLayerManager.state.value.layers.firstOrNull { it.planKey() == plan }
+            layer != null && hasConfirmableQuantumDiodeCount(layer.holds) &&
+                hasCompleteQuantumLedMapping(layer.holds, ledMap)
+        }
+    }
+
+    /** A climb replaces this phone's PaintBox picture, as on every other board. */
+    private suspend fun replacePaintBoxPicture(board: BoardLayerBoardIdentity): Boolean {
+        val removed = bleConnection.removePaintBoxLayers(boardLayerManager, board) ?: return false
+        return removed == 0 || refreshAndHydrateQuantumState()
+    }
 
     /** Pull controller truth and resolve every reported vendor route against
      * the active model's local catalogue. No lookup result ever changes board

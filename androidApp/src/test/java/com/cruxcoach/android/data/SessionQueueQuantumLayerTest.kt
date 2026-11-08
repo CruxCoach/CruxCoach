@@ -193,6 +193,46 @@ class SessionQueueQuantumLayerTest {
     }
 
     @Test
+    fun `a playlist climb the checks refuse leaves this phone's PaintBox picture on`() {
+        val paint = QuantumActivePlayer(
+            routeId = "77777777-6666-4555-8444-333333333333",
+            userId = layers.paintIdentity(0),
+            remainingSeconds = 120,
+            color = 0x00ff00,
+        )
+        val foreign = QuantumActivePlayer(
+            routeId = "99999999-8888-4777-8666-555555555555",
+            userId = "12345678-1234-4234-8234-123456789abc",
+            remainingSeconds = 120,
+            color = 0x123456,
+        )
+        controllerState.value =
+            QuantumControllerState(
+                players = listOf(paint, foreign),
+                authoritative = true,
+                authoritativeRevision = 1,
+            )
+        every {
+            repository.getQuantumClimbByExternalRoute(foreign.routeId, "m", false)
+        } returns null
+        coEvery { ble.refreshQuantumState() } returns true
+
+        queue.loadPlaylist("Local playlist", listOf(QueueItem(climbUuid, 30)))
+
+        runBlocking {
+            withTimeout(2_000) {
+                layers.state.first { state ->
+                    state.externalLayers.singleOrNull()?.routeUuid == foreign.routeId
+                }
+            }
+        }
+        coVerify(exactly = 0) { ble.removeQuantumLayer(any(), any(), any()) }
+        coVerify(exactly = 0) {
+            ble.sendClimb(any(), any(), any(), any(), any(), any())
+        }
+    }
+
+    @Test
     fun `known foreign controller holds hydrate and block playlist overlap`() {
         val foreign = QuantumActivePlayer(
             routeId = "99999999-8888-4777-8666-555555555555",

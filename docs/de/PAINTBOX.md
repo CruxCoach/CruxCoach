@@ -30,7 +30,7 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 | --- | --- |
 | Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Jede Board-Farbe. Die Leistungsgrenzen des Boards gelten wie bei jedem Climb. |
 | MoonBoard | Grün, Blau und Rot. |
-| Quantum | Vier Farben, bis zu 92 LEDs je Farbe. Ein Bild nutzt eigene Layer; andere Layer müssen vor dem Malen aus sein. Solange ein Bild auf dem Board ist, lassen sich keine Climbs beleuchten: Leere das Bild und sende es, dann ist das Board wieder frei. |
+| Quantum | Vier Farben, bis zu 92 LEDs je Farbe. Ein Bild nutzt eigene Layer; andere Layer müssen vor dem Malen aus sein. Ein beleuchteter Climb ersetzt das Bild, wie bei den anderen Boards. |
 | Shiny Wall | Noch nicht unterstützt. |
 
 ## Ein Foto als Bild übernehmen

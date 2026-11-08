@@ -25,9 +25,11 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumActivePlayer
 import com.cruxcoach.domain.board.QuantumBoardModel
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -555,6 +557,206 @@ class BoardSendControllerTest {
                 )
                 layerManager.beginProjection(match<BoardLayerPlanKey> { it.slot == 1 })
                 layerManager.confirmProjection(match<BoardLayerPlanKey> { it.slot == 1 })
+            }
+        }
+
+    private val paintUser = "12121212-3434-5656-7878-909090909090"
+    private val paintRoute = "abababab-cdcd-efef-0101-232323232323"
+    private val paintClimbRoute = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    private val paintClimbUser = "99999999-8888-7777-6666-555555555555"
+    private val paintBoard = BoardLayerBoardIdentity("quantum:serial:ser-1", 9201)
+    private val paintClimbHolds = listOf(BoardHold(10, 1), BoardHold(20, 2), BoardHold(30, 3))
+
+    private class PaintPictureClimb(
+        val controller: BoardSendController,
+        val state: MutableStateFlow<ClimbDetailState>,
+        val ble: BoardBleConnection,
+        val layers: BoardLayerManager,
+    )
+
+    /** A Quantum climb is lit while this phone's PaintBox picture is on the board.
+     *  [foreign] is a climber already on the board when the climb is checked. */
+    private fun kotlinx.coroutines.test.TestScope.paintPictureClimb(
+        foreign: ExternalBoardLayer? = null,
+        ledMap: Map<Int, Int> = mapOf(10 to 100, 20 to 200, 30 to 300),
+    ): PaintPictureClimb {
+        val climb = moonClimb.copy(
+            uuid = "11111111-2222-3333-4444-555555555555",
+            name = "Quantum test",
+            boardBrand = BoardBrand.QUANTUM.wireValue,
+            layoutId = 9101,
+            frames = "p10r1p20r2p30r3",
+        )
+        val state = MutableStateFlow(ClimbDetailState(
+            isLoading = false,
+            climb = climb,
+            holds = paintClimbHolds,
+            angle = 40,
+            ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+            selectedBoardLayerSlot = 1,
+            selectedBoardLayerColor = BoardLayerManager.LAYER_COLORS[1],
+        ))
+        val controllerState = MutableStateFlow(QuantumControllerState(
+            players = listOf(QuantumActivePlayer(paintRoute, paintUser, 30, 0x00ff00)),
+            authoritative = true, authoritativeRevision = 1,
+        ))
+        val repository = mockk<BoardRepository>(relaxed = true) {
+            every { getPlacementLedMap(9201, BoardBrand.QUANTUM.wireValue) } returns ledMap
+            every { getRoleColorMapForBrand(BoardBrand.QUANTUM.wireValue) } returns emptyMap()
+            every { getQuantumExternalRouteUuid(climb.uuid) } returns paintClimbRoute
+        }
+        val ble = mockk<BoardBleConnection>(relaxed = true) {
+            // Brand guard is covered independently; null means an older
+            // descriptor without an inferred family and lets this test
+            // focus on the Quantum layer payload.
+            every { connectedBoardBrand } returns MutableStateFlow(null)
+            every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+            every { quantumControllerState } returns controllerState
+            coEvery { removeQuantumLayer(paintUser, paintRoute, paintBoard) } coAnswers {
+                controllerState.value = QuantumControllerState(authoritative = true, authoritativeRevision = 2)
+                true
+            }
+            // The rack is staged for the board on the link — the ordinary
+            // case. Sending a rack staged for a different board is its own
+            // test in BoardLayerBoardBindingTest.
+            every { connectedBoardDescriptor } returns MutableStateFlow(
+                DiscoveredBoard(
+                    displayName = "Quantum", serial = "SER-1", apiLevel = 3,
+                    address = "AA:BB:CC:DD:EE:FF", rssi = -40,
+                    boardBrand = BoardBrand.QUANTUM,
+                )
+            )
+            every { connectedQuantumModel } returns MutableStateFlow(QuantumBoardModel.XL)
+            coEvery {
+                sendClimb(
+                    paintClimbHolds, any(), any(), paintClimbRoute, paintClimbUser,
+                    BoardLayerManager.LAYER_COLORS[1], any(), paintBoard,
+                    BoardBrand.QUANTUM,
+                )
+            } returns true
+            coEvery { refreshQuantumState() } returns true
+        }
+        val preferences = mockk<UserPreferences>(relaxed = true) {
+            every { boardBrand } returns flowOf(BoardBrand.QUANTUM.wireValue)
+            every { boardProductSizeId } returns flowOf(9201)
+        }
+        val queue = mockk<SessionQueueManager>(relaxed = true)
+        every { queue.state } returns MutableStateFlow(SessionQueueState())
+        val layerManager = mockk<BoardLayerManager>(relaxed = true)
+        val layerState = MutableStateFlow(BoardLayerState())
+        every { layerManager.state } returns layerState
+        with(layerManager) {
+            every { isBoundTo(any()) } returns true
+            every { layerForClimb(climb.uuid) } returns null
+            every { nextAvailableSlot(BoardBrand.QUANTUM, 1) } returns 1
+            every { identityForSlot(1) } returns paintClimbUser
+            every { defaultColor(1) } returns BoardLayerManager.LAYER_COLORS[1]
+            every { hasControllerCapacityFor(1, any()) } returns true
+            every { ownsPaintIdentity(paintUser) } returns true
+            every { beginProjection(any<BoardLayerPlanKey>()) } returns true
+            every { assignPreviewIfCurrent(any(), null) } answers {
+                layerState.value = BoardLayerState(
+                    brand = BoardBrand.QUANTUM,
+                    board = paintBoard,
+                    layers = listOf(firstArg()),
+                    externalLayers = listOfNotNull(foreign),
+                )
+                true
+            }
+        }
+        val controller = BoardSendController(
+            scope = this,
+            state = state,
+            boardRepository = repository,
+            personalBoardRepo = mockk(relaxed = true),
+            bleConnection = ble,
+            userPreferences = preferences,
+            climbAdvertiser = mockk(relaxed = true),
+            sessionQueueManager = queue,
+            isSharingEnabled = { false },
+            boardLayerManager = layerManager,
+            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+        )
+        return PaintPictureClimb(controller, state, ble, layerManager)
+    }
+
+    @Test
+    fun `a Quantum climb first turns off this phone's PaintBox picture`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val run = paintPictureClimb()
+            val ble = run.ble
+
+            run.controller.sendToBoard()
+            advanceUntilIdle()
+
+            assertTrue(run.state.value.nearby.debugInfo, run.state.value.ble.success)
+            coVerify(exactly = 1) {
+                ble.sendClimb(
+                    paintClimbHolds,
+                    any(),
+                    any(),
+                    paintClimbRoute,
+                    paintClimbUser,
+                    BoardLayerManager.LAYER_COLORS[1],
+                    any(),
+                    paintBoard,
+                    BoardBrand.QUANTUM,
+                )
+            }
+            coVerifyOrder {
+                ble.removeQuantumLayer(paintUser, paintRoute, paintBoard)
+                ble.sendClimb(paintClimbHolds, any(), any(), paintClimbRoute, paintClimbUser, BoardLayerManager.LAYER_COLORS[1], any(), paintBoard, BoardBrand.QUANTUM)
+            }
+            // Read again after the picture is gone, before the climb's own write.
+            coVerify(exactly = 3) { ble.refreshQuantumState() }
+            verify(exactly = 1) {
+                run.layers.assignPreviewIfCurrent(
+                    match<BoardClimbLayer> {
+                        it.slot == 1 && it.userUuid == paintClimbUser && it.routeUuid == paintClimbRoute &&
+                            it.color == BoardLayerManager.LAYER_COLORS[1]
+                    },
+                    null,
+                )
+                run.layers.beginProjection(match<BoardLayerPlanKey> { it.slot == 1 })
+                run.layers.confirmProjection(match<BoardLayerPlanKey> { it.slot == 1 })
+            }
+        }
+
+    @Test
+    fun `a Quantum climb the checks refuse leaves the PaintBox picture on`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // Another climber already lights hold 10, which the climb needs too.
+            val run = paintPictureClimb(foreign = ExternalBoardLayer(
+                routeUuid = "cccccccc-cccc-cccc-cccc-cccccccccccc",
+                userUuid = "dddddddd-dddd-dddd-dddd-dddddddddddd",
+                color = 0xffff0000.toInt(),
+                remainingSeconds = 30,
+                holds = listOf(BoardHold(10, 1)),
+            ))
+
+            run.controller.sendToBoard()
+            advanceUntilIdle()
+
+            assertFalse(run.state.value.ble.success)
+            assertTrue(run.state.value.ble.error != null)
+            coVerify(exactly = 0) { run.ble.removeQuantumLayer(any(), any(), any()) }
+            coVerify(exactly = 0) {
+                run.ble.sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            }
+        }
+
+    @Test
+    fun `a Quantum climb without LED data leaves the PaintBox picture on`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val run = paintPictureClimb(ledMap = mapOf(10 to 100, 20 to 200))
+
+            run.controller.sendToBoard()
+            advanceUntilIdle()
+
+            assertFalse(run.state.value.ble.success)
+            coVerify(exactly = 0) { run.ble.removeQuantumLayer(any(), any(), any()) }
+            coVerify(exactly = 0) {
+                run.ble.sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
             }
         }
 

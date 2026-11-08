@@ -37,10 +37,9 @@
     <string name="paintbox_image_bg">Hintergrund</string>
     <string name="paintbox_image_pick_bg">Tippe im Bild auf die Hintergrundfarbe.</string>
     <string name="paintbox_image_error">Das Bild konnte nicht geladen werden. Bitte wähle ein anderes Bild.</string>
-    <string name="paintbox_quantum_picture_on_board">Auf dem Board ist ein PaintBox-Bild. Um einen Climb zu beleuchten, leere das Bild in PaintBox und sende es.</string>
     <string name="paintbox_photo_title">Foto</string>
     <string name="paintbox_info">Malen\nWähle Pinsel oder Radierer und eine Farbe und tippe oder streiche mit einem Finger über die Holds. Zwei Finger zoomen und verschieben das Board. Ein Strich ist ein Schritt für Rückgängig.\n\nAuf dem Board\nSenden zeigt das Bild einmal auf dem Board. Mit Live folgt das Board jedem Strich. Live pausiert, wenn die Verbindung abbricht, wenn du PaintBox verlässt und wenn du das Board wechselst.\n\nBilder\nSpeichern legt das Bild auf diesem Handy ab. Bilder werden nie geteilt.</string>
-    <string name="paintbox_info_quantum">Quantum\nVier Farben, bis zu 92 LEDs je Farbe. Solange ein Bild auf dem Board ist, lassen sich keine Climbs beleuchten: Leere das Bild und sende es, dann ist das Board wieder frei.</string>
+    <string name="paintbox_info_quantum">Quantum\nVier Farben, bis zu 92 LEDs je Farbe. Andere Layer müssen vor dem Malen aus sein. Ein beleuchteter Climb ersetzt das Bild.</string>
     <string name="paintbox_info_photo">Ein Finger verschiebt das Foto, zwei Finger zoomen und drehen es. Jeder Hold bekommt die Board-Farbe, die dem Foto am nächsten kommt. Hintergrund lässt eine Farbe des Fotos aus. Gespeichert werden nur die Farben der Holds.</string>
     <string name="paintbox_live">Live</string>
     <string name="paintbox_connect">Board verbinden</string>

@@ -59,7 +59,7 @@ class BoardLayerManagerTest {
         assertEquals(4, manager.state.value.layers.size)
     }
 
-    @Test fun `a PaintBox colour stays a separate controller player marked as PaintBox`() {
+    @Test fun `this phone's PaintBox picture neither blocks nor fills the rack`() {
         val manager = BoardLayerManager(context)
         manager.reconcile(listOf(
             QuantumActivePlayer(
@@ -76,8 +76,34 @@ class BoardLayerManagerTest {
             ),
         ))
         assertTrue(manager.state.value.layers.isEmpty())
-        assertEquals(listOf(true, false), manager.state.value.externalLayers.map { it.paintBox })
-        assertEquals(2, manager.state.value.occupiedCount)
+        // Only the other climber's layer is foreign; a climb removes the picture first.
+        assertEquals(listOf("bbbbbbbb-cccc-dddd-eeee-ffffffffffff"), manager.state.value.externalLayers.map { it.userUuid })
+        assertEquals(1, manager.state.value.occupiedCount)
+    }
+
+    @Test fun `a climb removes only this phone's PaintBox layers`() = kotlinx.coroutines.test.runTest {
+        val manager = BoardLayerManager(context)
+        val board = BoardLayerBoardIdentity("quantum:serial:ser-1", 9201)
+        val paint = QuantumActivePlayer(
+            routeId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", userId = manager.paintIdentity(1),
+            remainingSeconds = 12, color = 0x00ff00,
+        )
+        val other = QuantumActivePlayer(
+            routeId = "cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee", userId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+            remainingSeconds = 12, color = 0x123456,
+        )
+        val ble = io.mockk.mockk<BoardBleConnection>(relaxed = true)
+        io.mockk.every { ble.quantumControllerState } returns kotlinx.coroutines.flow.MutableStateFlow(
+            QuantumControllerState(players = listOf(paint, other), authoritative = true, authoritativeRevision = 1),
+        )
+        io.mockk.coEvery { ble.removeQuantumLayer(any(), any(), any()) } returns true
+
+        assertEquals(1, ble.removePaintBoxLayers(manager, board))
+        io.mockk.coVerify(exactly = 1) { ble.removeQuantumLayer(paint.userId, paint.routeId, board) }
+        io.mockk.coVerify(exactly = 0) { ble.removeQuantumLayer(other.userId, any(), any()) }
+
+        io.mockk.coEvery { ble.removeQuantumLayer(any(), any(), any()) } returns false
+        assertNull(ble.removePaintBoxLayers(manager, board))
     }
 
     @Test fun `foreign controller player consumes capacity but is never claimed or removed`() {
