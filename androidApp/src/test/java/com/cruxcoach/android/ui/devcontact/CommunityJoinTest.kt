@@ -53,6 +53,7 @@ class CommunityJoinTest {
                     ReportSentHandler(
                         sendSuccess = sendSuccess.value,
                         sentTitle = "Bug report sent",
+                        hintText = "Follow your report and test the fix early: join the community on Buzz.",
                         offersCommunity = { offers },
                         hideForGood = hideForGood,
                         onResultConsumed = { consumed++; sendSuccess.value = null },
@@ -88,22 +89,27 @@ class CommunityJoinTest {
         compose.setContent {
             MaterialTheme {
                 CommunityJoinSection(onJoin = {})
-                CommunityReportHintDialog(title = "Bug Report gesendet", onJoin = {}, onAlreadyMember = {}, onClose = {})
+                CommunityReportHintDialog(
+                    title = "Fehlerbericht gesendet",
+                    text = "Verfolge deine Meldung und teste die Lösung früh: Tritt der Community auf Buzz bei.",
+                    onJoin = {}, onAlreadyMember = {}, onClose = {},
+                )
             }
         }
         compose.onNodeWithText("Auf Buzz beitreten").assertExists()
-        compose.onNodeWithText("Buzz ist eine eigene App mit eigenem Konto. Von CruxCoach wird nichts weitergegeben.")
+        compose.onNodeWithText("Buzz ist eine separate App mit eigenem Konto. CruxCoach gibt nichts weiter.")
             .assertExists()
         compose.onNodeWithText("Bereits Mitglied").assertIsDisplayed()
-        compose.onNodeWithText("Schließen").assertIsDisplayed()
+        compose.onNodeWithText("Später").assertIsDisplayed()
     }
 
     @Test fun `a sent report shows the hint instead of leaving, and the hint survives recreation`() {
         val restoration = renderForm()
         send()
         compose.onNodeWithText("Bug report sent").assertIsDisplayed()
-        compose.onNodeWithText("Follow your report and test the fix early: join the community on Buzz")
+        compose.onNodeWithText("Follow your report and test the fix early: join the community on Buzz.")
             .assertIsDisplayed()
+        compose.onNodeWithText("Not now").assertIsDisplayed()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithTag("community_report_hint").assertIsDisplayed()
         compose.runOnIdle {
@@ -187,7 +193,7 @@ class CommunityJoinTest {
     @Test fun `the 0_2_5 what's new carries the community line and waits for the version bump`() {
         compose.setContent { MaterialTheme { Release025WhatsNewDialog(onDismiss = {}) } }
         compose.onNodeWithText("New in 0.2.5").assertIsDisplayed()
-        compose.onNodeWithText("• Community – join the CruxCoach community on Buzz from Settings → Community.")
+        compose.onNodeWithText("• Community on Buzz\u00A0– talk to the developers and test new builds first (Settings → Community).")
             .assertIsDisplayed()
         assertFalse(WhatsNewItems.RELEASE_025 in WhatsNewItems.registry)
     }

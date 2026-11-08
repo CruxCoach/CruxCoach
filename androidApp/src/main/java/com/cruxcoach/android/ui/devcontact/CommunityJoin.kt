@@ -2,10 +2,12 @@ package com.cruxcoach.android.ui.devcontact
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -28,13 +30,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.openUriOrToast
@@ -61,28 +66,34 @@ internal fun CommunityJoinSection(onJoin: () -> Unit) {
             Icons.Outlined.Science to R.string.community_point_test,
             Icons.Outlined.HowToVote to R.string.community_point_shape,
         ).forEach { (icon, text) ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                Text(stringResource(text), style = MaterialTheme.typography.bodyLarge)
+            val style = MaterialTheme.typography.bodyLarge
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Centred on the first line, so a point that wraps at large font still reads as a list.
+                Box(Modifier.height(with(LocalDensity.current) { style.lineHeight.toDp() }), contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                }
+                Text(stringResource(text), style = style)
             }
         }
         Button(onClick = onJoin, modifier = Modifier.fillMaxWidth().testTag("community_join")) {
             Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.community_join_action))
+            // Centred when it wraps (German at large font), like a one-line label.
+            Text(stringResource(R.string.community_join_action), textAlign = TextAlign.Center)
         }
         Text(
             stringResource(R.string.community_join_note),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
-/** The hint after a new report; its title confirms the report was sent. */
+/** The hint after a new report; its title confirms the report was sent, [text] fits the kind of report. */
 @Composable
 internal fun CommunityReportHintDialog(
     title: String,
+    text: String,
     onJoin: () -> Unit,
     onAlreadyMember: () -> Unit,
     onClose: () -> Unit,
@@ -91,22 +102,50 @@ internal fun CommunityReportHintDialog(
         onDismissRequest = onClose,
         modifier = Modifier.testTag("community_report_hint"),
         title = { Text(title) },
-        text = { Text(stringResource(R.string.community_report_hint)) },
+        text = { Text(text) },
         confirmButton = {
-            Button(onClick = onJoin, modifier = Modifier.testTag("community_report_hint_join")) {
-                Text(stringResource(R.string.community_report_hint_join))
-            }
-        },
-        // Two buttons in this slot: the dialog wraps all three when they do not fit in a row.
-        dismissButton = {
-            TextButton(onClick = onClose, modifier = Modifier.testTag("community_report_hint_close")) {
-                Text(stringResource(R.string.action_close))
-            }
-            TextButton(onClick = onAlreadyMember, modifier = Modifier.testTag("community_report_hint_member")) {
-                Text(stringResource(R.string.community_report_hint_member))
+            HintButtons {
+                TextButton(onClick = onAlreadyMember, modifier = Modifier.testTag("community_report_hint_member")) {
+                    Text(stringResource(R.string.community_report_hint_member))
+                }
+                TextButton(onClick = onClose, modifier = Modifier.testTag("community_report_hint_close")) {
+                    Text(stringResource(R.string.community_report_hint_later))
+                }
+                Button(onClick = onJoin, modifier = Modifier.testTag("community_report_hint_join")) {
+                    Text(stringResource(R.string.community_report_hint_join))
+                }
             }
         },
     )
+}
+
+/**
+ * The hint's three buttons: in one row when they fit, the rare "Already a
+ * member" at the start; otherwise stacked at the end with Join on top. Never
+ * split into a row of one and a row of two, where Close would move around.
+ */
+@Composable
+private fun HintButtons(content: @Composable () -> Unit) {
+    Layout(content) { measurables, constraints ->
+        val gap = 8.dp.roundToPx()
+        val buttons = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
+        val rowWidth = buttons.sumOf { it.width } + gap * (buttons.size - 1)
+        val width = constraints.maxWidth
+        if (rowWidth <= width) {
+            val height = buttons.maxOf { it.height }
+            layout(width, height) {
+                buttons.first().placeRelative(0, (height - buttons.first().height) / 2)
+                var x = width
+                buttons.drop(1).reversed().forEach { x -= it.width; it.placeRelative(x, (height - it.height) / 2); x -= gap }
+            }
+        } else {
+            val stacked = buttons.reversed()
+            layout(width, stacked.sumOf { it.height }) {
+                var y = 0
+                stacked.forEach { it.placeRelative(width - it.width, y); y += it.height }
+            }
+        }
+    }
 }
 
 /**
@@ -119,6 +158,7 @@ internal fun CommunityReportHintDialog(
 internal fun ReportSentHandler(
     sendSuccess: Boolean?,
     sentTitle: String,
+    hintText: String,
     offersCommunity: suspend () -> Boolean,
     hideForGood: suspend () -> Unit,
     onResultConsumed: () -> Unit,
@@ -156,6 +196,7 @@ internal fun ReportSentHandler(
         val leave = { if (showHint) { showHint = false; onNavigateBack() } }
         CommunityReportHintDialog(
             title = sentTitle,
+            text = hintText,
             onJoin = {
                 uriHandler.openUriOrToast(context, COMMUNITY_JOIN_URL)
                 leave()
