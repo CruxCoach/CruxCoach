@@ -81,7 +81,7 @@ class BoardSizeCheckViewModel internal constructor(
         }
     }
 
-    /** Computed while collected: the climb screen collects it only while its ⋯ menu is open. */
+    /** Whether the climb's ⋯ menu offers the check; a few small queries, stopped at two sizes. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val savedBoard: StateFlow<SavedBoardForCheck?> = combine(
         userPreferences.boardBrand,
