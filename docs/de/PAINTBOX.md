@@ -1,73 +1,52 @@
 # PaintBox
 
-Öffnen über **Einstellungen → Gruppe Extras → PaintBox**, direkt aus der
-Einstellungsübersicht. „Extras“ ist eine eigene Gruppe außerhalb von „App & Hilfe“.
-Die Farbflächen verwenden den transparenten Farbhof mit kleinem Farbmittelpunkt
-der Heatmaps im Routeneditor und in der Logbuch-Statistik. Das Boardfoto bleibt
-sichtbar; die an die LEDs gesendeten Farbwerte ändern sich dadurch nicht.
-Das aktive Board ist vorbelegt;
-die Boardtaste öffnet den vorhandenen Board-Picker. Mit einem Finger Griffe
-antippen oder überstreichen, um sie zu bemalen oder zu radieren. Zwei Finger
-zoomen und verschieben. Ein Pinselstrich ist ein Rückgängig-Schritt. Die Farbwahl
-verwendet dieselbe benannte Palette wie die Boardkonfiguration.
+PaintBox malt Bilder mit den LEDs deines Boards: Jeder Hold ist ein Pixel.
+Du öffnest es über **Einstellungen → Extras → PaintBox**. Es startet mit deinem
+aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 
-Speichern, Speichern unter und Bilder verwalten lokale, weiter bearbeitbare
-Bilder. Die Bibliothek gruppiert nach Boardfamilie und zeigt Layout und Größe.
-Laden übernimmt die gespeicherte Konfiguration einschließlich MoonBoard-Griffsets.
-Fehlende Kataloge lassen sich über die vorhandene Einstellungsseite herunterladen.
-Vor einem Wechsel werden ungespeicherte Änderungen abgefragt. Bilder sind keine
-Kletterrouten und werden nicht veröffentlicht.
+## Malen
 
-Bluetooth öffnet den vorhandenen Verbindungsdialog. Verbinden allein sendet
-nichts. **Jetzt übertragen** sendet einmalig. Die Glühbirne sendet beim Einschalten
-das aktuelle Bild und aktiviert Live-Malen. Ausschalten pausiert weitere
-Übertragungen, ohne die Anzeige zu löschen. Manche Controller löschen ihre LEDs
-beim Trennen. Verlassen, App-Hintergrund, Boardwechsel und Verbindungsverlust
-pausieren Live-Malen. Eine bereits laufende Übertragung kann noch abschließen;
-wartende Änderungen werden verworfen.
+- Wähle **Pinsel** oder **Radierer** und eine **Farbe** und tippe oder streiche
+  mit einem Finger über die Holds. Zwei Finger zoomen und verschieben das Board.
+- Ein Strich ist ein Schritt für **Rückgängig** und **Wiederholen**. **Bild leeren**
+  entfernt alle Farben und lässt sich ebenfalls rückgängig machen.
+- **Speichern** und **Speichern unter** legen das Bild unter einem Namen auf deinem
+  Handy ab. **Bilder** zeigt sie nach Board geordnet und lädt eines samt seinem
+  Board, auch mit den MoonBoard-Holdsets. Bilder sind keine Climbs und werden nie
+  geteilt oder veröffentlicht.
+- Fehlt der Katalog des Boards, bietet PaintBox die Katalog-Einstellungen an.
 
-Kilter, Tension, Grasshopper, Decoy, So iLL und Touchstone verwenden den vorhandenen
-Aurora-Encoder samt Leistungsgrenzen. MoonBoard bietet Grün, Blau und Rot über
-sein Rollenprotokoll. Quantum nutzt vier Farben und eigene dauerhafte
-PaintBox-Identitäten, getrennt von den Routenebenen. Es gilt die verifizierte
-Grenze von 92 LEDs je Farbe. Andere aktive Ebenen mit unbekannter Geometrie
-blockieren die Übertragung vor der ersten Änderung; deren Besitzer muss sie
-entfernen. Nur eigene PaintBox-Ebenen werden ersetzt. Ein Übertragungsfehler kann
-ein Teilbild hinterlassen und wird entsprechend angezeigt. PaintBox verwendet
-bei Quantum niemals den allgemeinen Befehl zum Löschen aller Ebenen.
+## Das Board leuchten lassen
 
-Prüfung: gezielte `PaintBox`-JVM-Tests und der Geräteablauf `flows/paintbox.yaml`.
-Am 06.11.2026 bestanden 49 gezielte JVM-/Robolectric-Tests ohne Fehler oder
-übersprungene Tests. Auf anschließenden Wunsch zur Smartphone-Installation wurde
-eine lokale Debug-APK mit der durch `scripts/feature_identity.py` festgelegten
-Feature-Kennung gebaut und auf dem Pixel 8 Pro installiert. Installation und
-Kaltstart waren erfolgreich; Android zeigte die anfängliche Berechtigungsabfrage.
-Maestro, vollständige CI-Prüfungen und echte LED-Boards wurden noch nicht geprüft.
-Die Hardware-Abnahme und ihre Grenzen sind im [englischen Prüfablauf](../en/PAINTBOX.md#verification)
-beschrieben. Vollständige Builds, Lint und Tests laufen gemäß AGENTS.md in CI.
+- Die Bluetooth-Taste öffnet den gewohnten Verbindungsdialog. Verbinden allein
+  sendet kein Bild.
+- **Jetzt übertragen** sendet das Bild einmal. Die Glühbirne schaltet Live-Malen
+  ein: Das Board folgt jedem Strich. Ausschalten beendet das Senden; das Board
+  behält, was es zeigt.
+- Live-Malen pausiert, wenn die Verbindung abbricht, wenn du den Bildschirm oder
+  die App verlässt und wenn du das Board wechselst. Wieder einschalten tust du
+  es selbst.
 
-## Bild vom Smartphone importieren
+| Board | Farben |
+| --- | --- |
+| Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Jede Board-Farbe. Die Leistungsgrenzen des Boards gelten wie bei jedem Climb. |
+| MoonBoard | Grün, Blau und Rot. |
+| Quantum | Vier Farben, bis zu 92 LEDs je Farbe. Ein Bild nutzt eigene Layer; andere Layer müssen vor dem Malen aus sein. Solange ein Bild auf dem Board ist, lassen sich keine Climbs beleuchten: Leere das Bild und sende es, dann ist das Board wieder frei. |
+| Shiny Wall | Noch nicht unterstützt. |
 
-Das Bild-Icon direkt links neben Bluetooth öffnet die Android-Bildauswahl.
-Das gewählte Bild ersetzt das Wandfoto; die Griffpositionen bleiben in der
-Standardansicht fest. Ein Finger verschiebt das Bild, zwei Finger zoomen und
-drehen es. Zu Beginn wird es vollständig eingepasst und zentriert. Über das aktive
-Bild-Icon lässt es sich austauschen.
+## Ein Foto als Bild übernehmen
 
-Die Farbe am Griffmittelpunkt wird auf die nächstmögliche Boardfarbe abgebildet.
-Pixel unter 50 % Deckkraft und Positionen außerhalb des Bildes schalten Griffe aus.
-BG Color zeigt „Pick Background Color“: Ein Tipp auf das Bild blendet diese Farbe
-und ähnliche RGB-Farben aus (euklidischer Abstand bis 24). Erneutes Tippen auf BG
-Color löscht die Auswahl; ein weiterer Tipp aktiviert die Pipette erneut.
-Farbige Griffe behalten die transparente Darstellung, ausgeschaltete Positionen
-bleiben als neutrale Punkte sichtbar.
+Die Bild-Taste neben Bluetooth öffnet die Android-Fotoauswahl. Das Foto ersetzt
+das Boardfoto, die Holds bleiben an ihrem Platz:
 
-OK übernimmt die Vorschau als einen Undo-Schritt. Cancel oder Zurück stellt den
-vorherigen Zustand samt Undo/Redo wieder her. Bei aktiver Glühbirne folgt das Board
-der Vorschau live; Cancel stellt auch eine bereits übertragene Vorschau am selben
-verbundenen Board wieder zurück. Verbindungsfehler und Quantum-Grenzen werden wie
-bisher angezeigt. Speichern, Laden und Boardwechsel sind während des Imports
-gesperrt. Gespeichert werden nur die resultierenden Grifffarben, nicht Quelldatei
-oder Transformation. Das Laden erhält Alpha und Bildausrichtung und begrenzt die
-lange Kante auf 2048 Pixel. Ein unbestätigter Import bleibt bei Konfigurationswechseln
-erhalten, wird bei Prozessbeendigung jedoch verworfen.
+- Ein Finger verschiebt es, zwei Finger zoomen und drehen es.
+- Jeder Hold bekommt die Board-Farbe, die dem Foto an seiner Mitte am nächsten
+  kommt. Transparente Stellen und Holds außerhalb des Fotos bleiben aus.
+- **Hintergrund** lässt eine Farbe des Fotos aus, für Fotos ohne Transparenz:
+  Tippe darauf und dann im Foto auf diese Farbe. Ein weiterer Tipp auf
+  **Hintergrund** nimmt die Wahl zurück.
+- **OK** übernimmt das Foto als einen Schritt zum Rückgängigmachen. **Abbrechen**
+  oder Zurück holt das vorige Bild zurück, auch auf dem Board, wenn es das Foto
+  live gezeigt hat.
+
+Gespeichert werden nur die Farben der Holds, nie das Foto.
