@@ -27,7 +27,7 @@ class CommunityHintButtonsTest {
             MaterialTheme {
                 CommunityReportHintDialog(
                     title = "Feature request sent",
-                    text = "Follow your request and try it early: join the community on Buzz.",
+                    text = "Talk about your idea and test new builds first: join the community on Buzz.",
                     onJoin = {}, onAlreadyMember = {}, onClose = {},
                 )
             }

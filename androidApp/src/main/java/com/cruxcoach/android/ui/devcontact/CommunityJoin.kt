@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,10 +40,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.openUriOrToast
+import kotlin.math.ceil
 import kotlinx.coroutines.launch
 
 /**
@@ -61,31 +66,51 @@ internal fun CommunityJoinSection(onJoin: () -> Unit) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.semantics { heading() },
         )
-        listOf(
-            Icons.Outlined.Forum to R.string.community_point_talk,
-            Icons.Outlined.Science to R.string.community_point_test,
-            Icons.Outlined.HowToVote to R.string.community_point_shape,
-        ).forEach { (icon, text) ->
-            val style = MaterialTheme.typography.bodyLarge
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Centred on the first line, so a point that wraps at large font still reads as a list.
-                Box(Modifier.height(with(LocalDensity.current) { style.lineHeight.toDp() }), contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+        val style = MaterialTheme.typography.bodyLarge
+        val density = LocalDensity.current
+        // The gap grows with the font, so points that wrap at large font stay apart.
+        Column(verticalArrangement = Arrangement.spacedBy(with(density) { 12.sp.toDp() })) {
+            listOf(
+                Icons.Outlined.Forum to R.string.community_point_talk,
+                Icons.Outlined.Science to R.string.community_point_test,
+                Icons.Outlined.HowToVote to R.string.community_point_shape,
+            ).forEach { (icon, text) ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Centred on the first line, so a point that wraps still reads as a list.
+                    Box(Modifier.height(with(density) { style.lineHeight.toDp() }), contentAlignment = Alignment.Center) {
+                        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    }
+                    Text(stringResource(text), style = style)
                 }
-                Text(stringResource(text), style = style)
             }
         }
         Button(onClick = onJoin, modifier = Modifier.fillMaxWidth().testTag("community_join")) {
             Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            // Centred when it wraps (German at large font), like a one-line label.
-            Text(stringResource(R.string.community_join_action), textAlign = TextAlign.Center)
+            WrappedLabel(stringResource(R.string.community_join_action))
         }
         Text(
             stringResource(R.string.community_join_note),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/**
+ * A button label that wraps (German at large font) stays as wide as its
+ * longest line, so the leading icon stays next to it and the button centres both.
+ */
+@Composable
+private fun WrappedLabel(text: String) {
+    val style = LocalTextStyle.current
+    val measurer = rememberTextMeasurer()
+    Layout({ Text(text, textAlign = TextAlign.Center) }) { measurables, constraints ->
+        val lines = measurer.measure(text, style, constraints = Constraints(maxWidth = constraints.maxWidth))
+        val widest = (0 until lines.lineCount).maxOf { lines.getLineRight(it) - lines.getLineLeft(it) }
+        val width = ceil(widest).toInt().coerceIn(constraints.minWidth, constraints.maxWidth)
+        val label = measurables.single().measure(constraints.copy(minWidth = width, maxWidth = width))
+        layout(label.width, label.height) { label.placeRelative(0, 0) }
     }
 }
 

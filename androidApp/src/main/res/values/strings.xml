@@ -3073,7 +3073,7 @@
     <string name="community_join_action">Join on Buzz</string>
     <string name="community_join_note">Buzz is a separate app with its own account. Nothing from CruxCoach is shared.</string>
     <string name="community_report_hint">Follow your report and test the fix early: join the community on Buzz.</string>
-    <string name="community_report_hint_feature">Follow your request and try it early: join the community on Buzz.</string>
+    <string name="community_report_hint_feature">Talk about your idea and test new builds first: join the community on Buzz.</string>
     <string name="community_report_hint_join">Join</string>
     <string name="community_report_hint_member">Already a member</string>
     <string name="community_report_hint_later">Not now</string>
