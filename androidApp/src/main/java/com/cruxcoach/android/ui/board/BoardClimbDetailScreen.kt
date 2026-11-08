@@ -371,7 +371,9 @@ fun BoardClimbDetailScreen(
                 showLedEffects = false
                 showBleSheet = true
             },
-            onSendAgain = viewModel::sendToBoard,
+            // Like the light button: a private playlist may light it directly, a
+            // shared session gets it through its queue.
+            onSendAgain = viewModel::deliverClimb,
             onDismiss = { showLedEffects = false },
         )
     }

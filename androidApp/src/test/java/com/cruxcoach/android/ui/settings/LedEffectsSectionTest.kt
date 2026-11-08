@@ -100,13 +100,21 @@ class LedEffectsSectionTest {
         compose.onNodeWithText("auch wenn „Animationen entfernen“", substring = true).assertIsDisplayed()
     }
 
-    @Test fun `without notifications the background switch shows off and offers them`() {
+    @Test fun `without notifications the background switch stays on, offers them and can be turned off`() {
         val notifications = RuntimeEnvironment.getApplication().getSystemService(NotificationManager::class.java)
         shadowOf(notifications).setNotificationsEnabled(false)
         state.value = LedEffectsState(keepRunningInBackground = true)
         show()
-        compose.onNodeWithTag("led_effects_background").performScrollTo().assertIsOff()
+        compose.onNodeWithTag("led_effects_background").performScrollTo().assertIsOn()
         compose.onNodeWithTag("led_effects_allow_notifications").performScrollTo().assertIsDisplayed()
+        // It cannot run without notifications, so the board is not held meanwhile.
+        compose.onNodeWithTag("led_effects_background_on").assertDoesNotExist()
+
+        // A tap clears the setting, so it cannot come back on its own with the notifications.
+        compose.onNodeWithTag("led_effects_background").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(false, state.value.keepRunningInBackground) }
+        compose.onNodeWithTag("led_effects_background").assertIsOff()
+        compose.onNodeWithTag("led_effects_allow_notifications").assertDoesNotExist()
     }
 
     @Test fun `while it may run in other apps the card says the board stays connected`() {

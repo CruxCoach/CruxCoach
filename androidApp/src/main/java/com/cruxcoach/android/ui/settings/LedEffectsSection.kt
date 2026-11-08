@@ -289,11 +289,12 @@ private fun LedEffectBackgroundRow(checked: Boolean, onCheckedChange: (Boolean) 
         notificationsOk = LedAnimationService.notificationsVisible(context)
         if (granted && notificationsOk) onCheckedChange(true)
     }
-    // The details are in the card's info. Without notifications it cannot run, so it shows off.
+    // The details are in the card's info. The switch shows the setting as it is, also
+    // while notifications are off, so a tap can always turn it off.
     SettingsToggleRow(
         title = stringResource(R.string.settings_led_effects_background),
         description = "",
-        checked = checked && notificationsOk,
+        checked = checked,
         onCheckedChange = { on ->
             when {
                 !on -> onCheckedChange(false)

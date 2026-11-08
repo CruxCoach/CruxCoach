@@ -33,12 +33,14 @@ boards" and the per-board settings (`ui/settings/LedEffectsSection.kt`): a
 status line (with *Connect board* when no board is connected), the effects as
 chips (a tap applies at once, so the wall is the preview; gentle ones first, the
 flashing ones last with a flash mark that stays when chosen) and *Keep running
-in other apps*, which shows off while notifications are off and, while on, says
-that the board stays connected to this phone. What each effect does, what pauses
-it, the limit and running in other apps are in the card's one info dialog. The
-climb menu offers the same choice ("LED effect: Pulse") while a board that shows
-effects is connected, in a fully opened sheet whose status line offers *Restart*
-once the effect has ended on that climb. There is no tempo control: the owner's
+in other apps*, which shows the setting as it is (while notifications are off,
+with a hint and *Allow notifications*, and a tap turns it off) and, while it can
+run, says that the board stays connected to this phone. What each effect does,
+what pauses it, the limit and running in other apps are in the card's one info
+dialog. The climb menu offers the same choice ("LED effect: Pulse") while a board
+that shows effects is connected, in a fully opened sheet whose status line offers
+*Restart* once the effect has ended on that climb; it sends the climb again like
+the light button (in a shared session through its queue). There is no tempo control: the owner's
 rule is that the effects look and move exactly as contributed
 (`LedPr21GoldenTest`). The default is **None** — byte-for-byte the static
 behaviour and the fallback for any unknown id. Stored in DataStore:
