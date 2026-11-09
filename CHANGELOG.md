@@ -600,6 +600,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one plans at least two weight steps more, so a start that was too light catches up. Not for finger work,
   and not during an injury, the return after a break, a comeback plan or for climbers under 18 or in their
   first year. Below 10 kg a load rises by at most one step per training.
+- Training: the weekly plan counts the climbing still planned this week. A training early in the week
+  leaves room for the pull and core work of the climbing days ahead, and says so. When the week has no
+  room left for pull and push but legs or core are still short, Today suggests legs and core instead of
+  mobility, and the other way round. Without a hangboard, pick-up block or board, the finger goal is at
+  most your climbing days a week, and push and legs count only the training days without climbing.
+- Training: around an injury of one arm or leg, a one-sided exercise that also loads the other side (an
+  archer push-up or pull-up, an assisted one-arm pull-up or hang, a kneeling stretch for an injured knee,
+  lunges and split squats) is no longer offered for the healthy side only while the injury rules it out.
+- Comeback plan: the weekly look back reads the seven days before it and that morning. It offers the
+  next stage only after the stage's sessions on at least three days (or on as many as the stage plans,
+  when that is fewer) and while the week's middle morning pain is within the stage's rule, and says
+  which of the two is missing. A rise of 1 in morning pain that stays within the rule is no longer a
+  warning, and a painful week at the first stage proposes repeating it instead of "not enough entries".
 - Comeback plan: a strength session starts from the last strength session's loads, no longer from the
   light tendon holds done earlier the same day (and the other way round).
 - Injuries: pain on the injury card and in the training's pain sheet now goes from 0 to 10, like the

@@ -1,5 +1,6 @@
 package com.cruxcoach.athlete.logic
 
+import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
 import com.cruxcoach.athlete.catalog.ExerciseCategoryV2
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
@@ -15,6 +16,7 @@ import com.cruxcoach.athlete.model.FocusArea
 import com.cruxcoach.athlete.model.Injury
 import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.InjurySide
+import com.cruxcoach.athlete.model.PLAN_BOARD
 import com.cruxcoach.athlete.model.SetType
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
@@ -95,10 +97,12 @@ data class AreaProgress(
  * | Mobility | 2–6 | 1 | hips and shoulders for climbing positions |
  *
  * Scaling: block phase ([TrainingBlocks.setsFactor]), goal, focus areas,
- * experience and age band, training days per week (2 → ×0.7 … 5+ → ×1.3) and
- * injuries. Young climbers and first-year climbers get no off-wall finger
- * sets (their finger stimulus is climbing), and a paused finger injury
- * halves the finger cap (healthy side only); both hands hurt → no finger target.
+ * experience and age band, training days per week (2 → ×0.7 … 5+ → ×1.3; push
+ * and legs count the days without climbing) and injuries. Young climbers and
+ * first-year climbers get no off-wall finger sets (their finger stimulus is
+ * climbing), without a hangboard, block or board the finger sessions are at most
+ * the climbing days, and a paused finger injury halves the finger cap (healthy
+ * side only); both hands hurt → no finger target.
  */
 object WeeklyVolume {
 
@@ -136,16 +140,41 @@ object WeeklyVolume {
         else -> 0.0
     }
 
+    /** Set equivalents one climbing day of [intensity] adds to [area]: pull and core, nothing elsewhere. */
+    fun climbingSetCredit(area: VolumeArea, intensity: ClimbIntensity?): Double = when (area) {
+        VolumeArea.PULL -> pullCredit(intensity)
+        VolumeArea.CORE -> coreCredit(intensity)
+        else -> 0.0
+    }
+
+    /** What finger training off the wall needs: a hangboard, a pick-up block or a board. */
+    val FINGER_EQUIPMENT = setOf(EquipmentV2.HANGBOARD, EquipmentV2.PICKUP_BLOCK, EquipmentV2.PICKUP_BLOCK_PAIR,
+        EquipmentV2.BOARD, EquipmentV2.CAMPUS_BOARD)
+
+    /** Climbing days of the athlete's usual week: the standard week's climbing and board days, else the coach setup's. */
+    fun climbingDaysPerWeek(profile: AthleteProfile): Int = (1..7).count { day ->
+        val entry = profile.weekPlan[day]
+        entry == PLAN_BOARD || DayPlans.isClimb(entry) || (entry == null && day in profile.coach.climbingDays)
+    }
+
     fun targets(profile: AthleteProfile, block: BlockState?, injuries: List<Injury>, trainingDaysPerWeek: Int): List<AreaTarget> {
         val coach = profile.coach
         val phaseFactor = block?.let { TrainingBlocks.setsFactor(it.phase) } ?: 1.0
         val days = trainingDaysPerWeek.coerceIn(1, 7)
-        val dayFactor = when {
-            days <= 2 -> 0.7
-            days == 3 -> 1.0
-            days == 4 -> 1.15
+        fun dayFactor(n: Int) = when {
+            n <= 2 -> 0.7
+            n == 3 -> 1.0
+            n == 4 -> 1.15
             else -> 1.3
         }
+        // Push and legs are trained off the wall only: they count the training days without climbing (issue #59: five
+        // days with two of them climbing asked for five days of pressing). Climbing gives pull and core their credit.
+        val climbingDays = climbingDaysPerWeek(profile)
+        val offWallDays = (days - climbingDays).coerceAtLeast(1)
+        // Without finger equipment the finger sessions are the climbing days (issue #59: one bouldering day a week
+        // against a goal of two finger sessions that no training could reach), none without climbing days. Any of
+        // the athlete's places counts, so the week's goal does not change with the place picked today.
+        val fingerEquipment = TrainingPlaces.allEquipment(profile).any { it in FINGER_EQUIPMENT }
         val experienceFactor = when (coach.experience) {
             ExperienceBand.UNDER_1 -> 0.7
             ExperienceBand.Y1_2 -> 0.85
@@ -166,7 +195,8 @@ object WeeklyVolume {
 
         return VolumeArea.entries.map { area ->
             val base = BASE.getValue(area)
-            var f = phaseFactor * dayFactor * experienceFactor * ageFactor
+            val trainingDays = if (area == VolumeArea.PUSH || area == VolumeArea.LEGS) offWallDays else days
+            var f = phaseFactor * dayFactor(trainingDays) * experienceFactor * ageFactor
             when (coach.goal) {
                 CoachGoal.STAY_HEALTHY -> f *= when (area) {
                     VolumeArea.ANTAGONIST, VolumeArea.MOBILITY -> 1.25
@@ -209,6 +239,7 @@ object WeeklyVolume {
                         coach.ageBand != AgeBand.Y40_54 && coach.ageBand != AgeBand.Y55_PLUS -> 3
                     else -> 2
                 }
+                if (!fingerEquipment) sessions = min(sessions, climbingDays)
                 minSets = 0
                 maxSets = when {
                     bothHandsFinger || youth || novice -> 0

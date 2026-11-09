@@ -111,6 +111,46 @@ class WeeklyVolumeTest {
         assertTrue(target(WeeklyVolume.targets(profile, null, listOf(both), 3), VolumeArea.FINGER).isOff)
     }
 
+    @Test
+    fun pushAndLegsCountTheTrainingDaysWithoutClimbing() {
+        // Simulation (issue #59): five days, two of them climbing, asked for five days of pressing.
+        val climber = profile.copy(coach = CoachProfile(climbingDays = setOf(2, 5)))
+        val t = WeeklyVolume.targets(climber, null, emptyList(), 5)
+        val threeDays = WeeklyVolume.targets(profile, null, emptyList(), 3)
+        assertEquals(target(threeDays, VolumeArea.PUSH), target(t, VolumeArea.PUSH))
+        assertEquals(target(threeDays, VolumeArea.LEGS), target(t, VolumeArea.LEGS))
+        // Climbing gives pull and core their credit: they keep all five days.
+        val fiveDays = WeeklyVolume.targets(profile, null, emptyList(), 5)
+        assertEquals(target(fiveDays, VolumeArea.PULL), target(t, VolumeArea.PULL))
+        assertEquals(target(fiveDays, VolumeArea.CORE), target(t, VolumeArea.CORE))
+        // The standard week's climbing and board days count as well; at least one day stays off the wall.
+        val planned = profile.copy(weekPlan = mapOf(1 to PLAN_BOARD, 3 to "climb:gym_boulder:hard", 6 to "builtin:x"))
+        assertEquals(2, WeeklyVolume.climbingDaysPerWeek(planned))
+        val allClimbing = profile.copy(coach = CoachProfile(climbingDays = setOf(1, 3, 5)))
+        assertEquals(target(WeeklyVolume.targets(profile, null, emptyList(), 1), VolumeArea.PUSH),
+            target(WeeklyVolume.targets(allClimbing, null, emptyList(), 3), VolumeArea.PUSH))
+    }
+
+    @Test
+    fun withoutFingerEquipmentTheFingerSessionsAreTheClimbingDays() {
+        // Simulation (issue #59): one bouldering day a week against a goal of two finger sessions no training could reach.
+        val noBoard = profile.copy(equipment = setOf(EquipmentV2.NONE, EquipmentV2.MAT, EquipmentV2.DUMBBELL, EquipmentV2.PULL_UP_BAR),
+            coach = CoachProfile(climbingDays = setOf(6)))
+        fun sessions(p: AthleteProfile) = target(WeeklyVolume.targets(p, null, emptyList(), 4), VolumeArea.FINGER).minSessions
+        assertEquals(1, sessions(noBoard))
+        // No climbing day given (e.g. without the coach setup): no session to ask for, not "0 of 1" for ever (review of #98).
+        assertEquals(0, sessions(noBoard.copy(coach = CoachProfile())))
+        assertEquals(2, sessions(noBoard.copy(coach = CoachProfile(climbingDays = setOf(2, 6)))))
+        assertEquals(2, sessions(noBoard.copy(equipment = noBoard.equipment + EquipmentV2.HANGBOARD)))
+        assertEquals(2, sessions(noBoard.copy(equipment = noBoard.equipment + EquipmentV2.BOARD)))
+        assertEquals(2, sessions(noBoard.copy(coach = CoachProfile(), weekPlan = mapOf(2 to PLAN_BOARD, 6 to "climb:gym_boulder:volume"))))
+        // Any of the athlete's places counts: picking a place without a hangboard today leaves the week's goal as it is.
+        val twoPlaces = noBoard.copy(places = listOf(
+            TrainingPlace("home", PlaceKind.HOME, null, noBoard.equipment + EquipmentV2.HANGBOARD),
+            TrainingPlace("travel", PlaceKind.TRAVEL, null, noBoard.equipment)))
+        assertEquals(2, sessions(twoPlaces))
+    }
+
     // ── Progress ─────────────────────────────────────────────────────
 
     @Test

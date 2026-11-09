@@ -36,7 +36,8 @@ sealed class Event {
 
     /**
      * An injury on [day], over on [resolvedOn]; climbing pauses while it is open. With [comeback] the athlete
-     * follows the app's comeback plan instead and ends it themselves ([resolvedOn] is then null).
+     * follows the app's comeback plan instead and ends it themselves ([resolvedOn] is then null), the way
+     * [habits] say.
      */
     data class Injury(
         override val day: Int, val region: InjuryRegion, val severity: Int, val resolvedOn: Int?,
@@ -44,10 +45,30 @@ sealed class Event {
         val side: InjurySide? = null,
         val comeback: Boolean = false,
         val finding: InjuryFinding? = null,
+        val habits: ComebackHabits = ComebackHabits(),
     ) : Event()
 
     /** Travels from [day] to [until] with only [equipment] at hand. */
     data class Trip(override val day: Int, val until: Int, val equipment: Set<EquipmentV2>) : Event()
+}
+
+/**
+ * How the athlete follows a comeback plan (issue #59 follow-up). The defaults are the careful, honest athlete who
+ * does every due session, climbs no harder than the stage allows, accepts every proposal and starts on the day.
+ */
+data class ComebackHabits(
+    /** Share of the due sessions skipped (seeded). */
+    val skipShare: Double = 0.0,
+    /** Share of the planned climbing days climbed one level harder than the stage allows. */
+    val climbsAhead: Double = 0.0,
+    /** Keeps the stage when the plan proposes a step back or asks about a worsening. */
+    val ignoresStepBack: Boolean = false,
+    /** Starts the plan this many days after the injury … */
+    val startDelayDays: Int = 0,
+    /** … at this stage. */
+    val startStage: Int = 0,
+) {
+    val careful: Boolean get() = this == ComebackHabits()
 }
 
 /**
@@ -73,6 +94,10 @@ data class Persona(
     val skipShare: Double = 0.0,
     /** Always answers "3+" in reserve and taps "too easy" on the card now and then. */
     val alwaysEasy: Boolean = false,
+    /** Share of training days on which the athlete taps "Another suggestion" on the card first. */
+    val anotherShare: Double = 0.0,
+    /** Share of training days on which the athlete swaps one exercise on the card for one of its alternatives. */
+    val swapShare: Double = 0.0,
     /** Standard deviation of the reserve answer around the truth, in reps or seconds. */
     val rirNoise: Double = 1.0,
     val checkins: Boolean = true,
@@ -130,7 +155,7 @@ data class Persona(
         private fun board(minutes: Int, i: ClimbIntensity) = Climb(ClimbingDayKind.OTHER_BOARD, minutes, i)
 
         /** Every persona of the full run. */
-        val ALL: List<Persona> get() = BASE + CHOICE
+        val ALL: List<Persona> get() = BASE + CHOICE + CARD + COMEBACK + REGIONS
 
         private val BASE: List<Persona> = listOf(
             Persona("beginner-board", "Beginner on the board, nothing else",
@@ -257,6 +282,58 @@ data class Persona(
                 equipment = NOTHING + EquipmentV2.PULL_UP_BAR, trainingDays = setOf(1, 3, 5),
                 climbing = mapOf(6 to boulder(90, ClimbIntensity.VOLUME))),
         )
+
+        /** The card's other buttons (issue #59 follow-up): "Another suggestion" and swaps, from `home-hangboard`. */
+        private val CARD: List<Persona> = listOf(BASE.first { it.id == "home-hangboard" }.let { p ->
+            p.copy(id = "picky", title = "Intermediate who changes the card",
+                summary = p.summary + " Taps “Another suggestion” on about a third of the training days and swaps one exercise " +
+                    "for one of its alternatives on about four in ten.",
+                seed = 2121, weeks = 10, anotherShare = 0.3, swapShare = 0.4)
+        })
+
+        /** Comeback plans the athlete does not follow to the letter (issue #59 follow-up), each from `pulley-comeback`. */
+        private val COMEBACK: List<Persona> = BASE.first { it.id == "pulley-comeback" }.let { p ->
+            val injury = p.events.filterIsInstance<Event.Injury>().single()
+            fun with(id: String, title: String, summary: String, seed: Int, habits: ComebackHabits) =
+                p.copy(id = id, title = title, summary = summary, seed = seed, events = listOf(injury.copy(habits = habits)))
+            listOf(
+                with("comeback-skipper", "Comeback plan, half the sessions skipped",
+                    "Like pulley-comeback, but skips about half of the plan's sessions and keeps the stage when the plan proposes " +
+                        "a step back or asks about a worsening.",
+                    727, ComebackHabits(skipShare = 0.5, ignoresStepBack = true)),
+                with("comeback-eager", "Comeback plan, climbing ahead of the stage",
+                    "Like pulley-comeback, but on half of the climbing days the stage allows climbs one level harder than it allows.",
+                    737, ComebackHabits(climbsAhead = 0.5)),
+                with("comeback-late", "Comeback plan started two weeks late, at the third stage",
+                    "Like pulley-comeback, but rests for two weeks, then starts the plan at stage 2 instead of the first stage.",
+                    747, ComebackHabits(startDelayDays = 14, startStage = 2)),
+            )
+        }
+
+        /**
+         * The comeback plans of the other findings and regions (issue #59 follow-up), each from `pulley-comeback` with
+         * the careful athlete: findings that change the finger plan's pain rule, and one injury per region's stages.
+         */
+        private val REGIONS: List<Persona> = BASE.first { it.id == "pulley-comeback" }.let { p ->
+            val injury = p.events.filterIsInstance<Event.Injury>().single()
+            fun with(id: String, title: String, seed: Int, region: InjuryRegion, finding: InjuryFinding?, severity: Int = 4,
+                     side: InjurySide? = InjurySide.RIGHT) =
+                p.copy(id = id, title = "Comeback plan after $title", seed = seed,
+                    summary = "Like pulley-comeback (intermediate, home setup, bouldering twice), but $title on day 10, checked by a " +
+                        "doctor, then the app's comeback plan for it from its first stage.",
+                    events = listOf(injury.copy(region = region, finding = finding, severity = severity, side = side)))
+            listOf(
+                with("comeback-rupture", "a pulley rupture", 757, InjuryRegion.FINGER, InjuryFinding.PULLEY_RUPTURE, severity = 6),
+                with("comeback-tenosynovitis", "a tenosynovitis of the finger", 767, InjuryRegion.FINGER, InjuryFinding.TENOSYNOVITIS, severity = 3),
+                with("comeback-shoulder", "a rotator cuff problem of the shoulder", 777, InjuryRegion.SHOULDER, InjuryFinding.ROTATOR_CUFF),
+                with("comeback-elbow", "pain on the inside of the elbow", 787, InjuryRegion.ELBOW, InjuryFinding.MEDIAL_ELBOW),
+                with("comeback-wrist", "pain on the little-finger side of the wrist", 797, InjuryRegion.WRIST, InjuryFinding.ULNAR_WRIST),
+                with("comeback-knee", "a strain on the inside of the knee", 807, InjuryRegion.KNEE, InjuryFinding.KNEE_INNER),
+                with("comeback-ankle", "a sprained ankle", 817, InjuryRegion.ANKLE, InjuryFinding.ANKLE_SPRAIN, severity = 5),
+                with("comeback-hamstring", "a hamstring strain", 827, InjuryRegion.HIP, InjuryFinding.HAMSTRING),
+                with("comeback-back", "low back pain", 837, InjuryRegion.BACK, null, side = null),
+            )
+        }
 
         /** The fast subset for CI: six personas, three weeks each. */
         val FAST: List<Persona> = listOf("home-hangboard", "youth-15", "pulley-injury", "pulley-comeback", "new-no-setup", "open-home").map { id ->

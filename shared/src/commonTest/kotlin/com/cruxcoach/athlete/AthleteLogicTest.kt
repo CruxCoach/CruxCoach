@@ -203,6 +203,41 @@ class AthleteLogicTest {
     }
 
     @Test
+    fun aOneSidedExerciseThatLoadsTheOtherSideTooIsNotForTheHealthySideOnly() {
+        // Simulation (issue #59 follow-up): an archer push-up "for the left side" still loads the straight right arm.
+        val archer = def("push.archer_push_up", ExerciseKind.REPS, LoadMode.BODYWEIGHT, unilateral = true,
+            domains = listOf(LoadDomain.WRIST, LoadDomain.ELBOW, LoadDomain.SHOULDER),
+            contraindications = listOf(BodyRegion.WRIST, BodyRegion.SHOULDER))
+            .copy(bothSides = listOf(BodyRegion.WRIST, BodyRegion.ELBOW, BodyRegion.SHOULDER))
+        val pulldown = def("pull.single_arm_lat_pulldown", ExerciseKind.REPS, LoadMode.EXTERNAL, unilateral = true,
+            domains = listOf(LoadDomain.SHOULDER, LoadDomain.ELBOW), contraindications = listOf(BodyRegion.SHOULDER, BodyRegion.ELBOW))
+        val childPose = def("mobility.child_pose_lat_stretch", ExerciseKind.TIME, LoadMode.NONE, unilateral = true,
+            domains = listOf(LoadDomain.SHOULDER, LoadDomain.BACK), contraindications = listOf(BodyRegion.KNEE, BodyRegion.SHOULDER))
+            .copy(bothSides = listOf(BodyRegion.KNEE))
+        val shoulder = Injury("s", InjuryRegion.SHOULDER, InjurySide.RIGHT, severity = 5, startedOn = "2026-10-01")
+        val knee = Injury("k", InjuryRegion.KNEE, InjurySide.LEFT, severity = 4, startedOn = "2026-10-01")
+        assertEquals(InjuryVerdict.ONE_SIDE_ONLY, InjuryAdvisor.assess(pulldown, listOf(shoulder)).verdict)
+        assertEquals(InjuryVerdict.AVOID, InjuryAdvisor.assess(archer, listOf(shoulder)).verdict)
+        // A mild injury: the healthy side still does the hard part, as before.
+        assertEquals(InjuryVerdict.ONE_SIDE_ONLY, InjuryAdvisor.assess(archer, listOf(shoulder.copy(severity = 2))).verdict)
+        // Only the region that is loaded on both sides counts: the child's pose kneels on both knees but stretches one shoulder.
+        assertEquals(InjuryVerdict.AVOID, InjuryAdvisor.assess(childPose, listOf(knee)).verdict)
+        assertEquals(InjuryVerdict.ONE_SIDE_ONLY, InjuryAdvisor.assess(childPose, listOf(shoulder)).verdict)
+        // During a comeback plan before its open stage, too.
+        val inPlan = shoulder.copy(plan = ComebackPlan(stage = 1, acknowledgedOn = "2026-10-02", startedOn = "2026-10-02"))
+        assertEquals(InjuryVerdict.AVOID, InjuryAdvisor.assess(archer, listOf(inPlan)).verdict)
+        assertEquals(InjuryVerdict.ONE_SIDE_ONLY, InjuryAdvisor.assess(pulldown, listOf(inPlan)).verdict)
+    }
+
+    @Test
+    fun theCatalogueReadsTheRegionsLoadedOnBothSides() {
+        val catalog = ExerciseCatalog.parse(
+            """{"catalogVersion":1,"exercises":[{"slug":"push.archer_push_up","category":"PUSH","kind":"REPS","load":"BODYWEIGHT",""" +
+                """"unilateral":true,"contraindications":["wrist","shoulder"],"bothSides":["wrist","elbow","shoulder"]}]}""")
+        assertEquals(listOf(BodyRegion.WRIST, BodyRegion.ELBOW, BodyRegion.SHOULDER), catalog["push.archer_push_up"]!!.bothSides)
+    }
+
+    @Test
     fun injuriesOnBothSidesLeaveNoSide() {
         val right = leftFinger.copy(id = "i2", side = InjurySide.RIGHT)
         assertEquals(InjuryVerdict.AVOID, InjuryAdvisor.assess(pickup, listOf(leftFinger, right)).verdict)

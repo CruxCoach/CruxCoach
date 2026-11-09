@@ -229,6 +229,8 @@
     </plurals>
     <string name="cb_review_stay_rising">Pressure pain went up this week compared with the week before. The usual approach is to stay at this stage until it falls again; if it keeps rising, get it checked.</string>
     <string name="cb_review_stay_last">You are at the last stage. Check the return criteria above with your doctor or physio – met criteria don\'t show that the injury has healed.</string>
+    <string name="cb_review_stay_mornings">On at least half of the mornings you logged this week, the pain was above your rule of %1$d. The usual approach is to stay at this stage until it is back at %1$d or less in the morning.</string>
+    <string name="cb_review_stay_sessions">The next stage builds on this stage\'s sessions on at least %1$d\u00A0days a week; this week it was %2$d. The usual approach is to stay at this stage for another week.</string>
     <string name="cb_sources_more">%1$d more</string>
     <string name="cb_sources_less">Fewer</string>
     <string name="cb_reference_label">Reference value</string>
