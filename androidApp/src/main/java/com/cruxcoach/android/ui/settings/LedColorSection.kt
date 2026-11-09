@@ -138,13 +138,28 @@ private fun LedColorRow(
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun ColorPickerBottomSheet(
+internal fun ColorPickerBottomSheet(
     roleLabel: String,
     currentByte: Int,
     onColorSelected: (Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    allowedColors: Set<Int>? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
+        LedColorPalette(roleLabel, currentByte, onColorSelected, allowedColors)
+    }
+}
+
+/** Shared palette content, independently testable from the platform sheet window. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun LedColorPalette(
+    roleLabel: String,
+    currentByte: Int,
+    onColorSelected: (Int) -> Unit,
+    allowedColors: Set<Int>? = null,
+) {
+    Box {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -160,7 +175,9 @@ private fun ColorPickerBottomSheet(
             )
 
             ColorFamily.entries.forEach { family ->
-                val colors = RGB332_PALETTE_BY_FAMILY[family] ?: return@forEach
+                val colors = RGB332_PALETTE_BY_FAMILY[family]
+                    ?.filter { allowedColors == null || it.byte in allowedColors }
+                    ?.takeIf { it.isNotEmpty() } ?: return@forEach
 
                 Text(
                     stringResource(family.labelResId),

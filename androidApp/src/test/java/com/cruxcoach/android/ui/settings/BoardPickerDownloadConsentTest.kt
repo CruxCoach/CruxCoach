@@ -6,6 +6,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.*
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -65,5 +66,26 @@ class BoardPickerDownloadConsentTest {
         compose.onNode(isDialog()).assertDoesNotExist()
         coVerify(exactly = 0) { vm.enableDownloads(any()) }
         compose.runOnIdle { assertEquals(1, applied) }
+    }
+
+    @Test fun `first confirmation reports the newly persisted board even when the write is delayed`() {
+        val write = CompletableDeferred<Unit>()
+        var saved = BoardBrand.KILTER
+        val observed = mutableListOf<BoardBrand>()
+        compose.setContent {
+            BoardDownloadRequestHost(vm, deferDownloads = true, onSelected = { observed += saved }) { request ->
+                Button(onClick = {
+                    request(BoardBrand.MOONBOARD) {
+                        write.await()
+                        saved = BoardBrand.MOONBOARD
+                    }
+                }) { Text("MoonBoard wählen") }
+            }
+        }
+        compose.onNodeWithText("MoonBoard wählen").performClick()
+        compose.runOnIdle { assertEquals(emptyList<BoardBrand>(), observed) }
+        write.complete(Unit)
+        compose.waitUntil { observed.isNotEmpty() }
+        compose.runOnIdle { assertEquals(listOf(BoardBrand.MOONBOARD), observed) }
     }
 }

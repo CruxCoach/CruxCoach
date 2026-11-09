@@ -194,37 +194,35 @@ class BoardPickerViewModel @Inject constructor(
 
     fun downloadSelectedBoard(brand: BoardBrand) = syncManager.loadBoardCatalogue(brand)
 
-    fun selectKilter(sizeId: Int, fixedAngle: Int? = null) {
-        viewModelScope.launch {
-            val size = productSizes.value.firstOrNull { it.id.toInt() == sizeId }
-            // Never persist an id outside the Kilter size list (e.g. a stale
-            // Aurora id leaking through a caller): a nonexistent product_size
-            // resolves to null everywhere — empty size label, fit filter
-            // silently off, no board image. Fall back to the product default.
-            val validSizeId = if (size != null) sizeId else BoardConstants.KILTER_DEFAULT_SIZE
-            val layout = BoardConstants.layoutIdForProduct(
-                size?.productId?.toInt() ?: BoardConstants.KILTER_PRODUCT_ID,
-            )
-            // Atomic brand+layout+size(+angle) write — see UserPreferences.setBoardSelection:
-            // separate writes can flash a transient (kilter, stale-layout) tuple
-            // through the board-flow collectors. fixedAngle is non-null only for a
-            // fixed-angle gym wall, seeding the browse angle to its real value.
-            userPreferences.setBoardSelection(BoardBrand.KILTER.wireValue, layout, validSizeId, fixedAngle)
-        }
+    suspend fun selectKilter(sizeId: Int, fixedAngle: Int? = null) {
+        val size = productSizes.value.firstOrNull { it.id.toInt() == sizeId }
+        // Never persist an id outside the Kilter size list (e.g. a stale
+        // Aurora id leaking through a caller): a nonexistent product_size
+        // resolves to null everywhere — empty size label, fit filter
+        // silently off, no board image. Fall back to the product default.
+        val validSizeId = if (size != null) sizeId else BoardConstants.KILTER_DEFAULT_SIZE
+        val layout = BoardConstants.layoutIdForProduct(
+            size?.productId?.toInt() ?: BoardConstants.KILTER_PRODUCT_ID,
+        )
+        // Atomic brand+layout+size(+angle) write — see UserPreferences.setBoardSelection:
+        // separate writes can flash a transient (kilter, stale-layout) tuple
+        // through the board-flow collectors. fixedAngle is non-null only for a
+        // fixed-angle gym wall, seeding the browse angle to its real value.
+        userPreferences.setBoardSelection(BoardBrand.KILTER.wireValue, layout, validSizeId, fixedAngle)
     }
 
-    fun selectMoonBoard(variant: MoonBoardVariant, holdSetIds: List<Long>? = null) {
-        viewModelScope.launch { userPreferences.setMoonBoardSelection(variant.layoutId.toInt(), holdSetIds) }
+    suspend fun selectMoonBoard(variant: MoonBoardVariant, holdSetIds: List<Long>? = null) {
+        userPreferences.setMoonBoardSelection(variant.layoutId.toInt(), holdSetIds)
     }
 
-    fun selectQuantum(model: QuantumBoardModel, deferDownload: Boolean = false) {
+    suspend fun selectQuantum(model: QuantumBoardModel, deferDownload: Boolean = false) {
+        userPreferences.setBoardSelection(
+            BoardBrand.QUANTUM.wireValue,
+            model.layoutId.toInt(),
+            model.productSizeId.toInt(),
+            null,
+        )
         viewModelScope.launch {
-            userPreferences.setBoardSelection(
-                BoardBrand.QUANTUM.wireValue,
-                model.layoutId.toInt(),
-                model.productSizeId.toInt(),
-                null,
-            )
             // Selection remains usable offline when already cached; a failed
             // refresh is non-destructive and can be retried from board sync.
             if (deferDownload || BoardBrand.QUANTUM !in userPreferences.boardDownloadBrands.first()) return@launch
@@ -237,28 +235,22 @@ class BoardPickerViewModel @Inject constructor(
         }
     }
 
-    fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?, productSizeId: Int? = null, deferDownload: Boolean = false) {
-        viewModelScope.launch {
-            val status = try {
-                if (!deferDownload) syncManager.state.first { !it.isSyncing }
-                auroraBoardSelector.select(board, variant, productSizeId, allowDownload = !deferDownload).status
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "Aurora board selection failed", e)
-                AuroraBoardSelector.Status.FAILED
-            }
-            // Surface a failed catalogue sync. The picker dialog / gym sheet is
-            // already closed when the sync resolves, so a toast is the one
-            // feedback channel that reaches every call site: without it a
-            // hardware selection could otherwise land on an unexplained
-            // empty board when its catalogue download fails.
-            if (!deferDownload && status == AuroraBoardSelector.Status.DOWNLOAD_DISABLED) {
-                Toast.makeText(context, R.string.board_download_disabled, Toast.LENGTH_LONG).show()
-            }
-            if (status == AuroraBoardSelector.Status.FAILED) {
-                Toast.makeText(context, R.string.aurora_sync_failed_generic, Toast.LENGTH_LONG).show()
-            }
+    suspend fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?, productSizeId: Int? = null, deferDownload: Boolean = false) {
+        val status = try {
+            if (!deferDownload) syncManager.state.first { !it.isSyncing }
+            auroraBoardSelector.select(board, variant, productSizeId, allowDownload = !deferDownload).status
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Aurora board selection failed", e)
+            AuroraBoardSelector.Status.FAILED
+        }
+        // The selected hardware can have an empty catalogue if its download failed.
+        if (!deferDownload && status == AuroraBoardSelector.Status.DOWNLOAD_DISABLED) {
+            Toast.makeText(context, R.string.board_download_disabled, Toast.LENGTH_LONG).show()
+        }
+        if (status == AuroraBoardSelector.Status.FAILED) {
+            Toast.makeText(context, R.string.aurora_sync_failed_generic, Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -330,13 +322,13 @@ internal fun BoardDownloadRequestHost(
     viewModel: BoardPickerViewModel,
     deferDownloads: Boolean,
     onSelected: (BoardBrand) -> Unit,
-    content: @Composable ((BoardBrand, () -> Unit) -> Unit) -> Unit,
+    content: @Composable ((BoardBrand, suspend () -> Unit) -> Unit) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var pending by remember { mutableStateOf<Pair<BoardBrand, () -> Unit>?>(null) }
+    var pending by remember { mutableStateOf<Pair<BoardBrand, suspend () -> Unit>?>(null) }
     var busy by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
-    val complete: (BoardBrand, () -> Unit, Boolean) -> Unit = { brand, apply, enabled ->
+    val complete: suspend (BoardBrand, suspend () -> Unit, Boolean) -> Unit = { brand, apply, enabled ->
         apply()
         // A confirmed download starts the catalogue for every board (device test 2026-10-17: a Tension board chosen
         // from the map said "not downloaded yet" until "load catalogue" was tapped again). The sync manager queues

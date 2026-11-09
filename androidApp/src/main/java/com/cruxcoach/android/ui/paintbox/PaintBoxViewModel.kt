@@ -1,0 +1,306 @@
+package com.cruxcoach.android.ui.paintbox
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.R
+import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.ui.settings.boardSelectionLabel
+import com.cruxcoach.data.repository.*
+import com.cruxcoach.domain.board.*
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import java.util.UUID
+import javax.inject.Inject
+
+data class PaintBoxState(
+    val imageImport: PaintImageSession? = null,
+    val imageLoading: Boolean = false,
+    val document: PaintDocument? = null,
+    val boardSize: BoardSize? = null,
+    val placements: Map<Int, BoardPlacement> = emptyMap(),
+    val images: List<BoardImage> = emptyList(),
+    val ledMap: Map<Int, Int> = emptyMap(),
+    val loading: Boolean = true,
+    val saving: Boolean = false,
+    val missingBoard: Boolean = false,
+    val dirty: Boolean = false,
+    val brush: Int = 0x1c,
+    val eraser: Boolean = false,
+    val live: Boolean = false,
+    val sending: Boolean = false,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
+    val library: PaintLibrary = PaintLibrary(emptyList(), 0),
+    val message: Int? = null,
+)
+
+@HiltViewModel
+class PaintBoxViewModel @Inject constructor(
+    private val repository: PaintRepository,
+    private val boards: BoardRepository,
+    private val preferences: UserPreferences,
+    private val ble: BoardBleConnection,
+    private val projector: PaintProjector,
+) : ViewModel() {
+    private val mutable = MutableStateFlow(PaintBoxState())
+    val state = mutable.asStateFlow()
+    private val history = PaintHistory()
+    private var saved: PaintDocument? = null
+    private var generation = 0L
+    private var pending = false
+    private var sender: Job? = null
+    private var loadJob: Job? = null
+    private var imageJob: Job? = null
+    private var previewAddress: String? = null
+    val connection = ble.connectionState
+
+    init {
+        selectCurrentBoard()
+        viewModelScope.launch {
+            connection.collect { if (it != ConnectionState.CONNECTED && it != ConnectionState.SENDING) pause() }
+        }
+    }
+    fun selectCurrentBoard() {
+        pause()
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            try {
+                val brand = preferences.boardBrand.first()
+                val layout = preferences.boardLayoutId.first()
+                val variant = MoonBoardVariant.fromLayoutId(layout.toLong())
+                val sets = if (brand == "moonboard" && variant != null) preferences.getMoonBoardHoldSets(variant) else emptyList()
+                open(PaintDocument(board = PaintBoard(brand, layout, preferences.boardProductSizeId.first(), sets)), false)
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { mutable.update { it.copy(loading = false, message = R.string.paintbox_load_error) } }
+        }
+    }
+    private suspend fun open(document: PaintDocument, persisted: Boolean) {
+        document.validate()
+        mutable.update { it.copy(loading = true) }
+        val board = document.board
+        val geometry = withContext(Dispatchers.IO) {
+            if (board.brand == "moonboard") Triple(null, emptyList(), emptyList())
+            else Triple(boards.getProductSize(board.sizeId, board.brand),
+                boards.getPlacementsForLayout(board.sizeId, board.layoutId, board.brand),
+                boards.getBoardImages(board.sizeId, board.layoutId, board.brand))
+        }
+        val leds = withContext(Dispatchers.IO) {
+            if (board.brand == "moonboard") emptyMap() else boards.getPlacementLedMap(board.sizeId, board.brand)
+        }
+        val brand = BoardBrand.fromWire(board.brand)
+        val detail = when (brand) {
+            BoardBrand.MOONBOARD -> MoonBoardVariant.fromLayoutId(board.layoutId.toLong())?.displayName
+            BoardBrand.QUANTUM -> QuantumBoardModel.fromLayoutId(board.layoutId.toLong())?.displayName
+            BoardBrand.KILTER -> geometry.first?.name
+            else -> listOfNotNull(BoardConstants.auroraVariant(brand, board.layoutId)?.displayName,
+                geometry.first?.name).distinct().joinToString(" · ")
+        }
+        val label = if (detail == null && board.label.isNotBlank()) board.label
+            else boardSelectionLabel(brand, board.layoutId, detail)
+        val labelled = document.copy(board = board.copy(label = label))
+        history.clear()
+        saved = labelled.takeIf { persisted }
+        mutable.value = PaintBoxState(document = labelled, boardSize = geometry.first,
+            placements = geometry.second.associateBy { it.placementId.toInt() }, images = geometry.third,
+            ledMap = leds, loading = false,
+            missingBoard = board.brand != "moonboard" && (geometry.first == null || geometry.second.isEmpty()),
+            library = mutable.value.library)
+    }
+    fun load(document: PaintDocument) {
+        pause()
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            try {
+                document.validate()
+                val b = document.board
+                if (b.brand == "moonboard") preferences.setMoonBoardSelection(b.layoutId, b.holdSets.takeIf { it.isNotEmpty() })
+                else preferences.setBoardSelection(b.brand, b.layoutId, b.sizeId)
+                open(document, true)
+            }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { mutable.update { it.copy(loading = false, message = R.string.paintbox_load_error) } }
+        }
+    }
+    fun brush(color: Int) { mutable.update { it.copy(brush = color, eraser = false) } }
+    fun importImage(context: android.content.Context, uri: android.net.Uri) {
+        imageJob?.cancel()
+        mutable.update { it.copy(imageLoading = true) }
+        imageJob = viewModelScope.launch {
+            try {
+                val bitmap = loadPaintImage(context.applicationContext, uri)
+                startImage(bitmap)
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { mutable.update { it.copy(imageLoading = false, message = R.string.paintbox_image_error) } }
+        }
+    }
+    internal fun startImage(bitmap: android.graphics.Bitmap) {
+        endStroke()
+        generation++
+        pending = false
+        mutable.update { it.copy(imageImport = PaintImageSession(bitmap), imageLoading = false) }
+    }
+    fun imageTransform(transform: PaintImageTransform) {
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(transform = transform, ready = false)) }
+    }
+    fun imageBackgroundTool() {
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
+            if (it.background != null || it.pickingBackground) it.copy(background = null, pickingBackground = false, ready = false)
+            else it.copy(pickingBackground = true)
+        }) }
+    }
+    fun imageBackground(color: Int) {
+        if ((color ushr 24) < 128) return
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(background = color and 0xffffff,
+            pickingBackground = false, ready = false)) }
+    }
+    fun imagePreview(source: PaintImageSession, colors: Map<Int, Int>) {
+        if (state.value.imageImport !== source) return
+        mutable.update { it.copy(imageImport = source.copy(colors = colors, ready = true)) }
+        if (state.value.live && (!source.ready || source.colors != colors)) queueSend()
+    }
+    fun acceptImage() {
+        val image = state.value.imageImport ?: return
+        if (!image.ready || state.value.imageLoading) return
+        generation++
+        pending = false
+        beginStroke()
+        mutable.update { it.copy(imageImport = null) }
+        change(image.colors)
+        endStroke()
+        if (state.value.live) queueSend()
+        previewAddress = null
+    }
+    fun cancelImage() {
+        imageJob?.cancel()
+        generation++
+        pending = false
+        mutable.update { it.copy(imageImport = null, imageLoading = false) }
+        val restore = previewAddress != null && previewAddress == ble.connectedBoard?.address
+        previewAddress = null
+        if (restore && connection.value in setOf(ConnectionState.CONNECTED, ConnectionState.SENDING)) queueSend()
+    }
+    fun eraser() { mutable.update { it.copy(eraser = true) } }
+    fun beginStroke() { state.value.document?.let { history.begin(it.colors) } }
+    fun endStroke() { state.value.document?.let { history.end(it.colors) }; updateHistory() }
+    fun paint(ids: Set<Int>) {
+        val s = state.value
+        val document = s.document ?: return
+        if (s.loading || s.missingBoard) return
+        val valid = ids.filter { if (document.board.brand == "moonboard") it in document.board.moonHoldIds() else it in s.placements }
+        val colors = document.colors.toMutableMap()
+        valid.forEach { if (s.eraser) colors.remove(it) else colors[it] = s.brush }
+        change(colors)
+    }
+    private fun change(colors: Map<Int, Int>) {
+        val old = state.value.document ?: return
+        if (old.colors == colors) return
+        val next = old.copy(colors = colors)
+        mutable.update { it.copy(document = next, dirty = next != saved && (saved != null || colors.isNotEmpty())) }
+        if (state.value.live) queueSend()
+    }
+    private fun updateHistory() { mutable.update { it.copy(canUndo = history.canUndo, canRedo = history.canRedo) } }
+    fun undo() { state.value.document?.let { change(history.undo(it.colors)) }; updateHistory() }
+    fun redo() { state.value.document?.let { change(history.redo(it.colors)) }; updateHistory() }
+    fun clear() { beginStroke(); change(emptyMap()); endStroke() }
+    fun pause() {
+        generation++
+        pending = false
+        mutable.update { it.copy(live = false) }
+        ble.releaseKeepAlive("paintbox")
+    }
+    fun enter() { ble.pauseAutomaticProjection("paintbox") }
+    fun leave() { pause(); ble.resumeAutomaticProjection("paintbox") }
+    fun toggleLive() {
+        if (state.value.live) pause() else {
+            if (connection.value != ConnectionState.CONNECTED) { message(R.string.paintbox_connect_error); return }
+            mutable.update { it.copy(live = true) }
+            ble.acquireKeepAlive("paintbox")
+            queueSend()
+        }
+    }
+    fun sendOnce() { queueSend() }
+    private fun queueSend() {
+        pending = true
+        if (sender?.isActive == true) return
+        sender = viewModelScope.launch {
+            while (pending) {
+                // Coalesce pointer samples without cancelling an in-flight GATT command.
+                delay(100)
+                if (!pending) break
+                pending = false
+                val ticket = generation
+                val snapshot = state.value
+                val original = snapshot.document ?: break
+                val image = snapshot.imageImport
+                if (image != null && !image.ready) continue
+                val document = if (image == null) original else original.copy(colors = image.colors)
+                val address = ble.connectedBoard?.address
+                mutable.update { it.copy(sending = true) }
+                try {
+                    if (snapshot.missingBoard) throw PaintProjectionException(R.string.paintbox_missing_board)
+                    if (image != null) previewAddress = address
+                    val sent = projector.send(document, snapshot.ledMap) {
+                        generation == ticket && ble.connectedBoard?.address == address
+                    }
+                    if (ticket == generation) {
+                        if (!sent) { pause(); message(R.string.paintbox_send_error) }
+                        else if (!state.value.live) message(R.string.paintbox_sent)
+                    }
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    if (ticket == generation) { pause(); message((e as? PaintProjectionException)?.messageRes ?: R.string.paintbox_send_error) }
+                } finally { mutable.update { it.copy(sending = false) } }
+            }
+        }
+    }
+    fun refreshLibrary() = viewModelScope.launch {
+        try { val library = repository.list(); mutable.update { it.copy(library = library) } }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) { message(R.string.paintbox_load_error) }
+    }
+    fun save(name: String, copy: Boolean, done: () -> Unit = {}) {
+        val original = state.value.document ?: return
+        if (state.value.saving || name.isBlank()) return
+        val document = original.copy(id = if (copy) UUID.randomUUID().toString() else original.id,
+            name = name.trim(), updatedAt = System.currentTimeMillis())
+        mutable.update { it.copy(saving = true) }
+        viewModelScope.launch {
+            try {
+                repository.save(document)
+                saved = document
+                mutable.update { s ->
+                    val current = s.document
+                    if (current?.id == original.id) s.copy(document = document.copy(colors = current.colors),
+                        dirty = current.colors != document.colors, saving = false)
+                    else s.copy(saving = false)
+                }
+                refreshLibrary()
+                done()
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { mutable.update { it.copy(saving = false, message = R.string.paintbox_save_error) } }
+        }
+    }
+    fun delete(document: PaintDocument) = viewModelScope.launch {
+        try {
+            repository.delete(document.id)
+            if (saved?.id == document.id) { saved = null; mutable.update { it.copy(dirty = true) } }
+            refreshLibrary()
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { message(R.string.paintbox_save_error) }
+    }
+    fun message(value: Int?) { mutable.update { it.copy(message = value) } }
+    suspend fun preview(document: PaintDocument): PaintBoxState? = withContext(Dispatchers.IO) {
+        try {
+            val b = document.board
+            PaintBoxState(boardSize = boards.getProductSize(b.sizeId, b.brand),
+                placements = boards.getPlacementsForLayout(b.sizeId, b.layoutId, b.brand).associateBy { it.placementId.toInt() },
+                images = boards.getBoardImages(b.sizeId, b.layoutId, b.brand))
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { null }
+    }
+    override fun onCleared() { leave(); super.onCleared() }
+}

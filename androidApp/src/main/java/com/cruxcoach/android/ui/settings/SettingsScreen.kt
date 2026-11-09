@@ -45,6 +45,7 @@ internal fun SettingsScreen(
     onNavigateToProfile: () -> Unit,
     onNavigateToAppShare: () -> Unit,
     onNavigateToLicenses: () -> Unit = {},
+    onNavigateToPaintBox: () -> Unit = {},
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
@@ -130,6 +131,7 @@ internal fun SettingsScreen(
         openUpdates = updaterDialogRequested,
         onNavigateBack = onNavigateBack,
         onNavigateToAppShare = onNavigateToAppShare,
+        onNavigateToPaintBox = onNavigateToPaintBox,
         banners = {
             RestTimerBannerSlot()
             SyncStatusBannerSlot()
