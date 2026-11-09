@@ -112,18 +112,18 @@ class RelaySubscriptionForwardingTest {
 
     @Test
     fun `a subscription that does not keep up holds a relay up once, and its EOSE still gets through`() = runBlocking {
-        val queue = RelayFrameQueue(maxWaitMs = 500, maxChars = roomFor(2))
+        val queue = RelayFrameQueue(maxWaitMs = 2_000, maxChars = roomFor(2))
         assertTrue(queue.offer("f001"))
         assertTrue(queue.offer("f002"))
 
         // Full, and nothing is taken: the relay waits, then the frame goes.
         var started = System.nanoTime()
         assertFalse(queue.offer("f003"))
-        assertTrue(System.nanoTime() - started >= TimeUnit.MILLISECONDS.toNanos(450))
+        assertTrue(System.nanoTime() - started >= TimeUnit.MILLISECONDS.toNanos(1_900))
         // From then on at once, so the relay's other subscriptions, OKs and pings are not held up.
         started = System.nanoTime()
         assertFalse(queue.offer("f004"))
-        assertTrue(System.nanoTime() - started < TimeUnit.MILLISECONDS.toNanos(250))
+        assertTrue(System.nanoTime() - started < TimeUnit.MILLISECONDS.toNanos(1_000))
         // One EOSE per relay takes no room.
         assertTrue(queue.offer(eoseFrame(relayA)))
         assertFalse(queue.offer(eoseFrame(relayA)))
@@ -139,7 +139,7 @@ class RelaySubscriptionForwardingTest {
     @Test
     fun `the wait counts from when the queue filled up, not per frame`() = runBlocking {
         // A subscription that takes a frame now and then still holds relays up for at most maxWaitMs in all.
-        val queue = RelayFrameQueue(maxWaitMs = 1_000, maxChars = roomFor(4))
+        val queue = RelayFrameQueue(maxWaitMs = 4_000, maxChars = roomFor(4))
         repeat(4) { assertTrue(queue.offer("f00$it")) }
         val start = System.nanoTime()
         var lateTaken = true
@@ -152,15 +152,16 @@ class RelaySubscriptionForwardingTest {
             lateWaitedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - asked)
             lateEndedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)
         }
-        Thread.sleep(500)
+        Thread.sleep(2_000)
         // One frame taken: room for f004, and the queue is full again.
         withTimeout(10_000) { queue.frames.take(1).toList() }
         relay.join(10_000)
 
         assertFalse(relay.isAlive)
         assertFalse(lateTaken)
-        assertTrue("f005 waited only the rest of the second, $lateWaitedMs ms", lateWaitedMs < 900)
-        assertTrue("relays waited about a second in all, $lateEndedMs ms", lateEndedMs >= 900)
+        // Per frame it would have waited the full 4 s; the rest of the budget is about 2 s.
+        assertTrue("f005 waited only the rest of the budget, $lateWaitedMs ms", lateWaitedMs < 3_500)
+        assertTrue("relays waited the budget in all, $lateEndedMs ms", lateEndedMs >= 3_800)
     }
 
     @Test

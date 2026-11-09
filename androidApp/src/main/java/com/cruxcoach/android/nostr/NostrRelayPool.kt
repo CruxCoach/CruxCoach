@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
@@ -35,6 +36,8 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -70,6 +73,12 @@ class NostrRelayPool @Inject constructor(
     @VisibleForTesting
     internal var verifyEvent: (String) -> String? = ::verifiedRelayEventId
 
+    /** A subscription's frame queue; tests make it smaller. */
+    @VisibleForTesting
+    internal var newFrameQueue: (closeOnEose: Boolean) -> RelayFrameQueue = { closeOnEose ->
+        RelayFrameQueue(if (closeOnEose) RelayFrameQueue.QUERY_WAIT_MS else RelayFrameQueue.LIVE_WAIT_MS)
+    }
+
     private inner class RelayConnection(val url: String) {
         // @Volatile: ws is written from the OkHttp WebSocketListener dispatcher
         // (onFailure / onClosed) and read from sender coroutines — visibility
@@ -84,6 +93,14 @@ class NostrRelayPool @Inject constructor(
         @Volatile
         private var connected = false
         val isConnected: Boolean get() = connected && ws != null
+
+        /**
+         * How long this relay's reader thread has waited for room in a subscription's queue (ns), and when its current
+         * wait began (0: none). While it waits, the relay's OKs wait behind it, so [awaitOk] does not count that time.
+         */
+        private val heldNanos = AtomicLong(0)
+        @Volatile
+        private var heldSince = 0L
 
         /** Guards against multiple concurrent reconnect loops for this relay. */
         private var reconnectJob: Job? = null
@@ -186,13 +203,13 @@ class NostrRelayPool @Inject constructor(
                         val subId = arr[1].jsonPrimitive.content
                         // Only an object can be an event; anything else would just take room.
                         val eventJson = (arr[2] as? JsonObject)?.toString() ?: return
-                        val delivered = subscriptionFrames[subId]?.offer(eventJson) ?: false
+                        val delivered = subscriptionFrames[subId]?.let { offer(it, eventJson) } ?: false
                         // A subscription closed meanwhile, or one that does not keep up (the queue logs that).
                         if (!delivered) Log.d(TAG, "EVENT not taken from $url subId=$subId")
                     }
                     "EOSE" -> {
                         val subId = arr[1].jsonPrimitive.content
-                        subscriptionFrames[subId]?.offer(eoseFrame(url))
+                        subscriptionFrames[subId]?.let { offer(it, eoseFrame(url)) }
                     }
                     "NOTICE" -> Log.w(TAG, "Relay $url: ${arr[1].jsonPrimitive.content.take(512)}")
                 }
@@ -217,18 +234,50 @@ class NostrRelayPool @Inject constructor(
                 pendingOks.remove(eventId)
                 return false
             }
-            return try {
-                withTimeout(NostrConfig.RELAY_TIMEOUT_MS) { deferred.await() }
+            val accepted = try {
+                awaitOk(deferred) ?: run { logNoOk(eventId, "timeout"); null }
             } catch (e: Exception) {
-                pendingOks.remove(eventId)
-                Log.w(
-                    TAG,
-                    "event=relay_send_timeout url=$url eventIdPrefix=${eventId.take(8)} " +
-                        "reason=${e.javaClass.simpleName}",
-                )
-                false
+                logNoOk(eventId, e.javaClass.simpleName)
+                null
+            }
+            if (accepted == null) pendingOks.remove(eventId)
+            return accepted ?: false
+        }
+
+        private fun logNoOk(eventId: String, reason: String) =
+            Log.w(TAG, "event=relay_send_timeout url=$url eventIdPrefix=${eventId.take(8)} reason=$reason")
+
+        /**
+         * The relay's answer to an event, or null when none came within [NostrConfig.RELAY_TIMEOUT_MS]. Time in which this
+         * relay's reader waited for a full subscription queue does not count, since the OK may be waiting behind it; at
+         * most [MAX_OK_EXTENSION_MS] is added for that.
+         */
+        private suspend fun awaitOk(ok: CompletableDeferred<Boolean>): Boolean? {
+            var wait = NostrConfig.RELAY_TIMEOUT_MS
+            var extended = 0L
+            while (true) {
+                val heldBefore = heldSoFar()
+                withTimeoutOrNull(wait) { ok.await() }?.let { return it }
+                wait = minOf(TimeUnit.NANOSECONDS.toMillis(heldSoFar() - heldBefore), MAX_OK_EXTENSION_MS - extended)
+                if (wait <= 0) return null
+                extended += wait
             }
         }
+
+        /** Hands [frame] to a subscription on the reader thread, counting the time a full queue holds the reader. */
+        private fun offer(frames: RelayFrameQueue, frame: String): Boolean {
+            val since = System.nanoTime()
+            heldSince = since
+            try {
+                return frames.offer(frame)
+            } finally {
+                heldNanos.addAndGet(System.nanoTime() - since)
+                heldSince = 0L
+            }
+        }
+
+        /** How long the reader has been held so far, a wait still under way included. */
+        private fun heldSoFar(): Long = heldNanos.get() + heldSince.let { if (it == 0L) 0L else System.nanoTime() - it }
 
         fun addSubscription(subId: String, filter: String, frames: RelayFrameQueue) {
             subscriptionFrames[subId] = frames
@@ -386,8 +435,11 @@ class NostrRelayPool @Inject constructor(
      * hides a 1-of-5 outcome from the user when they explicitly asked
      * for full removal.
      */
-    suspend fun sendEventWithStats(event: Event): Pair<Int, Int> {
-        val eventJson = event.toJson()
+    suspend fun sendEventWithStats(event: Event): Pair<Int, Int> = sendJsonWithStats(event.toJson())
+
+    /** [sendEventWithStats] for an event already in JSON (tests: Quartz needs JVM 21). */
+    @VisibleForTesting
+    internal suspend fun sendJsonWithStats(eventJson: String): Pair<Int, Int> {
         val eventId = extractEventId(eventJson) ?: return 0 to 0
         val relays = writeRelays()
         val results = coroutineScope {
@@ -438,7 +490,7 @@ class NostrRelayPool @Inject constructor(
         val subId = java.util.UUID.randomUUID().toString()
         val readRelays = readRelays()
         // Every relay's frames, kept until taken: a burst from several relays loses neither events nor EOSE.
-        val frames = RelayFrameQueue(if (closeOnEose) RelayFrameQueue.QUERY_WAIT_MS else RelayFrameQueue.LIVE_WAIT_MS)
+        val frames = newFrameQueue(closeOnEose)
         val eose = if (closeOnEose) EoseTracker(readRelays.map { it.url }) else null
 
         // A child of this callbackFlow, not of the pool scope: if forwarding
@@ -508,5 +560,7 @@ class NostrRelayPool @Inject constructor(
 
     companion object {
         private const val TAG = "NostrRelayPool"
+        /** The most an OK wait is extended for a reader held by full queues: a query's wait, twice over. */
+        private const val MAX_OK_EXTENSION_MS = 2 * RelayFrameQueue.QUERY_WAIT_MS
     }
 }

@@ -107,8 +107,11 @@ internal class RelayFrameQueue(
         const val FRAME_OVERHEAD = 256
         /** A live subscription's collector may stop for minutes (the community sync waits out a board sync). */
         const val LIVE_WAIT_MS = 5_000L
-        /** A one-shot query's collector only gathers events: it falls behind only while it checks a large burst. */
-        const val QUERY_WAIT_MS = 20_000L
+        /**
+         * A one-shot query's collector only gathers events: it falls behind only while it checks a large burst. Below
+         * [NostrConfig.RELAY_TIMEOUT_MS], so that an OK behind a full query's frames still arrives in time.
+         */
+        const val QUERY_WAIT_MS = 8_000L
         private const val TAG = "RelayFrameQueue"
     }
 }

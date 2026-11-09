@@ -1,7 +1,10 @@
 package com.cruxcoach.android.nostr
 
 import com.cruxcoach.android.nostr.model.RelayConfig
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.toList
@@ -16,8 +19,10 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -47,7 +52,7 @@ class NostrRelayPoolBurstTest {
         }
     }
 
-    /** A relay that answers every REQ with [events] stored events of [chars] characters each, then EOSE. */
+    /** A relay that answers every REQ with [events] stored events of [chars] characters each, then EOSE, and every EVENT with OK. */
     private fun relay(name: String, events: Int, chars: Int = 0): String {
         val server = MockWebServer()
         server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
@@ -61,6 +66,9 @@ class NostrRelayPoolBurstTest {
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val frame = Json.parseToJsonElement(text).jsonArray
+                if (frame[0].jsonPrimitive.content == "EVENT") {
+                    webSocket.send("""["OK","${frame[1].jsonObject["id"]!!.jsonPrimitive.content}",true,""]""")
+                }
                 if (frame[0].jsonPrimitive.content != "REQ") return
                 val subId = frame[1].jsonPrimitive.content
                 val content = "x".repeat(chars)
@@ -92,6 +100,42 @@ class NostrRelayPoolBurstTest {
         for (r in listOf("a", "b", "c")) {
             assertEquals((0 until 700).map { "$r-$it" }, idsOf(events).filter { it.startsWith("$r-") })
         }
+    }
+
+    /**
+     * Publishes while a fetch's queue is full and its collector has stopped: the relay's reader waits for room, and the
+     * OK comes behind the fetch's frames. Returns how many relays took it and how long that took (ms).
+     */
+    private fun publishDuringFullFetch(queueWaitMs: Long): Pair<Int, Long> = runBlocking {
+        // 400 events of 20 000 characters, far more than a 1 MB queue and the flow's buffer hold.
+        pool.newFrameQueue = { RelayFrameQueue(maxWaitMs = queueWaitMs, maxChars = 1_000_000) }
+        useRelays(relay("a", 400, 20_000))
+        val stopped = CompletableDeferred<Unit>()
+        val fetch = launch(Dispatchers.IO) { pool.fetchStored("""{"kinds":[30078]}""").collect { stopped.await() } }
+        delay(1_000)
+
+        val started = System.nanoTime()
+        val (_, accepted) = pool.sendJsonWithStats("""{"id":"publish-1","kind":30078,"content":""}""")
+        val tookMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+        fetch.cancel()
+        accepted to tookMs
+    }
+
+    @Test
+    fun `a publish while a fetch fills its queue is confirmed within the relay timeout`() {
+        val (accepted, tookMs) = publishDuringFullFetch(RelayFrameQueue.QUERY_WAIT_MS)
+
+        assertEquals(1, accepted)
+        assertTrue("confirmed after $tookMs ms", tookMs < NostrConfig.RELAY_TIMEOUT_MS)
+    }
+
+    @Test
+    fun `a relay held longer than the relay timeout still counts as confirmed`() {
+        // The reader waits 15 s for room, longer than the OK timeout: that time does not count against the OK.
+        val (accepted, tookMs) = publishDuringFullFetch(15_000)
+
+        assertEquals(1, accepted)
+        assertTrue("confirmed after $tookMs ms, after the reader was freed", tookMs >= NostrConfig.RELAY_TIMEOUT_MS)
     }
 
     @Test
