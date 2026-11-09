@@ -215,6 +215,24 @@ class ComebackTest {
     }
 
     @Test
+    fun theLookBackReadsTheSevenDaysBeforeTodayAndTodaysMorning() {
+        // #59 follow-up: the look back comes before the day's sessions. Its week of today and the six days before missed a
+        // painful session on the stage's first day, and saw three sessions a week as two.
+        val injury = started(1, since = day(-7))
+        fun week(vararg sessions: Pair<Int, Int>) = (-7..0).map { d -> entry(d, morning = 1, session = sessions.toMap()[d]) }
+        val painfulStart = Comeback.review(injury, week(-7 to 5, -5 to 1, -3 to 1, -1 to 1), today)!!
+        assertEquals(1, painfulStart.red)
+        assertEquals(Proposal.REPEAT, painfulStart.proposal)
+        val threeAWeek = Comeback.review(injury, week(-7 to 1, -5 to 1, -3 to 1), today)!!
+        assertEquals(3, threeAWeek.sessionDays)
+        assertEquals(Proposal.MOVE_UP, threeAWeek.proposal)
+        // Nothing before the stage counts.
+        val later = Comeback.review(started(1, since = day(-7)), listOf(entry(-8, morning = 1, session = 6)) + week(-5 to 1, -3 to 1, -1 to 1), today)!!
+        assertEquals(0, later.red)
+        assertEquals(Proposal.MOVE_UP, later.proposal)
+    }
+
+    @Test
     fun worseningAndNoImprovementPointToACheckOnly() {
         val injury = started(2, since = day(-25))
         val worse = listOf(entry(-2, morning = 2), entry(-1, morning = 3), entry(0, morning = 4))

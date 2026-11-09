@@ -229,7 +229,9 @@ object Comeback {
         val plan = injury.activePlan ?: return null
         val days = daysOnStage(plan, today)
         val since = parse(plan.stageSince) ?: today
-        val from = maxOf(today.minus(DatePeriod(days = 6)), since)
+        // The seven days before today and today's morning: the look back usually comes before today's sessions, and a
+        // window of today and the six days before missed the stage's first day and saw six days of sessions (#59 follow-up).
+        val from = maxOf(today.minus(DatePeriod(days = MIN_DAYS_ON_STAGE)), since)
         val week = readings(injury, entries, from, today)
         val green = week.count { it.color == DayColor.GREEN }
         val amber = week.count { it.color == DayColor.AMBER }

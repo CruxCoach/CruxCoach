@@ -600,6 +600,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Training: around an injury of one arm or leg, a one-sided exercise that also loads the other side (an
   archer push-up or pull-up, an assisted one-arm pull-up or hang, a kneeling stretch for an injured knee,
   lunges and split squats) is no longer offered for the healthy side only while the injury rules it out.
+- Comeback plan: the weekly look back reads the seven days before it and that morning. It offers the
+  next stage only after the stage's sessions on at least three days (or on as many as the stage plans,
+  when that is fewer) and while the week's middle morning pain is within the stage's rule, and says
+  which of the two is missing. A rise of 1 in morning pain that stays within the rule is no longer a
+  warning, and a painful week at the first stage proposes repeating it instead of "not enough entries".
 - Comeback plan: a strength session starts from the last strength session's loads, no longer from the
   light tendon holds done earlier the same day (and the other way round).
 - Injuries: pain on the injury card and in the training's pain sheet now goes from 0 to 10, like the
