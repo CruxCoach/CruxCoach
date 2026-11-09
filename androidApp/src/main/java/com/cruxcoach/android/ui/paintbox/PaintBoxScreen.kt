@@ -254,10 +254,11 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
             }
         }
     }
+    // A board picked in the sheet's "other board" prompt reaches PaintBox as a board change,
+    // which asks about unsaved changes once; opening PaintBox's own picker too would ask twice.
     if (bluetooth) BleConnectionSheet(onDismiss = { bluetooth = false }, onBoardMismatchExit = {
         bluetooth = false
         if (importing) viewModel.cancelImage()
-        navigate { boardPicker = true }
     })
     if (boardPicker) BoardPickerDialog(onDismiss = { boardPicker = false }, onSelected = { boardPicker = false; viewModel.boardPicked() })
     if (colorPicker) ColorPickerBottomSheet(
@@ -287,6 +288,14 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
             Text(stringResource(R.string.paintbox_switch))
         } },
         dismissButton = { TextButton(onClick = { switchTo = null }) { Text(stringResource(R.string.action_cancel)) } }) }
+    // Send or Live refused: the kept picture is for another board than the connected one.
+    if (state.otherBoard && document != null) AlertDialog(onDismissRequest = viewModel::dismissOtherBoard,
+        title = { Text(stringResource(R.string.paintbox_switch_board)) },
+        text = { Text(stringResource(R.string.paintbox_other_board, document.board.label.ifBlank { brand.displayName })) },
+        confirmButton = { TextButton(onClick = { viewModel.dismissOtherBoard(); navigate(viewModel::openAppBoard) }) {
+            Text(stringResource(R.string.paintbox_switch))
+        } },
+        dismissButton = { TextButton(onClick = viewModel::dismissOtherBoard) { Text(stringResource(R.string.action_cancel)) } })
     if (saveDialog) AlertDialog(onDismissRequest = { if (!state.saving) { saveDialog = false; cancelPending() } },
         title = { Text(stringResource(if (saveCopy) R.string.paintbox_save_as else R.string.paintbox_save)) },
         text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true,

@@ -18,7 +18,9 @@ the board button above the picture switches to another one.
 - Only holds with an LED on the chosen board size can be painted.
 - If the app's board changes elsewhere, for example when the connection sheet
   connects another board, PaintBox opens that board. With unsaved changes it
-  asks first.
+  asks first. If you keep the picture, **Send** and **Live** wait until you
+  switch to the app's board: the LEDs and the power limit belong to the exact
+  layout and size.
 - If the board's catalogue is missing, PaintBox offers the catalogue settings.
 
 ## Light up the board
@@ -34,7 +36,7 @@ the board button above the picture switches to another one.
 
 | Board | Colors |
 | --- | --- |
-| Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Every board color. Large bright pictures are shown dimmer, so the LED box never draws more than in its own start-up test (every LED in one full color). An older LED box (API 2) lights up to 127 holds at once and has a tighter power limit. |
+| Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Every board color. Large bright pictures are shown dimmer, so the LED box draws about what it draws in the LED test of the maker's set-up guide (every LED in one full color), not more. The limit depends on the exact board size, so choose the size of your wall. An older LED box (API 2) lights up to 127 holds at once and has a tighter power limit. |
 | MoonBoard | Green, blue and red. |
 | Quantum | Four colors, up to 92 LEDs each. A picture uses its own layers, so other layers must be off before you paint. Lighting a climb replaces the picture, as on the other boards. |
 | Shiny Wall | Not supported yet. |

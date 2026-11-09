@@ -57,6 +57,7 @@
     <string name="paintbox_switch">Switch</string>
     <string name="paintbox_sent_dimmed">Picture transmitted, dimmer to stay within the board’s power limit.</string>
     <string name="paintbox_too_bright">Too many bright holds for this board’s LED box. Paint fewer holds or darker colors. Nothing was sent.</string>
+    <string name="paintbox_other_board">This picture is for %1$s, but the app uses another board now. Nothing was sent. Switch opens the app’s board with an empty picture.</string>
     <plurals name="paintbox_unreadable">
         <item quantity="one">One picture file could not be read. It has been kept.</item>
         <item quantity="other">%1$d picture files could not be read. They have been kept.</item>

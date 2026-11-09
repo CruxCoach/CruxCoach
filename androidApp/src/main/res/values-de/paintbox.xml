@@ -57,6 +57,7 @@
     <string name="paintbox_switch">Wechseln</string>
     <string name="paintbox_sent_dimmed">Bild übertragen, gedimmt, damit das Board in seiner Leistungsgrenze bleibt.</string>
     <string name="paintbox_too_bright">Zu viele helle Holds für die LED-Box dieses Boards. Male weniger Holds oder dunklere Farben. Es wurde nichts gesendet.</string>
+    <string name="paintbox_other_board">Dieses Bild ist für %1$s, die App nutzt aber jetzt ein anderes Board. Es wurde nichts gesendet. „Wechseln“ öffnet das Board der App mit einem leeren Bild.</string>
     <plurals name="paintbox_unreadable">
         <item quantity="one">Eine Bilddatei konnte nicht gelesen werden. Sie bleibt erhalten.</item>
         <item quantity="other">%1$d Bilddateien konnten nicht gelesen werden. Sie bleiben erhalten.</item>

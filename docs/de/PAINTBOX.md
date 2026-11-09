@@ -18,7 +18,9 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 - Bemalen lassen sich nur Holds, die auf der gewählten Boardgröße eine LED haben.
 - Ändert sich das Board der App an anderer Stelle, etwa wenn der
   Verbindungsdialog ein anderes Board verbindet, öffnet PaintBox dieses Board.
-  Bei ungespeicherten Änderungen fragt es vorher.
+  Bei ungespeicherten Änderungen fragt es vorher. Behältst du das Bild,
+  warten **Senden** und **Live**, bis du zum Board der App wechselst: Die LEDs
+  und die Leistungsgrenze gehören zum genauen Layout und zur genauen Größe.
 - Fehlt der Katalog des Boards, bietet PaintBox die Katalog-Einstellungen an.
 
 ## Das Board leuchten lassen
@@ -35,7 +37,7 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 
 | Board | Farben |
 | --- | --- |
-| Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Jede Board-Farbe. Große helle Bilder leuchten gedimmt, damit die LED-Box nie mehr Strom zieht als in ihrem eigenen Starttest (jede LED in einer vollen Farbe). Eine ältere LED-Box (API 2) leuchtet bis zu 127 Holds auf einmal und hat eine engere Leistungsgrenze. |
+| Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Jede Board-Farbe. Große helle Bilder leuchten gedimmt, damit die LED-Box etwa so viel Strom zieht wie beim LED-Test aus der Aufbauanleitung des Herstellers (jede LED in einer vollen Farbe), nicht mehr. Die Grenze hängt von der genauen Boardgröße ab; wähle deshalb die Größe deiner Wand. Eine ältere LED-Box (API 2) leuchtet bis zu 127 Holds auf einmal und hat eine engere Leistungsgrenze. |
 | MoonBoard | Grün, Blau und Rot. |
 | Quantum | Vier Farben, bis zu 92 LEDs je Farbe. Ein Bild nutzt eigene Layer; andere Layer müssen vor dem Malen aus sein. Ein beleuchteter Climb ersetzt das Bild, wie bei den anderen Boards. |
 | Shiny Wall | Noch nicht unterstützt. |

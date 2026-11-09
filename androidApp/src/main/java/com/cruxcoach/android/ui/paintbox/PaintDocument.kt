@@ -28,7 +28,7 @@ fun PaintBoard.sameBoardAs(other: PaintBoard): Boolean {
     return mountedMoonHoldSets() == other.mountedMoonHoldSets()
 }
 
-private fun PaintBoard.mountedMoonHoldSets(): Set<Long> {
+internal fun PaintBoard.mountedMoonHoldSets(): Set<Long> {
     val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong()) ?: return holdSets.toSet()
     return holdSets.ifEmpty { MoonBoardHoldSets.setIdsFor(variant) }.toSet()
 }

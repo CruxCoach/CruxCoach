@@ -5,6 +5,8 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.*
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.*
+import com.cruxcoach.domain.board.MoonBoardHoldSets
+import com.cruxcoach.domain.board.MoonBoardVariant
 import io.mockk.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -222,6 +224,61 @@ class PaintBoxViewModelTest {
         vm.boardPicked()
         val opened = vm.state.first { it.document?.board?.sizeId == 12 && !it.loading }
         assertTrue(opened.document!!.colors.isEmpty())
+    }
+    @Test fun `a kept picture of another board sends nothing and offers the app's board`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.paint(setOf(1))
+        // The connection sheet connected size 12; the picture stays on size 10.
+        savedSize.value = 12
+        vm.state.first { it.boardChange != null }
+        vm.keepBoard()
+        advanceUntilIdle()
+        vm.sendOnce()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.otherBoard)
+        vm.dismissOtherBoard()
+        vm.toggleLive()
+        advanceUntilIdle()
+        assertFalse(vm.state.value.live)
+        assertTrue(vm.state.value.otherBoard)
+        coVerify(exactly = 0) { projector.send(any(), any(), any()) }
+        vm.openAppBoard()
+        val opened = vm.state.first { it.document?.board?.sizeId == 12 && !it.loading }
+        assertFalse(opened.otherBoard)
+        vm.paint(setOf(3))
+        vm.sendOnce()
+        advanceUntilIdle()
+        coVerify { projector.send(match { it.board.sizeId == 12 && it.colors == mapOf(3 to 28) }, mapOf(3 to 30), any()) }
+        assertFalse(vm.state.value.otherBoard)
+    }
+    @Test fun `loading a picture of the app's board leaves the board selection alone`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.load(PaintDocument(board = PaintBoard("kilter", 1, 10), name = "Same"))
+        vm.state.first { it.document?.name == "Same" && !it.loading }
+        coVerify(exactly = 0) { prefs.setBoardSelection(any(), any(), any(), any()) }
+        vm.load(PaintDocument(board = PaintBoard("kilter", 1, 12), name = "Other"))
+        vm.state.first { it.document?.name == "Other" && !it.loading }
+        coVerify(exactly = 1) { prefs.setBoardSelection("kilter", 1, 12, null) }
+    }
+    @Test fun `a MoonBoard picture keeps the angle of the open MoonBoard`() = runTest(dispatcher) {
+        val variant = MoonBoardVariant.MOONBOARD_2016
+        val sets = MoonBoardHoldSets.setIdsFor(variant)
+        every { prefs.moonBoardHoldSets(variant) } returns flowOf(sets)
+        vm.state.first { !it.loading }
+        vm.boardPicked()
+        savedBrand.value = "moonboard"
+        savedLayout.value = variant.layoutId.toInt()
+        vm.state.first { it.document?.board?.brand == "moonboard" && !it.loading }
+        // Selecting the MoonBoard again would set its angle to 40.
+        vm.load(PaintDocument(board = PaintBoard("moonboard", variant.layoutId.toInt(), 0, sets), name = "Moon"))
+        vm.state.first { it.document?.name == "Moon" && !it.loading }
+        coVerify(exactly = 0) { prefs.setMoonBoardSelection(any(), any()) }
+        coVerify(exactly = 0) { prefs.setMoonBoardHoldSets(any(), any()) }
+        // Other hold sets of the same MoonBoard change only the sets.
+        vm.load(PaintDocument(board = PaintBoard("moonboard", variant.layoutId.toInt(), 0, sets.take(1)), name = "Part"))
+        vm.state.first { it.document?.name == "Part" && !it.loading }
+        coVerify { prefs.setMoonBoardHoldSets(variant, setOf(sets.first())) }
+        coVerify(exactly = 0) { prefs.setMoonBoardSelection(any(), any()) }
     }
     @Test fun `a board saved elsewhere opens directly when nothing would be lost`() = runTest(dispatcher) {
         vm.state.first { !it.loading }

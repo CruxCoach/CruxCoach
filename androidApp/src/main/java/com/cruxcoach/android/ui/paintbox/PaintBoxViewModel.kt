@@ -40,6 +40,8 @@ data class PaintBoxState(
     val message: Int? = null,
     /** The app's board changed (e.g. in the connection sheet) while this picture has unsaved changes. */
     val boardChange: PaintBoard? = null,
+    /** Send or Live was refused: the picture is for another board than the app's (kept after [boardChange]). */
+    val otherBoard: Boolean = false,
 ) {
     val boardReady: Boolean get() = !missingBoard && !unsupportedBoard
 }
@@ -121,8 +123,16 @@ class PaintBoxViewModel @Inject constructor(
         mutable.update { it.copy(boardChange = null) }
         openBoard(board)
     }
-    /** Keeps painting the open picture on its own board. */
+    /** Keeps painting the open picture on its own board. Send and Live wait until it is the app's board again. */
     fun keepBoard() { mutable.update { it.copy(boardChange = null) } }
+    /** Opens the app's board instead of a picture made for another one ([PaintBoxState.otherBoard]). */
+    fun openAppBoard() {
+        mutable.update { it.copy(otherBoard = false) }
+        appBoard?.let(::openBoard)
+    }
+    fun dismissOtherBoard() { mutable.update { it.copy(otherBoard = false) } }
+    /** The connected box is the app's board: another board's LED map and power budget would scramble it. */
+    private fun onAppBoard(document: PaintDocument): Boolean = appBoard?.let { document.board.sameBoardAs(it) } == true
     /** The connection sheet can save another board: an earlier agreement to leave the picture ends here. */
     fun connectionSheetOpened() { leaveAgreed = false }
     /** Whether opening [document] changes the app's board, which the user confirms first. */
@@ -194,14 +204,22 @@ class PaintBoxViewModel @Inject constructor(
         loadJob = viewModelScope.launch {
             try {
                 document.validate()
-                val b = document.board
-                if (b.brand == "moonboard") preferences.setMoonBoardSelection(b.layoutId, b.holdSets.takeIf { it.isNotEmpty() })
-                else preferences.setBoardSelection(b.brand, b.layoutId, b.sizeId)
+                // Only a switch writes the selection: selecting a MoonBoard again resets its angle.
+                if (switchesBoard(document)) selectBoard(document.board)
                 open(document, true)
             }
             catch (e: CancellationException) { throw e }
             catch (_: Exception) { mutable.update { it.copy(loading = false, message = R.string.paintbox_load_error) } }
         }
+    }
+    private suspend fun selectBoard(board: PaintBoard) {
+        if (board.brand != "moonboard") return preferences.setBoardSelection(board.brand, board.layoutId, board.sizeId)
+        val variant = requireNotNull(MoonBoardVariant.fromLayoutId(board.layoutId.toLong()))
+        val sets = board.mountedMoonHoldSets()
+        // The same MoonBoard with other hold sets keeps its angle.
+        val app = appBoard
+        if (app?.brand == board.brand && app.layoutId == board.layoutId) preferences.setMoonBoardHoldSets(variant, sets)
+        else preferences.setMoonBoardSelection(board.layoutId, sets)
     }
     fun brush(color: Int) { mutable.update { it.copy(brush = color, eraser = false) } }
     fun importImage(context: android.content.Context, uri: android.net.Uri) {
@@ -311,6 +329,8 @@ class PaintBoxViewModel @Inject constructor(
         if (state.value.live) pause() else {
             if (connection.value != ConnectionState.CONNECTED) { message(R.string.paintbox_connect_error); return }
             projector.boardBusy()?.let { message(it); return }
+            val document = state.value.document
+            if (document != null && !onAppBoard(document)) { mutable.update { it.copy(otherBoard = true) }; return }
             mutable.update { it.copy(live = true) }
             ble.acquireKeepAlive("paintbox")
             queueSend()
@@ -336,6 +356,7 @@ class PaintBoxViewModel @Inject constructor(
                 mutable.update { it.copy(sending = true) }
                 try {
                     if (!snapshot.boardReady) throw PaintProjectionException(R.string.paintbox_missing_board)
+                    if (!onAppBoard(document)) throw PaintProjectionException(R.string.paintbox_other_board)
                     if (image != null) previewAddress = address
                     val sent = projector.send(document, snapshot.ledMap) {
                         generation == ticket && ble.connectedBoard?.address == address
@@ -346,7 +367,13 @@ class PaintBoxViewModel @Inject constructor(
                     }
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) {
-                    if (ticket == generation) { pause(); message((e as? PaintProjectionException)?.messageRes ?: R.string.paintbox_send_error) }
+                    if (ticket == generation) {
+                        pause()
+                        when (val reason = (e as? PaintProjectionException)?.messageRes) {
+                            R.string.paintbox_other_board -> mutable.update { it.copy(otherBoard = true) }
+                            else -> message(reason ?: R.string.paintbox_send_error)
+                        }
+                    }
                 } finally { mutable.update { it.copy(sending = false) } }
             }
         }
