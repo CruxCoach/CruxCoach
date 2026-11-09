@@ -144,9 +144,13 @@ class SprayWallRepository @Inject constructor(
         io { queries.markHeadPending(id) }
     }
 
-    /** A relay took the head built while [pending] was the wall's mark; a change since then stays pending. */
+    /**
+     * A relay took the head built while [pending] was the wall's mark; a change since then stays pending. The wall page
+     * shows a pending head ("Upload pending"), so it hears of this too.
+     */
     suspend fun clearHeadPending(id: String, pending: Long) {
         io { queries.clearHeadPending(id, pending) }
+        changed()
     }
 
     /** Deletes the wall with everything on it, including its logbook entries, and photos no other wall uses. */

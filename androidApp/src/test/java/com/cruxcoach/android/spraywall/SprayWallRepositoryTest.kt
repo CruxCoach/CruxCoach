@@ -381,6 +381,19 @@ class SprayWallRepositoryTest {
     }
 
     @Test
+    fun `a head that went out tells the screens, so the pending hint goes`() = runTest {
+        val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(hold(-1, 0.1f)))
+        repository.markPublished(id, 1)
+        repository.updateWallDetails(id, "Wall B", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+        assertTrue(repository.wall(id)!!.publishPending)
+        val before = repository.changes.value
+
+        repository.clearHeadPending(id, repository.wall(id)!!.headPending!!)
+        assertTrue(repository.changes.value > before)
+        assertTrue(!repository.wall(id)!!.publishPending)
+    }
+
+    @Test
     fun `going private drops the pending head`() = runTest {
         val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(hold(-1, 0.1f)))
         repository.markPublished(id, 1)
