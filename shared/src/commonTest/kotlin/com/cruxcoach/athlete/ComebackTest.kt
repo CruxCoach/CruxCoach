@@ -226,6 +226,10 @@ class ComebackTest {
         val threeAWeek = Comeback.review(injury, week(-7 to 1, -5 to 1, -3 to 1), today)!!
         assertEquals(3, threeAWeek.sessionDays)
         assertEquals(Proposal.MOVE_UP, threeAWeek.proposal)
+        // The card counts the week's seven days ("7 of 7"); this morning still warns.
+        assertEquals(7 to 7, threeAWeek.green to threeAWeek.loggedDays)
+        val badMorning = Comeback.review(injury, week(-7 to 1, -5 to 1, -3 to 1).dropLast(1) + entry(0, morning = 5), today)!!
+        assertEquals(Proposal.STEP_BACK, badMorning.proposal)
         // Nothing before the stage counts.
         val later = Comeback.review(started(1, since = day(-7)), listOf(entry(-8, morning = 1, session = 6)) + week(-5 to 1, -3 to 1, -1 to 1), today)!!
         assertEquals(0, later.red)

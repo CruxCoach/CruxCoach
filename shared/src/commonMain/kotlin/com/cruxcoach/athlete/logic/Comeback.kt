@@ -229,24 +229,28 @@ object Comeback {
         val plan = injury.activePlan ?: return null
         val days = daysOnStage(plan, today)
         val since = parse(plan.stageSince) ?: today
-        // The seven days before today and today's morning: the look back usually comes before today's sessions, and a
-        // window of today and the six days before missed the stage's first day and saw six days of sessions (#59 follow-up).
-        val from = maxOf(today.minus(DatePeriod(days = MIN_DAYS_ON_STAGE)), since)
-        val week = readings(injury, entries, from, today)
+        // The week behind the look back: the seven days before today, never before the stage began. The look back usually
+        // comes in the morning, before the day's sessions; a window of today and the six days before missed the stage's
+        // first day and saw six days of sessions (#59 follow-up). Today counts where it warns and with sessions already done.
+        val week = readings(injury, entries, maxOf(today.minus(DatePeriod(days = MIN_DAYS_ON_STAGE)), since), today.minus(DatePeriod(days = 1)))
+        val todayReading = readings(injury, entries, maxOf(today, since), today)
+        val warned = week + todayReading.filter { it.color == DayColor.AMBER || it.color == DayColor.RED }
         val green = week.count { it.color == DayColor.GREEN }
-        val amber = week.count { it.color == DayColor.AMBER }
-        val red = week.count { it.color == DayColor.RED }
+        val amber = warned.count { it.color == DayColor.AMBER }
+        val red = warned.count { it.color == DayColor.RED }
         val logged = week.count { it.color != null }
-        val worst = week.filter { it.sessionPain != null }.maxByOrNull { it.sessionPain!! }?.let { it.day to it.sessionPain!! }
+        val worst = (week + todayReading).filter { it.sessionPain != null }.maxByOrNull { it.sessionPain!! }?.let { it.day to it.sessionPain!! }
         val trend = pressureTrend(entries, today)
         val lastStage = ladder(injury).stages.lastIndex
-        val recentRedMorning = week.takeLast(2).any { (it.morningRise ?: 0) >= 2 || (it.morningPain ?: 0) >= 5 }
-        // Steady morning pain above the rule holds the stage, even without a rise (owner 2026-11-09).
-        val morningMedian = week.mapNotNull { it.morningPain }.median()
+        val recentRedMorning = (week.takeLast(1) + todayReading).any { (it.morningRise ?: 0) >= 2 || (it.morningPain ?: 0) >= 5 }
+        // Steady morning pain above the rule holds the stage, even without a rise (owner 2026-11-09): the seven mornings
+        // after the week's days, today's included.
+        val morningMedian = (week + todayReading).filter { it.day > today.minus(DatePeriod(days = MIN_DAYS_ON_STAGE)) }
+            .mapNotNull { it.morningPain }.median()
         val morningsAbove = morningMedian != null && morningMedian > painRule(injury).greenMax
         // The next stage builds on this one's sessions: offered after enough days with them (owner 2026-11-09).
         val byDay = entries.associateBy { it.day }
-        val sessionDays = week.count { byDay[it.day.toString()]?.sessions?.isNotEmpty() == true }
+        val sessionDays = (week + todayReading).count { byDay[it.day.toString()]?.sessions?.isNotEmpty() == true }
         val sessionDaysNeeded = sessionDaysToMoveUp(stage(injury, plan))
         val proposal = when {
             // At the first stage there is nothing to step back to: repeat it, and say why (issue #59 follow-up: a painful
