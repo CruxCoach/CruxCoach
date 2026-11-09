@@ -188,6 +188,61 @@ class BoardLogbookOverviewLoadTest {
         assertEquals(2, reads.get())
     }
 
+    @Test
+    fun aPeriodTappedWhileTheReopenedSheetReadsTheLogbookStartsNoSecondRead() = runTest {
+        val reads = AtomicInteger(0)
+        val release = CountDownLatch(1)
+        every { personalBoardRepo.getUserLogbookAllLight() } answers {
+            if (reads.getAndIncrement() == 0) throw IllegalStateException("database busy")
+            release.await(10, TimeUnit.SECONDS)
+            logbook
+        }
+        val vm = buildViewModel()
+        vm.state.first { it.statsReady }
+        assertEquals(1, reads.get())
+        try {
+            // Opening the sheet after the failed read reads the logbook again, with the loading sign.
+            vm.toggleStatsSheet()
+            assertFalse(vm.state.value.statsReady)
+            // A period tapped meanwhile waits for that read.
+            vm.setStatsInterval(StatsTimeInterval.DAYS_30)
+            Thread.sleep(300)
+            assertEquals(2, reads.get())
+            assertFalse(vm.state.value.statsReady)
+        } finally {
+            release.countDown()
+        }
+        val s = vm.state.first { it.statsReady && it.stats.totalSends > 0 }
+        assertEquals(StatsTimeInterval.DAYS_30, s.statsInterval)
+        assertEquals(2, s.stats.totalSends)
+        assertEquals(2, reads.get())
+    }
+
+    @Test
+    fun theSheetOpenedWhileTheLogbookLoadsStartsNoSecondRead() = runTest {
+        val reads = AtomicInteger(0)
+        val release = CountDownLatch(1)
+        every { personalBoardRepo.getUserLogbookAllLight() } answers {
+            reads.incrementAndGet()
+            release.await(10, TimeUnit.SECONDS)
+            logbook
+        }
+        val vm = buildViewModel()
+        try {
+            vm.state.first { !it.isLoading && it.ascents.isNotEmpty() }
+            Thread.sleep(300)
+            assertEquals(1, reads.get())
+            vm.toggleStatsSheet()
+            Thread.sleep(300)
+            assertEquals(1, reads.get())
+        } finally {
+            release.countDown()
+        }
+        val s = vm.state.first { it.statsReady }
+        assertEquals(2, s.stats.totalSends)
+        assertEquals(1, reads.get())
+    }
+
     private fun climb(name: String, difficulty: Double?, layoutId: Long) = ClimbWithStats(
         uuid = "found", layoutId = layoutId, setterUsername = null, name = name, frames = "",
         framesCount = 1, difficultyAverage = difficulty, qualityAverage = null, ascensionistCount = null,

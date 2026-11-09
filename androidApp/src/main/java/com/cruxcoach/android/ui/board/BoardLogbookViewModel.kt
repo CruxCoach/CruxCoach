@@ -232,6 +232,8 @@ class BoardLogbookViewModel @Inject constructor(
     private var allAscents: List<AscentWithClimb> = emptyList()
     private var overviewJob: Job? = null
     private var statsJob: Job? = null
+    /** The current read of the whole logbook; opening the sheet starts no second one. */
+    private var preloadJob: Job? = null
     /** The whole logbook has been read once; the statistics wait for it. */
     private var logbookLoaded = false
     /** The last read of the whole logbook failed; a period or board tap in the sheet reads it again. */
@@ -419,7 +421,13 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     private fun preloadStats() {
-        viewModelScope.safeLaunch(TAG) {
+        // A read after a failed one: the sheet shows its loading sign again, and a
+        // period or board tap meanwhile waits for this read instead of starting one.
+        if (logbookLoadFailed) {
+            logbookLoadFailed = false
+            if (!logbookLoaded) _state.update { it.copy(statsReady = false) }
+        }
+        preloadJob = viewModelScope.safeLaunch(TAG) {
             try {
                 val all = withContext(Dispatchers.IO) {
                     personalBoardRepo.getUserLogbookAllLight()
@@ -688,7 +696,7 @@ class BoardLogbookViewModel @Inject constructor(
     fun toggleStatsSheet() {
         val opening = !_state.value.showStatsSheet
         _state.update { it.copy(showStatsSheet = opening) }
-        if (opening && allAscents.isEmpty()) preloadStats()
+        if (opening && allAscents.isEmpty() && preloadJob?.isActive != true) preloadStats()
     }
 
     /**
@@ -745,11 +753,7 @@ class BoardLogbookViewModel @Inject constructor(
         // The load computes the newest choice once it is done.
         if (!logbookLoaded) {
             // After a failed read, the tap reads the logbook again, with the loading sign.
-            if (logbookLoadFailed) {
-                logbookLoadFailed = false
-                _state.update { it.copy(statsReady = false) }
-                preloadStats()
-            }
+            if (logbookLoadFailed) preloadStats()
             return
         }
         // Only the newest choice may land: a slow "All" started before a tap on
