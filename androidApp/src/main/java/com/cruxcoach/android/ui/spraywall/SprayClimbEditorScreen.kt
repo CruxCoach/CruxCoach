@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -17,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -61,6 +63,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallPublisher
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.spraywall.SprayWithdrawal
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.domain.spraywall.SprayClimbRules
@@ -105,6 +108,12 @@ data class SprayClimbEditorState(
     val original: Snapshot? = null,
     val showProblems: Boolean = false,
     val saving: Boolean = false,
+    /** Delete is taking the climb back from the servers; it is deleted here only once they took that. */
+    val deleting: Boolean = false,
+    /** Why the climb was kept: it could not be taken back from the servers. */
+    val deleteFailed: SprayWithdrawal? = null,
+    /** Deleted: the screen closes (also when it was away while the delete ran). */
+    val deleted: Boolean = false,
     val gradeScale: GradeScale = GradeScale.FRENCH,
 ) {
     data class Snapshot(val holds: Map<Long, SprayHoldRole>, val name: String, val description: String, val difficulty: Int?)
@@ -119,7 +128,6 @@ data class SprayClimbEditorState(
 
 sealed interface SprayClimbEditorEvent {
     data class Saved(val uuid: String) : SprayClimbEditorEvent
-    data object Deleted : SprayClimbEditorEvent
     data object RoleLimit : SprayClimbEditorEvent
     data object Failed : SprayClimbEditorEvent
     /** Save found something to fix: the screen brings the problems into view. */
@@ -227,10 +235,20 @@ class SprayClimbEditorViewModel @Inject constructor(
 
     fun delete() {
         val uuid = climbUuid ?: return
+        if (_state.value.deleting || _state.value.saving) return
+        _state.update { it.copy(deleting = true, deleteFailed = null) }
         viewModelScope.launch {
-            // A published climb is taken back from Nostr too.
-            repository.deleteClimb(uuid)?.let { publisher.withdrawClimbSoon(it, _state.value.wall) }
-            _events.emit(SprayClimbEditorEvent.Deleted)
+            // A climb that may have gone out is taken back from Nostr first, and kept when no relay took that.
+            val result = try {
+                publisher.deleteClimb(uuid)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SprayWithdrawal.NOT_CONFIRMED
+            }
+            _state.update {
+                if (result == SprayWithdrawal.DONE) it.copy(deleted = true) else it.copy(deleting = false, deleteFailed = result)
+            }
         }
     }
 }
@@ -264,12 +282,12 @@ fun SprayClimbEditorScreen(
                     keyboard?.hide()
                     formScroll.animateScrollTo(0)
                 }
-                SprayClimbEditorEvent.Deleted -> onDeleted()
                 SprayClimbEditorEvent.RoleLimit -> snackbar.showSnackbar(context.getString(R.string.spray_climb_role_limit))
                 SprayClimbEditorEvent.Failed -> snackbar.showSnackbar(context.getString(R.string.spray_climb_save_failed))
             }
         }
     }
+    LaunchedEffect(state.deleted) { if (state.deleted) onDeleted() }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -280,7 +298,7 @@ fun SprayClimbEditorScreen(
                     }
                 },
                 actions = {
-                    TextButton(onClick = viewModel::save, enabled = !state.saving && !state.loading, modifier = Modifier.testTag("spray_climb_save")) {
+                    TextButton(onClick = viewModel::save, enabled = !state.saving && !state.loading && !state.deleting, modifier = Modifier.testTag("spray_climb_save")) {
                         Text(stringResource(R.string.action_save))
                     }
                 },
@@ -382,9 +400,7 @@ fun SprayClimbEditorScreen(
                     modifier = Modifier.fillMaxWidth().testTag("spray_climb_description"),
                 )
                 if (state.isEdit) {
-                    TextButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag("spray_climb_delete")) {
-                        Text(stringResource(R.string.spray_climb_delete), color = MaterialTheme.colorScheme.error)
-                    }
+                    DeleteClimb(state.deleting, state.deleteFailed, enabled = !state.saving, onDelete = { confirmDelete = true })
                 }
             }
         }
@@ -400,6 +416,35 @@ fun SprayClimbEditorScreen(
             onConfirm = { confirmDelete = false; viewModel.delete() },
             onDismiss = { confirmDelete = false },
         )
+    }
+}
+
+/** Delete, or the climb being taken back from the servers first, or why it was kept when they did not take that. */
+@Composable
+private fun DeleteClimb(deleting: Boolean, failed: SprayWithdrawal?, enabled: Boolean, onDelete: () -> Unit) {
+    if (deleting) {
+        Row(Modifier.heightIn(min = 48.dp).testTag("spray_climb_deleting"), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Text(stringResource(R.string.spray_climb_deleting), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+        }
+        return
+    }
+    if (failed != null) {
+        Text(
+            stringResource(
+                when (failed) {
+                    SprayWithdrawal.NO_IDENTITY -> R.string.spray_climb_delete_failed_identity
+                    SprayWithdrawal.SIGNING_FAILED -> R.string.spray_climb_delete_failed_signing
+                    else -> R.string.spray_climb_delete_failed
+                },
+            ),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("spray_climb_delete_failed"),
+        )
+    }
+    TextButton(onClick = onDelete, enabled = enabled, modifier = Modifier.testTag("spray_climb_delete")) {
+        Text(stringResource(R.string.spray_climb_delete), color = MaterialTheme.colorScheme.error)
     }
 }
 

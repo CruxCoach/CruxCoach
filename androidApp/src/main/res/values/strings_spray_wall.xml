@@ -84,6 +84,10 @@
     <string name="spray_climb_delete">Delete climb</string>
     <string name="spray_climb_delete_confirm_title">Delete %1$s?</string>
     <string name="spray_climb_delete_confirm_text">This also deletes its logbook entries.</string>
+    <string name="spray_climb_deleting">Taking the climb back from the servers …</string>
+    <string name="spray_climb_delete_failed">The servers did not confirm taking the climb back, so it was not deleted. Check the connection and try again.</string>
+    <string name="spray_climb_delete_failed_signing">Signing did not work or was declined in your signer app, so the climb was not deleted. Try again and confirm the requests.</string>
+    <string name="spray_climb_delete_failed_identity">Deleting needs the CruxCoach account key the climb was published with, to take it back from the servers. Set it up in Settings under CruxCoach Account, then try again.</string>
     <string name="spray_climb_save_failed">The climb could not be saved.</string>
     <string name="spray_problem_name">Give the climb a name.</string>
     <string name="spray_problem_name_long">The name is too long.</string>
@@ -219,6 +223,8 @@
     <string name="spray_followed_remove_text">This removes the wall from this phone, with your climbs and logbook entries on it. Your climbs are also withdrawn from the servers. The public wall itself stays.</string>
     <string name="spray_followed_removing">Taking your climbs back …</string>
     <string name="spray_followed_remove_failed">Your climbs on this wall could not be taken back from the servers, so the wall stays. Check the connection and try again.</string>
+    <string name="spray_followed_remove_failed_signing">Signing did not work or was declined in your signer app, so your climbs on this wall were not taken back and the wall stays. Try again and confirm the requests.</string>
+    <string name="spray_followed_remove_failed_identity">Taking your climbs on this wall back needs the CruxCoach account key they were published with. Set it up in Settings under CruxCoach Account, then try again.</string>
     <string name="spray_venue_title">Spray walls here</string>
     <string name="spray_venue_info">Public spray walls people shared for this place. They are only loaded from the relays when you ask.</string>
     <string name="spray_venue_show">Show spray walls</string>

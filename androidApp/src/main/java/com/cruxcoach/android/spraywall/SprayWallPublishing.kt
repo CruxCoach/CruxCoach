@@ -166,6 +166,60 @@ class SprayWallPublishing(
         return pending.size
     }
 
+    /**
+     * Takes my [climbs] on [wall] back from Nostr: a tombstone each for those that may be out ([takesBack]) and one
+     * deletion naming them all. [SprayWithdrawal.DONE] when the deletion or every tombstone was taken by a relay, or
+     * when none had to go. Run under the publisher's lock, with [climbs] read there.
+     *
+     * A climb that never went out can't be told apart from one a relay may have kept without confirming it in time,
+     * or from an edited one (an edit clears the mark), so it is taken back too: offline, it waits for a connection.
+     */
+    suspend fun takeBackClimbs(identity: () -> String?, climbs: List<SprayClimb>, wall: SprayWall?): SprayWithdrawal {
+        val mine = climbs.filter { takesBack(it, wall) }
+        if (mine.isEmpty()) return SprayWithdrawal.DONE
+        // Nothing goes out without an identity; one marked as published went out with an earlier one and stays.
+        val me = identity() ?: return if (mine.none { it.publishedAt != null }) SprayWithdrawal.DONE else SprayWithdrawal.NO_IDENTITY
+        val owner = wall?.ownerPubkey ?: me
+        val dTags = mine.map { SprayWallNostr.climbDTag(me, it.uuid) }
+        // A tombstone a relay took has replaced its climb there already, also when the deletion then fails.
+        var tombstones = 0
+        return try {
+            for ((climb, d) in mine.zip(dTags)) {
+                val address = SprayWallNostr.wallAddress(owner, climb.wallId)
+                if (send(SprayWallNostr.tombstone(stamp(d), d, SprayWallNostr.LABEL_CLIMB, address)) > 0) tombstones++
+            }
+            val deleted = send(SprayWallNostr.deletion(me, now(), dTags)) > 0
+            if (deleted || tombstones == mine.size) SprayWithdrawal.DONE else SprayWithdrawal.NOT_CONFIRMED
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: SprayEventSigningFailed) {
+            Log.w(TAG, "signing a climb's take-back failed", e)
+            if (tombstones == mine.size) SprayWithdrawal.DONE else SprayWithdrawal.SIGNING_FAILED
+        } catch (e: Exception) {
+            Log.w(TAG, "taking climbs back failed", e)
+            if (tombstones == mine.size) SprayWithdrawal.DONE else SprayWithdrawal.NOT_CONFIRMED
+        }
+    }
+
+    /**
+     * Deletes my climb [uuid] here once it is taken back ([takeBackClimbs]). Otherwise it stays: deleted here, nothing
+     * would know of its event on the relays, and a withdrawal of the wall would miss it.
+     */
+    suspend fun deleteClimb(identity: () -> String?, uuid: String): SprayWithdrawal {
+        val climb = repository.climb(uuid) ?: return SprayWithdrawal.DONE
+        val result = takeBackClimbs(identity, listOf(climb), repository.wall(climb.wallId))
+        if (result == SprayWithdrawal.DONE) repository.deleteClimb(uuid)
+        return result
+    }
+
+    /** Removes someone else's wall [wallId] from this phone once my climbs on it are taken back ([takeBackClimbs]). */
+    suspend fun removeFollowed(identity: () -> String?, wallId: String): SprayWithdrawal {
+        val wall = repository.wall(wallId) ?: return SprayWithdrawal.DONE
+        val result = takeBackClimbs(identity, repository.myClimbs(wallId), wall)
+        if (result == SprayWithdrawal.DONE) repository.deleteWall(wallId)
+        return result
+    }
+
     /** Sends with [block]; a declined signature is remembered under [key] and counts as taken by no relay. */
     private suspend fun signed(key: Declined, what: String, block: suspend () -> Int): Int = try {
         block()
@@ -188,10 +242,10 @@ class SprayWallPublishing(
         private const val TAG = "SprayWallPublishing"
 
         /**
-         * A climb of mine deleted from [wall] gets a tombstone when it went out, and also on a public or followed wall
-         * when it is not marked as published: an edit clears that mark until it goes out again, and its earlier event
-         * is still on the relays (also when the owner withdrew the wall since). A tombstone for a climb that never went
-         * out does no harm.
+         * A climb of mine on [wall] that may be on the relays or about to go out: it went out, or it is on a public or
+         * followed wall even when it is not marked as published (an edit clears that mark until it goes out again, and
+         * its earlier event is still on the relays, also when the owner withdrew the wall since). A climb on my private
+         * wall is neither.
          */
         fun takesBack(climb: SprayClimb, wall: SprayWall?): Boolean =
             climb.isMine && (climb.publishedAt != null || wall == null || !wall.isMine || wall.visibility == SprayWallVisibility.PUBLIC)
