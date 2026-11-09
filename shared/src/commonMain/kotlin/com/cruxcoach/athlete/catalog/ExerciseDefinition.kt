@@ -36,7 +36,8 @@ data class ExerciseDefinition(
     /**
      * Body regions a [unilateral] exercise loads on both sides (issue #59 follow-up): the straight arm of an archer
      * push-up, the kneeling knee of a child's pose. Around an injury of one side such an exercise is not offered for
-     * the healthy side only ([com.cruxcoach.athlete.logic.InjuryAdvisor]).
+     * the healthy side only ([com.cruxcoach.athlete.logic.InjuryAdvisor]). Only regions the exercise loads count (a
+     * [contraindications] entry or one of its [domains]); the catalogue test checks that.
      */
     val bothSides: List<BodyRegion> = emptyList(),
     val tags: List<String> = emptyList(),

@@ -3484,7 +3484,6 @@
     "shoulder"
    ],
    "bothSides": [
-    "finger",
     "elbow",
     "shoulder"
    ],
@@ -3576,7 +3575,6 @@
     "shoulder"
    ],
    "bothSides": [
-    "finger",
     "elbow",
     "shoulder"
    ],
@@ -15700,7 +15698,8 @@
    "contraindications": [
     "knee",
     "hip",
-    "back"
+    "back",
+    "wrist"
    ],
    "bothSides": [
     "knee",

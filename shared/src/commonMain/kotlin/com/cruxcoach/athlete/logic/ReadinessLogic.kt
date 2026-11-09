@@ -119,8 +119,7 @@ object InjuryAdvisor {
     private fun assessOne(def: ExerciseDefinition, injury: Injury): InjuryAdvice {
         if (injury.climbingPaused && def.needsClimbingWall) return InjuryAdvice(InjuryVerdict.AVOID, injury = injury)
         val region = injury.region
-        val hits = def.contraindications.any { it in region.bodyRegions } || def.domains.any { it in region.domains }
-        if (!hits) return InjuryAdvice(InjuryVerdict.OK)
+        if (!loads(def, region)) return InjuryAdvice(InjuryVerdict.OK)
         val oneSided = def.unilateral && region.limb && (injury.side == InjurySide.LEFT || injury.side == InjurySide.RIGHT)
         // The other side carries part of the load too (the straight arm of an archer push-up, the kneeling knee of a
         // child's pose): not "the healthy side only" where the injury rules the exercise out (issue #59 follow-up).
@@ -145,6 +144,13 @@ object InjuryAdvisor {
         return if (injury.severity >= AVOID_SEVERITY) InjuryAdvice(InjuryVerdict.AVOID, injury = injury)
         else InjuryAdvice(InjuryVerdict.CAUTION, injury = injury)
     }
+
+    /**
+     * True when [def] loads an injury of [region]: a contraindication or a load domain of it. Only then does the
+     * injury change the exercise, and only then do its [ExerciseDefinition.bothSides] count.
+     */
+    fun loads(def: ExerciseDefinition, region: InjuryRegion): Boolean =
+        def.contraindications.any { it in region.bodyRegions } || def.domains.any { it in region.domains }
 
     /** From this comeback stage on, training outside the plan may load the injured spot again (marked). */
     const val FINGER_OPEN_STAGE = 5
