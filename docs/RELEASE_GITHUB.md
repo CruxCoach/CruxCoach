@@ -56,7 +56,8 @@ interaction on the operator side before reusing it. Commands here are not
 instructions for a remote documentation or feature agent to execute.
 
 GitHub is the primary forge. Dispatching `.github/workflows/release.yml` from
-`main` runs it on a **self-hosted** runner: unit tests, one signed APK, the tag,
+`main` runs the unit tests on a hosted runner, then the rest on a
+**self-hosted** runner: one APK signed on the maintainer's YubiKey, the tag,
 the GitHub release, a byte-identical Codeberg release, both SHA-256 sidecars,
 the Zapstore publish, the website and download-server update, APKTrack stable
 (which also replicates the APK to the Blossom servers), and a final check that
@@ -101,10 +102,11 @@ whose token never leaves memory, the dispatch, following the run, and the
 final channel table. Running it is the authorization; it asks once unless
 given `--yes`.
 
-It is a manual trigger, and it refuses to run off `main`. The Zapstore signer
-prompts a phone twice per release (see below), so an unattended run would stall
-waiting for a human — and the second prompt falls after the GitHub release is
-already public. There are no dev prereleases: the pipeline builds full releases
+It is a manual trigger, and it refuses to run off `main`. The maintainer signs
+the APK on a YubiKey at the PC (see [`KEY_ROTATION.md`](KEY_ROTATION.md)), and
+the Zapstore signer prompts a phone for the publish (see below), so an
+unattended run would stall waiting for a human — and the Zapstore prompt falls
+after the GitHub release is already public. There are no dev prereleases: the pipeline builds full releases
 only.
 
 The old Codeberg/Forgejo workflow has been retired. Forgejo cannot enforce the
@@ -204,7 +206,8 @@ The runner expects these environment variables in its execution environment (e.g
 
 | Variable | Purpose |
 |----------|---------|
-| `CRUXCOACH_SECRETS_DIR` | Directory containing `local.properties`, `.signing/`, and `.env` for Zapstore publishing — kept outside the repo and never committed |
+| `CRUXCOACH_SECRETS_DIR` | Directory containing `local.properties` and `.env` for Zapstore publishing — kept outside the repo and never committed |
+| `CRUXCOACH_RELEASE_DROP` | Folder shared with the maintainer's PC. The workflow puts `<tag>/unsigned.apk` there and waits up to 30 minutes for `signed.apk` and `signed.apk.sha256`, signed with the release key on the maintainer's YubiKey ([`KEY_ROTATION.md`](KEY_ROTATION.md)) |
 | `ANDROID_SDK_ROOT` | Standard Android SDK location; the workflow auto-discovers `build-tools/<version>/apksigner` and `aapt2` |
 | `CRUXCOACH_APK_LOCAL_DIR` | Optional. Download-server APK directory; defaults to `~/cruxcoach-dlstats/apk` |
 | `CRUXCOACH_PAGES_DIR` | Optional. Website checkout whose `tools/publish-release.sh` refreshes the download links; defaults to `~/worktrees/cruxcoach-pages-refresh`, the `main` checkout that mirror.cruxcoach.org serves |
@@ -216,8 +219,7 @@ Files the runner reads off its own filesystem, none of which is a forge secret:
 
 | Path | Purpose |
 |------|---------|
-| `$CRUXCOACH_SECRETS_DIR/local.properties` | Build config, including `RELEASE_STORE_FILE` — beware the trap documented above: an empty value makes a release build fall back to debug signing **silently** |
-| `$CRUXCOACH_SECRETS_DIR/.signing/` | Release keystore |
+| `$CRUXCOACH_SECRETS_DIR/local.properties` | Build config. The workflow copies it without its `RELEASE_*` lines and builds with `-PunsignedRelease=true`, so the build is unsigned; the release key never reaches the runner (since 0.2.5) |
 | `$CRUXCOACH_SECRETS_DIR/.env` | Zapstore publishing. Mode 600; must define a headless `SIGN_WITH` (`nsec1…`, hex private key, or a provisioned `bunker://` NIP-46 signer) whose public key matches `zapstore.yaml`. A bare `npub1…` only creates unsigned output. The file uses raw zsp `KEY=value` syntax and is never sourced as shell. See [`.env.example`](../.env.example) |
 | `~/.config/cruxcoach/github-release-token` | Mode 600, `Contents: Read and write` on `CruxCoach/CruxCoach`. Authenticates both the GitHub API calls and the tag push. Override with `GITHUB_TOKEN` / `GITHUB_TOKEN_FILE`, or `GITHUB_RELEASE_TOKEN` for the dev-release cleanup step |
 | `~/.config/cruxcoach/codeberg-release-token` | Mode 600, repository write access on `CruxCoach/CruxCoach`. Pushes the identical tag and mirrors the already-built GitHub APK plus sidecar to Codeberg. Override with `CODEBERG_TOKEN` / `CODEBERG_TOKEN_FILE` |
@@ -296,9 +298,11 @@ interactive authorisation attempt.
 
 The same preflight runs before either workflow creates a public release. The
 static check happens before the APK build; after signature verification, a
-second gate runs `zsp publish --offline` against the finished APK. That requires
-the bunker to be online and the request to be approved, while uploading no
-APK and publishing no Nostr event. Only then may the workflow create the forge
+second gate runs `zsp check` against the finished APK. That requires the bunker
+to be online, a C1 proof for the APK's certificate that authorizes the signer,
+and a version code above the published one, while signing nothing, uploading no
+APK and publishing no Nostr event (`scripts/zapstore-check.py` reads its
+result). Only then may the workflow create the forge
 release. The validated value is exported only inside these signing steps and
 masked before `zsp` runs. It is deliberately **not** a GitHub secret — same
 reasoning as the APK keystore — and deliberately **not** copied to `./.env`: a

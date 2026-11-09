@@ -1,10 +1,10 @@
 # Android Signing Key Rotation
 
-> **Release scope (2026-09-10):** published app 0.2.2; 0.2.3 is in
-> preparation. Lineage acceptance in code is not evidence that a production
-> signing key was rotated. The procedures below require separate owner
-> authorization; this documentation authorizes no rotation or publication.
-> See [release status](RELEASE_GITHUB.md).
+> **Release scope (2026-11-09):** 0.2.5 is planned as the first release
+> signed by the new release key, which lives on a YubiKey at the maintainer's
+> PC (signing ceremony on 10 November 2026). Every release up to 0.2.4 is
+> signed by `7f8308e8…1bc2c4`. Publication still needs the owner's
+> authorization of each release. See [release status](RELEASE_GITHUB.md).
 
 > Audience: CruxCoach end users and the maintainer team. This document
 > describes both what users see if the signing key ever changes, and the
@@ -142,95 +142,130 @@ A rotation is a coordinated action with three phases.
 - Pin the same notice to the project's GitHub README until the
   rotation is complete.
 
-### 2. Release — sign with the new key **and a v3 lineage**
+### 2. Release — the new key alone, v3 only, with a lineage
 
-Since 0.2.2 the release APK is signed with APK Signature Scheme **v3**
-(`enableV3Signing = true`). v3 is what carries a
-`SigningCertificateLineage`: a chain in which the old key
-cryptographically signs off on the new one. Both Android's installer and
-CruxCoach's own certificate pin accept a rotated APK **only** if that
-chain is present and leads back to the certificate they already trust.
+From 0.2.5 on, the release key is a YubiKey at the maintainer's PC. The
+release runner never holds a release key: it builds the APK unsigned, the
+maintainer signs it on the PC, and the runner checks the result before
+anything is published.
+
+A rotated release is signed with APK Signature Scheme **v3 only**, by the
+**new key alone**. Its v3 block carries a `SigningCertificateLineage`: a
+chain in which the old key (`7f8308e8…1bc2c4`) cryptographically signs off on
+the new one. Both Android's installer and CruxCoach's own certificate pin
+accept the rotated APK **only** if that chain is present and leads back to the
+certificate they already trust.
+
+Why v3 only is enough:
+
+- `minSdk` is 28, and Android verifies v3 from Android 9 (API 28) on, so every
+  device the app installs on reads the v3 block. v1 and v2 would only serve
+  devices the app no longer supports.
+- With v1 and v2 off, the new key and `--lineage` are all apksigner needs. The
+  old requirement to pass both keystores came from v1: apksigner refuses
+  "v1 signing enabled but the oldest signer in the SigningCertificateLineage
+  is missing".
+- The in-app updater (0.2.2 and newer, so also 0.2.4) reads the signer only
+  through PackageManager: `GET_SIGNING_CERTIFICATES`, which returns the whole
+  certificate history, so the lineage matches the pinned old certificate;
+  failing that `GET_SIGNATURES`. No path reads v1 files from the zip any more,
+  so v1 is not needed.
+- On ROMs where the modern path fails (seen on an HTC with Android 9, which
+  returns no `signingInfo`), the updater falls back to `GET_SIGNATURES`.
+  AOSP returns the oldest certificate of a rotated APK there, so checks unaware
+  of rotation keep working, and that matches the pin. Where a ROM returns
+  neither, the in-app update is refused and the update is manual: download
+  the APK from the release page and install it over the installed app.
+  Android verifies the lineage itself and accepts it, so there is no need to
+  uninstall.
 
 > **AGP cannot do this.** The Android Gradle Plugin's `signingConfigs`
 > DSL has no lineage property, so `assembleRelease` alone can never
-> produce a rotated APK that installs over an existing one. The lineage
-> has to be applied with `apksigner` as a post-build step. This is the
-> single most important operational fact in this document.
+> produce a rotated APK that installs over an existing one. The release
+> workflow therefore builds with `-PunsignedRelease=true`, which gives
+> `androidApp-release-unsigned.apk`, and the lineage is applied by
+> `apksigner` when the APK is signed.
 
-> The commands below were executed end-to-end against apksigner 36.0.0
-> with throwaway keystores before being written down. Deviating from
-> them is likely to fail — see the trap in step b.
-
-**a. Create the lineage once**, from the old keystore to the new one:
-
-```
-apksigner rotate --out .signing/lineage.bin --old-signer --ks .signing/old.jks --ks-key-alias OLD_ALIAS --new-signer --ks .signing/new.jks --ks-key-alias NEW_ALIAS
-```
-
-Keep `lineage.bin` next to the keystores and back it up with them. It is
-not secret, but losing it means no further rotation can chain from this
-one.
-
-**b. Build, then re-sign — with BOTH signers.**
-
-The obvious command (new key + `--lineage`) does **not** work. apksigner
-rejects it outright:
+**a. Create the lineage once**, offline, at the signing ceremony: from the
+old keystore to the new key, while the new key is still a file, before it
+goes onto the YubiKeys:
 
 ```
-v1 signing enabled but the oldest signer in the SigningCertificateLineage is missing.  Please provide the oldest signer to enable v1 signing
+apksigner rotate --out lineage.bin --old-signer --ks old.jks --ks-key-alias OLD_ALIAS --new-signer --ks new-key-keystore --ks-key-alias NEW_ALIAS
 ```
 
-Both keystores have to be passed, old first, joined by `--next-signer`.
-That is not a formality: the **old** key signs v1/v2 and the **new** key
-signs v3, and that split is exactly what makes the rotation seamless —
-devices below the rotation boundary keep verifying against the key they
-already trust.
+Keep `lineage.bin` with the old keystore's backup. It is not secret, but
+losing it means no further rotation can chain from this one.
+
+**b. Sign each release on the PC**, v3 only, with the YubiKey and the
+lineage. apksigner reaches the YubiKey through a PKCS#11 provider
+(`--ks NONE --ks-type PKCS11 --provider-class …`).
+
+The expected SHA-256 of `unsigned.apk` comes from the run, never from the
+drop folder: the drop folder can be written from outside the run, the
+run's log cannot. The maintainer's signing script takes it from the run's
+"Waiting for the YubiKey signature" notice as an argument
+(`sign-release.sh vX.Y.Z <sha256>`) and refuses on any mismatch.
 
 ```
-./gradlew :androidApp:assembleRelease && apksigner sign --ks .signing/old.jks --ks-key-alias OLD_ALIAS --next-signer --ks .signing/new.jks --ks-key-alias NEW_ALIAS --lineage .signing/lineage.bin --rotation-min-sdk-version 28 --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true androidApp/build/outputs/apk/release/androidApp-release.apk
+apksigner sign <YubiKey options> --lineage lineage.bin --rotation-min-sdk-version 28 --v1-signing-enabled false --v2-signing-enabled false --v3-signing-enabled true --v4-signing-enabled false --in unsigned.apk --out signed.apk
+sha256sum signed.apk > signed.apk.sha256
 ```
 
-**c. Choose the rotation boundary deliberately** —
-`--rotation-min-sdk-version` decides from which API level the *new* key
-becomes the effective signer. Below it, the *old* key keeps signing.
-Both variants were verified:
+`--v4-signing-enabled false` matters with a YubiKey that asks for a touch on
+every signature: a v4 signature would be a second touch and an extra
+`.idsig` file that nothing uses.
 
-| `--rotation-min-sdk-version` | API 26–27 | API 28–32 | API 33+ | Old key retired for… |
-|---|---|---|---|---|
-| `33` (apksigner default) | old key | old key | new key | Android 13+ only |
-| `28` | not applicable¹ | new key | new key | every supported device |
+This was checked with throwaway keystores against apksigner 36.0.0 and
+37.0.0: `verify` reports v3 only and exactly one signer, the new
+certificate, and `lineage --print-certs` lists the old certificate first and
+then the new one.
 
-¹ The 0.2.3 release preparation targets `minSdk=28`, so Android 8.0/8.1 are not offered the
-release at all — 0.2.2 tells those users it is their last version
-(`DeviceSupportGate`). Without that minSdk bump, `28` would leave them
-with a rejected update instead.
+**c. Keep the rotation boundary at 28.** `--rotation-min-sdk-version`
+decides from which API level the *new* key becomes the effective signer. The
+apksigner default is `33`. It puts the rotation into a separate v3.1 block
+for Android 13+ and leaves older devices on the old key. That is the wrong
+choice for this app: with `minSdk = 28` and the boundary at `28`, the old key
+is retired across the entire supported range, with no window left open.
+The release workflow refuses an APK with a v3.1 block.
 
-**Use `28`.** The apksigner default of `33` is the safe choice for a
-*hygiene* rotation on a wide minSdk range, because nobody is stranded.
-It is the wrong choice for a **compromised** key: anyone holding the old
-key could still sign something that every device below Android 13
-accepts. With `minSdk = 28` and the boundary at `28` the two line up and
-the old key is retired across the entire supported range, with no window
-left open.
+The boundary was verified on hardware (HTC U11, Android 9): with `28` the
+rotated update installs, the lineage is recorded, and a later old-key APK
+is refused with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. With the default, the
+same device never records the rotation and accepts the old-key APK.
 
-Both rows were verified on hardware (HTC U11, Android 9): with `28` the
-rotated update installs, the lineage is recorded, and a subsequent
-old-key APK is refused with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. With
-the default, the same device never even records the rotation and accepts
-the old-key APK.
+**d. What the release workflow does.** `.github/workflows/release.yml`
+builds the unsigned APK, and `scripts/wait-for-release-signature.sh` puts
+it as `unsigned.apk` (with `unsigned.apk.sha256`) into
+`$CRUXCOACH_RELEASE_DROP/<tag>/`. It then waits up to 30 minutes for
+`signed.apk` and `signed.apk.sha256` there. Before anything is published,
+`scripts/verify-release-signature.py` requires:
 
-**d. Verify before publishing.** With the default boundary, `verify`
-lists *two* signers with explicit API ranges; with `28` it collapses to
-one. So do not check "are two certificates listed" — check the scheme
-and the ranges:
+- the same zip entries as the unsigned build, each with the same bytes,
+  compression and alignment. Signing adds a signature block, never a file;
+- `apksigner verify` passing, with v3 on, v1 and v2 off, and exactly one
+  signer: the pinned release certificate (`RELEASE_CERT_SHA256` in the
+  workflow). For a minSdk-28 APK apksigner reports v1 and v2 as false even
+  when they are present, so the script also reads the APK Signing Block:
+  a v3 block, no v2 and no v3.1 block. A v1 signature would show up as
+  extra `META-INF` entries in the first check;
+- `apksigner lineage` listing exactly the old certificate
+  (`PREVIOUS_RELEASE_CERT_SHA256`), then the new one. The old certificate
+  keeps its installed-data capability and has no rollback capability
+  (`apksigner rotate`'s defaults), so updates keep the app's data and the
+  old key cannot sign an update any more.
 
-```
-apksigner verify --print-certs -v androidApp/build/outputs/apk/release/androidApp-release.apk | grep -E "Verified using v3|certificate SHA-256"
-```
+`scripts/publish-github-release.sh`, the by-hand path, runs the signature and
+lineage checks as well; it has no unsigned build to compare with.
 
-`Verified using v3 scheme … : true` must appear. If it does not, the
-lineage was not applied and the release **must not** be published — it
-would break every existing install irrecoverably.
+Only then does the signed APK go where the publishing steps take it from.
+The new certificate's SHA-256 is pinned in `release.yml`,
+`scripts/publish-github-release.sh` and `.apktrack/project.toml`, and
+`scripts/release_workflow_policy_test.py` keeps those pins equal. APKTrack
+stable checks against its live Root policy, which needs a new full version
+with the new certificate before the first release with it;
+`.apktrack/policy.unsigned.json` is the signed version 1 it started from and
+stays as it is.
 
 **e. Release notes** must include, near the top:
 - A clearly labelled "Signing key changed" section.
@@ -240,22 +275,24 @@ would break every existing install irrecoverably.
 
 ### What a rotation costs, even when done correctly
 
-1. **The old key is not retired everywhere at once.** See the table in
-   step c — below the rotation boundary the old key keeps signing, by
-   design. There is no configuration in which a rotation instantly
-   invalidates the old key for all supported devices while keeping them
-   updatable.
-2. **Zapstore does not understand lineages.** Per the 2026-07-28
-   research, both `zsp` and the Zapstore client publish and compare only
-   the *current* signer certificate, and the client hard-blocks the
-   update button on a mismatch with no override. The listing identity
-   survives (it keys on package name + publisher npub, not the
-   certificate), and the data model reads `apk_certificate_hash` as a
-   set — so an event carrying both the old and the new hash lifts the
-   block — but that has to be assembled by hand and is not a documented
-   or maintainer-supported path.
+1. **The old key is retired one install at a time.** A device records the
+   lineage when it installs the rotated release; from then on Android and
+   the app refuse an APK signed by the old key. A device that has not
+   updated yet still trusts the old key. With the boundary at 28 (step c)
+   no supported device stays on the old key once it has updated.
+2. **Zapstore needs a proof for the new certificate first.** zsp 2.x
+   reads the lineage itself: it publishes the new certificate as
+   `apk_certificate_hash` and the old one as `apk_certificate_ancestor`.
+   It publishes only with an active NIP-C1 proof for the *current*
+   certificate (a proof for an ancestor does not count) that authorizes
+   the publishing key. The proof for the new certificate therefore has to be
+   on the relays before the first release with the new key. The release
+   workflow checks this with `zsp check` before the GitHub release is public.
+   Whether the Zapstore client offers the update across the rotation has
+   not been verified here.
 3. **Only installs running 0.2.2 or newer accept the rotation via the
-   in-app updater.** The lineage-aware certificate check shipped in
+   in-app updater**, and only where PackageManager hands the app the
+   certificate history (see section 2 for the ROM exception). The lineage-aware certificate check shipped in
    0.2.2. Anyone still on 0.2.1 or older evaluates the rotated APK with
    the old rule, which compares against the current signer alone. Which
    of the three extraction paths wins there is ROM-dependent, so the

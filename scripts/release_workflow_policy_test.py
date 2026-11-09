@@ -1,10 +1,16 @@
 """Regression checks for the self-hosted production release trust boundary."""
 
 from pathlib import Path
+import json
+import re
+import tomllib
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Every release up to 0.2.4 is signed by this certificate; the new key's
+# lineage starts from it.
+PREVIOUS_RELEASE_CERT = "7f8308e8fe25e41aad0c7f0ac087775acd7d8c6a23da3a824212a8f3fe1bc2c4"
 
 
 class ReleaseWorkflowPolicyTest(unittest.TestCase):
@@ -25,7 +31,7 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
 
     def test_github_release_is_main_only_and_environment_protected(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
-        job = workflow.split("\n  release:\n", 1)[1]
+        tests_job, job = workflow.split("\n  tests:\n", 1)[1].split("\n  release:\n", 1)
 
         self.assertIn("if: github.ref == 'refs/heads/main'", job)
         self.assertIn("environment: release", job)
@@ -37,9 +43,29 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
 
         guard = job.index("- name: Require protected main ref")
         checkout = job.index("- name: Checkout")
-        tests = job.index("- name: Run unit tests")
+        tested = job.index("- name: Require the tested commit")
+        build = job.index("- name: Build release APK")
         self.assertLess(guard, checkout)
-        self.assertLess(checkout, tests)
+        self.assertLess(checkout, tested)
+        self.assertLess(tested, build)
+        self.assertIn('[ "$HEAD_SHA" = "$GITHUB_SHA" ]', job)
+
+    def test_unit_tests_run_on_a_hosted_runner_before_the_release_job(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        tests_job, job = workflow.split("\n  tests:\n", 1)[1].split("\n  release:\n", 1)
+        self.assertIn("if: github.ref == 'refs/heads/main'", tests_job)
+        self.assertIn("runs-on: ubuntu-latest", tests_job)
+        self.assertIn("ref: ${{ github.sha }}", tests_job)
+        self.assertIn("python3 -m unittest discover -s scripts -p '*_test.py'", tests_job)
+        self.assertIn(":shared:testDebugUnitTest :androidApp:testDebugUnitTest", tests_job)
+        self.assertNotIn("environment:", tests_job)
+        self.assertNotIn("secrets.", tests_job)
+
+        self.assertTrue(job.startswith("    needs: tests\n"))
+        self.assertNotIn("testDebugUnitTest", job, "no test load on the release host")
+        build = job[job.index("- name: Build release APK"):job.index("- name: Wait for the YubiKey signature")]
+        self.assertIn("-Pkotlin.compiler.execution.strategy=in-process", build)
+        self.assertIn('"-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"', build)
 
     def test_unprotected_forgejo_release_fallback_is_retired(self):
         self.assertFalse((ROOT / ".forgejo/workflows/release.yml").exists())
@@ -121,7 +147,7 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
         step = workflow[workflow.index("- name: Ensure verified Zapstore APK fallback"):]
         step = step[: step.index("- name: Publish the release to the download server")]
         self.assertIn("zsp targets:", step)
-        self.assertIn("zsp publish --skip-preview --skip-certificate-linking --quiet --verbose", step)
+        self.assertIn("zsp publish --skip-preview --quiet", step)
         # The bunker URL is masked before zsp runs, never echoed.
         self.assertLess(step.index('echo "::add-mask::$SIGN_WITH"'), step.index("zsp targets:"))
 
@@ -157,6 +183,93 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
         # The only APK download from GitHub is the last resort, and it says so.
         self.assertEqual(step.count('"${BASE}/${APK_NAME}"'), 1)
         self.assertIn("counts as one download", step)
+
+    def test_the_release_build_is_unsigned_and_no_key_reaches_the_runner(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        self.assertNotIn(".signing", workflow)
+        self.assertNotIn("Apply signing lineage", workflow)
+        self.assertNotIn("lineage.bin", workflow)
+        self.assertIsNone(re.search(r"apksigner\"? sign\b", workflow), "nothing is signed on the runner")
+        copy = workflow[workflow.index("- name: Copy build config"):workflow.index("- name: Build release APK")]
+        self.assertIn("grep -v '^[[:space:]]*RELEASE_'", copy)
+        build = workflow[workflow.index("- name: Build release APK"):workflow.index("- name: Wait for the YubiKey signature")]
+        self.assertIn("assembleRelease -PunsignedRelease=true", build)
+        gradle = (ROOT / "androidApp/build.gradle.kts").read_text()
+        self.assertIn('providers.gradleProperty("unsignedRelease")', gradle)
+        self.assertIn("unsignedRelease=true but local.properties still sets RELEASE_STORE_FILE", gradle)
+
+    def test_the_signed_apk_is_verified_before_anything_is_published(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        order = [
+            "- name: Build release APK",
+            "- name: Wait for the YubiKey signature",
+            "- name: Verify the YubiKey signature",
+            "- name: Verify APK signature",
+            "- name: Prove Zapstore signer is available",
+            "- name: Create GitHub release",
+        ]
+        positions = [workflow.index(name) for name in order]
+        self.assertEqual(positions, sorted(positions))
+
+        wait = workflow[positions[1]:positions[2]]
+        self.assertIn("scripts/wait-for-release-signature.sh", wait)
+        self.assertIn("androidApp-release-unsigned.apk", wait)
+        self.assertIn("--timeout 1800", wait)
+
+        check = workflow[positions[2]:positions[3]]
+        verified = check.index("scripts/verify-release-signature.py")
+        self.assertIn('--signer "$RELEASE_CERT_SHA256"', check)
+        self.assertIn('--lineage "$PREVIOUS_RELEASE_CERT_SHA256" "$RELEASE_CERT_SHA256"', check)
+        # The release path gets the APK only after the check passed.
+        installed = check.index('"$RELEASE_DIR/androidApp-release.apk"')
+        self.assertLess(verified, installed)
+
+    def test_every_release_certificate_pin_agrees(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        release = re.search(r'^      RELEASE_CERT_SHA256: "([0-9a-f]{64})"$', workflow, re.M).group(1)
+        previous = re.search(r'^      PREVIOUS_RELEASE_CERT_SHA256: "([0-9a-f]{64})"$', workflow, re.M).group(1)
+        self.assertEqual(previous, PREVIOUS_RELEASE_CERT)
+        self.assertNotEqual(release, previous)
+        self.assertIn('EXPECTED_SIGNERS="$RELEASE_CERT_SHA256"', workflow)
+
+        publisher = (ROOT / "scripts/publish-github-release.sh").read_text()
+        self.assertEqual(re.findall(r'^EXPECTED_SIGNERS="([0-9a-f ]+)"$', publisher, re.M), [release])
+
+        self.assertEqual(re.findall(r'^LINEAGE_FROM="([0-9a-f]{64})"$', publisher, re.M), [previous])
+
+        project = tomllib.loads((ROOT / ".apktrack/project.toml").read_text())
+        production = [s for s in project["android"]["scope"] if s["role"] == "production"]
+        self.assertEqual([s["certificate_sha256"] for s in production], [release])
+
+        # The signed version 1 the live Root policy started from. A new
+        # certificate goes into a new full policy version on the host; an
+        # edited version 1 could not be imported.
+        policy = json.loads(json.loads((ROOT / ".apktrack/policy.unsigned.json").read_text())["content"])
+        self.assertEqual(policy["version"], 1)
+        stable = [c for c in policy["certificates"] if "production" in c["roles"]]
+        self.assertEqual([c["certificate_sha256"] for c in stable], [previous])
+
+    def test_the_by_hand_publisher_checks_the_lineage_too(self):
+        publisher = (ROOT / "scripts/publish-github-release.sh").read_text()
+        self.assertIn('scripts/verify-release-signature.py"', publisher)
+        self.assertIn('--lineage "$LINEAGE_FROM" "$EXPECTED_SIGNERS"', publisher)
+        self.assertLess(
+            publisher.index("scripts/verify-release-signature.py"),
+            publisher.index("# ---- 2."),
+        )
+
+    def test_zsp_calls_use_only_what_zsp_2_knows(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        # Both flags were removed in zsp 2.x, which refuses unknown flags.
+        self.assertNotIn("--offline", workflow)
+        self.assertNotIn("--skip-certificate-linking", workflow)
+        self.assertNotIn("RELAY_URLS:-", workflow)
+        proof = workflow[workflow.index("- name: Prove Zapstore signer is available"):]
+        proof = proof[: proof.index("- name: Create GitHub release")]
+        self.assertIn("zsp check zapstore.yaml --json", proof)
+        self.assertIn('scripts/zapstore-check.py --certificate "$RELEASE_CERT_SHA256"', proof)
+        publish = workflow[workflow.index("- name: Ensure verified Zapstore APK fallback"):]
+        self.assertIn("release_already_published", publish)
 
 
 if __name__ == "__main__":

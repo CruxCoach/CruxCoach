@@ -22,11 +22,17 @@ upload_token_env = "APKTRACK_AGENT_TOKEN"
 build_command = "python3 scripts/feature_identity.py --branch <feat-branch> --github-output /tmp/feature-output && ./gradlew :androidApp:assembleDebug"
 artifact_glob = "androidApp/build/outputs/apk/debug/androidApp-debug.apk"
 
+# From 0.2.5 on stable is signed by the release key on the maintainer's
+# YubiKey; until 0.2.4 it was 7f8308e8…1bc2c4, which the new key's v3 lineage
+# starts from. PLACEHOLDER until the signing ceremony: 64 zeros. Keep it the
+# same as RELEASE_CERT_SHA256 in .github/workflows/release.yml. Stable is
+# checked against APKTrack's live Root policy, which needs a new version with
+# this certificate; policy.unsigned.json is the version 1 it started from.
 [[android.scope]]
 role = "production"
 package = "com.cruxcoach.android"
 package_patterns = []
-certificate_sha256 = "7f8308e8fe25e41aad0c7f0ac087775acd7d8c6a23da3a824212a8f3fe1bc2c4"
+certificate_sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
 tracks = ["stable"]
 track_patterns = []
 
