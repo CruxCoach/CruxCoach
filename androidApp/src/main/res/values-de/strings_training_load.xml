@@ -40,9 +40,9 @@
     <string name="trl_timeline_grade">Arbeitsgrad</string>
     <string name="trl_timeline_finger">Fingerkraft</string>
     <string name="trl_timeline_empty">Sobald es Board-Sends und Fingerkraft-Werte gibt, erscheinen hier beide Linien Woche für Woche.</string>
-    <string name="trl_timeline_cd">Arbeitsgrad über %1$d Wochen und %2$d Fingerkraft-Werte auf einer gemeinsamen Zeitachse.</string>
-    <string name="trl_corr_waiting">Noch %1$d Wochen mit Grad und Fingerkraft-Wert, dann zeigen wir, wie eng beides zusammenhängt (bisher %2$d).</string>
-    <string name="trl_corr_value">r = %1$s über %2$d Wochen</string>
+    <string name="trl_timeline_cd">Arbeitsgrad über %1$d\u00A0Wochen und %2$d Fingerkraft-Werte auf einer gemeinsamen Zeitachse.</string>
+    <string name="trl_corr_waiting">Noch %1$d\u00A0Wochen mit Grad und Fingerkraft-Wert, dann zeigen wir, wie eng beides zusammenhängt (bisher %2$d).</string>
+    <string name="trl_corr_value">r = %1$s über %2$d\u00A0Wochen</string>
     <string name="trl_corr_strong">Stark verbunden: In deinen Daten sind Wochen mit mehr Fingerkraft deutlich auch Wochen mit höherem Arbeitsgrad.</string>
     <string name="trl_corr_clear">Deutlich verbunden: Grad und Fingerkraft steigen bei dir meist gemeinsam.</string>
     <string name="trl_corr_weak">Schwach verbunden: Andere Dinge bewegen deinen Grad mindestens so stark wie die Fingerkraft.</string>
@@ -68,7 +68,7 @@
         <item quantity="other">%1$d Stufen zwischen Flash und Arbeitsgrad: Projektieren klappt, Flashen hinkt hinterher. Mehr Volumen nahe Flash-Niveau baut die Basis.</item>
     </plurals>
     <string name="trl_attempts_tile">Versuche pro Send</string>
-    <string name="trl_attempts_sub">letzte 12 Wochen</string>
+    <string name="trl_attempts_sub">letzte 12\u00A0Wochen</string>
     <string name="trl_angle_tile">Häufigster Winkel</string>
 
     <string name="trl_pickup_title">Blockheben einarmig je Hand</string>

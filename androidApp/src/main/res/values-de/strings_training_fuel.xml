@@ -44,16 +44,16 @@
     <string name="trf_recipe_per_portion">Pro Portion (%1$s): %2$s\u00A0g Protein · %3$s\u00A0g Kohlenhydrate · %4$s\u00A0g Fett</string>
     <string name="trf_foods_usda_title">US-Lebensmittel (USDA)</string>
     <string name="trf_usda_attribution">Lebensmitteldaten: USDA FoodData Central (gemeinfrei)</string>
-    <string name="trf_micro_title">Eisen, Calcium, Vitamin D · 7 Tage</string>
+    <string name="trf_micro_title">Eisen, Calcium, Vitamin D · 7\u00A0Tage</string>
     <string name="trf_micro_iron">Eisen</string>
     <string name="trf_micro_calcium">Calcium</string>
     <string name="trf_micro_vitamin_d">Vitamin D</string>
     <string name="trf_micro_value">%1$s / %2$s\u00A0%3$s pro Tag</string>
     <plurals name="trf_micro_coverage">
-        <item quantity="one">Geschätzt aus %1$d\u00A0%% deiner Einträge an %2$d Tag. Allgemeine Lebensmittel (BLS, USDA) zählen; Markenprodukte und Schnelleinträge haben keine Werte.</item>
-        <item quantity="other">Geschätzt aus %1$d\u00A0%% deiner Einträge an %2$d Tagen. Allgemeine Lebensmittel (BLS, USDA) zählen; Markenprodukte und Schnelleinträge haben keine Werte.</item>
+        <item quantity="one">Geschätzt aus %1$d\u00A0%% deiner Einträge an %2$d\u00A0Tag. Allgemeine Lebensmittel (BLS, USDA) zählen; Markenprodukte und Schnelleinträge haben keine Werte.</item>
+        <item quantity="other">Geschätzt aus %1$d\u00A0%% deiner Einträge an %2$d\u00A0Tagen. Allgemeine Lebensmittel (BLS, USDA) zählen; Markenprodukte und Schnelleinträge haben keine Werte.</item>
     </plurals>
-    <string name="trf_micro_info">Eine Schätzung aus deinen Einträgen, neben den EFSA-Referenzwerten für Erwachsene: Eisen 16\u00A0mg für Frauen vor der Menopause, sonst 11\u00A0mg; Calcium 1000\u00A0mg bis 24 Jahre, danach 950\u00A0mg; Vitamin D 15\u00A0µg, das die Haut im Sommer auch selbst bildet. Wer als Kletterer wenig isst, kommt hier zuerst zu kurz. Bleibt ein Wert über Wochen niedrig, lohnt ein Gespräch mit Ärztin, Arzt oder Sporternährungsberatung – vor allem bei Müdigkeit oder Verletzungen. Das ist keine Diagnose.</string>
+    <string name="trf_micro_info">Eine Schätzung aus deinen Einträgen, neben den EFSA-Referenzwerten für Erwachsene: Eisen 16\u00A0mg für Frauen vor der Menopause, sonst 11\u00A0mg; Calcium 1000\u00A0mg bis 24\u00A0Jahre, danach 950\u00A0mg; Vitamin D 15\u00A0µg, das die Haut im Sommer auch selbst bildet. Wer als Kletterer wenig isst, kommt hier zuerst zu kurz. Bleibt ein Wert über Wochen niedrig, lohnt ein Gespräch mit Ärztin, Arzt oder Sporternährungsberatung – vor allem bei Müdigkeit oder Verletzungen. Das ist keine Diagnose.</string>
     <string name="trf_entry_edit">Bearbeiten</string>
     <string name="trf_edit_title">Eintrag bearbeiten</string>
     <string name="trf_water_add">+%1$s</string>

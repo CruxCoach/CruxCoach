@@ -5,16 +5,16 @@
         <item quantity="other">%1$d von %2$d Trainingstagen diese Woche</item>
     </plurals>
     <plurals name="trt_streak_weeks">
-        <item quantity="one">Seit %d Woche im Plan</item>
-        <item quantity="other">Seit %d Wochen im Plan</item>
+        <item quantity="one">Seit %d\u00A0Woche im Plan</item>
+        <item quantity="other">Seit %d\u00A0Wochen im Plan</item>
     </plurals>
     <plurals name="trt_jokers">
         <item quantity="one">%d Joker</item>
         <item quantity="other">%d Joker</item>
     </plurals>
     <plurals name="trt_board_minutes">
-        <item quantity="one">Board: %d Minute automatisch erfasst</item>
-        <item quantity="other">Board: %d Minuten automatisch erfasst</item>
+        <item quantity="one">Board: %d\u00A0Minute automatisch erfasst</item>
+        <item quantity="other">Board: %d\u00A0Minuten automatisch erfasst</item>
     </plurals>
     <plurals name="trt_board_efforts">
         <item quantity="one">Board: %d Versuch automatisch erfasst</item>
@@ -69,7 +69,7 @@
     <string name="trt_reason_extended">Auf deine Zeit aufgefüllt: mehr Sätze und Übungen derselben Art.</string>
     <string name="trt_reason_kept_short">Diese Woche ist bewusst leichter: weniger Sätze, auch mit mehr Zeit.</string>
     <string name="trt_reason_less_than_chosen">Kürzer als gewählt: Mehr passende Übungen und Sätze gibt es heute nicht.</string>
-    <string name="trt_ev_time_today">heute %1$d statt %2$d Minuten</string>
+    <string name="trt_ev_time_today">heute %1$d statt %2$d\u00A0Minuten</string>
     <string name="trt_checkin_hint">Freiwillig. 1 = schlecht, 5 = super. Jede Antwort kann den Tag nur sanfter machen.</string>
     <string name="trt_q_sleep">Schlaf</string>
     <string name="trt_q_energy">Energie</string>

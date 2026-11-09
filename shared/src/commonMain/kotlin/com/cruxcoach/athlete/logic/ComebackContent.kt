@@ -119,7 +119,7 @@ object ComebackContent {
         "Tape the injured finger whenever you climb (H-tape or at the end of the injured pulley). Tape takes off a little load (about 15–22\u00A0% less bowstringing) – it does not make crimping safe.",
         "Beim Klettern den verletzten Finger tapen (H-Tape oder am Ende des verletzten Ringbands). Tape nimmt etwas Last (rund 15–22\u00A0% weniger Abheben der Sehne) – es macht das Crimpen nicht sicher.",
     )
-    private val DAYS_7 = Txt("At least 7 days at this stage.", "Mindestens 7 Tage auf dieser Stufe.")
+    private val DAYS_7 = Txt("At least 7\u00A0days at this stage.", "Mindestens 7\u00A0Tage auf dieser Stufe.")
     private val WITHIN_RULE = Txt(
         "Every session within your pain rule, the next morning never worse.",
         "Jede Einheit im Rahmen deiner Schmerzregel, am Morgen danach nie schlechter.",
@@ -178,8 +178,8 @@ object ComebackContent {
                     Txt("Everyday use (gripping, carrying a bag) hurts at most 1 of 10.",
                         "Der Alltag (greifen, eine Tasche tragen) tut höchstens 1 von 10 weh."),
                     Txt("Pressure pain is going down.", "Der Druckschmerz wird weniger."),
-                    Txt("Your doctor or physio agrees – after a tear often only after 10–14 days.",
-                        "Deine Ärztin, dein Arzt oder deine Physio ist einverstanden – nach einem Riss oft erst nach 10–14 Tagen."),
+                    Txt("Your doctor or physio agrees – after a tear often only after 10–14\u00A0days.",
+                        "Deine Ärztin, dein Arzt oder deine Physio ist einverstanden – nach einem Riss oft erst nach 10–14\u00A0Tagen."),
                 ),
             ),
             StageSpec(
@@ -187,8 +187,8 @@ object ComebackContent {
                 Txt("Light load with an open hand so the finger gets used to pulling again.",
                     "Leichte Last mit offener Hand, damit sich der Finger wieder an Zug gewöhnt."),
                 listOf(EXECUTION, START_LOAD, HEALTHY_HAND,
-                    Txt("Tendon session up to twice a day, at least 6 hours apart.",
-                        "Sehnen-Einheit bis zu 2× am Tag, mindestens 6 Stunden Abstand.")),
+                    Txt("Tendon session up to twice a day, at least 6\u00A0hours apart.",
+                        "Sehnen-Einheit bis zu 2× am Tag, mindestens 6\u00A0Stunden Abstand.")),
                 ClimbingLevel.NONE, Txt("No climbing with the injured hand yet.", "Noch kein Klettern mit der verletzten Hand."),
                 listOf(
                     tendon(2, glides(), open(5, 30, 60, effort = 3..4)),
@@ -273,10 +273,10 @@ object ComebackContent {
                         "Halb aufgestellt Richtung 90\u00A0% deines Referenzwerts – Richtung 100\u00A0%, wenn die verletzte Hand deine stärkere ist."),
                     Txt("Full crimp is optional: start at about 40\u00A0% of your half-crimp value, same rules.",
                         "Voll aufgestellt ist optional: mit etwa 40\u00A0% deines Halbcrimp-Werts beginnen, nach denselben Regeln."),
-                    Txt("Keep taping when climbing, usually about 3 months (grade I–II) to 6 months (grade III) – as agreed with your doctor or physio.",
-                        "Beim Klettern weiter tapen, meist etwa 3 Monate (Grad I–II) bis 6 Monate (Grad III) – wie mit Ärztin, Arzt oder Physio besprochen."),
-                    Txt("Afterwards keep 1–2 strength sessions a week for at least 3 months.",
-                        "Danach 1–2 Kraft-Einheiten pro Woche für mindestens 3 Monate beibehalten."),
+                    Txt("Keep taping when climbing, usually about 3\u00A0months (grade I–II) to 6\u00A0months (grade III) – as agreed with your doctor or physio.",
+                        "Beim Klettern weiter tapen, meist etwa 3\u00A0Monate (Grad I–II) bis 6\u00A0Monate (Grad III) – wie mit Ärztin, Arzt oder Physio besprochen."),
+                    Txt("Afterwards keep 1–2 strength sessions a week for at least 3\u00A0months.",
+                        "Danach 1–2 Kraft-Einheiten pro Woche für mindestens 3\u00A0Monate beibehalten."),
                 ),
                 ClimbingLevel.FULL, Txt("Board and limit moves step by step, campus last.", "Board und Limitzüge schrittweise, Campus zuletzt."),
                 listOf(strength(half(6, 10, 120, percent = 85..95), healthyHalf, perWeek = 2)),
@@ -410,7 +410,7 @@ object ComebackContent {
                 3, Txt("Specific", "Gezielt"),
                 Txt("Bring the difficult moves back on easy terrain.", "Die schwierigen Bewegungen in leichtem Gelände zurückholen."),
                 listOf(
-                    Txt("Heavier sets of 6–10 repetitions, 2–3 times a week.", "Schwerere Sätze mit 6–10 Wiederholungen, 2–3× pro Woche."),
+                    Txt("Heavier sets of 6–10\u00A0repetitions, 2–3 times a week.", "Schwerere Sätze mit 6–10\u00A0Wiederholungen, 2–3× pro Woche."),
                     Txt("Practise the moves you avoided first on big holds and easy angles.",
                         "Die gemiedenen Bewegungen erst an großen Griffen und in flachem Gelände üben."),
                 ),
@@ -441,8 +441,8 @@ object ComebackContent {
             StageSpec(
                 5, Txt("Full", "Voll"),
                 Txt("Limit, dynos, campus and falls step by step.", "Limit, Dynamos, Campus und Stürze schrittweise."),
-                listOf(Txt("Afterwards keep 1–2 strength sessions a week for at least 3 months.",
-                    "Danach 1–2 Kraft-Einheiten pro Woche für mindestens 3 Monate beibehalten.")),
+                listOf(Txt("Afterwards keep 1–2 strength sessions a week for at least 3\u00A0months.",
+                    "Danach 1–2 Kraft-Einheiten pro Woche für mindestens 3\u00A0Monate beibehalten.")),
                 ClimbingLevel.FULL, Txt("Everything step by step, the hardest moves last.", "Alles schrittweise, die härtesten Züge zuletzt."),
                 listOf(SessionSpec(ComebackSessionKind.STRENGTH, perDay = 1, perWeek = 2, minHoursBetween = 48, minutes = 20, items = r.heavy)),
                 PainRule(1),

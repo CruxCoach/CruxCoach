@@ -24,7 +24,7 @@
     <string name="tru_setup_title">Set up in 3 steps</string>
     <string name="tru_setup_progress">%1$d of %2$d</string>
     <string name="tru_setup_coach">Goal and training week</string>
-    <string name="tru_setup_coach_text">1 minute – so the suggestions fit you</string>
+    <string name="tru_setup_coach_text">1\u00A0minute – so the suggestions fit you</string>
     <string name="tru_setup_equipment">Your equipment</string>
     <string name="tru_setup_equipment_text">Only exercises you can do</string>
     <string name="tru_setup_weight">Your body weight</string>

@@ -80,7 +80,7 @@
     <string name="cb_stage_pick_hint">Wähl die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast.</string>
     <string name="cb_agreed">Mit Ärztin, Arzt oder Physio abgesprochen</string>
     <string name="cb_step_reference">4 · Referenzwert (optional)</string>
-    <string name="cb_reference_hint">Einarmig am Pick-up-Block, 10\u00A0s, etwa 20\u00A0mm, Gesamtgewicht. Am besten dein Wert von vor der Verletzung. Sonst die gesunde Hand einmal testen, wenn sie fit ist: nach dem Aufwärmen in 2,5-kg-Schritten steigern, ein 10-s-Halteversuch pro Stufe, 3 Minuten Pause – das letzte Gewicht, das du gerade noch 10\u00A0s hältst. Die verletzte Hand nie maximal testen.</string>
+    <string name="cb_reference_hint">Einarmig am Pick-up-Block, 10\u00A0s, etwa 20\u00A0mm, Gesamtgewicht. Am besten dein Wert von vor der Verletzung. Sonst die gesunde Hand einmal testen, wenn sie fit ist: nach dem Aufwärmen in 2,5-kg-Schritten steigern, ein 10-s-Halteversuch pro Stufe, 3\u00A0Minuten Pause – das letzte Gewicht, das du gerade noch 10\u00A0s hältst. Die verletzte Hand nie maximal testen.</string>
     <string name="cb_reference_half">Halb aufgestellt (kg)</string>
     <string name="cb_reference_open">Offen (kg)</string>
     <string name="cb_reference_before">Vor der Verletzung: %1$s\u00A0kg</string>
@@ -132,7 +132,7 @@
     <string name="cb_swelling_today">Heute geschwollen</string>
     <string name="cb_new_sign">Etwas Neues von den Warnzeichen</string>
     <string name="cb_note">Notiz</string>
-    <string name="cb_chart_title">Letzte 14 Tage</string>
+    <string name="cb_chart_title">Letzte 14\u00A0Tage</string>
     <string name="cb_chart_morning">Morgen</string>
     <string name="cb_chart_pressure">Druck</string>
     <string name="cb_chart_session">Einheit</string>
@@ -150,12 +150,12 @@
     <string name="cb_review_repeat_text_generic">Diese Woche lagen manche Tage über deiner Regel. Üblich ist, die Woche zu wiederholen. Du kannst die Stufe trotzdem selbst ändern.</string>
     <string name="cb_repeat_week">Woche wiederholen</string>
     <string name="cb_review_back_title">Dein Schmerz ist gestiegen</string>
-    <string name="cb_review_back_text">Diese Woche lagen Tage deutlich über deiner Regel. Meist heißt das: Die Last ist gerade zu viel. Vorschlag: eine Stufe zurück für 3–4 Tage. Steigt es weiter oder kommen Schwellung, Taubheit oder ein neuer Knall dazu, lass es abklären.</string>
+    <string name="cb_review_back_text">Diese Woche lagen Tage deutlich über deiner Regel. Meist heißt das: Die Last ist gerade zu viel. Vorschlag: eine Stufe zurück für 3–4\u00A0Tage. Steigt es weiter oder kommen Schwellung, Taubheit oder ein neuer Knall dazu, lass es abklären.</string>
     <string name="cb_step_back">Eine Stufe zurück</string>
     <string name="cb_keep_stage">Stufe behalten</string>
     <string name="cb_review_stay_text">Diese Woche sind es zu wenige Einträge für mehr – trag weiter ein und bleib auf deiner Stufe.</string>
     <string name="cb_worse_title">Dein Schmerz ist gestiegen</string>
-    <string name="cb_worse_text">In den letzten Tagen ist dein Morgenwert von %1$d auf %2$d gestiegen. Meist heißt das: Die Last ist gerade zu viel. Vorschlag: eine Stufe zurück für 3–4 Tage. Steigt er weiter oder kommen Schwellung, Taubheit oder ein neuer Knall dazu, lass es abklären.</string>
+    <string name="cb_worse_text">In den letzten Tagen ist dein Morgenwert von %1$d auf %2$d gestiegen. Meist heißt das: Die Last ist gerade zu viel. Vorschlag: eine Stufe zurück für 3–4\u00A0Tage. Steigt er weiter oder kommen Schwellung, Taubheit oder ein neuer Knall dazu, lass es abklären.</string>
     <string name="cb_nb14_title">Zwei Wochen – der Schmerz ist nicht weniger geworden</string>
     <string name="cb_nb14_text">Deine Einträge liegen etwa da, wo sie am Anfang waren. Die meisten Zerrungen fühlen sich nach rund zwei Wochen besser an – ein guter Zeitpunkt, es anschauen zu lassen. Ärztin, Arzt oder Physio können prüfen, ob etwas anderes dahintersteckt. Bis dahin kannst du auf deiner Stufe bleiben oder eine zurückgehen.</string>
     <string name="cb_nb21_title">Drei Wochen ohne Besserung: bitte abklären lassen</string>

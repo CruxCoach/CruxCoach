@@ -18,7 +18,7 @@
     <string name="trc_clear">Clear</string>
     <string name="trc_yes">Yes</string>
     <string name="trc_no">No</string>
-    <string name="trc_goal_title">What do you want in the next 2–3 months?</string>
+    <string name="trc_goal_title">What do you want in the next 2–3\u00A0months?</string>
     <string name="trc_goal_why">Your goal decides which exercises come first and, with a date, when to back off before it.</string>
     <string name="trc_goal_climb_harder">Climb harder</string>
     <string name="trc_goal_project">Send a project or grade</string>
@@ -43,7 +43,7 @@
     <string name="trc_week_title">Your week</string>
     <string name="trc_week_why">From this the coach proposes a standard week and keeps finger days apart.</string>
     <string name="trc_training_days">Training days per week, climbing included</string>
-    <string name="trc_days_per_week">%1$d days</string>
+    <string name="trc_days_per_week">%1$d\u00A0days</string>
     <string name="trc_climbing_days">Days you usually climb</string>
     <string name="trc_session_minutes">Length of a training without the wall</string>
     <string name="trc_minutes">%1$d\u00A0min</string>
@@ -57,10 +57,10 @@
     <string name="trc_context_rope">Rope</string>
     <string name="trc_context_outdoor">Outdoor</string>
     <string name="trc_experience">Climbing for</string>
-    <string name="trc_experience_under_1">under 1 year</string>
-    <string name="trc_experience_1_2">1–2 years</string>
-    <string name="trc_experience_3_5">3–5 years</string>
-    <string name="trc_experience_over_5">over 5 years</string>
+    <string name="trc_experience_under_1">under 1\u00A0year</string>
+    <string name="trc_experience_1_2">1–2\u00A0years</string>
+    <string name="trc_experience_3_5">3–5\u00A0years</string>
+    <string name="trc_experience_over_5">over 5\u00A0years</string>
     <string name="trc_age">Age group</string>
     <string name="trc_age_under_16">under 16</string>
     <string name="trc_age_16_17">16–17</string>
@@ -166,7 +166,7 @@
     <string name="trc_estimate_typical">typical for about %1$s</string>
     <string name="trc_estimate_high">unusually high for %1$s – please check the entry</string>
     <string name="trc_estimate_low">unusually low for %1$s – please check the entry</string>
-    <string name="trc_card_title">Set up your coach – 1 minute</string>
+    <string name="trc_card_title">Set up your coach – 1\u00A0minute</string>
     <string name="trc_card_title_continue">Coach profile</string>
     <string name="trc_card_level">Suggestions: %1$s</string>
     <string name="trc_level_basis">Basic</string>

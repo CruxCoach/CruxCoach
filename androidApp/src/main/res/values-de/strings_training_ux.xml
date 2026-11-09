@@ -24,7 +24,7 @@
     <string name="tru_setup_title">In 3 Schritten einrichten</string>
     <string name="tru_setup_progress">%1$d von %2$d</string>
     <string name="tru_setup_coach">Ziel und Trainingswoche</string>
-    <string name="tru_setup_coach_text">1 Minute – damit die Vorschläge zu dir passen</string>
+    <string name="tru_setup_coach_text">1\u00A0Minute – damit die Vorschläge zu dir passen</string>
     <string name="tru_setup_equipment">Deine Ausrüstung</string>
     <string name="tru_setup_equipment_text">Nur Übungen, die du machen kannst</string>
     <string name="tru_setup_weight">Dein Körpergewicht</string>

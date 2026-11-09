@@ -5,16 +5,16 @@
         <item quantity="other">%1$d of %2$d training days this week</item>
     </plurals>
     <plurals name="trt_streak_weeks">
-        <item quantity="one">On plan for %d week</item>
-        <item quantity="other">On plan for %d weeks in a row</item>
+        <item quantity="one">On plan for %d\u00A0week</item>
+        <item quantity="other">On plan for %d\u00A0weeks in a row</item>
     </plurals>
     <plurals name="trt_jokers">
         <item quantity="one">%d joker</item>
         <item quantity="other">%d jokers</item>
     </plurals>
     <plurals name="trt_board_minutes">
-        <item quantity="one">Board: %d minute logged automatically</item>
-        <item quantity="other">Board: %d minutes logged automatically</item>
+        <item quantity="one">Board: %d\u00A0minute logged automatically</item>
+        <item quantity="other">Board: %d\u00A0minutes logged automatically</item>
     </plurals>
     <plurals name="trt_board_efforts">
         <item quantity="one">Board: %d attempt logged automatically</item>
@@ -69,7 +69,7 @@
     <string name="trt_reason_extended">Filled to your time with more sets and exercises of the same kind.</string>
     <string name="trt_reason_kept_short">This week is meant to be lighter: fewer sets, even with more time.</string>
     <string name="trt_reason_less_than_chosen">Shorter than chosen: there are no more fitting exercises or sets for today.</string>
-    <string name="trt_ev_time_today">%1$d instead of %2$d minutes today</string>
+    <string name="trt_ev_time_today">%1$d instead of %2$d\u00A0minutes today</string>
     <string name="trt_checkin_hint">Optional. 1 = bad, 5 = great. Every answer can only make the day gentler.</string>
     <string name="trt_q_sleep">Sleep</string>
     <string name="trt_q_energy">Energy</string>

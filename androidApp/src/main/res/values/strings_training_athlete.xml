@@ -71,8 +71,8 @@
     <string name="tra_review_goal_reached">Weekly goal reached: %1$d of %2$d training days.</string>
     <string name="tra_review_goal_open">%1$d of %2$d training days – rest is training too.</string>
     <plurals name="tra_review_paused">
-        <item quantity="one">%d day paused</item>
-        <item quantity="other">%d days paused</item>
+        <item quantity="one">%d\u00A0day paused</item>
+        <item quantity="other">%d\u00A0days paused</item>
     </plurals>
     <string name="tra_review_climb_days">Climbing days</string>
     <string name="tra_review_workout_days">Training days</string>
@@ -81,8 +81,8 @@
     <string name="tra_review_no_records">No new bests this week – consistency is what builds them.</string>
     <string name="tra_review_load">Load per structure</string>
     <plurals name="tra_review_domain_days">
-        <item quantity="one">%1$s: %2$d day</item>
-        <item quantity="other">%1$s: %2$d days</item>
+        <item quantity="one">%1$s: %2$d\u00A0day</item>
+        <item quantity="other">%1$s: %2$d\u00A0days</item>
     </plurals>
     <string name="tra_review_categories">Sets by area</string>
     <string name="tra_review_weight_up">Weight trend slightly up</string>
@@ -94,8 +94,8 @@
     <string name="tra_review_carbs">Carbohydrate on logged days: %1$d\u00A0g (target about %2$d\u00A0g for that training load)</string>
     <string name="tra_review_fat">Fat on logged days: %1$d\u00A0g (%2$d\u00A0%% of energy)</string>
     <plurals name="tra_review_food_days">
-        <item quantity="one">Food logged on %d day</item>
-        <item quantity="other">Food logged on %d days</item>
+        <item quantity="one">Food logged on %d\u00A0day</item>
+        <item quantity="other">Food logged on %d\u00A0days</item>
     </plurals>
     <string name="tra_review_checkins">Check-in averages</string>
     <string name="tra_review_e1rm">estimated 1RM %1$s</string>

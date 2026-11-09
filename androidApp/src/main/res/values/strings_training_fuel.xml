@@ -44,16 +44,16 @@
     <string name="trf_recipe_per_portion">Per portion (%1$s): %2$s\u00A0g protein · %3$s\u00A0g carbs · %4$s\u00A0g fat</string>
     <string name="trf_foods_usda_title">US foods (USDA)</string>
     <string name="trf_usda_attribution">Food data: USDA FoodData Central (public domain)</string>
-    <string name="trf_micro_title">Iron, calcium, vitamin D · 7 days</string>
+    <string name="trf_micro_title">Iron, calcium, vitamin D · 7\u00A0days</string>
     <string name="trf_micro_iron">Iron</string>
     <string name="trf_micro_calcium">Calcium</string>
     <string name="trf_micro_vitamin_d">Vitamin D</string>
     <string name="trf_micro_value">%1$s / %2$s\u00A0%3$s a day</string>
     <plurals name="trf_micro_coverage">
-        <item quantity="one">Estimated from %1$d\u00A0%% of what you logged on %2$d day. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
-        <item quantity="other">Estimated from %1$d\u00A0%% of what you logged on %2$d days. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
+        <item quantity="one">Estimated from %1$d\u00A0%% of what you logged on %2$d\u00A0day. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
+        <item quantity="other">Estimated from %1$d\u00A0%% of what you logged on %2$d\u00A0days. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
     </plurals>
-    <string name="trf_micro_info">An estimate from the foods you logged, next to the EFSA reference values for adults: iron 16\u00A0mg for women before menopause, 11\u00A0mg otherwise; calcium 1000\u00A0mg up to 24 years, then 950\u00A0mg; vitamin D 15\u00A0µg, which the skin also makes in summer sun. Climbers who eat little are short of these first. Staying low for weeks is worth a talk with a doctor or sports dietitian – especially with tiredness or injuries. This is not a diagnosis.</string>
+    <string name="trf_micro_info">An estimate from the foods you logged, next to the EFSA reference values for adults: iron 16\u00A0mg for women before menopause, 11\u00A0mg otherwise; calcium 1000\u00A0mg up to 24\u00A0years, then 950\u00A0mg; vitamin D 15\u00A0µg, which the skin also makes in summer sun. Climbers who eat little are short of these first. Staying low for weeks is worth a talk with a doctor or sports dietitian – especially with tiredness or injuries. This is not a diagnosis.</string>
     <string name="trf_entry_edit">Edit</string>
     <string name="trf_edit_title">Edit entry</string>
     <string name="trf_water_add">+%1$s</string>

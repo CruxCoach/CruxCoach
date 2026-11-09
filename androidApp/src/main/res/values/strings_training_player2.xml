@@ -39,7 +39,7 @@
     <string name="trp2_week_goal">This week: %1$d of %2$d training days</string>
     <string name="trp2_week_goal_reached">Weekly goal reached</string>
     <plurals name="trp2_streak_weeks">
-        <item quantity="one">%1$d week in a row on plan</item>
-        <item quantity="other">%1$d weeks in a row on plan</item>
+        <item quantity="one">%1$d\u00A0week in a row on plan</item>
+        <item quantity="other">%1$d\u00A0weeks in a row on plan</item>
     </plurals>
 </resources>

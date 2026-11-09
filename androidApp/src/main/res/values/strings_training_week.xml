@@ -30,8 +30,8 @@
     <string name="trw_action_history">History</string>
 
     <!-- Return after a break -->
-    <string name="trw_return_break">Easing back in: week %1$d of %2$d after %3$d days off</string>
-    <string name="trw_return_illness">After %1$d days ill: week %2$d of %3$d</string>
+    <string name="trw_return_break">Easing back in: week %1$d of %2$d after %3$d\u00A0days off</string>
+    <string name="trw_return_illness">After %1$d\u00A0days ill: week %2$d of %3$d</string>
     <string name="trw_return_finger">Finger re-entry: week %1$d of %2$d after the injury</string>
     <string name="trw_return_detail_nomax">Shorter sessions (%1$d\u00A0%%) and no maximal finger load.</string>
     <string name="trw_return_detail">Shorter sessions (%1$d\u00A0%%).</string>

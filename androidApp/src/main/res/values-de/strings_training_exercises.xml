@@ -46,8 +46,8 @@
     <string name="trx_best_overall">Insgesamt</string>
     <string name="trx_e1rm">geschätztes Max. %1$s</string>
     <plurals name="trx_reps">
-        <item quantity="one">%d Wiederholung</item>
-        <item quantity="other">%d Wiederholungen</item>
+        <item quantity="one">%d\u00A0Wiederholung</item>
+        <item quantity="other">%d\u00A0Wiederholungen</item>
     </plurals>
     <string name="trx_reps_short">%d×</string>
     <string name="trx_add_to_running">Zum Training</string>

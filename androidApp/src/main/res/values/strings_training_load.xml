@@ -40,9 +40,9 @@
     <string name="trl_timeline_grade">Working grade</string>
     <string name="trl_timeline_finger">Finger strength</string>
     <string name="trl_timeline_empty">As soon as there are board sends and finger values, both lines appear here week by week.</string>
-    <string name="trl_timeline_cd">Working grade over %1$d weeks and %2$d finger strength values on a shared time axis.</string>
+    <string name="trl_timeline_cd">Working grade over %1$d\u00A0weeks and %2$d finger strength values on a shared time axis.</string>
     <string name="trl_corr_waiting">%1$d more weeks with both a grade and a finger value, then we show how closely the two move together (now %2$d).</string>
-    <string name="trl_corr_value">r = %1$s over %2$d weeks</string>
+    <string name="trl_corr_value">r = %1$s over %2$d\u00A0weeks</string>
     <string name="trl_corr_strong">Strongly linked: in your data, weeks with stronger fingers are clearly weeks with a higher working grade.</string>
     <string name="trl_corr_clear">Clearly linked: grade and finger strength usually rise together for you.</string>
     <string name="trl_corr_weak">Weakly linked: other things move your grade at least as much as finger strength.</string>
@@ -68,7 +68,7 @@
         <item quantity="other">%1$d steps between flash and working grade: projecting works, flashing lags. More volume near flash level builds the base.</item>
     </plurals>
     <string name="trl_attempts_tile">Attempts per send</string>
-    <string name="trl_attempts_sub">last 12 weeks</string>
+    <string name="trl_attempts_sub">last 12\u00A0weeks</string>
     <string name="trl_angle_tile">Most-climbed angle</string>
 
     <string name="trl_pickup_title">One-arm pick-up per hand</string>

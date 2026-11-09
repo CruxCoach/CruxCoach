@@ -30,8 +30,8 @@
     <string name="trw_action_history">Verlauf</string>
 
     <!-- Wiedereinstieg nach einer Pause -->
-    <string name="trw_return_break">Wiedereinstieg: Woche %1$d von %2$d nach %3$d Tagen Pause</string>
-    <string name="trw_return_illness">Nach %1$d Tagen krank: Woche %2$d von %3$d</string>
+    <string name="trw_return_break">Wiedereinstieg: Woche %1$d von %2$d nach %3$d\u00A0Tagen Pause</string>
+    <string name="trw_return_illness">Nach %1$d\u00A0Tagen krank: Woche %2$d von %3$d</string>
     <string name="trw_return_finger">Finger-Wiedereinstieg: Woche %1$d von %2$d nach der Verletzung</string>
     <string name="trw_return_detail_nomax">Kürzere Einheiten (%1$d\u00A0%%) und ohne Max-Fingerlast.</string>
     <string name="trw_return_detail">Kürzere Einheiten (%1$d\u00A0%%).</string>

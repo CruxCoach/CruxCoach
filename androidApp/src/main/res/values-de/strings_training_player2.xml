@@ -39,7 +39,7 @@
     <string name="trp2_week_goal">Diese Woche: %1$d von %2$d Trainingstagen</string>
     <string name="trp2_week_goal_reached">Wochenziel erreicht</string>
     <plurals name="trp2_streak_weeks">
-        <item quantity="one">%1$d Woche in Folge im Plan</item>
-        <item quantity="other">%1$d Wochen in Folge im Plan</item>
+        <item quantity="one">%1$d\u00A0Woche in Folge im Plan</item>
+        <item quantity="other">%1$d\u00A0Wochen in Folge im Plan</item>
     </plurals>
 </resources>
