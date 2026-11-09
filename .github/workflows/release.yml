@@ -8,18 +8,22 @@ name: Release
 # The standing objection to GitHub Actions was the release signing key: a
 # hosted runner would mean putting it into GitHub's secret store, and the key
 # is the one thing here whose compromise cannot be undone (a rotation is only
-# installable from 0.2.3 onwards, and only on Android 9+). This job runs on a
-# SELF-HOSTED runner, so the key stays on our own filesystem under
-# $CRUXCOACH_SECRETS_DIR and is never uploaded anywhere. No secret in this
-# workflow, and none configured in the repository, is load-bearing.
+# installable from 0.2.3 onwards, and only on Android 9+). From 0.2.5 on the
+# key is not on any runner at all: it is a YubiKey at the maintainer's PC. This
+# job builds the APK unsigned, hands it over through a drop folder, and checks
+# what comes back before anything is published (docs/KEY_ROTATION.md). No
+# secret in this workflow, and none configured in the repository, is
+# load-bearing.
 
 # MANUAL TRIGGER ONLY, and that is a consequence of how this pipeline signs.
 #
 # The Zapstore signer is an Amber NIP-46 bunker that prompts the maintainer's
-# phone, twice per release: once for the signer proof before the build, once
-# for the publish. A push-triggered release therefore only completes if someone
-# is holding the phone at the moment of the merge. Worse, the second prompt
-# falls *after* the GitHub release is created, so an unattended run can leave
+# phone for the publish; `zsp check` already reaches it before GitHub is
+# public. And the release key is a YubiKey at the maintainer's PC, so every
+# run waits for the maintainer to sign the APK there. A push-triggered release
+# therefore only completes if someone is at the PC and holding the phone at the
+# moment of the merge. Worse, the publish prompt falls *after* the GitHub
+# release is created, so an unattended run can leave
 # the release and its tag public while Zapstore has nothing — recoverable
 # through the repair path below, but publicly inconsistent until someone
 # notices.
@@ -61,6 +65,15 @@ jobs:
     # in GitHub, outside repository-controlled workflow code.
     environment: release
     runs-on: self-hosted
+    env:
+      # The release certificate (the YubiKey, from 0.2.5 on) and the one it
+      # succeeds, which must come first in the v3 lineage. The same pins are in
+      # scripts/publish-github-release.sh and .apktrack/project.toml;
+      # scripts/release_workflow_policy_test.py keeps them equal.
+      # PLACEHOLDER until the signing ceremony: 64 zeros, refused by
+      # scripts/verify-release-signature.py.
+      RELEASE_CERT_SHA256: "0000000000000000000000000000000000000000000000000000000000000000"
+      PREVIOUS_RELEASE_CERT_SHA256: "7f8308e8fe25e41aad0c7f0ac087775acd7d8c6a23da3a824212a8f3fe1bc2c4"
     steps:
       - name: Require protected main ref
         env:
@@ -140,8 +153,8 @@ jobs:
       # changelog-extract.sh matches on the `## [<version>]` prefix, so it is
       # perfectly happy to extract a section headed "Unreleased".
       #
-      # Placed before the signing config is copied: a text mistake should fail
-      # the run while the keystore is still untouched.
+      # Placed before the build: a text mistake should fail the run before
+      # anyone is asked to sign.
       - name: Check release notes match the version
         if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
         env:
@@ -181,9 +194,9 @@ jobs:
 
           echo "Release notes and changelog both look like $VERSION"
 
-      # Do this before the keystore is copied, the APK is built, and — most
-      # importantly — scripts/publish-github-release.sh makes the release
-      # public.  zsp's .env format is deliberately NOT sourced as shell: the
+      # Do this before the APK is built and signed, and — most importantly —
+      # before scripts/publish-github-release.sh makes the release public.
+      # zsp's .env format is deliberately NOT sourced as shell: the
       # provisioned bunker URL contains '&', which a shell treats as a control
       # operator.  The helper reads it with zsp's literal KEY=value semantics,
       # rejects interactive/unsigned signer modes, checks the cached NIP-46
@@ -197,12 +210,18 @@ jobs:
             --env-file "$CRUXCOACH_SECRETS_DIR/.env" \
             --config zapstore.yaml
 
-      - name: Copy signing config
+      # The build config without its RELEASE_* signing lines: the release key
+      # is no longer on this host, and the build refuses -PunsignedRelease
+      # while RELEASE_STORE_FILE is set. No keystore is copied.
+      - name: Copy build config
         if: steps.version.outputs.skip == 'false'
         run: |
+          set -euo pipefail
           : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner — see CONTRIBUTING.md 'Releases & CI (maintainer only)'}"
-          cp "$CRUXCOACH_SECRETS_DIR/local.properties" local.properties
-          cp -r "$CRUXCOACH_SECRETS_DIR/.signing" .signing
+          SOURCE="$CRUXCOACH_SECRETS_DIR/local.properties"
+          [ -f "$SOURCE" ] || { echo "::error::local.properties is missing in CRUXCOACH_SECRETS_DIR"; exit 1; }
+          # grep exits 1 when no line is left, which is still a valid result.
+          grep -v '^[[:space:]]*RELEASE_' "$SOURCE" > local.properties || [ $? -eq 1 ]
 
       - name: Build release APK
         if: steps.version.outputs.skip == 'false'
@@ -213,60 +232,46 @@ jobs:
           if [ "$REPOSITORY_SLUG" = "CruxCoach/CruxCoach" ]; then
             METRICS_ARGS+=("-PANONYMOUS_METRICS_ENDPOINT=https://stats.cruxcoach.org/v1/app-event")
           fi
-          ./gradlew :androidApp:assembleRelease "${METRICS_ARGS[@]}"
+          ./gradlew :androidApp:assembleRelease -PunsignedRelease=true "${METRICS_ARGS[@]}"
 
-      # Apply a signing-certificate lineage, if one has been provisioned.
-      #
-      # Inert until the rotation: with no lineage.bin present this step does
-      # nothing and the APK keeps AGP's signature. It exists now so the
-      # rotation release does not have to invent a signing pipeline under
-      # time pressure — AGP has no lineage DSL, so re-signing with apksigner
-      # is the only way to produce a rotated APK that installs over an
-      # existing one. See docs/KEY_ROTATION.md.
-      - name: Apply signing lineage (rotation only)
+      # The release key is a YubiKey at the maintainer's PC (docs/KEY_ROTATION.md).
+      # The unsigned APK goes into "$CRUXCOACH_RELEASE_DROP/<tag>/", the
+      # maintainer signs it there, and signed.apk with signed.apk.sha256 come
+      # back into the same folder. The script copies the signed APK into this
+      # job and checks the copy against its sidecar; nothing is trusted yet.
+      - name: Wait for the YubiKey signature
+        if: steps.version.outputs.skip == 'false'
+        timeout-minutes: 35
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          : "${CRUXCOACH_RELEASE_DROP:?CRUXCOACH_RELEASE_DROP must be set on the runner}"
+          scripts/wait-for-release-signature.sh "$TAG" \
+            androidApp/build/outputs/apk/release/androidApp-release-unsigned.apk \
+            "$RUNNER_TEMP/signed.apk" --timeout 1800
+
+      # Only an APK that passes all three checks is put where the steps below
+      # expect the release: the same entries with the same bytes as the
+      # unsigned build, v3 only with the release certificate as its one signer,
+      # and the lineage from the previous release certificate to it.
+      - name: Verify the YubiKey signature
         if: steps.version.outputs.skip == 'false'
         run: |
-          : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner}"
+          set -euo pipefail
           : "${ANDROID_SDK_ROOT:?ANDROID_SDK_ROOT must be set on the runner}"
-          LINEAGE="$CRUXCOACH_SECRETS_DIR/lineage.bin"
-          if [ ! -f "$LINEAGE" ]; then
-            echo "No lineage.bin — not a rotation build, keeping AGP signature"
-            exit 0
-          fi
-          for f in old.jks old-ks-pass.txt old-key-pass.txt old-key-alias.txt \
-                   new.jks new-ks-pass.txt new-key-pass.txt new-key-alias.txt \
-                   rotation-min-sdk.txt; do
-            [ -f "$CRUXCOACH_SECRETS_DIR/$f" ] || { echo "::error::lineage.bin present but $f missing"; exit 1; }
-          done
           APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 2 -maxdepth 2 \
             -type f -name apksigner -print | sort -V | tail -1)
           [ -x "$APKSIGNER" ] || { echo "apksigner not found under $ANDROID_SDK_ROOT/build-tools/"; exit 1; }
-          APK=androidApp/build/outputs/apk/release/androidApp-release.apk
-          # BOTH signers are required. Signing with only the new key plus a
-          # lineage fails outright while v1 is enabled:
-          #   "v1 signing enabled but the oldest signer in the
-          #    SigningCertificateLineage is missing"
-          # The old key signs v1/v2 (consumed by devices below the rotation
-          # boundary), the new key signs v3 — that split is what makes the
-          # rotation seamless. Verified against apksigner 36.0.0.
-          # Passwords via file: so they never appear in the process list.
-          "$APKSIGNER" sign \
-            --ks "$CRUXCOACH_SECRETS_DIR/old.jks" \
-            --ks-key-alias "$(cat "$CRUXCOACH_SECRETS_DIR/old-key-alias.txt")" \
-            --ks-pass "file:$CRUXCOACH_SECRETS_DIR/old-ks-pass.txt" \
-            --key-pass "file:$CRUXCOACH_SECRETS_DIR/old-key-pass.txt" \
-            --next-signer \
-            --ks "$CRUXCOACH_SECRETS_DIR/new.jks" \
-            --ks-key-alias "$(cat "$CRUXCOACH_SECRETS_DIR/new-key-alias.txt")" \
-            --ks-pass "file:$CRUXCOACH_SECRETS_DIR/new-ks-pass.txt" \
-            --key-pass "file:$CRUXCOACH_SECRETS_DIR/new-key-pass.txt" \
-            --lineage "$LINEAGE" \
-            --rotation-min-sdk-version "$(cat "$CRUXCOACH_SECRETS_DIR/rotation-min-sdk.txt")" \
-            --v1-signing-enabled true \
-            --v2-signing-enabled true \
-            --v3-signing-enabled true \
-            "$APK"
-          echo "Re-signed with rotated key + lineage"
+          RELEASE_DIR=androidApp/build/outputs/apk/release
+          python3 scripts/verify-release-signature.py \
+            --unsigned "$RELEASE_DIR/androidApp-release-unsigned.apk" \
+            --signed "$RUNNER_TEMP/signed.apk" \
+            --apksigner "$APKSIGNER" \
+            --signer "$RELEASE_CERT_SHA256" \
+            --lineage "$PREVIOUS_RELEASE_CERT_SHA256" "$RELEASE_CERT_SHA256" \
+            || { echo "::error::The signed APK failed verification — nothing is published"; exit 1; }
+          install -m 0644 "$RUNNER_TEMP/signed.apk" "$RELEASE_DIR/androidApp-release.apk"
 
       # scripts/publish-github-release.sh repeats these checks before it
       # uploads anything, deliberately: it is also the by-hand path and cannot
@@ -290,11 +295,10 @@ jobs:
           echo "$OUT" | grep -q "^Verified using v3 scheme (APK Signature Scheme v3): true$" \
             || { echo "::error::v3 signing is OFF — key rotation would be impossible. See androidApp/build.gradle.kts signingConfigs."; exit 1; }
 
-          # Pin the expected signer so a wrong keystore on the runner cannot
-          # ship silently. On a deliberate rotation, update EXPECTED_SIGNERS
-          # in the same commit that provisions lineage.bin — in BOTH this file
-          # and scripts/publish-github-release.sh.
-          EXPECTED_SIGNERS="7f8308e8fe25e41aad0c7f0ac087775acd7d8c6a23da3a824212a8f3fe1bc2c4"
+          # Pin the expected signer so a wrong key cannot ship silently. The
+          # pin is RELEASE_CERT_SHA256 above; scripts/publish-github-release.sh
+          # carries the same value for the by-hand path.
+          EXPECTED_SIGNERS="$RELEASE_CERT_SHA256"
           MATCHED=0
           for want in $EXPECTED_SIGNERS; do
             echo "$OUT" | grep -qi "certificate SHA-256 digest: $want" && MATCHED=1
@@ -305,11 +309,14 @@ jobs:
           echo "APK verified successfully (v3 on, signer as expected)"
 
       # Static validation catches a wrong/malformed key before the build. This
-      # second gate proves the remote bunker is reachable and answers. --offline
-      # still asks the signer to sign the finished release events, but neither
-      # uploads the APK nor publishes an event. An unreachable or unapproved
-      # signer therefore blocks here, before GitHub is public — which is also
-      # where the first of the two Amber prompts appears.
+      # second gate asks zsp (2.x) whether Zapstore will take this exact APK:
+      # `zsp check` reaches the bunker for its public key, signs nothing and
+      # publishes nothing, then looks up the C1 proof for the APK's current
+      # certificate. zsp 2.x publishes only with an active proof for that
+      # certificate (an ancestor's proof does not count) that authorizes
+      # SIGN_WITH, so after a key rotation the proof for the new certificate
+      # must be on the relays before this run. All of that blocks here, before
+      # GitHub is public.
       - name: Prove Zapstore signer is available
         if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
         run: |
@@ -322,16 +329,12 @@ jobs:
             --emit-value)"
           echo "::add-mask::$SIGN_WITH"
           export SIGN_WITH
-          # This raises the first of two Amber prompts for a release — this
-          # proof, and the publish itself further down. Both wait on a human,
-          # so keep the two timeouts in step when changing either.
-          if ! timeout 300 zsp publish zapstore.yaml \
-            --offline --quiet --skip-preview --skip-certificate-linking \
-            >/dev/null 2>&1; then
-            echo "::error::Zapstore signer did not complete a headless offline signature within 300 seconds — was the request approved in Amber?"
+          if ! CHECK="$(timeout 300 zsp check zapstore.yaml --json)"; then
+            echo "::error::zsp check failed within 300 seconds — is the bunker reachable, and the request approved in Amber?"
             exit 1
           fi
-          echo "Zapstore signer completed a headless offline signature (nothing published)"
+          printf '%s\n' "$CHECK" | python3 scripts/zapstore-check.py --certificate "$RELEASE_CERT_SHA256" \
+            || { echo "::error::Zapstore would not take this release — see above"; exit 1; }
 
       # One implementation of "publish a release", called from here and usable
       # by hand. The script pushes the tag, creates the release, uploads the
@@ -527,8 +530,8 @@ jobs:
           # unrelated work; do not conflate the two.
           #
           # The value is read out of the runner's own filesystem, deliberately
-          # NOT out of GitHub's secret store — same reasoning as the keystore
-          # (see the header): nothing in the GitHub secret store is load-bearing
+          # NOT out of GitHub's secret store — same reasoning as for the release
+          # key (see the header): nothing in the GitHub secret store is load-bearing
           # for a release, so a GitHub-side compromise cannot sign as us.
           #
           # It is exported into this step's environment instead of being copied
@@ -552,23 +555,30 @@ jobs:
           # while the phone was still being unlocked, and the retry then raised
           # a second prompt for the same release.
           #
-          # zsp uploads to BLOSSOM_URL and publishes to RELAY_URLS when either
-          # is set — in the environment or in a .env in the working directory —
-          # and otherwise to cdn.zapstore.dev and relay.zapstore.dev. With
-          # --quiet it prints nothing on success AND nothing when it decides
-          # there is nothing to do (an asset for this version already listed on
-          # one of its relays). The 0.2.4 run exited 0 that way while neither
+          # zsp uploads to BLOSSOM_URL and publishes to RELAYS (RELAY_URLS
+          # before zsp 2.x) when either is set — in the environment or in a .env
+          # in the working directory — and otherwise to cdn.zapstore.dev and
+          # relay.zapstore.dev. The 0.2.4 run (zsp 0.4) exited 0 while neither
           # the CDN nor the relay ever saw the release, and the log could not
-          # say why. Name the targets, and let --verbose report the signer and
-          # every relay's answer.
-          echo "zsp targets: relays=${RELAY_URLS:-wss://relay.zapstore.dev (default)}; blossom=${BLOSSOM_URL:-https://cdn.zapstore.dev (default)}"
+          # say why. So the targets are named here, and zsp 2.x, which prints
+          # one JSON document when it has no terminal (success on stdout, the
+          # error with its code on stderr), leaves both in the log.
+          echo "zsp targets: relays=${RELAYS:-wss://relay.zapstore.dev (default)}; blossom=${BLOSSOM_URL:-https://cdn.zapstore.dev (default)}"
           PUBLISHED=false
           for ATTEMPT in 1 2 3; do
             echo "Zapstore publish attempt $ATTEMPT/3 (approve the request in Amber)..."
-            if timeout 300 zsp publish --skip-preview --skip-certificate-linking --quiet --verbose; then
+            ERRORS="$(mktemp)"
+            if timeout 300 zsp publish --skip-preview --quiet 2>"$ERRORS"; then
               PUBLISHED=true
-              break
+            elif grep -Eq '"code": ?"release_already_published"' "$ERRORS"; then
+              # zsp 2.x exits 1 here where 0.4 exited 0. Whether the CDN really
+              # holds the APK is checked below either way.
+              echo "zsp: this version is already published on its relays"
+              PUBLISHED=true
             fi
+            cat "$ERRORS" >&2
+            rm -f "$ERRORS"
+            [ "$PUBLISHED" = true ] && break
             echo "Attempt $ATTEMPT failed (timeout or error), retrying in 10s..."
             sleep 10
           done
@@ -586,7 +596,7 @@ jobs:
             sleep 10
           done
           echo "::error::Zapstore CDN did not serve the verified release APK"
-          echo "zsp exited 0 but ${CDN_URL} still answers 404. relay.zapstore.dev answers OK even for an asset whose blob it does not hold and keeps it pending for up to 5 hours, so an OK above is not proof of publication. If no 'relay: OK' lines appear, zsp found an asset for this version on its relays and did nothing ('zsp publish --overwrite-release' publishes anyway)."
+          echo "zsp reported success but ${CDN_URL} still answers 404. relay.zapstore.dev answers OK even for an asset whose blob it does not hold and keeps it pending for up to 5 hours, so an OK above is not proof of publication. If zsp reported release_already_published, an event for this version code is on its relays already ('zsp publish --overwrite-release' publishes an equal version code anyway)."
           exit 1
 
       # Until now a release reached the website only at the next nightly cron:

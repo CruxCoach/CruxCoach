@@ -6,10 +6,9 @@
 # Two callers, one implementation:
 #
 #   * .github/workflows/release.yml — the primary pipeline since the move off
-#     Codeberg. It runs on a SELF-HOSTED runner, which is what makes Actions
-#     acceptable at all: the signing key stays on our own filesystem under
-#     $CRUXCOACH_SECRETS_DIR and never enters GitHub's secret store. That was
-#     the documented objection to Actions, and a self-hosted runner answers it.
+#     Codeberg. It runs on a SELF-HOSTED runner and never holds the signing
+#     key: from 0.2.5 on the key is a YubiKey at the maintainer's PC, which
+#     signs the unsigned build the workflow hands over (docs/KEY_ROTATION.md).
 #   * a maintainer, by hand — the break-glass path for when no forge will run
 #     a pipeline for us. It takes an APK that is already built and signed on a
 #     machine we control and needs nothing but a token and a network path.
@@ -54,11 +53,18 @@ PRERELEASE="false"
 DRY_RUN="false"
 TAG=""
 
-# The signer this project ships under. Same pin as the Forgejo workflow: a
-# wrong keystore must not be able to publish, and a release signed by a key
-# nobody recognises is worse than no release — the in-app TOFU pin would refuse
-# it on every existing install, silently, long after the fact.
-EXPECTED_SIGNERS="7f8308e8fe25e41aad0c7f0ac087775acd7d8c6a23da3a824212a8f3fe1bc2c4"
+# The signer this project ships under: the release key on the maintainer's
+# YubiKey from 0.2.5 on. Same pin as RELEASE_CERT_SHA256 in release.yml
+# (scripts/release_workflow_policy_test.py keeps them equal): a wrong key must
+# not be able to publish, and a release signed by a key nobody recognises is
+# worse than no release — the in-app TOFU pin would refuse it on every existing
+# install, silently, long after the fact.
+# PLACEHOLDER until the signing ceremony: 64 zeros, which no APK matches.
+EXPECTED_SIGNERS="0000000000000000000000000000000000000000000000000000000000000000"
+# The certificate the release key succeeds: every release up to 0.2.4. The
+# APK's v3 lineage must start here, or no installed app takes the update.
+# Same as PREVIOUS_RELEASE_CERT_SHA256 in release.yml.
+LINEAGE_FROM="7f8308e8fe25e41aad0c7f0ac087775acd7d8c6a23da3a824212a8f3fe1bc2c4"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 cannot_run() { echo "ERROR: $*" >&2; exit 2; }
@@ -137,6 +143,14 @@ for want in $EXPECTED_SIGNERS; do
   echo "$OUT" | grep -qi "certificate SHA-256 digest: $want" && MATCHED=1
 done
 [ "$MATCHED" = "1" ] || die "APK signer is not in EXPECTED_SIGNERS — refusing to publish"
+
+# The same signature and lineage checks the release workflow runs, here too:
+# a by-hand signature without --lineage passes everything above and then fails
+# on every installed app.
+python3 "$REPO_ROOT/scripts/verify-release-signature.py" \
+  --signed "$APK" --apksigner "$APKSIGNER" \
+  --signer "$EXPECTED_SIGNERS" --lineage "$LINEAGE_FROM" "$EXPECTED_SIGNERS" \
+  || die "the APK is not signed v3 only by the release key with its lineage — refusing to publish"
 
 # The APK must be the version the tag claims. Publishing 0.2.1 bytes under a
 # v0.2.2 tag would install fine and then never update again, because the

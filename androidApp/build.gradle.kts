@@ -39,6 +39,16 @@ val anonymousMetricsEndpointBuildConfig = anonymousMetricsEndpoint
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
+// The stable release is signed outside Gradle, by the release key on the
+// maintainer's YubiKey (docs/KEY_ROTATION.md). The release workflow passes
+// -PunsignedRelease=true and gets androidApp-release-unsigned.apk. Without the
+// property a release build without RELEASE_STORE_FILE keeps falling back to the
+// debug key, which local checks and the matching-migration flows rely on.
+val unsignedRelease = providers.gradleProperty("unsignedRelease").orNull == "true"
+require(!unsignedRelease || localProps.getProperty("RELEASE_STORE_FILE", "").isEmpty()) {
+    "unsignedRelease=true but local.properties still sets RELEASE_STORE_FILE"
+}
+
 // Every development branch installs as its own app. Keep the source namespace
 // stable (R/BuildConfig imports do not change), but derive a deterministic,
 // collision-resistant applicationId suffix from the full Git branch name.
@@ -335,30 +345,19 @@ android {
                 storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD", "")
                 keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS", "")
                 keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD", "")
-                // v1 (JAR) signing MUST stay on. The in-app updater's ROM
-                // fallback signer check (IntegrityVerifier.extractSignerFromZip)
-                // reads the META-INF/*.RSA v1 signature when
-                // getPackageArchiveInfo() returns null — observed on HTC
-                // Android 9 / API 28. Without a v1 signature that fallback is
-                // dead and self-update is unrecoverable on those ROMs.
-                // (`apksigner verify` reports "v1: false" on a minSdk-26 APK
-                // because it validates via the strongest applicable scheme;
-                // the v1 block is still present — check with
-                // `--min-sdk-version 23`.)
+                // Local release builds only. Since 0.2.5 the stable release is
+                // built with -PunsignedRelease=true and signed v3-only on the
+                // maintainer's YubiKey, with the lineage from the old key; see
+                // docs/KEY_ROTATION.md. No updater path needs v1 any more:
+                // since 0.2.2 the updater reads signers only through
+                // PackageManager, and its v1-reading zip fallback is gone.
                 enableV1Signing = true
                 enableV2Signing = true
-                // v3 carries the SigningCertificateLineage, which is the only
-                // mechanism that lets a signing key be rotated without every
-                // installed app refusing the update. Turned on here, one
-                // release BEFORE any rotation, deliberately: the lineage lives
-                // in the *new* APK, but shipping the scheme early means the
-                // v3 pipeline is exercised and verified while the key is still
-                // the old one and a mistake is cheap.
-                //
-                // NOTE for the rotation itself: AGP has no DSL for a lineage.
-                // The rotated release must be re-signed with
-                // `apksigner sign --lineage …` as a post-build step — see
-                // docs/KEY_ROTATION.md.
+                // v3 carries the SigningCertificateLineage, which lets a
+                // signing key be rotated without every installed app refusing
+                // the update. AGP has no DSL for a lineage, so a rotated APK is
+                // always signed with `apksigner sign --lineage …` after the
+                // build.
                 enableV3Signing = true
             }
         }
@@ -405,7 +404,11 @@ android {
             }
         }
         release {
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            signingConfig = if (unsignedRelease) {
+                null
+            } else {
+                signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
