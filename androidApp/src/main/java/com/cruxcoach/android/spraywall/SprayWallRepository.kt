@@ -522,6 +522,12 @@ class SprayWallRepository @Inject constructor(
         queries.selectClimbs(wallId).executeAsList().map { it.toModel() }.filter { it.isMine }
     }
 
+    /**
+     * Whether the relays may hold something of mine that only the spray wall screens can take back: a public wall of
+     * mine, or a climb of mine on a followed wall ([SprayWallFeature.inMenu]).
+     */
+    suspend fun hasMineMaybeOnRelays(): Boolean = io { queries.selectMineMaybeOnRelays().executeAsList().isNotEmpty() }
+
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }
 
     private fun Spray_wall.toModel(): SprayWall? {

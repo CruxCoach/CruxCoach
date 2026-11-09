@@ -28,7 +28,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** With [SprayWallFeature] off, spray walls show nowhere: not in the main menu, not in the year in review. */
+/**
+ * With [SprayWallFeature] off, spray walls show nowhere: not in the year in review, and in the main menu only while
+ * something of mine may be on the relays (that part in [SprayWallRepositoryTest]).
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, qualifiers = "en")
 class SprayWallSwitchTest {

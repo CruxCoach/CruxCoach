@@ -71,6 +71,7 @@ import com.cruxcoach.android.ui.plan.WeekOverviewScreen
 import com.cruxcoach.android.ui.exercises.ExerciseLibraryScreen
 import com.cruxcoach.android.ui.training.trainingGraph
 import com.cruxcoach.android.spraywall.SprayWallFeature
+import com.cruxcoach.android.ui.spraywall.SprayWallMenuViewModel
 import com.cruxcoach.android.ui.spraywall.SprayWallRoutes
 import com.cruxcoach.android.ui.spraywall.sprayWallGraph
 import com.cruxcoach.android.ui.onboarding.OnboardingScreen
@@ -593,6 +594,8 @@ fun CruxCoachNavHost(
                 val (_, browserTourStep) = rememberBrowserTour()
                 val drawerState = rememberDrawerState(DrawerValue.Closed)
                 val drawerScope = rememberCoroutineScope()
+                val sprayWallMenu: SprayWallMenuViewModel = hiltViewModel()
+                val sprayWallsInMenu by sprayWallMenu.inMenu.collectAsStateWithLifecycle()
                 // The drawer sheet only takes Back when it is handed the drawer
                 // state; without this, Back with the menu open left the app.
                 BackHandler(enabled = drawerState.isOpen) {
@@ -602,7 +605,7 @@ fun CruxCoachNavHost(
                     drawerState = drawerState,
                     gesturesEnabled = browserTourStep in listOf(TourStep.INACTIVE, TourStep.DONE),
                     drawerContent = {
-                        BrowserMainDrawer() { route ->
+                        BrowserMainDrawer(sprayWalls = sprayWallsInMenu) { route ->
                             drawerScope.launch { drawerState.close() }
                             when {
                                 route == Routes.BOARD_BROWSER -> Unit
@@ -1220,7 +1223,7 @@ fun CruxCoachNavHost(
     } // CompositionLocalProvider
 }
 
-/** [sprayWalls]: their entry is there only while [SprayWallFeature] is on. */
+/** [sprayWalls]: whether their entry is there ([SprayWallFeature.inMenu]). */
 @Composable
 internal fun BrowserMainDrawer(sprayWalls: Boolean = SprayWallFeature.enabled, onSelect: (String) -> Unit) {
     val (tour, _) = rememberBrowserTour()

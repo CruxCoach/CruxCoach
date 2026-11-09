@@ -14,6 +14,7 @@ import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -318,6 +319,43 @@ class SprayWallRepositoryTest {
         val wall = repository.wall(remoteId)!!
         assertEquals(SprayWallVisibility.PRIVATE, wall.visibility)
         assertTrue(repository.publicWalls().isEmpty())
+    }
+
+    @Test
+    fun `the relays may hold something of mine with a public wall of mine or a climb of mine on a followed wall`() = runTest {
+        assertFalse(repository.hasMineMaybeOnRelays())
+        val mine = newWall(listOf(hold(-1, 0.1f)))
+        line(mine, 1L to SprayHoldRole.START)
+        assertFalse(repository.hasMineMaybeOnRelays(), "a private wall never leaves the phone")
+        repository.updateWallDetails(mine, "Wall", 40, SprayWallVisibility.PUBLIC, null)
+        assertTrue(repository.hasMineMaybeOnRelays())
+        // A withdrawal ends with the wall private.
+        repository.updateWallDetails(mine, "Wall", 40, SprayWallVisibility.PRIVATE, null)
+        assertFalse(repository.hasMineMaybeOnRelays())
+
+        // Someone else's wall and their climb on it are not mine to take back.
+        repository.importRemoteWall(head(1), listOf(remoteVersion(1, "r1.jpg")))
+        repository.upsertRemoteClimb(remoteClimb("1a2b3c4d-5e6f-7081-92a3-b4c5d6e7f809", "d".repeat(64), 2_000))
+        assertFalse(repository.hasMineMaybeOnRelays())
+        // My climb on it is, also after its owner withdrew the wall.
+        val climb = line(remoteId, 1L to SprayHoldRole.START)
+        repository.markRemoteWallWithdrawn(owner, remoteId)
+        assertTrue(repository.hasMineMaybeOnRelays())
+        repository.deleteClimb(climb)
+        assertFalse(repository.hasMineMaybeOnRelays())
+    }
+
+    @Test
+    fun `switched off, the main menu has spray walls while a wall of mine may be on the relays`() = runTest {
+        assertTrue(SprayWallFeature.inMenu(enabled = true) { error("on, the database is not opened") }.first())
+
+        val menu = SprayWallFeature.inMenu(enabled = false) { repository }
+        assertFalse(menu.first())
+        // Made public with an earlier build: the entry is there to withdraw it, and goes once it is private.
+        val wall = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, emptyList())
+        assertTrue(menu.first())
+        repository.updateWallDetails(wall, "Wall", 40, SprayWallVisibility.PRIVATE, null)
+        assertFalse(menu.first())
     }
 
     @Test
