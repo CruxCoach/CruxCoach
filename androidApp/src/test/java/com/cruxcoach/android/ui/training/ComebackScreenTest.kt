@@ -159,6 +159,43 @@ class ComebackScreenTest : AthleteScreenTest() {
         assertTrue(repo.injury("i1")!!.climbingPaused)
     }
 
+    /** A plan at finger stage 1 for 8 days whose diary has the sessions of the week but no morning value. */
+    private fun weekWithoutMornings() {
+        repo.saveInjury(Comeback.start(injury(20), PlanSource.CRUXCOACH, 1, service.today().minus(DatePeriod(days = 8)), true, false, emptyMap(), 1))
+        (1..7).forEach { d ->
+            repo.saveComebackEntry(ComebackEntry("i1", service.today().minus(DatePeriod(days = d)).toString(),
+                sessions = listOf(ComebackSessionLog(ComebackSessionKind.TENDON, 1, at = 1)), updatedAt = 1))
+        }
+    }
+
+    @Test
+    fun `a week without a morning value asks for this morning's pain, then offers the next stage as usual`() {
+        // Owner 2026-11-09: no step up without at least one morning value.
+        weekWithoutMornings()
+        screen()
+        scrollTo("comeback_list", "comeback_prompt_review_morning")
+        waitForText("How does the injury feel this morning?")
+        scrollTo("comeback_list", "comeback_prompt_review_morning_1")
+        click("comeback_prompt_review_morning_1")
+        compose.waitUntil(WAIT_MS) { repo.comebackEntry("i1", service.today().toString())?.morningPain == 1 }
+        scrollTo("comeback_list", "comeback_prompt_review")
+        waitForText("Ready for the next stage?")
+        // Only the athlete's tap moves the stage.
+        assertEquals(1, repo.injury("i1")!!.plan!!.stage)
+    }
+
+    @Test
+    fun `skipping the morning question keeps the stage and says to log the mornings`() {
+        weekWithoutMornings()
+        screen()
+        scrollTo("comeback_list", "comeback_prompt_review_morning_secondary")
+        click("comeback_prompt_review_morning_secondary")
+        scrollTo("comeback_list", "comeback_prompt_review")
+        waitForText("No morning pain logged this week")
+        assertEquals(1, repo.injury("i1")!!.plan!!.stage)
+        assertNull(repo.comebackEntry("i1", service.today().toString())?.morningPain)
+    }
+
     @Test
     fun `the diary saves today's values and the summary for the appointment carries them`() {
         repo.saveInjury(Comeback.start(injury(), PlanSource.CRUXCOACH, 1, service.today(), false, false, emptyMap(), 1))

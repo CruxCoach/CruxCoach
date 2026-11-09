@@ -42,6 +42,8 @@ enum class StayReason {
     MORNINGS_ABOVE_RULE,
     /** The stage's sessions were done on fewer days than the next stage builds on. */
     FEW_SESSION_DAYS,
+    /** Ready for the next stage, but the week has no morning value: the look back asks for today's ([Review.asksMorning]). */
+    NO_MORNING,
 }
 
 data class DayReading(
@@ -76,6 +78,8 @@ data class Review(
     val sessionDaysNeeded: Int = 0,
     /** The week's middle morning pain (of the logged mornings). */
     val morningMedian: Int? = null,
+    /** [StayReason.NO_MORNING] and the question for today's morning pain was not skipped yet: ask it before anything else. */
+    val asksMorning: Boolean = false,
 )
 
 enum class PromptKind {
@@ -119,6 +123,8 @@ object Comeback {
     /** Days a dismissed prompt stays quiet (research/safety-regulation.md §5 SHOULD). */
     const val PROMPT_QUIET_DAYS = 7
     const val ROUTINE_PREFIX = "comeback:"
+    /** Prefix of the prompt key that remembers a skipped morning question of a look back ([morningSkipKey]). */
+    const val MORNING_SKIP_PREFIX = "morning:"
 
     fun ladder(injury: Injury): Ladder = ComebackContent.ladderFor(injury.region, injury.check?.finding)
 
@@ -259,16 +265,21 @@ object Comeback {
         val kinds = movingUpSessions(stageSpec).map { it.kind }.toSet()
         val sessionDays = week.count { day -> byDay[day.day.toString()]?.sessions?.any { it.kind in kinds } == true }
         val sessionDaysNeeded = sessionDaysToMoveUp(stageSpec)
+        val moveUpReady = days >= MIN_DAYS_ON_STAGE && logged >= 4 && trend != PainTrend.RISING && plan.stage < lastStage &&
+            !morningsAbove && sessionDays >= sessionDaysNeeded
+        // No step up without a morning value (owner 2026-11-09): a week without one asks once for today's, which then counts
+        // as the week's middle value; skipped, the stage stays.
+        val noMorning = morningMedian == null
         val proposal = when {
             // At the first stage there is nothing to step back to: repeat it, and say why (issue #59 follow-up: a painful
             // first week after a pulley rupture said "not enough entries").
             red >= 2 || recentRedMorning -> if (plan.stage > 0) Proposal.STEP_BACK else Proposal.REPEAT
             amber >= 2 || red == 1 -> Proposal.REPEAT
-            days >= MIN_DAYS_ON_STAGE && logged >= 4 && trend != PainTrend.RISING && plan.stage < lastStage &&
-                !morningsAbove && sessionDays >= sessionDaysNeeded -> Proposal.MOVE_UP
+            moveUpReady && !noMorning -> Proposal.MOVE_UP
             else -> Proposal.STAY
         }
         val stay = if (proposal != Proposal.STAY) null else when {
+            moveUpReady -> StayReason.NO_MORNING
             days < MIN_DAYS_ON_STAGE -> StayReason.TOO_EARLY
             plan.stage >= lastStage -> StayReason.LAST_STAGE
             morningsAbove -> StayReason.MORNINGS_ABOVE_RULE
@@ -277,9 +288,16 @@ object Comeback {
             sessionDays < sessionDaysNeeded -> StayReason.FEW_SESSION_DAYS
             else -> StayReason.FEW_ENTRIES
         }
+        val asksMorning = stay == StayReason.NO_MORNING && !plan.prompts.containsKey(morningSkipKey(reviewKey(plan, days)))
         return Review(proposal, days, green, amber, red, logged, worst, trend, due = days >= MIN_DAYS_ON_STAGE, stayReason = stay,
-            sessionDays = sessionDays, sessionDaysNeeded = sessionDaysNeeded, morningMedian = morningMedian)
+            sessionDays = sessionDays, sessionDaysNeeded = sessionDaysNeeded, morningMedian = morningMedian, asksMorning = asksMorning)
     }
+
+    /** Key of a stage's weekly look back in [ComebackPlan.prompts]: one per stage change and week on the stage. */
+    fun reviewKey(plan: ComebackPlan, daysOnStage: Int): String = "review:${plan.stage}:${plan.history.size}:${daysOnStage / MIN_DAYS_ON_STAGE}"
+
+    /** Key that remembers the skipped morning question of the look back [reviewKey]. */
+    fun morningSkipKey(reviewKey: String): String = MORNING_SKIP_PREFIX + reviewKey
 
     /**
      * Days with the stage's sessions a week before the next stage is offered: [MOVE_UP_SESSION_DAYS], or as many as the
@@ -323,7 +341,7 @@ object Comeback {
             if (!quiet(key) && !(kind == PromptKind.NOT_BETTER_14 && plan.prompts.containsKey("nb14"))) out += Prompt(kind, key)
         }
         if (plan.source == PlanSource.CRUXCOACH) review(injury, entries, today)?.takeIf { it.due }?.let { r ->
-            val key = "review:${plan.stage}:${plan.history.size}:${r.daysOnStage / MIN_DAYS_ON_STAGE}"
+            val key = reviewKey(plan, r.daysOnStage)
             if (!plan.prompts.containsKey(key)) out += Prompt(PromptKind.REVIEW, key, review = r)
         }
         return out

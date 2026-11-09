@@ -720,12 +720,20 @@ private fun PromptCard(p: Prompt, injury: Injury, plan: ComebackPlan, ladder: La
                 }
                 Proposal.STEP_BACK -> HintCard(stringResource(R.string.cb_review_back_title), stringResource(R.string.cb_review_back_text), tag, caution = true,
                     primary = if (canStepBack) stepBack else null, secondary = stringResource(R.string.cb_keep_stage) to dismiss)
-                Proposal.STAY -> HintCard(null, when (r.stayReason) {
+                // No morning value this week: the look back asks for today's once, then decides with it (owner 2026-11-09).
+                Proposal.STAY -> if (r.asksMorning) {
+                    val question = stringResource(R.string.cb_review_morning_title)
+                    HintCard(question, stringResource(R.string.cb_review_morning_text), "${tag}_morning",
+                        secondary = stringResource(R.string.cb_review_morning_skip) to { vm.dismissPrompt(Comeback.morningSkipKey(p.key)) }) {
+                        PainScale(question, null, "${tag}_morning", { v -> v?.let { vm.updateToday { e -> e.copy(morningPain = it) } } }, showLabel = false)
+                    }
+                } else HintCard(null, when (r.stayReason) {
                     com.cruxcoach.athlete.logic.StayReason.PRESSURE_RISING -> stringResource(R.string.cb_review_stay_rising)
                     com.cruxcoach.athlete.logic.StayReason.LAST_STAGE -> stringResource(R.string.cb_review_stay_last)
                     com.cruxcoach.athlete.logic.StayReason.MORNINGS_ABOVE_RULE -> stringResource(R.string.cb_review_stay_mornings, rule.greenMax)
                     com.cruxcoach.athlete.logic.StayReason.FEW_SESSION_DAYS ->
                         stringResource(R.string.cb_review_stay_sessions, r.sessionDaysNeeded, r.sessionDays)
+                    com.cruxcoach.athlete.logic.StayReason.NO_MORNING -> stringResource(R.string.cb_review_stay_no_morning)
                     else -> stringResource(R.string.cb_review_stay_text)
                 }, tag, secondary = stringResource(R.string.cb_ok) to dismiss)
             }

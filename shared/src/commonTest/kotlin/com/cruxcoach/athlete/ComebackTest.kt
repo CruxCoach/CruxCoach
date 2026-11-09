@@ -217,6 +217,34 @@ class ComebackTest {
     }
 
     @Test
+    fun aWeekWithoutAMorningValueAsksForTodaysBeforeTheNextStage() {
+        // Owner 2026-11-09: no step up without at least one morning value.
+        val injury = started(1, since = day(-8))
+        val noMornings = (-7..-1).map { entry(it, session = 1) }
+        val asked = Comeback.review(injury, noMornings, today)!!
+        assertEquals(Proposal.STAY, asked.proposal)
+        assertEquals(com.cruxcoach.athlete.logic.StayReason.NO_MORNING, asked.stayReason)
+        assertTrue(asked.asksMorning)
+        assertNull(asked.morningMedian)
+        assertTrue(Comeback.prompts(injury, noMornings, today).single { it.kind == PromptKind.REVIEW }.review!!.asksMorning)
+        // Today's answer decides as usual, as the week's middle value.
+        assertEquals(Proposal.MOVE_UP, Comeback.review(injury, noMornings + entry(0, morning = 1), today)!!.proposal)
+        val above = Comeback.review(injury, noMornings + entry(0, morning = 3), today)!!
+        assertEquals(com.cruxcoach.athlete.logic.StayReason.MORNINGS_ABOVE_RULE, above.stayReason)
+        assertEquals(3, above.morningMedian)
+        // Skipped once: the stage stays and the look back no longer asks.
+        val key = Comeback.reviewKey(injury.plan!!, asked.daysOnStage)
+        val skipped = injury.copy(plan = injury.plan!!.copy(prompts = mapOf(Comeback.morningSkipKey(key) to today.toString())))
+        val after = Comeback.review(skipped, noMornings, today)!!
+        assertEquals(Proposal.STAY, after.proposal)
+        assertEquals(com.cruxcoach.athlete.logic.StayReason.NO_MORNING, after.stayReason)
+        assertFalse(after.asksMorning)
+        // A week that is not ready for the next stage anyway does not ask.
+        val fewSessions = (-7..-1).map { entry(it, session = if (it == -5) 1 else null) }
+        assertFalse(Comeback.review(injury, fewSessions, today)!!.asksMorning)
+    }
+
+    @Test
     fun onlyTheStagesPlannedSessionsCountTowardsTheNextStage() {
         // Owner's #98 review: at finger stage 4 the tendon session is an optional warm-up and the strength session is the plan.
         // Three days of only the warm-up met the three days and offered the next stage.
