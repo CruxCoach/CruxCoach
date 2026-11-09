@@ -275,8 +275,8 @@ private fun InjuryCard(injury: Injury, onUpdate: (Injury) -> Unit, onResolve: ()
             injury.detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             Text(stringResource(R.string.tra_injury_since, com.cruxcoach.android.ui.training.coach.formatIsoDay(injury.startedOn)), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.tra_injury_pain, severity.toInt()), modifier = Modifier.padding(top = 8.dp))
-            Slider(value = severity, onValueChange = { severity = it }, valueRange = 0f..9f, steps = 8,
-                onValueChangeFinished = { onUpdate(injury.copy(severity = severity.toInt())) },
+            Slider(value = severity, onValueChange = { severity = it }, valueRange = 0f..Injury.MAX_SEVERITY.toFloat(),
+                steps = Injury.MAX_SEVERITY - 1, onValueChangeFinished = { onUpdate(injury.copy(severity = severity.toInt())) },
                 modifier = Modifier.testTag("injury_pain_${injury.id}"))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.tra_injury_pause_climbing), modifier = Modifier.weight(1f))
@@ -372,7 +372,8 @@ private fun AddInjuryDialog(
                     label = { Text(stringResource(R.string.tra_injury_detail)) }, singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                 Text(stringResource(R.string.tra_injury_pain, severity.toInt()), modifier = Modifier.padding(top = 8.dp))
-                Slider(value = severity, onValueChange = { severity = it }, valueRange = 0f..9f, steps = 8)
+                Slider(value = severity, onValueChange = { severity = it }, valueRange = 0f..Injury.MAX_SEVERITY.toFloat(),
+                    steps = Injury.MAX_SEVERITY - 1, modifier = Modifier.testTag("injury_add_pain"))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.tra_injury_pause_climbing), modifier = Modifier.weight(1f))
                     Switch(checked = pauseClimbing, onCheckedChange = { pauseClimbing = it }, modifier = Modifier.testTag("injury_pause_climbing"))

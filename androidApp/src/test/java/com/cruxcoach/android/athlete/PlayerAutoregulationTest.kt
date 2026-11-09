@@ -107,6 +107,14 @@ class PlayerAutoregulationTest {
     }
 
     @Test
+    fun `pain 10 is kept as 10, the top of the 0 to 10 scale`() {
+        val id = service.startWorkout(Routine("r", "R", items = listOf(RoutineItem("pull.pull_up", sets = 3, repsMin = 5, repsMax = 8))), null)
+        val first = workSets(id, "pull.pull_up").first()
+        service.painStop(id, first.blockIndex, InjuryRegion.FINGER, null, 10, PainAction.END_EXERCISE, remember = true)
+        assertEquals(10, repo.activeInjuries().single().severity)
+    }
+
+    @Test
     fun `the pain swap spares what today's check-in says hurts too`() {
         // Audit W9: card and player swap respected the check-in's sore regions, the pain swap did not.
         repo.saveCheckin(com.cruxcoach.athlete.model.Checkin(service.today().toString(), 0, sore = setOf(InjuryRegion.SHOULDER)))

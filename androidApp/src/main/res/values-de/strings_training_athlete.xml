@@ -14,7 +14,7 @@
     <string name="tra_pause_injury">Verletzung</string>
     <string name="tra_pause_holiday_label">Urlaub</string>
     <string name="tra_injury_since">Seit %1$s</string>
-    <string name="tra_injury_pain">Schmerz: %1$d von 9</string>
+    <string name="tra_injury_pain">Schmerz: %1$d von 10</string>
     <string name="tra_injury_pause_climbing">Klettern pausieren</string>
     <string name="tra_injury_resolve">Ist vorbei</string>
     <string name="tra_injury_reopen">Wieder öffnen</string>
