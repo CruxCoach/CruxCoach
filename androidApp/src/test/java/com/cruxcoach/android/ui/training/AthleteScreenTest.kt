@@ -4,6 +4,11 @@ import android.app.Application
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasTestTag
@@ -28,6 +33,7 @@ import com.cruxcoach.db.secure.SecureDatabase
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
@@ -45,7 +51,9 @@ import org.junit.Rule
  *   inside the sandbox class loader breaks plain JDBC tests later in the JVM.
  * - Every view model goes through [tracked] (or [loaded]); after each test
  *   their scopes are cancelled and drained before the databases close, so no
- *   load runs into a closed driver.
+ *   load runs into a closed driver. A screen shown with [render] leaves the
+ *   composition first, and its own coroutines (`LaunchedEffect`,
+ *   `produceState`) are drained the same way.
  * - [loaded] waits outside Compose until a view model's `state.loading` is
  *   false, so a screen is never composed half-loaded and a load that hangs
  *   fails by name instead of as a UI timeout.
@@ -66,6 +74,10 @@ abstract class AthleteScreenTest {
     protected lateinit var service: AthleteService
     protected lateinit var sessionManager: BoardSessionManager
     private val viewModels = mutableListOf<ViewModel>()
+    /** False once the test is over: the screen from [render] leaves the composition, which cancels its effects. */
+    private var screenShown by mutableStateOf(true)
+    /** The recomposer's effect job: every `LaunchedEffect` and `produceState` of the screen runs as its child. */
+    private var effectJob: Job? = null
 
     /** Runs before the service opens the database for the first time (e.g. to set the phone's region). */
     protected open fun beforeReady() {}
@@ -92,13 +104,25 @@ abstract class AthleteScreenTest {
     @After
     fun closeAthleteDatabase() {
         // Let in-flight database work finish before the drivers close underneath it.
-        viewModels.forEach { it.viewModelScope.cancel() }
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-        runBlocking {
-            withTimeoutOrNull(10_000) { viewModels.forEach { it.viewModelScope.coroutineContext[Job]?.join() } }
+        val mainLooper = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+        try {
+            // The screen goes first. A query its effects started (e.g. the nutrition week after a day
+            // switch, 2026-11-08) runs on to its end on an IO thread although the effect is cancelled.
+            effectJob?.let { effects ->
+                compose.runOnIdle { screenShown = false }
+                compose.waitForIdle()
+                val leaving = effects.children.filter { it.isCancelled }.toList()
+                compose.waitUntil(WAIT_MS) { mainLooper.idle(); leaving.all { it.isCompleted } }
+            }
+        } finally {
+            viewModels.forEach { it.viewModelScope.cancel() }
+            mainLooper.idle()
+            runBlocking {
+                withTimeoutOrNull(10_000) { viewModels.forEach { it.viewModelScope.coroutineContext[Job]?.join() } }
+            }
+            viewModels.clear()
+            athleteDriver.close(); secureDriver.close()
         }
-        viewModels.clear()
-        athleteDriver.close(); secureDriver.close()
     }
 
     /** Registers a view model so its work is cancelled and drained before the databases close. */
@@ -118,9 +142,14 @@ abstract class AthleteScreenTest {
         return vm
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     protected fun render(content: @Composable () -> Unit) {
         compose.setContent {
-            CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) { MaterialTheme { content() } }
+            val effects = rememberCoroutineScope()
+            SideEffect { effectJob = effects.coroutineContext[Job]?.parent }
+            CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) {
+                MaterialTheme { if (screenShown) content() }
+            }
         }
     }
 
