@@ -512,7 +512,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   exercise, also when that is lower; and on holds the seconds answered as
   "how many more?" count as time held. Loads planned from an existing value
   do not change.
-- LED effects for the Kilter Board, contributed by dapeebb (PR #21): the
+- LED effects for the Kilter Board, contributed by Dapeebb (PR #21): the
   holds of the lit climb can pulse, flash between the CruxCoach and Kilter
   colors, jump through the colors or travel through a rainbow. Choose one under
   Settings → Board & Bluetooth → LED effects or from a climb's menu; a change

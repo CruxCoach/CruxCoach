@@ -10,17 +10,22 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.FlashOn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -28,12 +33,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -52,6 +59,7 @@ import com.cruxcoach.android.led.LedAnimationService
 import com.cruxcoach.android.led.LedEffectStatus
 import com.cruxcoach.android.led.LedEffectsState
 import com.cruxcoach.android.led.NoneAnimation
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.SuccessGreen
 
 /** Minutes an effect may run on one climb, for the texts. */
@@ -69,19 +77,49 @@ internal fun LedEffectsSection(
     onSelect: (String) -> Unit,
     onKeepRunningChange: (Boolean) -> Unit,
     onStrobeNoticeSeen: () -> Unit,
+    onConnect: () -> Unit,
 ) {
-    SettingsInfoHeading(
-        title = stringResource(R.string.settings_led_anim_title),
-        description = pluralStringResource(R.plurals.settings_led_effects_info, effectMinutes, effectMinutes),
-    )
-    LedEffectStatusLine(state.status)
+    SettingsInfoHeading(title = stringResource(R.string.settings_led_anim_title), description = ledEffectsInfo())
+    LedEffectStatusLine(state.status, onConnect)
     LedEffectChooser(state, onSelect, onStrobeNoticeSeen)
     LedEffectBackgroundRow(state.keepRunningInBackground, onKeepRunningChange)
 }
 
-/** One line saying what the chosen effect is doing at the wall. Nothing for "None". */
+/**
+ * The card's one explanation, behind its info symbol: what happens at the wall,
+ * each effect, what pauses it, the time limit and running in other apps.
+ */
 @Composable
-internal fun LedEffectStatusLine(status: LedEffectStatus, modifier: Modifier = Modifier) {
+private fun ledEffectsInfo(): String {
+    val effects = mutableListOf(stringResource(R.string.settings_led_effects_info_effects))
+    for (effect in LedAnimationRegistry.ALL.sortedBy { it.photosensitive }) {
+        if (effect === NoneAnimation) continue
+        effects += stringResource(
+            R.string.settings_led_effects_info_effect,
+            stringResource(effect.labelResId),
+            stringResource(effect.hintResId),
+        )
+    }
+    return listOf(
+        stringResource(R.string.settings_led_effects_info_board),
+        effects.joinToString("\n"),
+        pluralStringResource(R.plurals.settings_led_effects_info, effectMinutes, effectMinutes),
+    ).joinToString("\n\n")
+}
+
+/**
+ * One line saying what the chosen effect is doing at the wall, with its action
+ * where there is one: connect when no board is, and on the climb itself send it
+ * again once the effect has ended ([onSendAgain]). Nothing for "None".
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun LedEffectStatusLine(
+    status: LedEffectStatus,
+    onConnect: () -> Unit,
+    modifier: Modifier = Modifier,
+    onSendAgain: (() -> Unit)? = null,
+) {
     val text = when (status) {
         LedEffectStatus.OFF -> return
         LedEffectStatus.RUNNING -> R.string.led_effect_status_running
@@ -92,19 +130,39 @@ internal fun LedEffectStatusLine(status: LedEffectStatus, modifier: Modifier = M
         LedEffectStatus.ENDED -> R.string.led_effect_status_ended
         LedEffectStatus.BACKGROUND -> R.string.led_effect_status_background
     }
-    Text(
-        stringResource(text),
-        style = MaterialTheme.typography.bodyMedium,
-        color = if (status == LedEffectStatus.RUNNING) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-        fontWeight = if (status == LedEffectStatus.RUNNING) FontWeight.SemiBold else null,
-        modifier = modifier.fillMaxWidth().testTag("led_effects_status"),
-    )
+    val running = status == LedEffectStatus.RUNNING
+    // The action sits at the end of the line while both fit, and below the words
+    // at large font sizes instead of squeezing them.
+    FlowRow(
+        modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(text),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (running) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (running) FontWeight.SemiBold else null,
+            modifier = Modifier.testTag("led_effects_status"),
+        )
+        val action = when {
+            status == LedEffectStatus.NO_BOARD -> R.string.board_browser_connect to onConnect
+            status == LedEffectStatus.ENDED && onSendAgain != null -> R.string.led_effect_restart to onSendAgain
+            else -> null
+        }
+        action?.let { (label, onClick) ->
+            TextButton(onClick = onClick, modifier = Modifier.heightIn(min = 48.dp).testTag("led_effects_status_action")) {
+                Text(stringResource(label))
+            }
+        }
+    }
 }
 
 /**
- * The effects as chips, with the chosen one's hint below. Flashing effects carry a
- * flash mark and ask once before their first use — and every time while Android's
- * "Remove animations" is on, which is a warning, not a lock.
+ * The effects as chips; what each one does is in the card's info. Flashing
+ * effects carry a flash mark at the end, also when chosen, and ask once before their
+ * first use — and every time while Android's "Remove animations" is on, which is
+ * a warning, not a lock.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -120,7 +178,8 @@ internal fun LedEffectChooser(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        LedAnimationRegistry.ALL.forEach { effect ->
+        // Gentle effects first, the ones that flash last (a stable sort keeps the rest in order).
+        LedAnimationRegistry.ALL.sortedBy { it.photosensitive }.forEach { effect ->
             val selected = effect.id == state.effectId ||
                 (effect === NoneAnimation && !LedAnimationRegistry.isKnown(state.effectId))
             val label = stringResource(effect.labelResId)
@@ -135,14 +194,15 @@ internal fun LedEffectChooser(
                     }
                 },
                 label = { Text(label) },
-                leadingIcon = when {
-                    selected -> {
-                        { Icon(Icons.Outlined.Check, null, modifier = Modifier.size(18.dp)) }
-                    }
-                    effect.photosensitive -> {
-                        { Icon(Icons.Outlined.FlashOn, null, modifier = Modifier.size(18.dp)) }
-                    }
-                    else -> null
+                leadingIcon = if (selected) {
+                    { Icon(Icons.Outlined.Check, null, modifier = Modifier.size(18.dp)) }
+                } else {
+                    null
+                },
+                trailingIcon = if (effect.photosensitive) {
+                    { Icon(Icons.Outlined.FlashOn, null, modifier = Modifier.size(18.dp)) }
+                } else {
+                    null
                 },
                 modifier = Modifier
                     .heightIn(min = 48.dp)
@@ -158,19 +218,21 @@ internal fun LedEffectChooser(
         }
     }
     val chosen: LedAnimation = LedAnimationRegistry.byId(state.effectId)
-    Text(
-        stringResource(chosen.hintResId),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.fillMaxWidth().testTag("led_effects_hint"),
-    )
     if (chosen.photosensitive && state.systemAnimationsRemoved) {
-        Text(
-            stringResource(R.string.settings_led_effects_remove_animations_note),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().testTag("led_effects_remove_animations_note"),
-        )
+        Row(Modifier.fillMaxWidth().testTag("led_effects_remove_animations_note")) {
+            Icon(
+                Icons.Default.Warning,
+                null,
+                tint = CruxCoachDesign.colors.caution,
+                modifier = Modifier.size(18.dp).padding(top = 1.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                stringResource(R.string.settings_led_effects_remove_animations_note),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 
     pendingStrobe?.let { id ->
@@ -178,12 +240,14 @@ internal fun LedEffectChooser(
             onDismissRequest = { pendingStrobe = null },
             title = { Text(stringResource(R.string.led_strobe_notice_title)) },
             text = {
+                // One short paragraph, so the risk stays in sight at large fonts; with
+                // "Remove animations" on it also says why it asks again.
+                val label = stringResource(LedAnimationRegistry.byId(id).labelResId)
                 Text(
                     if (state.systemAnimationsRemoved) {
-                        stringResource(R.string.led_strobe_notice_text) + "\n\n" +
-                            stringResource(R.string.led_strobe_notice_remove_animations)
+                        stringResource(R.string.led_strobe_notice_remove_animations, label)
                     } else {
-                        stringResource(R.string.led_strobe_notice_text)
+                        stringResource(R.string.led_strobe_notice_text, label)
                     },
                 )
             },
@@ -225,9 +289,11 @@ private fun LedEffectBackgroundRow(checked: Boolean, onCheckedChange: (Boolean) 
         notificationsOk = LedAnimationService.notificationsVisible(context)
         if (granted && notificationsOk) onCheckedChange(true)
     }
+    // The details are in the card's info. The switch shows the setting as it is, also
+    // while notifications are off, so a tap can always turn it off.
     SettingsToggleRow(
         title = stringResource(R.string.settings_led_effects_background),
-        description = pluralStringResource(R.plurals.settings_led_effects_background_info, effectMinutes, effectMinutes),
+        description = "",
         checked = checked,
         onCheckedChange = { on ->
             when {
@@ -240,10 +306,19 @@ private fun LedEffectBackgroundRow(checked: Boolean, onCheckedChange: (Boolean) 
         },
         modifier = Modifier.testTag("led_effects_background"),
     )
+    if (checked && notificationsOk) {
+        // The consequence for others at a shared wall belongs next to the switch, not only in the info.
+        Text(
+            stringResource(R.string.settings_led_effects_background_on),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("led_effects_background_on"),
+        )
+    }
     if (!notificationsOk && (checked || asked)) {
         Text(
             stringResource(R.string.settings_led_effects_needs_notifications),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         TextButton(
@@ -271,7 +346,8 @@ private fun LedEffectBackgroundRow(checked: Boolean, onCheckedChange: (Boolean) 
 
 /**
  * The climb menu's quick pick: the status and the effects in a sheet, so an
- * effect can be changed or turned off right where the climb is lit.
+ * effect can be changed or turned off right where the climb is lit. Restart
+ * ([onSendAgain]) is there only where it sends the climb the effect ended on.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -279,9 +355,14 @@ internal fun LedEffectQuickSheet(
     state: LedEffectsState,
     onSelect: (String) -> Unit,
     onStrobeNoticeSeen: () -> Unit,
+    onConnect: () -> Unit,
+    onSendAgain: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // Fully open: at large font sizes the choice is taller than half the
+    // screen, and a half-open sheet would cut it off with "Done" out of reach.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -291,15 +372,11 @@ internal fun LedEffectQuickSheet(
                 .testTag("led_effect_sheet"),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                stringResource(R.string.settings_led_anim_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            LedEffectStatusLine(state.status)
+            SettingsInfoHeading(title = stringResource(R.string.settings_led_anim_title), description = ledEffectsInfo())
+            LedEffectStatusLine(state.status, onConnect, onSendAgain = onSendAgain)
             LedEffectChooser(state, onSelect, onStrobeNoticeSeen)
-            TextButton(onClick = onDismiss, modifier = Modifier.padding(top = 4.dp)) {
-                Text(stringResource(R.string.led_effect_sheet_done))
+            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().testTag("led_effect_sheet_done")) {
+                Text(stringResource(R.string.action_done))
             }
         }
     }

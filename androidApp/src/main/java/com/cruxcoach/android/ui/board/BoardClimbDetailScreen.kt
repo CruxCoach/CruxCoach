@@ -135,6 +135,9 @@ fun BoardClimbDetailScreen(
     val ledEffects by viewModel.ledEffects.collectAsStateWithLifecycle(
         initialValue = com.cruxcoach.android.led.LedEffectsState(),
     )
+    val ledEffectRestart by viewModel.ledEffectRestart.collectAsStateWithLifecycle(
+        initialValue = LedEffectRestart.NONE,
+    )
     var showLedEffects by remember { mutableStateOf(false) }
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
@@ -367,6 +370,13 @@ fun BoardClimbDetailScreen(
             state = ledEffects,
             onSelect = viewModel::selectLedEffect,
             onStrobeNoticeSeen = viewModel::confirmLedStrobeNotice,
+            onConnect = {
+                showLedEffects = false
+                showBleSheet = true
+            },
+            // Only on the climb whose effect ended, and only where it sends that
+            // climb again (a shared session resends its current climb).
+            onSendAgain = viewModel::restartLedEffect.takeIf { ledEffectRestart != LedEffectRestart.NONE },
             onDismiss = { showLedEffects = false },
         )
     }

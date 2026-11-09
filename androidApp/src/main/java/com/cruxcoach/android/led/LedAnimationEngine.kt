@@ -169,6 +169,11 @@ class LedAnimationEngine internal constructor(
     /** What the connected board means for effects, whichever effect is chosen. */
     val availability: StateFlow<LedBoardAvailability> = _availability.asStateFlow()
 
+    private val _litClimbUuid = MutableStateFlow<String?>(null)
+
+    /** The climb lit on the board, when its sender named it: the climb [status] is about. */
+    val litClimbUuid: StateFlow<String?> = _litClimbUuid.asStateFlow()
+
     private var started = false
 
     /** The input watcher. Lives for the whole process once [start] ran. */
@@ -240,6 +245,7 @@ class LedAnimationEngine internal constructor(
                 mayAnimate.value = decision.wouldAnimate
                 _status.value = decision.status
                 _availability.value = decision.availability
+                _litClimbUuid.value = decision.litClimbUuid
                 applyDecision(decision)
             }
         }
@@ -276,6 +282,7 @@ class LedAnimationEngine internal constructor(
             animation = if (live && visible) effect else null,
             wouldAnimate = live,
             status = status,
+            litClimbUuid = frame?.climbUuid,
             // A loop that stops leaves its last frame on the wall. Put the climb's
             // own colours back when nothing else is about to paint: the effect was
             // switched off, it ended, or the app left the foreground. A pause must
@@ -551,6 +558,7 @@ class LedAnimationEngine internal constructor(
         val animation: LedAnimation?,
         val wouldAnimate: Boolean,
         val status: LedEffectStatus,
+        val litClimbUuid: String?,
         val restoreStatic: Boolean,
     )
 }

@@ -926,6 +926,7 @@ class SessionQueueManager(
                         holds,
                         ledMap,
                         roleColors,
+                        climbUuid = climb.uuid,
                         expectedBrand = climb.brand,
                     )
                 }
