@@ -46,6 +46,7 @@ import com.cruxcoach.android.ui.board.MoonBoardAssetState
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
 import com.cruxcoach.android.ui.board.boardImageCandidatePaths
 import com.cruxcoach.android.ui.board.rememberMoonBoardAsset
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardImage
 import com.cruxcoach.data.repository.BoardPlacement
@@ -325,7 +326,7 @@ private fun DirectionCell(direction: HoldDirection, selected: Boolean, enabled: 
         Text(
             arrow(direction),
             fontSize = 20.sp,
-            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (selected) CruxCoachDesign.colors.onBrandAccent else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
