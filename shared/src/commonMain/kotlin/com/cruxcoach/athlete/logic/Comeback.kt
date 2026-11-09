@@ -68,7 +68,10 @@ data class Review(
     val due: Boolean,
     /** Set when [proposal] is [Proposal.STAY]. */
     val stayReason: StayReason? = null,
-    /** Days of the week with a comeback session, and the days the next stage asks for ([Comeback.sessionDaysToMoveUp]). */
+    /**
+     * Days of the week with one of the stage's planned sessions ([Comeback.movingUpSessions]), and the days the next stage
+     * asks for ([Comeback.sessionDaysToMoveUp]).
+     */
     val sessionDays: Int = 0,
     val sessionDaysNeeded: Int = 0,
     /** The week's middle morning pain (of the logged mornings). */
@@ -231,7 +234,7 @@ object Comeback {
         val since = parse(plan.stageSince) ?: today
         // The week behind the look back: the seven days before today, never before the stage began. The look back usually
         // comes in the morning, before the day's sessions; a window of today and the six days before missed the stage's
-        // first day and saw six days of sessions (#59 follow-up). Today counts where it warns and with sessions already done.
+        // first day and saw six days of sessions (#59 follow-up). Today counts only where it warns.
         val week = readings(injury, entries, maxOf(today.minus(DatePeriod(days = MIN_DAYS_ON_STAGE)), since), today.minus(DatePeriod(days = 1)))
         val todayReading = readings(injury, entries, maxOf(today, since), today)
         val warned = week + todayReading.filter { it.color == DayColor.AMBER || it.color == DayColor.RED }
@@ -248,10 +251,14 @@ object Comeback {
         val morningMedian = (week + todayReading).filter { it.day > today.minus(DatePeriod(days = MIN_DAYS_ON_STAGE)) }
             .mapNotNull { it.morningPain }.median()
         val morningsAbove = morningMedian != null && morningMedian > painRule(injury).greenMax
-        // The next stage builds on this one's sessions: offered after enough days with them (owner 2026-11-09).
+        // The next stage builds on this one's sessions: offered after enough days with them (owner 2026-11-09). Only the
+        // kinds the need counts with count here (an optional tendon warm-up is not the strength the next stage builds on),
+        // and only the week's seven days: today's sessions never help a move up, like today's colours.
         val byDay = entries.associateBy { it.day }
-        val sessionDays = (week + todayReading).count { byDay[it.day.toString()]?.sessions?.isNotEmpty() == true }
-        val sessionDaysNeeded = sessionDaysToMoveUp(stage(injury, plan))
+        val stageSpec = stage(injury, plan)
+        val kinds = movingUpSessions(stageSpec).map { it.kind }.toSet()
+        val sessionDays = week.count { day -> byDay[day.day.toString()]?.sessions?.any { it.kind in kinds } == true }
+        val sessionDaysNeeded = sessionDaysToMoveUp(stageSpec)
         val proposal = when {
             // At the first stage there is nothing to step back to: repeat it, and say why (issue #59 follow-up: a painful
             // first week after a pulley rupture said "not enough entries").
@@ -279,10 +286,12 @@ object Comeback {
      * stage plans when that is fewer (two strength sessions a week). Optional sessions do not count.
      */
     fun sessionDaysToMoveUp(stage: StageSpec): Int {
-        val planned = stage.sessions.filter { !it.optional && it.items.isNotEmpty() }
-            .maxOfOrNull { minOf(7, (it.perWeek + it.perDay - 1) / it.perDay) } ?: 0
+        val planned = movingUpSessions(stage).maxOfOrNull { minOf(7, (it.perWeek + it.perDay - 1) / it.perDay) } ?: 0
         return minOf(MOVE_UP_SESSION_DAYS, planned)
     }
+
+    /** The stage's sessions the next stage builds on: the planned ones with exercises, not the optional ones. */
+    fun movingUpSessions(stage: StageSpec): List<SessionSpec> = stage.sessions.filter { !it.optional && it.items.isNotEmpty() }
 
     /** Pressure pain of the last 7 days against the 7 before (two values each at least). */
     fun pressureTrend(entries: List<ComebackEntry>, today: LocalDate): PainTrend? {
