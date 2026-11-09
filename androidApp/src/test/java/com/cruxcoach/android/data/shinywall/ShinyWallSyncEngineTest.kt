@@ -600,6 +600,30 @@ class ShinyWallSyncEngineTest {
     }
 
     @Test
+    fun a_send_on_the_next_day_keeps_the_earlier_days_project_and_carries_the_rest() = runTest {
+        // What the phone showed: totals 1 and 2 on day one, then on day two the send on the third go.
+        val sendNextDay = realEntry("s9", "r3", 3, ts = "2026-11-09T18:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, sendNextDay))
+        assertEquals(1 to 0, engine.importAll(names).getOrThrow().let { it.newAscents to it.newProjects })
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+        // The send is no flash: its own day's try only.
+        assertEquals(listOf(Triple("shinywall:history:s9", 1L, 1L)), ascentCounts())
+    }
+
+    @Test
+    fun a_send_logged_with_the_count_kept_still_counts_as_a_send() = runTest {
+        // The user keeps the preselected "2 attempts" when logging the send: no new attempt that day.
+        val keptCount = realEntry("s8", "r3", 2, ts = "2026-11-09T18:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, keptCount))
+        assertEquals(1 to 1, engine.importAll(names).getOrThrow().let { it.newAscents to it.newProjects })
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+        // Still a send, after attempts: not a flash, one go.
+        assertEquals(listOf(Triple("shinywall:history:s8", 1L, 1L)), ascentCounts())
+    }
+
+    @Test
     fun real_entries_import_on_their_wall_id_variant() = runTest {
         coEvery { client.fetchHistory("uid1") } returns Result.success(
             listOf(realEntry("a", "r1", 1), realEntry("b", "r3", -1), realEntry("c", "r7", 2, wallId = "CTM_Home"))
