@@ -108,6 +108,21 @@ object Checks {
             (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) && "strength" in def.tags) ||
             EquipmentV2.CAMPUS_BOARD in def.equipment
 
+    /**
+     * One-sided work around an injury of one limb, done with the healthy side only: the exercise does not load the
+     * injured region on the other side as well ([ExerciseDefinition.bothSides]), and no set of it was logged on the
+     * injured side that day.
+     */
+    private fun healthySideOnly(d: DayTrace, def: ExerciseDefinition, injury: com.cruxcoach.athlete.model.Injury): Boolean {
+        val injured = when (injury.side) {
+            com.cruxcoach.athlete.model.InjurySide.LEFT -> com.cruxcoach.athlete.model.Side.LEFT
+            com.cruxcoach.athlete.model.InjurySide.RIGHT -> com.cruxcoach.athlete.model.Side.RIGHT
+            else -> return false
+        }
+        return def.unilateral && injury.region.limb && injury.region.bodyRegions.none { it in def.bothSides } &&
+            d.sets.none { it.slug == def.slug && it.side == injured }
+    }
+
     private fun DayTrace.suggestedDefs(catalog: ExerciseCatalog): List<ExerciseDefinition> =
         suggestion?.items.orEmpty().filter { !it.warmup }.mapNotNull { catalog[it.slug] }
 
@@ -125,15 +140,19 @@ object Checks {
         days.forEach { d ->
             val defs = d.suggestedDefs(catalog)
             val maxFinger = defs.filter(::isMaxFinger)
-            val fingerInjury = d.activeInjuries.any { it.region == com.cruxcoach.athlete.model.InjuryRegion.FINGER }
+            val fingerInjuries = d.activeInjuries.filter { it.region == com.cruxcoach.athlete.model.InjuryRegion.FINGER }
+            // One-handed work for the healthy hand stays allowed around an injury of one hand (the comeback plan trains it too).
+            val injuredHand = if (fingerInjuries.isEmpty()) emptyList()
+                else maxFinger.filterNot { def -> fingerInjuries.all { healthySideOnly(d, def, it) } }
             val forbidden = when {
-                fingerInjury -> "an open finger injury"
                 d.returnState?.noMaxFinger == true -> "the return ramp after a break (${d.returnState.reason})"
                 youth -> "the youth guardrail"
                 novice -> "the first-year guardrail"
                 else -> null
             }
-            if (forbidden != null && maxFinger.isNotEmpty()) flags += Flag(Check.MAX_FINGER_FORBIDDEN, d.day,
+            if (injuredHand.isNotEmpty()) flags += Flag(Check.MAX_FINGER_FORBIDDEN, d.day,
+                "${injuredHand.joinToString { it.slug }} suggested during an open finger injury")
+            else if (forbidden != null && maxFinger.isNotEmpty()) flags += Flag(Check.MAX_FINGER_FORBIDDEN, d.day,
                 "${maxFinger.joinToString { it.slug }} suggested during $forbidden")
 
             if (maxFinger.isNotEmpty()) {
@@ -150,7 +169,8 @@ object Checks {
                 // spot again, marked (owner 2026-10-20): only the contraindication is allowed then, climbing while it is paused never.
                 val plan = injury.activePlan?.takeIf { it.source == com.cruxcoach.athlete.model.PlanSource.CRUXCOACH }
                 val open = plan != null && plan.stage >= comebackOpenStage(injury.region)
-                val hit = defs.filter { def -> (!open && injury.region.bodyRegions.any { it in def.contraindications }) ||
+                val hit = defs.filter { def -> (!open && injury.region.bodyRegions.any { it in def.contraindications } &&
+                    !healthySideOnly(d, def, injury)) ||
                     (injury.region.domains.any { it in def.domains } && injury.climbingPaused && def.kind == ExerciseKind.CLIMB) }
                 if (hit.isNotEmpty()) flags += Flag(Check.CONTRAINDICATED, d.day,
                     "${hit.joinToString { it.slug }} loads the open ${injury.region.name.lowercase()} injury")

@@ -161,9 +161,9 @@ that misfires is caught instead of confirmed.
 
 | Group | Check | Threshold and source |
 |---|---|---|
-| Safety | No max finger work (loaded strength hangs, campus) during an open finger injury, the return ramp, or for young or first-year climbers | Growing climbers risk finger growth-plate injuries (Morrison & Schöffl 2007; Schöffl et al. 2015) |
+| Safety | No max finger work (loaded strength hangs, campus) during an open finger injury (one-handed work for the healthy hand of a one-hand injury excepted), the return ramp, or for young or first-year climbers | Growing climbers risk finger growth-plate injuries (Morrison & Schöffl 2007; Schöffl et al. 2015) |
 | Safety | No max finger work within 48 h after a hard or limit climbing day (72 h at 55+) | Hörst 2016; longer recovery with age (Fell & Williams 2008) |
-| Safety | No suggested exercise that lists an open injury's region as a contraindication (injuries of pain ≥ 4), unless a comeback plan has reached the stage from which training outside the plan may load the spot again (fingers stage 5, other regions stage 3) | The comeback plan's own stages (owner 2026-10-20) |
+| Safety | No suggested exercise that lists an open injury's region as a contraindication (injuries of pain ≥ 4), unless a comeback plan has reached the stage from which training outside the plan may load the spot again (fingers stage 5, other regions stage 3), or it is one-sided work the athlete did with the healthy side only and that does not load the injured region on the other side as well (the catalogue's `bothSides`) | The comeback plan's own stages (owner 2026-10-20) |
 | Safety | Climbers under 18: no campus, no one-arm or max finger work | Morrison & Schöffl 2007 |
 | Safety | 55+: max finger sessions at least 72 h apart | Fell & Williams 2008 |
 | Safety | Comeback plan: the planned load of the injured hand stays within the stage's range of the athlete's reference (one step for rounding); where the stage asks for an effort instead, it feels at most 1.5 × that effort | The stage's own percentages and effort |
