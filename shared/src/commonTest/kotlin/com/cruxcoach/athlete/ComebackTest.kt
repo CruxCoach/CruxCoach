@@ -142,8 +142,10 @@ class ComebackTest {
         assertEquals(day(-3) to 5, r1.worst)
         val twoRed = (-6..0).map { entry(it, morning = 1, session = if (it == -3 || it == -1) 5 else 1) }
         assertEquals(Proposal.STEP_BACK, Comeback.review(injury, twoRed, today)!!.proposal)
-        // At the first stage there is nothing to step back to.
-        assertEquals(Proposal.STAY, Comeback.review(started(0, since = day(-8)), twoRed, today)!!.proposal)
+        // At the first stage there is nothing to step back to: the week is repeated, with the painful day named.
+        val first = Comeback.review(started(0, since = day(-8)), twoRed, today)!!
+        assertEquals(Proposal.REPEAT, first.proposal)
+        assertEquals(day(-3) to 5, first.worst)
     }
 
     @Test

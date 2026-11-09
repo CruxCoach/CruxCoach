@@ -225,7 +225,9 @@ object Comeback {
         val lastStage = ladder(injury).stages.lastIndex
         val recentRedMorning = week.takeLast(2).any { (it.morningRise ?: 0) >= 2 || (it.morningPain ?: 0) >= 5 }
         val proposal = when {
-            red >= 2 || recentRedMorning -> if (plan.stage > 0) Proposal.STEP_BACK else Proposal.STAY
+            // At the first stage there is nothing to step back to: repeat it, and say why (issue #59 follow-up: a painful
+            // first week after a pulley rupture said "not enough entries").
+            red >= 2 || recentRedMorning -> if (plan.stage > 0) Proposal.STEP_BACK else Proposal.REPEAT
             amber >= 2 || red == 1 -> Proposal.REPEAT
             days >= MIN_DAYS_ON_STAGE && logged >= 4 && trend != PainTrend.RISING && plan.stage < lastStage -> Proposal.MOVE_UP
             else -> Proposal.STAY
