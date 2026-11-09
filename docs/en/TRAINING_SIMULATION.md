@@ -176,7 +176,7 @@ that misfires is caught instead of confirmed.
 | Load | After six weeks the app's value of an exercise trained in at least four sessions is within 20 % of the truth | – |
 | Progress | No loaded or body-weight strength exercise is planned the same way in five sessions over four weeks or more | – |
 | Progress | A comeback stage that stayed within its pain rule for its last two weeks has offered the next stage within three weeks | – |
-| Progress | The next comeback stage is offered only after a week with comeback sessions on at least three days | The stage's own sessions |
+| Progress | The next comeback stage is offered only after a week with comeback sessions on at least three days (or on as many days as the stage plans, when that is fewer) | The stage's own sessions |
 | Progress | A run of six weeks or more has a lighter phase, deload trainings have at most 85 % of the work sets of build trainings, and the ten days before a target date taper | Bompa & Haff 2009 (3:1 loading); Bosquet et al. 2007 (taper of 8–14 days, volume −41–60 %) |
 | Plan | In weeks trained as planned, without an injury or return ramp and in one block phase, each area (mobility aside) reaches at least half of its weekly goal and at most 1.25 × its maximum | Schoenfeld et al. 2017 (weekly sets) |
 | Plan | A suggested training lasts at most 1.3 × the chosen length (+5 min) | – |

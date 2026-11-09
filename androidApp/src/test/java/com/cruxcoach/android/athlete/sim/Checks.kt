@@ -458,20 +458,26 @@ object Checks {
                 .distinctBy { (s, set) -> s.kind to set.slug }
                 .forEach { (s, set) -> flags += Flag(Check.COMEBACK_LOAD, d.day, "stage ${s.stage}, ${s.kind.name.lowercase()}: ${set.slug} planned %.1f kg, about %.0f/10 where the stage asks for %d–%d"
                     .format(set.plannedKg, set.plannedEffort, set.effort!!.first, set.effort.last)) }
+            // The day's trace has the stage after the athlete's answer; the week behind it was at the stage before.
+            val before = r.days.lastOrNull { it.day < d.day && it.comeback != null }?.comeback?.stage ?: cb.stage
             // The next stage is offered only after a week that stayed within the stage's pain rule (the truth, not the diary).
             if (com.cruxcoach.athlete.logic.Proposal.MOVE_UP in cb.reviews) {
-                val rule = rule(d, cb.stage)
+                val rule = rule(d, before)
                 val week = r.days.filter { it.day in (d.day - 7) until d.day }.mapNotNull { it.comeback }
                 val worst = week.flatMap { it.sessions }.maxOfOrNull { it.painMax } ?: 0
                 val mornings = week.mapNotNull { it.morningPain }
                 if (worst > rule.amberMax || mornings.any { it >= 5 }) flags += Flag(Check.COMEBACK_EARLY, d.day,
-                    "stage ${cb.stage + 1} offered after a week with session pain up to $worst (amber up to ${rule.amberMax}) and mornings ${mornings.joinToString("/")}")
+                    "stage ${before + 1} offered after a week with session pain up to $worst (amber up to ${rule.amberMax}) and mornings ${mornings.joinToString("/")}")
             }
             // The next stage asks for the week's loading: offered after a week with only a few session days, it comes untrained.
             if (com.cruxcoach.athlete.logic.Proposal.MOVE_UP in cb.reviews) {
                 val sessionDays = r.days.filter { it.day in (d.day - 7) until d.day }.count { it.comeback?.sessions?.isNotEmpty() == true }
-                if (sessionDays < COMEBACK_UP_SESSION_DAYS) flags += Flag(Check.COMEBACK_UP_UNTRAINED, d.day,
-                    "stage ${cb.stage + 1} offered after a week with comeback sessions on $sessionDays day(s)")
+                // A stage that plans fewer session days (two strength sessions a week) asks for those.
+                val planned = ladder.stages[before.coerceIn(0, ladder.stages.lastIndex)].sessions.filter { !it.optional && it.items.isNotEmpty() }
+                    .maxOfOrNull { minOf(7, (it.perWeek + it.perDay - 1) / it.perDay) } ?: 0
+                val needed = minOf(COMEBACK_UP_SESSION_DAYS, planned)
+                if (sessionDays < needed) flags += Flag(Check.COMEBACK_UP_UNTRAINED, d.day,
+                    "stage ${before + 1} offered after a week with comeback sessions on $sessionDays day(s), the stage plans $planned")
             }
             // No more sessions of a kind in a day than the stage plans.
             cb.sessions.groupBy { it.kind to it.stage }.forEach { (key, list) ->
