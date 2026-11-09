@@ -340,31 +340,37 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                     )
                 }
                 if (activeBrand == BoardBrand.SHINYWALL) {
-                    Text(
-                        stringResource(R.string.board_filter_shinywall_tags),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        com.cruxcoach.domain.board.ShinyWallTag.entries.forEach { tag ->
-                            FilterChip(
-                                selected = (state.filter.quantumRuleMask and tag.bit) != 0L,
-                                onClick = { viewModel.toggleShinyWallTagFilter(tag) },
-                                label = { Text(stringResource(shinyWallTagLabel(tag)), style = MaterialTheme.typography.bodyLarge) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
-                                    selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
-                                ),
-                            )
-                        }
-                    }
+                    ShinyWallTagFilter(state.filter.quantumRuleMask, viewModel::toggleShinyWallTagFilter)
                 }
 
 
             }
+        }
+    }
+}
+
+/** Shiny Wall's route categories; a route matches when it has every selected one. */
+@Composable
+internal fun ShinyWallTagFilter(selectedMask: Long, onToggle: (com.cruxcoach.domain.board.ShinyWallTag) -> Unit) {
+    Text(
+        stringResource(R.string.board_filter_shinywall_tags),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold
+    )
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        com.cruxcoach.domain.board.ShinyWallTag.entries.forEach { tag ->
+            FilterChip(
+                selected = (selectedMask and tag.bit) != 0L,
+                onClick = { onToggle(tag) },
+                label = { Text(stringResource(shinyWallTagLabel(tag)), style = MaterialTheme.typography.bodyLarge) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                    selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
+                ),
+            )
         }
     }
 }

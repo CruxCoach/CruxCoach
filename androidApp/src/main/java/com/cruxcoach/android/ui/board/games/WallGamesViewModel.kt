@@ -123,7 +123,7 @@ class WallGamesViewModel @Inject constructor(
     private val ble: BoardBleConnection,
     private val sessionQueueManager: SessionQueueManager,
     private val ledEffects: LedAnimationEngine,
-) : ViewModel() {
+) : ViewModel(), WallGamesActions {
 
     private val mutableState = MutableStateFlow(WallGamesState())
     val state: StateFlow<WallGamesState> = mutableState.asStateFlow()
@@ -208,7 +208,7 @@ class WallGamesViewModel @Inject constructor(
         }
     }
 
-    fun selectGame(game: WallGame) {
+    override fun selectGame(game: WallGame) {
         if (mutableState.value.running) return
         // A finished game's last state (all the lava) should not linger.
         if (mutableState.value.run.phase == GamePhase.FINISHED) sender.show(emptyList())
@@ -216,17 +216,17 @@ class WallGamesViewModel @Inject constructor(
         mutableState.update { it.copy(game = game, thiefLive = false, sendProblem = null) }
     }
 
-    fun setLevel(level: Int) {
+    override fun setLevel(level: Int) {
         if (mutableState.value.running) return
         mutableState.update { it.copy(level = level.coerceIn(GAME_LEVELS)) }
     }
 
-    fun setTraverseDifficulty(difficulty: Double) {
+    override fun setTraverseDifficulty(difficulty: Double) {
         if (mutableState.value.running) return
         mutableState.update { it.copy(traverseDifficulty = difficulty.coerceIn(0.0, TraverseGame.MAX_DIFFICULTY)) }
     }
 
-    fun setSoundOn(on: Boolean) {
+    override fun setSoundOn(on: Boolean) {
         mutableState.update { it.copy(soundOn = on) }
     }
 
@@ -261,24 +261,24 @@ class WallGamesViewModel @Inject constructor(
 
     // ── Hold thief ─────────────────────────────────────────────────────
 
-    fun setThiefDensity(density: Int) {
+    override fun setThiefDensity(density: Int) {
         val board = mutableState.value.board ?: return
         mutableState.update { it.copy(thiefDensity = density, thiefRoute = HoldsThief.route(board.rows, density, thiefSeed)) }
         followThief()
     }
 
-    fun newThiefClimb() {
+    override fun newThiefClimb() {
         val board = mutableState.value.board ?: return
         thiefSeed = Random.nextLong()
         mutableState.update { it.copy(thiefRoute = HoldsThief.route(board.rows, it.thiefDensity, thiefSeed)) }
         followThief()
     }
 
-    fun setStealCount(count: Int) {
+    override fun setStealCount(count: Int) {
         mutableState.update { it.copy(stealCount = count.coerceIn(1, WallGamesState.MAX_STEAL)) }
     }
 
-    fun stealHolds() {
+    override fun stealHolds() {
         mutableState.update { it.copy(thiefRoute = HoldsThief.steal(it.thiefRoute, it.stealCount, stealRandom)) }
         followThief()
     }
@@ -297,7 +297,7 @@ class WallGamesViewModel @Inject constructor(
 
     // ── Timed games ────────────────────────────────────────────────────
 
-    fun start() {
+    override fun start() {
         val s = mutableState.value
         if (!s.canStart) return
         if (s.game == WallGame.THIEF) {
@@ -323,14 +323,14 @@ class WallGamesViewModel @Inject constructor(
     }
 
     /** Ends a running game and clears the wall. */
-    fun stop() {
+    override fun stop() {
         if (!mutableState.value.running) return
         runner.stop()
         sender.show(emptyList())
     }
 
     /** From the result back to the game's settings; clears the wall. */
-    fun reset() {
+    override fun reset() {
         runner.reset()
         sender.show(emptyList())
     }

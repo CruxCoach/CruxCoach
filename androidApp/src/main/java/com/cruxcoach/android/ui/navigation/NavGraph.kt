@@ -194,6 +194,8 @@ object Routes {
     const val BACKUP_SETTINGS = "backup_settings"
     /** Settings opened on "Bugs & feature requests" (reply notifications). */
     const val SUPPORT_SETTINGS = "support_settings"
+    /** Settings opened on the board catalogues (wall games without hold positions). */
+    const val CATALOGUE_SETTINGS = "catalogue_settings"
     const val NOSTR_PROFILE = "nostr_profile"
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
@@ -657,6 +659,7 @@ fun CruxCoachNavHost(
                 ) {
                     com.cruxcoach.android.ui.board.games.WallGamesScreen(
                         onNavigateBack = { navController.popBackStack() },
+                        onOpenCatalogues = { navController.navigate(Routes.CATALOGUE_SETTINGS) },
                     )
                 }
             }
@@ -984,7 +987,7 @@ fun CruxCoachNavHost(
                 }
             }
 
-            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS, Routes.SUPPORT_SETTINGS).forEach { settingsRoute ->
+            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS, Routes.SUPPORT_SETTINGS, Routes.CATALOGUE_SETTINGS).forEach { settingsRoute ->
                 composable(settingsRoute) {
                     var showPaymentSheet by remember { mutableStateOf(false) }
                     val paymentViewModel: PaymentViewModel = hiltViewModel()
@@ -995,6 +998,7 @@ fun CruxCoachNavHost(
                         startPage = when (settingsRoute) {
                             Routes.BACKUP_SETTINGS -> SettingsPage.BACKUP
                             Routes.SUPPORT_SETTINGS -> SettingsPage.SUPPORT
+                            Routes.CATALOGUE_SETTINGS -> SettingsPage.CATALOGUES
                             else -> null
                         },
                         onNavigateBack = { navController.popBackStack() },
