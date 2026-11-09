@@ -21,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -29,7 +30,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
+import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.android.spraywall.SprayWallFetcher
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.map.MapVenue
 import com.cruxcoach.domain.spraywall.SprayGym
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -49,12 +52,15 @@ data class SprayVenueWallsState(
     /** The wall being added right now. */
     val adding: String? = null,
     val failed: Boolean = false,
+    /** Account names of the walls' owners, by key, as they become known. */
+    val ownerNames: Map<String, String> = emptyMap(),
 )
 
 /** The public spray walls at one place of the map, fetched only when the climber asks. */
 @HiltViewModel
 class SprayVenueWallsViewModel @Inject constructor(
     private val fetcher: SprayWallFetcher,
+    private val profiles: NostrProfileManager,
 ) : ViewModel() {
     private val _state = MutableStateFlow(SprayVenueWallsState())
     val state: StateFlow<SprayVenueWallsState> = _state.asStateFlow()
@@ -75,6 +81,13 @@ class SprayVenueWallsViewModel @Inject constructor(
             _state.update {
                 if (it.venueId != venueId) it
                 else it.copy(loading = false, loaded = walls.isSuccess, walls = walls.getOrDefault(emptyList()), failed = walls.isFailure)
+            }
+            walls.getOrDefault(emptyList()).map { it.owner }.distinct().forEach { owner ->
+                launch {
+                    profiles.sprayOwnerName(owner)?.let { name ->
+                        _state.update { s -> if (s.venueId != venueId) s else s.copy(ownerNames = s.ownerNames + (owner to name)) }
+                    }
+                }
             }
         }
     }
@@ -112,13 +125,15 @@ fun SprayWallsAtVenue(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         HorizontalDivider()
-        Text(
-            stringResource(R.string.spray_venue_title),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp),
-        )
-        Text(stringResource(R.string.spray_venue_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.spray_venue_title),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            InfoButton(stringResource(R.string.spray_venue_title), stringResource(R.string.spray_venue_info))
+        }
         when {
             state.loading -> CircularProgressIndicator(Modifier.size(24.dp))
             !state.loaded -> OutlinedButton(onClick = viewModel::load, modifier = Modifier.testTag("spray_venue_show")) {
@@ -126,16 +141,7 @@ fun SprayWallsAtVenue(
             }
             state.walls.isEmpty() -> Text(stringResource(R.string.spray_venue_none), style = MaterialTheme.typography.bodyMedium)
             else -> state.walls.forEach { listing ->
-                Row(Modifier.fillMaxWidth().testTag("spray_venue_wall"), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Wallpaper, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                        Text(listing.name, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            stringResource(R.string.spray_venue_wall_facts, listing.angle, shortKey(listing.owner)),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                val action = @Composable {
                     if (state.adding == listing.wallId) {
                         CircularProgressIndicator(Modifier.size(20.dp))
                     } else {
@@ -143,6 +149,23 @@ fun SprayWallsAtVenue(
                             Text(stringResource(if (listing.alreadyHere) R.string.spray_venue_open else R.string.spray_venue_add))
                         }
                     }
+                }
+                // At the largest fonts the action goes under the name, so the name keeps the row's width.
+                val stacked = LocalDensity.current.fontScale >= 1.5f
+                Column(Modifier.fillMaxWidth().testTag("spray_venue_wall")) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Wallpaper, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                            Text(listing.name, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                stringResource(R.string.spray_venue_wall_facts, listing.angle, state.ownerNames[listing.owner] ?: shortKey(listing.owner)),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (!stacked) action()
+                    }
+                    if (stacked) action()
                 }
             }
         }

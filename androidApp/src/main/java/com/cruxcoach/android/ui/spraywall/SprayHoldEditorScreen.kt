@@ -17,8 +17,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
@@ -27,12 +30,13 @@ import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,15 +56,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -74,6 +86,7 @@ import com.cruxcoach.android.spraywall.HoldModelStore
 import com.cruxcoach.android.spraywall.OnnxHoldDetector
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.domain.spraywall.EditableHold
 import com.cruxcoach.domain.spraywall.SprayHoldEditorState
 import com.cruxcoach.domain.spraywall.SpraySuggestion
@@ -380,7 +393,6 @@ fun SprayHoldEditorScreen(
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     var confirmLeave by remember { mutableStateOf(false) }
-    var showHelp by remember { mutableStateOf(false) }
     val askBeforeLeaving = state.dirty || state.unfinishedReset
     val leave: () -> Unit = { if (askBeforeLeaving) { confirmLeave = true } else { onBack() } }
     BackHandler(enabled = askBeforeLeaving) { confirmLeave = true }
@@ -400,9 +412,8 @@ fun SprayHoldEditorScreen(
                     context.getString(if (message.newVersion) R.string.spray_holds_saved_version else R.string.spray_holds_saved)
                 SprayHoldEditorMessage.Failed -> context.getString(R.string.spray_holds_save_failed)
                 SprayHoldEditorMessage.Limit -> context.getString(R.string.spray_holds_limit, SprayHoldEditorState.MAX_HOLDS)
-                is SprayHoldEditorMessage.Detected ->
-                    if (message.count > 0) context.resources.getQuantityString(R.plurals.spray_detect_found, message.count, message.count)
-                    else context.getString(R.string.spray_detect_none)
+                // Found holds show up with their number in the suggestion card; only an empty result needs saying.
+                is SprayHoldEditorMessage.Detected -> if (message.count > 0) return@collect else context.getString(R.string.spray_detect_none)
                 SprayHoldEditorMessage.DetectFailed -> context.getString(R.string.spray_detect_failed)
                 SprayHoldEditorMessage.ModelFailed -> context.getString(R.string.spray_model_run_failed)
             }
@@ -413,7 +424,7 @@ fun SprayHoldEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.spray_holds_title)) },
+                title = { SprayBarTitle(stringResource(R.string.spray_holds_title)) },
                 navigationIcon = {
                     IconButton(onClick = leave) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -422,9 +433,6 @@ fun SprayHoldEditorScreen(
                 actions = {
                     IconButton(onClick = viewModel::detect, enabled = !state.detecting && state.wall != null, modifier = Modifier.testTag("spray_detect")) {
                         Icon(Icons.Default.AutoAwesome, contentDescription = stringResource(R.string.spray_detect))
-                    }
-                    IconButton(onClick = { showHelp = !showHelp }) {
-                        Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.action_show_info, stringResource(R.string.spray_holds_title)))
                     }
                     TextButton(
                         onClick = viewModel::save,
@@ -449,7 +457,8 @@ fun SprayHoldEditorScreen(
         val visible = editor.visibleSuggestions
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.first) Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) { SprayStepLabel(step = 2) }
-            if (showHelp || (state.first && editor.holds.isEmpty() && editor.suggestions.isEmpty() && !state.detecting)) {
+            // On a first wall where nothing was found the help shows once in place; otherwise it is behind the info symbol.
+            if (state.first && editor.holds.isEmpty() && editor.suggestions.isEmpty() && !state.detecting) {
                 Text(
                     stringResource(R.string.spray_holds_help),
                     style = MaterialTheme.typography.bodySmall,
@@ -477,60 +486,113 @@ fun SprayHoldEditorScreen(
                 )
                 if (state.detecting) ScanOverlay(state.detectProgress, Modifier.fillMaxSize())
             }
-            Surface(tonalElevation = 3.dp) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    if (state.model !is HoldModelStore.State.Ready) ModelCard(state.model, viewModel::downloadModel)
-                    if (editor.suggestions.isNotEmpty()) SuggestionBar(editor, viewModel)
-                    val selected = editor.selected
-                    // The row keeps its height either way, so picking a hold does not shrink the photo under the finger.
-                    if (selected == null) {
-                        Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.CenterStart) {
+            // The app's plain surface under a divider: a tonal elevation would tint the panel orange.
+            HorizontalDivider()
+            Surface {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    // The cards scroll within at most 45 % of the screen, so at the largest font on a small phone the
+                    // photo keeps its room; undo, redo and Add below stay in place.
+                    Column(Modifier.heightIn(max = screenHeightShare(0.45f)).verticalScroll(rememberScrollState())) {
+                        // The model is offered where it helps: with suggestions, on a wall without holds, and after
+                        // "Find holds" (so it stays reachable on a wall whose holds are all marked), not while plain editing.
+                        if (state.model !is HoldModelStore.State.Ready && (editor.suggestions.isNotEmpty() || editor.holds.isEmpty() || state.detected)) {
+                            ModelCard(state.model, viewModel::downloadModel)
+                        }
+                        if (editor.suggestions.isNotEmpty()) SuggestionBar(editor, viewModel)
+                        val selected = editor.selected
+                        // One box for the hint and the size row, as tall as the hint (which wraps at large fonts): picking
+                        // a hold swaps what it shows, never its height, so the photo does not move under the finger.
+                        Box(Modifier.fillMaxWidth().heightIn(min = 48.dp), contentAlignment = Alignment.CenterStart) {
                             Text(
                                 stringResource(R.string.spray_holds_size_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.testTag("spray_hold_size_hint"),
-                            )
-                        }
-                    } else {
-                        Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.spray_holds_size), style = MaterialTheme.typography.labelLarge)
-                            Spacer(Modifier.width(12.dp))
-                            var resizing by remember(selected.id) { mutableStateOf(false) }
-                            Slider(
-                                value = selected.radius,
-                                onValueChange = {
-                                    if (!resizing) { resizing = true; viewModel.onResizeStart() }
-                                    viewModel.onResize(it)
+                                modifier = if (selected == null) {
+                                    Modifier.testTag("spray_hold_size_hint")
+                                } else {
+                                    Modifier.alpha(0f).clearAndSetSemantics { }
                                 },
-                                onValueChangeFinished = { resizing = false },
-                                valueRange = SprayHoldEditorState.MIN_RADIUS..SprayHoldEditorState.MAX_RADIUS,
-                                modifier = Modifier.weight(1f).testTag("spray_hold_size"),
                             )
-                            IconButton(onClick = viewModel::deleteSelected, modifier = Modifier.testTag("spray_hold_delete")) {
-                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.spray_holds_delete))
+                            if (selected != null) {
+                                Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(stringResource(R.string.spray_holds_size), style = MaterialTheme.typography.labelLarge)
+                                    Spacer(Modifier.width(12.dp))
+                                    var resizing by remember(selected.id) { mutableStateOf(false) }
+                                    Slider(
+                                        value = selected.radius,
+                                        onValueChange = {
+                                            if (!resizing) { resizing = true; viewModel.onResizeStart() }
+                                            viewModel.onResize(it)
+                                        },
+                                        onValueChangeFinished = { resizing = false },
+                                        valueRange = SprayHoldEditorState.MIN_RADIUS..SprayHoldEditorState.MAX_RADIUS,
+                                        modifier = Modifier.weight(1f).testTag("spray_hold_size"),
+                                    )
+                                    IconButton(onClick = viewModel::deleteSelected, modifier = Modifier.testTag("spray_hold_delete")) {
+                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.spray_holds_delete))
+                                    }
+                                }
                             }
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Undo, redo, the count, the help and Add. Where a line would leave the count only a few letters
+                    // (largest fonts on a narrow phone) the count and the help get their own line.
+                    val config = LocalConfiguration.current
+                    val fontScale = LocalDensity.current.fontScale
+                    val twoLines = config.screenWidthDp / fontScale < 250
+                    val count = @Composable { modifier: Modifier ->
+                        Text(
+                            pluralStringResource(R.plurals.spray_holds_n, editor.holds.size, editor.holds.size),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = modifier.testTag("spray_holds_count"),
+                        )
+                    }
+                    // The full help sits in this always visible bar, so the app bar keeps room for its title.
+                    val help = @Composable { InfoButton(stringResource(R.string.spray_holds_title), stringResource(R.string.spray_holds_help)) }
+                    val undoRedo = @Composable {
                         IconButton(onClick = viewModel::undo, enabled = editor.canUndo, modifier = Modifier.testTag("spray_holds_undo")) {
                             Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = stringResource(R.string.spray_holds_undo))
                         }
                         IconButton(onClick = viewModel::redo, enabled = editor.canRedo, modifier = Modifier.testTag("spray_holds_redo")) {
                             Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = stringResource(R.string.spray_holds_redo))
                         }
-                        Text(
-                            stringResource(R.string.spray_holds_count, editor.holds.size),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f).padding(start = 8.dp).testTag("spray_holds_count"),
-                        )
-                        FilterChip(
-                            selected = state.addMode,
-                            onClick = { viewModel.setAddMode(!state.addMode) },
-                            label = { Text(stringResource(R.string.spray_holds_mode_add)) },
-                            leadingIcon = { Icon(Icons.Default.AddCircleOutline, contentDescription = null) },
-                            modifier = Modifier.testTag("spray_holds_add_mode"),
-                        )
+                    }
+                    // At the largest fonts or under 360 dp, Add is an icon toggle, so it is not cut off.
+                    val add = @Composable {
+                        val addLabel = stringResource(R.string.spray_holds_mode_add)
+                        if (fontScale >= 1.5f || config.screenWidthDp < 360) {
+                            FilledTonalIconToggleButton(
+                                checked = state.addMode,
+                                onCheckedChange = { viewModel.setAddMode(it) },
+                                modifier = Modifier.testTag("spray_holds_add_mode"),
+                            ) { Icon(Icons.Default.AddCircleOutline, contentDescription = addLabel) }
+                        } else {
+                            FilterChip(
+                                selected = state.addMode,
+                                onClick = { viewModel.setAddMode(!state.addMode) },
+                                label = { Text(addLabel) },
+                                leadingIcon = { Icon(Icons.Default.AddCircleOutline, contentDescription = null) },
+                                modifier = Modifier.testTag("spray_holds_add_mode"),
+                            )
+                        }
+                    }
+                    if (twoLines) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            count(Modifier.weight(1f))
+                            help()
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            undoRedo()
+                            Spacer(Modifier.weight(1f))
+                            add()
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            undoRedo()
+                            count(Modifier.weight(1f).padding(start = 8.dp))
+                            help()
+                            add()
+                        }
                     }
                 }
             }
@@ -555,20 +617,34 @@ fun SprayHoldEditorScreen(
 @Composable
 private fun ModelCard(model: HoldModelStore.State, onDownload: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("spray_model")) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(R.string.spray_model_title), style = MaterialTheme.typography.titleSmall)
-            Text(
-                stringResource(if (model == HoldModelStore.State.Failed) R.string.spray_model_failed else R.string.spray_model_text),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (model is HoldModelStore.State.Downloading) {
-                val percent = (model.doneBytes * 100 / HoldModel.BYTES).toInt()
-                Text(stringResource(R.string.spray_model_downloading, percent), style = MaterialTheme.typography.labelMedium)
-            } else {
-                Button(onClick = onDownload, modifier = Modifier.testTag("spray_model_download")) {
-                    Text(stringResource(R.string.spray_model_download))
+        Column(Modifier.padding(start = 12.dp, end = 4.dp)) {
+            // One line: the offer, what it is (behind the info symbol) and the download; what the model does and where it
+            // can be removed again sits behind the info symbol.
+            val action = @Composable {
+                if (model is HoldModelStore.State.Downloading) {
+                    val percent = (model.doneBytes * 100 / HoldModel.BYTES).toInt()
+                    Text(stringResource(R.string.spray_model_downloading, percent), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(end = 8.dp, bottom = 8.dp))
+                } else {
+                    TextButton(onClick = onDownload, modifier = Modifier.testTag("spray_model_download")) {
+                        Text(stringResource(R.string.spray_model_download))
+                    }
                 }
+            }
+            // On a short line (narrow phone, large font) the download goes under the title, so the title keeps the width.
+            val oneLine = LocalConfiguration.current.screenWidthDp / LocalDensity.current.fontScale >= 400
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.spray_model_offer), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                InfoButton(stringResource(R.string.spray_model_title), stringResource(R.string.spray_model_text))
+                if (oneLine) action()
+            }
+            if (!oneLine) action()
+            if (model == HoldModelStore.State.Failed) {
+                Text(
+                    stringResource(R.string.spray_model_failed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(end = 8.dp, bottom = 8.dp),
+                )
             }
         }
     }
@@ -582,18 +658,17 @@ private fun SuggestionBar(editor: SprayHoldEditorState, viewModel: SprayHoldEdit
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFFFB300))
                 val open = editor.visibleSuggestions.size
                 // Everything shown was taken: say so, the slider can still show the less sure ones.
+                // A live region: a screen reader hears how many holds the search found (no snackbar says it any more).
                 Text(
                     if (open > 0) stringResource(R.string.spray_detect_suggestions, open) else stringResource(R.string.spray_detect_none_open),
                     style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                    modifier = Modifier.weight(1f).padding(start = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
                 )
                 IconButton(onClick = viewModel::dismissSuggestions, modifier = Modifier.testTag("spray_suggestions_dismiss")) {
                     Icon(Icons.Default.Close, contentDescription = stringResource(R.string.spray_detect_dismiss))
                 }
             }
-            if (editor.visibleSuggestions.isNotEmpty()) {
-                Text(stringResource(R.string.spray_detect_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            // The slider gets the whole width, and taking all is the card's one button, below it.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.spray_detect_sensitivity), style = MaterialTheme.typography.labelMedium)
                 // More sensitive = a lower confidence threshold.
@@ -601,14 +676,14 @@ private fun SuggestionBar(editor: SprayHoldEditorState, viewModel: SprayHoldEdit
                     value = 1f - editor.threshold,
                     onValueChange = { viewModel.setThreshold(1f - it) },
                     valueRange = 0.05f..0.95f,
-                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp).testTag("spray_detect_sensitivity"),
+                    modifier = Modifier.weight(1f).padding(start = 12.dp).testTag("spray_detect_sensitivity"),
                 )
-                if (editor.visibleSuggestions.isNotEmpty()) {
-                    Button(
-                        onClick = viewModel::acceptSuggestions,
-                        modifier = Modifier.testTag("spray_suggestions_accept"),
-                    ) { Text(stringResource(R.string.spray_detect_accept_all)) }
-                }
+            }
+            if (editor.visibleSuggestions.isNotEmpty()) {
+                Button(
+                    onClick = viewModel::acceptSuggestions,
+                    modifier = Modifier.testTag("spray_suggestions_accept"),
+                ) { Text(stringResource(R.string.spray_detect_accept_all)) }
             }
         }
     }

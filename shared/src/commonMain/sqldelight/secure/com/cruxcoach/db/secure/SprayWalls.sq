@@ -22,7 +22,13 @@ CREATE TABLE spray_wall (
     current_version INTEGER NOT NULL,
     published_version INTEGER,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    -- A head with new details still to send (migration 17); NULL = none, else a
+    -- counter per change, so a head sent clears only the change it carried.
+    head_pending INTEGER,
+    -- A withdrawal under way or one the relays took part of (migration 17); while
+    -- set, nothing of the wall is published. NULL = none, else when it started (ms).
+    withdraw_started INTEGER
 );
 
 -- photo_file is shared by the versions on the same photo. photo_sha256 and
@@ -111,9 +117,37 @@ SELECT * FROM spray_wall WHERE id = ?;
 selectWalls:
 SELECT * FROM spray_wall ORDER BY updated_at DESC;
 
+-- (COALESCE rather than IS NULL / IS NOT NULL in these selects, so the rows stay spray_wall rows.)
 selectWallsNeedingPublish:
 SELECT * FROM spray_wall
-WHERE owner_pubkey IS NULL AND visibility = 'public' AND COALESCE(published_version, 0) < current_version;
+WHERE owner_pubkey IS NULL AND visibility = 'public' AND COALESCE(published_version, 0) < current_version
+  AND COALESCE(withdraw_started, 0) = 0;
+
+-- The name, angle or gym of a published wall changed: its head goes out again.
+markHeadPending:
+UPDATE spray_wall SET head_pending = COALESCE(head_pending, 0) + 1 WHERE id = ?;
+
+-- A relay took the head built from this change; a later change stays pending.
+clearHeadPending:
+UPDATE spray_wall SET head_pending = NULL WHERE id = ? AND head_pending = ?;
+
+dropHeadPending:
+UPDATE spray_wall SET head_pending = NULL WHERE id = ?;
+
+selectWallsWithHeadPending:
+SELECT * FROM spray_wall WHERE owner_pubkey IS NULL AND COALESCE(head_pending, 0) > 0 AND COALESCE(withdraw_started, 0) = 0;
+
+-- Set before the first tombstone goes out: once a relay took one, a waiting head would bring the wall back. A head
+-- still pending stays: it goes out if no relay took anything, and turning private drops it.
+markWithdrawStarted:
+UPDATE spray_wall SET withdraw_started = ? WHERE id = ? AND withdraw_started IS NULL;
+
+clearWithdrawStarted:
+UPDATE spray_wall SET withdraw_started = NULL WHERE id = ?;
+
+-- Public walls whose climbs of mine may go out: not one the relays already took back.
+selectWallsTakingClimbs:
+SELECT * FROM spray_wall WHERE visibility = 'public' AND COALESCE(withdraw_started, 0) = 0 ORDER BY updated_at DESC;
 
 countClimbsPerWall:
 SELECT wall_id, COUNT(*) AS climbs FROM spray_climb GROUP BY wall_id;
@@ -142,6 +176,16 @@ UPDATE spray_wall_version SET photo_sha256 = ?, photo_url = ? WHERE wall_id = ? 
 -- A withdrawn wall's photos were deleted from Blossom: publishing it again uploads them anew.
 clearPhotoBlobs:
 UPDATE spray_wall_version SET photo_sha256 = NULL, photo_url = NULL WHERE wall_id = ?;
+
+-- A wall forgets one Blossom photo (deleted, or kept on Blossom by another wall).
+clearPhotoBlob:
+UPDATE spray_wall_version SET photo_sha256 = NULL, photo_url = NULL WHERE wall_id = ? AND photo_sha256 = ?;
+
+-- Where my walls recorded a Blossom photo: once it is deleted from a server,
+-- the walls that link to it there upload it anew.
+selectPhotoRecords:
+SELECT DISTINCT v.wall_id, v.photo_url FROM spray_wall_version v JOIN spray_wall w ON w.id = v.wall_id
+WHERE v.photo_sha256 = ? AND w.owner_pubkey IS NULL;
 
 -- Another public wall of mine still shows this photo on Blossom.
 countPublishedPhotoUses:
