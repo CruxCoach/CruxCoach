@@ -2,18 +2,15 @@ appId: com.cruxcoach.android
 name: subflow-open-first-climb
 ---
 - runFlow: reset-browser-filters.yaml
+# The send count has no click of its own, so the tap opens its card.
 - tapOn:
-    id: "board_climb_card"
+    text: "[0-9]+ Begehung(en)?"
     index: 0
+# The detail's menu, which holds "Mit Details loggen…".
 - extendedWaitUntil:
-    visible:
-      id: "boarddetail_name"
+    visible: "Weitere Optionen"
     timeout: 15000
-- assertVisible:
-    id: "boarddetail_back_button"
-- assertVisible:
-    id: "boarddetail_visualization"
-- assertVisible:
-    id: "boarddetail_log_button"
+- assertVisible: "Zurück"
+# The board with the climb's holds.
+- assertVisible: "(Board|MoonBoard)"
 - assertNotVisible: "Climb konnte nicht geladen werden"
-
