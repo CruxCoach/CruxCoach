@@ -539,6 +539,41 @@ class ShinyWallSyncEngineTest {
     }
 
     @Test
+    fun a_deleted_row_stays_deleted_after_a_later_row_of_the_day_was_written() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        repo.deleteBid(ShinyWallSyncEngine.logUuid("x2"))
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x3" to 1L), bids())
+
+        // x3 gives way to the next total, which still leaves out the 2 the user deleted.
+        val fourthTry = realEntry("x4", "r3", -4, grade = null, ts = "2026-11-08T12:15:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry, fourthTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x4" to 2L), bids())
+    }
+
+    @Test
+    fun a_row_replaced_by_an_import_whose_record_was_lost_is_not_taken_for_deleted() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry))
+        engine.importAll(names).getOrThrow()
+        // x2 replaces x1, but the record of that import is lost (Keystore error or the app killed).
+        val noRecord = object : ShinyWallTokenStorage by store {
+            override fun recordImport(
+                uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>, writtenCounts: Map<String, Long>,
+            ) = throw SecurityException("Keystore unavailable")
+        }
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        ShinyWallSyncEngine(client, noRecord, board, repo, db).apply { zone = engine.zone }.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x3" to 3L), bids())
+    }
+
+    @Test
     fun a_count_set_by_hand_stays_when_the_days_next_total_arrives() = runTest {
         // Day one ends at 2; day two's first total, 3, is written as 1. The user sets it to 3 by hand.
         val y1 = realEntry("y1", "r3", -2, grade = null, ts = "2026-11-08T11:00:00Z")
@@ -567,6 +602,133 @@ class ShinyWallSyncEngineTest {
         val again = engine.importAll(names).getOrThrow()
         assertEquals(0 to 1, again.newProjects to again.deleted)
         assertEquals(listOf("shinywall:history:y2" to 3L), bids())
+    }
+
+    /**
+     * Totals on one route: 5 on the 6th, 6 and 7 on the 7th (they reach Shiny late), 8, 9 and 10 on the
+     * 8th; or the 8th ends with a send of 9 tries in all (d2s) instead of 9 and 10.
+     */
+    private val lateRun = listOf(
+        realEntry("d0", "r3", -5, grade = null, ts = "2026-11-06T18:00:00Z"),
+        realEntry("d1a", "r3", -6, grade = null, ts = "2026-11-07T18:00:00Z"),
+        realEntry("d1b", "r3", -7, grade = null, ts = "2026-11-07T18:30:00Z"),
+        realEntry("d2a", "r3", -8, grade = null, ts = "2026-11-08T18:00:00Z"),
+        realEntry("d2b", "r3", -9, grade = null, ts = "2026-11-08T18:30:00Z"),
+        realEntry("d2c", "r3", -10, grade = null, ts = "2026-11-08T19:00:00Z"),
+        realEntry("d2s", "r3", 9, ts = "2026-11-08T18:30:00Z"),
+    )
+    private val byId = lateRun.associateBy { it.docId }
+    private suspend fun importOf(vararg ids: String) {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(ids.map { byId.getValue(it) })
+        engine.importAll(names).getOrThrow()
+    }
+
+    @Test
+    fun a_late_days_attempts_go_with_the_row_that_held_them() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        // Written without the 7th: 8 − 5.
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2a" to 3L), bids())
+
+        // The 7th arrives late, then the 8th gets another total: the new row takes over the 3 too.
+        importOf("d0", "d1a", "d1b", "d2a", "d2b")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2b" to 4L), bids())
+    }
+
+    @Test
+    fun a_late_day_seen_by_an_earlier_import_still_goes_with_the_row_that_held_it() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        // The 7th arrives late and brings nothing of its own: d2a holds it.
+        importOf("d0", "d1a", "d1b", "d2a")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2a" to 3L), bids())
+
+        // Only now the 8th gets another total: 5 + 4 = 9, as in Shiny.
+        importOf("d0", "d1a", "d1b", "d2a", "d2b")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2b" to 4L), bids())
+    }
+
+    @Test
+    fun the_late_days_attempts_go_on_with_every_new_total_of_the_day() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        importOf("d0", "d1a", "d1b", "d2a", "d2b")
+        importOf("d0", "d1a", "d1b", "d2a", "d2b", "d2c")
+        // 5 + 5 = 10, as in Shiny.
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2c" to 5L), bids())
+    }
+
+    @Test
+    fun a_deleted_row_keeps_the_late_days_attempts_deleted() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        repo.deleteBid(ShinyWallSyncEngine.logUuid("d2a"))
+        importOf("d0", "d2a", "d2b")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2b" to 1L), bids())
+
+        // The deleted 3 (the 7th's 2 among them) stay deleted: 10 less 3.
+        importOf("d0", "d1a", "d1b", "d2a", "d2b", "d2c")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2c" to 2L), bids())
+    }
+
+    @Test
+    fun a_send_after_a_late_day_takes_over_what_the_replaced_row_held() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        importOf("d0", "d1a", "d1b", "d2a", "d2s")
+        // d2a gives way to the send, which carries 9 less the 5 of the 6th.
+        assertEquals(listOf("shinywall:history:d0" to 5L), bids())
+        assertEquals(listOf(Triple("shinywall:history:d2s", 1L, 4L)), ascentCounts())
+    }
+
+    @Test
+    fun a_send_after_a_late_day_leaves_a_kept_or_deleted_row_what_it_held() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        repo.updateBid(ShinyWallSyncEngine.logUuid("d2a"), 3, "pumped")
+        importOf("d0", "d1a", "d1b", "d2a", "d2s")
+        // 5 + 3 + 1 = 9.
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2a" to 3L), bids())
+        assertEquals(listOf(Triple("shinywall:history:d2s", 1L, 1L)), ascentCounts())
+
+        // Deleted instead of edited: the send still carries only its own try.
+        engine.clearLogbook { repo.deleteAllUserBoardData() }.getOrThrow()
+        importOf("d0")
+        importOf("d0", "d2a")
+        repo.deleteBid(ShinyWallSyncEngine.logUuid("d2a"))
+        importOf("d0", "d1a", "d1b", "d2a", "d2s")
+        assertEquals(listOf("shinywall:history:d0" to 5L), bids())
+        assertEquals(listOf(Triple("shinywall:history:d2s", 1L, 1L)), ascentCounts())
+    }
+
+    @Test
+    fun two_rows_replaced_together_pass_on_what_they_held() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        repo.updateBid(ShinyWallSyncEngine.logUuid("d2a"), 3, "pumped")
+        importOf("d0", "d1a", "d1b", "d2a", "d2b")
+        assertEquals(
+            listOf("shinywall:history:d0" to 5L, "shinywall:history:d2a" to 3L, "shinywall:history:d2b" to 1L),
+            bids(),
+        )
+        // The comment goes again, so both rows of the 8th are as the imports wrote them: 5 + 5 = 10.
+        repo.updateBid(ShinyWallSyncEngine.logUuid("d2a"), 3, null)
+        importOf("d0", "d1a", "d1b", "d2a", "d2b", "d2c")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2c" to 5L), bids())
+    }
+
+    @Test
+    fun a_kept_row_keeps_the_late_days_attempts() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        repo.updateBid(ShinyWallSyncEngine.logUuid("d2a"), 3, "pumped")
+
+        importOf("d0", "d1a", "d1b", "d2a", "d2b")
+        // 5 + 3 + 1 = 9, as in Shiny.
+        assertEquals(
+            listOf("shinywall:history:d0" to 5L, "shinywall:history:d2a" to 3L, "shinywall:history:d2b" to 1L),
+            bids(),
+        )
     }
 
     @Test
