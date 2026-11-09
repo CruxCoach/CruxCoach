@@ -24,6 +24,7 @@ class SprayWallPublishingTest {
     private lateinit var driver: SqlDriver
     private lateinit var repository: SprayWallRepository
     private val photo = SprayWallPhotoStore.StoredPhoto("0b1c2d3e-photo.jpg", 3000, 2000)
+    private val newPhoto = SprayWallPhotoStore.StoredPhoto("1c2d3e4f-photo.jpg", 3000, 2000)
 
     private val sent = mutableListOf<SprayNostrEvent>()
     /** The d-tag of every event the signer was asked to sign. */
@@ -47,7 +48,7 @@ class SprayWallPublishingTest {
     fun tearDown() = driver.close()
 
     /** Also what the next start of the app makes. */
-    private fun newPublishing(): SprayWallPublishing {
+    private fun newPublishing(onUpload: suspend () -> Unit = {}): SprayWallPublishing {
         val send: suspend (SprayNostrEvent) -> Int = { event ->
             asked += event.d
             if (declines(event)) throw SprayEventSigningFailed(IllegalStateException("declined"))
@@ -67,6 +68,7 @@ class SprayWallPublishingTest {
             withdrawal = withdrawal,
             send = send,
             upload = { wallId, version ->
+                onUpload()
                 if (uploadDeclined(wallId)) throw SprayEventSigningFailed(IllegalStateException("upload declined"))
                 repository.setPhotoBlob(wallId, version.photoFile, SHA, "https://cdn.example.org/$SHA")
                 SHA to "https://cdn.example.org/$SHA"
@@ -294,16 +296,43 @@ class SprayWallPublishingTest {
     }
 
     @Test
-    fun `a deleted climb of mine is taken back when it went out or its wall is public`() = runTest {
+    fun `a deleted climb of mine is taken back when it went out, or on a public or followed wall`() = runTest {
         val public = publishedWall("A")
         val private = repository.createWall("B", 40, SprayWallVisibility.PRIVATE, null, photo, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
         val onPublic = climbOn(public, "Line").let { id -> repository.myClimbs(public).first { it.uuid == id } }
         val onPrivate = climbOn(private, "Line").let { id -> repository.myClimbs(private).first { it.uuid == id } }
+        val publicWall = repository.wall(public)!!
+        val privateWall = repository.wall(private)!!
 
-        // Edited after it went out: not marked as published, but its earlier event is on the relays.
-        assertTrue(SprayWallPublishing.takesBack(onPublic, repository.wall(public)))
-        assertTrue(SprayWallPublishing.takesBack(onPrivate.copy(publishedAt = 1L), repository.wall(private)))
-        assertTrue(!SprayWallPublishing.takesBack(onPrivate, repository.wall(private)))
+        // Not marked as published (an edit clears the mark until it goes out again), but its earlier event may be out.
+        assertTrue(SprayWallPublishing.takesBack(onPublic, publicWall))
+        // Someone else's wall, also one its owner withdrew since.
+        assertTrue(SprayWallPublishing.takesBack(onPrivate, privateWall.copy(ownerPubkey = "b2".repeat(32))))
+        assertTrue(SprayWallPublishing.takesBack(onPrivate.copy(publishedAt = 1L), privateWall))
+        // My private wall: a climb on it never went out.
+        assertTrue(!SprayWallPublishing.takesBack(onPrivate, privateWall))
+        // Someone else's climb is never mine to take back.
+        assertTrue(!SprayWallPublishing.takesBack(onPublic.copy(authorPubkey = "b2".repeat(32), publishedAt = 1L), publicWall))
+    }
+
+    @Test
+    fun `a head is not sent for a reset started while the versions went out`() = runTest {
+        // It would name a version that is not on the relays; it waits for that version.
+        val wall = newPublicWall("A")
+        uploadDeclined = { false }
+        var reset = false
+        publishing = newPublishing(onUpload = {
+            if (!reset) {
+                reset = true
+                repository.resetWall(wall, newPhoto, emptyList())
+            }
+        })
+
+        assertIs<SprayWallPublisher.Outcome.Done>(run())
+        assertTrue(headOf(wall) !in asked)
+        assertEquals(1, repository.wall(wall)!!.publishedVersion)
+        assertEquals(2, repository.wall(wall)!!.current.number)
+        assertTrue(repository.wall(wall)!!.publishPending)
     }
 
     private companion object {

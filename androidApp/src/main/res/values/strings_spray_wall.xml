@@ -18,6 +18,7 @@
     <string name="spray_wall_pick_photo">Choose from your photos</string>
     <string name="spray_wall_photo_change">Choose another photo</string>
     <string name="spray_wall_photo_failed">This photo could not be read. Try another one.</string>
+    <string name="spray_wall_photo_no_app">No app on this phone could open the camera or your photos.</string>
     <string name="spray_wall_photo_loading">Preparing the photo…</string>
     <string name="spray_wall_name">Name</string>
     <string name="spray_wall_name_default">My spray wall</string>
@@ -216,6 +217,8 @@
     <string name="spray_followed_withdrawn">Its owner withdrew this wall. It stays here for your climbs and your logbook.</string>
     <string name="spray_followed_remove">Remove from my walls</string>
     <string name="spray_followed_remove_text">This removes the wall from this phone, with your climbs and logbook entries on it. Your climbs are also withdrawn from the servers. The public wall itself stays.</string>
+    <string name="spray_followed_removing">Taking your climbs back …</string>
+    <string name="spray_followed_remove_failed">Your climbs on this wall could not be taken back from the servers, so the wall stays. Check the connection and try again.</string>
     <string name="spray_venue_title">Spray walls here</string>
     <string name="spray_venue_info">Public spray walls people shared for this place. They are only loaded from the relays when you ask.</string>
     <string name="spray_venue_show">Show spray walls</string>

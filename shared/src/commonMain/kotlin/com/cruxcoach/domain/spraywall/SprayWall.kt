@@ -92,6 +92,12 @@ data class SprayWall(
     /** A public wall with a newer version than the one on Nostr (not one whose withdrawal is unfinished). */
     val needsPublish: Boolean get() =
         isMine && visibility == SprayWallVisibility.PUBLIC && (publishedVersion ?: 0) < current.number && withdrawStarted == null
+    /**
+     * Something of a public wall of mine is still to go to Nostr: a newer version, or its head (new details, or a head
+     * that did not go out with its versions).
+     */
+    val publishPending: Boolean get() =
+        needsPublish || (isMine && visibility == SprayWallVisibility.PUBLIC && headPending != null && withdrawStarted == null)
 }
 
 /** A wall in the list, with its counts. */

@@ -175,6 +175,37 @@ class SprayWallPublisher @Inject constructor(
         }.await()
     }
 
+    /**
+     * Takes my [climbs] on [wall] back from Nostr ([SprayWallPublishing.takesBack]): a tombstone each and one deletion,
+     * waiting for the relays. True when a relay took them, or when none had to go; without an identity, when none of
+     * them is known to have gone out.
+     */
+    suspend fun withdrawClimbs(climbs: List<SprayClimb>, wall: SprayWall?): Boolean {
+        val mine = climbs.filter { SprayWallPublishing.takesBack(it, wall) }
+        if (mine.isEmpty()) return true
+        return scope.async {
+            mutex.withLock {
+                try {
+                    val me = myPubkey() ?: return@withLock mine.none { it.publishedAt != null }
+                    val owner = wall?.ownerPubkey ?: me
+                    val dTags = mine.map { SprayWallNostr.climbDTag(me, it.uuid) }
+                    var taken = 0
+                    for ((climb, d) in mine.zip(dTags)) {
+                        val address = SprayWallNostr.wallAddress(owner, climb.wallId)
+                        taken = maxOf(taken, send(SprayWallNostr.tombstone(stamp(d), d, SprayWallNostr.LABEL_CLIMB, address)))
+                    }
+                    taken = maxOf(taken, send(SprayWallNostr.deletion(me, now(), dTags)))
+                    taken > 0
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "withdrawing climbs failed", e)
+                    false
+                }
+            }
+        }.await()
+    }
+
     /** Withdraws a climb of mine that was deleted here from [wall] ([SprayWallPublishing.takesBack]). */
     fun withdrawClimbSoon(climb: SprayClimb, wall: SprayWall?) {
         if (!SprayWallPublishing.takesBack(climb, wall)) return

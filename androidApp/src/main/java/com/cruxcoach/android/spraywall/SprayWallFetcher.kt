@@ -9,6 +9,8 @@ import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.withTimeoutOrNull
@@ -83,6 +85,8 @@ class SprayWallFetcher @Inject constructor(
         val address = SprayWallNostr.wallAddress(owner, wallId)
         val headFilter = filter(author = owner, tags = mapOf("#d" to headDTag))
         val linkedFilter = filter(tags = mapOf("#a" to address), limit = LINKED_LIMIT)
+        // The owner's versions on their own: what anyone else tags the wall with cannot crowd them out of a fetch.
+        val ownFilter = filter(author = owner, tags = mapOf("#a" to address), limit = LINKED_LIMIT)
         // The owner's own head only, also from a relay that ignores the authors filter.
         val head = newestPerDTag(fetch(headFilter)).firstOrNull { it.dTag == headDTag && it.author == owner }
         if (!mine) {
@@ -95,7 +99,11 @@ class SprayWallFetcher @Inject constructor(
                 else -> Unit
             }
         }
-        val linked = newestPerDTag(fetch(linkedFilter))
+        val linked = coroutineScope {
+            val own = async { fetch(ownFilter) }
+            val others = async { fetch(linkedFilter) }
+            newestPerDTag(own.await() + others.await())
+        }
         val climbs = linked.filterIsInstance<SprayWallNostr.Parsed.Climb>().filter { it.wallOwner == owner && it.wallId == wallId && it.author != me }
         val removed = linked.filterIsInstance<SprayWallNostr.Parsed.Tombstone>().mapNotNull { t -> t.climbUuid?.let { t.author to it } }
 
@@ -162,7 +170,7 @@ class SprayWallFetcher @Inject constructor(
         const val MAX_PHOTO_BYTES = 16L * 1024 * 1024
         /** An event's JSON: the event itself plus its id, key and signature. */
         const val MAX_EVENT_JSON = SprayWallNostr.MAX_EVENT_BYTES + 4096
-        /** All events of one fetch: far above a busy wall (2000 climbs of a few KB, its versions), far below a phone's memory. */
+        /** All events of one fetch, in characters: far above a busy wall (2000 climbs of a few KB), far below a phone's memory. */
         const val MAX_FETCH_BYTES = 24L * 1024 * 1024
     }
 }

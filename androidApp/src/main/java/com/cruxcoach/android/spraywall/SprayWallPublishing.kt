@@ -157,8 +157,10 @@ class SprayWallPublishing(
             repository.markPublished(wall.id, version.number)
         }
         val fresh = repository.wall(wall.id) ?: return pending.size
+        // A reset started meanwhile (a new version without holds yet): the head would name a version not on the
+        // relays. It stays pending and goes out with that version once its holds are marked.
+        if (pending.isNotEmpty() && fresh.current.number != pending.last().number) return pending.size
         check(send(SprayWallNostr.wallHead(me, stamp(SprayWallNostr.wallDTag(me, wall.id)), fresh)) > 0) { "no relay took the wall" }
-        repository.markPublished(wall.id, fresh.current.number)
         // The head carried the wall's details as they were read: a change since then stays pending.
         fresh.headPending?.let { repository.clearHeadPending(wall.id, it) }
         return pending.size
@@ -186,11 +188,12 @@ class SprayWallPublishing(
         private const val TAG = "SprayWallPublishing"
 
         /**
-         * A climb of mine deleted from [wall] gets a tombstone when it went out, and also on a public wall when it is
-         * not marked as published: an edit clears that mark until it goes out again, and its earlier event is still on
-         * the relays. A tombstone for a climb that never went out does no harm.
+         * A climb of mine deleted from [wall] gets a tombstone when it went out, and also on a public or followed wall
+         * when it is not marked as published: an edit clears that mark until it goes out again, and its earlier event
+         * is still on the relays (also when the owner withdrew the wall since). A tombstone for a climb that never went
+         * out does no harm.
          */
         fun takesBack(climb: SprayClimb, wall: SprayWall?): Boolean =
-            climb.isMine && (climb.publishedAt != null || wall?.visibility == SprayWallVisibility.PUBLIC)
+            climb.isMine && (climb.publishedAt != null || wall == null || !wall.isMine || wall.visibility == SprayWallVisibility.PUBLIC)
     }
 }

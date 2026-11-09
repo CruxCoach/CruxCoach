@@ -18,6 +18,7 @@
     <string name="spray_wall_pick_photo">Aus deinen Fotos wählen</string>
     <string name="spray_wall_photo_change">Anderes Foto wählen</string>
     <string name="spray_wall_photo_failed">Dieses Foto ließ sich nicht lesen. Versuche ein anderes.</string>
+    <string name="spray_wall_photo_no_app">Keine App auf diesem Handy konnte die Kamera oder deine Fotos öffnen.</string>
     <string name="spray_wall_photo_loading">Foto wird vorbereitet …</string>
     <string name="spray_wall_name">Name</string>
     <string name="spray_wall_name_default">Meine Spraywand</string>
@@ -216,6 +217,8 @@
     <string name="spray_followed_withdrawn">Der Besitzer hat diese Wand zurückgezogen. Sie bleibt hier für deine Boulder und dein Logbuch.</string>
     <string name="spray_followed_remove">Aus meinen Wänden entfernen</string>
     <string name="spray_followed_remove_text">Das entfernt die Wand von diesem Handy, mit deinen Bouldern und Logbucheinträgen darauf. Deine Boulder werden auch von den Servern zurückgezogen. Die öffentliche Wand selbst bleibt.</string>
+    <string name="spray_followed_removing">Deine Boulder werden zurückgezogen …</string>
+    <string name="spray_followed_remove_failed">Deine Boulder auf dieser Wand ließen sich nicht von den Servern zurückziehen, deshalb bleibt die Wand. Prüfe die Verbindung und versuch es noch einmal.</string>
     <string name="spray_venue_title">Spraywände hier</string>
     <string name="spray_venue_info">Öffentliche Spraywände, die Leute für diesen Ort geteilt haben. Sie werden erst von den Relays geladen, wenn du fragst.</string>
     <string name="spray_venue_show">Spraywände zeigen</string>

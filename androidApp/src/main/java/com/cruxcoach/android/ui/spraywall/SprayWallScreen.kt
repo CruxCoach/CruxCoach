@@ -37,6 +37,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -120,6 +121,10 @@ data class SprayWallUiState(
     val withdrawing: Boolean = false,
     /** Why the last try did not finish it (null = no try, or it worked). */
     val withdrawFailed: SprayWithdrawal? = null,
+    /** Removing someone else's wall: my climbs on it are being taken back first. */
+    val removing: Boolean = false,
+    /** They could not be taken back, so the wall stayed. */
+    val removeFailed: Boolean = false,
     /** The account name of the wall's owner, for someone else's wall; null until known. */
     val ownerName: String? = null,
 ) {
@@ -189,11 +194,18 @@ class SprayWallViewModel @Inject constructor(
         }
     }
 
-    /** Someone else's wall: removes the copy here with my logbook on it, and takes my climbs on it back from Nostr. */
+    /**
+     * Someone else's wall: takes my climbs on it back from Nostr, then removes the copy here with my logbook on it.
+     * When the relays did not take them back, the wall stays, so nothing of mine is left behind on them.
+     */
     fun removeFollowed(onDone: () -> Unit) {
+        if (_state.value.removing) return
+        _state.update { it.copy(removing = true, removeFailed = false) }
         viewModelScope.launch {
-            val wall = repository.wall(wallId)
-            repository.myClimbs(wallId).forEach { publisher.withdrawClimbSoon(it, wall) }
+            if (!publisher.withdrawClimbs(repository.myClimbs(wallId), repository.wall(wallId))) {
+                _state.update { it.copy(removing = false, removeFailed = true) }
+                return@launch
+            }
             repository.deleteWall(wallId)
             onDone()
         }
@@ -348,8 +360,9 @@ fun SprayWallScreen(
             }
             val problem = state.publishProblem
             // While the card below says why the upload failed, the facts line does not say it again.
-            item { WallFacts(wall, showPending = !(wall.needsPublish && problem != null)) }
+            item { WallFacts(wall, showPending = !(wall.publishPending && problem != null)) }
             if (!wall.isMine) item { FollowedNote(wall, state.ownerName) }
+            if (!wall.isMine && (state.removing || state.removeFailed)) item { RemoveProgress(state.removing) }
             // Nothing of a wall the relays took back in part is published: finishing the withdrawal is what is left.
             if (wall.isMine && wall.withdrawStarted != null) {
                 item {
@@ -361,7 +374,7 @@ fun SprayWallScreen(
                     }
                 }
             }
-            if (wall.needsPublish && problem != null) {
+            if (wall.publishPending && problem != null) {
                 item { PublishCard(problem, state.publishing, viewModel::publishNow, onOpenAccount) }
             }
             if (state.unfinishedReset && wall.isMine) {
@@ -429,6 +442,22 @@ fun SprayWallScreen(
     }
 }
 
+/** Removing someone else's wall: my climbs on it are taken back first, or that did not work and the wall stayed. */
+@Composable
+private fun RemoveProgress(removing: Boolean) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag("spray_followed_removing"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (removing) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Text(stringResource(R.string.spray_followed_removing), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+        } else {
+            Text(stringResource(R.string.spray_followed_remove_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
 @Composable
 private fun FollowedNote(wall: SprayWall, ownerName: String?) {
     val owner = wall.ownerPubkey.orEmpty()
@@ -489,7 +518,7 @@ private fun WallFacts(wall: SprayWall, showPending: Boolean) {
         Icon(if (public) Icons.Default.Public else Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
         val parts = listOfNotNull(
             stringResource(if (public) R.string.spray_visibility_public else R.string.spray_visibility_private),
-            stringResource(R.string.spray_publish_pending).takeIf { wall.needsPublish && showPending },
+            stringResource(R.string.spray_publish_pending).takeIf { wall.publishPending && showPending },
             wall.gym?.name?.takeIf { it.isNotBlank() },
             "${wall.angle}°",
             // A wall with one version has nothing to tell apart.

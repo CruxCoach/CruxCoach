@@ -104,6 +104,8 @@ data class SprayWallPhotoState(
     val importing: Boolean = false,
     val adjusting: Boolean = false,
     val photoFailed: Boolean = false,
+    /** No app could take or pick a photo (a phone without a camera app, or with it disabled). */
+    val noPhotoApp: Boolean = false,
     val saving: Boolean = false,
     val notFound: Boolean = false,
 ) {
@@ -145,7 +147,7 @@ class SprayWallPhotoViewModel @Inject constructor(
     }
 
     fun onPhoto(uri: Uri, deleteAfter: File? = null) {
-        _state.update { it.copy(importing = true, photoFailed = false) }
+        _state.update { it.copy(importing = true, photoFailed = false, noPhotoApp = false) }
         viewModelScope.launch {
             try {
                 val stored = photos.import(uri)
@@ -226,7 +228,7 @@ class SprayWallPhotoViewModel @Inject constructor(
     }
 
     /** No app could take or pick the photo (a phone without a camera app, or one disabled). */
-    fun photoUnavailable() = _state.update { it.copy(photoFailed = true) }
+    fun photoUnavailable() = _state.update { it.copy(noPhotoApp = true) }
 
     companion object {
         const val DEFAULT_ANGLE = 40
@@ -319,6 +321,9 @@ fun SprayWallPhotoScreen(
             PhotoTile(state.preview, state.importing, state.photo?.let { it.width.toFloat() / it.height } ?: (4f / 3f))
             if (state.photoFailed) {
                 Text(stringResource(R.string.spray_wall_photo_failed), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("spray_photo_failed"))
+            }
+            if (state.noPhotoApp) {
+                Text(stringResource(R.string.spray_wall_photo_no_app), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("spray_photo_no_app"))
             }
             val idle = !state.importing && !state.saving
             val takePhoto = { if (cameraNeedsGrant(context)) cameraPermission.launch(Manifest.permission.CAMERA) else launchCamera() }
