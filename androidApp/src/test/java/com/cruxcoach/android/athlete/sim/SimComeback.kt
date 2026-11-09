@@ -107,7 +107,7 @@ data class ComebackTrace(
     val irritation: Double,
     val morningPain: Int?,
     val pressurePain: Int?,
-    /** Prompts shown today and the athlete's answer, e.g. "review move_up: moved up". */
+    /** Prompts shown today and the athlete's answer, e.g. "review move_up: moved up", "review stay (few_session_days): ok". */
     val prompts: List<String>,
     /** Proposals of the week's look back shown today. */
     val reviews: List<Proposal>,
@@ -230,7 +230,7 @@ class SimComeback(
                                 comebacks.end(injuryId, resolved = true); ended = true; "ends the plan"
                             } else "ok"
                         }
-                    }.let { "review ${r.proposal.name.lowercase()}: $it" }
+                    }.let { "review ${r.proposal.name.lowercase()}${r.stayReason?.let { s -> " (${s.name.lowercase()})" }.orEmpty()}: $it" }
                 }
                 PromptKind.WORSENING -> if (habits.ignoresStepBack) {
                     comebacks.markPrompt(injuryId, p.key); "worse: declines, keeps the stage"
