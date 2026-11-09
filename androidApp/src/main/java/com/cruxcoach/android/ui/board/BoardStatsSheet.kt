@@ -57,6 +57,8 @@ private fun BoardFilterChips(
     comparison: List<BoardComparisonEntry>,
     selected: String?,
     onSelect: (String?) -> Unit,
+    /** False while the statistics load: the boards' numbers aren't known yet. */
+    showNumbers: Boolean = true,
 ) {
     val byBoard = comparison.associateBy { it.boardBrand }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -70,7 +72,13 @@ private fun BoardFilterChips(
             FilterChip(
                 selected = selected == brand,
                 onClick = { onSelect(brand) },
-                label = { BoardChipLabel(boardBrandLabel(brand), byBoard[brand]?.sendCount ?: 0, byBoard[brand]?.hardestGrade) },
+                label = {
+                    if (showNumbers) {
+                        BoardChipLabel(boardBrandLabel(brand), byBoard[brand]?.sendCount ?: 0, byBoard[brand]?.hardestGrade)
+                    } else {
+                        Text(boardBrandLabel(brand))
+                    }
+                },
             )
         }
     }
@@ -172,6 +180,7 @@ internal fun BoardStatsSheetContent(
                 comparison = boardComparison,
                 selected = boardFilter,
                 onSelect = onBoardFilterSelect,
+                showNumbers = !loading,
             )
         }
 
