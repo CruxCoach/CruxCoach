@@ -139,6 +139,11 @@ class SprayWallRepository @Inject constructor(
         queries.selectWallsTakingClimbs().executeAsList().mapNotNull { it.toModel() }
     }
 
+    /** A version of [id] reached the relays before its head: the head is to go out on its own if this run fails. */
+    suspend fun markHeadPending(id: String) {
+        io { queries.markHeadPending(id) }
+    }
+
     /** A relay took the head built while [pending] was the wall's mark; a change since then stays pending. */
     suspend fun clearHeadPending(id: String, pending: Long) {
         io { queries.clearHeadPending(id, pending) }

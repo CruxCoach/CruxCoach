@@ -229,7 +229,7 @@ class SprayClimbEditorViewModel @Inject constructor(
         val uuid = climbUuid ?: return
         viewModelScope.launch {
             // A published climb is taken back from Nostr too.
-            repository.deleteClimb(uuid)?.let { publisher.withdrawClimbSoon(it, _state.value.wall?.ownerPubkey) }
+            repository.deleteClimb(uuid)?.let { publisher.withdrawClimbSoon(it, _state.value.wall) }
             _events.emit(SprayClimbEditorEvent.Deleted)
         }
     }

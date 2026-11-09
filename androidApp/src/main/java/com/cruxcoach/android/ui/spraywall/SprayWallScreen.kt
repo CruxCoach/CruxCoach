@@ -189,9 +189,11 @@ class SprayWallViewModel @Inject constructor(
         }
     }
 
-    /** Someone else's wall: removes the copy here with my logbook on it. */
+    /** Someone else's wall: removes the copy here with my logbook on it, and takes my climbs on it back from Nostr. */
     fun removeFollowed(onDone: () -> Unit) {
         viewModelScope.launch {
+            val wall = repository.wall(wallId)
+            repository.myClimbs(wallId).forEach { publisher.withdrawClimbSoon(it, wall) }
             repository.deleteWall(wallId)
             onDone()
         }

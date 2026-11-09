@@ -14,6 +14,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -28,6 +29,8 @@ class SprayWallPublishingTest {
     /** The d-tag of every event the signer was asked to sign. */
     private val asked = mutableListOf<String>()
     private var declines: (SprayNostrEvent) -> Boolean = { false }
+    /** How many relays take an event. */
+    private var relaysFor: (SprayNostrEvent) -> Int = { 1 }
     private var uploadDeclined: (String) -> Boolean = { false }
     private var clock = 1_800_000_000L
     private lateinit var publishing: SprayWallPublishing
@@ -49,7 +52,7 @@ class SprayWallPublishingTest {
             asked += event.d
             if (declines(event)) throw SprayEventSigningFailed(IllegalStateException("declined"))
             sent += event
-            1
+            relaysFor(event)
         }
         val withdrawal = SprayWallWithdrawal(
             repository = repository,
@@ -63,8 +66,9 @@ class SprayWallPublishingTest {
             repository = repository,
             withdrawal = withdrawal,
             send = send,
-            upload = { wallId, _ ->
+            upload = { wallId, version ->
                 if (uploadDeclined(wallId)) throw SprayEventSigningFailed(IllegalStateException("upload declined"))
+                repository.setPhotoBlob(wallId, version.photoFile, SHA, "https://cdn.example.org/$SHA")
                 SHA to "https://cdn.example.org/$SHA"
             },
             stamp = { clock++ },
@@ -253,6 +257,53 @@ class SprayWallPublishingTest {
         assertIs<SprayWallPublisher.Outcome.Done>(run())
         assertTrue(!askedAbout(wall))
         assertTrue(asked.none { it.startsWith("cruxcoach:sprayclimb:") })
+    }
+
+    @Test
+    fun `a version a relay took counts as published when no relay takes the head, and the head goes out later`() = runTest {
+        // Withdrawing the wall then takes the version back, and its photo stays.
+        val wall = newPublicWall("A")
+        var relays = 0
+        relaysFor = { if (it.d == headOf(wall)) relays else 1 }
+
+        assertFailsWith<IllegalStateException> { run() }
+        assertEquals(1, repository.wall(wall)!!.publishedVersion)
+        assertEquals(SHA, repository.wall(wall)!!.current.photoSha256)
+        assertEquals(listOf(wall), repository.wallsWithHeadPending().map { it.id })
+
+        relays = 1
+        asked.clear()
+        assertIs<SprayWallPublisher.Outcome.Done>(run())
+        assertEquals(listOf(headOf(wall)), asked)
+        assertTrue(repository.wallsWithHeadPending().isEmpty())
+    }
+
+    @Test
+    fun `a head declined after its version went out is not asked again in the same run`() = runTest {
+        val wall = newPublicWall("A")
+        declines = { it.d == headOf(wall) }
+
+        assertIs<SprayWallPublisher.Outcome.Failed>(run())
+        assertEquals(1, asked.count { it == headOf(wall) })
+        assertEquals(1, repository.wall(wall)!!.publishedVersion)
+
+        publishing = newPublishing()
+        declines = { false }
+        assertIs<SprayWallPublisher.Outcome.Done>(run())
+        assertTrue(repository.wallsWithHeadPending().isEmpty())
+    }
+
+    @Test
+    fun `a deleted climb of mine is taken back when it went out or its wall is public`() = runTest {
+        val public = publishedWall("A")
+        val private = repository.createWall("B", 40, SprayWallVisibility.PRIVATE, null, photo, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
+        val onPublic = climbOn(public, "Line").let { id -> repository.myClimbs(public).first { it.uuid == id } }
+        val onPrivate = climbOn(private, "Line").let { id -> repository.myClimbs(private).first { it.uuid == id } }
+
+        // Edited after it went out: not marked as published, but its earlier event is on the relays.
+        assertTrue(SprayWallPublishing.takesBack(onPublic, repository.wall(public)))
+        assertTrue(SprayWallPublishing.takesBack(onPrivate.copy(publishedAt = 1L), repository.wall(private)))
+        assertTrue(!SprayWallPublishing.takesBack(onPrivate, repository.wall(private)))
     }
 
     private companion object {

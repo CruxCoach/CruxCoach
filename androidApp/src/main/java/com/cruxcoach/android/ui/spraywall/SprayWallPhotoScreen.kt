@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.spraywall
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -74,6 +75,7 @@ import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -82,6 +84,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -188,19 +191,25 @@ class SprayWallPhotoViewModel @Inject constructor(
         val photo = s.photo ?: return
         if (!s.canContinue) return
         _state.update { it.copy(saving = true) }
+        // The photo belongs to the wall from here: leaving the screen while it is stored must not delete it.
+        val pending = orphanPhoto
+        orphanPhoto = null
         viewModelScope.launch {
             try {
-                val id = if (wallId == null) {
-                    repository.createWall(defaultName, DEFAULT_ANGLE, SprayWallVisibility.PRIVATE, gym, photo, emptyList())
-                } else {
-                    repository.resetWall(wallId, photo, emptyList())
-                    wallId
+                // Stored to the end also when the screen is left meanwhile, so the wall never points to no photo.
+                val id = withContext(NonCancellable) {
+                    if (wallId == null) {
+                        repository.createWall(defaultName, DEFAULT_ANGLE, SprayWallVisibility.PRIVATE, gym, photo, emptyList())
+                    } else {
+                        repository.resetWall(wallId, photo, emptyList())
+                        wallId
+                    }
                 }
-                orphanPhoto = null
                 _events.emit(SprayWallPhotoEvent.Done(id))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                orphanPhoto = pending
                 _state.update { it.copy(saving = false) }
                 _events.emit(SprayWallPhotoEvent.Failed)
             }
@@ -215,6 +224,9 @@ class SprayWallPhotoViewModel @Inject constructor(
     override fun onCleared() {
         orphanPhoto?.let(photos::delete)
     }
+
+    /** No app could take or pick the photo (a phone without a camera app, or one disabled). */
+    fun photoUnavailable() = _state.update { it.copy(photoFailed = true) }
 
     companion object {
         const val DEFAULT_ANGLE = 40
@@ -247,8 +259,16 @@ fun SprayWallPhotoScreen(
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         if (ok) viewModel.onPhoto(captureUri, deleteAfter = capture) else capture.delete()
     }
+    // A phone may have no camera app (or none enabled), or no picker: say the photo did not work instead of crashing.
+    val launchCamera = {
+        try {
+            takePicture.launch(captureUri)
+        } catch (e: ActivityNotFoundException) {
+            viewModel.photoUnavailable()
+        }
+    }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) takePicture.launch(captureUri)
+        if (granted) launchCamera()
     }
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) viewModel.onPhoto(uri)
@@ -301,8 +321,14 @@ fun SprayWallPhotoScreen(
                 Text(stringResource(R.string.spray_wall_photo_failed), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("spray_photo_failed"))
             }
             val idle = !state.importing && !state.saving
-            val takePhoto = { if (cameraNeedsGrant(context)) cameraPermission.launch(Manifest.permission.CAMERA) else takePicture.launch(captureUri) }
-            val choosePhoto = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+            val takePhoto = { if (cameraNeedsGrant(context)) cameraPermission.launch(Manifest.permission.CAMERA) else launchCamera() }
+            val choosePhoto = {
+                try {
+                    pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                } catch (e: ActivityNotFoundException) {
+                    viewModel.photoUnavailable()
+                }
+            }
             if (state.photo == null) {
                 // No photo yet: taking one is the main action, and how to take it sits right under the tile.
                 Text(stringResource(R.string.spray_wall_photo_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -81,9 +81,10 @@ class SprayWallPublishing(
                 throw e
             } catch (e: SprayEventSigningFailed) {
                 // Deleting the photos would ask the signer again, and every later try would upload them anew. They
-                // stay recorded for the next try.
+                // stay recorded for the next try. The head, pending once a version went out, waits with them.
                 Log.w(TAG, "signing a wall version failed", e)
                 decline(key)
+                decline(headKey(wall))
                 left++
                 continue
             } catch (e: Exception) {
@@ -146,10 +147,14 @@ class SprayWallPublishing(
         val pending = repository.versions(wall.id).filter { it.number >= from }.sortedBy { it.number }
         // Versions on the same photo share one upload.
         val blobs = HashMap<String, Pair<String, String>>()
-        for (version in pending) {
+        for ((i, version) in pending.withIndex()) {
             val (sha, url) = blobs.getOrPut(version.photoFile) { upload(wall.id, version) }
             val event = SprayWallNostr.version(me, now(), version, sha, url, repository.holds(wall.id, version.number))
             check(send(event) > 0) { "no relay took version ${version.number}" }
+            // On the relays from here, even if the rest fails: a withdrawal takes it back, its photo stays, and it is
+            // no longer corrected in place. The head waits as pending until a relay takes it.
+            if (i == 0) repository.markHeadPending(wall.id)
+            repository.markPublished(wall.id, version.number)
         }
         val fresh = repository.wall(wall.id) ?: return pending.size
         check(send(SprayWallNostr.wallHead(me, stamp(SprayWallNostr.wallDTag(me, wall.id)), fresh)) > 0) { "no relay took the wall" }
@@ -177,7 +182,15 @@ class SprayWallPublishing(
     private fun climbsKey(wall: SprayWall) = Declined("climbs", wall.id, "", wall.updatedAt)
     private fun climbKey(climb: SprayClimb) = Declined("climb", climb.wallId, climb.uuid, climb.updatedAt)
 
-    private companion object {
-        const val TAG = "SprayWallPublishing"
+    companion object {
+        private const val TAG = "SprayWallPublishing"
+
+        /**
+         * A climb of mine deleted from [wall] gets a tombstone when it went out, and also on a public wall when it is
+         * not marked as published: an edit clears that mark until it goes out again, and its earlier event is still on
+         * the relays. A tombstone for a climb that never went out does no harm.
+         */
+        fun takesBack(climb: SprayClimb, wall: SprayWall?): Boolean =
+            climb.isMine && (climb.publishedAt != null || wall?.visibility == SprayWallVisibility.PUBLIC)
     }
 }

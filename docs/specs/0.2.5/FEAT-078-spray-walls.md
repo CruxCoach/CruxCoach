@@ -215,7 +215,9 @@ kind and no new Amber permission.
   on failure the wall shows "not published yet" with a retry. Signing and relays:
   `NostrSigner`, `NostrRelayPool.sendEventWithStats`. A version, head or climb the
   signer declines stops nothing else; it is not asked for again before the next start
-  or until it changes, and the retry asks again (`SprayWallPublishing`).
+  or until it changes, and the retry asks again (`SprayWallPublishing`). A version a
+  relay took counts as published at once (a withdrawal takes it back, it is no longer
+  corrected in place); a head that did not go out with it stays pending.
 - **New details of a published wall** (name, angle, gym) without a new version: the
   head alone goes out again. The wish is stored with the details (`head_pending`, a
   counter per change) and survives a restart; a head that reached a relay clears only

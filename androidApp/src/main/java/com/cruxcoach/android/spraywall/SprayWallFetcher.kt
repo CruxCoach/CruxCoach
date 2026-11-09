@@ -9,6 +9,8 @@ import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -81,7 +83,8 @@ class SprayWallFetcher @Inject constructor(
         val address = SprayWallNostr.wallAddress(owner, wallId)
         val headFilter = filter(author = owner, tags = mapOf("#d" to headDTag))
         val linkedFilter = filter(tags = mapOf("#a" to address), limit = LINKED_LIMIT)
-        val head = newestPerDTag(fetch(headFilter)).firstOrNull { it.dTag == headDTag }
+        // The owner's own head only, also from a relay that ignores the authors filter.
+        val head = newestPerDTag(fetch(headFilter)).firstOrNull { it.dTag == headDTag && it.author == owner }
         if (!mine) {
             when (head) {
                 is SprayWallNostr.Parsed.Tombstone -> {
@@ -130,12 +133,18 @@ class SprayWallFetcher @Inject constructor(
     }.toString()
 
     private suspend fun fetch(filter: String): List<SprayWallNostr.Parsed> {
-        // A slow relay must not cost the answers of the others: keep what came in by the timeout.
-        val raw = ArrayList<String>()
-        withTimeoutOrNull(FETCH_TIMEOUT_MS) { pool.fetchStored(filter).collect { raw += it } }
+        // A slow relay must not cost the answers of the others: keep what came in by the timeout. Anyone can tag a
+        // public wall, so what is kept is bounded: no oversized event, each copy once, and no more than a cap in all.
+        val raw = LinkedHashSet<String>()
+        var bytes = 0L
+        withTimeoutOrNull(FETCH_TIMEOUT_MS) {
+            pool.fetchStored(filter)
+                .filter { it.length <= MAX_EVENT_JSON }
+                .takeWhile { bytes < MAX_FETCH_BYTES }
+                .collect { if (raw.add(it)) bytes += it.length }
+        }
         val now = System.currentTimeMillis() / 1000
         return raw.mapNotNull { json ->
-            if (json.length > SprayWallNostr.MAX_EVENT_BYTES + 4096) return@mapNotNull null
             val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return@mapNotNull null
             if (!runCatching { event.verifyId() && event.verifySignature() }.getOrDefault(false)) return@mapNotNull null
             SprayWallNostr.parse(event.pubKey, event.createdAt, event.kind, event.tags.map { it.toList() }, event.content, now)
@@ -151,5 +160,9 @@ class SprayWallFetcher @Inject constructor(
         const val LISTING_LIMIT = 100
         const val LINKED_LIMIT = 2000
         const val MAX_PHOTO_BYTES = 16L * 1024 * 1024
+        /** An event's JSON: the event itself plus its id, key and signature. */
+        const val MAX_EVENT_JSON = SprayWallNostr.MAX_EVENT_BYTES + 4096
+        /** All events of one fetch: far above a busy wall (2000 climbs of a few KB, its versions), far below a phone's memory. */
+        const val MAX_FETCH_BYTES = 24L * 1024 * 1024
     }
 }

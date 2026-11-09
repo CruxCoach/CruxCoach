@@ -215,7 +215,7 @@
     <string name="spray_followed_note">%1$s hat diese Wand geteilt. Die Griffe sind festgelegt; du kannst Boulder darauf schrauben und loggen.</string>
     <string name="spray_followed_withdrawn">Der Besitzer hat diese Wand zurückgezogen. Sie bleibt hier für deine Boulder und dein Logbuch.</string>
     <string name="spray_followed_remove">Aus meinen Wänden entfernen</string>
-    <string name="spray_followed_remove_text">Das entfernt die Wand von diesem Handy, mit deinen Bouldern und Logbucheinträgen darauf. Die öffentliche Wand selbst bleibt.</string>
+    <string name="spray_followed_remove_text">Das entfernt die Wand von diesem Handy, mit deinen Bouldern und Logbucheinträgen darauf. Deine Boulder werden auch von den Servern zurückgezogen. Die öffentliche Wand selbst bleibt.</string>
     <string name="spray_venue_title">Spraywände hier</string>
     <string name="spray_venue_info">Öffentliche Spraywände, die Leute für diesen Ort geteilt haben. Sie werden erst von den Relays geladen, wenn du fragst.</string>
     <string name="spray_venue_show">Spraywände zeigen</string>

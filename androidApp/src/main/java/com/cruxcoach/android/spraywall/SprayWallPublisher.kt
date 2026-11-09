@@ -9,6 +9,7 @@ import com.cruxcoach.android.nostr.backup.BlossomUploader
 import com.cruxcoach.android.nostr.profile.ProfileImageUploader
 import com.cruxcoach.domain.spraywall.SprayClimb
 import com.cruxcoach.domain.spraywall.SprayNostrEvent
+import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVersion
 import com.vitorpamplona.quartz.nip01Core.core.Event
@@ -174,9 +175,10 @@ class SprayWallPublisher @Inject constructor(
         }.await()
     }
 
-    /** Withdraws one published climb of mine (it was deleted here). */
-    fun withdrawClimbSoon(climb: SprayClimb, wallOwner: String?) {
-        if (climb.publishedAt == null || !climb.isMine) return
+    /** Withdraws a climb of mine that was deleted here from [wall] ([SprayWallPublishing.takesBack]). */
+    fun withdrawClimbSoon(climb: SprayClimb, wall: SprayWall?) {
+        if (!SprayWallPublishing.takesBack(climb, wall)) return
+        val wallOwner = wall?.ownerPubkey
         scope.launch {
             mutex.withLock {
                 runCatching {
