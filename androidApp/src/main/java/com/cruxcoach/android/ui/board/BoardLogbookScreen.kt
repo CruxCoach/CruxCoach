@@ -24,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
@@ -309,6 +310,10 @@ fun BoardLogbookScreen(
                 val grouped = remember(state.ascents) {
                     state.ascents.groupBy { it.climbedAt.take(10) }
                 }
+                // One layout for every entry of the list (the cards span the width less the list's padding).
+                val entryLayout = logbookEntryLayout(
+                    state.ascents, state.flashUuids, LocalConfiguration.current.screenWidthDp.dp - 32.dp,
+                )
 
                 LaunchedEffect(tourStep, grouped) {
                     if (tourStep == TourStep.ENTRY) {
@@ -369,6 +374,7 @@ fun BoardLogbookScreen(
                                 isTrueFlash = ascent.uuid in state.flashUuids,
                                 isSelected = isSelected,
                                 showDate = false,
+                                layout = entryLayout,
                                 onClick = {
                                     viewModel.climbNavState.climbUuids = state.ascents.map { it.climbUuid }.distinct()
                                     viewModel.climbNavState.angle = ascent.angle.toInt()

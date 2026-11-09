@@ -110,28 +110,53 @@ tags:
     visible: "Als Bild teilen"
     timeout: 10000
 - pressKey: Back
-# The statistics of the whole logbook: the six numbers and the period's
-# bests hold the controlled attempt and send. The period and grade math stay
-# exact in BoardStatsComputerTest.
+# The statistics of the whole logbook: the six numbers hold the controlled
+# attempt and send. The period and grade math stay exact in
+# BoardStatsComputerTest.
 - tapOn: "Statistiken"
 - extendedWaitUntil:
-    visible: "Bestwerte im Zeitraum"
+    visible: "Begehungen, [1-9][0-9]*(, .*)?"
     timeout: 15000
-- assertVisible: "Begehungen, [1-9][0-9]*(, .*)?"
 - assertVisible: "Versuche, [1-9][0-9]*(, .*)?"
 - assertVisible: "Klettertage, [1-9][0-9]*(, .*)?"
 - assertVisible: "Boulder, [1-9][0-9]*(, .*)?"
-# The bests share their labels with the overview's chips, so they are
-# found below their heading.
-- assertVisible:
-    text: "Begehungen an einem Tag, [1-9][0-9]*(, .*)?"
-    below: "Bestwerte im Zeitraum"
-- assertVisible:
-    text: "Klettertage pro Woche, [0-9]+,[0-9]"
-    below: "Bestwerte im Zeitraum"
-- assertVisible:
-    text: "Wochen in Folge, [1-9][0-9]*"
-    below: "Bestwerte im Zeitraum"
+# The period's bests need history: a best of one is none, climbing days per
+# week need a period of two weeks, a streak two weeks in a row. On a phone
+# with only this flow's entries the section is not drawn, so each best is
+# checked where it is shown; its rules are tested in BoardStatsComputerTest.
+# The bests share their labels with the overview's chips, so they are found
+# below their heading.
+- runFlow:
+    when:
+      visible: "Bestwerte im Zeitraum"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              text: "Begehungen an einem Tag, .*"
+              below: "Bestwerte im Zeitraum"
+          commands:
+            - assertVisible:
+                text: "Begehungen an einem Tag, ([2-9]|[1-9][0-9]+)(, .*)?"
+                below: "Bestwerte im Zeitraum"
+      - runFlow:
+          when:
+            visible:
+              text: "Klettertage pro Woche, .*"
+              below: "Bestwerte im Zeitraum"
+          commands:
+            - assertVisible:
+                text: "Klettertage pro Woche, [0-9]+,[0-9]"
+                below: "Bestwerte im Zeitraum"
+      - runFlow:
+          when:
+            visible:
+              text: "Wochen in Folge, .*"
+              below: "Bestwerte im Zeitraum"
+          commands:
+            - assertVisible:
+                text: "Wochen in Folge, ([2-9]|[1-9][0-9]+)"
+                below: "Bestwerte im Zeitraum"
 - scrollUntilVisible:
     element: "Boulder je Grad"
     direction: DOWN

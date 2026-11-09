@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -89,15 +90,19 @@ class StatsUiReviewTest {
         val name = "${if (dark) "dark" else "light"}-$locale-fs$fontScale-w$width"
     }
 
+    /** Widths in dp; CRUXCOACH_UI_REVIEW_WIDTHS (e.g. "360") renders others. */
+    private val widths: List<Int> =
+        System.getenv("CRUXCOACH_UI_REVIEW_WIDTHS")?.split(",")?.mapNotNull { it.trim().toIntOrNull() } ?: listOf(411, 320)
+
     private val variants = buildList {
-        for (fontScale in listOf(1f, 2f)) for (width in listOf(411, 320)) {
+        for (fontScale in listOf(1f, 2f)) for (width in widths) {
             for (dark in listOf(true, false)) for (locale in listOf("de", "en")) add(Variant(dark, locale, fontScale, width))
         }
     }.filter { only == null || only in it.name }
 
     /** Two variants of each size side by side: every theme and language once per size. */
     private val pairs = listOf(1f, 2f).flatMap { fontScale ->
-        listOf(411, 320).map { width ->
+        widths.map { width ->
             val swap = (fontScale == 2f) != (width == 320)
             "fs$fontScale-w$width" to listOf(
                 Variant(dark = true, locale = if (swap) "en" else "de", fontScale, width),
@@ -336,20 +341,25 @@ class StatsUiReviewTest {
     @Composable
     private fun LogbookTop(log: List<AscentWithClimb>, days: Int = 2) {
         val flashes = BoardStatsComputer.trueFlashUuids(log)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            LogbookOverviewCard(
-                StatsHighlightsComputer.atAGlance(log, scale, flashes, clock),
-                StatsHighlightsComputer.milestones(log, scale, BoardStatsComputer.weekStreakOf(log, clock)),
-                brandsOf(log),
-                onOpenStats = {},
-            )
-            log.sortedByDescending { it.climbedAt }.groupBy { it.climbedAt.take(10) }.entries.take(days).forEach { (day, rows) ->
-                DayHeader(day, rows.size, onRecap = {})
-                rows.take(5).forEach { row ->
-                    AscentCard(
-                        ascent = row, gradeScale = scale, zones = zonesOf(log), isTrueFlash = row.uuid in flashes,
-                        isSelected = false, onClick = {}, onToggleSelect = {}, onEdit = {}, showDate = false,
-                    )
+        BoxWithConstraints {
+            // One layout for every entry, decided over the whole logbook like the app's list.
+            val layout = logbookEntryLayout(log, flashes, maxWidth)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LogbookOverviewCard(
+                    StatsHighlightsComputer.atAGlance(log, scale, flashes, clock),
+                    StatsHighlightsComputer.milestones(log, scale, BoardStatsComputer.weekStreakOf(log, clock)),
+                    brandsOf(log),
+                    onOpenStats = {},
+                )
+                log.sortedByDescending { it.climbedAt }.groupBy { it.climbedAt.take(10) }.entries.take(days).forEach { (day, rows) ->
+                    DayHeader(day, rows.size, onRecap = {})
+                    rows.take(5).forEach { row ->
+                        AscentCard(
+                            ascent = row, gradeScale = scale, zones = zonesOf(log), isTrueFlash = row.uuid in flashes,
+                            isSelected = false, onClick = {}, onToggleSelect = {}, onEdit = {}, showDate = false,
+                            layout = layout,
+                        )
+                    }
                 }
             }
         }

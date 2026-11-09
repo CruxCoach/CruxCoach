@@ -12,6 +12,11 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.outlined.Summarize
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -23,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
@@ -50,6 +56,8 @@ internal fun AscentCard(
     highlightEdit: Boolean = false,
     /** False under a day header that already names the day. */
     showDate: Boolean = true,
+    /** The layout, decided once for a whole list (see [logbookEntryLayout]); null decides for this card alone. */
+    layout: EntryLayout? = null,
 ) {
     val fontLarge = LocalDensity.current.fontScale >= LARGE_FONT_SCALE
     val grade = ascent.difficultyAverage?.let {
@@ -137,19 +145,13 @@ internal fun AscentCard(
             )
         }
     }
-    val outcomeText = when {
-        !ascent.isSend && ascent.bidCount > 1L -> stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
-        !ascent.isSend -> stringResource(R.string.board_ascent_open_one)
-        isTrueFlash -> "Flash"
-        ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
-        else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
-    }
+    val outcomeText = outcomeLabel(ascent, isTrueFlash)
     val outcomeColor = when {
         !ascent.isSend -> ErrorRed
         isTrueFlash -> SuccessGreen
         else -> OrangeAccent
     }
-    val outcomeStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+    val outcomeStyle = outcomeStyle()
     val outcomeWidth = widestText(listOf(outcomeText), outcomeStyle)
     val stars: @Composable () -> Unit = {
         ascent.quality?.let {
@@ -162,6 +164,16 @@ internal fun AscentCard(
     }
     val outcome: @Composable (Alignment.Horizontal) -> Unit = { alignment ->
         Column(horizontalAlignment = alignment) {
+            Text(outcomeText, style = outcomeStyle, color = outcomeColor)
+            stars()
+        }
+    }
+    // The result and its stars on one line, wrapping as whole items.
+    val outcomeLine: @Composable () -> Unit = {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            itemVerticalAlignment = Alignment.CenterVertically
+        ) {
             Text(outcomeText, style = outcomeStyle, color = outcomeColor)
             stars()
         }
@@ -187,8 +199,7 @@ internal fun AscentCard(
     }
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        // Stacked at large fonts, and whenever the result would leave the name less than 96 dp.
-        val large = fontLarge || maxWidth - ROW_FIXED_WIDTH - outcomeWidth < 96.dp
+        val entryLayout = layout ?: entryLayout(maxWidth, outcomeWidth, fontLarge)
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -197,7 +208,7 @@ internal fun AscentCard(
             colors = CardDefaults.cardColors(containerColor = containerColor),
             shape = RoundedCornerShape(12.dp)
         ) {
-            if (large) {
+            if (entryLayout == EntryLayout.STACKED) {
                 // Large font: the controls on top, the text below at full width, so the name,
                 // the result and the meta line never shrink to a column of single letters.
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -209,14 +220,7 @@ internal fun AscentCard(
                         edit()
                     }
                     name()
-                    // The result and its stars on one line, wrapping as whole items.
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        itemVerticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(outcomeText, style = outcomeStyle, color = outcomeColor)
-                        stars()
-                    }
+                    outcomeLine()
                     meta()
                     comment()
                 }
@@ -231,11 +235,14 @@ internal fun AscentCard(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         name()
+                        if (entryLayout == EntryLayout.RESULT_BELOW) outcomeLine()
                         meta()
                         comment()
                     }
-                    outcome(Alignment.End)
-                    Spacer(modifier = Modifier.width(4.dp))
+                    if (entryLayout == EntryLayout.RESULT_BESIDE) {
+                        outcome(Alignment.End)
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
                     edit()
                 }
             }
@@ -243,8 +250,68 @@ internal fun AscentCard(
     }
 }
 
+/** How a logbook entry lays out, from the widest to the narrowest. */
+internal enum class EntryLayout {
+    /** One row, the result at its end. */
+    RESULT_BESIDE,
+    /** One row, the result under the name, when beside it the name would get too little room. */
+    RESULT_BELOW,
+    /** The controls on top and the text below at full width: at large fonts and on very narrow cards. */
+    STACKED,
+}
+
 /** What an entry row needs beside its name and result: padding, checkbox, grade, gaps and the edit button. */
 private val ROW_FIXED_WIDTH = (12 + 36 + 8 + 48 + 12 + 4 + 48 + 12).dp
+
+/** The name keeps at least this much room in a row. */
+private val MIN_NAME_WIDTH = 96.dp
+
+private fun entryLayout(cardWidth: Dp, outcomeWidth: Dp, fontLarge: Boolean) = when {
+    fontLarge -> EntryLayout.STACKED
+    cardWidth - ROW_FIXED_WIDTH - outcomeWidth >= MIN_NAME_WIDTH -> EntryLayout.RESULT_BESIDE
+    cardWidth - ROW_FIXED_WIDTH >= MIN_NAME_WIDTH -> EntryLayout.RESULT_BELOW
+    else -> EntryLayout.STACKED
+}
+
+/**
+ * The layout of a list's entries, decided once for all of them by their
+ * widest result ("Offen · 12 Versuche"), so the cards of one list never mix
+ * layouts.
+ */
+@Composable
+internal fun logbookEntryLayout(entries: List<AscentWithClimb>, flashUuids: Set<String>, cardWidth: Dp): EntryLayout {
+    val fontLarge = LocalDensity.current.fontScale >= LARGE_FONT_SCALE
+    // A few distinct results stand for the whole list.
+    val kinds = remember(entries, flashUuids) {
+        entries.map { OutcomeKind(it.isSend, it.bidCount, it.uuid in flashUuids) }.distinct()
+    }
+    val labels = kinds.map { outcomeLabel(it.isSend, it.bidCount, it.flash) }
+    val layout = entryLayout(cardWidth, widestText(labels, outcomeStyle()), fontLarge)
+    // A list only ever moves to a narrower layout, so a later page with a
+    // longer result re-lays the cards on screen at most once.
+    var narrowest by remember(cardWidth) { mutableStateOf(layout) }
+    SideEffect { if (layout > narrowest) narrowest = layout }
+    return maxOf(layout, narrowest)
+}
+
+private data class OutcomeKind(val isSend: Boolean, val bidCount: Long, val flash: Boolean)
+
+@Composable
+private fun outcomeStyle() = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+
+@Composable
+private fun outcomeLabel(ascent: AscentWithClimb, isTrueFlash: Boolean) =
+    outcomeLabel(ascent.isSend, ascent.bidCount, isTrueFlash)
+
+/** "Flash", "Top · 3 Versuche", "Offen · 2 Versuche" …: an entry's result. */
+@Composable
+private fun outcomeLabel(isSend: Boolean, bidCount: Long, isTrueFlash: Boolean): String = when {
+    !isSend && bidCount > 1L -> stringResource(R.string.board_ascent_attempts_count, bidCount)
+    !isSend -> stringResource(R.string.board_ascent_open_one)
+    isTrueFlash -> "Flash"
+    bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
+    else -> stringResource(R.string.board_ascent_tries, bidCount)
+}
 
 /** Tiny, muted pill naming the board family a logbook entry was logged on.
  *  Uses [BoardBrand.displayName] (proper noun, not localized) so a newly
