@@ -164,7 +164,6 @@ internal fun BoardStatsSheetContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         InfoHeading(stringResource(R.string.board_stats_title), stringResource(R.string.ux_stats_help))
-        yearReview()
 
         // Filters first: everything below follows the period and the board.
         StatsIntervalChips(
@@ -200,6 +199,8 @@ internal fun BoardStatsSheetContent(
                     .takeIf { statsInterval != StatsTimeInterval.ALL || customDateFrom != null },
             )
         }
+        // Below the numbers, so a card that arrives later moves nothing above them.
+        yearReview()
 
         // How the boards feel against each other, when there is enough
         // data. Spans every board whatever the board filter is.
