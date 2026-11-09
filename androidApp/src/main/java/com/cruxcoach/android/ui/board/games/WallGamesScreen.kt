@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.ConnectionState
@@ -117,6 +118,11 @@ fun WallGamesScreen(
     var showClimbPicker by rememberSaveable { mutableStateOf(false) }
 
     KeepScreenOn(state.running)
+    // Back from the catalogues (or anywhere) without a board: look again.
+    LifecycleResumeEffect(Unit) {
+        viewModel.reloadIfMissing()
+        onPauseOrDispose {}
+    }
 
     if (showConnection) BleConnectionSheet(onDismiss = { showConnection = false })
     if (showClimbPicker) {

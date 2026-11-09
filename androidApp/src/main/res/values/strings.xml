@@ -3404,12 +3404,12 @@
     <string name="wall_games_level_3">Medium</string>
     <string name="wall_games_level_4">Hard</string>
     <string name="wall_games_level_5">Very hard</string>
-    <string name="wall_games_lava_interval">One row every %1$s s</string>
-    <string name="wall_games_endurance_interval">New holds every %1$s s</string>
+    <string name="wall_games_lava_interval">One row every %1$s\u00A0s</string>
+    <string name="wall_games_endurance_interval">New holds every %1$s\u00A0s</string>
     <string name="wall_games_tempo">Tempo</string>
     <string name="wall_games_tempo_slower">Slower</string>
     <string name="wall_games_tempo_faster">Faster</string>
-    <string name="wall_games_traverse_interval">Next move every %1$s s</string>
+    <string name="wall_games_traverse_interval">Next move every %1$s\u00A0s</string>
     <string name="wall_games_density">Share of holds</string>
     <string name="wall_games_density_value">%1$d %%</string>
     <string name="wall_games_new_climb">New climb</string>

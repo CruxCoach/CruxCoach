@@ -30,6 +30,7 @@ import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -142,13 +143,49 @@ class WallGamesViewModel @Inject constructor(
         onBeep = { if (mutableState.value.soundOn) sounds.play(it) },
     )
 
+    /** The climb this screen was opened with ("Play as a game"), if any. */
+    private val startClimbUuid: String? = savedStateHandle["climbUuid"]
+    private val startAngle: Int = savedStateHandle["angle"] ?: -1
+    private var loadJob: Job? = null
+
     init {
         // Every game step is a frame of its own: while this screen is open the
         // wall belongs to the game, not to a chosen LED effect.
         ledEffects.pause(AnimationPauseOwner.WALL_GAME)
-        val climbUuid: String? = savedStateHandle["climbUuid"]
-        val angle: Int = savedStateHandle["angle"] ?: -1
+        loadBoard()
+        viewModelScope.launch { runner.run.collect { run -> mutableState.update { it.copy(run = run) } } }
         viewModelScope.launch {
+            // After a reconnect the wall shows nothing of ours: put the current frame back.
+            var previous = ble.connectionState.value
+            ble.connectionState.collect { now ->
+                if (now == ConnectionState.CONNECTED && previous == ConnectionState.CONNECTING) {
+                    sender.forget()
+                    val s = mutableState.value
+                    when {
+                        s.running && s.run.phase == GamePhase.RUNNING -> sender.show(s.run.lit)
+                        s.game == WallGame.THIEF && s.thiefLive -> sender.show(s.thiefRoute)
+                    }
+                }
+                if (now == ConnectionState.DISCONNECTED) {
+                    mutableState.update { it.copy(sendProblem = null) }
+                }
+                previous = now
+            }
+        }
+    }
+
+    /**
+     * Back on the screen without a board, e.g. from the catalogues the "no hold positions" state
+     * opens: try again, so the downloaded holds show without leaving the games.
+     */
+    fun reloadIfMissing() {
+        if (mutableState.value.board != null || loadJob?.isActive == true) return
+        mutableState.update { it.copy(loading = true) }
+        loadBoard()
+    }
+
+    private fun loadBoard() {
+        loadJob = viewModelScope.launch {
             val load = try {
                 withContext(Dispatchers.IO) { loader.load() }
             } catch (cancelled: CancellationException) {
@@ -167,30 +204,11 @@ class WallGamesViewModel @Inject constructor(
                 )
             }
             if (board != null) {
-                if (climbUuid != null) {
+                if (startClimbUuid != null) {
                     mutableState.update { it.copy(game = WallGame.ENDURANCE) }
-                    chooseClimb(climbUuid, angle)
+                    chooseClimb(startClimbUuid, startAngle)
                 }
                 observeRecentClimbs(board)
-            }
-        }
-        viewModelScope.launch { runner.run.collect { run -> mutableState.update { it.copy(run = run) } } }
-        viewModelScope.launch {
-            // After a reconnect the wall shows nothing of ours: put the current frame back.
-            var previous = ble.connectionState.value
-            ble.connectionState.collect { now ->
-                if (now == ConnectionState.CONNECTED && previous == ConnectionState.CONNECTING) {
-                    sender.forget()
-                    val s = mutableState.value
-                    when {
-                        s.running && s.run.phase == GamePhase.RUNNING -> sender.show(s.run.lit)
-                        s.game == WallGame.THIEF && s.thiefLive -> sender.show(s.thiefRoute)
-                    }
-                }
-                if (now == ConnectionState.DISCONNECTED) {
-                    mutableState.update { it.copy(sendProblem = null) }
-                }
-                previous = now
             }
         }
     }

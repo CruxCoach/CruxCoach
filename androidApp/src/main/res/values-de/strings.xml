@@ -3403,12 +3403,12 @@
     <string name="wall_games_level_3">Mittel</string>
     <string name="wall_games_level_4">Schwer</string>
     <string name="wall_games_level_5">Sehr schwer</string>
-    <string name="wall_games_lava_interval">Eine Reihe alle %1$s s</string>
-    <string name="wall_games_endurance_interval">Neue Griffe alle %1$s s</string>
+    <string name="wall_games_lava_interval">Eine Reihe alle %1$s\u00A0s</string>
+    <string name="wall_games_endurance_interval">Neue Griffe alle %1$s\u00A0s</string>
     <string name="wall_games_tempo">Tempo</string>
     <string name="wall_games_tempo_slower">Langsamer</string>
     <string name="wall_games_tempo_faster">Schneller</string>
-    <string name="wall_games_traverse_interval">Nächster Zug alle %1$s s</string>
+    <string name="wall_games_traverse_interval">Nächster Zug alle %1$s\u00A0s</string>
     <string name="wall_games_density">Anteil der Griffe</string>
     <string name="wall_games_density_value">%1$d %%</string>
     <string name="wall_games_new_climb">Neuer Boulder</string>
