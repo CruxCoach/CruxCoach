@@ -33,6 +33,7 @@ import java.time.LocalDate
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The overview at the top of the logbook is computed on its own, before the
@@ -166,6 +167,25 @@ class BoardLogbookOverviewLoadTest {
         val s = vm.state.first { it.statsReady }
         assertEquals(StatsTimeInterval.DAYS_30, s.statsInterval)
         assertEquals(2, s.stats.totalSends)
+    }
+
+    @Test
+    fun aPeriodTappedAfterAFailedLoadReadsTheLogbookAgain() = runTest {
+        val reads = AtomicInteger(0)
+        every { personalBoardRepo.getUserLogbookAllLight() } answers {
+            if (reads.getAndIncrement() == 0) throw IllegalStateException("database busy")
+            logbook
+        }
+        val vm = buildViewModel()
+        // The failed read ends the loading sign with nothing in it.
+        val failed = vm.state.first { it.statsReady }
+        assertEquals(0, failed.stats.totalSends)
+        assertEquals(1, reads.get())
+        vm.setStatsInterval(StatsTimeInterval.DAYS_30)
+        val s = vm.state.first { it.statsReady && it.stats.totalSends > 0 }
+        assertEquals(StatsTimeInterval.DAYS_30, s.statsInterval)
+        assertEquals(2, s.stats.totalSends)
+        assertEquals(2, reads.get())
     }
 
     private fun climb(name: String, difficulty: Double?, layoutId: Long) = ClimbWithStats(

@@ -234,6 +234,8 @@ class BoardLogbookViewModel @Inject constructor(
     private var statsJob: Job? = null
     /** The whole logbook has been read once; the statistics wait for it. */
     private var logbookLoaded = false
+    /** The last read of the whole logbook failed; a period or board tap in the sheet reads it again. */
+    private var logbookLoadFailed = false
 
     companion object {
         private const val PAGE_SIZE = 50
@@ -501,6 +503,7 @@ class BoardLogbookViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "preloadStats failed; stats sheet may show stale", e)
+                logbookLoadFailed = true
                 // The statistics wait for this load: end their loading sign.
                 _state.update { it.copy(statsReady = true) }
             }
@@ -740,7 +743,15 @@ class BoardLogbookViewModel @Inject constructor(
         // Not before the whole logbook is read: a period or board tapped while it
         // loads would compute an empty logbook and end the sheet's loading sign.
         // The load computes the newest choice once it is done.
-        if (!logbookLoaded) return
+        if (!logbookLoaded) {
+            // After a failed read, the tap reads the logbook again, with the loading sign.
+            if (logbookLoadFailed) {
+                logbookLoadFailed = false
+                _state.update { it.copy(statsReady = false) }
+                preloadStats()
+            }
+            return
+        }
         // Only the newest choice may land: a slow "All" started before a tap on
         // "30 days" must not overwrite it when it finishes later.
         statsJob?.cancel()
