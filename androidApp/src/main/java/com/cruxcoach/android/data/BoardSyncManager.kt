@@ -27,7 +27,7 @@ import com.cruxcoach.android.util.ShareCompression
 import com.cruxcoach.android.util.withBackgroundThreadPriority
 import com.cruxcoach.android.updater.IntegrityVerifier
 import com.cruxcoach.util.DateTimeUtil
-import com.cruxcoach.data.repository.getClimbByUuidAnySpelling
+import com.cruxcoach.data.repository.getClimbsByUuidAnySpelling
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -2526,40 +2526,58 @@ class BoardSyncManager(
             val keys = personalBoardRepo.getAllClimbKeys()
             if (keys.isEmpty()) return
             Log.d(TAG, "Refreshing denormalized data for ${keys.size} climb keys")
-
-            // Chunk into batches so the secure-DB write lock is released
-            // periodically, letting concurrent user writes (log ascent,
-            // favorites toggle, comment edit) interleave instead of
-            // blocking for the whole loop on users with many ascents.
-            keys.chunked(REFRESH_BATCH_SIZE).forEach { batch ->
-                personalBoardRepo.runInTransaction {
-                    for ((climbUuid, angle) in batch) {
-                        // A log keeps the spelling of whatever wrote it — the
-                        // Kilter API, an Aurora export, or a restore that
-                        // lowercased it — while the catalogue stores the climb
-                        // in one of three forms. Try the indexed spellings,
-                        // then fall back to the normalized scan so a row is
-                        // never missed for its hyphens or its case alone.
-                        val climb = boardRepository
-                            .getClimbByUuidAnySpelling(climbUuid, angle.toInt())
-                            ?: continue
-                        // Also back-fills board_brand + layout_id, self-healing
-                        // legacy / restored rows that defaulted to kilter/NULL.
-                        personalBoardRepo.updateAscentDenormalized(
-                            climbUuid, angle, climb.name, climb.difficultyAverage,
-                            climb.frames, climb.framesCount,
-                            climb.boardBrand, climb.layoutId
-                        )
-                        personalBoardRepo.updateBidDenormalized(
-                            climbUuid, angle, climb.name, climb.difficultyAverage,
-                            climb.boardBrand, climb.layoutId
-                        )
-                    }
-                }
-            }
+            refreshLogbookDenormalized(keys, boardRepository, personalBoardRepo, REFRESH_BATCH_SIZE)
             Log.d(TAG, "Denormalized data refresh complete")
         } catch (e: Exception) {
             Log.w(TAG, "Denormalized data refresh failed (non-fatal)", e)
+        }
+    }
+}
+
+/**
+ * Copies the catalogue's name, grade, frames, brand and layout onto the logbook
+ * entries of [keys] (climb uuid, angle) in the per-key SecureDB.
+ *
+ * The catalogue is read before each batch's SecureDB transaction, not inside it:
+ * the SecureDB has one connection, and every logbook read waits while a
+ * transaction holds it. A climb the catalogue lacks (a board whose catalogue is
+ * not downloaded, a deleted climb) costs a scan of the whole catalogue; a batch
+ * shares one scan for all its misses.
+ */
+internal fun refreshLogbookDenormalized(
+    keys: List<Pair<String, Long>>,
+    boardRepository: com.cruxcoach.data.repository.BoardRepository,
+    personalBoardRepo: com.cruxcoach.data.repository.PersonalBoardRepository,
+    batchSize: Int,
+) {
+    // Batches release the secure-DB write lock periodically, letting concurrent
+    // user writes (log ascent, favorites toggle, comment edit) interleave instead
+    // of blocking for the whole loop on users with many ascents.
+    keys.chunked(batchSize).forEach { batch ->
+        // A log keeps the spelling of whatever wrote it — the Kilter API, an
+        // Aurora export, or a restore that lowercased it — while the catalogue
+        // stores the climb in one of three forms. Try the indexed spellings, then
+        // the normalized scan, so a row is never missed for its hyphens or its
+        // case alone.
+        val climbs = boardRepository.getClimbsByUuidAnySpelling(
+            batch.map { (climbUuid, angle) -> climbUuid to angle.toInt() }
+        )
+        if (climbs.isEmpty()) return@forEach
+        personalBoardRepo.runInTransaction {
+            for ((climbUuid, angle) in batch) {
+                val climb = climbs[climbUuid to angle.toInt()] ?: continue
+                // Also back-fills board_brand + layout_id, self-healing
+                // legacy / restored rows that defaulted to kilter/NULL.
+                personalBoardRepo.updateAscentDenormalized(
+                    climbUuid, angle, climb.name, climb.difficultyAverage,
+                    climb.frames, climb.framesCount,
+                    climb.boardBrand, climb.layoutId
+                )
+                personalBoardRepo.updateBidDenormalized(
+                    climbUuid, angle, climb.name, climb.difficultyAverage,
+                    climb.boardBrand, climb.layoutId
+                )
+            }
         }
     }
 }
