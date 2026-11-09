@@ -50,6 +50,7 @@ import com.cruxcoach.android.data.LedHoldColors
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.BrandOrange
+import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
 import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardImage
@@ -336,8 +337,9 @@ internal fun KilterBoardVisualization(
             val currentFrameSet = remember(currentFrameHolds) {
                 currentFrameHolds?.map { it.placementId }?.toSet()
             }
-            // The bright orange: the rings sit on the dark board photo in both themes.
-            val selectedColor = BrandOrange
+            // On a board photo (no transparency) the rings take the bright orange in both themes.
+            // Hold pictures without a backdrop sit on the card, where the theme's orange reads.
+            val selectedColor = if (boardBitmap?.hasAlpha == false) BrandOrange else OrangeAccent
 
             // Drag-preview state: hold ID highlighted during long-press drag
             var dragPreviewHoldId by remember { mutableStateOf<Int?>(null) }
@@ -541,12 +543,12 @@ internal fun KilterBoardVisualization(
                     val bottom = (quantumCorners?.maxOf { it.y }
                         ?: size.height - (zoneToDraw.minY.toFloat() - edgeBottom) * yScale).plus(pad).coerceAtMost(size.height)
                     drawRect(
-                        color = BrandOrange.copy(alpha = 0.15f),
+                        color = selectedColor.copy(alpha = 0.15f),
                         topLeft = Offset(left, top),
                         size = androidx.compose.ui.geometry.Size(right - left, bottom - top)
                     )
                     drawRect(
-                        color = BrandOrange,
+                        color = selectedColor,
                         topLeft = Offset(left, top),
                         size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
                         style = Stroke(width = 2.dp.toPx())
