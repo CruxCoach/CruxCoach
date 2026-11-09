@@ -187,16 +187,17 @@ class BoardPacketEncoder(
         // channel. One hold position with one channel at full counts 1.
 
         /** Dimming steps tried in order until a picture fits. */
-        private val V3_PICTURE_SCALES = doubleArrayOf(1.0, 0.8, 0.6, 0.4, 0.2)
+        private val V3_PICTURE_SCALES = doubleArrayOf(1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2)
 
         /** How many full colour channels an RGB332 colour lights (white = 3). */
         fun v3ChannelLoad(color: Int): Double =
             ((color shr 5) and 0x07) / 7.0 + ((color shr 2) and 0x07) / 7.0 + (color and 0x03) / 3.0
 
-        /** [color] with every channel scaled down; a channel that is on stays on. */
+        /** [color] with every channel scaled down and rounded, so the hue holds as far as
+         *  RGB332 allows; a channel that is on stays on. */
         internal fun scaleRgb332(color: Int, scale: Double): Int {
             fun channel(value: Int): Int =
-                if (value == 0) 0 else kotlin.math.floor(value * scale).toInt().coerceAtLeast(1)
+                if (value == 0) 0 else kotlin.math.floor(value * scale + 0.5).toInt().coerceIn(1, value)
             return (channel((color shr 5) and 0x07) shl 5) or
                 (channel((color shr 2) and 0x07) shl 2) or
                 channel(color and 0x03)

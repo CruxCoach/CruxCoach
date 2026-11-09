@@ -20,8 +20,18 @@ val BoardBrand.supportsPaintBox: Boolean
     get() = usesAuroraProtocol || this == BoardBrand.MOONBOARD || this == BoardBrand.QUANTUM
 
 /** Same physical board configuration; the label is only display text. */
-fun PaintBoard.sameBoardAs(other: PaintBoard): Boolean =
-    brand == other.brand && layoutId == other.layoutId && sizeId == other.sizeId && holdSets == other.holdSets
+fun PaintBoard.sameBoardAs(other: PaintBoard): Boolean {
+    if (brand != other.brand || layoutId != other.layoutId) return false
+    if (brand != "moonboard") return sizeId == other.sizeId && holdSets == other.holdSets
+    // A MoonBoard has no product size (the saved one belongs to another board),
+    // and no hold sets means all of the variant's.
+    return mountedMoonHoldSets() == other.mountedMoonHoldSets()
+}
+
+private fun PaintBoard.mountedMoonHoldSets(): Set<Long> {
+    val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong()) ?: return holdSets.toSet()
+    return holdSets.ifEmpty { MoonBoardHoldSets.setIdsFor(variant) }.toSet()
+}
 
 fun PaintBoard.moonHoldIds(): Set<Int> {
     val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong()) ?: return emptySet()

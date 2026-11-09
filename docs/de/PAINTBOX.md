@@ -30,7 +30,7 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 - Live-Malen pausiert, wenn die Verbindung abbricht, wenn du den Bildschirm oder
   die App verlässt und wenn du das Board wechselst. Wieder einschalten tust du
   es selbst.
-- Solange eine gemeinsame Sitzung oder die Board-Freigabe das Board hält,
+- Solange eine Sitzung, eine Playlist oder die Board-Freigabe das Board hält,
   sendet PaintBox nichts und Live bleibt aus.
 
 | Board | Farben |

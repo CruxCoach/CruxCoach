@@ -54,6 +54,17 @@ class PaintBoxTest {
         assertTrue(runCatching { base.copy(colors = mapOf(1 to 255)).validate() }.isFailure)
         assertTrue(runCatching { base.copy(id = "../escape").validate() }.isFailure)
     }
+    @Test fun `a MoonBoard is the same board whatever product size is saved`() {
+        val variant = com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
+        val moon = PaintBoard("moonboard", variant.layoutId.toInt(), 10)
+        val sets = com.cruxcoach.domain.board.MoonBoardHoldSets.setIdsFor(variant)
+        assertTrue(sets.size > 1)
+        assertTrue(moon.sameBoardAs(moon.copy(sizeId = 6)))
+        // No hold sets means all of them.
+        assertTrue(moon.sameBoardAs(moon.copy(holdSets = sets)))
+        assertFalse(moon.sameBoardAs(moon.copy(holdSets = sets.take(1))))
+        assertFalse(PaintBoard("kilter", 1, 10).sameBoardAs(PaintBoard("kilter", 1, 6)))
+    }
     @Test fun `MoonBoard mounted sets constrain paint and survive save data`() {
         val board = PaintBoard("moonboard", 2, 0, listOf(2L))
         val mounted = board.moonHoldIds()

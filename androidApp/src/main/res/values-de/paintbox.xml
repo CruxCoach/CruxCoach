@@ -47,7 +47,7 @@
     <string name="paintbox_sending">Sendet …</string>
     <string name="paintbox_on_board">Auf dem Board</string>
     <string name="paintbox_save_current">Aktuelles Bild speichern</string>
-    <string name="paintbox_session_active">Eine gemeinsame Sitzung steuert das Board, deshalb zeigt PaintBox nichts darauf.</string>
+    <string name="paintbox_session_active">Eine Sitzung oder Playlist steuert das Board, deshalb zeigt PaintBox nichts darauf. Beende sie zuerst.</string>
     <string name="paintbox_relay_active">Die Board-Freigabe ist an, deshalb zeigt PaintBox nichts auf dem Board. Beende zuerst die Freigabe.</string>
     <string name="paintbox_api2_limit">Die LED-Box dieses Boards leuchtet bis zu 127 Holds auf einmal. Es wurde nichts gesendet.</string>
     <string name="paintbox_local_only">Bilder bleiben auf diesem Handy und sind nicht Teil des Backups.</string>

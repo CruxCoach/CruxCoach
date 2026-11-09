@@ -42,6 +42,10 @@ class PaintBoxViewModelTest {
             BoardPlacement(1, 1, 1, 10, 10), BoardPlacement(2, 2, 1, 20, 20), BoardPlacement(4, 4, 1, 40, 40))
         every { boards.getPlacementLedMap(10, "kilter") } returns mapOf(1 to 10, 2 to 20)
         every { boards.getPlacementLedMap(12, "kilter") } returns mapOf(3 to 30)
+        // Size 14: the layout is known, its catalogue (LED data) is not on the phone.
+        every { boards.getProductSize(14, "kilter") } returns BoardSize(14, 1, "Missing", 0, 100, 0, 100, null)
+        every { boards.getPlacementsForLayout(14, 1, "kilter") } returns listOf(BoardPlacement(5, 5, 1, 50, 50))
+        every { boards.getPlacementLedMap(14, "kilter") } returns emptyMap()
         every { ble.connectionState } returns connection
         every { ble.connectedBoard } returns DiscoveredBoard("Test", "test", 3, "AA", -40)
         coEvery { projector.send(any(), any(), any()) } returns true
@@ -240,6 +244,23 @@ class PaintBoxViewModelTest {
         val loaded = vm.state.first { it.document?.name == "Old" && !it.loading }
         assertEquals(mapOf(1 to 28), loaded.document!!.colors)
         assertFalse(loaded.dirty)
+    }
+    @Test fun `a picture opened without the board's catalogue keeps its holds for the retry`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.load(PaintDocument(board = PaintBoard("kilter", 1, 14), name = "Away", colors = mapOf(5 to 28)))
+        val opened = vm.state.first { it.document?.name == "Away" && !it.loading }
+        assertTrue(opened.missingBoard)
+        assertEquals(mapOf(5 to 28), opened.document!!.colors)
+    }
+    @Test fun `the connection sheet ends an earlier agreement to leave the picture`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.paint(setOf(1))
+        // Discard was chosen for the picker, which then kept the open board.
+        vm.boardPicked()
+        vm.connectionSheetOpened()
+        savedSize.value = 12
+        val asked = vm.state.first { it.boardChange != null }
+        assertEquals(mapOf(1 to 28), asked.document!!.colors)
     }
     @Test fun `a session or board sharing stops live and keeps it off`() = runTest(dispatcher) {
         vm.state.first { !it.loading }

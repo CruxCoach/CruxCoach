@@ -29,8 +29,8 @@ the board button above the picture switches to another one.
   Turning it off stops sending; the board keeps what it shows.
 - Live painting pauses when the connection drops, when you leave the screen or
   the app, and when you change boards. You turn it on again yourself.
-- While a shared session or board sharing holds the board, PaintBox sends
-  nothing and Live stays off.
+- While a session, a playlist or board sharing holds the board, PaintBox
+  sends nothing and Live stays off.
 
 | Board | Colors |
 | --- | --- |

@@ -108,13 +108,15 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
     fun cancelPending() { pendingAction = null; cancelAction?.invoke(); cancelAction = null }
     fun runPending() { cancelAction = null; pendingAction?.invoke(); pendingAction = null }
     // The app's board changed while the picture has unsaved changes: ask once the sheet is closed.
-    LaunchedEffect(state.boardChange, bluetooth, askUnsaved, saveDialog) {
+    LaunchedEffect(state.boardChange, state.dirty, bluetooth, askUnsaved, saveDialog) {
         if (state.boardChange != null && !bluetooth && !askUnsaved && !saveDialog) {
+            if (!state.dirty) { viewModel.openBoardChange(); return@LaunchedEffect }
             pendingAction = viewModel::openBoardChange
             cancelAction = viewModel::keepBoard
             askUnsaved = true
         }
     }
+    LaunchedEffect(bluetooth) { if (bluetooth) viewModel.connectionSheetOpened() }
     fun back() { if (importing) viewModel.cancelImage() else navigate(onBack) }
     fun openSave(copy: Boolean) { name = document?.name.orEmpty(); saveCopy = copy; saveDialog = true }
     BackHandler { back() }

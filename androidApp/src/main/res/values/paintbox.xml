@@ -47,7 +47,7 @@
     <string name="paintbox_sending">Sending…</string>
     <string name="paintbox_on_board">On the board</string>
     <string name="paintbox_save_current">Save the current picture</string>
-    <string name="paintbox_session_active">A shared session controls the board, so PaintBox doesn’t light it.</string>
+    <string name="paintbox_session_active">A session or playlist controls the board, so PaintBox doesn’t light it. End it first.</string>
     <string name="paintbox_relay_active">Board sharing is on, so PaintBox doesn’t light the board. Stop sharing first.</string>
     <string name="paintbox_api2_limit">This board’s LED box lights up to 127 holds at once. Nothing was sent.</string>
     <string name="paintbox_local_only">Pictures stay on this phone and are not part of the backup.</string>

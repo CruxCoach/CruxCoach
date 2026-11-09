@@ -81,7 +81,8 @@ class PaintBoxViewModel @Inject constructor(
                 when {
                     open == null -> openBoard(board)
                     open.sameBoardAs(board) -> mutable.update { it.copy(boardChange = null) }
-                    leaveAgreed || !state.value.dirty -> openBoard(board)
+                    // While a board or picture opens, nothing unsaved is on screen: the newer choice wins.
+                    leaveAgreed || !state.value.dirty || loadJob?.isActive == true -> openBoard(board)
                     else -> { pause(); mutable.update { it.copy(boardChange = board) } }
                 }
             }
@@ -122,6 +123,8 @@ class PaintBoxViewModel @Inject constructor(
     }
     /** Keeps painting the open picture on its own board. */
     fun keepBoard() { mutable.update { it.copy(boardChange = null) } }
+    /** The connection sheet can save another board: an earlier agreement to leave the picture ends here. */
+    fun connectionSheetOpened() { leaveAgreed = false }
     /** Whether opening [document] changes the app's board, which the user confirms first. */
     fun switchesBoard(document: PaintDocument): Boolean = appBoard?.let { !document.board.sameBoardAs(it) } == true
     private fun openBoard(board: PaintBoard) {
@@ -163,7 +166,8 @@ class PaintBoxViewModel @Inject constructor(
         val label = if (detail == null && board.label.isNotBlank()) board.label
             else boardSelectionLabel(brand, board.layoutId, detail)
         val paintable = placements.mapTo(mutableSetOf()) { it.placementId.toInt() }
-        val colors = if (board.brand == "moonboard" || !supported) document.colors
+        // Without board data (catalogue missing) the picture stays whole for the retry.
+        val colors = if (board.brand == "moonboard" || !supported || paintable.isEmpty()) document.colors
             else document.colors.filterKeys { it in paintable }
         val labelled = document.copy(board = board.copy(label = label), colors = colors)
         history.clear()
@@ -176,6 +180,8 @@ class PaintBoxViewModel @Inject constructor(
             ledMap = leds, loading = false,
             missingBoard = supported && board.brand != "moonboard" && (geometry.first == null || placements.isEmpty()),
             unsupportedBoard = !supported,
+            // A board chosen elsewhere while this one opened still waits for its answer.
+            boardChange = previous.boardChange?.takeUnless { it.sameBoardAs(board) },
             library = mutable.value.library)
     }
     /** Opens a saved picture and makes its board the app's board (the screen asks first, see [switchesBoard]). */

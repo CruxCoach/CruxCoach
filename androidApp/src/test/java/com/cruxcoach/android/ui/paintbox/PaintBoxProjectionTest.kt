@@ -52,6 +52,15 @@ class PaintBoxProjectionTest {
         coVerify { ble.sendRawLeds(match { leds -> leds.size == 90 && leds.all { it.second != 0xff } &&
             leds.sumOf { BoardPacketEncoder.v3ChannelLoad(it.second) } <= 90.0 }, BoardBrand.KILTER, any()) }
     }
+    @Test fun `the API-3 budget counts LEDs, not the placements of every layout`() = runTest {
+        kilter()
+        // Two layouts on one size: 60 placements, 30 LEDs.
+        val ledMap = (1..60).associateWith { (it - 1) % 30 + 1 }
+        val white = PaintDocument(board = PaintBoard("kilter", 1, 10), colors = (1..15).associateWith { 0xff })
+        assertTrue(projector.send(white, ledMap) { true })
+        // 15 white holds draw 45: above 30 LEDs, below the 60 placements.
+        assertTrue(projector.lastSendDimmed)
+    }
     @Test fun `an API-2 picture that its power limit would show dark is refused`() = runTest {
         kilter(apiLevel = 2)
         val ledMap = (1..127).associateWith { it }
