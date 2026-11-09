@@ -36,7 +36,13 @@ enum class PainTrend { FALLING, FLAT, RISING }
 enum class Proposal { MOVE_UP, STAY, REPEAT, STEP_BACK }
 
 /** Why a look back suggests staying. */
-enum class StayReason { TOO_EARLY, FEW_ENTRIES, PRESSURE_RISING, LAST_STAGE }
+enum class StayReason {
+    TOO_EARLY, FEW_ENTRIES, PRESSURE_RISING, LAST_STAGE,
+    /** The week's middle morning pain is above the stage's green limit. */
+    MORNINGS_ABOVE_RULE,
+    /** The stage's sessions were done on fewer days than the next stage builds on. */
+    FEW_SESSION_DAYS,
+}
 
 data class DayReading(
     val day: LocalDate,
@@ -62,6 +68,11 @@ data class Review(
     val due: Boolean,
     /** Set when [proposal] is [Proposal.STAY]. */
     val stayReason: StayReason? = null,
+    /** Days of the week with a comeback session, and the days the next stage asks for ([Comeback.sessionDaysToMoveUp]). */
+    val sessionDays: Int = 0,
+    val sessionDaysNeeded: Int = 0,
+    /** The week's middle morning pain (of the logged mornings). */
+    val morningMedian: Int? = null,
 )
 
 enum class PromptKind {
@@ -100,6 +111,8 @@ object Comeback {
     /** Start load in kg for the injured hand when nothing is known yet ("2–5 kg", fingers.md §4.6). */
     const val START_KG = 5.0
     const val MIN_DAYS_ON_STAGE = 7
+    /** Session days a week before the next stage is offered, or fewer when the stage plans fewer (owner 2026-11-09). */
+    const val MOVE_UP_SESSION_DAYS = 3
     /** Days a dismissed prompt stays quiet (research/safety-regulation.md §5 SHOULD). */
     const val PROMPT_QUIET_DAYS = 7
     const val ROUTINE_PREFIX = "comeback:"
@@ -203,7 +216,9 @@ object Comeback {
         val morning = e.morningPain?.let { m ->
             when {
                 m >= 5 || (rise != null && rise >= 2) -> DayColor.RED
-                rise != null && rise == 1 -> DayColor.AMBER
+                // A +1 that stays within the green range is noise, not a warning (owner 2026-11-09: a healed wrist moving
+                // between 0 and 1 repeated its first stage for five weeks in the simulation).
+                rise != null && rise == 1 && m > rule.greenMax -> DayColor.AMBER
                 else -> DayColor.GREEN
             }
         }
@@ -224,21 +239,43 @@ object Comeback {
         val trend = pressureTrend(entries, today)
         val lastStage = ladder(injury).stages.lastIndex
         val recentRedMorning = week.takeLast(2).any { (it.morningRise ?: 0) >= 2 || (it.morningPain ?: 0) >= 5 }
+        // Steady morning pain above the rule holds the stage, even without a rise (owner 2026-11-09).
+        val morningMedian = week.mapNotNull { it.morningPain }.median()
+        val morningsAbove = morningMedian != null && morningMedian > painRule(injury).greenMax
+        // The next stage builds on this one's sessions: offered after enough days with them (owner 2026-11-09).
+        val byDay = entries.associateBy { it.day }
+        val sessionDays = week.count { byDay[it.day.toString()]?.sessions?.isNotEmpty() == true }
+        val sessionDaysNeeded = sessionDaysToMoveUp(stage(injury, plan))
         val proposal = when {
             // At the first stage there is nothing to step back to: repeat it, and say why (issue #59 follow-up: a painful
             // first week after a pulley rupture said "not enough entries").
             red >= 2 || recentRedMorning -> if (plan.stage > 0) Proposal.STEP_BACK else Proposal.REPEAT
             amber >= 2 || red == 1 -> Proposal.REPEAT
-            days >= MIN_DAYS_ON_STAGE && logged >= 4 && trend != PainTrend.RISING && plan.stage < lastStage -> Proposal.MOVE_UP
+            days >= MIN_DAYS_ON_STAGE && logged >= 4 && trend != PainTrend.RISING && plan.stage < lastStage &&
+                !morningsAbove && sessionDays >= sessionDaysNeeded -> Proposal.MOVE_UP
             else -> Proposal.STAY
         }
         val stay = if (proposal != Proposal.STAY) null else when {
             days < MIN_DAYS_ON_STAGE -> StayReason.TOO_EARLY
             plan.stage >= lastStage -> StayReason.LAST_STAGE
+            morningsAbove -> StayReason.MORNINGS_ABOVE_RULE
             trend == PainTrend.RISING -> StayReason.PRESSURE_RISING
+            logged < 4 -> StayReason.FEW_ENTRIES
+            sessionDays < sessionDaysNeeded -> StayReason.FEW_SESSION_DAYS
             else -> StayReason.FEW_ENTRIES
         }
-        return Review(proposal, days, green, amber, red, logged, worst, trend, due = days >= MIN_DAYS_ON_STAGE, stayReason = stay)
+        return Review(proposal, days, green, amber, red, logged, worst, trend, due = days >= MIN_DAYS_ON_STAGE, stayReason = stay,
+            sessionDays = sessionDays, sessionDaysNeeded = sessionDaysNeeded, morningMedian = morningMedian)
+    }
+
+    /**
+     * Days with the stage's sessions a week before the next stage is offered: [MOVE_UP_SESSION_DAYS], or as many as the
+     * stage plans when that is fewer (two strength sessions a week). Optional sessions do not count.
+     */
+    fun sessionDaysToMoveUp(stage: StageSpec): Int {
+        val planned = stage.sessions.filter { !it.optional && it.items.isNotEmpty() }
+            .maxOfOrNull { minOf(7, (it.perWeek + it.perDay - 1) / it.perDay) } ?: 0
+        return minOf(MOVE_UP_SESSION_DAYS, planned)
     }
 
     /** Pressure pain of the last 7 days against the 7 before (two values each at least). */
