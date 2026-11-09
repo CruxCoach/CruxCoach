@@ -200,7 +200,8 @@ class ComebackTest {
         // Owner 2026-11-09: the next stage was offered after a week with comeback sessions on two days.
         val injury = started(1, since = day(-8))
         assertEquals(3, Comeback.sessionDaysToMoveUp(Comeback.stage(injury)))
-        fun week(vararg sessionDays: Int) = (-6..0).map { entry(it, morning = 1, session = if (it in sessionDays) 1 else null) }
+        fun week(vararg sessionDays: Int, kind: ComebackSessionKind = ComebackSessionKind.TENDON) =
+            (-6..0).map { entry(it, morning = 1, session = if (it in sessionDays) 1 else null, kind = kind) }
         val two = Comeback.review(injury, week(-5, -2), today)!!
         assertEquals(Proposal.STAY, two.proposal)
         assertEquals(com.cruxcoach.athlete.logic.StayReason.FEW_SESSION_DAYS, two.stayReason)
@@ -210,8 +211,56 @@ class ComebackTest {
         val shoulder = started(4, since = day(-8), injury = Injury("i1", InjuryRegion.SHOULDER, InjurySide.RIGHT, severity = 2,
             startedOn = day(-60).toString()))
         assertEquals(2, Comeback.sessionDaysToMoveUp(Comeback.stage(shoulder)))
-        assertEquals(Proposal.MOVE_UP, Comeback.review(shoulder, week(-5, -2), today)!!.proposal)
-        assertEquals(com.cruxcoach.athlete.logic.StayReason.FEW_SESSION_DAYS, Comeback.review(shoulder, week(-2), today)!!.stayReason)
+        val strength = ComebackSessionKind.STRENGTH
+        assertEquals(Proposal.MOVE_UP, Comeback.review(shoulder, week(-5, -2, kind = strength), today)!!.proposal)
+        assertEquals(com.cruxcoach.athlete.logic.StayReason.FEW_SESSION_DAYS, Comeback.review(shoulder, week(-2, kind = strength), today)!!.stayReason)
+    }
+
+    @Test
+    fun aWeekWithoutAMorningValueAsksForTodaysBeforeTheNextStage() {
+        // Owner 2026-11-09: no step up without at least one morning value.
+        val injury = started(1, since = day(-8))
+        val noMornings = (-7..-1).map { entry(it, session = 1) }
+        val asked = Comeback.review(injury, noMornings, today)!!
+        assertEquals(Proposal.STAY, asked.proposal)
+        assertEquals(com.cruxcoach.athlete.logic.StayReason.NO_MORNING, asked.stayReason)
+        assertTrue(asked.asksMorning)
+        assertNull(asked.morningMedian)
+        assertTrue(Comeback.prompts(injury, noMornings, today).single { it.kind == PromptKind.REVIEW }.review!!.asksMorning)
+        // Today's answer decides as usual, as the week's middle value.
+        assertEquals(Proposal.MOVE_UP, Comeback.review(injury, noMornings + entry(0, morning = 1), today)!!.proposal)
+        val above = Comeback.review(injury, noMornings + entry(0, morning = 3), today)!!
+        assertEquals(com.cruxcoach.athlete.logic.StayReason.MORNINGS_ABOVE_RULE, above.stayReason)
+        assertEquals(3, above.morningMedian)
+        // Skipped once: the stage stays and the look back no longer asks.
+        val key = Comeback.reviewKey(injury.plan!!, asked.daysOnStage)
+        val skipped = injury.copy(plan = injury.plan!!.copy(prompts = mapOf(Comeback.morningSkipKey(key) to today.toString())))
+        val after = Comeback.review(skipped, noMornings, today)!!
+        assertEquals(Proposal.STAY, after.proposal)
+        assertEquals(com.cruxcoach.athlete.logic.StayReason.NO_MORNING, after.stayReason)
+        assertFalse(after.asksMorning)
+        // A week that is not ready for the next stage anyway does not ask.
+        val fewSessions = (-7..-1).map { entry(it, session = if (it == -5) 1 else null) }
+        assertFalse(Comeback.review(injury, fewSessions, today)!!.asksMorning)
+    }
+
+    @Test
+    fun onlyTheStagesPlannedSessionsCountTowardsTheNextStage() {
+        // Owner's #98 review: at finger stage 4 the tendon session is an optional warm-up and the strength session is the plan.
+        // Three days of only the warm-up met the three days and offered the next stage.
+        val injury = started(4, since = day(-8))
+        val stage = Comeback.stage(injury)
+        assertEquals(listOf(ComebackSessionKind.STRENGTH), Comeback.movingUpSessions(stage).map { it.kind })
+        assertEquals(3, Comeback.sessionDaysToMoveUp(stage))
+        fun week(kind: ComebackSessionKind, vararg days: Int) = (-7..0).map { d -> entry(d, morning = 1, session = if (d in days) 1 else null, kind = kind) }
+        val warmUpsOnly = Comeback.review(injury, week(ComebackSessionKind.TENDON, -6, -4, -2), today)!!
+        assertEquals(0, warmUpsOnly.sessionDays)
+        assertEquals(com.cruxcoach.athlete.logic.StayReason.FEW_SESSION_DAYS, warmUpsOnly.stayReason)
+        assertEquals(Proposal.MOVE_UP, Comeback.review(injury, week(ComebackSessionKind.STRENGTH, -6, -4, -2), today)!!.proposal)
+        // The week's seven days only: a session today never helps a move up (it counts once the day is part of the week).
+        val withToday = Comeback.review(injury, week(ComebackSessionKind.STRENGTH, -6, -3, 0), today)!!
+        assertEquals(2, withToday.sessionDays)
+        assertEquals(com.cruxcoach.athlete.logic.StayReason.FEW_SESSION_DAYS, withToday.stayReason)
     }
 
     @Test

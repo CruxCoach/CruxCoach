@@ -231,6 +231,11 @@
     <string name="cb_review_stay_last">You are at the last stage. Check the return criteria above with your doctor or physio – met criteria don\'t show that the injury has healed.</string>
     <string name="cb_review_stay_mornings">On at least half of the mornings you logged this week, the pain was above your rule of %1$d. The usual approach is to stay at this stage until it is back at %1$d or less in the morning.</string>
     <string name="cb_review_stay_sessions">The next stage builds on this stage\'s sessions on at least %1$d\u00A0days a week; this week it was %2$d. The usual approach is to stay at this stage for another week.</string>
+    <string name="cb_review_stay_sessions_optional">The next stage builds on this stage\'s sessions on at least %1$d\u00A0days a week; this week it was %2$d (sessions marked “Optional” don\'t count). The usual approach is to stay at this stage for another week.</string>
+    <string name="cb_review_stay_no_morning">No morning pain logged this week, so you stay at this stage for now. Log it in the diary on the next mornings.</string>
+    <string name="cb_review_morning_title">How does the injury feel this morning?</string>
+    <string name="cb_review_morning_text">There is no morning value from this week yet, and the next stage needs one.</string>
+    <string name="cb_review_morning_skip">Skip</string>
     <string name="cb_sources_more">%1$d more</string>
     <string name="cb_sources_less">Fewer</string>
     <string name="cb_reference_label">Reference value</string>

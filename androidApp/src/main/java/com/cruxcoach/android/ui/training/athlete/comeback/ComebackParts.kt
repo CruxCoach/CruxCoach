@@ -62,9 +62,10 @@ internal fun ComebackNotice(onSigns: (() -> Unit)?, modifier: Modifier = Modifie
 /** 0–10 at the injured spot; tapping the chosen value again clears it. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun PainScale(label: String, value: Int?, tag: String, onChange: (Int?) -> Unit, hint: String? = null) {
+internal fun PainScale(label: String, value: Int?, tag: String, onChange: (Int?) -> Unit, hint: String? = null, showLabel: Boolean = true) {
     Column(Modifier.fillMaxWidth()) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
+        // Without a visible label (a card's title asks the question) the chips still read it out.
+        if (showLabel) Text(label, style = MaterialTheme.typography.bodyMedium)
         hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             (0..10).forEach { v ->
@@ -236,6 +237,7 @@ internal fun HintCard(
     title: String?, text: String, tag: String,
     primary: Pair<String, () -> Unit>? = null, secondary: Pair<String, () -> Unit>? = null, tertiary: Pair<String, () -> Unit>? = null,
     caution: Boolean = false,
+    content: (@Composable () -> Unit)? = null,
 ) {
     Card(
         colors = if (caution) CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.cautionContainer,
@@ -245,6 +247,7 @@ internal fun HintCard(
         Column(Modifier.padding(16.dp)) {
             title?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
             Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = if (title != null) 4.dp else 0.dp))
+            content?.let { Box(Modifier.padding(top = 8.dp)) { it() } }
             if (primary != null || secondary != null || tertiary != null) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                     primary?.let { (label, action) -> Button(onClick = action, modifier = Modifier.testTag("${tag}_primary")) { Text(label) } }

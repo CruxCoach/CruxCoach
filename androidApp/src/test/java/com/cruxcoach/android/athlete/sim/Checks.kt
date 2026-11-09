@@ -35,6 +35,7 @@ enum class Check(val group: String, val title: String) {
     MASTERS("Safety", "Max finger sessions too close together for a masters climber"),
     COMEBACK_LOAD("Safety", "Comeback load above its stage"),
     COMEBACK_EARLY("Safety", "Next comeback stage offered while it still hurt"),
+    COMEBACK_UP_NO_MORNING("Safety", "Next comeback stage offered without a morning value in the week"),
     COMEBACK_SPACING("Safety", "Comeback sessions closer than their stage allows"),
     COMEBACK_CLIMBING("Safety", "Board session suggested while the comeback stage holds it back"),
     COMEBACK_NO_STEP_BACK("Safety", "Painful comeback sessions without a step back, a repeat or a question about it"),
@@ -473,16 +474,21 @@ object Checks {
                 val middle = steady.getOrNull(steady.size / 2)
                 if (middle != null && middle > rule.greenMax) flags += Flag(Check.COMEBACK_EARLY, d.day,
                     "stage ${before + 1} offered with mornings ${steady.joinToString("/")}, the middle one above the rule of ${rule.greenMax}")
+                // No step up without at least one morning value (owner 2026-11-09).
+                if (steady.isEmpty()) flags += Flag(Check.COMEBACK_UP_NO_MORNING, d.day, "stage ${before + 1} offered without a morning value since day ${d.day - 6}")
             }
             // The next stage asks for the week's loading: offered after a week with only a few session days, it comes untrained.
             if (com.cruxcoach.athlete.logic.Proposal.MOVE_UP in cb.reviews) {
-                val sessionDays = r.days.filter { it.day in (d.day - 7) until d.day }.count { it.comeback?.sessions?.isNotEmpty() == true }
+                val planSessions = ladder.stages[before.coerceIn(0, ladder.stages.lastIndex)].sessions.filter { !it.optional && it.items.isNotEmpty() }
+                // Only the stage's planned kinds count: an optional tendon warm-up is not the loading the next stage builds on.
+                val planKinds = planSessions.map { it.kind }.toSet()
+                val sessionDays = r.days.filter { it.day in (d.day - 7) until d.day }
+                    .count { day -> day.comeback?.sessions?.any { it.kind in planKinds } == true }
                 // A stage that plans fewer session days (two strength sessions a week) asks for those.
-                val planned = ladder.stages[before.coerceIn(0, ladder.stages.lastIndex)].sessions.filter { !it.optional && it.items.isNotEmpty() }
-                    .maxOfOrNull { minOf(7, (it.perWeek + it.perDay - 1) / it.perDay) } ?: 0
+                val planned = planSessions.maxOfOrNull { minOf(7, (it.perWeek + it.perDay - 1) / it.perDay) } ?: 0
                 val needed = minOf(COMEBACK_UP_SESSION_DAYS, planned)
                 if (sessionDays < needed) flags += Flag(Check.COMEBACK_UP_UNTRAINED, d.day,
-                    "stage ${before + 1} offered after a week with comeback sessions on $sessionDays day(s), the stage plans $planned")
+                    "stage ${before + 1} offered after a week with its planned sessions on $sessionDays day(s), the stage plans $planned")
             }
             // No more sessions of a kind in a day than the stage plans.
             cb.sessions.groupBy { it.kind to it.stage }.forEach { (key, list) ->
