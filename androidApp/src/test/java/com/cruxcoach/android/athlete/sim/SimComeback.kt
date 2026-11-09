@@ -135,6 +135,8 @@ class SimComeback(
     private val side: Side,
     severity: Int,
     private val rng: Random,
+    /** How closely the athlete follows the plan; the defaults are the careful athlete described above. */
+    private val habits: ComebackHabits = ComebackHabits(),
 ) {
     private val comebacks = ComebackService(service)
     private val repo get() = service.repo
@@ -145,8 +147,13 @@ class SimComeback(
     private val lastRaise = mutableMapOf<Pair<String, Side?>, Int>()
     var ended = false
         private set
+    /** Due sessions the athlete leaves out today ([ComebackHabits.skipShare]), by their index in the stage. */
+    private val skipped = mutableMapOf<Int, MutableSet<Int>>()
 
-    /** On the injury's day: the doctor's finding, then the plan from its first stage with the athlete's own references. */
+    /**
+     * The doctor's finding, then the plan with the athlete's own references: on the injury's day from the first stage,
+     * or later from [ComebackHabits.startStage].
+     */
     fun start(date: LocalDate, finding: com.cruxcoach.athlete.model.InjuryFinding?) {
         comebacks.saveCheck(injuryId, InjuryCheck(checked = ProfessionalCheck.EXAMINED, finding = finding, checkedOn = date.toString()))
         val injury = repo.injury(injuryId) ?: return
@@ -154,7 +161,8 @@ class SimComeback(
         val offered = comebacks.suggestedReferences(injury).mapValues { it.value.first }
         val own = mapOf(Grip.HALF_CRIMP.name to before.getValue(HALF), Grip.OPEN_HAND.name to before.getValue(OPEN))
             .mapValues { (_, kg) -> floor(kg * (0.9 + rng.nextDouble() * 0.2)) }
-        comebacks.start(injuryId, PlanSource.CRUXCOACH, stage = 0, agreed = true, injuredDominant = true, referenceKg = own + offered)
+        comebacks.start(injuryId, PlanSource.CRUXCOACH, stage = habits.startStage, agreed = true, injuredDominant = true,
+            referenceKg = own + offered)
     }
 
     private fun injury() = repo.injury(injuryId)
@@ -163,13 +171,21 @@ class SimComeback(
     /** The stage's climbing while the plan runs (null when it has ended). */
     fun climbingLevel(): ClimbingLevel? = injury()?.let { Comeback.climbingLevel(it) }
 
-    /** What the athlete climbs on a planned climbing day: no more than the stage allows. */
-    fun climb(planned: Climb): Climb? = when (climbingLevel()) {
-        null, ClimbingLevel.FULL -> planned
-        ClimbingLevel.NONE -> null
-        ClimbingLevel.EASY -> planned.copy(intensity = ClimbIntensity.LIGHT, minutes = minOf(planned.minutes, 60))
-        ClimbingLevel.MODERATE -> planned.copy(intensity = minOf(planned.intensity, ClimbIntensity.VOLUME))
-        ClimbingLevel.HARD -> planned.copy(intensity = minOf(planned.intensity, ClimbIntensity.HARD))
+    /**
+     * What the athlete climbs on a planned climbing day: no more than the stage allows, or one level more on some
+     * days ([ComebackHabits.climbsAhead]).
+     */
+    fun climb(planned: Climb): Climb? {
+        val level = climbingLevel() ?: return planned
+        val ahead = habits.climbsAhead > 0 && rng.nextDouble() < habits.climbsAhead
+        val climbed = if (ahead) ClimbingLevel.entries.getOrElse(level.ordinal + 1) { level } else level
+        return when (climbed) {
+            ClimbingLevel.FULL -> planned
+            ClimbingLevel.NONE -> null
+            ClimbingLevel.EASY -> planned.copy(intensity = ClimbIntensity.LIGHT, minutes = minOf(planned.minutes, 60))
+            ClimbingLevel.MODERATE -> planned.copy(intensity = minOf(planned.intensity, ClimbIntensity.VOLUME))
+            ClimbingLevel.HARD -> planned.copy(intensity = minOf(planned.intensity, ClimbIntensity.HARD))
+        }
     }
 
     fun climbed(c: Climb) = truth.climbed(SimInjury.climbingShare(c.intensity))
@@ -196,7 +212,9 @@ class SimComeback(
                     when (r.proposal) {
                         Proposal.MOVE_UP -> { comebacks.markPrompt(injuryId, p.key); comebacks.moveTo(injuryId, stage + 1, StageChangeReason.MOVE_UP); "moved up to ${stage + 1}" }
                         Proposal.REPEAT -> { comebacks.markPrompt(injuryId, p.key); comebacks.moveTo(injuryId, stage, StageChangeReason.REPEAT); "repeats the week" }
-                        Proposal.STEP_BACK -> if (stage > 0) {
+                        Proposal.STEP_BACK -> if (habits.ignoresStepBack) {
+                            comebacks.markPrompt(injuryId, p.key); "declines, keeps the stage"
+                        } else if (stage > 0) {
                             comebacks.markPrompt(injuryId, p.key); comebacks.moveTo(injuryId, stage - 1, StageChangeReason.STEP_BACK); "stepped back to ${stage - 1}"
                         } else { comebacks.markPrompt(injuryId, p.key); "keeps the stage" }
                         Proposal.STAY -> {
@@ -208,7 +226,9 @@ class SimComeback(
                         }
                     }.let { "review ${r.proposal.name.lowercase()}: $it" }
                 }
-                PromptKind.WORSENING -> if (stage > 0) {
+                PromptKind.WORSENING -> if (habits.ignoresStepBack) {
+                    comebacks.markPrompt(injuryId, p.key); "worse: declines, keeps the stage"
+                } else if (stage > 0) {
                     comebacks.markPrompt(injuryId, p.key); comebacks.moveTo(injuryId, stage - 1, StageChangeReason.STEP_BACK); "worse: stepped back to ${stage - 1}"
                 } else { comebacks.markPrompt(injuryId, p.key); "worse: keeps the stage" }
                 else -> { comebacks.markPrompt(injuryId, p.key); "${p.kind.name.lowercase()}: ok" }
@@ -227,9 +247,11 @@ class SimComeback(
         repeat(3) {
             val injury = injury() ?: return out
             if (injury.activePlan == null) return out
+            val leftOut = skipped.getOrPut(day) { mutableSetOf() }
             val due = Comeback.due(injury, repo.comebackEntries(injuryId), service.today(), service.now())
-                .filter { it.status == DueStatus.DUE && it.spec.items.isNotEmpty() && !it.spec.optional }
+                .filter { it.status == DueStatus.DUE && it.spec.items.isNotEmpty() && !it.spec.optional && it.index !in leftOut }
                 .firstOrNull { strength || it.spec.kind != ComebackSessionKind.STRENGTH } ?: return out
+            if (habits.skipShare > 0 && rng.nextDouble() < habits.skipShare) { leftOut += due.index; return@repeat }
             out += session(day, due.index, due.spec.kind)
         }
         return out

@@ -37,12 +37,14 @@ enum class Check(val group: String, val title: String) {
     COMEBACK_EARLY("Safety", "Next comeback stage offered while it still hurt"),
     COMEBACK_SPACING("Safety", "Comeback sessions closer than their stage allows"),
     COMEBACK_CLIMBING("Safety", "Board session suggested while the comeback stage holds it back"),
+    COMEBACK_NO_STEP_BACK("Safety", "Painful comeback sessions without a step back, a repeat or a question about it"),
     LOAD_JUMP("Load", "Planned load jumped more than one step or 10 % between sessions"),
     STRUCTURE_LOAD("Load", "Max finger work while the finger load is above 1.5 × its normal"),
     CONVERGENCE("Load", "The app's value is far from what the athlete can really do"),
     STALL("Progress", "An exercise stalled for weeks without a change"),
     DELOAD("Progress", "No lighter week in a block, or no taper before the date"),
     COMEBACK_STUCK("Progress", "Comeback plan stuck on a stage although it stayed calm"),
+    COMEBACK_UP_UNTRAINED("Progress", "Next comeback stage offered after a week with few of its sessions done"),
     WEEKLY_VOLUME("Plan", "Weekly volume of an area far from its target"),
     SESSION_FIT("Plan", "Suggestion does not fit the session length"),
     TRAINING_DAYS("Plan", "A full training suggested after the week's training days are used up"),
@@ -77,6 +79,10 @@ object Checks {
     const val COMEBACK_STRENGTH_GAP_H = 46
     /** A stage that stayed calm this long should have offered the next one (a stage is a week or two). */
     const val COMEBACK_STUCK_DAYS = 21
+    /** Sessions beyond the stage's amber limit within a week that ask the plan for a reaction within the next week. */
+    const val COMEBACK_RED_SESSIONS = 2
+    /** Days with a comeback session in the week before the next stage is offered: at least this many. */
+    const val COMEBACK_UP_SESSION_DAYS = 3
     /** Issue #68: a beginner's first weeks, in which well-known exercises come first. */
     const val BEGINNER_WEEKS = 4
     /** Share of a beginner's main exercises in those weeks that are Basic or already known to them. */
@@ -282,6 +288,9 @@ object Checks {
             val planned = week.count { it.date.dayOfWeek.ordinal + 1 in p.trainingDays }
             val trainedAll = planned > 0 && week.count { it.trained } >= planned && week.none { it.skipped }
             if (!trainedAll || week.any { it.activeInjuries.isNotEmpty() || it.returnState != null } || week.size < 7) return@forEach
+            // A block phase that changed within the week (a deload brought forward, the taper) planned its first days
+            // against other targets than Sunday's; such a week has no single target to judge it by.
+            if (week.map { it.block?.phase }.distinct().size > 1) return@forEach
             // Mobility is no strain: its target is a reminder, not a limit.
             d.weekEnd!!.filter { !it.target.isOff && it.goal > 0 && it.area != com.cruxcoach.athlete.logic.VolumeArea.MOBILITY }.forEach { a ->
                 val ratio = a.effective / a.goal
@@ -432,6 +441,12 @@ object Checks {
                 if (worst > rule.amberMax || mornings.any { it >= 5 }) flags += Flag(Check.COMEBACK_EARLY, d.day,
                     "stage ${cb.stage + 1} offered after a week with session pain up to $worst (amber up to ${rule.amberMax}) and mornings ${mornings.joinToString("/")}")
             }
+            // The next stage asks for the week's loading: offered after a week with only a few session days, it comes untrained.
+            if (com.cruxcoach.athlete.logic.Proposal.MOVE_UP in cb.reviews) {
+                val sessionDays = r.days.filter { it.day in (d.day - 7) until d.day }.count { it.comeback?.sessions?.isNotEmpty() == true }
+                if (sessionDays < COMEBACK_UP_SESSION_DAYS) flags += Flag(Check.COMEBACK_UP_UNTRAINED, d.day,
+                    "stage ${cb.stage + 1} offered after a week with comeback sessions on $sessionDays day(s)")
+            }
             // No more sessions of a kind in a day than the stage plans.
             cb.sessions.groupBy { it.kind to it.stage }.forEach { (key, list) ->
                 val spec = ladder.stages[key.second].sessions.firstOrNull { it.kind == key.first } ?: return@forEach
@@ -441,6 +456,24 @@ object Checks {
             val level = cb.climbing
             if (level != null && level < com.cruxcoach.athlete.logic.ClimbingLevel.HARD && d.suggestion?.board == true) flags += Flag(Check.COMEBACK_CLIMBING, d.day,
                 "a board session while the stage allows ${level.name.lowercase()} climbing")
+        }
+        // Sessions that truly hurt beyond the stage's amber limit: the plan steps back, repeats the stage or asks within a week.
+        // The athlete reports the true pain, so the plan saw it too.
+        var lastFlag = -99
+        days.forEach { d ->
+            val rule = ladder.stages[d.comeback!!.stage.coerceIn(0, ladder.stages.lastIndex)].pain
+            val red = r.days.filter { it.day in (d.day - 6)..d.day }.flatMap { it.comeback?.sessions.orEmpty() }.count { it.painMax > rule.amberMax }
+            if (red < COMEBACK_RED_SESSIONS || d.day - lastFlag < 7) return@forEach
+            val window = r.days.filter { it.day in (d.day - 6)..(d.day + 7) }
+            val reacted = window.any { w ->
+                val c = w.comeback ?: return@any false
+                c.reviews.any { it == com.cruxcoach.athlete.logic.Proposal.STEP_BACK || it == com.cruxcoach.athlete.logic.Proposal.REPEAT } ||
+                    c.prompts.any { it.startsWith("worse") } || c.stage < d.comeback.stage
+            }
+            // The plan ended or the run ended before a week passed: nothing to judge.
+            val judged = r.days.lastOrNull()?.let { it.day >= d.day + 7 } == true && window.count { it.comeback != null } >= 8
+            if (!reacted && judged) { lastFlag = d.day; flags += Flag(Check.COMEBACK_NO_STEP_BACK, d.day,
+                "$red session(s) above ${rule.amberMax}/10 at stage ${d.comeback.stage} within a week, no step back, repeat or question") }
         }
         // Strength sessions with a rest in between.
         days.flatMap { d -> d.comeback!!.sessions.filter { it.kind == com.cruxcoach.athlete.model.ComebackSessionKind.STRENGTH }.map { d to it } }

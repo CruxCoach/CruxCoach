@@ -182,12 +182,15 @@ class Simulator(
             if (e.comeback) {
                 // Made before the setback, so the plan's truth knows the hand's maximum before the injury.
                 comeback = SimComeback(service, clock, persona, athlete, "injury-$day", SimComeback.sideOf(e.side), e.severity,
-                    Random(persona.seed * 13 + 5)).also { it.start(date, e.finding) }
-                events += "comeback plan"
+                    Random(persona.seed * 13 + 5), e.habits).also { if (e.habits.startDelayDays == 0) it.start(date, e.finding) }
+                if (e.habits.startDelayDays == 0) events += "comeback plan"
             }
             athlete.setback(Quality.FINGER, e.loss)
             events += "injury ${e.region.name.lowercase()}"
         }
+        // A plan started later than the injury ([ComebackHabits.startDelayDays]), at its own stage.
+        persona.events.filterIsInstance<Event.Injury>().firstOrNull { it.comeback && it.habits.startDelayDays > 0 && it.day + it.habits.startDelayDays == day }
+            ?.let { e -> comeback?.start(date, e.finding); events += "comeback plan from stage ${e.habits.startStage}" }
         persona.events.filterIsInstance<Event.Injury>().firstOrNull { it.resolvedOn == day }?.let { e ->
             repo.injury("injury-${e.day}")?.let { repo.saveInjury(it.copy(resolvedOn = date.toString(), updatedAt = clock.nowMs)) }
             events += "injury over"
@@ -281,6 +284,25 @@ class Simulator(
                 dontKnow += DontKnowTrace(item.slug, to.slug, after.first - before.first, after.second && !before.second)
             }
             if (dontKnow.isNotEmpty()) events += "don't know: " + dontKnow.joinToString { "${it.from} → ${it.to}" }
+        }
+        // The card's other buttons (persona `picky`): "Another suggestion" first, then a swap from the exercise's alternatives.
+        if (wantsToTrain && !skipped && persona.anotherShare > 0 && rng.nextDouble() < persona.anotherShare && shown.focus != SuggestionFocus.REST) {
+            service.logSuggestion(SuggestionEventKind.NEXT, shown.focus.name, shown.routine.items.map { it.slug })
+            choices = choices.copy(variant = choices.variant + 1)
+            val again = suggestion(choices)
+            shown = again.first; built = again.second
+            events += "another suggestion"
+        }
+        if (wantsToTrain && !skipped && persona.swapShare > 0 && rng.nextDouble() < persona.swapShare) {
+            val main = shown.routine.items.filter { !it.warmup }
+            val from = main.getOrNull(rng.nextInt(main.size.coerceAtLeast(1)))?.slug
+            val options = from?.let { SessionSuggester.alternatives(built.input, shown, it) }.orEmpty()
+            if (from != null && options.isNotEmpty()) {
+                val to = options[rng.nextInt(options.size)].def.slug
+                service.logSuggestion(SuggestionEventKind.SWAPPED, shown.focus.name, listOf(from, to))
+                shown = SessionSuggester.withSwaps(shown, mapOf(from to to), service.catalog)
+                events += "swap: $from → $to"
+            }
         }
         val returnState = built.input.returnState
         val trace = SuggestionTrace(shown.focus, shown.reasons, shown.routine.items.map {
