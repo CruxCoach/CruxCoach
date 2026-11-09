@@ -181,6 +181,7 @@ fun BoardLogbookScreen(
                         onOpenYearReview(it)
                     })
                 },
+                loading = !state.statsReady,
                 modifier = modifier,
             )
         }

@@ -313,6 +313,7 @@ class StatsUiReviewTest {
         crossView: CrossBoardView = CrossBoardView.TRIES_UNTIL_SEND,
         activityView: ActivityView = ActivityView.CALENDAR,
         boardFilter: String? = null,
+        loading: Boolean = false,
     ) {
         val brands = brandsOf(log)
         val scoped = boardFilter?.let { b -> log.filter { it.boardBrand == b } } ?: log
@@ -335,6 +336,7 @@ class StatsUiReviewTest {
             gradesView = gradesView,
             onIntervalSelect = {},
             onCustomDateRange = { _, _ -> },
+            loading = loading,
         )
     }
 
@@ -400,6 +402,14 @@ class StatsUiReviewTest {
     /** The whole statistics sheet with three boards, every entry. */
     @Test
     fun sheet() = shoot("sheet") { Sheet(logbook) }
+
+    /** The sheet before its first numbers: the filters and the loading sign. */
+    @Test
+    fun sheetLoading() {
+        // The spinner never ends, so the clock stands still and only moves on per shot.
+        compose.mainClock.autoAdvance = false
+        shoot("sheet-loading", before = { compose.mainClock.advanceTimeBy(400) }) { Sheet(logbook, loading = true) }
+    }
 
     /** The other views of each card. */
     @Test
