@@ -138,7 +138,8 @@ class WeeklyVolumeTest {
             coach = CoachProfile(climbingDays = setOf(6)))
         fun sessions(p: AthleteProfile) = target(WeeklyVolume.targets(p, null, emptyList(), 4), VolumeArea.FINGER).minSessions
         assertEquals(1, sessions(noBoard))
-        assertEquals(1, sessions(noBoard.copy(coach = CoachProfile())), "no climbing day given: one session still asks for climbing")
+        // No climbing day given (e.g. without the coach setup): no session to ask for, not "0 of 1" for ever (review of #98).
+        assertEquals(0, sessions(noBoard.copy(coach = CoachProfile())))
         assertEquals(2, sessions(noBoard.copy(coach = CoachProfile(climbingDays = setOf(2, 6)))))
         assertEquals(2, sessions(noBoard.copy(equipment = noBoard.equipment + EquipmentV2.HANGBOARD)))
         assertEquals(2, sessions(noBoard.copy(equipment = noBoard.equipment + EquipmentV2.BOARD)))

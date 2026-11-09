@@ -172,8 +172,8 @@ object WeeklyVolume {
         val climbingDays = climbingDaysPerWeek(profile)
         val offWallDays = (days - climbingDays).coerceAtLeast(1)
         // Without finger equipment the finger sessions are the climbing days (issue #59: one bouldering day a week
-        // against a goal of two finger sessions that no training could reach). Any of the athlete's places counts,
-        // so the week's goal does not change with the place picked today.
+        // against a goal of two finger sessions that no training could reach), none without climbing days. Any of
+        // the athlete's places counts, so the week's goal does not change with the place picked today.
         val fingerEquipment = TrainingPlaces.allEquipment(profile).any { it in FINGER_EQUIPMENT }
         val experienceFactor = when (coach.experience) {
             ExperienceBand.UNDER_1 -> 0.7
@@ -239,7 +239,7 @@ object WeeklyVolume {
                         coach.ageBand != AgeBand.Y40_54 && coach.ageBand != AgeBand.Y55_PLUS -> 3
                     else -> 2
                 }
-                if (!fingerEquipment) sessions = min(sessions, max(1, climbingDays))
+                if (!fingerEquipment) sessions = min(sessions, climbingDays)
                 minSets = 0
                 maxSets = when {
                     bothHandsFinger || youth || novice -> 0
