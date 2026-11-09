@@ -167,7 +167,7 @@ that misfires is caught instead of confirmed.
 | Safety | Climbers under 18: no campus, no one-arm or max finger work | Morrison & Schöffl 2007 |
 | Safety | 55+: max finger sessions at least 72 h apart | Fell & Williams 2008 |
 | Safety | Comeback plan: the planned load of the injured hand stays within the stage's range of the athlete's reference (one step for rounding); where the stage asks for an effort instead, it feels at most 1.5 × that effort | The stage's own percentages and effort |
-| Safety | Comeback plan: the next stage is offered only after a week in which no session truly hurt beyond the stage's amber limit and no morning reached 5 | Pain-monitoring model (Silbernagel et al. 2007) |
+| Safety | Comeback plan: the next stage is offered only after a week in which no session truly hurt beyond the stage's amber limit, no morning reached 5 and the middle morning of the week stayed within the stage's pain rule | Pain-monitoring model (Silbernagel et al. 2007) |
 | Safety | Comeback plan: no more sessions of a kind a day than the stage plans; strength sessions at least 46 h apart (the stage asks for 48 h of rest) | The stage's own plan |
 | Safety | Comeback plan: no board session while the stage allows less than hard climbing | The stage's own climbing |
 | Safety | Comeback plan: after two sessions within a week that truly hurt beyond the stage's amber limit, the plan proposes a step back or a repeat, or asks about the worsening, within a week | Pain-monitoring model (Silbernagel et al. 2007) |

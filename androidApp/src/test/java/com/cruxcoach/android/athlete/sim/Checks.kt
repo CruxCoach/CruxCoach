@@ -468,6 +468,11 @@ object Checks {
                 val mornings = week.mapNotNull { it.morningPain }
                 if (worst > rule.amberMax || mornings.any { it >= 5 }) flags += Flag(Check.COMEBACK_EARLY, d.day,
                     "stage ${before + 1} offered after a week with session pain up to $worst (amber up to ${rule.amberMax}) and mornings ${mornings.joinToString("/")}")
+                // Steady morning pain above the rule, rising or not (owner 2026-11-09): the week up to the review morning.
+                val steady = r.days.filter { it.day in (d.day - 6)..d.day }.mapNotNull { it.comeback?.morningPain }.sorted()
+                val middle = steady.getOrNull(steady.size / 2)
+                if (middle != null && middle > rule.greenMax) flags += Flag(Check.COMEBACK_EARLY, d.day,
+                    "stage ${before + 1} offered with mornings ${steady.joinToString("/")}, the middle one above the rule of ${rule.greenMax}")
             }
             // The next stage asks for the week's loading: offered after a week with only a few session days, it comes untrained.
             if (com.cruxcoach.athlete.logic.Proposal.MOVE_UP in cb.reviews) {
