@@ -24,7 +24,7 @@
     <string name="tru_setup_title">In 3 Schritten einrichten</string>
     <string name="tru_setup_progress">%1$d von %2$d</string>
     <string name="tru_setup_coach">Ziel und Trainingswoche</string>
-    <string name="tru_setup_coach_text">1 Minute – damit die Vorschläge zu dir passen</string>
+    <string name="tru_setup_coach_text">1\u00A0Minute – damit die Vorschläge zu dir passen</string>
     <string name="tru_setup_equipment">Deine Ausrüstung</string>
     <string name="tru_setup_equipment_text">Nur Übungen, die du machen kannst</string>
     <string name="tru_setup_weight">Dein Körpergewicht</string>
@@ -49,11 +49,11 @@
     <string name="tru_tile_weight_tap">Antippen zum Eintragen</string>
     <string name="tru_open_body">Gewichtsverlauf und Maße</string>
     <string name="tru_tile_food_protein">Essen · Protein</string>
-    <string name="tru_tile_food_left">noch %1$d g</string>
+    <string name="tru_tile_food_left">noch %1$d\u00A0g</string>
     <string name="tru_tile_food_reached">Ziel erreicht</string>
     <string name="tru_tile_food_no_target">Ziel braucht dein Gewicht</string>
     <string name="tru_tile_water">Wasser</string>
-    <string name="tru_tile_water_tap">Tippen: + %1$s</string>
+    <string name="tru_tile_water_tap">Tippen: +\u00A0%1$s</string>
     <string name="tru_water_added">%1$s Wasser eingetragen</string>
     <!-- Ernährung -->
     <string name="tru_fuel_add">Essen eintragen</string>
@@ -63,7 +63,7 @@
     <string name="tru_add_quick">Werte</string>
     <string name="tru_fuel_intro_short">Iss genug für dein Training: Protein richtet sich nach deinem Gewicht, Kohlenhydrate nach deinen Trainingstagen, Energiebedarf und Bilanz siehst du offen. Nichts verlässt dein Handy.</string>
     <string name="tru_carbs_short">Kohlenhydrate</string>
-    <string name="tru_of_g">von %1$d g</string>
+    <string name="tru_of_g">von %1$d\u00A0g</string>
     <string name="tru_of_short">von %1$d</string>
     <string name="tru_water_remove">Letztes Glas entfernen</string>
     <string name="tru_water_glass_hint">Ein Glas = %1$s</string>
@@ -106,7 +106,7 @@
         <item quantity="one">%d Gerät</item>
         <item quantity="other">%d Geräte</item>
     </plurals>
-    <string name="tru_set_nutrition_summary">Protein %1$s g/kg · Kalorien %2$s</string>
+    <string name="tru_set_nutrition_summary">Protein %1$s\u00A0g/kg · Kalorien %2$s</string>
     <plurals name="tru_set_reminders">
         <item quantity="one">%d Erinnerung an</item>
         <item quantity="other">%d Erinnerungen an</item>

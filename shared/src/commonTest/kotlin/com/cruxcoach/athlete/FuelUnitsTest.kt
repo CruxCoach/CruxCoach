@@ -40,6 +40,8 @@ class FuelUnitsTest {
         assertTrue(FuelUnits.isDrink("bls:N330000", "Colagetränk"))
         assertTrue(FuelUnits.isDrink("off:5000112646870", "Fanta Orange", servingLabel = "330 ml"))
         assertTrue(FuelUnits.isDrink("off:1", "Gatorade", servingLabel = "1 bottle (20 fl oz)"))
+        // A serving label typed or copied with a non-breaking space between the number and the unit.
+        assertTrue(FuelUnits.isDrink("off:3", "Club Mate", servingLabel = "500\u00A0ml"))
         assertFalse(FuelUnits.isDrink("off:2", "Cheerios", servingLabel = "1 cup (28 g)"))
     }
 

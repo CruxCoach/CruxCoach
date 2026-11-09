@@ -66,7 +66,7 @@ class RecipeFlowTest : AthleteScreenTest() {
         addIngredient(null, "fuel_food_milk", "300")
         waitForTag("fuel_recipe_ingredient_1")
         // Milk is a drink: ml like everywhere else (device test 2026-10-09 showed "250 g").
-        waitForText("300 ml")
+        waitForText("300\u00A0ml")
         compose.onNodeWithTag("fuel_recipe_portions").performTextReplacement("2")
         waitForTag("fuel_recipe_summary")
         click("fuel_recipe_save")

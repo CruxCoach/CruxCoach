@@ -504,9 +504,9 @@ private fun statusText(d: DueSession): String = when (d.status) {
 private fun itemLine(item: SessionItemSpec, plan: ComebackPlan, state: ComebackUiState, language: String): String {
     val name = state.catalog?.get(item.slug)?.name(language) ?: item.slug
     val dose = when {
-        item.durationS != null -> "${item.sets} × ${item.durationS} s"
-        item.repsMin != null -> "${item.sets} × ${item.repsMin}${item.repsMax?.takeIf { it != item.repsMin }?.let { "–$it" }.orEmpty()}"
-        else -> "${item.sets} ×"
+        item.durationS != null -> "${item.sets}\u00A0×\u00A0${item.durationS}\u00A0s"
+        item.repsMin != null -> "${item.sets}\u00A0×\u00A0${item.repsMin}${item.repsMax?.takeIf { it != item.repsMin }?.let { "–$it" }.orEmpty()}"
+        else -> "${item.sets}\u00A0×"
     }
     val parts = mutableListOf(name)
     // "Blockheben einarmig" says no grip: the stage's grip is part of the line.

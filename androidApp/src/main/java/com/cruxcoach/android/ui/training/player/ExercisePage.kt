@@ -691,9 +691,11 @@ private fun ActiveRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPag
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RowLabel(rowLabel(page, set), emphasis = true)
                     // The target on one line, "% KG" below it when both do not fit ("Targe/t 5/reps" at the largest font);
-                    // the moved-set arrow alone stays beside it.
+                    // the moved-set arrow alone stays beside it. Below a large font "% KG" stays beside too: the one-line
+                    // name only shortens with "…", but its longest word counted as a word that would break.
                     val percent = percentText(set, def, state.bodyweight)
-                    LabelBesideOrAbove(modifier = Modifier.weight(1f), growth = 1f, keepBeside = percent == null, label = {
+                    val keepPercent = percent == null || androidx.compose.ui.platform.LocalDensity.current.fontScale < 1.3f
+                    LabelBesideOrAbove(modifier = Modifier.weight(1f), growth = 1f, keepBeside = keepPercent, label = {
                         Column(Modifier.padding(end = 8.dp)) {
                             name?.let { Text(it, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                             targetLine(set, def)?.let {

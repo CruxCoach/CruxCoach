@@ -57,7 +57,8 @@ object FuelUnits {
         return words.any { w -> w in DRINK_WORDS || DRINK_SUFFIXES.any { w.endsWith(it) && !w.startsWith(it) } }
     }
 
-    private val VOLUME = Regex("""\d\s*(ml|cl|l|fl\.?\s*oz)\b""", RegexOption.IGNORE_CASE)
+    // A non-breaking space may join the number and the unit ("250 ml").
+    private val VOLUME = Regex("""\d[\s\u00A0\u202F]*(ml|cl|l|fl\.?[\s\u00A0\u202F]*oz)\b""", RegexOption.IGNORE_CASE)
 
     /** Where the name of the food ends and its description begins. */
     private val HEAD = Regex("""[,(;]|\s(?:mit|aus|im|in|zu|auf|with|on)\s""")

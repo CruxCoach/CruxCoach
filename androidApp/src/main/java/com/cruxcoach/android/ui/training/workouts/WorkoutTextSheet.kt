@@ -185,10 +185,10 @@ internal fun routineItemSummary(
             val min = item.repsMin
             val max = item.repsMax ?: min
             val reps = if (min != null && max != null && min != max) "$min–$max" else max?.toString()
-            reps?.let { "${item.sets} × $it" } ?: "${item.sets} ×"
+            reps?.let { "${item.sets}\u00A0×\u00A0$it" } ?: "${item.sets}\u00A0×"
         }
-        ExerciseKind.TIME, ExerciseKind.HANG -> "${item.sets} × " + stringResource(R.string.tr_format_seconds, item.durationS ?: 0)
-        ExerciseKind.INTERVAL -> "${item.sets} × " + stringResource(R.string.trw_interval_format, item.workS ?: 7, item.restBetweenS ?: 3, item.repsPerSet ?: 6)
+        ExerciseKind.TIME, ExerciseKind.HANG -> "${item.sets}\u00A0×\u00A0" + stringResource(R.string.tr_format_seconds, item.durationS ?: 0)
+        ExerciseKind.INTERVAL -> "${item.sets}\u00A0×\u00A0" + stringResource(R.string.trw_interval_format, item.workS ?: 7, item.restBetweenS ?: 3, item.repsPerSet ?: 6)
         ExerciseKind.CLIMB -> item.durationS?.let { stringResource(R.string.trwo_minutes, it / 60) }
             ?: pluralStringResource(R.plurals.trp_rounds, item.repsPerSet ?: 4, item.repsPerSet ?: 4)
     }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Körper-Tracking (FEAT-067). -->
 <resources>
-    <string name="trb_trend_info_text">Dein Gewicht schwankt von Tag zu Tag um 1–2 kg, vor allem durch Wasser, Salz, Essen und Training. Der Trend glättet diese Schwankungen – jede Messung zieht ihn nur ein Zehntel mit –, so siehst du, was sich wirklich verändert. Lücken sind kein Problem, gelegentliches Wiegen reicht.</string>
+    <string name="trb_trend_info_text">Dein Gewicht schwankt von Tag zu Tag um 1–2\u00A0kg, vor allem durch Wasser, Salz, Essen und Training. Der Trend glättet diese Schwankungen – jede Messung zieht ihn nur ein Zehntel mit –, so siehst du, was sich wirklich verändert. Lücken sind kein Problem, gelegentliches Wiegen reicht.</string>
     <string name="trb_tile_trend">Trend</string>
     <string name="trb_tile_rate">Pro Woche</string>
     <string name="trb_tile_entries">Messungen</string>
@@ -29,7 +29,7 @@
     <string name="trb_strength_title">Kraft zu Gewicht</string>
     <string name="trb_strength_info_text">Gezeigt wird die beste Last pro Trainingstag in Prozent deines Körpergewichts: beim Hängen Körpergewicht plus Zusatzlast, beim Blockheben das gehobene Gewicht, bei Klimmzügen mit Zusatzgewicht das geschätzte Maximum. Jeder Satz merkt sich das Körpergewicht seines Tages.</string>
     <string name="trb_strength_empty">Noch keine Kraftwerte. Ein Leistungswert oder ein kurzer Test reicht für den ersten Punkt.</string>
-    <string name="trb_strength_best">Bestwert: %1$d %%</string>
+    <string name="trb_strength_best">Bestwert: %1$d\u00A0%%</string>
     <string name="trb_strength_chart_description">Kraft zu Gewicht im Verlauf</string>
     <string name="trb_recent">Letzte Einträge</string>
     <string name="trb_legacy_badge">aus älterer Version</string>

@@ -352,7 +352,7 @@ fun StatsHubScreen(
                         ChartSeries(label = s.strengthDefs[slug]?.name(lang) ?: slug,
                             color = colors[i % colors.size], points = points)
                     }
-                    DateLineChart(series, { "${it.roundToInt()} %" }, stringResource(R.string.trs_strength_cd),
+                    DateLineChart(series, { "${it.roundToInt()}\u00A0%" }, stringResource(R.string.trs_strength_cd),
                         Modifier.fillMaxWidth().testTag("stats_strength_chart"))
                 }
             }
@@ -475,7 +475,7 @@ private fun ClimberProfileCard(s: StatsHubState, onOpen: () -> Unit) {
     val finger = s.strength["finger.max_hang"]?.lastOrNull()?.second
     val parts = listOfNotNull(
         s.logbook.workingDifficulty?.let { stringResource(R.string.trl_card_grade, fontLabel(it)) },
-        finger?.let { stringResource(R.string.trl_card_finger, "${it.roundToInt()} %") },
+        finger?.let { stringResource(R.string.trl_card_finger, "${it.roundToInt()}\u00A0%") },
     )
     ElevatedCard(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("stats_climber_profile")) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

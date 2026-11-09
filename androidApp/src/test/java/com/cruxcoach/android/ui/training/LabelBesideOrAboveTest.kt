@@ -71,6 +71,8 @@ class LabelBesideOrAboveTest {
     private fun assertBeside() {
         val l = bounds("label"); val s = bounds("stepper")
         assertTrue("stepper beside the label: label $l, stepper $s", s.top < l.bottom && l.top < s.bottom)
+        // Side by side without overlapping, in either direction.
+        assertTrue("label and stepper overlap: label $l, stepper $s", l.right <= s.left + 1.dp || s.right <= l.left + 1.dp)
     }
 
     private fun assertBelow() {
@@ -153,6 +155,21 @@ class LabelBesideOrAboveTest {
     @Test fun `a stepper wider than the row goes below`() {
         show(shortLabel, 400.dp, 1f)
         assertBelow(); assertEqualHeight()
+    }
+
+    @Test fun `kept beside, the narrowest row is the label's narrowest plus the stepper`() {
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1f)) {
+                Box(Modifier.width(IntrinsicSize.Min).testTag("box")) {
+                    LabelBesideOrAbove(keepBeside = true, label = { Text("Sätze", fontSize = 16.sp, modifier = Modifier.testTag("label")) }) {
+                        Box(Modifier.size(48.dp).testTag("stepper"))
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        near(bounds("label").width + 48.dp, bounds("box").width, "min width")
+        assertBeside()
     }
 
     @Test fun `keepBeside with a stepper wider than the row does not crash`() {
