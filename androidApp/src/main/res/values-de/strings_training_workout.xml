@@ -14,7 +14,7 @@
     <string name="trw_remove_exercise">Übung entfernen</string>
     <string name="trw_remove_exercise_confirm">%1$s mit allen Sätzen aus diesem Training entfernen?</string>
     <string name="trw_target_reps">Ziel %1$d</string>
-    <string name="trw_target_seconds">Ziel %1$d s</string>
+    <string name="trw_target_seconds">Ziel %1$d\u00A0s</string>
     <string name="trw_reps_label">Wdh.</string>
     <string name="trw_seconds_label">Sek.</string>
     <string name="trw_rounds_label">Runden</string>
@@ -34,7 +34,7 @@
     <string name="trw_rir_short">Reserve %1$d</string>
     <string name="trw_rest_start">Pause starten</string>
     <string name="trw_timer_open">Timer öffnen</string>
-    <string name="trw_interval_format">%1$d s an / %2$d s Pause × %3$d</string>
+    <string name="trw_interval_format">%1$d\u00A0s an / %2$d\u00A0s Pause ×\u00A0%3$d</string>
     <string name="trw_note">Notiz</string>
     <string name="trw_note_hint">z. B. welcher Boulder</string>
     <string name="trw_elapsed_cd">Trainingszeit %1$s</string>
@@ -47,8 +47,8 @@
     <string name="trw_record_total">%1$s gesamt</string>
     <string name="trw_record_e1rm">e1RM %1$s</string>
     <plurals name="trw_reps">
-        <item quantity="one">%d Wdh.</item>
-        <item quantity="other">%d Wdh.</item>
+        <item quantity="one">%d\u00A0Wdh.</item>
+        <item quantity="other">%d\u00A0Wdh.</item>
     </plurals>
 
     <string name="trw_finish_title">Training beenden</string>
@@ -85,8 +85,8 @@
     <string name="trw_summary_exercises">Übungen</string>
     <string name="trw_summary_duration">Dauer</string>
     <plurals name="trw_minutes">
-        <item quantity="one">%d Min.</item>
-        <item quantity="other">%d Min.</item>
+        <item quantity="one">%d\u00A0Min.</item>
+        <item quantity="other">%d\u00A0Min.</item>
     </plurals>
     <string name="trw_records_title">Neue Bestwerte</string>
     <string name="trw_suggestions_title">Für das nächste Mal</string>
@@ -97,8 +97,8 @@
     <string name="trw_sugg_try">Probier: %1$s</string>
     <string name="trw_sugg_easier_variant">Leichtere Variante: %1$s</string>
     <string name="trw_side_title">Seitenvergleich</string>
-    <string name="trw_side_values">Links %1$d %% · Rechts %2$d %%</string>
-    <string name="trw_side_diff">%1$s ist %2$d %% schwächer</string>
+    <string name="trw_side_values">Links %1$d\u00A0%% · Rechts %2$d\u00A0%%</string>
+    <string name="trw_side_diff">%1$s ist %2$d\u00A0%% schwächer</string>
     <string name="trw_sets_title">Sätze</string>
     <string name="trw_no_sets">Keine Sätze abgehakt.</string>
     <string name="trw_save_routine">Als Workout speichern</string>
@@ -116,17 +116,17 @@
         <item quantity="one">%d Übung</item>
         <item quantity="other">%d Übungen</item>
     </plurals>
-    <string name="trw_est_minutes">ca. %1$d Min.</string>
+    <string name="trw_est_minutes">ca. %1$d\u00A0Min.</string>
     <string name="trw_delete_routine_title">Workout löschen?</string>
     <string name="trw_delete_routine_text">„%1$s“ wird gelöscht.</string>
     <string name="trw_open_running">Es läuft schon ein Training. Du kommst direkt dorthin zurück.</string>
     <string name="trw_go_to_workout">Zum Training</string>
-    <string name="trw_item_reps">%1$d × %2$s</string>
-    <string name="trw_item_seconds">%1$d × %2$d s</string>
-    <string name="trw_item_interval">%1$d × (%2$d/%3$d s × %4$d)</string>
+    <string name="trw_item_reps">%1$d\u00A0×\u00A0%2$s</string>
+    <string name="trw_item_seconds">%1$d\u00A0×\u00A0%2$d\u00A0s</string>
+    <string name="trw_item_interval">%1$d\u00A0× (%2$d/%3$d\u00A0s ×\u00A0%4$d)</string>
     <plurals name="trw_sets_count">
         <item quantity="one">%d Satz</item>
-        <item quantity="other">%d Sätze</item>
+        <item quantity="other">%d\u00A0Sätze</item>
     </plurals>
 
     <string name="trw_history_title">Trainingsverlauf</string>
@@ -134,7 +134,7 @@
     <string name="trw_workout_default">Training</string>
     <plurals name="trw_sets_done">
         <item quantity="one">%d Satz</item>
-        <item quantity="other">%d Sätze</item>
+        <item quantity="other">%d\u00A0Sätze</item>
     </plurals>
     <string name="trw_open_player">Geführter Modus</string>
     <string name="trw_timer_released">Losgelassen</string>

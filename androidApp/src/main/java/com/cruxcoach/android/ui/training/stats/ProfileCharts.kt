@@ -86,9 +86,9 @@ fun GradePositionChart(
         Row(Modifier.fillMaxWidth().height(height)) {
             // Bottom padding = the grade-label strip under the plot, so "100 %" sits on the plot's floor.
             Column(Modifier.fillMaxHeight().padding(end = 6.dp, bottom = GRADE_LABEL_STRIP), verticalArrangement = Arrangement.SpaceBetween) {
-                Text("${yMax.roundToInt()} %", style = MaterialTheme.typography.labelSmall, color = labelColor)
-                Text("${((yMax + yMin) / 2).roundToInt()} %", style = MaterialTheme.typography.labelSmall, color = labelColor)
-                Text("${yMin.roundToInt()} %", style = MaterialTheme.typography.labelSmall, color = labelColor)
+                Text("${yMax.roundToInt()}\u00A0%", style = MaterialTheme.typography.labelSmall, color = labelColor)
+                Text("${((yMax + yMin) / 2).roundToInt()}\u00A0%", style = MaterialTheme.typography.labelSmall, color = labelColor)
+                Text("${yMin.roundToInt()}\u00A0%", style = MaterialTheme.typography.labelSmall, color = labelColor)
             }
             Canvas(Modifier.weight(1f).fillMaxHeight()) {
                 val w = size.width

@@ -80,11 +80,11 @@
     <string name="cb_stage_pick_hint">Wähl die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast.</string>
     <string name="cb_agreed">Mit Ärztin, Arzt oder Physio abgesprochen</string>
     <string name="cb_step_reference">4 · Referenzwert (optional)</string>
-    <string name="cb_reference_hint">Einarmig am Pick-up-Block, 10 s, etwa 20 mm, Gesamtgewicht. Am besten dein Wert von vor der Verletzung. Sonst die gesunde Hand einmal testen, wenn sie fit ist: nach dem Aufwärmen in 2,5-kg-Schritten steigern, ein 10-s-Halteversuch pro Stufe, 3 Minuten Pause – das letzte Gewicht, das du gerade noch 10 s hältst. Die verletzte Hand nie maximal testen.</string>
+    <string name="cb_reference_hint">Einarmig am Pick-up-Block, 10\u00A0s, etwa 20\u00A0mm, Gesamtgewicht. Am besten dein Wert von vor der Verletzung. Sonst die gesunde Hand einmal testen, wenn sie fit ist: nach dem Aufwärmen in 2,5-kg-Schritten steigern, ein 10-s-Halteversuch pro Stufe, 3 Minuten Pause – das letzte Gewicht, das du gerade noch 10\u00A0s hältst. Die verletzte Hand nie maximal testen.</string>
     <string name="cb_reference_half">Halb aufgestellt (kg)</string>
     <string name="cb_reference_open">Offen (kg)</string>
-    <string name="cb_reference_before">Vor der Verletzung: %1$s kg</string>
-    <string name="cb_reference_other">Andere Hand: %1$s kg</string>
+    <string name="cb_reference_before">Vor der Verletzung: %1$s\u00A0kg</string>
+    <string name="cb_reference_other">Andere Hand: %1$s\u00A0kg</string>
     <string name="cb_reference_use">Übernehmen</string>
     <string name="cb_dominant">Die verletzte Hand ist meine stärkere</string>
     <string name="cb_start">Plan starten</string>
@@ -109,8 +109,8 @@
     <string name="cb_session_region">Übungen</string>
     <string name="cb_session_climb">Klettern</string>
     <string name="cb_session_own">Meine Einheit</string>
-    <string name="cb_session_per_day">%1$d min · bis zu %2$d× am Tag, %3$d h Abstand</string>
-    <string name="cb_session_per_week">%1$d min · %2$d× pro Woche, %3$d h Abstand</string>
+    <string name="cb_session_per_day">%1$d\u00A0min · bis zu %2$d× am Tag, %3$d\u00A0h Abstand</string>
+    <string name="cb_session_per_week">%1$d\u00A0min · %2$d× pro Woche, %3$d\u00A0h Abstand</string>
     <string name="cb_session_due">Dran</string>
     <string name="cb_session_done">Heute erledigt</string>
     <string name="cb_session_later">Nächste ab %1$s</string>
@@ -119,9 +119,9 @@
     <string name="cb_session_start">Starten</string>
     <string name="cb_item_injured">verletzte Hand</string>
     <string name="cb_item_healthy">gesunde Hand</string>
-    <string name="cb_item_target">%1$s–%2$s kg</string>
+    <string name="cb_item_target">%1$s–%2$s\u00A0kg</string>
     <string name="cb_item_effort">Anstrengung %1$d–%2$d von 10</string>
-    <string name="cb_item_percent">%1$d–%2$d %% deines Referenzwerts</string>
+    <string name="cb_item_percent">%1$d–%2$d\u00A0%% deines Referenzwerts</string>
     <string name="cb_session_name">Comeback · %1$s</string>
 
     <!-- Tagebuch -->
@@ -233,6 +233,6 @@
     <string name="cb_sources_less">Weniger</string>
     <string name="cb_reference_label">Referenzwert</string>
     <string name="cb_reference_none">Noch keiner – die Prozentangaben der Kraft-Einheiten brauchen ihn.</string>
-    <string name="cb_reference_values">Halb aufgestellt %1$s kg · offen %2$s kg</string>
+    <string name="cb_reference_values">Halb aufgestellt %1$s\u00A0kg · offen %2$s\u00A0kg</string>
     <string name="cb_reference_edit">Referenzwert eintragen</string>
 </resources>

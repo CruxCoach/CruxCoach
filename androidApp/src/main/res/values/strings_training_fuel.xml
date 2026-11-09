@@ -3,9 +3,9 @@
 <resources>
     <string name="trf_intro_title">Nutrition: energy for training</string>
     <string name="trf_intro_p1">Enough energy is the base for strength, skin and recovery. CruxCoach shows what your training needs – also while you lose weight.</string>
-    <string name="trf_intro_protein">Protein follows your body weight (about 1.4–2.0 g per kg).</string>
+    <string name="trf_intro_protein">Protein follows your body weight (about 1.4–2.0\u00A0g per kg).</string>
     <string name="trf_intro_carbs">Carbohydrates follow your training: more on board and strength days, less on rest days – automatically from your sessions.</string>
-    <string name="trf_intro_no_budget" formatted="false">Every value in the open: your estimated energy need, what you ate and, while losing weight, your calorie target. CruxCoach warns when you lose faster than 1 % of your weight per week or your deficit gets large. No good or bad foods.</string>
+    <string name="trf_intro_no_budget" formatted="false">Every value in the open: your estimated energy need, what you ate and, while losing weight, your calorie target. CruxCoach warns when you lose faster than 1\u00A0% of your weight per week or your deficit gets large. No good or bad foods.</string>
     <string name="trf_intro_hidden">Calories are shown with every value; you can hide them in the settings.</string>
     <string name="trf_intro_private">Everything stays encrypted on your device – unless you switch on the backup or Health Connect yourself.</string>
     <string name="trf_intro_got_it">Got it</string>
@@ -16,14 +16,14 @@
     <string name="trf_next_day">Next day</string>
     <string name="trf_needs_weight">Log your body weight and CruxCoach works out your targets for protein, carbohydrates, fat and water.</string>
     <string name="trf_protein">Protein</string>
-    <string name="trf_protein_info">For climbers 1.4–2.0 g of protein per kg body weight a day, spread over several meals, is usually enough. Your range: %1$d–%2$d g.</string>
+    <string name="trf_protein_info">For climbers 1.4–2.0\u00A0g of protein per kg body weight a day, spread over several meals, is usually enough. Your range: %1$d–%2$d\u00A0g.</string>
     <string name="trf_carbs">Carbohydrates – matched to training</string>
     <string name="trf_carbs_info_title">Why more on training days?</string>
-    <string name="trf_carbs_info">Carbohydrates fuel hard moves and recovery. For your day (%1$s) CruxCoach suggests %2$s g per kg. For climbers the literature names 3–7 g per kg depending on load.</string>
-    <string name="trf_carbs_per_kg">%1$s g/kg</string>
+    <string name="trf_carbs_info">Carbohydrates fuel hard moves and recovery. For your day (%1$s) CruxCoach suggests %2$s\u00A0g per kg. For climbers the literature names 3–7\u00A0g per kg depending on load.</string>
+    <string name="trf_carbs_per_kg">%1$s\u00A0g/kg</string>
     <string name="trf_day_planned">%1$s (planned: %2$s)</string>
-    <string name="trf_planned_board">board %1$d min</string>
-    <string name="trf_planned_training">training %1$d min</string>
+    <string name="trf_planned_board">board %1$d\u00A0min</string>
+    <string name="trf_planned_training">training %1$d\u00A0min</string>
     <string name="trf_carbs_tomorrow_hard">Hard day tomorrow: a carb-rich dinner tonight helps.</string>
     <string name="trf_carbs_planned">Planned today: %1$s. Until it is done, today\'s targets already count it – what you eat before a session fuels it. Earlier days and the energy card count only what you logged.</string>
     <string name="trf_water">Water</string>
@@ -41,40 +41,40 @@
     <string name="trf_recipe_portions">Portions</string>
     <string name="trf_recipe_cooked">Cooked weight (%1$s, optional)</string>
     <string name="trf_recipe_cooked_hint">Weigh the finished dish if you can: pasta and rice gain water, meat loses it. Without it the portions split the raw weight.</string>
-    <string name="trf_recipe_per_portion">Per portion (%1$s): %2$s g protein · %3$s g carbs · %4$s g fat</string>
+    <string name="trf_recipe_per_portion">Per portion (%1$s): %2$s\u00A0g protein · %3$s\u00A0g carbs · %4$s\u00A0g fat</string>
     <string name="trf_foods_usda_title">US foods (USDA)</string>
     <string name="trf_usda_attribution">Food data: USDA FoodData Central (public domain)</string>
     <string name="trf_micro_title">Iron, calcium, vitamin D · 7 days</string>
     <string name="trf_micro_iron">Iron</string>
     <string name="trf_micro_calcium">Calcium</string>
     <string name="trf_micro_vitamin_d">Vitamin D</string>
-    <string name="trf_micro_value">%1$s / %2$s %3$s a day</string>
+    <string name="trf_micro_value">%1$s / %2$s\u00A0%3$s a day</string>
     <plurals name="trf_micro_coverage">
-        <item quantity="one">Estimated from %1$d %% of what you logged on %2$d day. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
-        <item quantity="other">Estimated from %1$d %% of what you logged on %2$d days. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
+        <item quantity="one">Estimated from %1$d\u00A0%% of what you logged on %2$d day. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
+        <item quantity="other">Estimated from %1$d\u00A0%% of what you logged on %2$d days. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
     </plurals>
-    <string name="trf_micro_info">An estimate from the foods you logged, next to the EFSA reference values for adults: iron 16 mg for women before menopause, 11 mg otherwise; calcium 1000 mg up to 24 years, then 950 mg; vitamin D 15 µg, which the skin also makes in summer sun. Climbers who eat little are short of these first. Staying low for weeks is worth a talk with a doctor or sports dietitian – especially with tiredness or injuries. This is not a diagnosis.</string>
+    <string name="trf_micro_info">An estimate from the foods you logged, next to the EFSA reference values for adults: iron 16\u00A0mg for women before menopause, 11\u00A0mg otherwise; calcium 1000\u00A0mg up to 24 years, then 950\u00A0mg; vitamin D 15\u00A0µg, which the skin also makes in summer sun. Climbers who eat little are short of these first. Staying low for weeks is worth a talk with a doctor or sports dietitian – especially with tiredness or injuries. This is not a diagnosis.</string>
     <string name="trf_entry_edit">Edit</string>
     <string name="trf_edit_title">Edit entry</string>
     <string name="trf_water_add">+%1$s</string>
     <string name="trf_progress_volume">%1$s / %2$s</string>
-    <string name="trf_amount_with_unit">%1$s %2$s</string>
+    <string name="trf_amount_with_unit">%1$s\u00A0%2$s</string>
     <string name="trf_unit_oz">oz</string>
     <string name="trf_unit_floz">fl oz</string>
     <string name="trf_unit_cups">cups</string>
     <string name="trf_water_entry_desc">%1$s, tap to remove</string>
-    <string name="trf_kcal_value">%1$d kcal</string>
-    <string name="trf_kcal_estimated">≈ %1$d kcal</string>
-    <string name="trf_value_g">%1$d g</string>
-    <string name="trf_to_go">%1$d g to go</string>
+    <string name="trf_kcal_value">%1$d\u00A0kcal</string>
+    <string name="trf_kcal_estimated">≈\u00A0%1$d\u00A0kcal</string>
+    <string name="trf_value_g">%1$d\u00A0g</string>
+    <string name="trf_to_go">%1$d\u00A0g to go</string>
     <string name="trf_reached">Target reached</string>
     <string name="trf_fat">Fat</string>
-    <string name="trf_fat_share">%1$d %% of energy · guideline %2$d–%3$d %%</string>
-    <string name="trf_fat_info" formatted="false">Fat carries the vitamins A, D, E and K and is needed for hormones. Sports nutrition guidance for athletes recommends about 20–35 % of energy from fat; less than 20 % is not advised. The share is calculated from the protein, carbohydrate and fat you logged.</string>
-    <string name="trf_fat_target_energy">Fat target: fat fills the energy that protein and carbohydrates leave of your energy target, at least 20 %% and at most 35 %% of it (today %1$d–%2$d g).</string>
-    <string name="trf_fat_target_weight">Fat target: about 1 g per kg body weight (%1$d–%2$d g). With your height and birth year it follows your energy target instead.</string>
-    <string name="trf_fat_share_today">Today %1$d %% of your energy comes from fat.</string>
-    <string name="trf_progress_g">%1$d / %2$d g</string>
+    <string name="trf_fat_share">%1$d\u00A0%% of energy · guideline %2$d–%3$d\u00A0%%</string>
+    <string name="trf_fat_info" formatted="false">Fat carries the vitamins A, D, E and K and is needed for hormones. Sports nutrition guidance for athletes recommends about 20–35\u00A0% of energy from fat; less than 20\u00A0% is not advised. The share is calculated from the protein, carbohydrate and fat you logged.</string>
+    <string name="trf_fat_target_energy">Fat target: fat fills the energy that protein and carbohydrates leave of your energy target, at least 20\u00A0%% and at most 35\u00A0%% of it (today %1$d–%2$d\u00A0g).</string>
+    <string name="trf_fat_target_weight">Fat target: about 1\u00A0g per kg body weight (%1$d–%2$d\u00A0g). With your height and birth year it follows your energy target instead.</string>
+    <string name="trf_fat_share_today">Today %1$d\u00A0%% of your energy comes from fat.</string>
+    <string name="trf_progress_g">%1$d / %2$d\u00A0g</string>
     <string name="trf_quick_add">Quick entry</string>
     <string name="trf_my_foods">My foods</string>
     <string name="trf_copy_previous">Same as yesterday</string>
@@ -86,8 +86,8 @@
     <string name="trf_copy_confirm">Copy</string>
     <string name="trf_empty_day">Nothing logged yet. A rough entry is enough – you don\'t have to count precisely.</string>
     <string name="trf_entry_macros">P %1$s · C %2$s · F %3$s</string>
-    <string name="trf_entry_macros_g">P %1$s · C %2$s · F %3$s g</string>
-    <string name="trf_entry_portions">%1$s × portion</string>
+    <string name="trf_entry_macros_g">P %1$s · C %2$s · F %3$s\u00A0g</string>
+    <string name="trf_entry_portions">%1$s\u00A0× portion</string>
     <string name="trf_entry_menu">Options for %1$s</string>
     <string name="trf_deleted">Entry deleted</string>
     <string name="trf_water_removed">Water removed</string>
@@ -122,13 +122,13 @@
     <string name="trf_describe">Describe</string>
     <string name="trf_describe_title">Describe a meal</string>
     <string name="trf_describe_placeholder">e.g. 2 slices of wholemeal bread with cheese and a glass of orange juice</string>
-    <string name="trf_describe_hint">Amounts like “80 g”, “2 slices” or “a glass” make the result more precise. You can also dictate with the keyboard’s microphone.</string>
+    <string name="trf_describe_hint">Amounts like “80\u00A0g”, “2 slices” or “a glass” make the result more precise. You can also dictate with the keyboard’s microphone.</string>
     <string name="trf_describe_go">Analyse</string>
     <string name="trf_foods_search">Search your foods and the database</string>
     <string name="trf_foods_empty">No saved foods yet. Create one or save a quick entry.</string>
     <string name="trf_foods_new">New food</string>
     <string name="trf_food_per_portion">per portion</string>
-    <string name="trf_food_per_100">per 100 g</string>
+    <string name="trf_food_per_100">per 100\u00A0g</string>
     <string name="trf_food_favorite">Mark as favourite</string>
     <string name="trf_food_unfavorite">Remove from favourites</string>
     <string name="trf_food_delete">Delete food</string>
@@ -144,9 +144,9 @@
     <string name="trf_create_title">New food</string>
     <string name="trf_create_name">Name</string>
     <string name="trf_create_brand">Brand (optional)</string>
-    <string name="trf_create_per100">Nutrition per 100 g (optional)</string>
+    <string name="trf_create_per100">Nutrition per 100\u00A0g (optional)</string>
     <string name="trf_create_per_serving">Nutrition per portion (optional, needs the portion size)</string>
-    <string name="trf_create_values_100g">Per 100 g</string>
+    <string name="trf_create_values_100g">Per 100\u00A0g</string>
     <string name="trf_create_values_serving">Per portion (US label)</string>
     <string name="trf_create_serving_g">Portion size in g (optional)</string>
     <string name="trf_create_serving_label">Portion name (optional, e.g. bar)</string>

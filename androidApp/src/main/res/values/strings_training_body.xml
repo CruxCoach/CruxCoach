@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Body tracking (FEAT-067). -->
 <resources>
-    <string name="trb_trend_info_text">Your weight swings by 1–2 kg from day to day, mostly water, salt, food and training. The trend smooths those swings out – each reading pulls it only a tenth of the way – so you see what really changes. Gaps are fine; weighing now and then is enough.</string>
+    <string name="trb_trend_info_text">Your weight swings by 1–2\u00A0kg from day to day, mostly water, salt, food and training. The trend smooths those swings out – each reading pulls it only a tenth of the way – so you see what really changes. Gaps are fine; weighing now and then is enough.</string>
     <string name="trb_tile_trend">Trend</string>
     <string name="trb_tile_rate">Per week</string>
     <string name="trb_tile_entries">Readings</string>
@@ -29,7 +29,7 @@
     <string name="trb_strength_title">Strength to weight</string>
     <string name="trb_strength_info_text">Shown is the best load per training day as a percentage of your body weight: for hangs body weight plus added weight, for block lifts the lifted weight, for weighted pull-ups the estimated maximum. Each set remembers the body weight of its day.</string>
     <string name="trb_strength_empty">No strength values yet. A performance value or a short test gives the first point.</string>
-    <string name="trb_strength_best">Best: %1$d %%</string>
+    <string name="trb_strength_best">Best: %1$d\u00A0%%</string>
     <string name="trb_strength_chart_description">Strength to weight over time</string>
     <string name="trb_recent">Recent entries</string>
     <string name="trb_legacy_badge">from an older version</string>

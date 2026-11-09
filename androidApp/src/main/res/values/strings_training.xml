@@ -122,25 +122,25 @@
     <string name="tr_routine_injury_one_arm_desc">No wall: one-arm pick-ups on the healthy hand, pull-ups, rows, shoulders and core.</string>
     <string name="tr_routine_pull_antagonist">Pull &amp; antagonist (no climbing)</string>
     <string name="tr_routine_pull_antagonist_desc">Balanced pulling and pushing for days off the wall.</string>
-    <string name="tr_routine_antagonist_15">Antagonist 15 min</string>
+    <string name="tr_routine_antagonist_15">Antagonist 15\u00A0min</string>
     <string name="tr_routine_antagonist_15_desc">The short add-on after a board session: shoulders, wrists, finger extensors.</string>
     <string name="tr_routine_legs_basics">Leg basics</string>
     <string name="tr_routine_legs_basics_desc">Squat, hinge, single leg, hamstrings and adductors.</string>
     <string name="tr_routine_core_climber">Core for climbers</string>
     <string name="tr_routine_core_climber_desc">Tension from dead bug to L-sit.</string>
-    <string name="tr_routine_mobility_10">Mobility 10 min</string>
+    <string name="tr_routine_mobility_10">Mobility 10\u00A0min</string>
     <string name="tr_routine_mobility_10_desc">Hips for high steps and turnout, shoulders and wrists.</string>
     <string name="tr_routine_baseline_tests">Baseline test</string>
-    <string name="tr_routine_baseline_tests_desc">Max hang on 20 mm, max pull-ups, hollow hold – repeat every 6–8 weeks.</string>
+    <string name="tr_routine_baseline_tests_desc">Max hang on 20\u00A0mm, max pull-ups, hollow hold – repeat every 6–8 weeks.</string>
 
     <!-- Units and formats -->
-    <string name="tr_format_kg">%1$s kg</string>
-    <string name="tr_format_lb">%1$s lb</string>
-    <string name="tr_format_cm">%1$s cm</string>
-    <string name="tr_format_in">%1$s in</string>
-    <string name="tr_format_seconds">%1$d s</string>
-    <string name="tr_format_mm">%1$s mm</string>
-    <string name="tr_format_percent_bw">%1$d %% BW</string>
+    <string name="tr_format_kg">%1$s\u00A0kg</string>
+    <string name="tr_format_lb">%1$s\u00A0lb</string>
+    <string name="tr_format_cm">%1$s\u00A0cm</string>
+    <string name="tr_format_in">%1$s\u00A0in</string>
+    <string name="tr_format_seconds">%1$d\u00A0s</string>
+    <string name="tr_format_mm">%1$s\u00A0mm</string>
+    <string name="tr_format_percent_bw">%1$d\u00A0%% BW</string>
     <string name="tr_bodyweight">Bodyweight</string>
     <string name="tr_assisted">assisted</string>
     <!-- Weight fields: what the number refers to (issue #58) -->
@@ -156,7 +156,7 @@
     <string name="tr_weight_stack">Weight on the stack</string>
     <string name="tr_weight_force">Gauge reading</string>
     <string name="tr_weight_input">%1$s in %2$s</string>
-    <string name="tr_format_pair">%1$d × %2$s</string>
+    <string name="tr_format_pair">%1$d\u00A0×\u00A0%2$s</string>
     <string name="tr_format_per_dumbbell">%1$s per dumbbell</string>
     <string name="tr_format_per_kettlebell">%1$s per kettlebell</string>
 

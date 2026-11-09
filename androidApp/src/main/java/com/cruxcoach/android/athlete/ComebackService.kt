@@ -159,7 +159,10 @@ class ComebackService(private val service: AthleteService) {
         return out
     }
 
-    /** A plain-text summary for an appointment: what was entered, the stage history and the diary. */
+    /**
+     * A plain-text summary for an appointment: what was entered, the stage history and the diary. The screen texts keep
+     * a number and its unit together with non-breaking spaces; text that leaves the app gets plain spaces.
+     */
     fun summary(injuryId: String, language: String, labels: SummaryLabels): String {
         val injury = repo.injury(injuryId) ?: return ""
         val entries = repo.comebackEntries(injuryId)
@@ -190,7 +193,7 @@ class ComebackService(private val service: AthleteService) {
                         e.sessionPainMax?.toString() ?: "–", if (e.swelling == true) labels.yes else "", e.note.orEmpty()).joinToString("\t").trimEnd())
                 }
             }
-        }
+        }.replace('\u00A0', ' ')
     }
 
     /** Words of [summary] from the app's resources. */

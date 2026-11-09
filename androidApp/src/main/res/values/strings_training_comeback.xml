@@ -80,11 +80,11 @@
     <string name="cb_stage_pick_hint">Pick the stage you agreed with your doctor or physio.</string>
     <string name="cb_agreed">Agreed with my doctor or physio</string>
     <string name="cb_step_reference">4 · Reference value (optional)</string>
-    <string name="cb_reference_hint">One-arm pick-up, 10 s, about 20 mm, total weight. Best: your value from before the injury. Otherwise test the healthy hand once if it\'s fit: after warming up, add 2.5 kg per step, one 10-s hold per step, 3 minutes rest – the last weight you just hold for 10 s. Never max-test the injured hand.</string>
+    <string name="cb_reference_hint">One-arm pick-up, 10\u00A0s, about 20\u00A0mm, total weight. Best: your value from before the injury. Otherwise test the healthy hand once if it\'s fit: after warming up, add 2.5\u00A0kg per step, one 10-s hold per step, 3 minutes rest – the last weight you just hold for 10\u00A0s. Never max-test the injured hand.</string>
     <string name="cb_reference_half">Half crimp (kg)</string>
     <string name="cb_reference_open">Open hand (kg)</string>
-    <string name="cb_reference_before">Before the injury: %1$s kg</string>
-    <string name="cb_reference_other">Other hand: %1$s kg</string>
+    <string name="cb_reference_before">Before the injury: %1$s\u00A0kg</string>
+    <string name="cb_reference_other">Other hand: %1$s\u00A0kg</string>
     <string name="cb_reference_use">Use</string>
     <string name="cb_dominant">The injured hand is my stronger one</string>
     <string name="cb_start">Start plan</string>
@@ -109,8 +109,8 @@
     <string name="cb_session_region">Exercises</string>
     <string name="cb_session_climb">Climbing</string>
     <string name="cb_session_own">My session</string>
-    <string name="cb_session_per_day">%1$d min · up to %2$d× a day, %3$d h apart</string>
-    <string name="cb_session_per_week">%1$d min · %2$d× a week, %3$d h apart</string>
+    <string name="cb_session_per_day">%1$d\u00A0min · up to %2$d× a day, %3$d\u00A0h apart</string>
+    <string name="cb_session_per_week">%1$d\u00A0min · %2$d× a week, %3$d\u00A0h apart</string>
     <string name="cb_session_due">Due</string>
     <string name="cb_session_done">Done today</string>
     <string name="cb_session_later">Next from %1$s</string>
@@ -119,9 +119,9 @@
     <string name="cb_session_start">Start</string>
     <string name="cb_item_injured">injured hand</string>
     <string name="cb_item_healthy">healthy hand</string>
-    <string name="cb_item_target">%1$s–%2$s kg</string>
+    <string name="cb_item_target">%1$s–%2$s\u00A0kg</string>
     <string name="cb_item_effort">effort %1$d–%2$d of 10</string>
-    <string name="cb_item_percent">%1$d–%2$d %% of your reference</string>
+    <string name="cb_item_percent">%1$d–%2$d\u00A0%% of your reference</string>
     <string name="cb_session_name">Comeback · %1$s</string>
 
     <!-- Diary -->
@@ -233,6 +233,6 @@
     <string name="cb_sources_less">Fewer</string>
     <string name="cb_reference_label">Reference value</string>
     <string name="cb_reference_none">None yet – the percentages of the strength sessions need one.</string>
-    <string name="cb_reference_values">Half crimp %1$s kg · open hand %2$s kg</string>
+    <string name="cb_reference_values">Half crimp %1$s\u00A0kg · open hand %2$s\u00A0kg</string>
     <string name="cb_reference_edit">Enter reference value</string>
 </resources>

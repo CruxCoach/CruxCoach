@@ -276,14 +276,14 @@ object ComebackTexts {
             "Exercise is the first choice here (strong evidence); surgery did no better than placebo surgery. Usual are 6–12 weeks of strengthening; no progress after 12 weeks: see a specialist. MRI findings are common in climbers without any pain.",
             "Training ist hier die erste Wahl (starke Evidenz); eine OP war nicht besser als eine Schein-OP. Üblich sind 6–12 Wochen Kräftigung; ohne Fortschritt nach 12 Wochen: fachärztlich abklären. MRT-Befunde sind bei Kletternden auch ohne Schmerzen häufig.")
         InjuryFinding.SLAP_BICEPS -> Txt(
-            "Without surgery it worked for about 78 % of athletes who kept at it, usually within 6 months.",
-            "Ohne OP klappte es bei etwa 78 % der Sportler, die es durchzogen, meist innerhalb von 6 Monaten.")
+            "Without surgery it worked for about 78\u00A0% of athletes who kept at it, usually within 6 months.",
+            "Ohne OP klappte es bei etwa 78\u00A0% der Sportler, die es durchzogen, meist innerhalb von 6 Monaten.")
         InjuryFinding.SHOULDER_INSTABILITY -> Txt(
-            "After a first dislocation in young people it happens again in about half without surgery and in about 6 % after stabilisation; 93 % of climbers got back to climbing after surgery.",
-            "Nach einer ersten Ausrenkung in jungen Jahren passiert es ohne OP bei etwa der Hälfte wieder, nach einer Stabilisierung bei etwa 6 %; 93 % der Kletternden kamen nach der OP zurück ans Klettern.")
+            "After a first dislocation in young people it happens again in about half without surgery and in about 6\u00A0% after stabilisation; 93\u00A0% of climbers got back to climbing after surgery.",
+            "Nach einer ersten Ausrenkung in jungen Jahren passiert es ohne OP bei etwa der Hälfte wieder, nach einer Stabilisierung bei etwa 6\u00A0%; 93\u00A0% der Kletternden kamen nach der OP zurück ans Klettern.")
         InjuryFinding.LATERAL_ELBOW, InjuryFinding.MEDIAL_ELBOW -> Txt(
-            "Usual are 3 × 15 repetitions over 6–12 weeks, from holds to slow lowering. Cortisone injections help for a few weeks but did worse after a year.",
-            "Üblich sind 3 × 15 Wiederholungen über 6–12 Wochen, von Halteübungen zu langsamem Absenken. Kortisonspritzen helfen ein paar Wochen, nach einem Jahr stand es damit aber schlechter.")
+            "Usual are 3\u00A0×\u00A015 repetitions over 6–12 weeks, from holds to slow lowering. Cortisone injections help for a few weeks but did worse after a year.",
+            "Üblich sind 3\u00A0×\u00A015 Wiederholungen über 6–12 Wochen, von Halteübungen zu langsamem Absenken. Kortisonspritzen helfen ein paar Wochen, nach einem Jahr stand es damit aber schlechter.")
         InjuryFinding.FRONT_ELBOW -> Txt(
             "Gradual loading over several weeks; underclings and steep pulling come last.",
             "Schrittweiser Belastungsaufbau über mehrere Wochen; Untergriffe und steiles Ziehen kommen zuletzt.")
@@ -308,8 +308,8 @@ object ComebackTexts {
 
     /** Optional nutrition note (owner's plan), with its weak evidence and the safety questions (loading-principles.md F1–F3). */
     val GELATIN = Txt(
-        "Optional: 15 g gelatin with about 50 mg vitamin C, about 60 minutes before the first session of the day. In a small study (8 men) it raised a blood marker of collagen production; whether it helps an injured finger is not known. It's no reason to load more or sooner. Leave it out with a gelatin or meat allergy (alpha-gal) and ask your doctor first if you've had kidney stones.",
-        "Optional: 15 g Gelatine mit etwa 50 mg Vitamin C, etwa 60 Minuten vor der ersten Einheit des Tages. In einer kleinen Studie (8 Männer) stieg damit ein Blutwert der Kollagenbildung; ob es einem verletzten Finger hilft, ist nicht bekannt. Es ist kein Grund, mehr oder früher zu belasten. Bei Gelatine- oder Fleischallergie (Alpha-Gal) weglassen, nach Nierensteinen vorher ärztlich fragen.",
+        "Optional: 15\u00A0g gelatin with about 50\u00A0mg vitamin C, about 60 minutes before the first session of the day. In a small study (8 men) it raised a blood marker of collagen production; whether it helps an injured finger is not known. It's no reason to load more or sooner. Leave it out with a gelatin or meat allergy (alpha-gal) and ask your doctor first if you've had kidney stones.",
+        "Optional: 15\u00A0g Gelatine mit etwa 50\u00A0mg Vitamin C, etwa 60 Minuten vor der ersten Einheit des Tages. In einer kleinen Studie (8 Männer) stieg damit ein Blutwert der Kollagenbildung; ob es einem verletzten Finger hilft, ist nicht bekannt. Es ist kein Grund, mehr oder früher zu belasten. Bei Gelatine- oder Fleischallergie (Alpha-Gal) weglassen, nach Nierensteinen vorher ärztlich fragen.",
     )
     val GELATIN_SOURCES = listOf(
         Source("Shaw G et al. Vitamin C–enriched gelatin supplementation before intermittent activity augments collagen synthesis. Am J Clin Nutr 2017;105:136–143", SourceKind.TRIAL),

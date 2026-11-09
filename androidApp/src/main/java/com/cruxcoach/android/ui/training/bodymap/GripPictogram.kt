@@ -78,7 +78,7 @@ fun gripFor(def: ExerciseDefinition, grip: Grip?): GripType? {
  */
 @Composable
 fun GripPictogram(grip: GripType, edgeMm: Double?, modifier: Modifier = Modifier) {
-    val label = gripTypeLabel(grip) + (edgeMm?.takeIf { isEdgeGrip(grip) }?.let { " · ${it.roundToInt()} mm" } ?: "")
+    val label = gripTypeLabel(grip) + (edgeMm?.takeIf { isEdgeGrip(grip) }?.let { " · ${it.roundToInt()}\u00A0mm" } ?: "")
     // The depth label sits under the drawing, never on top of the edge.
     Column(modifier.semantics { contentDescription = label }, horizontalAlignment = Alignment.CenterHorizontally) {
         GripCanvas(grip, edgeMm, Modifier.fillMaxWidth().weight(1f))

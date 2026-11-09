@@ -33,8 +33,8 @@
     <string name="trw_return_break">Wiedereinstieg: Woche %1$d von %2$d nach %3$d Tagen Pause</string>
     <string name="trw_return_illness">Nach %1$d Tagen krank: Woche %2$d von %3$d</string>
     <string name="trw_return_finger">Finger-Wiedereinstieg: Woche %1$d von %2$d nach der Verletzung</string>
-    <string name="trw_return_detail_nomax">Kürzere Einheiten (%1$d %%) und ohne Max-Fingerlast.</string>
-    <string name="trw_return_detail">Kürzere Einheiten (%1$d %%).</string>
+    <string name="trw_return_detail_nomax">Kürzere Einheiten (%1$d\u00A0%%) und ohne Max-Fingerlast.</string>
+    <string name="trw_return_detail">Kürzere Einheiten (%1$d\u00A0%%).</string>
     <string name="trw_return_detail_finger">Nur leichte Fingerarbeit, keine Max-Hangs – alles andere wie gewohnt.</string>
     <string name="trw_return_info_title">Warum ein Wiedereinstieg?</string>
     <string name="trw_return_info">Nach einer Pause brauchen vor allem Sehnen und Ringbänder ein paar Einheiten, um sich wieder an Last zu gewöhnen – mehr als die Muskeln. Die Rampe endet nach ein bis zwei Wochen oder sobald du an vier Tagen trainiert hast. Nach einer Fingerverletzung, die du als vorbei eingetragen hast, bleiben nur die Finger vier Wochen lang unter dem Limit. Das ist keine medizinische Beratung; wenn etwas wehtut, hör auf und lass es abklären.</string>

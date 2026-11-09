@@ -21,8 +21,8 @@
         <item quantity="other">Board: %d attempts logged automatically</item>
     </plurals>
     <plurals name="trt_minutes">
-        <item quantity="one">%d min</item>
-        <item quantity="other">%d min</item>
+        <item quantity="one">%d\u00A0min</item>
+        <item quantity="other">%d\u00A0min</item>
     </plurals>
     <string name="trt_streak_start">Reach your weekly goal to start a streak.</string>
     <string name="trt_streak_paused">Pause active – your streak is frozen.</string>
@@ -61,9 +61,9 @@
     <string name="trt_reason_spared">Spared today: %1$s – exercises that load it stay out.</string>
     <string name="trt_reason_spared_generic">What hurts today is spared – exercises that load it stay out.</string>
     <string name="trt_ev_sore">hurts today: %1$s</string>
-    <string name="trt_duration_value">%d min</string>
+    <string name="trt_duration_value">%d\u00A0min</string>
     <string name="trt_duration_title">How long today?</string>
-    <string name="trt_duration_usual">As usual (%d min)</string>
+    <string name="trt_duration_usual">As usual (%d\u00A0min)</string>
     <string name="trt_favorite">Favourite</string>
     <string name="trt_reason_more_time">More time today – the session is longer.</string>
     <string name="trt_reason_extended">Filled to your time with more sets and exercises of the same kind.</string>
@@ -124,7 +124,7 @@
     <string name="trt_sugg_benchmarks_text">Max hang, pick-up, weighted pull-up: from what you can do, CruxCoach plans your loads.</string>
     <string name="trt_sugg_benchmarks_action">Enter</string>
     <string name="trt_today_hero">Your training today</string>
-    <string name="trt_more_exercises">+ %1$d more</string>
+    <string name="trt_more_exercises">+\u00A0%1$d more</string>
     <string name="trt_low_data">Little data yet – the suggestion gets more personal as you log</string>
     <string name="trt_warmup_start">Start the warm-up</string>
     <string name="trt_more_actions">More actions</string>
@@ -166,16 +166,16 @@
     <string name="trt_level_easier">Lighter</string>
     <string name="trt_level_harder">Harder</string>
     <!-- Little energy lately before maximal finger work: a supportive hint on the card, never a lock (holistic audit P2-17). -->
-    <string name="trt_energy_hint_deficit">Last %1$d logged days: on average %2$d of %3$d kcal – a snack with carbohydrates before hard finger work helps.</string>
-    <string name="trt_energy_hint_deficit_share">Last %1$d logged days: on average about %2$d %% under your estimated need – a snack with carbohydrates before hard finger work helps.</string>
+    <string name="trt_energy_hint_deficit">Last %1$d logged days: on average %2$d of %3$d\u00A0kcal – a snack with carbohydrates before hard finger work helps.</string>
+    <string name="trt_energy_hint_deficit_share">Last %1$d logged days: on average about %2$d\u00A0%% under your estimated need – a snack with carbohydrates before hard finger work helps.</string>
     <string name="trt_energy_hint_deficit_plain">Your energy has been on the low side lately – a snack with carbohydrates before hard finger work helps.</string>
-    <string name="trt_energy_hint_carbs">On %1$d training days %2$s g/kg of carbohydrate on average instead of %3$s g/kg – a snack with carbohydrates before hard finger work helps.</string>
+    <string name="trt_energy_hint_carbs">On %1$d training days %2$s\u00A0g/kg of carbohydrate on average instead of %3$s\u00A0g/kg – a snack with carbohydrates before hard finger work helps.</string>
     <string name="trt_energy_hint_carbs_plain">Carbohydrates have been on the low side on your last training days – a snack with them before hard finger work helps.</string>
     <string name="trt_next_shuffle">Another mix</string>
     <string name="trt_next_hurts">Something hurts</string>
     <string name="trt_next_equipment">Equipment</string>
     <string name="trt_reason_usual_kind">As usual on %1$s: %2$s.</string>
-    <string name="trt_reason_usual_minutes">As usual on %1$s: %2$d min.</string>
+    <string name="trt_reason_usual_minutes">As usual on %1$s: %2$d\u00A0min.</string>
     <string name="trt_reason_usual_kind_generic">What you usually choose on this weekday.</string>
     <string name="trt_reason_usual_minutes_generic">Your usual time on this weekday.</string>
     <string name="trt_never_done">“%1$s” will not be suggested any more</string>

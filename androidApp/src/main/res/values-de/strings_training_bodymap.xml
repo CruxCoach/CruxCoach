@@ -15,7 +15,7 @@
     <string name="trb_selected_involved">%1$s – mit beteiligt</string>
     <string name="trb_selected_none">%1$s – hier kaum beteiligt</string>
     <string name="trb_grip_title">Griff</string>
-    <string name="trb_edge_mm">%1$d mm</string>
+    <string name="trb_edge_mm">%1$d\u00A0mm</string>
     <string name="trb_injury_where">Tippe auf die Stelle, die wehtut – oder wähle unten einen Bereich</string>
     <string name="trb_area_fingers">Finger</string>
     <string name="trb_area_forearm_flexors">Unterarm-Beuger</string>

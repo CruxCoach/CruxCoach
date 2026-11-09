@@ -46,8 +46,8 @@
     <string name="trc_days_per_week">%1$d days</string>
     <string name="trc_climbing_days">Days you usually climb</string>
     <string name="trc_session_minutes">Length of a training without the wall</string>
-    <string name="trc_minutes">%1$d min</string>
-    <string name="trc_add_on">10–15 min antagonists or core after climbing?</string>
+    <string name="trc_minutes">%1$d\u00A0min</string>
+    <string name="trc_add_on">10–15\u00A0min antagonists or core after climbing?</string>
     <string name="trc_experience_title">Climbing and experience</string>
     <string name="trc_experience_why">Lets the coach dose finger load: max hangs and campus only when your fingers are ready, more recovery where it helps.</string>
     <string name="trc_contexts">Where do you climb?</string>
@@ -130,9 +130,9 @@
     <string name="trc_values_why">Loads are planned from what you can do. Pick a way – none is required.</string>
     <string name="trc_path_learn">Learn while training (recommended)</string>
     <string name="trc_path_learn_text">The first sessions start careful; after each set you say how many more would have gone. After two sessions the values are learnt.</string>
-    <string name="trc_path_estimate">Quick estimate (15 s)</string>
+    <string name="trc_path_estimate">Quick estimate (15\u00A0s)</string>
     <string name="trc_path_estimate_text">Two or three questions about pull-ups and hangs; the first real set replaces the estimate.</string>
-    <string name="trc_path_test">Test session (25–35 min)</string>
+    <string name="trc_path_test">Test session (25–35\u00A0min)</string>
     <string name="trc_path_test_text">Guided: warm-up ramp, max hang, pull-ups, core hold.</string>
     <string name="trc_open_benchmarks">Enter values I already know</string>
     <string name="trc_plan_title">Your proposed week</string>
@@ -151,18 +151,18 @@
     <string name="trc_estimate_pull_weighted">With added weight</string>
     <string name="trc_estimate_added">Added weight (%1$s)</string>
     <string name="trc_estimate_reps">Reps</string>
-    <string name="trc_estimate_hang">10 s on a 20 mm edge, both hands?</string>
+    <string name="trc_estimate_hang">10\u00A0s on a 20\u00A0mm edge, both hands?</string>
     <string name="trc_estimate_hang_no">Can\'t</string>
     <string name="trc_estimate_hang_barely">Just about</string>
     <string name="trc_estimate_hang_easy">Easily</string>
     <string name="trc_estimate_hang_weighted">With added weight</string>
     <string name="trc_estimate_hang_cannot">Fine – finger work then starts on a bigger edge or with assistance.</string>
-    <string name="trc_estimate_pickup">One-arm pick-up for 10 s, per hand, block included</string>
+    <string name="trc_estimate_pickup">One-arm pick-up for 10\u00A0s, per hand, block included</string>
     <string name="trc_estimate_healthy_side">Only the healthy hand while your injury is open.</string>
     <string name="trc_estimate_injury_skip">Skipped – your injury rules out two-hand hangs for now.</string>
     <string name="trc_estimate_no_weight">Enter your body weight and the coach also works in percent of body weight.</string>
     <string name="trc_estimate_note">Saved as “estimated” and replaced by your first real set, up or down.</string>
-    <string name="trc_estimate_pct">≈ %1$d %% of body weight</string>
+    <string name="trc_estimate_pct">≈\u00A0%1$d\u00A0%% of body weight</string>
     <string name="trc_estimate_typical">typical for about %1$s</string>
     <string name="trc_estimate_high">unusually high for %1$s – please check the entry</string>
     <string name="trc_estimate_low">unusually low for %1$s – please check the entry</string>
@@ -200,7 +200,7 @@
     <string name="trc_settings_title">Coach profile</string>
     <string name="trc_settings_info">Goal, week, experience and what suits you. Every answer is optional and stays on this device; it only shapes the suggestions.</string>
     <string name="trc_settings_no_goal">No goal yet</string>
-    <string name="trc_settings_score">%1$d %% complete</string>
+    <string name="trc_settings_score">%1$d\u00A0%% complete</string>
     <string name="trc_excluded_title">Never suggested</string>
     <string name="trc_excluded_none">No exercises excluded. Use “Never suggest” on an exercise to keep it out of suggestions.</string>
     <string name="trc_excluded_allow">Allow again</string>
@@ -237,5 +237,5 @@
     <string name="trc_learning_own_short">Your load from last time</string>
     <string name="trc_learning_own">Last time you trained lighter than planned, so this load is planned now – until a set shows more. You can change or delete it under performance values.</string>
     <string name="trlr_minutes">Your training length</string>
-    <string name="trlr_minutes_text">Usually about %1$d min (set: %2$d min)</string>
+    <string name="trlr_minutes_text">Usually about %1$d\u00A0min (set: %2$d\u00A0min)</string>
 </resources>

@@ -49,11 +49,11 @@
     <string name="tru_tile_weight_tap">Tap to log</string>
     <string name="tru_open_body">Weight trend and measurements</string>
     <string name="tru_tile_food_protein">Food · protein</string>
-    <string name="tru_tile_food_left">%1$d g to go</string>
+    <string name="tru_tile_food_left">%1$d\u00A0g to go</string>
     <string name="tru_tile_food_reached">Target reached</string>
     <string name="tru_tile_food_no_target">The target needs your weight</string>
     <string name="tru_tile_water">Water</string>
-    <string name="tru_tile_water_tap">Tap: + %1$s</string>
+    <string name="tru_tile_water_tap">Tap: +\u00A0%1$s</string>
     <string name="tru_water_added">%1$s of water logged</string>
     <!-- Nutrition -->
     <string name="tru_fuel_add">Log food</string>
@@ -63,7 +63,7 @@
     <string name="tru_add_quick">Values</string>
     <string name="tru_fuel_intro_short">Eat enough for your training: protein follows your body weight, carbs follow your training days, energy need and balance in the open. Nothing leaves your phone.</string>
     <string name="tru_carbs_short">Carbs</string>
-    <string name="tru_of_g">of %1$d g</string>
+    <string name="tru_of_g">of %1$d\u00A0g</string>
     <string name="tru_of_short">of %1$d</string>
     <string name="tru_water_remove">Remove the last glass</string>
     <string name="tru_water_glass_hint">One glass = %1$s</string>
@@ -106,7 +106,7 @@
         <item quantity="one">%d piece of equipment</item>
         <item quantity="other">%d pieces of equipment</item>
     </plurals>
-    <string name="tru_set_nutrition_summary">Protein %1$s g/kg · calories %2$s</string>
+    <string name="tru_set_nutrition_summary">Protein %1$s\u00A0g/kg · calories %2$s</string>
     <plurals name="tru_set_reminders">
         <item quantity="one">%d reminder on</item>
         <item quantity="other">%d reminders on</item>

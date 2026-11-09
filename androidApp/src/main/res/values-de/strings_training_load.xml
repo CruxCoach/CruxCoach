@@ -7,7 +7,7 @@
     <string name="trl_tile_flash">Flash-Grad</string>
     <string name="trl_tile_max_sub">härtester: %1$s</string>
     <string name="trl_tile_finger">Fingerkraft</string>
-    <string name="trl_tile_finger_sub">Max-Hang 20 mm, Gesamtlast pro Körpergewicht</string>
+    <string name="trl_tile_finger_sub">Max-Hang 20\u00A0mm, Gesamtlast pro Körpergewicht</string>
     <string name="trl_tile_pull">Zug 1RM</string>
     <string name="trl_tile_pull_sub">Klimmzug mit Zusatzgewicht, Gesamtlast pro Körpergewicht</string>
     <string name="trl_empty_title">Dein Profil beginnt mit ein paar Zahlen</string>
@@ -19,7 +19,7 @@
     <string name="trl_position_title">Kraft im Verhältnis zum Grad</string>
     <string name="trl_tab_finger">Finger</string>
     <string name="trl_tab_pull">Zug</string>
-    <string name="trl_position_finger_axis">Beidarmiges Hängen von etwa 10 s an einer 20-mm-Leiste: Körpergewicht plus Zusatzgewicht in Prozent des Körpergewichts, gegen den Grad, den du damals geklettert bist.</string>
+    <string name="trl_position_finger_axis">Beidarmiges Hängen von etwa 10\u00A0s an einer 20-mm-Leiste: Körpergewicht plus Zusatzgewicht in Prozent des Körpergewichts, gegen den Grad, den du damals geklettert bist.</string>
     <string name="trl_position_pull_axis">Maximaler Klimmzug mit Zusatzgewicht: Körpergewicht plus Zusatzgewicht in Prozent des Körpergewichts, gegen den Grad, den du damals geklettert bist.</string>
     <string name="trl_position_no_finger">Noch kein Fingerkraft-Wert. Trag einen Max-Hang ein (oder schätze ihn) oder logge einen im Training.</string>
     <string name="trl_position_no_pull">Noch kein Zug-Wert. Trag Klimmzüge mit Zusatzgewicht oder deine maximalen Klimmzüge ein.</string>
@@ -74,7 +74,7 @@
     <string name="trl_pickup_title">Blockheben einarmig je Hand</string>
     <string name="trl_pickup_cd">Blockheben einarmig je Hand in Prozent des Körpergewichts im Verlauf.</string>
     <string name="trl_pickup_balanced">Beide Hände liegen innerhalb von fünf Prozent.</string>
-    <string name="trl_pickup_imbalance">Die Hand %1$s ist %2$d %% stärker.</string>
+    <string name="trl_pickup_imbalance">Die Hand %1$s ist %2$d\u00A0%% stärker.</string>
 
     <string name="trl_load_title">Belastung</string>
     <string name="trl_load_cd">Tägliche Belastung %1$s über acht Wochen mit 7- und 28-Tage-Mittel; Trend: %2$s.</string>
@@ -90,8 +90,8 @@
     <string name="trl_trend_spike">Sprung</string>
     <string name="trl_trend_low_text">Deutlich unter deinem Normal – nach einer Pause oder als Entlastung okay; danach schrittweise wieder aufbauen.</string>
     <string name="trl_trend_normal_text">Im Rahmen deiner letzten vier Wochen.</string>
-    <string name="trl_trend_rising_text">+%1$d %% gegenüber deinem Normal: eine Weile okay, wenn du dich gut erholst.</string>
-    <string name="trl_trend_spike_text">+%1$d %% gegenüber deinem Normal: Die Belastung steigt schneller, als sich das Gewebe anpasst. Der Coach schlägt für ein paar Tage weniger maximale Fingerarbeit vor.</string>
+    <string name="trl_trend_rising_text">+%1$d\u00A0%% gegenüber deinem Normal: eine Weile okay, wenn du dich gut erholst.</string>
+    <string name="trl_trend_spike_text">+%1$d\u00A0%% gegenüber deinem Normal: Die Belastung steigt schneller, als sich das Gewebe anpasst. Der Coach schlägt für ein paar Tage weniger maximale Fingerarbeit vor.</string>
     <string name="trl_trend_new_text">Die Belastung baut sich ohne viel Vorgeschichte auf – sanft einsteigen.</string>
 
     <string name="trl_bottleneck_title">Stärken und Engpässe</string>
@@ -128,12 +128,12 @@
     <string name="trl_day_pick">Datum wählen</string>
     <string name="trl_day_kind">Wo</string>
     <string name="trl_day_minutes">Wie lange</string>
-    <string name="trl_day_minutes_value">%1$d min</string>
+    <string name="trl_day_minutes_value">%1$d\u00A0min</string>
     <string name="trl_day_intensity">Wie hart</string>
     <string name="trl_day_note">Notiz (freiwillig)</string>
     <string name="trl_day_from_health">Aus Health Connect übernommen.</string>
-    <string name="trl_day_overlap">Überschneidet sich mit der Board-Session (%1$d von %2$d min) – nicht doppelt gezählt.</string>
-    <string name="trl_day_overlap_counted">Überschneidet sich mit der Board-Session (%1$d von %2$d min) – trotzdem gezählt.</string>
+    <string name="trl_day_overlap">Überschneidet sich mit der Board-Session (%1$d von %2$d\u00A0min) – nicht doppelt gezählt.</string>
+    <string name="trl_day_overlap_counted">Überschneidet sich mit der Board-Session (%1$d von %2$d\u00A0min) – trotzdem gezählt.</string>
     <string name="trl_day_count_anyway">Trotzdem zählen</string>
     <string name="trl_day_count_anyway_hint">Nur wenn es zusätzliches Klettern war, das das Board-Logbuch nicht kennt.</string>
     <string name="trl_kind_gym_boulder">Halle Bouldern</string>

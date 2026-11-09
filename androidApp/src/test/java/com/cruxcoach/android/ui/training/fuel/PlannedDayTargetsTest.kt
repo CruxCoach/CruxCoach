@@ -70,16 +70,16 @@ class PlannedDayTargetsTest : AthleteScreenTest() {
         val real = service.activities(days = 1)[today.toString()]
         assertNull(real)
         fuelScreen(vm)
-        waitForText("Hard training day (planned: board 60 min)")
+        waitForText("Hard training day (planned: board 60\u00A0min)")
         click("fuel_carbs")
         waitForTag("fuel_explain_carbs")
-        waitForText("Planned today: board 60 min.")
+        waitForText("Planned today: board 60\u00A0min.")
         clickText("Close")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("fuel_explain_carbs").fetchSemanticsNodes().isEmpty() }
         // The energy sheet's training line says it is the planned training, not one already done.
         click("fuel_energy")
         waitForTag("energy_training_planned")
-        waitForText("Planned, not done yet: board 60 min.")
+        waitForText("Planned, not done yet: board 60\u00A0min.")
 
         // Logging the climbing ends the plan: the real day counts.
         service.saveClimbingDay(ClimbingDayEntry("cd1", today.toString(), ClimbingDayKind.GYM_BOULDER, 30, ClimbIntensity.LIGHT))

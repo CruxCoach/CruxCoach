@@ -2,8 +2,8 @@
 <!-- Energy need, weight-loss goal and energy warnings (FEAT-068, owner 2026-10-09: values in the open, warnings instead of locks). -->
 <resources>
     <string name="trn_energy">Energy</string>
-    <string name="trn_of_kcal">of %1$d kcal</string>
-    <string name="trn_to_go">%1$d kcal to go</string>
+    <string name="trn_of_kcal">of %1$d\u00A0kcal</string>
+    <string name="trn_to_go">%1$d\u00A0kcal to go</string>
     <string name="trn_need_met">Need covered</string>
     <string name="trn_target_met">Target reached</string>
     <string name="trn_over_target">%1$d over target</string>
@@ -20,8 +20,8 @@
     <string name="trn_deficit_line">Deficit for %1$s per week</string>
     <string name="trn_target">Calorie target</string>
     <string name="trn_eaten">Eaten</string>
-    <string name="trn_kcal">%1$d kcal</string>
-    <string name="trn_kcal_signed">%1$s kcal</string>
+    <string name="trn_kcal">%1$d\u00A0kcal</string>
+    <string name="trn_kcal_signed">%1$s\u00A0kcal</string>
     <string name="trn_everyday_seated">Mostly seated</string>
     <string name="trn_everyday_on_feet">On my feet a lot</string>
     <string name="trn_everyday_physical">Physical work</string>
@@ -29,7 +29,7 @@
     <string name="trn_sex_assumed">No sex given: the mean of both formulas.</string>
     <string name="trn_needs_height">The energy need needs your height.</string>
     <string name="trn_needs_weight">The energy need needs your body weight.</string>
-    <string name="trn_estimate_note" formatted="false">An estimate (Mifflin-St Jeor plus everyday life and training time), often 10–15 % off. Your weight trend over a few weeks shows whether it fits.</string>
+    <string name="trn_estimate_note" formatted="false">An estimate (Mifflin-St Jeor plus everyday life and training time), often 10–15\u00A0% off. Your weight trend over a few weeks shows whether it fits.</string>
     <string name="trn_set_goal">Set a weight-loss goal</string>
     <string name="trn_edit_goal">Edit weight-loss goal</string>
 
@@ -37,33 +37,33 @@
     <string name="trn_goal_target">Target weight (optional)</string>
     <string name="trn_goal_pace">Pace</string>
     <string name="trn_goal_pace_value">%1$s per week</string>
-    <string name="trn_goal_pace_share">%1$s %% of your weight · about %2$d kcal less per day</string>
-    <string name="trn_goal_pace_share_plain">%1$s %% of your weight per week</string>
-    <string name="trn_goal_target_today">Calorie target today: about %1$d kcal</string>
-    <string name="trn_goal_target_math">Need %1$d − %2$d kcal. Training days get more.</string>
+    <string name="trn_goal_pace_share">%1$s\u00A0%% of your weight · about %2$d\u00A0kcal less per day</string>
+    <string name="trn_goal_pace_share_plain">%1$s\u00A0%% of your weight per week</string>
+    <string name="trn_goal_target_today">Calorie target today: about %1$d\u00A0kcal</string>
+    <string name="trn_goal_target_math">Need %1$d −\u00A0%2$d\u00A0kcal. Training days get more.</string>
     <string name="trn_goal_weeks">Target weight in about %1$d weeks</string>
     <string name="trn_goal_reached">Target weight reached: the calorie target is your need.</string>
     <!-- The day's deficit shrinks so protein, carbohydrate and 20 % fat fit the calorie target (holistic audit 2026-10-17). -->
-    <string name="trn_deficit_eased">%1$s: deficit %2$d instead of %3$d kcal, so the carbohydrates are covered.</string>
-    <string name="trn_deficit_eased_rest">%1$s: deficit %2$d instead of %3$d kcal, so protein and carbohydrates fit.</string>
+    <string name="trn_deficit_eased">%1$s: deficit %2$d instead of %3$d\u00A0kcal, so the carbohydrates are covered.</string>
+    <string name="trn_deficit_eased_rest">%1$s: deficit %2$d instead of %3$d\u00A0kcal, so protein and carbohydrates fit.</string>
     <string name="trn_deficit_eased_plain">%1$s: a smaller deficit, so protein and carbohydrates fit.</string>
     <string name="trn_week_pace">Where protein and carbohydrates need it, the deficit gets smaller: with your last 7 days that is about %1$s instead of %2$s per week.</string>
     <string name="trn_goal_start">Start losing weight</string>
     <!-- Own targets (owner 2026-10-10) -->
     <string name="trn_targets_title">Your targets</string>
     <string name="trn_target_heading">Your target</string>
-    <string name="trn_target_recommended">Recommended (%1$d %2$s)</string>
+    <string name="trn_target_recommended">Recommended (%1$d\u00A0%2$s)</string>
     <string name="trn_target_recommended_plain">Recommended</string>
     <string name="trn_target_own">Own target</string>
     <string name="trn_target_own_label">Your target: %1$s</string>
-    <string name="trn_target_range">Kept between %1$d and %2$d %3$s – a value outside is most likely a typo.</string>
-    <string name="trn_target_range_energy">Kept between %1$d and %2$d %3$s – a value outside is most likely a typo. A low target inside it is kept and named on the energy card.</string>
+    <string name="trn_target_range">Kept between %1$d and %2$d\u00A0%3$s – a value outside is most likely a typo.</string>
+    <string name="trn_target_range_energy">Kept between %1$d and %2$d\u00A0%3$s – a value outside is most likely a typo. A low target inside it is kept and named on the energy card.</string>
     <!-- An own carbohydrate or calorie target is the same on every day (holistic audit W13, P2-16). -->
     <string name="trn_target_own_fixed">Stays the same on every day and does not follow the training day.</string>
-    <string name="trn_own_carbs_note_today">Carbohydrates: own target – does not follow the training day (recommended today %1$d g)</string>
-    <string name="trn_own_carbs_note_day">Carbohydrates: own target – does not follow the training day (recommended for this day %1$d g)</string>
-    <string name="trn_own_energy_note_today">Energy: own target – does not follow the training day (recommended today %1$d kcal)</string>
-    <string name="trn_own_energy_note_day">Energy: own target – does not follow the training day (recommended for this day %1$d kcal)</string>
+    <string name="trn_own_carbs_note_today">Carbohydrates: own target – does not follow the training day (recommended today %1$d\u00A0g)</string>
+    <string name="trn_own_carbs_note_day">Carbohydrates: own target – does not follow the training day (recommended for this day %1$d\u00A0g)</string>
+    <string name="trn_own_energy_note_today">Energy: own target – does not follow the training day (recommended today %1$d\u00A0kcal)</string>
+    <string name="trn_own_energy_note_day">Energy: own target – does not follow the training day (recommended for this day %1$d\u00A0kcal)</string>
     <string name="trn_own_kcal_hidden">Your own calorie target still applies while calories are hidden: it sets the fat target and is checked on the energy card.</string>
     <string name="trn_own_kcal_reset">Back to the recommendation</string>
     <string name="trn_unit_g">g</string>
@@ -71,32 +71,32 @@
     <string name="trn_goal_stop">Stop losing weight</string>
     <string name="trn_goal_pace_minus">Slower</string>
     <string name="trn_goal_pace_plus">Faster</string>
-    <string name="trn_goal_summary">%1$s per week · about %2$d kcal today</string>
+    <string name="trn_goal_summary">%1$s per week · about %2$d\u00A0kcal today</string>
     <string name="trn_goal_summary_plain">%1$s per week</string>
     <string name="trn_goal_summary_target">Target %1$s</string>
     <string name="trn_goal_edit">Edit</string>
-    <string name="trn_goal_info" formatted="false">CruxCoach shows every value and warns, but leaves the decision to you. Recommended for climbers: at most 0.5–1 % of body weight per week and a calorie target no more than 25 % under your need – faster loss costs strength and muscle. Training days get a higher target so you can train well.</string>
+    <string name="trn_goal_info" formatted="false">CruxCoach shows every value and warns, but leaves the decision to you. Recommended for climbers: at most 0.5–1\u00A0% of body weight per week and a calorie target no more than 25\u00A0% under your need – faster loss costs strength and muscle. Training days get a higher target so you can train well.</string>
 
     <string name="trn_adjust_goal">Adjust weight-loss goal</string>
     <string name="trn_w_low_bmi">Your BMI is %1$s – below %2$s, where climbing federations (IFSC) recommend a health check.</string>
-    <string name="trn_w_rapid_week">Your weight is falling by %1$s per week (%2$s %% of your weight). More than 1 %% per week costs strength and muscle.</string>
-    <string name="trn_w_rapid_month">Your weight fell by %1$s %% in four weeks. More than 3 %% costs strength and muscle.</string>
-    <string name="trn_w_high_deficit">On %1$d logged days you ate %2$d kcal on average – %3$d %% under your estimated need of %4$d kcal (if everything was logged).</string>
-    <string name="trn_w_high_deficit_plain">On %1$d logged days you ate about %2$d %% less than your estimated need (if everything was logged).</string>
-    <string name="trn_w_fast_pace">Your pace of %1$s per week is %2$s %% of your weight – recommended is at most 0.5–1 %%.</string>
-    <string name="trn_w_fast_pace_plain" formatted="false">Your pace is more than 1 % of your weight per week – recommended is at most 0.5–1 %.</string>
-    <string name="trn_w_low_carbs">On %1$d training days you logged %2$s g/kg of carbohydrate on average instead of %3$s g/kg (if everything was logged).</string>
-    <string name="trn_w_large_deficit">Your calorie target is %1$d %% under your estimated need – more than 25 %% is a large deficit.</string>
-    <string name="trn_w_below_resting">Your calorie target of %1$d kcal is below your resting energy (%2$d kcal).</string>
+    <string name="trn_w_rapid_week">Your weight is falling by %1$s per week (%2$s\u00A0%% of your weight). More than 1\u00A0%% per week costs strength and muscle.</string>
+    <string name="trn_w_rapid_month">Your weight fell by %1$s\u00A0%% in four weeks. More than 3\u00A0%% costs strength and muscle.</string>
+    <string name="trn_w_high_deficit">On %1$d logged days you ate %2$d\u00A0kcal on average – %3$d\u00A0%% under your estimated need of %4$d\u00A0kcal (if everything was logged).</string>
+    <string name="trn_w_high_deficit_plain">On %1$d logged days you ate about %2$d\u00A0%% less than your estimated need (if everything was logged).</string>
+    <string name="trn_w_fast_pace">Your pace of %1$s per week is %2$s\u00A0%% of your weight – recommended is at most 0.5–1\u00A0%%.</string>
+    <string name="trn_w_fast_pace_plain" formatted="false">Your pace is more than 1\u00A0% of your weight per week – recommended is at most 0.5–1\u00A0%.</string>
+    <string name="trn_w_low_carbs">On %1$d training days you logged %2$s\u00A0g/kg of carbohydrate on average instead of %3$s\u00A0g/kg (if everything was logged).</string>
+    <string name="trn_w_large_deficit">Your calorie target is %1$d\u00A0%% under your estimated need – more than 25\u00A0%% is a large deficit.</string>
+    <string name="trn_w_below_resting">Your calorie target of %1$d\u00A0kcal is below your resting energy (%2$d\u00A0kcal).</string>
     <string name="trn_w_low_target_bmi">Your target weight means a BMI of %1$s – below %2$s, where climbing federations recommend a health check.</string>
     <string name="trn_w_low_target_bmi_plain">Your target weight lies below the range climbing federations use for health checks.</string>
     <string name="trn_w_youth">Under 18 the body is still growing: adult BMI thresholds do not apply, and losing weight belongs only with a doctor\'s guidance.</string>
 
-    <string name="trn_tile_kcal">%1$d of %2$d kcal</string>
-    <string name="trn_review_energy">Energy on logged days: %1$d kcal (estimated need about %2$d kcal)</string>
-    <string name="trn_review_energy_no_need">Energy on logged days: %1$d kcal</string>
-    <string name="trn_review_energy_target">Energy on logged days: %1$d kcal (target about %2$d kcal, estimated need about %3$d kcal)</string>
-    <string name="trn_review_energy_target_only">Energy on logged days: %1$d kcal (target about %2$d kcal)</string>
+    <string name="trn_tile_kcal">%1$d of %2$d\u00A0kcal</string>
+    <string name="trn_review_energy">Energy on logged days: %1$d\u00A0kcal (estimated need about %2$d\u00A0kcal)</string>
+    <string name="trn_review_energy_no_need">Energy on logged days: %1$d\u00A0kcal</string>
+    <string name="trn_review_energy_target">Energy on logged days: %1$d\u00A0kcal (target about %2$d\u00A0kcal, estimated need about %3$d\u00A0kcal)</string>
+    <string name="trn_review_energy_target_only">Energy on logged days: %1$d\u00A0kcal (target about %2$d\u00A0kcal)</string>
     <string name="trn_set_everyday">Everyday life (for the energy need)</string>
     <string name="trn_height_label">Height (%1$s)</string>
     <string name="trn_birth_year_label">Birth year</string>

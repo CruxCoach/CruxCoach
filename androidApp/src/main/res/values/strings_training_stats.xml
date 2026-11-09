@@ -11,12 +11,12 @@
     <string name="trs_kind_seconds">Longest hold</string>
     <string name="trs_kind_volume">Volume</string>
     <plurals name="trs_reps">
-        <item quantity="one">%d rep</item>
-        <item quantity="other">%d reps</item>
+        <item quantity="one">%d\u00A0rep</item>
+        <item quantity="other">%d\u00A0reps</item>
     </plurals>
     <plurals name="trs_sets">
-        <item quantity="one">%d set</item>
-        <item quantity="other">%d sets</item>
+        <item quantity="one">%d\u00A0set</item>
+        <item quantity="other">%d\u00A0sets</item>
     </plurals>
 
     <string name="trs_tile_this_week">This week</string>

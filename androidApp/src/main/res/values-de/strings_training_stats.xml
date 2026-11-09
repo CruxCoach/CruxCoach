@@ -11,12 +11,12 @@
     <string name="trs_kind_seconds">Längste Haltezeit</string>
     <string name="trs_kind_volume">Volumen</string>
     <plurals name="trs_reps">
-        <item quantity="one">%d Wdh.</item>
-        <item quantity="other">%d Wdh.</item>
+        <item quantity="one">%d\u00A0Wdh.</item>
+        <item quantity="other">%d\u00A0Wdh.</item>
     </plurals>
     <plurals name="trs_sets">
         <item quantity="one">%d Satz</item>
-        <item quantity="other">%d Sätze</item>
+        <item quantity="other">%d\u00A0Sätze</item>
     </plurals>
 
     <string name="trs_tile_this_week">Diese Woche</string>
