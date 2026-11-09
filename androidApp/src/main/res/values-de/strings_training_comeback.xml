@@ -231,6 +231,7 @@
     <string name="cb_review_stay_last">Du bist auf der letzten Stufe. Prüf die Rückkehr-Kriterien oben mit Ärztin, Arzt oder Physio – erfüllte Kriterien zeigen nicht, dass die Verletzung verheilt ist.</string>
     <string name="cb_review_stay_mornings">An mindestens der Hälfte der eingetragenen Morgen lag der Schmerz diese Woche über deiner Grenze von %1$d. Üblich ist, auf dieser Stufe zu bleiben, bis er morgens wieder bei höchstens %1$d liegt.</string>
     <string name="cb_review_stay_sessions">Die nächste Stufe baut auf den Einheiten dieser Stufe an mindestens %1$d\u00A0Tagen pro Woche auf; diese Woche waren es %2$d. Üblich ist, noch eine Woche auf dieser Stufe zu bleiben.</string>
+    <string name="cb_review_stay_sessions_optional">Die nächste Stufe baut auf den Einheiten dieser Stufe an mindestens %1$d\u00A0Tagen pro Woche auf; diese Woche waren es %2$d (Einheiten mit „Optional“ zählen nicht mit). Üblich ist, noch eine Woche auf dieser Stufe zu bleiben.</string>
     <string name="cb_review_stay_no_morning">Diese Woche ist kein Morgenschmerz eingetragen, darum bleibst du vorerst auf dieser Stufe. Trag ihn an den nächsten Morgen im Tagebuch ein.</string>
     <string name="cb_review_morning_title">Wie fühlt sich die Verletzung heute Morgen an?</string>
     <string name="cb_review_morning_text">Aus dieser Woche gibt es noch keinen Morgenwert, und die nächste Stufe braucht einen.</string>

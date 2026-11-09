@@ -185,6 +185,20 @@ class ComebackScreenTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `optional warm-ups don't count towards the next stage, and the look back says so`() {
+        // Owner's review of #98: finger stage 4 plans an optional tendon warm-up and strength three times a week.
+        repo.saveInjury(Comeback.start(injury(40), PlanSource.CRUXCOACH, 4, service.today().minus(DatePeriod(days = 8)), true, false, emptyMap(), 1))
+        (1..7).forEach { d ->
+            repo.saveComebackEntry(ComebackEntry("i1", service.today().minus(DatePeriod(days = d)).toString(), morningPain = 1,
+                sessions = if (d % 2 == 0) listOf(ComebackSessionLog(ComebackSessionKind.TENDON, 1, at = 1)) else emptyList(), updatedAt = 1))
+        }
+        screen()
+        scrollTo("comeback_list", "comeback_prompt_review")
+        waitForText("this week it was 0 (sessions marked “Optional” don't count)")
+        assertEquals(4, repo.injury("i1")!!.plan!!.stage)
+    }
+
+    @Test
     fun `skipping the morning question keeps the stage and says to log the mornings`() {
         weekWithoutMornings()
         screen()

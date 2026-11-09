@@ -731,8 +731,10 @@ private fun PromptCard(p: Prompt, injury: Injury, plan: ComebackPlan, ladder: La
                     com.cruxcoach.athlete.logic.StayReason.PRESSURE_RISING -> stringResource(R.string.cb_review_stay_rising)
                     com.cruxcoach.athlete.logic.StayReason.LAST_STAGE -> stringResource(R.string.cb_review_stay_last)
                     com.cruxcoach.athlete.logic.StayReason.MORNINGS_ABOVE_RULE -> stringResource(R.string.cb_review_stay_mornings, rule.greenMax)
-                    com.cruxcoach.athlete.logic.StayReason.FEW_SESSION_DAYS ->
-                        stringResource(R.string.cb_review_stay_sessions, r.sessionDaysNeeded, r.sessionDays)
+                    // Optional sessions (the "Optional" chip) don't count: say so where the stage has them.
+                    com.cruxcoach.athlete.logic.StayReason.FEW_SESSION_DAYS -> stringResource(
+                        if (Comeback.stage(injury).sessions.any { it.optional }) R.string.cb_review_stay_sessions_optional else R.string.cb_review_stay_sessions,
+                        r.sessionDaysNeeded, r.sessionDays)
                     com.cruxcoach.athlete.logic.StayReason.NO_MORNING -> stringResource(R.string.cb_review_stay_no_morning)
                     else -> stringResource(R.string.cb_review_stay_text)
                 }, tag, secondary = stringResource(R.string.cb_ok) to dismiss)
