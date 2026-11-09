@@ -1,6 +1,7 @@
 package com.cruxcoach.android.nostr
 
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.cruxcoach.android.nostr.model.RelayConfig
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import kotlinx.coroutines.CompletableDeferred
@@ -13,7 +14,6 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +24,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -65,6 +66,10 @@ class NostrRelayPool @Inject constructor(
     @Volatile
     private var resolvedRelays: List<RelayConfig> = NostrConfig.DEFAULT_RELAYS
 
+    /** Checks an event's id and signature and returns the id, or null to drop it. Tests replace it (Quartz needs JVM 21). */
+    @VisibleForTesting
+    internal var verifyEvent: (String) -> String? = ::verifiedRelayEventId
+
     private inner class RelayConnection(val url: String) {
         // @Volatile: ws is written from the OkHttp WebSocketListener dispatcher
         // (onFailure / onClosed) and read from sender coroutines — visibility
@@ -72,7 +77,7 @@ class NostrRelayPool @Inject constructor(
         @Volatile
         private var ws: WebSocket? = null
         private val pendingOks = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
-        private val subscriptionFlows = ConcurrentHashMap<String, MutableSharedFlow<String>>()
+        private val subscriptionFrames = ConcurrentHashMap<String, RelayFrameQueue>()
         private val activeFilters = ConcurrentHashMap<String, String>()
         private val connectLock = Mutex()
 
@@ -82,6 +87,10 @@ class NostrRelayPool @Inject constructor(
 
         /** Guards against multiple concurrent reconnect loops for this relay. */
         private var reconnectJob: Job? = null
+
+        /** Set by [close]: a socket that fails afterwards is not reconnected. */
+        @Volatile
+        private var shutDown = false
 
         /** Tracks whether reconnection attempts are exhausted. */
         @Volatile
@@ -105,6 +114,8 @@ class NostrRelayPool @Inject constructor(
                     deferred.complete(Unit)
                 }
 
+                // On this relay's reader thread. It waits in handleMessage while a subscription has too many frames
+                // to take (RelayFrameQueue): the relay is slowed down rather than its frames dropped.
                 override fun onMessage(ws: WebSocket, text: String) {
                     if (!RelayInputGuard.accepts(text)) {
                         ws.cancel()
@@ -173,13 +184,15 @@ class NostrRelayPool @Inject constructor(
                     }
                     "EVENT" -> {
                         val subId = arr[1].jsonPrimitive.content
-                        val eventJson = arr[2].toString()
-                        val emitted = subscriptionFlows[subId]?.tryEmit(eventJson) ?: false
-                        if (!emitted) Log.w(TAG, "EVENT not emitted from $url subId=$subId (flow missing or full)")
+                        // Only an object can be an event; anything else would just take room.
+                        val eventJson = (arr[2] as? JsonObject)?.toString() ?: return
+                        val delivered = subscriptionFrames[subId]?.offer(eventJson) ?: false
+                        // A subscription closed meanwhile, or one that does not keep up (the queue logs that).
+                        if (!delivered) Log.d(TAG, "EVENT not taken from $url subId=$subId")
                     }
                     "EOSE" -> {
                         val subId = arr[1].jsonPrimitive.content
-                        subscriptionFlows[subId]?.tryEmit(eoseFrame(url))
+                        subscriptionFrames[subId]?.offer(eoseFrame(url))
                     }
                     "NOTICE" -> Log.w(TAG, "Relay $url: ${arr[1].jsonPrimitive.content.take(512)}")
                 }
@@ -217,15 +230,15 @@ class NostrRelayPool @Inject constructor(
             }
         }
 
-        fun addSubscription(subId: String, filter: String, flow: MutableSharedFlow<String>) {
-            subscriptionFlows[subId] = flow
+        fun addSubscription(subId: String, filter: String, frames: RelayFrameQueue) {
+            subscriptionFrames[subId] = frames
             activeFilters[subId] = filter
             val msg = "[\"REQ\",\"$subId\",$filter]"
             ws?.send(msg)
         }
 
         fun removeSubscription(subId: String) {
-            subscriptionFlows.remove(subId)
+            subscriptionFrames.remove(subId)
             activeFilters.remove(subId)
             ws?.send("[\"CLOSE\",\"$subId\"]")
         }
@@ -237,7 +250,7 @@ class NostrRelayPool @Inject constructor(
 
         private fun scheduleReconnect() {
             // Guard: skip if a reconnect loop is already running or attempts are exhausted
-            if (reconnectJob?.isActive == true) return
+            if (shutDown || reconnectJob?.isActive == true) return
             if (reconnectExhausted) {
                 Log.w(TAG, "Reconnect attempts exhausted for $url — call reconnectAll() to retry")
                 return
@@ -303,6 +316,7 @@ class NostrRelayPool @Inject constructor(
         }
 
         fun close() {
+            shutDown = true
             reconnectJob?.cancel()
             reconnectJob = null
             reconnectExhausted = false
@@ -311,7 +325,7 @@ class NostrRelayPool @Inject constructor(
             ws?.close(1000, "shutdown")
             ws = null
             failAllPending(Exception("Connection closed"))
-            subscriptionFlows.clear()
+            subscriptionFrames.clear()
             activeFilters.clear()
         }
     }
@@ -420,24 +434,25 @@ class NostrRelayPool @Inject constructor(
         skipDedup: Boolean = false,
         closeOnEose: Boolean = false
     ): Flow<String> = callbackFlow {
-        val deliveryGate = VerifiedEventDeliveryGate()
+        val deliveryGate = VerifiedEventDeliveryGate(verifyEvent)
         val subId = java.util.UUID.randomUUID().toString()
         val readRelays = readRelays()
-        val flow = MutableSharedFlow<String>(extraBufferCapacity = 256)
+        // Every relay's frames, kept until taken: a burst from several relays loses neither events nor EOSE.
+        val frames = RelayFrameQueue(if (closeOnEose) RelayFrameQueue.QUERY_WAIT_MS else RelayFrameQueue.LIVE_WAIT_MS)
         val eose = if (closeOnEose) EoseTracker(readRelays.map { it.url }) else null
 
         // A child of this callbackFlow, not of the pool scope: if forwarding
         // fails, the collector sees the error instead of the app crashing.
         // Dispatchers.IO keeps the signature checks off the collector's thread.
         val job = launch(Dispatchers.IO) {
-            forwardRelayFrames(flow, channel, eose) { deliveryGate.accepts(it, skipDedup) }
+            forwardRelayFrames(frames.frames, channel, eose) { deliveryGate.accepts(it, skipDedup) }
         }
 
         readRelays.forEach { relay ->
             try {
                 val conn = getOrCreateConnection(relay.url)
                 conn.ensureConnected()
-                conn.addSubscription(subId, filter, flow)
+                conn.addSubscription(subId, filter, frames)
             } catch (e: Exception) {
                 Log.w(TAG, "Subscribe to ${relay.url} failed", e)
                 // A failed relay counts as done so the query doesn't hang forever
@@ -450,6 +465,8 @@ class NostrRelayPool @Inject constructor(
             readRelays.forEach { relay ->
                 connections[relay.url]?.removeSubscription(subId)
             }
+            // Frees a relay thread still waiting to hand over a frame.
+            frames.close()
         }
     }
 
