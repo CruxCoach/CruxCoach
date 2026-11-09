@@ -37,7 +37,7 @@ data class AtAGlance(
     val hardestSend: SentGrade? = null,
     val hardestFlash: SentGrade? = null,
     val recent: RecentComparison? = null,
-    /** Climbing days per week over the last eight weeks. */
+    /** Climbing days per week over the last eight weeks or since the first; 0 before two weeks of history. */
     val sessionsPerWeek: Double = 0.0,
 )
 

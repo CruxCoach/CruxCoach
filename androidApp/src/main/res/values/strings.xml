@@ -1633,7 +1633,7 @@
     <string name="board_stats_cross_board_send_curve">Tries until the send</string>
     <string name="board_stats_cross_board_send_curve_help">How many tries your problems took until their first send, per board: a flash, the 2nd or 3rd try, 4 to 5 tries, or 6 and more. Tries from earlier sessions count, so a send after attempts on an earlier day is no flash.\n\nHollow bars rest on fewer than %1$d problems.\n\nTap a board to see the numbers.</string>
     <string name="board_stats_glance_title">At a glance</string>
-    <string name="board_stats_glance_help">Top: your hardest send and your hardest flash in the whole logbook.\n\nBelow: the last %1$d days against the %1$d days before: climbing days (days with at least one entry), sends and your hardest send. Green means more, or a harder grade.\n\nClimbing days a week: the average over the last eight weeks.</string>
+    <string name="board_stats_glance_help">Top: your hardest send and your hardest flash in the whole logbook.\n\nBelow: the last %1$d days against the %1$d days before: climbing days (days with at least one entry), sends and your hardest send. Green means more, or a harder grade.\n\nClimbing days a week: the average over the last eight weeks, or since your first climbing day. It shows from two weeks on.</string>
     <string name="board_stats_glance_hardest_send">Hardest send</string>
     <string name="board_stats_glance_hardest_flash">Hardest flash</string>
     <string name="board_stats_glance_hardest">Hardest</string>

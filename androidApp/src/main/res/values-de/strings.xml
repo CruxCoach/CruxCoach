@@ -1676,7 +1676,7 @@
     <string name="board_stats_cross_board_send_curve">Versuche bis zur Begehung</string>
     <string name="board_stats_cross_board_send_curve_help">Wie viele Versuche deine Boulder bis zur ersten Begehung gebraucht haben, je Board: Flash, im 2. oder 3. Versuch, nach 4 bis 5 oder nach 6 und mehr Versuchen. Versuche aus früheren Sessions zählen mit, eine Begehung nach Versuchen an einem früheren Tag ist also kein Flash.\n\nHohle Balken beruhen auf weniger als %1$d Bouldern.\n\nTippe auf ein Board, um die Zahlen zu sehen.</string>
     <string name="board_stats_glance_title">Auf einen Blick</string>
-    <string name="board_stats_glance_help">Oben: deine schwerste Begehung und dein schwerster Flash im ganzen Logbuch.\n\nDarunter: die letzten %1$d Tage gegenüber den %1$d Tagen davor: Klettertage (Tage mit mindestens einem Eintrag), Begehungen und deine schwerste Begehung. Grün heißt mehr oder ein schwererer Grad.\n\nKlettertage pro Woche: der Schnitt der letzten acht Wochen.</string>
+    <string name="board_stats_glance_help">Oben: deine schwerste Begehung und dein schwerster Flash im ganzen Logbuch.\n\nDarunter: die letzten %1$d Tage gegenüber den %1$d Tagen davor: Klettertage (Tage mit mindestens einem Eintrag), Begehungen und deine schwerste Begehung. Grün heißt mehr oder ein schwererer Grad.\n\nKlettertage pro Woche: der Schnitt der letzten acht Wochen oder seit deinem ersten Klettertag. Er erscheint ab zwei Wochen.</string>
     <string name="board_stats_glance_hardest_send">Schwerste Begehung</string>
     <string name="board_stats_glance_hardest_flash">Schwerster Flash</string>
     <string name="board_stats_glance_hardest">Schwerste</string>

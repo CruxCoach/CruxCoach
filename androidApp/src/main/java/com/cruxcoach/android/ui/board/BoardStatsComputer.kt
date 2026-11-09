@@ -139,7 +139,7 @@ object BoardStatsComputer {
         )
     }
 
-    /** Sessions per week over the last eight weeks, for the logbook overview (see [computeAvgSessionsPerWeek]). */
+    /** Sessions per week over the last eight weeks or since the first, for the logbook overview (see [computeAvgSessionsPerWeek]). */
     fun sessionsPerWeekOf(ascents: List<AscentWithClimb>, clock: Clock = Clock.systemDefaultZone()): Double =
         computeAvgSessionsPerWeek(ascents.mapNotNull { parseDate(it.climbedAt) }.distinct().sorted(), clock)
 
@@ -529,28 +529,24 @@ object BoardStatsComputer {
     }
 
     /**
-     * Sessions per week over the last [AVG_WINDOW_WEEKS] weeks — a true
-     * window average, matching the "(8 W.)" tile label: distinct session
-     * days inside the window divided by the number of weeks the window
-     * spans. The divisor is the elapsed window (the full 8 weeks once the
-     * account is that old), NOT the span since the first session — dividing
-     * by the active span inflated the figure for young logbooks (2 sessions
-     * over 3 weeks read as 0.6/wk instead of the 8-week 0.25/wk the label
-     * promises). A brand-new logbook divides by at least one week so a
-     * single early session isn't rounded to zero.
+     * Sessions per week over the last [AVG_WINDOW_WEEKS] weeks, or since the
+     * first session when the logbook is younger: distinct session days in
+     * that span divided by its weeks, so a three-week-old logbook isn't
+     * divided by eight. None before [MIN_AVERAGE_DAYS] of history, where a
+     * single day would read as 0.1 or 7 a week, like the period's average.
      */
     private fun computeAvgSessionsPerWeek(
         sessionDates: List<LocalDate>,
         clock: Clock,
     ): Double {
-        if (sessionDates.isEmpty()) return 0.0
+        val first = sessionDates.minOrNull() ?: return 0.0
         val today = LocalDate.now(clock)
-        val windowStart = today.minusDays(AVG_WINDOW_WEEKS * DAYS_PER_WEEK - 1)
-        val recent = sessionDates.count { !it.isBefore(windowStart) }
-        if (recent == 0) return 0.0
-        val daysSpanned = ChronoUnit.DAYS.between(windowStart, today) + 1
-        val weeks = (daysSpanned.toDouble() / DAYS_PER_WEEK).coerceAtLeast(1.0)
-        return recent / weeks
+        val history = ChronoUnit.DAYS.between(first, today) + 1
+        if (history < MIN_AVERAGE_DAYS) return 0.0
+        val span = minOf(history, AVG_WINDOW_WEEKS * DAYS_PER_WEEK)
+        val spanStart = today.minusDays(span - 1)
+        val recent = sessionDates.count { !it.isBefore(spanStart) }
+        return recent * DAYS_PER_WEEK.toDouble() / span
     }
 
     /**
