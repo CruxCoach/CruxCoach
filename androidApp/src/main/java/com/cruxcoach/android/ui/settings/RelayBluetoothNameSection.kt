@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +47,7 @@ import com.cruxcoach.android.data.BluetoothNameInput
 import com.cruxcoach.android.data.RelayAdapterNameGuard
 import com.cruxcoach.android.data.RelayNameIssue
 import com.cruxcoach.android.data.RelayNameStatus
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.WarningYellow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -201,11 +203,20 @@ private fun NameIssueCard(
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text, style = MaterialTheme.typography.bodySmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onAction, modifier = Modifier.testTag(tag)) { Text(action) }
+                OutlinedButton(
+                    onClick = onAction,
+                    modifier = Modifier.testTag(tag),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = CruxCoachDesign.colors.onCautionContainer,
+                    ),
+                ) { Text(action) }
                 if (secondAction != null) {
                     TextButton(
                         onClick = onSecondAction,
                         modifier = Modifier.testTag(secondTag.orEmpty()),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = CruxCoachDesign.colors.onCautionContainer,
+                        ),
                     ) { Text(secondAction) }
                 }
             }

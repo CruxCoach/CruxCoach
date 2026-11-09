@@ -447,45 +447,45 @@
     <!-- Settings: LED effects (FEAT-074) -->
     <string name="settings_led_anim_title">LED-Effekte</string>
     <string name="settings_led_anim_none">Keine</string>
-    <string name="settings_led_anim_none_hint">Der Boulder leuchtet in seinen normalen Farben.</string>
+    <string name="settings_led_anim_none_hint">der Boulder leuchtet in seinen normalen Farben.</string>
     <string name="settings_led_anim_pulse">Puls</string>
-    <string name="settings_led_anim_pulse_hint">Jeder Griff wird in seiner Farbe heller und wieder dunkler.</string>
-    <string name="settings_led_anim_two_phase">Zwei-Phasen-Stroboskop</string>
-    <string name="settings_led_anim_two_phase_hint">Wechselt blinkend zwischen den CruxCoach- und den Kilter-Farben.</string>
-    <string name="settings_led_anim_chaotic">Chaos-Stroboskop</string>
-    <string name="settings_led_anim_chaotic_hint">Die Farben springen; Startgriffe, Zwischengriffe, Topgriffe und Tritte bleiben unterscheidbar.</string>
+    <string name="settings_led_anim_pulse_hint">jeder Griff wird in seiner Farbe heller und wieder dunkler.</string>
+    <string name="settings_led_anim_two_phase">Wechselblitz</string>
+    <string name="settings_led_anim_two_phase_hint">wechselt blinkend zwischen den CruxCoach- und den Kilter-Farben.</string>
+    <string name="settings_led_anim_chaotic">Chaosblitz</string>
+    <string name="settings_led_anim_chaotic_hint">die Farben springen; Startgriffe, Zwischengriffe, Topgriffe und Tritte bleiben unterscheidbar.</string>
     <string name="settings_led_anim_rainbow">Regenbogen</string>
-    <string name="settings_led_anim_rainbow_hint">Alle Farben wandern langsam durch den Farbkreis.</string>
+    <string name="settings_led_anim_rainbow_hint">alle Farben wandern langsam durch den Farbkreis.</string>
     <string name="settings_led_effects_flashing">Blinkt</string>
-    <string name="settings_led_effects_remove_animations_note">In den Android-Einstellungen ist „Animationen entfernen“ an. Dieser Effekt blinkt trotzdem.</string>
-    <string name="settings_led_effects_background">In anderen Apps weiterlaufen</string>
-    <string name="settings_led_effects_needs_notifications">Braucht Benachrichtigungen, damit du den Effekt von dort stoppen kannst.</string>
+    <string name="settings_led_effects_remove_animations_note">„Animationen entfernen“ ist an. Dieser Effekt blinkt trotzdem.</string>
+    <string name="settings_led_effects_background">Auch in anderen Apps</string>
+    <string name="settings_led_effects_background_on">In anderen Apps bleibt das Board mit diesem Handy verbunden.</string>
+    <string name="settings_led_effects_needs_notifications">Braucht Benachrichtigungen für „Stopp“.</string>
     <string name="settings_led_effects_allow_notifications">Benachrichtigungen erlauben</string>
-    <string name="led_effect_status_running">Läuft gerade am Board.</string>
-    <string name="led_effect_status_waiting">Sende einen Boulder ans Board, um den Effekt zu sehen.</string>
-    <string name="led_effect_status_no_board">Verbinde ein Kilter Board, um den Effekt zu sehen.</string>
-    <string name="led_effect_status_unsupported">Dieses Board zeigt keine LED-Effekte und bleibt in seinen normalen Farben.</string>
-    <string name="led_effect_status_paused">Pausiert, solange Routenwiedergabe, ein Wand-Spiel oder Griffe putzen das Board nutzt.</string>
-    <string name="led_effect_status_ended">Auf diesem Boulder beendet. Sende ihn erneut, um neu zu starten.</string>
+    <string name="settings_led_effects_info_board">Am Board\nDie leuchtenden Griffe ändern ihr Licht. Funktioniert mit einem Kilter Board; andere Boards behalten ihre normalen Farben. Eine Auswahl wirkt sofort, die Wand ist also die Vorschau.</string>
+    <string name="settings_led_effects_info_effects">Effekte</string>
+    <string name="settings_led_effects_info_effect">%1$s: %2$s</string>
+    <string name="led_effect_status_running">Läuft am Board.</string>
+    <string name="led_effect_status_waiting">Wartet auf einen Boulder.</string>
+    <string name="led_effect_status_no_board">Kein Kilter Board verbunden.</string>
+    <string name="led_effect_status_unsupported">Dieses Board kann keine Effekte zeigen.</string>
+    <string name="led_effect_status_paused">Pausiert, solange das Board belegt ist.</string>
+    <string name="led_effect_status_ended">Am beleuchteten Boulder beendet.</string>
     <string name="led_effect_status_background">Pausiert, solange die App im Hintergrund ist.</string>
+    <string name="led_effect_restart">Neu starten</string>
     <string name="led_strobe_notice_title">Blinkendes Licht</string>
-    <string name="led_strobe_notice_text">Dieser Effekt lässt die leuchtenden Griffe bis zu dreimal pro Sekunde blinken. Blinkendes Licht kann bei Menschen mit fotosensitiver Epilepsie Anfälle auslösen, auch bei anderen an der Wand. Puls und Regenbogen wechseln sanft.</string>
-    <string name="led_strobe_notice_remove_animations">In den Android-Einstellungen ist „Animationen entfernen“ an, oft ein Zeichen, dass Bewegung oder Blinken stört. Den Effekt trotzdem einschalten?</string>
+    <string name="led_strobe_notice_text">%1$s lässt die Griffe bis zu dreimal pro Sekunde blinken. Das kann bei fotosensitiver Epilepsie Anfälle auslösen, auch bei anderen an der Wand.</string>
+    <string name="led_strobe_notice_remove_animations">%1$s lässt die Griffe bis zu dreimal pro Sekunde blinken, auch wenn „Animationen entfernen“ an ist. Das kann bei fotosensitiver Epilepsie Anfälle auslösen, auch bei anderen an der Wand.</string>
     <string name="led_strobe_notice_confirm">Einschalten</string>
     <string name="led_strobe_notice_cancel">Abbrechen</string>
     <string name="led_effect_menu">LED-Effekt: %1$s</string>
-    <string name="led_effect_sheet_done">Fertig</string>
     <string name="led_anim_notification_channel">LED-Effekte</string>
     <string name="led_anim_notification_channel_desc">Wird angezeigt, solange ein LED-Effekt in einer anderen App weiterläuft.</string>
     <string name="led_anim_notification_title">LED-Effekt läuft</string>
     <string name="led_anim_notification_stop">Stopp</string>
     <plurals name="settings_led_effects_info">
-        <item quantity="one">Am Board\nDie Griffe des leuchtenden Boulders bewegen sich. Funktioniert mit einem Kilter Board; andere Boards behalten ihre normalen Farben. Änderungen wirken sofort, du kannst sie also mit Blick auf die Wand ausprobieren.\n\nAndere zuerst\nWas du sendest, hat Vorrang. Routenwiedergabe, Wand-Spiele und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minute auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.</item>
-        <item quantity="other">Am Board\nDie Griffe des leuchtenden Boulders bewegen sich. Funktioniert mit einem Kilter Board; andere Boards behalten ihre normalen Farben. Änderungen wirken sofort, du kannst sie also mit Blick auf die Wand ausprobieren.\n\nAndere zuerst\nWas du sendest, hat Vorrang. Routenwiedergabe, Wand-Spiele und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minuten auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.</item>
-    </plurals>
-    <plurals name="settings_led_effects_background_info">
-        <item quantity="one">Zum Filmen: Der Effekt läuft weiter, während eine andere App offen ist, höchstens %1$d Minute auf demselben Boulder, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
-        <item quantity="other">Zum Filmen: Der Effekt läuft weiter, während eine andere App offen ist, höchstens %1$d Minuten auf demselben Boulder, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
+        <item quantity="one">Pausen\nWas du sendest, hat Vorrang. Routenwiedergabe, Wand-Spiele und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minute auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.\n\nIn anderen Apps\nZum Filmen hält „Auch in anderen Apps“ den Effekt am Laufen, während eine andere App offen ist, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
+        <item quantity="other">Pausen\nWas du sendest, hat Vorrang. Routenwiedergabe, Wand-Spiele und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minuten auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.\n\nIn anderen Apps\nZum Filmen hält „Auch in anderen Apps“ den Effekt am Laufen, während eine andere App offen ist, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
     </plurals>
     <plurals name="led_anim_notification_text">
         <item quantity="one">Endet nach %1$d Minute auf diesem Boulder. „Stopp“ zeigt die normalen Farben.</item>
@@ -1658,7 +1658,9 @@
     <string name="board_stats_heatmap_board_label">Board</string>
     <string name="board_stats_heatmap_pick_board">Wähle ein Board, um die Hold-Heatmap zu sehen.</string>
     <string name="board_stats_heatmap_unsupported">Dieses Board hat keine Hold-Heatmap.</string>
-    <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
+    <string name="board_stats_empty_period">In diesem Zeitraum ist nichts eingetragen.</string>
+    <string name="board_stats_show_all_time">Gesamten Zeitraum zeigen</string>
+    <string name="board_stats_angle_distribution">Winkelverteilung</string>
     <string name="board_stats_cross_board_tries">Versuche je Grad</string>
     <string name="board_stats_cross_board_months">Versuche je Monat</string>
     <string name="board_stats_cross_board_tries_help">Wie viele Versuche du im Schnitt gebraucht hast, bis du einen Boulder zum ersten Mal geschafft hast, je Board und Grad. Versuche aus früheren Sessions zählen mit, Wiederholungen nach der Begehung nicht.\n\nHohle Balken beruhen auf weniger als %1$d Bouldern und sagen wenig aus.\n\nTippe auf einen Grad, um zu sehen, wie viele Boulder hinter jedem Balken stehen.</string>
@@ -1674,7 +1676,7 @@
     <string name="board_stats_cross_board_send_curve">Versuche bis zur Begehung</string>
     <string name="board_stats_cross_board_send_curve_help">Wie viele Versuche deine Boulder bis zur ersten Begehung gebraucht haben, je Board: Flash, im 2. oder 3. Versuch, nach 4 bis 5 oder nach 6 und mehr Versuchen. Versuche aus früheren Sessions zählen mit, eine Begehung nach Versuchen an einem früheren Tag ist also kein Flash.\n\nHohle Balken beruhen auf weniger als %1$d Bouldern.\n\nTippe auf ein Board, um die Zahlen zu sehen.</string>
     <string name="board_stats_glance_title">Auf einen Blick</string>
-    <string name="board_stats_glance_help">Oben: deine schwerste Begehung und dein schwerster Flash im ganzen Logbuch.\n\nDarunter: die letzten %1$d Tage gegenüber den %1$d Tagen davor: Klettertage (Tage mit mindestens einem Eintrag), Begehungen und deine schwerste Begehung. Grün heißt mehr oder ein schwererer Grad.\n\nKlettertage pro Woche: der Schnitt der letzten acht Wochen.</string>
+    <string name="board_stats_glance_help">Oben: deine schwerste Begehung und dein schwerster Flash im ganzen Logbuch.\n\nDarunter: die letzten %1$d Tage gegenüber den %1$d Tagen davor: Klettertage (Tage mit mindestens einem Eintrag), Begehungen und deine schwerste Begehung. Grün heißt mehr oder ein schwererer Grad.\n\nKlettertage pro Woche: der Schnitt der letzten acht Wochen oder seit deinem ersten Klettertag. Er erscheint ab zwei Wochen.</string>
     <string name="board_stats_glance_hardest_send">Schwerste Begehung</string>
     <string name="board_stats_glance_hardest_flash">Schwerster Flash</string>
     <string name="board_stats_glance_hardest">Schwerste</string>
@@ -1824,7 +1826,7 @@
     <string name="devcontact_app_version">App-Version</string>
     <string name="devcontact_badge_bug">[FEHLER]</string>
     <string name="devcontact_badge_wish">[WUNSCH]</string>
-    <string name="devcontact_bug_sent">Bug Report gesendet</string>
+    <string name="devcontact_bug_sent">Fehlerbericht gesendet</string>
     <string name="devcontact_bugs_empty">Keine Fehlerberichte gesendet</string>
     <string name="devcontact_category_general">Allgemein</string>
     <string name="devcontact_category_issue">Problem</string>
@@ -1835,7 +1837,7 @@
     <string name="devcontact_developer">Entwickler</string>
     <string name="devcontact_device">Gerät</string>
     <string name="devcontact_device_info">Geräteinformationen</string>
-    <string name="devcontact_feature_sent">Feature Request gesendet</string>
+    <string name="devcontact_feature_sent">Wunsch gesendet</string>
     <string name="devcontact_language">Sprache</string>
     <string name="devcontact_message">Nachricht</string>
     <string name="devcontact_messages">Nachrichten</string>
@@ -2832,6 +2834,7 @@
     <string name="moon_csv_fallback">CSV-Ausweichweg</string>
     <string name="moon_csv_request_data">Kontodaten bei Moon anfordern</string>
     <string name="moon_csv_request_hint">Der Anfragetext wird kopiert, bevor sich dein Mailprogramm öffnet. Füge ihn in die Nachricht ein und ergänze die Platzhalter.</string>
+    <string name="moon_csv_no_mail_app">Keine Mail-App gefunden. Der Anfragetext ist kopiert.</string>
     <string name="moon_csv_request_subject">Subject access request – MoonBoard account data</string>
     <string name="moon_csv_request_body">Name: [vollständiger Name]\nMoonBoard username: [Nutzername]\nAccount email: [E-Mail-Adresse]\n\nPlease treat this as a UK GDPR subject access request and, where applicable, a data portability request. Please provide all personal data linked to my MoonBoard account, including profile and account identifiers; problems I created or logged; sends, ascents, grades, repeats, attempts, dates and session history; favourites, lists, saved and custom problems; and related metadata.\n\nWhere technically feasible, please provide the export as CSV or JSON, or another structured, commonly used, machine-readable format. If identity verification or a secure delivery method is required, please let me know promptly. Please confirm receipt and the expected response date.\n\nKind regards,\n[name]</string>
     <string name="moon_csv_angle_note">Die MoonBoard-CSV enthält keinen Boardwinkel. Ist ein Boulder für beide Winkel verfügbar, importiert CruxCoach ihn mit 40°.</string>
@@ -3031,7 +3034,7 @@
     <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
     <!-- 0.2.5: eine Zeile je Feature; die Release-Vorbereitung ergänzt die anderen und registriert den Dialog. -->
     <string name="whatsnew_025_title">Neu in 0.2.5</string>
-    <string name="whatsnew_025_body">• Community – tritt der CruxCoach-Community auf Buzz bei, unter Einstellungen → Community.\n• Shiny Wall – wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Probleme und lass sie per Bluetooth leuchten. Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten &amp; Importe.\n• Wand-Spiele – Der Boden ist Lava, Ausdauer, Griffdieb und Quergang, aus dem Hauptmenü oder dem Menü eines Problems („Als Spiel spielen“).</string>
+    <string name="whatsnew_025_body">• Community auf Buzz&#160;– sprich mit den Entwicklern und teste neue Versionen zuerst (Einstellungen → Community).\n• Shiny Wall&#160;– wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Probleme und lass sie per Bluetooth leuchten. Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten &amp; Importe.\n• Wand-Spiele&#160;– Der Boden ist Lava, Ausdauer, Griffdieb und Quergang, aus dem Hauptmenü oder dem Menü eines Problems („Als Spiel spielen“).</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 
@@ -3070,10 +3073,12 @@
     <string name="community_point_test">Teste neue Versionen zuerst</string>
     <string name="community_point_shape">Bestimme mit, was als Nächstes kommt</string>
     <string name="community_join_action">Auf Buzz beitreten</string>
-    <string name="community_join_note">Buzz ist eine eigene App mit eigenem Konto. Von CruxCoach wird nichts weitergegeben.</string>
-    <string name="community_report_hint">Verfolge deine Meldung und teste die Lösung früh: Tritt der Community auf Buzz bei</string>
+    <string name="community_join_note">Buzz ist eine separate App mit eigenem Konto. CruxCoach gibt nichts weiter.</string>
+    <string name="community_report_hint">Verfolge deine Meldung und teste die Lösung früh: Tritt der Community auf Buzz bei.</string>
+    <string name="community_report_hint_feature">Sprich über deine Idee und teste neue Versionen zuerst: Tritt der Community auf Buzz bei.</string>
     <string name="community_report_hint_join">Beitreten</string>
     <string name="community_report_hint_member">Bereits Mitglied</string>
+    <string name="community_report_hint_later">Später</string>
     <string name="link_open_failed">Keine App kann diesen Link öffnen.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Hell</string>
@@ -3347,7 +3352,7 @@
     <string name="import_catalogue_pending_short">Namen und Grade erscheinen nach dem Katalogdownload.</string>
     <string name="import_key_access_only">Stellt den Kontozugang wieder her. Daten werden separat aus dem Backup geladen.</string>
     <string name="import_moon_device_short">Die Android-Bedienungshilfe liest dein Moon-Logbuch auf diesem Gerät.</string>
-    <string name="import_moon_mail_short">Den kopierten Anfragetext in die E-Mail einfügen.</string>
+    <string name="import_moon_mail_short">Füge den kopierten Anfragetext in eine E-Mail an %1$s ein.</string>
     <string name="account_amber_restore_summary">Wähle in Amber das Konto deines Backups. Dein privater Schlüssel bleibt in Amber.</string>
     <string name="account_restore_key_method">Mit Schlüssel</string>
 
@@ -3451,4 +3456,108 @@
     <string name="wall_games_no_holds">Die Griffpositionen dieses Boards sind noch nicht auf dem Gerät. Lade zuerst seinen Katalog.</string>
     <string name="wall_games_sound_turn_off">Countdown-Ton ausschalten</string>
     <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
+    <!-- Shiny-Wall-Konto (Logbuch-Import, nur lesend) -->
+    <string name="shinywall_section_title">Shiny-Wall-Konto</string>
+    <string name="shinywall_connect_desc">Übernimmt dein Shiny-Wall-Logbuch (Begehungen und Projekte), deine Favoriten, Listen und eigenen Routen in CruxCoach. Sterne und Kommentare bleiben in Shiny Wall.\n\nNur lesend: CruxCoach ändert nichts an deinem Shiny-Wall-Konto. Nur Standard-Wände.\n\nWas du in CruxCoach löschst, bleibt gelöscht, egal ob Einträge oder Listen. Um alles neu zu importieren, lösche deine Shiny-Wall-Logbuchdaten unter Einstellungen → Lokale Daten löschen.</string>
+    <string name="shinywall_connect_button">Shiny-Wall-Konto verbinden</string>
+    <string name="shinywall_login_title">Bei Shiny Wall anmelden</string>
+    <string name="shinywall_login_privacy">Deine E-Mail-Adresse und dein Passwort gehen an die Firebase-Server von Google, über die Shiny Wall die Anmeldung abwickelt.</string>
+    <string name="shinywall_login_privacy_more">CruxCoach liest deine Shiny-Wall-Daten von denselben Google-Servern. Auf diesem Handy speichert es ein Anmelde-Token, nie das Passwort. Konten mit Google-Anmeldung lassen sich nicht verbinden.</string>
+    <string name="shinywall_email_label">E-Mail</string>
+    <string name="shinywall_password_label">Passwort</string>
+    <string name="shinywall_login_button">Anmelden</string>
+    <string name="shinywall_connected_as">Verbunden als: %1$s</string>
+    <string name="shinywall_last_import">Letzter Import: %1$s</string>
+    <string name="shinywall_import_new">Neue Einträge importieren</string>
+    <string name="shinywall_disconnect">Verbindung trennen</string>
+    <string name="shinywall_disconnect_confirm">CruxCoach vergisst die Shiny-Wall-Anmeldung auf diesem Handy. Importierte Einträge und Listen bleiben.</string>
+    <string name="shinywall_preview_title">Import aus Shiny Wall</string>
+    <!-- %1$s, %2$s, %3$s: shinywall_preview_new_ascents, shinywall_preview_new_projects, shinywall_preview_known -->
+    <string name="shinywall_preview_found">%1$s, %2$s, %3$s.</string>
+    <plurals name="shinywall_preview_new_ascents">
+        <item quantity="one">%1$d neue Begehung</item>
+        <item quantity="other">%1$d neue Begehungen</item>
+    </plurals>
+    <plurals name="shinywall_preview_new_projects">
+        <item quantity="one">%1$d neues Projekt</item>
+        <item quantity="other">%1$d neue Projekte</item>
+    </plurals>
+    <string name="shinywall_preview_known">%1$d schon in CruxCoach</string>
+    <plurals name="shinywall_preview_skipped">
+        <item quantity="one">%1$d Eintrag lässt sich nicht importieren (eigene Wände, Routen-Erstellungen, unvollständige Einträge).</item>
+        <item quantity="other">%1$d Einträge lassen sich nicht importieren (eigene Wände, Routen-Erstellungen, unvollständige Einträge).</item>
+    </plurals>
+    <plurals name="shinywall_preview_deleted">
+        <item quantity="one">%1$d Eintrag wird nicht erneut importiert.</item>
+        <item quantity="other">%1$d Einträge werden nicht erneut importiert.</item>
+    </plurals>
+    <string name="shinywall_import_button">Importieren</string>
+    <string name="shinywall_import_lists_button">Listen aktualisieren</string>
+    <string name="shinywall_import_empty">Noch keine Einträge in deinem Shiny-Wall-Logbuch gefunden.</string>
+    <plurals name="shinywall_import_part_ascents">
+        <item quantity="one">%1$d Begehung</item>
+        <item quantity="other">%1$d Begehungen</item>
+    </plurals>
+    <plurals name="shinywall_import_part_projects">
+        <item quantity="one">%1$d Projekt</item>
+        <item quantity="other">%1$d Projekte</item>
+    </plurals>
+    <plurals name="shinywall_import_part_lists">
+        <item quantity="one">%1$d Liste</item>
+        <item quantity="other">%1$d Listen</item>
+    </plurals>
+    <string name="shinywall_import_part_known">%1$d schon in CruxCoach</string>
+    <string name="shinywall_import_part_skipped">%1$d übersprungen</string>
+    <plurals name="shinywall_import_part_deleted">
+        <item quantity="one">%1$d wird nicht erneut importiert</item>
+        <item quantity="other">%1$d werden nicht erneut importiert</item>
+    </plurals>
+    <string name="shinywall_import_part_nothing_new">Nichts Neues</string>
+    <string name="shinywall_auth_invalid_credentials">E-Mail oder Passwort stimmt nicht. Meldest du dich bei Shiny Wall mit Google an, kann CruxCoach sich nicht verbinden.</string>
+    <string name="shinywall_auth_disabled">Dieses Shiny-Wall-Konto ist gesperrt.</string>
+    <string name="shinywall_auth_throttled">Zu viele Versuche. Bitte warte kurz und versuche es dann noch einmal.</string>
+    <string name="shinywall_auth_network">Keine Verbindung zu Shiny Wall. Prüfe deine Internetverbindung.</string>
+    <string name="shinywall_auth_http_failure" formatted="false">Anmeldung fehlgeschlagen (HTTP %1$d).</string>
+    <string name="shinywall_auth_not_saved">CruxCoach konnte die Anmeldung auf diesem Handy nicht speichern. Bitte versuche es noch einmal.</string>
+    <string name="shinywall_auth_unexpected">Shiny Wall hat unerwartet geantwortet. Bitte versuche es später noch einmal.</string>
+    <string name="shinywall_session_expired">Sitzung abgelaufen</string>
+    <string name="shinywall_relogin_button">Neu anmelden</string>
+    <string name="shinywall_import_error_denied">Shiny Wall hat das Lesen deines Logbuchs nicht erlaubt.</string>
+    <string name="shinywall_import_error_network">Keine Verbindung zu Shiny Wall. Prüfe deine Internetverbindung.</string>
+    <string name="shinywall_import_error_generic">Der Import ist fehlgeschlagen. Bitte versuche es noch einmal.</string>
+    <string name="shinywall_list_favorites">Shiny-Wall-Favoriten</string>
+    <string name="shinywall_list_own_routes">Meine Shiny-Wall-Routen</string>
+    <!-- Board-Größe prüfen: optionale Hilfe, wenn jemand unsicher ist, welche Größe sein Board hat -->
+    <string name="board_size_check_title">Board-Größe prüfen</string>
+    <string name="board_size_check_link">Größe am Board prüfen</string>
+    <string name="board_size_check_menu">Falsche Griffe am Board?</string>
+    <string name="board_size_check_info">Dein Board verrät der App seine Größe nicht. Die Prüfung lässt einige weit auseinanderliegende Griffe einer Größe leuchten. An einem Board anderer Größe leuchten dieselben LEDs an anderen Griffen, so siehst du sofort, ob die Größe passt. Beim Schließen gehen sie wieder aus.</string>
+    <string name="board_size_check_question">Leuchten am Board genau diese Griffe?</string>
+    <string name="board_size_check_yes">Ja, passt</string>
+    <string name="board_size_check_no">Nein</string>
+    <string name="board_size_check_relight">Nochmal leuchten lassen</string>
+    <string name="board_size_check_lighting">Die markierten Griffe leuchten gleich auf …</string>
+    <string name="board_size_check_connect_hint">Verbinde dich mit deinem Board, dann leuchten dort die markierten Griffe.</string>
+    <string name="board_size_check_connect">Mit Board verbinden</string>
+    <string name="board_size_check_other_board">Verbunden ist kein %1$s. Verbinde dich mit deinem %1$s.</string>
+    <string name="board_size_check_pick_other">Tippe eine Größe an, sie leuchtet am Board.</string>
+    <string name="board_size_check_pick_other_offline">Tippe eine Größe an, um ihre markierten Griffe zu sehen.</string>
+    <string name="board_size_check_tried">Probiert</string>
+    <string name="board_size_check_try_first">Erst %1$s probieren</string>
+    <string name="board_size_check_none_fit">Keine passt? Dann ist dein Board vielleicht anders aufgebaut als sein Katalog.</string>
+    <string name="board_size_check_saved">Gespeichert: Das ist jetzt dein Board.</string>
+    <string name="board_size_check_selected">Ausgewählt. Tippe in der Board-Auswahl auf „Bestätigen“, um es zu behalten.</string>
+    <string name="board_size_check_fits">Passt: Dein Board ist richtig eingestellt.</string>
+    <string name="board_size_check_send_failed">Die Griffe konnten nicht leuchten. Prüfe die Verbindung und versuch es nochmal.</string>
+    <string name="board_size_check_replaced">Das Board zeigt inzwischen vielleicht etwas anderes.</string>
+    <string name="board_size_check_no_data">Für dieses Board sind noch keine LED-Daten auf deinem Handy.</string>
+    <string name="board_size_check_done">Fertig</string>
+    <string name="board_size_check_back_to_picker">Zurück zur Board-Auswahl</string>
+    <string name="board_size_check_image_cd">%1$s mit den Griffen, die leuchten sollen</string>
+    <string name="board_size_check_look_alike_first">Um %1$s von %2$s zu unterscheiden, kommt %2$s zuerst.</string>
+    <!-- Board-Auswahl: wie häufig jede Option in Gyms ist, damit eine seltene Wahl geprüft wird -->
+    <string name="board_gym_share">In Gyms: %1$s</string>
+    <string name="board_gym_share_rare">Selten in Gyms: %1$s</string>
+    <string name="board_gym_share_rare_hint">Nur wenige Gyms haben dieses Board. Prüfe bitte, ob es wirklich deins ist.</string>
+    <string name="board_gym_share_rare_version_hint">Nur wenige Gyms führen diese Version, vielleicht weil sie neu ist. Prüfe, ob sie zu den Griffen an deinem Board passt.</string>
 </resources>

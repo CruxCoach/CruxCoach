@@ -332,7 +332,7 @@ object BoardConstants {
      * available, overrides this.
      */
     val DEFAULT_SIZE_FREQUENCY: Map<Int, Long> = mapOf(
-        10 to 900L, 28 to 100L, 8 to 80L, 7 to 10L, 14 to 9L, 27 to 2L,
+        10 to 900L, 28 to 100L, 8 to 80L, 7 to 7L, 14 to 9L, 27 to 2L,
         25 to 34L, 17 to 23L, 21 to 17L, 18 to 13L, 23 to 12L,
         24 to 3L, 26 to 3L, 22 to 2L, 19 to 2L, 29 to 1L,
     )

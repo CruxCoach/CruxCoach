@@ -94,7 +94,7 @@ fun RestTimerBannerSlot() {
                             if (min > 0) "%d:%02d".format(min, s) else "${s}s",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = timerColor
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             stringResource(R.string.rest_timer_label),

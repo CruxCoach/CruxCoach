@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -88,6 +89,7 @@ fun BoardBrowserScreen(
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
+    onOpenYearReview: (year: Int) -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -430,6 +432,11 @@ fun BoardBrowserScreen(
         RestTimerBannerSlot()
         // While the sync card itself is on this screen the banner would only repeat it.
         if (state.hasBoardData) SyncStatusBannerSlot()
+        // The year in review's invitation in December and January (#64).
+        com.cruxcoach.android.ui.yearreview.YearReviewEntryCard(
+            onOpen = onOpenYearReview,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
         if (state.isLoading && !state.hasBoardData) {
             // First DB access lazily runs any pending schema migration +
             // the onOpen VACUUM / index rebuild on the ~190k-row board DB.
@@ -518,6 +525,9 @@ fun BoardBrowserScreen(
                         TextButton(
                             onClick = { viewModel.loadActiveBoardCatalogue() },
                             modifier = Modifier.testTag("board_community_only_load"),
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = CruxCoachDesign.colors.onBrandAccentContainer,
+                            ),
                         ) {
                             Text(stringResource(R.string.board_browser_empty_load_catalogue))
                         }
@@ -543,6 +553,7 @@ fun BoardBrowserScreen(
                         BoardMismatchFixAction(
                             mismatch = it,
                             onOpenPicker = { showMismatchPicker = true },
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
                         )
                     }
                 }
@@ -685,7 +696,7 @@ fun BoardBrowserScreen(
                             onClick = { viewModel.loadActiveBoardCatalogue() },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = OrangeAccent,
-                                contentColor = DarkBackground,
+                                contentColor = CruxCoachDesign.colors.onBrandAccent,
                             ),
                             modifier = Modifier.testTag("board_empty_load_catalogue")
                         ) {
@@ -859,7 +870,7 @@ fun BoardBrowserScreen(
                 FloatingActionButton(
                     onClick = onNavigateToClimbCreator,
                     containerColor = OrangeAccent,
-                    contentColor = DarkBackground,
+                    contentColor = CruxCoachDesign.colors.onBrandAccent,
                     modifier = Modifier.testTag("board_create_fab")
                 ) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.climb_creator_open))
@@ -871,7 +882,7 @@ fun BoardBrowserScreen(
                         searchVisible = !searchVisible
                     },
                     containerColor = OrangeAccent,
-                    contentColor = DarkBackground,
+                    contentColor = CruxCoachDesign.colors.onBrandAccent,
                     modifier = Modifier.testTag("board_search_fab")
                 ) {
                     Icon(

@@ -2,14 +2,31 @@ package com.cruxcoach.android.ui.spraywall
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.cruxcoach.android.spraywall.SprayWallFeature
+import com.cruxcoach.android.spraywall.SprayWallRepository
 import com.cruxcoach.android.ui.common.ScreenErrorBoundary
+import com.cruxcoach.android.ui.navigation.Routes
 import com.cruxcoach.domain.spraywall.SprayGym
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import javax.inject.Inject
+
+/** Whether the main menu has spray walls ([SprayWallFeature.inMenu]). */
+@HiltViewModel
+class SprayWallMenuViewModel @Inject constructor(repository: dagger.Lazy<SprayWallRepository>) : ViewModel() {
+    val inMenu: StateFlow<Boolean> = SprayWallFeature.inMenu(SprayWallFeature.enabled, repository::get)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SprayWallFeature.enabled)
+}
 
 /** Destinations of the spray-wall area (FEAT-078). */
 object SprayWallRoutes {
@@ -81,6 +98,7 @@ fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
             onBack = back,
             onSaved = back,
             onDeleted = { nav.popBackStack(SprayWallRoutes.LIST, inclusive = false) },
+            onOpenAccount = { go(Routes.KEY_MANAGEMENT) },
         )
     }
     screen(SprayWallRoutes.WALL, "SprayWall", back, listOf(wallArg)) { entry ->
@@ -93,6 +111,7 @@ fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
             onVersions = { go(SprayWallRoutes.versions(wallId)) },
             onNewClimb = { go(SprayWallRoutes.climbEditor(wallId)) },
             onOpenClimb = { go(SprayWallRoutes.climb(it)) },
+            onOpenAccount = { go(Routes.KEY_MANAGEMENT) },
         )
     }
     screen(SprayWallRoutes.HOLDS, "SprayHoldEditor", back, listOf(wallArg, firstArg)) { entry ->

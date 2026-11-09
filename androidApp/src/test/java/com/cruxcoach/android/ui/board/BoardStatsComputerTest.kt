@@ -590,24 +590,37 @@ class BoardStatsComputerTest {
     }
 
     @Test
-    fun `avgSessionsPerWeek divides by the full window for a young logbook`() {
-        // Logbook younger than the window: 2 distinct session days spanning
-        // ~3 weeks. The divisor stays the 8-week window (not the 3-week active
-        // span), so 2 / 8 = 0.25 — matching the "(8 W.)" label instead of the
-        // inflated 0.6 the active-span divisor produced.
+    fun `avgSessionsPerWeek divides a young logbook by the weeks since its first climbing day`() {
+        // Three weeks of history (first day 20 days back, today included) with
+        // 3 session days: 3 / 3 weeks = 1.0, not 3 / 8 = 0.375.
         val ascents = listOf(
-            ascent(climbedAt = "${today.minusDays(21)}T10:00:00"),
+            ascent(climbedAt = "${today.minusDays(20)}T10:00:00"),
+            ascent(climbedAt = "${today.minusDays(10)}T10:00:00"),
             ascent(climbedAt = "${today}T10:00:00"),
         )
-        assertEquals(0.25, BoardStatsComputer.sessionsPerWeekOf(ascents, fixedClock), 0.001)
+        assertEquals(1.0, BoardStatsComputer.sessionsPerWeekOf(ascents, fixedClock), 0.001)
+    }
+
+    @Test
+    fun `avgSessionsPerWeek is left out before two weeks of history`() {
+        // One climbing day would read as 0.1 a week over eight weeks, or 7 over one day.
+        val firstDay = listOf(ascent(climbedAt = "${today}T10:00:00"))
+        assertEquals(0.0, BoardStatsComputer.sessionsPerWeekOf(firstDay, fixedClock), 0.0)
+        // 13 days of history: still none.
+        val almost = firstDay + ascent(climbedAt = "${today.minusDays(12)}T10:00:00")
+        assertEquals(0.0, BoardStatsComputer.sessionsPerWeekOf(almost, fixedClock), 0.0)
+        // 14 days: 2 days in two weeks.
+        val twoWeeks = firstDay + ascent(climbedAt = "${today.minusDays(13)}T10:00:00")
+        assertEquals(1.0, BoardStatsComputer.sessionsPerWeekOf(twoWeeks, fixedClock), 0.001)
     }
 
     @Test
     fun `avgSessionsPerWeek counts attempt-only days as sessions`() {
         val ascents = listOf(
+            ascent(isSend = false, climbedAt = "${today.minusDays(20)}T10:00:00"),
             ascent(isSend = false, climbedAt = "${today.minusDays(2)}T10:00:00"),
         )
-        assertTrue(BoardStatsComputer.sessionsPerWeekOf(ascents, fixedClock) > 0.0)
+        assertEquals(2.0 / 3, BoardStatsComputer.sessionsPerWeekOf(ascents, fixedClock), 0.001)
     }
 
     @Test
@@ -666,6 +679,18 @@ class BoardStatsComputerTest {
         assertEquals(28, all.hardestFlashDifficulty)
         assertEquals(3, all.mostSendsInDay)
         assertEquals("2026-01-05", all.mostSendsDate)
+    }
+
+    @Test
+    fun `a period shorter than two weeks has no climbing days per week`() {
+        // Two climbing days in a logbook that started three days ago would read as 3.5 a week.
+        val ascents = listOf(
+            ascent(uuid = "a", climbUuid = "n1", climbedAt = "${today.minusDays(3)}T10:00:00"),
+            ascent(uuid = "b", climbUuid = "n2", climbedAt = "${today}T10:00:00"),
+        )
+        val records = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock)
+            .personalRecords
+        assertEquals(0.0, records.daysPerWeek, 0.0)
     }
 
     @Test
@@ -864,6 +889,18 @@ class BoardStatsComputerTest {
         val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         assertEquals(2, stats.uniqueClimbs)
         assertTrue(stats.gradeOutcomes.isEmpty())
+    }
+
+    @Test
+    fun `parseDate reads the day like ISO_LOCAL_DATE`() {
+        val day = LocalDate.parse("2026-11-08")
+        assertEquals(day, BoardStatsComputer.parseDate("2026-11-08 18:00:00"))
+        assertEquals(day, BoardStatsComputer.parseDate("2026-11-08T18:00:00Z"))
+        assertEquals(day, BoardStatsComputer.parseDate("2026-11-08"))
+        assertEquals(LocalDate.parse("2024-02-29"), BoardStatsComputer.parseDate("2024-02-29 10:00:00"))
+        for (bad in listOf("2023-02-29", "2026-02-30", "2026-13-01", "2026-00-10", "2026-1-08", "2026/11/08", "2026-11-0", "", "abcd-ef-gh")) {
+            assertNull(bad, BoardStatsComputer.parseDate(bad))
+        }
     }
 
 }

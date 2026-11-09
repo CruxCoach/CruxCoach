@@ -37,6 +37,7 @@ import org.junit.Assume
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.isoDayNumber
 import androidx.compose.foundation.layout.fillMaxSize
 import kotlinx.datetime.plus
@@ -61,6 +62,23 @@ class TrainingUiReviewTest : AthleteScreenTest() {
 
     @Before
     fun onlyOnRequest() = Assume.assumeTrue(dir != null)
+
+    /**
+     * The rest of the review matrix: `CRUXCOACH_UI_REVIEW_QUALIFIERS` adds to each screen's own qualifiers (e.g.
+     * `+en-w320dp`), `CRUXCOACH_UI_REVIEW_FONT_SCALE` sets the font size (e.g. `2`). The activity is created anew, so
+     * that both reach the screen and the view models' texts.
+     */
+    @Before
+    fun reviewConfiguration() {
+        val qualifiers = System.getenv("CRUXCOACH_UI_REVIEW_QUALIFIERS")
+        val fontScale = System.getenv("CRUXCOACH_UI_REVIEW_FONT_SCALE")?.toFloatOrNull()
+        if (dir == null || (qualifiers == null && fontScale == null)) return
+        qualifiers?.let { org.robolectric.RuntimeEnvironment.setQualifiers(it) }
+        fontScale?.let { org.robolectric.RuntimeEnvironment.setFontScale(it) }
+        @Suppress("UNCHECKED_CAST")
+        (compose as androidx.compose.ui.test.junit4.AndroidComposeTestRule<androidx.test.ext.junit.rules.ActivityScenarioRule<androidx.activity.ComponentActivity>, *>)
+            .activityRule.scenario.recreate()
+    }
 
     /** A climber who uses the app: weight, a breakfast and lunch, two glasses of water. */
     private fun seedActive() {
@@ -220,7 +238,8 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) { vm.state.value.recentByMeal[Meal.BREAKFAST]?.size == 3 }
         val p = photo()
         shoot("fuel-add-sheet-recent", {
-            scrollTo("fuel_list", "fuel_add_breakfast"); click("fuel_add_breakfast"); waitForTag("fuel_recent_y1")
+            // The newest row: at 320 dp and font 2.0 the oldest one sits below the short test screen's sheet.
+            scrollTo("fuel_list", "fuel_add_breakfast"); click("fuel_add_breakfast"); waitForTag("fuel_recent_y3")
             Thread.sleep(800)
         }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p) }
     }
@@ -855,5 +874,124 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         }) {
             com.cruxcoach.android.ui.training.athlete.comeback.ComebackScreen(onBack = {}, onOpenPlayer = {}, viewModel = vm)
         }
+    }
+
+    // ── 0.2.5: the week's training days done (#70), exercises new to the athlete (#68), weights as entered (#58) ──
+
+    private fun shootToday(vm: TodayViewModel, name: String, ready: () -> Unit) =
+        shoot(name, ready) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm, tabBar = { TrainingTabBar(TrainingTab.TODAY) {} }) }
+
+    private fun suggested(vm: TodayViewModel) =
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+
+    /** A Friday, two training days a week, climbing on Wednesday and Thursday: Today suggests recovery. */
+    @Test
+    fun todayWeekDone() {
+        val friday = kotlinx.datetime.LocalDate.parse("2026-03-06")
+        val ms = friday.atStartOfDayIn(service.zone).toEpochMilliseconds() + 18 * 3_600_000L
+        service.clock = { ms }
+        seedActive()
+        repo.updateProfile { it.copy(weeklyGoal = 2, coach = it.coach.copy(trainingDaysPerWeek = 2)) }
+        listOf("2026-03-04", "2026-03-05").forEach { day ->
+            service.saveClimbingDay(com.cruxcoach.athlete.model.ClimbingDayEntry("c-$day", day, com.cruxcoach.athlete.model.ClimbingDayKind.GYM_BOULDER,
+                90, com.cruxcoach.athlete.model.ClimbIntensity.VOLUME, updatedAt = ms))
+        }
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(4, emptySet())
+        suggested(vm)
+        shootToday(vm, "today-week-done") { scrollTo("today_list", "today_train_anyway") }
+    }
+
+    /** Three to five years of climbing, set up today and nothing trained yet: only the classics are known. */
+    private fun newToYou(): Pair<TodayViewModel, String> {
+        // A fixed day: which exercise is new and where it sits on the card changes with the date. The clock keeps running.
+        val start = kotlinx.datetime.LocalDate.parse("2026-11-07").atStartOfDayIn(service.zone).toEpochMilliseconds() + 12 * 3_600_000L
+        val offset = start - System.currentTimeMillis()
+        service.clock = { System.currentTimeMillis() + offset }
+        repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 70.0, "kg", 1))
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, equipmentConfigured = true, equipment = setOf(
+            com.cruxcoach.athlete.catalog.EquipmentV2.NONE, com.cruxcoach.athlete.catalog.EquipmentV2.MAT,
+            com.cruxcoach.athlete.catalog.EquipmentV2.PULL_UP_BAR, com.cruxcoach.athlete.catalog.EquipmentV2.DUMBBELL,
+            com.cruxcoach.athlete.catalog.EquipmentV2.BANDS),
+            coach = it.coach.copy(experience = com.cruxcoach.athlete.model.ExperienceBand.Y3_5,
+                setupState = com.cruxcoach.athlete.model.SetupState.DONE)) }
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        suggested(vm)
+        val main = vm.state.value.suggestion!!.routine.items.filter { !it.warmup }
+        val slug = main.firstOrNull { it.slug in vm.state.value.newToYou }?.slug ?: run {
+            val alt = vm.alternatives(main.first().slug).first { it.def.familiarity != com.cruxcoach.athlete.catalog.Familiarity.BASIC }.def.slug
+            vm.swapExercise(main.first().slug, alt)
+            compose.waitUntil(WAIT_MS) { idleMain(); alt in vm.state.value.newToYou }
+            alt
+        }
+        return vm to slug
+    }
+
+    @Test
+    fun todayNewToYou() {
+        val (vm, slug) = newToYou()
+        shootToday(vm, "today-new-to-you") { scrollTo("today_list", "today_new_$slug") }
+    }
+
+    @Test
+    fun todaySwapSheetNew() {
+        val (vm, slug) = newToYou()
+        shootToday(vm, "today-swap-new") {
+            scrollTo("today_list", "today_item_$slug"); click("today_item_$slug"); waitForTag("today_swap_dont_know")
+            Thread.sleep(800)
+        }
+    }
+
+    @Test
+    fun todayDontKnow() {
+        val (vm, slug) = newToYou()
+        shootToday(vm, "today-dont-know") {
+            scrollTo("today_list", "today_item_$slug"); click("today_item_$slug"); waitForTag("today_swap_dont_know")
+            click("today_swap_dont_know")
+            compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.suggestion!!.routine.items.none { it.slug == slug } }
+            Thread.sleep(800)
+        }
+    }
+
+    @Test
+    fun settingsExerciseChoice() {
+        val vm = loaded(AthleteSettingsViewModel(service))
+        shoot("settings-exercise-choice", { waitForTag("exercise_choice_balanced"); compose.onNodeWithTag("exercise_choice_open").performScrollTo() }) {
+            AthleteSettingsScreen({}, viewModel = vm, section = com.cruxcoach.android.ui.training.athlete.SettingsSection.PROFILE)
+        }
+    }
+
+    @Test
+    fun coachExerciseChoice() {
+        val vm = loaded(com.cruxcoach.android.ui.training.coach.CoachSetupViewModel(service, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true)))
+        repeat(3) { vm.next() }
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.step == 3 }
+        shoot("coach-exercise-choice", {
+            waitForTag("exercise_choice_balanced")
+            compose.onNodeWithTag("coach_open_equipment").performScrollTo()
+        }) { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, viewModel = vm) }
+    }
+
+    /** The first time a Special exercise comes up, the player opens its steps; dumbbell weights read per dumbbell. */
+    @Test
+    fun pageFirstTimeDumbbells() {
+        seedActive()
+        service.startWorkout(com.cruxcoach.athlete.model.Routine("n", "Neu", items = listOf(
+            com.cruxcoach.athlete.model.RoutineItem("core.pallof_press", sets = 3, repsMin = 10, repsMax = 10),
+            com.cruxcoach.athlete.model.RoutineItem("push.dumbbell_bench_press", sets = 3, repsMin = 8, repsMax = 8, loadKg = 16.0, restS = 120))), null)
+        val vm = com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service).tracked()
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.phase == com.cruxcoach.android.ui.training.player.PlayerPhase.SET }
+        page("page-first-time", vm) { waitForTag("player_steps_core.pallof_press") }
+    }
+
+    @Test
+    fun pageDumbbells() {
+        seedActive()
+        service.startWorkout(com.cruxcoach.athlete.model.Routine("d", "Kurzhantel", items = listOf(
+            com.cruxcoach.athlete.model.RoutineItem("push.dumbbell_bench_press", sets = 3, repsMin = 8, repsMax = 8, loadKg = 16.0, restS = 120))), null)
+        val vm = com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service).tracked()
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.phase == com.cruxcoach.android.ui.training.player.PlayerPhase.SET }
+        page("page-dumbbells", vm) { waitForTag("player_row_active") }
     }
 }

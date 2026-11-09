@@ -87,7 +87,15 @@ class SprayWallRepository @Inject constructor(
         id
     }.also { changed() }
 
-    suspend fun updateWallDetails(id: String, name: String, angle: Int, visibility: SprayWallVisibility, gym: SprayGym?) {
+    /** [sendHead]: the wall is published and its head goes out again with these details, also after a restart. */
+    suspend fun updateWallDetails(
+        id: String,
+        name: String,
+        angle: Int,
+        visibility: SprayWallVisibility,
+        gym: SprayGym?,
+        sendHead: Boolean = false,
+    ) {
         io {
             database.transaction {
                 queries.updateWallDetails(name.trim(), angle.toLong(), visibility.wire, gym?.id, gym?.name, now(), id)
@@ -95,9 +103,53 @@ class SprayWallRepository @Inject constructor(
                 if (visibility == SprayWallVisibility.PRIVATE) {
                     queries.setPublishedVersion(null, id)
                     queries.clearClimbsPublished(id)
+                    queries.dropHeadPending(id)
+                    // Private is where a withdrawal ends.
+                    queries.clearWithdrawStarted(id)
+                } else if (sendHead) {
+                    queries.markHeadPending(id)
                 }
             }
         }
+        changed()
+    }
+
+    /** My published walls whose head still has to go out with new details. */
+    suspend fun wallsWithHeadPending(): List<SprayWall> = io {
+        queries.selectWallsWithHeadPending().executeAsList().mapNotNull { it.toModel() }
+    }
+
+    /**
+     * Withdrawing [id] is about to send its first tombstone: nothing of the wall is published (a waiting head stays
+     * back) until the withdrawal is done and the wall is private, or [clearWithdrawStarted] says no relay took anything.
+     */
+    suspend fun markWithdrawStarted(id: String) {
+        io { queries.markWithdrawStarted(now(), id) }
+        changed()
+    }
+
+    /** No relay took a tombstone of the withdrawal: the relays still show the wall, and it publishes as before. */
+    suspend fun clearWithdrawStarted(id: String) {
+        io { queries.clearWithdrawStarted(id) }
+        changed()
+    }
+
+    /** Public walls my climbs may go out on: not one the relays already took back. */
+    suspend fun wallsTakingClimbs(): List<SprayWall> = io {
+        queries.selectWallsTakingClimbs().executeAsList().mapNotNull { it.toModel() }
+    }
+
+    /** A version of [id] reached the relays before its head: the head is to go out on its own if this run fails. */
+    suspend fun markHeadPending(id: String) {
+        io { queries.markHeadPending(id) }
+    }
+
+    /**
+     * A relay took the head built while [pending] was the wall's mark; a change since then stays pending. The wall page
+     * shows a pending head ("Upload pending"), so it hears of this too.
+     */
+    suspend fun clearHeadPending(id: String, pending: Long) {
+        io { queries.clearHeadPending(id, pending) }
         changed()
     }
 
@@ -347,6 +399,16 @@ class SprayWallRepository @Inject constructor(
         io { queries.clearPhotoBlobs(wallId) }
     }
 
+    /** [wallId] forgets one Blossom photo (deleted from its server, or kept there by another wall); the next publish uploads it anew. */
+    suspend fun clearPhotoBlob(wallId: String, sha256: String) {
+        io { queries.clearPhotoBlob(wallId, sha256) }
+    }
+
+    /** Which of my walls recorded this Blossom photo, and at which URL. */
+    suspend fun photoRecords(sha256: String): List<Pair<String, String?>> = io {
+        queries.selectPhotoRecords(sha256).executeAsList().map { it.wall_id to it.photo_url }
+    }
+
     /** Whether another public wall of mine still uses this Blossom photo (then it stays on the servers). */
     suspend fun photoUsedElsewhere(sha256: String, wallId: String): Boolean = io {
         queries.countPublishedPhotoUses(sha256, wallId).executeAsOne() > 0
@@ -455,10 +517,16 @@ class SprayWallRepository @Inject constructor(
         queries.selectPublicWalls().executeAsList().mapNotNull { it.toModel() }
     }
 
-    /** My climbs on [wallId] that are on Nostr. */
-    suspend fun publishedClimbs(wallId: String): List<SprayClimb> = io {
-        queries.selectClimbs(wallId).executeAsList().map { it.toModel() }.filter { it.isMine && it.publishedAt != null }
+    /** My climbs on [wallId], published or not. */
+    suspend fun myClimbs(wallId: String): List<SprayClimb> = io {
+        queries.selectClimbs(wallId).executeAsList().map { it.toModel() }.filter { it.isMine }
     }
+
+    /**
+     * Whether the relays may hold something of mine that only the spray wall screens can take back: a public wall of
+     * mine, or a climb of mine on a followed wall ([SprayWallFeature.inMenu]).
+     */
+    suspend fun hasMineMaybeOnRelays(): Boolean = io { queries.selectMineMaybeOnRelays().executeAsList().isNotEmpty() }
 
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }
 
@@ -472,6 +540,8 @@ class SprayWallRepository @Inject constructor(
             current = version,
             publishedVersion = published_version?.toInt(),
             createdAt = created_at, updatedAt = updated_at,
+            headPending = head_pending,
+            withdrawStarted = withdraw_started,
         )
     }
 

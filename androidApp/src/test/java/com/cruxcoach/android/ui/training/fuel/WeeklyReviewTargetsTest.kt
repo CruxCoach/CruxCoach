@@ -55,6 +55,6 @@ class WeeklyReviewTargetsTest : AthleteScreenTest() {
         assertNotEquals(s.kcalNeedAvg, s.kcalTargetAvg)
 
         render { WeeklyReviewScreen({}, viewModel = vm) }
-        waitForText("Energy on logged days: 1400 kcal (target about $calorieTarget kcal, estimated need about ${need.totalKcal} kcal)")
+        waitForText("Energy on logged days: 1400\u00A0kcal (target about $calorieTarget\u00A0kcal, estimated need about ${need.totalKcal}\u00A0kcal)")
     }
 }

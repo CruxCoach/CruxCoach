@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.nostr.backup.BackupErrorReason
 import com.cruxcoach.android.nostr.backup.DeleteRemoteNote
+import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
@@ -78,6 +79,7 @@ internal fun SettingsScreen(
 
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
+    var showBoardConnection by rememberSaveable { mutableStateOf(false) }
     var gymSearchNearby by rememberSaveable { mutableStateOf(false) }
     var settingsBoardWire by rememberSaveable { mutableStateOf<String?>(null) }
     // The global active-board picker must not inherit the card being inspected.
@@ -122,6 +124,9 @@ internal fun SettingsScreen(
                     )
                 },
         )
+    }
+    if (showBoardConnection) {
+        BleConnectionSheet(onDismiss = { showBoardConnection = false })
     }
     if (showGymSearch) {
         GymBoardSearchSheet(
@@ -226,6 +231,7 @@ internal fun SettingsScreen(
                         onSelect = viewModel::setLedAnimation,
                         onKeepRunningChange = viewModel::setLedEffectsInBackground,
                         onStrobeNoticeSeen = viewModel::confirmLedStrobeNotice,
+                        onConnect = { showBoardConnection = true },
                     )
                 }
                 SettingsSectionCard {
@@ -337,6 +343,9 @@ internal fun SettingsScreen(
                         onUploadImported = { viewModel.uploadImportedKilterLogs() },
                         onLoadNotUploaded = { viewModel.loadKilterNotUploaded() },
                     )
+                }
+                SettingsSectionCard {
+                    ShinyWallAccountSection()
                 }
                 SettingsSectionCard {
                     BoardLogbookImportSection(

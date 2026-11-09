@@ -98,7 +98,11 @@ fun WorkoutTextSheet(
             Modifier.imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleLarge)
+            // How to write it sits behind the info symbol: ten lines of syntax pushed the result off the screen (UI pass 0.2.5).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                com.cruxcoach.android.ui.common.InfoButton(title, stringResource(R.string.trwo_text_hint))
+            }
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it.take(WorkoutTextParser.MAX_CHARS) },
@@ -108,8 +112,6 @@ fun WorkoutTextSheet(
                 minLines = 4,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp).testTag("workout_text_input"),
             )
-            Text(stringResource(R.string.trwo_text_hint), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
             result.title?.let {
                 Text(stringResource(R.string.trwo_text_name, it), style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.testTag("workout_text_title"))
@@ -183,10 +185,10 @@ internal fun routineItemSummary(
             val min = item.repsMin
             val max = item.repsMax ?: min
             val reps = if (min != null && max != null && min != max) "$min–$max" else max?.toString()
-            reps?.let { "${item.sets} × $it" } ?: "${item.sets} ×"
+            reps?.let { "${item.sets}\u00A0×\u00A0$it" } ?: "${item.sets}\u00A0×"
         }
-        ExerciseKind.TIME, ExerciseKind.HANG -> "${item.sets} × " + stringResource(R.string.tr_format_seconds, item.durationS ?: 0)
-        ExerciseKind.INTERVAL -> "${item.sets} × " + stringResource(R.string.trw_interval_format, item.workS ?: 7, item.restBetweenS ?: 3, item.repsPerSet ?: 6)
+        ExerciseKind.TIME, ExerciseKind.HANG -> "${item.sets}\u00A0×\u00A0" + stringResource(R.string.tr_format_seconds, item.durationS ?: 0)
+        ExerciseKind.INTERVAL -> "${item.sets}\u00A0×\u00A0" + stringResource(R.string.trw_interval_format, item.workS ?: 7, item.restBetweenS ?: 3, item.repsPerSet ?: 6)
         ExerciseKind.CLIMB -> item.durationS?.let { stringResource(R.string.trwo_minutes, it / 60) }
             ?: pluralStringResource(R.plurals.trp_rounds, item.repsPerSet ?: 4, item.repsPerSet ?: 4)
     }

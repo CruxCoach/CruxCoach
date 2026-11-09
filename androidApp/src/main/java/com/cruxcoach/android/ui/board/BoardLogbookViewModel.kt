@@ -123,6 +123,8 @@ data class BoardLogbookState(
     // Stats
     val statsInterval: StatsTimeInterval = StatsTimeInterval.ALL,
     val stats: BoardLogbookStats = BoardLogbookStats(),
+    /** The statistics have been computed once; until then the sheet shows that it is loading. */
+    val statsReady: Boolean = false,
     val showStatsSheet: Boolean = false,
     val zones: IntensityZones? = null,
     // Chart view selectors
@@ -228,7 +230,14 @@ class BoardLogbookViewModel @Inject constructor(
     val state: StateFlow<BoardLogbookState> = _state.asStateFlow()
 
     private var allAscents: List<AscentWithClimb> = emptyList()
+    private var overviewJob: Job? = null
     private var statsJob: Job? = null
+    /** The current read of the whole logbook; opening the sheet starts no second one, a reload replaces it. */
+    private var preloadJob: Job? = null
+    /** The whole logbook has been read once; the statistics wait for it. */
+    private var logbookLoaded = false
+    /** The last read of the whole logbook failed; a period or board tap in the sheet reads it again. */
+    private var logbookLoadFailed = false
 
     companion object {
         private const val PAGE_SIZE = 50
@@ -240,6 +249,7 @@ class BoardLogbookViewModel @Inject constructor(
             userPreferences.gradeScale.collect { scale ->
                 _state.update { it.copy(gradeScale = scale) }
                 if (allAscents.isNotEmpty()) {
+                    recomputeOverview()
                     recomputeStats()
                 }
             }
@@ -371,16 +381,13 @@ class BoardLogbookViewModel @Inject constructor(
         refreshOwnPublishable()
     }
 
-    private fun loadAscents(silent: Boolean = false) {
+    private fun loadAscents(silent: Boolean = false, afterRepair: Boolean = false) {
         viewModelScope.safeLaunch(TAG) {
             val limit = if (silent) maxOf(PAGE_SIZE, _state.value.ascents.size) else PAGE_SIZE
             if (!silent) _state.update { it.copy(isLoading = true, error = null) }
-            try {
+            val page = try {
                 val (ascents, count) = withContext(Dispatchers.IO) {
-                    val list = personalBoardRepo.getUserLogbookPage(limit, 0).toMutableList()
-                    val total = personalBoardRepo.countUserLogbook()
-                    repairMissingDenormalized(list)
-                    list to total
+                    personalBoardRepo.getUserLogbookPage(limit, 0) to personalBoardRepo.countUserLogbook()
                 }
                 _state.update { it.copy(
                     isLoading = false,
@@ -391,22 +398,45 @@ class BoardLogbookViewModel @Inject constructor(
                 ) }
                 // Preload stats data in background so sheet opens instantly
                 preloadStats()
+                ascents
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message) }
+                return@safeLaunch
+            }
+            // Missing climb names and grades are filled in from the catalogue after
+            // the list shows: a climb the catalogue lacks costs full scans of it,
+            // seconds each on a phone, and the list and the overview do not wait for
+            // that. When an entry really changed, the logbook loads once more to show it.
+            try {
+                val repaired = withContext(Dispatchers.IO) { repairMissingDenormalized(page.toMutableList()) }
+                if (repaired && !afterRepair) loadAscents(silent = true, afterRepair = true)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "repairMissingDenormalized failed", e)
             }
         }
     }
 
     private fun preloadStats() {
-        viewModelScope.safeLaunch(TAG) {
+        // A read after a failed one: the sheet shows its loading sign again, and a
+        // period or board tap meanwhile waits for this read instead of starting one.
+        if (logbookLoadFailed) {
+            logbookLoadFailed = false
+            if (!logbookLoaded) _state.update { it.copy(statsReady = false) }
+        }
+        // Only the newest read may land: an older one that finishes later would
+        // put the logbook from before an edit or a reload back.
+        preloadJob?.cancel()
+        preloadJob = viewModelScope.safeLaunch(TAG) {
             try {
                 val all = withContext(Dispatchers.IO) {
                     personalBoardRepo.getUserLogbookAllLight()
                 }
                 allAscents = all
-                // True-flash set needs the FULL history (prior-session
-                // attempts disqualify), so it is derived here, not per page.
-                _state.update { it.copy(flashUuids = BoardStatsComputer.trueFlashUuids(all)) }
+                logbookLoaded = true
                 // Boards the user has actually logged on — drives whether the
                 // per-board stats selector is shown. Kilter first, then the
                 // rest, for a stable chip order.
@@ -470,6 +500,10 @@ class BoardLogbookViewModel @Inject constructor(
                         heatmapBoardSelection = heatmapSel,
                     )
                 }
+                // The overview and the flash markers before the rest: they need
+                // only a small part of the statistics and are the first thing on
+                // screen. After the boards, which give the overview its colours.
+                recomputeOverview()
                 applyLogbookFilters()
                 // Load the heatmap canvas for the seeded/selected board (init no
                 // longer does this — the selection didn't exist yet). No-op for
@@ -480,6 +514,9 @@ class BoardLogbookViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "preloadStats failed; stats sheet may show stale", e)
+                logbookLoadFailed = true
+                // The statistics wait for this load: end their loading sign.
+                _state.update { it.copy(statsReady = true) }
             }
         }
     }
@@ -531,9 +568,11 @@ class BoardLogbookViewModel @Inject constructor(
     /**
      * Self-healing: when logbook entries have empty denormalized fields
      * (e.g. Kilter sync ran before board sync), fill them from BoardDB
-     * and persist the fix so it doesn't recur.
+     * and persist the fix so it doesn't recur. True when a name, grade, board or
+     * layout changed; a climb without a grade in the catalogue stays without one.
      */
-    private fun repairMissingDenormalized(entries: MutableList<AscentWithClimb>) {
+    private fun repairMissingDenormalized(entries: MutableList<AscentWithClimb>): Boolean {
+        var changed = false
         for (i in entries.indices) {
             val entry = entries[i]
             if (entry.climbName.isNotBlank() && entry.difficultyAverage != null) continue
@@ -541,6 +580,12 @@ class BoardLogbookViewModel @Inject constructor(
             // uppercase-no-hyphens, our climbs table stores lowercase
             // canonical form. Raw getClimbByUuid would silently miss those.
             val climb = climbNameResolver.resolveClimb(entry.climbUuid, entry.angle.toInt()) ?: continue
+            if ((entry.climbName.isBlank() && climb.name.isNotBlank()) ||
+                (entry.difficultyAverage == null && climb.difficultyAverage != null) ||
+                entry.boardBrand != climb.boardBrand || entry.layoutId != climb.layoutId
+            ) {
+                changed = true
+            }
             // Fix in-memory for immediate display
             entries[i] = entry.copy(
                 climbName = climb.name,
@@ -562,6 +607,7 @@ class BoardLogbookViewModel @Inject constructor(
                 )
             }
         }
+        return changed
     }
 
     // --- Stats ---
@@ -653,7 +699,7 @@ class BoardLogbookViewModel @Inject constructor(
     fun toggleStatsSheet() {
         val opening = !_state.value.showStatsSheet
         _state.update { it.copy(showStatsSheet = opening) }
-        if (opening && allAscents.isEmpty()) preloadStats()
+        if (opening && allAscents.isEmpty() && preloadJob?.isActive != true) preloadStats()
     }
 
     /**
@@ -668,7 +714,51 @@ class BoardLogbookViewModel @Inject constructor(
         recomputeStats()
     }
 
+    /**
+     * The overview at the top of the logbook and the true flashes (prior-session
+     * attempts disqualify, so they need the full history). Neither depends on the
+     * period or board of the statistics, so a filter change does not redo them.
+     */
+    private fun recomputeOverview() {
+        overviewJob?.cancel()
+        overviewJob = viewModelScope.safeLaunch(TAG) {
+            try {
+                val all = allAscents
+                val scale = _state.value.gradeScale
+                val result = withContext(Dispatchers.Default) {
+                    val flashes = BoardStatsComputer.trueFlashUuids(all)
+                    ComputedOverview(
+                        flashUuids = flashes,
+                        atAGlance = StatsHighlightsComputer.atAGlance(all, scale, flashes),
+                        milestones = StatsHighlightsComputer.milestones(
+                            all, scale, BoardStatsComputer.weekStreakOf(all),
+                        ),
+                    )
+                }
+                _state.update {
+                    it.copy(
+                        flashUuids = result.flashUuids,
+                        atAGlance = result.atAGlance,
+                        milestones = result.milestones,
+                    )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "recomputeOverview failed", e)
+            }
+        }
+    }
+
     private fun recomputeStats() {
+        // Not before the whole logbook is read: a period or board tapped while it
+        // loads would compute an empty logbook and end the sheet's loading sign.
+        // The load computes the newest choice once it is done.
+        if (!logbookLoaded) {
+            // After a failed read, the tap reads the logbook again, with the loading sign.
+            if (logbookLoadFailed) preloadStats()
+            return
+        }
         // Only the newest choice may land: a slow "All" started before a tap on
         // "30 days" must not overwrite it when it finishes later.
         statsJob?.cancel()
@@ -694,11 +784,6 @@ class BoardLogbookViewModel @Inject constructor(
                         allAscents, s.statsInterval, s.gradeScale,
                         s.customDateFrom, s.customDateTo, context
                     )
-                    // The logbook overview spans every board and the whole logbook.
-                    val glance = StatsHighlightsComputer.atAGlance(allAscents, s.gradeScale)
-                    val badges = StatsHighlightsComputer.milestones(
-                        allAscents, s.gradeScale, BoardStatsComputer.weekStreakOf(allAscents),
-                    )
                     val byBoard = if (s.boardFilter == null && s.availableBoardBrands.size > 1) {
                         BoardStatsComputer.gradeProgressionByBoard(
                             allAscents, s.statsInterval, s.customDateFrom, s.customDateTo, context,
@@ -706,15 +791,14 @@ class BoardLogbookViewModel @Inject constructor(
                     } else {
                         emptyMap()
                     }
-                    ComputedStats(st, cmp, cross, glance, badges, byBoard)
+                    ComputedStats(st, cmp, cross, byBoard)
                 }
                 _state.update {
                     it.copy(
                         stats = result.stats,
+                        statsReady = true,
                         boardComparison = result.comparison,
                         crossBoard = result.crossBoard,
-                        atAGlance = result.atAGlance,
-                        milestones = result.milestones,
                         progressionByBoard = result.progressionByBoard,
                     )
                 }
@@ -723,6 +807,8 @@ class BoardLogbookViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "recomputeStats failed", e)
+                // Show what there is rather than loading forever.
+                _state.update { it.copy(statsReady = true) }
             }
         }
     }
@@ -1024,7 +1110,12 @@ private class ComputedStats(
     val stats: BoardLogbookStats,
     val comparison: List<BoardComparisonEntry>,
     val crossBoard: CrossBoardStats,
+    val progressionByBoard: Map<String, List<GradeProgressionPoint>>,
+)
+
+/** The logbook overview and the flash markers of its entries: the whole logbook, every board. */
+private class ComputedOverview(
+    val flashUuids: Set<String>,
     val atAGlance: AtAGlance,
     val milestones: List<Milestone>,
-    val progressionByBoard: Map<String, List<GradeProgressionPoint>>,
 )

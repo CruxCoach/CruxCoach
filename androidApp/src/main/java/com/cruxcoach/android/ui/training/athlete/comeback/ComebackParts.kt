@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
+import com.cruxcoach.android.ui.training.LabelBesideOrAbove
 import com.cruxcoach.android.ui.training.catalogLanguage
 import com.cruxcoach.athlete.logic.ComebackTexts
 import com.cruxcoach.athlete.logic.DayReading
@@ -46,9 +47,14 @@ internal fun ComebackNotice(onSigns: (() -> Unit)?, modifier: Modifier = Modifie
         Row(Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Info, null, Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.cb_not_a_substitute), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-            if (onSigns != null) {
-                TextButton(onClick = onSigns, modifier = Modifier.testTag("comeback_notice_signs")) { Text(stringResource(R.string.cb_warning_signs)) }
+            // "Warnzeichen" below the notice when it squeezes the notice into a narrow column (largest font).
+            LabelBesideOrAbove(modifier = Modifier.weight(1f), label = {
+                Text(stringResource(R.string.cb_not_a_substitute), style = MaterialTheme.typography.bodySmall)
+            }) {
+                if (onSigns != null) {
+                    TextButton(onClick = onSigns, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                        modifier = Modifier.testTag("comeback_notice_signs")) { Text(stringResource(R.string.cb_warning_signs)) }
+                }
             }
         }
     }
@@ -57,9 +63,10 @@ internal fun ComebackNotice(onSigns: (() -> Unit)?, modifier: Modifier = Modifie
 /** 0–10 at the injured spot; tapping the chosen value again clears it. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun PainScale(label: String, value: Int?, tag: String, onChange: (Int?) -> Unit, hint: String? = null) {
+internal fun PainScale(label: String, value: Int?, tag: String, onChange: (Int?) -> Unit, hint: String? = null, showLabel: Boolean = true) {
     Column(Modifier.fillMaxWidth()) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
+        // Without a visible label (a card's title asks the question) the chips still read it out.
+        if (showLabel) Text(label, style = MaterialTheme.typography.bodyMedium)
         hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             (0..10).forEach { v ->
@@ -103,6 +110,7 @@ internal fun sourceKindLabel(k: SourceKind): String = stringResource(when (k) {
  * The 14-day diary as three plain lines (morning, pressure, session) on a 0–10 scale. Descriptive only: no
  * traffic-light colours (research/safety-regulation.md §5 SHOULD).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ComebackChart(readings: List<DayReading>, modifier: Modifier = Modifier) {
     val morning = MaterialTheme.colorScheme.primary
@@ -138,7 +146,8 @@ internal fun ComebackChart(readings: List<DayReading>, modifier: Modifier = Modi
             series(readings.map { it.morningPain }, morning, dashed = false)
         }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 4.dp)) {
+        // Whole items wrap to a new line instead of breaking ("Se/ssi…" at the largest font).
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 4.dp)) {
             Legend(morning, stringResource(R.string.cb_chart_morning))
             Legend(pressure, stringResource(R.string.cb_chart_pressure))
             Legend(session, stringResource(R.string.cb_chart_session))
@@ -151,7 +160,7 @@ private fun Legend(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Canvas(Modifier.size(10.dp)) { drawCircle(color) }
         Spacer(Modifier.width(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall)
+        Text(label, style = MaterialTheme.typography.labelSmall, softWrap = false)
     }
 }
 
@@ -229,6 +238,7 @@ internal fun HintCard(
     title: String?, text: String, tag: String,
     primary: Pair<String, () -> Unit>? = null, secondary: Pair<String, () -> Unit>? = null, tertiary: Pair<String, () -> Unit>? = null,
     caution: Boolean = false,
+    content: (@Composable () -> Unit)? = null,
 ) {
     Card(
         colors = if (caution) CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.cautionContainer,
@@ -238,11 +248,17 @@ internal fun HintCard(
         Column(Modifier.padding(16.dp)) {
             title?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
             Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = if (title != null) 4.dp else 0.dp))
+            content?.let { Box(Modifier.padding(top = 8.dp)) { it() } }
             if (primary != null || secondary != null || tertiary != null) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    // On the caution fill the default primary labels read too faint.
+                    val outlinedColors = if (caution) ButtonDefaults.outlinedButtonColors(contentColor = CruxCoachDesign.colors.onCautionContainer)
+                        else ButtonDefaults.outlinedButtonColors()
+                    val textColors = if (caution) ButtonDefaults.textButtonColors(contentColor = CruxCoachDesign.colors.onCautionContainer)
+                        else ButtonDefaults.textButtonColors()
                     primary?.let { (label, action) -> Button(onClick = action, modifier = Modifier.testTag("${tag}_primary")) { Text(label) } }
-                    secondary?.let { (label, action) -> OutlinedButton(onClick = action, modifier = Modifier.testTag("${tag}_secondary")) { Text(label) } }
-                    tertiary?.let { (label, action) -> TextButton(onClick = action, modifier = Modifier.testTag("${tag}_tertiary")) { Text(label) } }
+                    secondary?.let { (label, action) -> OutlinedButton(onClick = action, colors = outlinedColors, modifier = Modifier.testTag("${tag}_secondary")) { Text(label) } }
+                    tertiary?.let { (label, action) -> TextButton(onClick = action, colors = textColors, modifier = Modifier.testTag("${tag}_tertiary")) { Text(label) } }
                 }
             }
         }

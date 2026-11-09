@@ -7,10 +7,10 @@
 
     <string name="fvp_unavailable_title">Photo recognition not available</string>
     <string name="fvp_unavailable_short">Not available on this device</string>
-    <string name="fvp_unavailable_ram">Photo recognition runs entirely on your phone and needs at least %1$d GB of memory. This device has %2$s GB.</string>
+    <string name="fvp_unavailable_ram">Photo recognition runs entirely on your phone and needs at least %1$d\u00A0GB of memory. This device has %2$s\u00A0GB.</string>
     <string name="fvp_unavailable_cpu">This device\'s processor is too old for the recognition model (it needs ARMv8.2 with dot-product instructions).</string>
     <string name="fvp_unavailable_abi">Photo recognition needs a 64-bit ARM device.</string>
-    <string name="fvp_unavailable_slow">The test run showed that one photo would take about %d s here. That is too slow, so the feature stays off. You can remove the model to free the space.</string>
+    <string name="fvp_unavailable_slow">The test run showed that one photo would take about %d\u00A0s here. That is too slow, so the feature stays off. You can remove the model to free the space.</string>
     <string name="fvp_unavailable_alternatives">Search, barcode, describe and quick entry work as usual.</string>
 
     <string name="fvp_setup_text">Recognition runs only on your device; your photo never leaves the phone. For that, CruxCoach downloads an AI model once (%1$s, %2$s).</string>
@@ -24,19 +24,19 @@
     <string name="fvp_verifying">Checking the files…</string>
     <string name="fvp_probing">Test run: how fast is this device? (can take up to two minutes)</string>
     <string name="fvp_run_probe">Run the test again</string>
-    <string name="fvp_probe_estimate">One photo takes about %d s on this device.</string>
+    <string name="fvp_probe_estimate">One photo takes about %d\u00A0s on this device.</string>
     <string name="fvp_remove_model">Remove model (%s)</string>
 
     <string name="fvp_take_photo">Take a photo</string>
     <string name="fvp_pick_photo">Choose from gallery</string>
     <string name="fvp_on_device">Everything happens on this device.</string>
     <string name="fvp_analyzing">Recognising foods…</string>
-    <string name="fvp_elapsed">%d s</string>
+    <string name="fvp_elapsed">%d\u00A0s</string>
     <string name="fvp_photo_description">Your meal photo</string>
 
-    <string name="fvp_review_hint">Recognised in %d s. Amounts are estimates – tap a food to change it.</string>
+    <string name="fvp_review_hint">Recognised in %d\u00A0s. Amounts are estimates – tap a food to change it.</string>
     <string name="fvp_review_text_hint">From your description. Amounts you did not give are typical portions – tap a food to change it.</string>
-    <string name="fvp_review_text_model_hint">Read by the AI model in %d s. Please check – it can be wrong.</string>
+    <string name="fvp_review_text_model_hint">Read by the AI model in %d\u00A0s. Please check – it can be wrong.</string>
     <string name="fvp_text_model">Analyse with the AI model</string>
     <string name="fvp_review_empty">No food was recognised in this photo.</string>
     <string name="fvp_uncertain">unsure</string>
@@ -60,10 +60,10 @@
     <string name="fvp_amount_scale_three_quarters">Three quarters of the amount</string>
     <string name="fvp_amount_scale_more_quarter">A quarter more</string>
     <string name="fvp_amount_scale_more_half">Half as much again</string>
-    <string name="fvp_pieces_about">≈ %1$s pcs (%2$s g each)</string>
+    <string name="fvp_pieces_about">≈\u00A0%1$s pcs (%2$s\u00A0g each)</string>
     <string name="fvp_piece_less">One piece less</string>
     <string name="fvp_piece_more">One piece more</string>
-    <string name="fvp_per_100">per 100 g: %1$s kcal · P %2$s · C %3$s · F %4$s</string>
+    <string name="fvp_per_100">per 100\u00A0g: %1$s\u00A0kcal · P %2$s · C %3$s · F %4$s</string>
 
     <string name="fvp_error_memory">The phone ran out of memory during recognition. Close other apps and try again.</string>
     <string name="fvp_error_image">The photo could not be read.</string>

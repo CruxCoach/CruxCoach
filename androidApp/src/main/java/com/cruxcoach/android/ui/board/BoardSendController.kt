@@ -373,6 +373,7 @@ internal class BoardSendController(
                     s.holds,
                     placementToLed,
                     roleColorMap,
+                    climbUuid = s.climb?.uuid,
                     expectedBrand = brand,
                 )
                 Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")

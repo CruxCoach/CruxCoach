@@ -77,7 +77,7 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         waitForTag("energy_need")
         waitForTag("energy_deficit")
         waitForTag("energy_target")
-        compose.onNodeWithText("−550 kcal", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("−550\u00A0kcal", useUnmergedTree = true).assertExists()
         // Everyday life is chosen right here and changes the need.
         click("everyday_physical")
         compose.waitUntil(WAIT_MS) { repo.profile().everydayActivity == com.cruxcoach.athlete.model.EverydayActivity.PHYSICAL }
@@ -105,15 +105,15 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         // The carbohydrate ring says why the deficit is smaller today …
         click("fuel_carbs")
         waitForTag("fuel_explain_carbs")
-        waitForText("Hard training day: deficit 50 instead of 550 kcal")
+        waitForText("Hard training day: deficit 50 instead of 550\u00A0kcal")
         clickText("Close")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("fuel_explain_carbs").fetchSemanticsNodes().isEmpty() }
         // … and the energy sheet too, with the pace the last seven days really add up to (6 × 500 + 50 kcal).
         click("fuel_energy")
         waitForTag("energy_eased")
-        compose.onNodeWithText("−50 kcal", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("−50\u00A0kcal", useUnmergedTree = true).assertExists()
         waitForTag("energy_week_pace")
-        waitForText("about 0.4 kg instead of 0.5 kg per week")
+        waitForText("about 0.4\u00A0kg instead of 0.5\u00A0kg per week")
     }
 
     @Test
@@ -152,7 +152,7 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         fuel()
         waitForTag("fuel_reds_low_carbs_on_training_days")
         // 441 g over 3 days at 70 kg: 2.1 g/kg against 6 g/kg on a hard day.
-        waitForText("On 3 training days you logged 2.1 g/kg of carbohydrate on average instead of 6 g/kg")
+        waitForText("On 3 training days you logged 2.1\u00A0g/kg of carbohydrate on average instead of 6\u00A0g/kg")
     }
 
     @Test
@@ -184,12 +184,12 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         waitForTag("goal_sheet")
         compose.onNodeWithTag("goal_target_input").performTextReplacement("50")
         repeat(5) { click("goal_pace_plus") } // 0.5 → 1.0 kg a week
-        compose.onNodeWithTag("goal_pace", useUnmergedTree = true).assertTextEquals("1 kg per week")
+        compose.onNodeWithTag("goal_pace", useUnmergedTree = true).assertTextEquals("1\u00A0kg per week")
         // 1 kg is 1.8 % of 55 kg; 50 kg at 175 cm is BMI 16.3 – both named, neither refused.
         waitForTag("goal_warning_fast_pace")
         waitForTag("goal_warning_low_target_bmi")
         // The pace line and the warning both say it.
-        assertEquals(2, compose.onAllNodesWithText("1.8 % of your weight", substring = true, useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals(2, compose.onAllNodesWithText("1.8\u00A0% of your weight", substring = true, useUnmergedTree = true).fetchSemanticsNodes().size)
         click("goal_start")
         compose.waitUntil(WAIT_MS) { repo.profile().goal == AthleteGoal.LOSE_WEIGHT }
         assertEquals(1.0, repo.profile().weeklyLossKg, 1e-9)

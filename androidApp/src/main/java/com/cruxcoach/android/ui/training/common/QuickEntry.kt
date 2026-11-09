@@ -303,7 +303,7 @@ fun ValueTile(
                 }
                 supporting?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2, modifier = Modifier.padding(top = 4.dp))
+                        maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }

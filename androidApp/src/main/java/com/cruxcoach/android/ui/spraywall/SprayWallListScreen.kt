@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -47,6 +48,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.domain.spraywall.SprayWallSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -103,12 +105,13 @@ fun SprayWallListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.spray_walls_title)) },
+                title = { SprayBarTitle(stringResource(R.string.spray_walls_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
+                actions = { InfoButton(stringResource(R.string.spray_walls_title), stringResource(R.string.spray_walls_info)) },
             )
         },
         floatingActionButton = {
@@ -183,7 +186,12 @@ private fun WallCard(summary: SprayWallSummary, thumbnail: ImageBitmap?, onClick
             Column(Modifier.padding(start = 16.dp).weight(1f)) {
                 Text(summary.wall.name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    stringResource(R.string.spray_wall_counts, summary.holdCount, summary.climbCount, summary.wall.angle),
+                    stringResource(
+                        R.string.spray_wall_counts,
+                        pluralStringResource(R.plurals.spray_holds_n, summary.holdCount, summary.holdCount),
+                        pluralStringResource(R.plurals.spray_climbs_n, summary.climbCount, summary.climbCount),
+                        summary.wall.angle,
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

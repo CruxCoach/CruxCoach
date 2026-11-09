@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,7 +36,8 @@ internal fun EnergyHintLine(hint: EnergyBeforeTraining.Hint, profile: AthletePro
         Spacer(Modifier.width(6.dp))
         Text(energyHintText(hint, profile), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         if (!lighterChosen) {
-            TextButton(onClick = onLighter, modifier = Modifier.testTag("today_energy_hint_lighter")) {
+            TextButton(onClick = onLighter, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                modifier = Modifier.testTag("today_energy_hint_lighter")) {
                 Text(stringResource(R.string.trt_level_easier))
             }
         }

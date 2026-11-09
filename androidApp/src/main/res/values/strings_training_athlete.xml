@@ -15,7 +15,7 @@
     <string name="tra_pause_injury">Injury</string>
     <string name="tra_pause_holiday_label">Holiday</string>
     <string name="tra_injury_since">Since %1$s</string>
-    <string name="tra_injury_pain">Pain: %1$d of 9</string>
+    <string name="tra_injury_pain">Pain: %1$d of 10</string>
     <string name="tra_injury_pause_climbing">Pause climbing</string>
     <string name="tra_injury_resolve">It\'s over</string>
     <string name="tra_injury_reopen">Open again</string>
@@ -42,11 +42,11 @@
     <string name="tra_hide_numbers">Hide body numbers (trend only)</string>
     <string name="tra_module_fuel">Nutrition</string>
     <string name="tra_show_calories">Show calories</string>
-    <string name="tra_protein_per_kg">Protein: %1$s g per kg body weight</string>
-    <string name="tra_protein_per_kg_lb">Protein: %1$s g per kg body weight (%2$s g per lb)</string>
+    <string name="tra_protein_per_kg">Protein: %1$s\u00A0g per kg body weight</string>
+    <string name="tra_protein_per_kg_lb">Protein: %1$s\u00A0g per kg body weight (%2$s\u00A0g per lb)</string>
     <!-- While losing weight more protein helps keep muscle; the slider goes up to 2.4 g/kg (holistic audit P2-18). -->
-    <string name="tra_protein_losing">While losing weight %1$s–%2$s g per kg is recommended: it helps keep muscle in the deficit. The choice is yours.</string>
-    <string name="tra_protein_losing_lb">While losing weight %1$s–%2$s g per kg (%3$s–%4$s g per lb) is recommended: it helps keep muscle in the deficit. The choice is yours.</string>
+    <string name="tra_protein_losing">While losing weight %1$s–%2$s\u00A0g per kg is recommended: it helps keep muscle in the deficit. The choice is yours.</string>
+    <string name="tra_protein_losing_lb">While losing weight %1$s–%2$s\u00A0g per kg (%3$s–%4$s\u00A0g per lb) is recommended: it helps keep muscle in the deficit. The choice is yours.</string>
     <string name="tra_personal_title">About you (optional)</string>
     <string name="tra_personal_info">Weight: nutrition targets and loads in % body weight. Height: ape index. Sex and year of birth: reference values for micronutrients and the energy check. Nothing leaves your device.</string>
     <string name="tra_height">Height (%1$s)</string>
@@ -71,8 +71,8 @@
     <string name="tra_review_goal_reached">Weekly goal reached: %1$d of %2$d training days.</string>
     <string name="tra_review_goal_open">%1$d of %2$d training days – rest is training too.</string>
     <plurals name="tra_review_paused">
-        <item quantity="one">%d day paused</item>
-        <item quantity="other">%d days paused</item>
+        <item quantity="one">%d\u00A0day paused</item>
+        <item quantity="other">%d\u00A0days paused</item>
     </plurals>
     <string name="tra_review_climb_days">Climbing days</string>
     <string name="tra_review_workout_days">Training days</string>
@@ -81,26 +81,26 @@
     <string name="tra_review_no_records">No new bests this week – consistency is what builds them.</string>
     <string name="tra_review_load">Load per structure</string>
     <plurals name="tra_review_domain_days">
-        <item quantity="one">%1$s: %2$d day</item>
-        <item quantity="other">%1$s: %2$d days</item>
+        <item quantity="one">%1$s: %2$d\u00A0day</item>
+        <item quantity="other">%1$s: %2$d\u00A0days</item>
     </plurals>
     <string name="tra_review_categories">Sets by area</string>
     <string name="tra_review_weight_up">Weight trend slightly up</string>
     <string name="tra_review_weight_down">Weight trend slightly down</string>
     <string name="tra_review_weight_stable">Weight trend stable</string>
     <string name="tra_review_weight_change">Trend weight: %1$s this week</string>
-    <string name="tra_review_protein">Protein on logged days: %1$d g (target about %2$d g)</string>
-    <string name="tra_review_protein_no_target">Protein on logged days: %1$d g</string>
-    <string name="tra_review_carbs">Carbohydrate on logged days: %1$d g (target about %2$d g for that training load)</string>
-    <string name="tra_review_fat">Fat on logged days: %1$d g (%2$d %% of energy)</string>
+    <string name="tra_review_protein">Protein on logged days: %1$d\u00A0g (target about %2$d\u00A0g)</string>
+    <string name="tra_review_protein_no_target">Protein on logged days: %1$d\u00A0g</string>
+    <string name="tra_review_carbs">Carbohydrate on logged days: %1$d\u00A0g (target about %2$d\u00A0g for that training load)</string>
+    <string name="tra_review_fat">Fat on logged days: %1$d\u00A0g (%2$d\u00A0%% of energy)</string>
     <plurals name="tra_review_food_days">
-        <item quantity="one">Food logged on %d day</item>
-        <item quantity="other">Food logged on %d days</item>
+        <item quantity="one">Food logged on %d\u00A0day</item>
+        <item quantity="other">Food logged on %d\u00A0days</item>
     </plurals>
     <string name="tra_review_checkins">Check-in averages</string>
     <string name="tra_review_e1rm">estimated 1RM %1$s</string>
     <plurals name="tra_reps">
-        <item quantity="one">%d rep</item>
-        <item quantity="other">%d reps</item>
+        <item quantity="one">%d\u00A0rep</item>
+        <item quantity="other">%d\u00A0reps</item>
     </plurals>
 </resources>

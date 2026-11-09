@@ -234,7 +234,7 @@ fun ExerciseDetailScreen(
     TrainingScaffold(
         title = def?.name(language) ?: stringResource(R.string.tr_nav_exercises),
         onBack = onBack,
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
         actions = {
             if (def != null) {
                 IconButton(onClick = viewModel::toggleFavorite, modifier = Modifier.testTag("exercise_detail_favorite")) {

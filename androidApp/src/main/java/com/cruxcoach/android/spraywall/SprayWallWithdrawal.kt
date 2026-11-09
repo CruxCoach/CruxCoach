@@ -3,6 +3,7 @@ package com.cruxcoach.android.spraywall
 import android.util.Log
 import com.cruxcoach.domain.spraywall.SprayNostrEvent
 import com.cruxcoach.domain.spraywall.SprayWallNostr
+import com.cruxcoach.domain.spraywall.SprayWallVersion
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import kotlinx.coroutines.CancellationException
 
@@ -23,12 +24,17 @@ enum class SprayWithdrawal {
 class SprayEventSigningFailed(cause: Throwable) : Exception(cause.message, cause)
 
 /**
- * Takes one of my public walls back (FEAT-078): every event it published
- * (head, versions, my climbs on it) is replaced by a tombstone and named in a
- * kind-5 deletion, then its photos are deleted from the Blossom servers that
- * took them. Only when all of that worked does the wall turn private here;
- * otherwise it stays public, so the climber can try again, and nothing is
- * deleted. Never throws, also not when the signer fails.
+ * Takes one of my public walls back (FEAT-078): every event it may have
+ * published (head, every version, my climbs on it) is replaced by a tombstone
+ * and named in a kind-5 deletion, then every photo it uploaded is deleted from
+ * the Blossom server that took it. That includes what a publish that failed
+ * partway left behind: versions past the published one and their photos. Only
+ * when all of that worked does the wall turn private here; otherwise it stays
+ * public, so the climber can try again, and nothing is deleted. The wall is
+ * marked as being withdrawn before the first tombstone goes out: nothing of it
+ * is published while the mark is set. It stays set once a relay took a
+ * tombstone, until a later try finishes; it goes again when no relay took
+ * anything. Never throws, also not when the signer fails.
  *
  * Signing, relays and Blossom come in as functions ([SprayWallPublisher]
  * wires them), which keeps this testable on the JVM.
@@ -48,14 +54,19 @@ class SprayWallWithdrawal(
     suspend fun run(me: String?, wallId: String): SprayWithdrawal {
         val wall = repository.wall(wallId) ?: return SprayWithdrawal.DONE
         val published = wall.publishedVersion
-        if (!wall.isMine || published == null) {
-            // Never on Nostr: nothing to take back.
+        if (!wall.isMine || (published == null && uploads(wallId).isEmpty())) {
+            // Never on Nostr or Blossom: nothing to take back.
             repository.updateWallDetails(wallId, wall.name, wall.angle, SprayWallVisibility.PRIVATE, wall.gym)
             return SprayWithdrawal.DONE
         }
         if (me == null) return SprayWithdrawal.NO_IDENTITY
+        // Marked before the first tombstone goes out: a withdrawal cut off midway (the app closed) may have reached a
+        // relay already, so it stays marked then.
+        val retry = wall.withdrawStarted != null
+        repository.markWithdrawStarted(wallId)
+        val taken = Taken()
         val outcome = try {
-            withdraw(me, wallId, published)
+            withdraw(me, wallId, taken)
         } catch (e: CancellationException) {
             throw e
         } catch (e: SprayEventSigningFailed) {
@@ -65,39 +76,104 @@ class SprayWallWithdrawal(
             Log.w(TAG, "withdrawing a wall failed", e)
             SprayWithdrawal.NOT_CONFIRMED
         }
-        if (outcome == SprayWithdrawal.DONE) {
-            repository.clearPhotoBlobs(wallId)
-            repository.updateWallDetails(wallId, wall.name, wall.angle, SprayWallVisibility.PRIVATE, wall.gym)
+        when {
+            outcome == SprayWithdrawal.DONE -> {
+                repository.clearPhotoBlobs(wallId)
+                repository.updateWallDetails(wallId, wall.name, wall.angle, SprayWallVisibility.PRIVATE, wall.gym)
+            }
+            // Nothing left the phone, or no relay took it: the relays still show the wall as it was. Not after an
+            // earlier try that relays took part of.
+            taken.relays == 0 && !retry -> repository.clearWithdrawStarted(wallId)
         }
         return outcome
     }
 
-    private suspend fun withdraw(me: String, wallId: String, published: Int): SprayWithdrawal {
-        val versions = repository.versions(wallId).filter { it.number <= published }
+    /** The most relays that took one of the withdrawal's events. */
+    private class Taken(var relays: Int = 0) {
+        fun add(relays: Int) {
+            this.relays = maxOf(this.relays, relays)
+        }
+    }
+
+    /**
+     * After a publish of [wallId] failed partway: deletes the photos it uploaded
+     * that no published version shows, and forgets them in all my walls once
+     * they are gone. A photo that could not be deleted stays recorded, so a later withdrawal
+     * deletes it (or the next publish uses it). Never throws.
+     */
+    suspend fun deleteUnpublishedPhotos(wallId: String) {
+        try {
+            val wall = repository.wall(wallId) ?: return
+            val published = wall.publishedVersion ?: 0
+            val versions = repository.versions(wallId)
+            val shown = versions.filter { it.number <= published }.mapNotNull { it.photoSha256 }.toSet()
+            for ((sha, url) in uploads(wallId, versions)) {
+                if (sha in shown) continue
+                if (repository.photoUsedElsewhere(sha, wallId)) {
+                    repository.clearPhotoBlob(wallId, sha)
+                    continue
+                }
+                val servers = servers(url)
+                when (deletePhoto(sha, servers)) {
+                    PhotoDeletion.DELETED -> forgetDeleted(sha, servers)
+                    PhotoDeletion.LEFT -> Unit
+                    // The signer declined: asking again for every photo would not help.
+                    PhotoDeletion.NOT_AUTHORISED -> return
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "deleting the photos of a failed publish failed", e)
+        }
+    }
+
+    private suspend fun withdraw(me: String, wallId: String, taken: Taken): SprayWithdrawal {
+        val versions = repository.versions(wallId)
         val address = SprayWallNostr.wallAddress(me, wallId)
         val dTags = buildList {
             add(SprayWallNostr.wallDTag(me, wallId) to SprayWallNostr.LABEL_WALL)
             versions.forEach { add(SprayWallNostr.versionDTag(me, wallId, it.number) to SprayWallNostr.LABEL_VERSION) }
-            repository.publishedClimbs(wallId).forEach { add(SprayWallNostr.climbDTag(me, it.uuid) to SprayWallNostr.LABEL_CLIMB) }
+            // Every climb of mine, also one edited since it went out (its old event is still on the relays).
+            repository.myClimbs(wallId).forEach { add(SprayWallNostr.climbDTag(me, it.uuid) to SprayWallNostr.LABEL_CLIMB) }
         }
-        var accepted = 0
-        for ((d, label) in dTags) accepted = maxOf(accepted, send(SprayWallNostr.tombstone(stamp(d), d, label, address)))
-        accepted = maxOf(accepted, send(SprayWallNostr.deletion(me, now(), dTags.map { it.first })))
-        if (accepted == 0) return SprayWithdrawal.NOT_CONFIRMED
+        // From the first tombstone a relay took, the wall is off Nostr, even if the rest fails: it stays marked, and
+        // nothing of it is published until a later try finishes (a waiting head, a climb or a version would bring it back).
+        for ((d, label) in dTags) taken.add(send(SprayWallNostr.tombstone(stamp(d), d, label, address)))
+        taken.add(send(SprayWallNostr.deletion(me, now(), dTags.map { it.first })))
+        if (taken.relays == 0) return SprayWithdrawal.NOT_CONFIRMED
         // One deletion per photo, on the server that took the upload; a photo another public wall of mine shows stays.
-        val blobs = versions.mapNotNull { v -> v.photoSha256?.let { sha -> sha to v.photoUrl } }.distinctBy { it.first }
         var photosLeft = false
-        for ((sha, url) in blobs) {
+        for ((sha, url) in uploads(wallId, versions)) {
             if (repository.photoUsedElsewhere(sha, wallId)) continue
-            val servers = listOfNotNull(url?.let { blobServer(it) }).ifEmpty { defaultServers }
+            val servers = servers(url)
             when (deletePhoto(sha, servers)) {
-                PhotoDeletion.DELETED -> Unit
+                PhotoDeletion.DELETED -> forgetDeleted(sha, servers)
                 PhotoDeletion.LEFT -> photosLeft = true
                 PhotoDeletion.NOT_AUTHORISED -> throw SprayEventSigningFailed(IllegalStateException("Blossom delete authorisation"))
             }
         }
         return if (photosLeft) SprayWithdrawal.PHOTOS_LEFT else SprayWithdrawal.DONE
     }
+
+    /**
+     * The photo is gone from [servers]: every wall of mine that recorded it there (or on a server its URL does not
+     * name) uploads it anew. A wall that has the same photo on another server keeps it.
+     */
+    private suspend fun forgetDeleted(sha: String, servers: List<String>) {
+        for ((wallId, url) in repository.photoRecords(sha)) {
+            val server = url?.let(::blobServer)
+            if (server == null || server in servers) repository.clearPhotoBlob(wallId, sha)
+        }
+    }
+
+    /** Every photo of the wall that went to Blossom, once each: sha256 to its URL. */
+    private suspend fun uploads(wallId: String, versions: List<SprayWallVersion>? = null): List<Pair<String, String?>> =
+        (versions ?: repository.versions(wallId))
+            .mapNotNull { v -> v.photoSha256?.let { sha -> sha to v.photoUrl } }
+            .distinctBy { it.first }
+
+    private fun servers(url: String?): List<String> = listOfNotNull(url?.let { blobServer(it) }).ifEmpty { defaultServers }
 
     /** `https://server/<sha256>` → `https://server`, the server that took the upload. */
     private fun blobServer(url: String): String? =

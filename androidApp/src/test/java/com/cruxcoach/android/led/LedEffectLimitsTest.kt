@@ -39,6 +39,25 @@ internal class LedEffectLimitsTest : LedEngineTestBase() {
     }
 
     @Test
+    fun theStatusNamesTheClimbItIsAbout() = runEngineTest(
+        frame = LitFrame(fourRoleFrame().leds, climbUuid = "climb-a"),
+        selected = "pulse",
+    ) { h ->
+        h.advance(LedAnimationEngine.MAX_EFFECT_MS + 1_000)
+        assertEquals(LedEffectStatus.ENDED, h.engine.status.value)
+        assertEquals("climb-a", h.engine.litClimbUuid.value, "it ended on the climb that is lit")
+
+        h.sink.litFrame.value = LitFrame(fourRoleFrame().leds, sendId = 1, climbUuid = "climb-b")
+        h.advance(300)
+        assertEquals(LedEffectStatus.RUNNING, h.engine.status.value)
+        assertEquals("climb-b", h.engine.litClimbUuid.value)
+
+        h.sink.litFrame.value = litFrameOf(3)
+        h.advance(300)
+        assertEquals(null, h.engine.litClimbUuid.value, "a sender that names no climb names none")
+    }
+
+    @Test
     fun stopForTheLitClimbEndsTheEffectButKeepsTheSetting() = runEngineTest(
         frame = fourRoleFrame(),
         selected = "rainbow_wave",

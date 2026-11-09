@@ -7,10 +7,7 @@ import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.nostr.backup.BlossomUploader
 import com.cruxcoach.android.nostr.profile.ProfileImageUploader
-import com.cruxcoach.domain.spraywall.SprayClimb
 import com.cruxcoach.domain.spraywall.SprayNostrEvent
-import com.cruxcoach.domain.spraywall.SprayWall
-import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVersion
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import kotlinx.coroutines.CancellationException
@@ -18,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,13 +60,6 @@ class SprayWallPublisher @Inject constructor(
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    init {
-        // Every save may leave something to publish; a burst of saves publishes once.
-        scope.launch {
-            repository.changes.drop(1).debounce(PUBLISH_DELAY_MS).collect { publishPending() }
-        }
-    }
-
     /** A local key or a configured Amber signer. Never creates one. */
     fun hasIdentity(): Boolean = nostrSigner.getStoredSignerMode() == SignerMode.AMBER || keyStore.hasKey()
 
@@ -80,9 +71,11 @@ class SprayWallPublisher @Inject constructor(
         scope.launch { publishPending() }
     }
 
-    suspend fun publishPending(): Outcome = mutex.withLock {
+    /** [askAgainFor]: the climber asked to publish that wall, so the signer is asked again for what it declined there. */
+    suspend fun publishPending(askAgainFor: String? = null): Outcome = mutex.withLock {
+        askAgainFor?.let(publishing::askAgain)
         val outcome = try {
-            run()
+            publishing.run(::myPubkey)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -91,45 +84,6 @@ class SprayWallPublisher @Inject constructor(
         }
         _last.value = outcome
         outcome
-    }
-
-    private suspend fun run(): Outcome {
-        // A wall without holds yet (a reset still being marked) waits: published, it could no longer be corrected in place.
-        val walls = repository.wallsNeedingPublish().filter { it.current.holdCount > 0 }
-        val publicWalls = repository.publicWalls()
-        if (walls.isEmpty() && publicWalls.none { repository.unpublishedClimbs(it.id).isNotEmpty() }) return Outcome.Done(0, 0)
-        val me = myPubkey() ?: return Outcome.NoIdentity
-        var versions = 0
-        for (wall in walls) versions += publishWall(me, wall)
-        var climbs = 0
-        for (wall in repository.publicWalls()) {
-            val owner = wall.ownerPubkey ?: me
-            for (climb in repository.unpublishedClimbs(wall.id)) {
-                val event = SprayWallNostr.climb(me, stamp(SprayWallNostr.climbDTag(me, climb.uuid)), climb, owner)
-                if (send(event) > 0) {
-                    repository.markClimbPublished(climb.uuid, climb.updatedAt)
-                    climbs++
-                }
-            }
-        }
-        return Outcome.Done(versions, climbs)
-    }
-
-    /** Every version not on Nostr yet, then the head. Returns the number of versions sent. */
-    private suspend fun publishWall(me: String, wall: SprayWall): Int {
-        val from = (wall.publishedVersion ?: 0) + 1
-        val pending = repository.versions(wall.id).filter { it.number >= from }.sortedBy { it.number }
-        // Versions on the same photo share one upload.
-        val blobs = HashMap<String, Pair<String, String>>()
-        for (version in pending) {
-            val (sha, url) = blobs.getOrPut(version.photoFile) { uploaded(wall.id, version) }
-            val event = SprayWallNostr.version(me, now(), version, sha, url, repository.holds(wall.id, version.number))
-            check(send(event) > 0) { "no relay took version ${version.number}" }
-        }
-        val fresh = repository.wall(wall.id) ?: return pending.size
-        check(send(SprayWallNostr.wallHead(me, stamp(SprayWallNostr.wallDTag(me, wall.id)), fresh)) > 0) { "no relay took the wall" }
-        repository.markPublished(wall.id, fresh.current.number)
-        return pending.size
     }
 
     /** The version's photo on Blossom, uploaded once per photo file. */
@@ -144,7 +98,8 @@ class SprayWallPublisher @Inject constructor(
                 repository.setPhotoBlob(wallId, version.photoFile, hash, result.url)
                 return hash to result.url
             }
-            is ProfileImageUploader.Result.Failure -> error("photo upload: ${result.message}")
+            is ProfileImageUploader.Result.Failure ->
+                if (result.authFailed) throw SprayEventSigningFailed(IllegalStateException(result.message)) else error("photo upload: ${result.message}")
         }
     }
 
@@ -164,23 +119,81 @@ class SprayWallPublisher @Inject constructor(
         defaultServers = BlossomUploader.DEFAULT_SERVERS,
     )
 
-    /** Takes a public wall back, photos included ([SprayWallWithdrawal]); the wall stays public when that fails. */
-    suspend fun withdrawWall(wallId: String): SprayWithdrawal = mutex.withLock { withdrawal.run(myPubkey(), wallId) }
+    private val publishing = SprayWallPublishing(
+        repository = repository,
+        withdrawal = withdrawal,
+        send = ::send,
+        upload = ::uploaded,
+        stamp = ::stamp,
+        now = ::now,
+    )
 
-    /** Withdraws one published climb of mine (it was deleted here). */
-    fun withdrawClimbSoon(climb: SprayClimb, wallOwner: String?) {
-        if (climb.publishedAt == null || !climb.isMine) return
-        scope.launch {
-            mutex.withLock {
-                runCatching {
-                    val me = myPubkey() ?: return@runCatching
-                    val d = SprayWallNostr.climbDTag(me, climb.uuid)
-                    send(SprayWallNostr.tombstone(stamp(d), d, SprayWallNostr.LABEL_CLIMB, SprayWallNostr.wallAddress(wallOwner ?: me, climb.wallId)))
-                    send(SprayWallNostr.deletion(me, now(), listOf(d)))
-                }.onFailure { Log.w(TAG, "withdrawing a climb failed", it) }
-            }
-        }
+    /** Withdrawals running per wall (a second try may start before the first ends). */
+    private val running = HashMap<String, Int>()
+    private val _withdrawing = MutableStateFlow<Set<String>>(emptySet())
+
+    /** The walls being withdrawn right now, for the screens' progress; also after the screen that asked was left. */
+    val withdrawing: StateFlow<Set<String>> = _withdrawing.asStateFlow()
+
+    private fun running(wallId: String, by: Int) = synchronized(running) {
+        val n = (running[wallId] ?: 0) + by
+        if (n > 0) running[wallId] = n else running.remove(wallId)
+        _withdrawing.value = running.keys.toSet()
     }
+
+    /**
+     * Takes a public wall back, photos included ([SprayWallWithdrawal]); the wall stays public when that fails. It runs
+     * in the publisher's own scope: leaving the screen that asked for it does not cut it off. [before] runs first,
+     * where no publish run comes between it and the withdrawal's mark (the details saved with it); [whenDone] once the
+     * wall is private (deleting it).
+     */
+    suspend fun withdrawWall(
+        wallId: String,
+        before: suspend () -> Unit = {},
+        whenDone: suspend () -> Unit = {},
+    ): SprayWithdrawal {
+        running(wallId, +1)
+        return scope.async {
+            try {
+                mutex.withLock {
+                    before()
+                    val result = withdrawal.run(myPubkey(), wallId)
+                    // Declined at the first tombstone: nothing of the wall asks the signer to publish it at once.
+                    val wall = repository.wall(wallId)
+                    if (result == SprayWithdrawal.SIGNING_FAILED && wall != null && wall.withdrawStarted == null) {
+                        publishing.holdWall(wall)
+                    }
+                    if (result == SprayWithdrawal.DONE) whenDone()
+                    result
+                }
+            } finally {
+                running(wallId, -1)
+            }
+        }.await()
+    }
+
+    /**
+     * Removes someone else's wall from this phone, after taking my climbs on it back from Nostr
+     * ([SprayWallPublishing.removeFollowed]); otherwise the wall stays. Under the lock, so no publish run sends one of
+     * them between the two, and in the publisher's own scope, so leaving the screen does not cut it off.
+     */
+    suspend fun removeFollowed(wallId: String): SprayWithdrawal = locked { publishing.removeFollowed(::myPubkey, wallId) }
+
+    /**
+     * Deletes my climb [uuid], taking it back from Nostr first when it may have gone out ([SprayWallPublishing.deleteClimb]);
+     * otherwise it stays. Under the lock and in the publisher's own scope, as [removeFollowed].
+     */
+    suspend fun deleteClimb(uuid: String): SprayWithdrawal {
+        val climb = repository.climb(uuid) ?: return SprayWithdrawal.DONE
+        // On my private wall: never out, and no publish run sends it, so nothing to wait for.
+        if (!SprayWallPublishing.takesBack(climb, repository.wall(climb.wallId))) {
+            repository.deleteClimb(uuid)
+            return SprayWithdrawal.DONE
+        }
+        return locked { publishing.deleteClimb(::myPubkey, uuid) }
+    }
+
+    private suspend fun <T> locked(block: suspend () -> T): T = scope.async { mutex.withLock { block() } }.await()
 
     private suspend fun send(event: SprayNostrEvent): Int {
         val signed = try {
@@ -207,6 +220,16 @@ class SprayWallPublisher @Inject constructor(
     private val stamps = HashMap<String, Long>()
     private fun stamp(dTag: String): Long = synchronized(stamps) {
         maxOf(now(), (stamps[dTag] ?: 0L) + 1).also { stamps[dTag] = it }
+    }
+
+    // Last, so the runs it starts find every property above set.
+    init {
+        // Every save may leave something to publish; a burst of saves publishes once.
+        scope.launch {
+            repository.changes.drop(1).debounce(PUBLISH_DELAY_MS).collect { publishPending() }
+        }
+        // What was still pending when the app closed (versions, a head with new details, climbs) goes out now.
+        scope.launch { publishPending() }
     }
 
     private companion object {

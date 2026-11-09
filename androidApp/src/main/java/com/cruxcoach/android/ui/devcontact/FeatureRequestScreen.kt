@@ -53,6 +53,7 @@ fun FeatureRequestScreen(
     ReportSentHandler(
         sendSuccess = state.sendSuccess,
         sentTitle = stringResource(R.string.devcontact_feature_sent),
+        hintText = stringResource(R.string.community_report_hint_feature),
         offersCommunity = viewModel::offersCommunityAfterReport,
         hideForGood = viewModel::hideCommunityHintForGood,
         onResultConsumed = viewModel::dismissSendResult,

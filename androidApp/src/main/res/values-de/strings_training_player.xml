@@ -17,14 +17,14 @@
     <string name="trp_review_hint">So eingetragen. Ändere einen Wert, wenn es anders war.</string>
     <plurals name="trp_load_carried">
         <item quantity="one">Gilt auch für den nächsten Satz</item>
-        <item quantity="other">Gilt auch für die nächsten %1$d Sätze</item>
+        <item quantity="other">Gilt auch für die nächsten %1$d\u00A0Sätze</item>
     </plurals>
     <string name="trp_correct_done">Letzten Satz korrigieren</string>
     <string name="trp_correct_title">%1$s korrigieren</string>
     <string name="trp_next_after">Danach: %1$s</string>
     <plurals name="trp_reps_big">
-        <item quantity="one">%d Wdh.</item>
-        <item quantity="other">%d Wdh.</item>
+        <item quantity="one">%d\u00A0Wdh.</item>
+        <item quantity="other">%d\u00A0Wdh.</item>
     </plurals>
     <plurals name="trp_rounds">
         <item quantity="one">%d Runde</item>
@@ -33,7 +33,7 @@
     <string name="trp_complete_title">Alle Sätze erledigt</string>
     <plurals name="trp_complete_text">
         <item quantity="one">%d Satz geschafft – stark.</item>
-        <item quantity="other">%d Sätze geschafft – stark.</item>
+        <item quantity="other">%d\u00A0Sätze geschafft – stark.</item>
     </plurals>
     <string name="trp_finish_training">Training beenden</string>
 
@@ -42,8 +42,8 @@
     <string name="trp_side_switch">Seitenwechsel</string>
     <string name="trp_side_switch_to">Jetzt: %1$s</string>
     <string name="trp_rest_remaining_cd">Noch %1$s Pause</string>
-    <string name="trp_rest_minus">−15 s</string>
-    <string name="trp_rest_plus">+15 s</string>
+    <string name="trp_rest_minus">−15\u00A0s</string>
+    <string name="trp_rest_plus">+15\u00A0s</string>
     <string name="trp_rest_skip">Pause beenden</string>
     <string name="trp_next_up">Als Nächstes</string>
     <string name="trp_rir_question_reps">Wie viele Wiederholungen wären noch gegangen?</string>
@@ -51,14 +51,14 @@
     <string name="trp_record">Neuer Bestwert: %1$s</string>
     <string name="trp_benchmark_raised">Leistungswert angehoben: %1$s</string>
     <string name="trp_benchmark_first">Startwert gelernt: %1$s</string>
-    <string name="trp_capacity_e1rm">max. 1 Wdh. mit %1$s</string>
-    <string name="trp_capacity_ten">10 s mit %1$s</string>
-    <string name="trp_capacity_ten_pct">10 s mit %1$s (%2$s)</string>
+    <string name="trp_capacity_e1rm">max. 1\u00A0Wdh. mit %1$s</string>
+    <string name="trp_capacity_ten">10\u00A0s mit %1$s</string>
+    <string name="trp_capacity_ten_pct">10\u00A0s mit %1$s (%2$s)</string>
     <plurals name="trp_capacity_reps">
-        <item quantity="one">max. %d Wdh.</item>
-        <item quantity="other">max. %d Wdh.</item>
+        <item quantity="one">max. %d\u00A0Wdh.</item>
+        <item quantity="other">max. %d\u00A0Wdh.</item>
     </plurals>
-    <string name="trp_capacity_seconds">max. %1$d s</string>
+    <string name="trp_capacity_seconds">max. %1$d\u00A0s</string>
 
     <!-- Swap or skip the shown exercise (UX review 2026-10-16) -->
     <string name="trp_exercise_menu">Übung tauschen oder überspringen</string>

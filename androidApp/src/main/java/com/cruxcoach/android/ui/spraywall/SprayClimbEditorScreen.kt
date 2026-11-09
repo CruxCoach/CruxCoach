@@ -2,20 +2,23 @@ package com.cruxcoach.android.ui.spraywall
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -41,8 +44,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -55,6 +63,8 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.spraywall.SprayWallPhotoStore
 import com.cruxcoach.android.spraywall.SprayWallPublisher
 import com.cruxcoach.android.spraywall.SprayWallRepository
+import com.cruxcoach.android.spraywall.SprayWithdrawal
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.domain.spraywall.SprayClimbRules
 import com.cruxcoach.domain.spraywall.SprayHold
@@ -98,6 +108,12 @@ data class SprayClimbEditorState(
     val original: Snapshot? = null,
     val showProblems: Boolean = false,
     val saving: Boolean = false,
+    /** Delete is taking the climb back from the servers; it is deleted here only once they took that. */
+    val deleting: Boolean = false,
+    /** Why the climb was kept: it could not be taken back from the servers. */
+    val deleteFailed: SprayWithdrawal? = null,
+    /** Deleted: the screen closes (also when it was away while the delete ran). */
+    val deleted: Boolean = false,
     val gradeScale: GradeScale = GradeScale.FRENCH,
 ) {
     data class Snapshot(val holds: Map<Long, SprayHoldRole>, val name: String, val description: String, val difficulty: Int?)
@@ -112,9 +128,10 @@ data class SprayClimbEditorState(
 
 sealed interface SprayClimbEditorEvent {
     data class Saved(val uuid: String) : SprayClimbEditorEvent
-    data object Deleted : SprayClimbEditorEvent
     data object RoleLimit : SprayClimbEditorEvent
     data object Failed : SprayClimbEditorEvent
+    /** Save found something to fix: the screen brings the problems into view. */
+    data object NotSaved : SprayClimbEditorEvent
 }
 
 @HiltViewModel
@@ -196,6 +213,7 @@ class SprayClimbEditorViewModel @Inject constructor(
         if (s.saving || s.loading) return
         if (s.problems.isNotEmpty()) {
             _state.update { it.copy(showProblems = true) }
+            _events.tryEmit(SprayClimbEditorEvent.NotSaved)
             return
         }
         _state.update { it.copy(saving = true) }
@@ -217,15 +235,25 @@ class SprayClimbEditorViewModel @Inject constructor(
 
     fun delete() {
         val uuid = climbUuid ?: return
+        if (_state.value.deleting || _state.value.saving) return
+        _state.update { it.copy(deleting = true, deleteFailed = null) }
         viewModelScope.launch {
-            // A published climb is taken back from Nostr too.
-            repository.deleteClimb(uuid)?.let { publisher.withdrawClimbSoon(it, _state.value.wall?.ownerPubkey) }
-            _events.emit(SprayClimbEditorEvent.Deleted)
+            // A climb that may have gone out is taken back from Nostr first, and kept when no relay took that.
+            val result = try {
+                publisher.deleteClimb(uuid)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SprayWithdrawal.NOT_CONFIRMED
+            }
+            _state.update {
+                if (result == SprayWithdrawal.DONE) it.copy(deleted = true) else it.copy(deleting = false, deleteFailed = result)
+            }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SprayClimbEditorScreen(
     onBack: () -> Unit,
@@ -240,27 +268,37 @@ fun SprayClimbEditorScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     val leave: () -> Unit = { if (state.dirty) { confirmLeave = true } else { onBack() } }
     BackHandler(enabled = state.dirty) { confirmLeave = true }
+    val formScroll = rememberScrollState()
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 is SprayClimbEditorEvent.Saved -> onSaved(event.uuid)
-                SprayClimbEditorEvent.Deleted -> onDeleted()
+                // Save sits in the app bar; the problems are at the top of the form, under the photo. With the keyboard
+                // open or the form scrolled down they would be out of sight, so Save would seem to do nothing.
+                SprayClimbEditorEvent.NotSaved -> {
+                    focus.clearFocus()
+                    keyboard?.hide()
+                    formScroll.animateScrollTo(0)
+                }
                 SprayClimbEditorEvent.RoleLimit -> snackbar.showSnackbar(context.getString(R.string.spray_climb_role_limit))
                 SprayClimbEditorEvent.Failed -> snackbar.showSnackbar(context.getString(R.string.spray_climb_save_failed))
             }
         }
     }
+    LaunchedEffect(state.deleted) { if (state.deleted) onDeleted() }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(if (state.isEdit) R.string.spray_climb_edit_title else R.string.spray_climb_new_title)) },
+                title = { SprayBarTitle(stringResource(if (state.isEdit) R.string.spray_climb_edit_title else R.string.spray_climb_new_title)) },
                 navigationIcon = {
                     IconButton(onClick = leave) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
-                    TextButton(onClick = viewModel::save, enabled = !state.saving && !state.loading, modifier = Modifier.testTag("spray_climb_save")) {
+                    TextButton(onClick = viewModel::save, enabled = !state.saving && !state.loading && !state.deleting, modifier = Modifier.testTag("spray_climb_save")) {
                         Text(stringResource(R.string.action_save))
                     }
                 },
@@ -287,28 +325,48 @@ fun SprayClimbEditorScreen(
                 modifier = Modifier.sprayPhotoSize(version.aspectRatio, maxCanvasHeight),
             )
             Column(
-                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+                Modifier.fillMaxWidth().verticalScroll(formScroll).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(stringResource(R.string.spray_climb_brush_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (wall.visibility == SprayWallVisibility.PUBLIC) {
-                    Text(stringResource(R.string.spray_climb_public_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("spray_climb_public_note"))
+                // A wall being withdrawn publishes nothing until that is finished, and then it is private.
+                if (wall.visibility == SprayWallVisibility.PUBLIC && wall.withdrawStarted != null) {
+                    Text(stringResource(R.string.spray_climb_withdrawing_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("spray_climb_withdrawing_note"))
+                } else if (wall.visibility == SprayWallVisibility.PUBLIC) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("spray_climb_public_note")) {
+                        Icon(Icons.Default.Public, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Text(stringResource(R.string.spray_climb_public_note), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+                    }
                 }
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        SprayHoldRole.START to R.string.climb_creator_count_start,
-                        SprayHoldRole.HAND to R.string.climb_creator_count_hand,
-                        SprayHoldRole.FOOT to R.string.climb_creator_count_foot,
-                        SprayHoldRole.FINISH to R.string.climb_creator_count_finish,
-                    ).forEach { (role, label) ->
-                        FilterChip(
-                            selected = state.brush == role,
-                            onClick = { viewModel.setBrush(role) },
-                            label = { Text(stringResource(label, state.holds.values.count { it == role })) },
-                            leadingIcon = { Canvas(Modifier.size(12.dp)) { drawCircle(role.color()) } },
-                            modifier = Modifier.testTag("spray_brush_${role.wire}"),
+                // What a save left open stays at the top, next to the photo: the save button is in the app bar.
+                if (state.showProblems) {
+                    state.problems.forEach { problem ->
+                        Text(
+                            problemText(problem),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("spray_climb_problem"),
                         )
                     }
+                }
+                // How the role chips paint holds sits at their side, not in the app bar, so a 320 dp bar keeps its title.
+                Row {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                        listOf(
+                            SprayHoldRole.START to R.string.climb_creator_count_start,
+                            SprayHoldRole.HAND to R.string.climb_creator_count_hand,
+                            SprayHoldRole.FOOT to R.string.climb_creator_count_foot,
+                            SprayHoldRole.FINISH to R.string.climb_creator_count_finish,
+                        ).forEach { (role, label) ->
+                            FilterChip(
+                                selected = state.brush == role,
+                                onClick = { viewModel.setBrush(role) },
+                                label = { Text(stringResource(label, state.holds.values.count { it == role })) },
+                                leadingIcon = { Canvas(Modifier.size(12.dp)) { drawCircle(role.color()) } },
+                                modifier = Modifier.testTag("spray_brush_${role.wire}"),
+                            )
+                        }
+                    }
+                    InfoButton(stringResource(if (state.isEdit) R.string.spray_climb_edit_title else R.string.spray_climb_new_title), stringResource(R.string.spray_climb_brush_hint))
                 }
                 OutlinedTextField(
                     value = state.name,
@@ -341,18 +399,8 @@ fun SprayClimbEditorScreen(
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth().testTag("spray_climb_description"),
                 )
-                if (state.showProblems) {
-                    state.problems.forEach { problem ->
-                        Text(problemText(problem), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("spray_climb_problem"))
-                    }
-                }
-                Button(onClick = viewModel::save, enabled = !state.saving, modifier = Modifier.fillMaxWidth().testTag("spray_climb_save_bottom")) {
-                    Text(stringResource(R.string.action_save))
-                }
                 if (state.isEdit) {
-                    TextButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag("spray_climb_delete")) {
-                        Text(stringResource(R.string.spray_climb_delete), color = MaterialTheme.colorScheme.error)
-                    }
+                    DeleteClimb(state.deleting, state.deleteFailed, enabled = !state.saving, onDelete = { confirmDelete = true })
                 }
             }
         }
@@ -368,6 +416,35 @@ fun SprayClimbEditorScreen(
             onConfirm = { confirmDelete = false; viewModel.delete() },
             onDismiss = { confirmDelete = false },
         )
+    }
+}
+
+/** Delete, or the climb being taken back from the servers first, or why it was kept when they did not take that. */
+@Composable
+private fun DeleteClimb(deleting: Boolean, failed: SprayWithdrawal?, enabled: Boolean, onDelete: () -> Unit) {
+    if (deleting) {
+        Row(Modifier.heightIn(min = 48.dp).testTag("spray_climb_deleting"), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Text(stringResource(R.string.spray_climb_deleting), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+        }
+        return
+    }
+    if (failed != null) {
+        Text(
+            stringResource(
+                when (failed) {
+                    SprayWithdrawal.NO_IDENTITY -> R.string.spray_climb_delete_failed_identity
+                    SprayWithdrawal.SIGNING_FAILED -> R.string.spray_climb_delete_failed_signing
+                    else -> R.string.spray_climb_delete_failed
+                },
+            ),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("spray_climb_delete_failed"),
+        )
+    }
+    TextButton(onClick = onDelete, enabled = enabled, modifier = Modifier.testTag("spray_climb_delete")) {
+        Text(stringResource(R.string.spray_climb_delete), color = MaterialTheme.colorScheme.error)
     }
 }
 

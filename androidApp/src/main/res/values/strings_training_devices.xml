@@ -16,9 +16,9 @@
     <string name="trd_hc_manage">Manage access</string>
     <string name="trd_hc_sync_result">Last sync: %1$d new, %2$d updated, %3$d skipped (logged by hand)</string>
     <string name="trd_hc_sync_failed">Sync did not work – check access in Health Connect.</string>
-    <string name="trd_hc_sleep_last_night">Sleep last night: %1$s h</string>
+    <string name="trd_hc_sleep_last_night">Sleep last night: %1$s\u00A0h</string>
     <string name="trd_hc_privacy">The link itself uploads nothing: what CruxCoach reads stays in its encrypted database on this phone (and is part of your encrypted backup only if you turned the backup on), and what it writes goes only to Health Connect on this phone.</string>
-    <string name="trd_sleep_chip">From Health Connect: %1$s h → %2$d</string>
+    <string name="trd_sleep_chip">From Health Connect: %1$s\u00A0h → %2$d</string>
 
     <!-- Privacy rationale -->
     <string name="trd_rationale_title">How CruxCoach uses Health Connect</string>
@@ -44,7 +44,7 @@
     <string name="trd_force_status_permission">Bluetooth access is needed to connect.</string>
     <string name="trd_force_status_bluetooth_off">Bluetooth is off.</string>
     <string name="trd_force_status_failed">Connection failed. Try again closer to the device.</string>
-    <string name="trd_force_battery">battery %1$s V</string>
+    <string name="trd_force_battery">battery %1$s\u00A0V</string>
     <string name="trd_force_low_power">The Progressor reports a low battery.</string>
     <string name="trd_force_connect">Connect</string>
     <string name="trd_force_disconnect">Disconnect</string>
@@ -56,17 +56,17 @@
     <string name="trd_force_hand_left">Left</string>
     <string name="trd_force_hand_right">Right</string>
     <string name="trd_force_hand_both">Both hands</string>
-    <string name="trd_force_edge">Edge: %1$d mm</string>
-    <string name="trd_force_pull_title">Max pull (%1$d s)</string>
+    <string name="trd_force_edge">Edge: %1$d\u00A0mm</string>
+    <string name="trd_force_pull_title">Max pull (%1$d\u00A0s)</string>
     <string name="trd_force_start">Start</string>
     <string name="trd_force_get_ready">Get ready … %1$d</string>
-    <string name="trd_force_pull_now">Pull! %1$d s</string>
+    <string name="trd_force_pull_now">Pull! %1$d\u00A0s</string>
     <string name="trd_force_cancel">Cancel</string>
     <string name="trd_force_no_data">No force data arrived. Check the connection and try again.</string>
     <string name="trd_force_result_peak">Peak: %1$s</string>
-    <string name="trd_force_result_mean">Best 5 s: %1$s</string>
-    <string name="trd_force_result_too_short">The pull was shorter than 5 s – no value to save.</string>
-    <string name="trd_force_result_pct">%1$d %% of body weight</string>
+    <string name="trd_force_result_mean">Best 5\u00A0s: %1$s</string>
+    <string name="trd_force_result_too_short">The pull was shorter than 5\u00A0s – no value to save.</string>
+    <string name="trd_force_result_pct">%1$d\u00A0%% of body weight</string>
     <string name="trd_force_save">Save as performance value</string>
     <string name="trd_force_saved">Saved – the next planned pick-ups use it.</string>
     <string name="trd_force_again">Measure again</string>

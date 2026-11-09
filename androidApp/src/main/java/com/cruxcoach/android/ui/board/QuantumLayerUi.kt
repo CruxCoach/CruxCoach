@@ -468,6 +468,12 @@ private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
         }
         QuantumLayerVisualState.FREE -> MaterialTheme.colorScheme.outlineVariant
     }
+    // The grey border tones are too faint for the status text; it takes onSurfaceVariant instead.
+    val statusTextColor = when (borderColor) {
+        MaterialTheme.colorScheme.outline, MaterialTheme.colorScheme.outlineVariant ->
+            MaterialTheme.colorScheme.onSurfaceVariant
+        else -> borderColor
+    }
     Surface(
         modifier = modifier
             .testTag("quantum_layer_status_${slot.slot + 1}")
@@ -525,7 +531,7 @@ private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
                     modifier = Modifier.testTag("quantum_layer_visible_state_${slot.slot + 1}"),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Medium,
-                    color = borderColor,
+                    color = statusTextColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

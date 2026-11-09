@@ -225,7 +225,8 @@ fun WeightGoalSheet(
             }
             OutlinedTextField(
                 value = targetText, onValueChange = { targetText = it }, singleLine = true, isError = !targetValid,
-                label = { Text(stringResource(R.string.trn_goal_target)) },
+                // One line: wrapped, "(optional)" fell into the field's top border at the largest font.
+                label = { Text(stringResource(R.string.trn_goal_target), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                 suffix = { Text(Units.massUnit(units)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("goal_target_input"),
@@ -311,8 +312,11 @@ fun everydayLabel(e: EverydayActivity): String = stringResource(when (e) {
 
 @Composable
 private fun KcalRow(label: String, value: String, tag: String, bold: Boolean = false, unit: Boolean = true) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag(tag)) {
-        Text(label, style = if (bold) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+    // The value below the label when it leaves the label no room ("Train/ing/heut/e" at the largest font).
+    com.cruxcoach.android.ui.training.LabelBesideOrAbove(modifier = Modifier.padding(vertical = 4.dp).testTag(tag), label = {
+        Text(label, style = if (bold) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(end = 8.dp))
+    }) {
         Text(if (unit) stringResource(R.string.trn_kcal_signed, value) else value,
             style = if (bold) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
             fontWeight = if (bold) FontWeight.SemiBold else null)

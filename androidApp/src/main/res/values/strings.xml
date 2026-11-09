@@ -446,45 +446,45 @@
     <!-- Settings: LED effects (FEAT-074) -->
     <string name="settings_led_anim_title">LED effects</string>
     <string name="settings_led_anim_none">None</string>
-    <string name="settings_led_anim_none_hint">The climb shows its normal colors.</string>
+    <string name="settings_led_anim_none_hint">the climb shows its normal colors.</string>
     <string name="settings_led_anim_pulse">Pulse</string>
-    <string name="settings_led_anim_pulse_hint">Each hold glows brighter and dimmer in its own color.</string>
+    <string name="settings_led_anim_pulse_hint">each hold glows brighter and dimmer in its own color.</string>
     <string name="settings_led_anim_two_phase">Two-phase strobe</string>
-    <string name="settings_led_anim_two_phase_hint">Flashes between the CruxCoach and the Kilter colors.</string>
+    <string name="settings_led_anim_two_phase_hint">flashes between the CruxCoach and the Kilter colors.</string>
     <string name="settings_led_anim_chaotic">Chaotic strobe</string>
-    <string name="settings_led_anim_chaotic_hint">The colors jump around; start, hand, top and foot holds stay apart.</string>
+    <string name="settings_led_anim_chaotic_hint">the colors jump around; start, hand, top and foot holds stay apart.</string>
     <string name="settings_led_anim_rainbow">Rainbow</string>
-    <string name="settings_led_anim_rainbow_hint">All colors travel slowly around the color wheel.</string>
+    <string name="settings_led_anim_rainbow_hint">all colors travel slowly around the color wheel.</string>
     <string name="settings_led_effects_flashing">Flashes</string>
-    <string name="settings_led_effects_remove_animations_note">“Remove animations” is on in Android’s settings. This effect flashes anyway.</string>
+    <string name="settings_led_effects_remove_animations_note">“Remove animations” is on. This effect flashes anyway.</string>
     <string name="settings_led_effects_background">Keep running in other apps</string>
-    <string name="settings_led_effects_needs_notifications">Needs notifications, so that you can stop the effect from there.</string>
+    <string name="settings_led_effects_background_on">In other apps the board stays connected to this phone.</string>
+    <string name="settings_led_effects_needs_notifications">Needs notifications for the Stop button.</string>
     <string name="settings_led_effects_allow_notifications">Allow notifications</string>
-    <string name="led_effect_status_running">Running on the board now.</string>
-    <string name="led_effect_status_waiting">Send a climb to the board to see it.</string>
-    <string name="led_effect_status_no_board">Connect a Kilter Board to see it.</string>
-    <string name="led_effect_status_unsupported">This board shows no LED effects and keeps its normal colors.</string>
-    <string name="led_effect_status_paused">Paused while route playback, a wall game or hold cleaning uses the board.</string>
-    <string name="led_effect_status_ended">Ended on this climb. Send it again to restart.</string>
+    <string name="settings_led_effects_info_board">On the board\nThe lit holds change their light. Works with a Kilter Board; other boards keep their normal colors. A choice shows at once, so the wall is the preview.</string>
+    <string name="settings_led_effects_info_effects">Effects</string>
+    <string name="settings_led_effects_info_effect">%1$s: %2$s</string>
+    <string name="led_effect_status_running">Running on the board.</string>
+    <string name="led_effect_status_waiting">Waiting for a climb.</string>
+    <string name="led_effect_status_no_board">No Kilter Board connected.</string>
+    <string name="led_effect_status_unsupported">This board can’t show effects.</string>
+    <string name="led_effect_status_paused">Paused while the board is busy.</string>
+    <string name="led_effect_status_ended">Ended on the lit climb.</string>
     <string name="led_effect_status_background">Paused outside the app.</string>
+    <string name="led_effect_restart">Restart</string>
     <string name="led_strobe_notice_title">Flashing light</string>
-    <string name="led_strobe_notice_text">This effect flashes the lit holds up to three times a second. Flashing light can trigger seizures in people with photosensitive epilepsy, also in others at the wall. Pulse and Rainbow change gently.</string>
-    <string name="led_strobe_notice_remove_animations">“Remove animations” is on in Android’s settings, often a sign that motion or flashing is unwelcome. Turn this effect on anyway?</string>
+    <string name="led_strobe_notice_text">%1$s flashes the holds up to three times a second. This can trigger seizures in people with photosensitive epilepsy, also in others at the wall.</string>
+    <string name="led_strobe_notice_remove_animations">%1$s flashes the holds up to three times a second, even with “Remove animations” on. This can trigger seizures in people with photosensitive epilepsy, also in others at the wall.</string>
     <string name="led_strobe_notice_confirm">Turn on</string>
     <string name="led_strobe_notice_cancel">Cancel</string>
     <string name="led_effect_menu">LED effect: %1$s</string>
-    <string name="led_effect_sheet_done">Done</string>
     <string name="led_anim_notification_channel">LED effects</string>
     <string name="led_anim_notification_channel_desc">Shown while an LED effect keeps running in another app.</string>
     <string name="led_anim_notification_title">LED effect running</string>
     <string name="led_anim_notification_stop">Stop</string>
     <plurals name="settings_led_effects_info">
-        <item quantity="one">On the board\nThe holds of the lit climb move. Works with a Kilter Board; other boards keep their normal colors. Changes show at once, so you can try them while looking at the wall.\n\nOthers first\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minute on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.</item>
-        <item quantity="other">On the board\nThe holds of the lit climb move. Works with a Kilter Board; other boards keep their normal colors. Changes show at once, so you can try them while looking at the wall.\n\nOthers first\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minutes on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.</item>
-    </plurals>
-    <plurals name="settings_led_effects_background_info">
-        <item quantity="one">For filming: the effect keeps going while another app is open, for up to %1$d minute on the same climb, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
-        <item quantity="other">For filming: the effect keeps going while another app is open, for up to %1$d minutes on the same climb, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
+        <item quantity="one">Pauses\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minute on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.\n\nIn other apps\nFor filming, “Keep running in other apps” keeps the effect going while another app is open, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
+        <item quantity="other">Pauses\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minutes on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.\n\nIn other apps\nFor filming, “Keep running in other apps” keeps the effect going while another app is open, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
     </plurals>
     <plurals name="led_anim_notification_text">
         <item quantity="one">Ends after %1$d minute on this climb. Stop shows its normal colors.</item>
@@ -1615,7 +1615,9 @@
     <string name="board_stats_heatmap_board_label">Board</string>
     <string name="board_stats_heatmap_pick_board">Pick a board to see the hold heatmap.</string>
     <string name="board_stats_heatmap_unsupported">This board has no hold heatmap.</string>
-    <string name="board_stats_angle_distribution">Angle Distribution</string>
+    <string name="board_stats_empty_period">Nothing logged in this period.</string>
+    <string name="board_stats_show_all_time">Show all time</string>
+    <string name="board_stats_angle_distribution">Angle distribution</string>
     <string name="board_stats_cross_board_tries">Tries per grade</string>
     <string name="board_stats_cross_board_months">Tries per month</string>
     <string name="board_stats_cross_board_tries_help">How many tries you needed on average to send a problem for the first time, per board and grade. Tries from earlier sessions count, repeats after the send do not.\n\nHollow bars rest on fewer than %1$d problems and say little.\n\nTap a grade to see how many problems each bar stands for.</string>
@@ -1631,7 +1633,7 @@
     <string name="board_stats_cross_board_send_curve">Tries until the send</string>
     <string name="board_stats_cross_board_send_curve_help">How many tries your problems took until their first send, per board: a flash, the 2nd or 3rd try, 4 to 5 tries, or 6 and more. Tries from earlier sessions count, so a send after attempts on an earlier day is no flash.\n\nHollow bars rest on fewer than %1$d problems.\n\nTap a board to see the numbers.</string>
     <string name="board_stats_glance_title">At a glance</string>
-    <string name="board_stats_glance_help">Top: your hardest send and your hardest flash in the whole logbook.\n\nBelow: the last %1$d days against the %1$d days before: climbing days (days with at least one entry), sends and your hardest send. Green means more, or a harder grade.\n\nClimbing days a week: the average over the last eight weeks.</string>
+    <string name="board_stats_glance_help">Top: your hardest send and your hardest flash in the whole logbook.\n\nBelow: the last %1$d days against the %1$d days before: climbing days (days with at least one entry), sends and your hardest send. Green means more, or a harder grade.\n\nClimbing days a week: the average over the last eight weeks, or since your first climbing day. It shows from two weeks on.</string>
     <string name="board_stats_glance_hardest_send">Hardest send</string>
     <string name="board_stats_glance_hardest_flash">Hardest flash</string>
     <string name="board_stats_glance_hardest">Hardest</string>
@@ -2833,6 +2835,7 @@
     <string name="moon_csv_fallback">CSV fallback</string>
     <string name="moon_csv_request_data">Request account data from Moon</string>
     <string name="moon_csv_request_hint">The request text is copied before your email app opens. Paste it into the message and fill in the placeholders.</string>
+    <string name="moon_csv_no_mail_app">No email app found. The request is copied.</string>
     <string name="moon_csv_request_subject">Subject access request – MoonBoard account data</string>
     <string name="moon_csv_request_body">Name: [full name]\nMoonBoard username: [username]\nAccount email: [email address]\n\nPlease treat this as a UK GDPR subject access request and, where applicable, a data portability request. Please provide all personal data linked to my MoonBoard account, including profile and account identifiers; problems I created or logged; sends, ascents, grades, repeats, attempts, dates and session history; favourites, lists, saved and custom problems; and related metadata.\n\nWhere technically feasible, please provide the export as CSV or JSON, or another structured, commonly used, machine-readable format. If identity verification or a secure delivery method is required, please let me know promptly. Please confirm receipt and the expected response date.\n\nKind regards,\n[name]</string>
     <string name="moon_csv_angle_note">MoonBoard’s CSV does not include the board angle. If a problem is available at both angles, CruxCoach imports it at 40°.</string>
@@ -3032,7 +3035,7 @@
     <string name="whatsnew_024_hint">Also: a board switch shows at once during a catalogue download, and a session resumes after a rest.</string>
     <!-- 0.2.5: one line per feature; the release preparation adds the others and registers the dialog. -->
     <string name="whatsnew_025_title">New in 0.2.5</string>
-    <string name="whatsnew_025_body">• Community – join the CruxCoach community on Buzz from Settings → Community.\n• Shiny Wall – choose your Shiny Wall in the board picker, browse its problems and light them over Bluetooth. Import your Shiny Wall logbook under Settings → Board accounts &amp; imports.\n• Wall games – Floor is lava, Endurance, Hold thief and Traverse, from the main menu or a problem’s menu (“Play as a game”).</string>
+    <string name="whatsnew_025_body">• Community on Buzz&#160;– talk to the developers and test new builds first (Settings → Community).\n• Shiny Wall&#160;– choose your Shiny Wall in the board picker, browse its problems and light them over Bluetooth. Import your Shiny Wall logbook under Settings → Board accounts &amp; imports.\n• Wall games&#160;– Floor is lava, Endurance, Hold thief and Traverse, from the main menu or a problem’s menu (“Play as a game”).</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
 
@@ -3072,9 +3075,11 @@
     <string name="community_point_shape">Help shape what comes next</string>
     <string name="community_join_action">Join on Buzz</string>
     <string name="community_join_note">Buzz is a separate app with its own account. Nothing from CruxCoach is shared.</string>
-    <string name="community_report_hint">Follow your report and test the fix early: join the community on Buzz</string>
+    <string name="community_report_hint">Follow your report and test the fix early: join the community on Buzz.</string>
+    <string name="community_report_hint_feature">Talk about your idea and test new builds first: join the community on Buzz.</string>
     <string name="community_report_hint_join">Join</string>
     <string name="community_report_hint_member">Already a member</string>
+    <string name="community_report_hint_later">Not now</string>
     <string name="link_open_failed">No app can open this link.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
@@ -3348,7 +3353,7 @@
     <string name="import_catalogue_pending_short">Names and grades appear after the catalogue download.</string>
     <string name="import_key_access_only">Restores account access. Data is restored separately from a backup.</string>
     <string name="import_moon_device_short">Android accessibility reads your Moon logbook on this device.</string>
-    <string name="import_moon_mail_short">Paste the copied request into the email.</string>
+    <string name="import_moon_mail_short">Paste the copied request into an email to %1$s.</string>
     <string name="account_amber_restore_summary">Choose your backup’s account in Amber. Your private key stays in Amber.</string>
     <string name="account_restore_key_method">With a key</string>
 
@@ -3452,4 +3457,108 @@
     <string name="wall_games_no_holds">The hold positions of this board are not on the device yet. Download its catalogue first.</string>
     <string name="wall_games_sound_turn_off">Turn countdown sound off</string>
     <string name="wall_games_sound_turn_on">Turn countdown sound on</string>
+    <!-- Shiny Wall account (read-only logbook import) -->
+    <string name="shinywall_section_title">Shiny Wall account</string>
+    <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (ascents and projects), favorites, lists and your own routes into CruxCoach. Star ratings and comments stay in Shiny Wall.\n\nRead-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only.\n\nWhat you delete in CruxCoach stays deleted, entries and lists alike. To import everything again, delete your Shiny Wall logbook data under Settings → Delete local data.</string>
+    <string name="shinywall_connect_button">Connect Shiny Wall account</string>
+    <string name="shinywall_login_title">Sign in to Shiny Wall</string>
+    <string name="shinywall_login_privacy">Your email and password go to Google’s Firebase servers, which run Shiny Wall’s sign-in.</string>
+    <string name="shinywall_login_privacy_more">CruxCoach reads your Shiny Wall data from the same Google servers. On this phone it keeps a sign-in token, never the password. Accounts that sign in with Google can’t be connected.</string>
+    <string name="shinywall_email_label">Email</string>
+    <string name="shinywall_password_label">Password</string>
+    <string name="shinywall_login_button">Sign in</string>
+    <string name="shinywall_connected_as">Connected as: %1$s</string>
+    <string name="shinywall_last_import">Last import: %1$s</string>
+    <string name="shinywall_import_new">Import new entries</string>
+    <string name="shinywall_disconnect">Disconnect</string>
+    <string name="shinywall_disconnect_confirm">CruxCoach forgets the Shiny Wall sign-in on this phone. Imported entries and lists stay.</string>
+    <string name="shinywall_preview_title">Import from Shiny Wall</string>
+    <!-- %1$s, %2$s, %3$s: shinywall_preview_new_ascents, shinywall_preview_new_projects, shinywall_preview_known -->
+    <string name="shinywall_preview_found">%1$s, %2$s, %3$s.</string>
+    <plurals name="shinywall_preview_new_ascents">
+        <item quantity="one">%1$d new ascent</item>
+        <item quantity="other">%1$d new ascents</item>
+    </plurals>
+    <plurals name="shinywall_preview_new_projects">
+        <item quantity="one">%1$d new project</item>
+        <item quantity="other">%1$d new projects</item>
+    </plurals>
+    <string name="shinywall_preview_known">%1$d already in CruxCoach</string>
+    <plurals name="shinywall_preview_skipped">
+        <item quantity="one">%1$d entry can’t be imported (custom walls, route creations, incomplete entries).</item>
+        <item quantity="other">%1$d entries can’t be imported (custom walls, route creations, incomplete entries).</item>
+    </plurals>
+    <plurals name="shinywall_preview_deleted">
+        <item quantity="one">%1$d entry won’t be imported again.</item>
+        <item quantity="other">%1$d entries won’t be imported again.</item>
+    </plurals>
+    <string name="shinywall_import_button">Import</string>
+    <string name="shinywall_import_lists_button">Update lists</string>
+    <string name="shinywall_import_empty">No entries found in your Shiny Wall logbook yet.</string>
+    <plurals name="shinywall_import_part_ascents">
+        <item quantity="one">%1$d ascent</item>
+        <item quantity="other">%1$d ascents</item>
+    </plurals>
+    <plurals name="shinywall_import_part_projects">
+        <item quantity="one">%1$d project</item>
+        <item quantity="other">%1$d projects</item>
+    </plurals>
+    <plurals name="shinywall_import_part_lists">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
+    <string name="shinywall_import_part_known">%1$d already in CruxCoach</string>
+    <string name="shinywall_import_part_skipped">%1$d skipped</string>
+    <plurals name="shinywall_import_part_deleted">
+        <item quantity="one">%1$d won’t be imported again</item>
+        <item quantity="other">%1$d won’t be imported again</item>
+    </plurals>
+    <string name="shinywall_import_part_nothing_new">Nothing new</string>
+    <string name="shinywall_auth_invalid_credentials">Email or password is wrong. If you sign in to Shiny Wall with Google, CruxCoach can’t connect.</string>
+    <string name="shinywall_auth_disabled">This Shiny Wall account is disabled.</string>
+    <string name="shinywall_auth_throttled">Too many attempts. Please wait a moment and try again.</string>
+    <string name="shinywall_auth_network">No connection to Shiny Wall. Check your internet connection.</string>
+    <string name="shinywall_auth_http_failure" formatted="false">Sign-in failed (HTTP %1$d).</string>
+    <string name="shinywall_auth_not_saved">CruxCoach couldn’t save the sign-in on this phone. Please try again.</string>
+    <string name="shinywall_auth_unexpected">Shiny Wall sent an unexpected answer. Please try again later.</string>
+    <string name="shinywall_session_expired">Session expired</string>
+    <string name="shinywall_relogin_button">Sign in again</string>
+    <string name="shinywall_import_error_denied">Shiny Wall did not allow reading your logbook.</string>
+    <string name="shinywall_import_error_network">No connection to Shiny Wall. Check your internet connection.</string>
+    <string name="shinywall_import_error_generic">The import failed. Please try again.</string>
+    <string name="shinywall_list_favorites">Shiny Wall favorites</string>
+    <string name="shinywall_list_own_routes">My Shiny Wall routes</string>
+    <!-- Board-size check: optional help for users unsure about their board size -->
+    <string name="board_size_check_title">Check your board size</string>
+    <string name="board_size_check_link">Check the size on your board</string>
+    <string name="board_size_check_menu">Wrong holds lighting up?</string>
+    <string name="board_size_check_info">Your board does not tell the app its size. The check lights a few holds of one size that sit far apart. On a board of another size the same LEDs light other holds, so you see straight away whether the size fits. Closing the check turns them off again.</string>
+    <string name="board_size_check_question">Are exactly these holds lit on your board?</string>
+    <string name="board_size_check_yes">Yes</string>
+    <string name="board_size_check_no">No</string>
+    <string name="board_size_check_relight">Light them again</string>
+    <string name="board_size_check_lighting">Lighting the marked holds…</string>
+    <string name="board_size_check_connect_hint">Connect to your board, then the marked holds light up there.</string>
+    <string name="board_size_check_connect">Connect to board</string>
+    <string name="board_size_check_other_board">The connected board is not a %1$s. Connect to your %1$s.</string>
+    <string name="board_size_check_pick_other">Tap a size to light it on your board.</string>
+    <string name="board_size_check_pick_other_offline">Tap a size to see its marked holds.</string>
+    <string name="board_size_check_tried">Tried</string>
+    <string name="board_size_check_try_first">Try %1$s first</string>
+    <string name="board_size_check_none_fit">None of them fits? Then your board may be set up differently from its catalogue.</string>
+    <string name="board_size_check_saved">Saved: this is your board now.</string>
+    <string name="board_size_check_selected">Selected. Tap Confirm in the board picker to keep it.</string>
+    <string name="board_size_check_fits">Fits: your board is set up right.</string>
+    <string name="board_size_check_send_failed">The holds could not be lit. Check the connection and try again.</string>
+    <string name="board_size_check_replaced">The board may show something else by now.</string>
+    <string name="board_size_check_no_data">There is no LED data for this board on your phone yet.</string>
+    <string name="board_size_check_done">Done</string>
+    <string name="board_size_check_back_to_picker">Back to the board picker</string>
+    <string name="board_size_check_image_cd">%1$s with the holds that should light up</string>
+    <string name="board_size_check_look_alike_first">To tell %1$s from %2$s, %2$s comes first.</string>
+    <!-- Board picker: how common each option is in gyms, so a rare pick gets a second look -->
+    <string name="board_gym_share">In gyms: %1$s</string>
+    <string name="board_gym_share_rare">Rare in gyms: %1$s</string>
+    <string name="board_gym_share_rare_hint">Few gyms have this board. Please check that it is really yours.</string>
+    <string name="board_gym_share_rare_version_hint">Few gyms list this version, maybe because it is new. Check that it matches the holds on your board.</string>
 </resources>

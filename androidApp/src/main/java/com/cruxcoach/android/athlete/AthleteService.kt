@@ -1130,7 +1130,7 @@ class AthleteService @Inject constructor(
         val def = block.firstOrNull()?.let { catalog.fallbackFor(it.exerciseSlug) } ?: return PainOutcome(action)
         val now = now()
         val injury = Injury(
-            id = repo.newId(), region = region, side = side, severity = severity.coerceIn(0, 9),
+            id = repo.newId(), region = region, side = side, severity = severity.coerceIn(0, Injury.MAX_SEVERITY),
             climbingPaused = severity >= PAIN_PAUSE_SEVERITY, startedOn = today().toString(), updatedAt = now,
         )
         val open = block.filter { !it.isCompleted }

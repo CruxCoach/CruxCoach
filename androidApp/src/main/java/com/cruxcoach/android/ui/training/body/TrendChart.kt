@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.formatMass
 import com.cruxcoach.athlete.logic.TrendWeight
@@ -89,10 +90,16 @@ fun TrendChart(
         if (points.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().padding(start = if (hideNumbers) 0.dp else 48.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text(points.first().day.shortLabel(), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                Text(points.last().day.shortLabel(), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // One line each, shrinking a little: at the largest font the date broke as "21.10.202/6".
+                androidx.compose.foundation.text.BasicText(points.first().day.shortLabel(), maxLines = 1, softWrap = false,
+                    style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = MaterialTheme.typography.labelSmall.fontSize),
+                    modifier = Modifier.weight(1f))
+                androidx.compose.foundation.text.BasicText(points.last().day.shortLabel(), maxLines = 1, softWrap = false,
+                    style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End),
+                    autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = MaterialTheme.typography.labelSmall.fontSize),
+                    modifier = Modifier.weight(1f))
             }
         }
     }
@@ -115,8 +122,8 @@ fun StrengthChart(
     val maxX = all.maxOf { it.day.epochDay() }.let { if (it == minX) minX + 1 else it }
     Row(modifier.height(140.dp).semantics { contentDescription = description }.testTag("body_strength_chart")) {
         Column(Modifier.fillMaxHeight().padding(end = 6.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Text("${maxY.toInt()} %", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("${minY.toInt()} %", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${maxY.toInt()}\u00A0%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${minY.toInt()}\u00A0%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Canvas(Modifier.weight(1f).fillMaxHeight()) {
             val w = size.width

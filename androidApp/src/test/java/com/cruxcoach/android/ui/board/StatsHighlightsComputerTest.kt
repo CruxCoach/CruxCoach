@@ -89,6 +89,16 @@ class StatsHighlightsComputerTest {
     }
 
     @Test
+    fun `climbing days per week wait for two weeks of history`() {
+        // After the first climbing day the overview has no per-week chip (0 hides it).
+        val first = listOf(row("a", "2026-03-31"))
+        assertEquals(0.0, StatsHighlightsComputer.atAGlance(first, scale, clock = clock).sessionsPerWeek, 0.0)
+        // Three weeks in, three days read as one a week.
+        val threeWeeks = first + row("b", "2026-03-11") + row("c", "2026-03-20")
+        assertEquals(1.0, StatsHighlightsComputer.atAGlance(threeWeeks, scale, clock = clock).sessionsPerWeek, 0.001)
+    }
+
+    @Test
     fun `without a previous span there is nothing to compare`() {
         val recent = StatsHighlightsComputer.atAGlance(listOf(row("c", "2026-03-20")), scale, clock = clock).recent!!
         assertFalse(recent.hasPrevious)

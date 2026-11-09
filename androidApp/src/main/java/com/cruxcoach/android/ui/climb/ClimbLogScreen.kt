@@ -155,6 +155,8 @@ fun ClimbLogScreen(
                     label = stringResource(R.string.climb_log_sent),
                     isActive = state.sent,
                     activeColor = SuccessGreen,
+                    activeContainerColor = CruxCoachDesign.colors.positiveContainer,
+                    activeContentColor = CruxCoachDesign.colors.onPositiveContainer,
                     onClick = { viewModel.toggleSent() },
                     modifier = Modifier.weight(1f).testTag("climblog_sent_toggle")
                 )
@@ -164,6 +166,8 @@ fun ClimbLogScreen(
                     label = stringResource(R.string.climb_log_flash),
                     isActive = state.flash,
                     activeColor = WarningYellow,
+                    activeContainerColor = CruxCoachDesign.colors.cautionContainer,
+                    activeContentColor = CruxCoachDesign.colors.onCautionContainer,
                     enabled = state.sent,
                     onClick = { viewModel.toggleFlash() },
                     modifier = Modifier.weight(1f).testTag("climblog_flash_toggle")
@@ -221,8 +225,8 @@ fun ClimbLogScreen(
                         onClick = { viewModel.toggleStyle(key) },
                         label = { Text(label) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                            selectedLabelColor = OrangeAccent
+                            selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                            selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                         )
                     )
                 }
@@ -249,8 +253,8 @@ fun ClimbLogScreen(
                         onClick = { viewModel.toggleHoldType(key) },
                         label = { Text(label) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = InfoBlue.copy(alpha = 0.2f),
-                            selectedLabelColor = InfoBlue
+                            selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                            selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                         )
                     )
                 }
@@ -385,7 +389,7 @@ private fun GradeSelector(
                     text = primaryGrade,
                     style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold,
-                    color = gradeColor
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "($altGrade)",
@@ -414,6 +418,8 @@ private fun BigToggleButton(
     label: String,
     isActive: Boolean,
     activeColor: androidx.compose.ui.graphics.Color,
+    activeContainerColor: androidx.compose.ui.graphics.Color,
+    activeContentColor: androidx.compose.ui.graphics.Color,
     enabled: Boolean = true,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -423,9 +429,9 @@ private fun BigToggleButton(
         modifier = modifier.height(56.dp),
         enabled = enabled,
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (isActive) activeColor.copy(alpha = 0.2f)
+            containerColor = if (isActive) activeContainerColor
             else MaterialTheme.colorScheme.surface,
-            contentColor = if (isActive) activeColor
+            contentColor = if (isActive) activeContentColor
             else MaterialTheme.colorScheme.onSurface,
             disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)

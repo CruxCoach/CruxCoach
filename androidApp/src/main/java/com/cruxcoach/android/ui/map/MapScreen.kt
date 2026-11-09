@@ -489,7 +489,9 @@ fun MapScreen(
         onLocateMe = locateMe::locate,
         onChooseBoardAt = { chooseAt = it },
         venueExtra = { venue ->
-            com.cruxcoach.android.ui.spraywall.SprayWallsAtVenue(venue, onOpen = onOpenSprayWall, onNew = onNewSprayWall)
+            if (com.cruxcoach.android.spraywall.SprayWallFeature.enabled) {
+                com.cruxcoach.android.ui.spraywall.SprayWallsAtVenue(venue, onOpen = onOpenSprayWall, onNew = onNewSprayWall)
+            }
         },
     ) {
         MapView(

@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -388,29 +389,32 @@ fun CoachSetupScreen(
         title = stringResource(R.string.trc_setup_title),
         onBack = onBack,
         actions = {
-            TextButton(onClick = { confirmDismiss = true }, modifier = Modifier.testTag("coach_dismiss")) {
-                Text(stringResource(R.string.trc_dont_ask))
+            // A rare step in ⋮: as a text action it left the title one letter at the largest font.
+            var menu by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.testTag("coach_menu")) {
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.trt_more_actions))
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.trc_dont_ask)) },
+                        onClick = { menu = false; confirmDismiss = true }, modifier = Modifier.testTag("coach_dismiss"))
+                }
             }
         },
         bottomBar = {
             if (!state.loading) {
                 Surface(tonalElevation = 3.dp) {
-                    Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (state.step < COACH_STEPS - 1) {
-                            TextButton(onClick = viewModel::skip, modifier = Modifier.testTag("coach_skip")) {
-                                Text(stringResource(R.string.trc_skip))
-                            }
-                            Spacer(Modifier.weight(1f))
-                            Button(onClick = viewModel::next, modifier = Modifier.heightIn(min = 48.dp).testTag("coach_next")) {
-                                Text(stringResource(R.string.trc_next))
-                            }
-                        } else {
-                            TextButton(onClick = viewModel::back) { Text(stringResource(R.string.trc_back)) }
-                            Spacer(Modifier.weight(1f))
-                            Button(onClick = viewModel::finish, modifier = Modifier.heightIn(min = 48.dp).testTag("coach_finish")) {
-                                Text(stringResource(R.string.trc_finish))
-                            }
+                    // The main button below the other one when both do not fit in a row ("Weit/er" at the largest font).
+                    val last = state.step >= COACH_STEPS - 1
+                    LabelBesideOrAbove(modifier = Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), label = {
+                        if (!last) TextButton(onClick = viewModel::skip, modifier = Modifier.testTag("coach_skip")) {
+                            Text(stringResource(R.string.trc_skip))
+                        } else TextButton(onClick = viewModel::back) { Text(stringResource(R.string.trc_back)) }
+                    }) {
+                        if (!last) Button(onClick = viewModel::next, modifier = Modifier.heightIn(min = 48.dp).testTag("coach_next")) {
+                            Text(stringResource(R.string.trc_next))
+                        } else Button(onClick = viewModel::finish, modifier = Modifier.heightIn(min = 48.dp).testTag("coach_finish")) {
+                            Text(stringResource(R.string.trc_finish))
                         }
                     }
                 }
@@ -809,7 +813,7 @@ private fun PreferencesCard(
     )
     FavoritesQuestion(state, onPickFavorites, onRemoveFavorite)
     // Which exercises, next to how often they change; after the favourites, which belong right below "Routine or variety".
-    QuestionLabel(stringResource(R.string.trc_exercise_choice))
+    ExerciseChoiceTitle(Modifier.padding(top = 4.dp))
     ExerciseChoiceChips(d.exerciseChoice) { c -> update { it.copy(exerciseChoice = c) } }
     QuestionLabel(stringResource(R.string.trc_equipment))
     val owned = state.profile.equipment.filter { it != EquipmentV2.NONE && it != EquipmentV2.MAT }
@@ -860,8 +864,8 @@ private fun FavoritesQuestion(state: CoachSetupState, onPick: () -> Unit, onRemo
 @Composable
 private fun PreferenceSlider(title: String, left: String, right: String, value: Int?, tag: String, onChange: (Int?) -> Unit) {
     QuestionLabel(title)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(left, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+    // The right end below the left one when both do not fit in a row ("intensi/v" at 320 dp and the largest font).
+    LabelBesideOrAbove(label = { Text(left, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 16.dp)) }) {
         Text(right, style = MaterialTheme.typography.bodySmall)
     }
     var position by remember(value) { mutableFloatStateOf((value ?: 50).toFloat()) }

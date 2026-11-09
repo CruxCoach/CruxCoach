@@ -29,15 +29,26 @@ two strings; which boards show effects is one set, `LedEffectSupport.boards`.
 ## 2. Behaviour
 
 *Settings → Board & Bluetooth → LED effects* is a card of its own between "All
-boards" and the per-board settings (`ui/settings/LedEffectsSection.kt`): a status
-line, the effects as chips (a tap applies at once, so the wall is the preview),
-the hint of the chosen effect and *Keep running in other apps*. The climb menu
-offers the same choice ("LED effect: Pulse") while a board that shows effects is
-connected. There is no tempo control: the owner's rule is that the effects look
-and move exactly as contributed (`LedPr21GoldenTest`). The default is **None** —
-byte-for-byte the static behaviour and the fallback for any unknown id. Stored in
-DataStore: `led_animation` (raw id), `led_animation_in_background` (default
-false), `led_strobe_notice_seen`.
+boards" and the per-board settings (`ui/settings/LedEffectsSection.kt`): a
+status line (with *Connect board* when no board is connected), the effects as
+chips (a tap applies at once, so the wall is the preview; gentle ones first, the
+flashing ones last with a flash mark that stays when chosen) and *Keep running
+in other apps*, which shows the setting as it is (while notifications are off,
+with a hint and *Allow notifications*, and a tap turns it off) and, while it can
+run, says that the board stays connected to this phone. What each effect does,
+what pauses it, the limit and running in other apps are in the card's one info
+dialog. The climb menu offers the same choice ("LED effect: Pulse") while a board
+that shows effects is connected, in a fully opened sheet whose status line offers
+*Restart* only on the climb whose effect has ended (the lit frame carries its climb):
+it sends the climb again like the light button, and in a shared session the host gets it
+to resend the session's current climb, offered only while that is the climb on the page
+(a participant gets none: only the host writes to the wall).
+There is no tempo control: the owner's
+rule is that the effects look and move exactly as contributed
+(`LedPr21GoldenTest`). The default is **None** — byte-for-byte the static
+behaviour and the fallback for any unknown id. Stored in DataStore:
+`led_animation` (raw id), `led_animation_in_background` (default false),
+`led_strobe_notice_seen`.
 
 | Option | id | What it does | Interval | Flashing |
 |---|---|---|---|---|

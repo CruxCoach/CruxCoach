@@ -47,8 +47,8 @@
     <string name="trx_best_overall">Overall</string>
     <string name="trx_e1rm">est. max %1$s</string>
     <plurals name="trx_reps">
-        <item quantity="one">%d rep</item>
-        <item quantity="other">%d reps</item>
+        <item quantity="one">%d\u00A0rep</item>
+        <item quantity="other">%d\u00A0reps</item>
     </plurals>
     <string name="trx_reps_short">%d×</string>
     <string name="trx_add_to_running">Add to training</string>
@@ -82,7 +82,7 @@
     <string name="trx_custom_one_kettlebell">One kettlebell</string>
     <string name="trx_custom_two_kettlebells">Two kettlebells</string>
     <string name="trx_custom_implements_one">You log the weight printed on it.</string>
-    <string name="trx_custom_implements_two">You log the weight of one of them, e.g. 2 × 16 kg; volume and % body weight count both.</string>
+    <string name="trx_custom_implements_two">You log the weight of one of them, e.g. 2\u00A0×\u00A016\u00A0kg; volume and % body weight count both.</string>
     <string name="trx_custom_note">Note (optional)</string>
     <string name="trx_kind_reps">Repetitions</string>
     <string name="trx_kind_load_reps">Repetitions with weight</string>

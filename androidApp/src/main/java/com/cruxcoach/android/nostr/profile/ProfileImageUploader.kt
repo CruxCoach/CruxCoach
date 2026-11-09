@@ -36,7 +36,8 @@ class ProfileImageUploader @Inject constructor(
 
     sealed class Result {
         data class Success(val url: String) : Result()
-        data class Failure(val message: String) : Result()
+        /** [authFailed]: signing the upload authorisation failed or was declined (no server was tried). */
+        data class Failure(val message: String, val authFailed: Boolean = false) : Result()
     }
 
     /**
@@ -64,7 +65,7 @@ class ProfileImageUploader @Inject constructor(
             )
         } catch (e: Exception) {
             Log.w(TAG, "Auth-event signing failed", e)
-            return Result.Failure("auth: ${e.message ?: e.javaClass.simpleName}")
+            return Result.Failure("auth: ${e.message ?: e.javaClass.simpleName}", authFailed = true)
         }
 
         // Try servers in order until one accepts. Early-return on first

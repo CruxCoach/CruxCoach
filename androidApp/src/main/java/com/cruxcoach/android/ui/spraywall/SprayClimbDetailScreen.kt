@@ -2,18 +2,23 @@ package com.cruxcoach.android.ui.spraywall
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -46,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -174,7 +180,7 @@ fun SprayClimbDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(climb?.name.orEmpty()) },
+                title = { SprayBarTitle(climb?.name.orEmpty()) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -212,36 +218,33 @@ fun SprayClimbDetailScreen(
             }
             item {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // The board browser's grade square, then the angle (and "Project" for an ungraded climb).
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        SprayGradeBadge(climb.difficulty, state.gradeScale, Modifier.testTag("spray_climb_grade_label"))
                         Text(
-                            climb.difficulty?.let { formatSprayGrade(it, state.gradeScale) } ?: stringResource(R.string.spray_climb_project),
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.weight(1f).testTag("spray_climb_grade_label"),
+                            listOfNotNull(stringResource(R.string.spray_climb_project).takeIf { climb.difficulty == null }, "${wall.angle}°").joinToString(" · "),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(start = 12.dp),
                         )
-                        Text("${wall.angle}°", style = MaterialTheme.typography.titleMedium)
                     }
                     if (state.earlier) {
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.testTag("spray_earlier_banner")) {
                             Text(stringResource(R.string.spray_climb_earlier_banner), modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
                         }
                     } else if (state.lostHolds > 0) {
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.testTag("spray_lost_banner")) {
+                        // The same mark as in the wall's list: error icon and colour, one line.
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("spray_lost_banner")) {
+                            Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                             Text(
                                 pluralStringResource(R.plurals.spray_climb_lost_banner, state.lostHolds, state.lostHolds),
-                                modifier = Modifier.padding(12.dp),
                                 style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(start = 8.dp),
                             )
                         }
                     }
                     if (climb.description.isNotBlank()) Text(climb.description, style = MaterialTheme.typography.bodyMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { logDialog = true }, modifier = Modifier.weight(1f).testTag("spray_log_send")) {
-                            Text(stringResource(R.string.spray_log_send))
-                        }
-                        OutlinedButton(onClick = { logDialog = false }, modifier = Modifier.weight(1f).testTag("spray_log_attempt")) {
-                            Text(stringResource(R.string.spray_log_attempt))
-                        }
-                    }
+                    LogButtons(onSend = { logDialog = true }, onAttempt = { logDialog = false })
                     Text(stringResource(R.string.spray_logbook_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                     if (state.ascents.isEmpty()) {
                         Text(stringResource(R.string.spray_logbook_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -268,23 +271,49 @@ fun SprayClimbDetailScreen(
     }
 }
 
+/** Side by side where both labels fit on one line, else one under the other (320 dp, large fonts). */
+@Composable
+private fun LogButtons(onSend: () -> Unit, onAttempt: () -> Unit) {
+    val send = @Composable { modifier: Modifier ->
+        Button(onClick = onSend, modifier = modifier.testTag("spray_log_send")) { Text(stringResource(R.string.spray_log_send)) }
+    }
+    val attempt = @Composable { modifier: Modifier ->
+        OutlinedButton(onClick = onAttempt, modifier = modifier.testTag("spray_log_attempt")) { Text(stringResource(R.string.spray_log_attempt)) }
+    }
+    BoxWithConstraints {
+        if (maxWidth / LocalDensity.current.fontScale >= 340.dp) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                send(Modifier.weight(1f))
+                attempt(Modifier.weight(1f))
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                send(Modifier.fillMaxWidth())
+                attempt(Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
 @Composable
 private fun AscentRow(ascent: SprayAscent, scale: GradeScale, onDelete: () -> Unit) {
     val date = runCatching {
         LocalDateTime.parse(ascent.climbedAt).format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT))
     }.getOrDefault(ascent.climbedAt)
     var confirm by remember { mutableStateOf(false) }
+    // The attempts are said once: in the headline of an attempts entry, under it for a send.
+    val attempts = pluralStringResource(R.plurals.spray_tries_n, ascent.tries, ascent.tries)
     ListItem(
         headlineContent = {
-            Text(stringResource(if (ascent.isSend) R.string.spray_logbook_send else R.string.spray_logbook_attempt, date))
+            Text(if (ascent.isSend) stringResource(R.string.spray_logbook_send, date) else stringResource(R.string.spray_logbook_attempt, attempts, date))
         },
         supportingContent = {
             val parts = listOfNotNull(
-                stringResource(R.string.spray_logbook_tries, ascent.tries),
+                attempts.takeIf { ascent.isSend },
                 ascent.difficulty?.let { formatSprayGrade(it, scale) },
-                ascent.comment,
+                ascent.comment?.takeIf { it.isNotBlank() },
             )
-            Text(parts.joinToString(" · "))
+            if (parts.isNotEmpty()) Text(parts.joinToString(" · "))
         },
         trailingContent = {
             IconButton(onClick = { confirm = true }) {
@@ -304,6 +333,8 @@ private fun AscentRow(ascent: SprayAscent, scale: GradeScale, onDelete: () -> Un
     }
 }
 
+private const val MAX_TRIES = 99
+
 @Composable
 private fun LogDialog(
     isSend: Boolean,
@@ -321,14 +352,17 @@ private fun LogDialog(
         title = { Text(stringResource(if (isSend) R.string.spray_log_send else R.string.spray_log_attempt)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.spray_log_tries, tries), style = MaterialTheme.typography.labelLarge)
-                Slider(
-                    value = tries.toFloat(),
-                    onValueChange = { tries = it.toInt().coerceAtLeast(1) },
-                    valueRange = 1f..20f,
-                    steps = 18,
-                    modifier = Modifier.testTag("spray_log_tries"),
-                )
+                // The board log's counter: minus, the number, plus.
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().testTag("spray_log_tries")) {
+                    Text(stringResource(R.string.spray_log_tries), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { tries-- }, enabled = tries > 1, modifier = Modifier.testTag("spray_log_tries_minus")) {
+                        Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.cd_less))
+                    }
+                    Text("$tries", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 8.dp).testTag("spray_log_tries_value"))
+                    IconButton(onClick = { tries++ }, enabled = tries < MAX_TRIES, modifier = Modifier.testTag("spray_log_tries_plus")) {
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_more))
+                    }
+                }
                 if (isSend) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.spray_log_rate), modifier = Modifier.weight(1f))

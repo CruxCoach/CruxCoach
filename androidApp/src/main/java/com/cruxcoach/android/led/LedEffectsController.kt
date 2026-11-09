@@ -18,6 +18,8 @@ data class LedEffectsState(
     val status: LedEffectStatus = LedEffectStatus.OFF,
     /** A board that shows effects is connected, whatever is chosen. */
     val boardShowsEffects: Boolean = false,
+    /** The climb on the wall that [status] is about, when known. */
+    val litClimbUuid: String? = null,
 )
 
 /**
@@ -48,12 +50,14 @@ class LedEffectsController @Inject constructor(
             SystemAnimations.observe(context),
             engine.status,
             engine.availability,
-        ) { prefs, animations, status, availability ->
+            engine.litClimbUuid,
+        ) { prefs, animations, status, availability, litClimbUuid ->
             prefs.copy(
                 systemAnimationsRemoved = !animations,
                 status = status,
                 boardShowsEffects = availability != LedBoardAvailability.NO_BOARD &&
                     availability != LedBoardAvailability.UNSUPPORTED,
+                litClimbUuid = litClimbUuid,
             )
         }
     }

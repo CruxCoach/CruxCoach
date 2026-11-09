@@ -69,7 +69,7 @@ class EnergyHintTest : AthleteScreenTest() {
         val need = vm.state.value.energy.avgNeedKcal!!
         render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
         scrollTo("today_list", hasTestTag("today_energy_hint"))
-        waitForText("Last 3 logged days: on average 800 of $need kcal – a snack with carbohydrates before hard finger work helps.")
+        waitForText("Last 3 logged days: on average 800 of $need\u00A0kcal – a snack with carbohydrates before hard finger work helps.")
         // Nothing changed by itself: the level is the coach's until the athlete taps "lighter".
         assertEquals(0, vm.state.value.levelShift)
         click("today_energy_hint_lighter")

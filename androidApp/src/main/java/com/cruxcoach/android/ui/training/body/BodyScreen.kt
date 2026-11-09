@@ -141,7 +141,7 @@ fun BodyScreen(
                 modifier = Modifier.testTag("body_add").semantics { contentDescription = fabLabel },
             )
         },
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
     ) { padding ->
         if (state.loading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -276,13 +276,14 @@ private fun labelFor(metricKey: String): String = BodyMetric.fromKey(metricKey)?
 private fun formatValue(value: Double, unit: String, units: UnitSystem, signed: Boolean = false): String = when (unit) {
     "kg" -> formatMass(value, units, signed)
     "cm" -> if (signed && value > 0) "+" + formatLength(value, units) else formatLength(value, units)
-    "%" -> (if (signed && value > 0) "+" else "") + formatNumber(value) + " %"
-    else -> (if (signed && value > 0) "+" else "") + formatNumber(value) + " " + unit
+    "%" -> (if (signed && value > 0) "+" else "") + formatNumber(value) + "\u00A0%"
+    else -> (if (signed && value > 0) "+" else "") + formatNumber(value) + "\u00A0" + unit
 }
 
 // ── Weight ───────────────────────────────────────────────────────────
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
     val units = state.profile.units
     val hide = state.profile.hideBodyNumbers
@@ -293,7 +294,7 @@ private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
         rate > 0 -> R.string.trb_direction_up
         else -> R.string.trb_direction_down
     })
-    SectionTitle(stringResource(R.string.tr_metric_weight)) {
+    SectionTitle(stringResource(R.string.tr_metric_weight), keepBeside = true) {
         InfoButton(stringResource(R.string.tr_metric_weight), stringResource(R.string.trb_trend_info_text))
     }
     val trend = state.weight.lastOrNull()?.trend
@@ -301,20 +302,21 @@ private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
         EmptyHint(stringResource(R.string.trb_no_weight))
         return
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    TileRow { weight ->
         if (hide) {
-            StatTile(stringResource(R.string.trb_tile_trend), direction, Modifier.weight(1f))
+            StatTile(stringResource(R.string.trb_tile_trend), direction, weight(1f))
         } else {
-            StatTile(stringResource(R.string.trb_tile_trend), formatMass(trend, units), Modifier.weight(1f), supporting = direction)
+            StatTile(stringResource(R.string.trb_tile_trend), formatMass(trend, units), weight(1f), supporting = direction)
             StatTile(stringResource(R.string.trb_tile_rate),
                 // The tile label already says "per week"; the value stays short enough not to wrap.
                 rate?.let { formatMass(it, units, signed = true) } ?: "–",
-                Modifier.weight(1f))
+                weight(1f))
         }
-        StatTile(stringResource(R.string.trb_tile_entries), state.weight.size.toString(), Modifier.weight(0.7f))
+        StatTile(stringResource(R.string.trb_tile_entries), state.weight.size.toString(), weight(0.7f))
     }
     Spacer(Modifier.height(12.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    // Wraps at the largest font instead of breaking "1 J" and pushing "Alle" off the screen.
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         BodyRange.entries.forEach { r ->
             FilterChip(
                 selected = state.range == r,
@@ -352,7 +354,7 @@ private fun ApeIndexRow(apeCm: Double?, units: UnitSystem, onEnter: () -> Unit) 
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (apeCm != null) {
                     val v = Units.lengthToDisplay(apeCm, units)
-                    val text = (if (v > 0) "+" else "") + formatNumber(v) + " " + Units.lengthUnit(units)
+                    val text = (if (v > 0) "+" else "") + formatNumber(v) + "\u00A0" + Units.lengthUnit(units)
                     Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 } else {
                     Text(stringResource(R.string.trb_ape_missing), style = MaterialTheme.typography.bodySmall)
@@ -422,7 +424,7 @@ private fun RecentRow(entry: BodyMeasurement, units: UnitSystem, hidden: Boolean
 
 @Composable
 private fun StrengthSection(state: BodyState, onOpenBenchmarks: () -> Unit = {}) {
-    SectionTitle(stringResource(R.string.trb_strength_title)) {
+    SectionTitle(stringResource(R.string.trb_strength_title), keepBeside = true) {
         InfoButton(stringResource(R.string.trb_strength_title), stringResource(R.string.trb_strength_info_text))
     }
     if (state.strength.isEmpty()) {
@@ -613,14 +615,15 @@ private fun RoundCard(onOpen: () -> Unit) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Straighten, null)
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
+            // "Starten" below the text when it leaves the text too narrow beside it (320 dp, largest font).
+            LabelBesideOrAbove(modifier = Modifier.weight(1f), growth = 1.5f, label = { Column(Modifier.padding(end = 8.dp)) {
                 Text(stringResource(R.string.trb_round_title), style = MaterialTheme.typography.titleSmall)
                 Text(stringResource(R.string.trb_round_card_text), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(Modifier.width(8.dp))
-            FilledTonalButton(onClick = onOpen, modifier = Modifier.testTag("body_round")) {
-                Text(stringResource(R.string.trb_round_action))
+            } }) {
+                FilledTonalButton(onClick = onOpen, modifier = Modifier.testTag("body_round")) {
+                    Text(stringResource(R.string.trb_round_action))
+                }
             }
         }
     }

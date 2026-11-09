@@ -125,6 +125,7 @@ class InjuriesViewModel @Inject constructor(private val service: AthleteService)
     private fun io(block: suspend () -> Unit) { viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); block() } }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun InjuriesScreen(
     onBack: () -> Unit,
@@ -148,13 +149,15 @@ fun InjuriesScreen(
     TrainingScaffold(
         title = stringResource(R.string.tra_injuries_title),
         onBack = onBack,
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
         actions = { InfoButton(stringResource(R.string.tra_injuries_info_title), stringResource(R.string.tra_injuries_info_text)) },
         floatingActionButton = {
             // The FAB's merged node carries no text of its own (device dump 2026-10-19): TalkBack needs the label.
             val fabLabel = stringResource(R.string.tra_injury_add)
+            // Only the icon at a large font, where the label made the button wider than the screen.
             ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Default.Add, null) },
                 text = { Text(stringResource(R.string.tra_injury_add)) },
+                expanded = androidx.compose.ui.platform.LocalDensity.current.fontScale < 1.3f,
                 containerColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent,
                 contentColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccent,
                 modifier = Modifier.testTag("injury_add").semantics { contentDescription = fabLabel })
@@ -210,8 +213,8 @@ fun InjuriesScreen(
                         headlineContent = { Text(listOfNotNull(regionLabel(i.region), i.side?.let { injurySideLabel(it) }, i.detail).joinToString(" · ")) },
                         supportingContent = {
                             Column {
-                                Text("${i.startedOn} – ${i.resolvedOn}")
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("${com.cruxcoach.android.ui.training.coach.formatIsoDay(i.startedOn)} – ${i.resolvedOn?.let { com.cruxcoach.android.ui.training.coach.formatIsoDay(it) }.orEmpty()}")
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick = { viewModel.reopen(i) }, modifier = Modifier.testTag("injury_reopen_${i.id}")) {
                                         Text(stringResource(R.string.tra_injury_reopen))
                                     }
@@ -253,6 +256,7 @@ private fun pauseReasonLabel(r: PauseReason): String = stringResource(when (r) {
     PauseReason.HOLIDAY -> R.string.tra_pause_holiday_label
 })
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun InjuryCard(injury: Injury, onUpdate: (Injury) -> Unit, onResolve: () -> Unit, onDelete: () -> Unit, onOpenComeback: () -> Unit) {
     var severity by remember(injury.id, injury.severity) { mutableFloatStateOf(injury.severity.toFloat()) }
@@ -269,10 +273,10 @@ private fun InjuryCard(injury: Injury, onUpdate: (Injury) -> Unit, onResolve: ()
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             }
             injury.detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            Text(stringResource(R.string.tra_injury_since, injury.startedOn), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.tra_injury_since, com.cruxcoach.android.ui.training.coach.formatIsoDay(injury.startedOn)), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.tra_injury_pain, severity.toInt()), modifier = Modifier.padding(top = 8.dp))
-            Slider(value = severity, onValueChange = { severity = it }, valueRange = 0f..9f, steps = 8,
-                onValueChangeFinished = { onUpdate(injury.copy(severity = severity.toInt())) },
+            Slider(value = severity, onValueChange = { severity = it }, valueRange = 0f..Injury.MAX_SEVERITY.toFloat(),
+                steps = Injury.MAX_SEVERITY - 1, onValueChangeFinished = { onUpdate(injury.copy(severity = severity.toInt())) },
                 modifier = Modifier.testTag("injury_pain_${injury.id}"))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.tra_injury_pause_climbing), modifier = Modifier.weight(1f))
@@ -296,11 +300,13 @@ private fun InjuryCard(injury: Injury, onUpdate: (Injury) -> Unit, onResolve: ()
                 }
                 Text(stringResource(R.string.cb_not_a_substitute), style = MaterialTheme.typography.bodySmall)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Wraps instead of breaking "Lösc/hen" at the largest font.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onResolve, modifier = Modifier.testTag("injury_resolve_${injury.id}")) {
                     Text(stringResource(R.string.tra_injury_resolve))
                 }
-                TextButton(onClick = onDelete, modifier = Modifier.testTag("injury_delete_${injury.id}")) { Text(stringResource(R.string.tr_action_delete)) }
+                TextButton(onClick = onDelete, colors = ButtonDefaults.textButtonColors(contentColor = CruxCoachDesign.colors.onCautionContainer),
+                    modifier = Modifier.testTag("injury_delete_${injury.id}")) { Text(stringResource(R.string.tr_action_delete)) }
             }
         }
     }
@@ -367,7 +373,8 @@ private fun AddInjuryDialog(
                     label = { Text(stringResource(R.string.tra_injury_detail)) }, singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                 Text(stringResource(R.string.tra_injury_pain, severity.toInt()), modifier = Modifier.padding(top = 8.dp))
-                Slider(value = severity, onValueChange = { severity = it }, valueRange = 0f..9f, steps = 8)
+                Slider(value = severity, onValueChange = { severity = it }, valueRange = 0f..Injury.MAX_SEVERITY.toFloat(),
+                    steps = Injury.MAX_SEVERITY - 1, modifier = Modifier.testTag("injury_add_pain"))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.tra_injury_pause_climbing), modifier = Modifier.weight(1f))
                     Switch(checked = pauseClimbing, onCheckedChange = { pauseClimbing = it }, modifier = Modifier.testTag("injury_pause_climbing"))

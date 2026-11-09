@@ -14,6 +14,7 @@ import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -321,16 +322,124 @@ class SprayWallRepositoryTest {
     }
 
     @Test
+    fun `the relays may hold something of mine with a public wall of mine or a climb of mine on a followed wall`() = runTest {
+        assertFalse(repository.hasMineMaybeOnRelays())
+        val mine = newWall(listOf(hold(-1, 0.1f)))
+        line(mine, 1L to SprayHoldRole.START)
+        assertFalse(repository.hasMineMaybeOnRelays(), "a private wall never leaves the phone")
+        repository.updateWallDetails(mine, "Wall", 40, SprayWallVisibility.PUBLIC, null)
+        assertTrue(repository.hasMineMaybeOnRelays())
+        // A withdrawal ends with the wall private.
+        repository.updateWallDetails(mine, "Wall", 40, SprayWallVisibility.PRIVATE, null)
+        assertFalse(repository.hasMineMaybeOnRelays())
+
+        // Someone else's wall and their climb on it are not mine to take back.
+        repository.importRemoteWall(head(1), listOf(remoteVersion(1, "r1.jpg")))
+        repository.upsertRemoteClimb(remoteClimb("1a2b3c4d-5e6f-7081-92a3-b4c5d6e7f809", "d".repeat(64), 2_000))
+        assertFalse(repository.hasMineMaybeOnRelays())
+        // My climb on it is, also after its owner withdrew the wall.
+        val climb = line(remoteId, 1L to SprayHoldRole.START)
+        repository.markRemoteWallWithdrawn(owner, remoteId)
+        assertTrue(repository.hasMineMaybeOnRelays())
+        repository.deleteClimb(climb)
+        assertFalse(repository.hasMineMaybeOnRelays())
+    }
+
+    @Test
+    fun `switched off, the main menu has spray walls while a wall of mine may be on the relays`() = runTest {
+        assertTrue(SprayWallFeature.inMenu(enabled = true) { error("on, the database is not opened") }.first())
+
+        val menu = SprayWallFeature.inMenu(enabled = false) { repository }
+        assertFalse(menu.first())
+        // Made public with an earlier build: the entry is there to withdraw it, and goes once it is private.
+        val wall = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, emptyList())
+        assertTrue(menu.first())
+        repository.updateWallDetails(wall, "Wall", 40, SprayWallVisibility.PRIVATE, null)
+        assertFalse(menu.first())
+    }
+
+    @Test
     fun `migration 16 adds the spray wall tables to an existing secure database`() = runTest {
         listOf("spray_ascent", "spray_climb", "spray_wall_hold", "spray_wall_version", "spray_wall").forEach {
             driver.execute(null, "DROP TABLE $it", 0)
         }
-        // One step only: the database was created at the newest version, so a
-        // replay over later migrations would fail on existing tables.
-        SecureDatabase.Schema.migrate(driver, 16, 17)
+        // Only the spray-wall steps: the database was created at the newest
+        // version, so a replay over earlier migrations would fail on existing tables.
+        SecureDatabase.Schema.migrate(driver, 16, 18)
 
         val wall = newWall(listOf(hold(-1, 0.1f)), name = "After upgrade")
         assertEquals(listOf("After upgrade"), repository.walls().map { it.wall.name })
         assertEquals(1, repository.holds(wall, 1).size)
+    }
+
+    @Test
+    fun `migration 17 keeps the walls and adds the pending head and the unfinished withdrawal`() = runTest {
+        listOf("spray_ascent", "spray_climb", "spray_wall_hold", "spray_wall_version", "spray_wall").forEach {
+            driver.execute(null, "DROP TABLE $it", 0)
+        }
+        SecureDatabase.Schema.migrate(driver, 16, 17)
+        driver.execute(
+            null,
+            "INSERT INTO spray_wall(id, name, angle, visibility, current_version, published_version, created_at, updated_at) " +
+                "VALUES ('w1', 'Before upgrade', 40, 'public', 1, 1, 1, 1)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO spray_wall_version(wall_id, version, kind, photo_file, photo_width, photo_height, hold_count, created_at) " +
+                "VALUES ('w1', 1, 'created', '${photo.fileName}', 3000, 2000, 0, 1)",
+            0,
+        )
+
+        SecureDatabase.Schema.migrate(driver, 17, 18)
+
+        val wall = repository.wall("w1")!!
+        assertEquals("Before upgrade", wall.name)
+        assertNull(wall.headPending)
+        assertNull(wall.withdrawStarted)
+        repository.updateWallDetails("w1", "After upgrade", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+        assertEquals(listOf("After upgrade"), repository.wallsWithHeadPending().map { it.name })
+    }
+
+    @Test
+    fun `a pending head is cleared only for the change it carried`() = runTest {
+        val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(hold(-1, 0.1f)))
+        repository.markPublished(id, 1)
+        assertTrue(repository.wallsWithHeadPending().isEmpty())
+
+        repository.updateWallDetails(id, "Wall B", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+        val sent = repository.wall(id)!!.headPending!!
+        // Renamed again while that head was on its way.
+        repository.updateWallDetails(id, "Wall C", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+        repository.clearHeadPending(id, sent)
+        assertEquals(listOf("Wall C"), repository.wallsWithHeadPending().map { it.name })
+
+        repository.clearHeadPending(id, repository.wall(id)!!.headPending!!)
+        assertTrue(repository.wallsWithHeadPending().isEmpty())
+    }
+
+    @Test
+    fun `a head that went out tells the screens, so the pending hint goes`() = runTest {
+        val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(hold(-1, 0.1f)))
+        repository.markPublished(id, 1)
+        repository.updateWallDetails(id, "Wall B", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+        assertTrue(repository.wall(id)!!.publishPending)
+        val before = repository.changes.value
+
+        repository.clearHeadPending(id, repository.wall(id)!!.headPending!!)
+        assertTrue(repository.changes.value > before)
+        assertTrue(!repository.wall(id)!!.publishPending)
+    }
+
+    @Test
+    fun `going private drops the pending head`() = runTest {
+        val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(hold(-1, 0.1f)))
+        repository.markPublished(id, 1)
+        repository.updateWallDetails(id, "Wall B", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
+
+        repository.updateWallDetails(id, "Wall B", 40, SprayWallVisibility.PRIVATE, null)
+
+        assertTrue(repository.wallsWithHeadPending().isEmpty())
+        assertNull(repository.wall(id)!!.headPending)
     }
 }

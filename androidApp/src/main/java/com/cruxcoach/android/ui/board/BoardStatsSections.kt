@@ -121,7 +121,7 @@ internal fun CustomDateChip(
         label = { Text(label, style = MaterialTheme.typography.labelMedium) },
         colors = FilterChipDefaults.filterChipColors(
             selectedContainerColor = OrangeAccent,
-            selectedLabelColor = DarkBackground
+            selectedLabelColor = CruxCoachDesign.colors.onBrandAccent
         ),
         shape = RoundedCornerShape(20.dp)
     )

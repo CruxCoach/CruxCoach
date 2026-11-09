@@ -228,6 +228,7 @@ fun BenchmarksScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BenchmarkRowCard(
     row: BenchmarkRow,
@@ -246,9 +247,10 @@ private fun BenchmarkRowCard(
     var deleting by remember { mutableStateOf<Benchmark?>(null) }
     Card(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("benchmark_row_${row.def.slug}")) {
         Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            LabelBesideOrAbove(label = {
                 Text(row.def.name(lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f))
+                    modifier = Modifier.padding(end = 8.dp))
+            }) {
                 com.cruxcoach.android.ui.training.coach.learningLabel(row.learning)?.let { label ->
                     SuggestionChip(onClick = {}, label = { Text(label) }, modifier = Modifier.testTag("benchmark_learning_${row.def.slug}"))
                 }
@@ -281,7 +283,8 @@ private fun BenchmarkRowCard(
                 Text(stringResource(R.string.trbm_paused_injury), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
             }
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Wraps instead of standing "Testen" letter by letter at the largest font.
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = onEnter, modifier = Modifier.testTag("benchmark_enter_${row.def.slug}")) {
                     Text(stringResource(R.string.trbm_enter))
                 }
@@ -321,8 +324,8 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
     val sets = b.sets
     when (BenchmarkMath.capacityKind(def)) {
         CapacityKind.E1RM_TOTAL -> {
-            pieces += if (sets != null) "$sets × ${b.reps ?: 0} · " + loadText(def, b.loadKg ?: 0.0, units)
-                else loadText(def, b.loadKg ?: 0.0, units) + " × " + (b.reps ?: 0)
+            pieces += if (sets != null) "$sets\u00A0×\u00A0${b.reps ?: 0} · " + loadText(def, b.loadKg ?: 0.0, units)
+                else loadText(def, b.loadKg ?: 0.0, units) + "\u00A0×\u00A0" + (b.reps ?: 0)
             if (cap != null) {
                 val bw = b.bodyweightKg ?: bodyweight
                 val shown = if (def.load == LoadMode.BODYWEIGHT_PLUS && bw != null) cap.value - bw else cap.value
@@ -332,7 +335,7 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
         }
         CapacityKind.TEN_SECOND_MAX -> {
             val seconds = stringResource(R.string.tr_format_seconds, (b.durationS ?: 10.0).roundToInt())
-            pieces += if (sets != null) "$sets × $seconds · " + loadText(def, b.loadKg ?: 0.0, units)
+            pieces += if (sets != null) "$sets\u00A0×\u00A0$seconds · " + loadText(def, b.loadKg ?: 0.0, units)
                 else loadText(def, b.loadKg ?: 0.0, units) + " · " + seconds
             b.edgeMm?.let { pieces += stringResource(R.string.tr_format_mm, formatNumber(it)) }
             b.grip?.let { pieces += gripLabel(it) }
@@ -347,7 +350,7 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
             cap?.let { pieces += stringResource(R.string.trbm_max_reps_about, it.value.roundToInt()) }
         } else pieces += stringResource(R.string.trbm_max_reps, b.reps ?: 0)
         CapacityKind.MAX_SECONDS -> if (sets != null) {
-            pieces += "$sets × " + stringResource(R.string.tr_format_seconds, (b.durationS ?: 0.0).roundToInt())
+            pieces += "$sets\u00A0×\u00A0" + stringResource(R.string.tr_format_seconds, (b.durationS ?: 0.0).roundToInt())
             cap?.let { pieces += stringResource(R.string.trbm_max_seconds_about, it.value.roundToInt()) }
         } else pieces += stringResource(R.string.trbm_max_seconds, (b.durationS ?: 0.0).roundToInt())
         null -> Unit
@@ -529,9 +532,9 @@ fun prescriptionText(def: ExerciseDefinition, t: LoadTarget, units: UnitSystem):
     val reps = t.reps
     val duration = t.durationS
     val amount = when {
-        reps != null -> "$sets × $reps"
-        duration != null -> "$sets × " + stringResource(R.string.tr_format_seconds, duration)
-        else -> "$sets ×"
+        reps != null -> "$sets\u00A0×\u00A0$reps"
+        duration != null -> "$sets\u00A0×\u00A0" + stringResource(R.string.tr_format_seconds, duration)
+        else -> "$sets\u00A0×"
     }
     val load = t.loadKg?.let { " · " + loadText(def, it, units) } ?: ""
     return stringResource(R.string.trbm_planned, amount + load)
@@ -591,6 +594,7 @@ class BenchmarkCardViewModel @Inject constructor(private val service: AthleteSer
 }
 
 /** Performance value of one exercise: what is known, what it plans, enter or test. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BenchmarkCard(
     slug: String,
@@ -625,7 +629,7 @@ fun BenchmarkCard(
                     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = { entering = true }, modifier = Modifier.testTag("exercise_benchmark_enter")) {
                     Text(stringResource(R.string.trbm_enter))
                 }

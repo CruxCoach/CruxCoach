@@ -184,6 +184,17 @@ class BoardBleAnimationFrameTest {
         assertEquals(first.leds, second.leds)
     }
 
+    @Test fun `the lit frame names its climb, also after new colours`() = runTest {
+        val link = Link()
+        val connection = link.connection
+        assertTrue(connection.sendClimb(holds, ledMap, climbUuid = "climb-a"))
+        assertEquals("climb-a", assertNotNullFrame(connection).climbUuid)
+        assertTrue(connection.resendWithColors(mapOf(12 to 0x1c)))
+        assertEquals("climb-a", assertNotNullFrame(connection).climbUuid)
+        assertTrue(connection.sendClimb(holds, ledMap))
+        assertNull("a sender that names no climb", assertNotNullFrame(connection).climbUuid)
+    }
+
     private fun assertNotNullFrame(connection: BoardBleConnection): LitFrame {
         val frame = connection.litFrame.value
         assertNotNull(frame)

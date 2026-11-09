@@ -111,24 +111,24 @@
     <string name="tr_routine_injury_one_arm_desc">Ohne Wand: einarmiges Blockheben mit der gesunden Hand, Klimmzüge, Rudern, Schulter und Rumpf.</string>
     <string name="tr_routine_pull_antagonist">Zug &amp; Antagonist (ohne Klettern)</string>
     <string name="tr_routine_pull_antagonist_desc">Ausgewogen ziehen und drücken für Tage ohne Wand.</string>
-    <string name="tr_routine_antagonist_15">Antagonist 15 min</string>
+    <string name="tr_routine_antagonist_15">Antagonist 15\u00A0min</string>
     <string name="tr_routine_antagonist_15_desc">Die kurze Ergänzung nach dem Board: Schultern, Handgelenke, Fingerstrecker.</string>
     <string name="tr_routine_legs_basics">Bein-Basis</string>
     <string name="tr_routine_legs_basics_desc">Kniebeuge, Hüftbeuge, einbeinig, hintere Kette und Adduktoren.</string>
     <string name="tr_routine_core_climber">Rumpf für Kletterer</string>
     <string name="tr_routine_core_climber_desc">Körperspannung vom Dead Bug bis zum L-Sit.</string>
-    <string name="tr_routine_mobility_10">Mobilität 10 min</string>
+    <string name="tr_routine_mobility_10">Mobilität 10\u00A0min</string>
     <string name="tr_routine_mobility_10_desc">Hüfte für hohe Tritte und Eindrehen, Schultern und Handgelenke.</string>
     <string name="tr_routine_baseline_tests">Leistungstest</string>
-    <string name="tr_routine_baseline_tests_desc">Max Hang an 20 mm, maximale Klimmzüge, Hollow Hold – alle 6–8 Wochen wiederholen.</string>
+    <string name="tr_routine_baseline_tests_desc">Max Hang an 20\u00A0mm, maximale Klimmzüge, Hollow Hold – alle 6–8\u00A0Wochen wiederholen.</string>
 
-    <string name="tr_format_kg">%1$s kg</string>
-    <string name="tr_format_lb">%1$s lb</string>
-    <string name="tr_format_cm">%1$s cm</string>
-    <string name="tr_format_in">%1$s in</string>
-    <string name="tr_format_seconds">%1$d s</string>
-    <string name="tr_format_mm">%1$s mm</string>
-    <string name="tr_format_percent_bw">%1$d %% KG</string>
+    <string name="tr_format_kg">%1$s\u00A0kg</string>
+    <string name="tr_format_lb">%1$s\u00A0lb</string>
+    <string name="tr_format_cm">%1$s\u00A0cm</string>
+    <string name="tr_format_in">%1$s\u00A0in</string>
+    <string name="tr_format_seconds">%1$d\u00A0s</string>
+    <string name="tr_format_mm">%1$s\u00A0mm</string>
+    <string name="tr_format_percent_bw">%1$d\u00A0%% KG</string>
     <string name="tr_bodyweight">Körpergewicht</string>
     <string name="tr_assisted">entlastet</string>
     <string name="tr_weight">Gewicht</string>
@@ -143,7 +143,7 @@
     <string name="tr_weight_stack">Gewicht am Kabelzug</string>
     <string name="tr_weight_force">Wert am Kraftmesser</string>
     <string name="tr_weight_input">%1$s in %2$s</string>
-    <string name="tr_format_pair">%1$d × %2$s</string>
+    <string name="tr_format_pair">%1$d\u00A0×\u00A0%2$s</string>
     <string name="tr_format_per_dumbbell">%1$s pro Hantel</string>
     <string name="tr_format_per_kettlebell">%1$s pro Kettlebell</string>
 

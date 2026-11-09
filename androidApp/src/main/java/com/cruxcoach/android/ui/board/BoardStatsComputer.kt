@@ -6,9 +6,9 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.AscentWithClimb
 import java.time.Clock
+import java.time.DateTimeException
 import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import java.time.temporal.WeekFields
@@ -20,7 +20,6 @@ import java.util.Locale
  */
 object BoardStatsComputer {
 
-    private val DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE
     private val WEEK_FIELD = WeekFields.ISO.weekOfWeekBasedYear()
     private val WEEK_BASED_YEAR_FIELD = WeekFields.ISO.weekBasedYear()
 
@@ -31,6 +30,8 @@ object BoardStatsComputer {
     private const val ELITE_THRESHOLD = 27.0
     private const val AVG_WINDOW_WEEKS = 8
     private const val DAYS_PER_WEEK = 7L
+    /** The shortest period with an average of climbing days per week. */
+    internal const val MIN_AVERAGE_DAYS = 14
 
     fun computeStats(
         ascents: List<AscentWithClimb>,
@@ -138,7 +139,7 @@ object BoardStatsComputer {
         )
     }
 
-    /** Sessions per week over the last eight weeks, for the logbook overview (see [computeAvgSessionsPerWeek]). */
+    /** Sessions per week over the last eight weeks or since the first, for the logbook overview (see [computeAvgSessionsPerWeek]). */
     fun sessionsPerWeekOf(ascents: List<AscentWithClimb>, clock: Clock = Clock.systemDefaultZone()): Double =
         computeAvgSessionsPerWeek(ascents.mapNotNull { parseDate(it.climbedAt) }.distinct().sorted(), clock)
 
@@ -371,9 +372,12 @@ object BoardStatsComputer {
         }
     }
 
-    /** Climbing days per week on average over the whole [period]. */
+    /**
+     * Climbing days per week on average over the whole [period]; none for a
+     * period shorter than [MIN_AVERAGE_DAYS], where two days would read as 7 a week.
+     */
     private fun averageDaysPerWeek(entries: List<AscentWithClimb>, period: StatsPeriod?): Double {
-        if (period == null) return 0.0
+        if (period == null || period.days < MIN_AVERAGE_DAYS) return 0.0
         val days = entries.mapNotNull { parseDate(it.climbedAt) }.distinct().size
         return days * DAYS_PER_WEEK.toDouble() / period.days
     }
@@ -525,28 +529,24 @@ object BoardStatsComputer {
     }
 
     /**
-     * Sessions per week over the last [AVG_WINDOW_WEEKS] weeks — a true
-     * window average, matching the "(8 W.)" tile label: distinct session
-     * days inside the window divided by the number of weeks the window
-     * spans. The divisor is the elapsed window (the full 8 weeks once the
-     * account is that old), NOT the span since the first session — dividing
-     * by the active span inflated the figure for young logbooks (2 sessions
-     * over 3 weeks read as 0.6/wk instead of the 8-week 0.25/wk the label
-     * promises). A brand-new logbook divides by at least one week so a
-     * single early session isn't rounded to zero.
+     * Sessions per week over the last [AVG_WINDOW_WEEKS] weeks, or since the
+     * first session when the logbook is younger: distinct session days in
+     * that span divided by its weeks, so a three-week-old logbook isn't
+     * divided by eight. None before [MIN_AVERAGE_DAYS] of history, where a
+     * single day would read as 0.1 or 7 a week, like the period's average.
      */
     private fun computeAvgSessionsPerWeek(
         sessionDates: List<LocalDate>,
         clock: Clock,
     ): Double {
-        if (sessionDates.isEmpty()) return 0.0
+        val first = sessionDates.minOrNull() ?: return 0.0
         val today = LocalDate.now(clock)
-        val windowStart = today.minusDays(AVG_WINDOW_WEEKS * DAYS_PER_WEEK - 1)
-        val recent = sessionDates.count { !it.isBefore(windowStart) }
-        if (recent == 0) return 0.0
-        val daysSpanned = ChronoUnit.DAYS.between(windowStart, today) + 1
-        val weeks = (daysSpanned.toDouble() / DAYS_PER_WEEK).coerceAtLeast(1.0)
-        return recent / weeks
+        val history = ChronoUnit.DAYS.between(first, today) + 1
+        if (history < MIN_AVERAGE_DAYS) return 0.0
+        val span = minOf(history, AVG_WINDOW_WEEKS * DAYS_PER_WEEK)
+        val spanStart = today.minusDays(span - 1)
+        val recent = sessionDates.count { !it.isBefore(spanStart) }
+        return recent * DAYS_PER_WEEK.toDouble() / span
     }
 
     /**
@@ -574,10 +574,30 @@ object BoardStatsComputer {
         return streak
     }
 
-    private fun parseDate(dateStr: String): LocalDate? {
+    /**
+     * The day of a logbook timestamp ("yyyy-MM-dd…"), or null when it has none.
+     * Read by hand rather than with [LocalDate.parse]: the statistics read the day
+     * of every entry several times, and the formatter took most of their time on a
+     * long logbook. Impossible dates are null, as with ISO_LOCAL_DATE.
+     */
+    internal fun parseDate(dateStr: String): LocalDate? {
+        if (dateStr.length < 10 || dateStr[4] != '-' || dateStr[7] != '-') return null
+        fun digits(from: Int, to: Int): Int {
+            var value = 0
+            for (i in from until to) {
+                val c = dateStr[i]
+                if (c !in '0'..'9') return -1
+                value = value * 10 + (c - '0')
+            }
+            return value
+        }
+        val year = digits(0, 4)
+        val month = digits(5, 7)
+        val day = digits(8, 10)
+        if (year < 0 || month < 0 || day < 0) return null
         return try {
-            LocalDate.parse(dateStr.take(10), DATE_FMT)
-        } catch (_: Exception) {
+            LocalDate.of(year, month, day)
+        } catch (_: DateTimeException) {
             null
         }
     }

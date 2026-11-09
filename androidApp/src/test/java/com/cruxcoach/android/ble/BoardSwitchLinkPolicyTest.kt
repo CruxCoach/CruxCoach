@@ -28,6 +28,24 @@ class BoardSwitchLinkPolicyTest {
     }
 
     @Test
+    fun `a size the size check confirmed on the connected board keeps the link`() {
+        val policy = BoardSwitchLinkPolicy()
+        policy.onLinkUp(kilter12x12, BoardBrand.KILTER, onboarded = true)
+        assertFalse(policy.onSelectionChanged(kilter16x12, BoardBrand.KILTER, onboarded = true, sizeConfirmedOnBoard = true))
+        // Bound to the corrected size: going back is a switch again.
+        assertTrue(policy.onSelectionChanged(kilter12x12, BoardBrand.KILTER, onboarded = true))
+    }
+
+    @Test
+    fun `the size check never keeps the link across a layout or brand switch`() {
+        val policy = BoardSwitchLinkPolicy()
+        policy.onLinkUp(kilter12x12, BoardBrand.KILTER, onboarded = true)
+        assertTrue(policy.onSelectionChanged(homewall, BoardBrand.KILTER, onboarded = true, sizeConfirmedOnBoard = true))
+        policy.onLinkUp(kilter12x12, BoardBrand.KILTER, onboarded = true)
+        assertTrue(policy.onSelectionChanged(tension, BoardBrand.KILTER, onboarded = true, sizeConfirmedOnBoard = true))
+    }
+
+    @Test
     fun `an unchanged selection keeps the link`() {
         val policy = BoardSwitchLinkPolicy()
         policy.onLinkUp(kilter16x12, BoardBrand.KILTER, onboarded = true)

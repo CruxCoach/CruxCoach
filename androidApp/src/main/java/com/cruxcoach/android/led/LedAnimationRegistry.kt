@@ -9,7 +9,9 @@ package com.cruxcoach.android.led
  * grow. To remove one: delete the entry; a stored pref naming it silently falls
  * back to [DEFAULT] instead of crashing or doing nothing.
  *
- * Order is the order the settings screen shows, so keep "none" first.
+ * Keep "none" first. The settings screen shows this order with the effects that
+ * flash moved to the end (the golden test also walks this list, so reordering it
+ * here would change that test's text).
  */
 object LedAnimationRegistry {
 

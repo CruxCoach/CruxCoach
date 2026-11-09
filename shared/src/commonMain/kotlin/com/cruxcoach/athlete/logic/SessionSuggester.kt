@@ -103,6 +103,8 @@ enum class SuggestionReason {
     WEEKLY_TARGET,
     /** The week already has most of these sets: today plans fewer of them (issue #59). */
     WEEK_VOLUME_FULL,
+    /** Climbing planned later this week will add these sets: today plans fewer of them (issue #59). */
+    WEEK_VOLUME_CLIMBING_AHEAD,
     /** The week has no room left for this kind of work: an easy mobility session instead (issue #59). */
     WEEK_VOLUME_DONE,
     /** The week's training days, climbing included, are used up: recovery by default, a chosen kind still trains (owner 2026-11-06). */
@@ -321,6 +323,8 @@ object SessionSuggester {
     private const val REST_MINUTES = 10
     /** Fewer work sets than this after the weekly cap make no training of their own (issue #59). */
     private const val MIN_WORK_SETS = 6
+    /** The other kind of training a week still needs may be shorter: this many work sets ([otherWeeklyFocus]). */
+    private const val MIN_OTHER_KIND_SETS = 4
     /** The easy mobility session of a week without room left. */
     private const val EASY_MINUTES = 20
     private const val ADDON_MINUTES = 15
@@ -698,8 +702,9 @@ object SessionSuggester {
     /**
      * No area gets more sets today than its weekly maximum still allows (training simulation, issue #59: a
      * 60-minute legs-and-core day filled with 16 leg sets against a weekly maximum of 10). Counted like the
-     * weekly targets: every work set, each side of one-sided work. An item that no longer fits gets fewer
-     * sets (at least two) or leaves; the first main exercise of a training always stays, with two sets
+     * weekly targets: every work set, each side of one-sided work, and the climbing still planned this week
+     * keeps its share free ([climbingAhead]). An item that no longer fits gets fewer sets (at least two) or
+     * leaves; the first main exercise of a training stays with two sets while its area has room at all
      * ([keepFirst]; the short block after climbing may go entirely).
      */
     private fun capToWeeklyRoom(ctx: Ctx, items: List<RoutineItem>, keepFirst: Boolean = true): List<RoutineItem> {
@@ -709,30 +714,88 @@ object SessionSuggester {
             .filter { !it.target.isOff && it.target.maxSets > 0 && it.area != VolumeArea.FINGER }
             .associate { it.area to (it.target.maxSets - it.effective) }
             .toMutableMap()
+        // Issue #59: Tuesday's pull training filled the room that Wednesday's and Friday's bouldering then went over.
+        val reserved = climbingReserve(input)
         val out = mutableListOf<RoutineItem>()
         var kept = 0
-        var capped = false
+        var full = false
+        var forClimbing = false
         for (item in items) {
             val def = input.catalog.fallbackFor(item.slug)
             val area = WeeklyVolume.areaOf(def)
             val left = area?.let { room[it] }
             if (item.warmup || item.test || left == null) { out += item; if (!item.warmup) kept++; continue }
             val perSet = if (def.unilateral && item.sides == SideMode.BOTH) 2 else 1
-            val fits = floor(left / perSet).toInt()
-            val sets = when {
-                fits >= item.sets -> item.sets
-                keepFirst && kept < 1 -> min(item.sets, max(2, fits))
-                fits >= 2 -> fits
-                else -> 0
+            fun setsFor(free: Double): Int {
+                val fits = floor(free / perSet).toInt()
+                return when {
+                    fits >= item.sets -> item.sets
+                    keepFirst && kept < 1 && fits >= 1 -> min(item.sets, max(2, fits))
+                    fits >= 2 -> fits
+                    else -> 0
+                }
             }
-            if (sets != item.sets) capped = true
+            val sets = setsFor(left - (reserved[area] ?: 0.0))
+            if (sets != item.sets) {
+                // Without the planned climbing more would have fitted.
+                if (setsFor(left) > sets) forClimbing = true else full = true
+            }
             if (sets == 0) continue
             out += item.copy(sets = sets)
             kept++
             room[area] = left - sets * perSet
         }
-        if (capped && SuggestionReason.WEEK_VOLUME_FULL !in ctx.reasons) ctx.reasons += SuggestionReason.WEEK_VOLUME_FULL
+        // The climbing reason only when nothing was cut for a full week: then that is the whole story.
+        val reason = when {
+            full -> SuggestionReason.WEEK_VOLUME_FULL
+            forClimbing -> SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD
+            else -> null
+        }
+        if (reason != null && reason !in ctx.reasons) ctx.reasons += reason
         return out
+    }
+
+    /** Set equivalents per area that the climbing still planned this week will add ([climbingAhead]). */
+    private fun climbingReserve(input: SuggestionInput): Map<VolumeArea, Double> {
+        val ahead = climbingAhead(input)
+        return VolumeArea.entries.associateWith { area -> ahead.sumOf { WeeklyVolume.climbingSetCredit(area, it) } }
+    }
+
+    /**
+     * The climbing days still planned this week after today that are not logged yet, each with its intensity:
+     * the day's plan, else what the athlete logged on that weekday last time, else volume. None while an injury
+     * pauses climbing, and no harder than a comeback stage allows. Today is not counted: today's climbing is
+     * either today's training, or Today has just replaced it (board skipped, comeback stage), or it is logged
+     * and counts in the week already.
+     */
+    private fun climbingAhead(input: SuggestionInput): List<ClimbIntensity> {
+        if (input.injuries.any { it.isActive && it.climbingPaused }) return emptyList()
+        val level = input.injuries.mapNotNull { Comeback.climbingLevel(it) }.minOrNull()
+        val end = (input.weekStart ?: WeeklyVolume.weekStartOf(input.today)).plus(DatePeriod(days = 6))
+        val out = mutableListOf<ClimbIntensity>()
+        var day = input.today.plus(DatePeriod(days = 1))
+        while (day <= end) {
+            val logged = input.activities[day]?.let { it.climbingMinutes > 0 || it.climbingEfforts > 0 } == true
+            if (!logged && DayPlans.climbingPlanned(input.profile, day)) {
+                val weekday = day.dayOfWeek
+                val planned = DayPlans.climbIntensity(input.profile, day)
+                    ?: input.activities.filter { (d, a) -> d < input.today && d.dayOfWeek == weekday && a.climbIntensity != null }
+                        .maxByOrNull { it.key }?.value?.climbIntensity
+                    ?: ClimbIntensity.VOLUME
+                withinStage(planned, level)?.let { out += it }
+            }
+            day = day.plus(DatePeriod(days = 1))
+        }
+        return out
+    }
+
+    /** A planned climbing day as a comeback stage lets it happen: not at all, light, or at most volume or hard. */
+    private fun withinStage(planned: ClimbIntensity, level: ClimbingLevel?): ClimbIntensity? = when (level) {
+        null, ClimbingLevel.FULL -> planned
+        ClimbingLevel.NONE -> null
+        ClimbingLevel.EASY -> ClimbIntensity.LIGHT
+        ClimbingLevel.MODERATE -> minOf(planned, ClimbIntensity.VOLUME)
+        ClimbingLevel.HARD -> minOf(planned, ClimbIntensity.HARD)
     }
 
     /**
@@ -1144,6 +1207,8 @@ object SessionSuggester {
         weekly: Boolean = true,
         /** Rest days and the event stay short whatever the time. */
         grow: Boolean = true,
+        /** A week with no room for [focus] may try the other kind of training first ([otherWeeklyFocus]). */
+        switchFocus: Boolean = true,
     ): SessionSuggestion {
         val input = ctx.input
         val shaped = if (weekly && focus in WEEKLY_FOCI) withWeeklyDeficit(slots, focus, ctx) else slots
@@ -1156,9 +1221,24 @@ object SessionSuggester {
         if (training) items = applyBlock(ctx, items)
         if (weekly && focus in WEEKLY_FOCI) {
             val capped = capToWeeklyRoom(ctx, items)
-            // The week has no room left for this kind of work: an easy mobility session instead of a few lonely sets.
-            if (capped != items && capped.filter { !it.warmup && !it.test }.sumOf { it.sets } < MIN_WORK_SETS) {
+            val minimum = if (switchFocus) MIN_WORK_SETS else MIN_OTHER_KIND_SETS
+            if (capped != items && capped.filter { !it.warmup && !it.test }.sumOf { it.sets } < minimum) {
+                // The other kind of training still has areas below their goal: that one instead (issue #59: legs at 0
+                // while pull and core were full turned the day into mobility).
+                val other = otherWeeklyFocus(ctx, focus)?.takeIf { switchFocus }
+                if (other != null) {
+                    ctx.reasons.removeAll(FOCUS_CHOICE_REASONS)
+                    ctx.evidence.removeAll { it is Evidence.WeeklyTarget }
+                    ctx.reasons.remove(SuggestionReason.WEEKLY_TARGET)
+                    ctx.reasons.add(0, SuggestionReason.WEEKLY_TARGET)
+                    return build(ctx, other, withFocusAreas(slotsFor(other), other, ctx.coach.focus, ctx), budgetMinutes, planned,
+                        switchFocus = false)
+                }
+                // The week has no room left for this kind of work: an easy mobility session instead of a few lonely sets.
+                // After a switch, the area that called for it no longer explains the day.
+                if (!switchFocus) { ctx.reasons.remove(SuggestionReason.WEEKLY_TARGET); ctx.evidence.removeAll { it is Evidence.WeeklyTarget } }
                 ctx.reasons.remove(SuggestionReason.WEEK_VOLUME_FULL)
+                ctx.reasons.remove(SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD)
                 ctx.reasons.add(0, SuggestionReason.WEEK_VOLUME_DONE)
                 return build(ctx, SuggestionFocus.MOBILITY_RECOVERY, List(4) { Slot.MOBILITY }, min(budgetMinutes, EASY_MINUTES), planned,
                     weekly = false)
@@ -1168,6 +1248,28 @@ object SessionSuggester {
         val fitted = fitToBudget(items, budgetMinutes, input.catalog)
         if (fitted != items) ctx.reasons += SuggestionReason.SHORTENED_TO_TIME
         return finish(ctx, focus, routineOf(focus, fitted), planned)
+    }
+
+    /** What chose the first kind of training or trimmed it; gone once the week turns the day to the other kind. */
+    private val FOCUS_CHOICE_REASONS = setOf(SuggestionReason.PULL_LONGER_AGO, SuggestionReason.LEGS_LONGER_AGO,
+        SuggestionReason.WEEK_VOLUME_FULL, SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD)
+
+    /**
+     * Pull and push for a legs-and-core day the week has no room for, and the other way round, when an area of the
+     * other kind is still below its weekly goal. Not into a pulling day before a limit day ([limitTomorrow]).
+     */
+    private fun otherWeeklyFocus(ctx: Ctx, focus: SuggestionFocus): SuggestionFocus? {
+        val input = ctx.input
+        val (other, areas) = when (focus) {
+            SuggestionFocus.PULL_PUSH -> SuggestionFocus.LEGS_CORE to setOf(VolumeArea.LEGS, VolumeArea.CORE)
+            SuggestionFocus.LEGS_CORE -> if (limitTomorrow(input)) return null
+                else SuggestionFocus.PULL_PUSH to setOf(VolumeArea.PULL, VolumeArea.PUSH, VolumeArea.ANTAGONIST)
+            else -> return null
+        }
+        val reserved = climbingReserve(input)
+        val below = input.weekly.any { it.area in areas && !it.target.isOff && it.goal > 0 && it.effective < it.goal &&
+            it.target.maxSets - it.effective - (reserved[it.area] ?: 0.0) >= 2 }
+        return other.takeIf { below }
     }
 
     /** What fills more time, in this order: the same kind of work, then a cool-down. Never more finger work. */

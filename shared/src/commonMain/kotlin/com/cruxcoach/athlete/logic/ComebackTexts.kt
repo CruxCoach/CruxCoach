@@ -174,11 +174,11 @@ object ComebackTexts {
     fun findingNotes(f: InjuryFinding): List<Txt> = when (f) {
         InjuryFinding.PULLEY_STRAIN -> listOf(A4)
         InjuryFinding.PULLEY_PARTIAL -> listOf(Txt(
-            "After a partial tear about 10 days of rest in a splint or tape are usual before loading.",
-            "Nach einem Teilriss sind etwa 10 Tage Ruhe mit Schiene oder Tape üblich, bevor belastet wird."), A4)
+            "After a partial tear about 10\u00A0days of rest in a splint or tape are usual before loading.",
+            "Nach einem Teilriss sind etwa 10\u00A0Tage Ruhe mit Schiene oder Tape üblich, bevor belastet wird."), A4)
         InjuryFinding.PULLEY_RUPTURE -> listOf(Txt(
-            "After a complete tear, 10–14 days of rest and then a protective ring for about 2 months are usual. Start loading only when your doctor agrees, and keep to 0–1 of 10 in the first weeks.",
-            "Nach einem kompletten Riss sind 10–14 Tage Ruhe und danach etwa 2 Monate ein Schutzring üblich. Belaste erst, wenn deine Ärztin oder dein Arzt einverstanden ist, und halte dich in den ersten Wochen an 0–1 von 10."), A4)
+            "After a complete tear, 10–14\u00A0days of rest and then a protective ring for about 2\u00A0months are usual. Start loading only when your doctor agrees, and keep to 0–1 of 10 in the first weeks.",
+            "Nach einem kompletten Riss sind 10–14\u00A0Tage Ruhe und danach etwa 2\u00A0Monate ein Schutzring üblich. Belaste erst, wenn deine Ärztin oder dein Arzt einverstanden ist, und halte dich in den ersten Wochen an 0–1 von 10."), A4)
         InjuryFinding.PULLEY_MULTIPLE -> listOf(OWN_PLAN_NOTE)
         InjuryFinding.TENOSYNOVITIS -> listOf(Txt(
             "With tendon sheath inflammation, less load is the core. Mild pain up to 3 of 10 that settles by the next morning is usually acceptable here. It often takes weeks to months.",
@@ -187,14 +187,14 @@ object ComebackTexts {
             "Avoid pockets and mixed grips (one finger straight, the others bent). Stretch gently in the painful position with very little load. Open hand and half crimp are usually fine.",
             "Meide Löcher und Mischgriffe (ein Finger gestreckt, die anderen gebeugt). Dehn sanft in der schmerzhaften Stellung mit sehr wenig Last. Offen und halb aufgestellt sind meist unproblematisch."))
         InjuryFinding.PIP_CAPSULITIS -> listOf(Txt(
-            "Unload about 2 weeks, move the joint daily, crimp less. Full crimp is optional and comes last.",
-            "Etwa 2 Wochen entlasten, das Gelenk täglich bewegen, weniger crimpen. Voll aufgestellt ist optional und kommt zuletzt."))
+            "Unload about 2\u00A0weeks, move the joint daily, crimp less. Full crimp is optional and comes last.",
+            "Etwa 2\u00A0Wochen entlasten, das Gelenk täglich bewegen, weniger crimpen. Voll aufgestellt ist optional und kommt zuletzt."))
         InjuryFinding.COLLATERAL_LIGAMENT -> listOf(Txt(
-            "With a stable joint, buddy tape (to the neighbouring finger) for 2–4 weeks is usual. If the joint wobbles, it belongs with a hand surgeon.",
-            "Bei stabilem Gelenk ist Buddy-Tape (an den Nachbarfinger) für 2–4 Wochen üblich. Wackelt das Gelenk, gehört es in die Handchirurgie."))
+            "With a stable joint, buddy tape (to the neighbouring finger) for 2–4\u00A0weeks is usual. If the joint wobbles, it belongs with a hand surgeon.",
+            "Bei stabilem Gelenk ist Buddy-Tape (an den Nachbarfinger) für 2–4\u00A0Wochen üblich. Wackelt das Gelenk, gehört es in die Handchirurgie."))
         InjuryFinding.VOLAR_PLATE -> listOf(Txt(
-            "Usual are 2–4 weeks in a splint as your doctor says, then buddy tape.",
-            "Üblich sind 2–4 Wochen Schiene nach ärztlicher Vorgabe, danach Buddy-Tape."))
+            "Usual are 2–4\u00A0weeks in a splint as your doctor says, then buddy tape.",
+            "Üblich sind 2–4\u00A0Wochen Schiene nach ärztlicher Vorgabe, danach Buddy-Tape."))
         InjuryFinding.FLEXOR_TENDON_TEAR -> listOf(Txt(
             "A torn flexor tendon is repaired surgically, best within about a week. Afterwards your hand surgeon's plan applies.",
             "Ein Beugesehnen-Riss wird operiert, am besten innerhalb etwa einer Woche. Danach gilt der Plan deiner Handchirurgie."), OWN_PLAN_NOTE)
@@ -214,8 +214,8 @@ object ComebackTexts {
             "A pop with a bruise in the crease or a changed biceps shape: see a doctor within days.",
             "Ein Knall mit Bluterguss in der Beuge oder veränderter Bizepsform: in wenigen Tagen zum Arzt."))
         InjuryFinding.ULNAR_WRIST -> listOf(Txt(
-            "Scaphoid, hamate and an unstable joint should be ruled out first. Pain beyond 4–6 weeks despite unloading: have it checked again.",
-            "Kahnbein, Hamulus und ein instabiles Gelenk sollten vorher ausgeschlossen sein. Schmerzen über 4–6 Wochen trotz Entlastung: erneut abklären lassen."))
+            "Scaphoid, hamate and an unstable joint should be ruled out first. Pain beyond 4–6\u00A0weeks despite unloading: have it checked again.",
+            "Kahnbein, Hamulus und ein instabiles Gelenk sollten vorher ausgeschlossen sein. Schmerzen über 4–6\u00A0Wochen trotz Entlastung: erneut abklären lassen."))
         InjuryFinding.ANKLE_SPRAIN -> listOf(Txt(
             "A brace or tape in the first weeks is usual. Rope instead of bouldering, climb down instead of jumping.",
             "Bandage oder Tape in den ersten Wochen ist üblich. Seil statt Bouldern, abklettern statt abspringen."))
@@ -243,47 +243,47 @@ object ComebackTexts {
     /** The usual course reported in the literature, as information – never a schedule (fingers.md §3.1, other-injuries.md). */
     fun typicalCourse(f: InjuryFinding): Txt? = when (f) {
         InjuryFinding.PULLEY_STRAIN -> Txt(
-            "Easy climbing usually after 2–4 weeks, full climbing around 6 weeks; tape when climbing for about 3 months.",
-            "Leichtes Klettern meist nach 2–4 Wochen, volles Klettern um 6 Wochen; beim Klettern etwa 3 Monate tapen.")
+            "Easy climbing usually after 2–4\u00A0weeks, full climbing around 6\u00A0weeks; tape when climbing for about 3\u00A0months.",
+            "Leichtes Klettern meist nach 2–4\u00A0Wochen, volles Klettern um 6\u00A0Wochen; beim Klettern etwa 3\u00A0Monate tapen.")
         InjuryFinding.PULLEY_PARTIAL -> Txt(
-            "About 10 days of rest, then 2–4 weeks of careful loading; full climbing usually after 6–10 weeks; tape for about 3 months.",
-            "Etwa 10 Tage Ruhe, dann 2–4 Wochen vorsichtig belasten; volles Klettern meist nach 6–10 Wochen; etwa 3 Monate tapen.")
+            "About 10\u00A0days of rest, then 2–4\u00A0weeks of careful loading; full climbing usually after 6–10\u00A0weeks; tape for about 3\u00A0months.",
+            "Etwa 10\u00A0Tage Ruhe, dann 2–4\u00A0Wochen vorsichtig belasten; volles Klettern meist nach 6–10\u00A0Wochen; etwa 3\u00A0Monate tapen.")
         InjuryFinding.PULLEY_RUPTURE -> Txt(
-            "10–14 days of rest, then a ring for about 2 months; easy climbing after 6–8 weeks at the earliest, full climbing around 3 months; tape for about 6 months. Getting back to the old level took 8.8 months on average after complete tears (47 climbers who wore a ring).",
-            "10–14 Tage Ruhe, dann etwa 2 Monate Ring; leichtes Klettern frühestens nach 6–8 Wochen, volles Klettern um 3 Monate; etwa 6 Monate tapen. Zurück aufs alte Niveau dauerte es nach kompletten Rissen im Schnitt 8,8 Monate (47 Kletternde mit Ring).")
+            "10–14\u00A0days of rest, then a ring for about 2\u00A0months; easy climbing after 6–8\u00A0weeks at the earliest, full climbing around 3\u00A0months; tape for about 6\u00A0months. Getting back to the old level took 8.8\u00A0months on average after complete tears (47 climbers who wore a ring).",
+            "10–14\u00A0Tage Ruhe, dann etwa 2\u00A0Monate Ring; leichtes Klettern frühestens nach 6–8\u00A0Wochen, volles Klettern um 3\u00A0Monate; etwa 6\u00A0Monate tapen. Zurück aufs alte Niveau dauerte es nach kompletten Rissen im Schnitt 8,8\u00A0Monate (47 Kletternde mit Ring).")
         InjuryFinding.PULLEY_MULTIPLE -> Txt(
-            "Usually surgery or a ring started within days; full climbing around 6 months after surgery; tape for 12 months or more.",
-            "Meist Operation oder ein Ring, der in den ersten Tagen beginnt; volles Klettern um 6 Monate nach der OP; 12 Monate oder länger tapen.")
+            "Usually surgery or a ring started within days; full climbing around 6\u00A0months after surgery; tape for 12\u00A0months or more.",
+            "Meist Operation oder ein Ring, der in den ersten Tagen beginnt; volles Klettern um 6\u00A0Monate nach der OP; 12\u00A0Monate oder länger tapen.")
         InjuryFinding.TENOSYNOVITIS -> Txt(
-            "Often weeks to months (30 weeks on average in one clinic series); three in four climbers got back to their level.",
-            "Oft Wochen bis Monate (im Schnitt 30 Wochen in einer Klinik-Serie); drei von vier Kletternden kamen auf ihr Niveau zurück.")
+            "Often weeks to months (30\u00A0weeks on average in one clinic series); three in four climbers got back to their level.",
+            "Oft Wochen bis Monate (im Schnitt 30\u00A0Wochen in einer Klinik-Serie); drei von vier Kletternden kamen auf ihr Niveau zurück.")
         InjuryFinding.LUMBRICAL -> Txt(
-            "In a series of 60 climbers all recovered with adapted climbing; recheck after 2–3 weeks if it doesn't settle.",
-            "In einer Serie mit 60 Kletternden erholten sich alle mit angepasstem Klettern; nach 2–3 Wochen erneut anschauen lassen, wenn es nicht besser wird.")
+            "In a series of 60 climbers all recovered with adapted climbing; recheck after 2–3\u00A0weeks if it doesn't settle.",
+            "In einer Serie mit 60 Kletternden erholten sich alle mit angepasstem Klettern; nach 2–3\u00A0Wochen erneut anschauen lassen, wenn es nicht besser wird.")
         InjuryFinding.PIP_CAPSULITIS -> Txt(
-            "About 2 weeks of unloading, then a gradual return; about 6 weeks in a published case.",
-            "Etwa 2 Wochen entlasten, dann schrittweise zurück; in einem veröffentlichten Fall etwa 6 Wochen.")
+            "About 2\u00A0weeks of unloading, then a gradual return; about 6\u00A0weeks in a published case.",
+            "Etwa 2\u00A0Wochen entlasten, dann schrittweise zurück; in einem veröffentlichten Fall etwa 6\u00A0Wochen.")
         InjuryFinding.COLLATERAL_LIGAMENT, InjuryFinding.VOLAR_PLATE -> Txt(
-            "Stable joint: 2–4 weeks of buddy tape or splint, then a gradual return.",
-            "Stabiles Gelenk: 2–4 Wochen Buddy-Tape oder Schiene, dann schrittweise zurück.")
+            "Stable joint: 2–4\u00A0weeks of buddy tape or splint, then a gradual return.",
+            "Stabiles Gelenk: 2–4\u00A0Wochen Buddy-Tape oder Schiene, dann schrittweise zurück.")
         InjuryFinding.FLEXOR_TENDON_TEAR -> Txt(
-            "Surgery within about 7–10 days, then months of building up load with your hand surgeon.",
-            "Operation innerhalb etwa 7–10 Tagen, danach Monate Belastungsaufbau mit deiner Handchirurgie.")
+            "Surgery within about 7–10\u00A0days, then months of building up load with your hand surgeon.",
+            "Operation innerhalb etwa 7–10\u00A0Tagen, danach Monate Belastungsaufbau mit deiner Handchirurgie.")
         InjuryFinding.GROWTH_PLATE -> Txt(
-            "At least about 6 weeks without finger training, reduced load for 3–12 months – only with a doctor alongside.",
-            "Mindestens etwa 6 Wochen ohne Fingertraining, reduzierte Belastung für 3–12 Monate – nur mit ärztlicher Begleitung.")
+            "At least about 6\u00A0weeks without finger training, reduced load for 3–12\u00A0months – only with a doctor alongside.",
+            "Mindestens etwa 6\u00A0Wochen ohne Fingertraining, reduzierte Belastung für 3–12\u00A0Monate – nur mit ärztlicher Begleitung.")
         InjuryFinding.ROTATOR_CUFF -> Txt(
-            "Exercise is the first choice here (strong evidence); surgery did no better than placebo surgery. Usual are 6–12 weeks of strengthening; no progress after 12 weeks: see a specialist. MRI findings are common in climbers without any pain.",
-            "Training ist hier die erste Wahl (starke Evidenz); eine OP war nicht besser als eine Schein-OP. Üblich sind 6–12 Wochen Kräftigung; ohne Fortschritt nach 12 Wochen: fachärztlich abklären. MRT-Befunde sind bei Kletternden auch ohne Schmerzen häufig.")
+            "Exercise is the first choice here (strong evidence); surgery did no better than placebo surgery. Usual are 6–12\u00A0weeks of strengthening; no progress after 12\u00A0weeks: see a specialist. MRI findings are common in climbers without any pain.",
+            "Training ist hier die erste Wahl (starke Evidenz); eine OP war nicht besser als eine Schein-OP. Üblich sind 6–12\u00A0Wochen Kräftigung; ohne Fortschritt nach 12\u00A0Wochen: fachärztlich abklären. MRT-Befunde sind bei Kletternden auch ohne Schmerzen häufig.")
         InjuryFinding.SLAP_BICEPS -> Txt(
-            "Without surgery it worked for about 78 % of athletes who kept at it, usually within 6 months.",
-            "Ohne OP klappte es bei etwa 78 % der Sportler, die es durchzogen, meist innerhalb von 6 Monaten.")
+            "Without surgery it worked for about 78\u00A0% of athletes who kept at it, usually within 6\u00A0months.",
+            "Ohne OP klappte es bei etwa 78\u00A0% der Sportler, die es durchzogen, meist innerhalb von 6\u00A0Monaten.")
         InjuryFinding.SHOULDER_INSTABILITY -> Txt(
-            "After a first dislocation in young people it happens again in about half without surgery and in about 6 % after stabilisation; 93 % of climbers got back to climbing after surgery.",
-            "Nach einer ersten Ausrenkung in jungen Jahren passiert es ohne OP bei etwa der Hälfte wieder, nach einer Stabilisierung bei etwa 6 %; 93 % der Kletternden kamen nach der OP zurück ans Klettern.")
+            "After a first dislocation in young people it happens again in about half without surgery and in about 6\u00A0% after stabilisation; 93\u00A0% of climbers got back to climbing after surgery.",
+            "Nach einer ersten Ausrenkung in jungen Jahren passiert es ohne OP bei etwa der Hälfte wieder, nach einer Stabilisierung bei etwa 6\u00A0%; 93\u00A0% der Kletternden kamen nach der OP zurück ans Klettern.")
         InjuryFinding.LATERAL_ELBOW, InjuryFinding.MEDIAL_ELBOW -> Txt(
-            "Usual are 3 × 15 repetitions over 6–12 weeks, from holds to slow lowering. Cortisone injections help for a few weeks but did worse after a year.",
-            "Üblich sind 3 × 15 Wiederholungen über 6–12 Wochen, von Halteübungen zu langsamem Absenken. Kortisonspritzen helfen ein paar Wochen, nach einem Jahr stand es damit aber schlechter.")
+            "Usual are 3\u00A0×\u00A015 repetitions over 6–12\u00A0weeks, from holds to slow lowering. Cortisone injections help for a few weeks but did worse after a year.",
+            "Üblich sind 3\u00A0×\u00A015 Wiederholungen über 6–12\u00A0Wochen, von Halteübungen zu langsamem Absenken. Kortisonspritzen helfen ein paar Wochen, nach einem Jahr stand es damit aber schlechter.")
         InjuryFinding.FRONT_ELBOW -> Txt(
             "Gradual loading over several weeks; underclings and steep pulling come last.",
             "Schrittweiser Belastungsaufbau über mehrere Wochen; Untergriffe und steiles Ziehen kommen zuletzt.")
@@ -292,8 +292,8 @@ object ComebackTexts {
             "Entlasten oder Schiene, dann Drehen und Kippen belasten, dann Stabilität, dann Klettern. Bei TFCC-Rissen war das so gut wie eine Operation.")
         InjuryFinding.WRIST_TENDON -> null
         InjuryFinding.ANKLE_SPRAIN -> Txt(
-            "Early loading with a brace plus balance training is the usual approach. 8 weeks of balance training lower the risk of spraining it again.",
-            "Frühe Belastung mit Bandage plus Gleichgewichtstraining ist das übliche Vorgehen. 8 Wochen Gleichgewichtstraining senken das Risiko, wieder umzuknicken.")
+            "Early loading with a brace plus balance training is the usual approach. 8\u00A0weeks of balance training lower the risk of spraining it again.",
+            "Frühe Belastung mit Bandage plus Gleichgewichtstraining ist das übliche Vorgehen. 8\u00A0Wochen Gleichgewichtstraining senken das Risiko, wieder umzuknicken.")
         InjuryFinding.KNEE_INNER, InjuryFinding.KNEE_OUTER -> Txt(
             "Stable ligament injuries and a knee that doesn't lock: exercise is usual; for degenerative meniscus tears exercise did as well as surgery.",
             "Stabile Bandverletzungen und ein Knie, das nicht blockiert: Training ist üblich; bei verschleißbedingten Meniskusrissen war Training so gut wie eine Operation.")
@@ -308,8 +308,8 @@ object ComebackTexts {
 
     /** Optional nutrition note (owner's plan), with its weak evidence and the safety questions (loading-principles.md F1–F3). */
     val GELATIN = Txt(
-        "Optional: 15 g gelatin with about 50 mg vitamin C, about 60 minutes before the first session of the day. In a small study (8 men) it raised a blood marker of collagen production; whether it helps an injured finger is not known. It's no reason to load more or sooner. Leave it out with a gelatin or meat allergy (alpha-gal) and ask your doctor first if you've had kidney stones.",
-        "Optional: 15 g Gelatine mit etwa 50 mg Vitamin C, etwa 60 Minuten vor der ersten Einheit des Tages. In einer kleinen Studie (8 Männer) stieg damit ein Blutwert der Kollagenbildung; ob es einem verletzten Finger hilft, ist nicht bekannt. Es ist kein Grund, mehr oder früher zu belasten. Bei Gelatine- oder Fleischallergie (Alpha-Gal) weglassen, nach Nierensteinen vorher ärztlich fragen.",
+        "Optional: 15\u00A0g gelatin with about 50\u00A0mg vitamin C, about 60\u00A0minutes before the first session of the day. In a small study (8 men) it raised a blood marker of collagen production; whether it helps an injured finger is not known. It's no reason to load more or sooner. Leave it out with a gelatin or meat allergy (alpha-gal) and ask your doctor first if you've had kidney stones.",
+        "Optional: 15\u00A0g Gelatine mit etwa 50\u00A0mg Vitamin C, etwa 60\u00A0Minuten vor der ersten Einheit des Tages. In einer kleinen Studie (8 Männer) stieg damit ein Blutwert der Kollagenbildung; ob es einem verletzten Finger hilft, ist nicht bekannt. Es ist kein Grund, mehr oder früher zu belasten. Bei Gelatine- oder Fleischallergie (Alpha-Gal) weglassen, nach Nierensteinen vorher ärztlich fragen.",
     )
     val GELATIN_SOURCES = listOf(
         Source("Shaw G et al. Vitamin C–enriched gelatin supplementation before intermittent activity augments collagen synthesis. Am J Clin Nutr 2017;105:136–143", SourceKind.TRIAL),

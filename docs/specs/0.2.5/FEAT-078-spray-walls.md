@@ -89,12 +89,13 @@ them with the people who climb on the same wall.
 
 ## 3. Data
 
-All in the per-identity, encrypted **SecureDatabase**, migration `16.sqm` (16 → 17,
-additive). Schema and queries: `SprayWalls.sq`.
+All in the per-identity, encrypted **SecureDatabase**, migrations `16.sqm` (16 → 17,
+the tables) and `17.sqm` (17 → 18, the pending head), both additive. Schema and
+queries: `SprayWalls.sq`.
 
 | Table | Holds |
 | --- | --- |
-| `spray_wall` | name, angle, visibility, gym (venue key + name), owner pubkey (NULL = mine), current version, highest published version, timestamps |
+| `spray_wall` | name, angle, visibility, gym (venue key + name), owner pubkey (NULL = mine), current version, highest published version, timestamps, pending head (new details still to send) |
 | `spray_wall_version` | `(wall_id, version)`, kind (created / holds / reset / restored), based_on, photo file and pixel size, Blossom sha256 + URL, hold count |
 | `spray_wall_hold` | `(wall_id, version, hold_id)`, centre `x`/`y` (0..1 of the photo), `radius` (fraction of the photo **width**) |
 | `spray_climb` | uuid, wall, version, name, description, difficulty (internal 10..34, NULL = project), holds `id:role;…`, author pubkey (NULL = mine), published_at |
@@ -210,8 +211,17 @@ kind and no new Amber permission.
   not show people; a reset of a public wall says the same under the new photo.
 - **Publishing:** photos go to Blossom through `ProfileImageUploader`. Then every
   version not yet published goes out, then the head, then the climbs on public walls.
-  This runs after each save; on failure the wall shows "not published yet" with a
-  retry. Signing and relays: `NostrSigner`, `NostrRelayPool.sendEventWithStats`.
+  This runs after each save and once when the spray-wall screens open after a start;
+  on failure the wall shows "not published yet" with a retry. Signing and relays:
+  `NostrSigner`, `NostrRelayPool.sendEventWithStats`. A version, head or climb the
+  signer declines stops nothing else; it is not asked for again before the next start
+  or until it changes, and the retry asks again (`SprayWallPublishing`). A version a
+  relay took counts as published at once (a withdrawal takes it back, it is no longer
+  corrected in place); a head that did not go out with it stays pending.
+- **New details of a published wall** (name, angle, gym) without a new version: the
+  head alone goes out again. The wish is stored with the details (`head_pending`, a
+  counter per change) and survives a restart; a head that reached a relay clears only
+  the change it carried.
 - **Withdrawing (`SprayWallWithdrawal`):** every event (head, versions, my climbs) is replaced by a tombstone
   (`["deleted","true"]`, `{"deleted":true}`; climb tombstones keep the `a` tag) and
   named in one kind-5 deletion, as `CommunityClimbDeleter` does. Then each photo is
@@ -223,6 +233,11 @@ kind and no new Amber permission.
     says why (no relay confirmed, a photo left on its server, signing failed or was
     declined in Amber, no account key). Deleting a public wall waits for a
     withdrawal that worked.
+  - The wall is marked (`withdraw_started`) before the first tombstone goes out; the
+    mark goes again when no relay took anything. While it is set nothing of the wall
+    is published (versions, head, climbs), and the wall page and the details offer
+    only "Try withdrawing again". The withdrawal runs in the publisher, so leaving the
+    screen does not stop it.
   - Signing errors (local key or Amber) are caught and reported, never thrown.
 - **Ingest** (`NostrRelayPool.fetchStored`, on demand only) uses the same checks as
   `CommunityClimbSubscriber`:
@@ -294,7 +309,7 @@ Strings: `strings_spray_wall.xml`, English and German.
   - versions: in-place first marking, new versions, a reset, a restore, discarding;
   - climbs keeping their version, hold ids never reused, deleting with photos;
   - followed walls and remote climbs;
-  - migration 16 → 17.
+  - migrations 16 → 17 and 17 → 18, and the pending head.
 - `SprayWallBackupExclusionTest.kt`: the photo folder is excluded from backup and
   device transfer.
 - `.../spraywall/detect/SegPipelineTest.kt` and `.../spraywall/HoldOutlineTest.kt`:

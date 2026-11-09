@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -100,6 +101,7 @@ enum class TrainingTab(val route: String) {
 /** Bottom bar of the training area; the board app keeps its own drawer navigation. */
 @Composable
 fun TrainingTabBar(selected: TrainingTab, onSelect: (TrainingTab) -> Unit) {
+    val labels = androidx.compose.ui.platform.LocalDensity.current.fontScale < 1.3f
     NavigationBar {
         TrainingTab.entries.forEach { tab ->
             val (icon, label) = when (tab) {
@@ -111,12 +113,21 @@ fun TrainingTabBar(selected: TrainingTab, onSelect: (TrainingTab) -> Unit) {
             NavigationBarItem(
                 selected = tab == selected,
                 onClick = { if (tab != selected) onSelect(tab) },
-                icon = { Icon(icon, contentDescription = null) },
-                label = { Text(stringResource(label), maxLines = 1) },
+                // Without a label the icon names the tab for screen readers.
+                icon = { Icon(icon, contentDescription = if (labels) null else stringResource(label)) },
+                // At a large font the labels do not fit ("Traini", "Ernäh", even the selected one): icons only.
+                label = if (labels) { { Text(stringResource(label), maxLines = 1) } } else null,
                 modifier = Modifier.testTag("training_tab_${tab.name.lowercase()}"),
             )
         }
     }
+}
+
+/** The training area's snackbars: at a large font the action gets its own line ("Rückgängig" took half the width). */
+@Composable
+fun TrainingSnackbarHost(state: SnackbarHostState) {
+    val large = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
+    SnackbarHost(state) { Snackbar(it, actionOnNewLine = large) }
 }
 
 /** Workouts and exercises are the two halves of the Training tab. */
@@ -361,7 +372,8 @@ fun TrainingScaffold(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(title, maxLines = 1) },
+                    // One line with "…": at 320 dp and the largest font a clipped title read "Fingerkraf" (UI pass 0.2.5).
+                    title = { Text(title, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                     navigationIcon = {
                         if (onBack != null) {
                             IconButton(onClick = onBack, modifier = Modifier.testTag("training_back")) {
@@ -383,13 +395,33 @@ fun TrainingScaffold(
 }
 
 @Composable
-fun SectionTitle(text: String, modifier: Modifier = Modifier, trailing: @Composable RowScope.() -> Unit = {}) {
-    Row(
-        modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        trailing()
+fun SectionTitle(
+    text: String,
+    modifier: Modifier = Modifier,
+    keepBeside: Boolean = false,
+    trailing: @Composable RowScope.() -> Unit = {},
+) {
+    // The action below the title when both do not fit in a row ("Mein/e Work/outs" at 320 dp and the largest font);
+    // an ⓘ stays beside it ([keepBeside]).
+    LabelBesideOrAbove(
+        modifier = modifier.padding(top = 16.dp, bottom = 8.dp),
+        keepBeside = keepBeside,
+        label = { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) },
+        stepper = trailing,
+    )
+}
+
+/**
+ * Stat tiles side by side, one under the other at a large font: three in a row broke their labels letter by letter at
+ * 320 dp and the largest font (UI pass 0.2.5). [content] gets each tile's modifier from its weight in the row.
+ */
+@Composable
+fun TileRow(content: @Composable (weight: (Float) -> Modifier) -> Unit) {
+    if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { content { Modifier.fillMaxWidth() } }
+    } else Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Side by side, all as tall as the tallest.
+        content { w -> Modifier.weight(w).fillMaxHeight() }
     }
 }
 
@@ -422,3 +454,106 @@ fun EmptyHint(text: String, modifier: Modifier = Modifier) {
 internal fun keptChangeText(replaced: String, chosen: String?, catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog, language: String): String =
     if (chosen != null) stringResource(R.string.trk_instead, catalog.fallbackFor(chosen).name(language), catalog.fallbackFor(replaced).name(language))
     else stringResource(R.string.trk_without, catalog.fallbackFor(replaced).name(language))
+
+/**
+ * The label beside its stepper (or badge, value, action) when it fits there without breaking a word and, at a large
+ * font, without becoming a narrow column; above it otherwise, with the stepper at the end below: "Zusatzgewicht" or
+ * "Gewicht pro Hantel" next to two 56 dp buttons broke mid-word at 360 dp, and a title beside a badge or a text button
+ * broke into single letters at 320 dp and the largest font (UI pass 0.2.5). Below a font scale of 1.3 the label wraps
+ * beside the stepper as in a Row.
+ *
+ * [growth] is how much taller than on one line the label may get beside the stepper at a large font: 2 lets one line
+ * wrap to two, 1.5 lets a title with one line under it grow by one line, 1 keeps it on one line. [keepBeside] keeps an
+ * icon (ⓘ, a menu) beside its label, which wraps next to it: below, it looked lost.
+ */
+@Composable
+internal fun LabelBesideOrAbove(
+    label: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    growth: Float = 2f,
+    keepBeside: Boolean = false,
+    stepper: @Composable RowScope.() -> Unit,
+) {
+    val row: @Composable () -> Unit = { Row(verticalAlignment = Alignment.CenterVertically, content = stepper) }
+    val policy = remember(growth, keepBeside) { LabelBesideOrAbovePolicy(growth, keepBeside) }
+    androidx.compose.ui.layout.Layout(contents = listOf(label, row), modifier = modifier.fillMaxWidth(), measurePolicy = policy)
+}
+
+private class LabelBesideOrAbovePolicy(private val growth: Float, private val keepBeside: Boolean) :
+    androidx.compose.ui.layout.MultiContentMeasurePolicy {
+    private val INF = androidx.compose.ui.unit.Constraints.Infinity
+
+    /**
+     * Beside when the label fits next to the stepper on one line, or wraps there without breaking a word (at a large
+     * font to at most [growth] times its height on one line); an unbounded width always fits. Text with a line limit
+     * measures only up to its limit, so labels that may wrap far have none.
+     */
+    private fun androidx.compose.ui.unit.Density.beside(label: androidx.compose.ui.layout.IntrinsicMeasurable, stepperWidth: Int, width: Int): Boolean {
+        if (width == INF || keepBeside) return true
+        val room = width - stepperWidth
+        if (room <= 0) return false
+        if (label.maxIntrinsicWidth(INF) <= room) return true
+        if (label.minIntrinsicWidth(INF) > room) return false
+        if (fontScale < 1.3f) return true
+        // An eighth on top covers rounding: two lines measure a pixel more than twice one.
+        val oneLine = label.maxIntrinsicHeight(INF)
+        return label.maxIntrinsicHeight(room) <= oneLine * growth + oneLine / 8
+    }
+
+    override fun androidx.compose.ui.layout.MeasureScope.measure(
+        measurables: List<List<androidx.compose.ui.layout.Measurable>>,
+        constraints: androidx.compose.ui.unit.Constraints,
+    ): androidx.compose.ui.layout.MeasureResult {
+        val s = measurables[1].first().measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val l = measurables[0].first()
+        val bounded = constraints.hasBoundedWidth
+        // placeRelative: in a right-to-left language the label starts on the right and the stepper sits on the left.
+        return if (beside(l, s.width, if (bounded) constraints.maxWidth else INF)) {
+            val lp = l.measure(if (bounded) androidx.compose.ui.unit.Constraints(maxWidth = (constraints.maxWidth - s.width).coerceAtLeast(0))
+                else androidx.compose.ui.unit.Constraints())
+            val width = if (bounded) constraints.maxWidth else lp.width + s.width
+            // A minimum height (a 48 dp row) centres the content, as a Row would.
+            val height = maxOf(lp.height, s.height, constraints.minHeight)
+            layout(width, height) {
+                lp.placeRelative(0, (height - lp.height) / 2)
+                s.placeRelative(width - s.width, (height - s.height) / 2)
+            }
+        } else {
+            val width = constraints.maxWidth
+            val lp = l.measure(androidx.compose.ui.unit.Constraints(maxWidth = width))
+            val top = maxOf(0, (constraints.minHeight - lp.height - s.height) / 2)
+            layout(width, maxOf(lp.height + s.height, constraints.minHeight)) {
+                lp.placeRelative(0, top)
+                s.placeRelative(width - s.width, top + lp.height)
+            }
+        }
+    }
+
+    // The card around it sizes its accent bar from intrinsic heights: answer with the same choice as measure().
+    private fun androidx.compose.ui.unit.Density.height(measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, width: Int): Int {
+        val l = measurables[0].first()
+        val s = measurables[1].first()
+        val sw = s.maxIntrinsicWidth(INF)
+        val sh = s.maxIntrinsicHeight(sw)
+        return if (beside(l, sw, width)) maxOf(l.maxIntrinsicHeight(if (width == INF) INF else (width - sw).coerceAtLeast(0)), sh)
+            else l.maxIntrinsicHeight(width) + sh
+    }
+
+    override fun androidx.compose.ui.layout.IntrinsicMeasureScope.minIntrinsicHeight(
+        measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, width: Int,
+    ): Int = height(measurables, width)
+
+    override fun androidx.compose.ui.layout.IntrinsicMeasureScope.maxIntrinsicHeight(
+        measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, width: Int,
+    ): Int = height(measurables, width)
+
+    // Stacked, the wider of the two; kept beside, the label's narrowest plus the stepper.
+    override fun androidx.compose.ui.layout.IntrinsicMeasureScope.minIntrinsicWidth(
+        measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, height: Int,
+    ): Int = if (keepBeside) measurables[0].first().minIntrinsicWidth(height) + measurables[1].first().maxIntrinsicWidth(height)
+        else maxOf(measurables[0].first().minIntrinsicWidth(height), measurables[1].first().minIntrinsicWidth(height))
+
+    override fun androidx.compose.ui.layout.IntrinsicMeasureScope.maxIntrinsicWidth(
+        measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, height: Int,
+    ): Int = measurables[0].first().maxIntrinsicWidth(height) + measurables[1].first().maxIntrinsicWidth(height)
+}

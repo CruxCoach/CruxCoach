@@ -145,15 +145,15 @@ fun ExerciseStatsScreen(
                 return@LazyColumn
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile(stringResource(R.string.trs_tile_best), progress.best?.let { capacityText(def, kind, it, units) } ?: "–", Modifier.weight(1f))
-                    StatTile(stringResource(R.string.trs_tile_last), progress.last?.let { capacityText(def, kind, it, units) } ?: "–", Modifier.weight(1f))
+                TileRow { weight ->
+                    StatTile(stringResource(R.string.trs_tile_best), progress.best?.let { capacityText(def, kind, it, units) } ?: "–", weight(1f))
+                    StatTile(stringResource(R.string.trs_tile_last), progress.last?.let { capacityText(def, kind, it, units) } ?: "–", weight(1f))
                 }
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile(stringResource(R.string.trs_tile_change), progress.change28?.let { changeText(def, kind, it, units) } ?: "–", Modifier.weight(1f))
-                    StatTile(stringResource(R.string.trs_tile_sessions), "${progress.sessionCount}", Modifier.weight(1f))
-                    StatTile(stringResource(R.string.trs_tile_percent_bw), progress.percentBodyweight?.let { "${it.roundToInt()} %" } ?: "–", Modifier.weight(1f))
+                TileRow { weight ->
+                    StatTile(stringResource(R.string.trs_tile_change), progress.change28?.let { changeText(def, kind, it, units) } ?: "–", weight(1f))
+                    StatTile(stringResource(R.string.trs_tile_sessions), "${progress.sessionCount}", weight(1f))
+                    StatTile(stringResource(R.string.trs_tile_percent_bw), progress.percentBodyweight?.let { "${it.roundToInt()}\u00A0%" } ?: "–", weight(1f))
                 }
             }
 

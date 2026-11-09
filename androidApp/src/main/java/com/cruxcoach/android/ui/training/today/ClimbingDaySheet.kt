@@ -394,7 +394,7 @@ fun ClimbingDaysScreen(onBack: () -> Unit, viewModel: ClimbingDaysViewModel = hi
     TrainingScaffold(
         title = stringResource(R.string.trl_days_title),
         onBack = onBack,
-        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
+        snackbarHost = { com.cruxcoach.android.ui.training.TrainingSnackbarHost(snackbar) },
         floatingActionButton = {
             // The FAB's merged node carries no text of its own (device dump 2026-10-19): TalkBack needs the label.
             val fabLabel = stringResource(R.string.trl_action_log_climbing)

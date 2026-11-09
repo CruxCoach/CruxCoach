@@ -367,6 +367,8 @@ private fun CompareSection(
 
 // ── Helpers ──
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun categoryColor(statKey: String): Color {
     val def = StatRegistry.get(statKey) ?: return InfoBlue
     return when (def.category) {
@@ -376,8 +378,10 @@ private fun categoryColor(statKey: String): Color {
     }
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun deltaColor(delta: Double, higherIsBetter: Boolean): Color {
-    if (delta == 0.0) return Color.Gray
+    if (delta == 0.0) return MaterialTheme.colorScheme.onSurfaceVariant
     val positive = delta > 0
     return if (positive == higherIsBetter) SuccessGreen else ErrorRed
 }

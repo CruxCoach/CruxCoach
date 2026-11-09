@@ -68,15 +68,20 @@ internal fun BoardActivityHeatmap(
 
     val cellSize = 12.dp
     val spacing = 3.dp
-    val dayLabelWidth = 24.dp
-    val monthLabelHeight = 16.dp
     val cellWithSpacing = cellSize + spacing
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp)
 
     val accentColor = OrangeAccent
     val emptyColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-    val dayLabels = listOf("Mo", "", "Mi", "", "Fr", "", "So")
+    val dayLabels = listOf(
+        stringResource(R.string.day_mo), "", stringResource(R.string.day_we), "",
+        stringResource(R.string.day_fr), "", stringResource(R.string.day_su),
+    )
+    // The labels' room grows with the font size, so large fonts do not cut them.
+    val dayLabelWidth = maxOf(24.dp, widestText(dayLabels, labelStyle) + 4.dp)
+    val monthLabelHeight = maxOf(16.dp, textLineHeight(labelStyle) + 2.dp)
     val monthNames = arrayOf(
         stringResource(R.string.month_jan), stringResource(R.string.month_feb),
         stringResource(R.string.month_mar), stringResource(R.string.month_apr),
@@ -129,9 +134,10 @@ internal fun BoardActivityHeatmap(
                     if (label.isNotEmpty()) {
                         Text(
                             text = label,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            color = labelColor
+                            style = labelStyle,
+                            color = labelColor,
+                            softWrap = false,
+                            modifier = Modifier.wrapContentHeight(unbounded = true)
                         )
                     }
                 }
@@ -155,8 +161,7 @@ internal fun BoardActivityHeatmap(
                         if (showMonthLabel) {
                             Text(
                                 text = monthNames[month - 1],
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 9.sp,
+                                style = labelStyle,
                                 color = labelColor,
                                 softWrap = false,
                                 modifier = Modifier.wrapContentWidth(

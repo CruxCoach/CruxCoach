@@ -1174,6 +1174,13 @@ LEFT JOIN climb_stats cs ON c.uuid = cs.climb_uuid AND cs.angle = ?
 WHERE lower(replace(c.uuid, '-', '')) = lower(replace(?, '-', ''))
 LIMIT 1;
 
+-- The same normalized match for many keys in one scan: the stored uuids whose
+-- normalized form (hyphens stripped, lowercased) is in the list. For callers
+-- that would otherwise scan once per missed uuid.
+findClimbUuidsByNormKeys:
+SELECT uuid FROM climbs
+WHERE lower(replace(uuid, '-', '')) IN ?;
+
 countLeds:
 SELECT COUNT(*) FROM leds;
 

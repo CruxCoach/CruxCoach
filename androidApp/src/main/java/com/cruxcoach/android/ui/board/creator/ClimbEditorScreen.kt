@@ -664,7 +664,7 @@ private fun HoldCountStatus(
             Text(
                 text = stringResource(R.string.climb_creator_brush_hint_delete_mode),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Row(
