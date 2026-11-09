@@ -112,14 +112,18 @@ tags:
 - pressKey: Back
 # The statistics of the whole logbook: the six numbers hold the controlled
 # attempt and send. The period and grade math stay exact in
-# BoardStatsComputerTest.
+# BoardStatsComputerTest. The year in review's card above the filters can
+# push the six numbers to the bottom of the screen: their last row is brought
+# to the middle, so the bests below them are on screen when drawn.
 - tapOn: "Statistiken"
-- extendedWaitUntil:
-    visible: "Begehungen, [1-9][0-9]*(, .*)?"
+- scrollUntilVisible:
+    element: "Boulder, [1-9][0-9]*(, .*)?"
+    direction: DOWN
+    centerElement: true
     timeout: 15000
+- assertVisible: "Begehungen, [1-9][0-9]*(, .*)?"
 - assertVisible: "Versuche, [1-9][0-9]*(, .*)?"
 - assertVisible: "Klettertage, [1-9][0-9]*(, .*)?"
-- assertVisible: "Boulder, [1-9][0-9]*(, .*)?"
 # The period's bests need history: a best of one is none, climbing days per
 # week need a period of two weeks, a streak two weeks in a row. On a phone
 # with only this flow's entries the section is not drawn, so each best is
