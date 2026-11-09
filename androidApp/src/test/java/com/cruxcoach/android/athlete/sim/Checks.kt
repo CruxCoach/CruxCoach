@@ -35,6 +35,7 @@ enum class Check(val group: String, val title: String) {
     MASTERS("Safety", "Max finger sessions too close together for a masters climber"),
     COMEBACK_LOAD("Safety", "Comeback load above its stage"),
     COMEBACK_EARLY("Safety", "Next comeback stage offered while it still hurt"),
+    COMEBACK_UP_NO_MORNING("Safety", "Next comeback stage offered without a morning value in the week"),
     COMEBACK_SPACING("Safety", "Comeback sessions closer than their stage allows"),
     COMEBACK_CLIMBING("Safety", "Board session suggested while the comeback stage holds it back"),
     COMEBACK_NO_STEP_BACK("Safety", "Painful comeback sessions without a step back, a repeat or a question about it"),
@@ -473,6 +474,8 @@ object Checks {
                 val middle = steady.getOrNull(steady.size / 2)
                 if (middle != null && middle > rule.greenMax) flags += Flag(Check.COMEBACK_EARLY, d.day,
                     "stage ${before + 1} offered with mornings ${steady.joinToString("/")}, the middle one above the rule of ${rule.greenMax}")
+                // No step up without at least one morning value (owner 2026-11-09).
+                if (steady.isEmpty()) flags += Flag(Check.COMEBACK_UP_NO_MORNING, d.day, "stage ${before + 1} offered without a morning value since day ${d.day - 6}")
             }
             // The next stage asks for the week's loading: offered after a week with only a few session days, it comes untrained.
             if (com.cruxcoach.athlete.logic.Proposal.MOVE_UP in cb.reviews) {

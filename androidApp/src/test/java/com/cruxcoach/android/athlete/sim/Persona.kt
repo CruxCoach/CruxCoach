@@ -67,6 +67,11 @@ data class ComebackHabits(
     val startDelayDays: Int = 0,
     /** … at this stage. */
     val startStage: Int = 0,
+    /**
+     * Never logs the morning pain in the diary; answers the look back's question for this morning's pain instead
+     * (owner 2026-11-09), except the first time it is asked.
+     */
+    val logsNoMornings: Boolean = false,
 ) {
     val careful: Boolean get() = this == ComebackHabits()
 }
@@ -307,6 +312,10 @@ data class Persona(
                 with("comeback-late", "Comeback plan started two weeks late, at the third stage",
                     "Like pulley-comeback, but rests for two weeks, then starts the plan at stage 2 instead of the first stage.",
                     747, ComebackHabits(startDelayDays = 14, startStage = 2)),
+                with("comeback-no-mornings", "Comeback plan, no morning pain logged",
+                    "Like pulley-comeback, but never logs the morning pain in the diary. When a look back asks for this morning's " +
+                        "pain, it skips the first question and answers the later ones.",
+                    757, ComebackHabits(logsNoMornings = true)),
             )
         }
 

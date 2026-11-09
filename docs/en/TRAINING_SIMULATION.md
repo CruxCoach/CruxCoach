@@ -144,6 +144,7 @@ strength and apart from the plan's rules:
 | `comeback-skipper` | `pulley-comeback`, but skips about half of the plan's sessions and keeps the stage when the plan proposes a step back |
 | `comeback-eager` | `pulley-comeback`, but on half of the climbing days the stage allows climbs one level harder |
 | `comeback-late` | `pulley-comeback`, but starts the plan two weeks after the injury, at stage 2 |
+| `comeback-no-mornings` | `pulley-comeback`, but never logs the morning pain; skips the look back's first question for this morning's pain and answers the later ones |
 | `comeback-rupture` | `pulley-comeback`, but a pulley rupture (the plan's pain rule is 1 in its first two stages) |
 | `comeback-tenosynovitis` | `pulley-comeback`, but a tenosynovitis (the plan's overuse pain rule) |
 | `comeback-shoulder` | `pulley-comeback`, but a rotator cuff problem of the right shoulder and its plan |
@@ -168,6 +169,7 @@ that misfires is caught instead of confirmed.
 | Safety | 55+: max finger sessions at least 72 h apart | Fell & Williams 2008 |
 | Safety | Comeback plan: the planned load of the injured hand stays within the stage's range of the athlete's reference (one step for rounding); where the stage asks for an effort instead, it feels at most 1.5 × that effort | The stage's own percentages and effort |
 | Safety | Comeback plan: the next stage is offered only after a week in which no session truly hurt beyond the stage's amber limit, no morning reached 5 and the middle morning of the week stayed within the stage's pain rule | Pain-monitoring model (Silbernagel et al. 2007) |
+| Safety | Comeback plan: the next stage is offered only after a week with at least one morning value (the look back asks for this morning's when there is none) | The maintainer's rule |
 | Safety | Comeback plan: no more sessions of a kind a day than the stage plans; strength sessions at least 46 h apart (the stage asks for 48 h of rest) | The stage's own plan |
 | Safety | Comeback plan: no board session while the stage allows less than hard climbing | The stage's own climbing |
 | Safety | Comeback plan: after two sessions within a week that truly hurt beyond the stage's amber limit, the plan proposes a step back or a repeat, or asks about the worsening, within a week | Pain-monitoring model (Silbernagel et al. 2007) |

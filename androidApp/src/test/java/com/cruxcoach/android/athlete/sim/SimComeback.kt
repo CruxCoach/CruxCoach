@@ -152,6 +152,8 @@ class SimComeback(
     private val lastPain = mutableMapOf<ComebackSessionKind, Int>()
     private val lastRaise = mutableMapOf<Pair<String, Side?>, Int>()
     var ended = false
+    /** [ComebackHabits.logsNoMornings]: the first morning question was skipped. */
+    private var skippedMorningQuestion = false
         private set
     /** Due sessions the athlete leaves out today ([ComebackHabits.skipShare]), by their index in the stage. */
     private val skipped = mutableMapOf<Int, MutableSet<Int>>()
@@ -199,7 +201,7 @@ class SimComeback(
     /** Morning: the diary, then the plan's prompts. Returns (morning pain, pressure pain, prompts, reviews). */
     fun morning(date: LocalDate): Triple<Pair<Int?, Int?>, List<String>, List<Proposal>> {
         val plan = plan() ?: return Triple(null to null, emptyList(), emptyList())
-        val morning = truth.morningPain().takeIf { rng.nextDouble() < 0.9 }
+        var morning = if (habits.logsNoMornings) null else truth.morningPain().takeIf { rng.nextDouble() < 0.9 }
         val pressure = truth.pressurePain().takeIf { date.dayOfWeek.isoDayNumber == 1 || date.dayOfWeek.isoDayNumber == 4 }
         if (morning != null || pressure != null) {
             comebacks.saveEntry(comebacks.entry(injuryId).let { e -> e.copy(morningPain = morning ?: e.morningPain, pressurePain = pressure ?: e.pressurePain) })
@@ -209,8 +211,22 @@ class SimComeback(
         val injury = injury() ?: return Triple(morning to pressure, shown, reviews)
         val prompts = Comeback.prompts(injury, repo.comebackEntries(injuryId), service.today())
         // One answer a day, the most important prompt first; the others wait for tomorrow, as on the screen.
-        prompts.firstOrNull()?.let { p ->
+        prompts.firstOrNull()?.let { first ->
             val stage = plan.stage
+            var p = first
+            // A week without a morning value asks for this morning's pain first (owner 2026-11-09); the athlete answers
+            // with the truth, or skips, and the look back then decides as on the screen.
+            val asked = if (p.kind == PromptKind.REVIEW && p.review!!.asksMorning) {
+                val note = if (habits.logsNoMornings && !skippedMorningQuestion) {
+                    skippedMorningQuestion = true
+                    comebacks.markPrompt(injuryId, Comeback.morningSkipKey(p.key)); "morning question skipped"
+                } else {
+                    val m = truth.morningPain()
+                    comebacks.saveEntry(comebacks.entry(injuryId).copy(morningPain = m)); morning = m; "morning question: $m"
+                }
+                p = Comeback.prompts(injury()!!, repo.comebackEntries(injuryId), service.today()).firstOrNull { it.key == first.key } ?: first
+                note
+            } else null
             val answer = when (p.kind) {
                 PromptKind.REVIEW -> {
                     val r = p.review!!
@@ -239,7 +255,7 @@ class SimComeback(
                 } else { comebacks.markPrompt(injuryId, p.key); "worse: keeps the stage" }
                 else -> { comebacks.markPrompt(injuryId, p.key); "${p.kind.name.lowercase()}: ok" }
             }
-            shown += answer
+            shown += listOfNotNull(asked, answer).joinToString("; ")
         }
         return Triple(morning to pressure, shown, reviews)
     }
