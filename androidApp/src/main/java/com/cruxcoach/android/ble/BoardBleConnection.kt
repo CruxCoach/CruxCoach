@@ -2160,7 +2160,9 @@ class BoardBleConnection(
             // The CRC terminates one protocol frame and the controller parses
             // one such frame per fff2 characteristic write. Do not fragment a
             // frame into otherwise successful but semantically invalid writes.
-            if (!writeChunks(writes)) return false
+            // A started write waits for its own callback even if the caller
+            // leaves, so a late callback cannot acknowledge the next command.
+            if (!withContext(NonCancellable) { writeChunks(writes) }) return false
             if (index != frames.lastIndex) delay(100)
         }
         return true
@@ -2487,7 +2489,9 @@ class BoardBleConnection(
         disconnectJob?.cancel()
         try {
             val chunks = encoder.encodeClimb(leds)
-            val success = writeChunks(chunks)
+            // A frame that has started is finished even if the caller leaves: a
+            // torn Aurora packet would garble the next send (see sendAnimationLeds).
+            val success = withContext(NonCancellable) { writeChunks(chunks) }
             // The easter frames replace whatever climb was lit.
             _litFrame.value = null
             if (success) cleaning.projected(ticket, chunks)
@@ -2586,10 +2590,14 @@ class BoardBleConnection(
             val chunks = payload.toList()
                 .chunked(BoardPacketEncoder.BLE_MTU)
                 .map { it.toByteArray() }
-            val success = writeChunks(
-                chunks,
-                interChunkDelayMs = MOONBOARD_UART_INTER_CHUNK_DELAY_MS,
-            )
+            // A full wall takes seconds over the UART pacing. Leaving meanwhile must
+            // not cut the `l#…#` frame short: the box would read the next send into it.
+            val success = withContext(NonCancellable) {
+                writeChunks(
+                    chunks,
+                    interChunkDelayMs = MOONBOARD_UART_INTER_CHUNK_DELAY_MS,
+                )
+            }
             _litFrame.value = null
             if (success) cleaning.projected(cleaningTicket, chunks)
             return success
