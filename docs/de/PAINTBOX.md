@@ -1,7 +1,7 @@
 # PaintBox
 
 PaintBox malt Bilder mit den LEDs deines Boards: Jeder Hold ist ein Pixel.
-Du öffnest es über **Einstellungen → Extras → PaintBox**. Es startet mit deinem
+Du öffnest es in den **Einstellungen** unter Extras: **PaintBox**. Es startet mit deinem
 aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 
 ## Malen
@@ -12,8 +12,13 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
   ⋮-Menü entfernt alle Farben und lässt sich ebenfalls rückgängig machen.
 - **Speichern** und **Speichern unter** im ⋮-Menü legen das Bild unter einem Namen
   auf deinem Handy ab. **Bilder** zeigt sie nach Board geordnet und lädt eines samt seinem
-  Board, auch mit den MoonBoard-Holdsets. Bilder sind keine Climbs und werden nie
-  geteilt oder veröffentlicht.
+  Board, auch mit den MoonBoard-Holdsets; bei einem Bild für ein anderes Board
+  fragt PaintBox, bevor die App auf dieses Board wechselt. Bilder sind keine
+  Climbs, werden nie geteilt oder veröffentlicht und sind nicht Teil des Backups.
+- Bemalen lassen sich nur Holds, die auf der gewählten Boardgröße eine LED haben.
+- Ändert sich das Board der App an anderer Stelle, etwa wenn der
+  Verbindungsdialog ein anderes Board verbindet, öffnet PaintBox dieses Board.
+  Bei ungespeicherten Änderungen fragt es vorher.
 - Fehlt der Katalog des Boards, bietet PaintBox die Katalog-Einstellungen an.
 
 ## Das Board leuchten lassen
@@ -25,10 +30,12 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 - Live-Malen pausiert, wenn die Verbindung abbricht, wenn du den Bildschirm oder
   die App verlässt und wenn du das Board wechselst. Wieder einschalten tust du
   es selbst.
+- Solange eine gemeinsame Sitzung oder die Board-Freigabe das Board hält,
+  sendet PaintBox nichts und Live bleibt aus.
 
 | Board | Farben |
 | --- | --- |
-| Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Jede Board-Farbe. Die Leistungsgrenzen des Boards gelten wie bei jedem Climb. |
+| Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Jede Board-Farbe. Große helle Bilder leuchten gedimmt, damit die LED-Box nie mehr Strom zieht als in ihrem eigenen Starttest (jede LED in einer vollen Farbe). Eine ältere LED-Box (API 2) leuchtet bis zu 127 Holds auf einmal und hat eine engere Leistungsgrenze. |
 | MoonBoard | Grün, Blau und Rot. |
 | Quantum | Vier Farben, bis zu 92 LEDs je Farbe. Ein Bild nutzt eigene Layer; andere Layer müssen vor dem Malen aus sein. Ein beleuchteter Climb ersetzt das Bild, wie bei den anderen Boards. |
 | Shiny Wall | Noch nicht unterstützt. |

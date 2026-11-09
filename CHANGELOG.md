@@ -531,7 +531,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   "Keep running in other apps" (off by default) keeps it going while another
   app is open, with a notification to stop it.
 - PaintBox, contributed by Hugie (PR #77): paint pictures on your board with
-  its LEDs, every hold a pixel. Under Settings → Extras: pick a color, tap or
+  its LEDs, every hold a pixel. In Settings, under Extras: pick a color, tap or
   swipe holds on and off, undo and redo, and save named pictures on the phone.
   Send a picture once, or turn on live painting and the board follows every
   stroke; it pauses when the connection drops, in the background and on a

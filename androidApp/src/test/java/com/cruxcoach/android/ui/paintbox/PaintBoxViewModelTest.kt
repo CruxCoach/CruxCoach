@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.paintbox
 
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.*
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.*
@@ -25,6 +26,7 @@ class PaintBoxViewModelTest {
     private val savedBrand = MutableStateFlow("kilter")
     private val savedLayout = MutableStateFlow(1)
     private val savedSize = MutableStateFlow(10)
+    private val busy = MutableStateFlow<Int?>(null)
     private lateinit var vm: PaintBoxViewModel
 
     @Before fun setup() {
@@ -35,12 +37,17 @@ class PaintBoxViewModelTest {
         every { boards.getProductSize(12, "kilter") } returns BoardSize(12, 1, "Other", 0, 100, 0, 100, null)
         every { boards.getPlacementsForLayout(12, 1, "kilter") } returns listOf(BoardPlacement(3, 3, 1, 30, 30))
         every { boards.getProductSize(10, "kilter") } returns BoardSize(10, 1, "Test", 0, 100, 0, 100, null)
+        // Hold 4 has no LED on this size.
         every { boards.getPlacementsForLayout(10, 1, "kilter") } returns listOf(
-            BoardPlacement(1, 1, 1, 10, 10), BoardPlacement(2, 2, 1, 20, 20))
+            BoardPlacement(1, 1, 1, 10, 10), BoardPlacement(2, 2, 1, 20, 20), BoardPlacement(4, 4, 1, 40, 40))
         every { boards.getPlacementLedMap(10, "kilter") } returns mapOf(1 to 10, 2 to 20)
+        every { boards.getPlacementLedMap(12, "kilter") } returns mapOf(3 to 30)
         every { ble.connectionState } returns connection
         every { ble.connectedBoard } returns DiscoveredBoard("Test", "test", 3, "AA", -40)
         coEvery { projector.send(any(), any(), any()) } returns true
+        every { projector.busy } returns busy
+        every { projector.boardBusy() } answers { busy.value }
+        every { projector.lastSendDimmed } returns false
         vm = PaintBoxViewModel(pictures, boards, prefs, ble, projector)
     }
     @After fun teardown() {
@@ -183,13 +190,76 @@ class PaintBoxViewModelTest {
         assertEquals(0xe0, opened.brush)
         assertFalse(opened.eraser)
     }
-    @Test fun `a saved board change the user did not pick here keeps the picture`() = runTest(dispatcher) {
+    @Test fun `a board saved elsewhere asks first when the picture has changes`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.paint(setOf(1))
+        // E.g. the connection sheet connected another board and saved it.
+        savedSize.value = 12
+        val asked = vm.state.first { it.boardChange != null }
+        assertEquals(12, asked.boardChange!!.sizeId)
+        assertEquals(10, asked.document!!.board.sizeId)
+        assertEquals(mapOf(1 to 28), asked.document!!.colors)
+        vm.openBoardChange()
+        val opened = vm.state.first { it.document?.board?.sizeId == 12 && !it.loading }
+        assertNull(opened.boardChange)
+        assertTrue(opened.document!!.colors.isEmpty())
+    }
+    @Test fun `keeping the picture leaves it on its board`() = runTest(dispatcher) {
         vm.state.first { !it.loading }
         vm.paint(setOf(1))
         savedSize.value = 12
+        vm.state.first { it.boardChange != null }
+        vm.keepBoard()
         advanceUntilIdle()
+        assertNull(vm.state.value.boardChange)
         assertEquals(10, vm.state.value.document!!.board.sizeId)
         assertEquals(mapOf(1 to 28), vm.state.value.document!!.colors)
+        // Picking the app's board later opens it, although the picker saves nothing new.
+        vm.boardPicked()
+        val opened = vm.state.first { it.document?.board?.sizeId == 12 && !it.loading }
+        assertTrue(opened.document!!.colors.isEmpty())
+    }
+    @Test fun `a board saved elsewhere opens directly when nothing would be lost`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        savedSize.value = 12
+        val opened = vm.state.first { it.document?.board?.sizeId == 12 && !it.loading }
+        assertNull(opened.boardChange)
+    }
+    @Test fun `only a picture of another board switches the app's board`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        assertFalse(vm.switchesBoard(PaintDocument(board = PaintBoard("kilter", 1, 10))))
+        assertTrue(vm.switchesBoard(PaintDocument(board = PaintBoard("kilter", 1, 12))))
+        assertTrue(vm.switchesBoard(PaintDocument(board = PaintBoard("tension", 1, 10))))
+    }
+    @Test fun `holds without an LED on this size cannot be painted and drop out of a loaded picture`() = runTest(dispatcher) {
+        val opened = vm.state.first { !it.loading }
+        assertEquals(setOf(1, 2), opened.placements.keys)
+        vm.paint(setOf(4))
+        assertTrue(vm.state.value.document!!.colors.isEmpty())
+        vm.load(PaintDocument(board = PaintBoard("kilter", 1, 10), name = "Old", colors = mapOf(1 to 28, 4 to 28)))
+        val loaded = vm.state.first { it.document?.name == "Old" && !it.loading }
+        assertEquals(mapOf(1 to 28), loaded.document!!.colors)
+        assertFalse(loaded.dirty)
+    }
+    @Test fun `a session or board sharing stops live and keeps it off`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.toggleLive()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.live)
+        busy.value = R.string.paintbox_session_active
+        advanceUntilIdle()
+        assertFalse(vm.state.value.live)
+        assertEquals(R.string.paintbox_session_active, vm.state.value.message)
+        vm.message(null)
+        vm.toggleLive()
+        assertFalse(vm.state.value.live)
+        assertEquals(R.string.paintbox_session_active, vm.state.value.message)
+        busy.value = R.string.paintbox_relay_active
+        vm.toggleLive()
+        assertEquals(R.string.paintbox_relay_active, vm.state.value.message)
+        busy.value = null
+        vm.toggleLive()
+        assertTrue(vm.state.value.live)
     }
     @Test fun `a board PaintBox cannot light opens as not supported and paints nothing`() = runTest(dispatcher) {
         vm.state.first { !it.loading }

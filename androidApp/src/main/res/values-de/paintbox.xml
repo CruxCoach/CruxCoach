@@ -38,7 +38,7 @@
     <string name="paintbox_image_pick_bg">Tippe im Bild auf die Hintergrundfarbe.</string>
     <string name="paintbox_image_error">Das Bild konnte nicht geladen werden. Bitte wähle ein anderes Bild.</string>
     <string name="paintbox_photo_title">Foto</string>
-    <string name="paintbox_info">Malen\nWähle Pinsel oder Radierer und eine Farbe und tippe oder streiche mit einem Finger über die Holds. Zwei Finger zoomen und verschieben das Board. Ein Strich ist ein Schritt für Rückgängig.\n\nAuf dem Board\nSenden zeigt das Bild einmal auf dem Board. Mit Live folgt das Board jedem Strich. Live pausiert, wenn die Verbindung abbricht, wenn du PaintBox verlässt und wenn du das Board wechselst.\n\nBilder\nSpeichern legt das Bild auf diesem Handy ab. Bilder werden nie geteilt.</string>
+    <string name="paintbox_info">Malen\nWähle Pinsel oder Radierer und eine Farbe und tippe oder streiche mit einem Finger über die Holds. Zwei Finger zoomen und verschieben das Board. Ein Strich ist ein Schritt für Rückgängig.\n\nAuf dem Board\nSenden zeigt das Bild einmal auf dem Board. Mit Live folgt das Board jedem Strich. Live pausiert, wenn die Verbindung abbricht, wenn du PaintBox verlässt und wenn du das Board wechselst. Große helle Bilder leuchten gedimmt, innerhalb der Leistungsgrenze des Boards.\n\nBilder\nSpeichern legt das Bild auf diesem Handy ab. Bilder werden nie geteilt.</string>
     <string name="paintbox_info_quantum">Quantum\nVier Farben, bis zu 92 LEDs je Farbe. Andere Layer müssen vor dem Malen aus sein. Ein beleuchteter Climb ersetzt das Bild.</string>
     <string name="paintbox_info_photo">Ein Finger verschiebt das Foto, zwei Finger zoomen und drehen es. Jeder Hold bekommt die Board-Farbe, die dem Foto am nächsten kommt. Hintergrund lässt eine Farbe des Fotos aus. Gespeichert werden nur die Farben der Holds.</string>
     <string name="paintbox_live">Live</string>
@@ -47,6 +47,16 @@
     <string name="paintbox_sending">Sendet …</string>
     <string name="paintbox_on_board">Auf dem Board</string>
     <string name="paintbox_save_current">Aktuelles Bild speichern</string>
+    <string name="paintbox_session_active">Eine gemeinsame Sitzung steuert das Board, deshalb zeigt PaintBox nichts darauf.</string>
+    <string name="paintbox_relay_active">Die Board-Freigabe ist an, deshalb zeigt PaintBox nichts auf dem Board. Beende zuerst die Freigabe.</string>
+    <string name="paintbox_api2_limit">Die LED-Box dieses Boards leuchtet bis zu 127 Holds auf einmal. Es wurde nichts gesendet.</string>
+    <string name="paintbox_local_only">Bilder bleiben auf diesem Handy und sind nicht Teil des Backups.</string>
+    <string name="paintbox_board_changed">Die App nutzt jetzt ein anderes Board. PaintBox öffnet es mit einem leeren Bild.</string>
+    <string name="paintbox_switch_board">Board wechseln?</string>
+    <string name="paintbox_switch_board_text">Dieses Bild ist für %1$s. Beim Öffnen wechselt die App auf dieses Board.</string>
+    <string name="paintbox_switch">Wechseln</string>
+    <string name="paintbox_sent_dimmed">Bild übertragen, gedimmt, damit das Board in seiner Leistungsgrenze bleibt.</string>
+    <string name="paintbox_too_bright">Zu viele helle Holds für die LED-Box dieses Boards. Male weniger Holds oder dunklere Farben. Es wurde nichts gesendet.</string>
     <plurals name="paintbox_unreadable">
         <item quantity="one">Eine Bilddatei konnte nicht gelesen werden. Sie bleibt erhalten.</item>
         <item quantity="other">%1$d Bilddateien konnten nicht gelesen werden. Sie bleiben erhalten.</item>

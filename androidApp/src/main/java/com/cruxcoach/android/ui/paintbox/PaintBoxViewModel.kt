@@ -38,6 +38,8 @@ data class PaintBoxState(
     val canRedo: Boolean = false,
     val library: PaintLibrary = PaintLibrary(emptyList(), 0),
     val message: Int? = null,
+    /** The app's board changed (e.g. in the connection sheet) while this picture has unsaved changes. */
+    val boardChange: PaintBoard? = null,
 ) {
     val boardReady: Boolean get() = !missingBoard && !unsupportedBoard
 }
@@ -62,22 +64,34 @@ class PaintBoxViewModel @Inject constructor(
     private var previewAddress: String? = null
     val connection = ble.connectionState
 
-    private var boardPickPending = false
+    /** The board of the open picture, or of the one being opened. */
+    private var target: PaintBoard? = null
+    /** The app's board as last saved. */
+    private var appBoard: PaintBoard? = null
+    /** The user already agreed to leave the picture as it is (the board picker asks first). */
+    private var leaveAgreed = false
 
     init {
         viewModelScope.launch {
-            // The board picker saves its choice in the background, so follow the saved
-            // board instead of reading it once when the picker closes.
+            // The board picker and the connection sheet save the board in the background,
+            // so follow the saved board instead of reading it once.
             savedBoard().collect { board ->
-                val open = state.value.document?.board
-                if (open == null || boardPickPending && !open.sameBoardAs(board)) {
-                    boardPickPending = false
-                    openBoard(board)
+                appBoard = board
+                val open = target
+                when {
+                    open == null -> openBoard(board)
+                    open.sameBoardAs(board) -> mutable.update { it.copy(boardChange = null) }
+                    leaveAgreed || !state.value.dirty -> openBoard(board)
+                    else -> { pause(); mutable.update { it.copy(boardChange = board) } }
                 }
             }
         }
         viewModelScope.launch {
             connection.collect { if (it != ConnectionState.CONNECTED && it != ConnectionState.SENDING) pause() }
+        }
+        viewModelScope.launch {
+            // A session or board sharing takes the board: Live stops instead of fighting it.
+            projector.busy.collect { reason -> if (reason != null && state.value.live) { pause(); message(reason) } }
         }
     }
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
@@ -95,10 +109,26 @@ class PaintBoxViewModel @Inject constructor(
     /** The picker confirmed a board. It opens once the picker has saved it; picking the open board keeps the picture. */
     fun boardPicked() {
         pause()
-        boardPickPending = true
+        leaveAgreed = true
+        // After keepBoard the app's board differs from the picture's. Picking the app's
+        // board saves nothing new, so open it now; any other pick follows as usual.
+        appBoard?.takeIf { app -> target?.sameBoardAs(app) == false }?.let(::openBoard)
     }
+    /** Opens the app's new board after the user saved or discarded the picture ([PaintBoxState.boardChange]). */
+    fun openBoardChange() {
+        val board = state.value.boardChange ?: return
+        mutable.update { it.copy(boardChange = null) }
+        openBoard(board)
+    }
+    /** Keeps painting the open picture on its own board. */
+    fun keepBoard() { mutable.update { it.copy(boardChange = null) } }
+    /** Whether opening [document] changes the app's board, which the user confirms first. */
+    fun switchesBoard(document: PaintDocument): Boolean = appBoard?.let { !document.board.sameBoardAs(it) } == true
     private fun openBoard(board: PaintBoard) {
         pause()
+        leaveAgreed = false
+        target = board
+        mutable.update { it.copy(boardChange = null) }
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             try { open(PaintDocument(board = board), false) }
@@ -120,6 +150,8 @@ class PaintBoxViewModel @Inject constructor(
         val leds = withContext(Dispatchers.IO) {
             if (board.brand == "moonboard" || !supported) emptyMap() else boards.getPlacementLedMap(board.sizeId, board.brand)
         }
+        // Only holds with an LED on this size can be painted, so a send never misses one.
+        val placements = geometry.second.filter { it.placementId.toInt() in leds }
         val brand = BoardBrand.fromWire(board.brand)
         val detail = when (brand) {
             BoardBrand.MOONBOARD -> MoonBoardVariant.fromLayoutId(board.layoutId.toLong())?.displayName
@@ -130,22 +162,28 @@ class PaintBoxViewModel @Inject constructor(
         }
         val label = if (detail == null && board.label.isNotBlank()) board.label
             else boardSelectionLabel(brand, board.layoutId, detail)
-        val labelled = document.copy(board = board.copy(label = label))
+        val paintable = placements.mapTo(mutableSetOf()) { it.placementId.toInt() }
+        val colors = if (board.brand == "moonboard" || !supported) document.colors
+            else document.colors.filterKeys { it in paintable }
+        val labelled = document.copy(board = board.copy(label = label), colors = colors)
         history.clear()
         saved = labelled.takeIf { persisted }
         // Keep the chosen tool and color when the new board can show that color.
         val previous = mutable.value
         val brush = previous.brush.takeIf { it in PaintPalette.forBoard(brand) } ?: PaintBoxState().brush
         mutable.value = PaintBoxState(document = labelled, boardSize = geometry.first, brush = brush, eraser = previous.eraser,
-            placements = geometry.second.associateBy { it.placementId.toInt() }, images = geometry.third,
+            placements = placements.associateBy { it.placementId.toInt() }, images = geometry.third,
             ledMap = leds, loading = false,
-            missingBoard = supported && board.brand != "moonboard" && (geometry.first == null || geometry.second.isEmpty()),
+            missingBoard = supported && board.brand != "moonboard" && (geometry.first == null || placements.isEmpty()),
             unsupportedBoard = !supported,
             library = mutable.value.library)
     }
+    /** Opens a saved picture and makes its board the app's board (the screen asks first, see [switchesBoard]). */
     fun load(document: PaintDocument) {
         pause()
-        boardPickPending = false
+        leaveAgreed = false
+        target = document.board
+        mutable.update { it.copy(boardChange = null) }
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             try {
@@ -232,6 +270,7 @@ class PaintBoxViewModel @Inject constructor(
     private fun change(colors: Map<Int, Int>) {
         val old = state.value.document ?: return
         if (old.colors == colors) return
+        leaveAgreed = false
         val next = old.copy(colors = colors)
         mutable.update { it.copy(document = next, dirty = next != saved && (saved != null || colors.isNotEmpty())) }
         if (state.value.live) queueSend()
@@ -265,6 +304,7 @@ class PaintBoxViewModel @Inject constructor(
     fun toggleLive() {
         if (state.value.live) pause() else {
             if (connection.value != ConnectionState.CONNECTED) { message(R.string.paintbox_connect_error); return }
+            projector.boardBusy()?.let { message(it); return }
             mutable.update { it.copy(live = true) }
             ble.acquireKeepAlive("paintbox")
             queueSend()
@@ -296,7 +336,7 @@ class PaintBoxViewModel @Inject constructor(
                     }
                     if (ticket == generation) {
                         if (!sent) { pause(); message(R.string.paintbox_send_error) }
-                        else if (!state.value.live) message(R.string.paintbox_sent)
+                        else if (!state.value.live) message(if (projector.lastSendDimmed) R.string.paintbox_sent_dimmed else R.string.paintbox_sent)
                     }
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) {

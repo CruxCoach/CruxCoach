@@ -76,7 +76,9 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
     var menu by remember { mutableStateOf(false) }
     var clearConfirm by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var cancelAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var askUnsaved by remember { mutableStateOf(false) }
+    var switchTo by remember { mutableStateOf<PaintDocument?>(null) }
     var saveDialog by rememberSaveable { mutableStateOf(false) }
     var saveCopy by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
@@ -102,6 +104,16 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
     fun navigate(action: () -> Unit) {
         viewModel.pause()
         if (state.dirty) { pendingAction = action; askUnsaved = true } else action()
+    }
+    fun cancelPending() { pendingAction = null; cancelAction?.invoke(); cancelAction = null }
+    fun runPending() { cancelAction = null; pendingAction?.invoke(); pendingAction = null }
+    // The app's board changed while the picture has unsaved changes: ask once the sheet is closed.
+    LaunchedEffect(state.boardChange, bluetooth, askUnsaved, saveDialog) {
+        if (state.boardChange != null && !bluetooth && !askUnsaved && !saveDialog) {
+            pendingAction = viewModel::openBoardChange
+            cancelAction = viewModel::keepBoard
+            askUnsaved = true
+        }
     }
     fun back() { if (importing) viewModel.cancelImage() else navigate(onBack) }
     fun openSave(copy: Boolean) { name = document?.name.orEmpty(); saveCopy = copy; saveDialog = true }
@@ -255,23 +267,35 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
         title = { Text(stringResource(R.string.paintbox_clear)) }, text = { Text(stringResource(R.string.paintbox_clear_confirm)) },
         confirmButton = { TextButton(onClick = { clearConfirm = false; viewModel.clear() }) { Text(stringResource(R.string.paintbox_clear)) } },
         dismissButton = { TextButton(onClick = { clearConfirm = false }) { Text(stringResource(R.string.action_cancel)) } })
-    if (askUnsaved) AlertDialog(onDismissRequest = { askUnsaved = false; pendingAction = null },
+    if (askUnsaved) AlertDialog(onDismissRequest = { askUnsaved = false; cancelPending() },
         title = { Text(stringResource(R.string.paintbox_unsaved)) },
+        text = if (state.boardChange != null) {
+            { Text(stringResource(R.string.paintbox_board_changed)) }
+        } else null,
         confirmButton = { TextButton(onClick = { askUnsaved = false; openSave(copy = false) }) { Text(stringResource(R.string.paintbox_save)) } },
         dismissButton = { Row {
-            TextButton(onClick = { askUnsaved = false; pendingAction?.invoke(); pendingAction = null }) { Text(stringResource(R.string.paintbox_discard)) }
-            TextButton(onClick = { askUnsaved = false; pendingAction = null }) { Text(stringResource(R.string.action_cancel)) }
+            TextButton(onClick = { askUnsaved = false; runPending() }) { Text(stringResource(R.string.paintbox_discard)) }
+            TextButton(onClick = { askUnsaved = false; cancelPending() }) { Text(stringResource(R.string.action_cancel)) }
         } })
-    if (saveDialog) AlertDialog(onDismissRequest = { if (!state.saving) { saveDialog = false; pendingAction = null } },
+    switchTo?.let { picture -> AlertDialog(onDismissRequest = { switchTo = null },
+        title = { Text(stringResource(R.string.paintbox_switch_board)) },
+        text = { Text(stringResource(R.string.paintbox_switch_board_text,
+            picture.board.label.ifBlank { BoardBrand.fromWire(picture.board.brand).displayName })) },
+        confirmButton = { TextButton(onClick = { switchTo = null; navigate { viewModel.load(picture) } }) {
+            Text(stringResource(R.string.paintbox_switch))
+        } },
+        dismissButton = { TextButton(onClick = { switchTo = null }) { Text(stringResource(R.string.action_cancel)) } }) }
+    if (saveDialog) AlertDialog(onDismissRequest = { if (!state.saving) { saveDialog = false; cancelPending() } },
         title = { Text(stringResource(if (saveCopy) R.string.paintbox_save_as else R.string.paintbox_save)) },
         text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true,
             enabled = !state.saving, label = { Text(stringResource(R.string.paintbox_name)) }) },
         confirmButton = { TextButton(enabled = name.isNotBlank() && !state.saving, onClick = {
-            viewModel.save(name, saveCopy) { saveDialog = false; pendingAction?.invoke(); pendingAction = null }
+            viewModel.save(name, saveCopy) { saveDialog = false; runPending() }
         }) { Text(stringResource(R.string.paintbox_save)) } },
-        dismissButton = { TextButton(enabled = !state.saving, onClick = { saveDialog = false; pendingAction = null }) { Text(stringResource(R.string.action_cancel)) } })
+        dismissButton = { TextButton(enabled = !state.saving, onClick = { saveDialog = false; cancelPending() }) { Text(stringResource(R.string.action_cancel)) } })
     if (library) PaintLibraryDialog(state.library, viewModel, onDismiss = { library = false }, onLoad = {
-        library = false; navigate { viewModel.load(it) }
+        library = false
+        if (viewModel.switchesBoard(it)) switchTo = it else navigate { viewModel.load(it) }
     }, onSaveCurrent = if (document != null && state.boardReady && document.colors.isNotEmpty()) {
         { library = false; openSave(copy = false) }
     } else null)
@@ -446,7 +470,9 @@ internal fun ColumnScope.PaintLibraryContent(
     onSaveCurrent: (() -> Unit)? = null,
 ) {
     Text(stringResource(R.string.paintbox_load), style = MaterialTheme.typography.titleLarge,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp))
+    Text(stringResource(R.string.paintbox_local_only), style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
     if (library.unreadable > 0) Text(
         pluralStringResource(R.plurals.paintbox_unreadable, library.unreadable, library.unreadable),
         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
