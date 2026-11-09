@@ -182,9 +182,15 @@ class BoardPacketEncoder(
         // ── API Level 3 picture budget ──────────────────────────────────────
         // The protocol has no power budget on API 3, and no public source shows
         // that the box limits itself. A climb lights a few dozen holds; a free
-        // picture can light the whole wall white. Its budget is what the box
-        // draws in its own start-up test: every LED lit in one full colour
-        // channel. One hold position with one channel at full counts 1.
+        // picture can light the whole wall white. Its budget is the load of the
+        // maker's own LED test for a new board: "Turn on the controller box and
+        // test the LED kit using the Kilter Board App. All lights should turn
+        // on, cycling through red, green, blue, then off." (Kilter Board 7x10
+        // Mainline Installation and Setup Guide, step 10; the guides are linked
+        // from https://settercloset.com/pages/kilter-board-installation-handbooks).
+        // So every LED lit in one full colour channel. Nobody has measured how
+        // bright that test is, so this is an estimate, not a measured limit.
+        // One hold position with one channel at full counts 1.
 
         /** Dimming steps tried in order until a picture fits. */
         private val V3_PICTURE_SCALES = doubleArrayOf(1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2)

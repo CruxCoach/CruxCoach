@@ -241,7 +241,7 @@ class BoardPacketEncoderTest {
     }
 
     @Test
-    fun v3PictureBudgetIsTheBoxsOwnStartUpTest() {
+    fun v3PictureBudgetIsTheMakersLedTest() {
         val red = 0xE0
         val white = 0xFF
         // Every hold in one full channel is what the box draws itself: unchanged.

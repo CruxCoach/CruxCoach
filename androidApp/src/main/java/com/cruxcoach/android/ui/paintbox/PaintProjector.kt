@@ -71,7 +71,7 @@ class PaintProjector @Inject constructor(
             val leds: List<Pair<Int, Int>>
             val dimmed: Boolean
             if (apiLevel >= 3) {
-                // No budget in the protocol: stay within what the box's own start-up test draws.
+                // No budget in the protocol: stay within about what the maker's LED test draws (see fitV3PictureBudget).
                 // Layouts that share a size map their own placements to the same LEDs.
                 val fitted = BoardPacketEncoder.fitV3PictureBudget(painted.map { it.second }, ledMap.values.toSet().size)
                 leds = painted.zip(fitted) { (position, _), color -> position to color }

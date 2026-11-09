@@ -39,7 +39,7 @@ class PaintBoxProjectionTest {
         assertTrue(projector.send(doc.copy(colors = emptyMap()), emptyMap()) { true })
         coVerify { ble.sendRawLeds(emptyList(), BoardBrand.KILTER, any()) }
     }
-    @Test fun `an API-3 picture never draws more than the box's start-up test`() = runTest {
+    @Test fun `an API-3 picture never draws more than the maker's LED test`() = runTest {
         kilter()
         val ledMap = (1..90).associateWith { it }
         val third = PaintDocument(board = PaintBoard("kilter", 1, 10), colors = (1..30).associateWith { 0xff })
