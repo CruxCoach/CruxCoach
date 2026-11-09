@@ -191,6 +191,6 @@ class ComebackScreenTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) { repo.injury("i1")?.plan?.referenceKg?.get(Grip.HALF_CRIMP.name) == 28.0 }
         // Stage 3 strength: half crimp at 40–60 % of 28 kg.
         scrollTo("comeback_list", "comeback_session_1")
-        waitForText("11.0–17.0 kg")
+        waitForText("11.0–17.0\u00A0kg")
     }
 }

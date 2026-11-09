@@ -122,8 +122,8 @@ fun StrengthChart(
     val maxX = all.maxOf { it.day.epochDay() }.let { if (it == minX) minX + 1 else it }
     Row(modifier.height(140.dp).semantics { contentDescription = description }.testTag("body_strength_chart")) {
         Column(Modifier.fillMaxHeight().padding(end = 6.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Text("${maxY.toInt()} %", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("${minY.toInt()} %", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${maxY.toInt()}\u00A0%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${minY.toInt()}\u00A0%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Canvas(Modifier.weight(1f).fillMaxHeight()) {
             val w = size.width

@@ -1633,7 +1633,7 @@
     <string name="board_stats_cross_board_send_curve">Tries until the send</string>
     <string name="board_stats_cross_board_send_curve_help">How many tries your problems took until their first send, per board: a flash, the 2nd or 3rd try, 4 to 5 tries, or 6 and more. Tries from earlier sessions count, so a send after attempts on an earlier day is no flash.\n\nHollow bars rest on fewer than %1$d problems.\n\nTap a board to see the numbers.</string>
     <string name="board_stats_glance_title">At a glance</string>
-    <string name="board_stats_glance_help">Top: your hardest send and your hardest flash in the whole logbook.\n\nBelow: the last %1$d days against the %1$d days before: climbing days (days with at least one entry), sends and your hardest send. Green means more, or a harder grade.\n\nClimbing days a week: the average over the last eight weeks.</string>
+    <string name="board_stats_glance_help">Top: your hardest send and your hardest flash in the whole logbook.\n\nBelow: the last %1$d days against the %1$d days before: climbing days (days with at least one entry), sends and your hardest send. Green means more, or a harder grade.\n\nClimbing days a week: the average over the last eight weeks, or since your first climbing day. It shows from two weeks on.</string>
     <string name="board_stats_glance_hardest_send">Hardest send</string>
     <string name="board_stats_glance_hardest_flash">Hardest flash</string>
     <string name="board_stats_glance_hardest">Hardest</string>
@@ -3457,6 +3457,77 @@
     <string name="wall_games_no_holds">The hold positions of this board are not on the device yet. Download its catalogue first.</string>
     <string name="wall_games_sound_turn_off">Turn countdown sound off</string>
     <string name="wall_games_sound_turn_on">Turn countdown sound on</string>
+    <!-- Shiny Wall account (read-only logbook import) -->
+    <string name="shinywall_section_title">Shiny Wall account</string>
+    <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (ascents and projects), favorites, lists and your own routes into CruxCoach. Star ratings and comments stay in Shiny Wall.\n\nRead-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only.\n\nWhat you delete in CruxCoach stays deleted, entries and lists alike. To import everything again, delete your Shiny Wall logbook data under Settings → Delete local data.</string>
+    <string name="shinywall_connect_button">Connect Shiny Wall account</string>
+    <string name="shinywall_login_title">Sign in to Shiny Wall</string>
+    <string name="shinywall_login_privacy">Your email and password go to Google’s Firebase servers, which run Shiny Wall’s sign-in.</string>
+    <string name="shinywall_login_privacy_more">CruxCoach reads your Shiny Wall data from the same Google servers. On this phone it keeps a sign-in token, never the password. Accounts that sign in with Google can’t be connected.</string>
+    <string name="shinywall_email_label">Email</string>
+    <string name="shinywall_password_label">Password</string>
+    <string name="shinywall_login_button">Sign in</string>
+    <string name="shinywall_connected_as">Connected as: %1$s</string>
+    <string name="shinywall_last_import">Last import: %1$s</string>
+    <string name="shinywall_import_new">Import new entries</string>
+    <string name="shinywall_disconnect">Disconnect</string>
+    <string name="shinywall_disconnect_confirm">CruxCoach forgets the Shiny Wall sign-in on this phone. Imported entries and lists stay.</string>
+    <string name="shinywall_preview_title">Import from Shiny Wall</string>
+    <!-- %1$s, %2$s, %3$s: shinywall_preview_new_ascents, shinywall_preview_new_projects, shinywall_preview_known -->
+    <string name="shinywall_preview_found">%1$s, %2$s, %3$s.</string>
+    <plurals name="shinywall_preview_new_ascents">
+        <item quantity="one">%1$d new ascent</item>
+        <item quantity="other">%1$d new ascents</item>
+    </plurals>
+    <plurals name="shinywall_preview_new_projects">
+        <item quantity="one">%1$d new project</item>
+        <item quantity="other">%1$d new projects</item>
+    </plurals>
+    <string name="shinywall_preview_known">%1$d already in CruxCoach</string>
+    <plurals name="shinywall_preview_skipped">
+        <item quantity="one">%1$d entry can’t be imported (custom walls, route creations, incomplete entries).</item>
+        <item quantity="other">%1$d entries can’t be imported (custom walls, route creations, incomplete entries).</item>
+    </plurals>
+    <plurals name="shinywall_preview_deleted">
+        <item quantity="one">%1$d entry won’t be imported again.</item>
+        <item quantity="other">%1$d entries won’t be imported again.</item>
+    </plurals>
+    <string name="shinywall_import_button">Import</string>
+    <string name="shinywall_import_lists_button">Update lists</string>
+    <string name="shinywall_import_empty">No entries found in your Shiny Wall logbook yet.</string>
+    <plurals name="shinywall_import_part_ascents">
+        <item quantity="one">%1$d ascent</item>
+        <item quantity="other">%1$d ascents</item>
+    </plurals>
+    <plurals name="shinywall_import_part_projects">
+        <item quantity="one">%1$d project</item>
+        <item quantity="other">%1$d projects</item>
+    </plurals>
+    <plurals name="shinywall_import_part_lists">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
+    <string name="shinywall_import_part_known">%1$d already in CruxCoach</string>
+    <string name="shinywall_import_part_skipped">%1$d skipped</string>
+    <plurals name="shinywall_import_part_deleted">
+        <item quantity="one">%1$d won’t be imported again</item>
+        <item quantity="other">%1$d won’t be imported again</item>
+    </plurals>
+    <string name="shinywall_import_part_nothing_new">Nothing new</string>
+    <string name="shinywall_auth_invalid_credentials">Email or password is wrong. If you sign in to Shiny Wall with Google, CruxCoach can’t connect.</string>
+    <string name="shinywall_auth_disabled">This Shiny Wall account is disabled.</string>
+    <string name="shinywall_auth_throttled">Too many attempts. Please wait a moment and try again.</string>
+    <string name="shinywall_auth_network">No connection to Shiny Wall. Check your internet connection.</string>
+    <string name="shinywall_auth_http_failure" formatted="false">Sign-in failed (HTTP %1$d).</string>
+    <string name="shinywall_auth_not_saved">CruxCoach couldn’t save the sign-in on this phone. Please try again.</string>
+    <string name="shinywall_auth_unexpected">Shiny Wall sent an unexpected answer. Please try again later.</string>
+    <string name="shinywall_session_expired">Session expired</string>
+    <string name="shinywall_relogin_button">Sign in again</string>
+    <string name="shinywall_import_error_denied">Shiny Wall did not allow reading your logbook.</string>
+    <string name="shinywall_import_error_network">No connection to Shiny Wall. Check your internet connection.</string>
+    <string name="shinywall_import_error_generic">The import failed. Please try again.</string>
+    <string name="shinywall_list_favorites">Shiny Wall favorites</string>
+    <string name="shinywall_list_own_routes">My Shiny Wall routes</string>
     <!-- Board-size check: optional help for users unsure about their board size -->
     <string name="board_size_check_title">Check your board size</string>
     <string name="board_size_check_link">Check the size on your board</string>

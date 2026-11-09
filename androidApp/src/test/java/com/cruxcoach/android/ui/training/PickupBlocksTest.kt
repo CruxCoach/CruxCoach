@@ -78,7 +78,7 @@ class PickupBlocksTest : AthleteScreenTest() {
             Text("two: " + perBlockText(set(twoArm.slug), twoArm, UnitSystem.METRIC))
             Text("one: " + perBlockText(set(oneArm.slug), oneArm, UnitSystem.METRIC))
         }
-        compose.onNodeWithText("two: With two blocks: 19 kg each").assertExists()
+        compose.onNodeWithText("two: With two blocks: 19\u00A0kg each").assertExists()
         compose.onNodeWithText("one: null").assertExists()
     }
 }

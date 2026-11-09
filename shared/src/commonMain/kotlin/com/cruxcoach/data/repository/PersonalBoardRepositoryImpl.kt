@@ -3,6 +3,7 @@ package com.cruxcoach.data.repository
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import com.cruxcoach.db.secure.SecureDatabase
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -67,16 +68,23 @@ class PersonalBoardRepositoryImpl(
 
     override fun deleteAscent(uuid: String) {
         database.transaction {
-            database.ascentsQueries.deleteAscent(uuid)
             queueLogDeletion(uuid)
+            database.ascentsQueries.deleteAscent(uuid)
         }
     }
 
     /** Merkt die Löschung vor, bis Kilter sie bestätigt hat. Auch für rein
      *  lokale Einträge: ein DELETE für eine uuid, die Kilter nicht kennt,
      *  antwortet 404 und gilt als erledigt — das spart die Extra-Abfrage, ob
-     *  die Zeile je hochgeladen war, und die Vormerkung ist gleich wieder weg. */
+     *  die Zeile je hochgeladen war, und die Vormerkung ist gleich wieder weg.
+     *  Nur für Kilter-Zeilen (vor dem Löschen der Zeile aufrufen): Einträge
+     *  anderer Boards hat Kilter nie, ihre uuid wird nicht an Kilter geschickt.
+     *  Wer sie importiert, merkt sich Löschungen selbst (ShinyWallSyncEngine). */
     private fun queueLogDeletion(logUuid: String) {
+        val brand = database.ascentsQueries.selectAscentBoardBrand(logUuid).executeAsOneOrNull()
+            ?: database.bidsQueries.selectBidBoardBrand(logUuid).executeAsOneOrNull()
+        // A row that is gone already may still be on Kilter.
+        if (brand != null && brand != BoardBrand.KILTER.wireValue) return
         database.pendingLogDeletionsQueries.queueLogDeletion(
             log_uuid = logUuid,
             deleted_at = kotlin.time.Clock.System.now().toEpochMilliseconds(),
@@ -409,8 +417,8 @@ class PersonalBoardRepositoryImpl(
 
     override fun deleteBid(uuid: String) {
         database.transaction {
-            database.bidsQueries.deleteBid(uuid)
             queueLogDeletion(uuid)
+            database.bidsQueries.deleteBid(uuid)
         }
     }
 

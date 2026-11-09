@@ -57,16 +57,16 @@ class WeightTextTest : AthleteScreenTest() {
         val en = context.resources
         val bench = def("push.dumbbell_bench_press")
         val pullUp = def("pull.weighted_pull_up")
-        assertEquals("2 × 16 kg", weightText(en, bench, 16.0, UnitSystem.METRIC))
-        assertEquals("2 × 35.3 lb", weightText(en, bench, 16.0, UnitSystem.IMPERIAL))
-        assertEquals("2 × 16 kg", weightText(german, bench, 16.0, UnitSystem.METRIC))
+        assertEquals("2\u00A0×\u00A016\u00A0kg", weightText(en, bench, 16.0, UnitSystem.METRIC))
+        assertEquals("2\u00A0×\u00A035.3\u00A0lb", weightText(en, bench, 16.0, UnitSystem.IMPERIAL))
+        assertEquals("2\u00A0×\u00A016\u00A0kg", weightText(german, bench, 16.0, UnitSystem.METRIC))
         // A one-rep max of 40 kg on two dumbbells reads 2 × 20 kg.
-        assertEquals("2 × 20 kg", weightTextOfTotal(en, bench, 40.0, UnitSystem.METRIC))
-        assertEquals("16 kg", weightText(en, def("legs.goblet_squat"), 16.0, UnitSystem.METRIC))
-        assertEquals("60 kg", weightText(en, def("legs.back_squat"), 60.0, UnitSystem.METRIC))
-        assertEquals("+12 kg", weightText(en, pullUp, 12.0, UnitSystem.METRIC))
-        assertEquals("15 kg assisted", weightText(en, pullUp, -15.0, UnitSystem.METRIC))
-        assertEquals("15 kg entlastet", weightText(german, pullUp, -15.0, UnitSystem.METRIC))
+        assertEquals("2\u00A0×\u00A020\u00A0kg", weightTextOfTotal(en, bench, 40.0, UnitSystem.METRIC))
+        assertEquals("16\u00A0kg", weightText(en, def("legs.goblet_squat"), 16.0, UnitSystem.METRIC))
+        assertEquals("60\u00A0kg", weightText(en, def("legs.back_squat"), 60.0, UnitSystem.METRIC))
+        assertEquals("+12\u00A0kg", weightText(en, pullUp, 12.0, UnitSystem.METRIC))
+        assertEquals("15\u00A0kg assisted", weightText(en, pullUp, -15.0, UnitSystem.METRIC))
+        assertEquals("15\u00A0kg entlastet", weightText(german, pullUp, -15.0, UnitSystem.METRIC))
         assertEquals("Bodyweight", weightText(en, pullUp, 0.0, UnitSystem.METRIC))
     }
 
@@ -78,8 +78,8 @@ class WeightTextTest : AthleteScreenTest() {
             Text("bar: " + weightDeltaText(def("legs.back_squat"), 2.5, UnitSystem.METRIC))
             Text("title: " + weightInputTitle(bench, UnitSystem.METRIC))
         }
-        compose.onNodeWithText("pair: +1 kg per dumbbell").assertExists()
-        compose.onNodeWithText("bar: +2.5 kg").assertExists()
+        compose.onNodeWithText("pair: +1\u00A0kg per dumbbell").assertExists()
+        compose.onNodeWithText("bar: +2.5\u00A0kg").assertExists()
         compose.onNodeWithText("title: Weight per dumbbell in kg").assertExists()
     }
 }

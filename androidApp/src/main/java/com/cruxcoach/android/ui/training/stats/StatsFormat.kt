@@ -61,5 +61,5 @@ fun changeText(def: ExerciseDefinition, kind: CapacityKind?, change: Double, uni
         CapacityKind.MAX_SECONDS -> (if (change > 0) "+" else "") + stringResource(R.string.tr_format_seconds, change.roundToInt())
         null -> change.roundToInt().toString()
     }
-    return "$arrow $amount"
+    return "$arrow\u00A0$amount"
 }

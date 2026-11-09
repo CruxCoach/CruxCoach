@@ -46,8 +46,8 @@
     <string name="trx_best_overall">Insgesamt</string>
     <string name="trx_e1rm">geschätztes Max. %1$s</string>
     <plurals name="trx_reps">
-        <item quantity="one">%d Wiederholung</item>
-        <item quantity="other">%d Wiederholungen</item>
+        <item quantity="one">%d\u00A0Wiederholung</item>
+        <item quantity="other">%d\u00A0Wiederholungen</item>
     </plurals>
     <string name="trx_reps_short">%d×</string>
     <string name="trx_add_to_running">Zum Training</string>
@@ -80,7 +80,7 @@
     <string name="trx_custom_one_kettlebell">Eine Kettlebell</string>
     <string name="trx_custom_two_kettlebells">Zwei Kettlebells</string>
     <string name="trx_custom_implements_one">Du trägst das Gewicht ein, das draufsteht.</string>
-    <string name="trx_custom_implements_two">Du trägst das Gewicht von einer ein, z. B. 2 × 16 kg; Volumen und % Körpergewicht zählen beide.</string>
+    <string name="trx_custom_implements_two">Du trägst das Gewicht von einer ein, z. B. 2\u00A0×\u00A016\u00A0kg; Volumen und % Körpergewicht zählen beide.</string>
     <string name="trx_custom_note">Notiz (optional)</string>
     <string name="trx_kind_reps">Wiederholungen</string>
     <string name="trx_kind_load_reps">Wiederholungen mit Gewicht</string>

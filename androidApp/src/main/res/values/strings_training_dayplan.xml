@@ -36,7 +36,7 @@
     <string name="trt_next_plan">Plan</string>
     <string name="trt_rest_today">Rest day today</string>
     <string name="trt_rest_today_done">Today is now a rest day.</string>
-    <string name="trf_planned_climb">climbing %1$d min</string>
+    <string name="trf_planned_climb">climbing %1$d\u00A0min</string>
     <string name="trw_notify_climb">Climbing day</string>
     <string name="trdp_reason_day_rest">A rest day is planned for today. Light mobility is optional.</string>
     <string name="trdp_reason_day_plan">This is what you planned for today.</string>

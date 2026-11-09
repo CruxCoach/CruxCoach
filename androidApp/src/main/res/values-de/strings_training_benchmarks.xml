@@ -2,7 +2,7 @@
 <resources>
     <string name="trbm_title">Leistungswerte</string>
     <string name="trbm_card_title">Dein Leistungswert</string>
-    <string name="trbm_info" formatted="false">Trag ein, was du schaffst – zum Beispiel Klimmzug mit +20 kg für 5 Wiederholungen oder Blockheben mit 32 kg an 20 mm für 10 s rechts – oder mach einen kurzen Test. CruxCoach macht daraus die Lasten von heute: Wiederholungen mit Zusatzlast mit zwei in Reserve, Max Hangs bei etwa 90 %, Repeater bei etwa 65 % deines 10-Sekunden-Maximums, Körpergewichtsübungen und Halteübungen bei etwa 70 % deines Maximums. Zeigt ein geloggter Satz, dass du stärker bist, steigt der Wert von selbst und die nächste Einheit plant mehr. Auch dein erstes Training mit einer Übung legt einen ersten Wert fest.</string>
+    <string name="trbm_info" formatted="false">Trag ein, was du schaffst – zum Beispiel Klimmzug mit +20\u00A0kg für 5\u00A0Wiederholungen oder Blockheben mit 32\u00A0kg an 20\u00A0mm für 10\u00A0s rechts – oder mach einen kurzen Test. CruxCoach macht daraus die Lasten von heute: Wiederholungen mit Zusatzlast mit zwei in Reserve, Max Hangs bei etwa 90\u00A0%, Repeater bei etwa 65\u00A0% deines 10-Sekunden-Maximums, Körpergewichtsübungen und Halteübungen bei etwa 70\u00A0% deines Maximums. Zeigt ein geloggter Satz, dass du stärker bist, steigt der Wert von selbst und die nächste Einheit plant mehr. Auch dein erstes Training mit einer Übung legt einen ersten Wert fest.</string>
     <string name="trbm_needs_weight" formatted="false">Trag zuerst dein Körpergewicht ein: Werte mit Zusatzgewicht und % Körpergewicht brauchen es.</string>
     <string name="trbm_key_title">Wichtige Leistungswerte</string>
     <string name="trbm_other_title">Weitere Übungen</string>
@@ -18,28 +18,28 @@
     <string name="trbm_delete_text">CruxCoach plant dann aus dem Wert davor oder aus deinem Training.</string>
     <string name="trbm_test">Testen</string>
     <string name="trbm_e1rm">geschätztes 1RM %1$s</string>
-    <string name="trbm_ten_second_max">10-s-Max %1$s (%2$d %% KG)</string>
-    <string name="trbm_max_reps">max. %1$d Wdh.</string>
-    <string name="trbm_max_seconds">max. %1$d s</string>
+    <string name="trbm_ten_second_max">10-s-Max %1$s (%2$d\u00A0%% KG)</string>
+    <string name="trbm_max_reps">max. %1$d\u00A0Wdh.</string>
+    <string name="trbm_max_seconds">max. %1$d\u00A0s</string>
     <string name="trbm_hint_e1rm">Der schwerste Satz, den du sauber schaffst: Last und Wiederholungen (1–30). Daraus schätzt CruxCoach dein 1RM.</string>
-    <string name="trbm_hint_hang">Das Maximum, das du halten kannst: Last, Haltezeit und Leiste. 10 s ist der Bezug, andere Zeiten werden umgerechnet.</string>
+    <string name="trbm_hint_hang">Das Maximum, das du halten kannst: Last, Haltezeit und Leiste. 10\u00A0s ist der Bezug, andere Zeiten werden umgerechnet.</string>
     <string name="trbm_hint_reps">Deine maximale Anzahl sauberer Wiederholungen in einem Satz.</string>
     <string name="trbm_hint_seconds">Deine längste saubere Haltezeit.</string>
     <string name="trbm_mode_sets">Mehrere Sätze</string>
     <string name="trbm_mode_max">Mein Maximum</string>
     <string name="trbm_sets">Sätze</string>
-    <string name="trbm_hint_sets_e1rm">Was du im Training ohne Muskelversagen schaffst, z. B. 5 × 5 mit +20 kg. CruxCoach plant genau das und findet dein Limit über deine Sätze.</string>
-    <string name="trbm_hint_sets_hang">Hänger, die du mehrere Sätze lang sauber schaffst, z. B. 5 × 10 s mit +10 kg an 20 mm. CruxCoach plant genau das und lernt aus jedem Satz.</string>
-    <string name="trbm_hint_sets_reps">Wiederholungen, die du in jedem von mehreren Sätzen schaffst, z. B. 3 × 8.</string>
-    <string name="trbm_hint_sets_seconds">Wie lange du in jedem von mehreren Sätzen hältst, z. B. 3 × 45 s.</string>
-    <string name="trbm_sets_reps">%1$d × %2$d Wdh.</string>
-    <string name="trbm_max_reps_about">max. etwa %1$d Wdh.</string>
-    <string name="trbm_max_seconds_about">max. etwa %1$d s</string>
+    <string name="trbm_hint_sets_e1rm">Was du im Training ohne Muskelversagen schaffst, z. B. 5\u00A0×\u00A05 mit +20\u00A0kg. CruxCoach plant genau das und findet dein Limit über deine Sätze.</string>
+    <string name="trbm_hint_sets_hang">Hänger, die du mehrere Sätze lang sauber schaffst, z. B. 5\u00A0×\u00A010\u00A0s mit +10\u00A0kg an 20\u00A0mm. CruxCoach plant genau das und lernt aus jedem Satz.</string>
+    <string name="trbm_hint_sets_reps">Wiederholungen, die du in jedem von mehreren Sätzen schaffst, z. B. 3\u00A0×\u00A08.</string>
+    <string name="trbm_hint_sets_seconds">Wie lange du in jedem von mehreren Sätzen hältst, z. B. 3\u00A0×\u00A045\u00A0s.</string>
+    <string name="trbm_sets_reps">%1$d\u00A0×\u00A0%2$d\u00A0Wdh.</string>
+    <string name="trbm_max_reps_about">max. etwa %1$d\u00A0Wdh.</string>
+    <string name="trbm_max_seconds_about">max. etwa %1$d\u00A0s</string>
     <string name="trbm_load_added_hint">0 = Körpergewicht, negativ = entlastet (Umlenkrolle, Band)</string>
     <string name="trbm_reps">Wiederholungen</string>
     <string name="trbm_seconds">Sekunden</string>
     <string name="trbm_edge">Leiste (mm)</string>
     <string name="trbm_planned">Geplant: %1$s</string>
-    <string name="trbm_from_other_side">(von der anderen Hand geschätzt, −5 %)</string>
+    <string name="trbm_from_other_side">(von der anderen Hand geschätzt, −5\u00A0%)</string>
     <string name="trbm_source_estimate">geschätzt</string>
 </resources>

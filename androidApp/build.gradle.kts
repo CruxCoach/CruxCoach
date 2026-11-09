@@ -369,6 +369,8 @@ android {
         unitTests.isReturnDefaultValues = true
         // Robolectric needs merged Android resources on the test classpath.
         unitTests.isIncludeAndroidResources = true
+        // Gradle's default 512 MB ran out in Robolectric's resource loading on CI.
+        unitTests.all { it.maxHeapSize = "2g" }
     }
 
     // Pin OkHttp on the *unit-test* classpath to 4.12.0 so MockWebServer 4.12

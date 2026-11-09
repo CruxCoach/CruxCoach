@@ -53,7 +53,7 @@ class BodyMapRenderTest {
             compose.waitForIdle()
             assertTrue(compose.onAllNodesWithContentDescription("Body map", substring = true).fetchSemanticsNodes().isNotEmpty())
             assertTrue(compose.onAllNodesWithContentDescription("Lats", substring = true).fetchSemanticsNodes().isNotEmpty())
-            assertTrue(compose.onAllNodesWithContentDescription("Half crimp · 20 mm").fetchSemanticsNodes().isNotEmpty())
+            assertTrue(compose.onAllNodesWithContentDescription("Half crimp · 20\u00A0mm").fetchSemanticsNodes().isNotEmpty())
         }
         check()
         dark = true

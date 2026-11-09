@@ -57,6 +57,8 @@ private fun BoardFilterChips(
     comparison: List<BoardComparisonEntry>,
     selected: String?,
     onSelect: (String?) -> Unit,
+    /** False while the statistics load: the boards' numbers aren't known yet. */
+    showNumbers: Boolean = true,
 ) {
     val byBoard = comparison.associateBy { it.boardBrand }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -70,7 +72,13 @@ private fun BoardFilterChips(
             FilterChip(
                 selected = selected == brand,
                 onClick = { onSelect(brand) },
-                label = { BoardChipLabel(boardBrandLabel(brand), byBoard[brand]?.sendCount ?: 0, byBoard[brand]?.hardestGrade) },
+                label = {
+                    if (showNumbers) {
+                        BoardChipLabel(boardBrandLabel(brand), byBoard[brand]?.sendCount ?: 0, byBoard[brand]?.hardestGrade)
+                    } else {
+                        Text(boardBrandLabel(brand))
+                    }
+                },
             )
         }
     }
@@ -147,6 +155,8 @@ internal fun BoardStatsSheetContent(
     onHeatmapModeSelect: (HeatmapMode) -> Unit = {},
     /** The year in review's place in the statistics (#64). */
     yearReview: @Composable () -> Unit = {},
+    /** Until the first numbers are in, the sheet shows a loading sign below its filters. */
+    loading: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -154,7 +164,6 @@ internal fun BoardStatsSheetContent(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         InfoHeading(stringResource(R.string.board_stats_title), stringResource(R.string.ux_stats_help))
-        yearReview()
 
         // Filters first: everything below follows the period and the board.
         StatsIntervalChips(
@@ -170,7 +179,16 @@ internal fun BoardStatsSheetContent(
                 comparison = boardComparison,
                 selected = boardFilter,
                 onSelect = onBoardFilterSelect,
+                showNumbers = !loading,
             )
+        }
+
+        // Until the first numbers are in, the sheet only shows that they are coming.
+        if (loading) {
+            Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                CircularProgressIndicator(color = OrangeAccent)
+            }
+            return@Column
         }
 
         // The period in six numbers; the cards below explain them.
@@ -181,6 +199,8 @@ internal fun BoardStatsSheetContent(
                     .takeIf { statsInterval != StatsTimeInterval.ALL || customDateFrom != null },
             )
         }
+        // Below the numbers, so a card that arrives later moves nothing above them.
+        yearReview()
 
         // How the boards feel against each other, when there is enough
         // data. Spans every board whatever the board filter is.

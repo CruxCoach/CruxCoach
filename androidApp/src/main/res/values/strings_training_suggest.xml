@@ -34,10 +34,10 @@
     <string name="trsg_reason_board_light">A light board session today: the fingers are still recovering, so easy volume instead of limit moves.</string>
     <string name="trsg_reason_hard_tomorrow">A hard climbing day tomorrow – the fingers stay fresh for it today.</string>
     <string name="trsg_reason_injury">Climbing is paused: only exercises that spare the injury, one-sided work on the healthy side.</string>
-    <string name="trsg_reason_fingers_loaded">Your fingers were loaded in the last 48 hours – today pull, push, legs or core.</string>
+    <string name="trsg_reason_fingers_loaded">Your fingers were loaded in the last 48\u00A0hours – today pull, push, legs or core.</string>
     <string name="trsg_reason_fingers_tired">Your fingers feel tired – no max finger load today.</string>
     <string name="trsg_reason_skin">Your skin needs a break – no finger session today.</string>
-    <string name="trsg_reason_fingers_rested">No finger load in the last 48 hours – a good day for finger strength.</string>
+    <string name="trsg_reason_fingers_rested">No finger load in the last 48\u00A0hours – a good day for finger strength.</string>
     <string name="trsg_reason_pull_longer_ago">You trained legs and core more recently than pulling and pushing.</string>
     <string name="trsg_reason_legs_longer_ago">You trained pulling and pushing more recently than legs and core.</string>
     <string name="trsg_reason_low_energy">Little sleep or energy – the session is shorter today.</string>

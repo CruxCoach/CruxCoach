@@ -6,8 +6,8 @@
     <string name="tre_block_event">Today is your day</string>
     <string name="tre_block_info_text">Training runs in simple cycles: one intro week, three build weeks, one lighter deload week. A trip or competition date adds a taper over the last ten days. Tired check-ins or a finger-load spike can bring the deload forward – the calendar is only one signal.</string>
     <string name="tre_block_intro">Intro week</string>
-    <string name="tre_block_taper">Taper: %1$d days to go</string>
-    <string name="tre_board_plan">%1$s · %2$d min</string>
+    <string name="tre_block_taper">Taper: %1$d\u00A0days to go</string>
+    <string name="tre_board_plan">%1$s · %2$d\u00A0min</string>
     <string name="tre_conf_high">Precise</string>
     <string name="tre_conf_info_text">Basic: little data yet, so the coach stays careful. Personal: your logbook, performance values or several weeks of history shape the picks. Precise: all of that plus your coach setup. More data never makes a suggestion riskier – only better matched.</string>
     <string name="tre_conf_info_title">How well the coach knows you</string>
@@ -16,10 +16,10 @@
     <string name="tre_deload_action">Start a lighter week</string>
     <string name="tre_deload_started">Lighter week started.</string>
     <string name="tre_duration_apply">Use it</string>
-    <string name="tre_duration_hint">Your training sessions usually take about %1$d min. Match the suggestions to that?</string>
+    <string name="tre_duration_hint">Your training sessions usually take about %1$d\u00A0min. Match the suggestions to that?</string>
     <string name="tre_ev_affinity">often picked or done: %1$s</string>
     <string name="tre_ev_checkin">check-in: %1$s</string>
-    <string name="tre_ev_climb_days">climbing %1$d days ago: %2$s</string>
+    <string name="tre_ev_climb_days">climbing %1$d\u00A0days ago: %2$s</string>
     <string name="tre_ev_climb_detail">%1$s, %2$d attempts</string>
     <string name="tre_ev_climb_today">climbing today: %1$s</string>
     <string name="tre_ev_climb_yesterday">climbing yesterday: %1$s</string>
@@ -30,8 +30,8 @@
     <string name="tre_ev_guard_novice">safety rule: first climbing years</string>
     <string name="tre_ev_guard_youth">safety rule: still growing</string>
     <plurals name="tre_ev_history_weeks">
-        <item quantity="one">%d week of history</item>
-        <item quantity="other">%d weeks of history</item>
+        <item quantity="one">%d\u00A0week of history</item>
+        <item quantity="other">%d\u00A0weeks of history</item>
     </plurals>
     <plurals name="tre_ev_sends">
         <item quantity="one">%d send</item>
@@ -92,7 +92,7 @@
     <string name="tre_reason_level_harder">You found it too easy – today\'s picks are a step harder.</string>
     <string name="tre_reason_no_time">Less time today – the session is shorter.</string>
     <string name="tre_reason_recovery_hard">Your last climbing session was hard for your level – your fingers need their recovery, today pulling, pushing, legs or core.</string>
-    <string name="tre_reason_recovery_limit">Your last climbing session was at your limit – 48 to 72 hours without max finger work.</string>
+    <string name="tre_reason_recovery_limit">Your last climbing session was at your limit – 48 to 72\u00A0hours without max finger work.</string>
     <string name="tre_reason_recovery_volume">Your last climbing session was volume – pulling and core are fine today, fingers rest.</string>
     <string name="tre_reason_skin_rising">Your skin load is rising fast – no max finger work and no board today.</string>
     <string name="tre_struct_finger">finger</string>
@@ -118,10 +118,10 @@
     <string name="tre_trend_title">Across sessions</string>
     <string name="tre_reason_return_break">Back after a break: fewer sets and no maximal finger load for now – the body needs a short ramp.</string>
     <string name="tre_reason_return_finger">You marked your finger injury as over recently: finger work stays light for a few more weeks.</string>
-    <string name="tre_ev_return">Re-entry after %1$d days (week %2$d of %3$d)</string>
+    <string name="tre_ev_return">Re-entry after %1$d\u00A0days (week %2$d of %3$d)</string>
     <string name="tre_after_title">After the training</string>
     <string name="tre_after_fingers">Max finger work again from %1$s</string>
-    <string name="tre_after_fuel">Nutrition today (%1$s): %2$d g carbs and %3$d g protein to go</string>
+    <string name="tre_after_fuel">Nutrition today (%1$s): %2$d\u00A0g carbs and %3$d\u00A0g protein to go</string>
     <string name="tre_after_fuel_done">Nutrition today (%1$s): carbs and protein reached</string>
     <string name="tre_after_fuel_open">Log food</string>
     <string name="tre_after_dayform">Day form (%1$s): one set less per exercise today</string>

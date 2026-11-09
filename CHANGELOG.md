@@ -48,13 +48,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   answer. The wall shows each hold as a photo, laid out the way the Shiny Wall
   app draws it, instead of dots: on problem pages, in the editor and in the
   board picker.
+- Shiny Wall account (Settings → Imports): sign in with your Shiny Wall email
+  and password and import your Shiny Wall logbook (sends with their attempts,
+  projects and your grade), your favorites, your lists and your own routes.
+  Attempts on the day of a send count towards it; attempts on earlier days
+  stay projects of their own, one per day. Star ratings and comments stay in Shiny Wall.
+  Email and password go to Google's Firebase servers, which run Shiny Wall's
+  sign-in and data. Read-only: CruxCoach never changes anything in your Shiny
+  Wall account, keeps a sign-in token on the phone (never the password), and
+  "Import new entries" fetches what is new without duplicating or restoring
+  the entries and lists you deleted (deleting your Shiny Wall logbook data in
+  Settings starts afresh). Standard walls only; accounts that sign in with Google
+  can't connect.
 - Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
   data is refreshed (2,933 venues).
 - Logbook overview: the logbook now opens with one card instead of six tiles:
   your hardest send and hardest flash, the last 30 days against the 30 before
   (climbing days, sends and hardest grade; green means more or harder), your
-  climbing days per week and your milestones (new grades, 50, 100, 250 and more
-  sends, your biggest day, weeks in a row). Tap it for the statistics. The period
+  climbing days per week (from two weeks of history on) and your milestones (new grades, 50, 100, 250 and more
+  sends, your biggest day, weeks in a row). It appears as soon as the logbook has
+  loaded; tap it for the statistics, which show a loading sign until they are ready. The period
   filter of the list moved into the logbook filter, next to result, board and
   angle. Entries no longer repeat the date of their day, and at the largest font
   sizes an entry puts its name and result below its grade instead of squeezing
@@ -589,6 +602,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first year. Below 10 kg a load rises by at most one step per training.
 - Comeback plan: a strength session starts from the last strength session's loads, no longer from the
   light tendon holds done earlier the same day (and the other way round).
+- Injuries: pain on the injury card and in the training's pain sheet now goes from 0 to 10, like the
+  comeback diary, instead of stopping at 9. Pain you saved before keeps its number.
 - "Privacy notice" and "Source code" in Settings → About no longer close the app on a
   phone without a browser; a short message says that no app can open the link. The
   community links do the same.

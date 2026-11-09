@@ -172,7 +172,7 @@ private fun HeadlineTiles(p: ClimberProfileData) {
     }
 }
 
-private fun pct(v: Double): String = "${v.roundToInt()} %"
+private fun pct(v: Double): String = "${v.roundToInt()}\u00A0%"
 
 @Composable
 private fun EmptyProfile(onOpenBenchmarks: () -> Unit, onLogClimbing: () -> Unit) {

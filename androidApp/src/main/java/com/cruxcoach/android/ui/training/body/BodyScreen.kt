@@ -276,8 +276,8 @@ private fun labelFor(metricKey: String): String = BodyMetric.fromKey(metricKey)?
 private fun formatValue(value: Double, unit: String, units: UnitSystem, signed: Boolean = false): String = when (unit) {
     "kg" -> formatMass(value, units, signed)
     "cm" -> if (signed && value > 0) "+" + formatLength(value, units) else formatLength(value, units)
-    "%" -> (if (signed && value > 0) "+" else "") + formatNumber(value) + " %"
-    else -> (if (signed && value > 0) "+" else "") + formatNumber(value) + " " + unit
+    "%" -> (if (signed && value > 0) "+" else "") + formatNumber(value) + "\u00A0%"
+    else -> (if (signed && value > 0) "+" else "") + formatNumber(value) + "\u00A0" + unit
 }
 
 // ── Weight ───────────────────────────────────────────────────────────
@@ -354,7 +354,7 @@ private fun ApeIndexRow(apeCm: Double?, units: UnitSystem, onEnter: () -> Unit) 
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (apeCm != null) {
                     val v = Units.lengthToDisplay(apeCm, units)
-                    val text = (if (v > 0) "+" else "") + formatNumber(v) + " " + Units.lengthUnit(units)
+                    val text = (if (v > 0) "+" else "") + formatNumber(v) + "\u00A0" + Units.lengthUnit(units)
                     Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 } else {
                     Text(stringResource(R.string.trb_ape_missing), style = MaterialTheme.typography.bodySmall)
