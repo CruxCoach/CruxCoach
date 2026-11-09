@@ -179,7 +179,7 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         scrollToAndClick("fuel_foods_list", "fuel_usda_173904")
         waitForTag("fuel_amount_dialog")
         // USDA weighed a cup of oats: one portion is that cup, shown with its weight in oz.
-        compose.onNodeWithText("1 cup · 2.9 oz", substring = true).assertExists()
+        compose.onNodeWithText("1 cup · 2.9\u00A0oz", substring = true).assertExists()
         compose.onNodeWithTag("fuel_amount_confirm").performSemanticsAction(SemanticsActions.OnClick)
 
         val day = service.today().toString()
@@ -194,7 +194,7 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         }
         // The weekly estimate is computed after the entry is saved: wait for it rather than expect it at once.
         compose.waitUntil(WAIT_MS) {
-            compose.onAllNodesWithText("3.4 / 11 mg", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithText("3.4 / 11\u00A0mg", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
     }
 

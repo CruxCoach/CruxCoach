@@ -59,8 +59,8 @@ class YearReviewPrivacyTest {
             assertTrue(screen.detail!!, screen.detail!!.contains("% BW"))
             assertEquals(screen.detail!!.substringBefore(" · 10-s max"), image.detail)
         }
-        assertEquals("+20 kg · 10 s · 20 mm", shown.getValue(hang).second.detail)
-        assertTrue(shown.getValue(hangSets).second.detail!!.startsWith("3 × 10 s"))
+        assertEquals("+20\u00A0kg · 10\u00A0s · 20\u00A0mm", shown.getValue(hang).second.detail)
+        assertTrue(shown.getValue(hangSets).second.detail!!.startsWith("3\u00A0×\u00A010\u00A0s"))
         // Load and reps stay; the estimated max with body weight in it goes.
         shown.getValue(weighted).let { (screen, image) ->
             assertTrue(screen.detail!!, screen.detail!!.contains("1RM"))
