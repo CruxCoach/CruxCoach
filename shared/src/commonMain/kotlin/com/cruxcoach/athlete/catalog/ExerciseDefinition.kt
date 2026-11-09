@@ -33,6 +33,12 @@ data class ExerciseDefinition(
     val harder: String? = null,
     val defaults: Prescription = Prescription(),
     val contraindications: List<BodyRegion> = emptyList(),
+    /**
+     * Body regions a [unilateral] exercise loads on both sides (issue #59 follow-up): the straight arm of an archer
+     * push-up, the kneeling knee of a child's pose. Around an injury of one side such an exercise is not offered for
+     * the healthy side only ([com.cruxcoach.athlete.logic.InjuryAdvisor]).
+     */
+    val bothSides: List<BodyRegion> = emptyList(),
     val tags: List<String> = emptyList(),
     val i18n: Map<String, ExerciseText> = emptyMap(),
     /** True for exercises the user created; never part of the packaged catalogue. */

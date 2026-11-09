@@ -1814,6 +1814,12 @@
     "elbow",
     "shoulder"
    ],
+   "bothSides": [
+    "finger",
+    "pulley",
+    "elbow",
+    "shoulder"
+   ],
    "tags": [
     "strength",
     "no_climbing",
@@ -1896,6 +1902,12 @@
     "edgeMm": 20
    },
    "contraindications": [
+    "finger",
+    "pulley",
+    "elbow",
+    "shoulder"
+   ],
+   "bothSides": [
     "finger",
     "pulley",
     "elbow",
@@ -3471,6 +3483,11 @@
     "elbow",
     "shoulder"
    ],
+   "bothSides": [
+    "finger",
+    "elbow",
+    "shoulder"
+   ],
    "tags": [
     "strength",
     "no_climbing",
@@ -3555,6 +3572,11 @@
     "restS": 180
    },
    "contraindications": [
+    "elbow",
+    "shoulder"
+   ],
+   "bothSides": [
+    "finger",
     "elbow",
     "shoulder"
    ],
@@ -5238,6 +5260,11 @@
    },
    "contraindications": [
     "wrist",
+    "shoulder"
+   ],
+   "bothSides": [
+    "wrist",
+    "elbow",
     "shoulder"
    ],
    "tags": [
@@ -7339,6 +7366,11 @@
     "shoulder",
     "wrist",
     "back",
+    "knee"
+   ],
+   "bothSides": [
+    "shoulder",
+    "wrist",
     "knee"
    ],
    "tags": [
@@ -10132,6 +10164,11 @@
     "knee",
     "hip"
    ],
+   "bothSides": [
+    "knee",
+    "hip",
+    "ankle"
+   ],
    "tags": [
     "strength",
     "beginner_friendly",
@@ -10212,6 +10249,10 @@
    },
    "contraindications": [
     "knee"
+   ],
+   "bothSides": [
+    "knee",
+    "ankle"
    ],
    "tags": [
     "strength",
@@ -10457,6 +10498,11 @@
     "hip",
     "shoulder"
    ],
+   "bothSides": [
+    "hip",
+    "knee",
+    "shoulder"
+   ],
    "tags": [
     "strength",
     "prehab",
@@ -10537,6 +10583,11 @@
     "restS": 60
    },
    "contraindications": [
+    "knee",
+    "hip",
+    "ankle"
+   ],
+   "bothSides": [
     "knee",
     "hip",
     "ankle"
@@ -10707,6 +10758,12 @@
     "knee",
     "hip",
     "wrist"
+   ],
+   "bothSides": [
+    "wrist",
+    "knee",
+    "hip",
+    "ankle"
    ],
    "tags": [
     "strength",
@@ -11625,6 +11682,11 @@
     "knee",
     "hip"
    ],
+   "bothSides": [
+    "knee",
+    "hip",
+    "ankle"
+   ],
    "tags": [
     "strength",
     "home",
@@ -11793,6 +11855,11 @@
     "restS": 60
    },
    "contraindications": [
+    "hip",
+    "knee",
+    "shoulder"
+   ],
+   "bothSides": [
     "hip",
     "knee",
     "shoulder"
@@ -12376,6 +12443,10 @@
     "knee",
     "hip"
    ],
+   "bothSides": [
+    "knee",
+    "hip"
+   ],
    "tags": [
     "mobility",
     "home",
@@ -12698,6 +12769,9 @@
    "contraindications": [
     "knee",
     "shoulder"
+   ],
+   "bothSides": [
+    "knee"
    ],
    "tags": [
     "mobility",
@@ -13103,6 +13177,10 @@
     "restS": 15
    },
    "contraindications": [
+    "knee",
+    "hip"
+   ],
+   "bothSides": [
     "knee",
     "hip"
    ],
@@ -14020,6 +14098,11 @@
     "hip",
     "knee"
    ],
+   "bothSides": [
+    "hip",
+    "knee",
+    "ankle"
+   ],
    "tags": [
     "mobility",
     "home",
@@ -14185,6 +14268,10 @@
     "restS": 15
    },
    "contraindications": [
+    "knee",
+    "hip"
+   ],
+   "bothSides": [
     "knee",
     "hip"
    ],
@@ -15185,6 +15272,11 @@
    "contraindications": [
     "hip"
    ],
+   "bothSides": [
+    "hip",
+    "knee",
+    "ankle"
+   ],
    "tags": [
     "warmup",
     "home",
@@ -15609,6 +15701,11 @@
     "knee",
     "hip",
     "back"
+   ],
+   "bothSides": [
+    "knee",
+    "hip",
+    "wrist"
    ],
    "tags": [
     "warmup",

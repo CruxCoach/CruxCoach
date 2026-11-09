@@ -121,7 +121,10 @@ object InjuryAdvisor {
         val region = injury.region
         val hits = def.contraindications.any { it in region.bodyRegions } || def.domains.any { it in region.domains }
         if (!hits) return InjuryAdvice(InjuryVerdict.OK)
-        val oneSided = injury.side == InjurySide.LEFT || injury.side == InjurySide.RIGHT
+        val oneSided = def.unilateral && region.limb && (injury.side == InjurySide.LEFT || injury.side == InjurySide.RIGHT)
+        // The other side carries part of the load too (the straight arm of an archer push-up, the kneeling knee of a
+        // child's pose): not "the healthy side only" where the injury rules the exercise out (issue #59 follow-up).
+        val otherSideLoaded = region.bodyRegions.any { it in def.bothSides }
         // A running CruxCoach comeback plan: the injured spot is loaded inside the plan's sessions; outside them
         // the stage decides (owner 2026-10-20). Climbing follows the stage's climbing.
         Comeback.climbingLevel(injury)?.let { level ->
@@ -129,13 +132,13 @@ object InjuryAdvisor {
             val stage = injury.plan?.stage ?: 0
             val open = stage >= if (region == InjuryRegion.FINGER) FINGER_OPEN_STAGE else REGION_OPEN_STAGE
             if (open) return InjuryAdvice(InjuryVerdict.CAUTION, injury = injury)
-            if (def.unilateral && region.limb && oneSided) {
+            if (oneSided && !otherSideLoaded) {
                 val healthy = if (injury.side == InjurySide.LEFT) Side.RIGHT else Side.LEFT
                 return InjuryAdvice(InjuryVerdict.ONE_SIDE_ONLY, allowedSide = healthy, injury = injury)
             }
             return InjuryAdvice(InjuryVerdict.AVOID, injury = injury)
         }
-        if (def.unilateral && region.limb && oneSided) {
+        if (oneSided && !(otherSideLoaded && injury.severity >= AVOID_SEVERITY)) {
             val healthy = if (injury.side == InjurySide.LEFT) Side.RIGHT else Side.LEFT
             return InjuryAdvice(InjuryVerdict.ONE_SIDE_ONLY, allowedSide = healthy, injury = injury)
         }
