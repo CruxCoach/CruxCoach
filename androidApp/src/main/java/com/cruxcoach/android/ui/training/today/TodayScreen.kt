@@ -657,8 +657,11 @@ private fun OpenWorkoutCard(onOpen: () -> Unit) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.PlayArrow, null, tint = CruxCoachDesign.colors.onBrandAccent, modifier = Modifier.size(32.dp))
             Spacer(Modifier.width(12.dp))
+            // At a large font titleLarge broke "weitermachen" inside the word at 320 dp.
+            val large = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
             Text(stringResource(R.string.trt_continue_workout), color = CruxCoachDesign.colors.onBrandAccent,
-                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                style = if (large) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
         }
     }
 }
@@ -1017,10 +1020,12 @@ private fun DayGrid(
     Column(Modifier.fillMaxWidth().testTag("today_quick"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.tru_day_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(top = 4.dp))
-        tiles.chunked(2).forEach { row ->
+        // One tile a row at a large font: two side by side cut "Eintragen" and "Gewicht" off at 320 dp.
+        val perRow = if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) 1 else 2
+        tiles.chunked(perRow).forEach { row ->
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { tile -> tile(Modifier.weight(1f).fillMaxHeight()) }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
+                if (row.size < perRow) Spacer(Modifier.weight(1f))
             }
         }
     }
