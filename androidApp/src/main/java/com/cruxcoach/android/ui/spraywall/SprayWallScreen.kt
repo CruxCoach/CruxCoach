@@ -94,6 +94,7 @@ import com.cruxcoach.domain.spraywall.SprayWallHistory
 import com.cruxcoach.domain.spraywall.SprayWallVersion
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -123,8 +124,8 @@ data class SprayWallUiState(
     val withdrawFailed: SprayWithdrawal? = null,
     /** Removing someone else's wall: my climbs on it are being taken back first. */
     val removing: Boolean = false,
-    /** They could not be taken back, so the wall stayed. */
-    val removeFailed: Boolean = false,
+    /** Why they could not be taken back, so the wall stayed (null = no try, or it worked). */
+    val removeFailed: SprayWithdrawal? = null,
     /** The account name of the wall's owner, for someone else's wall; null until known. */
     val ownerName: String? = null,
 ) {
@@ -200,13 +201,19 @@ class SprayWallViewModel @Inject constructor(
      */
     fun removeFollowed(onDone: () -> Unit) {
         if (_state.value.removing) return
-        _state.update { it.copy(removing = true, removeFailed = false) }
+        _state.update { it.copy(removing = true, removeFailed = null) }
         viewModelScope.launch {
-            if (!publisher.withdrawClimbs(repository.myClimbs(wallId), repository.wall(wallId))) {
-                _state.update { it.copy(removing = false, removeFailed = true) }
+            val result = try {
+                publisher.removeFollowed(wallId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SprayWithdrawal.NOT_CONFIRMED
+            }
+            if (result != SprayWithdrawal.DONE) {
+                _state.update { it.copy(removing = false, removeFailed = result) }
                 return@launch
             }
-            repository.deleteWall(wallId)
             onDone()
         }
     }
@@ -362,7 +369,7 @@ fun SprayWallScreen(
             // While the card below says why the upload failed, the facts line does not say it again.
             item { WallFacts(wall, showPending = !(wall.publishPending && problem != null)) }
             if (!wall.isMine) item { FollowedNote(wall, state.ownerName) }
-            if (!wall.isMine && (state.removing || state.removeFailed)) item { RemoveProgress(state.removing) }
+            if (!wall.isMine && (state.removing || state.removeFailed != null)) item { RemoveProgress(state.removing, state.removeFailed) }
             // Nothing of a wall the relays took back in part is published: finishing the withdrawal is what is left.
             if (wall.isMine && wall.withdrawStarted != null) {
                 item {
@@ -444,7 +451,7 @@ fun SprayWallScreen(
 
 /** Removing someone else's wall: my climbs on it are taken back first, or that did not work and the wall stayed. */
 @Composable
-private fun RemoveProgress(removing: Boolean) {
+private fun RemoveProgress(removing: Boolean, failed: SprayWithdrawal?) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag("spray_followed_removing"),
         verticalAlignment = Alignment.CenterVertically,
@@ -453,7 +460,12 @@ private fun RemoveProgress(removing: Boolean) {
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             Text(stringResource(R.string.spray_followed_removing), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
         } else {
-            Text(stringResource(R.string.spray_followed_remove_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            val reason = when (failed) {
+                SprayWithdrawal.NO_IDENTITY -> R.string.spray_followed_remove_failed_identity
+                SprayWithdrawal.SIGNING_FAILED -> R.string.spray_followed_remove_failed_signing
+                else -> R.string.spray_followed_remove_failed
+            }
+            Text(stringResource(reason), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
