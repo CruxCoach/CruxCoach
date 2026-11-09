@@ -868,11 +868,20 @@ private fun EnergyRing(
     }
 }
 
-/** Energy's own ring colour, distinct from protein (green), carbs (accent) and water (blue). */
-internal val EnergyColor = androidx.compose.ui.graphics.Color(0xFF9C6ADE)
+/**
+ * Energy's own ring colour, distinct from protein (green), carbs (accent) and water (blue); deeper
+ * in the light theme, so the ring stands out at 3:1 there too.
+ */
+internal val EnergyColor: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFF9C6ADE, light = 0xFF8A55D4)
 
-/** Fat's ring colour: gold, next to energy (violet), carbs (orange) and protein (green). */
-internal val FatColor = androidx.compose.ui.graphics.Color(0xFFD9A400)
+/** Fat's ring colour: gold, next to energy (violet), carbs (orange) and protein (green); deeper in the light theme. */
+internal val FatColor: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFFD9A400, light = 0xFF9A7300)
 
 /**
  * Water as glasses: tap the next empty one for another glass, the last full

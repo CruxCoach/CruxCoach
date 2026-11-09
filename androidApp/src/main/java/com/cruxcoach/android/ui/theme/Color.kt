@@ -1,8 +1,10 @@
 package com.cruxcoach.android.ui.theme
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import com.cruxcoach.domain.board.IntensityZone
 import com.cruxcoach.domain.board.IntensityZones
 
@@ -60,6 +62,21 @@ val InfoBlue: Color
     @Composable
     @ReadOnlyComposable
     get() = LocalCruxCoachColors.current.info
+
+/**
+ * A screen's own colour in the current theme: [dark] on dark surfaces, [light] on light ones, so
+ * a colour that has to stand out (a ring, a tap target, text) reaches its contrast in both.
+ */
+@Composable
+@ReadOnlyComposable
+fun themedColor(dark: Long, light: Long): Color =
+    Color(if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) dark else light)
+
+/**
+ * Dark or white text on [fill], whichever reads better: grade colours are bright and dark text
+ * reads on most of them, white on the deep ones (elite violet).
+ */
+fun contentColorOn(fill: Color): Color = if (fill.luminance() > 0.19f) DarkBackground else Color.White
 
 // Grade difficulty colors
 val GradeEasy = Color(0xFF66BB6A)

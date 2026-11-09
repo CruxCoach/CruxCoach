@@ -39,7 +39,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.theme.DarkBackground
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.domain.yearreview.YearReview
 import kotlinx.coroutines.delay
@@ -141,7 +141,7 @@ internal fun YearReviewStatsContent(
             }
             Button(
                 onClick = { onOpen(selected) },
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
+                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = CruxCoachDesign.colors.onBrandAccent),
                 shape = RoundedCornerShape(12.dp),
             ) { Text(stringResource(R.string.yr_card_open), fontWeight = FontWeight.Bold) }
             // The running year counts on below the minimum: how far it got, under the earlier year's button.

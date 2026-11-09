@@ -65,6 +65,7 @@ import androidx.core.content.FileProvider
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.contentColorOn
 import com.cruxcoach.android.ui.theme.gradeColorForDifficulty
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -315,7 +316,7 @@ private fun TopClimbs(climbs: List<RecapClimb>, boardColors: Map<String, android
                         .padding(vertical = 4.dp, horizontal = 4.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(climb.grade, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White, maxLines = 1)
+                    Text(climb.grade, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = contentColorOn(gradeColorForDifficulty(climb.difficulty)), maxLines = 1)
                 }
                 Column(Modifier.weight(1f)) {
                     Text(

@@ -1118,8 +1118,11 @@ private fun WaterTile(state: TodayState, units: com.cruxcoach.athlete.model.Unit
     )
 }
 
-/** Water's own colour, the same on Today and in the nutrition log. */
-internal val WaterBlue = androidx.compose.ui.graphics.Color(0xFF4FA3F7)
+/** Water's own colour, the same on Today and in the nutrition log; deeper in the light theme, where its taps need 3:1. */
+internal val WaterBlue: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFF4FA3F7, light = 0xFF1E78C8)
 
 @Composable
 private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit, onSecondary: (() -> Unit)? = null) {
