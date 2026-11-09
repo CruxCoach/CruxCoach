@@ -113,9 +113,9 @@ class CommunityClimbSubscriber @Inject constructor(
      *  even under WAL, taking the import from ~100s to 10+ minutes
      *  on slower-eMMC devices when a relay backlog drips dozens of
      *  events into the queue mid-import. handleEvent SUSPENDS (not
-     *  drops) on isSyncing so the Flow collector back-pressures the
-     *  websocket reader; events resume in order once the importer
-     *  releases its writer. */
+     *  drops) on isSyncing; the relay pool queues the subscription's
+     *  frames meanwhile (RelayFrameQueue, see handleEvent), and events
+     *  resume in order once the importer releases its writer. */
     private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
 ) {
 
@@ -452,14 +452,15 @@ class CommunityClimbSubscriber @Inject constructor(
         // interleaved upserts has been observed to take a 100s import to
         // 10+ minutes on slower-eMMC devices.
         //
-        // Suspend (not drop) until isSyncing flips false. The Flow
-        // collector is back-pressured to the websocket reader; events
-        // queue up in the upstream until we resume. This is the
-        // crucial difference from "drop + advance-cursor-later" — a
-        // dropped event is gone for that subscription session because
-        // relays don't re-push already-delivered events; only a fresh
-        // REQ with the cursor would backfill them. By suspending we
-        // keep every event without depending on relay backfill behaviour.
+        // Suspend (not drop) until isSyncing flips false. Events queue
+        // up in the relay pool until we resume (RelayFrameQueue): about
+        // 8 MB, which holds a normal backlog. Beyond that, once the
+        // relays have waited 5 s for room, the pool drops further
+        // frames until we catch up, so this paused subscription cannot
+        // stall the relays' other subscriptions, OKs and pings. A
+        // dropped event is gone for this subscription session: relays
+        // don't re-push already-delivered events, only a fresh REQ with
+        // the cursor would backfill them.
         if (boardSyncManager.state.value.isSyncing) {
             Log.d(TAG, "suspend event handling during board-sync (resume after import)")
             boardSyncManager.state.first { !it.isSyncing }
