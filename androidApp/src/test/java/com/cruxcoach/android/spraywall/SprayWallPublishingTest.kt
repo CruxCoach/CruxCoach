@@ -388,6 +388,24 @@ class SprayWallPublishingTest {
     }
 
     @Test
+    fun `without the account key a published climb of mine stays, and nothing is signed`() = runTest {
+        val wall = publishedWall("A")
+        val climb = climbOn(wall, "Line")
+        repository.markClimbPublished(climb, repository.climb(climb)!!.updatedAt)
+        val followed = followedWall()
+        val onFollowed = climbOn(followed, "My line")
+        repository.markClimbPublished(onFollowed, repository.climb(onFollowed)!!.updatedAt)
+
+        assertEquals(SprayWithdrawal.NO_IDENTITY, publishing.takeBackClimbs({ null }, repository.myClimbs(wall), repository.wall(wall)))
+        assertEquals(SprayWithdrawal.NO_IDENTITY, publishing.deleteClimb({ null }, climb))
+        assertEquals(SprayWithdrawal.NO_IDENTITY, publishing.removeFollowed({ null }, followed))
+        assertNotNull(repository.climb(climb))
+        assertNotNull(repository.wall(followed))
+        assertNotNull(repository.climb(onFollowed))
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test
     fun `a climb on my private wall is deleted at once, and one on a public wall waits for a relay`() = runTest {
         val public = publishedWall("A")
         val private = repository.createWall("B", 40, SprayWallVisibility.PRIVATE, null, photo, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
