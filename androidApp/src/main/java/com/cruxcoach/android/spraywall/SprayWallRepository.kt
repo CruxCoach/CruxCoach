@@ -120,11 +120,17 @@ class SprayWallRepository @Inject constructor(
     }
 
     /**
-     * A relay took the first tombstone of withdrawing [id]: the relays no longer show the wall, so nothing of it is
-     * published (a head waiting to go out is dropped) until the withdrawal is done and the wall is private.
+     * Withdrawing [id] is about to send its first tombstone: nothing of the wall is published (a waiting head stays
+     * back) until the withdrawal is done and the wall is private, or [clearWithdrawStarted] says no relay took anything.
      */
     suspend fun markWithdrawStarted(id: String) {
         io { queries.markWithdrawStarted(now(), id) }
+        changed()
+    }
+
+    /** No relay took a tombstone of the withdrawal: the relays still show the wall, and it publishes as before. */
+    suspend fun clearWithdrawStarted(id: String) {
+        io { queries.clearWithdrawStarted(id) }
         changed()
     }
 

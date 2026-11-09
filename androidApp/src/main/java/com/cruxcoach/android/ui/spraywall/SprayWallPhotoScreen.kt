@@ -130,7 +130,8 @@ class SprayWallPhotoViewModel @Inject constructor(
         if (wallId != null) viewModelScope.launch {
             val wall = repository.wall(wallId)
             if (wall == null || !wall.isMine) _state.update { it.copy(notFound = true) }
-            else _state.update { it.copy(wallName = wall.name, wallPublic = wall.visibility == SprayWallVisibility.PUBLIC) }
+            // A wall being withdrawn publishes nothing more: the new photo stays on the phone.
+            else _state.update { it.copy(wallName = wall.name, wallPublic = wall.visibility == SprayWallVisibility.PUBLIC && wall.withdrawStarted == null) }
         }
     }
 

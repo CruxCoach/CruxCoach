@@ -109,7 +109,7 @@ data class SprayWallUiState(
     /** Why a public wall of mine is not on Nostr yet (null = nothing pending or no attempt). */
     val publishProblem: PublishProblem? = null,
     val publishing: Boolean = false,
-    /** Trying again to take back a wall the relays took part of. */
+    /** Taking the wall back, from here or its details (also one started there before that screen was left). */
     val withdrawing: Boolean = false,
     /** Why the last try did not finish it (null = no try, or it worked). */
     val withdrawFailed: SprayWithdrawal? = null,
@@ -151,6 +151,9 @@ class SprayWallViewModel @Inject constructor(
                 _state.update { it.copy(publishProblem = problem) }
             }
         }
+        viewModelScope.launch {
+            publisher.withdrawing.collect { walls -> _state.update { it.copy(withdrawing = wallId in walls) } }
+        }
         // A public wall: climbs others set on it, new versions, withdrawals.
         viewModelScope.launch { fetcher.refresh(wallId) }
     }
@@ -159,18 +162,19 @@ class SprayWallViewModel @Inject constructor(
         if (_state.value.publishing) return
         _state.update { it.copy(publishing = true) }
         viewModelScope.launch {
-            publisher.publishPending()
+            // Asked for here: the signer is asked again also for what it declined before.
+            publisher.publishPending(askAgainFor = wallId)
             _state.update { it.copy(publishing = false) }
         }
     }
 
     /** A withdrawal the relays took part of: tries the rest again; done, the wall turns private. */
     fun withdrawAgain() {
-        if (_state.value.withdrawing) return
+        if (_state.value.withdrawing || wallId in publisher.withdrawing.value) return
         _state.update { it.copy(withdrawing = true, withdrawFailed = null) }
         viewModelScope.launch {
             val result = publisher.withdrawWall(wallId)
-            _state.update { it.copy(withdrawing = false, withdrawFailed = result.takeIf { r -> r != SprayWithdrawal.DONE }) }
+            _state.update { it.copy(withdrawFailed = result.takeIf { r -> r != SprayWithdrawal.DONE }) }
         }
     }
 
@@ -328,7 +332,7 @@ fun SprayWallScreen(
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         WithdrawUnfinishedCard(withdrawing = state.withdrawing, enabled = true, onRetry = viewModel::withdrawAgain)
                         state.withdrawFailed?.let {
-                            Text(withdrawFailureReason(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            Text(withdrawFailureReason(it, started = true), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }

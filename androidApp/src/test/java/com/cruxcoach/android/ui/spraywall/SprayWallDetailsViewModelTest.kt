@@ -17,6 +17,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -37,6 +38,7 @@ class SprayWallDetailsViewModelTest {
     private lateinit var repository: SprayWallRepository
     private val publisher = mockk<SprayWallPublisher>(relaxed = true)
     private val photo = SprayWallPhotoStore.StoredPhoto("0b1c2d3e-photo.jpg", 3000, 2000)
+    private val withdrawing = MutableStateFlow<Set<String>>(emptySet())
 
     @BeforeTest
     fun setUp() {
@@ -45,6 +47,7 @@ class SprayWallDetailsViewModelTest {
         SecureDatabase.Schema.create(driver)
         repository = SprayWallRepository(SecureDatabase(driver), mockk(relaxed = true))
         every { publisher.hasIdentity() } returns true
+        every { publisher.withdrawing } returns withdrawing
     }
 
     @AfterTest
@@ -53,6 +56,19 @@ class SprayWallDetailsViewModelTest {
         Thread.sleep(200)
         Dispatchers.resetMain()
         driver.close()
+    }
+
+    /**
+     * The publisher's withdrawal of [id] ends with [result]: it runs the screen's step before it, then [during] (what
+     * the withdrawal itself does to the wall), and the step after it once the wall is private.
+     */
+    private fun withdrawalEnds(id: String, result: SprayWithdrawal, during: suspend () -> Unit = {}) {
+        coEvery { publisher.withdrawWall(id, any(), any()) } coAnswers {
+            secondArg<suspend () -> Unit>().invoke()
+            during()
+            if (result == SprayWithdrawal.DONE) thirdArg<suspend () -> Unit>().invoke()
+            result
+        }
     }
 
     /** A public wall with version 1 on Nostr. */
@@ -75,10 +91,7 @@ class SprayWallDetailsViewModelTest {
      */
     private suspend fun renameAndWithdraw(result: SprayWithdrawal, tombstonesTaken: Boolean = false): Pair<String, SprayWallDetailsState> {
         val id = publishedWall()
-        coEvery { publisher.withdrawWall(id) } coAnswers {
-            if (tombstonesTaken) repository.markWithdrawStarted(id)
-            result
-        }
+        withdrawalEnds(id, result) { if (tombstonesTaken) repository.markWithdrawStarted(id) }
         val vm = detailsOf(id)
         vm.setName("Wall B")
         vm.setAngle(45)
@@ -181,23 +194,138 @@ class SprayWallDetailsViewModelTest {
     }
 
     @Test
-    fun `a rename kept after the signer declined the first tombstone keeps its head to send`() = runTest {
-        // Nothing left the phone: the wall is fully public, and the relays get the new name.
+    fun `a rename kept after the signer declined the first tombstone keeps its head to send, but not at once`() = runTest {
+        // Nothing left the phone: the wall is fully public, and the relays get the new name. Not right away, though:
+        // that would ask the signer to publish the wall the climber meant to make private (the publisher holds the
+        // wall then, see SprayWallPublishingTest).
         val (id, state) = renameAndWithdraw(SprayWithdrawal.SIGNING_FAILED)
 
         assertEditsKept(id, state)
         assertTrue(headPending(id))
         assertFalse(state.withdrawStarted)
+        assertFalse(state.withdrawFailed!!.started)
+        verify(exactly = 0) { publisher.publishSoon() }
+    }
+
+    @Test
+    fun `the failure says the relays took part of the withdrawal once they did`() = runTest {
+        val (_, state) = renameAndWithdraw(SprayWithdrawal.SIGNING_FAILED, tombstonesTaken = true)
+
+        assertTrue(state.withdrawFailed!!.started)
+    }
+
+    @Test
+    fun `the details are saved before the withdrawal runs, so leaving the screen meanwhile loses none`() = runTest {
+        val id = publishedWall()
+        var nameWhileWithdrawing: String? = null
+        withdrawalEnds(id, SprayWithdrawal.DONE) {
+            nameWhileWithdrawing = repository.wall(id)!!.name
+            repository.updateWallDetails(id, repository.wall(id)!!.name, 40, SprayWallVisibility.PRIVATE, null)
+        }
+        val vm = detailsOf(id)
+        vm.setName("Wall B")
+        vm.chooseVisibility(SprayWallVisibility.PRIVATE)
+        vm.confirmDialog()
+        vm.events.test {
+            vm.save()
+            assertEquals(SprayWallDetailsEvent.Saved, awaitItem())
+        }
+
+        assertEquals("Wall B", nameWhileWithdrawing)
+        val wall = repository.wall(id)!!
+        assertEquals("Wall B", wall.name)
+        assertEquals(SprayWallVisibility.PRIVATE, wall.visibility)
+        assertNull(wall.headPending)
+    }
+
+    @Test
+    fun `a details screen open while the wall page finished the withdrawal keeps the wall private`() = runTest {
+        val id = publishedWall()
+        repository.markWithdrawStarted(id)
+        val vm = detailsOf(id)
+        assertTrue(vm.state.value.withdrawStarted)
+
+        // "Try withdrawing again" on the wall page, done while this screen stayed open.
+        repository.updateWallDetails(id, "Wall", 40, SprayWallVisibility.PRIVATE, null)
+        val fresh = vm.state.first { !it.withdrawStarted }
+        assertEquals(SprayWallVisibility.PRIVATE, fresh.visibility)
+        assertFalse(fresh.published)
+
+        vm.events.test {
+            vm.save()
+            assertEquals(SprayWallDetailsEvent.Saved, awaitItem())
+        }
+        val wall = repository.wall(id)!!
+        assertEquals(SprayWallVisibility.PRIVATE, wall.visibility)
+        assertTrue(repository.wallsNeedingPublish().none { it.id == id })
+        verify(exactly = 0) { publisher.publishSoon() }
+    }
+
+    @Test
+    fun `a save from a screen read before the withdrawal finished does not make the wall public again`() = runTest {
+        // Also when the screen had not seen the change yet: save reads the wall again.
+        val id = publishedWall()
+        repository.markWithdrawStarted(id)
+        val vm = detailsOf(id)
+        vm.setName("Wall B")
+        repository.updateWallDetails(id, "Wall", 40, SprayWallVisibility.PRIVATE, null)
+
+        vm.events.test {
+            vm.save()
+            assertEquals(SprayWallDetailsEvent.Saved, awaitItem())
+        }
+        val wall = repository.wall(id)!!
+        assertEquals(SprayWallVisibility.PRIVATE, wall.visibility)
+        assertEquals("Wall B", wall.name)
+        verify(exactly = 0) { publisher.publishSoon() }
+    }
+
+    @Test
+    fun `deleting a public wall leaves the deleting to the withdrawal, so leaving the screen does not stop it`() = runTest {
+        val id = publishedWall()
+        withdrawalEnds(id, SprayWithdrawal.DONE) { repository.updateWallDetails(id, "Wall", 40, SprayWallVisibility.PRIVATE, null) }
+        val vm = detailsOf(id)
+        vm.events.test {
+            vm.delete()
+            assertEquals(SprayWallDetailsEvent.Deleted, awaitItem())
+        }
+
+        assertNull(repository.wall(id))
+    }
+
+    @Test
+    fun `while a withdrawal runs the screen keeps the choice it showed`() = runTest {
+        // The withdrawal marks the wall when it starts; the card for an unfinished one is not for a running one.
+        val id = publishedWall()
+        val vm = detailsOf(id)
+        withdrawing.value = setOf(id)
+        vm.state.first { it.withdrawing }
+        repository.markWithdrawStarted(id)
+        Thread.sleep(100)
+        assertFalse(vm.state.value.withdrawStarted)
+
+        // It ends with the relays holding part of it: now the card shows.
+        withdrawing.value = emptySet()
+        assertTrue(vm.state.first { !it.withdrawing && it.withdrawStarted }.withdrawStarted)
+    }
+
+    @Test
+    fun `saving waits while the wall is being withdrawn`() = runTest {
+        val id = publishedWall()
+        val vm = detailsOf(id)
+        withdrawing.value = setOf(id)
+        vm.state.first { it.withdrawing }
+
+        assertFalse(vm.state.value.canSave)
+        withdrawing.value = emptySet()
+        assertTrue(vm.state.first { !it.withdrawing }.canSave)
     }
 
     @Test
     fun `a wall the relays took back in part offers trying again, and done it is private`() = runTest {
         val id = publishedWall()
         repository.markWithdrawStarted(id)
-        coEvery { publisher.withdrawWall(id) } coAnswers {
-            repository.updateWallDetails(id, "Wall", 40, SprayWallVisibility.PRIVATE, null)
-            SprayWithdrawal.DONE
-        }
+        withdrawalEnds(id, SprayWithdrawal.DONE) { repository.updateWallDetails(id, "Wall", 40, SprayWallVisibility.PRIVATE, null) }
         val vm = detailsOf(id)
         assertTrue(vm.state.value.withdrawStarted)
 

@@ -30,10 +30,11 @@ class SprayEventSigningFailed(cause: Throwable) : Exception(cause.message, cause
  * the Blossom server that took it. That includes what a publish that failed
  * partway left behind: versions past the published one and their photos. Only
  * when all of that worked does the wall turn private here; otherwise it stays
- * public, so the climber can try again, and nothing is deleted. Once a relay
- * took a tombstone, the wall is marked as being withdrawn: nothing of it is
- * published until a later try finishes. Never throws,
- * also not when the signer fails.
+ * public, so the climber can try again, and nothing is deleted. The wall is
+ * marked as being withdrawn before the first tombstone goes out: nothing of it
+ * is published while the mark is set. It stays set once a relay took a
+ * tombstone, until a later try finishes; it goes again when no relay took
+ * anything. Never throws, also not when the signer fails.
  *
  * Signing, relays and Blossom come in as functions ([SprayWallPublisher]
  * wires them), which keeps this testable on the JVM.
@@ -59,8 +60,13 @@ class SprayWallWithdrawal(
             return SprayWithdrawal.DONE
         }
         if (me == null) return SprayWithdrawal.NO_IDENTITY
+        // Marked before the first tombstone goes out: a withdrawal cut off midway (the app closed) may have reached a
+        // relay already, so it stays marked then.
+        val retry = wall.withdrawStarted != null
+        repository.markWithdrawStarted(wallId)
+        val taken = Taken()
         val outcome = try {
-            withdraw(me, wallId)
+            withdraw(me, wallId, taken)
         } catch (e: CancellationException) {
             throw e
         } catch (e: SprayEventSigningFailed) {
@@ -70,11 +76,23 @@ class SprayWallWithdrawal(
             Log.w(TAG, "withdrawing a wall failed", e)
             SprayWithdrawal.NOT_CONFIRMED
         }
-        if (outcome == SprayWithdrawal.DONE) {
-            repository.clearPhotoBlobs(wallId)
-            repository.updateWallDetails(wallId, wall.name, wall.angle, SprayWallVisibility.PRIVATE, wall.gym)
+        when {
+            outcome == SprayWithdrawal.DONE -> {
+                repository.clearPhotoBlobs(wallId)
+                repository.updateWallDetails(wallId, wall.name, wall.angle, SprayWallVisibility.PRIVATE, wall.gym)
+            }
+            // Nothing left the phone, or no relay took it: the relays still show the wall as it was. Not after an
+            // earlier try that relays took part of.
+            taken.relays == 0 && !retry -> repository.clearWithdrawStarted(wallId)
         }
         return outcome
+    }
+
+    /** The most relays that took one of the withdrawal's events. */
+    private class Taken(var relays: Int = 0) {
+        fun add(relays: Int) {
+            this.relays = maxOf(this.relays, relays)
+        }
     }
 
     /**
@@ -110,7 +128,7 @@ class SprayWallWithdrawal(
         }
     }
 
-    private suspend fun withdraw(me: String, wallId: String): SprayWithdrawal {
+    private suspend fun withdraw(me: String, wallId: String, taken: Taken): SprayWithdrawal {
         val versions = repository.versions(wallId)
         val address = SprayWallNostr.wallAddress(me, wallId)
         val dTags = buildList {
@@ -119,16 +137,11 @@ class SprayWallWithdrawal(
             // Every climb of mine, also one edited since it went out (its old event is still on the relays).
             repository.myClimbs(wallId).forEach { add(SprayWallNostr.climbDTag(me, it.uuid) to SprayWallNostr.LABEL_CLIMB) }
         }
-        var accepted = 0
-        suspend fun sent(taken: Int) {
-            // From the first tombstone a relay took, the wall is off Nostr, even if the rest fails: nothing of it
-            // is published until a later try finishes (a waiting head, a climb or a version would bring it back).
-            if (accepted == 0 && taken > 0) repository.markWithdrawStarted(wallId)
-            accepted = maxOf(accepted, taken)
-        }
-        for ((d, label) in dTags) sent(send(SprayWallNostr.tombstone(stamp(d), d, label, address)))
-        sent(send(SprayWallNostr.deletion(me, now(), dTags.map { it.first })))
-        if (accepted == 0) return SprayWithdrawal.NOT_CONFIRMED
+        // From the first tombstone a relay took, the wall is off Nostr, even if the rest fails: it stays marked, and
+        // nothing of it is published until a later try finishes (a waiting head, a climb or a version would bring it back).
+        for ((d, label) in dTags) taken.add(send(SprayWallNostr.tombstone(stamp(d), d, label, address)))
+        taken.add(send(SprayWallNostr.deletion(me, now(), dTags.map { it.first })))
+        if (taken.relays == 0) return SprayWithdrawal.NOT_CONFIRMED
         // One deletion per photo, on the server that took the upload; a photo another public wall of mine shows stays.
         var photosLeft = false
         for ((sha, url) in uploads(wallId, versions)) {

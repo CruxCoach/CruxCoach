@@ -26,8 +26,8 @@ CREATE TABLE spray_wall (
     -- A head with new details still to send (migration 17); NULL = none, else a
     -- counter per change, so a head sent clears only the change it carried.
     head_pending INTEGER,
-    -- A withdrawal the relays took part of (migration 17); while set, nothing of
-    -- the wall is published. NULL = none, else when it started (ms).
+    -- A withdrawal under way or one the relays took part of (migration 17); while
+    -- set, nothing of the wall is published. NULL = none, else when it started (ms).
     withdraw_started INTEGER
 );
 
@@ -137,9 +137,10 @@ UPDATE spray_wall SET head_pending = NULL WHERE id = ?;
 selectWallsWithHeadPending:
 SELECT * FROM spray_wall WHERE owner_pubkey IS NULL AND COALESCE(head_pending, 0) > 0 AND COALESCE(withdraw_started, 0) = 0;
 
--- A relay took the first tombstone: the relays no longer show the wall, and a waiting head would bring it back.
+-- Set before the first tombstone goes out: once a relay took one, a waiting head would bring the wall back. A head
+-- still pending stays: it goes out if no relay took anything, and turning private drops it.
 markWithdrawStarted:
-UPDATE spray_wall SET withdraw_started = ?, head_pending = NULL WHERE id = ? AND withdraw_started IS NULL;
+UPDATE spray_wall SET withdraw_started = ? WHERE id = ? AND withdraw_started IS NULL;
 
 clearWithdrawStarted:
 UPDATE spray_wall SET withdraw_started = NULL WHERE id = ?;

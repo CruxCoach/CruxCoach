@@ -291,7 +291,10 @@ fun SprayClimbEditorScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(stringResource(R.string.spray_climb_brush_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (wall.visibility == SprayWallVisibility.PUBLIC) {
+                // A wall being withdrawn publishes nothing until that is finished, and then it is private.
+                if (wall.visibility == SprayWallVisibility.PUBLIC && wall.withdrawStarted != null) {
+                    Text(stringResource(R.string.spray_climb_withdrawing_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("spray_climb_withdrawing_note"))
+                } else if (wall.visibility == SprayWallVisibility.PUBLIC) {
                     Text(stringResource(R.string.spray_climb_public_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("spray_climb_public_note"))
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

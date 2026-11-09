@@ -194,11 +194,14 @@
     <string name="spray_withdraw_failed_title">Wall not withdrawn</string>
     <string name="spray_delete_failed_title">Wall not deleted</string>
     <string name="spray_withdraw_failed_relays">No relay confirmed the withdrawal, so the wall is still public. Check the connection and try again.</string>
-    <string name="spray_withdraw_failed_photos">The relays took the withdrawal, but a photo could not be deleted from its Blossom server, so the wall stays public here. Check the connection and try again.</string>
+    <string name="spray_withdraw_failed_photos">The relays took the withdrawal, but a photo could not be deleted from its Blossom server, so the withdrawal is not finished. Until it is, nothing of this wall is published. Check the connection and try again.</string>
     <string name="spray_withdraw_failed_signing">Signing did not work or was declined in your signer app, so the wall is still public. Try again and confirm the requests.</string>
     <string name="spray_withdraw_failed_identity">Withdrawing needs the CruxCoach account key the wall was published with. Set it up in Settings under CruxCoach Account, then try again.</string>
     <string name="spray_delete_failed_note">A public wall is deleted here only once it is withdrawn.</string>
     <string name="spray_withdraw_unfinished">Withdrawing did not finish. Until it does, nothing of this wall is published.</string>
+    <string name="spray_withdraw_unfinished_title">Withdrawal not finished</string>
+    <string name="spray_withdraw_failed_signing_started">Signing did not work or was declined in your signer app. The relays already took part of the withdrawal, so nothing of this wall is published until it is finished. Try again and confirm the requests.</string>
+    <string name="spray_withdraw_failed_relays_started">The withdrawal did not finish. The relays already took part of it, so nothing of this wall is published until it is finished. Check the connection and try again.</string>
     <string name="spray_withdraw_again">Try withdrawing again</string>
     <string name="spray_withdraw_failed_kept_edits">Your other changes are saved.</string>
     <string name="spray_gym_title">Gym</string>
@@ -208,6 +211,7 @@
     <string name="spray_gym_none">Home wall, no gym</string>
     <string name="spray_gym_no_match">No gym found. The list has the places of the board map.</string>
     <string name="spray_climb_public_note">This wall is public: the climb is published under your CruxCoach account. Your logbook stays private.</string>
+    <string name="spray_climb_withdrawing_note">This wall is being withdrawn. Until that is finished, the climb is not published.</string>
     <string name="spray_followed_note">Shared by %1$s. Its holds are fixed; you can set and log climbs on it.</string>
     <string name="spray_followed_withdrawn">Its owner withdrew this wall. It stays here for your climbs and your logbook.</string>
     <string name="spray_followed_remove">Remove from my walls</string>

@@ -9,11 +9,14 @@ import com.cruxcoach.domain.spraywall.SprayNostrEvent
 import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -43,7 +46,9 @@ class SprayWallWithdrawalTest {
         withdrawal = SprayWallWithdrawal(
             repository = repository,
             send = { event ->
-                signing?.let { fail -> try { fail() } catch (e: Exception) { throw SprayEventSigningFailed(e) } }
+                signing?.let { fail ->
+                    try { fail() } catch (e: CancellationException) { throw e } catch (e: Exception) { throw SprayEventSigningFailed(e) }
+                }
                 sent += event
                 relaysTaking
             },
@@ -255,7 +260,7 @@ class SprayWallWithdrawalTest {
         repository.updateWallDetails(id, "Wall B", 40, SprayWallVisibility.PUBLIC, null, sendHead = true)
 
     @Test
-    fun `once a relay took a tombstone a waiting head is dropped, also when a photo stays`() = runTest {
+    fun `once a relay took a tombstone a waiting head stays back, also when a photo stays, and goes when it is done`() = runTest {
         val id = publishedWall()
         renamedOffline(id)
         photoResult = SprayWallWithdrawal.PhotoDeletion.LEFT
@@ -263,16 +268,59 @@ class SprayWallWithdrawalTest {
         assertEquals(SprayWithdrawal.PHOTOS_LEFT, withdrawal.run(ME, id))
         // It would replace the tombstone at the next publish and bring the wall back.
         assertTrue(repository.wallsWithHeadPending().isEmpty())
+
+        photoResult = SprayWallWithdrawal.PhotoDeletion.DELETED
+        assertEquals(SprayWithdrawal.DONE, withdrawal.run(ME, id))
+        assertNull(repository.wall(id)!!.headPending)
     }
 
     @Test
-    fun `a waiting head stays when no relay took a tombstone`() = runTest {
+    fun `a waiting head stays when no relay took a tombstone, and the wall is not marked`() = runTest {
         val id = publishedWall()
         renamedOffline(id)
         relaysTaking = 0
 
         assertEquals(SprayWithdrawal.NOT_CONFIRMED, withdrawal.run(ME, id))
         assertEquals(listOf(id), repository.wallsWithHeadPending().map { it.id })
+        assertNull(repository.wall(id)!!.withdrawStarted)
+    }
+
+    @Test
+    fun `the wall is marked before the first tombstone goes out`() = runTest {
+        val id = publishedWall()
+        var markedWhenSent: Long? = null
+        signing = { if (sent.isEmpty()) markedWhenSent = runBlocking { repository.wall(id)!!.withdrawStarted } }
+
+        withdrawal.run(ME, id)
+        assertNotNull(markedWhenSent)
+    }
+
+    @Test
+    fun `a withdrawal cut off after a relay took its first tombstone stays marked`() = runTest {
+        // The screen that started it was left, or the app closed: whether a relay took the next one is not known.
+        val id = publishedWall()
+        renamedOffline(id)
+        signing = { if (sent.isNotEmpty()) throw CancellationException("left") }
+
+        assertFailsWith<CancellationException> { withdrawal.run(ME, id) }
+        assertNotNull(repository.wall(id)!!.withdrawStarted)
+        assertTrue(repository.wallsWithHeadPending().none { it.id == id })
+        assertTrue(repository.wallsTakingClimbs().none { it.id == id })
+    }
+
+    @Test
+    fun `a try again that no relay takes keeps the mark of the earlier one`() = runTest {
+        val id = publishedWall()
+        photoResult = SprayWallWithdrawal.PhotoDeletion.LEFT
+        assertEquals(SprayWithdrawal.PHOTOS_LEFT, withdrawal.run(ME, id))
+
+        relaysTaking = 0
+        assertEquals(SprayWithdrawal.NOT_CONFIRMED, withdrawal.run(ME, id))
+        assertNotNull(repository.wall(id)!!.withdrawStarted)
+
+        signing = { throw IllegalStateException("declined") }
+        assertEquals(SprayWithdrawal.SIGNING_FAILED, withdrawal.run(ME, id))
+        assertNotNull(repository.wall(id)!!.withdrawStarted)
     }
 
     @Test

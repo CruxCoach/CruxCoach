@@ -213,7 +213,9 @@ kind and no new Amber permission.
   version not yet published goes out, then the head, then the climbs on public walls.
   This runs after each save and once when the spray-wall screens open after a start;
   on failure the wall shows "not published yet" with a retry. Signing and relays:
-  `NostrSigner`, `NostrRelayPool.sendEventWithStats`.
+  `NostrSigner`, `NostrRelayPool.sendEventWithStats`. A version, head or climb the
+  signer declines stops nothing else; it is not asked for again before the next start
+  or until it changes, and the retry asks again (`SprayWallPublishing`).
 - **New details of a published wall** (name, angle, gym) without a new version: the
   head alone goes out again. The wish is stored with the details (`head_pending`, a
   counter per change) and survives a restart; a head that reached a relay clears only
@@ -229,6 +231,11 @@ kind and no new Amber permission.
     says why (no relay confirmed, a photo left on its server, signing failed or was
     declined in Amber, no account key). Deleting a public wall waits for a
     withdrawal that worked.
+  - The wall is marked (`withdraw_started`) before the first tombstone goes out; the
+    mark goes again when no relay took anything. While it is set nothing of the wall
+    is published (versions, head, climbs), and the wall page and the details offer
+    only "Try withdrawing again". The withdrawal runs in the publisher, so leaving the
+    screen does not stop it.
   - Signing errors (local key or Amber) are caught and reported, never thrown.
 - **Ingest** (`NostrRelayPool.fetchStored`, on demand only) uses the same checks as
   `CommunityClimbSubscriber`:
