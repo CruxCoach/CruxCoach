@@ -83,6 +83,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      # The repository's gradle.properties keeps Gradle and the Kotlin daemon at 2 GB for
+      # small servers; on the runner (16 GB) the app's Kotlin compile ran out of memory in
+      # that. The user home's gradle.properties wins over the project's, for CI only.
+      - name: Give Gradle and the Kotlin daemon 4 GB
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          kotlin.daemon.jvmargs=-Xmx4g
+          EOF
       - name: Install pinned Rust Android target
         run: rustup target add --toolchain 1.94.1 aarch64-linux-android
       - name: Build the community APK with the authorized identity
