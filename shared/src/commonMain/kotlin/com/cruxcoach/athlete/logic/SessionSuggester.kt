@@ -762,16 +762,18 @@ object SessionSuggester {
     }
 
     /**
-     * The climbing days still planned this week that are not logged yet (today included), each with its intensity:
+     * The climbing days still planned this week after today that are not logged yet, each with its intensity:
      * the day's plan, else what the athlete logged on that weekday last time, else volume. None while an injury
-     * pauses climbing, and no harder than a comeback stage allows.
+     * pauses climbing, and no harder than a comeback stage allows. Today is not counted: today's climbing is
+     * either today's training, or Today has just replaced it (board skipped, comeback stage), or it is logged
+     * and counts in the week already.
      */
     private fun climbingAhead(input: SuggestionInput): List<ClimbIntensity> {
         if (input.injuries.any { it.isActive && it.climbingPaused }) return emptyList()
         val level = input.injuries.mapNotNull { Comeback.climbingLevel(it) }.minOrNull()
         val end = (input.weekStart ?: WeeklyVolume.weekStartOf(input.today)).plus(DatePeriod(days = 6))
         val out = mutableListOf<ClimbIntensity>()
-        var day = input.today
+        var day = input.today.plus(DatePeriod(days = 1))
         while (day <= end) {
             val logged = input.activities[day]?.let { it.climbingMinutes > 0 || it.climbingEfforts > 0 } == true
             if (!logged && DayPlans.climbingPlanned(input.profile, day)) {

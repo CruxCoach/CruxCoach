@@ -226,6 +226,27 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun aBoardDayTodayReplacesKeepsNoRoomForItself() {
+        // Review of #98: with the board day skipped for sore skin, the cap still kept 2 pull and 1 core sets free for it,
+        // trimmed today's pulling and said "the climbing you still plan this week" next to "board skipped today".
+        // Pulling is the only area short of its goal, with room for two more sets: exactly a hard board day's share.
+        val tuesday = monday.plus(DatePeriod(days = 1))
+        val weekly = listOf(area(VolumeArea.PULL, 2, 4, 4), area(VolumeArea.PUSH, 4, 4, 8), area(VolumeArea.ANTAGONIST, 5, 5, 10),
+            area(VolumeArea.LEGS, 9, 3, 9), area(VolumeArea.CORE, 4, 4, 10))
+        val sore = Checkin(tuesday.toString(), 0, skin = 1)
+        fun suggest(p: AthleteProfile) = SessionSuggester.suggest(input(profile = p, checkin = sore)
+            .copy(today = tuesday, weekly = weekly, weekStart = monday))
+        val free = suggest(noFingers)
+        val skipped = suggest(noFingers.copy(weekPlan = mapOf(2 to PLAN_BOARD)))
+        assertTrue(SuggestionReason.BOARD_SKIPPED_TODAY in skipped.reasons, "${skipped.reasons}")
+        assertTrue(SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD !in skipped.reasons, "${skipped.reasons}")
+        // The skipped board day keeps no pull room for itself: today pulls as much as on a day without it.
+        assertTrue(areaSets(free, VolumeArea.PULL) > 0, "${free.focus} ${free.reasons} ${free.routine.items}")
+        assertEquals(free.focus, skipped.focus, "${skipped.reasons}")
+        assertEquals(areaSets(free, VolumeArea.PULL), areaSets(skipped, VolumeArea.PULL), "${skipped.routine.items}")
+    }
+
+    @Test
     fun climbingThatAnInjuryPausesOrAComebackStageHoldsBackKeepsNoRoom() {
         // Review of #59's fixes: an injury that pauses climbing, or a comeback stage that allows only easy climbing,
         // cancels this week's hard bouldering, so its pull credit must not shorten today's training.
