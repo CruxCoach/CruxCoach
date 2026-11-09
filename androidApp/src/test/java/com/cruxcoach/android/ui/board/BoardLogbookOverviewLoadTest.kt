@@ -8,6 +8,7 @@ import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.domain.board.IntensityZones
 import io.mockk.every
@@ -146,5 +147,75 @@ class BoardLogbookOverviewLoadTest {
             release.countDown()
         }
         verify(timeout = 5_000) { resolver.resolveClimb("missing", 40) }
+    }
+
+    @Test
+    fun aPeriodTappedWhileTheLogbookLoadsKeepsTheSheetLoading() = runTest {
+        val release = CountDownLatch(1)
+        every { personalBoardRepo.getUserLogbookAllLight() } answers { release.await(10, TimeUnit.SECONDS); logbook }
+        val vm = buildViewModel()
+        try {
+            vm.state.first { !it.isLoading && it.ascents.isNotEmpty() }
+            vm.setStatsInterval(StatsTimeInterval.DAYS_30)
+            Thread.sleep(300)
+            // No statistics of an empty logbook: the sheet keeps loading.
+            assertFalse(vm.state.value.statsReady)
+        } finally {
+            release.countDown()
+        }
+        val s = vm.state.first { it.statsReady }
+        assertEquals(StatsTimeInterval.DAYS_30, s.statsInterval)
+        assertEquals(2, s.stats.totalSends)
+    }
+
+    private fun climb(name: String, difficulty: Double?, layoutId: Long) = ClimbWithStats(
+        uuid = "found", layoutId = layoutId, setterUsername = null, name = name, frames = "",
+        framesCount = 1, difficultyAverage = difficulty, qualityAverage = null, ascensionistCount = null,
+    )
+
+    /** A logbook of one send whose page and full list come from "the database" before and after the repair. */
+    private fun repairable(before: AscentWithClimb, after: AscentWithClimb): AtomicBoolean {
+        val persisted = AtomicBoolean(false)
+        every { personalBoardRepo.getUserLogbookPage(any(), any()) } answers { listOf(if (persisted.get()) after else before) }
+        every { personalBoardRepo.getUserLogbookAllLight() } answers { listOf(if (persisted.get()) after else before) }
+        every { personalBoardRepo.countUserLogbook() } returns 1L
+        every { personalBoardRepo.updateAscentDenormalized(any(), any(), any(), any(), any(), any(), any(), any()) } answers {
+            persisted.set(true)
+        }
+        return persisted
+    }
+
+    @Test
+    fun aRepairThatFindsTheClimbReloadsOnceAndRefreshesTheOverview() = runTest {
+        val bare = entry("u1", "found", today, isSend = true, tries = 1)
+            .copy(climbName = "", difficultyAverage = null, layoutId = null)
+        val fixed = bare.copy(climbName = "Found it", difficultyAverage = 26.0, layoutId = 1L)
+        repairable(bare, fixed)
+        val resolver = mockk<ClimbNameResolver>()
+        every { resolver.resolveClimb(any(), any()) } returns climb("Found it", 26.0, layoutId = 1L)
+        val vm = buildViewModel(resolver)
+        vm.state.first { it.atAGlance.hardestSend?.difficulty == 26.0 }
+        Thread.sleep(500)
+        assertEquals("Found it", vm.state.value.ascents.single().climbName)
+        // One reload after the repair, then no more: the repaired entry needs no lookup.
+        verify(exactly = 2) { personalBoardRepo.getUserLogbookPage(any(), any()) }
+        verify(exactly = 1) { resolver.resolveClimb(any(), any()) }
+    }
+
+    @Test
+    fun aRepairThatOnlyMovesTheLayoutReloadsOnce() = runTest {
+        // The catalogue has no grade for the climb either, but knows its layout.
+        val bare = entry("u1", "found", today, isSend = true, tries = 1).copy(difficultyAverage = null, layoutId = null)
+        val moved = bare.copy(layoutId = 7L)
+        repairable(bare, moved)
+        val resolver = mockk<ClimbNameResolver>()
+        every { resolver.resolveClimb(any(), any()) } returns climb(bare.climbName, null, layoutId = 7L)
+        val vm = buildViewModel(resolver)
+        vm.state.first { !it.isLoading && it.ascents.isNotEmpty() }
+        verify(timeout = 5_000, exactly = 2) { resolver.resolveClimb(any(), any()) }
+        Thread.sleep(500)
+        // The reload looks the ungraded climb up again, finds nothing new and stops.
+        verify(exactly = 2) { personalBoardRepo.getUserLogbookPage(any(), any()) }
+        verify(exactly = 2) { resolver.resolveClimb(any(), any()) }
     }
 }

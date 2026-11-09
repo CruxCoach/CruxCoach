@@ -232,6 +232,8 @@ class BoardLogbookViewModel @Inject constructor(
     private var allAscents: List<AscentWithClimb> = emptyList()
     private var overviewJob: Job? = null
     private var statsJob: Job? = null
+    /** The whole logbook has been read once; the statistics wait for it. */
+    private var logbookLoaded = false
 
     companion object {
         private const val PAGE_SIZE = 50
@@ -421,6 +423,7 @@ class BoardLogbookViewModel @Inject constructor(
                     personalBoardRepo.getUserLogbookAllLight()
                 }
                 allAscents = all
+                logbookLoaded = true
                 // Boards the user has actually logged on — drives whether the
                 // per-board stats selector is shown. Kilter first, then the
                 // rest, for a stable chip order.
@@ -498,6 +501,8 @@ class BoardLogbookViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "preloadStats failed; stats sheet may show stale", e)
+                // The statistics wait for this load: end their loading sign.
+                _state.update { it.copy(statsReady = true) }
             }
         }
     }
@@ -549,8 +554,8 @@ class BoardLogbookViewModel @Inject constructor(
     /**
      * Self-healing: when logbook entries have empty denormalized fields
      * (e.g. Kilter sync ran before board sync), fill them from BoardDB
-     * and persist the fix so it doesn't recur. True when a name or grade was
-     * filled in; a climb without a grade in the catalogue stays without one.
+     * and persist the fix so it doesn't recur. True when a name, grade, board or
+     * layout changed; a climb without a grade in the catalogue stays without one.
      */
     private fun repairMissingDenormalized(entries: MutableList<AscentWithClimb>): Boolean {
         var changed = false
@@ -562,7 +567,8 @@ class BoardLogbookViewModel @Inject constructor(
             // canonical form. Raw getClimbByUuid would silently miss those.
             val climb = climbNameResolver.resolveClimb(entry.climbUuid, entry.angle.toInt()) ?: continue
             if ((entry.climbName.isBlank() && climb.name.isNotBlank()) ||
-                (entry.difficultyAverage == null && climb.difficultyAverage != null)
+                (entry.difficultyAverage == null && climb.difficultyAverage != null) ||
+                entry.boardBrand != climb.boardBrand || entry.layoutId != climb.layoutId
             ) {
                 changed = true
             }
@@ -731,6 +737,10 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     private fun recomputeStats() {
+        // Not before the whole logbook is read: a period or board tapped while it
+        // loads would compute an empty logbook and end the sheet's loading sign.
+        // The load computes the newest choice once it is done.
+        if (!logbookLoaded) return
         // Only the newest choice may land: a slow "All" started before a tap on
         // "30 days" must not overwrite it when it finishes later.
         statsJob?.cancel()
