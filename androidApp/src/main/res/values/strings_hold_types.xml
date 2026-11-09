@@ -86,20 +86,21 @@
     <!-- Hold types in the logbook statistics -->
     <string name="board_stats_hold_types_title">Hold types</string>
     <string name="board_stats_hold_types_title_board">Hold types · %1$s</string>
-    <string name="board_stats_hold_types_help">Which holds\nThe share of each type among the hand holds of the problems you logged in the chosen period: start, middle and finish holds, no foot holds. Every problem counts equally.\n\nBoard\nThe mark shows the same share for the board\'s problems in your grades, so the comparison is about which holds you choose, not how hard you climb.\n\nStrong and weak\nHow many of the problems where a type makes up at least 40 percent of the hand holds you sent, against all your problems on the board. It needs at least five such problems and a difference of 15 percentage points.\n\nWhere the types come from\nThey are computed from the board pictures, not tagged by you, and checked by hand on a sample of holds. They can still be wrong. The card shows one board at a time, and only boards whose check is done.\n\nTap a type to see its numbers.</string>
+    <string name="board_stats_hold_types_help">Which holds\nThe share of each type among the hand holds of the problems you logged in the chosen period: start, middle and finish holds, no foot holds. Every problem counts equally.\n\nBoard\nThe mark shows the same share for the board\'s problems in your grade range, so the comparison is about which holds you choose, not how hard you climb.\n\nStrong and weak\nYour send rate on problems where a type makes up at least 40 percent of the hand holds (where it dominates), compared with your rate on all your problems on this board. It needs at least five such problems and a difference of 15 percentage points.\n\nWhere the types come from\nThey are computed from the board pictures, not tagged by you, and checked by hand on a sample of holds. They can still be wrong; types that were wrong too often in that check are left out. The card shows one board at a time, and only boards whose check is done.\n\nTap a type to see its numbers.</string>
     <string name="board_stats_hold_types_you">You</string>
-    <string name="board_stats_hold_types_board">Board in your grades</string>
+    <string name="board_stats_hold_types_board">Board in your grade range</string>
     <string name="board_stats_hold_types_strong">strong</string>
     <string name="board_stats_hold_types_weak">weak</string>
-    <string name="board_stats_hold_types_board_share">Board: %1$d %%</string>
+    <string name="board_stats_hold_types_board_share">Board: %1$d\u00A0%%</string>
     <plurals name="board_stats_hold_types_send_rate">
-        <item quantity="one">Sent %1$d %% of %2$d problem where it dominates, %3$d %% of all</item>
-        <item quantity="other">Sent %1$d %% of %2$d problems where it dominates, %3$d %% of all</item>
+        <item quantity="one">%1$d problem where this type dominates: %2$d\u00A0%% sent</item>
+        <item quantity="other">%1$d problems where this type dominates: %2$d\u00A0%% sent</item>
     </plurals>
-    <string name="board_stats_hold_types_hardest">Hardest send there: %1$s</string>
-    <string name="board_stats_hold_types_too_few">Too few problems for strong or weak</string>
+    <string name="board_stats_hold_types_overall_rate">All your problems: %1$d\u00A0%% sent</string>
+    <string name="board_stats_hold_types_hardest">Hardest send of these: %1$s</string>
+    <string name="board_stats_hold_types_too_few">A “strong” or “weak” label needs at least %1$d such problems</string>
     <plurals name="board_stats_hold_types_basis">
-        <item quantity="one">%1$d problem · %2$d of %3$d hand holds typed</item>
-        <item quantity="other">%1$d problems · %2$d of %3$d hand holds typed</item>
+        <item quantity="one">%1$d problem · type known for %2$d of %3$d hand holds</item>
+        <item quantity="other">%1$d problems · type known for %2$d of %3$d hand holds</item>
     </plurals>
 </resources>
