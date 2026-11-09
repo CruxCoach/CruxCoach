@@ -82,6 +82,7 @@ import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
 import com.cruxcoach.android.ui.board.rememberMoonBoardAsset
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.games.EnduranceChallenge
@@ -271,11 +272,11 @@ private fun levelRes(level: Int): Int = when (level) {
     else -> R.string.wall_games_level_5
 }
 
-/** The app's own selected-chip look (filter screen), orange on a light orange fill. */
+/** The app's own selected-chip look (filter screen): the quiet orange container with its label. */
 @Composable
 private fun chipColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-    selectedLabelColor = OrangeAccent,
+    selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+    selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer,
 )
 
 /** The games as chips under a heading whose info explains the chosen game's rules. */
