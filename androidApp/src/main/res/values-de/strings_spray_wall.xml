@@ -194,14 +194,14 @@
     <string name="spray_withdraw_failed_title">Wand nicht zurückgezogen</string>
     <string name="spray_delete_failed_title">Wand nicht gelöscht</string>
     <string name="spray_withdraw_failed_relays">Die Server haben das Zurückziehen nicht bestätigt, die Wand ist also noch öffentlich. Prüfe die Verbindung und versuch es noch einmal.</string>
-    <string name="spray_withdraw_failed_photos">Die Relays haben das Zurückziehen angenommen, aber ein Foto ließ sich nicht von seinem Blossom-Server löschen. Das Zurückziehen ist also noch nicht abgeschlossen, und bis dahin wird von dieser Wand nichts veröffentlicht. Prüfe die Verbindung und versuch es noch einmal.</string>
+    <string name="spray_withdraw_failed_photos">Die Server haben das Zurückziehen angenommen, aber ein Foto ließ sich nicht löschen. Das Zurückziehen ist also noch nicht abgeschlossen, und bis dahin wird von dieser Wand nichts veröffentlicht. Prüfe die Verbindung und versuch es noch einmal.</string>
     <string name="spray_withdraw_failed_signing">Das Signieren hat nicht geklappt oder wurde in deiner Signer-App abgelehnt, die Wand ist also noch öffentlich. Versuch es noch einmal und bestätige die Anfragen.</string>
     <string name="spray_withdraw_failed_identity">Zum Zurückziehen braucht es den Schlüssel des CruxCoach-Accounts, mit dem die Wand veröffentlicht wurde. Richte ihn in den Einstellungen unter CruxCoach Account ein und versuch es dann noch einmal.</string>
     <string name="spray_delete_failed_note">Eine öffentliche Wand wird hier erst gelöscht, wenn sie zurückgezogen ist.</string>
     <string name="spray_withdraw_unfinished">Das Zurückziehen ist nicht fertig. Bis dahin wird von dieser Wand nichts veröffentlicht.</string>
     <string name="spray_withdraw_unfinished_title">Zurückziehen nicht abgeschlossen</string>
-    <string name="spray_withdraw_failed_signing_started">Das Signieren hat nicht geklappt oder wurde in deiner Signer-App abgelehnt. Die Relays haben das Zurückziehen schon zum Teil angenommen, deshalb wird von dieser Wand nichts veröffentlicht, bis es abgeschlossen ist. Versuch es noch einmal und bestätige die Anfragen.</string>
-    <string name="spray_withdraw_failed_relays_started">Das Zurückziehen ist nicht abgeschlossen. Die Relays haben es schon zum Teil angenommen, deshalb wird von dieser Wand nichts veröffentlicht, bis es abgeschlossen ist. Prüfe die Verbindung und versuch es noch einmal.</string>
+    <string name="spray_withdraw_failed_signing_started">Das Signieren hat nicht geklappt oder wurde in deiner Signer-App abgelehnt. Die Server haben das Zurückziehen schon zum Teil angenommen, deshalb wird von dieser Wand nichts veröffentlicht, bis es abgeschlossen ist. Versuch es noch einmal und bestätige die Anfragen.</string>
+    <string name="spray_withdraw_failed_relays_started">Das Zurückziehen ist nicht abgeschlossen. Die Server haben es schon zum Teil angenommen, deshalb wird von dieser Wand nichts veröffentlicht, bis es abgeschlossen ist. Prüfe die Verbindung und versuch es noch einmal.</string>
     <string name="spray_withdraw_again">Erneut zurückziehen</string>
     <string name="spray_withdraw_failed_kept_edits">Deine anderen Änderungen sind gespeichert.</string>
     <string name="spray_gym_title">Halle</string>

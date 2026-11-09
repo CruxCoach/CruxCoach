@@ -103,6 +103,7 @@ abstract class SprayWallUiReview(private val variant: String) {
     private val lastOutcome = MutableStateFlow<SprayWallPublisher.Outcome?>(null)
     private val publisher = mockk<SprayWallPublisher>(relaxed = true).also {
         every { it.last } returns lastOutcome
+        every { it.withdrawing } returns MutableStateFlow(emptySet())
         every { it.hasIdentity() } returns true
     }
     private val fetcher = mockk<SprayWallFetcher>(relaxed = true)
@@ -470,7 +471,7 @@ abstract class SprayWallUiReview(private val variant: String) {
     }
 
     @Test fun detailsWithdrawFailed() {
-        coEvery { publisher.withdrawWall(any()) } returns SprayWithdrawal.NOT_CONFIRMED
+        coEvery { publisher.withdrawWall(any(), any(), any()) } returns SprayWithdrawal.NOT_CONFIRMED
         val vm = detailsVm(mainWall())
         detailsShot("details-withdraw-failed", vm, act = {
             vm.chooseVisibility(SprayWallVisibility.PRIVATE)
