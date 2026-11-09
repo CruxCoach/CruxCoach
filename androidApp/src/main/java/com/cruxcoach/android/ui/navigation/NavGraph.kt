@@ -70,6 +70,8 @@ import com.cruxcoach.android.ui.plan.SessionDetailScreen
 import com.cruxcoach.android.ui.plan.WeekOverviewScreen
 import com.cruxcoach.android.ui.exercises.ExerciseLibraryScreen
 import com.cruxcoach.android.ui.training.trainingGraph
+import com.cruxcoach.android.spraywall.SprayWallFeature
+import com.cruxcoach.android.ui.spraywall.SprayWallMenuViewModel
 import com.cruxcoach.android.ui.spraywall.SprayWallRoutes
 import com.cruxcoach.android.ui.spraywall.sprayWallGraph
 import com.cruxcoach.android.ui.onboarding.OnboardingScreen
@@ -592,6 +594,8 @@ fun CruxCoachNavHost(
                 val (_, browserTourStep) = rememberBrowserTour()
                 val drawerState = rememberDrawerState(DrawerValue.Closed)
                 val drawerScope = rememberCoroutineScope()
+                val sprayWallMenu: SprayWallMenuViewModel = hiltViewModel()
+                val sprayWallsInMenu by sprayWallMenu.inMenu.collectAsStateWithLifecycle()
                 // The drawer sheet only takes Back when it is handed the drawer
                 // state; without this, Back with the menu open left the app.
                 BackHandler(enabled = drawerState.isOpen) {
@@ -601,7 +605,7 @@ fun CruxCoachNavHost(
                     drawerState = drawerState,
                     gesturesEnabled = browserTourStep in listOf(TourStep.INACTIVE, TourStep.DONE),
                     drawerContent = {
-                        BrowserMainDrawer() { route ->
+                        BrowserMainDrawer(sprayWalls = sprayWallsInMenu) { route ->
                             drawerScope.launch { drawerState.close() }
                             when {
                                 route == Routes.BOARD_BROWSER -> Unit
@@ -1219,8 +1223,9 @@ fun CruxCoachNavHost(
     } // CompositionLocalProvider
 }
 
+/** [sprayWalls]: whether their entry is there ([SprayWallFeature.inMenu]). */
 @Composable
-internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
+internal fun BrowserMainDrawer(sprayWalls: Boolean = SprayWallFeature.enabled, onSelect: (String) -> Unit) {
     val (tour, _) = rememberBrowserTour()
     ModalDrawerSheet {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -1235,8 +1240,8 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
                 // whose tab bar (Today, Training, Nutrition, Progress) organises the rest.
                 Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_training_nutrition, "menu_today"),
                 Triple(Routes.boardGames(), com.cruxcoach.android.R.string.wall_games_title, "menu_wall_games"),
-                Triple(SprayWallRoutes.LIST, com.cruxcoach.android.R.string.spray_walls_title, "menu_spray_walls"),
-            )
+                Triple(SprayWallRoutes.LIST, com.cruxcoach.android.R.string.spray_walls_title, "menu_spray_walls").takeIf { sprayWalls },
+            ).filterNotNull()
             entries.forEach { (route, label, tag) ->
                 NavigationDrawerItem(
                     icon = {
