@@ -6,7 +6,7 @@ import kotlin.test.assertNull
 
 class HoldTypeStatsTest {
 
-    private fun hold(placement: Int, type: String?, conf: Double = 0.5, footOnly: Boolean = false, layout: Int = 1) =
+    private fun hold(placement: Int, type: String?, conf: Double = 0.9, footOnly: Boolean = false, layout: Int = 1) =
         HoldTypeEntry(
             placement = placement, layoutId = layout, setId = 1, type = type, footOnly = footOnly,
             confidence = HoldTypeConfidence(type = conf, direction = 0.5),
@@ -16,10 +16,11 @@ class HoldTypeStatsTest {
         format = HoldTypeDataset.FORMAT, board = "kilter", version = "v1",
         holds = listOf(
             hold(1, "jug"), hold(2, "jug"), hold(3, "edge"), hold(4, "edge"), hold(5, "sloper"),
-            hold(6, "pinch", conf = 0.3),          // low confidence counts until the blind rounds calibrate it
+            hold(6, "pinch", conf = 0.7),          // right as often as the threshold asks: counts
             hold(7, "foot_chip"),                  // a foot chip is never a hand type
             hold(8, "edge", footOnly = true),      // foot only
             hold(9, null),                         // no picture
+            hold(10, "sloper", conf = 0.6),        // wrong too often in the blind round
         ),
     )
 
@@ -38,7 +39,7 @@ class HoldTypeStatsTest {
 
     @Test
     fun typedHandTypesCount() {
-        val climb = TypedClimb("kilter", 1, handHolds = (1..9).toList())
+        val climb = TypedClimb("kilter", 1, handHolds = (1..10).toList())
         assertEquals(
             listOf(HoldType.JUG, HoldType.JUG, HoldType.EDGE, HoldType.EDGE, HoldType.SLOPER, HoldType.PINCH),
             HoldTypeStats.countedTypes(climb, kilter),

@@ -15,7 +15,7 @@ import org.junit.Test
 
 class HoldTypeStatsComputerTest {
 
-    private fun entry(placement: Int, type: String, confidence: Double = 0.7, footOnly: Boolean = false, layoutId: Int = 1) =
+    private fun entry(placement: Int, type: String, confidence: Double = 0.9, footOnly: Boolean = false, layoutId: Int = 1) =
         HoldTypeEntry(
             placement = placement,
             layoutId = layoutId,
@@ -31,7 +31,7 @@ class HoldTypeStatsComputerTest {
         version = "test",
         holds = listOf(
             entry(1, "edge"), entry(2, "edge"), entry(3, "jug"), entry(4, "sloper"),
-            entry(5, "pinch", confidence = 0.2), entry(6, "foot_chip"), entry(7, "edge", footOnly = true),
+            entry(5, "pinch"), entry(6, "foot_chip"), entry(7, "edge", footOnly = true),
         ),
     )
 

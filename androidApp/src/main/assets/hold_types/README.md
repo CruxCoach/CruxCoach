@@ -29,7 +29,8 @@ type. Each such entry says why in `review`.
 
 `referenceSet` lists the holds of the blind review in test builds. `blindRound` is added once a blind round on the
 board is evaluated: its date, the holds answered and how often the answers agreed with the labels. The statistics show
-a board's hold types only when the board's file has it.
+a board's hold types only when the board's file has it. The same step sets each type's `confidence.type` to the share
+of its reference holds whose label was right, and the statistics count a type only from 0.7.
 
 Aurora boards and Shiny Wall are keyed by placement id. MoonBoard is keyed by layout (generation) and hold id, and
 its reference keys are `layout * 1000 + hold id`.

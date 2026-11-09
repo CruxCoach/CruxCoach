@@ -9,6 +9,7 @@ import com.cruxcoach.domain.holdtypes.HoldTypeDataset
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -46,6 +47,21 @@ class HoldTypeBoardAssetsTest {
                 assertTrue("$board second use of ${h.placement}", h.second == null || (h.second != "foot_chip" && h.second != h.type))
                 assertTrue(h.size == null || h.size in setOf("small", "medium", "large"))
                 assertTrue(h.confidence.type in 0.0..1.0 && h.confidence.direction in 0.0..1.0)
+            }
+        }
+    }
+
+    @Test
+    fun onlyKilterHasABlindRoundIn025() {
+        // 0.2.5 (owner, 2026-11-08): only the Kilter card can be unlocked; the other boards' rounds follow later.
+        boards().filter { it != "kilter" }.forEach { board -> assertNull("$board blind round", dataset(board).blindRound) }
+    }
+
+    @Test
+    fun aBoardWithABlindRoundHasOneCalibratedConfidencePerType() {
+        boards().map { dataset(it) }.filter { it.blindRound != null }.forEach { data ->
+            data.holds.filter { it.type != null }.groupBy { it.type }.forEach { (type, holds) ->
+                assertEquals("${data.board} $type", 1, holds.map { it.confidence.type }.toSet().size)
             }
         }
     }

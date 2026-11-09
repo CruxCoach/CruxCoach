@@ -14,11 +14,11 @@ package com.cruxcoach.domain.holdtypes
  */
 object HoldTypeStats {
     /**
-     * Every typed hold counts until the blind rounds calibrate the confidences. The first-pass values are lower for
-     * the types that are harder to see in a picture: 77 of the 78 Kilter slopers and 48 of the 51 Kilter pinches are
-     * below medium (0.4), so a threshold there would leave only edges and jugs in the stats.
+     * A type counts where its labels were right at least this often: a board's blind round sets each type's
+     * confidence to the share of its reference holds whose label was right, and the stats show only boards with a
+     * finished round ([HoldTypeDataset.statsReady]). The same bar as for edge size (#63, owner 2026-11-06).
      */
-    const val MIN_CONFIDENCE = 0.0
+    const val MIN_CONFIDENCE = 0.7
 
     /** A type dominates a problem when at least this share of its typed hand holds has it. */
     const val DOMINANCE = 0.4
