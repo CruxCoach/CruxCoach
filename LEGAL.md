@@ -211,6 +211,19 @@ CruxCoach is an independent, community-developed open-source project. It is not 
 
 ---
 
+## Shiny Wall Account Import
+
+Connecting a Shiny Wall account (*Settings → Imports*) is optional. Shiny Wall's sign-in and data run on Google's Firebase servers, so that is where the app connects to:
+
+- **Sign-in:** the email address and password go to Google's Firebase sign-in servers (`identitytoolkit.googleapis.com`), which return sign-in tokens; the tokens are renewed at `securetoken.googleapis.com`. CruxCoach never stores the password.
+- **What is read:** from Shiny Wall's database on Google's servers (`firestore.googleapis.com`), only the signed-in user's own data: the profile (username, favourites, own lists), the activity history (the logbook) and the routes the user published. Star ratings and comments are not imported.
+- **Nothing is written back:** the app only reads. It never creates, changes or deletes anything in the Shiny Wall account.
+- **On the phone:** imported entries and lists become ordinary entries in CruxCoach's encrypted logbook and are handled like the rest of it (export, and the encrypted backup if the user enabled it). The sign-in tokens, the Shiny Wall user id and the account name (username or email address) are kept in encrypted preferences that are excluded from Android backup and device transfer. To keep deleted entries and lists deleted and avoid duplicates, the app also keeps, per Shiny Wall user id, the time of the newest imported entry (never later than the import itself), the ids and times of the history entries it has handled from the seven days before it, and the ids of the lists it has created.
+- **Disconnect** deletes the sign-in tokens, the account name and the time of the last import from the phone. Imported entries and lists stay until the user deletes them. The note of what was imported stays too (filed under the Shiny Wall user id), so that connecting the same account again does not bring back deleted entries or lists; it goes when the user deletes the Shiny Wall logbook data (*Settings → Delete local data*), when the app's data is cleared or the app is uninstalled.
+- Nothing from the account goes to the CruxCoach maintainers or to any server of theirs.
+
+---
+
 ## Training Aid, Not a Medical Device
 
 Training & nutrition, the injury mode and the comeback plan support the user's own training decisions. The comeback plan is a training aid, not a medical device (Regulation (EU) 2017/745):

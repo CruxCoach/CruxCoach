@@ -206,6 +206,10 @@ UPDATE ascents SET quality = ? WHERE uuid = ?;
 selectAscentUploadState:
 SELECT synced, bid_count, comment FROM ascents WHERE uuid = ?;
 
+-- See bids.selectBidBoardBrand.
+selectAscentBoardBrand:
+SELECT board_brand FROM ascents WHERE uuid = ?;
+
 -- Entries imported from an export (external_id prefix), synced or not.
 getAscentUuidsWithExternalIdPrefix:
 SELECT uuid FROM ascents WHERE external_id LIKE ?;

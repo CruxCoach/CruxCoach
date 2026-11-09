@@ -33,6 +33,8 @@ import com.cruxcoach.android.data.ApkDownloader
 import com.cruxcoach.android.data.kilter.KilterApiClient
 import com.cruxcoach.android.data.kilter.KilterSyncEngine
 import com.cruxcoach.android.data.kilter.KilterTokenStore
+import com.cruxcoach.android.data.shinywall.ShinyWallTokenStorage
+import com.cruxcoach.android.data.shinywall.ShinyWallTokenStore
 import com.cruxcoach.android.data.BoardDatabaseImporter
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BoardSessionManager
@@ -765,6 +767,35 @@ object AppModule {
     fun provideNostrEventBuilder(signer: NostrSigner): NostrEventBuilder {
         return PerfLogger.trace("DI: NostrEventBuilder") { NostrEventBuilder(signer) }
     }
+
+    // --- Shiny Wall account (read-only logbook import) ---
+
+    @Provides
+    @Singleton
+    @Named("shinywall")
+    fun provideShinyWallOkHttpClient(): OkHttpClient {
+        // Same honest, identifiable User-Agent as the Kilter account client.
+        val versionName = com.cruxcoach.android.BuildConfig.VERSION_NAME
+        val product = com.cruxcoach.android.BuildConfig.USER_AGENT_PRODUCT
+        val host = com.cruxcoach.android.BuildConfig.APP_LINK_HOST
+        val ua = "$product/$versionName (https://$host)"
+        return OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                chain.proceed(chain.request().newBuilder().header("User-Agent", ua).build())
+            }
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideShinyWallTokenStore(
+        @ApplicationContext context: Context,
+        nostrSigner: NostrSigner,
+    ): ShinyWallTokenStorage = ShinyWallTokenStore(context, nostrSigner.getPublicKeyHex().take(16))
 
     // --- Kilter Account ---
 

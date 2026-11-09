@@ -345,6 +345,9 @@ internal fun SettingsScreen(
                     )
                 }
                 SettingsSectionCard {
+                    ShinyWallAccountSection()
+                }
+                SettingsSectionCard {
                     BoardLogbookImportSection(
                         onNavigateToAuroraMigration = onNavigateToAuroraMigration,
                         onNavigateToMoonBoardCsvImport = onNavigateToMoonBoardCsvImport,
