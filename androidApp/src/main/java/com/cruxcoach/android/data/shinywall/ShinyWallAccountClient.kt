@@ -11,7 +11,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
@@ -44,8 +43,8 @@ class ShinyWallApiException(val reason: Reason, message: String, val httpCode: I
 /**
  * Reads the signed-in user's OWN Shiny Wall data, at the user's request:
  * sign-in through Shiny Wall's Firebase sign-in service, then single REST
- * reads of the user's profile, activity history, own published routes and
- * own route ratings. Nothing is ever written to the Shiny Wall account, no
+ * reads of the user's profile, activity history and own published routes.
+ * Nothing is ever written to the Shiny Wall account, no
  * other user's data is requested, and the route catalogue keeps coming from
  * CruxCoach's own Blossom mirror ([com.cruxcoach.android.data.ShinyWallCatalogueSync]).
  *
@@ -71,7 +70,6 @@ class ShinyWallAccountClient @Inject constructor(
         internal const val PAGE_SIZE = 300
         /** Bounds a runaway pagination (300 × 200 = 60 000 history entries). */
         internal const val MAX_PAGES = 200
-        internal const val BATCH_GET_CHUNK = 100
         private const val MAX_RETRIES = 2
         private const val BACKOFF_MS = 1_000L
         private const val EXPIRY_BUFFER_MS = 60_000L
@@ -227,46 +225,6 @@ class ShinyWallAccountClient @Inject constructor(
         }.distinctBy { it.routeId }
     }
 
-    /**
-     * The user's own ratings for [keys] (route id, angle). Best effort: a
-     * rating that does not exist, or a chunk that fails, is left out.
-     */
-    suspend fun fetchOwnRatings(uid: String, keys: Collection<Pair<String, Int>>): Map<Pair<String, Int>, ShinyWallRating> =
-        withContext(Dispatchers.IO) {
-            val out = mutableMapOf<Pair<String, Int>, ShinyWallRating>()
-            val byName = keys.distinct().associateBy { (routeId, angle) ->
-                "$databasePath/standard_routes/$routeId/user-statistics/$uid-$angle"
-            }
-            for (chunk in byName.keys.chunked(BATCH_GET_CHUNK)) {
-                try {
-                    val body = buildJsonObject {
-                        put("documents", buildJsonArray { chunk.forEach { add(JsonPrimitive(it)) } })
-                        putJsonObject("mask") {
-                            putJsonArray("fieldPaths") {
-                                for (f in listOf("grade", "punctuation", "comment", "sent")) add(JsonPrimitive(f))
-                            }
-                        }
-                    }.toString()
-                    val text = authorized { token ->
-                        Request.Builder().url("$documentsRoot:batchGet").header("Authorization", "Bearer $token")
-                            .post(body.toRequestBody(JSON_MEDIA)).build()
-                    }
-                    val rows = json.parseToJsonElement(text) as? JsonArray ?: continue
-                    for (row in rows) {
-                        val found = (row as? JsonObject)?.get("found") ?: continue
-                        val (name, fields) = FirestoreValues.document(found) ?: continue
-                        val key = byName[name] ?: byName.entries.firstOrNull { name.endsWith(it.key) }?.value ?: continue
-                        out[key] = ShinyWallParsers.rating(key.first, key.second, fields)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w(TAG, "Ratings chunk skipped (${e.javaClass.simpleName})")
-                }
-            }
-            out
-        }
-
     // ── plumbing ──────────────────────────────────────────────────────
 
     private suspend fun <T> call(block: suspend () -> T): Result<T> = withContext(Dispatchers.IO) {
@@ -352,7 +310,7 @@ class ShinyWallAccountClient @Inject constructor(
             throw ShinyWallApiException(ShinyWallApiException.Reason.UnexpectedResponse, "refresh without id_token")
         }
         val expiresIn = obj?.string("expires_in")?.toLongOrNull() ?: 3600L
-        tokenStore.updateTokens(idToken, refreshToken, expiresIn)
+        tokenStore.updateTokens(session.uid, idToken, refreshToken, expiresIn)
         idToken
     }
 
