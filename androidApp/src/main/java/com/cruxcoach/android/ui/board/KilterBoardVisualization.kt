@@ -50,7 +50,6 @@ import com.cruxcoach.android.data.LedHoldColors
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.BrandOrange
-import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
 import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardImage
@@ -337,7 +336,8 @@ internal fun KilterBoardVisualization(
             val currentFrameSet = remember(currentFrameHolds) {
                 currentFrameHolds?.map { it.placementId }?.toSet()
             }
-            val selectedColor = OrangeAccent
+            // The bright orange: the rings sit on the dark board photo in both themes.
+            val selectedColor = BrandOrange
 
             // Drag-preview state: hold ID highlighted during long-press drag
             var dragPreviewHoldId by remember { mutableStateOf<Int?>(null) }

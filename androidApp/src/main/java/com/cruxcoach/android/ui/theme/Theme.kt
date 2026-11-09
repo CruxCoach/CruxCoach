@@ -64,7 +64,9 @@ internal val LightColorScheme = lightColorScheme(
     inversePrimary = Orange80,
     secondary = Slate40,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD5DEE3),
+    // Deep enough that a selected chip, segment or bottom-bar item stands out from the
+    // surface, light enough for onSurfaceVariant (4.7:1) and the orange on cards (4.8:1).
+    secondaryContainer = Color(0xFFC8D3D9),
     onSecondaryContainer = Color(0xFF1B2328),
     tertiary = Color(0xFF8A5100),
     onTertiary = Color.White,
