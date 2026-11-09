@@ -26,6 +26,7 @@ import com.cruxcoach.athlete.model.ClimbingDayEntry
 import com.cruxcoach.athlete.model.ClimbingDayKind
 import com.cruxcoach.athlete.model.ExerciseSet
 import com.cruxcoach.athlete.model.Injury
+import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.PauseReason
 import com.cruxcoach.athlete.model.PausePeriod
 import com.cruxcoach.athlete.model.Side
@@ -127,6 +128,14 @@ class Simulator(
 
     private fun dateOf(day: Int) = start.plus(DatePeriod(days = day))
 
+    /** What an injury costs the athlete's strength: the fingers, the pulling for the upper body, the legs for the lower. */
+    private fun setbackQuality(region: InjuryRegion): Quality = when (region) {
+        InjuryRegion.FINGER, InjuryRegion.SKIN, InjuryRegion.OTHER -> Quality.FINGER
+        InjuryRegion.SHOULDER, InjuryRegion.ELBOW, InjuryRegion.WRIST -> Quality.PULL
+        InjuryRegion.KNEE, InjuryRegion.ANKLE, InjuryRegion.HIP -> Quality.LEGS
+        InjuryRegion.BACK -> Quality.CORE
+    }
+
     private fun at(day: Int, hour: Int, minute: Int = 0) {
         val midnight = dateOf(day).atStartOfDayIn(service.zone).toEpochMilliseconds()
         clock.nowMs = midnight + (hour * 60L + minute) * 60_000L
@@ -182,10 +191,12 @@ class Simulator(
             if (e.comeback) {
                 // Made before the setback, so the plan's truth knows the hand's maximum before the injury.
                 comeback = SimComeback(service, clock, persona, athlete, "injury-$day", SimComeback.sideOf(e.side), e.severity,
-                    Random(persona.seed * 13 + 5), e.habits).also { if (e.habits.startDelayDays == 0) it.start(date, e.finding) }
+                    Random(persona.seed * 13 + 5), e.habits, fingers = e.region == InjuryRegion.FINGER, healDays = SimComeback.healDays(e),
+                    climbingReach = if (e.region.domains == setOf(com.cruxcoach.athlete.catalog.LoadDomain.LOWER_BODY)) 0.6 else 1.0)
+                    .also { if (e.habits.startDelayDays == 0) it.start(date, e.finding) }
                 if (e.habits.startDelayDays == 0) events += "comeback plan"
             }
-            athlete.setback(Quality.FINGER, e.loss)
+            athlete.setback(setbackQuality(e.region), e.loss)
             events += "injury ${e.region.name.lowercase()}"
         }
         // A plan started later than the injury ([ComebackHabits.startDelayDays]), at its own stage.

@@ -155,7 +155,7 @@ data class Persona(
         private fun board(minutes: Int, i: ClimbIntensity) = Climb(ClimbingDayKind.OTHER_BOARD, minutes, i)
 
         /** Every persona of the full run. */
-        val ALL: List<Persona> get() = BASE + CHOICE + CARD + COMEBACK
+        val ALL: List<Persona> get() = BASE + CHOICE + CARD + COMEBACK + REGIONS
 
         private val BASE: List<Persona> = listOf(
             Persona("beginner-board", "Beginner on the board, nothing else",
@@ -307,6 +307,31 @@ data class Persona(
                 with("comeback-late", "Comeback plan started two weeks late, at the third stage",
                     "Like pulley-comeback, but rests for two weeks, then starts the plan at stage 2 instead of the first stage.",
                     747, ComebackHabits(startDelayDays = 14, startStage = 2)),
+            )
+        }
+
+        /**
+         * The comeback plans of the other findings and regions (issue #59 follow-up), each from `pulley-comeback` with
+         * the careful athlete: findings that change the finger plan's pain rule, and one injury per region's stages.
+         */
+        private val REGIONS: List<Persona> = BASE.first { it.id == "pulley-comeback" }.let { p ->
+            val injury = p.events.filterIsInstance<Event.Injury>().single()
+            fun with(id: String, title: String, seed: Int, region: InjuryRegion, finding: InjuryFinding?, severity: Int = 4,
+                     side: InjurySide? = InjurySide.RIGHT) =
+                p.copy(id = id, title = "Comeback plan after $title", seed = seed,
+                    summary = "Like pulley-comeback (intermediate, home setup, bouldering twice), but $title on day 10, checked by a " +
+                        "doctor, then the app's comeback plan for it from its first stage.",
+                    events = listOf(injury.copy(region = region, finding = finding, severity = severity, side = side)))
+            listOf(
+                with("comeback-rupture", "a pulley rupture", 757, InjuryRegion.FINGER, InjuryFinding.PULLEY_RUPTURE, severity = 6),
+                with("comeback-tenosynovitis", "a tenosynovitis of the finger", 767, InjuryRegion.FINGER, InjuryFinding.TENOSYNOVITIS, severity = 3),
+                with("comeback-shoulder", "a rotator cuff problem of the shoulder", 777, InjuryRegion.SHOULDER, InjuryFinding.ROTATOR_CUFF),
+                with("comeback-elbow", "pain on the inside of the elbow", 787, InjuryRegion.ELBOW, InjuryFinding.MEDIAL_ELBOW),
+                with("comeback-wrist", "pain on the little-finger side of the wrist", 797, InjuryRegion.WRIST, InjuryFinding.ULNAR_WRIST),
+                with("comeback-knee", "a strain on the inside of the knee", 807, InjuryRegion.KNEE, InjuryFinding.KNEE_INNER),
+                with("comeback-ankle", "a sprained ankle", 817, InjuryRegion.ANKLE, InjuryFinding.ANKLE_SPRAIN, severity = 5),
+                with("comeback-hamstring", "a hamstring strain", 827, InjuryRegion.HIP, InjuryFinding.HAMSTRING),
+                with("comeback-back", "low back pain", 837, InjuryRegion.BACK, null, side = null),
             )
         }
 

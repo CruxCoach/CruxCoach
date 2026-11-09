@@ -417,6 +417,12 @@ object Checks {
         val injury = r.persona.events.filterIsInstance<Event.Injury>().firstOrNull { it.comeback } ?: return
         val ladder = SimComeback.ladderFor(injury)
         val days = r.days.filter { it.comeback != null }
+        // The stage's pain rule as the plan applies it: some findings have their own (a rupture, a tenosynovitis).
+        fun rule(d: DayTrace, stage: Int): com.cruxcoach.athlete.logic.PainRule {
+            val spec = ladder.stages[stage.coerceIn(0, ladder.stages.lastIndex)]
+            val model = d.activeInjuries.firstOrNull { it.id == "injury-${injury.day}" } ?: return spec.pain
+            return com.cruxcoach.athlete.logic.Comeback.painRule(model, spec)
+        }
         val step = r.persona.smallestIncrementKg
         days.forEach { d ->
             val cb = d.comeback!!
@@ -434,7 +440,7 @@ object Checks {
                     .format(set.plannedKg, set.plannedEffort, set.effort!!.first, set.effort.last)) }
             // The next stage is offered only after a week that stayed within the stage's pain rule (the truth, not the diary).
             if (com.cruxcoach.athlete.logic.Proposal.MOVE_UP in cb.reviews) {
-                val rule = ladder.stages[cb.stage.coerceIn(0, ladder.stages.lastIndex)].pain
+                val rule = rule(d, cb.stage)
                 val week = r.days.filter { it.day in (d.day - 7) until d.day }.mapNotNull { it.comeback }
                 val worst = week.flatMap { it.sessions }.maxOfOrNull { it.painMax } ?: 0
                 val mornings = week.mapNotNull { it.morningPain }
@@ -461,14 +467,19 @@ object Checks {
         // The athlete reports the true pain, so the plan saw it too.
         var lastFlag = -99
         days.forEach { d ->
-            val rule = ladder.stages[d.comeback!!.stage.coerceIn(0, ladder.stages.lastIndex)].pain
-            val red = r.days.filter { it.day in (d.day - 6)..d.day }.flatMap { it.comeback?.sessions.orEmpty() }.count { it.painMax > rule.amberMax }
+            val rule = rule(d, d.comeback!!.stage)
+            val redDays = r.days.filter { it.day in (d.day - 6)..d.day }
+                .filter { w -> w.comeback?.sessions.orEmpty().any { it.painMax > rule.amberMax } }
+            val red = redDays.sumOf { w -> w.comeback!!.sessions.count { it.painMax > rule.amberMax } }
             if (red < COMEBACK_RED_SESSIONS || d.day - lastFlag < 7) return@forEach
-            val window = r.days.filter { it.day in (d.day - 6)..(d.day + 7) }
+            // Only what came after the first painful session counts as the plan's answer to it (a move up just before
+            // the pain is no step back).
+            val first = redDays.first()
+            val window = r.days.filter { it.day in first.day..(d.day + 7) }
             val reacted = window.any { w ->
                 val c = w.comeback ?: return@any false
                 c.reviews.any { it == com.cruxcoach.athlete.logic.Proposal.STEP_BACK || it == com.cruxcoach.athlete.logic.Proposal.REPEAT } ||
-                    c.prompts.any { it.startsWith("worse") } || c.stage < d.comeback.stage
+                    c.prompts.any { it.startsWith("worse") } || c.stage < first.comeback!!.stage
             }
             // The plan ended or the run ended before a week passed: nothing to judge.
             val judged = r.days.lastOrNull()?.let { it.day >= d.day + 7 } == true && window.count { it.comeback != null } >= 8
@@ -487,7 +498,7 @@ object Checks {
             if (d.comeback!!.stage != since.comeback!!.stage) since = d
             val held = d.day - since.day
             if (held == COMEBACK_STUCK_DAYS) {
-                val rule = ladder.stages[d.comeback.stage].pain
+                val rule = rule(d, d.comeback.stage)
                 val last = r.days.filter { it.day in (d.day - 14)..d.day }.mapNotNull { it.comeback }
                 val calm = last.flatMap { it.sessions }.all { it.painMax <= rule.greenMax } && last.mapNotNull { it.morningPain }.all { it <= 2 }
                 if (calm && d.comeback.stage < ladder.stages.lastIndex) flags += Flag(Check.COMEBACK_STUCK, d.day,

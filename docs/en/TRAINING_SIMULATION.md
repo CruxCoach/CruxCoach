@@ -46,7 +46,7 @@ Each persona starts in a fresh database with a simulated clock. Every day:
    They do every set in the player's order. Each set goes through `completeSetDetailed`, then
    `adjustUpcomingSets`, then the reserve answer and `adjustUpcomingSets` again, as the player sends them.
    The training ends with `finishWorkout`.
-6. During a comeback plan (persona `pulley-comeback`) the athlete also follows the plan, through the same
+6. During a comeback plan (persona `pulley-comeback` and the other `comeback-*`) the athlete also follows the plan, through the same
    calls as the comeback screen and Today's card: they start it on the day of the injury
    (`ComebackService.start`, from stage 0, with the doctor's finding and their own reference values), log the
    morning pain on most days and the pressure pain twice a week, and answer the plan's prompts with the
@@ -59,8 +59,7 @@ Nothing of the coach's rules is copied into the simulation. The logic that used 
 now lives in shared code (`TodayCoach`), so the app and the simulation run the same lines.
 
 Not simulated yet: the board logbook from the app's own board (board climbers log their sessions as
-climbing days), comeback plans for other regions than the fingers or with findings that change the plan's
-pain rule or ladder, the athlete's own routine as the plan, and the card's other buttons ("Not today",
+climbing days), the athlete's own routine as the plan, a dismissed "not better" question, and the card's other buttons ("Not today",
 "Leave it out", the kind and time menus). "Too easy", "Don't know it", "Another suggestion" and swaps are
 simulated.
 
@@ -91,7 +90,7 @@ sets after it, as in the app.
   Strength is largely kept for about three weeks (Mujika & Padilla 2000).
 - An injury takes a share off the injured quality at once (pulley injury: fingers −25 %).
 
-### The injured finger
+### The injured tissue
 
 During a comeback plan the injured tissue has a truth of its own (`SimInjury`), apart from the athlete's
 strength and apart from the plan's rules:
@@ -100,6 +99,9 @@ strength and apart from the plan's rules:
   the injury, rising evenly to 100 % over seven weeks (pulley strain: easy climbing after about four weeks,
   full climbing after six to eight; Schöffl et al. 2003). A session that loads the hand within tolerance
   speeds healing a little; a session that hurts 6 or more and climbing above tolerance set it back.
+  Other findings and regions take longer or shorter (rough mid values of the usual healing times): a
+  pulley rupture 10 weeks, several pulleys 12, a tenosynovitis 6, pain on the inside or outside of the
+  elbow 12, the ankle, the hamstring and the back 6, the shoulder, the wrist and the knee 8.
 - **Pain** in a set: none up to 70 % of the tolerance, then one point per 10 % more, plus 0.4 × the
   irritation. Longer holds ask more of the hand (the same hold curve as above).
 - **Irritation** starts at the injury's pain and fades by 7 % a day; painful sessions and climbing above
@@ -108,6 +110,11 @@ strength and apart from the plan's rules:
   stage's range when it has one (from below: a fifth more per session at most), otherwise the planned load
   and their sense of effort. They go one step lighter after a session above the stage's green zone, and one
   step heavier at most once a week when it stayed green. They accept every proposal.
+- **Region plans** (shoulder, elbow, wrist, knee, ankle, hamstring, back) have no reference values: the
+  athlete works at the effort an item asks for (holds about 4–5 of 10, 15 repetitions about 5, fewer about
+  7, mobility 2) of what the region can do today, which is a little more than it takes without pain
+  (tolerance + 25 %). Every item that is not for the healthy side loads the injured spot. A climbing day
+  reaches the hip, the knee and the ankle with 60 % of what it asks of the hands.
 - **Habits** (`ComebackHabits`, personas `comeback-*`): the same athlete, but skipping a share of the due
   sessions, climbing one level harder than the stage allows on a share of the climbing days, keeping the stage
   when the plan proposes a step back or asks about a worsening, or starting the plan later and at a later
@@ -137,6 +144,15 @@ strength and apart from the plan's rules:
 | `comeback-skipper` | `pulley-comeback`, but skips about half of the plan's sessions and keeps the stage when the plan proposes a step back |
 | `comeback-eager` | `pulley-comeback`, but on half of the climbing days the stage allows climbs one level harder |
 | `comeback-late` | `pulley-comeback`, but starts the plan two weeks after the injury, at stage 2 |
+| `comeback-rupture` | `pulley-comeback`, but a pulley rupture (the plan's pain rule is 1 in its first two stages) |
+| `comeback-tenosynovitis` | `pulley-comeback`, but a tenosynovitis (the plan's overuse pain rule) |
+| `comeback-shoulder` | `pulley-comeback`, but a rotator cuff problem of the right shoulder and its plan |
+| `comeback-elbow` | `pulley-comeback`, but pain on the inside of the right elbow and its plan |
+| `comeback-wrist` | `pulley-comeback`, but pain on the little-finger side of the right wrist and its plan |
+| `comeback-knee` | `pulley-comeback`, but a strain on the inside of the right knee and its plan |
+| `comeback-ankle` | `pulley-comeback`, but a sprained right ankle and its plan |
+| `comeback-hamstring` | `pulley-comeback`, but a hamstring strain and its plan |
+| `comeback-back` | `pulley-comeback`, but low back pain and its plan |
 
 ## Checks and thresholds
 

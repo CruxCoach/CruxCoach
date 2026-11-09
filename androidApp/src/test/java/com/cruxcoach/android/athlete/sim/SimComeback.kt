@@ -36,18 +36,19 @@ import kotlin.random.Random
  *
  * - **Tolerance**, as a share of the hand's maximum before the injury: 15 % on the day of the injury, rising
  *   evenly to 100 % over seven weeks of healing (pulley strain: easy climbing after about four weeks, full after
- *   six to eight; Schöffl et al. 2003). A session that loads the hand within tolerance speeds healing a little; a
- *   session that hurts (6 or more) and climbing above tolerance set it back.
+ *   six to eight; Schöffl et al. 2003); other findings and regions over their own [healDays]
+ *   ([SimComeback.healDays]). A session that loads the hand within tolerance speeds healing a little; a session
+ *   that hurts (6 or more) and climbing above tolerance set it back.
  * - **Pain** in a set: none up to 70 % of the tolerance, then one point per 10 % more, plus 0.4 × the irritation.
  * - **Irritation** starts at the injury's pain and fades by 7 % a day; painful sessions and climbing above
  *   tolerance add to it. Morning pain reads the irritation; pressure pain adds what has not healed yet.
  */
-class SimInjury(severity: Int, private val rng: Random) {
+class SimInjury(severity: Int, private val rng: Random, private val healDays: Double = HEAL_DAYS) {
     private var healed = 0.0
     var irritation = severity.toDouble()
         private set
 
-    fun tolerance(): Double = 0.15 + 0.85 * (healed / HEAL_DAYS).coerceIn(0.0, 1.0)
+    fun tolerance(): Double = 0.15 + 0.85 * (healed / healDays).coerceIn(0.0, 1.0)
 
     /** Pain 0–10 of a set at [rel] of the hand's maximum before the injury (for the set's length). */
     fun pain(rel: Double): Int =
@@ -137,10 +138,15 @@ class SimComeback(
     private val rng: Random,
     /** How closely the athlete follows the plan; the defaults are the careful athlete described above. */
     private val habits: ComebackHabits = ComebackHabits(),
+    /** A finger plan (loads from the athlete's references); else a region plan, done by effort. */
+    private val fingers: Boolean = true,
+    healDays: Double = SimInjury.HEAL_DAYS,
+    /** Share of a climbing day's load that reaches the injured spot (less for the legs than for the hands). */
+    private val climbingReach: Double = 1.0,
 ) {
     private val comebacks = ComebackService(service)
     private val repo get() = service.repo
-    val truth = SimInjury(severity, rng)
+    val truth = SimInjury(severity, rng, healDays)
     /** The injured hand's 10-second maximum before the injury, per exercise (total kg on a 20 mm edge). */
     private val before = FINGER_SLUGS.associateWith { athlete.trueMaxKg(service.catalog.fallbackFor(it), 20.0) }
     private val lastPain = mutableMapOf<ComebackSessionKind, Int>()
@@ -162,7 +168,7 @@ class SimComeback(
         val own = mapOf(Grip.HALF_CRIMP.name to before.getValue(HALF), Grip.OPEN_HAND.name to before.getValue(OPEN))
             .mapValues { (_, kg) -> floor(kg * (0.9 + rng.nextDouble() * 0.2)) }
         comebacks.start(injuryId, PlanSource.CRUXCOACH, stage = habits.startStage, agreed = true, injuredDominant = true,
-            referenceKg = own + offered)
+            referenceKg = if (fingers) own + offered else offered)
     }
 
     private fun injury() = repo.injury(injuryId)
@@ -188,7 +194,7 @@ class SimComeback(
         }
     }
 
-    fun climbed(c: Climb) = truth.climbed(SimInjury.climbingShare(c.intensity))
+    fun climbed(c: Climb) = truth.climbed(SimInjury.climbingShare(c.intensity) * climbingReach)
 
     /** Morning: the diary, then the plan's prompts. Returns (morning pain, pressure pain, prompts, reviews). */
     fun morning(date: LocalDate): Triple<Pair<Int?, Int?>, List<String>, List<Proposal>> {
@@ -272,8 +278,12 @@ class SimComeback(
             val sets = repo.setsFor(id)
             val next = PlayerQueue.current(sets) ?: break
             val def = service.catalog.fallbackFor(next.exerciseSlug)
-            val injured = next.side == side && next.exerciseSlug in FINGER_SLUGS
+            // An injury without a side (the back) gives its items no side.
             val item = spec.items.firstOrNull { it.slug == next.exerciseSlug && sideOf(it.side) == next.side }
+                ?: spec.items.firstOrNull { it.slug == next.exerciseSlug && next.side == null }
+            // A region plan's items load the injured spot unless they are for the healthy side only.
+            val injured = if (fingers) next.side == side && next.exerciseSlug in FINGER_SLUGS
+                else item != null && item.side != SideTarget.HEALTHY
             val range = item?.let { range(plan.referenceKg, it) }
             var set = next
             val key = next.exerciseSlug to next.side
@@ -291,12 +301,12 @@ class SimComeback(
             val saved = repo.setsFor(id).firstOrNull { it.id == next.id } ?: break
             runCatching { service.adjustUpcomingSets(id, saved, null) }
             if (result.reportedRir != null && saved.setType != SetType.WARMUP) service.updateSet(saved.copy(rir = result.reportedRir))
-            val rel = if (injured) relative(def, set.loadKg, set.edgeMm, set.targetDurationS) else null
+            val rel = if (!injured) null else if (fingers) relative(def, set.loadKg, set.edgeMm, set.targetDurationS) else regionShare(item!!, kind)
             val pain = if (rel != null) truth.pain(rel) else truth.pain(0.0)
             val planned = next.targetLoadKg ?: next.loadKg
             traces += ComebackSetTrace(next.exerciseSlug, next.side, injured, planned, set.loadKg,
                 set.targetDurationS, performed.durationS, range, item?.effort,
-                if (injured && planned != null) felt(def, planned, next.edgeMm, next.targetDurationS) else null, rel, pain)
+                if (fingers && injured && planned != null) felt(def, planned, next.edgeMm, next.targetDurationS) else null, rel, pain)
             clock.nowMs += ((saved.restS ?: 60) + (performed.durationS ?: 20.0).toLong()) * 1000L
         }
         service.finishWorkout(id, sessionRpe = 3, notes = null)
@@ -349,6 +359,17 @@ class SimComeback(
         return athlete.totalKg(def, loadKg) / (max10 * edge) * ((seconds ?: 10.0) / 10.0).pow(0.12)
     }
 
+    /**
+     * A region plan's set (no references, done by effort): the share of the region's maximum before the injury it asks
+     * for. The athlete works at the effort the item asks for (holds about 4–5 of 10, 15 repetitions about 5, fewer
+     * about 7, mobility 2) of what the region can do today, which is a little more than it takes without pain.
+     */
+    private fun regionShare(item: com.cruxcoach.athlete.logic.SessionItemSpec, kind: ComebackSessionKind): Double {
+        val effort = if (kind == ComebackSessionKind.MOBILITY) 0.2
+            else item.effort?.let { (it.first + it.last) / 20.0 } ?: if ((item.repsMax ?: item.repsMin ?: 0) >= 12) 0.5 else 0.7
+        return effort * minOf(1.0, truth.tolerance() + 0.25)
+    }
+
     private fun sideOf(t: SideTarget): Side? = when (t) {
         SideTarget.BOTH -> null
         SideTarget.INJURED -> side
@@ -381,6 +402,23 @@ class SimComeback(
 
         /** The ladder a persona's injury follows. */
         fun ladderFor(e: Event.Injury) = ComebackContent.ladderFor(e.region, e.finding)
+
+        /**
+         * Days until the injured tissue takes its full load again (the simulation's truth, not the plan's rule): rough
+         * mid values of the usual healing times, longer for a rupture or several pulleys and for tendon problems.
+         */
+        fun healDays(e: Event.Injury): Double = when (e.finding) {
+            com.cruxcoach.athlete.model.InjuryFinding.PULLEY_RUPTURE -> 70.0
+            com.cruxcoach.athlete.model.InjuryFinding.PULLEY_MULTIPLE -> 84.0
+            com.cruxcoach.athlete.model.InjuryFinding.TENOSYNOVITIS -> 42.0
+            com.cruxcoach.athlete.model.InjuryFinding.MEDIAL_ELBOW, com.cruxcoach.athlete.model.InjuryFinding.LATERAL_ELBOW -> 84.0
+            else -> when (e.region) {
+                com.cruxcoach.athlete.model.InjuryRegion.FINGER -> SimInjury.HEAL_DAYS
+                com.cruxcoach.athlete.model.InjuryRegion.ANKLE, com.cruxcoach.athlete.model.InjuryRegion.HIP,
+                com.cruxcoach.athlete.model.InjuryRegion.BACK -> 42.0
+                else -> 56.0
+            }
+        }
     }
 }
 
