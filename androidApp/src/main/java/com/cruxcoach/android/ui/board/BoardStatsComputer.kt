@@ -31,6 +31,8 @@ object BoardStatsComputer {
     private const val ELITE_THRESHOLD = 27.0
     private const val AVG_WINDOW_WEEKS = 8
     private const val DAYS_PER_WEEK = 7L
+    /** The shortest period with an average of climbing days per week. */
+    internal const val MIN_AVERAGE_DAYS = 14
 
     fun computeStats(
         ascents: List<AscentWithClimb>,
@@ -371,9 +373,12 @@ object BoardStatsComputer {
         }
     }
 
-    /** Climbing days per week on average over the whole [period]. */
+    /**
+     * Climbing days per week on average over the whole [period]; none for a
+     * period shorter than [MIN_AVERAGE_DAYS], where two days would read as 7 a week.
+     */
     private fun averageDaysPerWeek(entries: List<AscentWithClimb>, period: StatsPeriod?): Double {
-        if (period == null) return 0.0
+        if (period == null || period.days < MIN_AVERAGE_DAYS) return 0.0
         val days = entries.mapNotNull { parseDate(it.climbedAt) }.distinct().size
         return days * DAYS_PER_WEEK.toDouble() / period.days
     }

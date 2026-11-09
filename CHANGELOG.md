@@ -48,7 +48,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   climbing days per week and your milestones (new grades, 50, 100, 250 and more
   sends, your biggest day, weeks in a row). Tap it for the statistics. The period
   filter of the list moved into the logbook filter, next to result, board and
-  angle.
+  angle. Entries no longer repeat the date of their day, and at the largest font
+  sizes an entry puts its name and result below its grade instead of squeezing
+  them.
 - Statistics, reorganised so every number and chart appears once: the period
   and board filters on top (each board chip shows its sends and best grade),
   the period in six numbers with the change against the period before (sends,
@@ -60,6 +62,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   them), tries, activity (calendar, climbing days per week, entries or sends over
   time), angles and holds. The charts over time span the whole period, from your
   first entry at the earliest until today, and count sends without a grade too.
+  A period without entries says so and offers the whole logbook. The statistics
+  and the session recap work at the largest font size and on narrow screens:
+  rows of numbers take fewer columns instead of breaking words, and labels and
+  chart axes grow with the text.
 - Tries until the send: per board, how many of your problems you flashed or sent
   on the 2nd, 3rd, 4th–5th or a later try. Tries from earlier sessions count, so a
   send after attempts on an earlier day is no flash.

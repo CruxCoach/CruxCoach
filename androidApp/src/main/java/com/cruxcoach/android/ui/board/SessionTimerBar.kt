@@ -57,8 +57,10 @@ internal fun SessionTimerBar(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun SessionSummaryRow(label: String, value: String) {
-    Row(
+    // The value moves below its label when both do not fit on one line.
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {

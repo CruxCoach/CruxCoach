@@ -669,6 +669,18 @@ class BoardStatsComputerTest {
     }
 
     @Test
+    fun `a period shorter than two weeks has no climbing days per week`() {
+        // Two climbing days in a logbook that started three days ago would read as 3.5 a week.
+        val ascents = listOf(
+            ascent(uuid = "a", climbUuid = "n1", climbedAt = "${today.minusDays(3)}T10:00:00"),
+            ascent(uuid = "b", climbUuid = "n2", climbedAt = "${today}T10:00:00"),
+        )
+        val records = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock)
+            .personalRecords
+        assertEquals(0.0, records.daysPerWeek, 0.0)
+    }
+
+    @Test
     fun `the longest week streak is the longest run in the period, not the running one`() {
         val ascents = listOf(
             ascent(climbedAt = "2026-01-05T10:00:00"), // Mon 01-05

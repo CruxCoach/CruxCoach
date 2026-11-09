@@ -63,6 +63,29 @@ internal fun ZoneLegendItem(color: Color, label: String, range: String) {
 @Composable
 internal fun ZoneBar(label: String, count: Int, total: Int, color: Color) {
     val pct = if (total > 0) count.toFloat() / total else 0f
+    if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= LARGE_FONT_SCALE) {
+        // Large font: the label and numbers on one line, the bar below at full width.
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(color = color, shape = CircleShape, modifier = Modifier.size(8.dp)) {}
+                Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                Text("$count", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                Text(
+                    "${(pct * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            LinearProgressIndicator(
+                progress = { pct },
+                modifier = Modifier.fillMaxWidth().height(6.dp),
+                color = color,
+                trackColor = color.copy(alpha = 0.15f),
+                strokeCap = StrokeCap.Round
+            )
+        }
+        return
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
