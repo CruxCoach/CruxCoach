@@ -226,6 +226,27 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun climbingThatAnInjuryPausesOrAComebackStageHoldsBackKeepsNoRoom() {
+        // Review of #59's fixes: an injury that pauses climbing, or a comeback stage that allows only easy climbing,
+        // cancels this week's hard bouldering, so its pull credit must not shorten today's training.
+        val tuesday = monday.plus(DatePeriod(days = 1))
+        val weekly = listOf(area(VolumeArea.PULL, 0, 4, 8), area(VolumeArea.PUSH, 0, 4, 8), area(VolumeArea.ANTAGONIST, 0, 5, 10),
+            area(VolumeArea.LEGS, 9, 3, 9), area(VolumeArea.CORE, 0, 4, 10))
+        val climbing = noFingers.copy(weekPlan = mapOf(3 to "climb:gym_boulder:hard", 5 to "climb:gym_boulder:hard"))
+        val paused = Injury("i", InjuryRegion.FINGER, InjurySide.LEFT, severity = 5, climbingPaused = true, startedOn = "2026-10-01")
+        val easyStage = Injury("s", InjuryRegion.SHOULDER, InjurySide.RIGHT, severity = 3, climbingPaused = false, startedOn = "2026-10-01",
+            plan = ComebackPlan(stage = 1, acknowledgedOn = "2026-10-02", startedOn = "2026-10-02"))
+        assertEquals(ClimbingLevel.EASY, Comeback.climbingLevel(easyStage))
+        for (injury in listOf(paused, easyStage)) {
+            fun suggest(p: AthleteProfile) = SessionSuggester.suggest(input(profile = p, injuries = listOf(injury))
+                .copy(today = tuesday, weekly = weekly, weekStart = monday))
+            val held = suggest(climbing)
+            assertTrue(SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD !in held.reasons, "${injury.region}: ${held.reasons}")
+            assertEquals(areaSets(suggest(noFingers), VolumeArea.PULL), areaSets(held, VolumeArea.PULL), "${injury.region}: ${held.routine.items}")
+        }
+    }
+
+    @Test
     fun aDayWithoutRoomForItsKindTrainsTheOtherKindBeforeMobility() {
         // Simulation: pull and core were full from climbing and the day became mobility, while legs were still at 0.
         val saturday = monday.plus(DatePeriod(days = 5))

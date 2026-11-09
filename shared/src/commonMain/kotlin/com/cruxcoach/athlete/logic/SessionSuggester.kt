@@ -715,8 +715,7 @@ object SessionSuggester {
             .associate { it.area to (it.target.maxSets - it.effective) }
             .toMutableMap()
         // Issue #59: Tuesday's pull training filled the room that Wednesday's and Friday's bouldering then went over.
-        val ahead = climbingAhead(input)
-        val reserved = room.keys.associateWith { area -> ahead.sumOf { WeeklyVolume.climbingSetCredit(area, it) } }
+        val reserved = climbingReserve(input)
         val out = mutableListOf<RoutineItem>()
         var kept = 0
         var full = false
@@ -738,7 +737,7 @@ object SessionSuggester {
             }
             val sets = setsFor(left - (reserved[area] ?: 0.0))
             if (sets != item.sets) {
-                // Without the planned climbing more would have fitted: say so instead of "the week is full".
+                // Without the planned climbing more would have fitted.
                 if (setsFor(left) > sets) forClimbing = true else full = true
             }
             if (sets == 0) continue
@@ -746,20 +745,30 @@ object SessionSuggester {
             kept++
             room[area] = left - sets * perSet
         }
+        // The climbing reason only when nothing was cut for a full week: then that is the whole story.
         val reason = when {
-            forClimbing -> SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD
             full -> SuggestionReason.WEEK_VOLUME_FULL
+            forClimbing -> SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD
             else -> null
         }
         if (reason != null && reason !in ctx.reasons) ctx.reasons += reason
         return out
     }
 
+    /** Set equivalents per area that the climbing still planned this week will add ([climbingAhead]). */
+    private fun climbingReserve(input: SuggestionInput): Map<VolumeArea, Double> {
+        val ahead = climbingAhead(input)
+        return VolumeArea.entries.associateWith { area -> ahead.sumOf { WeeklyVolume.climbingSetCredit(area, it) } }
+    }
+
     /**
      * The climbing days still planned this week that are not logged yet (today included), each with its intensity:
-     * the day's plan, else what the athlete logged on that weekday last time, else volume.
+     * the day's plan, else what the athlete logged on that weekday last time, else volume. None while an injury
+     * pauses climbing, and no harder than a comeback stage allows.
      */
     private fun climbingAhead(input: SuggestionInput): List<ClimbIntensity> {
+        if (input.injuries.any { it.isActive && it.climbingPaused }) return emptyList()
+        val level = input.injuries.mapNotNull { Comeback.climbingLevel(it) }.minOrNull()
         val end = (input.weekStart ?: WeeklyVolume.weekStartOf(input.today)).plus(DatePeriod(days = 6))
         val out = mutableListOf<ClimbIntensity>()
         var day = input.today
@@ -767,14 +776,24 @@ object SessionSuggester {
             val logged = input.activities[day]?.let { it.climbingMinutes > 0 || it.climbingEfforts > 0 } == true
             if (!logged && DayPlans.climbingPlanned(input.profile, day)) {
                 val weekday = day.dayOfWeek
-                out += DayPlans.climbIntensity(input.profile, day)
+                val planned = DayPlans.climbIntensity(input.profile, day)
                     ?: input.activities.filter { (d, a) -> d < input.today && d.dayOfWeek == weekday && a.climbIntensity != null }
                         .maxByOrNull { it.key }?.value?.climbIntensity
                     ?: ClimbIntensity.VOLUME
+                withinStage(planned, level)?.let { out += it }
             }
             day = day.plus(DatePeriod(days = 1))
         }
         return out
+    }
+
+    /** A planned climbing day as a comeback stage lets it happen: not at all, light, or at most volume or hard. */
+    private fun withinStage(planned: ClimbIntensity, level: ClimbingLevel?): ClimbIntensity? = when (level) {
+        null, ClimbingLevel.FULL -> planned
+        ClimbingLevel.NONE -> null
+        ClimbingLevel.EASY -> ClimbIntensity.LIGHT
+        ClimbingLevel.MODERATE -> minOf(planned, ClimbIntensity.VOLUME)
+        ClimbingLevel.HARD -> minOf(planned, ClimbIntensity.HARD)
     }
 
     /**
@@ -1214,6 +1233,8 @@ object SessionSuggester {
                         switchFocus = false)
                 }
                 // The week has no room left for this kind of work: an easy mobility session instead of a few lonely sets.
+                // After a switch, the area that called for it no longer explains the day.
+                if (!switchFocus) { ctx.reasons.remove(SuggestionReason.WEEKLY_TARGET); ctx.evidence.removeAll { it is Evidence.WeeklyTarget } }
                 ctx.reasons.remove(SuggestionReason.WEEK_VOLUME_FULL)
                 ctx.reasons.remove(SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD)
                 ctx.reasons.add(0, SuggestionReason.WEEK_VOLUME_DONE)
@@ -1243,8 +1264,9 @@ object SessionSuggester {
                 else SuggestionFocus.PULL_PUSH to setOf(VolumeArea.PULL, VolumeArea.PUSH, VolumeArea.ANTAGONIST)
             else -> return null
         }
+        val reserved = climbingReserve(input)
         val below = input.weekly.any { it.area in areas && !it.target.isOff && it.goal > 0 && it.effective < it.goal &&
-            it.target.maxSets - it.effective >= 2 }
+            it.target.maxSets - it.effective - (reserved[it.area] ?: 0.0) >= 2 }
         return other.takeIf { below }
     }
 

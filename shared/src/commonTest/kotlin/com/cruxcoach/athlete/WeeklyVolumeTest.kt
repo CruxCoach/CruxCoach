@@ -143,6 +143,11 @@ class WeeklyVolumeTest {
         assertEquals(2, sessions(noBoard.copy(equipment = noBoard.equipment + EquipmentV2.HANGBOARD)))
         assertEquals(2, sessions(noBoard.copy(equipment = noBoard.equipment + EquipmentV2.BOARD)))
         assertEquals(2, sessions(noBoard.copy(coach = CoachProfile(), weekPlan = mapOf(2 to PLAN_BOARD, 6 to "climb:gym_boulder:volume"))))
+        // Any of the athlete's places counts: picking a place without a hangboard today leaves the week's goal as it is.
+        val twoPlaces = noBoard.copy(places = listOf(
+            TrainingPlace("home", PlaceKind.HOME, null, noBoard.equipment + EquipmentV2.HANGBOARD),
+            TrainingPlace("travel", PlaceKind.TRAVEL, null, noBoard.equipment)))
+        assertEquals(2, sessions(twoPlaces))
     }
 
     // ── Progress ─────────────────────────────────────────────────────

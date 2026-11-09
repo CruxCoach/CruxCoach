@@ -27,7 +27,7 @@
     <string name="trv_status_over">über der Spanne</string>
     <string name="trv_reason_weekly">Dein Wochenplan: In diesem Bereich fehlt diese Woche noch am meisten.</string>
     <string name="trv_reason_week_full">Diese Woche hat schon fast alle Sätze davon, deshalb stehen heute weniger an.</string>
-    <string name="trv_reason_week_climbing_ahead">Dein Klettern später in der Woche bringt noch Zug- und Rumpfarbeit, deshalb stehen heute weniger dieser Sätze an.</string>
+    <string name="trv_reason_week_climbing_ahead">Das Klettern, das du diese Woche noch planst, bringt Zug- und Rumpfarbeit, deshalb stehen heute weniger dieser Sätze an.</string>
     <string name="trv_reason_week_done">Diese Woche hat ihre Sätze für diese Trainingsart schon, deshalb heute eine lockere Einheit Mobilität. Wähl eine Trainingsart, wenn du trotzdem trainieren willst.</string>
     <string name="trv_reason_week_days_done">Deine Trainingstage für diese Woche sind geschafft, heute ist Erholung dran. Mit „Trotzdem trainieren“ bekommst du ein Training.</string>
     <string name="trv_train_anyway">Trotzdem trainieren</string>
