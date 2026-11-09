@@ -256,9 +256,14 @@ class PaintBoxViewModelTest {
         vm.load(PaintDocument(board = PaintBoard("kilter", 1, 10), name = "Same"))
         vm.state.first { it.document?.name == "Same" && !it.loading }
         coVerify(exactly = 0) { prefs.setBoardSelection(any(), any(), any(), any()) }
-        vm.load(PaintDocument(board = PaintBoard("kilter", 1, 12), name = "Other"))
+        vm.load(PaintDocument(board = PaintBoard("kilter", 1, 12), name = "Other", colors = mapOf(3 to 28)))
         vm.state.first { it.document?.name == "Other" && !it.loading }
         coVerify(exactly = 1) { prefs.setBoardSelection("kilter", 1, 12, null) }
+        // The switched picture is on the app's board at once, before the saved board arrives.
+        vm.sendOnce()
+        advanceUntilIdle()
+        assertFalse(vm.state.value.otherBoard)
+        coVerify { projector.send(match { it.board.sizeId == 12 }, mapOf(3 to 30), any()) }
     }
     @Test fun `a MoonBoard picture keeps the angle of the open MoonBoard`() = runTest(dispatcher) {
         val variant = MoonBoardVariant.MOONBOARD_2016

@@ -19,8 +19,10 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 - Ändert sich das Board der App an anderer Stelle, etwa wenn der
   Verbindungsdialog ein anderes Board verbindet, öffnet PaintBox dieses Board.
   Bei ungespeicherten Änderungen fragt es vorher. Behältst du das Bild,
-  warten **Senden** und **Live**, bis du zum Board der App wechselst: Die LEDs
-  und die Leistungsgrenze gehören zum genauen Layout und zur genauen Größe.
+  bleiben **Senden** und **Live** dafür aus, denn die LEDs und die
+  Leistungsgrenze gehören zum genauen Layout und zur genauen Größe.
+  **Wechseln** öffnet dann das Board der App mit einem leeren Bild; speichere
+  das Bild vorher, wenn du es behalten willst.
 - Fehlt der Katalog des Boards, bietet PaintBox die Katalog-Einstellungen an.
 
 ## Das Board leuchten lassen

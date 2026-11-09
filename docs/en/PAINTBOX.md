@@ -18,9 +18,10 @@ the board button above the picture switches to another one.
 - Only holds with an LED on the chosen board size can be painted.
 - If the app's board changes elsewhere, for example when the connection sheet
   connects another board, PaintBox opens that board. With unsaved changes it
-  asks first. If you keep the picture, **Send** and **Live** wait until you
-  switch to the app's board: the LEDs and the power limit belong to the exact
-  layout and size.
+  asks first. If you keep the picture, **Send** and **Live** stay off for it,
+  because the LEDs and the power limit belong to the exact layout and size.
+  **Switch** then opens the app's board with an empty picture; save the picture
+  first to keep it.
 - If the board's catalogue is missing, PaintBox offers the catalogue settings.
 
 ## Light up the board

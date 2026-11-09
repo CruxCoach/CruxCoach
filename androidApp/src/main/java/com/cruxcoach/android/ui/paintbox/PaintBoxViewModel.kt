@@ -131,7 +131,7 @@ class PaintBoxViewModel @Inject constructor(
         appBoard?.let(::openBoard)
     }
     fun dismissOtherBoard() { mutable.update { it.copy(otherBoard = false) } }
-    /** The connected box is the app's board: another board's LED map and power budget would scramble it. */
+    /** The app's board is the one chosen for the connected box: another board's LED map and power budget would scramble it. */
     private fun onAppBoard(document: PaintDocument): Boolean = appBoard?.let { document.board.sameBoardAs(it) } == true
     /** The connection sheet can save another board: an earlier agreement to leave the picture ends here. */
     fun connectionSheetOpened() { leaveAgreed = false }
@@ -205,7 +205,11 @@ class PaintBoxViewModel @Inject constructor(
             try {
                 document.validate()
                 // Only a switch writes the selection: selecting a MoonBoard again resets its angle.
-                if (switchesBoard(document)) selectBoard(document.board)
+                if (switchesBoard(document)) {
+                    selectBoard(document.board)
+                    // The saved board arrives a moment later; Send must not refuse the picture meanwhile.
+                    appBoard = document.board
+                }
                 open(document, true)
             }
             catch (e: CancellationException) { throw e }

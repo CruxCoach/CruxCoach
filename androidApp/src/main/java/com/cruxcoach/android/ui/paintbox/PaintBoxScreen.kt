@@ -288,7 +288,7 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
             Text(stringResource(R.string.paintbox_switch))
         } },
         dismissButton = { TextButton(onClick = { switchTo = null }) { Text(stringResource(R.string.action_cancel)) } }) }
-    // Send or Live refused: the kept picture is for another board than the connected one.
+    // Send or Live refused: the kept picture is for another board than the app's (the connected box's).
     if (state.otherBoard && document != null) AlertDialog(onDismissRequest = viewModel::dismissOtherBoard,
         title = { Text(stringResource(R.string.paintbox_switch_board)) },
         text = { Text(stringResource(R.string.paintbox_other_board, document.board.label.ifBlank { brand.displayName })) },
