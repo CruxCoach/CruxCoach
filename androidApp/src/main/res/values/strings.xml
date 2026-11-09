@@ -469,7 +469,7 @@
     <string name="led_effect_status_no_board">No Kilter Board connected.</string>
     <string name="led_effect_status_unsupported">This board can’t show effects.</string>
     <string name="led_effect_status_paused">Paused while the board is busy.</string>
-    <string name="led_effect_status_ended">Ended on this climb.</string>
+    <string name="led_effect_status_ended">Ended on the lit climb.</string>
     <string name="led_effect_status_background">Paused outside the app.</string>
     <string name="led_effect_restart">Restart</string>
     <string name="led_strobe_notice_title">Flashing light</string>

@@ -39,8 +39,11 @@ run, says that the board stays connected to this phone. What each effect does,
 what pauses it, the limit and running in other apps are in the card's one info
 dialog. The climb menu offers the same choice ("LED effect: Pulse") while a board
 that shows effects is connected, in a fully opened sheet whose status line offers
-*Restart* once the effect has ended on that climb; it sends the climb again like
-the light button (in a shared session through its queue). There is no tempo control: the owner's
+*Restart* only on the climb whose effect has ended (the lit frame carries its climb):
+it sends the climb again like the light button, and in a shared session the host gets it
+to resend the session's current climb, offered only while that is the climb on the page
+(a participant gets none: only the host writes to the wall).
+There is no tempo control: the owner's
 rule is that the effects look and move exactly as contributed
 (`LedPr21GoldenTest`). The default is **None** — byte-for-byte the static
 behaviour and the fallback for any unknown id. Stored in DataStore:

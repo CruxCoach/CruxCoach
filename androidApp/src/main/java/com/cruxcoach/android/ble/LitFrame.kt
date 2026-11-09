@@ -26,8 +26,11 @@ data class LitLed(val position: Int, val roleClass: Int, val baseColor: Int)
  * [sendId] numbers the sends on a connection. Two sends of the same climb are two
  * frames — a state flow would otherwise swallow the second as equal — so sending
  * a climb again restarts an effect that had ended on it.
+ *
+ * [climbUuid] is the climb the frame shows, when the sender named one, so a
+ * climb's page can tell whether it is the climb on the wall.
  */
-data class LitFrame(val leds: List<LitLed>, val sendId: Long = 0) {
+data class LitFrame(val leds: List<LitLed>, val sendId: Long = 0, val climbUuid: String? = null) {
 
     /** The frame with no animation applied — the static "LED colors" look. */
     fun staticFrame(): List<Pair<Int, Int>> = leds.map { it.position to it.baseColor }

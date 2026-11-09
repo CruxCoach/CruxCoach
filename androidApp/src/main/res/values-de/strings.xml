@@ -470,7 +470,7 @@
     <string name="led_effect_status_no_board">Kein Kilter Board verbunden.</string>
     <string name="led_effect_status_unsupported">Dieses Board kann keine Effekte zeigen.</string>
     <string name="led_effect_status_paused">Pausiert, solange das Board belegt ist.</string>
-    <string name="led_effect_status_ended">Auf diesem Boulder beendet.</string>
+    <string name="led_effect_status_ended">Am beleuchteten Boulder beendet.</string>
     <string name="led_effect_status_background">Pausiert, solange die App im Hintergrund ist.</string>
     <string name="led_effect_restart">Neu starten</string>
     <string name="led_strobe_notice_title">Blinkendes Licht</string>

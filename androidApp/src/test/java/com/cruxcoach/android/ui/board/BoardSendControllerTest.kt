@@ -916,7 +916,7 @@ class BoardSendControllerTest {
                 // The user flips the mirror while the controller is still
                 // answering — exactly what toggleMirror() writes, reset included.
                 coEvery {
-                    sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), BoardBrand.KILTER)
+                    sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), BoardBrand.KILTER, any())
                 } answers {
                     detailState.update { current ->
                         current.copy(
@@ -995,7 +995,7 @@ class BoardSendControllerTest {
                 // The user changes the angle while the controller is still
                 // answering: by the time this returns, the screen has moved on.
                 coEvery {
-                    sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), BoardBrand.KILTER)
+                    sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), BoardBrand.KILTER, any())
                 } answers {
                     // Exactly what onAngleSelected() writes, including its
                     // reset of the send flags.

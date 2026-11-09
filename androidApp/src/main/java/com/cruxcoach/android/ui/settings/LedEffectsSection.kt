@@ -346,7 +346,8 @@ private fun LedEffectBackgroundRow(checked: Boolean, onCheckedChange: (Boolean) 
 
 /**
  * The climb menu's quick pick: the status and the effects in a sheet, so an
- * effect can be changed or turned off right where the climb is lit.
+ * effect can be changed or turned off right where the climb is lit. Restart
+ * ([onSendAgain]) is there only where it sends the climb the effect ended on.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -355,7 +356,7 @@ internal fun LedEffectQuickSheet(
     onSelect: (String) -> Unit,
     onStrobeNoticeSeen: () -> Unit,
     onConnect: () -> Unit,
-    onSendAgain: () -> Unit,
+    onSendAgain: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     // Fully open: at large font sizes the choice is taller than half the
