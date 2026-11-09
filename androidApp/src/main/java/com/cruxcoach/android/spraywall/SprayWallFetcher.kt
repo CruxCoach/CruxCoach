@@ -100,8 +100,9 @@ class SprayWallFetcher @Inject constructor(
             }
         }
         val linked = coroutineScope {
-            val own = async { fetch(ownFilter) }
-            val others = async { fetch(linkedFilter) }
+            // One budget for the two at once, half each: everyone else's tags cannot crowd out the owner's versions.
+            val own = async { fetch(ownFilter, MAX_FETCH_BYTES / 2) }
+            val others = async { fetch(linkedFilter, MAX_FETCH_BYTES / 2) }
             newestPerDTag(own.await() + others.await())
         }
         val climbs = linked.filterIsInstance<SprayWallNostr.Parsed.Climb>().filter { it.wallOwner == owner && it.wallId == wallId && it.author != me }
@@ -140,7 +141,8 @@ class SprayWallFetcher @Inject constructor(
         limit?.let { put("limit", it) }
     }.toString()
 
-    private suspend fun fetch(filter: String): List<SprayWallNostr.Parsed> {
+    /** [maxChars]: what this fetch may keep in all; fetches that run at the same time share [MAX_FETCH_BYTES]. */
+    private suspend fun fetch(filter: String, maxChars: Long = MAX_FETCH_BYTES): List<SprayWallNostr.Parsed> {
         // A slow relay must not cost the answers of the others: keep what came in by the timeout. Anyone can tag a
         // public wall, so what is kept is bounded: no oversized event, each copy once, and no more than a cap in all.
         val raw = LinkedHashSet<String>()
@@ -148,7 +150,7 @@ class SprayWallFetcher @Inject constructor(
         withTimeoutOrNull(FETCH_TIMEOUT_MS) {
             pool.fetchStored(filter)
                 .filter { it.length <= MAX_EVENT_JSON }
-                .takeWhile { bytes < MAX_FETCH_BYTES }
+                .takeWhile { bytes < maxChars }
                 .collect { if (raw.add(it)) bytes += it.length }
         }
         val now = System.currentTimeMillis() / 1000
@@ -170,7 +172,10 @@ class SprayWallFetcher @Inject constructor(
         const val MAX_PHOTO_BYTES = 16L * 1024 * 1024
         /** An event's JSON: the event itself plus its id, key and signature. */
         const val MAX_EVENT_JSON = SprayWallNostr.MAX_EVENT_BYTES + 4096
-        /** All events of one fetch, in characters: far above a busy wall (2000 climbs of a few KB), far below a phone's memory. */
+        /**
+         * The events a refresh keeps at a time, in characters: half of it is far above a busy wall (2000 climbs of a few
+         * KB), all of it far below a phone's memory.
+         */
         const val MAX_FETCH_BYTES = 24L * 1024 * 1024
     }
 }
