@@ -616,7 +616,7 @@ private fun NetworkWarningBanner() {
             Text(
                 stringResource(R.string.board_sync_no_network_banner),
                 style = MaterialTheme.typography.bodyMedium,
-                color = ErrorRed,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold,
             )
         }
@@ -639,7 +639,7 @@ private fun NoWifiWarningBanner() {
             Text(
                 stringResource(R.string.board_sync_no_wifi_banner),
                 style = MaterialTheme.typography.bodyMedium,
-                color = OrangeAccent,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold,
             )
         }
@@ -1103,7 +1103,7 @@ private fun BoardStatusRow(
                     else stringResource(R.string.board_sync_status_dash),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (isActive || hasError) OrangeAccent
-                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -1174,7 +1174,7 @@ private fun AutoSyncOverdueBanner(days: Int) {
             Text(
                 stringResource(R.string.board_sync_overdue, days),
                 style = MaterialTheme.typography.bodySmall,
-                color = WarningYellow,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }

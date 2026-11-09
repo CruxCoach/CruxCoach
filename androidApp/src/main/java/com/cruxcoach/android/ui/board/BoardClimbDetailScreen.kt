@@ -1439,6 +1439,9 @@ private fun BoardLayerRack(
                                 onClick = { onSelectSuggestion(suggestedSlot, suggestedColor) },
                                 enabled = controlsAllowed && !state.ble.isSending,
                                 modifier = Modifier.testTag("quantum_layer_select_suggestion"),
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = CruxCoachDesign.colors.onPositiveContainer,
+                                ),
                             ) {
                                 Text(stringResource(R.string.quantum_layer_select_suggestion))
                             }
@@ -1600,8 +1603,9 @@ private fun BoardLayerRack(
                                         contentDescription = slotDescription
                                     },
                                 shape = RoundedCornerShape(12.dp),
+                                // Opaque, so the coloured status line keeps its contrast when selected.
                                 color = if (selected) {
-                                    OrangeAccent.copy(alpha = 0.16f)
+                                    CruxCoachDesign.colors.brandAccentContainer
                                 } else MaterialTheme.colorScheme.surface,
                                 border = androidx.compose.foundation.BorderStroke(
                                     if (selected) 2.dp else 1.dp,
@@ -1662,7 +1666,9 @@ private fun BoardLayerRack(
                                                     QuantumLayerVisualState.ON_BOARD -> SuccessGreen
                                                     QuantumLayerVisualState.FAILED -> ErrorRed
                                                     QuantumLayerVisualState.UNKNOWN -> WarningYellow
-                                                    else -> OrangeAccent
+                                                    else -> if (selected) {
+                                                        CruxCoachDesign.colors.onBrandAccentContainer
+                                                    } else OrangeAccent
                                                 },
                                             )
                                             if (layer != null && layer.confirmedRouteUuid != null &&
@@ -2285,8 +2291,8 @@ private fun BoardDetailActionDock(
                 .height(64.dp)
                 .testTag("boarddetail_quick_attempt").tourTarget(TourTarget.QUICK_ATTEMPT),
             shape = RoundedCornerShape(18.dp),
-            color = ErrorRed.copy(alpha = 0.13f),
-            contentColor = ErrorRed,
+            color = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
             border = androidx.compose.foundation.BorderStroke(1.dp, ErrorRed.copy(alpha = 0.42f)),
         ) {
             DockButtonContent(
@@ -2371,8 +2377,8 @@ private fun BoardDetailActionDock(
                 .height(64.dp)
                 .testTag("boarddetail_quick_send").tourTarget(TourTarget.QUICK_SEND),
             shape = RoundedCornerShape(18.dp),
-            color = SuccessGreen.copy(alpha = 0.16f),
-            contentColor = SuccessGreen,
+            color = CruxCoachDesign.colors.positiveContainer,
+            contentColor = CruxCoachDesign.colors.onPositiveContainer,
             border = androidx.compose.foundation.BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.46f)),
         ) {
             DockButtonContent(
@@ -2742,7 +2748,7 @@ private fun ClimbDetailInfoSheet(
                         }
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.testTag("boarddetail_sharing_debug"),
                 )
             }
@@ -2884,14 +2890,14 @@ private fun MethodBadge(method: String) {
         else -> return  // unknown token from a newer catalogue: say nothing
     }
     Surface(
-        color = OrangeAccent.copy(alpha = 0.12f),
+        color = CruxCoachDesign.colors.brandAccentContainer,
         shape = RoundedCornerShape(6.dp)
     ) {
         Text(
             stringResource(label),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = OrangeAccent,
+            color = CruxCoachDesign.colors.onBrandAccentContainer,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
         )
     }
@@ -2901,9 +2907,19 @@ private fun MethodBadge(method: String) {
 @Composable
 private fun MatchBadge(isNomatch: Boolean) {
     val color = if (isNomatch) ErrorRed else SuccessGreen
+    val containerColor = if (isNomatch) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        CruxCoachDesign.colors.positiveContainer
+    }
+    val labelColor = if (isNomatch) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        CruxCoachDesign.colors.onPositiveContainer
+    }
     val label = stringResource(if (isNomatch) R.string.board_detail_no_matching else R.string.board_detail_matching)
     Surface(
-        color = color.copy(alpha = 0.12f),
+        color = containerColor,
         shape = RoundedCornerShape(6.dp)
     ) {
         Row(
@@ -2916,7 +2932,7 @@ private fun MatchBadge(isNomatch: Boolean) {
                 label,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = color
+                color = labelColor
             )
         }
     }
@@ -2925,7 +2941,7 @@ private fun MatchBadge(isNomatch: Boolean) {
 @Composable
 private fun BenchmarkBadge() {
     Surface(
-        color = OrangeAccent.copy(alpha = 0.12f),
+        color = CruxCoachDesign.colors.brandAccentContainer,
         shape = RoundedCornerShape(6.dp)
     ) {
         Row(
@@ -2943,7 +2959,7 @@ private fun BenchmarkBadge() {
                 stringResource(R.string.board_detail_benchmark),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = OrangeAccent
+                color = CruxCoachDesign.colors.onBrandAccentContainer
             )
         }
     }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -109,6 +111,9 @@ fun SettersListScreen(
                         OutlinedButton(
                             onClick = { viewModel.retry() },
                             modifier = Modifier.padding(top = 8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                            ),
                         ) {
                             Text(stringResource(R.string.action_retry))
                         }
@@ -169,7 +174,7 @@ private fun SetterRow(
                 modifier = Modifier
                     .size(40.dp)
                     .background(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                        color = CruxCoachDesign.colors.brandAccentContainer,
                         shape = CircleShape,
                     ),
                 contentAlignment = Alignment.Center,
@@ -177,7 +182,7 @@ private fun SetterRow(
                 Text(
                     text = initial.toString(),
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = CruxCoachDesign.colors.onBrandAccentContainer,
                     fontWeight = FontWeight.Bold,
                 )
             }

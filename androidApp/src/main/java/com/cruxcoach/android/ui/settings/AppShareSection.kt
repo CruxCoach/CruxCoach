@@ -43,6 +43,7 @@ import androidx.core.location.LocationManagerCompat
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.ErrorCard
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.util.ApkShareHelper
@@ -402,7 +403,12 @@ private fun AppShareActiveCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            TextButton(onClick = { showManualDetails = !showManualDetails }) {
+            TextButton(
+                onClick = { showManualDetails = !showManualDetails },
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = CruxCoachDesign.colors.onPositiveContainer,
+                ),
+            ) {
                 Text(
                     stringResource(
                         if (showManualDetails) R.string.settings_share_manual_hide
@@ -460,7 +466,7 @@ private fun AppShareActiveCard(
                 onClick = onStop,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer)
             ) { Text(stringResource(R.string.settings_share_stop)) }
         }
     }

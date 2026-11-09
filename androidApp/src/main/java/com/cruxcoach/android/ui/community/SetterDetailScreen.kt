@@ -114,6 +114,9 @@ fun SetterDetailScreen(
                             androidx.compose.material3.OutlinedButton(
                                 onClick = { viewModel.retry() },
                                 modifier = Modifier.padding(top = 8.dp),
+                                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                ),
                             ) {
                                 Text(stringResource(R.string.action_retry))
                             }

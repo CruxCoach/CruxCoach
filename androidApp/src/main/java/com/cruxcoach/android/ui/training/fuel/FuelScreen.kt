@@ -516,7 +516,7 @@ private fun AddAction(
             // Shrinks to fit a quarter of a 360-dp phone: "Beschreiben" was cut to "Beschreibe" (render review 2026-10-16).
             val labelStyle = MaterialTheme.typography.labelMedium
             androidx.compose.foundation.text.BasicText(label, maxLines = 1, modifier = Modifier.padding(top = 4.dp),
-                style = labelStyle.copy(color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface),
+                style = labelStyle.copy(color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface),
                 autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = labelStyle.fontSize))
         }
     }
@@ -945,7 +945,7 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
                     ) {
                         Icon(
                             if (filled) Icons.Default.LocalDrink else Icons.Outlined.LocalDrink, null,
-                            tint = if (filled) blue else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isNext) 0.9f else 0.4f),
+                            tint = if (filled) blue else if (isNext) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(if (isNext) 28.dp else 24.dp),
                         )
                     }

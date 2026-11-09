@@ -276,7 +276,7 @@ private fun PhaseCard(
                     text = "$sessionsCompleted / $sessionsTotal",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = phaseColor
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
@@ -434,7 +434,7 @@ private fun NextSessionCard(
                     text = typeName.take(2).uppercase(),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = typeColor
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 

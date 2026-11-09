@@ -24,6 +24,7 @@ import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.data.SessionVisibility
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @Composable
@@ -135,7 +136,7 @@ private fun SessionQueueSection(
                 stringResource(R.string.ble_session_label),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = OrangeAccent
+                color = CruxCoachDesign.colors.onBrandAccentContainer
             )
             Text(
                 buildString {
@@ -173,7 +174,7 @@ private fun SessionQueueSection(
                         ).joinToString(" "),
                     ),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -215,7 +216,7 @@ private fun OnBoardClimbSection(
                     if (climb.isStillProjected) R.string.ble_on_board else R.string.ble_last_climb
                 ),
                 style = MaterialTheme.typography.labelMedium,
-                color = OrangeAccent,
+                color = CruxCoachDesign.colors.onBrandAccentContainer,
                 fontWeight = FontWeight.Bold
             )
             Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
@@ -241,7 +242,7 @@ private fun DisconnectRequestSection(
         onClick = onRequest,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = CruxCoachDesign.colors.onBrandAccentContainer),
         enabled = !isRequesting
     ) {
         if (isRequesting) {

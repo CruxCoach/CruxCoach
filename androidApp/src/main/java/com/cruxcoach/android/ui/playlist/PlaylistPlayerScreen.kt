@@ -93,7 +93,6 @@ import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
-import com.cruxcoach.android.ui.theme.WarningYellow
 import com.cruxcoach.android.ui.theme.zoneColorForDifficulty
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.brand
@@ -349,14 +348,14 @@ fun PlaylistPlayerScreen(
                 // would say why.
                 if (playback.isPaused && !playback.isResting) {
                     Surface(
-                        color = WarningYellow.copy(alpha = 0.15f),
+                        color = CruxCoachDesign.colors.cautionContainer,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
                             stringResource(R.string.playlist_paused_banner),
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = WarningYellow,
+                            color = CruxCoachDesign.colors.onCautionContainer,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         )
                     }
@@ -728,12 +727,12 @@ private fun PlaylistClimbOverview(
             }
             attemptInfo?.let { (attempt, total) ->
                 Spacer(Modifier.height(5.dp))
-                Surface(color = OrangeAccent.copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp)) {
+                Surface(color = CruxCoachDesign.colors.brandAccentContainer, shape = RoundedCornerShape(8.dp)) {
                     Text(
                         stringResource(R.string.playlist_player_attempt, attempt, total),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = OrangeAccent,
+                        color = CruxCoachDesign.colors.onBrandAccentContainer,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             .testTag("player_attempt_chip"),
                     )

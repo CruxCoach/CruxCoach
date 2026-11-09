@@ -344,7 +344,8 @@ private fun DayFormLine(page: PlayerPage, state: PlayerState, m: com.cruxcoach.a
             Text(stringResource(R.string.trpg_dayform, why, parts.joinToString(" · ")),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.weight(1f).padding(vertical = 8.dp))
-            TextButton(onClick = onAsPlanned, modifier = Modifier.testTag("player_dayform_as_planned")) {
+            TextButton(onClick = onAsPlanned, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                modifier = Modifier.testTag("player_dayform_as_planned")) {
                 Text(stringResource(R.string.trpg_dayform_as_planned))
             }
         }

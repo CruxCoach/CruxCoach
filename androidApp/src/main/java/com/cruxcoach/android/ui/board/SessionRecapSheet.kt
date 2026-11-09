@@ -354,7 +354,7 @@ private fun TopClimbs(climbs: List<RecapClimb>, boardColors: Map<String, android
                         flashLabel,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = triesRamp().first(),
+                        color = CruxCoachDesign.colors.info,
                     )
                 }
             }

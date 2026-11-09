@@ -525,6 +525,9 @@ fun BoardBrowserScreen(
                         TextButton(
                             onClick = { viewModel.loadActiveBoardCatalogue() },
                             modifier = Modifier.testTag("board_community_only_load"),
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = CruxCoachDesign.colors.onBrandAccentContainer,
+                            ),
                         ) {
                             Text(stringResource(R.string.board_browser_empty_load_catalogue))
                         }
@@ -550,6 +553,7 @@ fun BoardBrowserScreen(
                         BoardMismatchFixAction(
                             mismatch = it,
                             onOpenPicker = { showMismatchPicker = true },
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
                         )
                     }
                 }

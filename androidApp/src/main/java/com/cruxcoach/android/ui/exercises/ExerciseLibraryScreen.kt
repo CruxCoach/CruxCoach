@@ -101,7 +101,7 @@ fun ExerciseLibraryScreen(
                         label = { Text(categoryDisplayName(cat)) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = categoryColor(cat).copy(alpha = 0.2f),
-                            selectedLabelColor = categoryColor(cat)
+                            selectedLabelColor = MaterialTheme.colorScheme.onSurface
                         )
                     )
                 }
@@ -181,7 +181,7 @@ private fun ExerciseCard(
                         ),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = catColor,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
                     )
                 }

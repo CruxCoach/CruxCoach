@@ -774,7 +774,7 @@ private fun ClimbRow(
             .testTag("playlist_climb_${entry.entryId}"),
         colors = CardDefaults.cardColors(
             containerColor = if (isDragging) {
-                OrangeAccent.copy(alpha = 0.16f)
+                CruxCoachDesign.colors.brandAccentContainer
             } else {
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
             },
@@ -809,7 +809,7 @@ private fun ClimbRow(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = if (climb == null) {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        MaterialTheme.colorScheme.onSurfaceVariant
                     } else MaterialTheme.colorScheme.onSurface,
                 )
                 val subtitle = buildString {
@@ -886,7 +886,7 @@ private fun RestRow(
             .testTag(testTag),
         colors = CardDefaults.cardColors(
             containerColor = if (isDragging) {
-                OrangeAccent.copy(alpha = 0.16f)
+                CruxCoachDesign.colors.brandAccentContainer
             } else {
                 InfoBlue.copy(alpha = 0.10f)
             },

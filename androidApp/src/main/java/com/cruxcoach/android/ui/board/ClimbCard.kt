@@ -127,8 +127,8 @@ internal fun ClimbCard(
                                 climb.nostrEventId.isNullOrBlank()
                             if (showDraftBadge) {
                                 Surface(
-                                    color = OrangeAccent.copy(alpha = 0.18f),
-                                    contentColor = OrangeAccent,
+                                    color = CruxCoachDesign.colors.brandAccentContainer,
+                                    contentColor = CruxCoachDesign.colors.onBrandAccentContainer,
                                     shape = RoundedCornerShape(4.dp),
                                 ) {
                                     Text(

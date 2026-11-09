@@ -245,7 +245,7 @@ private fun HistoryEntryCard(
             )
 
             Surface(
-                color = OrangeAccent.copy(alpha = 0.15f),
+                color = CruxCoachDesign.colors.brandAccentContainer,
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.size(48.dp)
             ) {
@@ -254,7 +254,7 @@ private fun HistoryEntryCard(
                         grade,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = OrangeAccent
+                        color = CruxCoachDesign.colors.onBrandAccentContainer
                     )
                 }
             }

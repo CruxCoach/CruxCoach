@@ -229,7 +229,7 @@ fun BoardListDetailScreen(
                         Text(
                             stringResource(R.string.board_list_empty_message),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -339,10 +339,11 @@ private fun PlaybackInfoBox(
         ) {
             Icon(Icons.Default.Info, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
+            // The icon carries the status colour; text in it is too faint on its own tint.
             Text(
                 text,
                 style = MaterialTheme.typography.bodySmall,
-                color = color,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
             if (actionLabel != null && onAction != null) {
