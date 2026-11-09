@@ -243,6 +243,34 @@ class BoardLogbookOverviewLoadTest {
         assertEquals(1, reads.get())
     }
 
+    @Test
+    fun anOlderReadThatFinishesLaterDoesNotPutTheOldLogbookBack() = runTest {
+        val reads = AtomicInteger(0)
+        val release = CountDownLatch(1)
+        val newer = logbook + entry("s3", "c4", today, isSend = true, tries = 2)
+        every { personalBoardRepo.getUserLogbookAllLight() } answers {
+            if (reads.getAndIncrement() == 0) {
+                release.await(10, TimeUnit.SECONDS)
+                logbook
+            } else {
+                newer
+            }
+        }
+        val vm = buildViewModel()
+        try {
+            vm.state.first { !it.isLoading && it.ascents.isNotEmpty() }
+            Thread.sleep(300)
+            // A reload (back from a detail, after an edit) reads again and finishes first.
+            vm.refreshAfterReturn()
+            vm.state.first { it.statsReady && it.stats.totalSends == 3 }
+        } finally {
+            release.countDown()
+        }
+        Thread.sleep(500)
+        assertEquals(3, vm.state.value.stats.totalSends)
+        assertEquals(2, reads.get())
+    }
+
     private fun climb(name: String, difficulty: Double?, layoutId: Long) = ClimbWithStats(
         uuid = "found", layoutId = layoutId, setterUsername = null, name = name, frames = "",
         framesCount = 1, difficultyAverage = difficulty, qualityAverage = null, ascensionistCount = null,

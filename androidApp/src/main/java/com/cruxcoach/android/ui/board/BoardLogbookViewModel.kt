@@ -232,7 +232,7 @@ class BoardLogbookViewModel @Inject constructor(
     private var allAscents: List<AscentWithClimb> = emptyList()
     private var overviewJob: Job? = null
     private var statsJob: Job? = null
-    /** The current read of the whole logbook; opening the sheet starts no second one. */
+    /** The current read of the whole logbook; opening the sheet starts no second one, a reload replaces it. */
     private var preloadJob: Job? = null
     /** The whole logbook has been read once; the statistics wait for it. */
     private var logbookLoaded = false
@@ -427,6 +427,9 @@ class BoardLogbookViewModel @Inject constructor(
             logbookLoadFailed = false
             if (!logbookLoaded) _state.update { it.copy(statsReady = false) }
         }
+        // Only the newest read may land: an older one that finishes later would
+        // put the logbook from before an edit or a reload back.
+        preloadJob?.cancel()
         preloadJob = viewModelScope.safeLaunch(TAG) {
             try {
                 val all = withContext(Dispatchers.IO) {

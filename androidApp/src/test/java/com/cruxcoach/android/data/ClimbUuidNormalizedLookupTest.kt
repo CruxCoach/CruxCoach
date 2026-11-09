@@ -4,6 +4,7 @@ import app.cash.sqldelight.ColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.data.repository.BoardRepositoryImpl
+import com.cruxcoach.data.repository.getClimbsByUuidAnySpelling
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.board.Climbs
 import com.cruxcoach.domain.board.ClimbUuid
@@ -246,5 +247,37 @@ class ClimbUuidNormalizedLookupTest {
         for (query in listOf(dashedLower, nodashUpper, nodashLower)) {
             assertResolvesTheClimb(repo.getClimbsByUuidsAnyAngle(ClimbUuid.spellings(query)), query)
         }
+    }
+
+    // ── Many keys at once (the logbook refresh after a catalogue import) ──
+
+    /** A spelling none of [ClimbUuid.spellings] produces: only the normalized scan finds it. */
+    private val otherMixedCase = "B41e9153BFFB43df912634A127D98870"
+    private val otherDashedLower = "b41e9153-bffb-43df-9126-34a127d98870"
+    private val missing = "ffffffff-0000-0000-0000-000000000000"
+
+    @Test
+    fun normKeys_oneScanFindsTheStoredSpellings() {
+        insertClimb(nodashUpper)
+        insertClimb(otherMixedCase)
+        val stored = repo.findClimbUuidsByNormKeys(
+            listOf(ClimbUuid.normKey(dashedLower), ClimbUuid.normKey(otherDashedLower), ClimbUuid.normKey(missing))
+        )
+        assertEquals(setOf(nodashUpper, otherMixedCase), stored.toSet())
+        assertTrue(repo.findClimbUuidsByNormKeys(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun manyKeys_resolveByIndexedSpellingOrScanAndLeaveMissesOut() {
+        insertClimb(nodashUpper)
+        insertClimb(otherMixedCase)
+        val found = repo.getClimbsByUuidAnySpelling(
+            listOf(dashedLower to 25, otherDashedLower to 25, missing to 25)
+        )
+        assertEquals(setOf(dashedLower to 25, otherDashedLower to 25), found.keys)
+        assertEquals(nodashUpper, found.getValue(dashedLower to 25).uuid)
+        assertEquals(otherMixedCase, found.getValue(otherDashedLower to 25).uuid)
+        // The stats of the requested angle come along, as with the single lookup.
+        assertEquals(15.0, found.getValue(otherDashedLower to 25).difficultyAverage)
     }
 }
