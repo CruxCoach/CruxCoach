@@ -627,6 +627,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Orange and status colours are easier to read, above all in the light theme: orange and
   green, yellow or red labels, chips and banners, buttons on coloured cards and secondary
   text now stand out clearly from what they sit on.
+- Appearance & language no longer jumps when the unit choice appears a moment after the
+  page opens, so a tap meant for the next row no longer lands on a unit.
+- The hold search in German counts "Griffe" and "Boulder", like the rest of the app.
 
 ## [0.2.4] - 2026-10-25
 
