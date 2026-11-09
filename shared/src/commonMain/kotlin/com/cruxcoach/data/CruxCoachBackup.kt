@@ -458,7 +458,8 @@ object CruxCoachBackup {
         for (c in a.checkins) { requireLen("checkin.day", c.day, MAX_DATE_LEN); requireLen("checkin.note", c.note, MAX_COMMENT_LEN) }
         for (i in a.injuries) {
             requireLen("injury.detail", i.detail, MAX_NAME_LEN); requireLen("injury.note", i.note, MAX_NOTES_LEN)
-            requireIntRange("injury.severity", i.severity, 0..9)
+            // 0–10 since 0.2.5; older backups hold 0–9, which still passes.
+            requireIntRange("injury.severity", i.severity, 0..com.cruxcoach.athlete.model.Injury.MAX_SEVERITY)
             i.check?.let { c ->
                 require(c.signs.size <= 64 && c.fingers.size <= 5) { "invalid backup: injury.check too large" }
                 requireLen("injury.check.checkedOn", c.checkedOn, MAX_DATE_LEN)

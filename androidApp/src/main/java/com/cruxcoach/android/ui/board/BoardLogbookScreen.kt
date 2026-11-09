@@ -24,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +48,7 @@ fun BoardLogbookScreen(
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
     onNavigateToSync: () -> Unit,
     onNavigateBack: () -> Unit,
+    onOpenYearReview: (year: Int) -> Unit = {},
     viewModel: BoardLogbookViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -142,38 +144,46 @@ fun BoardLogbookScreen(
 
     // Stats bottom sheet
     if (state.showStatsSheet) {
-        BoardStatsSheet(
-            stats = state.stats,
-            statsInterval = state.statsInterval,
-            gradeScale = state.gradeScale,
-            zones = state.zones,
-            customDateFrom = state.customDateFrom,
-            customDateTo = state.customDateTo,
-            heatmapMode = state.heatmapMode,
-            heatmapData = state.heatmapData,
-            placements = state.placements,
-            boardSize = state.boardSize,
-            boardImages = state.boardImages,
-            boardFilter = state.boardFilter,
-            availableBoardBrands = state.availableBoardBrands,
-            boardComparison = state.boardComparison,
-            crossBoard = state.crossBoard,
-            crossBoardView = state.crossBoardView,
-            onCrossBoardViewSelect = { viewModel.setCrossBoardView(it) },
-            progressionByBoard = state.progressionByBoard,
-            activityView = state.activityView,
-            onActivityViewSelect = { viewModel.setActivityView(it) },
-            gradesView = state.gradesView,
-            onGradesViewSelect = { viewModel.setGradesView(it) },
-            heatmapBoardOptions = state.heatmapBoardOptions,
-            heatmapBoardSelection = state.heatmapBoardSelection,
-            onHeatmapBoardSelect = { viewModel.setHeatmapBoardSelection(it) },
-            onBoardFilterSelect = { viewModel.setBoardFilter(it) },
-            onIntervalSelect = { viewModel.setStatsInterval(it) },
-            onCustomDateRange = { from, to -> viewModel.setCustomDateRange(from, to) },
-            onHeatmapModeSelect = { viewModel.setHeatmapMode(it) },
-            onDismiss = { viewModel.toggleStatsSheet() }
-        )
+        BoardStatsSheet(onDismiss = { viewModel.toggleStatsSheet() }) { modifier ->
+            BoardStatsSheetContent(
+                stats = state.stats,
+                statsInterval = state.statsInterval,
+                gradeScale = state.gradeScale,
+                zones = state.zones,
+                customDateFrom = state.customDateFrom,
+                customDateTo = state.customDateTo,
+                heatmapMode = state.heatmapMode,
+                heatmapData = state.heatmapData,
+                placements = state.placements,
+                boardSize = state.boardSize,
+                boardImages = state.boardImages,
+                boardFilter = state.boardFilter,
+                availableBoardBrands = state.availableBoardBrands,
+                boardComparison = state.boardComparison,
+                crossBoard = state.crossBoard,
+                crossBoardView = state.crossBoardView,
+                onCrossBoardViewSelect = { viewModel.setCrossBoardView(it) },
+                progressionByBoard = state.progressionByBoard,
+                activityView = state.activityView,
+                onActivityViewSelect = { viewModel.setActivityView(it) },
+                gradesView = state.gradesView,
+                onGradesViewSelect = { viewModel.setGradesView(it) },
+                heatmapBoardOptions = state.heatmapBoardOptions,
+                heatmapBoardSelection = state.heatmapBoardSelection,
+                onHeatmapBoardSelect = { viewModel.setHeatmapBoardSelection(it) },
+                onBoardFilterSelect = { viewModel.setBoardFilter(it) },
+                onIntervalSelect = { viewModel.setStatsInterval(it) },
+                onCustomDateRange = { from, to -> viewModel.setCustomDateRange(from, to) },
+                onHeatmapModeSelect = { viewModel.setHeatmapMode(it) },
+                yearReview = {
+                    com.cruxcoach.android.ui.yearreview.YearReviewStatsEntry(onOpen = {
+                        viewModel.toggleStatsSheet()
+                        onOpenYearReview(it)
+                    })
+                },
+                modifier = modifier,
+            )
+        }
     }
 
     state.sessionRecap?.let { recap ->
@@ -300,6 +310,10 @@ fun BoardLogbookScreen(
                 val grouped = remember(state.ascents) {
                     state.ascents.groupBy { it.climbedAt.take(10) }
                 }
+                // One layout for every entry of the list (the cards span the width less the list's padding).
+                val entryLayout = logbookEntryLayout(
+                    state.ascents, state.flashUuids, LocalConfiguration.current.screenWidthDp.dp - 32.dp,
+                )
 
                 LaunchedEffect(tourStep, grouped) {
                     if (tourStep == TourStep.ENTRY) {
@@ -323,7 +337,9 @@ fun BoardLogbookScreen(
                     item(key = "overview") {
                         // The overview is computed after the list loads; let it grow in
                         // instead of pushing the entries down in one jump.
-                        Box(Modifier.fillMaxWidth().animateContentSize()) {
+                        Column(Modifier.fillMaxWidth().animateContentSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // The year in review's invitation in December and January (#64).
+                            com.cruxcoach.android.ui.yearreview.YearReviewEntryCard(onOpen = onOpenYearReview)
                             LogbookOverviewCard(
                                 glance = state.atAGlance,
                                 milestones = state.milestones,
@@ -357,6 +373,8 @@ fun BoardLogbookScreen(
                                 zones = state.zones,
                                 isTrueFlash = ascent.uuid in state.flashUuids,
                                 isSelected = isSelected,
+                                showDate = false,
+                                layout = entryLayout,
                                 onClick = {
                                     viewModel.climbNavState.climbUuids = state.ascents.map { it.climbUuid }.distinct()
                                     viewModel.climbNavState.angle = ascent.angle.toInt()
@@ -420,74 +438,88 @@ private fun LogbookFilterSheet(
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            InfoHeading(stringResource(R.string.board_logbook_filters), stringResource(R.string.ux_logbook_help))
-            Text(stringResource(R.string.board_logbook_filter_period), style = MaterialTheme.typography.titleSmall)
-            // Same chips as the other filters here, not the orange ones of the statistics.
+        LogbookFilterContent(state, onIntervalSelect, onOutcomeSelect, onBoardSelect, onAngleSelect, onDone = onDismiss)
+    }
+}
+
+/** The logbook filters: period, outcome, board and angle. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun LogbookFilterContent(
+    state: BoardLogbookState,
+    onIntervalSelect: (StatsTimeInterval) -> Unit,
+    onOutcomeSelect: (LogbookOutcomeFilter) -> Unit,
+    onBoardSelect: (String?) -> Unit,
+    onAngleSelect: (Int?) -> Unit,
+    onDone: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        InfoHeading(stringResource(R.string.board_logbook_filters), stringResource(R.string.ux_logbook_help))
+        Text(stringResource(R.string.board_logbook_filter_period), style = MaterialTheme.typography.titleSmall)
+        // Same chips as the other filters here, not the orange ones of the statistics.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatsTimeInterval.entries.forEach { interval ->
+                FilterChip(
+                    selected = state.logbookInterval == interval,
+                    onClick = { onIntervalSelect(interval) },
+                    label = { Text(statsTimeIntervalLabel(interval)) },
+                )
+            }
+        }
+        Text(stringResource(R.string.board_logbook_filter_outcome), style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LogbookOutcomeFilter.entries.forEach { filter ->
+                val label = when (filter) {
+                    LogbookOutcomeFilter.ALL -> stringResource(R.string.map_filter_show_all)
+                    LogbookOutcomeFilter.SENDS -> stringResource(R.string.board_sends)
+                    LogbookOutcomeFilter.ATTEMPTS -> stringResource(R.string.ux_logbook_unsent_attempts)
+                }
+                FilterChip(
+                    selected = state.logbookOutcomeFilter == filter,
+                    onClick = { onOutcomeSelect(filter) },
+                    label = { Text(label) },
+                )
+            }
+        }
+        if (state.availableBoardBrands.size > 1) {
+            Text(stringResource(R.string.board_logbook_filter_board), style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatsTimeInterval.entries.forEach { interval ->
+                FilterChip(
+                    selected = state.logbookBoardFilter == null,
+                    onClick = { onBoardSelect(null) },
+                    label = { Text(stringResource(R.string.map_filter_show_all)) },
+                )
+                state.availableBoardBrands.forEach { brand ->
                     FilterChip(
-                        selected = state.logbookInterval == interval,
-                        onClick = { onIntervalSelect(interval) },
-                        label = { Text(statsTimeIntervalLabel(interval)) },
+                        selected = state.logbookBoardFilter == brand,
+                        onClick = { onBoardSelect(brand) },
+                        label = { Text(BoardBrand.fromWire(brand).displayName) },
                     )
                 }
             }
-            Text(stringResource(R.string.board_logbook_filter_outcome), style = MaterialTheme.typography.titleSmall)
+        }
+        if (state.availableLogbookAngles.isNotEmpty()) {
+            Text(stringResource(R.string.board_logbook_filter_angle), style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LogbookOutcomeFilter.entries.forEach { filter ->
-                    val label = when (filter) {
-                        LogbookOutcomeFilter.ALL -> stringResource(R.string.map_filter_show_all)
-                        LogbookOutcomeFilter.SENDS -> stringResource(R.string.board_sends)
-                        LogbookOutcomeFilter.ATTEMPTS -> stringResource(R.string.ux_logbook_unsent_attempts)
-                    }
+                FilterChip(
+                    selected = state.logbookAngleFilter == null,
+                    onClick = { onAngleSelect(null) },
+                    label = { Text(stringResource(R.string.map_filter_show_all)) },
+                )
+                state.availableLogbookAngles.forEach { angle ->
                     FilterChip(
-                        selected = state.logbookOutcomeFilter == filter,
-                        onClick = { onOutcomeSelect(filter) },
-                        label = { Text(label) },
+                        selected = state.logbookAngleFilter == angle,
+                        onClick = { onAngleSelect(angle) },
+                        label = { Text("$angle°") },
                     )
                 }
             }
-            if (state.availableBoardBrands.size > 1) {
-                Text(stringResource(R.string.board_logbook_filter_board), style = MaterialTheme.typography.titleSmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = state.logbookBoardFilter == null,
-                        onClick = { onBoardSelect(null) },
-                        label = { Text(stringResource(R.string.map_filter_show_all)) },
-                    )
-                    state.availableBoardBrands.forEach { brand ->
-                        FilterChip(
-                            selected = state.logbookBoardFilter == brand,
-                            onClick = { onBoardSelect(brand) },
-                            label = { Text(BoardBrand.fromWire(brand).displayName) },
-                        )
-                    }
-                }
-            }
-            if (state.availableLogbookAngles.isNotEmpty()) {
-                Text(stringResource(R.string.board_logbook_filter_angle), style = MaterialTheme.typography.titleSmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = state.logbookAngleFilter == null,
-                        onClick = { onAngleSelect(null) },
-                        label = { Text(stringResource(R.string.map_filter_show_all)) },
-                    )
-                    state.availableLogbookAngles.forEach { angle ->
-                        FilterChip(
-                            selected = state.logbookAngleFilter == angle,
-                            onClick = { onAngleSelect(angle) },
-                            label = { Text("$angle°") },
-                        )
-                    }
-                }
-            }
-            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.action_done))
-            }
+        }
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.action_done))
         }
     }
 }

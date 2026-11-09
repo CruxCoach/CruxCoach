@@ -136,6 +136,9 @@ fun BoardClimbDetailScreen(
     val ledEffects by viewModel.ledEffects.collectAsStateWithLifecycle(
         initialValue = com.cruxcoach.android.led.LedEffectsState(),
     )
+    val ledEffectRestart by viewModel.ledEffectRestart.collectAsStateWithLifecycle(
+        initialValue = LedEffectRestart.NONE,
+    )
     var showLedEffects by remember { mutableStateOf(false) }
     // Help for "the board lights other holds": the usual cause is a wrong board size.
     val sizeCheckViewModel: BoardSizeCheckViewModel = hiltViewModel()
@@ -385,6 +388,13 @@ fun BoardClimbDetailScreen(
             state = ledEffects,
             onSelect = viewModel::selectLedEffect,
             onStrobeNoticeSeen = viewModel::confirmLedStrobeNotice,
+            onConnect = {
+                showLedEffects = false
+                showBleSheet = true
+            },
+            // Only on the climb whose effect ended, and only where it sends that
+            // climb again (a shared session resends its current climb).
+            onSendAgain = viewModel::restartLedEffect.takeIf { ledEffectRestart != LedEffectRestart.NONE },
             onDismiss = { showLedEffects = false },
         )
     }

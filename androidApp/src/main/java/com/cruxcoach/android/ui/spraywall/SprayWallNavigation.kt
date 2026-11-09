@@ -9,6 +9,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.cruxcoach.android.ui.common.ScreenErrorBoundary
+import com.cruxcoach.android.ui.navigation.Routes
 import com.cruxcoach.domain.spraywall.SprayGym
 
 /** Destinations of the spray-wall area (FEAT-078). */
@@ -81,6 +82,7 @@ fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
             onBack = back,
             onSaved = back,
             onDeleted = { nav.popBackStack(SprayWallRoutes.LIST, inclusive = false) },
+            onOpenAccount = { go(Routes.KEY_MANAGEMENT) },
         )
     }
     screen(SprayWallRoutes.WALL, "SprayWall", back, listOf(wallArg)) { entry ->
@@ -93,6 +95,7 @@ fun NavGraphBuilder.sprayWallGraph(nav: NavHostController) {
             onVersions = { go(SprayWallRoutes.versions(wallId)) },
             onNewClimb = { go(SprayWallRoutes.climbEditor(wallId)) },
             onOpenClimb = { go(SprayWallRoutes.climb(it)) },
+            onOpenAccount = { go(Routes.KEY_MANAGEMENT) },
         )
     }
     screen(SprayWallRoutes.HOLDS, "SprayHoldEditor", back, listOf(wallArg, firstArg)) { entry ->

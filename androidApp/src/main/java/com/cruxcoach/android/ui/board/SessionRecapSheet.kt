@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -54,9 +55,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.cruxcoach.android.R
@@ -201,18 +204,25 @@ internal fun SessionRecapCard(recap: SessionRecap) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // The brand moves below the date when both do not fit on one line.
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 date,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.padding(end = 12.dp),
             )
             Text(
-                stringResource(R.string.app_name),
+                RECAP_BRAND,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = OrangeAccent,
+                maxLines = 1,
             )
         }
         if (recap.boards.isNotEmpty()) {
@@ -222,16 +232,22 @@ internal fun SessionRecapCard(recap: SessionRecap) {
                 }
             }
         }
-        Row(
-            Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val tile = Modifier.weight(1f).fillMaxHeight()
-            RecapTile("${recap.sends}", stringResource(R.string.board_sends), null, tile)
-            RecapTile("${recap.flashes}", stringResource(R.string.board_session_flashes), null, tile)
-            RecapTile("${recap.tries}", stringResource(R.string.board_session_summary_attempts), null, tile)
-            RecapTile("${recap.problems}", stringResource(R.string.board_stats_problems), null, tile)
-        }
+        val sends = stringResource(R.string.board_sends)
+        val flashes = stringResource(R.string.board_session_flashes)
+        val tries = stringResource(R.string.board_session_summary_attempts)
+        val problems = stringResource(R.string.board_stats_problems)
+        NumberGrid(
+            perRow = 4,
+            labels = listOf(sends, flashes, tries, problems),
+            spacing = 8.dp,
+            slack = 8.dp,
+            cells = listOf<@Composable (Modifier) -> Unit>(
+                { tile -> RecapTile("${recap.sends}", sends, null, tile) },
+                { tile -> RecapTile("${recap.flashes}", flashes, null, tile) },
+                { tile -> RecapTile("${recap.tries}", tries, null, tile) },
+                { tile -> RecapTile("${recap.problems}", problems, null, tile) },
+            ),
+        )
         if (recap.topClimbs.isNotEmpty()) TopClimbs(recap.topClimbs, colors.takeIf { recap.boards.size > 1 })
         if (recap.grades.isNotEmpty()) GradeStrip(recap.grades)
         if (recap.milestones.isNotEmpty()) {
@@ -273,6 +289,8 @@ private fun RecapTile(value: String, label: String, tint: androidx.compose.ui.gr
 @Composable
 private fun TopClimbs(climbs: List<RecapClimb>, boardColors: Map<String, androidx.compose.ui.graphics.Color>?) {
     val flashLabel = stringResource(R.string.board_logbook_flash)
+    // Large font: the flash joins the board line, so the name keeps the row's width.
+    val large = androidx.compose.ui.platform.LocalDensity.current.fontScale >= LARGE_FONT_SCALE
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             stringResource(R.string.board_session_recap_hardest),
@@ -292,9 +310,9 @@ private fun TopClimbs(climbs: List<RecapClimb>, boardColors: Map<String, android
             ) {
                 Box(
                     Modifier
-                        .width(48.dp)
+                        .widthIn(min = 48.dp)
                         .background(gradeColorForDifficulty(climb.difficulty), RoundedCornerShape(8.dp))
-                        .padding(vertical = 4.dp),
+                        .padding(vertical = 4.dp, horizontal = 4.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(climb.grade, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White, maxLines = 1)
@@ -316,10 +334,21 @@ private fun TopClimbs(climbs: List<RecapClimb>, boardColors: Map<String, android
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
+                        if (large && climb.flash) {
+                            Text(
+                                flashLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = triesRamp().first(),
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
-                if (climb.flash) {
+                if (climb.flash && !large) {
                     Text(
                         flashLabel,
                         style = MaterialTheme.typography.labelMedium,
@@ -332,15 +361,24 @@ private fun TopClimbs(climbs: List<RecapClimb>, boardColors: Map<String, android
     }
 }
 
-/** The sends of the session per grade as small columns, easiest on the left. */
+/**
+ * The sends of the session per grade as small columns, easiest on the left,
+ * or as rows, easiest at the bottom, when the grades do not fit side by side.
+ */
 @Composable
 private fun GradeStrip(grades: List<RecapGrade>) {
     val most = grades.maxOf { it.sends }.coerceAtLeast(1)
     val description = grades.joinToString(", ") { "${it.grade}: ${it.sends}" }
+    val gradeStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+    val gradeWidth = widestText(grades.map { it.grade }, gradeStyle)
     BoxWithConstraints(Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = description }) {
         val gap = 6.dp
         // Up to 32 dp per grade, narrower when a long session spans many grades.
         val column = minOf(32.dp, (maxWidth - gap * (grades.size - 1)) / grades.size)
+        if (gradeWidth > column) {
+            GradeBars(grades.asReversed(), most, gradeWidth + 8.dp, gradeStyle)
+            return@BoxWithConstraints
+        }
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
@@ -366,8 +404,7 @@ private fun GradeStrip(grades: List<RecapGrade>) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         grade.grade,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
+                        style = gradeStyle,
                         maxLines = 1,
                     )
                 }
@@ -375,3 +412,34 @@ private fun GradeStrip(grades: List<RecapGrade>) {
         }
     }
 }
+
+/** [grades] as horizontal bars: the grade, its bar and its sends. */
+@Composable
+private fun GradeBars(grades: List<RecapGrade>, most: Int, gradeWidth: Dp, gradeStyle: TextStyle) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        grades.forEach { grade ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(grade.grade, style = gradeStyle, maxLines = 1, modifier = Modifier.width(gradeWidth))
+                Box(
+                    Modifier
+                        .weight(grade.sends.toFloat() / most)
+                        .height(12.dp)
+                        .background(
+                            gradeColorForDifficulty(grade.difficultyInt.toDouble()),
+                            RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp),
+                        ),
+                )
+                if (grade.sends < most) Spacer(Modifier.weight((most - grade.sends).toFloat() / most))
+                Text(
+                    "${grade.sends}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+/** The wordmark on the shared card: the brand, whatever the installed build is called. */
+private const val RECAP_BRAND = "CruxCoach"

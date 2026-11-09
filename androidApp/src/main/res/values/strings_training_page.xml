@@ -30,7 +30,7 @@
     <string name="trpg_log_test">Log it</string>
     <string name="trpg_empty_hint">Add an exercise – or type several, e.g. “Pull-ups 5x5 +20 kg, plank 3x60 s”.</string>
     <string name="trpg_all_done">All done – wrap up</string>
-    <string name="trpg_rest_on">On</string>
+    <string name="trpg_rest_on">Next</string>
     <string name="trpg_planned_cd">planned</string>
     <plurals name="trpg_sets_count">
         <item quantity="one">%d set</item>

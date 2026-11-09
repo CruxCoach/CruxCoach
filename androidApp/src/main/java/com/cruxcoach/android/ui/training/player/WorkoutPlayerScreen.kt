@@ -210,7 +210,7 @@ fun WorkoutPlayerScreen(
         title = title,
         onBack = onBack,
         showRestBanner = false,
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { TrainingSnackbarHost(snackbar) },
         actions = {
             if (state.workout != null) {
                 IconButton(onClick = { overview = true }, modifier = Modifier.testTag("player_overview")) {
@@ -238,7 +238,7 @@ fun WorkoutPlayerScreen(
                     BottomBar {
                         Button(onClick = viewModel::backToActive,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("player_all_done")) {
-                            Text(stringResource(R.string.trpg_all_done), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.trpg_all_done), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                         }
                     }
                 } else CompletePage(state, onFinish = viewModel::finish, onOverview = { overview = true })
@@ -413,7 +413,8 @@ private fun MainAction(state: PlayerState, onDone: () -> Unit, onStartTimer: () 
                             Icon(Icons.Default.PlayArrow, null)
                             Spacer(Modifier.width(6.dp))
                             Text(seconds?.let { stringResource(R.string.trpg_start_seconds, it) } ?: stringResource(R.string.trp_start_timer),
-                                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2,
+                                textAlign = TextAlign.Center)
                         }
                         TextButton(onClick = onDone, modifier = Modifier.heightIn(min = 48.dp).testTag("player_done")) {
                             Text(stringResource(R.string.trp_done_without_timer))
@@ -430,7 +431,7 @@ private fun MainAction(state: PlayerState, onDone: () -> Unit, onStartTimer: () 
                 Text(stringResource(R.string.trpg_to_next), style = MaterialTheme.typography.titleMedium)
             }
             else -> Button(onClick = onShowActive, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("player_all_done")) {
-                Text(stringResource(R.string.trpg_all_done), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.trpg_all_done), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
             }
         }
     }
@@ -445,8 +446,9 @@ private fun PrimaryButton(label: String, tag: String, onClick: () -> Unit) {
     ) {
         Icon(Icons.Default.CheckCircle, null)
         Spacer(Modifier.width(8.dp))
-        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1,
-            overflow = TextOverflow.Ellipsis)
+        // Two lines, centred: at the largest font one line cut the label ("8 Wdh. gescha…").
+        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2,
+            overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }
 
@@ -722,8 +724,8 @@ internal class StepperEdit(
 @Composable
 internal fun PlayerStepper(label: String, value: String, tag: String, onMinus: () -> Unit, onPlus: () -> Unit, edit: StepperEdit? = null) {
     var editing by remember { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+    // At a large font one line beside the buttons or above them, the same for every stepper of the page.
+    LabelBesideOrAbove(growth = 1f, label = { Text(label, style = MaterialTheme.typography.titleSmall) }) {
         FilledTonalIconButton(onClick = onMinus, modifier = Modifier.size(56.dp).testTag("${tag}_minus")) {
             Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.trw_minus, label))
         }

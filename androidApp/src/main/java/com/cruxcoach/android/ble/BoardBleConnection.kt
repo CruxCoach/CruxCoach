@@ -884,6 +884,7 @@ class BoardBleConnection(
     // Remember last sent climb for live color preview
     private var lastHolds: List<BoardHold>? = null
     private var lastPlacementToLed: Map<Int, Int>? = null
+    private var lastClimbUuid: String? = null
     private var lastSendBoardAddress: String? = null
     private var lastSendBoardBrand: BoardBrand? = null
 
@@ -1966,6 +1967,8 @@ class BoardBleConnection(
     /**
      * Send a climb's holds to the connected board, lighting up the LEDs.
      * Uses mutex to prevent concurrent sends and callback-based flow control.
+     * [climbUuid] names the climb in [litFrame]; senders that light no single
+     * climb leave it out.
      */
     suspend fun sendClimb(
         holds: List<BoardHold>,
@@ -1977,6 +1980,7 @@ class BoardBleConnection(
         expectedQuantumPlayers: List<QuantumActivePlayer>? = null,
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
         expectedBrand: BoardBrand? = null,
+        climbUuid: String? = null,
     ): Boolean = writeMutex.withLock {
         if (cleaningState.value.active) return false
         val cleaningTicket = cleaning.ticket()
@@ -2045,6 +2049,7 @@ class BoardBleConnection(
 
         lastHolds = holds
         lastPlacementToLed = placementToLed
+        lastClimbUuid = climbUuid
         lastSendBoardAddress = currentBoard?.address
         lastSendBoardBrand = _connectedBoardBrand.value
 
@@ -2125,7 +2130,7 @@ class BoardBleConnection(
             val success = writeChunks(chunks)
             // After a failed write the wall's state is unknown; animating the
             // previous climb on top of it would only add to the confusion.
-            _litFrame.value = if (success) litLeds.ifEmpty { null }?.let { LitFrame(it, ++litFrameSends) } else null
+            _litFrame.value = if (success) litLeds.ifEmpty { null }?.let { LitFrame(it, ++litFrameSends, climbUuid) } else null
             if (success) cleaning.projected(cleaningTicket, chunks)
             return success
         } finally {
@@ -2444,7 +2449,7 @@ class BoardBleConnection(
         if (lastSendBoardBrand != _connectedBoardBrand.value ||
             lastSendBoardAddress?.equals(currentBoard?.address, ignoreCase = true) != true
         ) return false
-        return sendClimb(holds, ledMap, roleColors)
+        return sendClimb(holds, ledMap, roleColors, climbUuid = lastClimbUuid)
     }
 
     suspend fun sendRawChunks(

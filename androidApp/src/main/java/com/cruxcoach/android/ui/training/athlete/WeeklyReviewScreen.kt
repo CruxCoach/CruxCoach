@@ -239,12 +239,12 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
             if (s.pausedDays > 0) Text(pluralStringResource(R.plurals.tra_review_paused, s.pausedDays, s.pausedDays),
                 style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatTile(stringResource(R.string.tra_review_climb_days), "${s.climbDays}", Modifier.weight(1f),
+            TileRow { weight ->
+                StatTile(stringResource(R.string.tra_review_climb_days), "${s.climbDays}", weight(1f),
                     supporting = pluralStringResource(R.plurals.trt_minutes, s.boardMinutes, s.boardMinutes))
-                StatTile(stringResource(R.string.tra_review_workout_days), "${s.workoutDays}", Modifier.weight(1f),
+                StatTile(stringResource(R.string.tra_review_workout_days), "${s.workoutDays}", weight(1f),
                     supporting = pluralStringResource(R.plurals.trt_minutes, s.workoutMinutes, s.workoutMinutes))
-                StatTile(stringResource(R.string.tra_review_sets), "${s.sets}", Modifier.weight(1f))
+                StatTile(stringResource(R.string.tra_review_sets), "${s.sets}", weight(1f))
             }
             SectionTitle(stringResource(R.string.tra_review_records))
             if (s.records.isEmpty()) Text(stringResource(R.string.tra_review_no_records), style = MaterialTheme.typography.bodySmall)

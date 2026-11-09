@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +57,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
@@ -93,6 +96,34 @@ internal fun PeriodNumbers(stats: BoardLogbookStats, gradeScale: GradeScale) {
     }
 }
 
+/**
+ * A period without a single entry: says so, and offers the whole logbook
+ * when a shorter period is chosen ([onShowAll]).
+ */
+@Composable
+internal fun EmptyPeriod(onShowAll: (() -> Unit)?) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp, vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            stringResource(R.string.board_stats_empty_period),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        if (onShowAll != null) {
+            TextButton(onClick = onShowAll) {
+                Text(stringResource(R.string.board_stats_show_all_time), color = OrangeAccent)
+            }
+        }
+    }
+}
+
 @Composable
 private fun PeriodTotalsCard(stats: BoardLogbookStats, gradeScale: GradeScale) {
     val sends = if (stats.routeSends > 0) "${stats.boulderSends}B / ${stats.routeSends}R" else "${stats.totalSends}"
@@ -115,6 +146,7 @@ private fun PeriodTotalsCard(stats: BoardLogbookStats, gradeScale: GradeScale) {
         val flashLabel = stringResource(R.string.board_logbook_flash)
         NumberGrid(
             perRow = 3,
+            labels = listOf(sendsLabel, triesLabel, daysLabel, problemsLabel, hardestLabel, flashLabel),
             cells = listOf<@Composable (Modifier) -> Unit>(
                 { column -> PeriodNumber(sends, sendsLabel, before?.let { stats.totalSends - it.sends }, column) },
                 { column -> PeriodNumber("${stats.totalAttempts}", triesLabel, before?.let { stats.totalAttempts - it.attempts }, column) },
@@ -129,6 +161,7 @@ private fun PeriodTotalsCard(stats: BoardLogbookStats, gradeScale: GradeScale) {
                             null
                         },
                         column,
+                        reserveChange = before != null,
                     )
                 },
                 { column -> PeriodNumber("$flash %", flashLabel, before?.let { flash - Math.round(it.flashRate) }, column, unit = " %") },
@@ -139,7 +172,8 @@ private fun PeriodTotalsCard(stats: BoardLogbookStats, gradeScale: GradeScale) {
                 stringResource(R.string.board_stats_period_versus),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                modifier = Modifier.align(Alignment.CenterHorizontally),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 12.dp),
             )
         }
     }
@@ -154,14 +188,15 @@ private fun PeriodTotalsCard(stats: BoardLogbookStats, gradeScale: GradeScale) {
 private fun PeriodBests(records: PersonalRecords) {
     val items = buildList<Triple<String, String, String?>> {
         records.hardestFlashGrade?.let { add(Triple(it, stringResource(R.string.board_stats_glance_hardest_flash), null)) }
-        if (records.mostSendsInDay > 0) {
+        // A best of one is no best yet.
+        if (records.mostSendsInDay > 1) {
             val date = records.mostSendsDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
             add(Triple("${records.mostSendsInDay}", stringResource(R.string.board_stats_milestone_biggest_day), date?.let { milestoneDate(it) }))
         }
         if (records.daysPerWeek > 0.0) {
             add(Triple(stringResource(R.string.board_stats_glance_per_week_value, records.daysPerWeek), stringResource(R.string.board_stats_best_per_week), null))
         }
-        if (records.longestWeekStreak > 0) {
+        if (records.longestWeekStreak > 1) {
             add(Triple("${records.longestWeekStreak}", stringResource(R.string.board_stats_best_streak), null))
         }
     }
@@ -181,6 +216,7 @@ private fun PeriodBests(records: PersonalRecords) {
         )
         NumberGrid(
             perRow = 4,
+            labels = items.map { it.second },
             cells = items.map<Triple<String, String, String?>, @Composable (Modifier) -> Unit> { (value, label, date) ->
                 { column ->
                     Column(
@@ -212,13 +248,24 @@ private fun PeriodBests(records: PersonalRecords) {
 }
 
 @Composable
-private fun PeriodNumber(value: String, label: String, change: Int?, modifier: Modifier, unit: String = "") {
+private fun PeriodNumber(
+    value: String,
+    label: String,
+    change: Int?,
+    modifier: Modifier,
+    unit: String = "",
+    reserveChange: Boolean = false,
+) {
     val changeText = change?.let { if (it > 0) "+$it$unit" else if (it < 0) "−${-it}$unit" else "±0$unit" }
     Column(
         modifier.clearAndSetSemantics { contentDescription = listOfNotNull(label, value, changeText).joinToString(", ") },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        if (change == null && reserveChange) {
+            // Keeps the label on the line of its neighbours' labels.
+            Text("", style = MaterialTheme.typography.labelSmall, modifier = Modifier.heightIn(min = 16.dp))
+        }
         if (change != null && changeText != null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (change != 0) {
@@ -344,6 +391,10 @@ private class GradeRow(val grade: String, val segments: List<Pair<Int, Color>>, 
 private fun GradeRows(rows: List<GradeRow>) {
     val most = rows.maxOf { it.total }.coerceAtLeast(1)
     var selected by remember(rows.map { it.grade }) { mutableStateOf<String?>(null) }
+    // Wide enough for the longest grade and count at any font size: "6b+" must not lose its "+".
+    val gradeStyle = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+    val gradeWidth = maxOf(44.dp, widestText(rows.map { it.grade }, gradeStyle) + 8.dp)
+    val countWidth = maxOf(36.dp, widestText(rows.map { "${it.total}" }, MaterialTheme.typography.labelMedium) + 6.dp)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         rows.forEach { row ->
             val expanded = selected == row.grade
@@ -359,10 +410,9 @@ private fun GradeRows(rows: List<GradeRow>) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         row.grade,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
+                        style = gradeStyle,
                         maxLines = 1,
-                        modifier = Modifier.width(44.dp),
+                        modifier = Modifier.width(gradeWidth),
                     )
                     Canvas(Modifier.weight(1f).height(16.dp)) {
                         val gap = 2.dp.toPx()
@@ -380,7 +430,7 @@ private fun GradeRows(rows: List<GradeRow>) {
                         "${row.total}",
                         style = MaterialTheme.typography.labelMedium,
                         textAlign = TextAlign.End,
-                        modifier = Modifier.width(36.dp),
+                        modifier = Modifier.width(countWidth),
                     )
                 }
                 if (expanded) {
@@ -389,7 +439,7 @@ private fun GradeRows(rows: List<GradeRow>) {
                             detail,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 44.dp, top = if (i == 0) 4.dp else 2.dp),
+                            modifier = Modifier.padding(start = gradeWidth, top = if (i == 0) 4.dp else 2.dp),
                         )
                     }
                 }
@@ -500,6 +550,13 @@ private fun ProgressChart(
         val step = ceil(starts.size / 4.0).toInt().coerceAtLeast(1)
         starts.filterIndexed { i, _ -> i % step == 0 }
     }
+    // The axes and the end labels as wide and tall as their text at the current font size.
+    val yAxis = valueAxisWidth(gradeTicks.map { GradeDisplayHelper.formatDifficulty(it.toDouble(), gradeScale) }, axisStyle)
+    val timeAxis = timeAxisHeight(axisStyle)
+    val endLabels = maxOf(
+        PROGRESS_END_LABELS,
+        widestText(series.map { GradeDisplayHelper.formatDifficulty(it.last().performanceDifficulty, gradeScale) }, endStyle) + 16.dp,
+    )
     val description = series.mapIndexed { i, points ->
         val from = GradeDisplayHelper.formatDifficulty(points.first().performanceDifficulty, gradeScale)
         val to = GradeDisplayHelper.formatDifficulty(points.last().performanceDifficulty, gradeScale)
@@ -509,11 +566,11 @@ private fun ProgressChart(
     Canvas(
         Modifier
             .fillMaxWidth()
-            .height(PROGRESS_PLOT_HEIGHT + PROGRESS_AXIS_HEIGHT)
+            .height(PROGRESS_PLOT_HEIGHT + timeAxis)
             .semantics { contentDescription = description },
     ) {
-        val left = PROGRESS_Y_AXIS.toPx()
-        val right = size.width - PROGRESS_END_LABELS.toPx()
+        val left = yAxis.toPx()
+        val right = size.width - endLabels.toPx()
         val top = 6.dp.toPx()
         val bottom = PROGRESS_PLOT_HEIGHT.toPx() - 6.dp.toPx()
         fun xOf(day: LocalDate) = left + (day.toEpochDay() - first.toEpochDay()) / span * (right - left)
@@ -560,8 +617,8 @@ private fun ProgressChart(
             val labelTop = max(max(natural, lastBottom + 1.dp.toPx()), 0f)
                 .coerceAtMost(PROGRESS_PLOT_HEIGHT.toPx() - text.size.height)
             val x = right + 8.dp.toPx()
-            // A label pushed off its line gets its board's dot, so it is still clear whose it is.
-            if (abs(labelTop - natural) > 2.dp.toPx()) {
+            // With several lines each label leads with its board's dot, so it is clear whose it is.
+            if (series.size > 1 || abs(labelTop - natural) > 2.dp.toPx()) {
                 drawCircle(colors[i], 3.dp.toPx(), Offset(x, labelTop + text.size.height / 2f))
             }
             drawText(text, topLeft = Offset(x + 6.dp.toPx(), labelTop))
@@ -596,14 +653,17 @@ private fun DrawScope.drawMonthAxis(
         while (!month.isAfter(last)) { add(month); month = month.plusMonths(1) }
     }
     var lastEnd = Float.NEGATIVE_INFINITY
-    starts.forEachIndexed { i, start ->
-        val name = months[start.monthValue - 1] + if (i == 0 || start.monthValue == 1) " '${start.year % 100}" else ""
+    var lastYear: Int? = null
+    starts.forEach { start ->
+        // The year on the first label shown of every year, also when January has no room.
+        val name = months[start.monthValue - 1] + if (start.year != lastYear) " '${start.year % 100}" else ""
         val text = measurer.measure(name, style)
         val x = xOf(start.coerceAtLeast(first)).coerceAtMost(right - text.size.width)
         if (x > lastEnd + 8.dp.toPx()) {
             drawLine(grid, Offset(x, gridTop), Offset(x, gridBottom), 1.dp.toPx())
             drawText(text, topLeft = Offset(x, labelTop))
             lastEnd = x + text.size.width
+            lastYear = start.year
         }
     }
 }
@@ -612,6 +672,17 @@ private val PROGRESS_PLOT_HEIGHT = 140.dp
 private val PROGRESS_AXIS_HEIGHT = 20.dp
 private val PROGRESS_Y_AXIS = 36.dp
 private val PROGRESS_END_LABELS = 44.dp
+
+/** A value axis wide enough for its [labels], at least the usual 36 dp. */
+@Composable
+private fun valueAxisWidth(labels: List<String>, style: TextStyle): Dp = maxOf(PROGRESS_Y_AXIS, widestText(labels, style) + 6.dp)
+
+/** A time axis tall enough for its month names at the current font size. */
+@Composable
+private fun timeAxisHeight(style: TextStyle): Dp = maxOf(PROGRESS_AXIS_HEIGHT, textLineHeight(style) + 4.dp)
+
+/** "3" or "3.5": a tick of the climbing days per week. */
+private fun dayTick(value: Double): String = if (value == floor(value)) "${value.toInt()}" else "%.1f".format(value)
 
 // ---------------------------------------------------------------- activity
 
@@ -694,14 +765,16 @@ private fun VolumeChart(entries: List<VolumeBucket>, title: String, period: Stat
     val last = maxOf(period?.axisEnd ?: entries.last().start, entries.last().let { it.start.plusDays(it.days - 1L) })
     val days = (last.toEpochDay() - first.toEpochDay() + 1).toFloat()
     val description = "$title: " + entries.joinToString("; ") { "${it.start}: ${it.total}" }
+    val yAxis = valueAxisWidth(listOf("$most"), axisStyle)
+    val timeAxis = timeAxisHeight(axisStyle)
 
     Canvas(
         Modifier
             .fillMaxWidth()
-            .height(WEEKLY_PLOT_HEIGHT + PROGRESS_AXIS_HEIGHT)
+            .height(WEEKLY_PLOT_HEIGHT + timeAxis)
             .semantics { contentDescription = description },
     ) {
-        val left = PROGRESS_Y_AXIS.toPx()
+        val left = yAxis.toPx()
         val right = size.width
         val top = 6.dp.toPx()
         val bottom = WEEKLY_PLOT_HEIGHT.toPx()
@@ -770,8 +843,8 @@ private fun DaysPerWeekChart(entries: List<DaysPerWeek>, average: Double) {
     val description = stringResource(R.string.board_stats_days_per_week) + ": " + averageLabel + ". " +
         entries.joinToString("; ") { "${it.start}: ${"%.1f".format(it.perWeek)}" }
 
-    // The average above the chart, so it never covers a column.
-    Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    // The average above the chart, so it never covers a column; none over a short period.
+    if (average > 0.0) Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
         Canvas(Modifier.width(16.dp).height(2.dp)) {
             drawLine(ink.copy(alpha = 0.55f), Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 1.dp.toPx(),
@@ -780,13 +853,15 @@ private fun DaysPerWeekChart(entries: List<DaysPerWeek>, average: Double) {
         Spacer(Modifier.width(6.dp))
         Text(averageLabel, style = averageStyle)
     }
+    val yAxis = valueAxisWidth(listOf(top / 2, top).map { dayTick(it) }, axisStyle)
+    val timeAxis = timeAxisHeight(axisStyle)
     Canvas(
         Modifier
             .fillMaxWidth()
-            .height(WEEKLY_PLOT_HEIGHT + PROGRESS_AXIS_HEIGHT)
+            .height(WEEKLY_PLOT_HEIGHT + timeAxis)
             .semantics { contentDescription = description },
     ) {
-        val left = PROGRESS_Y_AXIS.toPx()
+        val left = yAxis.toPx()
         val right = size.width
         val plotTop = 6.dp.toPx()
         val bottom = WEEKLY_PLOT_HEIGHT.toPx()
@@ -797,7 +872,7 @@ private fun DaysPerWeekChart(entries: List<DaysPerWeek>, average: Double) {
         listOf(top / 2, top).forEach { value ->
             val y = yOf(value)
             drawLine(ink.copy(alpha = 0.10f), Offset(left, y), Offset(right, y), 1.dp.toPx())
-            val text = measurer.measure(if (value == floor(value)) "${value.toInt()}" else "%.1f".format(value), axisStyle)
+            val text = measurer.measure(dayTick(value), axisStyle)
             drawText(text, topLeft = Offset(0f, y - text.size.height / 2f))
         }
         drawLine(ink.copy(alpha = 0.20f), Offset(left, bottom), Offset(right, bottom), 1.dp.toPx())
@@ -818,6 +893,6 @@ private fun DaysPerWeekChart(entries: List<DaysPerWeek>, average: Double) {
         }
         // The average over the period; its value stands above the chart.
         val y = yOf(average)
-        drawLine(ink.copy(alpha = 0.55f), Offset(left, y), Offset(right, y), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)))
+        if (average > 0.0) drawLine(ink.copy(alpha = 0.55f), Offset(left, y), Offset(right, y), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)))
     }
 }

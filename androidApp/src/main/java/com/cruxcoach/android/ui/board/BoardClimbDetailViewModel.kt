@@ -357,6 +357,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
     private val ledAnimationEngine: com.cruxcoach.android.led.LedAnimationEngine,
     private val ledEffectsController: com.cruxcoach.android.led.LedEffectsController,
+    private val playbackCoordinator: com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -370,6 +371,42 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun confirmLedStrobeNotice() {
         viewModelScope.launch { ledEffectsController.strobeNoticeSeen() }
+    }
+
+    /** What the quick pick's Restart does on this climb, if it is offered at all. */
+    internal val ledEffectRestart: kotlinx.coroutines.flow.Flow<LedEffectRestart> by lazy {
+        combine(ledEffectsController.state, _state, sessionQueueManager.state) { led, _, _ ->
+            ledEffectRestartFor(led)
+        }.distinctUntilChanged()
+    }
+
+    private fun ledEffectRestartFor(led: com.cruxcoach.android.led.LedEffectsState) =
+        LedEffectRestartPolicy.resolve(
+            status = led.status,
+            litClimbUuid = led.litClimbUuid,
+            detailClimbUuid = _state.value.climb?.uuid,
+            deliveryTarget = deliveryDecision()?.target ?: BoardDeliveryTarget.NONE,
+            sessionHost = sessionQueueManager.state.value.role == com.cruxcoach.android.data.SessionRole.HOST,
+            sessionClimbUuid = sessionQueueManager.state.value.currentClimb?.climbUuid,
+        )
+
+    /**
+     * Restart an LED effect that ended on this climb by sending it again: like
+     * the lamp, or, in a shared session, by putting its current climb back on the
+     * wall. Decided again at the tap, so a stale sheet sends nothing else.
+     */
+    fun restartLedEffect() {
+        viewModelScope.launch {
+            when (ledEffectRestartFor(ledEffectsController.state.first())) {
+                // The lamp's direct send, never its shared-queue branch.
+                LedEffectRestart.LIGHT -> sendController.sendToBoard(
+                    automaticLayer = true,
+                    userInitiated = true,
+                )
+                LedEffectRestart.SESSION_RESEND -> playbackCoordinator.resendCurrentClimb()
+                LedEffectRestart.NONE -> Unit
+            }
+        }
     }
 
     /** Exposed for the pager to compute its initial page synchronously (before async load). */
@@ -1458,8 +1495,27 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun deliverClimb() {
         val climbState = _state.value
         val climb = climbState.climb ?: return
+        val decision = deliveryDecision() ?: return
+        when (decision.target) {
+            // A tap on the lamp is an explicit projection request. Quantum may
+            // therefore claim the first genuinely free, conflict-free layer
+            // without making the user open the layer rack first.
+            BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard(
+                automaticLayer = true,
+                userInitiated = true,
+            )
+            BoardDeliveryTarget.SHARED_QUEUE ->
+                sessionQueueManager.addClimb(climb.uuid, climbState.angle)
+            BoardDeliveryTarget.NONE -> Unit
+        }
+    }
+
+    /** Where the lamp's send goes for this climb right now; null before it loaded. */
+    private fun deliveryDecision(): BoardDeliveryDecision? {
+        val climbState = _state.value
+        val climb = climbState.climb ?: return null
         val queueState = sessionQueueManager.state.value
-        val decision = BoardDeliveryPolicy.resolve(
+        return BoardDeliveryPolicy.resolve(
             sendMode = climbState.boardSendMode,
             boardBrand = climb.brand,
             sessionRole = queueState.role,
@@ -1474,18 +1530,6 @@ class BoardClimbDetailViewModel @Inject constructor(
             ),
             connectedViaRelay = climbState.ble.connectedViaRelay,
         )
-        when (decision.target) {
-            // A tap on the lamp is an explicit projection request. Quantum may
-            // therefore claim the first genuinely free, conflict-free layer
-            // without making the user open the layer rack first.
-            BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard(
-                automaticLayer = true,
-                userInitiated = true,
-            )
-            BoardDeliveryTarget.SHARED_QUEUE ->
-                sessionQueueManager.addClimb(climb.uuid, climbState.angle)
-            BoardDeliveryTarget.NONE -> Unit
-        }
     }
 
     // --- Favorites & lists ---

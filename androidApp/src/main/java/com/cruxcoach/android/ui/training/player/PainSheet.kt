@@ -23,6 +23,7 @@ import com.cruxcoach.android.ui.training.bodymap.BodyMapPicker
 import com.cruxcoach.android.ui.training.bodymap.toInjuryRegion
 import com.cruxcoach.android.ui.training.injurySideLabel
 import com.cruxcoach.android.ui.training.regionLabel
+import com.cruxcoach.athlete.model.Injury
 import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.InjurySide
 import com.cruxcoach.athlete.model.Side
@@ -91,7 +92,7 @@ fun PainSheet(
 
             Spacer(Modifier.height(12.dp))
             Text(stringResource(R.string.trp2_pain_level, severity), style = MaterialTheme.typography.titleSmall)
-            Slider(value = pain, onValueChange = { pain = it }, valueRange = 0f..9f, steps = 8,
+            Slider(value = pain, onValueChange = { pain = it }, valueRange = 0f..Injury.MAX_SEVERITY.toFloat(), steps = Injury.MAX_SEVERITY - 1,
                 modifier = Modifier.testTag("player_pain_level"))
 
             Spacer(Modifier.height(8.dp))

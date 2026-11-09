@@ -42,16 +42,18 @@ class BoardStatsHelpTest {
             MaterialTheme {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
                     Box(Modifier.fillMaxSize()) {
-                        BoardStatsSheet(
-                            stats = stats,
-                            statsInterval = StatsTimeInterval.ALL,
-                            gradeScale = GradeScale.V_SCALE,
-                            activityView = selected.value,
-                            onActivityViewSelect = { selected.value = it },
-                            onIntervalSelect = { periodChanges++ },
-                            onCustomDateRange = { _, _ -> periodChanges++ },
-                            onDismiss = {},
-                        )
+                        BoardStatsSheet(onDismiss = {}) { modifier ->
+                            BoardStatsSheetContent(
+                                stats = stats,
+                                statsInterval = StatsTimeInterval.ALL,
+                                gradeScale = GradeScale.V_SCALE,
+                                activityView = selected.value,
+                                onActivityViewSelect = { selected.value = it },
+                                onIntervalSelect = { periodChanges++ },
+                                onCustomDateRange = { _, _ -> periodChanges++ },
+                                modifier = modifier,
+                            )
+                        }
                     }
                 }
             }

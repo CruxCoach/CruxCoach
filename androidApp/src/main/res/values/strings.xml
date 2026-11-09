@@ -446,45 +446,45 @@
     <!-- Settings: LED effects (FEAT-074) -->
     <string name="settings_led_anim_title">LED effects</string>
     <string name="settings_led_anim_none">None</string>
-    <string name="settings_led_anim_none_hint">The climb shows its normal colors.</string>
+    <string name="settings_led_anim_none_hint">the climb shows its normal colors.</string>
     <string name="settings_led_anim_pulse">Pulse</string>
-    <string name="settings_led_anim_pulse_hint">Each hold glows brighter and dimmer in its own color.</string>
+    <string name="settings_led_anim_pulse_hint">each hold glows brighter and dimmer in its own color.</string>
     <string name="settings_led_anim_two_phase">Two-phase strobe</string>
-    <string name="settings_led_anim_two_phase_hint">Flashes between the CruxCoach and the Kilter colors.</string>
+    <string name="settings_led_anim_two_phase_hint">flashes between the CruxCoach and the Kilter colors.</string>
     <string name="settings_led_anim_chaotic">Chaotic strobe</string>
-    <string name="settings_led_anim_chaotic_hint">The colors jump around; start, hand, top and foot holds stay apart.</string>
+    <string name="settings_led_anim_chaotic_hint">the colors jump around; start, hand, top and foot holds stay apart.</string>
     <string name="settings_led_anim_rainbow">Rainbow</string>
-    <string name="settings_led_anim_rainbow_hint">All colors travel slowly around the color wheel.</string>
+    <string name="settings_led_anim_rainbow_hint">all colors travel slowly around the color wheel.</string>
     <string name="settings_led_effects_flashing">Flashes</string>
-    <string name="settings_led_effects_remove_animations_note">“Remove animations” is on in Android’s settings. This effect flashes anyway.</string>
+    <string name="settings_led_effects_remove_animations_note">“Remove animations” is on. This effect flashes anyway.</string>
     <string name="settings_led_effects_background">Keep running in other apps</string>
-    <string name="settings_led_effects_needs_notifications">Needs notifications, so that you can stop the effect from there.</string>
+    <string name="settings_led_effects_background_on">In other apps the board stays connected to this phone.</string>
+    <string name="settings_led_effects_needs_notifications">Needs notifications for the Stop button.</string>
     <string name="settings_led_effects_allow_notifications">Allow notifications</string>
-    <string name="led_effect_status_running">Running on the board now.</string>
-    <string name="led_effect_status_waiting">Send a climb to the board to see it.</string>
-    <string name="led_effect_status_no_board">Connect a Kilter Board to see it.</string>
-    <string name="led_effect_status_unsupported">This board shows no LED effects and keeps its normal colors.</string>
-    <string name="led_effect_status_paused">Paused while route playback, a wall game or hold cleaning uses the board.</string>
-    <string name="led_effect_status_ended">Ended on this climb. Send it again to restart.</string>
+    <string name="settings_led_effects_info_board">On the board\nThe lit holds change their light. Works with a Kilter Board; other boards keep their normal colors. A choice shows at once, so the wall is the preview.</string>
+    <string name="settings_led_effects_info_effects">Effects</string>
+    <string name="settings_led_effects_info_effect">%1$s: %2$s</string>
+    <string name="led_effect_status_running">Running on the board.</string>
+    <string name="led_effect_status_waiting">Waiting for a climb.</string>
+    <string name="led_effect_status_no_board">No Kilter Board connected.</string>
+    <string name="led_effect_status_unsupported">This board can’t show effects.</string>
+    <string name="led_effect_status_paused">Paused while the board is busy.</string>
+    <string name="led_effect_status_ended">Ended on the lit climb.</string>
     <string name="led_effect_status_background">Paused outside the app.</string>
+    <string name="led_effect_restart">Restart</string>
     <string name="led_strobe_notice_title">Flashing light</string>
-    <string name="led_strobe_notice_text">This effect flashes the lit holds up to three times a second. Flashing light can trigger seizures in people with photosensitive epilepsy, also in others at the wall. Pulse and Rainbow change gently.</string>
-    <string name="led_strobe_notice_remove_animations">“Remove animations” is on in Android’s settings, often a sign that motion or flashing is unwelcome. Turn this effect on anyway?</string>
+    <string name="led_strobe_notice_text">%1$s flashes the holds up to three times a second. This can trigger seizures in people with photosensitive epilepsy, also in others at the wall.</string>
+    <string name="led_strobe_notice_remove_animations">%1$s flashes the holds up to three times a second, even with “Remove animations” on. This can trigger seizures in people with photosensitive epilepsy, also in others at the wall.</string>
     <string name="led_strobe_notice_confirm">Turn on</string>
     <string name="led_strobe_notice_cancel">Cancel</string>
     <string name="led_effect_menu">LED effect: %1$s</string>
-    <string name="led_effect_sheet_done">Done</string>
     <string name="led_anim_notification_channel">LED effects</string>
     <string name="led_anim_notification_channel_desc">Shown while an LED effect keeps running in another app.</string>
     <string name="led_anim_notification_title">LED effect running</string>
     <string name="led_anim_notification_stop">Stop</string>
     <plurals name="settings_led_effects_info">
-        <item quantity="one">On the board\nThe holds of the lit climb move. Works with a Kilter Board; other boards keep their normal colors. Changes show at once, so you can try them while looking at the wall.\n\nOthers first\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minute on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.</item>
-        <item quantity="other">On the board\nThe holds of the lit climb move. Works with a Kilter Board; other boards keep their normal colors. Changes show at once, so you can try them while looking at the wall.\n\nOthers first\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minutes on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.</item>
-    </plurals>
-    <plurals name="settings_led_effects_background_info">
-        <item quantity="one">For filming: the effect keeps going while another app is open, for up to %1$d minute on the same climb, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
-        <item quantity="other">For filming: the effect keeps going while another app is open, for up to %1$d minutes on the same climb, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
+        <item quantity="one">Pauses\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minute on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.\n\nIn other apps\nFor filming, “Keep running in other apps” keeps the effect going while another app is open, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
+        <item quantity="other">Pauses\nWhat you send goes first. Route playback, wall games and hold cleaning pause the effect. Automatic disconnect still releases the board on time; the effect ends with it.\n\nLimit\nAfter %1$d minutes on the same climb the effect ends and the climb shows its normal colors. Send it again to restart.\n\nIn other apps\nFor filming, “Keep running in other apps” keeps the effect going while another app is open, with a notification to stop it. Meanwhile this phone keeps the board connection, so at a gym wall nobody else can connect. Uses some battery; if Android pauses the app, the effect stops.</item>
     </plurals>
     <plurals name="led_anim_notification_text">
         <item quantity="one">Ends after %1$d minute on this climb. Stop shows its normal colors.</item>
@@ -1615,7 +1615,9 @@
     <string name="board_stats_heatmap_board_label">Board</string>
     <string name="board_stats_heatmap_pick_board">Pick a board to see the hold heatmap.</string>
     <string name="board_stats_heatmap_unsupported">This board has no hold heatmap.</string>
-    <string name="board_stats_angle_distribution">Angle Distribution</string>
+    <string name="board_stats_empty_period">Nothing logged in this period.</string>
+    <string name="board_stats_show_all_time">Show all time</string>
+    <string name="board_stats_angle_distribution">Angle distribution</string>
     <string name="board_stats_cross_board_tries">Tries per grade</string>
     <string name="board_stats_cross_board_months">Tries per month</string>
     <string name="board_stats_cross_board_tries_help">How many tries you needed on average to send a problem for the first time, per board and grade. Tries from earlier sessions count, repeats after the send do not.\n\nHollow bars rest on fewer than %1$d problems and say little.\n\nTap a grade to see how many problems each bar stands for.</string>
@@ -2833,6 +2835,7 @@
     <string name="moon_csv_fallback">CSV fallback</string>
     <string name="moon_csv_request_data">Request account data from Moon</string>
     <string name="moon_csv_request_hint">The request text is copied before your email app opens. Paste it into the message and fill in the placeholders.</string>
+    <string name="moon_csv_no_mail_app">No email app found. The request is copied.</string>
     <string name="moon_csv_request_subject">Subject access request – MoonBoard account data</string>
     <string name="moon_csv_request_body">Name: [full name]\nMoonBoard username: [username]\nAccount email: [email address]\n\nPlease treat this as a UK GDPR subject access request and, where applicable, a data portability request. Please provide all personal data linked to my MoonBoard account, including profile and account identifiers; problems I created or logged; sends, ascents, grades, repeats, attempts, dates and session history; favourites, lists, saved and custom problems; and related metadata.\n\nWhere technically feasible, please provide the export as CSV or JSON, or another structured, commonly used, machine-readable format. If identity verification or a secure delivery method is required, please let me know promptly. Please confirm receipt and the expected response date.\n\nKind regards,\n[name]</string>
     <string name="moon_csv_angle_note">MoonBoard’s CSV does not include the board angle. If a problem is available at both angles, CruxCoach imports it at 40°.</string>
@@ -3032,7 +3035,7 @@
     <string name="whatsnew_024_hint">Also: a board switch shows at once during a catalogue download, and a session resumes after a rest.</string>
     <!-- 0.2.5: one line per feature; the release preparation adds the others and registers the dialog. -->
     <string name="whatsnew_025_title">New in 0.2.5</string>
-    <string name="whatsnew_025_body">• Community – join the CruxCoach community on Buzz from Settings → Community.</string>
+    <string name="whatsnew_025_body">• Community on Buzz&#160;– talk to the developers and test new builds first (Settings → Community).</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
 
@@ -3072,9 +3075,11 @@
     <string name="community_point_shape">Help shape what comes next</string>
     <string name="community_join_action">Join on Buzz</string>
     <string name="community_join_note">Buzz is a separate app with its own account. Nothing from CruxCoach is shared.</string>
-    <string name="community_report_hint">Follow your report and test the fix early: join the community on Buzz</string>
+    <string name="community_report_hint">Follow your report and test the fix early: join the community on Buzz.</string>
+    <string name="community_report_hint_feature">Talk about your idea and test new builds first: join the community on Buzz.</string>
     <string name="community_report_hint_join">Join</string>
     <string name="community_report_hint_member">Already a member</string>
+    <string name="community_report_hint_later">Not now</string>
     <string name="link_open_failed">No app can open this link.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
@@ -3348,7 +3353,7 @@
     <string name="import_catalogue_pending_short">Names and grades appear after the catalogue download.</string>
     <string name="import_key_access_only">Restores account access. Data is restored separately from a backup.</string>
     <string name="import_moon_device_short">Android accessibility reads your Moon logbook on this device.</string>
-    <string name="import_moon_mail_short">Paste the copied request into the email.</string>
+    <string name="import_moon_mail_short">Paste the copied request into an email to %1$s.</string>
     <string name="account_amber_restore_summary">Choose your backup’s account in Amber. Your private key stays in Amber.</string>
     <string name="account_restore_key_method">With a key</string>
 

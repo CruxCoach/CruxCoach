@@ -93,6 +93,7 @@ Circuit 3 rounds: dips 10, sit-ups 20, plank 30 s</string>
     <string name="trwo_add_new_routine">New workout with this exercise</string>
     <string name="trwo_add_rejected">It loads the injured area, so it is not added yet.</string>
     <string name="trwo_add_anyway">Add anyway</string>
+    <string name="trwo_injury_start_anyway">Start anyway</string>
     <string name="trwo_injury_start_title">Loads the injured area</string>
     <plurals name="trwo_injury_start_text">
         <item quantity="one">This exercise in your workout loads the injured area: %1$s.</item>

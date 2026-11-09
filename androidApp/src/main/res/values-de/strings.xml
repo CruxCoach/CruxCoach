@@ -447,45 +447,45 @@
     <!-- Settings: LED effects (FEAT-074) -->
     <string name="settings_led_anim_title">LED-Effekte</string>
     <string name="settings_led_anim_none">Keine</string>
-    <string name="settings_led_anim_none_hint">Der Boulder leuchtet in seinen normalen Farben.</string>
+    <string name="settings_led_anim_none_hint">der Boulder leuchtet in seinen normalen Farben.</string>
     <string name="settings_led_anim_pulse">Puls</string>
-    <string name="settings_led_anim_pulse_hint">Jeder Griff wird in seiner Farbe heller und wieder dunkler.</string>
-    <string name="settings_led_anim_two_phase">Zwei-Phasen-Stroboskop</string>
-    <string name="settings_led_anim_two_phase_hint">Wechselt blinkend zwischen den CruxCoach- und den Kilter-Farben.</string>
-    <string name="settings_led_anim_chaotic">Chaos-Stroboskop</string>
-    <string name="settings_led_anim_chaotic_hint">Die Farben springen; Startgriffe, Zwischengriffe, Topgriffe und Tritte bleiben unterscheidbar.</string>
+    <string name="settings_led_anim_pulse_hint">jeder Griff wird in seiner Farbe heller und wieder dunkler.</string>
+    <string name="settings_led_anim_two_phase">Wechselblitz</string>
+    <string name="settings_led_anim_two_phase_hint">wechselt blinkend zwischen den CruxCoach- und den Kilter-Farben.</string>
+    <string name="settings_led_anim_chaotic">Chaosblitz</string>
+    <string name="settings_led_anim_chaotic_hint">die Farben springen; Startgriffe, Zwischengriffe, Topgriffe und Tritte bleiben unterscheidbar.</string>
     <string name="settings_led_anim_rainbow">Regenbogen</string>
-    <string name="settings_led_anim_rainbow_hint">Alle Farben wandern langsam durch den Farbkreis.</string>
+    <string name="settings_led_anim_rainbow_hint">alle Farben wandern langsam durch den Farbkreis.</string>
     <string name="settings_led_effects_flashing">Blinkt</string>
-    <string name="settings_led_effects_remove_animations_note">In den Android-Einstellungen ist „Animationen entfernen“ an. Dieser Effekt blinkt trotzdem.</string>
-    <string name="settings_led_effects_background">In anderen Apps weiterlaufen</string>
-    <string name="settings_led_effects_needs_notifications">Braucht Benachrichtigungen, damit du den Effekt von dort stoppen kannst.</string>
+    <string name="settings_led_effects_remove_animations_note">„Animationen entfernen“ ist an. Dieser Effekt blinkt trotzdem.</string>
+    <string name="settings_led_effects_background">Auch in anderen Apps</string>
+    <string name="settings_led_effects_background_on">In anderen Apps bleibt das Board mit diesem Handy verbunden.</string>
+    <string name="settings_led_effects_needs_notifications">Braucht Benachrichtigungen für „Stopp“.</string>
     <string name="settings_led_effects_allow_notifications">Benachrichtigungen erlauben</string>
-    <string name="led_effect_status_running">Läuft gerade am Board.</string>
-    <string name="led_effect_status_waiting">Sende einen Boulder ans Board, um den Effekt zu sehen.</string>
-    <string name="led_effect_status_no_board">Verbinde ein Kilter Board, um den Effekt zu sehen.</string>
-    <string name="led_effect_status_unsupported">Dieses Board zeigt keine LED-Effekte und bleibt in seinen normalen Farben.</string>
-    <string name="led_effect_status_paused">Pausiert, solange Routenwiedergabe, ein Wand-Spiel oder Griffe putzen das Board nutzt.</string>
-    <string name="led_effect_status_ended">Auf diesem Boulder beendet. Sende ihn erneut, um neu zu starten.</string>
+    <string name="settings_led_effects_info_board">Am Board\nDie leuchtenden Griffe ändern ihr Licht. Funktioniert mit einem Kilter Board; andere Boards behalten ihre normalen Farben. Eine Auswahl wirkt sofort, die Wand ist also die Vorschau.</string>
+    <string name="settings_led_effects_info_effects">Effekte</string>
+    <string name="settings_led_effects_info_effect">%1$s: %2$s</string>
+    <string name="led_effect_status_running">Läuft am Board.</string>
+    <string name="led_effect_status_waiting">Wartet auf einen Boulder.</string>
+    <string name="led_effect_status_no_board">Kein Kilter Board verbunden.</string>
+    <string name="led_effect_status_unsupported">Dieses Board kann keine Effekte zeigen.</string>
+    <string name="led_effect_status_paused">Pausiert, solange das Board belegt ist.</string>
+    <string name="led_effect_status_ended">Am beleuchteten Boulder beendet.</string>
     <string name="led_effect_status_background">Pausiert, solange die App im Hintergrund ist.</string>
+    <string name="led_effect_restart">Neu starten</string>
     <string name="led_strobe_notice_title">Blinkendes Licht</string>
-    <string name="led_strobe_notice_text">Dieser Effekt lässt die leuchtenden Griffe bis zu dreimal pro Sekunde blinken. Blinkendes Licht kann bei Menschen mit fotosensitiver Epilepsie Anfälle auslösen, auch bei anderen an der Wand. Puls und Regenbogen wechseln sanft.</string>
-    <string name="led_strobe_notice_remove_animations">In den Android-Einstellungen ist „Animationen entfernen“ an, oft ein Zeichen, dass Bewegung oder Blinken stört. Den Effekt trotzdem einschalten?</string>
+    <string name="led_strobe_notice_text">%1$s lässt die Griffe bis zu dreimal pro Sekunde blinken. Das kann bei fotosensitiver Epilepsie Anfälle auslösen, auch bei anderen an der Wand.</string>
+    <string name="led_strobe_notice_remove_animations">%1$s lässt die Griffe bis zu dreimal pro Sekunde blinken, auch wenn „Animationen entfernen“ an ist. Das kann bei fotosensitiver Epilepsie Anfälle auslösen, auch bei anderen an der Wand.</string>
     <string name="led_strobe_notice_confirm">Einschalten</string>
     <string name="led_strobe_notice_cancel">Abbrechen</string>
     <string name="led_effect_menu">LED-Effekt: %1$s</string>
-    <string name="led_effect_sheet_done">Fertig</string>
     <string name="led_anim_notification_channel">LED-Effekte</string>
     <string name="led_anim_notification_channel_desc">Wird angezeigt, solange ein LED-Effekt in einer anderen App weiterläuft.</string>
     <string name="led_anim_notification_title">LED-Effekt läuft</string>
     <string name="led_anim_notification_stop">Stopp</string>
     <plurals name="settings_led_effects_info">
-        <item quantity="one">Am Board\nDie Griffe des leuchtenden Boulders bewegen sich. Funktioniert mit einem Kilter Board; andere Boards behalten ihre normalen Farben. Änderungen wirken sofort, du kannst sie also mit Blick auf die Wand ausprobieren.\n\nAndere zuerst\nWas du sendest, hat Vorrang. Routenwiedergabe, Wand-Spiele und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minute auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.</item>
-        <item quantity="other">Am Board\nDie Griffe des leuchtenden Boulders bewegen sich. Funktioniert mit einem Kilter Board; andere Boards behalten ihre normalen Farben. Änderungen wirken sofort, du kannst sie also mit Blick auf die Wand ausprobieren.\n\nAndere zuerst\nWas du sendest, hat Vorrang. Routenwiedergabe, Wand-Spiele und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minuten auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.</item>
-    </plurals>
-    <plurals name="settings_led_effects_background_info">
-        <item quantity="one">Zum Filmen: Der Effekt läuft weiter, während eine andere App offen ist, höchstens %1$d Minute auf demselben Boulder, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
-        <item quantity="other">Zum Filmen: Der Effekt läuft weiter, während eine andere App offen ist, höchstens %1$d Minuten auf demselben Boulder, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
+        <item quantity="one">Pausen\nWas du sendest, hat Vorrang. Routenwiedergabe, Wand-Spiele und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minute auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.\n\nIn anderen Apps\nZum Filmen hält „Auch in anderen Apps“ den Effekt am Laufen, während eine andere App offen ist, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
+        <item quantity="other">Pausen\nWas du sendest, hat Vorrang. Routenwiedergabe, Wand-Spiele und Griffe putzen pausieren den Effekt. Das automatische Trennen gibt das Board weiterhin pünktlich frei; der Effekt endet damit.\n\nGrenze\nNach %1$d Minuten auf demselben Boulder endet der Effekt, und der Boulder leuchtet in seinen normalen Farben. Sende ihn erneut, um neu zu starten.\n\nIn anderen Apps\nZum Filmen hält „Auch in anderen Apps“ den Effekt am Laufen, während eine andere App offen ist, mit einer Benachrichtigung zum Stoppen. So lange bleibt dieses Handy mit dem Board verbunden; an einer Hallenwand kann sich dann niemand sonst verbinden. Kostet etwas Akku; hält Android die App an, endet der Effekt.</item>
     </plurals>
     <plurals name="led_anim_notification_text">
         <item quantity="one">Endet nach %1$d Minute auf diesem Boulder. „Stopp“ zeigt die normalen Farben.</item>
@@ -1658,7 +1658,9 @@
     <string name="board_stats_heatmap_board_label">Board</string>
     <string name="board_stats_heatmap_pick_board">Wähle ein Board, um die Hold-Heatmap zu sehen.</string>
     <string name="board_stats_heatmap_unsupported">Dieses Board hat keine Hold-Heatmap.</string>
-    <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
+    <string name="board_stats_empty_period">In diesem Zeitraum ist nichts eingetragen.</string>
+    <string name="board_stats_show_all_time">Gesamten Zeitraum zeigen</string>
+    <string name="board_stats_angle_distribution">Winkelverteilung</string>
     <string name="board_stats_cross_board_tries">Versuche je Grad</string>
     <string name="board_stats_cross_board_months">Versuche je Monat</string>
     <string name="board_stats_cross_board_tries_help">Wie viele Versuche du im Schnitt gebraucht hast, bis du einen Boulder zum ersten Mal geschafft hast, je Board und Grad. Versuche aus früheren Sessions zählen mit, Wiederholungen nach der Begehung nicht.\n\nHohle Balken beruhen auf weniger als %1$d Bouldern und sagen wenig aus.\n\nTippe auf einen Grad, um zu sehen, wie viele Boulder hinter jedem Balken stehen.</string>
@@ -1824,7 +1826,7 @@
     <string name="devcontact_app_version">App-Version</string>
     <string name="devcontact_badge_bug">[FEHLER]</string>
     <string name="devcontact_badge_wish">[WUNSCH]</string>
-    <string name="devcontact_bug_sent">Bug Report gesendet</string>
+    <string name="devcontact_bug_sent">Fehlerbericht gesendet</string>
     <string name="devcontact_bugs_empty">Keine Fehlerberichte gesendet</string>
     <string name="devcontact_category_general">Allgemein</string>
     <string name="devcontact_category_issue">Problem</string>
@@ -1835,7 +1837,7 @@
     <string name="devcontact_developer">Entwickler</string>
     <string name="devcontact_device">Gerät</string>
     <string name="devcontact_device_info">Geräteinformationen</string>
-    <string name="devcontact_feature_sent">Feature Request gesendet</string>
+    <string name="devcontact_feature_sent">Wunsch gesendet</string>
     <string name="devcontact_language">Sprache</string>
     <string name="devcontact_message">Nachricht</string>
     <string name="devcontact_messages">Nachrichten</string>
@@ -2832,6 +2834,7 @@
     <string name="moon_csv_fallback">CSV-Ausweichweg</string>
     <string name="moon_csv_request_data">Kontodaten bei Moon anfordern</string>
     <string name="moon_csv_request_hint">Der Anfragetext wird kopiert, bevor sich dein Mailprogramm öffnet. Füge ihn in die Nachricht ein und ergänze die Platzhalter.</string>
+    <string name="moon_csv_no_mail_app">Keine Mail-App gefunden. Der Anfragetext ist kopiert.</string>
     <string name="moon_csv_request_subject">Subject access request – MoonBoard account data</string>
     <string name="moon_csv_request_body">Name: [vollständiger Name]\nMoonBoard username: [Nutzername]\nAccount email: [E-Mail-Adresse]\n\nPlease treat this as a UK GDPR subject access request and, where applicable, a data portability request. Please provide all personal data linked to my MoonBoard account, including profile and account identifiers; problems I created or logged; sends, ascents, grades, repeats, attempts, dates and session history; favourites, lists, saved and custom problems; and related metadata.\n\nWhere technically feasible, please provide the export as CSV or JSON, or another structured, commonly used, machine-readable format. If identity verification or a secure delivery method is required, please let me know promptly. Please confirm receipt and the expected response date.\n\nKind regards,\n[name]</string>
     <string name="moon_csv_angle_note">Die MoonBoard-CSV enthält keinen Boardwinkel. Ist ein Boulder für beide Winkel verfügbar, importiert CruxCoach ihn mit 40°.</string>
@@ -3031,7 +3034,7 @@
     <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
     <!-- 0.2.5: eine Zeile je Feature; die Release-Vorbereitung ergänzt die anderen und registriert den Dialog. -->
     <string name="whatsnew_025_title">Neu in 0.2.5</string>
-    <string name="whatsnew_025_body">• Community – tritt der CruxCoach-Community auf Buzz bei, unter Einstellungen → Community.</string>
+    <string name="whatsnew_025_body">• Community auf Buzz&#160;– sprich mit den Entwicklern und teste neue Versionen zuerst (Einstellungen → Community).</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 
@@ -3070,10 +3073,12 @@
     <string name="community_point_test">Teste neue Versionen zuerst</string>
     <string name="community_point_shape">Bestimme mit, was als Nächstes kommt</string>
     <string name="community_join_action">Auf Buzz beitreten</string>
-    <string name="community_join_note">Buzz ist eine eigene App mit eigenem Konto. Von CruxCoach wird nichts weitergegeben.</string>
-    <string name="community_report_hint">Verfolge deine Meldung und teste die Lösung früh: Tritt der Community auf Buzz bei</string>
+    <string name="community_join_note">Buzz ist eine separate App mit eigenem Konto. CruxCoach gibt nichts weiter.</string>
+    <string name="community_report_hint">Verfolge deine Meldung und teste die Lösung früh: Tritt der Community auf Buzz bei.</string>
+    <string name="community_report_hint_feature">Sprich über deine Idee und teste neue Versionen zuerst: Tritt der Community auf Buzz bei.</string>
     <string name="community_report_hint_join">Beitreten</string>
     <string name="community_report_hint_member">Bereits Mitglied</string>
+    <string name="community_report_hint_later">Später</string>
     <string name="link_open_failed">Keine App kann diesen Link öffnen.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Hell</string>
@@ -3347,7 +3352,7 @@
     <string name="import_catalogue_pending_short">Namen und Grade erscheinen nach dem Katalogdownload.</string>
     <string name="import_key_access_only">Stellt den Kontozugang wieder her. Daten werden separat aus dem Backup geladen.</string>
     <string name="import_moon_device_short">Die Android-Bedienungshilfe liest dein Moon-Logbuch auf diesem Gerät.</string>
-    <string name="import_moon_mail_short">Den kopierten Anfragetext in die E-Mail einfügen.</string>
+    <string name="import_moon_mail_short">Füge den kopierten Anfragetext in eine E-Mail an %1$s ein.</string>
     <string name="account_amber_restore_summary">Wähle in Amber das Konto deines Backups. Dein privater Schlüssel bleibt in Amber.</string>
     <string name="account_restore_key_method">Mit Schlüssel</string>
 

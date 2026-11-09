@@ -124,7 +124,7 @@ internal fun InjuryCheckSheet(injury: Injury, today: LocalDate, onDismiss: () ->
                         Text(stringResource(R.string.cb_q_checked_on), modifier = Modifier.weight(1f))
                         TextButton(onClick = { checkedOn = today.toString() }) { Text(stringResource(R.string.cb_checked_today)) }
                         TextButton(onClick = { picking = true }, modifier = Modifier.testTag("comeback_checked_on")) {
-                            Text(checkedOn ?: stringResource(R.string.cb_checked_pick))
+                            Text(checkedOn?.let { com.cruxcoach.android.ui.training.coach.formatIsoDay(it) } ?: stringResource(R.string.cb_checked_pick))
                         }
                     }
                 }

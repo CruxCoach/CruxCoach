@@ -59,14 +59,12 @@ private fun BoardFilterChips(
     onSelect: (String?) -> Unit,
 ) {
     val byBoard = comparison.associateBy { it.boardBrand }
-    val hardest = comparison.filter { it.hardestGrade != null }.maxByOrNull { it.hardestDifficultyInt }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // "All" without numbers: the six numbers below are its numbers.
         FilterChip(
             selected = selected == null,
             onClick = { onSelect(null) },
-            label = {
-                BoardChipLabel(stringResource(R.string.map_filter_show_all), comparison.sumOf { it.sendCount }, hardest?.hardestGrade)
-            },
+            label = { Text(stringResource(R.string.map_filter_show_all)) },
         )
         brands.forEach { brand ->
             FilterChip(
@@ -92,9 +90,32 @@ private fun BoardChipLabel(name: String, sends: Int, best: String?) {
     }
 }
 
+/** The statistics as a bottom sheet; [content] is [BoardStatsSheetContent]. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun BoardStatsSheet(onDismiss: () -> Unit, content: @Composable (Modifier) -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    ) {
+        content(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp)
+        )
+    }
+}
+
+/** Everything in the statistics sheet, top to bottom. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun BoardStatsSheet(
+internal fun BoardStatsSheetContent(
     stats: BoardLogbookStats,
     statsInterval: StatsTimeInterval,
     gradeScale: GradeScale,
@@ -124,201 +145,197 @@ internal fun BoardStatsSheet(
     onIntervalSelect: (StatsTimeInterval) -> Unit,
     onCustomDateRange: (LocalDate, LocalDate) -> Unit,
     onHeatmapModeSelect: (HeatmapMode) -> Unit = {},
-    onDismiss: () -> Unit
+    /** The year in review's place in the statistics (#64). */
+    yearReview: @Composable () -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            InfoHeading(stringResource(R.string.board_stats_title), stringResource(R.string.ux_stats_help))
+        InfoHeading(stringResource(R.string.board_stats_title), stringResource(R.string.ux_stats_help))
+        yearReview()
 
-            // Filters first: everything below follows the period and the board.
-            StatsIntervalChips(
-                selected = statsInterval,
-                customDateFrom = customDateFrom,
-                customDateTo = customDateTo,
-                onSelect = onIntervalSelect,
-                onCustomDateRange = onCustomDateRange
+        // Filters first: everything below follows the period and the board.
+        StatsIntervalChips(
+            selected = statsInterval,
+            customDateFrom = customDateFrom,
+            customDateTo = customDateTo,
+            onSelect = onIntervalSelect,
+            onCustomDateRange = onCustomDateRange
+        )
+        if (availableBoardBrands.size > 1) {
+            BoardFilterChips(
+                brands = availableBoardBrands,
+                comparison = boardComparison,
+                selected = boardFilter,
+                onSelect = onBoardFilterSelect,
             )
-            if (availableBoardBrands.size > 1) {
-                BoardFilterChips(
-                    brands = availableBoardBrands,
-                    comparison = boardComparison,
-                    selected = boardFilter,
-                    onSelect = onBoardFilterSelect,
-                )
-            }
+        }
 
-            // The period in six numbers; the cards below explain them.
-            PeriodNumbers(stats, gradeScale)
-
-            // How the boards feel against each other, when there is enough
-            // data. Spans every board whatever the board filter is.
-            crossBoard.feel?.let { feel ->
-                BoardsCard(feel = feel, feelOrder = crossBoard.boards, allBoards = availableBoardBrands)
-            }
-
-            // How hard: the rolling level over time, one line per board when
-            // several are shown together.
-            if (stats.gradeProgression.size >= 2 || progressionByBoard.values.any { it.size >= 2 }) {
-                ProgressCard(
-                    single = stats.gradeProgression,
-                    byBoard = progressionByBoard,
-                    boardFilter = boardFilter,
-                    allBoards = availableBoardBrands,
-                    gradeScale = gradeScale,
-                )
-            }
-
-            // Which grades: every problem once (flashed, sent later or open),
-            // or every send with its repeats in the intensity-zone colours.
-            GradesCard(
-                outcomes = stats.gradeOutcomes,
-                sends = stats.gradePyramid,
-                zones = zones,
-                view = gradesView,
-                onSelect = onGradesViewSelect,
+        // The period in six numbers; the cards below explain them.
+        PeriodNumbers(stats, gradeScale)
+        if (stats.totalSends == 0 && stats.totalAttempts == 0) {
+            EmptyPeriod(
+                onShowAll = { onIntervalSelect(StatsTimeInterval.ALL) }
+                    .takeIf { statsInterval != StatsTimeInterval.ALL || customDateFrom != null },
             )
+        }
 
-            // How many tries: until the send, per grade, per month (#44).
-            if (crossBoard.boards.isNotEmpty()) {
-                CrossBoardSection(
-                    stats = crossBoard,
-                    view = crossBoardView,
-                    onViewSelect = onCrossBoardViewSelect,
-                    allBoards = availableBoardBrands,
-                )
-            }
+        // How the boards feel against each other, when there is enough
+        // data. Spans every board whatever the board filter is.
+        crossBoard.feel?.let { feel ->
+            BoardsCard(feel = feel, feelOrder = crossBoard.boards, allBoards = availableBoardBrands)
+        }
 
-            // When: the days as a calendar, or all entries or the sends over time.
-            ActivityCard(
-                view = activityView,
-                onSelect = onActivityViewSelect,
-                activityMap = stats.activityMap,
-                daysPerWeek = stats.daysPerWeek,
-                entries = stats.entriesOverTime,
-                sends = stats.sendsOverTime,
-                interval = statsInterval,
-                period = stats.period,
-                averageDaysPerWeek = stats.personalRecords.daysPerWeek,
+        // How hard: the rolling level over time, one line per board when
+        // several are shown together.
+        if (stats.gradeProgression.size >= 2 || progressionByBoard.values.any { it.size >= 2 }) {
+            ProgressCard(
+                single = stats.gradeProgression,
+                byBoard = progressionByBoard,
+                boardFilter = boardFilter,
+                allBoards = availableBoardBrands,
+                gradeScale = gradeScale,
             )
+        }
 
-            // At which angles.
-            if (stats.angleDistribution.isNotEmpty()) {
-                ChartSection(stringResource(R.string.board_stats_angle_distribution)) {
-                    BoardAngleDistChart(entries = stats.angleDistribution)
-                }
+        // Which grades: every problem once (flashed, sent later or open),
+        // or every send with its repeats in the intensity-zone colours.
+        GradesCard(
+            outcomes = stats.gradeOutcomes,
+            sends = stats.gradePyramid,
+            zones = zones,
+            view = gradesView,
+            onSelect = onGradesViewSelect,
+        )
+
+        // How many tries: until the send, per grade, per month (#44).
+        if (crossBoard.boards.isNotEmpty()) {
+            CrossBoardSection(
+                stats = crossBoard,
+                view = crossBoardView,
+                onViewSelect = onCrossBoardViewSelect,
+                allBoards = availableBoardBrands,
+            )
+        }
+
+        // When: the days as a calendar, or all entries or the sends over time.
+        ActivityCard(
+            view = activityView,
+            onSelect = onActivityViewSelect,
+            activityMap = stats.activityMap,
+            daysPerWeek = stats.daysPerWeek,
+            entries = stats.entriesOverTime,
+            sends = stats.sendsOverTime,
+            interval = statsInterval,
+            period = stats.period,
+            averageDaysPerWeek = stats.personalRecords.daysPerWeek,
+        )
+
+        // At which angles.
+        if (stats.angleDistribution.isNotEmpty()) {
+            ChartSection(stringResource(R.string.board_stats_angle_distribution)) {
+                BoardAngleDistChart(entries = stats.angleDistribution)
             }
+        }
 
-            // Heatmap section — full mode picker (Meine Sends / Global /
-            // Start / Hand / Foot / Finish) plus the FEAT-039 board selector.
-            // Sits at the very bottom of the sheet because the board rendering
-            // is the heaviest visual and pushes the charts above into the
-            // initial view. Shown whenever at least one board is renderable
-            // (heatmapBoardOptions); the per-grid canvas itself is hidden under
-            // "Alle" (null selection) because disjoint placement-id spaces can't
-            // be overlaid into one aggregate grid — only a hint is shown there.
-            if (heatmapBoardOptions.isNotEmpty()) {
-                val sectionTitle = stringResource(
-                    R.string.board_stats_heatmap_section,
-                    heatmapModeLabel(heatmapMode)
+        // Heatmap section — full mode picker (Meine Sends / Global /
+        // Start / Hand / Foot / Finish) plus the FEAT-039 board selector.
+        // Sits at the very bottom of the sheet because the board rendering
+        // is the heaviest visual and pushes the charts above into the
+        // initial view. Shown whenever at least one board is renderable
+        // (heatmapBoardOptions); the per-grid canvas itself is hidden under
+        // "Alle" (null selection) because disjoint placement-id spaces can't
+        // be overlaid into one aggregate grid — only a hint is shown there.
+        if (heatmapBoardOptions.isNotEmpty()) {
+            val sectionTitle = stringResource(
+                R.string.board_stats_heatmap_section,
+                heatmapModeLabel(heatmapMode)
+            )
+            ChartSection(sectionTitle) {
+                // Board selector: "Alle" + one entry per renderable board
+                // (brand/layout/size/variant). Picking a board re-renders the
+                // heatmap on exactly that grid; "Alle" hides it.
+                HeatmapBoardSelector(
+                    options = heatmapBoardOptions,
+                    selected = heatmapBoardSelection,
+                    onSelect = onHeatmapBoardSelect,
                 )
-                ChartSection(sectionTitle) {
-                    // Board selector: "Alle" + one entry per renderable board
-                    // (brand/layout/size/variant). Picking a board re-renders the
-                    // heatmap on exactly that grid; "Alle" hides it.
-                    HeatmapBoardSelector(
-                        options = heatmapBoardOptions,
-                        selected = heatmapBoardSelection,
-                        onSelect = onHeatmapBoardSelect,
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (heatmapBoardSelection == null) {
+                    // "Alle"/GLOBAL: no specific board — the per-grid heatmap
+                    // cannot represent disjoint grids honestly, so hide it and
+                    // tell the user how to see one. The aggregate stats above
+                    // stay all-boards.
+                    Text(
+                        stringResource(R.string.board_stats_heatmap_pick_board),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                } else {
+                    // Per-board heatmap. The selected board is already named in
+                    // the dropdown anchor above, so no separate label here.
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        HeatmapMode.entries
+                            .filter { it != HeatmapMode.OFF }
+                            .forEach { mode ->
+                                FilterChip(
+                                    selected = mode == heatmapMode,
+                                    onClick = { onHeatmapModeSelect(mode) },
+                                    label = {
+                                        Text(
+                                            heatmapModeLabel(mode),
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = OrangeAccent,
+                                        selectedLabelColor = DarkBackground
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                            }
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
-
-                    if (heatmapBoardSelection == null) {
-                        // "Alle"/GLOBAL: no specific board — the per-grid heatmap
-                        // cannot represent disjoint grids honestly, so hide it and
-                        // tell the user how to see one. The aggregate stats above
-                        // stay all-boards.
+                    // Capability gate keyed on the SELECTED brand (not the
+                    // not-yet-loaded boardSize): the placement-id heatmap only
+                    // applies to Aurora-protocol boards (Kilter + the Aurora
+                    // family). MoonBoard has no Aurora placements — show the
+                    // not-supported hint rather than an empty canvas. For a
+                    // supported brand we render once placements have loaded;
+                    // the brief pre-load window simply shows nothing (no
+                    // misleading "unsupported" flash).
+                    val brandHasHeatmap =
+                        BoardBrand.fromWire(heatmapBoardSelection.brandWire).hasHeatmap
+                    if (!brandHasHeatmap) {
                         Text(
-                            stringResource(R.string.board_stats_heatmap_pick_board),
+                            stringResource(R.string.board_stats_heatmap_unsupported),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    } else {
-                        // Per-board heatmap. The selected board is already named in
-                        // the dropdown anchor above, so no separate label here.
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            HeatmapMode.entries
-                                .filter { it != HeatmapMode.OFF }
-                                .forEach { mode ->
-                                    FilterChip(
-                                        selected = mode == heatmapMode,
-                                        onClick = { onHeatmapModeSelect(mode) },
-                                        label = {
-                                            Text(
-                                                heatmapModeLabel(mode),
-                                                style = MaterialTheme.typography.labelSmall
-                                            )
-                                        },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = OrangeAccent,
-                                            selectedLabelColor = DarkBackground
-                                        ),
-                                        shape = RoundedCornerShape(16.dp)
-                                    )
-                                }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        // Capability gate keyed on the SELECTED brand (not the
-                        // not-yet-loaded boardSize): the placement-id heatmap only
-                        // applies to Aurora-protocol boards (Kilter + the Aurora
-                        // family). MoonBoard has no Aurora placements — show the
-                        // not-supported hint rather than an empty canvas. For a
-                        // supported brand we render once placements have loaded;
-                        // the brief pre-load window simply shows nothing (no
-                        // misleading "unsupported" flash).
-                        val brandHasHeatmap =
-                            BoardBrand.fromWire(heatmapBoardSelection.brandWire).hasHeatmap
-                        if (!brandHasHeatmap) {
+                    } else if (placements.isNotEmpty() && boardSize != null) {
+                        KilterBoardVisualization(
+                            holds = emptyList(),
+                            placements = placements,
+                            boardSize = boardSize,
+                            boardImages = boardImages,
+                            heatmapData = heatmapData.ifEmpty { null },
+                            selectedHolds = emptySet(),
+                            onHoldTapped = null,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (heatmapData.isEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                stringResource(R.string.board_stats_heatmap_unsupported),
+                                stringResource(R.string.board_stats_heatmap_empty),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        } else if (placements.isNotEmpty() && boardSize != null) {
-                            KilterBoardVisualization(
-                                holds = emptyList(),
-                                placements = placements,
-                                boardSize = boardSize,
-                                boardImages = boardImages,
-                                heatmapData = heatmapData.ifEmpty { null },
-                                selectedHolds = emptySet(),
-                                onHoldTapped = null,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            if (heatmapData.isEmpty()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    stringResource(R.string.board_stats_heatmap_empty),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
                         }
                     }
                 }

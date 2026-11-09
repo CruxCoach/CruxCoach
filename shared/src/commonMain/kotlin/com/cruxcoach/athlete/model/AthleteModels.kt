@@ -296,7 +296,10 @@ data class Injury(
     val region: InjuryRegion,
     val side: InjurySide? = null,
     val detail: String? = null,
-    /** Pain 0–9 as reported by the athlete. */
+    /**
+     * Pain 0–[MAX_SEVERITY] as reported by the athlete. Up to 0.2.4 the scale ended at 9; those values are kept as
+     * they are, since 0–9 fits inside 0–10 and the thresholds (4, 5) mean the same on both.
+     */
     val severity: Int,
     val climbingPaused: Boolean = true,
     val startedOn: String,
@@ -309,6 +312,11 @@ data class Injury(
     val plan: ComebackPlan? = null,
 ) {
     val isActive: Boolean get() = resolvedOn == null
+
+    companion object {
+        /** Top of the pain scale, the same 0–10 as the comeback diary (0.2.5). */
+        const val MAX_SEVERITY = 10
+    }
     /** A comeback plan that is running. */
     val activePlan: ComebackPlan? get() = plan?.takeIf { it.isActive && isActive }
 }

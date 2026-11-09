@@ -29,10 +29,6 @@ internal fun SessionSummarySheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    // The session's card, the same one the logbook shares; without the
-    // logbook history the sheet falls back to its own tiles.
-    val recap = summary?.recap
-    val recapLayer = rememberGraphicsLayer()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -40,100 +36,153 @@ internal fun SessionSummarySheet(
         containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                stringResource(R.string.board_session_summary_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
+        SessionSummaryContent(session, summary, zones, onDone = onDismiss)
+    }
+}
+
+/** The end-of-session summary: the session's card or its tiles, the times and the zones. */
+@Composable
+internal fun SessionSummaryContent(
+    session: Board_sessions,
+    summary: EnhancedSessionSummary?,
+    zones: IntensityZones?,
+    onDone: () -> Unit,
+) {
+    // The session's card, the same one the logbook shares; without the
+    // logbook history the sheet falls back to its own tiles.
+    val recap = summary?.recap
+    val recapLayer = rememberGraphicsLayer()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            stringResource(R.string.board_session_summary_title),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        if (recap != null) {
+            SessionRecapImage(recap, recapLayer)
+        } else {
+            // Highlight cards, in as many columns as keep their labels whole
+            val tiles = buildList<Triple<String, String, androidx.compose.ui.graphics.Color>> {
+                add(Triple("${session.ascentCount}", stringResource(R.string.board_sends), SuccessGreen))
+                // Same definition as the logbook stats: every logged row counts at least one try.
+                add(Triple("${summary?.totalAttempts ?: session.bidCount}", stringResource(R.string.board_session_summary_attempts), OrangeAccent))
+                if (summary != null && summary.flashCount > 0) {
+                    add(Triple("${summary.flashCount}", stringResource(R.string.board_session_flashes), GradeElite))
+                }
+                if (summary?.uniqueClimbs != null && summary.uniqueClimbs > 0) {
+                    add(Triple("${summary.uniqueClimbs}", stringResource(R.string.board_stats_unique), Slate80))
+                }
+            }
+            NumberGrid(
+                perRow = tiles.size,
+                labels = tiles.map { it.second },
+                spacing = 8.dp,
+                cells = tiles.map<Triple<String, String, androidx.compose.ui.graphics.Color>, @Composable (Modifier) -> Unit> {
+                    (value, label, color) -> { cell -> HighlightCard(value = value, label = label, color = color, modifier = cell) }
+                },
             )
 
-            if (recap != null) {
-                SessionRecapImage(recap, recapLayer)
-            } else {
-                // Highlight cards row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Hardest send
+            summary?.hardestSendGrade?.let { grade ->
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = OrangeAccent.copy(alpha = 0.12f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    HighlightCard(
-                        value = "${session.ascentCount}",
-                        label = stringResource(R.string.board_sends),
-                        color = SuccessGreen,
-                        modifier = Modifier.weight(1f)
-                    )
-                    HighlightCard(
-                        // Same definition as the logbook stats: every logged row counts at least one try.
-                        value = "${summary?.totalAttempts ?: session.bidCount}",
-                        label = stringResource(R.string.board_session_summary_attempts),
-                        color = OrangeAccent,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (summary != null && summary.flashCount > 0) {
-                        HighlightCard(
-                            value = "${summary.flashCount}",
-                            label = stringResource(R.string.board_session_flashes),
-                            color = GradeElite,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    if (summary?.uniqueClimbs != null && summary.uniqueClimbs > 0) {
-                        HighlightCard(
-                            value = "${summary.uniqueClimbs}",
-                            label = stringResource(R.string.board_stats_unique),
-                            color = Slate80,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-
-                // Hardest send
-                summary?.hardestSendGrade?.let { grade ->
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = OrangeAccent.copy(alpha = 0.12f)
-                        ),
-                        shape = RoundedCornerShape(12.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    stringResource(R.string.board_session_summary_hardest_send),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                summary.hardestSendName?.let { name ->
-                                    Text(
-                                        name,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 1
-                                    )
-                                }
-                            }
+                        Column {
                             Text(
-                                grade,
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = OrangeAccent
+                                stringResource(R.string.board_session_summary_hardest_send),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            summary.hardestSendName?.let { name ->
+                                Text(
+                                    name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1
+                                )
+                            }
                         }
+                        Text(
+                            grade,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = OrangeAccent
+                        )
                     }
                 }
             }
+        }
 
-            // Time breakdown
+        // Time breakdown
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val activeSeconds = session.totalDurationSeconds - session.pauseDurationSeconds
+                SessionSummaryRow(stringResource(R.string.board_session_summary_total_time), formatSessionTime(session.totalDurationSeconds.toInt()))
+                SessionSummaryRow(stringResource(R.string.board_session_summary_active_time), formatSessionTime(activeSeconds.toInt()))
+                SessionSummaryRow(stringResource(R.string.board_session_summary_pause_time), formatSessionTime(session.pauseDurationSeconds.toInt()))
+            }
+        }
+
+        // Mini grade pyramid, when there is no card that shows the grades
+        if (recap == null && summary != null && summary.gradeDistribution.isNotEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.board_session_summary_grade_distribution),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    BoardGradePyramidChart(
+                        entries = summary.gradeDistribution,
+                        zones = zones,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height((summary.gradeDistribution.size * 36 + 20).dp)
+                    )
+                }
+            }
+        }
+
+        // Zone breakdown
+        if (summary != null && summary.zoneTotal > 0) {
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
@@ -146,89 +195,37 @@ internal fun SessionSummarySheet(
                         .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    val activeSeconds = session.totalDurationSeconds - session.pauseDurationSeconds
-                    SessionSummaryRow(stringResource(R.string.board_session_summary_total_time), formatSessionTime(session.totalDurationSeconds.toInt()))
-                    SessionSummaryRow(stringResource(R.string.board_session_summary_active_time), formatSessionTime(activeSeconds.toInt()))
-                    SessionSummaryRow(stringResource(R.string.board_session_summary_pause_time), formatSessionTime(session.pauseDurationSeconds.toInt()))
-                }
-            }
-
-            // Mini grade pyramid, when there is no card that shows the grades
-            if (recap == null && summary != null && summary.gradeDistribution.isNotEmpty()) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp)
-                    ) {
-                        Text(
-                            stringResource(R.string.board_session_summary_grade_distribution),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        BoardGradePyramidChart(
-                            entries = summary.gradeDistribution,
-                            zones = zones,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height((summary.gradeDistribution.size * 36 + 20).dp)
-                        )
+                    Text(
+                        stringResource(R.string.board_session_summary_intensity_zones),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    ZoneBar(stringResource(R.string.board_zone_warmup), summary.warmupCount, summary.zoneTotal, GradeEasy)
+                    ZoneBar(stringResource(R.string.board_zone_optimal), summary.optimalCount, summary.zoneTotal, GradeMedium)
+                    ZoneBar(stringResource(R.string.board_zone_limit), summary.limitCount, summary.zoneTotal, GradeHard)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val typeLabel = when (summary.sessionType) {
+                        SessionType.WARMUP_SESSION -> stringResource(R.string.board_session_type_warmup)
+                        SessionType.VOLUME_SESSION -> stringResource(R.string.board_session_type_volume)
+                        SessionType.LIMIT_SESSION -> stringResource(R.string.board_session_type_limit)
+                        SessionType.PYRAMID_SESSION -> stringResource(R.string.board_session_type_pyramid)
                     }
+                    SessionSummaryRow(stringResource(R.string.board_session_summary_session_type), typeLabel)
                 }
             }
+        }
 
-            // Zone breakdown
-            if (summary != null && summary.zoneTotal > 0) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            stringResource(R.string.board_session_summary_intensity_zones),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        ZoneBar(stringResource(R.string.board_zone_warmup), summary.warmupCount, summary.zoneTotal, GradeEasy)
-                        ZoneBar(stringResource(R.string.board_zone_optimal), summary.optimalCount, summary.zoneTotal, GradeMedium)
-                        ZoneBar(stringResource(R.string.board_zone_limit), summary.limitCount, summary.zoneTotal, GradeHard)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val typeLabel = when (summary.sessionType) {
-                            SessionType.WARMUP_SESSION -> stringResource(R.string.board_session_type_warmup)
-                            SessionType.VOLUME_SESSION -> stringResource(R.string.board_session_type_volume)
-                            SessionType.LIMIT_SESSION -> stringResource(R.string.board_session_type_limit)
-                            SessionType.PYRAMID_SESSION -> stringResource(R.string.board_session_type_pyramid)
-                        }
-                        SessionSummaryRow(stringResource(R.string.board_session_summary_session_type), typeLabel)
-                    }
-                }
-            }
+        if (recap != null) ShareRecapButton(recap, recapLayer, filled = false)
 
-            if (recap != null) ShareRecapButton(recap, recapLayer, filled = false)
-
-            // OK button
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(stringResource(R.string.action_ok), fontWeight = FontWeight.Bold)
-            }
+        // OK button
+        Button(
+            onClick = onDone,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(stringResource(R.string.action_ok), fontWeight = FontWeight.Bold)
         }
     }
 }

@@ -56,7 +56,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   climbing days per week and your milestones (new grades, 50, 100, 250 and more
   sends, your biggest day, weeks in a row). Tap it for the statistics. The period
   filter of the list moved into the logbook filter, next to result, board and
-  angle.
+  angle. Entries no longer repeat the date of their day, and at the largest font
+  sizes an entry puts its name and result below its grade instead of squeezing
+  them.
 - Statistics, reorganised so every number and chart appears once: the period
   and board filters on top (each board chip shows its sends and best grade),
   the period in six numbers with the change against the period before (sends,
@@ -68,6 +70,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   them), tries, activity (calendar, climbing days per week, entries or sends over
   time), angles and holds. The charts over time span the whole period, from your
   first entry at the earliest until today, and count sends without a grade too.
+  A period without entries says so and offers the whole logbook. The statistics
+  and the session recap work at the largest font size and on narrow screens:
+  rows of numbers take fewer columns instead of breaking words, and labels and
+  chart axes grow with the text.
 - Tries until the send: per board, how many of your problems you flashed or sent
   on the 2nd, 3rd, 4th–5th or a later try. Tries from earlier sessions count, so a
   send after attempts on an earlier day is no flash.
@@ -88,6 +94,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ready to share as an image. Tries from earlier days count here too, so a
   first-go send of an old project is no flash, and the card at the end of a
   timed session shows only the milestones of that session.
+- Year in review: your climbing year across all your boards, imported logbooks
+  included, as pages you tap through: volume, boards and angles, your hardest
+  send per board, last year over the same span, your rhythm, highlights, the
+  holds you touched on your sends, the hold types you tagged, off-board
+  training and your climber type (one of ten, picked by rules on your own
+  numbers, with the rule shown). Every page can be shared as an image drawn
+  on the phone, with your name, problem names and exact dates left out unless
+  you switch them on. From 1 December to 31 January a card on the start screen
+  and in the logbook invites you in (its X hides it for the year); all year the
+  statistics keep the review with a year picker. With little data it shows a
+  short "your year so far". A list view serves screen readers, and turning
+  animations off in the system turns them off here too. Computed on your phone;
+  nothing is uploaded.
 - Wall games, from the main menu or a problem's menu ("Play as a game"):
   "Floor is lava" (lit rows rise from the bottom, five speeds), "Endurance" (a
   problem appears row by row, five waiting times), "Hold thief" (a random
@@ -507,7 +526,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   exercise, also when that is lower; and on holds the seconds answered as
   "how many more?" count as time held. Loads planned from an existing value
   do not change.
-- LED effects for the Kilter Board, contributed by dapeebb (PR #21): the
+- LED effects for the Kilter Board, contributed by Dapeebb (PR #21): the
   holds of the lit climb can pulse, flash between the CruxCoach and Kilter
   colors, jump through the colors or travel through a rainbow. Choose one under
   Settings → Board & Bluetooth → LED effects or from a climb's menu; a change
@@ -573,6 +592,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - "Privacy notice" and "Source code" in Settings → About no longer close the app on a
   phone without a browser; a short message says that no app can open the link. The
   community links do the same.
+- "Request account data from Moon" in the MoonBoard import no longer closes the app on
+  a phone without an email app; a message says so, and the screen names the address to
+  send the copied request to.
 
 ## [0.2.4] - 2026-10-25
 

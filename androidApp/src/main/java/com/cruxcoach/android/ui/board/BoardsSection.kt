@@ -3,12 +3,14 @@ package com.cruxcoach.android.ui.board
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -97,30 +99,41 @@ internal fun BoardsCard(feel: BoardFeel, feelOrder: List<String>, allBoards: Lis
             modifier = Modifier.semantics { contentDescription = sentence },
         )
         Spacer(Modifier.height(12.dp))
-        rows.forEach { (board, offset) ->
-            Row(
-                Modifier.fillMaxWidth().height(FEEL_LANE_HEIGHT),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    Modifier.width(FEEL_NAME_WIDTH),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Spacer(Modifier.size(8.dp).background(colors[board] ?: muted, CircleShape))
-                    Text(
-                        boardBrandLabel(board),
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+        val nameWidth = widestText(rows.map { boardBrandLabel(it.first) }, MaterialTheme.typography.bodyMedium) + 18.dp
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            // Names stand above their lanes when they would take more than 40 % of the row.
+            val labelWidth = maxOf(FEEL_NAME_WIDTH, nameWidth).takeIf { it <= maxWidth * 0.4f }
+            Column {
+                rows.forEach { (board, offset) ->
+                    val name: @Composable (Modifier) -> Unit = { modifier ->
+                        Row(
+                            modifier,
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Spacer(Modifier.size(8.dp).background(colors[board] ?: muted, CircleShape))
+                            Text(
+                                boardBrandLabel(board),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    if (labelWidth == null) name(Modifier.padding(top = 4.dp))
+                    Row(
+                        Modifier.fillMaxWidth().height(FEEL_LANE_HEIGHT),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (labelWidth != null) name(Modifier.width(labelWidth))
+                        FeelLane(offset, colors[board] ?: muted, range, Modifier.weight(1f).fillMaxHeight())
+                    }
                 }
-                FeelLane(offset, colors[board] ?: muted, range, Modifier.weight(1f).fillMaxHeight())
+                Row {
+                    if (labelWidth != null) Spacer(Modifier.width(labelWidth))
+                    FeelAxis(range, Modifier.weight(1f))
+                }
             }
-        }
-        Row {
-            Spacer(Modifier.width(FEEL_NAME_WIDTH))
-            FeelAxis(range, Modifier.weight(1f))
         }
     }
 }
@@ -163,17 +176,38 @@ private fun FeelAxis(range: Double, modifier: Modifier) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val axisStyle = MaterialTheme.typography.labelSmall.copy(color = muted)
     Column(modifier) {
-        Canvas(Modifier.fillMaxWidth().height(18.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(textLineHeight(axisStyle) + 4.dp)) {
             val inset = FEEL_INSET.toPx()
-            for (g in -range.toInt()..range.toInt()) {
-                val x = feelX(g.toDouble(), range, size.width, inset)
-                val tick = measurer.measure(if (g > 0) "+$g" else if (g < 0) "−${-g}" else "0", axisStyle)
-                drawText(tick, topLeft = Offset(x - tick.size.width / 2f, 2.dp.toPx()))
+            val ticks = (-range.toInt()..range.toInt()).map { g ->
+                g to measurer.measure(if (g > 0) "+$g" else if (g < 0) "−${-g}" else "0", axisStyle)
+            }
+            // Every grade when the labels fit, else only 0 and the ends.
+            val step = feelX(1.0, range, size.width, inset) - feelX(0.0, range, size.width, inset)
+            val fits = ticks.maxOf { it.second.size.width } + 6.dp.toPx() <= step
+            ticks.forEach { (g, tick) ->
+                if (fits || g == 0 || abs(g) == range.toInt()) {
+                    val x = feelX(g.toDouble(), range, size.width, inset)
+                    val left = (x - tick.size.width / 2f).coerceIn(0f, size.width - tick.size.width)
+                    drawText(tick, topLeft = Offset(left, 2.dp.toPx()))
+                }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("← " + stringResource(R.string.board_stats_feel_easier_end), style = axisStyle)
-            Text(stringResource(R.string.board_stats_feel_harder_end) + " →", style = axisStyle)
+        // The end words at both ends of one line, or on two lines when they do not fit.
+        val easier = "← " + stringResource(R.string.board_stats_feel_easier_end)
+        val harder = stringResource(R.string.board_stats_feel_harder_end) + " →"
+        val needed = widestText(listOf(easier), axisStyle) + widestText(listOf(harder), axisStyle) + 8.dp
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (needed <= maxWidth) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(easier, style = axisStyle, maxLines = 1)
+                    Text(harder, style = axisStyle, maxLines = 1)
+                }
+            } else {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(easier, style = axisStyle)
+                    Text(harder, style = axisStyle, modifier = Modifier.align(Alignment.End))
+                }
+            }
         }
     }
 }
