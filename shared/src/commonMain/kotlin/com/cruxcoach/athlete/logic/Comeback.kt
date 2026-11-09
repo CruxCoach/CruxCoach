@@ -125,6 +125,8 @@ object Comeback {
     const val ROUTINE_PREFIX = "comeback:"
     /** Prefix of the prompt key that remembers a skipped morning question of a look back ([morningSkipKey]). */
     const val MORNING_SKIP_PREFIX = "morning:"
+    private const val REVIEW_PREFIX = "review:"
+    private const val SIGN_PREFIX = "sign:"
 
     fun ladder(injury: Injury): Ladder = ComebackContent.ladderFor(injury.region, injury.check?.finding)
 
@@ -182,9 +184,30 @@ object Comeback {
     fun end(injury: Injury, today: LocalDate, now: Long): Injury =
         injury.copy(plan = injury.plan?.copy(endedOn = today.toString()), updatedAt = now)
 
-    /** Remembers that a prompt was shown, so it stays quiet for [PROMPT_QUIET_DAYS]. */
+    /**
+     * Remembers that a prompt was shown, so it stays quiet for [PROMPT_QUIET_DAYS], and drops the keys that can no
+     * longer matter ([livePrompts]): the plan's prompts only grew, and a backup refuses plans with too many (#114 review).
+     */
     fun markPrompt(injury: Injury, key: String, today: LocalDate, now: Long): Injury =
-        injury.copy(plan = injury.plan?.let { it.copy(prompts = it.prompts + (key to today.toString())) }, updatedAt = now)
+        injury.copy(plan = injury.plan?.let { it.copy(prompts = livePrompts(it, today) + (key to today.toString())) }, updatedAt = now)
+
+    /**
+     * The prompt keys still in use: look backs and skipped morning questions of the stage as it is now (their key names
+     * the stage and the stage change, [reviewKey]), warning-sign keys within [PROMPT_QUIET_DAYS], and every other key
+     * ("worse", "nb14", "nb21" and keys this version does not know).
+     */
+    fun livePrompts(plan: ComebackPlan, today: LocalDate): Map<String, String> {
+        val stageNow = reviewKeyPrefix(plan)
+        return plan.prompts.filterKeys { key ->
+            val review = key.removePrefix(MORNING_SKIP_PREFIX)
+            when {
+                review.startsWith(REVIEW_PREFIX) -> review.startsWith(stageNow)
+                key.startsWith(SIGN_PREFIX) -> parse(key.removePrefix(SIGN_PREFIX))
+                    ?.let { (today.toEpochDays() - it.toEpochDays()) < PROMPT_QUIET_DAYS } ?: true
+                else -> true
+            }
+        }
+    }
 
     /** A CruxCoach stage without climbing pauses climbing on the injury; others resume it. */
     private fun withPausedClimbing(injury: Injury): Injury {
@@ -294,7 +317,10 @@ object Comeback {
     }
 
     /** Key of a stage's weekly look back in [ComebackPlan.prompts]: one per stage change and week on the stage. */
-    fun reviewKey(plan: ComebackPlan, daysOnStage: Int): String = "review:${plan.stage}:${plan.history.size}:${daysOnStage / MIN_DAYS_ON_STAGE}"
+    fun reviewKey(plan: ComebackPlan, daysOnStage: Int): String = reviewKeyPrefix(plan) + (daysOnStage / MIN_DAYS_ON_STAGE)
+
+    /** The part of [reviewKey] that names the stage as it is now. */
+    private fun reviewKeyPrefix(plan: ComebackPlan): String = "$REVIEW_PREFIX${plan.stage}:${plan.history.size}:"
 
     /** Key that remembers the skipped morning question of the look back [reviewKey]. */
     fun morningSkipKey(reviewKey: String): String = MORNING_SKIP_PREFIX + reviewKey
@@ -332,8 +358,8 @@ object Comeback {
         val plan = injury.activePlan ?: return emptyList()
         val out = mutableListOf<Prompt>()
         fun quiet(key: String) = plan.prompts[key]?.let(::parse)?.let { (today.toEpochDays() - it.toEpochDays()) < PROMPT_QUIET_DAYS } == true
-        if (entries.firstOrNull { it.day == today.toString() }?.newSign == true && !quiet("sign:$today")) {
-            out += Prompt(PromptKind.NEW_SIGN, "sign:$today")
+        if (entries.firstOrNull { it.day == today.toString() }?.newSign == true && !quiet("$SIGN_PREFIX$today")) {
+            out += Prompt(PromptKind.NEW_SIGN, "$SIGN_PREFIX$today")
         }
         worsening(entries, today)?.let { (a, b) -> if (!quiet("worse")) out += Prompt(PromptKind.WORSENING, "worse", from = a, to = b) }
         notBetter(entries, today)?.let { days ->

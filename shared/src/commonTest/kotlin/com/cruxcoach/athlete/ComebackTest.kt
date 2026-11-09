@@ -217,6 +217,30 @@ class ComebackTest {
     }
 
     @Test
+    fun markingAPromptDropsTheKeysThatNoLongerMatter() {
+        // Review of #114: the plan's prompts only grew, and a backup refuses plans with too many.
+        val injury = started(2, since = day(-8))
+        val plan = injury.plan!!
+        // This stage's second week; the first week's keys stay, the earlier stages' go.
+        val now = Comeback.reviewKey(plan, 15)
+        val old = listOf("review:0:0:1", "review:1:1:3", "morning:review:1:1:3", "review:2:0:1", "sign:${day(-30)}")
+        val kept = listOf(Comeback.reviewKey(plan, 8), Comeback.morningSkipKey(Comeback.reviewKey(plan, 8)), "worse", "nb14", "nb21",
+            "sign:${day(-3)}", "something:new")
+        val full = injury.copy(plan = plan.copy(prompts = (old + kept).associateWith { day(-1).toString() }))
+        val marked = Comeback.markPrompt(full, now, today, 2).plan!!.prompts
+        assertEquals((kept + now).toSet(), marked.keys)
+        assertEquals(today.toString(), marked[now])
+        // A long plan stays small: a year of stage changes, each with its look back and a skipped morning question.
+        var long = injury
+        repeat(52) { week ->
+            val key = Comeback.reviewKey(long.plan!!, 7)
+            long = Comeback.markPrompt(Comeback.markPrompt(long, Comeback.morningSkipKey(key), today, 3), key, today, 3)
+            long = Comeback.moveTo(long, if (week % 2 == 0) 3 else 2, StageChangeReason.MOVE_UP, today, 3)
+        }
+        assertTrue(long.plan!!.prompts.size <= 4, "${long.plan!!.prompts.keys}")
+    }
+
+    @Test
     fun aWeekWithoutAMorningValueAsksForTodaysBeforeTheNextStage() {
         // Owner 2026-11-09: no step up without at least one morning value.
         val injury = started(1, since = day(-8))
