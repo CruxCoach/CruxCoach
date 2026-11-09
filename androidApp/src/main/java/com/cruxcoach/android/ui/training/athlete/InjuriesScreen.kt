@@ -305,7 +305,8 @@ private fun InjuryCard(injury: Injury, onUpdate: (Injury) -> Unit, onResolve: ()
                 Button(onClick = onResolve, modifier = Modifier.testTag("injury_resolve_${injury.id}")) {
                     Text(stringResource(R.string.tra_injury_resolve))
                 }
-                TextButton(onClick = onDelete, modifier = Modifier.testTag("injury_delete_${injury.id}")) { Text(stringResource(R.string.tr_action_delete)) }
+                TextButton(onClick = onDelete, colors = ButtonDefaults.textButtonColors(contentColor = CruxCoachDesign.colors.onCautionContainer),
+                    modifier = Modifier.testTag("injury_delete_${injury.id}")) { Text(stringResource(R.string.tr_action_delete)) }
             }
         }
     }

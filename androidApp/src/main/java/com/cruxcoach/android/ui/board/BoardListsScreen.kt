@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -156,7 +157,7 @@ fun BoardListsScreen(
                     containerColor = OrangeAccent,
                     modifier = Modifier.testTag("board_lists_fab")
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_create_list), tint = DarkBackground)
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_create_list), tint = CruxCoachDesign.colors.onBrandAccent)
                 }
             }
         }
@@ -231,7 +232,7 @@ fun BoardListsScreen(
                         Text(
                             stringResource(R.string.board_lists_empty_message),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                         )
                     }

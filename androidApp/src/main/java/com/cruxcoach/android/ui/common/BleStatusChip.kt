@@ -39,6 +39,7 @@ import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -177,10 +178,10 @@ internal fun SessionChipContent(
                         formatSessionTime(sessionState.elapsedSeconds),
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold,
-                        color = timerColor
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     if (sessionState.isPaused) {
-                        Text(" ⏸", style = MaterialTheme.typography.bodySmall, color = WarningYellow.copy(alpha = 0.7f))
+                        Text(" ⏸", style = MaterialTheme.typography.bodySmall, color = CruxCoachDesign.colors.caution)
                     }
                     Spacer(Modifier.width(10.dp))
                 }
@@ -201,7 +202,7 @@ internal fun SessionChipContent(
                         "${session.currentIndex + 1}/${session.queue.size}",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold,
-                        color = OrangeAccent
+                        color = CruxCoachDesign.colors.onBrandAccentContainer
                     )
                     Spacer(Modifier.width(5.dp))
                     Text(
@@ -314,7 +315,7 @@ internal fun SessionChipContent(
                             )
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = WarningYellow,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)

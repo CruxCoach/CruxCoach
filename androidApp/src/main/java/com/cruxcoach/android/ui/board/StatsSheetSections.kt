@@ -171,7 +171,7 @@ private fun PeriodTotalsCard(stats: BoardLogbookStats, gradeScale: GradeScale) {
             Text(
                 stringResource(R.string.board_stats_period_versus),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 12.dp),
             )
@@ -236,7 +236,7 @@ private fun PeriodBests(records: PersonalRecords) {
                             Text(
                                 date,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                             )
                         }
@@ -834,6 +834,7 @@ private fun DaysPerWeekChart(entries: List<DaysPerWeek>, average: Double) {
     val axisStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
     val averageStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
     val ink = MaterialTheme.colorScheme.onSurface
+    val accent = OrangeAccent
     val months = MONTH_LABELS.map { stringResource(it) }
     val first = entries.first().start
     val last = entries.last().let { it.start.plusDays(it.days - 1L) }
@@ -888,8 +889,8 @@ private fun DaysPerWeekChart(entries: List<DaysPerWeek>, average: Double) {
             val width = (span - gap).coerceAtLeast(1.dp.toPx())
             val y = yOf(entry.perWeek)
             val r = min(2.dp.toPx(), width / 2)
-            drawRoundRect(OrangeAccent, Offset(xOf(entry.start) + gap / 2, y), Size(width, bottom - y), CornerRadius(r))
-            if (bottom - y > r) drawRect(OrangeAccent, Offset(xOf(entry.start) + gap / 2, y + r), Size(width, bottom - y - r))
+            drawRoundRect(accent, Offset(xOf(entry.start) + gap / 2, y), Size(width, bottom - y), CornerRadius(r))
+            if (bottom - y > r) drawRect(accent, Offset(xOf(entry.start) + gap / 2, y + r), Size(width, bottom - y - r))
         }
         // The average over the period; its value stands above the chart.
         val y = yOf(average)

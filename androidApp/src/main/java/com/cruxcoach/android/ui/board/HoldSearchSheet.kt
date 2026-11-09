@@ -154,7 +154,7 @@ internal fun HoldSearchSheet(
                             stringResource(R.string.board_holdsearch_climbs_found, matchCount),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (matchCount > 0) SuccessGreen else GradeHard
+                            color = if (matchCount > 0) SuccessGreen else ErrorRed
                         )
                     }
                     Button(
@@ -237,12 +237,18 @@ internal fun HoldSearchActionBar(
                 )
             }
             Row {
+                // The theme's primary is too faint on the orange tint.
+                val actionColors = ButtonDefaults.textButtonColors(
+                    contentColor = CruxCoachDesign.colors.onBrandAccentContainer
+                )
                 TextButton(
                     onClick = onOpenSheet,
+                    colors = actionColors,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                 ) { Text(stringResource(R.string.board_holdsearch_change), style = MaterialTheme.typography.labelSmall) }
                 TextButton(
                     onClick = onClearFilter,
+                    colors = actionColors,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                 ) { Text(stringResource(R.string.board_holdsearch_clear), style = MaterialTheme.typography.labelSmall) }
             }

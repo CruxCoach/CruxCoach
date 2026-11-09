@@ -52,7 +52,8 @@ internal fun ComebackNotice(onSigns: (() -> Unit)?, modifier: Modifier = Modifie
                 Text(stringResource(R.string.cb_not_a_substitute), style = MaterialTheme.typography.bodySmall)
             }) {
                 if (onSigns != null) {
-                    TextButton(onClick = onSigns, modifier = Modifier.testTag("comeback_notice_signs")) { Text(stringResource(R.string.cb_warning_signs)) }
+                    TextButton(onClick = onSigns, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                        modifier = Modifier.testTag("comeback_notice_signs")) { Text(stringResource(R.string.cb_warning_signs)) }
                 }
             }
         }
@@ -250,9 +251,14 @@ internal fun HintCard(
             content?.let { Box(Modifier.padding(top = 8.dp)) { it() } }
             if (primary != null || secondary != null || tertiary != null) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    // On the caution fill the default primary labels read too faint.
+                    val outlinedColors = if (caution) ButtonDefaults.outlinedButtonColors(contentColor = CruxCoachDesign.colors.onCautionContainer)
+                        else ButtonDefaults.outlinedButtonColors()
+                    val textColors = if (caution) ButtonDefaults.textButtonColors(contentColor = CruxCoachDesign.colors.onCautionContainer)
+                        else ButtonDefaults.textButtonColors()
                     primary?.let { (label, action) -> Button(onClick = action, modifier = Modifier.testTag("${tag}_primary")) { Text(label) } }
-                    secondary?.let { (label, action) -> OutlinedButton(onClick = action, modifier = Modifier.testTag("${tag}_secondary")) { Text(label) } }
-                    tertiary?.let { (label, action) -> TextButton(onClick = action, modifier = Modifier.testTag("${tag}_tertiary")) { Text(label) } }
+                    secondary?.let { (label, action) -> OutlinedButton(onClick = action, colors = outlinedColors, modifier = Modifier.testTag("${tag}_secondary")) { Text(label) } }
+                    tertiary?.let { (label, action) -> TextButton(onClick = action, colors = textColors, modifier = Modifier.testTag("${tag}_tertiary")) { Text(label) } }
                 }
             }
         }

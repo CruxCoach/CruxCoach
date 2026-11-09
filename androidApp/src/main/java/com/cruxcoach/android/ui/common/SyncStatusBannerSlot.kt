@@ -168,7 +168,7 @@ private fun SyncProgressBanner(brands: List<BoardBrand>, step: ImportStep?, onCl
                     else stepLabel(step),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = OrangeAccent,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
@@ -251,7 +251,7 @@ private fun SyncErrorBanner(message: String, onDismiss: () -> Unit, onClick: () 
             Text(
                 message,
                 style = MaterialTheme.typography.labelMedium,
-                color = ErrorRed,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp),

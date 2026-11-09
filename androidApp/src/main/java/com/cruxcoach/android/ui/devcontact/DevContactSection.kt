@@ -40,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -55,6 +54,7 @@ import com.cruxcoach.android.ui.settings.SettingsToggleRow
 import com.cruxcoach.android.R
 import com.cruxcoach.android.notification.AnnouncementTagParser
 import com.cruxcoach.android.notification.NotificationReliabilityHelper
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @Composable
@@ -240,7 +240,7 @@ private fun DevContactRow(
             ) {
                 Text(
                     text = badge.toString(),
-                    color = Color.White,
+                    color = CruxCoachDesign.colors.onBrandAccent,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 )

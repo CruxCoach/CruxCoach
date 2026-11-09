@@ -94,6 +94,8 @@ import com.cruxcoach.android.ui.board.BoardSeriesColors
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.DarkSurface
+import com.cruxcoach.android.ui.theme.BrandOrange
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.domain.yearreview.YearReview
 import com.cruxcoach.domain.yearreview.YearReviewComputer
@@ -102,6 +104,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val PageText = Color.White
+
+/** The bright orange: the pages are dark in both themes, where the light theme's deeper orange is too faint. */
+private val PageAccent = BrandOrange
 private val PageMuted = Color.White.copy(alpha = 0.7f)
 private val PageFaint = Color.White.copy(alpha = 0.5f)
 
@@ -262,7 +267,7 @@ private fun ProgressSegments(count: Int, current: Int) {
                     .weight(1f)
                     .height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(if (i <= current) OrangeAccent else Color.White.copy(alpha = 0.25f)),
+                    .background(if (i <= current) PageAccent else Color.White.copy(alpha = 0.25f)),
             )
         }
     }
@@ -291,7 +296,7 @@ internal fun PageContent(page: ReviewPage, index: Int, count: Int, boardColors: 
             // The page's line above the title is for the shared image; here the progress bar and the title say where you are.
             Text(page.title, color = PageText, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
             page.hero?.let {
-                Text(it, color = OrangeAccent, style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Black)
+                Text(it, color = PageAccent, style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Black)
             }
             page.heroLabel?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.titleMedium) }
             page.lead?.let { Text(it, color = PageText, style = MaterialTheme.typography.bodyLarge) }
@@ -306,7 +311,7 @@ internal fun PageContent(page: ReviewPage, index: Int, count: Int, boardColors: 
                 Button(
                     onClick = onShare,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
+                    colors = ButtonDefaults.buttonColors(containerColor = PageAccent, contentColor = DarkBackground),
                     shape = RoundedCornerShape(12.dp),
                 ) {
                     Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -457,7 +462,7 @@ private fun MonthBars(perMonth: List<Int>, busiest: Int?) {
                             .fillMaxWidth()
                             .fillMaxHeight((days.toFloat() / most).coerceAtLeast(if (days > 0) 0.05f else 0.02f) * 0.9f)
                             .clip(RoundedCornerShape(3.dp))
-                            .background(if (i + 1 == busiest) OrangeAccent else PageMuted),
+                            .background(if (i + 1 == busiest) PageAccent else PageMuted),
                     )
                 }
                 Text(
@@ -507,7 +512,7 @@ internal fun ReviewList(
                         )
                         page.howCalculated?.let { InfoButton(page.title, it, tint = PageMuted) }
                     }
-                    page.hero?.let { Text(it, color = OrangeAccent, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                    page.hero?.let { Text(it, color = PageAccent, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                     page.heroLabel?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.bodyLarge) }
                     page.lead?.let { Text(it, color = PageText, style = MaterialTheme.typography.bodyLarge) }
                     page.note?.let { Text(it, color = PageMuted, style = MaterialTheme.typography.bodyMedium) }
@@ -553,7 +558,7 @@ internal fun Loading(year: Int, onClose: () -> Unit) {
             modifier = Modifier.padding(horizontal = PageMargin, vertical = 8.dp),
         )
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = OrangeAccent)
+            CircularProgressIndicator(color = PageAccent)
         }
     }
 }
@@ -594,7 +599,7 @@ internal fun LoadFailed(onRetry: () -> Unit, onClose: () -> Unit) {
             Button(
                 onClick = onRetry,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
+                colors = ButtonDefaults.buttonColors(containerColor = PageAccent, contentColor = DarkBackground),
                 shape = RoundedCornerShape(12.dp),
             ) { Text(stringResource(R.string.action_retry), fontWeight = FontWeight.Bold) }
         }
@@ -750,7 +755,7 @@ internal fun ShareSheetContent(
                 } else {
                     // The image's own room while it is drawn, so nothing below moves when it appears.
                     Box(frame.background(DarkBackground), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = OrangeAccent, modifier = Modifier.size(32.dp))
+                        CircularProgressIndicator(color = PageAccent, modifier = Modifier.size(32.dp))
                     }
                 }
             }
@@ -764,7 +769,7 @@ internal fun ShareSheetContent(
             onClick = onSend,
             enabled = ready,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = DarkBackground),
+            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent, contentColor = CruxCoachDesign.colors.onBrandAccent),
             shape = RoundedCornerShape(12.dp),
         ) {
             Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))

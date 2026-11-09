@@ -76,6 +76,7 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.BoardSizeCheckPoint
 import com.cruxcoach.android.ui.common.InfoButton
+import com.cruxcoach.android.ui.theme.BrandOrange
 import com.cruxcoach.android.ui.theme.DarkSurface
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardSize
@@ -507,7 +508,8 @@ private fun BoardSizeCheckImage(
             val radius = minOf(ringRadius(width, height, scale), (closest - stroke) / 2f).coerceAtLeast(3.dp.toPx())
             centres.forEach { centre ->
                 drawCircle(Color.White.copy(alpha = 0.3f), radius, centre)
-                drawCircle(OrangeAccent, radius, centre, style = Stroke(width = stroke))
+                // The bright orange: the rings sit on the dark board picture in both themes.
+                drawCircle(BrandOrange, radius, centre, style = Stroke(width = stroke))
             }
         }
     }

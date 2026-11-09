@@ -516,7 +516,7 @@ private fun AddAction(
             // Shrinks to fit a quarter of a 360-dp phone: "Beschreiben" was cut to "Beschreibe" (render review 2026-10-16).
             val labelStyle = MaterialTheme.typography.labelMedium
             androidx.compose.foundation.text.BasicText(label, maxLines = 1, modifier = Modifier.padding(top = 4.dp),
-                style = labelStyle.copy(color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface),
+                style = labelStyle.copy(color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface),
                 autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = labelStyle.fontSize))
         }
     }
@@ -868,11 +868,20 @@ private fun EnergyRing(
     }
 }
 
-/** Energy's own ring colour, distinct from protein (green), carbs (accent) and water (blue). */
-internal val EnergyColor = androidx.compose.ui.graphics.Color(0xFF9C6ADE)
+/**
+ * Energy's own ring colour, distinct from protein (green), carbs (accent) and water (blue); deeper
+ * in the light theme, so the ring stands out at 3:1 there too.
+ */
+internal val EnergyColor: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFF9C6ADE, light = 0xFF8A55D4)
 
-/** Fat's ring colour: gold, next to energy (violet), carbs (orange) and protein (green). */
-internal val FatColor = androidx.compose.ui.graphics.Color(0xFFD9A400)
+/** Fat's ring colour: gold, next to energy (violet), carbs (orange) and protein (green); deeper in the light theme. */
+internal val FatColor: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFFD9A400, light = 0xFF9A7300)
 
 /**
  * Water as glasses: tap the next empty one for another glass, the last full
@@ -936,7 +945,7 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
                     ) {
                         Icon(
                             if (filled) Icons.Default.LocalDrink else Icons.Outlined.LocalDrink, null,
-                            tint = if (filled) blue else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isNext) 0.9f else 0.4f),
+                            tint = if (filled) blue else if (isNext) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(if (isNext) 28.dp else 24.dp),
                         )
                     }

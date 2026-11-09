@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.contentColorOn
 import java.time.Month
 import java.time.YearMonth
 import kotlin.math.abs
@@ -330,7 +331,7 @@ private fun SendCurveRow(
                         // Shares at a glance; the counts behind them stand below once the row is open.
                         val percent = measurer.measure(
                             "${Math.round(n * 100f / total)} %",
-                            percentStyle.copy(color = if (ramp[i].luminance() > 0.3f) Color(0xFF0B0B0B) else Color.White),
+                            percentStyle.copy(color = contentColorOn(ramp[i])),
                         )
                         if (percent.size.width + 6.dp.toPx() < w) {
                             drawText(
@@ -478,7 +479,7 @@ private fun TriesBar(tries: TriesToSend, color: Color, scaleMax: Double, labelRe
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = if (small) FontWeight.Normal else FontWeight.SemiBold,
                 color = if (small) {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    MaterialTheme.colorScheme.onSurfaceVariant
                 } else {
                     MaterialTheme.colorScheme.onSurface
                 },

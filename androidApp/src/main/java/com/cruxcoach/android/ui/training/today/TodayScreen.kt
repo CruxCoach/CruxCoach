@@ -690,8 +690,12 @@ private fun DoneHeroCard(state: TodayState, onMore: () -> Unit, onOpenHistory: (
             )
             Text(stringResource(R.string.trt_done_hero_text), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onMore, modifier = Modifier.testTag("today_done_more")) { Text(stringResource(R.string.trt_done_hero_more)) }
-                TextButton(onClick = onOpenHistory) { Text(stringResource(R.string.trt_done_hero_history)) }
+                val onCard = CruxCoachDesign.colors.onPositiveContainer
+                OutlinedButton(onClick = onMore, colors = ButtonDefaults.outlinedButtonColors(contentColor = onCard),
+                    modifier = Modifier.testTag("today_done_more")) { Text(stringResource(R.string.trt_done_hero_more)) }
+                TextButton(onClick = onOpenHistory, colors = ButtonDefaults.textButtonColors(contentColor = onCard)) {
+                    Text(stringResource(R.string.trt_done_hero_history))
+                }
             }
         }
     }
@@ -754,7 +758,8 @@ private fun CheckinRow(state: TodayState, onOpen: () -> Unit) {
                     Icon(Icons.Default.Mood, null, Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.trt_checkin_title), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onOpen, modifier = Modifier.testTag("today_checkin_open")) { Text(stringResource(R.string.tru_checkin_action)) }
+                    TextButton(onClick = onOpen, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+                        modifier = Modifier.testTag("today_checkin_open")) { Text(stringResource(R.string.tru_checkin_action)) }
                 }
             } else {
                 ReadinessResult(state, onEdit = if (state.profile.checkinEnabled) onOpen else null)
@@ -818,7 +823,8 @@ private fun ReadinessResult(state: TodayState, onEdit: (() -> Unit)?) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("today_checkin_summary"))
             }
         } }) {
-            if (onEdit != null) TextButton(onClick = onEdit, modifier = Modifier.testTag("today_checkin_edit")) {
+            if (onEdit != null) TextButton(onClick = onEdit, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+                modifier = Modifier.testTag("today_checkin_edit")) {
                 Text(stringResource(R.string.trt_checkin_change))
             }
         }
@@ -942,7 +948,8 @@ private fun QuickCheckin(onSave: (Int?, Set<com.cruxcoach.athlete.model.InjuryRe
             onClick = { onSave(strength, if (hurts == true) soreSet else emptySet()) },
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).testTag("today_quick_show"),
         ) { Text(stringResource(R.string.trt_quick_show)) }
-        TextButton(onClick = onMore, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("today_quick_more")) {
+        TextButton(onClick = onMore, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+            modifier = Modifier.align(Alignment.CenterHorizontally).testTag("today_quick_more")) {
             Text(stringResource(R.string.trt_quick_more))
         }
     }
@@ -1118,8 +1125,20 @@ private fun WaterTile(state: TodayState, units: com.cruxcoach.athlete.model.Unit
     )
 }
 
-/** Water's own colour, the same on Today and in the nutrition log. */
-internal val WaterBlue = androidx.compose.ui.graphics.Color(0xFF4FA3F7)
+/**
+ * The orange of links and buttons on the suggestion card: its secondaryContainer is darker than the
+ * page, where the theme's orange stays below 4.5:1 (light 4.1, dark 3.4).
+ */
+private val AccentOnCard: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFFFFB74D, light = 0xFF9A3500)
+
+/** Water's own colour, the same on Today and in the nutrition log; deeper in the light theme, where its taps need 3:1. */
+internal val WaterBlue: androidx.compose.ui.graphics.Color
+    @androidx.compose.runtime.Composable
+    @androidx.compose.runtime.ReadOnlyComposable
+    get() = com.cruxcoach.android.ui.theme.themedColor(dark = 0xFF4FA3F7, light = 0xFF1E78C8)
 
 @Composable
 private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit, onSecondary: (() -> Unit)? = null) {
@@ -1435,7 +1454,7 @@ private fun DailySuggestionCard(
                                         if (item.slug in state.newToYou) {
                                             val how = stringResource(R.string.trt_new_how)
                                             val label = stringResource(R.string.trt_new_to_you)
-                                            val accent = CruxCoachDesign.colors.brandAccent
+                                            val accent = AccentOnCard
                                             // One text, so it wraps as a whole at the largest font size.
                                             Text(
                                                 buildAnnotatedString {
@@ -1462,7 +1481,7 @@ private fun DailySuggestionCard(
                     if (main.size > 4) {
                         Text(
                             if (expanded) stringResource(R.string.trt_show_less) else stringResource(R.string.trt_more_exercises, main.size - 4),
-                            style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = CruxCoachDesign.colors.brandAccent,
+                            style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = AccentOnCard,
                             modifier = Modifier.clip(CruxCoachDesign.shapes.small).clickable { expanded = !expanded }
                                 .padding(vertical = 8.dp, horizontal = 4.dp).testTag("today_items_more"),
                         )
@@ -1472,7 +1491,7 @@ private fun DailySuggestionCard(
             s.reasons.firstOrNull()?.let {
                 // The reason with "Warum?" right behind it: the details are one tap away, not another row of icons.
                 val why = stringResource(R.string.tru_why)
-                val accent = CruxCoachDesign.colors.brandAccent
+                val accent = AccentOnCard
                 Text(
                     buildAnnotatedString {
                         append(suggestionReasonText(it, state))
@@ -1501,6 +1520,7 @@ private fun DailySuggestionCard(
                     Text(stringResource(R.string.tre_board_plan, generatorLabel(plan.type), plan.minutes))
                 }
                 OutlinedButton(onClick = { onStart(title) }, enabled = s.routine.items.isNotEmpty(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_suggestion_start")) {
                     Text(stringResource(R.string.trt_warmup_start))
                 }
@@ -1514,14 +1534,16 @@ private fun DailySuggestionCard(
                 }
                 // Only when the week's training days are done, not when an area's volume is: one tap trains anyway.
                 if (s.reasons.firstOrNull() == SuggestionReason.WEEK_DAYS_DONE) {
-                    OutlinedButton(onClick = onTrainAnyway, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_train_anyway")) {
+                    OutlinedButton(onClick = onTrainAnyway, colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentOnCard),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_train_anyway")) {
                         Icon(Icons.Default.FitnessCenter, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.trv_train_anyway))
                     }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onNext, modifier = Modifier.testTag("today_suggestion_next")) {
+                TextButton(onClick = onNext, colors = ButtonDefaults.textButtonColors(contentColor = AccentOnCard),
+                    modifier = Modifier.testTag("today_suggestion_next")) {
                     Icon(Icons.Default.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trsg_next))
                 }
                 Spacer(Modifier.weight(1f))
@@ -2045,7 +2067,7 @@ private fun CircuitGroupHeader(items: List<com.cruxcoach.athlete.model.RoutineIt
         Spacer(Modifier.width(4.dp))
         Text(stringResource(R.string.trcirc_group, pluralStringResource(R.plurals.trcirc_rounds, rounds, rounds),
             formatClock(first.circuitRestS ?: com.cruxcoach.athlete.logic.Circuits.DEFAULT_CIRCUIT_REST_S), formatClock(first.roundRestS ?: 120)),
-            style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = CruxCoachDesign.colors.brandAccent,
+            style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = AccentOnCard,
             modifier = Modifier.weight(1f))
         Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
     }

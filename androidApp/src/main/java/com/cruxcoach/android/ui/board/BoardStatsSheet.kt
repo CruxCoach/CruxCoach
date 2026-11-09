@@ -315,7 +315,7 @@ internal fun BoardStatsSheetContent(
                                     },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = OrangeAccent,
-                                        selectedLabelColor = DarkBackground
+                                        selectedLabelColor = CruxCoachDesign.colors.onBrandAccent
                                     ),
                                     shape = RoundedCornerShape(16.dp)
                                 )
@@ -451,7 +451,7 @@ internal fun StatsIntervalChips(
                 label = { Text(statsTimeIntervalLabel(interval), style = MaterialTheme.typography.labelMedium) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = OrangeAccent,
-                    selectedLabelColor = DarkBackground
+                    selectedLabelColor = CruxCoachDesign.colors.onBrandAccent
                 ),
                 shape = RoundedCornerShape(20.dp)
             )

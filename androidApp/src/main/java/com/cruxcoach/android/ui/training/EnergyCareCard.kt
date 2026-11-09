@@ -61,7 +61,8 @@ fun EnergyCareCard(
                     modifier = Modifier.padding(end = 8.dp, top = 2.dp).testTag("${tag}_${s.name.lowercase()}"))
             }
             if (adjust != null) {
-                TextButton(onClick = adjust, modifier = Modifier.align(Alignment.End).testTag("${tag}_adjust")) {
+                TextButton(onClick = adjust, colors = ButtonDefaults.textButtonColors(contentColor = CruxCoachDesign.colors.onCautionContainer),
+                    modifier = Modifier.align(Alignment.End).testTag("${tag}_adjust")) {
                     Text(stringResource(R.string.trn_adjust_goal))
                 }
             }

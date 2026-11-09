@@ -111,7 +111,7 @@ fun StatsScreen(
                         SummaryCard(
                             value = state.highestGrade?.let { GradeDisplayHelper.formatGrade(it, state.gradeScale) } ?: "--",
                             label = stringResource(R.string.dashboard_best_grade),
-                            color = GradeHard,
+                            color = ErrorRed,
                             modifier = Modifier.weight(1f)
                         )
                         SummaryCard(
@@ -352,6 +352,7 @@ private fun RpeTrendChart(
     val lineColor = OrangeAccent
     val gridColor = MaterialTheme.colorScheme.surfaceVariant
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val rpeColors = RpeColors(SuccessGreen, WarningYellow, OrangeAccent, ErrorRed)
 
     Canvas(modifier = modifier) {
         val leftPad = 32.dp.toPx()
@@ -401,7 +402,7 @@ private fun RpeTrendChart(
 
             // Data point dot
             drawCircle(
-                color = rpePointColor(entry.rpe),
+                color = rpeColors.of(entry.rpe),
                 radius = 4.dp.toPx(),
                 center = Offset(x, y)
             )
@@ -495,9 +496,12 @@ private fun styleDisplayName(style: String): String = when (style.uppercase()) {
     else -> style
 }
 
-private fun rpePointColor(rpe: Double): Color = when {
-    rpe <= 5.0 -> SuccessGreen
-    rpe <= 7.0 -> WarningYellow
-    rpe <= 8.5 -> OrangeAccent
-    else -> ErrorRed
+/** Green, yellow, orange, red of the current theme, read where composables may read them. */
+private class RpeColors(val easy: Color, val moderate: Color, val hard: Color, val max: Color) {
+    fun of(rpe: Double): Color = when {
+        rpe <= 5.0 -> easy
+        rpe <= 7.0 -> moderate
+        rpe <= 8.5 -> hard
+        else -> max
+    }
 }

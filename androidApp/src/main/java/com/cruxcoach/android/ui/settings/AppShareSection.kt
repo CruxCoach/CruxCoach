@@ -16,6 +16,7 @@ import android.widget.Toast
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -43,6 +44,7 @@ import androidx.core.location.LocationManagerCompat
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.ErrorCard
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.util.ApkShareHelper
@@ -402,7 +404,12 @@ private fun AppShareActiveCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            TextButton(onClick = { showManualDetails = !showManualDetails }) {
+            TextButton(
+                onClick = { showManualDetails = !showManualDetails },
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = CruxCoachDesign.colors.onPositiveContainer,
+                ),
+            ) {
                 Text(
                     stringResource(
                         if (showManualDetails) R.string.settings_share_manual_hide
@@ -460,7 +467,12 @@ private fun AppShareActiveCard(
                 onClick = onStop,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                // Red, as it ends the share: the error pair, since the error colour alone is too faint on the green card.
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
             ) { Text(stringResource(R.string.settings_share_stop)) }
         }
     }

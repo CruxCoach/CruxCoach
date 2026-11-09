@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.settings
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -150,7 +151,7 @@ fun AssessmentScreen(
                 if (state.isSaving) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
-                        color = DarkBackground,
+                        color = CruxCoachDesign.colors.onBrandAccent,
                         strokeWidth = 2.dp
                     )
                     Spacer(Modifier.width(8.dp))

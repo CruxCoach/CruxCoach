@@ -624,6 +624,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - "Request account data from Moon" in the MoonBoard import no longer closes the app on
   a phone without an email app; a message says so, and the screen names the address to
   send the copied request to.
+- Orange and status colours are easier to read, above all in the light theme: orange and
+  green, yellow or red labels, chips and banners, buttons on coloured cards and secondary
+  text now stand out clearly from what they sit on.
 
 ## [0.2.4] - 2026-10-25
 

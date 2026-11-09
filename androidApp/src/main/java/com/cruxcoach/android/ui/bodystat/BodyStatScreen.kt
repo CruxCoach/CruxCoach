@@ -100,7 +100,7 @@ fun BodyStatScreen(
                             "%.1f kg (${last.date})".format(last.value),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = InfoBlue
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -220,7 +220,7 @@ private fun RecentEntryCard(
                                 Icons.Default.Delete,
                                 contentDescription = stringResource(R.string.action_delete),
                                 modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                                tint = MaterialTheme.colorScheme.error
                             )
                         }
                     }
@@ -306,6 +306,8 @@ internal fun StatCategoryCard(
     }
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun categoryColor(category: StatCategory) = when (category) {
     StatCategory.BODY_COMPOSITION -> InfoBlue
     StatCategory.CLIMBING_SPECIFIC -> OrangeAccent
