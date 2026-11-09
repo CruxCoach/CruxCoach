@@ -17,6 +17,7 @@ import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.domain.yearreview.YearReviewComputer
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -48,30 +49,37 @@ class SprayWallSwitchTest {
 
     @Test
     fun `the year in review mentions spray walls only while the switch is on`() {
-        val review = YearReviewComputer.compute(
-            YearReviewComputer.Input(
-                entries = (1..10).map { i ->
-                    AscentWithClimb(
-                        uuid = "e$i", climbUuid = "c$i", angle = 40, isMirror = false, bidCount = 1, quality = null, difficulty = null,
-                        comment = null, climbedAt = "2026-03-${10 + i}T18:00:00", climbName = "Problem $i", climbFrames = "",
-                        difficultyAverage = 20.0, boardBrand = "kilter",
-                    )
-                },
-            ),
-            2026, LocalDate(2027, 1, 10), TimeZone.UTC,
+        val input = YearReviewComputer.Input(
+            entries = (1..10).map { i ->
+                AscentWithClimb(
+                    uuid = "e$i", climbUuid = "c$i", angle = 40, isMirror = false, bidCount = 1, quality = null, difficulty = null,
+                    comment = null, climbedAt = "2026-03-${10 + i}T18:00:00", climbName = "Problem $i", climbFrames = "",
+                    difficultyAverage = 20.0, boardBrand = "kilter",
+                )
+            },
         )
+        // The finished year and the year so far each have their own text, with and without spray walls.
+        val final = YearReviewComputer.compute(input, 2026, LocalDate(2027, 1, 10), TimeZone.UTC)
+        val soFar = YearReviewComputer.compute(input, 2026, LocalDate(2026, 6, 1), TimeZone.UTC)
+        assertTrue(final.isFinal)
+        assertFalse(soFar.isFinal)
         val training = TrainingContext(null, null, null)
-        var on: ReviewPage? = null
-        var off: ReviewPage? = null
+        val intros = mutableMapOf<Pair<Boolean, Boolean>, ReviewPage>()
         compose.setContent {
-            on = reviewPages(review, GradeScale.FRENCH, training, sprayWalls = true).first { it.kind == ReviewPageKind.INTRO }
-            off = reviewPages(review, GradeScale.FRENCH, training, sprayWalls = false).first { it.kind == ReviewPageKind.INTRO }
+            for (review in listOf(final, soFar)) for (on in listOf(true, false)) {
+                intros[review.isFinal to on] = reviewPages(review, GradeScale.FRENCH, training, sprayWalls = on).first { it.kind == ReviewPageKind.INTRO }
+            }
         }
         compose.waitForIdle()
 
-        assertNotNull(on!!.note)
-        assertTrue(on!!.howCalculated!!.contains("Spray walls"))
-        assertNull(off!!.note)
-        assertFalse(off!!.howCalculated!!.contains("spray", ignoreCase = true))
+        for (isFinal in listOf(true, false)) {
+            val on = intros.getValue(isFinal to true)
+            val off = intros.getValue(isFinal to false)
+            assertNotNull(on.note)
+            assertTrue(on.howCalculated!!.contains("Spray walls"))
+            assertNull(off.note)
+            assertFalse(off.howCalculated!!.contains("spray", ignoreCase = true))
+            for (page in listOf(on, off)) assertEquals(!isFinal, page.howCalculated!!.contains("The year is not over yet"))
+        }
     }
 }
