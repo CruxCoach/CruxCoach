@@ -3528,4 +3528,37 @@
     <string name="shinywall_import_error_generic">The import failed. Please try again.</string>
     <string name="shinywall_list_favorites">Shiny Wall favorites</string>
     <string name="shinywall_list_own_routes">My Shiny Wall routes</string>
+    <!-- Board-size check: optional help for users unsure about their board size -->
+    <string name="board_size_check_title">Check your board size</string>
+    <string name="board_size_check_link">Check the size on your board</string>
+    <string name="board_size_check_menu">Wrong holds lighting up?</string>
+    <string name="board_size_check_info">Your board does not tell the app its size. The check lights a few holds of one size that sit far apart. On a board of another size the same LEDs light other holds, so you see straight away whether the size fits. Closing the check turns them off again.</string>
+    <string name="board_size_check_question">Are exactly these holds lit on your board?</string>
+    <string name="board_size_check_yes">Yes</string>
+    <string name="board_size_check_no">No</string>
+    <string name="board_size_check_relight">Light them again</string>
+    <string name="board_size_check_lighting">Lighting the marked holds…</string>
+    <string name="board_size_check_connect_hint">Connect to your board, then the marked holds light up there.</string>
+    <string name="board_size_check_connect">Connect to board</string>
+    <string name="board_size_check_other_board">The connected board is not a %1$s. Connect to your %1$s.</string>
+    <string name="board_size_check_pick_other">Tap a size to light it on your board.</string>
+    <string name="board_size_check_pick_other_offline">Tap a size to see its marked holds.</string>
+    <string name="board_size_check_tried">Tried</string>
+    <string name="board_size_check_try_first">Try %1$s first</string>
+    <string name="board_size_check_none_fit">None of them fits? Then your board may be set up differently from its catalogue.</string>
+    <string name="board_size_check_saved">Saved: this is your board now.</string>
+    <string name="board_size_check_selected">Selected. Tap Confirm in the board picker to keep it.</string>
+    <string name="board_size_check_fits">Fits: your board is set up right.</string>
+    <string name="board_size_check_send_failed">The holds could not be lit. Check the connection and try again.</string>
+    <string name="board_size_check_replaced">The board may show something else by now.</string>
+    <string name="board_size_check_no_data">There is no LED data for this board on your phone yet.</string>
+    <string name="board_size_check_done">Done</string>
+    <string name="board_size_check_back_to_picker">Back to the board picker</string>
+    <string name="board_size_check_image_cd">%1$s with the holds that should light up</string>
+    <string name="board_size_check_look_alike_first">To tell %1$s from %2$s, %2$s comes first.</string>
+    <!-- Board picker: how common each option is in gyms, so a rare pick gets a second look -->
+    <string name="board_gym_share">In gyms: %1$s</string>
+    <string name="board_gym_share_rare">Rare in gyms: %1$s</string>
+    <string name="board_gym_share_rare_hint">Few gyms have this board. Please check that it is really yours.</string>
+    <string name="board_gym_share_rare_version_hint">Few gyms list this version, maybe because it is new. Check that it matches the holds on your board.</string>
 </resources>

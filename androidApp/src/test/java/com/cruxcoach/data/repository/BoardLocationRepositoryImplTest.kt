@@ -201,4 +201,20 @@ class BoardLocationRepositoryImplTest {
         assertEquals(1L, freq[20])
         assertTrue(!freq.containsKey(null as Any?), "NULL product_size_id rows must not appear as a key")
     }
+
+    @Test
+    fun `boardCountByBrandAndLayout counts gyms per brand and layout, unknown layouts as null`() {
+        seed("k1")
+        seed("k2")
+        seed("m1", boardBrand = "moonboard", layoutId = 2L, productSizeId = null)
+        seed("m2", boardBrand = "moonboard", layoutId = null, productSizeId = null)
+        seed("m3", boardBrand = "moonboard", layoutId = null, productSizeId = null)
+        seed("t1", boardBrand = "tension", layoutId = null, productSizeId = null)
+        val counts = repo.boardCountByBrandAndLayout()
+        assertEquals(2L, counts["kilter" to 1])
+        assertEquals(1L, counts["moonboard" to 2])
+        assertEquals(2L, counts["moonboard" to null])
+        assertEquals(1L, counts["tension" to null])
+        assertEquals(4, counts.size)
+    }
 }

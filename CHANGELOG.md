@@ -27,6 +27,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   also deletes its photos from the Blossom servers; if that does not work, the
   wall stays public (and is not deleted) so you can try again. Your logbook is
   never published, and spray walls are not in Android backups.
+- Board size check: not sure which size your Kilter or other Aurora-family board is,
+  or other holds light up than the app shows? The board picker and the climb's ⋯ menu
+  now light a few marked holds for a size, so you can compare with the board and switch
+  to the size that fits.
+- The board picker shows how common each board, Kilter size and MoonBoard version is in
+  gyms, from the gym list the app already loads. Picking a rare size or version asks you
+  to check that it is really your board; for the newest MoonBoard versions, which few gyms
+  list yet, it only asks you to compare the holds.
 - Shiny Wall support: pick your Shiny Wall Standard wall (Mini, Standard, Max,
   Full or Max Full), browse its problems with the usual filters (grade, angle
   0–60°, holds, benchmarks, status) plus its categories (technical, physical,

@@ -42,6 +42,9 @@ interface BoardLocationRepository {
 
     /** product_size_id → wall count across all gyms (picker frequency sort). */
     fun productSizeFrequency(): Map<Int, Long>
+
+    /** (board_brand wire value, layout_id) → gyms; layout_id null = not known (picker shares). */
+    fun boardCountByBrandAndLayout(): Map<Pair<String, Int?>, Long>
 }
 
 data class BoardLocation(

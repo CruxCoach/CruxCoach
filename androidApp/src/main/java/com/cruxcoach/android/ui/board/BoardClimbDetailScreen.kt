@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Straighten
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
@@ -139,6 +140,12 @@ fun BoardClimbDetailScreen(
         initialValue = LedEffectRestart.NONE,
     )
     var showLedEffects by remember { mutableStateOf(false) }
+    // Help for "the board lights other holds": the usual cause is a wrong board size.
+    val sizeCheckViewModel: BoardSizeCheckViewModel = hiltViewModel()
+    // Looked up with the climb, not when the menu opens: on the phone the entry then appeared a
+    // moment late and pushed the items below it down.
+    val sizeCheckBoard by sizeCheckViewModel.savedBoard.collectAsStateWithLifecycle()
+    var sizeCheck by remember { mutableStateOf<SavedBoardForCheck?>(null) }
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
     val addToListViewModel: AddToListViewModel = hiltViewModel()
@@ -363,6 +370,17 @@ fun BoardClimbDetailScreen(
                 viewModel = addToListViewModel,
             )
         }
+    }
+
+    sizeCheck?.let { saved ->
+        BoardSizeCheckSheet(
+            brand = saved.brand,
+            sizeId = saved.sizeId,
+            layoutId = saved.layoutId,
+            applyOnConfirm = true,
+            onDismiss = { sizeCheck = null },
+            viewModel = sizeCheckViewModel,
+        )
     }
 
     if (showLedEffects) {
@@ -752,6 +770,29 @@ fun BoardClimbDetailScreen(
                                             showLedEffects = true
                                         },
                                         modifier = Modifier.testTag("boarddetail_led_effect"),
+                                    )
+                                }
+                                // Wrong holds lit: the board-size check, for the
+                                // saved board when this climb is on it.
+                                val sizeCheckOffer = sizeCheckBoard
+                                if (sizeCheckOffer != null && sizeCheckOffer.offered &&
+                                    sizeCheckOffer.brand == state.climb?.brand
+                                ) {
+                                    DropdownMenuItem(
+                                        enabled = tourTargets.active == null,
+                                        text = { Text(stringResource(R.string.board_size_check_menu)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Outlined.Straighten,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            sizeCheck = sizeCheckOffer
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_size_check"),
                                     )
                                 }
                                 // Mirror toggle — a display-only left/right flip
