@@ -56,7 +56,8 @@ interaction on the operator side before reusing it. Commands here are not
 instructions for a remote documentation or feature agent to execute.
 
 GitHub is the primary forge. Dispatching `.github/workflows/release.yml` from
-`main` runs it on a **self-hosted** runner: unit tests, one signed APK, the tag,
+`main` runs the unit tests on a hosted runner, then the rest on a
+**self-hosted** runner: one APK signed on the maintainer's YubiKey, the tag,
 the GitHub release, a byte-identical Codeberg release, both SHA-256 sidecars,
 the Zapstore publish, the website and download-server update, APKTrack stable
 (which also replicates the APK to the Blossom servers), and a final check that

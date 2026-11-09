@@ -82,7 +82,8 @@ mv -f "$DIR/.unsigned.apk.sha256.part" "$DIR/unsigned.apk.sha256"
 
 # Names the folder by its tag only: the run log is public, the host's paths
 # are not. The digest here is the one to sign against: the drop folder is
-# writable from outside the run, this log is not.
+# writable from outside the run, this log is not. The maintainer's release
+# tooling reads it from this line, so keep the line's format.
 echo "::notice title=Waiting for the YubiKey signature::Sign $TAG/unsigned.apk (SHA-256 $UNSIGNED_SHA) in the release drop folder and put signed.apk and signed.apk.sha256 next to it, within $((TIMEOUT / 60)) min."
 
 # signed.apk.sha256 holds the digest, alone or as sha256sum writes it.

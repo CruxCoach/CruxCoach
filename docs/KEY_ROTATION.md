@@ -186,26 +186,35 @@ Why v3 only is enough:
 > `androidApp-release-unsigned.apk`, and the lineage is applied by
 > `apksigner` when the APK is signed.
 
-**a. Create the lineage once**, at the signing ceremony, from the old keystore
-to the new key. `--new-signer` names the YubiKey, which apksigner reaches
-through a PKCS#11 provider (`--ks NONE --ks-type PKCS11 --provider-class …`):
+**a. Create the lineage once**, offline, at the signing ceremony: from the
+old keystore to the new key, while the new key is still a file, before it
+goes onto the YubiKeys:
 
 ```
-apksigner rotate --out lineage.bin --old-signer --ks old.jks --ks-key-alias OLD_ALIAS --new-signer <YubiKey options>
+apksigner rotate --out lineage.bin --old-signer --ks old.jks --ks-key-alias OLD_ALIAS --new-signer --ks new-key-keystore --ks-key-alias NEW_ALIAS
 ```
 
 Keep `lineage.bin` with the old keystore's backup. It is not secret, but
 losing it means no further rotation can chain from this one.
 
-**b. Sign each release on the PC**, v3 only, with the new key and the
-lineage. First compare the SHA-256 of `unsigned.apk` with the one in the
-run's "Waiting for the YubiKey signature" notice on GitHub: the drop folder
-can be written from outside the run, the run's log cannot.
+**b. Sign each release on the PC**, v3 only, with the YubiKey and the
+lineage. apksigner reaches the YubiKey through a PKCS#11 provider
+(`--ks NONE --ks-type PKCS11 --provider-class …`).
+
+The expected SHA-256 of `unsigned.apk` comes from the run, never from the
+drop folder: the drop folder can be written from outside the run, the
+run's log cannot. The maintainer's signing script takes it from the run's
+"Waiting for the YubiKey signature" notice as an argument
+(`sign-release.sh vX.Y.Z <sha256>`) and refuses on any mismatch.
 
 ```
-apksigner sign <YubiKey options> --lineage lineage.bin --rotation-min-sdk-version 28 --v1-signing-enabled false --v2-signing-enabled false --v3-signing-enabled true --in unsigned.apk --out signed.apk
+apksigner sign <YubiKey options> --lineage lineage.bin --rotation-min-sdk-version 28 --v1-signing-enabled false --v2-signing-enabled false --v3-signing-enabled true --v4-signing-enabled false --in unsigned.apk --out signed.apk
 sha256sum signed.apk > signed.apk.sha256
 ```
+
+`--v4-signing-enabled false` matters with a YubiKey that asks for a touch on
+every signature: a v4 signature would be a second touch and an extra
+`.idsig` file that nothing uses.
 
 This was checked with throwaway keystores against apksigner 36.0.0 and
 37.0.0: `verify` reports v3 only and exactly one signer, the new

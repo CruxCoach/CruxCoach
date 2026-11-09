@@ -87,8 +87,12 @@ class WaitForReleaseSignatureTest(unittest.TestCase):
         result = self.run_script()
         hints = [line for line in result.stdout.splitlines() if line.startswith("::notice")]
         self.assertEqual(len(hints), 1, result.stdout)
-        self.assertIn(f"{TAG}/unsigned.apk", hints[0])
-        self.assertIn(hashlib.sha256(b"unsigned apk bytes").hexdigest(), hints[0])
+        # The maintainer's release tooling reads the digest to sign against
+        # from exactly this shape.
+        self.assertTrue(hints[0].startswith(
+            "::notice title=Waiting for the YubiKey signature::"
+            f"Sign {TAG}/unsigned.apk (SHA-256 {hashlib.sha256(b'unsigned apk bytes').hexdigest()}) "
+        ), hints[0])
         self.assertNotIn(str(self.drop), result.stdout + result.stderr)
 
     def test_a_bare_uppercase_digest_is_accepted(self):

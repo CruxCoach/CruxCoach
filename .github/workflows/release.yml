@@ -56,7 +56,54 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Unit tests BEFORE anything else (APK build, signing, publish), so a
+  # regression hard-stops the release pipeline. Before they ran here, the
+  # workflow built and published without exercising any of the 38 existing
+  # tests, so a broken Schnorr-verify gate or dataKey-unwrap could ship to
+  # Zapstore unnoticed. They need no secrets, so they run on a hosted runner:
+  # the release host has too little memory for a cold full test run next to
+  # the release build. They test the exact commit of the dispatch, and the
+  # release job refuses to build any other.
+  tests:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require protected main ref
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [ "$RELEASE_REF" = "refs/heads/main" ] || {
+            echo "::error::Releases run from protected main only"
+            exit 1
+          }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      # The repository's gradle.properties keeps Gradle and the Kotlin daemon
+      # at 2 GB for small servers; the hosted runner has 16 GB, and the app's
+      # Kotlin compile runs out of memory in 2 GB. The user home's
+      # gradle.properties wins over the project's.
+      - name: Give Gradle and the Kotlin daemon 4 GB
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+          kotlin.daemon.jvmargs=-Xmx4g
+          EOF
+      - name: Run unit tests
+        run: |
+          python3 -m unittest discover -s scripts -p '*_test.py'
+          ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
+
   release:
+    needs: tests
     # Evaluated by Actions before a self-hosted runner is assigned. A manual
     # dispatch on a feature ref must never reach the signing host.
     if: github.ref == 'refs/heads/main'
@@ -96,16 +143,16 @@ jobs:
           # http.extraheader makes it override that token during the tag push.
           persist-credentials: false
 
-      # Run unit tests BEFORE anything else (signing config copy, APK build,
-      # publish) so a regression hard-stops the release pipeline. Pre-fix
-      # the workflow built + published without exercising any of the 38
-      # existing tests, so a broken Schnorr-verify gate or dataKey-unwrap
-      # could ship to Zapstore unnoticed. Tests don't need any secrets, so
-      # this step runs in a clean checkout.
-      - name: Run unit tests
+      # The tests job tested the dispatch's commit. If main moved since, this
+      # checkout is a different, untested commit: stop rather than release it.
+      - name: Require the tested commit
         run: |
-          python3 -m unittest discover -s scripts -p '*_test.py'
-          ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
+          set -euo pipefail
+          HEAD_SHA="$(git rev-parse HEAD)"
+          [ "$HEAD_SHA" = "$GITHUB_SHA" ] || {
+            echo "::error::main moved to $HEAD_SHA after the dispatch; the tests ran on $GITHUB_SHA. Dispatch again."
+            exit 1
+          }
 
       - name: Extract version
         id: version
@@ -232,7 +279,12 @@ jobs:
           if [ "$REPOSITORY_SLUG" = "CruxCoach/CruxCoach" ]; then
             METRICS_ARGS+=("-PANONYMOUS_METRICS_ENDPOINT=https://stats.cruxcoach.org/v1/app-event")
           fi
-          ./gradlew :androidApp:assembleRelease -PunsignedRelease=true "${METRICS_ARGS[@]}"
+          # The release host is small: the Kotlin compiler runs inside the
+          # Gradle JVM instead of a second daemon, and that JVM gets 4 GB.
+          ./gradlew :androidApp:assembleRelease -PunsignedRelease=true \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" \
+            "${METRICS_ARGS[@]}"
 
       # The release key is a YubiKey at the maintainer's PC (docs/KEY_ROTATION.md).
       # The unsigned APK goes into "$CRUXCOACH_RELEASE_DROP/<tag>/", the

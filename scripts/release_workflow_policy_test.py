@@ -31,7 +31,7 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
 
     def test_github_release_is_main_only_and_environment_protected(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text()
-        job = workflow.split("\n  release:\n", 1)[1]
+        tests_job, job = workflow.split("\n  tests:\n", 1)[1].split("\n  release:\n", 1)
 
         self.assertIn("if: github.ref == 'refs/heads/main'", job)
         self.assertIn("environment: release", job)
@@ -43,9 +43,29 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
 
         guard = job.index("- name: Require protected main ref")
         checkout = job.index("- name: Checkout")
-        tests = job.index("- name: Run unit tests")
+        tested = job.index("- name: Require the tested commit")
+        build = job.index("- name: Build release APK")
         self.assertLess(guard, checkout)
-        self.assertLess(checkout, tests)
+        self.assertLess(checkout, tested)
+        self.assertLess(tested, build)
+        self.assertIn('[ "$HEAD_SHA" = "$GITHUB_SHA" ]', job)
+
+    def test_unit_tests_run_on_a_hosted_runner_before_the_release_job(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        tests_job, job = workflow.split("\n  tests:\n", 1)[1].split("\n  release:\n", 1)
+        self.assertIn("if: github.ref == 'refs/heads/main'", tests_job)
+        self.assertIn("runs-on: ubuntu-latest", tests_job)
+        self.assertIn("ref: ${{ github.sha }}", tests_job)
+        self.assertIn("python3 -m unittest discover -s scripts -p '*_test.py'", tests_job)
+        self.assertIn(":shared:testDebugUnitTest :androidApp:testDebugUnitTest", tests_job)
+        self.assertNotIn("environment:", tests_job)
+        self.assertNotIn("secrets.", tests_job)
+
+        self.assertTrue(job.startswith("    needs: tests\n"))
+        self.assertNotIn("testDebugUnitTest", job, "no test load on the release host")
+        build = job[job.index("- name: Build release APK"):job.index("- name: Wait for the YubiKey signature")]
+        self.assertIn("-Pkotlin.compiler.execution.strategy=in-process", build)
+        self.assertIn('"-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"', build)
 
     def test_unprotected_forgejo_release_fallback_is_retired(self):
         self.assertFalse((ROOT / ".forgejo/workflows/release.yml").exists())
