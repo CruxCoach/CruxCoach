@@ -2469,11 +2469,15 @@ class BoardBleConnection(
      * Encode [leds] ((position, colourByte) pairs) with the CONNECTED board's
      * encoder — the apiLevel/ledsPerHold configured in [connect] — and write
      * them. Used by the easter animation so an @2 legacy board gets v2
-     * packets instead of frames from a hardcoded API-3 encoder.
+     * packets instead of frames from a hardcoded API-3 encoder, and by PaintBox.
+     *
+     * @param maxPowerW a lower @2 power budget for this frame (headroom), or
+     *   null for the board's full budget.
      */
     suspend fun sendRawLeds(
         leds: List<Pair<Int, Int>>,
         expectedBrand: BoardBrand? = null,
+        maxPowerW: Double? = null,
     ): Boolean = writeMutex.withLock {
         if (cleaningState.value.active) return false
         val ticket = cleaning.ticket()
@@ -2481,14 +2485,15 @@ class BoardBleConnection(
             !auroraPacketsAllowed(_connectedBoardBrand.value) ||
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
         ) return false
-        if (encoder.litNothing(leds)) {
-            Log.w(TAG, "Refusing an API-2 frame of ${leds.size} LEDs: the 18 W budget would light none of them")
+        val frameEncoder = maxPowerW?.let(encoder::withMaxPower) ?: encoder
+        if (frameEncoder.litNothing(leds)) {
+            Log.w(TAG, "Refusing an API-2 frame of ${leds.size} LEDs: the power budget would light none of them")
             return false
         }
         _connectionState.value = ConnectionState.SENDING
         disconnectJob?.cancel()
         try {
-            val chunks = encoder.encodeClimb(leds)
+            val chunks = frameEncoder.encodeClimb(leds)
             // A frame that has started is finished even if the caller leaves: a
             // torn Aurora packet would garble the next send (see sendAnimationLeds).
             val success = withContext(NonCancellable) { writeChunks(chunks) }

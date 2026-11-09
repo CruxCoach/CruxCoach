@@ -218,6 +218,48 @@ class BoardPacketEncoderTest {
     }
 
     @Test
+    fun v2PictureBudgetKeepsHeadroomBelowTheBoardBudget() {
+        // 30 white Kilter holds draw exactly 18.0 W at full brightness: the
+        // board budget takes them as they are, a picture is dimmed one step.
+        val white = List(30) { 0xFF }
+        assertEquals(1.0, BoardPacketEncoder.computeV2Scale(white, 2), 0.0001)
+        assertEquals(0.6, BoardPacketEncoder.computeV2Scale(white, 2, BoardPacketEncoder.V2_PICTURE_MAX_POWER), 0.0001)
+        val holds = white.indices.map { it to 0xFF }
+        val board = BoardPacketEncoder(2, BoardPacketEncoder.KILTER_LEDS_PER_HOLD)
+        val picture = board.withMaxPower(BoardPacketEncoder.V2_PICTURE_MAX_POWER)
+        assertFalse(board.encodeClimb(holds).flatMap { it.toList() } == picture.encodeClimb(holds).flatMap { it.toList() })
+        // A budget can only go down, and API 3 does not use it.
+        assertEquals(
+            board.encodeClimb(holds).flatMap { it.toList() },
+            board.withMaxPower(100.0).encodeClimb(holds).flatMap { it.toList() },
+        )
+        val api3 = BoardPacketEncoder(3, BoardPacketEncoder.KILTER_LEDS_PER_HOLD)
+        assertEquals(
+            api3.encodeClimb(holds).flatMap { it.toList() },
+            api3.withMaxPower(1.0).encodeClimb(holds).flatMap { it.toList() },
+        )
+    }
+
+    @Test
+    fun v3PictureBudgetIsTheBoxsOwnStartUpTest() {
+        val red = 0xE0
+        val white = 0xFF
+        // Every hold in one full channel is what the box draws itself: unchanged.
+        assertEquals(List(100) { red }, BoardPacketEncoder.fitV3PictureBudget(List(100) { red }, 100))
+        // A third of the wall white is the same load.
+        assertEquals(List(33) { white }, BoardPacketEncoder.fitV3PictureBudget(List(33) { white }, 100))
+        // The whole wall white is three times that: dimmed evenly until it fits.
+        val wall = BoardPacketEncoder.fitV3PictureBudget(List(100) { white }, 100)
+        assertTrue(wall.sumOf(BoardPacketEncoder::v3ChannelLoad) <= 100.0)
+        assertTrue(wall.all { it == wall.first() }, "one colour stays one colour")
+        val (r, g, b) = Triple((wall.first() shr 5) and 7, (wall.first() shr 2) and 7, wall.first() and 3)
+        assertTrue(r in 1..6 && g in 1..6 && b in 1..2, "still white, only dimmer: $r $g $b")
+        // A channel that is on never goes off, even at the lowest step.
+        assertEquals(0x25, BoardPacketEncoder.scaleRgb332(0xFF, 0.0))
+        assertEquals(0x00, BoardPacketEncoder.scaleRgb332(0x00, 0.2))
+    }
+
+    @Test
     fun ledsPerHoldByBrand() {
         assertEquals(2, BoardPacketEncoder.ledsPerHoldFor(BoardBrand.KILTER))
         assertEquals(1, BoardPacketEncoder.ledsPerHoldFor(BoardBrand.TENSION))
