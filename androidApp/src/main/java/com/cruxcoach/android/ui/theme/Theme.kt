@@ -41,7 +41,8 @@ internal val DarkColorScheme = darkColorScheme(
     inverseOnSurface = DarkSurface,
     error = ErrorRedBright,
     onError = Color.Black,
-    errorContainer = Color(0xFF8C1D18),
+    // Deep enough that orange and error-red labels on it reach 4.5:1, and no louder than the other containers.
+    errorContainer = Color(0xFF5E1410),
     onErrorContainer = Color(0xFFFFDAD6),
     outline = Color(0xFF8A9AA2),
     outlineVariant = Color(0xFF3C3C52),

@@ -100,8 +100,8 @@ fun ExerciseLibraryScreen(
                         onClick = { viewModel.selectCategory(cat) },
                         label = { Text(categoryDisplayName(cat)) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = categoryColor(cat).copy(alpha = 0.2f),
-                            selectedLabelColor = MaterialTheme.colorScheme.onSurface
+                            selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                            selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                         )
                     )
                 }

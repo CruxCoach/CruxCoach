@@ -2251,13 +2251,13 @@ private fun BoardDetailBottomActions(
  * middle one is in.
  */
 @Composable
-private fun DockButtonContent(icon: ImageVector, contentDescription: String, label: String) {
+private fun DockButtonContent(icon: ImageVector, contentDescription: String, label: String, iconTint: Color = LocalContentColor.current) {
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(27.dp))
+        Icon(icon, contentDescription = contentDescription, tint = iconTint, modifier = Modifier.size(27.dp))
         Spacer(Modifier.height(1.dp))
         Text(
             label,
@@ -2299,6 +2299,7 @@ private fun BoardDetailActionDock(
                 icon = Icons.Default.Close,
                 contentDescription = stringResource(R.string.board_ascent_attempt),
                 label = stringResource(R.string.board_dock_attempt),
+                iconTint = ErrorRed,
             )
         }
         when (lamp) {
@@ -2385,6 +2386,7 @@ private fun BoardDetailActionDock(
                 icon = Icons.Default.Check,
                 contentDescription = stringResource(R.string.board_ascent_send),
                 label = stringResource(R.string.board_dock_top),
+                iconTint = SuccessGreen,
             )
         }
     }

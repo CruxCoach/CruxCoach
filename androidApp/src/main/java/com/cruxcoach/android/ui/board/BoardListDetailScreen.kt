@@ -347,7 +347,10 @@ private fun PlaybackInfoBox(
                 modifier = Modifier.weight(1f),
             )
             if (actionLabel != null && onAction != null) {
-                TextButton(onClick = onAction) { Text(actionLabel) }
+                TextButton(
+                    onClick = onAction,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                ) { Text(actionLabel) }
             }
         }
     }
