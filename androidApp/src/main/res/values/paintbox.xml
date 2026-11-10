@@ -35,12 +35,13 @@
     <string name="paintbox_image_import">Use a photo</string>
     <string name="paintbox_image_ok">Apply</string>
     <string name="paintbox_image_bg">Background</string>
+    <string name="paintbox_image_bg_off">Keep background dark</string>
     <string name="paintbox_image_pick_bg">Tap the background color in the image.</string>
     <string name="paintbox_image_error">Could not load this image. Please choose another image.</string>
     <string name="paintbox_photo_title">Photo</string>
     <string name="paintbox_info">Paint\nPick brush or eraser and a color, then tap or swipe holds with one finger. Two fingers zoom and move the board. One stroke is one step for Undo.\n\nOn the board\nSend shows the picture on the board once. With Live on, the board follows every stroke. Live pauses when the connection drops, when you leave PaintBox and when you change boards. Large bright pictures are shown dimmer, within the board’s power limit.\n\nPictures\nSave keeps the picture on this phone. Pictures are never shared.</string>
     <string name="paintbox_info_quantum">Quantum\nFour colors, up to 92 LEDs each. Other layers must be off before you paint. Lighting a climb replaces the picture.</string>
-    <string name="paintbox_info_photo">Drag the photo with one finger; zoom and turn it with two. Each hold takes the board color nearest to the photo. Background leaves one color of the photo off. Only the hold colors are saved.</string>
+    <string name="paintbox_info_photo">Drag the photo with one finger; zoom and turn it with two. Each hold takes the color that covers most of it, as the nearest board color. With “Keep background dark” the photo’s background lights no LEDs: PaintBox finds it at the edge of the photo, and Background lets you tap another color. Black and transparent parts always stay off. Only the hold colors are saved.</string>
     <string name="paintbox_live">Live</string>
     <string name="paintbox_connect">Connect board</string>
     <string name="paintbox_other_photo">Use another photo</string>

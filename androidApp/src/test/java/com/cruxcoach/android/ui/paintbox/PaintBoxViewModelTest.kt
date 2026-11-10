@@ -160,6 +160,31 @@ class PaintBoxViewModelTest {
         advanceUntilIdle()
         coVerify(exactly = 0) { projector.send(any(), any(), any()) }
     }
+    @Test fun `background starts dark for a clear border and a picked color replaces the detected one`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.startImage(mockk(), detected = PaintBackground(color = 0xffffff, clear = true))
+        val first = vm.state.value.imageImport!!
+        assertTrue(first.backgroundOff)
+        assertEquals(0xffffff, first.darkBackground)
+        vm.imagePreview(first, mapOf(1 to 224))
+        vm.imageBackgroundOff(false)
+        assertNull(vm.state.value.imageImport!!.darkBackground)
+        assertFalse(vm.state.value.imageImport!!.ready)
+        vm.imageBackground(0xff112233.toInt())
+        assertTrue(vm.state.value.imageImport!!.backgroundOff)
+        assertEquals(0x112233, vm.state.value.imageImport!!.darkBackground)
+        vm.imageBackgroundOff(false)
+        vm.imageBackgroundOff(true)
+        assertEquals(0x112233, vm.state.value.imageImport!!.darkBackground)
+        vm.imageBackgroundTool()
+        assertEquals(0xffffff, vm.state.value.imageImport!!.darkBackground)
+        // A photo without a clear border starts with the whole picture lit.
+        vm.startImage(mockk(), detected = PaintBackground(color = 0x808080, clear = false))
+        assertFalse(vm.state.value.imageImport!!.backgroundOff)
+        assertNull(vm.state.value.imageImport!!.darkBackground)
+        vm.imageBackgroundOff(true)
+        assertEquals(0x808080, vm.state.value.imageImport!!.darkBackground)
+    }
     @Test fun `background tool selects resets and rearms`() = runTest(dispatcher) {
         vm.state.first { !it.loading }
         vm.startImage(mockk())

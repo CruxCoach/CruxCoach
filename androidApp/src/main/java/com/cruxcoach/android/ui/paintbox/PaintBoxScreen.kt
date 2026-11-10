@@ -350,17 +350,31 @@ private fun PaintTools(state: PaintBoxState, viewModel: PaintBoxViewModel, onCol
     }
 }
 
-/** While a photo is placed: only the background tool, and what to tap while it is active. */
+/** While a photo is placed: whether its background stays dark, which color that is, and what to tap to pick it. */
 @Composable
 private fun PhotoTools(state: PaintBoxState, viewModel: PaintBoxViewModel) {
     val image = state.imageImport
+    val enabled = image != null && !state.imageLoading
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                .toggleable(value = image?.backgroundOff == true, enabled = enabled, role = Role.Switch,
+                    onValueChange = viewModel::imageBackgroundOff)
+                .testTag("paintbox_image_bg_off"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(stringResource(R.string.paintbox_image_bg_off), style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f))
+            Switch(checked = image?.backgroundOff == true, onCheckedChange = null, enabled = enabled)
+        }
         FilterChip(
             selected = image?.let { it.pickingBackground || it.background != null } == true,
-            onClick = viewModel::imageBackgroundTool, enabled = image != null && !state.imageLoading,
+            onClick = viewModel::imageBackgroundTool, enabled = enabled,
             label = { Text(stringResource(R.string.paintbox_image_bg)) },
             leadingIcon = {
-                val background = image?.background
+                // The color that stays dark: the picked one, else the one found at the photo's border.
+                val background = image?.darkBackground
                 if (background != null) Box(Modifier.size(FilterChipDefaults.IconSize).clip(CircleShape)
                     .background(Color(0xff000000.toInt() or background))
                     .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), CircleShape))

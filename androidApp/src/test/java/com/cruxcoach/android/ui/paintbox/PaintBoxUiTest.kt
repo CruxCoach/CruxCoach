@@ -49,6 +49,8 @@ class PaintBoxUiTest {
         compose.onNodeWithTag("paintbox_menu").assertDoesNotExist()
         compose.onNodeWithTag("paintbox_send").assertDoesNotExist()
         compose.onNodeWithText("Tap the background color in the image.").assertIsDisplayed()
+        compose.onNodeWithTag("paintbox_image_bg_off").assertTextContains("Keep background dark").assertIsOff().performClick()
+        verify { vm.imageBackgroundOff(true) }
         compose.onNodeWithText("Background").performClick()
         compose.onNodeWithText("Apply").performClick()
         compose.onNodeWithContentDescription("Cancel").performClick()

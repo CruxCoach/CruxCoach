@@ -232,16 +232,24 @@ class PaintBoxViewModel @Inject constructor(
         imageJob = viewModelScope.launch {
             try {
                 val bitmap = loadPaintImage(context.applicationContext, uri)
-                startImage(bitmap)
+                val pixels = withContext(Dispatchers.Default) { bitmap.toPaintPixels() }
+                val detected = withContext(Dispatchers.Default) { PaintImageMapping.background(pixels) }
+                startImage(bitmap, pixels, detected)
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { mutable.update { it.copy(imageLoading = false, message = R.string.paintbox_image_error) } }
         }
     }
-    internal fun startImage(bitmap: android.graphics.Bitmap) {
+    internal fun startImage(
+        bitmap: android.graphics.Bitmap,
+        pixels: PaintPixels? = null,
+        detected: PaintBackground = PaintBackground(),
+    ) {
         endStroke()
         generation++
         pending = false
-        mutable.update { it.copy(imageImport = PaintImageSession(bitmap), imageLoading = false) }
+        // A border that is clearly one color, or transparent, starts with the background dark.
+        val session = PaintImageSession(bitmap, pixels = pixels, detected = detected)
+        mutable.update { it.copy(imageImport = session, imageLoading = false) }
     }
     fun imageTransform(transform: PaintImageTransform) {
         mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(transform = transform, ready = false)) }
@@ -254,8 +262,15 @@ class PaintBoxViewModel @Inject constructor(
     }
     fun imageBackground(color: Int) {
         if ((color ushr 24) < 128) return
+        // A picked color replaces the detected one and turns the background off.
         mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(background = color and 0xffffff,
-            pickingBackground = false, ready = false)) }
+            backgroundOff = true, pickingBackground = false, ready = false)) }
+    }
+    /** Whether the photo's background lights no LEDs; a picked color is kept for the next time it is on. */
+    fun imageBackgroundOff(off: Boolean) {
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
+            if (it.backgroundOff == off) it else it.copy(backgroundOff = off, pickingBackground = false, ready = false)
+        }) }
     }
     fun imagePreview(source: PaintImageSession, colors: Map<Int, Int>) {
         if (state.value.imageImport !== source) return
