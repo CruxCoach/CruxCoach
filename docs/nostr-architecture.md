@@ -213,9 +213,9 @@ Content ausgepackt:
   "chunks": [
     { "name": "meta", "type": "meta",
       "sha256": "0a09d0f0…", "size": 64538,
-      "urls": [ "https://cdn.hzrd149.com/0a09d0f0…",
-                "https://blossom.primal.net/0a09d0f0…",
-                "https://blossom.cruxcoach.org/0a09d0f0…" ] },
+      "urls": [ "https://blossom.cruxcoach.org/0a09d0f0…",
+                "https://blossom-01.uid.ovh/0a09d0f0…",
+                "https://blossom.yakihonne.com/0a09d0f0…" ] },
     …
   ]
 }
@@ -228,8 +228,8 @@ sind auch der Grund für die 108 KB Eventgröße.
 ### Warum content-addressed
 
 ```
-https://cdn.hzrd149.com/0a09d0f0d9901837450bd15245e3ec43d9b7d5d7dbdd4baef0be5bb8976e8433
-                        └────────────── SHA-256 der Datei selbst ──────────────────────┘
+https://blossom.cruxcoach.org/0a09d0f0d9901837450bd15245e3ec43d9b7d5d7dbdd4baef0be5bb8976e8433
+                              └────────────── SHA-256 der Datei selbst ──────────────────────┘
 ```
 
 Die URL *ist* der Integritätsbeweis. Wer lädt und nachrechnet, weiß sofort, ob er
@@ -612,13 +612,22 @@ Installationen mit gecachtem Kind-0-d-Tag behalten ihn, keine verwaisten Events.
 3. hochladen (Kind-24242-Auth)
 4. HEAD-Verify: liegt der Blob wirklich da?
 5. ── ERST JETZT ── Pointer publishen
-6. vorherigen Blob löschen (BUD-04 DELETE, best effort)
+6. vorherigen Blob löschen (BUD-04 DELETE, best effort; auch auf früheren
+   Standard-Servern, siehe unten)
 7. Key-Event mit-republishen
 8. lastBackupSync merken
 ```
 
 Nimmt **kein** Relay den Pointer an → `BackupException`. Sonst würde Schritt 6 den
 alten Blob löschen, während kein Relay den neuen Pointer kennt: Backup weg.
+
+`DEFAULT_SERVERS` (seit 0.2.5): `nostr.download`, `blossom.data.haus`,
+`blossom.yakihonne.com`. Ein angenommener Upload genügt. `cdn.hzrd149.com` war bis
+0.2.4 Standard und nimmt seit dem 10.11.2026 keine Uploads fremder Schlüssel mehr
+an; es steht deshalb nur noch in `RETIRED_SERVERS`: Dorthin wird nichts mehr
+hochgeladen, aber der Vorgänger-Blob (Schritt 6) und ein Opt-out werden auch dort
+gelöscht. Eine Wiederherstellung liest die Server aus dem Pointer und findet so
+auch ein Backup, das nur dort liegt.
 
 Schritt 7 ist nicht redundant. Relays räumen replaceable Events nach Alter weg. Wird
 nur der Pointer frisch gehalten, entsteht ein Fenster, in dem Pointer und Blob leben,

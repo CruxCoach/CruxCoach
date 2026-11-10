@@ -168,7 +168,7 @@ queries: `SprayWalls.sq`.
   `THIRD_PARTY_LICENSES.md`). It is not in the APK.
 - **Download (`HoldModelStore`):** only when the climber asks, from the Blossom
   mirrors of the board catalogues that hold the file, in this order:
-  `blossom.cruxcoach.org`, `cdn.hzrd149.com`, `blossom-01.uid.ovh`. Never from the
+  `blossom.cruxcoach.org`, `blossom-01.uid.ovh`, `blossom.yakihonne.com`. Never from the
   publisher's own servers. The file is kept only when its size and SHA-256 match the
   pin. Settings → Delete local data → "Spray walls on this phone" removes it.
 - **Runtime:** ONNX Runtime for Android 1.31.1 (MIT; its third-party notices are

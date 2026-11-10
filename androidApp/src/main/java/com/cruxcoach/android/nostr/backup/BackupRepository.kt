@@ -227,10 +227,13 @@ class BackupRepository @Inject constructor(
         publishPointerEvent(pointer, pubkey)
         preferences.setPreviousBlobSha256(sha256)
 
-        // 8 — cleanup previous blob (best-effort)
+        // 8 — cleanup previous blob (best-effort). An earlier version may have
+        // put it on a server that is no default any more, so those are asked
+        // as well; a server that never had it answers 404, which counts as done.
         previousSha?.let { stale ->
-            uploader.delete(stale, servers)
-            Log.d(TAG, "event=backup_cleanup previousShaPresent=true serversCleaned=${servers.size}")
+            val cleanup = cleanupServers(servers)
+            uploader.delete(stale, cleanup)
+            Log.d(TAG, "event=backup_cleanup previousShaPresent=true serversCleaned=${cleanup.size}")
         } ?: Log.d(TAG, "event=backup_cleanup previousShaPresent=false serversCleaned=0")
 
         // 9 — record success
@@ -368,9 +371,7 @@ class BackupRepository @Inject constructor(
         // existed. Pre-filter the pointer's server list through the
         // shared URL gate (same as restore() does at L344) so we don't
         // dial pre-compromise URLs.
-        val probeServers = pointer.servers.filter {
-            com.cruxcoach.android.nostr.UrlValidation.isValidBlossom(it)
-        }
+        val probeServers = restoreServers(pointer)
         val info = BackupInfo(pointer = pointer, pointerEvent = pointerEvent, keyEvent = keyEvent)
         val blobReachable = probeServers.isNotEmpty() &&
             uploader.verifyExists(pointer.sha256, probeServers)
@@ -419,7 +420,7 @@ class BackupRepository @Inject constructor(
         // historical backup was published while the user's nsec was
         // briefly compromised, the pointer could still list attacker
         // URLs; we never dial them regardless of their Schnorr pedigree.
-        val servers = pointer.servers.filter { com.cruxcoach.android.nostr.UrlValidation.isValidBlossom(it) }
+        val servers = restoreServers(pointer)
         if (servers.isEmpty()) {
             throw BackupException(BackupErrorReason.PointerListsNoUsableServers)
         }
@@ -582,8 +583,11 @@ class BackupRepository @Inject constructor(
         var blossomAttempted = 0
         var blossomAccepted = 0
         preferences.getPreviousBlobSha256()?.let { sha ->
-            val servers = runCatching { discoverBlossomServers(pubkey) }
-                .getOrDefault(BlossomUploader.DEFAULT_SERVERS)
+            // The retired defaults too: the blob may be from a version that still uploaded there.
+            val servers = cleanupServers(
+                runCatching { discoverBlossomServers(pubkey) }
+                    .getOrDefault(BlossomUploader.DEFAULT_SERVERS),
+            )
             val outcome = uploader.delete(sha, servers)
             blossomAttempted = outcome.attempted
             blossomAccepted = outcome.succeeded
@@ -1147,6 +1151,23 @@ class BackupRepository @Inject constructor(
     }
 
     companion object {
+        /**
+         * Where a backup blob is deleted: today's servers, then the retired
+         * defaults ([BlossomUploader.RETIRED_SERVERS]), each once. A blob of
+         * an earlier version may lie on a server nothing is uploaded to now.
+         */
+        internal fun cleanupServers(current: List<String>): List<String> =
+            (current + BlossomUploader.RETIRED_SERVERS).distinct()
+
+        /**
+         * Where a restore reads a backup: the servers its pointer names, in
+         * that order, whatever the defaults are today. So a backup an earlier
+         * version put on a retired server is still found there. Entries that
+         * fail the shared URL gate are never dialled.
+         */
+        internal fun restoreServers(pointer: BackupPointer): List<String> =
+            pointer.servers.filter { com.cruxcoach.android.nostr.UrlValidation.isValidBlossom(it) }
+
         private const val TAG = "BackupSync"
         private const val KIND_REPLACEABLE_PARAMETERIZED = 30078
         private const val KIND_BLOSSOM_SERVER_LIST = 10063

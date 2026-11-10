@@ -46,8 +46,9 @@ class ProfileImageUploader @Inject constructor(
      * idempotency: if the user re-uploads the identical image, every
      * Blossom server happily returns the same hash.
      *
-     * Default [servers] are the same two we use for backup blobs;
-     * `image/jpeg` flies on both per BUD-01 conformance.
+     * Default [servers] are the ones backup blobs go to
+     * ([BlossomUploader.DEFAULT_SERVERS]); each of them takes `image/jpeg`
+     * and serves it under the bare hash, which the returned address relies on.
      */
     suspend fun upload(
         blob: ByteArray,

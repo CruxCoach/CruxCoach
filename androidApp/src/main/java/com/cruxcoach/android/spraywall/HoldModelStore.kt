@@ -34,15 +34,17 @@ object HoldModel {
     const val BYTES = 32_536_853L
 
     /**
-     * Tried in this order: the board catalogues' mirrors that hold the file
-     * (blossom.primal.net, the fourth catalogue mirror, refuses CruxCoach's
-     * uploads). Blossom serves a file under its SHA-256, so a hit is the
-     * pinned file by construction; it is still checked against the pin.
+     * Tried in this order: the board catalogues' mirrors, where an hourly
+     * check keeps the file (since 2026-11-10 without cdn.hzrd149.com, which
+     * takes no uploads from CruxCoach any more, and with
+     * blossom.yakihonne.com in its place). Blossom serves a file under its
+     * SHA-256, so a hit is the pinned file by construction; it is still
+     * checked against the pin.
      */
     val MIRRORS = listOf(
         "https://blossom.cruxcoach.org",
-        "https://cdn.hzrd149.com",
         "https://blossom-01.uid.ovh",
+        "https://blossom.yakihonne.com",
     )
 
     val urls: List<String> get() = MIRRORS.map { "${it.trimEnd('/')}/$SHA256" }
