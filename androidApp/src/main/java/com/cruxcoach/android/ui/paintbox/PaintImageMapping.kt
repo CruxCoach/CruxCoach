@@ -76,6 +76,8 @@ internal object PaintImageMapping {
     private const val LIFT = 0.6f
     private const val LEVEL_MIN = 0.35f
 
+    @Volatile private var neighbours: Pair<Map<Int, Offset>, HoldGraph>? = null
+
     private val DISC_X = FloatArray(SAMPLES) { sqrt((it + 0.5f) / SAMPLES) * cos(it * 2.3999631f) }
     private val DISC_Y = FloatArray(SAMPLES) { sqrt((it + 0.5f) / SAMPLES) * sin(it * 2.3999631f) }
     private val LINEAR = FloatArray(256) { linear(it.toFloat()) }
@@ -164,7 +166,8 @@ internal object PaintImageMapping {
         val y = FloatArray(n)
         var index = 0
         for ((id, point) in points) { ids[index] = id; x[index] = point.x; y[index] = point.y; index++ }
-        val graph = HoldGraph(x, y)
+        // The same holds are mapped again for every move of the photo: their neighbours are worked out once.
+        val graph = neighbours?.takeIf { it.first === points }?.second ?: HoldGraph(x, y).also { neighbours = points to it }
         val near = graph.near
 
         // 1. Coverage: what share of each hold's surroundings belongs to the picture.
@@ -202,9 +205,12 @@ internal object PaintImageMapping {
         if (backgroundLab != null) {
             // How unlike the background a pixel is, measured against the picture's own clear parts:
             // a glow or a JPEG halo around a shape counts only in part.
-            val clear = (0 until count).filter { weight[it] > 0f }.map { away[it] }.sorted()
-            if (clear.isNotEmpty()) {
-                val full = max(TOLERANCE * 1.5f, 0.5f * percentile(clear, 0.95f))
+            val clear = FloatArray(count)
+            var size = 0
+            for (o in 0 until count) if (weight[o] > 0f) clear[size++] = away[o]
+            if (size > 0) {
+                clear.sort(0, size)
+                val full = max(TOLERANCE * 1.5f, 0.5f * percentile(clear, size, 0.95f))
                 for (o in 0 until count) if (weight[o] > 0f) {
                     weight[o] = ((away[o] - TOLERANCE) / (full - TOLERANCE)).coerceIn(0f, 1f)
                 }
@@ -292,7 +298,8 @@ internal object PaintImageMapping {
         // A few fixed LED colours (MoonBoard, Quantum) always shine fully; so does a shape on a removed background.
         // A whole picture keeps its light and dark, lifted so that no LED is nearly off.
         val few = palette.size <= 16
-        val brightest = max(1f, percentile(holds.map { max(red[it], max(green[it], blue[it])) }.sorted(), 0.9f))
+        val values = FloatArray(holds.size) { max(red[holds[it]], max(green[holds[it]], blue[holds[it]])) }.also { it.sort() }
+        val brightest = max(1f, percentile(values, values.size, 0.9f))
         val color = IntArray(n) { -1 }
         for (i in holds) {
             val value = max(1f, max(red[i], max(green[i], blue[i])))
@@ -343,10 +350,11 @@ internal object PaintImageMapping {
     /** Five bits a channel: colours that look the same share a bin. */
     private fun fine(rgb: Int) = (((rgb shr 19) and 31) shl 10) or (((rgb shr 11) and 31) shl 5) or ((rgb shr 3) and 31)
 
-    private fun percentile(sorted: List<Float>, share: Float): Float {
-        val position = share * (sorted.size - 1)
+    /** Of the first [size] values of [sorted]. */
+    private fun percentile(sorted: FloatArray, size: Int, share: Float): Float {
+        val position = share * (size - 1)
         val below = floor(position).toInt()
-        val above = min(sorted.size - 1, below + 1)
+        val above = min(size - 1, below + 1)
         return sorted[below] + (sorted[above] - sorted[below]) * (position - below)
     }
 

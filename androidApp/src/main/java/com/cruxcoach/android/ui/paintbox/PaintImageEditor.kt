@@ -23,6 +23,7 @@ import com.cruxcoach.android.ui.board.*
 import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
 import com.cruxcoach.domain.board.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -73,12 +74,22 @@ internal fun PaintImageEditor(state: PaintBoxState, vm: PaintBoxViewModel) {
         else -> boardMarkerScale(brand, viewport.width / width, width)
     }
     // The same immutable transform is used for rendering and inverse sampling.
-    LaunchedEffect(session, viewport, points) {
-        if (!session.ready && viewport.width > 0 && points.isNotEmpty()) {
-            val colors = withContext(Dispatchers.Default) { PaintImageSampling.sample(session, viewport, points, brand) }
-            vm.imagePreview(session, colors)
+    // A mapping can take longer than a frame. They run one after the other, each for the newest
+    // placement, and the holds show the last one that finished: the preview trails the finger a
+    // little instead of standing still until the finger rests. Only the mapping of the current
+    // placement is handed on (the view model checks), so Apply never takes an older one.
+    val request by rememberUpdatedState(Triple(session, viewport, points))
+    var trailing by remember(session.bitmap) { mutableStateOf<Map<Int, Int>?>(null) }
+    LaunchedEffect(session.bitmap, brand) {
+        snapshotFlow { request }.conflate().collect { (placed, size, holds) ->
+            if (!placed.ready && size.width > 0 && holds.isNotEmpty()) {
+                val colors = withContext(Dispatchers.Default) { PaintImageSampling.sample(placed, size, holds, brand) }
+                trailing = colors
+                vm.imagePreview(placed, colors)
+            }
         }
     }
+    val shown = if (session.ready) session.colors else trailing ?: session.colors
     val current by rememberUpdatedState(session)
     val bitmap = remember(session.bitmap) { session.bitmap.asImageBitmap() }
     Canvas(Modifier.aspectRatio(aspect).clipToBounds().testTag("paintbox_image_canvas")
@@ -107,7 +118,7 @@ internal fun PaintImageEditor(state: PaintBoxState, vm: PaintBoxViewModel) {
         }) { drawImage(bitmap, filterQuality = FilterQuality.None) }
         points.forEach { (id, point) ->
             drawCircle(Color.White.copy(alpha = .4f), marker, point)
-            session.colors[id]?.let { drawBoardColorOverlay(point, marker, rgb332ToComposeColor(it)) }
+            shown[id]?.let { drawBoardColorOverlay(point, marker, rgb332ToComposeColor(it)) }
         }
     }
 }

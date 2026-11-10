@@ -91,6 +91,27 @@ class PaintBoxUiTest {
         compose.runOnIdle { assertTrue(state.value.imageImport!!.transform.zoom > 1f) }
     }
 
+    @Test fun `photo preview maps the newest placement and hands it on`() {
+        val vm = mockk<PaintBoxViewModel>(relaxed = true)
+        val bitmap = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888)
+        val state = MutableStateFlow(PaintBoxState(
+            document = PaintDocument(board = PaintBoard("kilter", 1, 10)), loading = false,
+            imageImport = PaintImageSession(bitmap),
+            boardSize = BoardSize(10, 1, "Test", 0, 100, 0, 100, null),
+            placements = mapOf(1 to BoardPlacement(1, 1, 1, 30, 30)),
+        ))
+        val mapped = java.util.concurrent.CopyOnWriteArrayList<PaintImageSession>()
+        every { vm.imagePreview(any(), any()) } answers { mapped.add(firstArg()) }
+        compose.setContent { MaterialTheme { PaintImageEditor(state.collectAsState().value, vm) } }
+        // The photo moves on while mappings run: the last placement is mapped in the end, whatever was skipped.
+        repeat(5) { step ->
+            state.value = state.value.copy(imageImport = state.value.imageImport!!.copy(transform = PaintImageTransform(zoom = 1.1f + step / 10f)))
+            compose.waitForIdle()
+        }
+        compose.waitUntil(5_000) { mapped.lastOrNull() === state.value.imageImport }
+        assertTrue(mapped.size <= 6)
+    }
+
     private fun editor(connection: ConnectionState): PaintBoxViewModel {
         val vm = mockk<PaintBoxViewModel>(relaxed = true)
         every { vm.state } returns MutableStateFlow(PaintBoxState(
