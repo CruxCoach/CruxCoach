@@ -10,6 +10,9 @@ import com.cruxcoach.athlete.model.BodyMetric
 import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.ClimbingDayEntry
 import com.cruxcoach.athlete.model.ClimbingDayKind
+import com.cruxcoach.athlete.model.ComebackPlan
+import com.cruxcoach.athlete.model.Injury
+import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.UnitSystem
 import com.cruxcoach.data.CruxCoachBackup
 import com.cruxcoach.data.SecureDatabaseTransactionRunner
@@ -36,6 +39,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -257,5 +261,25 @@ class CruxCoachBackupAthletePartTest {
         assertEquals(1, result.athleteRows)
         assertFalse(result.athleteFailed)
         assertEquals(70.5, copied?.single()?.value)
+    }
+
+    /** A comeback plan with [prompts] remembered prompts, as a long plan collects them. */
+    private fun planWith(prompts: Int) = AthleteSnapshot(injuries = listOf(Injury("i1", InjuryRegion.FINGER, severity = 2,
+        startedOn = "2026-06-01", updatedAt = 1, plan = ComebackPlan(stage = 3, acknowledgedOn = "2026-06-02", startedOn = "2026-06-02",
+            prompts = (1..prompts).associate { "review:${it % 6}:$it:1" to "2026-07-01" }))))
+
+    @Test
+    fun `a comeback plan with 100 remembered prompts round-trips`() {
+        // Review of #114: the import refused plans with more than 64 prompts, so a long plan's backup could not be restored.
+        val json = export { planWith(100) }
+        var restored: AthleteSnapshot? = null
+
+        val result = import(json) { part, _ -> restored = part; part.injuries.size }
+
+        assertFalse(result.athleteFailed)
+        assertEquals(planWith(100).injuries.single().plan!!.prompts, restored?.injuries?.single()?.plan?.prompts)
+        // The cap is 1024 now; beyond it the backup is still refused.
+        assertEquals(1, CruxCoachBackup.preview(export { planWith(1024) }).healthRows)
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(export { planWith(1025) }) }
     }
 }

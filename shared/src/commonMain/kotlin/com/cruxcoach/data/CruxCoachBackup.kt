@@ -46,6 +46,11 @@ object CruxCoachBackup {
     // range. Quantum intentionally lives at 9101..9105. This wider cap keeps
     // pre-0.2.2 payloads valid while still rejecting crafted huge integers.
     private const val MAX_LAYOUT_ID = 100_000L
+    /**
+     * A comeback plan remembers its prompts (a look back per stage week, a warning sign per day). That map used to only
+     * grow, and a long plan beyond the old cap of 64 made a backup that could not be restored (review of #114).
+     */
+    private const val MAX_PLAN_PROMPTS = 1024
 
     // 8-4-4-4-12 canonical — app-generated IDs (UUID.randomUUID().toString()).
     private val UUID_REGEX =
@@ -466,7 +471,7 @@ object CruxCoachBackup {
             }
             i.plan?.let { p ->
                 requireIntRange("injury.plan.stage", p.stage, 0..20)
-                require(p.history.size <= MAX_SET_COLLECTION_SIZE && p.prompts.size <= 64 && p.referenceKg.size <= 16) {
+                require(p.history.size <= MAX_SET_COLLECTION_SIZE && p.prompts.size <= MAX_PLAN_PROMPTS && p.referenceKg.size <= 16) {
                     "invalid backup: injury.plan too large"
                 }
                 p.referenceKg.values.forEach { requireFinite("injury.plan.referenceKg", it) }
