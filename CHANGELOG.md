@@ -562,6 +562,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - After a catalogue import the app frees the temporary database file at once. A Tension
   import left about 180 MB in it until the next write, on a phone with little space left.
+- Encrypted backups have more than one storage server again. `cdn.hzrd149.com`, one of
+  the two servers up to 0.2.4, stopped taking uploads on 10 November 2026. Backups,
+  profile pictures and the photos of public spray walls now go to `nostr.download`,
+  `blossom.data.haus` and `blossom.yakihonne.com`. A backup that an earlier version
+  stored on the old server is still found when you restore, and it is deleted there
+  when a newer backup replaces it or when you delete your backup from the servers.
+  The hold model for spray walls now comes from `blossom.cruxcoach.org`,
+  `blossom-01.uid.ovh` and `blossom.yakihonne.com`.
 - Your phone no longer keeps the name "CruxCoach…" in your car or headphones after
   sharing a board with other apps. The phone carries that name only while sharing runs
   on a connected board; when either ends, for whatever reason, its own Bluetooth name

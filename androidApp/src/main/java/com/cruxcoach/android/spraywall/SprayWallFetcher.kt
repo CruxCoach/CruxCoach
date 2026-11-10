@@ -128,9 +128,7 @@ class SprayWallFetcher @Inject constructor(
     /** The version's photo here, downloaded once per hash and checked against it. */
     private suspend fun photoFor(v: SprayWallNostr.Parsed.Version): SprayWallPhotoStore.StoredPhoto {
         repository.photoWithHash(v.photoSha256)?.let { return it }
-        val origin = "https://" + v.photoUrl.removePrefix("https://").substringBefore('/')
-        val servers = (listOf(origin) + BlossomUploader.DEFAULT_SERVERS).distinct()
-        val bytes = blossom.download(v.photoSha256, servers, MAX_PHOTO_BYTES)
+        val bytes = blossom.download(v.photoSha256, sprayWallPhotoServers(v.photoUrl), MAX_PHOTO_BYTES)
         return photos.storeDownloaded(bytes)
     }
 
@@ -178,4 +176,13 @@ class SprayWallFetcher @Inject constructor(
          */
         const val MAX_FETCH_BYTES = 24L * 1024 * 1024
     }
+}
+
+/**
+ * Where a wall photo is asked for: the server its address names, then every server this app has uploaded to
+ * ([BlossomUploader.KNOWN_SERVERS], so also one that takes no uploads any more), each once.
+ */
+internal fun sprayWallPhotoServers(photoUrl: String): List<String> {
+    val origin = "https://" + photoUrl.removePrefix("https://").substringBefore('/')
+    return (listOf(origin) + BlossomUploader.KNOWN_SERVERS).distinct()
 }

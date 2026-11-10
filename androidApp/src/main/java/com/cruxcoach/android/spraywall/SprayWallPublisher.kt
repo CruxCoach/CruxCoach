@@ -116,7 +116,7 @@ class SprayWallPublisher @Inject constructor(
         },
         stamp = ::stamp,
         now = ::now,
-        defaultServers = BlossomUploader.DEFAULT_SERVERS,
+        defaultServers = BlossomUploader.KNOWN_SERVERS,
     )
 
     private val publishing = SprayWallPublishing(

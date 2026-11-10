@@ -503,67 +503,73 @@ class BlossomUploader @Inject constructor(
         private const val CONTENT_TYPE_ALT = "application/x-cruxcoach-backup"
 
         /**
-         * FEAT-002 §5.3 — hardcoded defaults, merged with the user's
-         * Kind 10063 list.
+         * FEAT-002 §5.3 — the servers a new blob is uploaded to, merged with
+         * the user's Kind 10063 list. Backups, profile pictures and spray wall
+         * photos share them.
          *
-         * Server selection is driven by empirical end-to-end testing
-         * (fresh test identity, BUD-01 + BUD-06 conformant upload of
-         * an `application/octet-stream` blob, GET-verify, DELETE-cleanup):
+         * Every entry passed the same end-to-end run with a fresh test
+         * identity, the headers this class sends (BUD-01 authorization and
+         * BUD-06 `X-SHA-256` / `X-Content-Length` / `X-Content-Type`) and the
+         * app's HTTP client name: upload of a backup-sized
+         * `application/octet-stream` blob, of the CruxCoach alt MIME type and
+         * of a JPEG; HEAD and GET by the bare hash; DELETE refused for a
+         * foreign key and accepted for the owner; 404 afterwards. Last run
+         * 2026-11-10:
          *
-         * - **nostr.download**: free, requires the BUD-06 headers we
-         *   now send (X-SHA-256, X-Content-Length, X-Content-Type)
-         *   — answered 400 "Missing X-SHA-256" before the headers
-         *   patch, now answers 201.
-         * - **cdn.hzrd149.com**: free, accepts both
-         *   `application/octet-stream` and the CruxCoach-alt MIME
-         *   type (201 → GET-verify → DELETE 204 in the same E2E
-         *   probe, 2026-07); added as third default so backup
-         *   uploads survive a simultaneous outage of one of the
-         *   other two.
+         * - **nostr.download**: free. First since 2026-07, so a profile
+         *   picture or spray wall photo still gets its address there (those
+         *   go to the first server that takes them). It was down for weeks in
+         *   July and August 2026, which is why it must never stand alone.
+         * - **blossom.data.haus**: free, hosted in Germany, any type.
+         * - **blossom.yakihonne.com**: free, any type; several times slower
+         *   from Europe than the other two, hence last.
          *
-         * Removed (deterministic 415 "File type not allowed" — these
-         * servers are media CDNs that whitelist image/video/audio
-         * MIME types only, so neither `application/octet-stream` nor
-         * the CruxCoach-alt `application/x-cruxcoach-backup` will
-         * ever be accepted, regardless of retries):
+         * [upload] fans out with `async`/`awaitAll`, so a dead or slow entry
+         * costs at most the `@Named("nostr")` client's timeouts, and the
+         * backup pipeline needs one accepted upload (`ok >= 1`) to publish a
+         * pointer.
          *
-         * - blossom.nostr.build
-         * - blossom.band (same infrastructure)
+         * Not usable, each seen failing end to end:
          *
-         * Removed 2026-07-11 — **blossom.primal.net**: now returns 415
-         * "unsupported media type application/octet-stream" for app
-         * clients (it previously accepted arbitrary blobs). Same reason
-         * the Kilter board-db manifest dropped it 2026-07-04 (Cloudflare
-         * / media-type gate for client IPs). Verified failing end-to-end
-         * against a fresh backup; nostr.download + cdn.hzrd149.com are
-         * confirmed 200 for clients and remain the durable pair. A third
-         * client-verified mirror can be re-added once vetted.
+         * - blossom.nostr.build and blossom.band: media CDNs, 415 for both of
+         *   our types.
+         * - blossom.primal.net: 415 for `application/octet-stream` from app
+         *   clients since 2026-07-11.
+         * - cdn.hzrd149.com: see [RETIRED_SERVERS].
          *
-         * **2026-08-07 — nostr.download is DOWN, and deliberately kept
-         * anyway.** Probed from the pipeline host: DNS resolves
-         * (185.18.221.87) but ICMP, TCP/80 and TCP/443 all fail, while
-         * hzrd149 / primal / cruxcoach.org answer 200 in under a second
-         * from the same egress. It also holds 0 of the 208 board-DB
-         * chunks. So it contributes nothing right now.
-         *
-         * It stays in the list regardless, because dropping it would
-         * leave exactly ONE default server. [upload] fans out with
-         * `async`/`awaitAll`, so a dead entry does not delay the path to
-         * a healthy one — it only imposes a ~10 s floor per backup (the
-         * `@Named("nostr")` client's connectTimeout) and one logged
-         * `upload_server_failed`. A single-server default would be the
-         * strictly worse trade: any hzrd149 outage means no backup at
-         * all, and the pipeline requires `ok >= 1` to publish a pointer.
-         *
-         * Remove it only together with a client-vetted replacement, using
-         * the same end-to-end procedure as above (fresh identity, BUD-01 +
-         * BUD-06 upload, GET-verify, DELETE-cleanup). Until then a dead
-         * spare beats no spare.
+         * Replace an entry only with a server vetted by the same run.
          */
         val DEFAULT_SERVERS: List<String> = listOf(
             "https://nostr.download",
+            "https://blossom.data.haus",
+            "https://blossom.yakihonne.com",
+        )
+
+        /**
+         * Former defaults that take no uploads any more. Nothing new goes
+         * there; what an earlier version uploaded is still read and deleted
+         * there.
+         *
+         * - **cdn.hzrd149.com** (a default from 2026-07 up to 0.2.4): since
+         *   2026-11-10 it answers every upload with 401 unless the key is on
+         *   its allowlist. It still serves what it holds, answers 404 for a
+         *   blob it does not have, and checks only the ownership on DELETE,
+         *   so an owner can still take a blob back.
+         *
+         * A restore does not need this list: a backup pointer names its own
+         * servers. Drop an entry once the versions that uploaded there are
+         * long gone.
+         */
+        val RETIRED_SERVERS: List<String> = listOf(
             "https://cdn.hzrd149.com",
         )
+
+        /**
+         * Where a blob of this app may lie when its upload server is not
+         * known: [DEFAULT_SERVERS], then [RETIRED_SERVERS]. For reads and
+         * deletes only.
+         */
+        val KNOWN_SERVERS: List<String> = (DEFAULT_SERVERS + RETIRED_SERVERS).distinct()
 
         private val JSON = Json { encodeDefaults = true; prettyPrint = false }
     }
