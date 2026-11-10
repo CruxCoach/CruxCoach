@@ -84,6 +84,10 @@
     <string name="spray_climb_delete">Boulder löschen</string>
     <string name="spray_climb_delete_confirm_title">%1$s löschen?</string>
     <string name="spray_climb_delete_confirm_text">Damit werden auch seine Logbucheinträge gelöscht.</string>
+    <string name="spray_climb_deleting">Der Boulder wird von den Servern zurückgezogen …</string>
+    <string name="spray_climb_delete_failed">Die Server haben das Zurückziehen nicht bestätigt, deshalb wurde der Boulder nicht gelöscht. Prüfe die Verbindung und versuch es noch einmal.</string>
+    <string name="spray_climb_delete_failed_signing">Das Signieren hat nicht geklappt oder wurde in deiner Signer-App abgelehnt, deshalb wurde der Boulder nicht gelöscht. Versuch es noch einmal und bestätige die Anfragen.</string>
+    <string name="spray_climb_delete_failed_identity">Zum Löschen braucht es den Schlüssel des CruxCoach-Accounts, mit dem der Boulder veröffentlicht wurde, damit er von den Servern zurückgezogen werden kann. Richte ihn in den Einstellungen unter CruxCoach Account ein und versuch es dann noch einmal.</string>
     <string name="spray_climb_save_failed">Der Boulder ließ sich nicht speichern.</string>
     <string name="spray_problem_name">Gib dem Boulder einen Namen.</string>
     <string name="spray_problem_name_long">Der Name ist zu lang.</string>
@@ -219,6 +223,8 @@
     <string name="spray_followed_remove_text">Das entfernt die Wand von diesem Handy, mit deinen Bouldern und Logbucheinträgen darauf. Deine Boulder werden auch von den Servern zurückgezogen. Die öffentliche Wand selbst bleibt.</string>
     <string name="spray_followed_removing">Deine Boulder werden zurückgezogen …</string>
     <string name="spray_followed_remove_failed">Deine Boulder auf dieser Wand ließen sich nicht von den Servern zurückziehen, deshalb bleibt die Wand. Prüfe die Verbindung und versuch es noch einmal.</string>
+    <string name="spray_followed_remove_failed_signing">Das Signieren hat nicht geklappt oder wurde in deiner Signer-App abgelehnt, deshalb wurden deine Boulder auf dieser Wand nicht zurückgezogen und die Wand bleibt. Versuch es noch einmal und bestätige die Anfragen.</string>
+    <string name="spray_followed_remove_failed_identity">Zum Zurückziehen deiner Boulder auf dieser Wand braucht es den Schlüssel des CruxCoach-Accounts, mit dem sie veröffentlicht wurden. Richte ihn in den Einstellungen unter CruxCoach Account ein und versuch es dann noch einmal.</string>
     <string name="spray_venue_title">Spraywände hier</string>
     <string name="spray_venue_info">Öffentliche Spraywände, die Leute für diesen Ort geteilt haben. Sie werden erst von den Relays geladen, wenn du fragst.</string>
     <string name="spray_venue_show">Spraywände zeigen</string>

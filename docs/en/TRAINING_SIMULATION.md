@@ -39,11 +39,14 @@ Each persona starts in a fresh database with a simulated clock. Every day:
    `SessionSuggester` runs. The athlete sees it every day, including days they do not train.
    In the first two weeks, on a training day, they tap "Don't know it" on every Special exercise that is new
    to them, the way the card sends it (`SessionSuggester.familiarSwap`, then the ledger entry and the swap).
+   Persona `picky` also taps "Another suggestion" (a ledger entry and the next variant) and swaps one exercise
+   for one of the alternatives the card offers (`SessionSuggester.alternatives`, then the ledger entry and the
+   swap).
 5. On a training day (unless they skip) the athlete starts the suggestion (`AthleteService.startSuggestion`).
    They do every set in the player's order. Each set goes through `completeSetDetailed`, then
    `adjustUpcomingSets`, then the reserve answer and `adjustUpcomingSets` again, as the player sends them.
    The training ends with `finishWorkout`.
-6. During a comeback plan (persona `pulley-comeback`) the athlete also follows the plan, through the same
+6. During a comeback plan (persona `pulley-comeback` and the other `comeback-*`) the athlete also follows the plan, through the same
    calls as the comeback screen and Today's card: they start it on the day of the injury
    (`ComebackService.start`, from stage 0, with the doctor's finding and their own reference values), log the
    morning pain on most days and the pressure pain twice a week, and answer the plan's prompts with the
@@ -56,8 +59,9 @@ Nothing of the coach's rules is copied into the simulation. The logic that used 
 now lives in shared code (`TodayCoach`), so the app and the simulation run the same lines.
 
 Not simulated yet: the board logbook from the app's own board (board climbers log their sessions as
-climbing days), comeback plans for other regions than the fingers, a plan that starts later than the
-injury, and swaps or "another suggestion" on the card, except "too easy" and "Don't know it".
+climbing days), the athlete's own routine as the plan, a dismissed "not better" question, and the card's other buttons ("Not today",
+"Leave it out", the kind and time menus). "Too easy", "Don't know it", "Another suggestion" and swaps are
+simulated.
 
 ## The simulated athlete
 
@@ -86,7 +90,7 @@ sets after it, as in the app.
   Strength is largely kept for about three weeks (Mujika & Padilla 2000).
 - An injury takes a share off the injured quality at once (pulley injury: fingers −25 %).
 
-### The injured finger
+### The injured tissue
 
 During a comeback plan the injured tissue has a truth of its own (`SimInjury`), apart from the athlete's
 strength and apart from the plan's rules:
@@ -95,6 +99,9 @@ strength and apart from the plan's rules:
   the injury, rising evenly to 100 % over seven weeks (pulley strain: easy climbing after about four weeks,
   full climbing after six to eight; Schöffl et al. 2003). A session that loads the hand within tolerance
   speeds healing a little; a session that hurts 6 or more and climbing above tolerance set it back.
+  Other findings and regions take longer or shorter (rough mid values of the usual healing times): a
+  pulley rupture 10 weeks, several pulleys 12, a tenosynovitis 6, pain on the inside or outside of the
+  elbow 12, the ankle, the hamstring and the back 6, the shoulder, the wrist and the knee 8.
 - **Pain** in a set: none up to 70 % of the tolerance, then one point per 10 % more, plus 0.4 × the
   irritation. Longer holds ask more of the hand (the same hold curve as above).
 - **Irritation** starts at the injury's pain and fades by 7 % a day; painful sessions and climbing above
@@ -103,6 +110,15 @@ strength and apart from the plan's rules:
   stage's range when it has one (from below: a fifth more per session at most), otherwise the planned load
   and their sense of effort. They go one step lighter after a session above the stage's green zone, and one
   step heavier at most once a week when it stayed green. They accept every proposal.
+- **Region plans** (shoulder, elbow, wrist, knee, ankle, hamstring, back) have no reference values: the
+  athlete works at the effort an item asks for (holds about 4–5 of 10, 15 repetitions about 5, fewer about
+  7, mobility 2) of what the region can do today, which is a little more than it takes without pain
+  (tolerance + 25 %). Every item that is not for the healthy side loads the injured spot. A climbing day
+  reaches the hip, the knee and the ankle with 60 % of what it asks of the hands.
+- **Habits** (`ComebackHabits`, personas `comeback-*`): the same athlete, but skipping a share of the due
+  sessions, climbing one level harder than the stage allows on a share of the climbing days, keeping the stage
+  when the plan proposes a step back or asks about a worsening, or starting the plan later and at a later
+  stage. The careful athlete above has none of them.
 
 ## Personas
 
@@ -124,6 +140,20 @@ strength and apart from the plan's rules:
 | `open-home` | 3–5 years at home with hangboard, bar, dumbbells and bands; chose "Open to unusual exercises" |
 | `home-classics` | `home-hangboard` with "Mostly classics" |
 | `new-no-setup` | A new user who answers none of the coach setup; a pull-up bar and a mat |
+| `picky` | `home-hangboard`, but taps "Another suggestion" on about a third of the training days and swaps one exercise for one of its alternatives on about four in ten |
+| `comeback-skipper` | `pulley-comeback`, but skips about half of the plan's sessions and keeps the stage when the plan proposes a step back |
+| `comeback-eager` | `pulley-comeback`, but on half of the climbing days the stage allows climbs one level harder |
+| `comeback-late` | `pulley-comeback`, but starts the plan two weeks after the injury, at stage 2 |
+| `comeback-no-mornings` | `pulley-comeback`, but never logs the morning pain; skips the look back's first question for this morning's pain and answers the later ones |
+| `comeback-rupture` | `pulley-comeback`, but a pulley rupture (the plan's pain rule is 1 in its first two stages) |
+| `comeback-tenosynovitis` | `pulley-comeback`, but a tenosynovitis (the plan's overuse pain rule) |
+| `comeback-shoulder` | `pulley-comeback`, but a rotator cuff problem of the right shoulder and its plan |
+| `comeback-elbow` | `pulley-comeback`, but pain on the inside of the right elbow and its plan |
+| `comeback-wrist` | `pulley-comeback`, but pain on the little-finger side of the right wrist and its plan |
+| `comeback-knee` | `pulley-comeback`, but a strain on the inside of the right knee and its plan |
+| `comeback-ankle` | `pulley-comeback`, but a sprained right ankle and its plan |
+| `comeback-hamstring` | `pulley-comeback`, but a hamstring strain and its plan |
+| `comeback-back` | `pulley-comeback`, but low back pain and its plan |
 
 ## Checks and thresholds
 
@@ -132,22 +162,25 @@ that misfires is caught instead of confirmed.
 
 | Group | Check | Threshold and source |
 |---|---|---|
-| Safety | No max finger work (loaded strength hangs, campus) during an open finger injury, the return ramp, or for young or first-year climbers | Growing climbers risk finger growth-plate injuries (Morrison & Schöffl 2007; Schöffl et al. 2015) |
+| Safety | No max finger work (loaded strength hangs, campus) during an open finger injury (one-handed work for the healthy hand of a one-hand injury excepted), the return ramp, or for young or first-year climbers | Growing climbers risk finger growth-plate injuries (Morrison & Schöffl 2007; Schöffl et al. 2015) |
 | Safety | No max finger work within 48 h after a hard or limit climbing day (72 h at 55+) | Hörst 2016; longer recovery with age (Fell & Williams 2008) |
-| Safety | No suggested exercise that lists an open injury's region as a contraindication (injuries of pain ≥ 4), unless a comeback plan has reached the stage from which training outside the plan may load the spot again (fingers stage 5, other regions stage 3) | The comeback plan's own stages (owner 2026-10-20) |
+| Safety | No suggested exercise that lists an open injury's region as a contraindication (injuries of pain ≥ 4), unless a comeback plan has reached the stage from which training outside the plan may load the spot again (fingers stage 5, other regions stage 3), or it is one-sided work the athlete did with the healthy side only and that does not load the injured region on the other side as well (the catalogue's `bothSides`) | The comeback plan's own stages (owner 2026-10-20) |
 | Safety | Climbers under 18: no campus, no one-arm or max finger work | Morrison & Schöffl 2007 |
 | Safety | 55+: max finger sessions at least 72 h apart | Fell & Williams 2008 |
 | Safety | Comeback plan: the planned load of the injured hand stays within the stage's range of the athlete's reference (one step for rounding); where the stage asks for an effort instead, it feels at most 1.5 × that effort | The stage's own percentages and effort |
-| Safety | Comeback plan: the next stage is offered only after a week in which no session truly hurt beyond the stage's amber limit and no morning reached 5 | Pain-monitoring model (Silbernagel et al. 2007) |
+| Safety | Comeback plan: the next stage is offered only after a week in which no session truly hurt beyond the stage's amber limit, no morning reached 5 and the middle morning of the week stayed within the stage's pain rule | Pain-monitoring model (Silbernagel et al. 2007) |
+| Safety | Comeback plan: the next stage is offered only after a week with at least one morning value (the look back asks for this morning's when there is none) | The maintainer's rule |
 | Safety | Comeback plan: no more sessions of a kind a day than the stage plans; strength sessions at least 46 h apart (the stage asks for 48 h of rest) | The stage's own plan |
 | Safety | Comeback plan: no board session while the stage allows less than hard climbing | The stage's own climbing |
+| Safety | Comeback plan: after two sessions within a week that truly hurt beyond the stage's amber limit, the plan proposes a step back or a repeat, or asks about the worsening, within a week | Pain-monitoring model (Silbernagel et al. 2007) |
 | Load | The first planned set of an exercise rises by at most one weight step or 10 % of the total load from one session to the next, counted from the higher of last time's plan and the heaviest load done. More is allowed after a session in which every work set had 3+ in reserve, but below 10 kg never more than one step | ACSM 2009: 2–10 %; owner 2026-11-06 |
 | Load | No max finger work while the finger load of the last 7 days is above 1.5 × its 28-day normal, from week 5 on (the athlete's climbing makes the load; the coach must not add to a spike) | Gabbett 2016 (acute:chronic ratio) |
 | Load | After six weeks the app's value of an exercise trained in at least four sessions is within 20 % of the truth | – |
 | Progress | No loaded or body-weight strength exercise is planned the same way in five sessions over four weeks or more | – |
 | Progress | A comeback stage that stayed within its pain rule for its last two weeks has offered the next stage within three weeks | – |
+| Progress | The next comeback stage is offered only after a week with comeback sessions on at least three days (or on as many days as the stage plans, when that is fewer) | The stage's own sessions |
 | Progress | A run of six weeks or more has a lighter phase, deload trainings have at most 85 % of the work sets of build trainings, and the ten days before a target date taper | Bompa & Haff 2009 (3:1 loading); Bosquet et al. 2007 (taper of 8–14 days, volume −41–60 %) |
-| Plan | In weeks trained as planned and without an injury or return ramp, each area (mobility aside) reaches at least half of its weekly goal and at most 1.25 × its maximum | Schoenfeld et al. 2017 (weekly sets) |
+| Plan | In weeks trained as planned, without an injury or return ramp and in one block phase, each area (mobility aside) reaches at least half of its weekly goal and at most 1.25 × its maximum | Schoenfeld et al. 2017 (weekly sets) |
 | Plan | A suggested training lasts at most 1.3 × the chosen length (+5 min) | – |
 | Plan | No full training is suggested once the week's training days (climbing included) are used up, and "training days done" is not said while days are left | – |
 | Plan | At least six different exercises in every eight full trainings (the block after climbing is meant to repeat) | – |

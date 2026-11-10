@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.*
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.BrandOrange
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import kotlin.math.roundToInt
 
@@ -111,15 +112,15 @@ private fun TourSpotlight(targetsInRoot: List<Rect>, message: Int, onEnd: () -> 
                 holes.forEach { addRoundRect(RoundRect(it, CornerRadius(12.dp.toPx()))) }
             }
             drawPath(scrim, Color.Black.copy(alpha = 0.78f))
-            holes.forEach { drawRoundRect(OrangeAccent, it.topLeft, it.size, CornerRadius(12.dp.toPx()), style = Stroke(2.dp.toPx())) }
+            holes.forEach { drawRoundRect(BrandOrange, it.topLeft, it.size, CornerRadius(12.dp.toPx()), style = Stroke(2.dp.toPx())) }
             holes.forEach { hole ->
             val arrowX = hole.center.x.coerceIn(margin, width - margin)
             val start = Offset(arrowX, if (below) hole.bottom + 4.dp.toPx() else hole.top - 4.dp.toPx())
             val end = start + Offset(0f, if (below) 16.dp.toPx() else -16.dp.toPx())
-            drawLine(OrangeAccent, start, end, 2.dp.toPx())
+            drawLine(BrandOrange, start, end, 2.dp.toPx())
             val direction = if (below) 1 else -1
-            drawLine(OrangeAccent, start, start + Offset(-4.dp.toPx(), direction * 5.dp.toPx()), 2.dp.toPx())
-            drawLine(OrangeAccent, start, start + Offset(4.dp.toPx(), direction * 5.dp.toPx()), 2.dp.toPx())
+            drawLine(BrandOrange, start, start + Offset(-4.dp.toPx(), direction * 5.dp.toPx()), 2.dp.toPx())
+            drawLine(BrandOrange, start, start + Offset(4.dp.toPx(), direction * 5.dp.toPx()), 2.dp.toPx())
             }
         }
         // Separate rectangles are intentional: a full-screen pointer handler would

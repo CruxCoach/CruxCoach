@@ -104,7 +104,10 @@ object SimReport {
                 d.skipped -> "skipped"
                 else -> "–"
             }
-            val comeback = d.comeback?.let { c -> listOf("comeback stage ${c.stage}") + c.sessions.map { "${it.kind.name.lowercase()} pain ${it.painMax}" } + c.prompts }.orEmpty()
+            val comeback = d.comeback?.let { c ->
+                listOfNotNull("comeback stage ${c.stage}", c.morningPain?.let { "morning $it" }) +
+                    c.sessions.map { "${it.kind.name.lowercase()} pain ${it.painMax}" } + c.prompts
+            }.orEmpty()
             val events = (d.events + comeback).takeIf { it.isNotEmpty() }?.joinToString(", ", " (", ")") ?: ""
             appendLine("| $day$events | $phase | $climb | $why | $items | $done |")
         }

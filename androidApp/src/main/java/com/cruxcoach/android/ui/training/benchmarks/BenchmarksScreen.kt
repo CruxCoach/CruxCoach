@@ -324,8 +324,8 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
     val sets = b.sets
     when (BenchmarkMath.capacityKind(def)) {
         CapacityKind.E1RM_TOTAL -> {
-            pieces += if (sets != null) "$sets × ${b.reps ?: 0} · " + loadText(def, b.loadKg ?: 0.0, units)
-                else loadText(def, b.loadKg ?: 0.0, units) + " × " + (b.reps ?: 0)
+            pieces += if (sets != null) "$sets\u00A0×\u00A0${b.reps ?: 0} · " + loadText(def, b.loadKg ?: 0.0, units)
+                else loadText(def, b.loadKg ?: 0.0, units) + "\u00A0×\u00A0" + (b.reps ?: 0)
             if (cap != null) {
                 val bw = b.bodyweightKg ?: bodyweight
                 val shown = if (def.load == LoadMode.BODYWEIGHT_PLUS && bw != null) cap.value - bw else cap.value
@@ -335,7 +335,7 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
         }
         CapacityKind.TEN_SECOND_MAX -> {
             val seconds = stringResource(R.string.tr_format_seconds, (b.durationS ?: 10.0).roundToInt())
-            pieces += if (sets != null) "$sets × $seconds · " + loadText(def, b.loadKg ?: 0.0, units)
+            pieces += if (sets != null) "$sets\u00A0×\u00A0$seconds · " + loadText(def, b.loadKg ?: 0.0, units)
                 else loadText(def, b.loadKg ?: 0.0, units) + " · " + seconds
             b.edgeMm?.let { pieces += stringResource(R.string.tr_format_mm, formatNumber(it)) }
             b.grip?.let { pieces += gripLabel(it) }
@@ -350,7 +350,7 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
             cap?.let { pieces += stringResource(R.string.trbm_max_reps_about, it.value.roundToInt()) }
         } else pieces += stringResource(R.string.trbm_max_reps, b.reps ?: 0)
         CapacityKind.MAX_SECONDS -> if (sets != null) {
-            pieces += "$sets × " + stringResource(R.string.tr_format_seconds, (b.durationS ?: 0.0).roundToInt())
+            pieces += "$sets\u00A0×\u00A0" + stringResource(R.string.tr_format_seconds, (b.durationS ?: 0.0).roundToInt())
             cap?.let { pieces += stringResource(R.string.trbm_max_seconds_about, it.value.roundToInt()) }
         } else pieces += stringResource(R.string.trbm_max_seconds, (b.durationS ?: 0.0).roundToInt())
         null -> Unit
@@ -532,9 +532,9 @@ fun prescriptionText(def: ExerciseDefinition, t: LoadTarget, units: UnitSystem):
     val reps = t.reps
     val duration = t.durationS
     val amount = when {
-        reps != null -> "$sets × $reps"
-        duration != null -> "$sets × " + stringResource(R.string.tr_format_seconds, duration)
-        else -> "$sets ×"
+        reps != null -> "$sets\u00A0×\u00A0$reps"
+        duration != null -> "$sets\u00A0×\u00A0" + stringResource(R.string.tr_format_seconds, duration)
+        else -> "$sets\u00A0×"
     }
     val load = t.loadKg?.let { " · " + loadText(def, it, units) } ?: ""
     return stringResource(R.string.trbm_planned, amount + load)

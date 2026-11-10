@@ -198,6 +198,94 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun climbingPlannedLaterThisWeekKeepsItsShareOfTheRoom() {
+        // Simulation: Tuesday's pull training filled the week's room, and Wednesday's and Friday's bouldering went over it.
+        val tuesday = monday.plus(DatePeriod(days = 1))
+        val weekly = listOf(area(VolumeArea.PULL, 0, 4, 8), area(VolumeArea.PUSH, 0, 4, 8), area(VolumeArea.ANTAGONIST, 0, 5, 10),
+            area(VolumeArea.LEGS, 9, 3, 9), area(VolumeArea.CORE, 0, 4, 10))
+        fun suggest(p: AthleteProfile, activities: Map<LocalDate, DayActivity> = emptyMap()) =
+            SessionSuggester.suggest(input(profile = p, activities = activities).copy(today = tuesday, weekly = weekly, weekStart = monday))
+        val free = suggest(noFingers)
+        assertEquals(SuggestionFocus.PULL_PUSH, free.focus, "${free.reasons}")
+        assertTrue(areaSets(free, VolumeArea.PULL) > 4, "${free.routine.items}")
+        // Two hard bouldering days ahead add two pull sets each: four are left for today.
+        val held = suggest(noFingers.copy(weekPlan = mapOf(3 to "climb:gym_boulder:hard", 5 to "climb:gym_boulder:hard")))
+        assertEquals(SuggestionFocus.PULL_PUSH, held.focus, "${held.reasons}")
+        assertTrue(areaSets(held, VolumeArea.PULL) in 2..4, "${held.routine.items}")
+        assertTrue(SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD in held.reasons, "${held.reasons}")
+        assertTrue(SuggestionReason.WEEK_VOLUME_FULL !in held.reasons, "${held.reasons}")
+        // The usual climbing days: as hard as last logged on that weekday, else volume days (one pull set each).
+        val usual = noFingers.copy(coach = noFingers.coach.copy(climbingDays = setOf(3, 5)))
+        assertTrue(areaSets(suggest(usual), VolumeArea.PULL) in 2..6, "${suggest(usual).routine.items}")
+        val hardLastWeek = listOf(3, 5).associate { d ->
+            val day = monday.plus(DatePeriod(days = d - 8))
+            day to DayActivity(day.toString(), climbingMinutes = 120, climbIntensity = ClimbIntensity.HARD)
+        }
+        val learned = suggest(usual, hardLastWeek)
+        assertTrue(areaSets(learned, VolumeArea.PULL) in 2..4, "${learned.routine.items}")
+    }
+
+    @Test
+    fun aBoardDayTodayReplacesKeepsNoRoomForItself() {
+        // Review of #98: with the board day skipped for sore skin, the cap still kept 2 pull and 1 core sets free for it,
+        // trimmed today's pulling and said "the climbing you still plan this week" next to "board skipped today".
+        // Pulling is the only area short of its goal, with room for two more sets: exactly a hard board day's share.
+        val tuesday = monday.plus(DatePeriod(days = 1))
+        val weekly = listOf(area(VolumeArea.PULL, 2, 4, 4), area(VolumeArea.PUSH, 4, 4, 8), area(VolumeArea.ANTAGONIST, 5, 5, 10),
+            area(VolumeArea.LEGS, 9, 3, 9), area(VolumeArea.CORE, 4, 4, 10))
+        val sore = Checkin(tuesday.toString(), 0, skin = 1)
+        fun suggest(p: AthleteProfile) = SessionSuggester.suggest(input(profile = p, checkin = sore)
+            .copy(today = tuesday, weekly = weekly, weekStart = monday))
+        val free = suggest(noFingers)
+        val skipped = suggest(noFingers.copy(weekPlan = mapOf(2 to PLAN_BOARD)))
+        assertTrue(SuggestionReason.BOARD_SKIPPED_TODAY in skipped.reasons, "${skipped.reasons}")
+        assertTrue(SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD !in skipped.reasons, "${skipped.reasons}")
+        // The skipped board day keeps no pull room for itself: today pulls as much as on a day without it.
+        assertTrue(areaSets(free, VolumeArea.PULL) > 0, "${free.focus} ${free.reasons} ${free.routine.items}")
+        assertEquals(free.focus, skipped.focus, "${skipped.reasons}")
+        assertEquals(areaSets(free, VolumeArea.PULL), areaSets(skipped, VolumeArea.PULL), "${skipped.routine.items}")
+    }
+
+    @Test
+    fun climbingThatAnInjuryPausesOrAComebackStageHoldsBackKeepsNoRoom() {
+        // Review of #59's fixes: an injury that pauses climbing, or a comeback stage that allows only easy climbing,
+        // cancels this week's hard bouldering, so its pull credit must not shorten today's training.
+        val tuesday = monday.plus(DatePeriod(days = 1))
+        val weekly = listOf(area(VolumeArea.PULL, 0, 4, 8), area(VolumeArea.PUSH, 0, 4, 8), area(VolumeArea.ANTAGONIST, 0, 5, 10),
+            area(VolumeArea.LEGS, 9, 3, 9), area(VolumeArea.CORE, 0, 4, 10))
+        val climbing = noFingers.copy(weekPlan = mapOf(3 to "climb:gym_boulder:hard", 5 to "climb:gym_boulder:hard"))
+        val paused = Injury("i", InjuryRegion.FINGER, InjurySide.LEFT, severity = 5, climbingPaused = true, startedOn = "2026-10-01")
+        val easyStage = Injury("s", InjuryRegion.SHOULDER, InjurySide.RIGHT, severity = 3, climbingPaused = false, startedOn = "2026-10-01",
+            plan = ComebackPlan(stage = 1, acknowledgedOn = "2026-10-02", startedOn = "2026-10-02"))
+        assertEquals(ClimbingLevel.EASY, Comeback.climbingLevel(easyStage))
+        for (injury in listOf(paused, easyStage)) {
+            fun suggest(p: AthleteProfile) = SessionSuggester.suggest(input(profile = p, injuries = listOf(injury))
+                .copy(today = tuesday, weekly = weekly, weekStart = monday))
+            val held = suggest(climbing)
+            assertTrue(SuggestionReason.WEEK_VOLUME_CLIMBING_AHEAD !in held.reasons, "${injury.region}: ${held.reasons}")
+            assertEquals(areaSets(suggest(noFingers), VolumeArea.PULL), areaSets(held, VolumeArea.PULL), "${injury.region}: ${held.routine.items}")
+        }
+    }
+
+    @Test
+    fun aDayWithoutRoomForItsKindTrainsTheOtherKindBeforeMobility() {
+        // Simulation: pull and core were full from climbing and the day became mobility, while legs were still at 0.
+        val saturday = monday.plus(DatePeriod(days = 5))
+        // Push has the most left, but only one push exercise fits the equipment: a few lonely push sets.
+        val weekly = listOf(area(VolumeArea.PULL, 9, 5, 9), area(VolumeArea.PUSH, 0, 4, 8), area(VolumeArea.ANTAGONIST, 8, 4, 8),
+            area(VolumeArea.LEGS, 1, 3, 6), area(VolumeArea.CORE, 8, 3, 8), area(VolumeArea.MOBILITY, 6, 2, 6))
+        val s = SessionSuggester.suggest(input(profile = noFingers).copy(today = saturday, weekly = weekly, weekStart = monday))
+        assertEquals(SuggestionFocus.LEGS_CORE, s.focus, "${s.reasons} ${s.routine.items}")
+        assertTrue(areaSets(s, VolumeArea.LEGS) in 2..5, "${s.routine.items}")
+        assertEquals(SuggestionReason.WEEKLY_TARGET, s.reasons.first(), "${s.reasons}")
+        assertTrue(SuggestionReason.WEEK_VOLUME_DONE !in s.reasons && SuggestionReason.PULL_LONGER_AGO !in s.reasons, "${s.reasons}")
+        // Legs full too: mobility as before.
+        val full = weekly.map { if (it.area == VolumeArea.LEGS) area(VolumeArea.LEGS, 6, 3, 6) else it }
+        val rest = SessionSuggester.suggest(input(profile = noFingers).copy(today = saturday, weekly = full, weekStart = monday))
+        assertEquals(SuggestionFocus.MOBILITY_RECOVERY, rest.focus, "${rest.reasons} ${rest.routine.items}")
+    }
+
+    @Test
     fun usedUpTrainingDaysMeanRecoveryUnlessAKindIsChosen() {
         // Owner 2026-11-06 (#59): once the week's training days are used up, recovery by default, training one tap away.
         val friday = monday.plus(DatePeriod(days = 4))

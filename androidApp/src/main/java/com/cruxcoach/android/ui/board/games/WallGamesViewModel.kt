@@ -30,6 +30,7 @@ import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -123,7 +124,7 @@ class WallGamesViewModel @Inject constructor(
     private val ble: BoardBleConnection,
     private val sessionQueueManager: SessionQueueManager,
     private val ledEffects: LedAnimationEngine,
-) : ViewModel() {
+) : ViewModel(), WallGamesActions {
 
     private val mutableState = MutableStateFlow(WallGamesState())
     val state: StateFlow<WallGamesState> = mutableState.asStateFlow()
@@ -142,38 +143,16 @@ class WallGamesViewModel @Inject constructor(
         onBeep = { if (mutableState.value.soundOn) sounds.play(it) },
     )
 
+    /** The climb this screen was opened with ("Play as a game"), if any. */
+    private val startClimbUuid: String? = savedStateHandle["climbUuid"]
+    private val startAngle: Int = savedStateHandle["angle"] ?: -1
+    private var loadJob: Job? = null
+
     init {
         // Every game step is a frame of its own: while this screen is open the
         // wall belongs to the game, not to a chosen LED effect.
         ledEffects.pause(AnimationPauseOwner.WALL_GAME)
-        val climbUuid: String? = savedStateHandle["climbUuid"]
-        val angle: Int = savedStateHandle["angle"] ?: -1
-        viewModelScope.launch {
-            val load = try {
-                withContext(Dispatchers.IO) { loader.load() }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (e: Exception) {
-                Log.w(TAG, "Loading the board for games failed: ${e.javaClass.simpleName}")
-                WallGameBoardLoad.NoHolds
-            }
-            val board = (load as? WallGameBoardLoad.Ready)?.board
-            mutableState.update {
-                it.copy(
-                    loading = false,
-                    board = board,
-                    unavailable = load.takeIf { board == null },
-                    thiefRoute = board?.let { b -> HoldsThief.route(b.rows, it.thiefDensity, thiefSeed) }.orEmpty(),
-                )
-            }
-            if (board != null) {
-                if (climbUuid != null) {
-                    mutableState.update { it.copy(game = WallGame.ENDURANCE) }
-                    chooseClimb(climbUuid, angle)
-                }
-                observeRecentClimbs(board)
-            }
-        }
+        loadBoard()
         viewModelScope.launch { runner.run.collect { run -> mutableState.update { it.copy(run = run) } } }
         viewModelScope.launch {
             // After a reconnect the wall shows nothing of ours: put the current frame back.
@@ -195,6 +174,45 @@ class WallGamesViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Back on the screen without a board, e.g. from the catalogues the "no hold positions" state
+     * opens: try again, so the downloaded holds show without leaving the games.
+     */
+    fun reloadIfMissing() {
+        if (mutableState.value.board != null || loadJob?.isActive == true) return
+        mutableState.update { it.copy(loading = true) }
+        loadBoard()
+    }
+
+    private fun loadBoard() {
+        loadJob = viewModelScope.launch {
+            val load = try {
+                withContext(Dispatchers.IO) { loader.load() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                Log.w(TAG, "Loading the board for games failed: ${e.javaClass.simpleName}")
+                WallGameBoardLoad.NoHolds
+            }
+            val board = (load as? WallGameBoardLoad.Ready)?.board
+            mutableState.update {
+                it.copy(
+                    loading = false,
+                    board = board,
+                    unavailable = load.takeIf { board == null },
+                    thiefRoute = board?.let { b -> HoldsThief.route(b.rows, it.thiefDensity, thiefSeed) }.orEmpty(),
+                )
+            }
+            if (board != null) {
+                if (startClimbUuid != null) {
+                    mutableState.update { it.copy(game = WallGame.ENDURANCE) }
+                    chooseClimb(startClimbUuid, startAngle)
+                }
+                observeRecentClimbs(board)
+            }
+        }
+    }
+
     private fun observeRecentClimbs(board: WallGameBoard) {
         viewModelScope.launch {
             personalBoardRepo.observeClimbHistory().collect { entries ->
@@ -208,7 +226,7 @@ class WallGamesViewModel @Inject constructor(
         }
     }
 
-    fun selectGame(game: WallGame) {
+    override fun selectGame(game: WallGame) {
         if (mutableState.value.running) return
         // A finished game's last state (all the lava) should not linger.
         if (mutableState.value.run.phase == GamePhase.FINISHED) sender.show(emptyList())
@@ -216,17 +234,17 @@ class WallGamesViewModel @Inject constructor(
         mutableState.update { it.copy(game = game, thiefLive = false, sendProblem = null) }
     }
 
-    fun setLevel(level: Int) {
+    override fun setLevel(level: Int) {
         if (mutableState.value.running) return
         mutableState.update { it.copy(level = level.coerceIn(GAME_LEVELS)) }
     }
 
-    fun setTraverseDifficulty(difficulty: Double) {
+    override fun setTraverseDifficulty(difficulty: Double) {
         if (mutableState.value.running) return
         mutableState.update { it.copy(traverseDifficulty = difficulty.coerceIn(0.0, TraverseGame.MAX_DIFFICULTY)) }
     }
 
-    fun setSoundOn(on: Boolean) {
+    override fun setSoundOn(on: Boolean) {
         mutableState.update { it.copy(soundOn = on) }
     }
 
@@ -261,24 +279,24 @@ class WallGamesViewModel @Inject constructor(
 
     // ── Hold thief ─────────────────────────────────────────────────────
 
-    fun setThiefDensity(density: Int) {
+    override fun setThiefDensity(density: Int) {
         val board = mutableState.value.board ?: return
         mutableState.update { it.copy(thiefDensity = density, thiefRoute = HoldsThief.route(board.rows, density, thiefSeed)) }
         followThief()
     }
 
-    fun newThiefClimb() {
+    override fun newThiefClimb() {
         val board = mutableState.value.board ?: return
         thiefSeed = Random.nextLong()
         mutableState.update { it.copy(thiefRoute = HoldsThief.route(board.rows, it.thiefDensity, thiefSeed)) }
         followThief()
     }
 
-    fun setStealCount(count: Int) {
+    override fun setStealCount(count: Int) {
         mutableState.update { it.copy(stealCount = count.coerceIn(1, WallGamesState.MAX_STEAL)) }
     }
 
-    fun stealHolds() {
+    override fun stealHolds() {
         mutableState.update { it.copy(thiefRoute = HoldsThief.steal(it.thiefRoute, it.stealCount, stealRandom)) }
         followThief()
     }
@@ -297,7 +315,7 @@ class WallGamesViewModel @Inject constructor(
 
     // ── Timed games ────────────────────────────────────────────────────
 
-    fun start() {
+    override fun start() {
         val s = mutableState.value
         if (!s.canStart) return
         if (s.game == WallGame.THIEF) {
@@ -323,14 +341,14 @@ class WallGamesViewModel @Inject constructor(
     }
 
     /** Ends a running game and clears the wall. */
-    fun stop() {
+    override fun stop() {
         if (!mutableState.value.running) return
         runner.stop()
         sender.show(emptyList())
     }
 
     /** From the result back to the game's settings; clears the wall. */
-    fun reset() {
+    override fun reset() {
         runner.reset()
         sender.show(emptyList())
     }

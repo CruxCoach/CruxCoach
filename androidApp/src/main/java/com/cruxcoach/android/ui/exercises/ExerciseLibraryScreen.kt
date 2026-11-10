@@ -89,8 +89,8 @@ fun ExerciseLibraryScreen(
                         label = { Text(stringResource(R.string.exercises_all)) },
                         modifier = Modifier.testTag("exercises_category_all"),
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                            selectedLabelColor = OrangeAccent
+                            selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                            selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                         )
                     )
                 }
@@ -100,8 +100,8 @@ fun ExerciseLibraryScreen(
                         onClick = { viewModel.selectCategory(cat) },
                         label = { Text(categoryDisplayName(cat)) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = categoryColor(cat).copy(alpha = 0.2f),
-                            selectedLabelColor = categoryColor(cat)
+                            selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
+                            selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer
                         )
                     )
                 }
@@ -181,7 +181,7 @@ private fun ExerciseCard(
                         ),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = catColor,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -301,6 +301,8 @@ private fun categoryDisplayName(cat: ExerciseCategory): String = when (cat) {
     ExerciseCategory.ANTAGONIST -> stringResource(R.string.cat_antagonist)
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun categoryColor(cat: ExerciseCategory) = when (cat) {
     ExerciseCategory.HANGBOARD -> OrangeAccent
     ExerciseCategory.PULL -> SessionStrength

@@ -75,7 +75,7 @@ class OwnTargetsTest : AthleteScreenTest() {
         compose.onNodeWithTag("own_energy_input").performScrollTo().performTextReplacement("700")
         compose.onNodeWithTag("own_energy_input").performImeAction()
         compose.waitUntil(WAIT_MS) {
-            compose.onAllNodesWithText("Kept between 800 and 6000 kcal", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithText("Kept between 800 and 6000\u00A0kcal", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
         assertEquals(2000, repo.profile().ownKcal)
         // A low but plausible target is kept.
@@ -117,7 +117,7 @@ class OwnTargetsTest : AthleteScreenTest() {
         // A rest day recommends 3 g per kg: 70 kg → 210 g, while the own 300 g stay on the ring.
         waitForTag("fuel_own_note_carbs")
         compose.waitUntil(WAIT_MS) {
-            compose.onAllNodesWithText("does not follow the training day (recommended today 210 g)", substring = true, useUnmergedTree = true)
+            compose.onAllNodesWithText("does not follow the training day (recommended today 210\u00A0g)", substring = true, useUnmergedTree = true)
                 .fetchSemanticsNodes().isNotEmpty()
         }
         // The recommended carbohydrates and calories carry no such line.
@@ -154,7 +154,7 @@ class OwnTargetsTest : AthleteScreenTest() {
         assertTrue(compose.onAllNodesWithTag("protein_losing_hint").fetchSemanticsNodes().isEmpty())
         repo.updateProfile { it.copy(goal = AthleteGoal.LOSE_WEIGHT, targetWeightKg = 66.0, weeklyLossKg = 0.3) }
         waitForTag("protein_losing_hint")
-        waitForText("While losing weight 1.8–2.2 g per kg is recommended")
+        waitForText("While losing weight 1.8–2.2\u00A0g per kg is recommended")
         // The athlete's choice above the usual range is kept and counts.
         compose.onNodeWithTag("protein_per_kg").performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { it(2.3f) }
         compose.waitUntil(WAIT_MS) { repo.profile().proteinPerKg == 2.3 }

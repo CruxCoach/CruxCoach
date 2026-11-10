@@ -80,8 +80,10 @@ class WallGamesViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun viewModel(args: Map<String, Any?> = emptyMap()): WallGamesViewModel {
-        val loader = mockk<WallGameBoardLoader> { coEvery { load() } returns WallGameBoardLoad.Ready(board) }
+    private fun viewModel(
+        args: Map<String, Any?> = emptyMap(),
+        loader: WallGameBoardLoader = mockk { coEvery { load() } returns WallGameBoardLoad.Ready(board) },
+    ): WallGamesViewModel {
         val personal = mockk<PersonalBoardRepository>(relaxed = true) {
             every { observeClimbHistory() } returns flowOf(emptyList())
         }
@@ -94,6 +96,25 @@ class WallGamesViewModelTest {
 
     private fun awaitState(vm: WallGamesViewModel, predicate: (WallGamesState) -> Boolean): WallGamesState =
         runBlocking { withTimeout(5_000) { vm.state.first(predicate) } }
+
+    @Test
+    fun backFromTheCataloguesTheBoardLoadsAgain() {
+        // No hold positions yet; the user downloads the catalogue and comes back.
+        val loader = mockk<WallGameBoardLoader> {
+            coEvery { load() } returnsMany listOf(WallGameBoardLoad.NoHolds, WallGameBoardLoad.Ready(board))
+        }
+        val vm = viewModel(loader = loader)
+        assertEquals(WallGameBoardLoad.NoHolds, awaitState(vm) { !it.loading }.unavailable)
+
+        vm.reloadIfMissing()
+        val loaded = awaitState(vm) { it.board != null }
+        assertEquals(null, loaded.unavailable)
+        assertTrue(loaded.thiefRoute.isNotEmpty())
+
+        // With the board there, coming back loads nothing again.
+        vm.reloadIfMissing()
+        coVerify(exactly = 2) { loader.load() }
+    }
 
     @Test
     fun theHoldThiefClimbGoesUpOnlyWhenAskedAndThenFollowsChanges() {

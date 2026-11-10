@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
@@ -24,6 +25,7 @@ import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.data.SessionVisibility
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @Composable
@@ -135,7 +137,7 @@ private fun SessionQueueSection(
                 stringResource(R.string.ble_session_label),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = OrangeAccent
+                color = CruxCoachDesign.colors.onBrandAccentContainer
             )
             Text(
                 buildString {
@@ -164,19 +166,29 @@ private fun SessionQueueSection(
             // line above already says what is on the board, and saying it twice
             // is how the two banners came to show different names.
             if (boardShowsInstead != null) {
-                Text(
-                    stringResource(
-                        R.string.ble_board_shows_instead,
-                        listOfNotNull(
-                            boardShowsInstead.name ?: stringResource(R.string.ble_unknown),
-                            boardShowsInstead.grade,
-                        ).joinToString(" "),
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // The warning icon carries the red: the error colour as text is too faint on the orange card.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        stringResource(
+                            R.string.ble_board_shows_instead,
+                            listOfNotNull(
+                                boardShowsInstead.name ?: stringResource(R.string.ble_unknown),
+                                boardShowsInstead.grade,
+                            ).joinToString(" "),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         Icon(Icons.Default.ChevronRight, stringResource(R.string.cd_open), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -215,7 +227,7 @@ private fun OnBoardClimbSection(
                     if (climb.isStillProjected) R.string.ble_on_board else R.string.ble_last_climb
                 ),
                 style = MaterialTheme.typography.labelMedium,
-                color = OrangeAccent,
+                color = CruxCoachDesign.colors.onBrandAccentContainer,
                 fontWeight = FontWeight.Bold
             )
             Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
@@ -241,7 +253,7 @@ private fun DisconnectRequestSection(
         onClick = onRequest,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = CruxCoachDesign.colors.onBrandAccentContainer),
         enabled = !isRequesting
     ) {
         if (isRequesting) {

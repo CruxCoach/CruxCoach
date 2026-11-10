@@ -77,8 +77,8 @@ class FoodPhotoTest : AthleteScreenTest() {
     fun `low memory names the needed and the actual size`() {
         val photo = photoViewModel(DeviceFacts(3_700_000_000L, false, true, modernCpu))
         render { FoodPhotoUnavailableDialog(photo.state.value, onRemoveModel = {}, onDismiss = {}) }
-        waitForText("at least 6 GB")
-        waitForText("3.7 GB")
+        waitForText("at least 6\u00A0GB")
+        waitForText("3.7\u00A0GB")
     }
 
     @Test

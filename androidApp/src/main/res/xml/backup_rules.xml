@@ -19,6 +19,8 @@
     <exclude domain="sharedpref" path="sqlcipher_prefs.xml"/>
     <!-- Kilter OAuth tokens, per-pubkey-prefixed, EncryptedSharedPrefs. -->
     <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
+    <!-- Shiny Wall sign-in tokens, per-pubkey-prefixed, EncryptedSharedPrefs. -->
+    <exclude domain="sharedpref" path="shinywall_secure_prefs.xml"/>
     <!-- Amber signer config: pubkey hex + Amber package name. Would
          cross-device-leak the user's npub on a Google-Drive restore. -->
     <exclude domain="sharedpref" path="amber_config.xml"/>

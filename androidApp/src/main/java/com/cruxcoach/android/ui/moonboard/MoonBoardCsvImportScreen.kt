@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,6 +63,7 @@ import com.cruxcoach.android.moonboard.MoonBoardAccessibilityService
 import com.cruxcoach.android.moonboard.installedMoonBoardVersion
 import com.cruxcoach.android.moonboard.moonBoardBugReportDescription
 import com.cruxcoach.android.ui.common.openUriOrToast
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 private const val MOON_SUPPORT_EMAIL = "moonboardsupport@moonclimbing.com"
@@ -343,7 +345,7 @@ fun MoonBoardCsvImportScreen(
                             stringResource(R.string.moon_device_leave_alone),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = OrangeAccent,
+                            color = CruxCoachDesign.colors.onBrandAccentContainer,
                         )
                     }
                     Button(
@@ -403,6 +405,9 @@ fun MoonBoardCsvImportScreen(
                             onClick = { MoonBoardAccessibilityBridge.cancel() },
                             enabled = !scanState.cancelling,
                             modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = CruxCoachDesign.colors.onBrandAccentContainer,
+                            ),
                         ) {
                             Text(stringResource(
                                 if (scanState.cancelling) R.string.moon_device_cancelling

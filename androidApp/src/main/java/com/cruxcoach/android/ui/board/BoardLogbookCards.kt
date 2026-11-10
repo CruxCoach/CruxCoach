@@ -66,8 +66,9 @@ internal fun AscentCard(
 
     val selectLabel = stringResource(R.string.board_logbook_select_entry, ascent.climbName)
 
+    // Opaque, so the attempts, quality and status labels keep their contrast on a selected card.
     val containerColor = if (isSelected) {
-        OrangeAccent.copy(alpha = 0.15f)
+        CruxCoachDesign.colors.brandAccentContainer
     } else {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
     }
@@ -149,6 +150,7 @@ internal fun AscentCard(
     val outcomeColor = when {
         !ascent.isSend -> ErrorRed
         isTrueFlash -> SuccessGreen
+        isSelected -> CruxCoachDesign.colors.onBrandAccentContainer
         else -> OrangeAccent
     }
     val outcomeStyle = outcomeStyle()
@@ -438,12 +440,12 @@ internal fun DayHeader(dateKey: String, count: Int, onRecap: (() -> Unit)? = nul
                     text = label,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = OrangeAccent.copy(alpha = 0.85f)
+                    color = OrangeAccent
                 )
                 Text(
                     text = pluralStringResource(R.plurals.board_logbook_day_entries, count, count),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (onRecap != null) {

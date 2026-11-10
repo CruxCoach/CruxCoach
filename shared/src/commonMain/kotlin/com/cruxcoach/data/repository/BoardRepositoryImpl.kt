@@ -216,6 +216,9 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun findClimbUuidsByNormKeys(normKeys: Collection<String>): List<String> =
+        if (normKeys.isEmpty()) emptyList() else q.findClimbUuidsByNormKeys(normKeys).executeAsList()
+
     override fun searchClimbsSorted(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int,
         sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int,

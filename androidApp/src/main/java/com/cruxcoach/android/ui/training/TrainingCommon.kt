@@ -547,9 +547,11 @@ private class LabelBesideOrAbovePolicy(private val growth: Float, private val ke
         measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, width: Int,
     ): Int = height(measurables, width)
 
+    // Stacked, the wider of the two; kept beside, the label's narrowest plus the stepper.
     override fun androidx.compose.ui.layout.IntrinsicMeasureScope.minIntrinsicWidth(
         measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, height: Int,
-    ): Int = maxOf(measurables[0].first().minIntrinsicWidth(height), measurables[1].first().minIntrinsicWidth(height))
+    ): Int = if (keepBeside) measurables[0].first().minIntrinsicWidth(height) + measurables[1].first().maxIntrinsicWidth(height)
+        else maxOf(measurables[0].first().minIntrinsicWidth(height), measurables[1].first().minIntrinsicWidth(height))
 
     override fun androidx.compose.ui.layout.IntrinsicMeasureScope.maxIntrinsicWidth(
         measurables: List<List<androidx.compose.ui.layout.IntrinsicMeasurable>>, height: Int,

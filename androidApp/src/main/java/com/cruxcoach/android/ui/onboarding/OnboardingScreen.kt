@@ -1077,7 +1077,7 @@ internal fun ImportSourceCard(
             icon()
             Column(modifier = Modifier.weight(1f)) {
                 InfoHeading(title, description)
-                Text(action, style = MaterialTheme.typography.labelLarge, color = OrangeAccent)
+                Text(action, style = MaterialTheme.typography.labelLarge, color = CruxCoachDesign.colors.onBrandAccentContainer)
             }
         }
     }

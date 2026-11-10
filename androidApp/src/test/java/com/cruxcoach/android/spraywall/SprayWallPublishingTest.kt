@@ -16,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -96,10 +97,21 @@ class SprayWallPublishingTest {
         repository.updateWallDetails(id, name, 40, SprayWallVisibility.PUBLIC, null, sendHead)
     }
 
+    /** Someone else's public wall, followed here. */
+    private fun followedWall(): String {
+        val id = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"
+        val q = SecureDatabase(driver).sprayWallsQueries
+        q.insertWall(id, "Gym wall", 45, "public", null, null, OWNER, 1, 1, clock, clock)
+        q.insertVersion(id, 1, "created", null, photo.fileName, photo.width.toLong(), photo.height.toLong(), null, null, 1, clock)
+        q.insertHold(id, 1, 1, 0.5, 0.5, 0.02, null)
+        return id
+    }
+
     private suspend fun climbOn(wallId: String, name: String): String =
         repository.saveClimb(null, wallId, name, "", 20, mapOf(1L to SprayHoldRole.START))
 
-    private val SprayNostrEvent.d: String get() = tags.first { it.first() == "d" }[1]
+    /** The event's d-tag; empty for a deletion (kind 5), which has none. */
+    private val SprayNostrEvent.d: String get() = tags.firstOrNull { it.first() == "d" }?.get(1).orEmpty()
     private fun headOf(wallId: String) = SprayWallNostr.wallDTag(ME, wallId)
     private fun versionsOf(wallId: String): (String) -> Boolean = { it.startsWith(headOf(wallId) + ":v:") }
     private fun askedAbout(wallId: String) = asked.any { it == headOf(wallId) || versionsOf(wallId)(it) }
@@ -316,6 +328,148 @@ class SprayWallPublishingTest {
     }
 
     @Test
+    fun `a deleted climb that went out stays until a relay took it back`() = runTest {
+        // Deleted here first, a climb no relay took back would stay on the relays for good: nothing would know it.
+        val wall = publishedWall("A")
+        val climb = climbOn(wall, "Line")
+        repository.markClimbPublished(climb, repository.climb(climb)!!.updatedAt)
+        val d = SprayWallNostr.climbDTag(ME, climb)
+
+        // Offline: no relay takes the tombstone or the deletion.
+        relaysFor = { 0 }
+        assertEquals(SprayWithdrawal.NOT_CONFIRMED, publishing.deleteClimb({ ME }, climb))
+        assertNotNull(repository.climb(climb))
+
+        // The signer declines.
+        relaysFor = { 1 }
+        declines = { true }
+        assertEquals(SprayWithdrawal.SIGNING_FAILED, publishing.deleteClimb({ ME }, climb))
+        assertNotNull(repository.climb(climb))
+
+        // No identity to sign with.
+        declines = { false }
+        assertEquals(SprayWithdrawal.NO_IDENTITY, publishing.deleteClimb({ null }, climb))
+        assertNotNull(repository.climb(climb))
+
+        // Online: a tombstone and a deletion naming it, then the climb is gone here.
+        sent.clear()
+        assertEquals(SprayWithdrawal.DONE, publishing.deleteClimb({ ME }, climb))
+        assertNull(repository.climb(climb))
+        assertEquals(listOf(d), sent.filter { it.kind != SprayWallNostr.KIND_DELETION }.map { it.d })
+        val deletion = sent.single { it.kind == SprayWallNostr.KIND_DELETION }
+        assertTrue(listOf("a", "${SprayWallNostr.KIND}:$ME:$d") in deletion.tags)
+    }
+
+    @Test
+    fun `an edited climb is taken back before it goes, also without the published mark`() = runTest {
+        // The edit cleared the mark, but the earlier event is still on the relays.
+        val wall = publishedWall("A")
+        val climb = climbOn(wall, "Line")
+        repository.markClimbPublished(climb, repository.climb(climb)!!.updatedAt)
+        Thread.sleep(2)
+        repository.saveClimb(climb, wall, "Line 2", "", 20, mapOf(1L to SprayHoldRole.START))
+        assertNull(repository.climb(climb)!!.publishedAt)
+
+        relaysFor = { 0 }
+        assertEquals(SprayWithdrawal.NOT_CONFIRMED, publishing.deleteClimb({ ME }, climb))
+        assertNotNull(repository.climb(climb))
+    }
+
+    @Test
+    fun `a taken tombstone counts when the deletion after it is declined`() = runTest {
+        // The tombstone has replaced the climb on that relay already.
+        val wall = publishedWall("A")
+        val climb = climbOn(wall, "Line")
+        repository.markClimbPublished(climb, repository.climb(climb)!!.updatedAt)
+        declines = { it.kind == SprayWallNostr.KIND_DELETION }
+
+        assertEquals(SprayWithdrawal.DONE, publishing.deleteClimb({ ME }, climb))
+        assertNull(repository.climb(climb))
+    }
+
+    @Test
+    fun `without the account key a published climb of mine stays, and nothing is signed`() = runTest {
+        val wall = publishedWall("A")
+        val climb = climbOn(wall, "Line")
+        repository.markClimbPublished(climb, repository.climb(climb)!!.updatedAt)
+        val followed = followedWall()
+        val onFollowed = climbOn(followed, "My line")
+        repository.markClimbPublished(onFollowed, repository.climb(onFollowed)!!.updatedAt)
+
+        assertEquals(SprayWithdrawal.NO_IDENTITY, publishing.takeBackClimbs({ null }, repository.myClimbs(wall), repository.wall(wall)))
+        assertEquals(SprayWithdrawal.NO_IDENTITY, publishing.deleteClimb({ null }, climb))
+        assertEquals(SprayWithdrawal.NO_IDENTITY, publishing.removeFollowed({ null }, followed))
+        assertNotNull(repository.climb(climb))
+        assertNotNull(repository.wall(followed))
+        assertNotNull(repository.climb(onFollowed))
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test
+    fun `a climb on my private wall is deleted at once, and one on a public wall waits for a relay`() = runTest {
+        val public = publishedWall("A")
+        val private = repository.createWall("B", 40, SprayWallVisibility.PRIVATE, null, photo, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
+        val onPublic = climbOn(public, "Line")
+        val onPrivate = climbOn(private, "Line")
+        relaysFor = { 0 }
+
+        // Never out: nothing to take back, and the signer is not asked.
+        assertEquals(SprayWithdrawal.DONE, publishing.deleteClimb({ ME }, onPrivate))
+        assertNull(repository.climb(onPrivate))
+        assertTrue(asked.isEmpty())
+
+        // Not marked as published, but a relay may have kept it without confirming in time: it waits.
+        assertEquals(SprayWithdrawal.NOT_CONFIRMED, publishing.deleteClimb({ ME }, onPublic))
+        assertNotNull(repository.climb(onPublic))
+
+        // Without an identity, nothing of it can have gone out.
+        assertEquals(SprayWithdrawal.DONE, publishing.deleteClimb({ null }, onPublic))
+        assertNull(repository.climb(onPublic))
+    }
+
+    @Test
+    fun `a followed wall goes only once my climbs on it are taken back`() = runTest {
+        val wall = followedWall()
+        val climb = climbOn(wall, "My line")
+        repository.markClimbPublished(climb, repository.climb(climb)!!.updatedAt)
+
+        relaysFor = { 0 }
+        assertEquals(SprayWithdrawal.NOT_CONFIRMED, publishing.removeFollowed({ ME }, wall))
+        assertNotNull(repository.wall(wall))
+        declines = { true }
+        relaysFor = { 1 }
+        assertEquals(SprayWithdrawal.SIGNING_FAILED, publishing.removeFollowed({ ME }, wall))
+        assertNotNull(repository.wall(wall))
+
+        declines = { false }
+        sent.clear()
+        assertEquals(SprayWithdrawal.DONE, publishing.removeFollowed({ ME }, wall))
+        assertNull(repository.wall(wall))
+        assertNull(repository.climb(climb))
+        // The tombstone names the owner's wall.
+        val tombstone = sent.single { it.kind != SprayWallNostr.KIND_DELETION }
+        assertTrue(listOf("a", SprayWallNostr.wallAddress(OWNER, wall)) in tombstone.tags)
+    }
+
+    @Test
+    fun `climbs on my public wall wait until its version is out`() = runTest {
+        // A withdrawal of a wall never on Nostr sends no tombstones: a climb sent before its wall would stay.
+        val wall = newPublicWall("A")
+        val climb = climbOn(wall, "Line")
+        uploadDeclined = { it == wall }
+
+        run()
+        assertTrue(SprayWallNostr.climbDTag(ME, climb) !in asked)
+        assertNull(repository.wall(wall)!!.publishedVersion)
+
+        // Once the version is out, the climb follows.
+        uploadDeclined = { false }
+        rename(wall, "A2", sendHead = false)
+        assertIs<SprayWallPublisher.Outcome.Done>(run())
+        assertTrue(SprayWallNostr.climbDTag(ME, climb) in asked)
+    }
+
+    @Test
     fun `a head is not sent for a reset started while the versions went out`() = runTest {
         // It would name a version that is not on the relays; it waits for that version.
         val wall = newPublicWall("A")
@@ -337,6 +491,7 @@ class SprayWallPublishingTest {
 
     private companion object {
         val ME = "a1".repeat(32)
+        val OWNER = "b7".repeat(32)
         val SHA = "5e".repeat(32)
     }
 }

@@ -22,6 +22,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -517,6 +518,19 @@ abstract class SprayWallUiReview(private val variant: String) {
         val uuid = runBlocking { repository.climbs(id).first { it.name == names[2] }.uuid }
         val vm = climbEditorVm(id, uuid)
         shoot("climb-edit", ready = { tagShown("spray_climb_name") }) { SprayClimbEditorScreen({}, {}, {}, viewModel = vm) }
+    }
+
+    @Test fun climbDeleteFailed() {
+        // No server took the climb back (offline, or the signer declined): it stays, with the reason above Delete.
+        coEvery { publisher.deleteClimb(any()) } returns SprayWithdrawal.NOT_CONFIRMED
+        val id = mainWall()
+        val uuid = runBlocking { repository.climbs(id).first { it.name == names[2] }.uuid }
+        val vm = climbEditorVm(id, uuid)
+        shoot("climb-delete-failed", ready = { tagShown("spray_climb_name") }, act = {
+            vm.delete()
+            settle({ vm.state.value.deleteFailed != null })
+            compose.onNodeWithTag("spray_climb_delete").performScrollTo()
+        }) { SprayClimbEditorScreen({}, {}, {}, viewModel = vm) }
     }
 
     private fun climbDetailVm(uuid: String) = SprayClimbDetailViewModel(saved(SprayWallRoutes.ARG_CLIMB to uuid), repository, photos, preferences).tracked()

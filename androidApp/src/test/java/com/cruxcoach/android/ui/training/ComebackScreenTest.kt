@@ -159,6 +159,57 @@ class ComebackScreenTest : AthleteScreenTest() {
         assertTrue(repo.injury("i1")!!.climbingPaused)
     }
 
+    /** A plan at finger stage 1 for 8 days whose diary has the sessions of the week but no morning value. */
+    private fun weekWithoutMornings() {
+        repo.saveInjury(Comeback.start(injury(20), PlanSource.CRUXCOACH, 1, service.today().minus(DatePeriod(days = 8)), true, false, emptyMap(), 1))
+        (1..7).forEach { d ->
+            repo.saveComebackEntry(ComebackEntry("i1", service.today().minus(DatePeriod(days = d)).toString(),
+                sessions = listOf(ComebackSessionLog(ComebackSessionKind.TENDON, 1, at = 1)), updatedAt = 1))
+        }
+    }
+
+    @Test
+    fun `a week without a morning value asks for this morning's pain, then offers the next stage as usual`() {
+        // Owner 2026-11-09: no step up without at least one morning value.
+        weekWithoutMornings()
+        screen()
+        scrollTo("comeback_list", "comeback_prompt_review_morning")
+        waitForText("How does the injury feel this morning?")
+        scrollTo("comeback_list", "comeback_prompt_review_morning_1")
+        click("comeback_prompt_review_morning_1")
+        compose.waitUntil(WAIT_MS) { repo.comebackEntry("i1", service.today().toString())?.morningPain == 1 }
+        scrollTo("comeback_list", "comeback_prompt_review")
+        waitForText("Ready for the next stage?")
+        // Only the athlete's tap moves the stage.
+        assertEquals(1, repo.injury("i1")!!.plan!!.stage)
+    }
+
+    @Test
+    fun `optional warm-ups don't count towards the next stage, and the look back says so`() {
+        // Owner's review of #98: finger stage 4 plans an optional tendon warm-up and strength three times a week.
+        repo.saveInjury(Comeback.start(injury(40), PlanSource.CRUXCOACH, 4, service.today().minus(DatePeriod(days = 8)), true, false, emptyMap(), 1))
+        (1..7).forEach { d ->
+            repo.saveComebackEntry(ComebackEntry("i1", service.today().minus(DatePeriod(days = d)).toString(), morningPain = 1,
+                sessions = if (d % 2 == 0) listOf(ComebackSessionLog(ComebackSessionKind.TENDON, 1, at = 1)) else emptyList(), updatedAt = 1))
+        }
+        screen()
+        scrollTo("comeback_list", "comeback_prompt_review")
+        waitForText("this week it was 0 (sessions marked “Optional” don't count)")
+        assertEquals(4, repo.injury("i1")!!.plan!!.stage)
+    }
+
+    @Test
+    fun `skipping the morning question keeps the stage and says to log the mornings`() {
+        weekWithoutMornings()
+        screen()
+        scrollTo("comeback_list", "comeback_prompt_review_morning_secondary")
+        click("comeback_prompt_review_morning_secondary")
+        scrollTo("comeback_list", "comeback_prompt_review")
+        waitForText("No morning pain logged this week")
+        assertEquals(1, repo.injury("i1")!!.plan!!.stage)
+        assertNull(repo.comebackEntry("i1", service.today().toString())?.morningPain)
+    }
+
     @Test
     fun `the diary saves today's values and the summary for the appointment carries them`() {
         repo.saveInjury(Comeback.start(injury(), PlanSource.CRUXCOACH, 1, service.today(), false, false, emptyMap(), 1))
@@ -191,6 +242,6 @@ class ComebackScreenTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) { repo.injury("i1")?.plan?.referenceKg?.get(Grip.HALF_CRIMP.name) == 28.0 }
         // Stage 3 strength: half crimp at 40–60 % of 28 kg.
         scrollTo("comeback_list", "comeback_session_1")
-        waitForText("11.0–17.0 kg")
+        waitForText("11.0–17.0\u00A0kg")
     }
 }

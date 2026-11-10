@@ -145,9 +145,11 @@ UPDATE spray_wall SET withdraw_started = ? WHERE id = ? AND withdraw_started IS 
 clearWithdrawStarted:
 UPDATE spray_wall SET withdraw_started = NULL WHERE id = ?;
 
--- Public walls whose climbs of mine may go out: not one the relays already took back.
+-- Public walls whose climbs of mine may go out: not one the relays already took back, and not one of mine before its
+-- version is out (a withdrawal of a wall never on Nostr sends no tombstones, so a climb sent before would stay).
 selectWallsTakingClimbs:
-SELECT * FROM spray_wall WHERE visibility = 'public' AND COALESCE(withdraw_started, 0) = 0 ORDER BY updated_at DESC;
+SELECT * FROM spray_wall WHERE visibility = 'public' AND COALESCE(withdraw_started, 0) = 0
+    AND (owner_pubkey IS NOT NULL OR published_version IS NOT NULL) ORDER BY updated_at DESC;
 
 countClimbsPerWall:
 SELECT wall_id, COUNT(*) AS climbs FROM spray_climb GROUP BY wall_id;
@@ -298,3 +300,12 @@ UPDATE spray_climb SET published_at = NULL WHERE wall_id = ? AND author_pubkey I
 
 deleteRemoteClimb:
 DELETE FROM spray_climb WHERE uuid = ? AND author_pubkey = ?;
+
+-- Something of mine the relays may hold: a public wall of mine (a withdrawal that failed leaves it public) or a climb
+-- of mine on a followed wall. One row or none.
+selectMineMaybeOnRelays:
+SELECT id FROM spray_wall WHERE owner_pubkey IS NULL AND visibility = 'public'
+UNION ALL
+SELECT c.wall_id FROM spray_climb c JOIN spray_wall w ON w.id = c.wall_id
+WHERE c.author_pubkey IS NULL AND w.owner_pubkey IS NOT NULL
+LIMIT 1;

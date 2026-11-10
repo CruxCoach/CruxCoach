@@ -1015,7 +1015,12 @@ private fun ScanContent(
             .fillMaxWidth()
             .testTag("ble_scan_button"),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (isScanning) MaterialTheme.colorScheme.secondaryContainer else OrangeAccent
+            containerColor = if (isScanning) MaterialTheme.colorScheme.secondaryContainer else OrangeAccent,
+            contentColor = if (isScanning) {
+                MaterialTheme.colorScheme.onSecondaryContainer
+            } else {
+                MaterialTheme.colorScheme.onPrimary
+            },
         ),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -1297,6 +1302,8 @@ private fun BoardItem(
     }
 }
 
+@androidx.compose.runtime.Composable
+@androidx.compose.runtime.ReadOnlyComposable
 private fun rssiColor(rssi: Int) = when {
     rssi >= -60 -> SuccessGreen
     rssi >= -75 -> WarningYellow

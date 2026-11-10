@@ -25,6 +25,10 @@ internal data class ActiveBoardSelection(
  *   and a catalogue download may write that selection twice.
  * Such a link follows every change and is never released by this policy; the
  * next connection is bound normally.
+ *
+ * A size the board-size check confirmed on the connected board is no switch
+ * either: the user saw that board light the new size's holds, so the link
+ * stays and is bound to the corrected size.
  */
 internal class BoardSwitchLinkPolicy {
     private var bound: ActiveBoardSelection? = null
@@ -40,14 +44,23 @@ internal class BoardSwitchLinkPolicy {
         boundToLink = false
     }
 
-    /** @return true when the link must be released because the user switched boards. */
+    /**
+     * @param sizeConfirmedOnBoard the board-size check holds the link, so a new size of the
+     *   same board and layout is the one it confirmed on the connected board.
+     * @return true when the link must be released because the user switched boards.
+     */
     fun onSelectionChanged(
         selection: ActiveBoardSelection,
         connectedBrand: BoardBrand?,
         onboarded: Boolean,
+        sizeConfirmedOnBoard: Boolean = false,
     ): Boolean {
         val previous = bound ?: return false
         if (selection == previous) return false
+        if (sizeConfirmedOnBoard && selection.brand == previous.brand && selection.layoutId == previous.layoutId) {
+            bound = selection
+            return false
+        }
         if (boundToLink) return true
         bound = selection
         return false

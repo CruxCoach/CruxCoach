@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -176,12 +177,12 @@ fun BoardListDetailScreen(
                     onClick = startPlaylist,
                     containerColor = OrangeAccent,
                     icon = {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = CruxCoachDesign.colors.onBrandAccent)
                     },
                     text = {
                         Text(
                             playLabel,
-                            color = DarkBackground,
+                            color = CruxCoachDesign.colors.onBrandAccent,
                             fontWeight = FontWeight.Bold,
                         )
                     },
@@ -228,7 +229,7 @@ fun BoardListDetailScreen(
                         Text(
                             stringResource(R.string.board_list_empty_message),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -338,14 +339,18 @@ private fun PlaybackInfoBox(
         ) {
             Icon(Icons.Default.Info, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
+            // The icon carries the status colour; text in it is too faint on its own tint.
             Text(
                 text,
                 style = MaterialTheme.typography.bodySmall,
-                color = color,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
             if (actionLabel != null && onAction != null) {
-                TextButton(onClick = onAction) { Text(actionLabel) }
+                TextButton(
+                    onClick = onAction,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                ) { Text(actionLabel) }
             }
         }
     }

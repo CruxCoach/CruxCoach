@@ -6,6 +6,8 @@ import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.Familiarity
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.BuiltinRoutines
+import com.cruxcoach.athlete.logic.InjuryAdvisor
+import com.cruxcoach.athlete.model.InjuryRegion
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -99,6 +101,22 @@ class ExerciseCatalogAssetTest {
         val pullUp = assertNotNull(catalog["pull.pull_up"])
         assertTrue(pullUp.fingerFree)
         assertTrue(!pullUp.needsClimbingWall)
+    }
+
+    @Test
+    fun `regions loaded on both sides are regions the exercise loads`() {
+        // Review of #98: bothSides only changes the advice where an injury of that region rules the exercise out
+        // already; "finger" on a bar pull-up or "wrist" on a stretch without a wrist contraindication did nothing.
+        val withBothSides = catalog.all.filter { it.bothSides.isNotEmpty() }
+        assertTrue(withBothSides.size >= 15, "only ${withBothSides.size} exercises with bothSides")
+        withBothSides.forEach { ex ->
+            assertTrue(ex.unilateral, "${ex.slug}: bothSides on work that trains both sides anyway")
+            ex.bothSides.forEach { body ->
+                InjuryRegion.entries.filter { body in it.bodyRegions }.forEach { region ->
+                    assertTrue(InjuryAdvisor.loads(ex, region), "${ex.slug}: ${body.name} on both sides, but a ${region.name} injury leaves it alone")
+                }
+            }
+        }
     }
 
     @Test

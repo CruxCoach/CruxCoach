@@ -19,6 +19,7 @@ internal object BoardConnectionOwner {
     const val SESSION = "session"
     const val RELAY = "relay"
     const val BOARD_MESH = "board-mesh"
+    const val SIZE_CHECK = "size-check"
 }
 
 /** What happens to the LEDs after the final controller connection closes. */

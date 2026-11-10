@@ -73,10 +73,10 @@ class NutritionAlwaysOnTest : AthleteScreenTest() {
         // 70 kg × 1.6 g/kg protein = 112 g; 15 g logged.
         // Four rings on a narrow screen: the unit sits in the line under the ring.
         compose.onNodeWithText("of 112", substring = true).assertExists()
-        compose.onNodeWithText("97 g to go", substring = true).assertExists()
+        compose.onNodeWithText("97\u00A0g to go", substring = true).assertExists()
         // Fat has its own ring: without a height, 1 g per kg = 70 g; 10 g logged.
         compose.onNodeWithText("of 70", substring = true).assertExists()
-        compose.onNodeWithText("60 g to go", substring = true).assertExists()
+        compose.onNodeWithText("60\u00A0g to go", substring = true).assertExists()
         // Order: energy, carbohydrates, protein, fat (owner 2026-10-10).
         val left = listOf("fuel_energy", "fuel_carbs", "fuel_protein", "fuel_fat")
             .map { compose.onNodeWithTag(it).fetchSemanticsNode().boundsInRoot.left }
@@ -90,7 +90,7 @@ class NutritionAlwaysOnTest : AthleteScreenTest() {
         // No kcal logged: calories are on by default and estimated from the macros (4/4/9).
         compose.onNodeWithTag("fuel_kcal", useUnmergedTree = true).assertTextEquals("≈470")
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_meal_lunch"))
-        compose.onNodeWithTag("fuel_meal_total_lunch", useUnmergedTree = true).assertTextEquals("P 15 · C 80 · F 10 g · ≈ 470 kcal")
+        compose.onNodeWithTag("fuel_meal_total_lunch", useUnmergedTree = true).assertTextEquals("P 15 · C 80 · F 10\u00A0g · ≈\u00A0470\u00A0kcal")
 
         // The day before is "Yesterday", not a bare date (device test 2026-10-09).
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_prev_day"))

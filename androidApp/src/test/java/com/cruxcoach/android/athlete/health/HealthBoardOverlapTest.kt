@@ -85,9 +85,9 @@ class HealthBoardOverlapTest : AthleteScreenTest() {
         // The sheet says so with the numbers, and "count anyway" is the athlete's way out.
         render { ClimbingDaySheet(onDismiss = {}, editId = entry.id, viewModel = ClimbingDayViewModel(service).tracked()) }
         waitForTag("climbing_day_overlap")
-        waitForText("Overlaps with the board session (65 of 65 min) – not counted twice.")
+        waitForText("Overlaps with the board session (65 of 65\u00A0min) – not counted twice.")
         click("climbing_day_count_anyway")
-        waitForText("Overlaps with the board session (65 of 65 min) – counted anyway.")
+        waitForText("Overlaps with the board session (65 of 65\u00A0min) – counted anyway.")
         click("climbing_day_save")
         compose.waitUntil(WAIT_MS) { service.boardOverlap(entry.id)?.countAnyway == true }
         val counted = todayActivity()
@@ -118,10 +118,10 @@ class HealthBoardOverlapTest : AthleteScreenTest() {
 
         render { ClimbingDaysScreen({}, viewModel = ClimbingDaysViewModel(service).tracked()) }
         waitForTag("climbing_day_row_overlap_${entry.id}")
-        waitForText("(50 of 60 min) – not counted twice")
+        waitForText("(50 of 60\u00A0min) – not counted twice")
         // A change of the overlap alone (a later sync, the sheet) shows in the list at once.
         service.saveBoardOverlap(entry.id, countAnyway = true)
-        waitForText("(50 of 60 min) – counted anyway")
+        waitForText("(50 of 60\u00A0min) – counted anyway")
     }
 
     @Test

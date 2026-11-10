@@ -37,7 +37,7 @@ data class AtAGlance(
     val hardestSend: SentGrade? = null,
     val hardestFlash: SentGrade? = null,
     val recent: RecentComparison? = null,
-    /** Climbing days per week over the last eight weeks. */
+    /** Climbing days per week over the last eight weeks or since the first; 0 before two weeks of history. */
     val sessionsPerWeek: Double = 0.0,
 )
 
@@ -311,9 +311,5 @@ object StatsHighlightsComputer {
         date = dayOf(send),
     )
 
-    private fun dayOf(ascent: AscentWithClimb): LocalDate? = try {
-        LocalDate.parse(ascent.climbedAt.take(10))
-    } catch (_: Exception) {
-        null
-    }
+    private fun dayOf(ascent: AscentWithClimb): LocalDate? = BoardStatsComputer.parseDate(ascent.climbedAt)
 }

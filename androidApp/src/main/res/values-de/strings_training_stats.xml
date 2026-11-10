@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Trainings-Statistik (FEAT-066): Statistik-Tab, Statistik pro Übung, Fortschrittskarte. -->
 <resources>
-    <string name="trs_range_4w">4 Wochen</string>
-    <string name="trs_range_12w">12 Wochen</string>
-    <string name="trs_range_6m">6 Monate</string>
-    <string name="trs_range_1y">1 Jahr</string>
+    <string name="trs_range_4w">4\u00A0Wochen</string>
+    <string name="trs_range_12w">12\u00A0Wochen</string>
+    <string name="trs_range_6m">6\u00A0Monate</string>
+    <string name="trs_range_1y">1\u00A0Jahr</string>
     <string name="trs_kind_e1rm">Geschätztes 1RM</string>
     <string name="trs_kind_ten_second">10-s-Max</string>
     <string name="trs_kind_reps">Max. Wiederholungen</string>
     <string name="trs_kind_seconds">Längste Haltezeit</string>
     <string name="trs_kind_volume">Volumen</string>
     <plurals name="trs_reps">
-        <item quantity="one">%d Wdh.</item>
-        <item quantity="other">%d Wdh.</item>
+        <item quantity="one">%d\u00A0Wdh.</item>
+        <item quantity="other">%d\u00A0Wdh.</item>
     </plurals>
     <plurals name="trs_sets">
         <item quantity="one">%d Satz</item>
-        <item quantity="other">%d Sätze</item>
+        <item quantity="other">%d\u00A0Sätze</item>
     </plurals>
 
     <string name="trs_tile_this_week">Diese Woche</string>
@@ -27,15 +27,15 @@
     <string name="trs_no_training">In diesem Zeitraum noch keine Trainingstage. Board-Sessions und Trainings zählen automatisch.</string>
     <string name="trs_days_per_week">Trainingstage pro Woche</string>
     <plurals name="trs_days_chart_cd">
-        <item quantity="one">Trainingstage pro Woche über %1$d Wochen, insgesamt %2$d Tag.</item>
-        <item quantity="other">Trainingstage pro Woche über %1$d Wochen, insgesamt %2$d Tage.</item>
+        <item quantity="one">Trainingstage pro Woche über %1$d\u00A0Wochen, insgesamt %2$d\u00A0Tag.</item>
+        <item quantity="other">Trainingstage pro Woche über %1$d\u00A0Wochen, insgesamt %2$d\u00A0Tage.</item>
     </plurals>
     <string name="trs_legend_climbing">Klettern</string>
     <string name="trs_legend_off_board">Ohne Wand</string>
     <string name="trs_minutes_per_week">Minuten pro Woche</string>
-    <string name="trs_minutes_chart_cd">Trainingsminuten pro Woche, insgesamt %1$d Minuten.</string>
+    <string name="trs_minutes_chart_cd">Trainingsminuten pro Woche, insgesamt %1$d\u00A0Minuten.</string>
     <string name="trs_calendar">Kalender</string>
-    <string name="trs_calendar_cd">Trainingskalender der letzten 16 Wochen mit %1$d Trainingstagen.</string>
+    <string name="trs_calendar_cd">Trainingskalender der letzten 16\u00A0Wochen mit %1$d Trainingstagen.</string>
     <string name="trs_calendar_hint">Eine Spalte pro Woche, Montag oben. Kräftigere Farbe = härterer Tag.</string>
     <string name="trs_load_title">Belastung pro Struktur</string>
     <string name="trs_load_cd">%1$s: Belastungstage pro Woche, diese Woche %2$d.</string>
@@ -46,7 +46,7 @@
     <string name="trs_strength_cd">Kraft in Prozent des Körpergewichts über die Zeit.</string>
     <string name="trs_strength_hint">Fortschritt über Kraft, nicht über die Waage: 10-s-Max oder geschätztes 1RM in % des Körpergewichts.</string>
     <string name="trs_exercises_empty">Übungen, die du loggst, erscheinen hier mit ihrem Fortschritt.</string>
-    <string name="trs_change_28">%1$s in 4 Wochen</string>
+    <string name="trs_change_28">%1$s in 4\u00A0Wochen</string>
     <string name="trs_no_value">noch kein vergleichbarer Wert</string>
 
     <string name="trs_capacity_meaning">Gezeigter Wert: %1$s – aus deinen geloggten Sätzen, Reserve-Wiederholungen eingerechnet.</string>

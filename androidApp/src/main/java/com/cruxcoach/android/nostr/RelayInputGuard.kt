@@ -46,7 +46,7 @@ internal class VerifiedEventDeliveryGate(private val authenticate: (String) -> S
     }
 }
 
-private fun verifiedRelayEventId(json: String): String? {
+internal fun verifiedRelayEventId(json: String): String? {
     val event = runCatching { Event.fromJson(json) }.getOrNull() ?: return null
     if (event.tags.size > 4096 || event.tags.any { it.size > 256 }) return null
     // Verify the body as well as the claimed ID, even on historical refetch.

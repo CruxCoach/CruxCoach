@@ -17,7 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BlePermissionHelper
-import com.cruxcoach.android.ui.theme.WarningYellow
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 
 @Composable
 internal fun ClimbSharingSection(
@@ -38,14 +38,14 @@ internal fun ClimbSharingSection(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
-                containerColor = WarningYellow.copy(alpha = 0.15f)
+                containerColor = CruxCoachDesign.colors.cautionContainer
             )
         ) {
             Text(
                 stringResource(R.string.settings_sharing_no_ble_advertising),
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
-                color = WarningYellow
+                color = CruxCoachDesign.colors.onCautionContainer
             )
         }
         return

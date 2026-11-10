@@ -7,10 +7,7 @@ import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.nostr.backup.BlossomUploader
 import com.cruxcoach.android.nostr.profile.ProfileImageUploader
-import com.cruxcoach.domain.spraywall.SprayClimb
 import com.cruxcoach.domain.spraywall.SprayNostrEvent
-import com.cruxcoach.domain.spraywall.SprayWall
-import com.cruxcoach.domain.spraywall.SprayWallNostr
 import com.cruxcoach.domain.spraywall.SprayWallVersion
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import kotlinx.coroutines.CancellationException
@@ -176,51 +173,27 @@ class SprayWallPublisher @Inject constructor(
     }
 
     /**
-     * Takes my [climbs] on [wall] back from Nostr ([SprayWallPublishing.takesBack]): a tombstone each and one deletion,
-     * waiting for the relays. True when a relay took them, or when none had to go; without an identity, when none of
-     * them is known to have gone out.
+     * Removes someone else's wall from this phone, after taking my climbs on it back from Nostr
+     * ([SprayWallPublishing.removeFollowed]); otherwise the wall stays. Under the lock, so no publish run sends one of
+     * them between the two, and in the publisher's own scope, so leaving the screen does not cut it off.
      */
-    suspend fun withdrawClimbs(climbs: List<SprayClimb>, wall: SprayWall?): Boolean {
-        val mine = climbs.filter { SprayWallPublishing.takesBack(it, wall) }
-        if (mine.isEmpty()) return true
-        return scope.async {
-            mutex.withLock {
-                try {
-                    val me = myPubkey() ?: return@withLock mine.none { it.publishedAt != null }
-                    val owner = wall?.ownerPubkey ?: me
-                    val dTags = mine.map { SprayWallNostr.climbDTag(me, it.uuid) }
-                    var taken = 0
-                    for ((climb, d) in mine.zip(dTags)) {
-                        val address = SprayWallNostr.wallAddress(owner, climb.wallId)
-                        taken = maxOf(taken, send(SprayWallNostr.tombstone(stamp(d), d, SprayWallNostr.LABEL_CLIMB, address)))
-                    }
-                    taken = maxOf(taken, send(SprayWallNostr.deletion(me, now(), dTags)))
-                    taken > 0
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w(TAG, "withdrawing climbs failed", e)
-                    false
-                }
-            }
-        }.await()
+    suspend fun removeFollowed(wallId: String): SprayWithdrawal = locked { publishing.removeFollowed(::myPubkey, wallId) }
+
+    /**
+     * Deletes my climb [uuid], taking it back from Nostr first when it may have gone out ([SprayWallPublishing.deleteClimb]);
+     * otherwise it stays. Under the lock and in the publisher's own scope, as [removeFollowed].
+     */
+    suspend fun deleteClimb(uuid: String): SprayWithdrawal {
+        val climb = repository.climb(uuid) ?: return SprayWithdrawal.DONE
+        // On my private wall: never out, and no publish run sends it, so nothing to wait for.
+        if (!SprayWallPublishing.takesBack(climb, repository.wall(climb.wallId))) {
+            repository.deleteClimb(uuid)
+            return SprayWithdrawal.DONE
+        }
+        return locked { publishing.deleteClimb(::myPubkey, uuid) }
     }
 
-    /** Withdraws a climb of mine that was deleted here from [wall] ([SprayWallPublishing.takesBack]). */
-    fun withdrawClimbSoon(climb: SprayClimb, wall: SprayWall?) {
-        if (!SprayWallPublishing.takesBack(climb, wall)) return
-        val wallOwner = wall?.ownerPubkey
-        scope.launch {
-            mutex.withLock {
-                runCatching {
-                    val me = myPubkey() ?: return@runCatching
-                    val d = SprayWallNostr.climbDTag(me, climb.uuid)
-                    send(SprayWallNostr.tombstone(stamp(d), d, SprayWallNostr.LABEL_CLIMB, SprayWallNostr.wallAddress(wallOwner ?: me, climb.wallId)))
-                    send(SprayWallNostr.deletion(me, now(), listOf(d)))
-                }.onFailure { Log.w(TAG, "withdrawing a climb failed", it) }
-            }
-        }
-    }
+    private suspend fun <T> locked(block: suspend () -> T): T = scope.async { mutex.withLock { block() } }.await()
 
     private suspend fun send(event: SprayNostrEvent): Int {
         val signed = try {

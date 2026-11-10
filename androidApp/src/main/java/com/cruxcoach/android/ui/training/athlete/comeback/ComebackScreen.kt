@@ -504,9 +504,9 @@ private fun statusText(d: DueSession): String = when (d.status) {
 private fun itemLine(item: SessionItemSpec, plan: ComebackPlan, state: ComebackUiState, language: String): String {
     val name = state.catalog?.get(item.slug)?.name(language) ?: item.slug
     val dose = when {
-        item.durationS != null -> "${item.sets} × ${item.durationS} s"
-        item.repsMin != null -> "${item.sets} × ${item.repsMin}${item.repsMax?.takeIf { it != item.repsMin }?.let { "–$it" }.orEmpty()}"
-        else -> "${item.sets} ×"
+        item.durationS != null -> "${item.sets}\u00A0×\u00A0${item.durationS}\u00A0s"
+        item.repsMin != null -> "${item.sets}\u00A0×\u00A0${item.repsMin}${item.repsMax?.takeIf { it != item.repsMin }?.let { "–$it" }.orEmpty()}"
+        else -> "${item.sets}\u00A0×"
     }
     val parts = mutableListOf(name)
     // "Blockheben einarmig" says no grip: the stage's grip is part of the line.
@@ -720,11 +720,24 @@ private fun PromptCard(p: Prompt, injury: Injury, plan: ComebackPlan, ladder: La
                 }
                 Proposal.STEP_BACK -> HintCard(stringResource(R.string.cb_review_back_title), stringResource(R.string.cb_review_back_text), tag, caution = true,
                     primary = if (canStepBack) stepBack else null, secondary = stringResource(R.string.cb_keep_stage) to dismiss)
-                Proposal.STAY -> HintCard(null, stringResource(when (r.stayReason) {
-                    com.cruxcoach.athlete.logic.StayReason.PRESSURE_RISING -> R.string.cb_review_stay_rising
-                    com.cruxcoach.athlete.logic.StayReason.LAST_STAGE -> R.string.cb_review_stay_last
-                    else -> R.string.cb_review_stay_text
-                }), tag, secondary = stringResource(R.string.cb_ok) to dismiss)
+                // No morning value this week: the look back asks for today's once, then decides with it (owner 2026-11-09).
+                Proposal.STAY -> if (r.asksMorning) {
+                    val question = stringResource(R.string.cb_review_morning_title)
+                    HintCard(question, stringResource(R.string.cb_review_morning_text), "${tag}_morning",
+                        secondary = stringResource(R.string.cb_review_morning_skip) to { vm.dismissPrompt(Comeback.morningSkipKey(p.key)) }) {
+                        PainScale(question, null, "${tag}_morning", { v -> v?.let { vm.updateToday { e -> e.copy(morningPain = it) } } }, showLabel = false)
+                    }
+                } else HintCard(null, when (r.stayReason) {
+                    com.cruxcoach.athlete.logic.StayReason.PRESSURE_RISING -> stringResource(R.string.cb_review_stay_rising)
+                    com.cruxcoach.athlete.logic.StayReason.LAST_STAGE -> stringResource(R.string.cb_review_stay_last)
+                    com.cruxcoach.athlete.logic.StayReason.MORNINGS_ABOVE_RULE -> stringResource(R.string.cb_review_stay_mornings, rule.greenMax)
+                    // Optional sessions (the "Optional" chip) don't count: say so where the stage has them.
+                    com.cruxcoach.athlete.logic.StayReason.FEW_SESSION_DAYS -> stringResource(
+                        if (Comeback.stage(injury).sessions.any { it.optional }) R.string.cb_review_stay_sessions_optional else R.string.cb_review_stay_sessions,
+                        r.sessionDaysNeeded, r.sessionDays)
+                    com.cruxcoach.athlete.logic.StayReason.NO_MORNING -> stringResource(R.string.cb_review_stay_no_morning)
+                    else -> stringResource(R.string.cb_review_stay_text)
+                }, tag, secondary = stringResource(R.string.cb_ok) to dismiss)
             }
         }
         PromptKind.WORSENING -> HintCard(stringResource(R.string.cb_worse_title), stringResource(R.string.cb_worse_text, p.from ?: 0, p.to ?: 0), tag,

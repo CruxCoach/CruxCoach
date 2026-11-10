@@ -40,11 +40,11 @@
     <string name="tra_hide_numbers">Körperzahlen ausblenden (nur Trend)</string>
     <string name="tra_module_fuel">Ernährung</string>
     <string name="tra_show_calories">Kalorien anzeigen</string>
-    <string name="tra_protein_per_kg">Protein: %1$s g pro kg Körpergewicht</string>
-    <string name="tra_protein_per_kg_lb">Protein: %1$s g pro kg Körpergewicht (%2$s g pro lb)</string>
+    <string name="tra_protein_per_kg">Protein: %1$s\u00A0g pro kg Körpergewicht</string>
+    <string name="tra_protein_per_kg_lb">Protein: %1$s\u00A0g pro kg Körpergewicht (%2$s\u00A0g pro lb)</string>
     <!-- While losing weight more protein helps keep muscle; the slider goes up to 2.4 g/kg (holistic audit P2-18). -->
-    <string name="tra_protein_losing">Beim Abnehmen empfohlen: %1$s–%2$s g pro kg – das hilft, im Defizit die Muskeln zu halten. Die Wahl bleibt bei dir.</string>
-    <string name="tra_protein_losing_lb">Beim Abnehmen empfohlen: %1$s–%2$s g pro kg (%3$s–%4$s g pro lb) – das hilft, im Defizit die Muskeln zu halten. Die Wahl bleibt bei dir.</string>
+    <string name="tra_protein_losing">Beim Abnehmen empfohlen: %1$s–%2$s\u00A0g pro kg – das hilft, im Defizit die Muskeln zu halten. Die Wahl bleibt bei dir.</string>
+    <string name="tra_protein_losing_lb">Beim Abnehmen empfohlen: %1$s–%2$s\u00A0g pro kg (%3$s–%4$s\u00A0g pro lb) – das hilft, im Defizit die Muskeln zu halten. Die Wahl bleibt bei dir.</string>
     <string name="tra_personal_title">Über dich (freiwillig)</string>
     <string name="tra_personal_info">Gewicht: Ernährungsziele und Lasten in % Körpergewicht. Größe: Ape-Index. Geschlecht und Geburtsjahr: Richtwerte für Mikronährstoffe und den Energie-Check. Nichts verlässt dein Gerät.</string>
     <string name="tra_height">Größe (%1$s)</string>
@@ -68,8 +68,8 @@
     <string name="tra_review_goal_reached">Wochenziel erreicht: %1$d von %2$d Trainingstagen.</string>
     <string name="tra_review_goal_open">%1$d von %2$d Trainingstagen – Pause ist auch Training.</string>
     <plurals name="tra_review_paused">
-        <item quantity="one">%d Tag pausiert</item>
-        <item quantity="other">%d Tage pausiert</item>
+        <item quantity="one">%d\u00A0Tag pausiert</item>
+        <item quantity="other">%d\u00A0Tage pausiert</item>
     </plurals>
     <string name="tra_review_climb_days">Klettertage</string>
     <string name="tra_review_workout_days">Trainingstage</string>
@@ -78,26 +78,26 @@
     <string name="tra_review_no_records">Diese Woche keine neuen Bestwerte – Konstanz baut sie auf.</string>
     <string name="tra_review_load">Belastung pro Struktur</string>
     <plurals name="tra_review_domain_days">
-        <item quantity="one">%1$s: %2$d Tag</item>
-        <item quantity="other">%1$s: %2$d Tage</item>
+        <item quantity="one">%1$s: %2$d\u00A0Tag</item>
+        <item quantity="other">%1$s: %2$d\u00A0Tage</item>
     </plurals>
     <string name="tra_review_categories">Sätze nach Bereich</string>
     <string name="tra_review_weight_up">Gewichtstrend leicht steigend</string>
     <string name="tra_review_weight_down">Gewichtstrend leicht fallend</string>
     <string name="tra_review_weight_stable">Gewichtstrend stabil</string>
     <string name="tra_review_weight_change">Trendgewicht: %1$s diese Woche</string>
-    <string name="tra_review_protein">Protein an erfassten Tagen: %1$d g (Ziel etwa %2$d g)</string>
-    <string name="tra_review_protein_no_target">Protein an erfassten Tagen: %1$d g</string>
-    <string name="tra_review_carbs">Kohlenhydrate an erfassten Tagen: %1$d g (Ziel etwa %2$d g für diese Trainingslast)</string>
-    <string name="tra_review_fat">Fett an erfassten Tagen: %1$d g (%2$d %% der Energie)</string>
+    <string name="tra_review_protein">Protein an erfassten Tagen: %1$d\u00A0g (Ziel etwa %2$d\u00A0g)</string>
+    <string name="tra_review_protein_no_target">Protein an erfassten Tagen: %1$d\u00A0g</string>
+    <string name="tra_review_carbs">Kohlenhydrate an erfassten Tagen: %1$d\u00A0g (Ziel etwa %2$d\u00A0g für diese Trainingslast)</string>
+    <string name="tra_review_fat">Fett an erfassten Tagen: %1$d\u00A0g (%2$d\u00A0%% der Energie)</string>
     <plurals name="tra_review_food_days">
-        <item quantity="one">Ernährung an %d Tag erfasst</item>
-        <item quantity="other">Ernährung an %d Tagen erfasst</item>
+        <item quantity="one">Ernährung an %d\u00A0Tag erfasst</item>
+        <item quantity="other">Ernährung an %d\u00A0Tagen erfasst</item>
     </plurals>
     <string name="tra_review_checkins">Check-in-Durchschnitt</string>
     <string name="tra_review_e1rm">geschätztes 1RM %1$s</string>
     <plurals name="tra_reps">
-        <item quantity="one">%d Wiederholung</item>
-        <item quantity="other">%d Wiederholungen</item>
+        <item quantity="one">%d\u00A0Wiederholung</item>
+        <item quantity="other">%d\u00A0Wiederholungen</item>
     </plurals>
 </resources>

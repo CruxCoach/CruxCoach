@@ -320,7 +320,7 @@ private fun RecentRow(recent: RecentComparison) {
                 Text(
                     stringResource(R.string.board_stats_glance_versus, days),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -475,7 +475,7 @@ private fun OverviewChip(
         if (date != null) {
             append(" ")
             if (dot != null) withStyle(small.toSpanStyle().copy(color = dot)) { append("• ") }
-            withStyle(small.toSpanStyle().copy(color = variant.copy(alpha = 0.7f))) { append(date.replace(' ', '\u00A0')) }
+            withStyle(small.toSpanStyle().copy(color = variant)) { append(date.replace(' ', '\u00A0')) }
         }
     }
     Row(
@@ -564,7 +564,7 @@ internal fun MilestoneBadge(milestone: Milestone, boardColors: Map<String, Color
                 Text(
                     date ?: "",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
             }

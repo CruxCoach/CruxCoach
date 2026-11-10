@@ -235,7 +235,7 @@ fun SessionQueueSheet(
                                     Icon(
                                         Icons.Default.DragHandle,
                                         contentDescription = stringResource(R.string.cd_reorder),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier
                                             .size(24.dp)
                                             .pointerInput(index, state.queue.size) {

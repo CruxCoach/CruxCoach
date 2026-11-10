@@ -1015,11 +1015,14 @@
     <string name="board_holdsearch_zone_active">Bereich aktiv</string>
     <string name="board_holdsearch_zone_clear">Bereich entfernen</string>
     <string name="board_holdsearch_zone_only">Bereichsfilter</string>
-    <string name="board_holdsearch_zone_filter_summary">Bereich → %d Climbs</string>
-    <string name="board_holdsearch_holds_selected">%d Holds ausgewählt</string>
+    <string name="board_holdsearch_zone_filter_summary">Bereich → %d Boulder</string>
+    <plurals name="board_holdsearch_holds_selected">
+        <item quantity="one">%d Griff ausgewählt</item>
+        <item quantity="other">%d Griffe ausgewählt</item>
+    </plurals>
     <string name="board_holdsearch_reset">Zurücksetzen</string>
     <string name="board_holdsearch_searching">Suche…</string>
-    <string name="board_holdsearch_climbs_found">%d Climbs gefunden</string>
+    <string name="board_holdsearch_climbs_found">%d Boulder gefunden</string>
     <string name="board_holdsearch_filter">Filtern</string>
     <string name="board_holdsearch_change">Ändern</string>
     <string name="board_holdsearch_clear">Aufheben</string>
@@ -1552,7 +1555,7 @@
     <string name="board_heatmap_off">Aus</string>
     <string name="board_heatmap_personal">Meine Sends</string>
     <string name="board_heatmap_start">Start-Holds</string>
-    <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
+    <string name="board_holdsearch_filter_summary">%1$d Griffe → %2$d Boulder</string>
     <plurals name="board_list_climb_count">
         <item quantity="one">%d Climb</item>
         <item quantity="other">%d Climbs</item>
@@ -1676,7 +1679,7 @@
     <string name="board_stats_cross_board_send_curve">Versuche bis zur Begehung</string>
     <string name="board_stats_cross_board_send_curve_help">Wie viele Versuche deine Boulder bis zur ersten Begehung gebraucht haben, je Board: Flash, im 2. oder 3. Versuch, nach 4 bis 5 oder nach 6 und mehr Versuchen. Versuche aus früheren Sessions zählen mit, eine Begehung nach Versuchen an einem früheren Tag ist also kein Flash.\n\nHohle Balken beruhen auf weniger als %1$d Bouldern.\n\nTippe auf ein Board, um die Zahlen zu sehen.</string>
     <string name="board_stats_glance_title">Auf einen Blick</string>
-    <string name="board_stats_glance_help">Oben: deine schwerste Begehung und dein schwerster Flash im ganzen Logbuch.\n\nDarunter: die letzten %1$d Tage gegenüber den %1$d Tagen davor: Klettertage (Tage mit mindestens einem Eintrag), Begehungen und deine schwerste Begehung. Grün heißt mehr oder ein schwererer Grad.\n\nKlettertage pro Woche: der Schnitt der letzten acht Wochen.</string>
+    <string name="board_stats_glance_help">Oben: deine schwerste Begehung und dein schwerster Flash im ganzen Logbuch.\n\nDarunter: die letzten %1$d Tage gegenüber den %1$d Tagen davor: Klettertage (Tage mit mindestens einem Eintrag), Begehungen und deine schwerste Begehung. Grün heißt mehr oder ein schwererer Grad.\n\nKlettertage pro Woche: der Schnitt der letzten acht Wochen oder seit deinem ersten Klettertag. Er erscheint ab zwei Wochen.</string>
     <string name="board_stats_glance_hardest_send">Schwerste Begehung</string>
     <string name="board_stats_glance_hardest_flash">Schwerster Flash</string>
     <string name="board_stats_glance_hardest">Schwerste</string>
@@ -3034,7 +3037,7 @@
     <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
     <!-- 0.2.5: eine Zeile je Feature; die Release-Vorbereitung ergänzt die anderen und registriert den Dialog. -->
     <string name="whatsnew_025_title">Neu in 0.2.5</string>
-    <string name="whatsnew_025_body">• Community auf Buzz&#160;– sprich mit den Entwicklern und teste neue Versionen zuerst (Einstellungen → Community).</string>
+    <string name="whatsnew_025_body">• Community auf Buzz&#160;– sprich mit den Entwicklern und teste neue Versionen zuerst (Einstellungen → Community).\n• Shiny Wall&#160;– wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Probleme und lass sie per Bluetooth leuchten. Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten &amp; Importe.\n• Wand-Spiele&#160;– Der Boden ist Lava, Ausdauer, Griffdieb und Quergang, aus dem Hauptmenü oder dem Menü eines Problems („Als Spiel spielen“).</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 
@@ -3387,6 +3390,7 @@
 
     <!-- Wall games -->
     <string name="wall_games_title">Wand-Spiele</string>
+    <string name="wall_games_game">Spiel</string>
     <string name="wall_games_play_climb">Als Spiel spielen</string>
     <string name="wall_games_lava">Der Boden ist Lava</string>
     <string name="wall_games_endurance">Ausdauer</string>
@@ -3402,20 +3406,19 @@
     <string name="wall_games_level_3">Mittel</string>
     <string name="wall_games_level_4">Schwer</string>
     <string name="wall_games_level_5">Sehr schwer</string>
-    <string name="wall_games_lava_interval">Die Lava steigt alle %1$s s</string>
-    <string name="wall_games_endurance_interval">Neue Griffe alle %1$s s</string>
+    <string name="wall_games_lava_interval">Eine Reihe alle %1$s\u00A0s</string>
+    <string name="wall_games_endurance_interval">Neue Griffe alle %1$s\u00A0s</string>
     <string name="wall_games_tempo">Tempo</string>
-    <string name="wall_games_traverse_interval">Nächster Zug alle %1$s s</string>
-    <string name="wall_games_density">Handgriffe</string>
+    <string name="wall_games_tempo_slower">Langsamer</string>
+    <string name="wall_games_tempo_faster">Schneller</string>
+    <string name="wall_games_traverse_interval">Nächster Zug alle %1$s\u00A0s</string>
+    <string name="wall_games_density">Anteil der Griffe</string>
     <string name="wall_games_density_value">%1$d %%</string>
     <string name="wall_games_new_climb">Neuer Boulder</string>
     <string name="wall_games_steal_count">Griffe zum Stehlen</string>
     <string name="wall_games_steal_less">Weniger Griffe stehlen</string>
     <string name="wall_games_steal_more">Mehr Griffe stehlen</string>
-    <plurals name="wall_games_steal">
-        <item quantity="one">%d Griff stehlen</item>
-        <item quantity="other">%d Griffe stehlen</item>
-    </plurals>
+    <string name="wall_games_steal_now">Stehlen</string>
     <plurals name="wall_games_hands_left">
         <item quantity="one">%d Handgriff</item>
         <item quantity="other">%d Handgriffe</item>
@@ -3428,7 +3431,7 @@
     <string name="wall_games_go">Los!</string>
     <string name="wall_games_your_time">Deine Zeit: %1$s</string>
     <string name="wall_games_lava_top">Die Lava hat das Top erreicht.</string>
-    <string name="wall_games_all_lit">Der ganze Boulder leuchtet. Stoppe, wenn du fertig bist.</string>
+    <string name="wall_games_all_lit">Ganzer Boulder leuchtet</string>
     <string name="wall_games_progress_rows">Reihe %1$d von %2$d</string>
     <string name="wall_games_progress_steps">Schritt %1$d von %2$d</string>
     <string name="wall_games_progress_moves">Zug %1$d von %2$d</string>
@@ -3438,8 +3441,8 @@
     <string name="wall_games_climb_at_angle">%1$s · %2$d°</string>
     <string name="wall_games_no_climb">Noch kein Boulder gewählt.</string>
     <string name="wall_games_recent_title">Zuletzt an diesem Board gezeigt</string>
-    <string name="wall_games_recent_empty">An diesem Board wurde noch kein Boulder gezeigt. Öffne einen Boulder und wähle in seinem Menü „Als Spiel spielen“.</string>
-    <string name="wall_games_climb_hint">Jeder Boulder geht: Öffne ihn und wähle in seinem Menü „Als Spiel spielen“.</string>
+    <string name="wall_games_recent_empty">An diesem Board hat noch kein Boulder geleuchtet. „Als Spiel spielen“ im Menü eines Boulders bringt ihn hierher.</string>
+    <string name="wall_games_browse">Zu den Bouldern</string>
     <string name="wall_games_climb_not_found">Dieser Boulder ist nicht auf dem Gerät.</string>
     <string name="wall_games_climb_other_board">Dieser Boulder gehört zu einem anderen Board. Wähle einen Boulder deines aktiven Boards.</string>
     <string name="wall_games_climb_no_holds">Keiner der Griffe dieses Boulders ist auf deiner Board-Größe.</string>
@@ -3447,13 +3450,117 @@
         <item quantity="one">%d Griff dieses Boulders ist nicht auf deiner Board-Größe und bleibt dunkel.</item>
         <item quantity="other">%d Griffe dieses Boulders sind nicht auf deiner Board-Größe und bleiben dunkel.</item>
     </plurals>
-    <string name="wall_games_not_connected">Nicht verbunden: Das Spiel läuft nur auf diesem Bildschirm.</string>
+    <string name="wall_games_not_connected">Nicht verbunden: nur am Bildschirm.</string>
     <string name="wall_games_other_board">Das verbundene Board ist nicht dein aktives Board und bleibt deshalb dunkel.</string>
-    <string name="wall_games_session">Eine gemeinsame Sitzung steuert das Board, deshalb wird das Spiel nicht angezeigt.</string>
+    <string name="wall_games_session">Eine gemeinsame Sitzung steuert das Board: nur am Bildschirm.</string>
     <string name="wall_games_cleaning">Am Board läuft das Griffeputzen. Beende es, um das Spiel anzuzeigen.</string>
-    <string name="wall_games_send_failed">Das Board hat den letzten Schritt nicht übernommen.</string>
+    <string name="wall_games_send_failed">Das Board hat nicht reagiert. Das Spiel läuft am Bildschirm weiter.</string>
     <string name="wall_games_unsupported">Für dieses Board gibt es keine Wand-Spiele.</string>
     <string name="wall_games_no_holds">Die Griffpositionen dieses Boards sind noch nicht auf dem Gerät. Lade zuerst seinen Katalog.</string>
     <string name="wall_games_sound_turn_off">Countdown-Ton ausschalten</string>
     <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
+    <!-- Shiny-Wall-Konto (Logbuch-Import, nur lesend) -->
+    <string name="shinywall_section_title">Shiny-Wall-Konto</string>
+    <string name="shinywall_connect_desc">Übernimmt dein Shiny-Wall-Logbuch (Begehungen und Projekte), deine Favoriten, Listen und eigenen Routen in CruxCoach. Sterne und Kommentare bleiben in Shiny Wall.\n\nNur lesend: CruxCoach ändert nichts an deinem Shiny-Wall-Konto. Nur Standard-Wände.\n\nWas du in CruxCoach löschst, bleibt gelöscht, egal ob Einträge oder Listen. Um alles neu zu importieren, lösche deine Shiny-Wall-Logbuchdaten unter Einstellungen → Lokale Daten löschen.</string>
+    <string name="shinywall_connect_button">Shiny-Wall-Konto verbinden</string>
+    <string name="shinywall_login_title">Bei Shiny Wall anmelden</string>
+    <string name="shinywall_login_privacy">Deine E-Mail-Adresse und dein Passwort gehen an die Firebase-Server von Google, über die Shiny Wall die Anmeldung abwickelt.</string>
+    <string name="shinywall_login_privacy_more">CruxCoach liest deine Shiny-Wall-Daten von denselben Google-Servern. Auf diesem Handy speichert es ein Anmelde-Token, nie das Passwort. Konten mit Google-Anmeldung lassen sich nicht verbinden.</string>
+    <string name="shinywall_email_label">E-Mail</string>
+    <string name="shinywall_password_label">Passwort</string>
+    <string name="shinywall_login_button">Anmelden</string>
+    <string name="shinywall_connected_as">Verbunden als: %1$s</string>
+    <string name="shinywall_last_import">Letzter Import: %1$s</string>
+    <string name="shinywall_import_new">Neue Einträge importieren</string>
+    <string name="shinywall_disconnect">Verbindung trennen</string>
+    <string name="shinywall_disconnect_confirm">CruxCoach vergisst die Shiny-Wall-Anmeldung auf diesem Handy. Importierte Einträge und Listen bleiben.</string>
+    <string name="shinywall_preview_title">Import aus Shiny Wall</string>
+    <!-- %1$s, %2$s, %3$s: shinywall_preview_new_ascents, shinywall_preview_new_projects, shinywall_preview_known -->
+    <string name="shinywall_preview_found">%1$s, %2$s, %3$s.</string>
+    <plurals name="shinywall_preview_new_ascents">
+        <item quantity="one">%1$d neue Begehung</item>
+        <item quantity="other">%1$d neue Begehungen</item>
+    </plurals>
+    <plurals name="shinywall_preview_new_projects">
+        <item quantity="one">%1$d neues Projekt</item>
+        <item quantity="other">%1$d neue Projekte</item>
+    </plurals>
+    <string name="shinywall_preview_known">%1$d schon in CruxCoach</string>
+    <plurals name="shinywall_preview_skipped">
+        <item quantity="one">%1$d Eintrag lässt sich nicht importieren (eigene Wände, Routen-Erstellungen, unvollständige Einträge).</item>
+        <item quantity="other">%1$d Einträge lassen sich nicht importieren (eigene Wände, Routen-Erstellungen, unvollständige Einträge).</item>
+    </plurals>
+    <plurals name="shinywall_preview_deleted">
+        <item quantity="one">%1$d Eintrag wird nicht erneut importiert.</item>
+        <item quantity="other">%1$d Einträge werden nicht erneut importiert.</item>
+    </plurals>
+    <string name="shinywall_import_button">Importieren</string>
+    <string name="shinywall_import_lists_button">Listen aktualisieren</string>
+    <string name="shinywall_import_empty">Noch keine Einträge in deinem Shiny-Wall-Logbuch gefunden.</string>
+    <plurals name="shinywall_import_part_ascents">
+        <item quantity="one">%1$d Begehung</item>
+        <item quantity="other">%1$d Begehungen</item>
+    </plurals>
+    <plurals name="shinywall_import_part_projects">
+        <item quantity="one">%1$d Projekt</item>
+        <item quantity="other">%1$d Projekte</item>
+    </plurals>
+    <plurals name="shinywall_import_part_lists">
+        <item quantity="one">%1$d Liste</item>
+        <item quantity="other">%1$d Listen</item>
+    </plurals>
+    <string name="shinywall_import_part_known">%1$d schon in CruxCoach</string>
+    <string name="shinywall_import_part_skipped">%1$d übersprungen</string>
+    <plurals name="shinywall_import_part_deleted">
+        <item quantity="one">%1$d wird nicht erneut importiert</item>
+        <item quantity="other">%1$d werden nicht erneut importiert</item>
+    </plurals>
+    <string name="shinywall_import_part_nothing_new">Nichts Neues</string>
+    <string name="shinywall_auth_invalid_credentials">E-Mail oder Passwort stimmt nicht. Meldest du dich bei Shiny Wall mit Google an, kann CruxCoach sich nicht verbinden.</string>
+    <string name="shinywall_auth_disabled">Dieses Shiny-Wall-Konto ist gesperrt.</string>
+    <string name="shinywall_auth_throttled">Zu viele Versuche. Bitte warte kurz und versuche es dann noch einmal.</string>
+    <string name="shinywall_auth_network">Keine Verbindung zu Shiny Wall. Prüfe deine Internetverbindung.</string>
+    <string name="shinywall_auth_http_failure" formatted="false">Anmeldung fehlgeschlagen (HTTP %1$d).</string>
+    <string name="shinywall_auth_not_saved">CruxCoach konnte die Anmeldung auf diesem Handy nicht speichern. Bitte versuche es noch einmal.</string>
+    <string name="shinywall_auth_unexpected">Shiny Wall hat unerwartet geantwortet. Bitte versuche es später noch einmal.</string>
+    <string name="shinywall_session_expired">Sitzung abgelaufen</string>
+    <string name="shinywall_relogin_button">Neu anmelden</string>
+    <string name="shinywall_import_error_denied">Shiny Wall hat das Lesen deines Logbuchs nicht erlaubt.</string>
+    <string name="shinywall_import_error_network">Keine Verbindung zu Shiny Wall. Prüfe deine Internetverbindung.</string>
+    <string name="shinywall_import_error_generic">Der Import ist fehlgeschlagen. Bitte versuche es noch einmal.</string>
+    <string name="shinywall_list_favorites">Shiny-Wall-Favoriten</string>
+    <string name="shinywall_list_own_routes">Meine Shiny-Wall-Routen</string>
+    <!-- Board-Größe prüfen: optionale Hilfe, wenn jemand unsicher ist, welche Größe sein Board hat -->
+    <string name="board_size_check_title">Board-Größe prüfen</string>
+    <string name="board_size_check_link">Größe am Board prüfen</string>
+    <string name="board_size_check_menu">Falsche Griffe am Board?</string>
+    <string name="board_size_check_info">Dein Board verrät der App seine Größe nicht. Die Prüfung lässt einige weit auseinanderliegende Griffe einer Größe leuchten. An einem Board anderer Größe leuchten dieselben LEDs an anderen Griffen, so siehst du sofort, ob die Größe passt. Beim Schließen gehen sie wieder aus.</string>
+    <string name="board_size_check_question">Leuchten am Board genau diese Griffe?</string>
+    <string name="board_size_check_yes">Ja, passt</string>
+    <string name="board_size_check_no">Nein</string>
+    <string name="board_size_check_relight">Nochmal leuchten lassen</string>
+    <string name="board_size_check_lighting">Die markierten Griffe leuchten gleich auf …</string>
+    <string name="board_size_check_connect_hint">Verbinde dich mit deinem Board, dann leuchten dort die markierten Griffe.</string>
+    <string name="board_size_check_connect">Mit Board verbinden</string>
+    <string name="board_size_check_other_board">Verbunden ist kein %1$s. Verbinde dich mit deinem %1$s.</string>
+    <string name="board_size_check_pick_other">Tippe eine Größe an, sie leuchtet am Board.</string>
+    <string name="board_size_check_pick_other_offline">Tippe eine Größe an, um ihre markierten Griffe zu sehen.</string>
+    <string name="board_size_check_tried">Probiert</string>
+    <string name="board_size_check_try_first">Erst %1$s probieren</string>
+    <string name="board_size_check_none_fit">Keine passt? Dann ist dein Board vielleicht anders aufgebaut als sein Katalog.</string>
+    <string name="board_size_check_saved">Gespeichert: Das ist jetzt dein Board.</string>
+    <string name="board_size_check_selected">Ausgewählt. Tippe in der Board-Auswahl auf „Bestätigen“, um es zu behalten.</string>
+    <string name="board_size_check_fits">Passt: Dein Board ist richtig eingestellt.</string>
+    <string name="board_size_check_send_failed">Die Griffe konnten nicht leuchten. Prüfe die Verbindung und versuch es nochmal.</string>
+    <string name="board_size_check_replaced">Das Board zeigt inzwischen vielleicht etwas anderes.</string>
+    <string name="board_size_check_no_data">Für dieses Board sind noch keine LED-Daten auf deinem Handy.</string>
+    <string name="board_size_check_done">Fertig</string>
+    <string name="board_size_check_back_to_picker">Zurück zur Board-Auswahl</string>
+    <string name="board_size_check_image_cd">%1$s mit den Griffen, die leuchten sollen</string>
+    <string name="board_size_check_look_alike_first">Um %1$s von %2$s zu unterscheiden, kommt %2$s zuerst.</string>
+    <!-- Board-Auswahl: wie häufig jede Option in Gyms ist, damit eine seltene Wahl geprüft wird -->
+    <string name="board_gym_share">In Gyms: %1$s</string>
+    <string name="board_gym_share_rare">Selten in Gyms: %1$s</string>
+    <string name="board_gym_share_rare_hint">Nur wenige Gyms haben dieses Board. Prüfe bitte, ob es wirklich deins ist.</string>
+    <string name="board_gym_share_rare_version_hint">Nur wenige Gyms führen diese Version, vielleicht weil sie neu ist. Prüfe, ob sie zu den Griffen an deinem Board passt.</string>
 </resources>

@@ -70,6 +70,8 @@ import com.cruxcoach.android.ui.plan.SessionDetailScreen
 import com.cruxcoach.android.ui.plan.WeekOverviewScreen
 import com.cruxcoach.android.ui.exercises.ExerciseLibraryScreen
 import com.cruxcoach.android.ui.training.trainingGraph
+import com.cruxcoach.android.spraywall.SprayWallFeature
+import com.cruxcoach.android.ui.spraywall.SprayWallMenuViewModel
 import com.cruxcoach.android.ui.spraywall.SprayWallRoutes
 import com.cruxcoach.android.ui.spraywall.sprayWallGraph
 import com.cruxcoach.android.ui.onboarding.OnboardingScreen
@@ -143,7 +145,6 @@ object Routes {
     const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}?author={author}"
     const val PAINTBOX = "paintbox"
-    const val BOARD_CATALOGUES_SETTINGS = "settings_board_catalogues"
     const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
     fun climbCreator(forkUuid: String? = null, editUuid: String? = null): String {
         val qs = buildList {
@@ -181,6 +182,8 @@ object Routes {
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"
     const val LICENSES = "licenses"
+    const val HOLD_TYPE_REVIEW = "hold_type_review"
+    const val HOLD_TYPE_CHECK = "hold_type_check"
     const val ASSESSMENT = "assessment"
     const val DEV_CHAT = "dev_chat"
     const val BUG_REPORT = "bug_report?title={title}&description={description}&kilterDiagnostics={kilterDiagnostics}"
@@ -194,6 +197,8 @@ object Routes {
     const val BACKUP_SETTINGS = "backup_settings"
     /** Settings opened on "Bugs & feature requests" (reply notifications). */
     const val SUPPORT_SETTINGS = "support_settings"
+    /** Settings opened on the board catalogues (wall games without hold positions, PaintBox without a board). */
+    const val CATALOGUE_SETTINGS = "catalogue_settings"
     const val NOSTR_PROFILE = "nostr_profile"
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
@@ -594,6 +599,8 @@ fun CruxCoachNavHost(
                 val (_, browserTourStep) = rememberBrowserTour()
                 val drawerState = rememberDrawerState(DrawerValue.Closed)
                 val drawerScope = rememberCoroutineScope()
+                val sprayWallMenu: SprayWallMenuViewModel = hiltViewModel()
+                val sprayWallsInMenu by sprayWallMenu.inMenu.collectAsStateWithLifecycle()
                 // The drawer sheet only takes Back when it is handed the drawer
                 // state; without this, Back with the menu open left the app.
                 BackHandler(enabled = drawerState.isOpen) {
@@ -603,7 +610,7 @@ fun CruxCoachNavHost(
                     drawerState = drawerState,
                     gesturesEnabled = browserTourStep in listOf(TourStep.INACTIVE, TourStep.DONE),
                     drawerContent = {
-                        BrowserMainDrawer() { route ->
+                        BrowserMainDrawer(sprayWalls = sprayWallsInMenu) { route ->
                             drawerScope.launch { drawerState.close() }
                             when {
                                 route == Routes.BOARD_BROWSER -> Unit
@@ -655,6 +662,7 @@ fun CruxCoachNavHost(
                 ) {
                     com.cruxcoach.android.ui.board.games.WallGamesScreen(
                         onNavigateBack = { navController.popBackStack() },
+                        onOpenCatalogues = { navController.navigate(Routes.CATALOGUE_SETTINGS) },
                     )
                 }
             }
@@ -985,11 +993,11 @@ fun CruxCoachNavHost(
             composable(Routes.PAINTBOX) {
                 com.cruxcoach.android.ui.paintbox.PaintBoxScreen(
                     onBack = { navController.popBackStack() },
-                    onDownloadBoards = { navController.navigate(Routes.BOARD_CATALOGUES_SETTINGS) },
+                    onDownloadBoards = { navController.navigate(Routes.CATALOGUE_SETTINGS) },
                 )
             }
 
-            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS, Routes.SUPPORT_SETTINGS, Routes.BOARD_CATALOGUES_SETTINGS).forEach { settingsRoute ->
+            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS, Routes.SUPPORT_SETTINGS, Routes.CATALOGUE_SETTINGS).forEach { settingsRoute ->
                 composable(settingsRoute) {
                     var showPaymentSheet by remember { mutableStateOf(false) }
                     val paymentViewModel: PaymentViewModel = hiltViewModel()
@@ -998,15 +1006,17 @@ fun CruxCoachNavHost(
 
                     SettingsScreen(
                         startPage = when (settingsRoute) {
-                            Routes.BOARD_CATALOGUES_SETTINGS -> SettingsPage.CATALOGUES
                             Routes.BACKUP_SETTINGS -> SettingsPage.BACKUP
                             Routes.SUPPORT_SETTINGS -> SettingsPage.SUPPORT
+                            Routes.CATALOGUE_SETTINGS -> SettingsPage.CATALOGUES
                             else -> null
                         },
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
                         onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
                         onNavigateToLicenses = { navController.navigate(Routes.LICENSES) },
+                        onNavigateToHoldTypeReview = { navController.navigate(Routes.HOLD_TYPE_REVIEW) },
+                        onNavigateToHoldTypeCheck = { navController.navigate(Routes.HOLD_TYPE_CHECK) },
                         onNavigateToPaintBox = { navController.navigate(Routes.PAINTBOX) },
                         onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                         onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
@@ -1057,6 +1067,14 @@ fun CruxCoachNavHost(
 
             composable(Routes.LICENSES) {
                 LicensesScreen(onNavigateBack = { navController.popBackStack() })
+            }
+
+            // #63: hold-type review and label check, reachable only from the settings of test builds.
+            composable(Routes.HOLD_TYPE_REVIEW) {
+                com.cruxcoach.android.ui.holdtypes.HoldReviewScreen(onNavigateBack = { navController.popBackStack() })
+            }
+            composable(Routes.HOLD_TYPE_CHECK) {
+                com.cruxcoach.android.ui.holdtypes.HoldCheckScreen(onNavigateBack = { navController.popBackStack() })
             }
 
             composable(Routes.APP_SHARE) {
@@ -1230,8 +1248,9 @@ fun CruxCoachNavHost(
     } // CompositionLocalProvider
 }
 
+/** [sprayWalls]: whether their entry is there ([SprayWallFeature.inMenu]). */
 @Composable
-internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
+internal fun BrowserMainDrawer(sprayWalls: Boolean = SprayWallFeature.enabled, onSelect: (String) -> Unit) {
     val (tour, _) = rememberBrowserTour()
     ModalDrawerSheet {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -1246,8 +1265,8 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
                 // whose tab bar (Today, Training, Nutrition, Progress) organises the rest.
                 Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_training_nutrition, "menu_today"),
                 Triple(Routes.boardGames(), com.cruxcoach.android.R.string.wall_games_title, "menu_wall_games"),
-                Triple(SprayWallRoutes.LIST, com.cruxcoach.android.R.string.spray_walls_title, "menu_spray_walls"),
-            )
+                Triple(SprayWallRoutes.LIST, com.cruxcoach.android.R.string.spray_walls_title, "menu_spray_walls").takeIf { sprayWalls },
+            ).filterNotNull()
             entries.forEach { (route, label, tag) ->
                 NavigationDrawerItem(
                     icon = {

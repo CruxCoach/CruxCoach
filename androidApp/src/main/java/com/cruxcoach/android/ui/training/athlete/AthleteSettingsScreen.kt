@@ -731,7 +731,7 @@ private fun LearnedSection(state: AthleteSettingsState, viewModel: AthleteSettin
         learned.ownLoads.forEach { (b, def) ->
             val load = b.loadKg?.let { formatMass(it, state.profile.units, signed = def.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS) }
             row(listOfNotNull(def.name(lang), b.side?.let { sideLabel(it) }).joinToString(" · "),
-                listOfNotNull(b.sets?.let { n -> b.reps?.let { "$n × $it" } }, load).joinToString(" · ").ifBlank { null },
+                listOfNotNull(b.sets?.let { n -> b.reps?.let { "$n\u00A0×\u00A0$it" } }, load).joinToString(" · ").ifBlank { null },
                 "learned_load_${b.exerciseSlug}") { viewModel.forgetOwnLoad(b) }
         }
     }

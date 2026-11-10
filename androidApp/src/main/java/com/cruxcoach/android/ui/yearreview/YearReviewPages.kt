@@ -6,6 +6,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.spraywall.SprayWallFeature
 import com.cruxcoach.android.ui.training.benchmarks.benchmarkSummary
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
@@ -76,13 +77,14 @@ fun reviewPages(
     gradeScale: GradeScale,
     training: TrainingContext,
     privacy: SharePrivacy = SharePrivacy.SCREEN,
+    sprayWalls: Boolean = SprayWallFeature.enabled,
 ): List<ReviewPage> {
     if (!review.hasEnoughData) return emptyList()
     val f = Formats(LocalConfiguration.current.locales[0], gradeScale, privacy, review.year)
     val eyebrow = if (review.isFinal) stringResource(R.string.yr_eyebrow, review.year)
         else stringResource(R.string.yr_eyebrow_so_far, review.year, f.fullDate(review.until))
     return listOfNotNull(
-        intro(review, f, forImage = privacy.image),
+        intro(review, f, forImage = privacy.image, sprayWalls = sprayWalls),
         volume(review, eyebrow, f),
         boards(review, eyebrow, f),
         hardest(review, eyebrow, f),
@@ -99,8 +101,9 @@ fun reviewPages(
 
 // ── The pages ────────────────────────────────────────────────────────
 
+/** [sprayWalls]: while [SprayWallFeature] is off, the page does not mention them. */
 @Composable
-private fun intro(review: YearReview, f: Formats, forImage: Boolean) = ReviewPage(
+private fun intro(review: YearReview, f: Formats, forImage: Boolean, sprayWalls: Boolean) = ReviewPage(
     kind = ReviewPageKind.INTRO,
     // The year is the page's big number, so no line above it repeats it.
     eyebrow = "",
@@ -110,8 +113,15 @@ private fun intro(review: YearReview, f: Formats, forImage: Boolean) = ReviewPag
     // "Nothing leaves this phone" is true on the phone, not on an image that was shared.
     lead = if (forImage) null else stringResource(R.string.yr_intro_lead),
     // Also in the note behind the info symbol; here it is seen before the numbers.
-    note = if (forImage) null else stringResource(R.string.yr_intro_spray_walls),
-    howCalculated = stringResource(if (review.isFinal) R.string.yr_intro_how else R.string.yr_intro_how_so_far),
+    note = if (forImage || !sprayWalls) null else stringResource(R.string.yr_intro_spray_walls),
+    howCalculated = stringResource(
+        when {
+            sprayWalls && review.isFinal -> R.string.yr_intro_how
+            sprayWalls -> R.string.yr_intro_how_so_far
+            review.isFinal -> R.string.yr_intro_how_no_spray_walls
+            else -> R.string.yr_intro_how_so_far_no_spray_walls
+        },
+    ),
 )
 
 @Composable

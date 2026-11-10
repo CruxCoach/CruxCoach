@@ -63,7 +63,9 @@ object WorkoutTextParser {
 
     fun parse(text: String, catalog: ExerciseCatalog): Result {
         val session = ExerciseMatcher.session(catalog)
-        val pieces = WorkoutTextLayout.pieces(text.take(MAX_CHARS), session)
+        // Text copied from the app's screens joins a number and its unit with a non-breaking space ("16 kg").
+        val plain = text.take(MAX_CHARS).replace('\u00A0', ' ').replace('\u202F', ' ')
+        val pieces = WorkoutTextLayout.pieces(plain, session)
         var title: String? = null
         val lines = mutableListOf<Line>()
         val explicitSets = mutableListOf<Int?>()

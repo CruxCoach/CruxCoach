@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Hold types in the Kilter logbook statistics: which kinds of hand holds (jug,
+  edge, sloper, pinch, pocket, volume) the problems you logged use, with a mark
+  for the same share on the board's problems in your grades, and the types
+  where your send rate is clearly higher or lower than usual. Tap a type for
+  its numbers. The types are computed from the board pictures and checked by
+  hand on a sample of holds. Other boards follow once their labels are checked.
 - Spray walls, from the main menu. Photograph your own wall (camera or photo
   library, crop and turn), and the phone suggests the holds. Download the hold
   model once (33 MB) and it finds holds of every colour with their real shape,
@@ -27,26 +33,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   also deletes its photos from the Blossom servers; if that does not work, the
   wall stays public (and is not deleted) so you can try again. Your logbook is
   never published, and spray walls are not in Android backups.
+- Board size check: not sure which size your Kilter or other Aurora-family board is,
+  or other holds light up than the app shows? The board picker and the climb's ⋯ menu
+  now light a few marked holds for a size, so you can compare with the board and switch
+  to the size that fits.
+- The board picker shows how common each board, Kilter size and MoonBoard version is in
+  gyms, from the gym list the app already loads. Picking a rare size or version asks you
+  to check that it is really your board; for the newest MoonBoard versions, which few gyms
+  list yet, it only asks you to compare the holds.
 - Shiny Wall support: pick your Shiny Wall Standard wall (Mini, Standard, Max,
   Full or Max Full), browse its problems with the usual filters (grade, angle
   0–60°, holds, benchmarks, status) plus its categories (technical, physical,
   crimpy, endurance, cruxy, foot rules) and light them over Bluetooth from the
   problem page, while browsing, in playlists and in shared sessions. Set your
   own Shiny Wall problems in the editor, see the hold heatmap and use "Clean
-  holds". The Shiny Wall catalogue is downloaded only once you choose a Shiny
-  Wall; offline sharing passes it on to phones with this version (older
+  holds". The Shiny Wall catalogue is refreshed every day from Shiny Wall's
+  standard routes (no drafts, no personal data) and is downloaded only once you
+  choose a Shiny Wall; offline sharing passes it on to phones with this version (older
   versions never receive it, so they cannot mix it up). If a wall's Bluetooth name
   suggests another variant, CruxCoach asks once per wall and remembers the
   answer. The wall shows each hold as a photo, laid out the way the Shiny Wall
   app draws it, instead of dots: on problem pages, in the editor and in the
   board picker.
+- Shiny Wall account (Settings → Board accounts & imports): sign in with your Shiny Wall email
+  and password and import your Shiny Wall logbook (sends with their attempts,
+  projects and your grade), your favorites, your lists and your own routes.
+  Attempts on the day of a send count towards it; attempts on earlier days
+  stay projects of their own, one per day. Star ratings and comments stay in Shiny Wall.
+  Email and password go to Google's Firebase servers, which run Shiny Wall's
+  sign-in and data. Read-only: CruxCoach never changes anything in your Shiny
+  Wall account, keeps a sign-in token on the phone (never the password), and
+  "Import new entries" fetches what is new without duplicating or restoring
+  the entries and lists you deleted (deleting your Shiny Wall logbook data in
+  Settings starts afresh). Standard walls only; accounts that sign in with Google
+  can't connect.
 - Board map: gyms with a Shiny Wall now appear on the map, and the bundled map
   data is refreshed (2,933 venues).
 - Logbook overview: the logbook now opens with one card instead of six tiles:
   your hardest send and hardest flash, the last 30 days against the 30 before
   (climbing days, sends and hardest grade; green means more or harder), your
-  climbing days per week and your milestones (new grades, 50, 100, 250 and more
-  sends, your biggest day, weeks in a row). Tap it for the statistics. The period
+  climbing days per week (from two weeks of history on) and your milestones (new grades, 50, 100, 250 and more
+  sends, your biggest day, weeks in a row). It appears as soon as the logbook has
+  loaded; tap it for the statistics, which show a loading sign until they are ready. The period
   filter of the list moved into the logbook filter, next to result, board and
   angle. Entries no longer repeat the date of their day, and at the largest font
   sizes an entry puts its name and result below its grade instead of squeezing
@@ -588,14 +616,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one plans at least two weight steps more, so a start that was too light catches up. Not for finger work,
   and not during an injury, the return after a break, a comeback plan or for climbers under 18 or in their
   first year. Below 10 kg a load rises by at most one step per training.
+- Training: the weekly plan counts the climbing still planned this week. A training early in the week
+  leaves room for the pull and core work of the climbing days ahead, and says so. When the week has no
+  room left for pull and push but legs or core are still short, Today suggests legs and core instead of
+  mobility, and the other way round. Without a hangboard, pick-up block or board, the finger goal is at
+  most your climbing days a week, and push and legs count only the training days without climbing.
+- Training: around an injury of one arm or leg, a one-sided exercise that also loads the other side (an
+  archer push-up or pull-up, an assisted one-arm pull-up or hang, a kneeling stretch for an injured knee,
+  lunges and split squats) is no longer offered for the healthy side only while the injury rules it out.
+- Comeback plan: the weekly look back reads the seven days before it and that morning. It offers the
+  next stage only after the stage's sessions on at least three days (or on as many as the stage plans,
+  when that is fewer) and while the week's middle morning pain is within the stage's rule, and says
+  which of the two is missing. A week without a morning value asks for this morning's pain first;
+  skipped, the stage stays. A rise of 1 in morning pain that stays within the rule is no longer a
+  warning, and a painful week at the first stage proposes repeating it instead of "not enough entries".
 - Comeback plan: a strength session starts from the last strength session's loads, no longer from the
   light tendon holds done earlier the same day (and the other way round).
+- Injuries: pain on the injury card and in the training's pain sheet now goes from 0 to 10, like the
+  comeback diary, instead of stopping at 9. Pain you saved before keeps its number.
 - "Privacy notice" and "Source code" in Settings → About no longer close the app on a
   phone without a browser; a short message says that no app can open the link. The
   community links do the same.
 - "Request account data from Moon" in the MoonBoard import no longer closes the app on
   a phone without an email app; a message says so, and the screen names the address to
   send the copied request to.
+- Orange and status colours are easier to read, above all in the light theme: orange and
+  green, yellow or red labels, chips and banners, buttons on coloured cards and secondary
+  text now stand out clearly from what they sit on.
+- Appearance & language no longer jumps when the unit choice appears a moment after the
+  page opens, so a tap meant for the next row no longer lands on a unit.
+- The hold search in German counts "Griffe" and "Boulder", like the rest of the app.
 
 ## [0.2.4] - 2026-10-25
 

@@ -27,6 +27,7 @@ import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.domain.model.ExerciseBlock
 
@@ -257,14 +258,14 @@ fun ExerciseCard(index: Int, exercise: ExerciseBlock) {
                 modifier = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(OrangeAccent.copy(alpha = 0.2f)),
+                    .background(CruxCoachDesign.colors.brandAccentContainer),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "$index",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
-                    color = OrangeAccent
+                    color = CruxCoachDesign.colors.onBrandAccentContainer
                 )
             }
 

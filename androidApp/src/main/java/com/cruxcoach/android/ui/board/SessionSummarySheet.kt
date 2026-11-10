@@ -79,7 +79,7 @@ internal fun SessionSummaryContent(
                     add(Triple("${summary.flashCount}", stringResource(R.string.board_session_flashes), GradeElite))
                 }
                 if (summary?.uniqueClimbs != null && summary.uniqueClimbs > 0) {
-                    add(Triple("${summary.uniqueClimbs}", stringResource(R.string.board_stats_unique), Slate80))
+                    add(Triple("${summary.uniqueClimbs}", stringResource(R.string.board_stats_unique), MaterialTheme.colorScheme.onSurfaceVariant))
                 }
             }
             NumberGrid(

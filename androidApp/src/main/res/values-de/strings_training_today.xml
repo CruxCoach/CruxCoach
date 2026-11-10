@@ -5,24 +5,24 @@
         <item quantity="other">%1$d von %2$d Trainingstagen diese Woche</item>
     </plurals>
     <plurals name="trt_streak_weeks">
-        <item quantity="one">Seit %d Woche im Plan</item>
-        <item quantity="other">Seit %d Wochen im Plan</item>
+        <item quantity="one">Seit %d\u00A0Woche im Plan</item>
+        <item quantity="other">Seit %d\u00A0Wochen im Plan</item>
     </plurals>
     <plurals name="trt_jokers">
         <item quantity="one">%d Joker</item>
         <item quantity="other">%d Joker</item>
     </plurals>
     <plurals name="trt_board_minutes">
-        <item quantity="one">Board: %d Minute automatisch erfasst</item>
-        <item quantity="other">Board: %d Minuten automatisch erfasst</item>
+        <item quantity="one">Board: %d\u00A0Minute automatisch erfasst</item>
+        <item quantity="other">Board: %d\u00A0Minuten automatisch erfasst</item>
     </plurals>
     <plurals name="trt_board_efforts">
         <item quantity="one">Board: %d Versuch automatisch erfasst</item>
         <item quantity="other">Board: %d Versuche automatisch erfasst</item>
     </plurals>
     <plurals name="trt_minutes">
-        <item quantity="one">%d min</item>
-        <item quantity="other">%d min</item>
+        <item quantity="one">%d\u00A0min</item>
+        <item quantity="other">%d\u00A0min</item>
     </plurals>
     <string name="trt_streak_start">Erreich dein Wochenziel, dann beginnt eine Serie.</string>
     <string name="trt_streak_paused">Pause aktiv – deine Serie ist eingefroren.</string>
@@ -61,15 +61,15 @@
     <string name="trt_reason_spared">Heute geschont: %1$s – Übungen, die das belasten, bleiben weg.</string>
     <string name="trt_reason_spared_generic">Was heute wehtut, wird geschont – Übungen, die das belasten, bleiben weg.</string>
     <string name="trt_ev_sore">tut heute weh: %1$s</string>
-    <string name="trt_duration_value">%d min</string>
+    <string name="trt_duration_value">%d\u00A0min</string>
     <string name="trt_duration_title">Wie lange heute?</string>
-    <string name="trt_duration_usual">Wie sonst (%d min)</string>
+    <string name="trt_duration_usual">Wie sonst (%d\u00A0min)</string>
     <string name="trt_favorite">Favorit</string>
     <string name="trt_reason_more_time">Heute mehr Zeit – die Einheit ist länger.</string>
     <string name="trt_reason_extended">Auf deine Zeit aufgefüllt: mehr Sätze und Übungen derselben Art.</string>
     <string name="trt_reason_kept_short">Diese Woche ist bewusst leichter: weniger Sätze, auch mit mehr Zeit.</string>
     <string name="trt_reason_less_than_chosen">Kürzer als gewählt: Mehr passende Übungen und Sätze gibt es heute nicht.</string>
-    <string name="trt_ev_time_today">heute %1$d statt %2$d Minuten</string>
+    <string name="trt_ev_time_today">heute %1$d statt %2$d\u00A0Minuten</string>
     <string name="trt_checkin_hint">Freiwillig. 1 = schlecht, 5 = super. Jede Antwort kann den Tag nur sanfter machen.</string>
     <string name="trt_q_sleep">Schlaf</string>
     <string name="trt_q_energy">Energie</string>
@@ -124,7 +124,7 @@
     <string name="trt_sugg_benchmarks_text">Max Hang, Blockheben, Klimmzug mit Zusatzgewicht: Aus dem, was du schaffst, plant CruxCoach deine Lasten.</string>
     <string name="trt_sugg_benchmarks_action">Eintragen</string>
     <string name="trt_today_hero">Dein Training heute</string>
-    <string name="trt_more_exercises">+ %1$d weitere</string>
+    <string name="trt_more_exercises">+\u00A0%1$d weitere</string>
     <string name="trt_low_data">Noch wenig Daten – mit jedem Eintrag wird der Vorschlag persönlicher</string>
     <string name="trt_warmup_start">Aufwärmen starten</string>
     <string name="trt_more_actions">Weitere Aktionen</string>
@@ -166,16 +166,16 @@
     <string name="trt_level_easier">Leichter</string>
     <string name="trt_level_harder">Fordernder</string>
     <!-- Little energy lately before maximal finger work: a supportive hint on the card, never a lock (holistic audit P2-17). -->
-    <string name="trt_energy_hint_deficit">Letzte %1$d erfasste Tage im Schnitt %2$d von %3$d kcal – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
-    <string name="trt_energy_hint_deficit_share">Letzte %1$d erfasste Tage im Schnitt etwa %2$d %% unter deinem geschätzten Bedarf – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
+    <string name="trt_energy_hint_deficit">Letzte %1$d erfasste Tage im Schnitt %2$d von %3$d\u00A0kcal – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
+    <string name="trt_energy_hint_deficit_share">Letzte %1$d erfasste Tage im Schnitt etwa %2$d\u00A0%% unter deinem geschätzten Bedarf – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
     <string name="trt_energy_hint_deficit_plain">Deine Energie war zuletzt eher knapp – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
-    <string name="trt_energy_hint_carbs">An %1$d Trainingstagen im Schnitt %2$s g/kg Kohlenhydrate statt %3$s g/kg – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
+    <string name="trt_energy_hint_carbs">An %1$d Trainingstagen im Schnitt %2$s\u00A0g/kg Kohlenhydrate statt %3$s\u00A0g/kg – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
     <string name="trt_energy_hint_carbs_plain">An deinen letzten Trainingstagen waren die Kohlenhydrate eher knapp – vor harter Fingerlast hilft ein Snack damit.</string>
     <string name="trt_next_shuffle">Neu mischen</string>
     <string name="trt_next_hurts">Etwas tut weh</string>
     <string name="trt_next_equipment">Ausrüstung</string>
     <string name="trt_reason_usual_kind">Wie meist am %1$s: %2$s.</string>
-    <string name="trt_reason_usual_minutes">Wie meist am %1$s: %2$d min.</string>
+    <string name="trt_reason_usual_minutes">Wie meist am %1$s: %2$d\u00A0min.</string>
     <string name="trt_reason_usual_kind_generic">Was du an diesem Wochentag meist wählst.</string>
     <string name="trt_reason_usual_minutes_generic">Deine übliche Zeit an diesem Wochentag.</string>
     <string name="trt_never_done">„%1$s“ wird nicht mehr vorgeschlagen</string>

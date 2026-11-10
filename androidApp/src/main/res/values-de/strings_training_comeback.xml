@@ -80,11 +80,11 @@
     <string name="cb_stage_pick_hint">Wähl die Stufe, die du mit Ärztin, Arzt oder Physio abgesprochen hast.</string>
     <string name="cb_agreed">Mit Ärztin, Arzt oder Physio abgesprochen</string>
     <string name="cb_step_reference">4 · Referenzwert (optional)</string>
-    <string name="cb_reference_hint">Einarmig am Pick-up-Block, 10 s, etwa 20 mm, Gesamtgewicht. Am besten dein Wert von vor der Verletzung. Sonst die gesunde Hand einmal testen, wenn sie fit ist: nach dem Aufwärmen in 2,5-kg-Schritten steigern, ein 10-s-Halteversuch pro Stufe, 3 Minuten Pause – das letzte Gewicht, das du gerade noch 10 s hältst. Die verletzte Hand nie maximal testen.</string>
+    <string name="cb_reference_hint">Einarmig am Pick-up-Block, 10\u00A0s, etwa 20\u00A0mm, Gesamtgewicht. Am besten dein Wert von vor der Verletzung. Sonst die gesunde Hand einmal testen, wenn sie fit ist: nach dem Aufwärmen in 2,5-kg-Schritten steigern, ein 10-s-Halteversuch pro Stufe, 3\u00A0Minuten Pause – das letzte Gewicht, das du gerade noch 10\u00A0s hältst. Die verletzte Hand nie maximal testen.</string>
     <string name="cb_reference_half">Halb aufgestellt (kg)</string>
     <string name="cb_reference_open">Offen (kg)</string>
-    <string name="cb_reference_before">Vor der Verletzung: %1$s kg</string>
-    <string name="cb_reference_other">Andere Hand: %1$s kg</string>
+    <string name="cb_reference_before">Vor der Verletzung: %1$s\u00A0kg</string>
+    <string name="cb_reference_other">Andere Hand: %1$s\u00A0kg</string>
     <string name="cb_reference_use">Übernehmen</string>
     <string name="cb_dominant">Die verletzte Hand ist meine stärkere</string>
     <string name="cb_start">Plan starten</string>
@@ -109,8 +109,8 @@
     <string name="cb_session_region">Übungen</string>
     <string name="cb_session_climb">Klettern</string>
     <string name="cb_session_own">Meine Einheit</string>
-    <string name="cb_session_per_day">%1$d min · bis zu %2$d× am Tag, %3$d h Abstand</string>
-    <string name="cb_session_per_week">%1$d min · %2$d× pro Woche, %3$d h Abstand</string>
+    <string name="cb_session_per_day">%1$d\u00A0min · bis zu %2$d× am Tag, %3$d\u00A0h Abstand</string>
+    <string name="cb_session_per_week">%1$d\u00A0min · %2$d× pro Woche, %3$d\u00A0h Abstand</string>
     <string name="cb_session_due">Dran</string>
     <string name="cb_session_done">Heute erledigt</string>
     <string name="cb_session_later">Nächste ab %1$s</string>
@@ -119,9 +119,9 @@
     <string name="cb_session_start">Starten</string>
     <string name="cb_item_injured">verletzte Hand</string>
     <string name="cb_item_healthy">gesunde Hand</string>
-    <string name="cb_item_target">%1$s–%2$s kg</string>
+    <string name="cb_item_target">%1$s–%2$s\u00A0kg</string>
     <string name="cb_item_effort">Anstrengung %1$d–%2$d von 10</string>
-    <string name="cb_item_percent">%1$d–%2$d %% deines Referenzwerts</string>
+    <string name="cb_item_percent">%1$d–%2$d\u00A0%% deines Referenzwerts</string>
     <string name="cb_session_name">Comeback · %1$s</string>
 
     <!-- Tagebuch -->
@@ -132,7 +132,7 @@
     <string name="cb_swelling_today">Heute geschwollen</string>
     <string name="cb_new_sign">Etwas Neues von den Warnzeichen</string>
     <string name="cb_note">Notiz</string>
-    <string name="cb_chart_title">Letzte 14 Tage</string>
+    <string name="cb_chart_title">Letzte 14\u00A0Tage</string>
     <string name="cb_chart_morning">Morgen</string>
     <string name="cb_chart_pressure">Druck</string>
     <string name="cb_chart_session">Einheit</string>
@@ -150,12 +150,12 @@
     <string name="cb_review_repeat_text_generic">Diese Woche lagen manche Tage über deiner Regel. Üblich ist, die Woche zu wiederholen. Du kannst die Stufe trotzdem selbst ändern.</string>
     <string name="cb_repeat_week">Woche wiederholen</string>
     <string name="cb_review_back_title">Dein Schmerz ist gestiegen</string>
-    <string name="cb_review_back_text">Diese Woche lagen Tage deutlich über deiner Regel. Meist heißt das: Die Last ist gerade zu viel. Vorschlag: eine Stufe zurück für 3–4 Tage. Steigt es weiter oder kommen Schwellung, Taubheit oder ein neuer Knall dazu, lass es abklären.</string>
+    <string name="cb_review_back_text">Diese Woche lagen Tage deutlich über deiner Regel. Meist heißt das: Die Last ist gerade zu viel. Vorschlag: eine Stufe zurück für 3–4\u00A0Tage. Steigt es weiter oder kommen Schwellung, Taubheit oder ein neuer Knall dazu, lass es abklären.</string>
     <string name="cb_step_back">Eine Stufe zurück</string>
     <string name="cb_keep_stage">Stufe behalten</string>
     <string name="cb_review_stay_text">Diese Woche sind es zu wenige Einträge für mehr – trag weiter ein und bleib auf deiner Stufe.</string>
     <string name="cb_worse_title">Dein Schmerz ist gestiegen</string>
-    <string name="cb_worse_text">In den letzten Tagen ist dein Morgenwert von %1$d auf %2$d gestiegen. Meist heißt das: Die Last ist gerade zu viel. Vorschlag: eine Stufe zurück für 3–4 Tage. Steigt er weiter oder kommen Schwellung, Taubheit oder ein neuer Knall dazu, lass es abklären.</string>
+    <string name="cb_worse_text">In den letzten Tagen ist dein Morgenwert von %1$d auf %2$d gestiegen. Meist heißt das: Die Last ist gerade zu viel. Vorschlag: eine Stufe zurück für 3–4\u00A0Tage. Steigt er weiter oder kommen Schwellung, Taubheit oder ein neuer Knall dazu, lass es abklären.</string>
     <string name="cb_nb14_title">Zwei Wochen – der Schmerz ist nicht weniger geworden</string>
     <string name="cb_nb14_text">Deine Einträge liegen etwa da, wo sie am Anfang waren. Die meisten Zerrungen fühlen sich nach rund zwei Wochen besser an – ein guter Zeitpunkt, es anschauen zu lassen. Ärztin, Arzt oder Physio können prüfen, ob etwas anderes dahintersteckt. Bis dahin kannst du auf deiner Stufe bleiben oder eine zurückgehen.</string>
     <string name="cb_nb21_title">Drei Wochen ohne Besserung: bitte abklären lassen</string>
@@ -229,10 +229,17 @@
     </plurals>
     <string name="cb_review_stay_rising">Der Druckschmerz ist diese Woche höher als in der Woche davor. Üblich ist, auf dieser Stufe zu bleiben, bis er wieder fällt; steigt er weiter, lass es abklären.</string>
     <string name="cb_review_stay_last">Du bist auf der letzten Stufe. Prüf die Rückkehr-Kriterien oben mit Ärztin, Arzt oder Physio – erfüllte Kriterien zeigen nicht, dass die Verletzung verheilt ist.</string>
+    <string name="cb_review_stay_mornings">An mindestens der Hälfte der eingetragenen Morgen lag der Schmerz diese Woche über deiner Grenze von %1$d. Üblich ist, auf dieser Stufe zu bleiben, bis er morgens wieder bei höchstens %1$d liegt.</string>
+    <string name="cb_review_stay_sessions">Die nächste Stufe baut auf den Einheiten dieser Stufe an mindestens %1$d\u00A0Tagen pro Woche auf; diese Woche waren es %2$d. Üblich ist, noch eine Woche auf dieser Stufe zu bleiben.</string>
+    <string name="cb_review_stay_sessions_optional">Die nächste Stufe baut auf den Einheiten dieser Stufe an mindestens %1$d\u00A0Tagen pro Woche auf; diese Woche waren es %2$d (Einheiten mit „Optional“ zählen nicht mit). Üblich ist, noch eine Woche auf dieser Stufe zu bleiben.</string>
+    <string name="cb_review_stay_no_morning">Diese Woche ist kein Morgenschmerz eingetragen, darum bleibst du vorerst auf dieser Stufe. Trag ihn an den nächsten Morgen im Tagebuch ein.</string>
+    <string name="cb_review_morning_title">Wie fühlt sich die Verletzung heute Morgen an?</string>
+    <string name="cb_review_morning_text">Aus dieser Woche gibt es noch keinen Morgenwert, und die nächste Stufe braucht einen.</string>
+    <string name="cb_review_morning_skip">Überspringen</string>
     <string name="cb_sources_more">%1$d weitere</string>
     <string name="cb_sources_less">Weniger</string>
     <string name="cb_reference_label">Referenzwert</string>
     <string name="cb_reference_none">Noch keiner – die Prozentangaben der Kraft-Einheiten brauchen ihn.</string>
-    <string name="cb_reference_values">Halb aufgestellt %1$s kg · offen %2$s kg</string>
+    <string name="cb_reference_values">Halb aufgestellt %1$s\u00A0kg · offen %2$s\u00A0kg</string>
     <string name="cb_reference_edit">Referenzwert eintragen</string>
 </resources>

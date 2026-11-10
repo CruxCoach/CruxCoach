@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -446,7 +447,17 @@ private fun ImportResultCard(
             }
 
             Spacer(Modifier.height(4.dp))
-            TextButton(onClick = onReset, modifier = Modifier.align(Alignment.End)) {
+            TextButton(
+                onClick = onReset,
+                modifier = Modifier.align(Alignment.End),
+                colors = if (result.parseError != null) {
+                    ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                } else {
+                    ButtonDefaults.textButtonColors()
+                },
+            ) {
                 Text(stringResource(R.string.aurora_migration_import_another))
             }
         }

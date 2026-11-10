@@ -36,6 +36,16 @@ class WorkoutTextParserTest {
     }
 
     @Test
+    fun `text copied from the app's screens reads the same with its non-breaking spaces`() {
+        val line = one("Klimmzüge 5\u00A0×\u00A05 +20\u00A0kg")
+        assertEquals("pull.weighted_pull_up", line.item.slug)
+        assertEquals(5, line.item.sets)
+        assertEquals(5, line.item.repsMax)
+        assertEquals(20.0, line.item.loadKg)
+        assertEquals(60, one("Plank 3\u00A0×\u00A060\u00A0s").item.durationS)
+    }
+
+    @Test
     fun `without a load it is the plain pull-up, typos included`() {
         assertEquals("pull.pull_up", one("Klimmzüge 3x8").item.slug)
         assertEquals("pull.pull_up", one("Klimzüge 3x8").item.slug)

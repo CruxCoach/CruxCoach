@@ -1,0 +1,1008 @@
+package com.cruxcoach.android.data.shinywall
+
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.cruxcoach.android.data.ShinyWallSnapshot
+import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.data.repository.PersonalBoardRepositoryImpl
+import com.cruxcoach.db.secure.SecureDatabase
+import com.cruxcoach.domain.board.ClimbUuid
+import com.cruxcoach.domain.board.ShinyWallVariant
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.test.runTest
+import java.io.File
+import java.nio.file.Files
+import java.sql.DriverManager
+import java.time.ZoneOffset
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class ShinyWallSyncEngineTest {
+
+    private lateinit var dbFile: File
+    private lateinit var driver: SqlDriver
+    private lateinit var db: SecureDatabase
+    private lateinit var repo: PersonalBoardRepositoryImpl
+    private lateinit var store: InMemoryShinyWallTokenStorage
+    private lateinit var client: ShinyWallAccountClient
+    private lateinit var board: BoardRepository
+    private lateinit var engine: ShinyWallSyncEngine
+
+    private val names = ShinyWallListNames(favorites = "Shiny favorites", ownRoutes = "My Shiny routes")
+    private val t = "2026-10-30T20:08:42.131553Z"
+    private val tOld = "2026-09-20T10:00:00Z"
+    private val tNew = "2026-10-31T09:00:00Z"
+
+    /** Catalogue climbs by (routeId, variant). */
+    private val catalogue = mutableMapOf<String, ClimbWithStats>()
+
+    private fun climb(routeId: String, variant: ShinyWallVariant, name: String) {
+        val uuid = ShinyWallSnapshot.climbUuid(routeId, variant)
+        catalogue[ClimbUuid.normKey(uuid)] = ClimbWithStats(
+            uuid = uuid, layoutId = variant.layoutId, setterUsername = null, name = name,
+            frames = "p1r5", framesCount = 1, difficultyAverage = 16.0, qualityAverage = null,
+            ascensionistCount = 0, boardBrand = "shinywall",
+        )
+    }
+
+    private fun entry(
+        id: String, routeId: String, standard: String?, sent: Int?, angle: Int? = 40,
+        wallId: String? = null, grade: String? = null, ts: String = t,
+    ) = ShinyWallHistoryEntry(id, routeId, wallId, standard, grade, angle, sent, null, ts)
+
+    private val history = listOf(
+        entry("h0", "r1", "st1", 0, grade = "6A+"),
+        entry("h1", "r2", "st5", 1, angle = 30),
+        entry("h2", "r3", "st1", 4),
+        entry("h3", "r4", "st1", 12),
+        entry("h4", "r5", "st1", -1, angle = 25),
+        entry("h5", "r6", "st1", null),                    // route created: no log
+        entry("h6", "r7", null, 2, wallId = "custom-wall"), // custom wall
+        entry("h7", "r8", "st3", 2),                         // unsupported variant
+        entry("h8", "r9", null, 2),                          // no variant: catalogue decides (st5)
+        entry("h9", "r10", null, 2),                         // no variant, not in the catalogue
+        entry("h10", "r11", "st1", 2, angle = null),         // incomplete
+    )
+
+    @BeforeTest
+    fun setUp() {
+        val tmp = Files.createTempDirectory("cruxcoach-shinywall-sync-")
+        dbFile = tmp.resolve("secure.db").toFile()
+        driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}")
+        SecureDatabase.Schema.create(driver)
+        db = SecureDatabase(driver)
+        repo = PersonalBoardRepositoryImpl(db)
+        store = InMemoryShinyWallTokenStorage(ShinyWallSession("uid1", "id", "refresh", Long.MAX_VALUE, "a@b.c"))
+
+        climb("r1", ShinyWallVariant.ST1, "Route one")
+        climb("r2", ShinyWallVariant.ST5, "Route two")
+        climb("r3", ShinyWallVariant.ST1, "Route three")
+        climb("r9", ShinyWallVariant.ST5, "Route nine")
+
+        board = mockk(relaxed = true)
+        every { board.getClimbsByUuidsAnyAngle(any()) } answers {
+            firstArg<Collection<String>>().mapNotNull { catalogue[ClimbUuid.normKey(it)] }.distinctBy { it.uuid }
+        }
+        every { board.getClimbDifficultiesForAngle(any(), any()) } answers {
+            firstArg<Collection<String>>().filter { catalogue.containsKey(ClimbUuid.normKey(it)) }
+                .associateWith { 18.5 }
+        }
+
+        client = mockk()
+        coEvery { client.fetchHistory("uid1") } returns Result.success(history)
+        coEvery { client.fetchProfile("uid1") } returns Result.success(ShinyWallProfile(null, emptyList(), emptyMap()))
+        coEvery { client.fetchOwnRoutes("uid1") } returns Result.success(emptyList())
+
+        engine = ShinyWallSyncEngine(client, store, board, repo, db)
+        // Logbook days in UTC, whatever zone the test runs in.
+        engine.zone = { ZoneOffset.UTC }
+    }
+
+    @AfterTest
+    fun tearDown() {
+        driver.close()
+        dbFile.delete()
+        dbFile.parentFile?.delete()
+    }
+
+    private fun <T> query(sql: String, row: (java.sql.ResultSet) -> T): List<T> =
+        DriverManager.getConnection("jdbc:sqlite:${dbFile.absolutePath}").use { c ->
+            c.createStatement().use { st ->
+                st.executeQuery(sql).use { rs -> buildList { while (rs.next()) add(row(rs)) } }
+            }
+        }
+
+    private data class AscentRow(
+        val externalId: String?, val climbUuid: String, val angle: Long, val attemptId: Long, val bidCount: Long,
+        val quality: Long?, val difficulty: Long?, val comment: String?, val climbedAt: String, val synced: Long,
+        val brand: String, val layoutId: Long?, val name: String, val diffAvg: Double?,
+    )
+
+    private fun ascents() = query(
+        "SELECT external_id, climb_uuid, angle, attempt_id, bid_count, quality, difficulty, comment, climbed_at, " +
+            "synced, board_brand, layout_id, climb_name, difficulty_average FROM ascents ORDER BY external_id"
+    ) { rs ->
+        AscentRow(
+            rs.getString(1), rs.getString(2), rs.getLong(3), rs.getLong(4), rs.getLong(5),
+            rs.getObject(6)?.let { (it as Number).toLong() }, rs.getObject(7)?.let { (it as Number).toLong() },
+            rs.getString(8), rs.getString(9), rs.getLong(10), rs.getString(11),
+            rs.getObject(12)?.let { (it as Number).toLong() }, rs.getString(13), rs.getObject(14)?.let { (it as Number).toDouble() },
+        )
+    }
+
+    @Test
+    fun imports_sends_and_projects_on_the_shiny_brand() = runTest {
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(ShinyWallImportResult(newAscents = 5, newProjects = 1, duplicates = 0, skipped = 5, lists = 0), result)
+
+        val rows = ascents().associateBy { it.externalId }
+        assertEquals(setOf("h0", "h1", "h2", "h3", "h8").map { "shinywall:history:$it" }.toSet(), rows.keys)
+        val h0 = rows.getValue("shinywall:history:h0")
+        assertEquals(ShinyWallSnapshot.climbUuid("r1", ShinyWallVariant.ST1), h0.climbUuid)
+        assertEquals(40L, h0.angle)
+        assertEquals(0L to 1L, h0.attemptId to h0.bidCount)
+        assertEquals(null, h0.quality)         // star ratings stay in Shiny Wall
+        assertEquals(17L, h0.difficulty)       // 6A+
+        assertEquals(null, h0.comment)
+        assertEquals(ShinyWallSyncEngine.localClimbedAt(t, ZoneOffset.UTC), h0.climbedAt)
+        assertEquals("Route one", h0.name)
+        assertEquals(18.5, h0.diffAvg)
+        assertEquals(0L to 1L, rows.getValue("shinywall:history:h1").let { it.attemptId to it.bidCount })
+        assertEquals(1L to 4L, rows.getValue("shinywall:history:h2").let { it.attemptId to it.bidCount })
+        assertEquals(1L to 10L, rows.getValue("shinywall:history:h3").let { it.attemptId to it.bidCount })
+        val h8 = rows.getValue("shinywall:history:h8")
+        assertEquals(ShinyWallSnapshot.climbUuid("r9", ShinyWallVariant.ST5), h8.climbUuid)
+        assertEquals(ShinyWallVariant.ST5.layoutId, h8.layoutId)
+        for (row in rows.values) {
+            assertEquals("shinywall", row.brand)
+            assertEquals(1L, row.synced)
+            assertTrue(row.layoutId in ShinyWallVariant.entries.map { it.layoutId })
+        }
+        // A route that is not in the local catalogue yet is still logged, with an empty name.
+        assertEquals("", rows.getValue("shinywall:history:h3").name)
+
+        val bids = query("SELECT external_id, bid_count, board_brand, layout_id, synced, angle FROM bids") { rs ->
+            listOf(rs.getString(1), rs.getLong(2), rs.getString(3), rs.getLong(4), rs.getLong(5), rs.getLong(6))
+        }
+        assertEquals(listOf(listOf<Any?>("shinywall:history:h4", 1L, "shinywall", ShinyWallVariant.ST1.layoutId, 1L, 25L)), bids)
+        // Nothing for the Kilter upload.
+        assertTrue(repo.getUnsyncedAscents().isEmpty() && repo.getUnsyncedBids().isEmpty())
+    }
+
+    @Test
+    fun preview_counts_without_writing() = runTest {
+        val preview = engine.previewImport().getOrThrow()
+        assertEquals(ShinyWallImportPreview(totalEntries = 11, newAscents = 5, newProjects = 1, duplicates = 0, skipped = 5), preview)
+        assertTrue(ascents().isEmpty())
+    }
+
+    @Test
+    fun reimport_is_idempotent_and_keeps_local_deletions() = runTest {
+        engine.importAll(names).getOrThrow()
+        repo.deleteAscent(ShinyWallSyncEngine.logUuid("h1"))
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(0, again.newAscents)
+        assertEquals(0, again.newProjects)
+        // The deleted entry is not "already in CruxCoach"; it is counted as deleted there.
+        assertEquals(5, again.duplicates)
+        assertEquals(1, again.deleted)
+        assertEquals(4, ascents().size)
+        val preview = engine.previewImport().getOrThrow()
+        assertEquals(0, preview.newAscents + preview.newProjects)
+        assertEquals(1, preview.deleted)
+    }
+
+    @Test
+    fun deleted_entries_stay_deleted_after_the_tombstone_is_gone() = runTest {
+        val dated = listOf(entry("old", "r1", "st1", 2, ts = tOld), entry("recent", "r3", "st1", 2, ts = t))
+        coEvery { client.fetchHistory("uid1") } returns Result.success(dated)
+        engine.importAll(names).getOrThrow()
+        repo.deleteAscent(ShinyWallSyncEngine.logUuid("old"))
+        repo.deleteAscent(ShinyWallSyncEngine.logUuid("recent"))
+        // What a Kilter deletion push used to do to every board's tombstones.
+        repo.clearAllLogDeletions()
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(dated + entry("new", "r2", "st5", 3, angle = 30, ts = tNew))
+        assertEquals(1, engine.previewImport().getOrThrow().newAscents)
+        val again = engine.importAll(names).getOrThrow()
+        // "old" lies before the last import's window, "recent" inside it: neither comes back. "new" is new.
+        assertEquals(1, again.newAscents)
+        assertEquals(0, again.duplicates)
+        assertEquals(setOf("shinywall:history:new"), ascents().mapNotNull { it.externalId }.toSet())
+
+        // Still so after a disconnect and a new sign-in to the same account.
+        store.clearSession()
+        store.storeSession(ShinyWallSession("uid1", "id", "refresh", Long.MAX_VALUE, "a@b.c"))
+        assertEquals(0, engine.importAll(names).getOrThrow().newAscents)
+        assertEquals(setOf("shinywall:history:new"), ascents().mapNotNull { it.externalId }.toSet())
+    }
+
+    @Test
+    fun the_record_of_placed_entries_keeps_only_the_window() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(entry("old", "r1", "st1", 2, ts = tOld), entry("recent", "r3", "st1", 2, ts = t), entry("new", "r2", "st5", 3, ts = tNew))
+        )
+        engine.importAll(names).getOrThrow()
+        // The next import looks back 7 days from the newest entry; "old" is long before that.
+        assertEquals(
+            mapOf(ShinyWallSyncEngine.logUuid("recent") to ShinyWallSyncEngine.epochMs(t)!!, ShinyWallSyncEngine.logUuid("new") to ShinyWallSyncEngine.epochMs(tNew)!!),
+            store.placedLogs("uid1"),
+        )
+    }
+
+    /** A history entry in the shape the account returns: `standard` is a boolean, the variant is the wallId prefix. */
+    private fun realEntry(
+        id: String, routeId: String, sent: Long, wallId: String = "STP_Wall", grade: String? = "6B+", ts: String = t,
+    ) = ShinyWallParsers.historyEntry(
+        id,
+        mapOf(
+            "routeId" to routeId, "angle" to 40L, "sent" to sent, "grade" to grade, "timestamp" to ts,
+            "wallId" to wallId, "standard" to true, "type" to "route",
+        ),
+    )!!
+
+    private fun bids() = query("SELECT external_id, bid_count FROM bids ORDER BY external_id") { rs -> rs.getString(1) to rs.getLong(2) }
+
+    private fun ascentCounts() = query("SELECT external_id, attempt_id, bid_count FROM ascents ORDER BY external_id") { rs ->
+        Triple(rs.getString(1), rs.getLong(2), rs.getLong(3))
+    }
+
+    /** A route logged in the original app: two attempts first, an hour later sent on the third. */
+    private val reventaera = "Iwxw8cNqqjt02mmtdWHQ"
+    private val revAttempts = realEntry("rev1", reventaera, -2, grade = null, ts = "2026-10-31T08:00:00Z")
+    private val revSend = realEntry("rev2", reventaera, 3, ts = tNew)
+
+    @Test
+    fun attempts_before_a_send_are_part_of_it() = runTest {
+        val afterTheSend = realEntry("rev3", reventaera, -1, grade = null, ts = "2026-11-01T10:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revSend, afterTheSend, revAttempts))
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(ShinyWallImportResult(newAscents = 1, newProjects = 1, duplicates = 0, skipped = 0, lists = 0), result)
+        val send = ascents().single()
+        assertEquals("shinywall:history:rev2", send.externalId)
+        assertEquals(ShinyWallSnapshot.climbUuid(reventaera, ShinyWallVariant.ST1), send.climbUuid)
+        // Shiny's count already holds the two attempts before: nothing added.
+        assertEquals(1L to 3L, send.attemptId to send.bidCount)
+        assertEquals(19L, send.difficulty) // 6B+
+        // Attempts after the last send are a project of their own.
+        assertEquals(listOf("shinywall:history:rev3" to 1L), bids())
+    }
+
+    @Test
+    fun an_attempt_logged_with_the_send_is_part_of_it() = runTest {
+        // Same timestamp, the send listed first: the attempt still belongs to it.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(realEntry("s", "r3", 2), realEntry("a", "r3", -1, grade = null))
+        )
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 0, result.newAscents to result.newProjects)
+        assertEquals(emptyList(), bids())
+    }
+
+    @Test
+    fun an_edited_attempt_stays_when_its_send_arrives() = runTest {
+        val attemptsR3 = realEntry("p1", "r3", -2, grade = null, ts = "2026-10-31T07:00:00Z")
+        val countEdited = realEntry("p2", "r1", -1, grade = null, ts = "2026-10-31T07:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, attemptsR3, countEdited))
+        engine.importAll(names).getOrThrow()
+        // The user notes something on one attempt, changes the count of another; one stays as imported.
+        repo.updateBid(ShinyWallSyncEngine.logUuid("rev1"), 2, "almost had the crux")
+        repo.updateBid(ShinyWallSyncEngine.logUuid("p2"), 4, null)
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(
+                revAttempts, attemptsR3, countEdited,
+                revSend, realEntry("s1", "r3", 3, ts = tNew), realEntry("s2", "r1", 2, ts = tNew),
+            )
+        )
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(3, again.newAscents)
+        assertEquals(2, again.duplicates)
+        // Only the untouched attempt gave way; the edited ones stay, and their sends carry the rest.
+        assertEquals(listOf("shinywall:history:p2" to 4L, "shinywall:history:rev1" to 2L), bids())
+        assertEquals(
+            "almost had the crux",
+            query("SELECT comment FROM bids WHERE external_id = 'shinywall:history:rev1'") { rs -> rs.getString(1) }.single(),
+        )
+        assertEquals(
+            listOf(
+                Triple("shinywall:history:rev2", 1L, 1L), // 3 − the 2 that stay
+                Triple("shinywall:history:s1", 1L, 3L),
+                Triple("shinywall:history:s2", 1L, 1L),   // 2 − the 1 Shiny logged
+            ),
+            ascentCounts(),
+        )
+    }
+
+    @Test
+    fun a_send_after_travelling_still_replaces_its_attempts() = runTest {
+        // Attempts imported at home, the send imported in another time zone, the same day in both.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:rev1" to 2L), bids())
+
+        engine.zone = { ZoneOffset.ofHours(9) }
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, revSend))
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 0, again.newAscents to again.newProjects)
+        assertEquals(emptyList(), bids())
+        assertEquals(listOf(Triple("shinywall:history:rev2", 1L, 3L)), ascentCounts())
+    }
+
+    @Test
+    fun attempts_of_earlier_days_stay_entries_of_their_own() = runTest {
+        val monday = realEntry("mon", "r3", -3, grade = null, ts = "2026-10-26T18:00:00Z")
+        // Monday: three attempts. The import that evening logs a project.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(monday))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:mon" to 3L), bids())
+
+        // Friday: one more attempt, then the send on the fifth overall.
+        val fridayTry = realEntry("fri1", "r3", -1, grade = null, ts = "2026-10-30T17:00:00Z")
+        val fridaySend = realEntry("fri2", "r3", 5, ts = "2026-10-30T17:30:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(monday, fridayTry, fridaySend))
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 0, again.newAscents to again.newProjects)
+        // Monday stays; Friday's attempt is part of the send, which keeps the 2 of Friday.
+        assertEquals(listOf("shinywall:history:mon" to 3L), bids())
+        assertEquals(listOf(Triple("shinywall:history:fri2", 1L, 2L)), ascentCounts())
+
+        // The same history in one go on a new phone gives the same logbook.
+        repo.deleteBid(ShinyWallSyncEngine.logUuid("mon"))
+        repo.deleteAscent(ShinyWallSyncEngine.logUuid("fri2"))
+        val fresh = ShinyWallSyncEngine(client, InMemoryShinyWallTokenStorage(store.session()), board, repo, db)
+        fresh.zone = { ZoneOffset.UTC }
+        assertEquals(1 to 1, fresh.importAll(names).getOrThrow().let { it.newAscents to it.newProjects })
+        assertEquals(listOf("shinywall:history:mon" to 3L), bids())
+        assertEquals(listOf(Triple("shinywall:history:fri2", 1L, 2L)), ascentCounts())
+    }
+
+    @Test
+    fun attempts_without_a_send_are_projects_with_their_count() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(revAttempts, realEntry("p1", "r3", -3, grade = null), realEntry("p2", "r3", -1, grade = null, ts = tNew))
+        )
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(0, result.newAscents)
+        assertEquals(3, result.newProjects)
+        assertEquals(listOf("shinywall:history:p1" to 3L, "shinywall:history:p2" to 1L, "shinywall:history:rev1" to 2L), bids())
+    }
+
+    @Test
+    fun a_long_project_leaves_its_send_the_rest_of_a_large_count() = runTest {
+        // Shiny counts on past nine; the logbook stops at 10, but only after the earlier days are taken off.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(
+                realEntry("p1", "r1", -12, grade = null, ts = "2026-10-20T18:00:00Z"),
+                realEntry("s1", "r1", 15, ts = "2026-10-27T18:00:00Z"),
+                realEntry("p3", "r3", -5, grade = null, ts = "2026-10-20T18:00:00Z"),
+                realEntry("s3", "r3", 25, ts = "2026-10-27T18:00:00Z"),
+            )
+        )
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf(Triple("shinywall:history:s1", 1L, 3L), Triple("shinywall:history:s3", 1L, 10L)), ascentCounts())
+        assertEquals(listOf("shinywall:history:p1" to 12L, "shinywall:history:p3" to 5L), bids())
+    }
+
+    @Test
+    fun a_later_send_replaces_the_attempts_an_earlier_import_logged() = runTest {
+        // First import: only the morning's attempts, plus a newer entry that puts them behind the watermark.
+        val revAttempts = realEntry("rev1", reventaera, -2, grade = null, ts = "2026-10-23T08:00:00Z")
+        val revSend = realEntry("rev2", reventaera, 3, ts = "2026-10-23T18:00:00Z")
+        val other = realEntry("o1", "r1", 1, ts = "2026-10-30T12:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, other))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:rev1" to 2L), bids())
+
+        // The evening's send reaches Shiny Wall later; the whole history is read again, so the old attempts go.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(revAttempts, other, revSend))
+        assertEquals(1, engine.previewImport().getOrThrow().newAscents)
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1, again.newAscents)
+        assertEquals(0, again.newProjects)
+        assertEquals(emptyList(), bids())
+        assertEquals(setOf("shinywall:history:o1", "shinywall:history:rev2"), ascents().mapNotNull { it.externalId }.toSet())
+        assertEquals(3L, ascents().single { it.externalId == "shinywall:history:rev2" }.bidCount)
+
+        // A third import changes nothing.
+        val third = engine.importAll(names).getOrThrow()
+        assertEquals(0, third.newAscents + third.newProjects)
+        assertEquals(emptyList(), bids())
+    }
+
+    /** Logging attempts again in Shiny adds an entry with the counter's new total; it does not replace the old one. */
+    private val firstTry = realEntry("x1", "r3", -1, grade = null, ts = "2026-11-08T11:50:00Z")
+    private val secondTry = realEntry("x2", "r3", -2, grade = null, ts = "2026-11-08T11:53:00Z")
+
+    @Test
+    fun attempts_logged_again_are_a_running_total() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(secondTry, firstTry))
+        val result = engine.importAll(names).getOrThrow()
+        // One project of 2 attempts, not 1 + 2.
+        assertEquals(0 to 1, result.newAscents to result.newProjects)
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+        assertEquals(0 to 1, engine.importAll(names).getOrThrow().let { it.newProjects to it.duplicates })
+    }
+
+    @Test
+    fun the_days_later_total_replaces_the_row_an_earlier_import_logged() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x1" to 1L), bids())
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        assertEquals(1 to 0, engine.previewImport().getOrThrow().let { it.newProjects to it.duplicates })
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 0, again.newProjects to again.duplicates)
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+    }
+
+    private val thirdTry = realEntry("x3", "r3", -3, grade = null, ts = "2026-11-08T12:10:00Z")
+
+    @Test
+    fun an_edited_row_of_the_day_stays_and_the_later_total_carries_the_rest() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry))
+        engine.importAll(names).getOrThrow()
+        repo.updateBid(ShinyWallSyncEngine.logUuid("x1"), 1, "warm-up")
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x1" to 1L, "shinywall:history:x2" to 1L), bids())
+
+        // x2 is as the import wrote it (the rest after x1): it gives way to the next total, which
+        // carries what x1 does not hold.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x1" to 1L, "shinywall:history:x3" to 2L), bids())
+    }
+
+    @Test
+    fun a_count_set_by_hand_to_the_days_total_so_far_is_still_an_edit() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry))
+        engine.importAll(names).getOrThrow()
+        repo.updateBid(ShinyWallSyncEngine.logUuid("x1"), 1, "warm-up")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        // Written as 1, set to 2 by hand: the day's attempts so far, but not what the import wrote.
+        repo.updateBid(ShinyWallSyncEngine.logUuid("x2"), 2, null)
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x1" to 1L, "shinywall:history:x2" to 2L, "shinywall:history:x3" to 1L), bids())
+    }
+
+    @Test
+    fun a_total_that_falls_gives_the_same_logbook_however_the_imports_fall() = runTest {
+        val dayOne = realEntry("f1", "r3", -4, grade = null, ts = "2026-11-08T11:00:00Z")
+        val fell = realEntry("f2", "r3", -3, grade = null, ts = "2026-11-09T11:00:00Z")
+        val rose = realEntry("f3", "r3", -5, grade = null, ts = "2026-11-09T12:00:00Z")
+        val history = listOf(dayOne, fell, rose)
+        for (n in 1..3) {
+            coEvery { client.fetchHistory("uid1") } returns Result.success(history.take(n))
+            engine.importAll(names).getOrThrow()
+        }
+        // The fall starts a count of its own: 4 on day one, 3 + 2 on day two.
+        val expected = listOf("shinywall:history:f1" to 4L, "shinywall:history:f3" to 5L)
+        assertEquals(expected, bids())
+
+        // The same history in one go on a new phone.
+        repo.deleteAllUserBoardData()
+        val fresh = ShinyWallSyncEngine(client, InMemoryShinyWallTokenStorage(store.session()), board, repo, db)
+        fresh.zone = { ZoneOffset.UTC }
+        fresh.importAll(names).getOrThrow()
+        assertEquals(expected, bids())
+    }
+
+    @Test
+    fun an_edited_second_row_is_credited_with_what_it_holds() = runTest {
+        // Totals 1 and 2 imported together: one project of 2. The user adds a comment, Shiny adds total 3.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        repo.updateBid(ShinyWallSyncEngine.logUuid("x2"), 2, "pumped")
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry))
+        engine.importAll(names).getOrThrow()
+        // 3 in all, as in Shiny.
+        assertEquals(listOf("shinywall:history:x2" to 2L, "shinywall:history:x3" to 1L), bids())
+    }
+
+    @Test
+    fun a_send_of_the_day_after_an_edited_row_keeps_only_its_own_attempts() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        repo.updateBid(ShinyWallSyncEngine.logUuid("x2"), 2, "pumped")
+
+        // The third go is the send.
+        val sendNow = realEntry("s", "r3", 3, ts = "2026-11-08T12:20:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, sendNow))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+        assertEquals(listOf(Triple("shinywall:history:s", 1L, 1L)), ascentCounts())
+    }
+
+    @Test
+    fun a_deleted_row_of_the_day_does_not_come_back_inside_the_next_one() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        repo.deleteBid(ShinyWallSyncEngine.logUuid("x2"))
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x3" to 1L), bids())
+    }
+
+    @Test
+    fun a_deleted_row_stays_deleted_after_a_later_row_of_the_day_was_written() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        repo.deleteBid(ShinyWallSyncEngine.logUuid("x2"))
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x3" to 1L), bids())
+
+        // x3 gives way to the next total, which still leaves out the 2 the user deleted.
+        val fourthTry = realEntry("x4", "r3", -4, grade = null, ts = "2026-11-08T12:15:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry, fourthTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x4" to 2L), bids())
+    }
+
+    @Test
+    fun a_row_replaced_by_an_import_whose_record_was_lost_is_not_taken_for_deleted() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry))
+        engine.importAll(names).getOrThrow()
+        // x2 replaces x1, but the record of that import is lost (Keystore error or the app killed).
+        val noRecord = object : ShinyWallTokenStorage by store {
+            override fun recordImport(
+                uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>, writtenCounts: Map<String, Long>,
+            ) = throw SecurityException("Keystore unavailable")
+        }
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        ShinyWallSyncEngine(client, noRecord, board, repo, db).apply { zone = engine.zone }.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, thirdTry))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:x3" to 3L), bids())
+    }
+
+    @Test
+    fun a_count_set_by_hand_stays_when_the_days_next_total_arrives() = runTest {
+        // Day one ends at 2; day two's first total, 3, is written as 1. The user sets it to 3 by hand.
+        val y1 = realEntry("y1", "r3", -2, grade = null, ts = "2026-11-08T11:00:00Z")
+        val y2 = realEntry("y2", "r3", -3, grade = null, ts = "2026-11-09T11:00:00Z")
+        val y3 = realEntry("y3", "r3", -4, grade = null, ts = "2026-11-09T12:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(y1, y2))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:y1" to 2L, "shinywall:history:y2" to 1L), bids())
+        repo.updateBid(ShinyWallSyncEngine.logUuid("y2"), 3, null)
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(y1, y2, y3))
+        engine.importAll(names).getOrThrow()
+        // The hand-set count stays; the new total adds what came after the 1 the import wrote.
+        assertEquals(listOf("shinywall:history:y1" to 2L, "shinywall:history:y2" to 3L, "shinywall:history:y3" to 1L), bids())
+    }
+
+    @Test
+    fun a_day_that_reaches_shiny_after_a_later_one_brings_nothing_of_its_own() = runTest {
+        val nextDay = realEntry("y2", "r3", -3, grade = null, ts = "2026-11-09T11:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(nextDay))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:history:y2" to 3L), bids())
+
+        // The first day's entries arrive late: the next day's total holds them already.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, nextDay))
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(0 to 1, again.newProjects to again.deleted)
+        assertEquals(listOf("shinywall:history:y2" to 3L), bids())
+    }
+
+    /**
+     * Totals on one route: 5 on the 6th, 6 and 7 on the 7th (they reach Shiny late), 8, 9 and 10 on the
+     * 8th; or the 8th ends with a send of 9 tries in all (d2s) instead of 9 and 10.
+     */
+    private val lateRun = listOf(
+        realEntry("d0", "r3", -5, grade = null, ts = "2026-11-06T18:00:00Z"),
+        realEntry("d1a", "r3", -6, grade = null, ts = "2026-11-07T18:00:00Z"),
+        realEntry("d1b", "r3", -7, grade = null, ts = "2026-11-07T18:30:00Z"),
+        realEntry("d2a", "r3", -8, grade = null, ts = "2026-11-08T18:00:00Z"),
+        realEntry("d2b", "r3", -9, grade = null, ts = "2026-11-08T18:30:00Z"),
+        realEntry("d2c", "r3", -10, grade = null, ts = "2026-11-08T19:00:00Z"),
+        realEntry("d2s", "r3", 9, ts = "2026-11-08T18:30:00Z"),
+    )
+    private val byId = lateRun.associateBy { it.docId }
+    private suspend fun importOf(vararg ids: String) {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(ids.map { byId.getValue(it) })
+        engine.importAll(names).getOrThrow()
+    }
+
+    @Test
+    fun a_late_days_attempts_go_with_the_row_that_held_them() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        // Written without the 7th: 8 − 5.
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2a" to 3L), bids())
+
+        // The 7th arrives late, then the 8th gets another total: the new row takes over the 3 too.
+        importOf("d0", "d1a", "d1b", "d2a", "d2b")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2b" to 4L), bids())
+    }
+
+    @Test
+    fun a_late_day_seen_by_an_earlier_import_still_goes_with_the_row_that_held_it() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        // The 7th arrives late and brings nothing of its own: d2a holds it.
+        importOf("d0", "d1a", "d1b", "d2a")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2a" to 3L), bids())
+
+        // Only now the 8th gets another total: 5 + 4 = 9, as in Shiny.
+        importOf("d0", "d1a", "d1b", "d2a", "d2b")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2b" to 4L), bids())
+    }
+
+    @Test
+    fun the_late_days_attempts_go_on_with_every_new_total_of_the_day() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        importOf("d0", "d1a", "d1b", "d2a", "d2b")
+        importOf("d0", "d1a", "d1b", "d2a", "d2b", "d2c")
+        // 5 + 5 = 10, as in Shiny.
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2c" to 5L), bids())
+    }
+
+    @Test
+    fun a_deleted_row_keeps_the_late_days_attempts_deleted() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        repo.deleteBid(ShinyWallSyncEngine.logUuid("d2a"))
+        importOf("d0", "d2a", "d2b")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2b" to 1L), bids())
+
+        // The deleted 3 (the 7th's 2 among them) stay deleted: 10 less 3.
+        importOf("d0", "d1a", "d1b", "d2a", "d2b", "d2c")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2c" to 2L), bids())
+    }
+
+    @Test
+    fun a_send_after_a_late_day_takes_over_what_the_replaced_row_held() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        importOf("d0", "d1a", "d1b", "d2a", "d2s")
+        // d2a gives way to the send, which carries 9 less the 5 of the 6th.
+        assertEquals(listOf("shinywall:history:d0" to 5L), bids())
+        assertEquals(listOf(Triple("shinywall:history:d2s", 1L, 4L)), ascentCounts())
+    }
+
+    @Test
+    fun a_send_after_a_late_day_leaves_a_kept_or_deleted_row_what_it_held() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        repo.updateBid(ShinyWallSyncEngine.logUuid("d2a"), 3, "pumped")
+        importOf("d0", "d1a", "d1b", "d2a", "d2s")
+        // 5 + 3 + 1 = 9.
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2a" to 3L), bids())
+        assertEquals(listOf(Triple("shinywall:history:d2s", 1L, 1L)), ascentCounts())
+
+        // Deleted instead of edited: the send still carries only its own try.
+        engine.clearLogbook { repo.deleteAllUserBoardData() }.getOrThrow()
+        importOf("d0")
+        importOf("d0", "d2a")
+        repo.deleteBid(ShinyWallSyncEngine.logUuid("d2a"))
+        importOf("d0", "d1a", "d1b", "d2a", "d2s")
+        assertEquals(listOf("shinywall:history:d0" to 5L), bids())
+        assertEquals(listOf(Triple("shinywall:history:d2s", 1L, 1L)), ascentCounts())
+    }
+
+    @Test
+    fun two_rows_replaced_together_pass_on_what_they_held() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        repo.updateBid(ShinyWallSyncEngine.logUuid("d2a"), 3, "pumped")
+        importOf("d0", "d1a", "d1b", "d2a", "d2b")
+        assertEquals(
+            listOf("shinywall:history:d0" to 5L, "shinywall:history:d2a" to 3L, "shinywall:history:d2b" to 1L),
+            bids(),
+        )
+        // The comment goes again, so both rows of the 8th are as the imports wrote them: 5 + 5 = 10.
+        repo.updateBid(ShinyWallSyncEngine.logUuid("d2a"), 3, null)
+        importOf("d0", "d1a", "d1b", "d2a", "d2b", "d2c")
+        assertEquals(listOf("shinywall:history:d0" to 5L, "shinywall:history:d2c" to 5L), bids())
+    }
+
+    @Test
+    fun a_kept_row_keeps_the_late_days_attempts() = runTest {
+        importOf("d0")
+        importOf("d0", "d2a")
+        repo.updateBid(ShinyWallSyncEngine.logUuid("d2a"), 3, "pumped")
+
+        importOf("d0", "d1a", "d1b", "d2a", "d2b")
+        // 5 + 3 + 1 = 9, as in Shiny.
+        assertEquals(
+            listOf("shinywall:history:d0" to 5L, "shinywall:history:d2a" to 3L, "shinywall:history:d2b" to 1L),
+            bids(),
+        )
+    }
+
+    @Test
+    fun clearing_the_logbook_deletes_and_resets_the_records() = runTest {
+        engine.importAll(names).getOrThrow()
+        repo.deleteAscent(ShinyWallSyncEngine.logUuid("h1"))
+        assertEquals(1, engine.importAll(names).getOrThrow().deleted)
+
+        var deleted = false
+        engine.clearLogbook { repo.deleteAllUserBoardData(); deleted = true }.getOrThrow()
+        assertTrue(deleted)
+        assertTrue(store.placedLogs("uid1").isEmpty())
+        assertEquals(null, store.historyWatermarkMs("uid1"))
+        assertEquals(5 to 1, engine.importAll(names).getOrThrow().let { it.newAscents to it.newProjects })
+    }
+
+    @Test
+    fun a_running_total_carries_over_to_the_next_day_and_the_send() = runTest {
+        val nextDay = realEntry("x3", "r3", -3, grade = null, ts = "2026-11-09T18:00:00Z")
+        val send = realEntry("x4", "r3", 4, ts = "2026-11-09T18:30:00Z")
+        // An update without a change on the next day: the same total, no new attempts.
+        val unchanged = realEntry("y2", "r1", -2, grade = null, ts = "2026-11-09T18:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(firstTry, secondTry, nextDay, send, realEntry("y1", "r1", -2, grade = null, ts = "2026-11-08T11:00:00Z"), unchanged)
+        )
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 2, result.newAscents to result.newProjects)
+        // Day one: 2 attempts. Day two: 1 more, part of the send on the 4th go, which keeps 4 − 2.
+        assertEquals(listOf("shinywall:history:x2" to 2L, "shinywall:history:y1" to 2L), bids())
+        assertEquals(listOf(Triple("shinywall:history:x4", 1L, 2L)), ascentCounts())
+    }
+
+    @Test
+    fun a_send_on_the_next_day_keeps_the_earlier_days_project_and_carries_the_rest() = runTest {
+        // What the phone showed: totals 1 and 2 on day one, then on day two the send on the third go.
+        val sendNextDay = realEntry("s9", "r3", 3, ts = "2026-11-09T18:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry))
+        engine.importAll(names).getOrThrow()
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, sendNextDay))
+        assertEquals(1 to 0, engine.importAll(names).getOrThrow().let { it.newAscents to it.newProjects })
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+        // The send is no flash: its own day's try only.
+        assertEquals(listOf(Triple("shinywall:history:s9", 1L, 1L)), ascentCounts())
+    }
+
+    @Test
+    fun a_send_logged_with_the_count_kept_still_counts_as_a_send() = runTest {
+        // The user keeps the preselected "2 attempts" when logging the send: no new attempt that day.
+        val keptCount = realEntry("s8", "r3", 2, ts = "2026-11-09T18:00:00Z")
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(firstTry, secondTry, keptCount))
+        assertEquals(1 to 1, engine.importAll(names).getOrThrow().let { it.newAscents to it.newProjects })
+        assertEquals(listOf("shinywall:history:x2" to 2L), bids())
+        // Still a send, after attempts: not a flash, one go.
+        assertEquals(listOf(Triple("shinywall:history:s8", 1L, 1L)), ascentCounts())
+    }
+
+    @Test
+    fun real_entries_import_on_their_wall_id_variant() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(realEntry("a", "r1", 1), realEntry("b", "r3", -1), realEntry("c", "r7", 2, wallId = "CTM_Home"))
+        )
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(ShinyWallImportResult(newAscents = 1, newProjects = 1, duplicates = 0, skipped = 1, lists = 0), result)
+        val a = ascents().single()
+        assertEquals(ShinyWallSnapshot.climbUuid("r1", ShinyWallVariant.ST1), a.climbUuid)
+        assertEquals(ShinyWallVariant.ST1.layoutId, a.layoutId)
+        assertEquals(0L to 1L, a.attemptId to a.bidCount)
+        assertEquals(19L, a.difficulty) // 6B+
+        val bids = query("SELECT external_id, climb_uuid FROM bids") { rs -> rs.getString(1) to rs.getString(2) }
+        assertEquals(listOf("shinywall:history:b" to ShinyWallSnapshot.climbUuid("r3", ShinyWallVariant.ST1)), bids)
+    }
+
+    @Test
+    fun skipped_entries_leave_the_watermark_alone() = runTest {
+        // What a version that could not read the wall saw: every entry skipped.
+        val unreadable = listOf(
+            entry("old", "r1", "true", 2, wallId = "STP_Wall", ts = tOld),
+            entry("recent", "r3", "true", 2, wallId = "STP_Wall", ts = t),
+        )
+        coEvery { client.fetchHistory("uid1") } returns Result.success(unreadable)
+        assertEquals(2, engine.importAll(names).getOrThrow().skipped)
+        assertEquals(null, store.historyWatermarkMs("uid1"))
+
+        // A version that can place them takes both, the old one too.
+        val placed = unreadable.map { it.copy(standard = "st1") }
+        coEvery { client.fetchHistory("uid1") } returns Result.success(placed)
+        assertEquals(2, engine.importAll(names).getOrThrow().newAscents)
+        assertEquals(ShinyWallSyncEngine.epochMs(t), store.historyWatermarkMs("uid1"))
+
+        // A newer entry that is skipped does not move it either.
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            placed + entry("custom", "r7", null, 2, wallId = "CTM_Home", ts = tNew)
+        )
+        engine.importAll(names).getOrThrow()
+        assertEquals(ShinyWallSyncEngine.epochMs(t), store.historyWatermarkMs("uid1"))
+    }
+
+    @Test
+    fun lists_import_favorites_own_lists_and_own_routes() = runTest {
+        coEvery { client.fetchProfile("uid1") } returns Result.success(
+            ShinyWallProfile(
+                username = "climber",
+                favoriteRoutes = listOf(ShinyWallRouteRef("r1", null), ShinyWallRouteRef("r9", 30), ShinyWallRouteRef("nope", null)),
+                customLists = mapOf("Power" to listOf(ShinyWallRouteRef("r2", null), ShinyWallRouteRef("r3", null))),
+            )
+        )
+        coEvery { client.fetchOwnRoutes("uid1") } returns Result.success(
+            listOf(ShinyWallOwnRoute("r1", "st1"), ShinyWallOwnRoute("r12", "st5"))
+        )
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(3, result.lists)
+        assertEquals("climber", store.session()!!.displayName)
+
+        fun lists() = query(
+            "SELECT l.external_id, l.name, e.climb_uuid FROM climb_lists l JOIN climb_list_entries e ON e.list_id = l.id " +
+                "WHERE l.external_id LIKE 'shinywall:%' ORDER BY l.external_id, e.climb_uuid"
+        ) { rs -> Triple(rs.getString(1), rs.getString(2), rs.getString(3)) }
+
+        val expected = listOf(
+            Triple("shinywall:favorites", "Shiny favorites", ShinyWallSnapshot.climbUuid("r1", ShinyWallVariant.ST1)),
+            Triple("shinywall:favorites", "Shiny favorites", ShinyWallSnapshot.climbUuid("r9", ShinyWallVariant.ST5)),
+            Triple("shinywall:list:Power", "Power", ShinyWallSnapshot.climbUuid("r2", ShinyWallVariant.ST5)),
+            Triple("shinywall:list:Power", "Power", ShinyWallSnapshot.climbUuid("r3", ShinyWallVariant.ST1)),
+            Triple("shinywall:own-routes", "My Shiny routes", ShinyWallSnapshot.climbUuid("r1", ShinyWallVariant.ST1)),
+        ).sortedWith(compareBy({ it.first }, { it.third }))
+        assertEquals(expected, lists())
+
+        engine.importAll(names).getOrThrow()
+        assertEquals(expected, lists())
+        assertEquals(3, query("SELECT COUNT(*) FROM climb_lists WHERE external_id LIKE 'shinywall:%'") { it.getLong(1) }.single().toInt())
+    }
+
+    @Test
+    fun long_names_and_ids_stay_within_what_a_backup_takes() = runTest {
+        // A backup with an external id over 100 characters or a list name over 200 cannot be restored.
+        val longName = "Projects for the winter season on the forty degree wall, ".repeat(5)
+        val longId = "h".repeat(120)
+        coEvery { client.fetchHistory("uid1") } returns Result.success(
+            listOf(entry(longId, "r1", "st1", 2), entry("steep", "r3", "st1", 2, angle = 75))
+        )
+        coEvery { client.fetchProfile("uid1") } returns Result.success(
+            ShinyWallProfile(null, emptyList(), mapOf(longName to listOf(ShinyWallRouteRef("r1", null)), "Power" to listOf(ShinyWallRouteRef("r3", null))))
+        )
+        val result = engine.importAll(names).getOrThrow()
+        // An angle the backup does not take is skipped like an incomplete entry.
+        assertEquals(1 to 1, result.newAscents to result.skipped)
+
+        fun lists() = query("SELECT external_id, name FROM climb_lists WHERE external_id LIKE 'shinywall:%' ORDER BY name") { rs ->
+            rs.getString(1) to rs.getString(2)
+        }
+        val ids = ascents().mapNotNull { it.externalId } + lists().map { it.first }
+        assertTrue(ids.all { it.length <= ShinyWallSyncEngine.MAX_EXTERNAL_ID_LENGTH }, ids.toString())
+        assertEquals("shinywall:list:Power", ShinyWallSyncEngine.listExternalId("Power"), "a short name stays readable")
+        assertTrue(lists().all { it.second.length <= ShinyWallSyncEngine.MAX_LIST_NAME_LENGTH })
+        assertEquals(longName.take(ShinyWallSyncEngine.MAX_LIST_NAME_LENGTH), lists().single { it.first != "shinywall:list:Power" }.second)
+
+        // The shortened ids are stable: a second import finds the same entry and list.
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(0 to 1, again.newAscents to again.duplicates)
+        assertEquals(2, lists().size)
+    }
+
+    @Test
+    fun a_failing_list_import_keeps_the_logbook_import() = runTest {
+        coEvery { client.fetchProfile("uid1") } throws IllegalStateException("boom")
+        val result = engine.importAll(names).getOrThrow()
+        assertEquals(0, result.lists)
+        assertEquals(5, result.newAscents)
+
+        coEvery { client.fetchProfile("uid1") } returns Result.failure(java.io.IOException("offline"))
+        coEvery { client.fetchOwnRoutes("uid1") } returns Result.failure(java.io.IOException("offline"))
+        assertEquals(0, engine.importAll(names).getOrThrow().lists)
+    }
+
+    @Test
+    fun a_database_error_fails_the_import_instead_of_crashing() = runTest {
+        val broken = mockk<PersonalBoardRepository>(relaxed = true)
+        every { broken.getExistingLogUuids() } throws IllegalStateException("database is locked")
+        val failing = ShinyWallSyncEngine(client, store, board, broken, db)
+        assertTrue(failing.previewImport().isFailure)
+        assertTrue(failing.importAll(names).isFailure)
+
+        every { broken.getExistingLogUuids() } returns emptySet()
+        every { broken.runInTransaction(any()) } throws IllegalStateException("disk I/O error")
+        assertTrue(failing.importAll(names).isFailure)
+        // Nothing counts as imported: the next import tries again.
+        assertEquals(null, store.historyWatermarkMs("uid1"))
+        assertTrue(store.placedLogs("uid1").isEmpty())
+    }
+
+    @Test
+    fun history_failure_and_missing_session_fail_the_import() = runTest {
+        coEvery { client.fetchHistory("uid1") } returns Result.failure(java.io.IOException("offline"))
+        assertTrue(engine.importAll(names).isFailure)
+        assertTrue(ascents().isEmpty())
+
+        store.clearSession()
+        val error = engine.importAll(names).exceptionOrNull() as ShinyWallApiException
+        assertEquals(ShinyWallApiException.Reason.NotAuthenticated, error.reason)
+    }
+
+    @Test
+    fun a_keystore_error_fails_the_import_instead_of_crashing() = runTest {
+        val noSession = object : ShinyWallTokenStorage by store {
+            override fun session(): ShinyWallSession? = throw SecurityException("Could not decrypt value")
+        }
+        val failing = ShinyWallSyncEngine(client, noSession, board, repo, db)
+        assertTrue(failing.previewImport().isFailure)
+        assertTrue(failing.importAll(names).isFailure)
+        assertTrue(ascents().isEmpty())
+
+        // The record fails after the logbook is written: the import keeps what it wrote.
+        val noRecord = object : ShinyWallTokenStorage by store {
+            override fun recordImport(
+                uid: String, atMs: Long, watermarkMs: Long?, placedLogs: Map<String, Long>, writtenCounts: Map<String, Long>,
+            ) = throw SecurityException("Keystore unavailable")
+        }
+        assertEquals(5, ShinyWallSyncEngine(client, noRecord, board, repo, db).importAll(names).getOrThrow().newAscents)
+        assertEquals(5, ascents().size)
+    }
+
+    @Test
+    fun an_entry_dated_in_the_future_does_not_hide_later_ones() = runTest {
+        val wrongDate = entry("future", "r3", "st1", 2, ts = "2027-03-01T10:00:00Z")
+        val first = listOf(entry("today", "r1", "st1", 2, ts = t), wrongDate)
+        coEvery { client.fetchHistory("uid1") } returns Result.success(first)
+        engine.clock = { ShinyWallSyncEngine.epochMs(tNew)!! }
+        assertEquals(2, engine.importAll(names).getOrThrow().newAscents)
+        // The watermark is the newest entry that is not in the future.
+        assertEquals(ShinyWallSyncEngine.epochMs(t), store.historyWatermarkMs("uid1"))
+
+        coEvery { client.fetchHistory("uid1") } returns Result.success(first + entry("next", "r2", "st5", 3, angle = 30, ts = tNew))
+        engine.clock = { ShinyWallSyncEngine.epochMs(tNew)!! }
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 0, again.newAscents to again.deleted)
+        assertEquals(2, again.duplicates)
+    }
+
+    @Test
+    fun a_watermark_saved_in_the_future_heals() = runTest {
+        // What an earlier version saved after an entry with a wrong date.
+        store.recordImport("uid1", 0L, ShinyWallSyncEngine.epochMs("2027-03-01T10:00:00Z"), emptyMap())
+        coEvery { client.fetchHistory("uid1") } returns Result.success(listOf(entry("next", "r2", "st5", 3, angle = 30, ts = tNew)))
+        engine.clock = { ShinyWallSyncEngine.epochMs(tNew)!! }
+        assertEquals(1 to 0, engine.previewImport().getOrThrow().let { it.newAscents to it.deleted })
+        assertEquals(1, engine.importAll(names).getOrThrow().newAscents)
+    }
+
+    @Test
+    fun a_deleted_list_stays_deleted_until_the_logbook_is_cleared() = runTest {
+        coEvery { client.fetchProfile("uid1") } returns Result.success(
+            ShinyWallProfile(null, listOf(ShinyWallRouteRef("r1", null)), mapOf("Power" to listOf(ShinyWallRouteRef("r3", null))))
+        )
+        fun listIds() = query("SELECT external_id FROM climb_lists WHERE external_id LIKE 'shinywall:%' ORDER BY external_id") {
+            it.getString(1)
+        }
+        assertEquals(2, engine.importAll(names).getOrThrow().lists)
+        repo.deleteClimbList(db.climbListsQueries.findClimbListByExternalId("shinywall:list:Power").executeAsOne())
+        repo.deleteAscent(ShinyWallSyncEngine.logUuid("h1"))
+
+        val again = engine.importAll(names).getOrThrow()
+        assertEquals(1 to 1, again.lists to again.deleted)
+        assertEquals(listOf("shinywall:favorites"), listIds())
+
+        // Still so after a disconnect and a new sign-in.
+        store.clearSession()
+        store.storeSession(ShinyWallSession("uid1", "id", "refresh", Long.MAX_VALUE, "a@b.c"))
+        engine.importAll(names).getOrThrow()
+        assertEquals(listOf("shinywall:favorites"), listIds())
+
+        // Clearing the logbook in Settings resets the records: the next import brings both back.
+        store.resetImportRecords()
+        val fresh = engine.importAll(names).getOrThrow()
+        assertEquals(Triple(2, 1, 0), Triple(fresh.lists, fresh.newAscents, fresh.deleted))
+        assertEquals(listOf("shinywall:favorites", "shinywall:list:Power"), listIds())
+    }
+}

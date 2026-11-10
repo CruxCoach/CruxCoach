@@ -100,7 +100,7 @@ class UsUnitsTest : AthleteScreenTest() {
         compose.onNodeWithTag("fuel_amount_unit_cup").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag("fuel_amount_grams").performTextReplacement("1.5")
         // The dialog shows what that amount brings before it is logged.
-        compose.onNodeWithTag("fuel_amount_preview").assertTextContains("160 kcal", substring = true)
+        compose.onNodeWithTag("fuel_amount_preview").assertTextContains("160\u00A0kcal", substring = true)
         compose.onNodeWithTag("fuel_amount_confirm").performSemanticsAction(SemanticsActions.OnClick)
 
         compose.waitUntil(WAIT_MS) { repo.foodLog(day).isNotEmpty() }
@@ -110,7 +110,7 @@ class UsUnitsTest : AthleteScreenTest() {
         // The entry sits above the "my foods" button the list was scrolled to: scroll back to it,
         // a lazy list composes only what is on screen (timed out on CI otherwise).
         compose.waitUntil(WAIT_MS) {
-            runCatching { compose.onNodeWithTag("fuel_list").performScrollToNode(hasText("12 fl oz", substring = true)); true }
+            runCatching { compose.onNodeWithTag("fuel_list").performScrollToNode(hasText("12\u00A0fl oz", substring = true)); true }
                 .getOrDefault(false)
         }
     }

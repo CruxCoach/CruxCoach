@@ -66,4 +66,9 @@ class FakeBoardLocationRepository : BoardLocationRepository {
             .groupingBy { it }
             .eachCount()
             .mapValues { it.value.toLong() }
+
+    override fun boardCountByBrandAndLayout(): Map<Pair<String, Int?>, Long> =
+        locations.groupingBy { it.boardBrand.wireValue to it.layoutId }
+            .eachCount()
+            .mapValues { it.value.toLong() }
 }
