@@ -41,14 +41,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   crimpy, endurance, cruxy, foot rules) and light them over Bluetooth from the
   problem page, while browsing, in playlists and in shared sessions. Set your
   own Shiny Wall problems in the editor, see the hold heatmap and use "Clean
-  holds". The Shiny Wall catalogue is downloaded only once you choose a Shiny
-  Wall; offline sharing passes it on to phones with this version (older
+  holds". The Shiny Wall catalogue is refreshed every day from Shiny Wall's
+  standard routes (no drafts, no personal data) and is downloaded only once you
+  choose a Shiny Wall; offline sharing passes it on to phones with this version (older
   versions never receive it, so they cannot mix it up). If a wall's Bluetooth name
   suggests another variant, CruxCoach asks once per wall and remembers the
   answer. The wall shows each hold as a photo, laid out the way the Shiny Wall
   app draws it, instead of dots: on problem pages, in the editor and in the
   board picker.
-- Shiny Wall account (Settings → Imports): sign in with your Shiny Wall email
+- Shiny Wall account (Settings → Board accounts & imports): sign in with your Shiny Wall email
   and password and import your Shiny Wall logbook (sends with their attempts,
   projects and your grade), your favorites, your lists and your own routes.
   Attempts on the day of a send count towards it; attempts on earlier days

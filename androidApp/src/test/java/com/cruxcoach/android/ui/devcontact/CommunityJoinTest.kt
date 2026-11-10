@@ -208,8 +208,11 @@ class CommunityJoinTest {
     @Test fun `the 0_2_5 what's new carries the community line and waits for the version bump`() {
         compose.setContent { MaterialTheme { Release025WhatsNewDialog(onDismiss = {}) } }
         compose.onNodeWithText("New in 0.2.5").assertIsDisplayed()
-        compose.onNodeWithText("• Community on Buzz\u00A0– talk to the developers and test new builds first (Settings → Community).")
-            .assertIsDisplayed()
+        // One line of several: the 0.2.5 dialog collects a line per feature.
+        compose.onNodeWithText(
+            "• Community on Buzz\u00A0– talk to the developers and test new builds first (Settings → Community).",
+            substring = true,
+        ).assertIsDisplayed()
         assertFalse(WhatsNewItems.RELEASE_025 in WhatsNewItems.registry)
     }
 }

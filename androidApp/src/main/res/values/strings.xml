@@ -3038,7 +3038,7 @@
     <string name="whatsnew_024_hint">Also: a board switch shows at once during a catalogue download, and a session resumes after a rest.</string>
     <!-- 0.2.5: one line per feature; the release preparation adds the others and registers the dialog. -->
     <string name="whatsnew_025_title">New in 0.2.5</string>
-    <string name="whatsnew_025_body">• Community on Buzz&#160;– talk to the developers and test new builds first (Settings → Community).</string>
+    <string name="whatsnew_025_body">• Community on Buzz&#160;– talk to the developers and test new builds first (Settings → Community).\n• Shiny Wall&#160;– choose your Shiny Wall in the board picker, browse its problems and light them over Bluetooth. Import your Shiny Wall logbook under Settings → Board accounts &amp; imports.\n• Wall games&#160;– Floor is lava, Endurance, Hold thief and Traverse, from the main menu or a problem’s menu (“Play as a game”).</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
 
