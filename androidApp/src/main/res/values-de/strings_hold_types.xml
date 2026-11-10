@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Griffarten (#63): Namen der Arten -->
+    <!-- Grifftypen (#63): Namen der Typen -->
     <string name="hold_type_jug">Henkel</string>
     <string name="hold_type_edge">Leiste</string>
     <string name="hold_type_sloper">Sloper</string>
@@ -10,10 +10,10 @@
     <string name="hold_type_foot_chip">Tritt</string>
     <string name="hold_direction_all_round">Rundum</string>
 
-    <!-- Griffarten prüfen: nur in Testversionen -->
-    <string name="settings_hold_review_title">Griffarten prüfen</string>
-    <string name="settings_hold_review_desc">Nur in Testversionen: berechnete Griffarten prüfen</string>
-    <string name="hold_review_title">Griffarten: Prüfung</string>
+    <!-- Grifftypen prüfen: nur in Testversionen -->
+    <string name="settings_hold_review_title">Grifftypen prüfen</string>
+    <string name="settings_hold_review_desc">Nur in Testversionen: berechnete Grifftypen prüfen</string>
+    <string name="hold_review_title">Grifftypen: Prüfung</string>
     <string name="hold_review_stage_blind">1 · Blind %1$d/%2$d</string>
     <string name="hold_review_stage_decide">2 · Entscheiden %1$d</string>
     <string name="hold_review_stage_results">Ergebnis</string>
@@ -21,7 +21,7 @@
     <string name="hold_review_blind_hint">Erst antworten. Das berechnete Label erscheint nach deiner Antwort, und dann gilt deine Antwort.</string>
     <string name="hold_review_decide_hint">Nur die Felder, in denen du und das berechnete Label abweichen. Wer lag richtig?</string>
     <string name="hold_review_decide_locked">Erst die Blindrunde beenden.</string>
-    <string name="hold_review_q_type">Art</string>
+    <string name="hold_review_q_type">Typ</string>
     <string name="hold_review_q_direction">Die nutzbare Seite zeigt nach</string>
     <string name="hold_review_q_foot_only">Nur für die Füße</string>
     <string name="hold_review_field_direction">Richtung</string>
@@ -45,14 +45,14 @@
     <string name="hold_review_saved">Gespeichert</string>
     <string name="hold_review_start_over">Neu beginnen</string>
     <string name="hold_review_start_over_confirm">Alle Antworten löschen und die Blindrunde neu beginnen?</string>
-    <string name="hold_review_missing">Diese Version enthält keine Griffarten.</string>
+    <string name="hold_review_missing">Diese Version enthält keine Grifftypen.</string>
     <string name="hold_review_no_board">Die Board-Geometrie ist noch nicht geladen.</string>
     <string name="hold_review_dataset">Label-Version %1$s</string>
 
     <!-- Griff-Labels prüfen: nur in Testversionen -->
     <string name="settings_hold_check_title">Griff-Labels prüfen</string>
-    <string name="settings_hold_check_desc">Nur in Testversionen: Griffarten aller Boards bestätigen oder korrigieren</string>
-    <string name="hold_check_title">Griffarten: Labels prüfen</string>
+    <string name="settings_hold_check_desc">Nur in Testversionen: Grifftypen aller Boards bestätigen oder korrigieren</string>
+    <string name="hold_check_title">Grifftypen: Labels prüfen</string>
     <string name="hold_check_review_list">Prüfliste (%1$d)</string>
     <string name="hold_check_all">Alle Griffe (%1$d)</string>
     <string name="hold_check_progress">Griff %1$d von %2$d · %3$s</string>
@@ -60,7 +60,7 @@
     <string name="hold_check_proposed">Vorgeschlagenes Label</string>
     <string name="hold_check_second">Zweiter Griff: %1$s</string>
     <string name="hold_check_size">Größe: %1$s</string>
-    <string name="hold_check_confidence">Sicherheit: Art %1$s, Richtung %2$s</string>
+    <string name="hold_check_confidence">Sicherheit: Typ %1$s, Richtung %2$s</string>
     <string name="hold_check_why">Auf der Prüfliste: %1$s</string>
     <string name="hold_check_looks_right">Stimmt</string>
     <string name="hold_check_correct">Korrigieren</string>
@@ -68,7 +68,7 @@
     <string name="hold_check_yours">Deine Prüfung: %1$s</string>
     <string name="hold_check_verdict_confirmed">stimmt</string>
     <string name="hold_check_verdict_corrected">korrigiert</string>
-    <string name="hold_check_summary">Geprüft %1$d: %2$d stimmen, %3$d korrigiert (Art %4$d, Richtung %5$d, nur Füße %6$d), nicht erkennbar %7$d</string>
+    <string name="hold_check_summary">Geprüft %1$d: %2$d stimmen, %3$d korrigiert (Typ %4$d, Richtung %5$d, nur Füße %6$d), nicht erkennbar %7$d</string>
     <string name="hold_check_none">Hier gibt es nichts zu prüfen.</string>
     <string name="hold_check_start_over_confirm">Alle Prüfungen dieses Boards löschen?</string>
     <string name="hold_size_small">klein</string>
@@ -77,7 +77,7 @@
     <string name="hold_conf_high">hoch</string>
     <string name="hold_conf_medium">mittel</string>
     <string name="hold_conf_low">niedrig</string>
-    <string name="hold_reason_type">Art unsicher</string>
+    <string name="hold_reason_type">Typ unsicher</string>
     <string name="hold_reason_direction">Richtung unsicher</string>
     <string name="hold_reason_low_res">Bild mit wenig Auflösung</string>
     <string name="hold_reason_touching">berührt im Bild einen anderen Griff</string>

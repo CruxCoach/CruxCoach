@@ -54,7 +54,9 @@ class WallGamesContentTest {
     private fun show(initial: WallGamesState, connected: Boolean = true) {
         state = initial
         compose.setContent {
-            MaterialTheme { WallGamesContent(state, connected, actions, onNavigateBack = {}, onConnect = {}, onChooseClimb = {}) }
+            MaterialTheme {
+                WallGamesContent(state, connected, actions, onNavigateBack = {}, onConnect = {}, onChooseClimb = {}, onOpenCatalogues = { calls += "catalogues" })
+            }
         }
     }
 
@@ -77,6 +79,20 @@ class WallGamesContentTest {
         compose.onNodeWithTag("wall_games_steal").performClick()
         compose.onNodeWithText("Light again").performClick()
         assertEquals(listOf("start", "steal", "start"), calls)
+    }
+
+    @Test fun `a board without hold positions says so and leads to the catalogues`() {
+        show(WallGamesState(loading = false, unavailable = WallGameBoardLoad.NoHolds))
+        compose.onNodeWithText("The hold positions of this board are not on the device yet. Download its catalogue first.").assertIsDisplayed()
+        compose.onNodeWithTag("wall_games_start").assertDoesNotExist()
+        compose.onNodeWithText("Board catalogs").performClick()
+        assertEquals(listOf("catalogues"), calls)
+    }
+
+    @Test fun `a board without wall games says so and offers no catalogue`() {
+        show(WallGamesState(loading = false, unavailable = WallGameBoardLoad.Unsupported))
+        compose.onNodeWithText("Wall games are not available for this board.").assertIsDisplayed()
+        compose.onNodeWithTag("wall_games_catalogues").assertDoesNotExist()
     }
 
     @Test fun `without a connection the bar says the game runs on the screen only`() {

@@ -7,12 +7,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Hold types in the Kilter logbook statistics: which kinds of hand holds (jug,
-  edge, sloper, pinch, pocket, volume) the problems you logged use, with a mark
-  for the same share on the board's problems in your grades, and the types
-  where your send rate is clearly higher or lower than usual. Tap a type for
-  its numbers. The types are computed from the board pictures and checked by
-  hand on a sample of holds. Other boards follow once their labels are checked.
 - Spray walls, from the main menu. Photograph your own wall (camera or photo
   library, crop and turn), and the phone suggests the holds. Download the hold
   model once (33 MB) and it finds holds of every colour with their real shape,
@@ -653,7 +647,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   text now stand out clearly from what they sit on.
 - Appearance & language no longer jumps when the unit choice appears a moment after the
   page opens, so a tap meant for the next row no longer lands on a unit.
-- The hold search in German counts "Griffe" and "Boulder", like the rest of the app.
+- The hold search in German counts "Griffe" and "Boulder", like the rest of the app, and one
+  hold or one climb is no longer counted in the plural ("1 hold → 12 climbs").
 
 ## [0.2.4] - 2026-10-25
 

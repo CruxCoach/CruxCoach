@@ -157,6 +157,23 @@ Shiny Wall Standard variants, a numeric table derived from the Shiny Wall
 app's own layout data for interoperability (positions only: no images,
 routes or user data).
 
+### Bundled hold-type labels
+
+The APK also carries one label file per board under
+[`androidApp/src/main/assets/hold_types/`](androidApp/src/main/assets/hold_types/),
+with a hold-type label for every placement. The files hold labels only, with
+no images and no climbs. CruxCoach made the labels from the board pictures in
+the app; placements without a usable picture have no type.
+
+The label files are licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit them as
+"Hold types by CruxCoach (https://github.com/CruxCoach/CruxCoach), CC BY 4.0".
+The app's code stays under GPL-3.0. The labels describe the boards; the
+boards, their holds and their images belong to their makers, as set out in
+the sections on the bundled images above. The format and the licence are in
+the in-directory
+[`README.md`](androidApp/src/main/assets/hold_types/README.md).
+
 ### Map rendering & tile data
 
 The FEAT-015 board-locations map is rendered by **MapLibre Native (Android)**

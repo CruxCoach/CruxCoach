@@ -459,8 +459,10 @@ class BoardLogbookViewModel @Inject constructor(
                 }
                 allAscents = all
                 logbookLoaded = true
-                sendFrames = null
+                // The version first: a hold-types read that is still running compares it before it
+                // stores its frames, so a read that ends between these two lines stores nothing.
                 logbookVersion++
+                sendFrames = null
                 // Boards the user has actually logged on — drives whether the
                 // per-board stats selector is shown. Kilter first, then the
                 // rest, for a stable chip order.
