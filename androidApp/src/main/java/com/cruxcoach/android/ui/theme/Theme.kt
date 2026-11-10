@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.theme
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -8,6 +9,12 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
@@ -97,6 +104,77 @@ internal val LightColorScheme = lightColorScheme(
     surfaceContainerHighest = Color(0xFFE8E8E8),
 )
 
+/**
+ * What a screen may ask of the system bars. The theme owns the bars: it sets them from its
+ * colours, and a screen that is dark in both themes (the year in review) asks here for dark bars
+ * while it shows. No screen writes the bars itself, so none has to remember and restore them, and
+ * the theme setting them again cannot undo a screen's request.
+ */
+@Stable
+class SystemBarRequests internal constructor() {
+    private var darkRequests by mutableIntStateOf(0)
+
+    /** Whether a screen on show wants dark bars with light icons. */
+    val darkWanted: Boolean get() = darkRequests > 0
+
+    /** Asks for dark bars; the returned function takes the request back. */
+    fun requestDark(): () -> Unit {
+        darkRequests++
+        var open = true
+        return {
+            if (open) {
+                open = false
+                darkRequests--
+            }
+        }
+    }
+}
+
+/** Null outside [CruxCoachTheme], where nobody sets the bars (previews, tests of one screen). */
+val LocalSystemBarRequests = staticCompositionLocalOf<SystemBarRequests?> { null }
+
+/** The window's own navigation bar, kept while the theme has it dark. */
+private class OwnNavigationBar(val color: Int, val lightIcons: Boolean, val contrastEnforced: Boolean?)
+
+/**
+ * Sets the bars: the status bar from the theme, and both bars dark with light icons while a screen
+ * asks for that. The theme does not style the navigation bar itself, so it keeps what the window
+ * had when the dark bars began and gives exactly that back when they end.
+ */
+@Suppress("DEPRECATION") // Below Android 15 the bars take their colours from these window properties.
+@Composable
+private fun SystemBars(darkTheme: Boolean, themeBackground: Color, requests: SystemBarRequests) {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+    val darkBars = requests.darkWanted
+    val ownNavigationBar = remember { arrayOfNulls<OwnNavigationBar>(1) }
+    SideEffect {
+        val window = (view.context as Activity).window
+        val bars = WindowCompat.getInsetsController(window, view)
+        window.statusBarColor = (if (darkBars) DarkBackground else themeBackground).toArgb()
+        bars.isAppearanceLightStatusBars = !darkTheme && !darkBars
+        if (darkBars) {
+            if (ownNavigationBar[0] == null) {
+                ownNavigationBar[0] = OwnNavigationBar(
+                    color = window.navigationBarColor,
+                    lightIcons = bars.isAppearanceLightNavigationBars,
+                    contrastEnforced = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced else null,
+                )
+            }
+            window.navigationBarColor = DarkSurface.toArgb()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
+            bars.isAppearanceLightNavigationBars = false
+        } else {
+            ownNavigationBar[0]?.let { own ->
+                window.navigationBarColor = own.color
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) own.contrastEnforced?.let { window.isNavigationBarContrastEnforced = it }
+                bars.isAppearanceLightNavigationBars = own.lightIcons
+                ownNavigationBar[0] = null
+            }
+        }
+    }
+}
+
 @Composable
 fun CruxCoachTheme(
     darkModeSetting: DarkModeSetting = DarkModeSetting.SYSTEM,
@@ -109,17 +187,12 @@ fun CruxCoachTheme(
     }
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
-        }
-    }
+    val systemBars = remember { SystemBarRequests() }
+    SystemBars(darkTheme, colorScheme.background, systemBars)
 
     CompositionLocalProvider(
         LocalCruxCoachColors provides if (darkTheme) DarkCruxCoachColors else LightCruxCoachColors,
+        LocalSystemBarRequests provides systemBars,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

@@ -1,6 +1,5 @@
 package com.cruxcoach.android.ui.yearreview
 
-import android.app.Activity
 import android.content.Context
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
@@ -75,7 +74,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -90,7 +88,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
@@ -100,6 +97,7 @@ import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.DarkSurface
 import com.cruxcoach.android.ui.theme.BrandOrange
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
+import com.cruxcoach.android.ui.theme.LocalSystemBarRequests
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.domain.yearreview.YearReview
 import com.cruxcoach.domain.yearreview.YearReviewComputer
@@ -167,33 +165,16 @@ internal fun reviewBoardColors(review: YearReview): Map<String, Color> =
     BoardSeriesColors.slots(review.boards.map { it.board }).mapValues { (_, slot) -> BoardSeriesColors.color(slot, dark = true, fallback = PageMuted) }
 
 /**
- * The review is dark in both themes: while it shows, the status and navigation bars
- * are dark with light icons, also when the app is light; leaving it restores them.
+ * The review is dark in both themes: while it shows, it asks the theme for dark status and
+ * navigation bars with light icons, also when the app is light. The theme owns the bars, so
+ * it keeps them dark however often it sets them, and sets its own again once the review is gone.
  */
-@Suppress("DEPRECATION") // The app's theme still colours the bars this way.
 @Composable
 internal fun DarkSystemBars() {
-    val view = LocalView.current
-    DisposableEffect(view) {
-        val window = (view.context as? Activity)?.window
-        val bars = window?.let { WindowCompat.getInsetsController(it, view) }
-        val statusIcons = bars?.isAppearanceLightStatusBars
-        val navigationIcons = bars?.isAppearanceLightNavigationBars
-        val statusColor = window?.statusBarColor
-        val navigationColor = window?.navigationBarColor
-        val contrast = window?.takeIf { android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q }?.isNavigationBarContrastEnforced
-        window?.statusBarColor = DarkBackground.toArgb()
-        window?.navigationBarColor = DarkSurface.toArgb()
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) window?.isNavigationBarContrastEnforced = false
-        bars?.isAppearanceLightStatusBars = false
-        bars?.isAppearanceLightNavigationBars = false
-        onDispose {
-            statusColor?.let { window?.statusBarColor = it }
-            navigationColor?.let { window?.navigationBarColor = it }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) contrast?.let { window?.isNavigationBarContrastEnforced = it }
-            statusIcons?.let { bars?.isAppearanceLightStatusBars = it }
-            navigationIcons?.let { bars?.isAppearanceLightNavigationBars = it }
-        }
+    val requests = LocalSystemBarRequests.current ?: return
+    DisposableEffect(requests) {
+        val release = requests.requestDark()
+        onDispose { release() }
     }
 }
 
