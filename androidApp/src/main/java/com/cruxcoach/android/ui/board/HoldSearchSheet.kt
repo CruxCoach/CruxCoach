@@ -152,7 +152,7 @@ internal fun HoldSearchSheet(
                         }
                     } else {
                         Text(
-                            stringResource(R.string.board_holdsearch_climbs_found, matchCount),
+                            pluralStringResource(R.plurals.board_holdsearch_climbs_found, matchCount, matchCount),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (matchCount > 0) SuccessGreen else ErrorRed
@@ -227,11 +227,14 @@ internal fun HoldSearchActionBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Icon(Icons.Default.GridView, contentDescription = null, modifier = Modifier.size(16.dp), tint = OrangeAccent)
+                // One hold or one climb reads in the singular: each count comes from its own plural.
+                val climbs = pluralStringResource(R.plurals.board_holdsearch_count_climbs, matchCount, matchCount)
                 Text(
                     if (selectedCount == 0 && zoneActive) {
-                        stringResource(R.string.board_holdsearch_zone_filter_summary, matchCount)
+                        stringResource(R.string.board_holdsearch_zone_filter_summary, climbs)
                     } else {
-                        stringResource(R.string.board_holdsearch_filter_summary, selectedCount, matchCount)
+                        val holds = pluralStringResource(R.plurals.board_holdsearch_count_holds, selectedCount, selectedCount)
+                        stringResource(R.string.board_holdsearch_filter_summary, holds, climbs)
                     },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold

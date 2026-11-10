@@ -971,14 +971,18 @@
     <string name="board_holdsearch_zone_active">Area active</string>
     <string name="board_holdsearch_zone_clear">Remove area</string>
     <string name="board_holdsearch_zone_only">Area filter</string>
-    <string name="board_holdsearch_zone_filter_summary">Area → %d Climbs</string>
+    <!-- %1$s: the climbs, from board_holdsearch_count_climbs -->
+    <string name="board_holdsearch_zone_filter_summary">Area → %1$s</string>
     <plurals name="board_holdsearch_holds_selected">
         <item quantity="one">%d hold selected</item>
         <item quantity="other">%d holds selected</item>
     </plurals>
     <string name="board_holdsearch_reset">Reset</string>
     <string name="board_holdsearch_searching">Searching…</string>
-    <string name="board_holdsearch_climbs_found">%d climbs found</string>
+    <plurals name="board_holdsearch_climbs_found">
+        <item quantity="one">%d climb found</item>
+        <item quantity="other">%d climbs found</item>
+    </plurals>
     <string name="board_holdsearch_filter">Filter</string>
     <string name="board_holdsearch_change">Change</string>
     <string name="board_holdsearch_clear">Clear</string>
@@ -1512,7 +1516,16 @@
     <string name="board_heatmap_off">Off</string>
     <string name="board_heatmap_personal">My Sends</string>
     <string name="board_heatmap_start">Start Holds</string>
-    <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
+    <!-- %1$s: the holds, from board_holdsearch_count_holds; %2$s: the climbs, from board_holdsearch_count_climbs -->
+    <string name="board_holdsearch_filter_summary">%1$s → %2$s</string>
+    <plurals name="board_holdsearch_count_holds">
+        <item quantity="one">%d hold</item>
+        <item quantity="other">%d holds</item>
+    </plurals>
+    <plurals name="board_holdsearch_count_climbs">
+        <item quantity="one">%d climb</item>
+        <item quantity="other">%d climbs</item>
+    </plurals>
     <plurals name="board_list_climb_count">
         <item quantity="one">%d Climb</item>
         <item quantity="other">%d Climbs</item>
@@ -3038,7 +3051,7 @@
     <string name="whatsnew_024_hint">Also: a board switch shows at once during a catalogue download, and a session resumes after a rest.</string>
     <!-- 0.2.5: one line per feature; the release preparation adds the others and registers the dialog. -->
     <string name="whatsnew_025_title">New in 0.2.5</string>
-    <string name="whatsnew_025_body">• Community on Buzz&#160;– talk to the developers and test new builds first (Settings → Community).\n• Shiny Wall&#160;– choose your Shiny Wall in the board picker, browse its problems and light them over Bluetooth. Import your Shiny Wall logbook under Settings → Board accounts &amp; imports.\n• Wall games&#160;– Floor is lava, Endurance, Hold thief and Traverse, from the main menu or a problem’s menu (“Play as a game”).</string>
+    <string name="whatsnew_025_body">• Community on Buzz&#160;– talk to the developers and test new builds first (Settings → Community).\n• Shiny Wall&#160;– choose your Shiny Wall in the board picker, browse its climbs and light them over Bluetooth. Import your Shiny Wall logbook under Settings → Board accounts &amp; imports.\n• Wall games&#160;– Floor is lava, Endurance, Hold thief and Traverse, from the main menu or a climb’s menu (“Play as a game”).</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
 

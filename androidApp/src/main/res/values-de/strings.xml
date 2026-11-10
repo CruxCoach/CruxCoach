@@ -709,7 +709,7 @@
     <string name="climb_log_flash">Flash</string>
     <string name="climb_log_attempts">Versuche</string>
     <string name="climb_log_style">Stil (optional)</string>
-    <string name="climb_log_holds">Griffarten (optional)</string>
+    <string name="climb_log_holds">Grifftypen (optional)</string>
     <string name="climb_log_board">Board (optional)</string>
     <string name="climb_log_notes">Notizen (optional)</string>
     <string name="climb_log_save_next">Speichern + Nächster</string>
@@ -1015,14 +1015,18 @@
     <string name="board_holdsearch_zone_active">Bereich aktiv</string>
     <string name="board_holdsearch_zone_clear">Bereich entfernen</string>
     <string name="board_holdsearch_zone_only">Bereichsfilter</string>
-    <string name="board_holdsearch_zone_filter_summary">Bereich → %d Boulder</string>
+    <!-- %1$s: die Boulder, aus board_holdsearch_count_climbs -->
+    <string name="board_holdsearch_zone_filter_summary">Bereich → %1$s</string>
     <plurals name="board_holdsearch_holds_selected">
         <item quantity="one">%d Griff ausgewählt</item>
         <item quantity="other">%d Griffe ausgewählt</item>
     </plurals>
     <string name="board_holdsearch_reset">Zurücksetzen</string>
     <string name="board_holdsearch_searching">Suche…</string>
-    <string name="board_holdsearch_climbs_found">%d Boulder gefunden</string>
+    <plurals name="board_holdsearch_climbs_found">
+        <item quantity="one">%d Boulder gefunden</item>
+        <item quantity="other">%d Boulder gefunden</item>
+    </plurals>
     <string name="board_holdsearch_filter">Filtern</string>
     <string name="board_holdsearch_change">Ändern</string>
     <string name="board_holdsearch_clear">Aufheben</string>
@@ -1555,7 +1559,16 @@
     <string name="board_heatmap_off">Aus</string>
     <string name="board_heatmap_personal">Meine Sends</string>
     <string name="board_heatmap_start">Start-Holds</string>
-    <string name="board_holdsearch_filter_summary">%1$d Griffe → %2$d Boulder</string>
+    <!-- %1$s: die Griffe, aus board_holdsearch_count_holds; %2$s: die Boulder, aus board_holdsearch_count_climbs -->
+    <string name="board_holdsearch_filter_summary">%1$s → %2$s</string>
+    <plurals name="board_holdsearch_count_holds">
+        <item quantity="one">%d Griff</item>
+        <item quantity="other">%d Griffe</item>
+    </plurals>
+    <plurals name="board_holdsearch_count_climbs">
+        <item quantity="one">%d Boulder</item>
+        <item quantity="other">%d Boulder</item>
+    </plurals>
     <plurals name="board_list_climb_count">
         <item quantity="one">%d Climb</item>
         <item quantity="other">%d Climbs</item>
@@ -3037,7 +3050,7 @@
     <string name="whatsnew_024_hint">Außerdem: Ein Board-Wechsel erscheint während eines Katalog-Downloads sofort, und eine Session läuft nach einer Pause weiter.</string>
     <!-- 0.2.5: eine Zeile je Feature; die Release-Vorbereitung ergänzt die anderen und registriert den Dialog. -->
     <string name="whatsnew_025_title">Neu in 0.2.5</string>
-    <string name="whatsnew_025_body">• Community auf Buzz&#160;– sprich mit den Entwicklern und teste neue Versionen zuerst (Einstellungen → Community).\n• Shiny Wall&#160;– wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Probleme und lass sie per Bluetooth leuchten. Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten &amp; Importe.\n• Wand-Spiele&#160;– Der Boden ist Lava, Ausdauer, Griffdieb und Quergang, aus dem Hauptmenü oder dem Menü eines Problems („Als Spiel spielen“).</string>
+    <string name="whatsnew_025_body">• Community auf Buzz&#160;– sprich mit den Entwicklern und teste neue Versionen zuerst (Einstellungen → Community).\n• Shiny Wall&#160;– wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Boulder und lass sie per Bluetooth leuchten. Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten &amp; Importe.\n• Wand-Spiele&#160;– Der Boden ist Lava, Ausdauer, Griffdieb und Quergang, aus dem Hauptmenü oder dem Menü eines Boulders („Als Spiel spielen“).</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
 

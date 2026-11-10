@@ -26,12 +26,12 @@ class Release025WhatsNewShinyWallTest {
         // The other features' lines stay.
         compose.onNodeWithText("• Community on Buzz\u00A0– talk to the developers", substring = true).assertIsDisplayed()
         compose.onNodeWithText(
-            "• Shiny Wall\u00A0– choose your Shiny Wall in the board picker, browse its problems and light them over Bluetooth. " +
+            "• Shiny Wall\u00A0– choose your Shiny Wall in the board picker, browse its climbs and light them over Bluetooth. " +
                 "Import your Shiny Wall logbook under Settings → Board accounts & imports.",
             substring = true,
         ).assertIsDisplayed()
         compose.onNodeWithText(
-            "• Wall games\u00A0– Floor is lava, Endurance, Hold thief and Traverse, from the main menu or a problem’s menu (“Play as a game”).",
+            "• Wall games\u00A0– Floor is lava, Endurance, Hold thief and Traverse, from the main menu or a climb’s menu (“Play as a game”).",
             substring = true,
         ).assertIsDisplayed()
     }
@@ -41,11 +41,16 @@ class Release025WhatsNewShinyWallTest {
         compose.setContent { MaterialTheme { Release025WhatsNewDialog(onDismiss = {}) } }
         compose.onNodeWithText("Neu in 0.2.5").assertIsDisplayed()
         compose.onNodeWithText("• Community auf Buzz\u00A0– sprich mit den Entwicklern", substring = true).assertIsDisplayed()
-        compose.onNodeWithText("• Shiny Wall\u00A0– wähle deine Shiny Wall in der Board-Auswahl", substring = true)
-            .assertIsDisplayed()
+        // The app says "Boulder", so the lines do too.
+        compose.onNodeWithText(
+            "• Shiny Wall\u00A0– wähle deine Shiny Wall in der Board-Auswahl, durchsuche ihre Boulder und lass sie per Bluetooth leuchten.",
+            substring = true,
+        ).assertIsDisplayed()
         compose.onNodeWithText("Dein Shiny-Wall-Logbuch übernimmst du unter Einstellungen → Board-Konten & Importe.", substring = true)
             .assertIsDisplayed()
-        compose.onNodeWithText("• Wand-Spiele\u00A0– Der Boden ist Lava, Ausdauer, Griffdieb und Quergang", substring = true)
-            .assertIsDisplayed()
+        compose.onNodeWithText(
+            "• Wand-Spiele\u00A0– Der Boden ist Lava, Ausdauer, Griffdieb und Quergang, aus dem Hauptmenü oder dem Menü eines Boulders („Als Spiel spielen“).",
+            substring = true,
+        ).assertIsDisplayed()
     }
 }

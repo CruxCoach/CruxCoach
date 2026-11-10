@@ -55,7 +55,7 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 
 /**
- * Settings → Imports: connect a Shiny Wall account and import its logbook,
+ * Settings → Board accounts & imports: connect a Shiny Wall account and import its logbook,
  * favourites, lists and own routes. Read-only towards Shiny Wall.
  */
 @Composable
