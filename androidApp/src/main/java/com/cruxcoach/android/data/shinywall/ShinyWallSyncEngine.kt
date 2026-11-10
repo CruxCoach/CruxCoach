@@ -396,19 +396,36 @@ class ShinyWallSyncEngine @Inject constructor(
             val logged = if (fresh) row.parts.filter { it.entry.uuid in existing } else emptyList()
             val (asWritten, edited) = logged.partition { asImported(it, writtenBefore[it.entry.uuid]) }
             val latestKnown = if (fresh) row.parts.lastOrNull { known(it.entry) } else null
-            val holder = latestKnown?.takeIf { it.entry.uuid !in existing } ?: edited.lastOrNull()
+            // A row an import wrote and the user deleted holds the day's attempts up to it, also once a
+            // later row of the day was written. Not before a row written without a record: that
+            // import's record was lost, so the earlier row was replaced by the import, not deleted.
+            val unrecorded = asWritten.lastOrNull { it.entry.uuid !in writtenBefore }?.let { row.parts.indexOf(it) } ?: -1
+            val deletedRow = if (fresh) {
+                row.parts.drop(unrecorded + 1).lastOrNull { it.entry.uuid !in existing && it.entry.uuid in writtenBefore }
+            } else null
+            val holder = listOfNotNull(latestKnown?.takeIf { it.entry.uuid !in existing }, edited.lastOrNull(), deletedRow)
+                .maxByOrNull { row.parts.indexOf(it) }
             val held = holder?.daySoFar ?: 0L
-            val attempts = row.attempts - held
+            val heldUpTo = holder?.let { row.parts.indexOf(it) } ?: -1
+            val replaced = asWritten.filter { row.parts.indexOf(it) > heldUpTo }
+            // A day that reached Shiny Wall after the replaced rows were written brought no row of its
+            // own: their counts hold its attempts. What they hold beyond their share of the day goes on
+            // with the new row, so those attempts are not lost however the imports fall.
+            val counts = replaced.mapNotNull { writtenBefore[it.entry.uuid] }
+            val beyond = if (replaced.isEmpty() || counts.size < replaced.size) 0L else {
+                (counts.sum() - (replaced.last().daySoFar - held)).coerceAtLeast(0L)
+            }
+            val attempts = row.attempts - held + (if (p.sent < 0) beyond else 0L)
             // No new attempts that day, or the day's other rows hold them all already.
             if (p.sent < 0 && attempts < 1) continue
             if (!fresh) {
                 deletedHere++
                 continue
             }
-            val heldUpTo = holder?.let { row.parts.indexOf(it) } ?: -1
-            asWritten.filter { row.parts.indexOf(it) > heldUpTo }.forEach { merged += it.entry.uuid }
+            replaced.forEach { merged += it.entry.uuid }
             val send = if (p.sent < 0) null else {
-                val own = row.earlierDays + held
+                // The send takes over what the replaced rows held beyond their day.
+                val own = row.earlierDays + held - beyond
                 val shape = sendShape(p.sent)
                 when {
                     shape == null || own == 0L -> shape
