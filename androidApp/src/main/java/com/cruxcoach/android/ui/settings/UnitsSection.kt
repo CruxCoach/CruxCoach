@@ -6,7 +6,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.ViewModel
@@ -30,9 +32,12 @@ import javax.inject.Inject
 class UnitsSettingsViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
     private val _units = MutableStateFlow<UnitSystem?>(null)
     val units: StateFlow<UnitSystem?> = _units.asStateFlow()
+    private val _unavailable = MutableStateFlow(false)
+    /** The training database did not open: the section shows no units row. */
+    val unavailable: StateFlow<Boolean> = _unavailable.asStateFlow()
 
     init {
-        guarded {
+        guarded(onFailure = { _unavailable.value = true }) {
             service.ensureReady()
             service.repo.observeProfile().collect { _units.value = it.units }
         }
@@ -46,7 +51,7 @@ class UnitsSettingsViewModel @Inject constructor(private val service: AthleteSer
     }
 
     /** The settings stay usable when the training database cannot open (full storage, damaged file): no units row then. */
-    private fun guarded(block: suspend () -> Unit) {
+    private fun guarded(onFailure: () -> Unit = {}, block: suspend () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 block()
@@ -54,6 +59,7 @@ class UnitsSettingsViewModel @Inject constructor(private val service: AthleteSer
                 throw e
             } catch (e: Exception) {
                 Log.w("UnitsSettings", "Training database unavailable: ${e.javaClass.simpleName}")
+                onFailure()
             }
         }
     }
@@ -62,21 +68,29 @@ class UnitsSettingsViewModel @Inject constructor(private val service: AthleteSer
 @Composable
 internal fun UnitsSection(viewModel: UnitsSettingsViewModel) {
     val units by viewModel.units.collectAsStateWithLifecycle()
+    val unavailable by viewModel.unavailable.collectAsStateWithLifecycle()
     Text(
         stringResource(R.string.settings_units_title),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
     )
     Text(stringResource(R.string.settings_units_desc), style = MaterialTheme.typography.bodySmall)
-    units?.let { selected ->
-        SettingsChoices(
-            options = listOf(
-                UnitSystem.METRIC to stringResource(R.string.settings_units_metric),
-                UnitSystem.IMPERIAL to stringResource(R.string.settings_units_us),
-            ),
-            selected = selected,
-            onSelect = viewModel::select,
-            modifier = Modifier.testTag("settings_units"),
+    val options = listOf(
+        UnitSystem.METRIC to stringResource(R.string.settings_units_metric),
+        UnitSystem.IMPERIAL to stringResource(R.string.settings_units_us),
+    )
+    val selected = units
+    when {
+        unavailable -> Unit
+        selected != null -> SettingsChoices(options, selected, viewModel::select, Modifier.testTag("settings_units"))
+        // The units come from the training database a moment after the page opens. Until then
+        // the same row holds its place unseen, so the page below does not jump when they arrive
+        // (one check mark either way, so the chips wrap the same).
+        else -> SettingsChoices(
+            options,
+            selected = UnitSystem.METRIC,
+            onSelect = {},
+            modifier = Modifier.testTag("settings_units_loading").alpha(0f).clearAndSetSemantics {},
         )
     }
 }

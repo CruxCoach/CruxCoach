@@ -972,7 +972,10 @@
     <string name="board_holdsearch_zone_clear">Remove area</string>
     <string name="board_holdsearch_zone_only">Area filter</string>
     <string name="board_holdsearch_zone_filter_summary">Area → %d Climbs</string>
-    <string name="board_holdsearch_holds_selected">%d holds selected</string>
+    <plurals name="board_holdsearch_holds_selected">
+        <item quantity="one">%d hold selected</item>
+        <item quantity="other">%d holds selected</item>
+    </plurals>
     <string name="board_holdsearch_reset">Reset</string>
     <string name="board_holdsearch_searching">Searching…</string>
     <string name="board_holdsearch_climbs_found">%d climbs found</string>

@@ -1015,11 +1015,14 @@
     <string name="board_holdsearch_zone_active">Bereich aktiv</string>
     <string name="board_holdsearch_zone_clear">Bereich entfernen</string>
     <string name="board_holdsearch_zone_only">Bereichsfilter</string>
-    <string name="board_holdsearch_zone_filter_summary">Bereich → %d Climbs</string>
-    <string name="board_holdsearch_holds_selected">%d Holds ausgewählt</string>
+    <string name="board_holdsearch_zone_filter_summary">Bereich → %d Boulder</string>
+    <plurals name="board_holdsearch_holds_selected">
+        <item quantity="one">%d Griff ausgewählt</item>
+        <item quantity="other">%d Griffe ausgewählt</item>
+    </plurals>
     <string name="board_holdsearch_reset">Zurücksetzen</string>
     <string name="board_holdsearch_searching">Suche…</string>
-    <string name="board_holdsearch_climbs_found">%d Climbs gefunden</string>
+    <string name="board_holdsearch_climbs_found">%d Boulder gefunden</string>
     <string name="board_holdsearch_filter">Filtern</string>
     <string name="board_holdsearch_change">Ändern</string>
     <string name="board_holdsearch_clear">Aufheben</string>
@@ -1552,7 +1555,7 @@
     <string name="board_heatmap_off">Aus</string>
     <string name="board_heatmap_personal">Meine Sends</string>
     <string name="board_heatmap_start">Start-Holds</string>
-    <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
+    <string name="board_holdsearch_filter_summary">%1$d Griffe → %2$d Boulder</string>
     <plurals name="board_list_climb_count">
         <item quantity="one">%d Climb</item>
         <item quantity="other">%d Climbs</item>

@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
@@ -123,7 +124,7 @@ internal fun HoldSearchSheet(
                 ) {
                     Text(
                         if (selectedHolds.isEmpty()) stringResource(R.string.board_holdsearch_zone_only)
-                        else stringResource(R.string.board_holdsearch_holds_selected, selectedHolds.size),
+                        else pluralStringResource(R.plurals.board_holdsearch_holds_selected, selectedHolds.size, selectedHolds.size),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold
                     )
