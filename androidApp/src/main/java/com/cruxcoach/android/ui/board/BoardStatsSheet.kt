@@ -141,6 +141,7 @@ internal fun BoardStatsSheetContent(
     crossBoard: CrossBoardStats = CrossBoardStats(),
     crossBoardView: CrossBoardView = CrossBoardView.TRIES_UNTIL_SEND,
     onCrossBoardViewSelect: (CrossBoardView) -> Unit = {},
+    holdTypes: HoldTypeCardStats? = null,
     progressionByBoard: Map<String, List<GradeProgressionPoint>> = emptyMap(),
     activityView: ActivityView = ActivityView.CALENDAR,
     onActivityViewSelect: (ActivityView) -> Unit = {},
@@ -258,6 +259,18 @@ internal fun BoardStatsSheetContent(
             ChartSection(stringResource(R.string.board_stats_angle_distribution)) {
                 BoardAngleDistChart(entries = stats.angleDistribution)
             }
+        }
+
+        // Which hold types, one board at a time (#63).
+        holdTypes?.let { holdStats ->
+            val several = availableBoardBrands.size > 1
+            HoldTypesCard(
+                stats = holdStats,
+                gradeScale = gradeScale,
+                boardName = if (several) boardBrandLabel(holdStats.board) else null,
+                color = boardSeriesColors(availableBoardBrands.ifEmpty { listOf(holdStats.board) })[holdStats.board]
+                    ?: MaterialTheme.colorScheme.primary,
+            )
         }
 
         // Heatmap section — full mode picker (Meine Sends / Global /

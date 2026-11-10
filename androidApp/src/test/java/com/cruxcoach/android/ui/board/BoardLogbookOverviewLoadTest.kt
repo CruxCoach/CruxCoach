@@ -97,6 +97,7 @@ class BoardLogbookOverviewLoadTest {
         climbNameResolver = climbNameResolver,
         ownClimbPublisher = ownClimbPublisher,
         context = context,
+        holdTypeAssets = mockk(relaxed = true),
     )
 
     @Test
