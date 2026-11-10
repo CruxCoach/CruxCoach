@@ -265,6 +265,9 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
         roleLabel = stringResource(R.string.paintbox_brush), currentByte = state.brush,
         onColorSelected = { viewModel.brush(it); colorPicker = false }, onDismiss = { colorPicker = false },
         allowedColors = PaintPalette.forBoard(brand).toSet(),
+        // Colors a photo brought, or the pipette picked, that the named swatches do not offer.
+        extraColors = PaintPalette.pictureColors(state.brush, document?.colors.orEmpty(), brand),
+        extraLabel = stringResource(R.string.paintbox_colors_picture),
     )
     if (clearConfirm) AlertDialog(onDismissRequest = { clearConfirm = false },
         title = { Text(stringResource(R.string.paintbox_clear)) }, text = { Text(stringResource(R.string.paintbox_clear_confirm)) },
@@ -312,7 +315,7 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
     } else null)
 }
 
-/** Brush or eraser, the brush color, undo and redo: one row that fits 320 dp at any font size. */
+/** Brush, eraser or pipette, the brush color, undo and redo: one row that fits 320 dp at any font size. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PaintTools(state: PaintBoxState, viewModel: PaintBoxViewModel, onColor: () -> Unit) {
@@ -321,21 +324,28 @@ private fun PaintTools(state: PaintBoxState, viewModel: PaintBoxViewModel, onCol
             activeContainerColor = MaterialTheme.colorScheme.primary,
             activeContentColor = MaterialTheme.colorScheme.onPrimary,
         )
+        // Three tools, the color, undo and redo are six 48 dp targets: 288 of the 296 dp a 320 dp screen leaves.
+        val tool = Modifier.width(48.dp)
         SingleChoiceSegmentedButtonRow {
             SegmentedButton(
-                selected = !state.eraser, onClick = { viewModel.brush(state.brush) },
-                shape = SegmentedButtonDefaults.itemShape(0, 2), icon = {}, colors = toolColors,
-                modifier = Modifier.testTag("paintbox_brush"),
+                selected = !state.eraser && !state.pipette, onClick = { viewModel.brush(state.brush) },
+                shape = SegmentedButtonDefaults.itemShape(0, 3), icon = {}, colors = toolColors,
+                modifier = tool.testTag("paintbox_brush"),
             ) { Icon(Icons.Outlined.Brush, stringResource(R.string.paintbox_brush)) }
             SegmentedButton(
-                selected = state.eraser, onClick = viewModel::eraser,
-                shape = SegmentedButtonDefaults.itemShape(1, 2), icon = {}, colors = toolColors,
-                modifier = Modifier.testTag("paintbox_eraser"),
+                selected = state.eraser && !state.pipette, onClick = viewModel::eraser,
+                shape = SegmentedButtonDefaults.itemShape(1, 3), icon = {}, colors = toolColors,
+                modifier = tool.testTag("paintbox_eraser"),
             ) { Icon(Icons.Outlined.FormatColorReset, stringResource(R.string.paintbox_eraser)) }
+            SegmentedButton(
+                selected = state.pipette, onClick = viewModel::pipette,
+                shape = SegmentedButtonDefaults.itemShape(2, 3), icon = {}, colors = toolColors,
+                modifier = tool.testTag("paintbox_pipette"),
+            ) { Icon(Icons.Outlined.Colorize, stringResource(R.string.paintbox_pipette)) }
         }
         val colorLabel = stringResource(R.string.paintbox_color)
         IconButton(onClick = onColor, modifier = Modifier.testTag("paintbox_color").semantics { contentDescription = colorLabel }) {
-            // The brush color; faded while the eraser is the tool.
+            // The brush color; faded while the eraser is the tool. The pipette changes it.
             Box(Modifier.size(28.dp).alpha(if (state.eraser) 0.38f else 1f).clip(CircleShape)
                 .background(rgb332ToComposeColor(state.brush))
                 .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), CircleShape))

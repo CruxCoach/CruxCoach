@@ -8,6 +8,14 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 
 - Wähle Pinsel oder Radierer und eine Farbe und tippe oder streiche mit einem
   Finger über die Holds. Zwei Finger zoomen und verschieben das Board.
+- Die **Pipette** neben dem Radierer nimmt eine Farbe aus dem Bild auf: Tippe
+  darauf und dann auf einen Hold, der eine Farbe hat. Diese Farbe wird zur
+  Pinselfarbe, und der Pinsel ist wieder das Werkzeug. Ein Hold ohne Farbe
+  nimmt nichts auf und sagt das. So verwendest du eine Farbe weiter, die ein
+  Foto mitgebracht hat: Ein Aurora-Board hat 255 Farben, die Farbauswahl nennt
+  42. Solche Farben stehen in der Farbauswahl außerdem unter **In diesem
+  Bild**. Auf MoonBoard und Quantum nimmt die Pipette eine der wenigen Farben
+  des Boards auf.
 - Ein Strich ist ein Schritt für Rückgängig und Wiederholen. **Bild leeren** im
   ⋮-Menü entfernt alle Farben und lässt sich ebenfalls rückgängig machen.
 - **Speichern** und **Speichern unter** im ⋮-Menü legen das Bild unter einem Namen

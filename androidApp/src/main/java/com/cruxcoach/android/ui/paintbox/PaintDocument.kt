@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.paintbox
 
+import com.cruxcoach.android.ui.theme.RGB332_PALETTE
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.MoonBoardHoldSets
@@ -72,6 +73,18 @@ object PaintPalette {
         BoardBrand.QUANTUM -> quantum
         else -> (1..255).toList()
     }
+    /**
+     * Colors the picker's named swatches do not offer: the brush color first, then the picture's, most used first.
+     * A photo can bring any of an Aurora board's 255 colors; the picker names 42 of them.
+     */
+    fun pictureColors(brush: Int, colors: Map<Int, Int>, brand: BoardBrand): List<Int> {
+        val allowed = forBoard(brand).toSet()
+        val named = RGB332_PALETTE.mapTo(HashSet()) { it.byte }
+        val used = colors.values.groupingBy { it }.eachCount().entries
+            .sortedWith(compareBy({ -it.value }, { it.key })).map { it.key }
+        return (listOf(brush) + used).distinct().filter { it in allowed && it !in named }.take(PICTURE_COLORS)
+    }
+    private const val PICTURE_COLORS = 12
     fun rgb(byte: Int): Int = (((byte shr 5) * 255 / 7) shl 16) or
         ((((byte shr 2) and 7) * 255 / 7) shl 8) or ((byte and 3) * 255 / 3)
     fun moonFrames(colors: Map<Int, Int>): String = colors.toSortedMap().entries.joinToString("") {

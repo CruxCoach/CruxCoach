@@ -160,6 +160,50 @@ class PaintBoxViewModelTest {
         advanceUntilIdle()
         coVerify(exactly = 0) { projector.send(any(), any(), any()) }
     }
+    @Test fun `pipette takes the color of a hold and hands the brush back`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        // 0xf1 is a board color the color sheet has no named swatch for, as a photo brings them.
+        vm.brush(0xf1); vm.beginStroke(); vm.paint(setOf(1)); vm.endStroke()
+        vm.eraser()
+        vm.pipette()
+        assertTrue(vm.state.value.pipette)
+        // The stroke goes on over hold 2: only the pick counts.
+        vm.beginStroke(); vm.paint(setOf(1)); vm.paint(setOf(2)); vm.endStroke()
+        assertEquals(0xf1, vm.state.value.brush)
+        assertFalse(vm.state.value.pipette)
+        assertFalse(vm.state.value.eraser)
+        assertNull(vm.state.value.message)
+        assertEquals(mapOf(1 to 0xf1), vm.state.value.document!!.colors)
+        vm.beginStroke(); vm.paint(setOf(2)); vm.endStroke()
+        assertEquals(mapOf(1 to 0xf1, 2 to 0xf1), vm.state.value.document!!.colors)
+        // The color sheet offers it under "In this picture"; named colors stay in their families.
+        val kilter = com.cruxcoach.domain.board.BoardBrand.KILTER
+        assertEquals(listOf(0xf1), PaintPalette.pictureColors(0xf1, vm.state.value.document!!.colors, kilter))
+        assertEquals(listOf(0x91, 0xf1), PaintPalette.pictureColors(0x91, mapOf(1 to 0xf1, 2 to 0x1c), kilter))
+        assertTrue(PaintPalette.pictureColors(0x1c, mapOf(1 to 0xe0), com.cruxcoach.domain.board.BoardBrand.MOONBOARD).isEmpty())
+    }
+    @Test fun `pipette on a hold without color picks nothing and says so`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.beginStroke(); vm.paint(setOf(1)); vm.endStroke()
+        vm.brush(0xe0)
+        vm.pipette()
+        vm.beginStroke(); vm.paint(setOf(2)); vm.endStroke()
+        assertTrue(vm.state.value.pipette)
+        assertEquals(0xe0, vm.state.value.brush)
+        assertEquals(R.string.paintbox_pipette_empty, vm.state.value.message)
+        assertEquals(mapOf(1 to 28), vm.state.value.document!!.colors)
+        // A stroke that starts on an empty hold and reaches a colored one picks that one.
+        vm.message(null)
+        vm.beginStroke(); vm.paint(setOf(2)); vm.paint(setOf(1)); vm.endStroke()
+        assertEquals(28, vm.state.value.brush)
+        assertFalse(vm.state.value.pipette)
+        assertNull(vm.state.value.message)
+        // Choosing brush or eraser leaves the pipette.
+        vm.pipette(); vm.eraser()
+        assertFalse(vm.state.value.pipette)
+        vm.pipette(); vm.brush(0xe0)
+        assertFalse(vm.state.value.pipette)
+    }
     @Test fun `background starts dark for a clear border and a picked color replaces the detected one`() = runTest(dispatcher) {
         vm.state.first { !it.loading }
         vm.startImage(mockk(), detected = PaintBackground(color = 0xffffff, clear = true))

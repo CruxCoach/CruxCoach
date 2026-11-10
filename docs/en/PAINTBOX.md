@@ -8,6 +8,13 @@ the board button above the picture switches to another one.
 
 - Pick the brush or the eraser and a color, then tap or swipe holds with one
   finger. Two fingers zoom and move the board.
+- The **pipette** next to the eraser takes a color from the picture: tap it, then
+  tap a hold that has a color. That color becomes the brush color and the brush
+  is the tool again. A hold without a color picks nothing and says so. This is
+  how you reuse a color a photo brought along: an Aurora board has 255 colors,
+  the color sheet names 42. Such colors also appear in the color sheet under
+  **In this picture**. On MoonBoard and Quantum the pipette picks one of the
+  board's few colors.
 - One stroke is one step for undo and redo. **Clear picture** in the ⋮ menu
   removes all colors and can be undone too.
 - **Save** and **Save as** in the ⋮ menu keep the picture on your phone under a
