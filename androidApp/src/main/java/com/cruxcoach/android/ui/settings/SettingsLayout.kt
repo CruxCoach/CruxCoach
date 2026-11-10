@@ -66,6 +66,7 @@ internal fun SettingsLayout(
     startPage: SettingsPage? = null,
     onNavigateBack: () -> Unit,
     onNavigateToAppShare: () -> Unit,
+    onNavigateToPaintBox: () -> Unit = {},
     banners: @Composable () -> Unit = {},
     /** Where the [SettingsPage.external] rows lead; a row without an entry here is not shown. */
     externalPages: Map<SettingsPage, () -> Unit> = emptyMap(),
@@ -134,6 +135,16 @@ internal fun SettingsLayout(
                                     }
                                 }
                             }
+                        }
+                        SettingsGroupHeader(stringResource(R.string.paintbox_extras))
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                            SettingsDestinationRow(
+                                title = stringResource(R.string.paintbox_title),
+                                summary = stringResource(R.string.paintbox_description),
+                                icon = Icons.Outlined.Palette,
+                                modifier = Modifier.testTag("settings_open_paintbox"),
+                                onClick = onNavigateToPaintBox,
+                            )
                         }
                     } else {
                         content(currentPage)

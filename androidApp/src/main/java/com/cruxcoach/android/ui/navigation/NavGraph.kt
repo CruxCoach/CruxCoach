@@ -144,6 +144,7 @@ object Routes {
     const val BOARD_BROWSER = "board_browser"
     const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}?author={author}"
+    const val PAINTBOX = "paintbox"
     const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
     fun climbCreator(forkUuid: String? = null, editUuid: String? = null): String {
         val qs = buildList {
@@ -196,7 +197,7 @@ object Routes {
     const val BACKUP_SETTINGS = "backup_settings"
     /** Settings opened on "Bugs & feature requests" (reply notifications). */
     const val SUPPORT_SETTINGS = "support_settings"
-    /** Settings opened on the board catalogues (wall games without hold positions). */
+    /** Settings opened on the board catalogues (wall games without hold positions, PaintBox without a board). */
     const val CATALOGUE_SETTINGS = "catalogue_settings"
     const val NOSTR_PROFILE = "nostr_profile"
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
@@ -989,6 +990,13 @@ fun CruxCoachNavHost(
                 }
             }
 
+            composable(Routes.PAINTBOX) {
+                com.cruxcoach.android.ui.paintbox.PaintBoxScreen(
+                    onBack = { navController.popBackStack() },
+                    onDownloadBoards = { navController.navigate(Routes.CATALOGUE_SETTINGS) },
+                )
+            }
+
             listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS, Routes.SUPPORT_SETTINGS, Routes.CATALOGUE_SETTINGS).forEach { settingsRoute ->
                 composable(settingsRoute) {
                     var showPaymentSheet by remember { mutableStateOf(false) }
@@ -1009,6 +1017,7 @@ fun CruxCoachNavHost(
                         onNavigateToLicenses = { navController.navigate(Routes.LICENSES) },
                         onNavigateToHoldTypeReview = { navController.navigate(Routes.HOLD_TYPE_REVIEW) },
                         onNavigateToHoldTypeCheck = { navController.navigate(Routes.HOLD_TYPE_CHECK) },
+                        onNavigateToPaintBox = { navController.navigate(Routes.PAINTBOX) },
                         onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                         onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
                         onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },

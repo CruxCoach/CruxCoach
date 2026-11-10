@@ -1,0 +1,23 @@
+appId: ${APP_ID}
+name: paintbox
+tags:
+  - settings
+  - paintbox
+# Onboarded German feature app; start in board browser with a downloaded board.
+# Does not paint, save, connect to hardware or change persistent settings.
+---
+- tapOn: "Einstellungen"
+- scrollUntilVisible:
+    element: { text: "Extras" }
+    direction: DOWN
+- tapOn: "PaintBox"
+- assertVisible: "Pinsel"
+- assertVisible: "Radierer"
+- assertVisible: "Board verbinden"
+- tapOn: "Farbe"
+- assertVisible: "Grün"
+- pressKey: Back
+- pressKey: Back
+- assertVisible: "Extras"
+- assertVisible: "PaintBox"
+- pressKey: Back

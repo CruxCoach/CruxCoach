@@ -17,6 +17,7 @@ import com.cruxcoach.android.ble.reservedLayerColors
 import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
 import com.cruxcoach.android.ble.hasConfirmableQuantumDiodeCount
 import com.cruxcoach.android.ble.matchesQuantumPlayers
+import com.cruxcoach.android.ble.removePaintBoxLayers
 import com.cruxcoach.android.ble.planKey
 import com.cruxcoach.android.ui.board.BoardSendModePolicy
 import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
@@ -1031,6 +1032,12 @@ class SessionQueueManager(
         if (!layers.assignPreviewIfCurrent(layer, expectedCurrent)) return false
         val expectedPlan = layer.planKey()
 
+        // Every check passed: the climb replaces this phone's PaintBox picture,
+        // as on every other board. The refresh below sees the freed players.
+        if (bleConnection.removePaintBoxLayers(layers, expectedBoard) == null) {
+            layers.failProjection(expectedPlan)
+            return false
+        }
         // Catalogue hydration above may take disk time. Pull truth again at
         // the write boundary and repeat every safety predicate so a second
         // client cannot occupy the last slot/colour/hold in that interval.

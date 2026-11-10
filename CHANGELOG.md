@@ -558,6 +558,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   time, and an effect ends after 15 minutes on the same climb. For filming,
   "Keep running in other apps" (off by default) keeps it going while another
   app is open, with a notification to stop it.
+- PaintBox, contributed by Hugie (PR #77): paint pictures on your board with
+  its LEDs, every hold a pixel. In Settings, under Extras: pick a color, tap or
+  swipe holds on and off, undo and redo, and save named pictures on the phone.
+  Send a picture once, or turn on live painting and the board follows every
+  stroke; it pauses when the connection drops, in the background and on a
+  board change. A photo from the phone can become hold colors (drag, zoom and
+  turn it, leave a background color off). Kilter and the other Aurora boards
+  take every color within their power limits, MoonBoard green, blue and red,
+  Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
 
 ### Fixed
 - After a catalogue import the app frees the temporary database file at once. A Tension

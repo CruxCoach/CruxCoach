@@ -31,6 +31,7 @@ class SettingsNavigationTest {
     private val loading = mutableStateOf(false)
     private var exits = 0
     private var shares = 0
+    private var paintBoxOpens = 0
     private lateinit var backDispatcher: OnBackPressedDispatcher
 
     private var trainingOpened = 0
@@ -47,6 +48,7 @@ class SettingsNavigationTest {
                         startPage = startPage,
                         onNavigateBack = { exits++ },
                         onNavigateToAppShare = { shares++ },
+                        onNavigateToPaintBox = { paintBoxOpens++ },
                         banners = { Text("Connection status", Modifier.testTag("banner")) },
                         externalPages = if (withTraining) mapOf(SettingsPage.TRAINING to { trainingOpened++ }) else emptyMap(),
                     ) { page ->
@@ -71,6 +73,17 @@ class SettingsNavigationTest {
         compose.runOnIdle { assertEquals(1, trainingOpened) }
         compose.onNodeWithTag("page_TRAINING").assertDoesNotExist()
         compose.onNodeWithTag("settings_open_TRAINING").assertIsDisplayed()
+    }
+
+    @Test fun `Extras is a separate group and PaintBox opens directly from overview`() {
+        render()
+        compose.onNodeWithTag("settings_open_EXTRAS").assertDoesNotExist()
+        compose.onNodeWithTag("settings_open_paintbox").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Extras").assertExists()
+        compose.onNodeWithTag("settings_open_paintbox").performClick()
+        compose.runOnIdle { assertEquals(1, paintBoxOpens) }
+        compose.onNodeWithTag("settings_open_paintbox").assertIsDisplayed()
+        compose.onNodeWithTag("page_EXTRAS").assertDoesNotExist()
     }
 
     @Test fun `backup entry opens directly and back exits to its caller`() {

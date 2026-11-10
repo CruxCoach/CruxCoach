@@ -1,5 +1,9 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.paintbox.detectPaintGestures
+import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
+import androidx.compose.ui.graphics.graphicsLayer
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -51,11 +55,11 @@ private val MoonBoardPanelColor = Color(0xFFEAE1CC)
 private val MoonBoardGridDotColor = Color(0x40202020)
 
 /** Board card aspect (width / height) for the generic (no-photo) raster. */
-private const val BOARD_ASPECT_RATIO = 0.65f
+internal const val BOARD_ASPECT_RATIO = 0.65f
 
 /** Ring radius for a climb hold on a real board image, as a fraction of
  *  the image width — sized to encircle a physical MoonBoard hold. */
-private const val IMAGE_HOLD_RADIUS_FRACTION = 0.028f
+internal const val IMAGE_HOLD_RADIUS_FRACTION = 0.028f
 
 /**
  * MoonBoard climb visualization (FEAT-027).
@@ -83,7 +87,17 @@ internal fun MoonBoardVisualization(
      *  for the procedural (no-photo) fallback: Mini variants have 12 rows,
      *  standard variants 18. Null falls back to the standard 18-row grid. */
     variant: MoonBoardVariant? = null,
+    onPaint: ((Set<Int>) -> Unit)? = null,
+    onPaintStart: () -> Unit = {},
+    onPaintEnd: () -> Unit = {},
+    paintableHolds: Set<Int>? = null,
+    paintColors: Map<Int, Int>? = null,
 ) {
+    var paintZoom by remember { mutableStateOf(1f) }
+    var paintPan by remember { mutableStateOf(Offset.Zero) }
+    val currentPaint by androidx.compose.runtime.rememberUpdatedState(onPaint)
+    val currentStart by androidx.compose.runtime.rememberUpdatedState(onPaintStart)
+    val currentEnd by androidx.compose.runtime.rememberUpdatedState(onPaintEnd)
     val climbHolds = remember(frames) { MoonBoardFrameEncoder.parseHolds(frames) }
     val gridRows = variant?.gridRows ?: MoonBoardVariant.GRID_ROWS
     val aspect = when (assetState) {
@@ -91,7 +105,7 @@ internal fun MoonBoardVisualization(
         else -> BOARD_ASPECT_RATIO
     }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
-    val showLattice = editable || onHoldTapped != null
+    val showLattice = editable || onHoldTapped != null || onPaint != null
 
     Card(
         // Constrain the card itself to the board aspect. Putting aspectRatio
@@ -110,7 +124,23 @@ internal fun MoonBoardVisualization(
                 .fillMaxSize()
                 .onSizeChanged { boxSize = it }
                 .let { base ->
-                    if (onHoldTapped == null) base
+                    if (onPaint != null) base.pointerInput(assetState, gridRows, paintableHolds) {
+                        detectPaintGestures(
+                            hit = { screen ->
+                                val pivot = Offset(size.width / 2f, size.height / 2f)
+                                holdIdAt((screen - pivot - paintPan) / paintZoom + pivot, size, assetState, gridRows)
+                                    ?.takeIf { paintableHolds == null || it in paintableHolds }
+                            },
+                            begin = { currentStart() },
+                            paint = { currentPaint?.invoke(it) },
+                            end = { currentEnd() },
+                            transform = { scale, pan ->
+                                paintZoom = (paintZoom * scale).coerceIn(1f, 4f)
+                                paintPan = if (paintZoom <= 1.001f) Offset.Zero else paintPan + pan
+                            },
+                        )
+                    }
+                    else if (onHoldTapped == null) base
                     else base.pointerInput(assetState, gridRows) {
                         detectTapGestures { offset ->
                             holdIdAt(offset, boxSize, assetState, gridRows)?.let(onHoldTapped)
@@ -118,6 +148,10 @@ internal fun MoonBoardVisualization(
                     }
                 },
         ) {
+            Box(Modifier.fillMaxSize().graphicsLayer {
+                scaleX = paintZoom; scaleY = paintZoom
+                translationX = paintPan.x; translationY = paintPan.y
+            }) {
             when (assetState) {
                 is MoonBoardAssetState.Ready -> {
                     val asset = assetState.asset
@@ -137,7 +171,13 @@ internal fun MoonBoardVisualization(
                     }
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         if (showLattice) drawTappableLatticeMapped(asset)
-                        drawClimbHoldsMapped(asset, climbHolds)
+                        if (paintColors == null) drawClimbHoldsMapped(asset, climbHolds)
+                        else paintColors.forEach { (id, color) ->
+                            asset.holdXy[id]?.let { point ->
+                                drawBoardColorOverlay(Offset(point.x * size.width, point.y * size.height),
+                                    size.width * IMAGE_HOLD_RADIUS_FRACTION / 4f, rgb332ToComposeColor(color))
+                            }
+                        }
                     }
                 }
 
@@ -145,13 +185,21 @@ internal fun MoonBoardVisualization(
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val grid = gridRect(size)
                         drawGenericRaster(grid, gridRows)
-                        drawClimbHolds(grid, climbHolds, gridRows)
+                        if (paintColors == null) drawClimbHolds(grid, climbHolds, gridRows)
+                        else paintColors.forEach { (id, color) ->
+                            val column = (id - 1) % MoonBoardVariant.GRID_COLUMNS
+                            val row = (id - 1) / MoonBoardVariant.GRID_COLUMNS
+                            if (row in 0 until gridRows) drawBoardColorOverlay(
+                                holdCentre(grid, column, row, gridRows), cellSpacing(grid, gridRows) * 0.34f / 4f,
+                                rgb332ToComposeColor(color))
+                        }
                     }
                 }
 
                 // Loading: blank card — the real image follows within a
                 // frame or two; no procedural-grid flash.
                 MoonBoardAssetState.Loading -> Unit
+            }
             }
         }
     }
@@ -218,7 +266,7 @@ private fun DrawScope.drawTappableLatticeMapped(asset: MoonBoardRenderAsset) {
  * Bounding box of the 11x18 hold lattice (centre of A1 to centre of
  * K18) for the generic raster — inset from the card edges.
  */
-private fun gridRect(size: Size): Rect = Rect(
+internal fun gridRect(size: Size): Rect = Rect(
     left = size.width * 0.09f,
     top = size.height * 0.055f,
     right = size.width * 0.94f,
@@ -230,7 +278,7 @@ private fun gridRect(size: Size): Rect = Rect(
  * (0 = row 1 at the bottom .. [gridRows]-1 = top row). [gridRows] is the
  * variant's row count (18 standard, 12 for Mini MoonBoard 2020).
  */
-private fun holdCentre(grid: Rect, column: Int, rowIndex: Int, gridRows: Int): Offset {
+internal fun holdCentre(grid: Rect, column: Int, rowIndex: Int, gridRows: Int): Offset {
     val x = grid.left + column * grid.width / (MoonBoardVariant.GRID_COLUMNS - 1)
     val y = grid.top + (gridRows - 1 - rowIndex) *
         grid.height / (gridRows - 1)
@@ -238,7 +286,7 @@ private fun holdCentre(grid: Rect, column: Int, rowIndex: Int, gridRows: Int): O
 }
 
 /** Spacing between adjacent lattice points (smaller of the two axes). */
-private fun cellSpacing(grid: Rect, gridRows: Int): Float = min(
+internal fun cellSpacing(grid: Rect, gridRows: Int): Float = min(
     grid.width / (MoonBoardVariant.GRID_COLUMNS - 1),
     grid.height / (gridRows - 1),
 )

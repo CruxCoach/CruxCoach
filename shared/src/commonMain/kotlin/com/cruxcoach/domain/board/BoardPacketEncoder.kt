@@ -30,7 +30,13 @@ class BoardPacketEncoder(
     /** Physical LEDs per hold (Kilter = 2, every other Aurora board = 1).
      *  Only affects the v2 power-budget calculation; see [ledsPerHoldFor]. */
     private val ledsPerHold: Int = DEFAULT_LEDS_PER_HOLD,
+    /** The v2 power budget a frame is scaled into; never above [V2_MAX_BOARD_POWER]. */
+    private val maxPowerW: Double = V2_MAX_BOARD_POWER,
 ) {
+
+    /** The same encoder with a lower v2 budget, for frames that want headroom. */
+    fun withMaxPower(watts: Double): BoardPacketEncoder =
+        BoardPacketEncoder(apiLevel, ledsPerHold, watts.coerceAtMost(V2_MAX_BOARD_POWER))
 
     companion object {
         const val BLE_MTU = 20
@@ -117,7 +123,11 @@ class BoardPacketEncoder(
         /** Brightness scales tried in order until the board's power budget
          *  fits (BoardSesh V2_POWER_SCALES). 0.0 = budget unmet, all LEDs off. */
         private val V2_POWER_SCALES = doubleArrayOf(1.0, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05)
-        private const val V2_MAX_BOARD_POWER = 18.0
+        const val V2_MAX_BOARD_POWER = 18.0
+        /** A free picture can be a whole wall at full brightness, unlike a climb.
+         *  It keeps the headroom hold cleaning keeps under the 18 W budget
+         *  (500 LEDs at the lowest step, see [cleaningHoldLimit]). */
+        const val V2_PICTURE_MAX_POWER = 500.0 / 30.0
         /** v2 packs the position in a 10-bit field; higher positions are skipped. */
         const val V2_MAX_POSITION = 1023
         /** v2 = 2 bytes/LED → 254 payload bytes / 2 = 127 LEDs per protocol packet. */
@@ -152,7 +162,11 @@ class BoardPacketEncoder(
         /** Largest brightness scale fitting the 18 W v2 budget (BoardSesh
          *  computeV2Scale). [colors] are RGB332 bytes; tries each scale until
          *  ledsPerHold * Σ(r+g+b)/30 ≤ 18, else 0.0 (board can't be driven). */
-        internal fun computeV2Scale(colors: List<Int>, ledsPerHold: Int): Double {
+        internal fun computeV2Scale(
+            colors: List<Int>,
+            ledsPerHold: Int,
+            maxPowerW: Double = V2_MAX_BOARD_POWER,
+        ): Double {
             for (scale in V2_POWER_SCALES) {
                 var totalPower = 0.0
                 for (color in colors) {
@@ -160,9 +174,54 @@ class BoardPacketEncoder(
                     totalPower += (scaledColorV2(r8, scale) + scaledColorV2(g8, scale) +
                         scaledColorV2(b8, scale)) / 30.0
                 }
-                if (ledsPerHold * totalPower <= V2_MAX_BOARD_POWER) return scale
+                if (ledsPerHold * totalPower <= maxPowerW) return scale
             }
             return 0.0
+        }
+
+        // ── API Level 3 picture budget ──────────────────────────────────────
+        // The protocol has no power budget on API 3, and no public source shows
+        // that the box limits itself. A climb lights a few dozen holds; a free
+        // picture can light the whole wall white. Its budget is the load of the
+        // maker's own LED test for a new board: "Turn on the controller box and
+        // test the LED kit using the Kilter Board App. All lights should turn
+        // on, cycling through red, green, blue, then off." (Kilter Board 7x10
+        // Mainline Installation and Setup Guide, step 10; the guides are linked
+        // from https://settercloset.com/pages/kilter-board-installation-handbooks).
+        // So every LED lit in one full colour channel. Nobody has measured how
+        // bright that test is, so this is an estimate, not a measured limit.
+        // One hold position with one channel at full counts 1.
+
+        /** Dimming steps tried in order until a picture fits. */
+        private val V3_PICTURE_SCALES = doubleArrayOf(1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2)
+
+        /** How many full colour channels an RGB332 colour lights (white = 3). */
+        fun v3ChannelLoad(color: Int): Double =
+            ((color shr 5) and 0x07) / 7.0 + ((color shr 2) and 0x07) / 7.0 + (color and 0x03) / 3.0
+
+        /** [color] with every channel scaled down and rounded, so the hue holds as far as
+         *  RGB332 allows; a channel that is on stays on. */
+        internal fun scaleRgb332(color: Int, scale: Double): Int {
+            fun channel(value: Int): Int =
+                if (value == 0) 0 else kotlin.math.floor(value * scale + 0.5).toInt().coerceIn(1, value)
+            return (channel((color shr 5) and 0x07) shl 5) or
+                (channel((color shr 2) and 0x07) shl 2) or
+                channel(color and 0x03)
+        }
+
+        /**
+         * [colors] (RGB332) dimmed evenly until the picture draws no more than
+         * all [holdPositions] of the board lit in one full channel each. A
+         * picture within that budget comes back unchanged.
+         */
+        fun fitV3PictureBudget(colors: List<Int>, holdPositions: Int): List<Int> {
+            val budget = holdPositions.toDouble()
+            for (scale in V3_PICTURE_SCALES) {
+                val scaled = if (scale == 1.0) colors else colors.map { scaleRgb332(it, scale) }
+                if (scaled.sumOf(::v3ChannelLoad) <= budget) return scaled
+            }
+            // Every channel that is on at its lowest step: below one full channel per hold.
+            return colors.map { scaleRgb332(it, 0.0) }
         }
 
         /** Encode one v2 LED as 2 bytes: [posLo, (r2<<6)|(g2<<4)|(b2<<2)|posHi].
@@ -233,7 +292,7 @@ class BoardPacketEncoder(
         // Empty = clear-all: a valid ONLY packet carrying just the type byte.
         if (holds.isEmpty()) return buildPacket(byteArrayOf(API2_ONLY))
 
-        val scale = computeV2Scale(holds.map { it.second }, ledsPerHold)
+        val scale = computeV2Scale(holds.map { it.second }, ledsPerHold, maxPowerW)
         val ledBytes = mutableListOf<Byte>()
         for ((pos, color) in holds) {
             val (lo, colorByte) = encodePositionAndColorV2(pos, color, scale) ?: continue
@@ -297,12 +356,16 @@ class BoardPacketEncoder(
      */
     fun litNothing(holds: List<Pair<Int, Int>>): Boolean {
         if (apiLevel >= 3 || holds.isEmpty()) return false
-        val scale = computeV2Scale(holds.map { it.second }, ledsPerHold)
+        val scale = computeV2Scale(holds.map { it.second }, ledsPerHold, maxPowerW)
         return holds.none { (position, color) ->
             val encoded = encodePositionAndColorV2(position, color, scale) ?: return@none false
             (encoded.second.toInt() and 0xFC) != 0
         }
     }
+
+    /** True when the v2 power budget shows this frame dimmer than its colours. */
+    fun dims(holds: List<Pair<Int, Int>>): Boolean =
+        apiLevel < 3 && holds.isNotEmpty() && computeV2Scale(holds.map { it.second }, ledsPerHold, maxPowerW) < 1.0
 
     /**
      * Encode a clear-board command (no holds = empty packet).

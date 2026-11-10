@@ -1705,6 +1705,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     private suspend fun sendAutomaticallyIfEnabled() {
+        if (bleConnection.automaticProjectionPaused) return
         val mode = try {
             combine(
                 userPreferences.singleConnectionBoardSendMode,
@@ -1742,7 +1743,7 @@ class BoardClimbDetailViewModel @Inject constructor(
             ),
             connectedViaRelay = climbState.ble.connectedViaRelay,
         )
-        if (decision.dispatchAutomatically) {
+        if (decision.dispatchAutomatically && !bleConnection.automaticProjectionPaused) {
             sendController.sendToBoard(automaticLayer = true)
         }
     }
