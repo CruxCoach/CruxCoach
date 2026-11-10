@@ -2,7 +2,15 @@ package com.cruxcoach.android.ui.theme
 
 import android.app.Activity
 import android.os.Build
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -15,6 +23,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
@@ -140,6 +150,9 @@ private class OwnNavigationBar(val color: Int, val lightIcons: Boolean, val cont
  * Sets the bars: the status bar from the theme, and both bars dark with light icons while a screen
  * asks for that. The theme does not style the navigation bar itself, so it keeps what the window
  * had when the dark bars began and gives exactly that back when they end.
+ *
+ * The colours only reach the bars below Android 15. From Android 15 on the window ignores them and
+ * the bars are see-through, so [DarkSystemBarAreas] darkens what lies behind them.
  */
 @Suppress("DEPRECATION") // Below Android 15 the bars take their colours from these window properties.
 @Composable
@@ -175,6 +188,26 @@ private fun SystemBars(darkTheme: Boolean, themeBackground: Color, requests: Sys
     }
 }
 
+/**
+ * From Android 15 on the window is edge to edge and ignores the bar colours: behind the bars shows
+ * what the app draws there, and that is the theme's background, because the screens keep out of
+ * those areas. A dark page between a light status bar strip and a light navigation bar strip had
+ * its light icons on light ground. So while a screen asks for dark bars, these two strips cover
+ * the areas behind the bars with the dark page's colours, the ones the window gets below Android 15.
+ *
+ * They are drawn above the content, are there only while the request stands, and take no touches.
+ * [CruxCoachTheme] puts them next to its content, so it has to be the root of the window's content
+ * (it is: MainActivity's `setContent`), where siblings lie on top of each other.
+ */
+@Composable
+private fun DarkSystemBarAreas(requests: SystemBarRequests) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM || !requests.darkWanted) return
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().windowInsetsTopHeight(WindowInsets.systemBars).background(DarkBackground))
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsBottomHeight(WindowInsets.systemBars).background(DarkSurface))
+    }
+}
+
 @Composable
 fun CruxCoachTheme(
     darkModeSetting: DarkModeSetting = DarkModeSetting.SYSTEM,
@@ -197,7 +230,9 @@ fun CruxCoachTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
-            content = content
-        )
+        ) {
+            content()
+            DarkSystemBarAreas(systemBars)
+        }
     }
 }
