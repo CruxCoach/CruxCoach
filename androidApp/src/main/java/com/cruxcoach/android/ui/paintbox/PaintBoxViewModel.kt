@@ -257,9 +257,12 @@ class PaintBoxViewModel @Inject constructor(
         mutable.update { it.copy(imageImport = session, imageLoading = false) }
     }
     fun imageTransform(transform: PaintImageTransform) {
-        // Once the user moves the photo it has its place, also if the first placement is still being worked out.
+        // Once the user moves the photo it has its place, also if the first placement is still being worked out,
+        // and a request to settle it is over: the hand wins.
         mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
-            it.copy(transform = transform, ready = false, placed = it.placed || transform != it.transform)
+            val byHand = transform != it.transform
+            it.copy(transform = transform, ready = false, placed = it.placed || byHand, moved = it.moved || byHand,
+                aligning = it.aligning && !byHand)
         }) }
     }
     /** The editor has worked out where the photo falls best. It applies unless the photo changed meanwhile. */
@@ -279,7 +282,7 @@ class PaintBoxViewModel @Inject constructor(
         mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
             // Taking a picked color back also takes back the switch it turned on: the photo is as it was loaded.
             if (it.background != null) it.copy(background = null, backgroundOff = it.detected.clear,
-                pickingBackground = false, ready = false)
+                pickingBackground = false, ready = false).refitted()
             else if (it.pickingBackground) it.copy(pickingBackground = false, ready = false)
             else it.copy(pickingBackground = true)
         }) }
@@ -288,14 +291,16 @@ class PaintBoxViewModel @Inject constructor(
         if ((color ushr 24) < 128) return
         // A picked color replaces the detected one and turns the background off.
         mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(background = color and 0xffffff,
-            backgroundOff = true, pickingBackground = false, ready = false)) }
+            backgroundOff = true, pickingBackground = false, ready = false)?.refitted()) }
     }
     /** Whether the photo's background lights no LEDs; a picked color is kept for the next time it is on. */
     fun imageBackgroundOff(off: Boolean) {
         mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
-            if (it.backgroundOff == off) it else it.copy(backgroundOff = off, pickingBackground = false, ready = false)
+            if (it.backgroundOff == off) it else it.copy(backgroundOff = off, pickingBackground = false, ready = false).refitted()
         }) }
     }
+    /** With another background the photo has another content: unless the user has moved it, it is fitted again. */
+    private fun PaintImageSession.refitted() = if (moved) this else copy(placed = false, aligning = false)
     fun imagePreview(source: PaintImageSession, colors: Map<Int, Int>) {
         if (state.value.imageImport !== source) return
         mutable.update { it.copy(imageImport = source.copy(colors = colors, ready = true)) }

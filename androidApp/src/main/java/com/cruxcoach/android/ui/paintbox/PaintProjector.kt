@@ -95,7 +95,7 @@ class PaintProjector @Inject constructor(
         val connected = ble.connectedBoard ?: throw PaintProjectionException(R.string.paintbox_connect_error)
         val fence = BoardLayerBoardIdentity(PhysicalBoardIdentity.resolve(connected).value, document.board.sizeId.toLong())
         val groups = document.colors.entries.groupBy({ it.value }, { it.key })
-        if (groups.values.any { it.size > 92 }) throw PaintProjectionException(R.string.paintbox_quantum_limit)
+        if (groups.values.any { it.size > PAINT_QUANTUM_MOST }) throw PaintProjectionException(R.string.paintbox_quantum_limit)
         if (!ble.refreshQuantumState() || !current()) return false
         // Unknown foreign geometry cannot prove non-overlap. Fail before making any change.
         if (ble.quantumControllerState.value.players.any { !layers.ownsPaintIdentity(it.userId) }) {

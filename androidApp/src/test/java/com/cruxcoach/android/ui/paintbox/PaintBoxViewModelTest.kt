@@ -263,6 +263,21 @@ class PaintBoxViewModelTest {
         vm.imagePlaced(aligning, settled)
         assertEquals(settled, vm.state.value.imageImport!!.transform)
         assertFalse(vm.state.value.imageImport!!.aligning)
+        // Another background before the user has moved the photo: it is fitted again.
+        vm.imageBackground(0xff112233.toInt())
+        assertFalse(vm.state.value.imageImport!!.placed)
+        vm.imagePlaced(vm.state.value.imageImport!!, fitted)
+        // Moving the photo while a request to settle it runs ends the request: the hand wins.
+        vm.imageAlign()
+        assertTrue(vm.state.value.imageImport!!.aligning)
+        val byHand = fitted.copy(zoom = 2f)
+        vm.imageTransform(byHand)
+        assertFalse(vm.state.value.imageImport!!.aligning)
+        assertTrue(vm.state.value.imageImport!!.moved)
+        // A photo the user has moved stays where it is when the background changes.
+        vm.imageBackgroundOff(false)
+        assertTrue(vm.state.value.imageImport!!.placed)
+        assertEquals(byHand, vm.state.value.imageImport!!.transform)
         // Moving a photo by hand before its first placement is done keeps it where the user put it.
         vm.startImage(mockk())
         val moved = PaintImageTransform(center = androidx.compose.ui.geometry.Offset(.3f, .3f))

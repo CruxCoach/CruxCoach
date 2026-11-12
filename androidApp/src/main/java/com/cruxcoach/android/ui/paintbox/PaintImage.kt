@@ -64,12 +64,17 @@ data class PaintImageSession(
     val placed: Boolean = true,
     /** The user asked to settle the photo on the holds where it lies. */
     val aligning: Boolean = false,
+    /** The user has moved the photo by hand: it is not fitted again when the background changes. */
+    val moved: Boolean = false,
     /** The prepared picture; it is made again only when the background changes. */
     internal val pictures: PaintPictures = PaintPictures(),
 ) {
     /** The colour that stays dark, or null when the whole picture is lit. */
     val darkBackground: Int? get() = if (backgroundOff) background ?: detected.color else null
 }
+
+/** A Quantum board lights this many holds of one color at most. */
+internal const val PAINT_QUANTUM_MOST = 92
 
 /** Keeps the prepared picture of a photo for the background it was prepared with. */
 class PaintPictures {
@@ -113,10 +118,14 @@ internal object PaintImageSampling {
             PaintPalette.forBoard(brand))
     }
 
-    /** Where the photo falls most cleanly on the holds: a new photo anywhere on the board, a placed one close to where it lies. */
-    fun place(session: PaintImageSession, viewport: Size, points: Map<Int, Offset>): PaintImageTransform {
+    /**
+     * Where the photo falls most cleanly on the holds: a new photo anywhere on the board, a placed one close to
+     * where it lies. On a Quantum board a new photo is made small enough to be sent.
+     */
+    fun place(session: PaintImageSession, viewport: Size, points: Map<Int, Offset>, brand: BoardBrand): PaintImageTransform {
         val image = Size(session.bitmap.width.toFloat(), session.bitmap.height.toFloat())
-        return PaintImageMapping.place(picture(session), image, viewport, points, session.transform.takeIf { session.placed })
+        return PaintImageMapping.place(picture(session), image, viewport, points, session.transform.takeIf { session.placed },
+            PaintPalette.forBoard(brand), if (brand == BoardBrand.QUANTUM) PAINT_QUANTUM_MOST else Int.MAX_VALUE)
     }
 }
 

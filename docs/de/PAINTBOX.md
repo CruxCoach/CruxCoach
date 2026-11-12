@@ -60,10 +60,12 @@ das Boardfoto, die Holds bleiben an ihrem Platz:
 - Ein neues Foto wird für dich eingepasst: Sein Motiv füllt das Board, und es
   wird ein wenig verschoben und verkleinert, bis seine Umrisse zwischen den
   Holds liegen, seine Linien über Holds laufen und ein spiegelgleiches Bild
-  ein spiegelgleiches Muster ergibt.
-- Ein Finger verschiebt es, zwei Finger zoomen und drehen es. **Ausrichten**
-  rückt es danach wieder auf den Holds zurecht, nahe an deiner Lage; deine
-  Drehung bleibt.
+  ein spiegelgleiches Muster ergibt. Auf einem Quantum-Board wird es außerdem
+  so klein, dass keine Farbe mehr als 92 LEDs braucht. Wählst du einen anderen
+  Hintergrund, bevor du das Foto bewegst, wird es neu eingepasst.
+- Ein Finger verschiebt es, zwei Finger zoomen und drehen es. **Auf Holds
+  setzen** rückt es danach wieder auf den Holds zurecht, nahe an deiner Lage.
+  Gedreht wird das Foto dabei nicht.
 - Jeder Hold betrachtet die Fläche um sich herum und bekommt die Farbe, die
   ihn überwiegend bedeckt, in der ähnlichsten Board-Farbe. Ein Hold leuchtet, wenn
   das Bild ihn etwa zur Hälfte bedeckt; entlang einer Linie, die dünner ist

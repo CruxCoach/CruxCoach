@@ -85,7 +85,14 @@ internal fun PaintImageEditor(state: PaintBoxState, vm: PaintBoxViewModel) {
             if (size.width > 0 && holds.isNotEmpty()) {
                 if (!placed.placed || placed.aligning) {
                     // A new photo is put in place before it is mapped; so is one the user asked to align.
-                    val transform = withContext(Dispatchers.Default) { PaintImageSampling.place(placed, size, holds) }
+                    // If that fails, the photo stays where it is and is mapped there.
+                    val transform = try {
+                        withContext(Dispatchers.Default) { PaintImageSampling.place(placed, size, holds, brand) }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        placed.transform
+                    }
                     vm.imagePlaced(placed, transform)
                 } else if (!placed.ready) {
                     val colors = withContext(Dispatchers.Default) { PaintImageSampling.sample(placed, size, holds, brand) }

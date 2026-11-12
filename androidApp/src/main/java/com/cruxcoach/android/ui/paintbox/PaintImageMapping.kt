@@ -104,6 +104,13 @@ internal object PaintImageMapping {
     private const val GLOW_LOW = 0.45f
     private const val GLOW_HIGH = 0.72f
     private const val HISTOGRAM = 512
+    /**
+     * A flat tone is a narrow band of distances that holds this share of the picture and stands this many
+     * times above the levels beside it. It is part of the picture however faint it is; a halo or a glow is
+     * spread over many levels.
+     */
+    private const val FLAT_SHARE = 0.02f
+    private const val FLAT_OVER = 3f
     /** How much the holds around a hold move its half-coverage bar. */
     private const val SMOOTH = 0.3f
     private const val FILL = 0.15f
@@ -126,10 +133,13 @@ internal object PaintImageMapping {
     private const val LEVEL_MIN = 0.35f
     /** LED colours whose parts of the picture are this alike (OKLab) are one colour; more so with few LED colours. */
     private const val ALIKE = 0.07f
-    private const val ALIKE_FEW = 0.16f
+    private const val ALIKE_FEW = 0.12f
     /** A patch of a colour with fewer holds takes the colour around it, unless one of its holds is this much of one colour. */
     private const val PATCH = 4
     private const val SOLID = 0.8f
+    /** A lone hold stays when its own disc is covered this much, or the wider one this much: a dot, not a speck. */
+    private const val DOT = 0.4f
+    private const val DOT_WIDE = 0.16f
     /** Placement: zoom steps of 1.25 % down to 90 %, shifts in sixths of the hold spacing up to one spacing. */
     private const val ZOOM_STEPS = 9
     private const val ZOOM_STEP = 0.0125f
@@ -279,22 +289,28 @@ internal object PaintImageMapping {
             }
             if (size > 0) {
                 val top = quantile(bins, size, 0.95f)
+                val level = flatLevels(bins, size)
+                fun flat(o: Int) = away[o] >= 1.5f * TOLERANCE && level[min(HISTOGRAM - 1, (away[o] * HISTOGRAM / 2f).toInt())]
                 var low = TOLERANCE
                 var full = max(TOLERANCE * 1.5f, 0.5f * top)
                 if (!ink) {
-                    if (backgroundLab[0] >= LIGHT) {
-                        // A glow needs a dark background. On a light one, what differs by more than a halo is the
-                        // picture: yellow, cyan and light grey lie close to white, far from a dark colour beside them.
-                        full = min(full, CLEAR)
-                    } else {
+                    // Without a glow, what differs from the background by more than a halo is the picture, on a
+                    // light ground and on a dark one: yellow lies close to white, navy close to black.
+                    val capped = min(full, CLEAR)
+                    full = capped
+                    if (backgroundLab[0] < LIGHT) {
+                        // A glow needs a dark background. When much of what differs from it differs only faintly,
+                        // without being a flat tone, the picture glows: then only its strong parts count.
                         var faint = 0
-                        for (bin in 0 until HISTOGRAM) if ((bin + 0.5f) * 2f / HISTOGRAM < FAINT * top) faint += bins[bin]
+                        for (o in 0 until count) if (weight[o] > 0f && !dark[o] && away[o] < FAINT * top && !flat(o)) faint++
                         val glow = ((faint.toFloat() / size - GLOW_FROM) / (GLOW_FULL - GLOW_FROM)).coerceIn(0f, 1f)
                         low += glow * (GLOW_LOW * top - low)
-                        full += glow * (GLOW_HIGH * top - full)
+                        full = capped + glow * (GLOW_HIGH * top - capped)
                     }
                 }
-                for (o in 0 until count) if (weight[o] > 0f) weight[o] = ((away[o] - low) / (full - low)).coerceIn(0f, 1f)
+                for (o in 0 until count) if (weight[o] > 0f) {
+                    weight[o] = if (flat(o)) 1f else ((away[o] - low) / (full - low)).coerceIn(0f, 1f)
+                }
             }
         }
         if (!ink) for (o in 0 until count) if (dark[o]) weight[o] = 0f
@@ -324,15 +340,33 @@ internal object PaintImageMapping {
             mirrorX = bothX > 0.9f * anyX, mirrorY = bothY > 0.9f * anyY)
     }
 
-    /** First and one past the last index that hold all but the outer 0.2 % of [total]. */
+    /** Which bins of the distance histogram are flat tones (see [FLAT_SHARE]). */
+    private fun flatLevels(bins: IntArray, size: Int): BooleanArray {
+        val n = bins.size
+        val sums = IntArray(n + 1)
+        for (bin in 0 until n) sums[bin + 1] = sums[bin] + bins[bin]
+        fun total(from: Int, to: Int) = sums[to.coerceIn(0, n)] - sums[from.coerceIn(0, n)]
+        val flat = BooleanArray(n)
+        for (bin in 0 until n) {
+            if (bins[bin] == 0) continue
+            val band = total(bin - 3, bin + 4)
+            if (band < FLAT_SHARE * size) continue
+            // against the denser of the two sides: at the edge of the range one side is empty
+            val beside = max(total(bin - 24, bin - 7), total(bin + 8, bin + 25)) / 17f
+            if (band / 7f >= FLAT_OVER * beside) for (k in max(0, bin - 3)..min(n - 1, bin + 3)) flat[k] = true
+        }
+        return flat
+    }
+
+    /** First and one past the last index that hold all but the outer 0.03 % of [total]. */
     private fun span(counts: IntArray, total: Int): IntArray {
         var sum = 0
         var first = -1
         var last = counts.size - 1
         for (i in counts.indices) {
             sum += counts[i]
-            if (first < 0 && sum > 0.002f * total) first = i
-            if (sum >= 0.998f * total) { last = i; break }
+            if (first < 0 && sum > 0.0003f * total) first = i
+            if (sum >= 0.9997f * total) { last = i; break }
         }
         return intArrayOf(max(0, first), last + 1)
     }
@@ -468,15 +502,40 @@ internal object PaintImageMapping {
                 var only = -1
                 for (j in near[i]) if (lit[j] && linked(i, j)) { on++; only = j }
                 val drop = when (on) {
-                    0 -> cover[i] < 0.5f
+                    0 -> cover[i] < DOT && wide[i] < DOT_WIDE
                     1 -> wide[i] < max(LINE, LINE_END * wide[only])
                     else -> spare(i, lit, near, ::linked)
                 }
                 if (drop) { lit[i] = false; changed = true }
             }
         }
-        // Drop lone specks unless the picture really covers that hold.
-        for (i in 0 until n) if (lit[i] && cover[i] < 0.8f && near[i].none { lit[it] }) lit[i] = false
+        // What is left of two line holds that touch no area is a dot: one hold, the stronger.
+        val seen = BooleanArray(n)
+        for (i in 0 until n) if (lit[i] && !area[i] && !seen[i]) {
+            val group = arrayListOf(i)
+            val stack = ArrayDeque(listOf(i))
+            var alone = true
+            seen[i] = true
+            while (stack.isNotEmpty()) {
+                val from = stack.removeLast()
+                for (to in near[from]) if (lit[to]) {
+                    if (area[to]) alone = false else if (!seen[to]) { seen[to] = true; group.add(to); stack.add(to) }
+                }
+            }
+            if (alone && group.size == 2) {
+                val a = group[0]
+                val b = group[1]
+                val keep = when {
+                    wide[a] != wide[b] -> if (wide[a] > wide[b]) a else b
+                    cover[a] != cover[b] -> if (cover[a] > cover[b]) a else b
+                    else -> min(a, b)
+                }
+                lit[a] = a == keep
+                lit[b] = b == keep
+            }
+        }
+        // A lone hold stays when the picture covers a good part of it: a dot about a hold in size, not a speck.
+        for (i in 0 until n) if (lit[i] && cover[i] < DOT && wide[i] < DOT_WIDE && near[i].none { lit[it] }) lit[i] = false
         return lit
     }
 
@@ -629,8 +688,8 @@ internal object PaintImageMapping {
         }
         // Two LED colours whose parts of the picture look alike are one colour of the picture: a hue between
         // two of the board's few colours must not flip from hold to hold. A photo that fills the frame keeps
-        // its shades on a board that can show them.
-        while (removed || few) {
+        // its shades and its bands of colour.
+        while (removed) {
             val groups = holds.groupBy { color[it] }
             if (groups.size < 2) break
             val means = groups.mapValues { (_, members) ->
@@ -689,10 +748,16 @@ internal object PaintImageMapping {
      * it, lines run over holds, and a picture that mirrors gets a mirrored pattern. A photo without a
      * removed background has no shapes to settle and is only fitted.
      *
+     * A board may light only [most] holds of one colour of its [palette]: a new photo is then made smaller,
+     * about its content, until it does not ask for more.
+     *
      * @param image the size the transform refers to (the photo's own size)
      * @param points hold id to its position in the viewport
      */
-    fun place(picture: PaintPicture, image: Size, viewport: Size, points: Map<Int, Offset>, from: PaintImageTransform? = null): PaintImageTransform {
+    fun place(
+        picture: PaintPicture, image: Size, viewport: Size, points: Map<Int, Offset>, from: PaintImageTransform? = null,
+        palette: List<Int> = emptyList(), most: Int = Int.MAX_VALUE,
+    ): PaintImageTransform {
         val fallback = from ?: PaintImageTransform()
         val n = points.size
         if (n < 3 || viewport.width <= 0f || viewport.height <= 0f || image.width <= 0f || image.height <= 0f) return fallback
@@ -720,107 +785,131 @@ internal object PaintImageMapping {
         var minY = y[0]
         var maxY = y[0]
         for (i in 1 until n) { minX = min(minX, x[i]); maxX = max(maxX, x[i]); minY = min(minY, y[i]); maxY = max(maxY, y[i]) }
-        val start = from ?: run {
+        val fitted = from ?: run {
             val pad = 0.5f * spacing
             val zoom = (min((maxX - minX + 2 * pad) / (right - left), (maxY - minY + 2 * pad) / (bottom - top)) / base).coerceIn(.1f, 20f)
             val scale = base * zoom
             PaintImageTransform(Offset(((minX + maxX) / 2 - qx * scale) / viewport.width, ((minY + maxY) / 2 - qy * scale) / viewport.height), zoom, 0f)
         }
-        if (from == null && !picture.removed) return start
+        // A placement that is not a number cannot be settled.
+        if (!(fitted.zoom.isFinite() && fitted.center.x.isFinite() && fitted.center.y.isFinite() && fitted.degrees.isFinite())) return fallback
 
-        val degrees = start.degrees
-        val mirrorX = picture.mirrorX && abs(degrees) <= 0.5f
-        val mirrorY = picture.mirrorY && abs(degrees) <= 0.5f
-        val radians = degrees * PI.toFloat() / 180f
-        val rx = qx * cos(radians) - qy * sin(radians)
-        val ry = qx * sin(radians) + qy * cos(radians)
-        // where the content's centre lies now, in the viewport
-        val centreX = start.center.x * viewport.width + rx * base * start.zoom
-        val centreY = start.center.y * viewport.height + ry * base * start.zoom
-        val pad = 0.55f * spacing
-        val partners = HashMap<Int, IntArray>()
-        fun uneven(lit: BooleanArray, axis: Float, upright: Boolean): Float {
-            val partner = partners.getOrPut((axis * 100f).roundToInt() * 2 + if (upright) 1 else 0) {
-                IntArray(n) { i ->
-                    val tx = if (upright) 2 * axis - x[i] else x[i]
-                    val ty = if (upright) y[i] else 2 * axis - y[i]
-                    var best = -1
-                    var bestGap = 0.12f * spacing
-                    for (j in 0 until n) {
-                        if (abs(y[j] - ty) >= bestGap || abs(x[j] - tx) >= bestGap) continue
-                        val gap = hypot(x[j] - tx, y[j] - ty)
-                        if (gap < bestGap) { bestGap = gap; best = j }
+        fun settle(start: PaintImageTransform): PaintImageTransform {
+            val degrees = start.degrees
+            val mirrorX = picture.mirrorX && abs(degrees) <= 0.5f
+            val mirrorY = picture.mirrorY && abs(degrees) <= 0.5f
+            val radians = degrees * PI.toFloat() / 180f
+            val rx = qx * cos(radians) - qy * sin(radians)
+            val ry = qx * sin(radians) + qy * cos(radians)
+            // where the content's centre lies now, in the viewport
+            val centreX = start.center.x * viewport.width + rx * base * start.zoom
+            val centreY = start.center.y * viewport.height + ry * base * start.zoom
+            val pad = 0.55f * spacing
+            val partners = HashMap<Int, IntArray>()
+            fun uneven(lit: BooleanArray, axis: Float, upright: Boolean): Float {
+                val partner = partners.getOrPut((axis * 100f).roundToInt() * 2 + if (upright) 1 else 0) {
+                    IntArray(n) { i ->
+                        val tx = if (upright) 2 * axis - x[i] else x[i]
+                        val ty = if (upright) y[i] else 2 * axis - y[i]
+                        var best = -1
+                        var bestGap = 0.12f * spacing
+                        for (j in 0 until n) {
+                            if (abs(y[j] - ty) >= bestGap || abs(x[j] - tx) >= bestGap) continue
+                            val gap = hypot(x[j] - tx, y[j] - ty)
+                            if (gap < bestGap) { bestGap = gap; best = j }
+                        }
+                        best
                     }
-                    best
+                }
+                var on = 0
+                var paired = 0
+                for (i in 0 until n) if (lit[i]) { on++; if (partner[i] >= 0 && lit[partner[i]]) paired++ }
+                return if (on == 0) 1f else 1f - paired.toFloat() / on
+            }
+            fun mirrored(lit: BooleanArray, ax: Float, ay: Float) =
+                (if (mirrorX) MIRROR_X * uneven(lit, ax, true) else 0f) + (if (mirrorY) MIRROR_Y * uneven(lit, ay, false) else 0f)
+
+            class Trial(val score: Float, val transform: PaintImageTransform, val rest: Float, val ax: Float, val ay: Float)
+            val trials = ArrayList<Trial>()
+            for (step in 0 until ZOOM_STEPS) {
+                val smaller = step * ZOOM_STEP
+                val zoom = start.zoom * (1f - smaller)
+                if (zoom < .1f) break
+                val scale = base * zoom
+                val halfWidth = (right - left) / 2 * scale
+                val halfHeight = (bottom - top) / 2 * scale
+                for (sx in -SHIFT_STEPS..SHIFT_STEPS) for (sy in -SHIFT_STEPS..SHIFT_STEPS) {
+                    val ax = centreX + sx * spacing / SHIFT_STEPS
+                    val ay = centreY + sy * spacing / SHIFT_STEPS
+                    // A new photo keeps its content on the holds.
+                    if (from == null && (ax - halfWidth < minX - pad - 1e-3f || ay - halfHeight < minY - pad - 1e-3f ||
+                            ax + halfWidth > maxX + pad + 1e-3f || ay + halfHeight > maxY + pad + 1e-3f)) continue
+                    val transform = PaintImageTransform(Offset((ax - rx * scale) / viewport.width, (ay - ry * scale) / viewport.height), zoom, degrees)
+                    val cover = cover(picture, transform.pixelMap(image, viewport, picture.pixels), x, y, graph, 1f)
+                    val area = areas(graph, cover)
+                    // Beside an area a partly covered hold is a ragged outline. Away from any area it is a line, and a
+                    // line is placed well when few holds carry it strongly instead of many weakly.
+                    var off = 0f
+                    var sum = 0f
+                    for (i in 0 until n) {
+                        sum += cover[i]
+                        off += when {
+                            area[i] -> 1f - cover[i]
+                            cover[i] <= 0f -> 0f
+                            near[i].any { area[it] } -> cover[i]
+                            else -> cover[i] * (1f - min(1f, cover[i] / 0.5f))
+                        }
+                    }
+                    val rest = SMALLER * smaller + FARTHER * (abs(sx) + abs(sy)).toFloat() / SHIFT_STEPS
+                    trials.add(Trial(off / max(1f, sum) + mirrored(area, ax, ay) + rest, transform, rest, ax, ay))
                 }
             }
-            var on = 0
-            var paired = 0
-            for (i in 0 until n) if (lit[i]) { on++; if (partner[i] >= 0 && lit[partner[i]]) paired++ }
-            return if (on == 0) 1f else 1f - paired.toFloat() / on
-        }
-        fun mirrored(lit: BooleanArray, ax: Float, ay: Float) =
-            (if (mirrorX) MIRROR_X * uneven(lit, ax, true) else 0f) + (if (mirrorY) MIRROR_Y * uneven(lit, ay, false) else 0f)
-
-        class Trial(val score: Float, val transform: PaintImageTransform, val rest: Float, val ax: Float, val ay: Float)
-        val trials = ArrayList<Trial>()
-        for (step in 0 until ZOOM_STEPS) {
-            val smaller = step * ZOOM_STEP
-            val zoom = start.zoom * (1f - smaller)
-            if (zoom < .1f) break
-            val scale = base * zoom
-            val halfWidth = (right - left) / 2 * scale
-            val halfHeight = (bottom - top) / 2 * scale
-            for (sx in -SHIFT_STEPS..SHIFT_STEPS) for (sy in -SHIFT_STEPS..SHIFT_STEPS) {
-                val ax = centreX + sx * spacing / SHIFT_STEPS
-                val ay = centreY + sy * spacing / SHIFT_STEPS
-                // A new photo keeps its content on the holds.
-                if (from == null && (ax - halfWidth < minX - pad - 1e-3f || ay - halfHeight < minY - pad - 1e-3f ||
-                        ax + halfWidth > maxX + pad + 1e-3f || ay + halfHeight > maxY + pad + 1e-3f)) continue
-                val transform = PaintImageTransform(Offset((ax - rx * scale) / viewport.width, (ay - ry * scale) / viewport.height), zoom, degrees)
-                val cover = cover(picture, transform.pixelMap(image, viewport, picture.pixels), x, y, graph, 1f)
+            if (trials.isEmpty()) return start
+            // The best of the first pass again, now with their lines.
+            var best = start
+            var bestScore = Float.MAX_VALUE
+            for (trial in trials.withIndex().sortedWith(compareBy({ it.value.score }, { it.index })).take(KEEP).map { it.value }) {
+                val toPixel = trial.transform.pixelMap(image, viewport, picture.pixels)
+                val cover = cover(picture, toPixel, x, y, graph, 1f)
+                val footX = FloatArray(n)
+                val footY = FloatArray(n)
+                val wide = cover(picture, toPixel, x, y, graph, WIDE, footX = footX, footY = footY)
                 val area = areas(graph, cover)
-                // Beside an area a partly covered hold is a ragged outline. Away from any area it is a line, and a
-                // line is placed well when few holds carry it strongly instead of many weakly.
+                val lit = lit(graph, x, y, cover, wide, area, footX, footY)
+                var strongest = 0f
+                for (i in 0 until n) if (lit[i] && !area[i] && wide[i] > strongest) strongest = wide[i]
+                if (strongest <= 0f) strongest = 1f
                 var off = 0f
                 var sum = 0f
                 for (i in 0 until n) {
                     sum += cover[i]
-                    off += when {
-                        area[i] -> 1f - cover[i]
-                        cover[i] <= 0f -> 0f
-                        near[i].any { area[it] } -> cover[i]
-                        else -> cover[i] * (1f - min(1f, cover[i] / 0.5f))
-                    }
+                    off += if (area[i]) 1f - cover[i] else if (lit[i]) OFF_LINE * (1f - min(1f, wide[i] / strongest)) else cover[i]
                 }
-                val rest = SMALLER * smaller + FARTHER * (abs(sx) + abs(sy)).toFloat() / SHIFT_STEPS
-                trials.add(Trial(off / max(1f, sum) + mirrored(area, ax, ay) + rest, transform, rest, ax, ay))
+                val score = off / max(1f, sum) + mirrored(lit, trial.ax, trial.ay) + trial.rest
+                if (score < bestScore) { bestScore = score; best = trial.transform }
             }
+            return best
         }
-        if (trials.isEmpty()) return start
-        // The best of the first pass again, now with their lines.
-        var best = start
-        var bestScore = Float.MAX_VALUE
-        for (trial in trials.withIndex().sortedWith(compareBy({ it.value.score }, { it.index })).take(KEEP).map { it.value }) {
-            val toPixel = trial.transform.pixelMap(image, viewport, picture.pixels)
-            val cover = cover(picture, toPixel, x, y, graph, 1f)
-            val footX = FloatArray(n)
-            val footY = FloatArray(n)
-            val wide = cover(picture, toPixel, x, y, graph, WIDE, footX = footX, footY = footY)
-            val area = areas(graph, cover)
-            val lit = lit(graph, x, y, cover, wide, area, footX, footY)
-            var strongest = 0f
-            for (i in 0 until n) if (lit[i] && !area[i] && wide[i] > strongest) strongest = wide[i]
-            if (strongest <= 0f) strongest = 1f
-            var off = 0f
-            var sum = 0f
-            for (i in 0 until n) {
-                sum += cover[i]
-                off += if (area[i]) 1f - cover[i] else if (lit[i]) OFF_LINE * (1f - min(1f, wide[i] / strongest)) else cover[i]
-            }
-            val score = off / max(1f, sum) + mirrored(lit, trial.ax, trial.ay) + trial.rest
-            if (score < bestScore) { bestScore = score; best = trial.transform }
+        if (from != null) return settle(from)
+
+        fun fits(transform: PaintImageTransform): Boolean {
+            if (most == Int.MAX_VALUE || palette.isEmpty()) return true
+            val colors = map(picture, transform.pixelMap(image, viewport, picture.pixels), points, palette)
+            return colors.values.groupingBy { it }.eachCount().values.all { it <= most }
         }
+        // smaller about the content's centre, which stays where it is (a new photo is not turned)
+        fun smaller(transform: PaintImageTransform): PaintImageTransform {
+            val zoom = transform.zoom * 0.95f
+            val less = base * (transform.zoom - zoom)
+            return transform.copy(center = Offset(transform.center.x + qx * less / viewport.width, transform.center.y + qy * less / viewport.height), zoom = zoom)
+        }
+        var start = fitted
+        var tries = 0
+        while (tries++ < 24 && start.zoom > .1f && !fits(start)) start = smaller(start)
+        if (!picture.removed) return start
+        var best = settle(start)
+        tries = 0
+        while (tries++ < 4 && start.zoom > .1f && !fits(best)) { start = smaller(start); best = settle(start) }
         return best
     }
 

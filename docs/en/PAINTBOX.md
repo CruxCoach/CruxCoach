@@ -57,8 +57,12 @@ the board photo while the holds stay in place:
 - A new photo is put in place for you: its subject fills the board, and it
   is shifted and scaled a little until its outlines fall between holds, its
   lines run over holds and a picture that mirrors lights a mirrored pattern.
-- Drag it with one finger; zoom and turn it with two. **Align** then settles
-  it on the holds again, close to where you put it; it keeps your rotation.
+  On a Quantum board it is also made small enough that no color needs more
+  than 92 LEDs. When you choose another background before moving the photo,
+  it is fitted again.
+- Drag it with one finger; zoom and turn it with two. **Snap to holds** then
+  settles it on the holds again, close to where you put it. It does not turn
+  the photo.
 - Each hold looks at the area around it and takes the color that covers most
   of it, as the nearest board color. A hold is lit when the picture covers
   about half of it; along a line thinner than the hold spacing less is enough,
