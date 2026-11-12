@@ -336,6 +336,13 @@ internal fun hasCompleteQuantumLedMapping(
 internal fun hasConfirmableQuantumDiodeCount(holds: List<BoardHold>): Boolean =
     holds.size <= QuantumBoardPacketEncoder.ACTIVATE_CHUNK_LIMIT
 
+/**
+ * Whether an activation of [holds] may be written: always when it fits one message. LED lab only:
+ * also in several messages when a PaintBox send asks for it ([LedLab.quantumSeveralMessagesNow]).
+ */
+internal fun quantumActivationAllowed(holds: List<BoardHold>, labSeveralMessages: Boolean): Boolean =
+    hasConfirmableQuantumDiodeCount(holds) || labSeveralMessages
+
 internal fun boardScopedCommandAllowed(
     connectedBrand: BoardBrand?,
     expectedBrand: BoardBrand?,
@@ -1909,7 +1916,10 @@ class BoardBleConnection(
     ): Boolean {
         // A long cleaning frame may span a disconnect/reconnect. Never write
         // remaining chunks to a retired link or let its timeout retire a new one.
-        if (gatt !== currentGatt || writeCharacteristic !== characteristic) return false
+        if (gatt !== currentGatt || writeCharacteristic !== characteristic) {
+            LedLab.wrote(LedLab.FailureKind.LINK_GONE)
+            return false
+        }
         val deferred = CompletableDeferred<Int>()
         val pending = PendingGattWrite(currentGatt, characteristic, deferred)
         pendingWrite = pending
@@ -1919,6 +1929,7 @@ class BoardBleConnection(
         if (!queued) {
             Log.w(TAG, "writeCharacteristic returned false (not queued)")
             if (pendingWrite === pending) pendingWrite = null
+            LedLab.wrote(LedLab.FailureKind.NOT_QUEUED)
             delay(100)
             return false
         }
@@ -1928,12 +1939,21 @@ class BoardBleConnection(
 
         if (status == null) {
             Log.w(TAG, "Write timed out after ${WRITE_TIMEOUT_MS}ms")
+            LedLab.wrote(LedLab.FailureKind.NO_ANSWER)
             // Android does not give write callbacks an operation token. Retire
             // this GATT so a late callback cannot acknowledge a later write on
             // the same characteristic.
             if (gatt === currentGatt) disconnect()
             return false
         }
+        LedLab.wrote(
+            when {
+                status != BluetoothGatt.GATT_SUCCESS -> LedLab.FailureKind.STATUS
+                gatt !== currentGatt -> LedLab.FailureKind.LINK_GONE
+                else -> null
+            },
+            status,
+        )
         return status == BluetoothGatt.GATT_SUCCESS && gatt === currentGatt
     }
 
@@ -1951,6 +1971,7 @@ class BoardBleConnection(
         val characteristic = writeCharacteristic ?: return false
         val currentGatt = gatt ?: return false
         _boardWrites.value++
+        LedLab.frame(chunks)
         if (_connectedBoardBrand.value == BoardBrand.SHINYWALL) {
             for ((i, chunk) in chunks.withIndex()) {
                 delay(shinyWallGapBeforeMs(chunk))
@@ -2051,7 +2072,7 @@ class BoardBleConnection(
             return false
         }
         if (_connectedBoardBrand.value == BoardBrand.QUANTUM &&
-            !hasConfirmableQuantumDiodeCount(holds)
+            !quantumActivationAllowed(holds, LedLab.quantumSeveralMessagesNow())
         ) {
             // Route-list readback cannot prove append/atomicity across multiple
             // ACTIVATE_WALL frames. Fail closed until captured hardware evidence
@@ -2616,6 +2637,17 @@ class BoardBleConnection(
         frames: String,
         variant: com.cruxcoach.domain.board.MoonBoardVariant,
         ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
+    ): Boolean = sendMoonBoardClimb(frames, variant, ledMode, MOONBOARD_UART_INTER_CHUNK_DELAY_MS)
+
+    /**
+     * LED lab only: [sendMoonBoardClimb] with [interChunkDelayMs] between the 20-byte writes
+     * instead of the release build's pause. PaintBox is the only caller.
+     */
+    suspend fun sendMoonBoardClimb(
+        frames: String,
+        variant: com.cruxcoach.domain.board.MoonBoardVariant,
+        ledMode: MoonBoardLedMode,
+        interChunkDelayMs: Long,
     ): Boolean = writeMutex.withLock {
         if (cleaningState.value.active) return false
         val cleaningTicket = cleaning.ticket()
@@ -2637,7 +2669,7 @@ class BoardBleConnection(
             val success = withContext(NonCancellable) {
                 writeChunks(
                     chunks,
-                    interChunkDelayMs = MOONBOARD_UART_INTER_CHUNK_DELAY_MS,
+                    interChunkDelayMs = interChunkDelayMs,
                 )
             }
             _litFrame.value = null

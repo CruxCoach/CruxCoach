@@ -7,6 +7,7 @@ import android.graphics.ColorSpace
 import android.net.Uri
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import com.cruxcoach.android.ble.LedLab
 import com.cruxcoach.domain.board.BoardBrand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -125,7 +126,9 @@ internal object PaintImageSampling {
     fun place(session: PaintImageSession, viewport: Size, points: Map<Int, Offset>, brand: BoardBrand): PaintImageTransform {
         val image = Size(session.bitmap.width.toFloat(), session.bitmap.height.toFloat())
         return PaintImageMapping.place(picture(session), image, viewport, points, session.transform.takeIf { session.placed },
-            PaintPalette.forBoard(brand), if (brand == BoardBrand.QUANTUM) PAINT_QUANTUM_MOST else Int.MAX_VALUE)
+            PaintPalette.forBoard(brand),
+            // LED lab: with the Quantum switch on, a new photo is not made smaller to stay within 92 LEDs a color.
+            if (brand == BoardBrand.QUANTUM && !LedLab.switches.value.quantumSeveralMessages) PAINT_QUANTUM_MOST else Int.MAX_VALUE)
     }
 }
 

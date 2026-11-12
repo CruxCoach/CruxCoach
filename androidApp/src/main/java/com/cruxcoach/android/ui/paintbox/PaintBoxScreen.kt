@@ -11,8 +11,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
@@ -47,6 +49,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.LedLab
 import com.cruxcoach.android.ui.board.*
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
@@ -54,6 +57,7 @@ import com.cruxcoach.android.ui.settings.ColorPickerBottomSheet
 import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
 import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,6 +80,8 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
     var library by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var clearConfirm by remember { mutableStateOf(false) }
+    var ledLab by remember { mutableStateOf(false) }
+    val labReport by LedLab.report.collectAsStateWithLifecycle()
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var cancelAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var askUnsaved by remember { mutableStateOf(false) }
@@ -188,6 +194,13 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
                                 leadingIcon = { Icon(Icons.Outlined.Delete, null) },
                                 enabled = document?.colors?.isNotEmpty() == true,
                             )
+                            // Wall-test build only: the LED lab's switches and the report of the last send.
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.paintbox_lab)) },
+                                onClick = { menu = false; ledLab = true },
+                                leadingIcon = { Icon(Icons.Outlined.Science, null) },
+                                modifier = Modifier.testTag("paintbox_led_lab"),
+                            )
                         }
                     }
                 },
@@ -253,8 +266,18 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
                     }
                 }
             }
+            // LED lab: what the last send put on the link, after every send. A tap opens the lab.
+            labReport?.let { report ->
+                Text(
+                    ledLabReportText(report), style = MaterialTheme.typography.labelSmall,
+                    color = if (report.failure != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { ledLab = true }
+                        .padding(vertical = 4.dp).testTag("paintbox_lab_report"),
+                )
+            }
         }
     }
+    if (ledLab) LedLabDialog(viewModel, labReport, connection, onDismiss = { ledLab = false })
     // A board picked in the sheet's "other board" prompt reaches PaintBox as a board change,
     // which asks about unsaved changes once; opening PaintBox's own picker too would ask twice.
     if (bluetooth) BleConnectionSheet(onDismiss = { bluetooth = false }, onBoardMismatchExit = {
@@ -314,6 +337,123 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
     }, onSaveCurrent = if (document != null && state.boardReady && document.colors.isNotEmpty()) {
         { library = false; openSave(copy = false) }
     } else null)
+}
+
+/** The report of a send in one line: LEDs, bytes, packets, writes, time and the write error if there was one. */
+@Composable
+private fun ledLabReportText(report: LedLab.Report): String {
+    if (report.nothingWritten) {
+        val nothing = stringResource(R.string.paintbox_lab_nothing_written)
+        return report.boardAnswer?.let { nothing + " " + stringResource(R.string.paintbox_lab_board_answer, it) } ?: nothing
+    }
+    val packets = if (report.ledPackets == report.packets) report.packets.toString()
+    else stringResource(R.string.paintbox_lab_packets_led, report.packets, report.ledPackets)
+    val error = report.failure?.let { failure ->
+        stringResource(R.string.paintbox_lab_error_at, failure.write, failure.of, when (failure.kind) {
+            LedLab.FailureKind.NOT_QUEUED -> stringResource(R.string.paintbox_lab_error_not_queued)
+            LedLab.FailureKind.NO_ANSWER -> stringResource(R.string.paintbox_lab_error_no_answer)
+            LedLab.FailureKind.STATUS -> stringResource(R.string.paintbox_lab_error_status, failure.status ?: -1)
+            LedLab.FailureKind.LINK_GONE -> stringResource(R.string.paintbox_lab_error_link_gone)
+        })
+    } ?: stringResource(R.string.paintbox_lab_error_none)
+    val seconds = String.format(java.util.Locale.getDefault(), "%.2f", report.durationMs / 1000.0)
+    val line = stringResource(R.string.paintbox_lab_report, report.leds, report.bytes, packets,
+        report.writes, report.writesPlanned, seconds, error)
+    return report.boardAnswer?.let { line + " · " + stringResource(R.string.paintbox_lab_board_answer, it) } ?: line
+}
+
+/**
+ * The LED lab of the wall-test build: switches that change how a PaintBox picture is sent, and what the
+ * last send put on the link. Every switch starts on the release build's behaviour.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LedLabDialog(viewModel: PaintBoxViewModel, report: LedLab.Report?, connection: ConnectionState, onDismiss: () -> Unit) {
+    val switches by LedLab.switches.collectAsStateWithLifecycle()
+    val moonLedMode by viewModel.moonLedMode.collectAsStateWithLifecycle()
+    // Read again whenever the link changes: an API-2 box is the only one the packet switch acts on.
+    val board = remember(connection) { viewModel.labBoard() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("paintbox_lab_dialog"),
+        title = { Text(stringResource(R.string.paintbox_lab)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.paintbox_lab_intro), style = MaterialTheme.typography.bodySmall)
+                Text(if (board.isNullOrBlank()) stringResource(R.string.paintbox_lab_no_board)
+                    else stringResource(R.string.paintbox_lab_board, board),
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("paintbox_lab_board"))
+                Text(stringResource(R.string.paintbox_lab_moon), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.paintbox_lab_moon_gap), style = MaterialTheme.typography.bodyMedium)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    LedLab.MOON_GAPS_MS.forEachIndexed { index, gap ->
+                        SegmentedButton(
+                            selected = switches.moonGapMs == gap, onClick = { LedLab.change { it.copy(moonGapMs = gap) } },
+                            shape = SegmentedButtonDefaults.itemShape(index, LedLab.MOON_GAPS_MS.size), icon = {},
+                            modifier = Modifier.testTag("paintbox_lab_moon_gap_$gap"),
+                        ) { Text(stringResource(R.string.paintbox_lab_ms, gap.toInt()), maxLines = 1) }
+                    }
+                }
+                Text(stringResource(R.string.paintbox_lab_moon_leds), style = MaterialTheme.typography.bodyMedium)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    MoonBoardLedMode.entries.forEachIndexed { index, mode ->
+                        SegmentedButton(
+                            selected = moonLedMode == mode, onClick = { viewModel.moonLedMode(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index, MoonBoardLedMode.entries.size), icon = {},
+                            modifier = Modifier.testTag("paintbox_lab_moon_leds_${mode.name}"),
+                        ) {
+                            Text(stringResource(when (mode) {
+                                MoonBoardLedMode.BELOW -> R.string.settings_moonboard_led_position_below
+                                MoonBoardLedMode.ABOVE -> R.string.settings_moonboard_led_position_above
+                                MoonBoardLedMode.BOTH -> R.string.settings_moonboard_led_position_both
+                            }), maxLines = 1)
+                        }
+                    }
+                }
+                Text(stringResource(R.string.paintbox_lab_api2), style = MaterialTheme.typography.titleSmall)
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .toggleable(value = switches.api2SeveralPackets, role = Role.Switch,
+                            onValueChange = { on -> LedLab.change { it.copy(api2SeveralPackets = on) } })
+                        .testTag("paintbox_lab_api2_packets"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(stringResource(R.string.paintbox_lab_api2_packets), style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f))
+                    Switch(checked = switches.api2SeveralPackets, onCheckedChange = null)
+                }
+                Text(stringResource(R.string.paintbox_lab_quantum), style = MaterialTheme.typography.titleSmall)
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .toggleable(value = switches.quantumSeveralMessages, role = Role.Switch,
+                            onValueChange = { on -> LedLab.change { it.copy(quantumSeveralMessages = on) } })
+                        .testTag("paintbox_lab_quantum_messages"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(stringResource(R.string.paintbox_lab_quantum_messages), style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f))
+                    Switch(checked = switches.quantumSeveralMessages, onCheckedChange = null)
+                }
+                Text(stringResource(R.string.paintbox_lab_last_send), style = MaterialTheme.typography.titleSmall)
+                if (report == null) Text(stringResource(R.string.paintbox_lab_no_send), style = MaterialTheme.typography.bodyMedium)
+                else {
+                    Text(ledLabReportText(report), style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.testTag("paintbox_lab_last_send"))
+                    Text(stringResource(R.string.paintbox_lab_report_switches, report.switches.moonGapMs.toInt(),
+                        stringResource(if (report.switches.api2SeveralPackets) R.string.paintbox_lab_on else R.string.paintbox_lab_off),
+                        stringResource(if (report.switches.quantumSeveralMessages) R.string.paintbox_lab_on else R.string.paintbox_lab_off)),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+        dismissButton = {
+            TextButton(onClick = { LedLab.change { LedLab.Switches() } }, enabled = !switches.release,
+                modifier = Modifier.testTag("paintbox_lab_reset")) { Text(stringResource(R.string.paintbox_lab_reset)) }
+        },
+    )
 }
 
 /** Brush, eraser or pipette, the brush color, undo and redo: one row that fits 320 dp at any font size. */
