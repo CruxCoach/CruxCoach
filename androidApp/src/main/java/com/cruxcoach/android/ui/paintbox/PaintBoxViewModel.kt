@@ -265,6 +265,10 @@ class PaintBoxViewModel @Inject constructor(
                 aligning = it.aligning && !byHand)
         }) }
     }
+    /** The view has another size: the photo is mapped again where it lies. */
+    fun imageResized() {
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(ready = false)) }
+    }
     /** The editor has worked out where the photo falls best. It applies unless the photo changed meanwhile. */
     fun imagePlaced(source: PaintImageSession, transform: PaintImageTransform) {
         mutable.update { s ->

@@ -90,7 +90,8 @@ internal fun PaintImageEditor(state: PaintBoxState, vm: PaintBoxViewModel) {
                         withContext(Dispatchers.Default) { PaintImageSampling.place(placed, size, holds, brand) }
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
+                        android.util.Log.w("PaintBox", "placing the photo failed", e)
                         placed.transform
                     }
                     vm.imagePlaced(placed, transform)
@@ -108,7 +109,8 @@ internal fun PaintImageEditor(state: PaintBoxState, vm: PaintBoxViewModel) {
     Canvas(Modifier.aspectRatio(aspect).clipToBounds().testTag("paintbox_image_canvas")
         .onSizeChanged {
             val next = Size(it.width.toFloat(), it.height.toFloat())
-            if (next != viewport) { viewport = next; vm.imageTransform(current.transform) }
+            // Not the user moving the photo: only the mapping has to be done again.
+            if (next != viewport) { viewport = next; vm.imageResized() }
         }
         .pointerInput(session.bitmap, session.pickingBackground) {
             if (current.pickingBackground) detectTapGestures { point ->

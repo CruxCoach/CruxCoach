@@ -488,21 +488,60 @@ class PaintImageMappingTest {
     }
 
     @Test fun `a photo that fills the frame keeps its bands of color on a board with three colors`() {
+        // muted bands, alike enough that a shape on a removed background would become one color
         val colors = map(moonGrid(), picture { _, v ->
-            if (v < 1f / 3) 0xffd28282.toInt() else if (v < 2f / 3) 0xff82c882.toInt() else 0xff8282d2.toInt()
+            if (v < 1f / 3) 0xff96aabe.toInt() else if (v < 2f / 3) 0xff6e8c5a.toInt() else 0xff8c6e5a.toInt()
         }, BoardBrand.MOONBOARD)
         assertEquals(PaintPalette.forBoard(BoardBrand.MOONBOARD).toSet(), colors.values.toSet())
     }
 
-    @Test fun `a dot about a hold in size lights one hold or two, never none`() {
+    @Test fun `a dot lights one hold, a short stroke two, wherever they fall`() {
         for (board in listOf(kilterLike(), moonGrid())) {
             val spacing = board.spacing / board.side
+            var strokes = 0
             for (step in 0 until 12) {
                 val cu = .5f + (step % 4 - 1.5f) * .3f * spacing
                 val cv = .5f + (step / 4 - 1f) * .4f * spacing
-                val lit = mapDetected(board, picture { u, v -> if (hypot(u - cu, v - cv) < spacing / 2) white else black })
-                assertTrue("${board.name}, dot at $cu, $cv: ${lit.size} holds", lit.size in 1..2)
+                val name = "${board.name} at $cu, $cv"
+                // smaller than a hold: exactly one, not two and not none
+                val small = mapDetected(board, picture { u, v -> if (hypot(u - cu, v - cv) < .35f * spacing) white else black })
+                assertEquals("$name: small dot", 1, small.size)
+                // about a hold in size
+                val dot = mapDetected(board, picture { u, v -> if (hypot(u - cu, v - cv) < spacing / 2) white else black })
+                assertTrue("$name: dot, ${dot.size} holds", dot.size in 1..2)
+                // a thin stroke two and a half hold spacings long is not taken for a dot
+                val stroke = mapDetected(board, picture { u, v ->
+                    if (abs(v - cv) < .15f * spacing && abs(u - cu) < 1.25f * spacing) white else black
+                })
+                assertTrue("$name: stroke, ${stroke.size} holds", stroke.size in 1..3)
+                if (stroke.size >= 2) strokes++
             }
+            assertTrue("${board.name}: $strokes of 12 strokes with two holds or more", strokes >= 9)
+        }
+    }
+
+    @Test fun `on black a glow is left out and a faint second tone of the ground stays dark`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            val spacing = board.spacing / board.side
+            fun u(id: Int) = (board.points.getValue(id).x - board.viewport.width / 2) / board.side + .5f
+            fun v(id: Int) = (board.points.getValue(id).y - board.viewport.height / 2) / board.side + .5f
+            // a white bar with a soft pink glow on pure black
+            val bar = mapDetected(board, picture { u, v ->
+                val beside = if (abs(v - .5f) > .05f) abs(v - .5f) - .05f else 0f
+                val off = if (u > .2f && u < .8f) beside else hypot(minOf(abs(u - .2f), abs(u - .8f)), beside)
+                if (off <= 0f) white else {
+                    val glow = .6f * exp(-off / .05f)
+                    (0xff shl 24) or ((255 * glow).toInt() shl 16) or ((60 * glow).toInt() shl 8) or (140 * glow).toInt()
+                }
+            }).keys
+            assertTrue("${board.name}: ${bar.size} holds", bar.size >= 8)
+            assertTrue(board.name, bar.all { abs(v(it) - .5f) < .05f + .6f * spacing && u(it) > .2f - .6f * spacing && u(it) < .8f + .6f * spacing })
+            // a white disc on navy, and beside it a panel only a little lighter than the ground
+            val panel = mapDetected(board, picture { u, v ->
+                if (hypot(u - .3f, v - .5f) < .15f) white
+                else if (u > .55f && u < .9f && v > .25f && v < .75f) 0xff2b3954.toInt() else 0xff0a1a3a.toInt()
+            }).keys
+            assertTrue("${board.name}: ${panel.size} holds", panel.size >= 6 && panel.none { u(it) > .5f })
         }
     }
 

@@ -111,6 +111,8 @@ internal object PaintImageMapping {
      */
     private const val FLAT_SHARE = 0.02f
     private const val FLAT_OVER = 3f
+    /** A flat tone counts from this distance on. Closer to the background it may be a second tone of the ground. */
+    private const val FLAT_FROM = 0.13f
     /** How much the holds around a hold move its half-coverage bar. */
     private const val SMOOTH = 0.3f
     private const val FILL = 0.15f
@@ -140,6 +142,8 @@ internal object PaintImageMapping {
     /** A lone hold stays when its own disc is covered this much, or the wider one this much: a dot, not a speck. */
     private const val DOT = 0.4f
     private const val DOT_WIDE = 0.16f
+    /** Two holds see the same spot when what they see lies this close together, in their own distance. */
+    private const val SAME_SPOT = 0.3f
     /** Placement: zoom steps of 1.25 % down to 90 %, shifts in sixths of the hold spacing up to one spacing. */
     private const val ZOOM_STEPS = 9
     private const val ZOOM_STEP = 0.0125f
@@ -289,23 +293,24 @@ internal object PaintImageMapping {
             }
             if (size > 0) {
                 val top = quantile(bins, size, 0.95f)
-                val level = flatLevels(bins, size)
-                fun flat(o: Int) = away[o] >= 1.5f * TOLERANCE && level[min(HISTOGRAM - 1, (away[o] * HISTOGRAM / 2f).toInt())]
+                val level = flatLevels(bins, size, (TOLERANCE * HISTOGRAM / 2f).toInt())
+                // When black is the picture, its soft edge is measured against black itself and nothing is added.
+                fun flat(o: Int) = !ink && away[o] >= FLAT_FROM && level[min(HISTOGRAM - 1, (away[o] * HISTOGRAM / 2f).toInt())]
                 var low = TOLERANCE
                 var full = max(TOLERANCE * 1.5f, 0.5f * top)
                 if (!ink) {
-                    // Without a glow, what differs from the background by more than a halo is the picture, on a
-                    // light ground and on a dark one: yellow lies close to white, navy close to black.
-                    val capped = min(full, CLEAR)
-                    full = capped
-                    if (backgroundLab[0] < LIGHT) {
-                        // A glow needs a dark background. When much of what differs from it differs only faintly,
-                        // without being a flat tone, the picture glows: then only its strong parts count.
+                    if (backgroundLab[0] >= LIGHT) {
+                        // A glow needs a dark background. On a light one, what differs by more than a halo is the
+                        // picture: yellow, cyan and light grey lie close to white, far from a dark colour beside them.
+                        full = min(full, CLEAR)
+                    } else {
+                        // When much of what differs from a dark background differs only faintly, without being a
+                        // flat tone, the picture glows: then only its strong parts count.
                         var faint = 0
                         for (o in 0 until count) if (weight[o] > 0f && !dark[o] && away[o] < FAINT * top && !flat(o)) faint++
                         val glow = ((faint.toFloat() / size - GLOW_FROM) / (GLOW_FULL - GLOW_FROM)).coerceIn(0f, 1f)
                         low += glow * (GLOW_LOW * top - low)
-                        full = capped + glow * (GLOW_HIGH * top - capped)
+                        full += glow * (GLOW_HIGH * top - full)
                     }
                 }
                 for (o in 0 until count) if (weight[o] > 0f) {
@@ -341,7 +346,7 @@ internal object PaintImageMapping {
     }
 
     /** Which bins of the distance histogram are flat tones (see [FLAT_SHARE]). */
-    private fun flatLevels(bins: IntArray, size: Int): BooleanArray {
+    private fun flatLevels(bins: IntArray, size: Int, first: Int): BooleanArray {
         val n = bins.size
         val sums = IntArray(n + 1)
         for (bin in 0 until n) sums[bin + 1] = sums[bin] + bins[bin]
@@ -351,8 +356,11 @@ internal object PaintImageMapping {
             if (bins[bin] == 0) continue
             val band = total(bin - 3, bin + 4)
             if (band < FLAT_SHARE * size) continue
-            // against the denser of the two sides: at the edge of the range one side is empty
-            val beside = max(total(bin - 24, bin - 7), total(bin + 8, bin + 25)) / 17f
+            // Against the denser of the two sides. Below the tolerance, before [first], no pixel is counted: that
+            // part of the left side is left out, or a soft slope of the ground would look like a flat tone.
+            val from = max(first, bin - 24)
+            val left = if (bin - 7 > from) total(from, bin - 7).toFloat() / (bin - 7 - from) else 0f
+            val beside = max(left, total(bin + 8, bin + 25) / 17f)
             if (band / 7f >= FLAT_OVER * beside) for (k in max(0, bin - 3)..min(n - 1, bin + 3)) flat[k] = true
         }
         return flat
@@ -509,8 +517,10 @@ internal object PaintImageMapping {
                 if (drop) { lit[i] = false; changed = true }
             }
         }
-        // What is left of two line holds that touch no area is a dot: one hold, the stronger.
+        // What is left of two line holds that touch no area and see the same spot is a dot: one hold, the
+        // stronger. Two holds that see different spots are a short stroke or two dots, and stay.
         val seen = BooleanArray(n)
+        val dot = BooleanArray(n)
         for (i in 0 until n) if (lit[i] && !area[i] && !seen[i]) {
             val group = arrayListOf(i)
             val stack = ArrayDeque(listOf(i))
@@ -522,9 +532,10 @@ internal object PaintImageMapping {
                     if (area[to]) alone = false else if (!seen[to]) { seen[to] = true; group.add(to); stack.add(to) }
                 }
             }
-            if (alone && group.size == 2) {
-                val a = group[0]
-                val b = group[1]
+            val a = group[0]
+            val b = group.getOrElse(1) { a }
+            if (alone && group.size == 2 &&
+                hypot(footX[a] - footX[b], footY[a] - footY[b]) <= SAME_SPOT * hypot(x[a] - x[b], y[a] - y[b])) {
                 val keep = when {
                     wide[a] != wide[b] -> if (wide[a] > wide[b]) a else b
                     cover[a] != cover[b] -> if (cover[a] > cover[b]) a else b
@@ -532,10 +543,11 @@ internal object PaintImageMapping {
                 }
                 lit[a] = a == keep
                 lit[b] = b == keep
+                dot[keep] = true
             }
         }
         // A lone hold stays when the picture covers a good part of it: a dot about a hold in size, not a speck.
-        for (i in 0 until n) if (lit[i] && cover[i] < DOT && wide[i] < DOT_WIDE && near[i].none { lit[it] }) lit[i] = false
+        for (i in 0 until n) if (lit[i] && !dot[i] && cover[i] < DOT && wide[i] < DOT_WIDE && near[i].none { lit[it] }) lit[i] = false
         return lit
     }
 
@@ -892,10 +904,10 @@ internal object PaintImageMapping {
         }
         if (from != null) return settle(from)
 
-        fun fits(transform: PaintImageTransform): Boolean {
+        fun fits(transform: PaintImageTransform, limit: Int): Boolean {
             if (most == Int.MAX_VALUE || palette.isEmpty()) return true
             val colors = map(picture, transform.pixelMap(image, viewport, picture.pixels), points, palette)
-            return colors.values.groupingBy { it }.eachCount().values.all { it <= most }
+            return colors.values.groupingBy { it }.eachCount().values.all { it <= limit }
         }
         // smaller about the content's centre, which stays where it is (a new photo is not turned)
         fun smaller(transform: PaintImageTransform): PaintImageTransform {
@@ -905,11 +917,13 @@ internal object PaintImageMapping {
         }
         var start = fitted
         var tries = 0
-        while (tries++ < 24 && start.zoom > .1f && !fits(start)) start = smaller(start)
+        // Settling may move a few holds in or out: a photo that will be settled is first made to fit with some room.
+        val room = if (picture.removed) (most * 0.92f).toInt() else most
+        while (tries++ < 24 && start.zoom > .1f && !fits(start, room)) start = smaller(start)
         if (!picture.removed) return start
         var best = settle(start)
         tries = 0
-        while (tries++ < 4 && start.zoom > .1f && !fits(best)) { start = smaller(start); best = settle(start) }
+        while (tries++ < 4 && start.zoom > .1f && !fits(best, most)) { start = smaller(start); best = settle(start) }
         return best
     }
 

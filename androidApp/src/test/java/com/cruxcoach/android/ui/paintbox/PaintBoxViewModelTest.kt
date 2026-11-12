@@ -242,9 +242,11 @@ class PaintBoxViewModelTest {
         assertFalse(loaded.placed)
         vm.imageAlign()
         assertFalse("nothing to align before the first placement", vm.state.value.imageImport!!.aligning)
-        // The size of the view becoming known repeats the transform: that is not the user moving the photo.
+        // The size of the view becoming known is not the user moving the photo.
+        vm.imageResized()
         vm.imageTransform(loaded.transform)
         assertFalse(vm.state.value.imageImport!!.placed)
+        assertFalse(vm.state.value.imageImport!!.moved)
         val fitted = PaintImageTransform(center = androidx.compose.ui.geometry.Offset(.4f, .6f), zoom = 1.5f)
         vm.imagePlaced(vm.state.value.imageImport!!, fitted)
         val placed = vm.state.value.imageImport!!
