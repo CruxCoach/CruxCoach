@@ -51,7 +51,21 @@ class PaintProjector @Inject constructor(
     }
 
     suspend fun send(document: PaintDocument, ledMap: Map<Int, Int>, current: () -> Boolean): Boolean {
+        // LED lab: everything this send writes is counted for the report, also when it is refused or fails.
+        val recording = LedLab.begin()
+        try {
+            return sendPicture(document, ledMap, current)
+        } finally {
+            val brand = BoardBrand.fromWire(document.board.brand)
+            // What a Quantum controller refused the send with tells at the wall why nothing lit.
+            val answer = if (brand == BoardBrand.QUANTUM) runCatching { ble.quantumControllerState.value.lastFailure?.name }.getOrNull() else null
+            LedLab.end(recording, brand, answer)
+        }
+    }
+
+    private suspend fun sendPicture(document: PaintDocument, ledMap: Map<Int, Int>, current: () -> Boolean): Boolean {
         lastSendDimmed = false
+        val lab = LedLab.switches.value
         requireBoardFree()
         val brand = BoardBrand.fromWire(document.board.brand)
         if (!current() || ble.connectedBoardBrand.value != brand) throw PaintProjectionException(R.string.paintbox_connect_error)
@@ -61,7 +75,8 @@ class PaintProjector @Inject constructor(
                 ?: throw PaintProjectionException(R.string.paintbox_missing_board)
             val mode = preferences.moonBoardLedMode.first()
             requireBoardFree()
-            return current() && ble.sendMoonBoardClimb(PaintPalette.moonFrames(document.colors), variant, mode)
+            // LED lab: the pause between the 20-byte writes is a switch (the release build's by default).
+            return current() && ble.sendMoonBoardClimb(PaintPalette.moonFrames(document.colors), variant, mode, lab.moonGapMs)
         }
         if (document.colors.keys.any { it !in ledMap }) throw PaintProjectionException(R.string.paintbox_missing_led)
         if (brand.usesAuroraProtocol) {
@@ -78,7 +93,9 @@ class PaintProjector @Inject constructor(
                 dimmed = leds != painted
             } else {
                 // An API-2 box takes one packet, like hold cleaning (see cleaningHoldLimit).
-                if (painted.size > BoardPacketEncoder.cleaningHoldLimit(apiLevel, ledsPerHold)) {
+                // LED lab: with the switch on, a larger picture goes out in several packets (BoardPacketEncoder
+                // splits it into first, middle and last). The power limit below still holds.
+                if (!lab.api2SeveralPackets && painted.size > BoardPacketEncoder.cleaningHoldLimit(apiLevel, ledsPerHold)) {
                     throw PaintProjectionException(R.string.paintbox_api2_limit)
                 }
                 val encoder = BoardPacketEncoder(apiLevel, ledsPerHold, BoardPacketEncoder.V2_PICTURE_MAX_POWER)
@@ -95,7 +112,11 @@ class PaintProjector @Inject constructor(
         val connected = ble.connectedBoard ?: throw PaintProjectionException(R.string.paintbox_connect_error)
         val fence = BoardLayerBoardIdentity(PhysicalBoardIdentity.resolve(connected).value, document.board.sizeId.toLong())
         val groups = document.colors.entries.groupBy({ it.value }, { it.key })
-        if (groups.values.any { it.size > PAINT_QUANTUM_MOST }) throw PaintProjectionException(R.string.paintbox_quantum_limit)
+        // LED lab: with the switch on, a color of more than 92 LEDs goes out in several messages
+        // (QuantumBoardPacketEncoder.activate splits it the way the eWalls app splits long routes).
+        if (!lab.quantumSeveralMessages && groups.values.any { it.size > PAINT_QUANTUM_MOST }) {
+            throw PaintProjectionException(R.string.paintbox_quantum_limit)
+        }
         if (!ble.refreshQuantumState() || !current()) return false
         // Unknown foreign geometry cannot prove non-overlap. Fail before making any change.
         if (ble.quantumControllerState.value.players.any { !layers.ownsPaintIdentity(it.userId) }) {

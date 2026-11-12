@@ -71,6 +71,20 @@ class PaintBoxViewModel @Inject constructor(
     private enum class PipetteStroke { IDLE, EMPTY, PICKED }
     val connection = ble.connectionState
 
+    /**
+     * LED lab: the app's MoonBoard LED setting (Settings, Board), shown beside the lab's switches.
+     * Null until it is read. Lazy, so nothing is read unless the lab is opened.
+     */
+    val moonLedMode: StateFlow<MoonBoardLedMode?> by lazy {
+        preferences.moonBoardLedMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    }
+    fun moonLedMode(mode: MoonBoardLedMode) { viewModelScope.launch { preferences.setMoonBoardLedMode(mode) } }
+
+    /** LED lab: the connected board, with the API level an Aurora box reported, or null without a link. */
+    fun labBoard(): String? = ble.connectedBoard?.let { board ->
+        if (board.boardBrand.usesAuroraProtocol) "${board.displayName} · API ${board.apiLevel}" else board.displayName
+    }
+
     /** The board of the open picture, or of the one being opened. */
     private var target: PaintBoard? = null
     /** The app's board as last saved. */
