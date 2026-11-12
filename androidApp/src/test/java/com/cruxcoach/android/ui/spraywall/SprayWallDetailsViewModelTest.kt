@@ -10,11 +10,13 @@ import com.cruxcoach.android.spraywall.SprayWallRepository
 import com.cruxcoach.android.spraywall.SprayWithdrawal
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.spraywall.EditableHold
+import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -212,6 +214,54 @@ class SprayWallDetailsViewModelTest {
         val (_, state) = renameAndWithdraw(SprayWithdrawal.SIGNING_FAILED, tombstonesTaken = true)
 
         assertTrue(state.withdrawFailed!!.started)
+    }
+
+    @Test
+    fun `a read of the wall from before a relay took a tombstone does not hide the unfinished withdrawal when it lands late`() = runTest {
+        // The database answers each read when the test lets it, the newest first: the read the saved details asked
+        // for, taken before the withdrawal marked the wall, is ready only after the one the failure asked for.
+        val id = publishedWall()
+        var stored = repository.wall(id)!!
+        val changes = MutableStateFlow(0L)
+        val reads = ArrayDeque<Pair<SprayWall, CompletableDeferred<SprayWall?>>>()
+        val tombstoneTaken = CompletableDeferred<Unit>()
+        val slow = mockk<SprayWallRepository>(relaxed = true)
+        every { slow.changes } returns changes
+        coEvery { slow.wall(id) } coAnswers { CompletableDeferred<SprayWall?>().also { reads.addLast(stored to it) }.await() }
+        coEvery { slow.updateWallDetails(id, any(), any(), any(), any(), any()) } coAnswers {
+            stored = stored.copy(name = secondArg())
+            changes.value++
+        }
+        coEvery { publisher.withdrawWall(id, any(), any()) } coAnswers {
+            secondArg<suspend () -> Unit>().invoke()
+            tombstoneTaken.await()
+            stored = stored.copy(withdrawStarted = 1L)
+            changes.value++
+            SprayWithdrawal.SIGNING_FAILED
+        }
+        fun land() {
+            check(reads.isNotEmpty()) { "the view model waits for something else than a read of the wall" }
+            reads.toList().asReversed().also { reads.clear() }.forEach { (wall, read) -> read.complete(wall) }
+        }
+
+        val vm = SprayWallDetailsViewModel(SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to id)), slow, publisher, mockk(relaxed = true))
+        while (reads.isNotEmpty()) land()
+        vm.setName("Wall B")
+        vm.chooseVisibility(SprayWallVisibility.PRIVATE)
+        vm.confirmDialog()
+        vm.save()
+        // The wall as it was stored, then the details are saved with the withdrawal: the screen reads the wall.
+        land()
+        assertEquals("Wall B", reads.single().first.name)
+        assertNull(reads.single().first.withdrawStarted)
+        tombstoneTaken.complete(Unit)
+        while (vm.state.value.withdrawFailed == null) land()
+
+        assertTrue(vm.state.value.withdrawFailed!!.started)
+        assertTrue(vm.state.value.withdrawStarted)
+        // And it stays once every read is in.
+        while (reads.isNotEmpty()) land()
+        assertTrue(vm.state.value.withdrawStarted)
     }
 
     @Test
