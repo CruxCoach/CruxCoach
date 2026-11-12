@@ -59,6 +59,10 @@ internal object PaintImageMapping {
 
     /** OKLab distance up to which a pixel still is the background colour: covers JPEG noise and soft gradients. */
     private const val TOLERANCE = 0.075f
+    /** From this OKLab lightness on, a background is light: nothing in the picture is a glow. */
+    private const val LIGHT = 0.5f
+    /** On a light background, a pixel this far from it belongs to the picture in full. */
+    private const val CLEAR = 0.2f
     /** A lit hold is covered at least this much ... */
     private const val FLOOR = 0.16f
     /** ... and at least this share of the best covered hold around it. */
@@ -186,10 +190,11 @@ internal object PaintImageMapping {
             for (s in 0 until SAMPLES) {
                 val vx = x[i] + DISC_X[s] * radius
                 val vy = y[i] + DISC_Y[s] * radius
-                val ix = floor(toPixel.xx * vx + toPixel.xy * vy + toPixel.x0).toInt()
-                val iy = floor(toPixel.yx * vx + toPixel.yy * vy + toPixel.y0).toInt()
-                if (ix < 0 || iy < 0 || ix >= w || iy >= h) continue
-                val pixel = pixels.argb[iy * w + ix]
+                val px = toPixel.xx * vx + toPixel.xy * vy + toPixel.x0
+                val py = toPixel.yx * vx + toPixel.yy * vy + toPixel.y0
+                // Written so that a position that is not a number is outside the picture as well.
+                if (!(px >= 0f && py >= 0f && px < w && py < h)) continue
+                val pixel = pixels.argb[py.toInt() * w + px.toInt()]
                 if ((pixel ushr 24) < 128) continue
                 val o = i * SAMPLES + s
                 rgb[o] = pixel and 0xffffff
@@ -199,20 +204,6 @@ internal object PaintImageMapping {
                 if (backgroundLab == null) weight[o] = 1f else {
                     away[o] = distance(lab, backgroundLab)
                     if (away[o] > TOLERANCE) weight[o] = 1f
-                }
-            }
-        }
-        if (backgroundLab != null) {
-            // How unlike the background a pixel is, measured against the picture's own clear parts:
-            // a glow or a JPEG halo around a shape counts only in part.
-            val clear = FloatArray(count)
-            var size = 0
-            for (o in 0 until count) if (weight[o] > 0f) clear[size++] = away[o]
-            if (size > 0) {
-                clear.sort(0, size)
-                val full = max(TOLERANCE * 1.5f, 0.5f * percentile(clear, size, 0.95f))
-                for (o in 0 until count) if (weight[o] > 0f) {
-                    weight[o] = ((away[o] - TOLERANCE) / (full - TOLERANCE)).coerceIn(0f, 1f)
                 }
             }
         }
@@ -226,6 +217,25 @@ internal object PaintImageMapping {
         val removed = transparent || backgroundLab != null
         // Black cannot be lit. It is the picture only when it is nearly all that is left of it.
         val ink = removed && pictured > 0 && black >= 0.6f * pictured && !(backgroundLab != null && backgroundLab[0] < DARK)
+        if (backgroundLab != null) {
+            // How unlike the background a pixel is, measured against the picture's own clear parts:
+            // a glow or a JPEG halo around a shape counts only in part. Black that stays off is not
+            // one of these parts, or a pale colour elsewhere in the picture would count as its halo.
+            val clear = FloatArray(count)
+            var size = 0
+            for (o in 0 until count) if (weight[o] > 0f && (ink || !dark[o])) clear[size++] = away[o]
+            if (size > 0) {
+                clear.sort(0, size)
+                var full = max(TOLERANCE * 1.5f, 0.5f * percentile(clear, size, 0.95f))
+                // A glow needs a dark background. On a light one, what differs by more than a halo is
+                // the picture: yellow, cyan and light grey lie close to white, far from a dark colour beside them.
+                // When black is the picture, its soft edge is measured against black itself.
+                if (!ink && backgroundLab[0] >= LIGHT) full = min(full, CLEAR)
+                for (o in 0 until count) if (weight[o] > 0f) {
+                    weight[o] = ((away[o] - TOLERANCE) / (full - TOLERANCE)).coerceIn(0f, 1f)
+                }
+            }
+        }
         if (!ink) for (o in 0 until count) if (dark[o]) weight[o] = 0f
         val cover = FloatArray(n)
         for (i in 0 until n) {
