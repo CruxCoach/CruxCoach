@@ -56,6 +56,8 @@ class PaintBoxUiTest {
         compose.onNodeWithTag("paintbox_image_bg_off").assertTextContains("Keep background dark").assertIsOff().performClick()
         verify { vm.imageBackgroundOff(true) }
         compose.onNodeWithText("Background").performClick()
+        compose.onNodeWithTag("paintbox_image_align").assertTextContains("Align").assertIsEnabled().performClick()
+        verify { vm.imageAlign() }
         compose.onNodeWithText("Apply").performClick()
         compose.onNodeWithContentDescription("Cancel").performClick()
         verify { vm.imageBackgroundTool(); vm.acceptImage(); vm.cancelImage() }

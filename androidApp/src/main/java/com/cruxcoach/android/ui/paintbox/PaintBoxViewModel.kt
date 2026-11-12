@@ -253,11 +253,27 @@ class PaintBoxViewModel @Inject constructor(
         generation++
         pending = false
         // A border that is clearly one color, or transparent, starts with the background dark.
-        val session = PaintImageSession(bitmap, pixels = pixels, detected = detected)
+        val session = PaintImageSession(bitmap, pixels = pixels, detected = detected, placed = false)
         mutable.update { it.copy(imageImport = session, imageLoading = false) }
     }
     fun imageTransform(transform: PaintImageTransform) {
-        mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(transform = transform, ready = false)) }
+        // Once the user moves the photo it has its place, also if the first placement is still being worked out.
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
+            it.copy(transform = transform, ready = false, placed = it.placed || transform != it.transform)
+        }) }
+    }
+    /** The editor has worked out where the photo falls best. It applies unless the photo changed meanwhile. */
+    fun imagePlaced(source: PaintImageSession, transform: PaintImageTransform) {
+        mutable.update { s ->
+            if (s.imageImport !== source) s
+            else s.copy(imageImport = source.copy(transform = transform, placed = true, aligning = false, ready = false))
+        }
+    }
+    /** Settles the photo on the holds close to where it lies. */
+    fun imageAlign() {
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
+            if (!it.placed || it.aligning) it else it.copy(aligning = true, pickingBackground = false, ready = false)
+        }) }
     }
     fun imageBackgroundTool() {
         mutable.update { s -> s.copy(imageImport = s.imageImport?.let {

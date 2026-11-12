@@ -57,11 +57,20 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 **Foto verwenden** im ⋮-Menü öffnet die Android-Fotoauswahl. Das Foto ersetzt
 das Boardfoto, die Holds bleiben an ihrem Platz:
 
-- Ein Finger verschiebt es, zwei Finger zoomen und drehen es.
+- Ein neues Foto wird für dich eingepasst: Sein Motiv füllt das Board, und es
+  wird ein wenig verschoben und verkleinert, bis seine Umrisse zwischen den
+  Holds liegen, seine Linien über Holds laufen und ein spiegelgleiches Bild
+  ein spiegelgleiches Muster ergibt.
+- Ein Finger verschiebt es, zwei Finger zoomen und drehen es. **Ausrichten**
+  rückt es danach wieder auf den Holds zurecht, nahe an deiner Lage; deine
+  Drehung bleibt.
 - Jeder Hold betrachtet die Fläche um sich herum und bekommt die Farbe, die
   ihn überwiegend bedeckt, in der ähnlichsten Board-Farbe. Ein Hold leuchtet, wenn
   das Bild ihn etwa zur Hälfte bedeckt; entlang einer Linie, die dünner ist
-  als der Hold-Abstand, genügt weniger, damit sie durchgehend bleibt. Formen
+  als der Hold-Abstand, genügt weniger, damit sie durchgehend bleibt: Eine
+  dünne Linie wird eine lückenlose Kette von Holds, und eng nebeneinander
+  laufende Linien bleiben getrennt. Ein Leuchtschein um eine Form zählt nicht
+  zur Form. Formen
   auf einem Hintergrund, der aus bleibt, leuchten in voller Helligkeit; ein
   Foto, das den Rahmen füllt, behält hell und dunkel.
 - Transparente Stellen, schwarze Stellen und Holds außerhalb des Fotos bleiben

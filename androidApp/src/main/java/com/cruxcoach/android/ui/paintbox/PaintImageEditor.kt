@@ -82,10 +82,16 @@ internal fun PaintImageEditor(state: PaintBoxState, vm: PaintBoxViewModel) {
     var trailing by remember(session.bitmap) { mutableStateOf<Map<Int, Int>?>(null) }
     LaunchedEffect(session.bitmap, brand) {
         snapshotFlow { request }.conflate().collect { (placed, size, holds) ->
-            if (!placed.ready && size.width > 0 && holds.isNotEmpty()) {
-                val colors = withContext(Dispatchers.Default) { PaintImageSampling.sample(placed, size, holds, brand) }
-                trailing = colors
-                vm.imagePreview(placed, colors)
+            if (size.width > 0 && holds.isNotEmpty()) {
+                if (!placed.placed || placed.aligning) {
+                    // A new photo is put in place before it is mapped; so is one the user asked to align.
+                    val transform = withContext(Dispatchers.Default) { PaintImageSampling.place(placed, size, holds) }
+                    vm.imagePlaced(placed, transform)
+                } else if (!placed.ready) {
+                    val colors = withContext(Dispatchers.Default) { PaintImageSampling.sample(placed, size, holds, brand) }
+                    trailing = colors
+                    vm.imagePreview(placed, colors)
+                }
             }
         }
     }

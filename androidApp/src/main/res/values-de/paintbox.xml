@@ -40,12 +40,13 @@
     <string name="paintbox_image_ok">Übernehmen</string>
     <string name="paintbox_image_bg">Hintergrund</string>
     <string name="paintbox_image_bg_off">Hintergrund nicht leuchten lassen</string>
+    <string name="paintbox_image_align">Ausrichten</string>
     <string name="paintbox_image_pick_bg">Tippe im Bild auf die Hintergrundfarbe.</string>
     <string name="paintbox_image_error">Das Bild konnte nicht geladen werden. Bitte wähle ein anderes Bild.</string>
     <string name="paintbox_photo_title">Foto</string>
     <string name="paintbox_info">Malen\nWähle Pinsel oder Radierer und eine Farbe und tippe oder streiche mit einem Finger über die Holds. Die Pipette übernimmt die Farbe des angetippten Holds als Pinselfarbe. Zwei Finger zoomen und verschieben das Board. Ein Strich ist ein Schritt für Rückgängig.\n\nAuf dem Board\nSenden zeigt das Bild einmal auf dem Board. Mit Live folgt das Board jedem Strich. Live pausiert, wenn die Verbindung abbricht, wenn du PaintBox verlässt und wenn du das Board wechselst. Große helle Bilder leuchten gedimmt, innerhalb der Leistungsgrenze des Boards.\n\nBilder\nSpeichern legt das Bild auf diesem Handy ab. Bilder werden nie geteilt.</string>
     <string name="paintbox_info_quantum">Quantum\nVier Farben, bis zu 92 LEDs je Farbe. Andere Layer müssen vor dem Malen aus sein. Ein beleuchteter Climb ersetzt das Bild.</string>
-    <string name="paintbox_info_photo">Ein Finger verschiebt das Foto, zwei Finger zoomen und drehen es. Jeder Hold bekommt die Farbe, die ihn überwiegend bedeckt, in der ähnlichsten Board-Farbe. Mit „Hintergrund nicht leuchten lassen“ bleibt der Hintergrund des Fotos aus: PaintBox erkennt ihn am Rand des Fotos, und mit Hintergrund tippst du eine andere Farbe an. Schwarze und transparente Stellen bleiben aus; eine schwarze Form auf einem Hintergrund, der aus bleibt, leuchtet stattdessen weiß. Gespeichert werden nur die Farben der Holds.</string>
+    <string name="paintbox_info_photo">Ein Finger verschiebt das Foto, zwei Finger zoomen und drehen es. Jeder Hold bekommt die Farbe, die ihn überwiegend bedeckt, in der ähnlichsten Board-Farbe. Mit „Hintergrund nicht leuchten lassen“ bleibt der Hintergrund des Fotos aus: PaintBox erkennt ihn am Rand des Fotos, und mit Hintergrund tippst du eine andere Farbe an. Ein neues Foto wird so eingepasst, dass sein Motiv das Board füllt und sauber auf den Holds liegt; Ausrichten rückt es nach dem Verschieben wieder zurecht. Schwarze und transparente Stellen bleiben aus; eine schwarze Form auf einem Hintergrund, der aus bleibt, leuchtet stattdessen weiß. Gespeichert werden nur die Farben der Holds.</string>
     <string name="paintbox_live">Live</string>
     <string name="paintbox_connect">Board verbinden</string>
     <string name="paintbox_other_photo">Anderes Foto verwenden</string>
