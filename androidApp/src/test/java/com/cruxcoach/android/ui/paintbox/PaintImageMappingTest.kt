@@ -9,7 +9,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
@@ -307,6 +309,290 @@ class PaintImageMappingTest {
         assertTrue(colors.isEmpty())
     }
 
+    @Test fun `a thin line becomes one chain of holds`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            val from = Offset(.1f, .85f)
+            val to = Offset(.9f, .2f)
+            val length = (to - from).getDistance()
+            fun fromLine(u: Float, v: Float): Float {
+                val t = (((u - from.x) * (to.x - from.x) + (v - from.y) * (to.y - from.y)) / (length * length)).coerceIn(0f, 1f)
+                return hypot(u - from.x - t * (to.x - from.x), v - from.y - t * (to.y - from.y))
+            }
+            val thickness = .5f * board.spacing / board.side
+            val lit = mapDetected(board, picture { u, v -> if (fromLine(u, v) < thickness / 2) white else black }).keys
+            // One hold after the other along the line, and hardly one beside it.
+            assertTrue("${board.name}: ${lit.size} holds", lit.size <= 1.3f * length * board.side / board.spacing)
+            assertEquals("${board.name}: one piece", lit, board.reachable(lit.first(), lit, 1.45f))
+        }
+    }
+
+    @Test fun `lines that run close together stay apart`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            val spacing = board.spacing / board.side
+            fun v(id: Int) = (board.points.getValue(id).y - board.viewport.height / 2) / board.side + .5f
+            fun u(id: Int) = (board.points.getValue(id).x - board.viewport.width / 2) / board.side + .5f
+            for (gap in listOf(2f, 3f)) {
+                val upper = .5f - gap * spacing / 2
+                val lower = .5f + gap * spacing / 2
+                val lit = mapDetected(board, picture { u, v ->
+                    if ((abs(v - upper) < spacing / 4 || abs(v - lower) < spacing / 4) && u > .15f && u < .85f) white else black
+                }).keys
+                val name = "${board.name}, $gap spacings apart"
+                val above = lit.filter { v(it) < .5f }.toSet()
+                assertTrue("$name: ${above.size} above, ${lit.size - above.size} below", above.size >= 5 && lit.size - above.size >= 5)
+                // Nothing is lit in the middle between them, and no chain of holds leads from one line to the other.
+                assertTrue(name, lit.none { abs(v(it) - .5f) < (gap / 2 - .75f) * spacing && u(it) > .25f && u(it) < .75f })
+                assertTrue(name, board.reachable(above.first(), lit, 1.05f).all { it in above })
+            }
+        }
+    }
+
+    @Test fun `a glow does not count as the shape`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            // a bright ring on a dark ground, with a glow that fades out to both sides
+            val pixels = picture { u, v ->
+                val off = abs(hypot(u - .5f, v - .5f) - .3f)
+                val glow = if (off < .012f) 1f else .5f * exp(-(off - .012f) / .035f)
+                (0xff shl 24) or (15 shl 16) or ((15 + (225 * glow).toInt()) shl 8) or (15 + (240 * glow).toInt())
+            }
+            assertTrue(PaintImageMapping.background(pixels).clear)
+            val lit = mapDetected(board, pixels).keys
+            val centre = board.at(.5f, .5f)
+            assertTrue("${board.name}: ${lit.size} holds", lit.size >= 12)
+            assertTrue(board.name, lit.all { abs(board.distance(it, centre) - .3f * board.side) < .8f * board.spacing })
+            assertEquals("${board.name}: the ring is one piece", lit, board.reachable(lit.first(), lit, 1.45f))
+        }
+    }
+
+    @Test fun `a small patch of one clear colour stays and a sprinkle of another does not`() {
+        val board = kilterLike()
+        val yellow = 0xffffdd00.toInt()
+        fun u(id: Int) = (board.points.getValue(id).x - board.viewport.width / 2) / board.side + .5f
+        // Two white dots on a yellow disc, each about a hold in size: details of the picture.
+        val dots = mapDetected(board, picture { u, v ->
+            if (hypot(u - .42f, v - .42f) < .035f || hypot(u - .58f, v - .42f) < .035f) white
+            else if (disc(u, v)) yellow else black
+        }).filterValues { it == 0xff }.keys
+        assertTrue("$dots", dots.size in 2..4 && dots.any { u(it) < .5f } && dots.any { u(it) > .5f })
+        // White hairlines across the disc, far thinner than a hold: the disc stays one colour.
+        val lines = mapDetected(board, picture { u, v ->
+            if (!disc(u, v)) black else if ((u * 400).toInt() % 9 == 0) white else yellow
+        })
+        assertEquals(setOf(0xf8), lines.values.toSet())
+    }
+
+    @Test fun `a new photo is fitted to the holds and a picture that mirrors lights a mirrored pattern`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            // a ring off the middle of a photo, with a wide white margin
+            val pixels = picture { u, v -> if (abs(hypot(u - .45f, v - .55f) - .2f) < .035f) 0xff0096e6.toInt() else white }
+            val detected = PaintImageMapping.background(pixels)
+            val prepared = PaintImageMapping.picture(pixels, detected.color.takeIf { detected.clear }, detected.transparent)
+            assertTrue(board.name, prepared.removed && prepared.mirrorX && prepared.mirrorY)
+            val image = Size(pixels.width.toFloat(), pixels.height.toFloat())
+            val placed = PaintImageMapping.place(prepared, image, board.viewport, board.points)
+            assertTrue("${board.name}: zoom ${placed.zoom}", placed.zoom > 1.5f)
+            val lit = PaintImageMapping.map(prepared, placed.pixelMap(image, board.viewport, pixels), board.points,
+                PaintPalette.forBoard(BoardBrand.KILTER)).keys
+            // The ring reaches across the board in one direction at least.
+            val xs = board.points.values.map { it.x }
+            val ys = board.points.values.map { it.y }
+            val litX = lit.map { board.points.getValue(it).x }
+            val litY = lit.map { board.points.getValue(it).y }
+            val reach = max((litX.max() - litX.min()) / (xs.max() - xs.min()), (litY.max() - litY.min()) / (ys.max() - ys.min()))
+            assertTrue("${board.name}: reaches $reach of the board", reach > .85f)
+            // Mirrored about the ring's centre, left to right and top to bottom.
+            val scale = placed.scale(image, board.viewport)
+            val centre = Offset(placed.center.x * board.viewport.width + (.45f - .5f) * pixels.width * scale,
+                placed.center.y * board.viewport.height + (.55f - .5f) * pixels.height * scale)
+            fun litAt(x: Float, y: Float) = lit.any { board.distance(it, Offset(x, y)) < .12f * board.spacing }
+            val alone = lit.count {
+                val point = board.points.getValue(it)
+                !litAt(2 * centre.x - point.x, point.y) || !litAt(point.x, 2 * centre.y - point.y)
+            }
+            assertTrue("${board.name}: $alone of ${lit.size} holds without their mirror image", alone <= 2)
+            // As the photo comes, the ring is small and falls on the holds as it happens to.
+            assertTrue(board.name, lit.size > 2 * mapDetected(board, pixels).size)
+        }
+    }
+
+    @Test fun `a placed photo is settled close to where it lies and keeps its rotation`() {
+        val board = moonGrid()
+        val pixels = picture { u, v -> if (abs(hypot(u - .5f, v - .5f) - .3f) < .05f) 0xff0096e6.toInt() else white }
+        val prepared = PaintImageMapping.picture(pixels, 0xffffff)
+        val image = Size(pixels.width.toFloat(), pixels.height.toFloat())
+        val byHand = PaintImageTransform(center = Offset(.52f, .47f), zoom = 1.3f, degrees = 20f)
+        val settled = PaintImageMapping.place(prepared, image, board.viewport, board.points, byHand)
+        assertEquals(20f, settled.degrees)
+        assertTrue("zoom ${settled.zoom}", settled.zoom <= 1.3f + 1e-4f && settled.zoom >= .9f * 1.3f - 1e-4f)
+        // The ring's centre is the photo's centre: it moves by one hold spacing at most, in each direction.
+        assertTrue(abs(settled.center.x - byHand.center.x) * board.viewport.width <= board.spacing + 2f)
+        assertTrue(abs(settled.center.y - byHand.center.y) * board.viewport.height <= board.spacing + 2f)
+    }
+
+    @Test fun `settling a photo placed by hand gives a mirroring picture its mirrored pattern`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            val pixels = picture { u, v -> if (abs(hypot(u - .5f, v - .5f) - .3f) < .05f) 0xff0096e6.toInt() else white }
+            val prepared = PaintImageMapping.picture(pixels, 0xffffff)
+            val image = Size(pixels.width.toFloat(), pixels.height.toFloat())
+            // a third of a hold spacing off the middle: the ring falls on the holds as it happens to
+            val byHand = PaintImageTransform(center = Offset(.5f + .31f * board.spacing / board.viewport.width,
+                .5f + .17f * board.spacing / board.viewport.height), zoom = 1.3f)
+            fun alone(transform: PaintImageTransform): Pair<Int, Int> {
+                val lit = PaintImageMapping.map(prepared, transform.pixelMap(image, board.viewport, pixels), board.points,
+                    PaintPalette.forBoard(BoardBrand.KILTER)).keys
+                val centre = Offset(transform.center.x * board.viewport.width, transform.center.y * board.viewport.height)
+                fun litAt(x: Float, y: Float) = lit.any { board.distance(it, Offset(x, y)) < .12f * board.spacing }
+                return lit.count {
+                    val point = board.points.getValue(it)
+                    !litAt(2 * centre.x - point.x, point.y) || !litAt(point.x, 2 * centre.y - point.y)
+                } to lit.size
+            }
+            val (before, lit) = alone(byHand)
+            assertTrue("${board.name}: $before of $lit holds were without their mirror image", before > lit / 2)
+            val settled = PaintImageMapping.place(prepared, image, board.viewport, board.points, byHand)
+            val (after, _) = alone(settled)
+            assertTrue("${board.name}: $after holds are without their mirror image", after <= 2)
+        }
+    }
+
+    @Test fun `a new photo asks for no more holds of a color than the board lights`() {
+        val board = moonGrid()
+        val pixels = picture { u, v -> if (disc(u, v, .4f)) red else white }
+        val prepared = PaintImageMapping.picture(pixels, 0xffffff)
+        val image = Size(pixels.width.toFloat(), pixels.height.toFloat())
+        val palette = PaintPalette.forBoard(BoardBrand.QUANTUM)
+        fun lit(transform: PaintImageTransform) =
+            PaintImageMapping.map(prepared, transform.pixelMap(image, board.viewport, pixels), board.points, palette).size
+        val free = lit(PaintImageMapping.place(prepared, image, board.viewport, board.points, palette = palette))
+        assertTrue("$free holds without a limit", free > 60)
+        val limited = lit(PaintImageMapping.place(prepared, image, board.viewport, board.points, palette = palette, most = 40))
+        assertTrue("$limited holds with at most 40 of a color", limited in 20..40)
+        // A photo that was placed by hand is never made smaller for it.
+        val byHand = PaintImageTransform(zoom = 1.2f)
+        assertEquals(1.2f, PaintImageMapping.place(prepared, image, board.viewport, board.points, byHand, palette, 40).zoom, .13f)
+    }
+
+    @Test fun `a flat darker tone on a dark ground keeps its holds`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            fun u(id: Int) = (board.points.getValue(id).x - board.viewport.width / 2) / board.side + .5f
+            // a white block and a blue one, the blue close to the navy ground
+            val lit = mapDetected(board, picture { u, v ->
+                if (v < .2f || v > .8f) 0xff0a1a3a.toInt()
+                else if (u > .1f && u < .48f) white else if (u > .52f && u < .9f) 0xff1a3a7a.toInt() else 0xff0a1a3a.toInt()
+            })
+            val left = lit.keys.count { u(it) < .5f }
+            val right = lit.keys.count { u(it) > .5f }
+            assertTrue("${board.name}: $left white, $right blue", left >= 10 && right >= left - 2)
+            assertEquals(board.name, 2, lit.values.toSet().size)
+        }
+    }
+
+    @Test fun `a photo that fills the frame keeps its bands of color on a board with three colors`() {
+        // muted bands, alike enough that a shape on a removed background would become one color
+        val colors = map(moonGrid(), picture { _, v ->
+            if (v < 1f / 3) 0xff96aabe.toInt() else if (v < 2f / 3) 0xff6e8c5a.toInt() else 0xff8c6e5a.toInt()
+        }, BoardBrand.MOONBOARD)
+        assertEquals(PaintPalette.forBoard(BoardBrand.MOONBOARD).toSet(), colors.values.toSet())
+    }
+
+    @Test fun `a dot lights one hold, a short stroke two, wherever they fall`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            val spacing = board.spacing / board.side
+            var strokes = 0
+            for (step in 0 until 12) {
+                val cu = .5f + (step % 4 - 1.5f) * .3f * spacing
+                val cv = .5f + (step / 4 - 1f) * .4f * spacing
+                val name = "${board.name} at $cu, $cv"
+                // smaller than a hold: exactly one, not two and not none
+                val small = mapDetected(board, picture { u, v -> if (hypot(u - cu, v - cv) < .35f * spacing) white else black })
+                assertEquals("$name: small dot", 1, small.size)
+                // about a hold in size
+                val dot = mapDetected(board, picture { u, v -> if (hypot(u - cu, v - cv) < spacing / 2) white else black })
+                assertTrue("$name: dot, ${dot.size} holds", dot.size in 1..2)
+                // a thin stroke two and a half hold spacings long is not taken for a dot
+                val stroke = mapDetected(board, picture { u, v ->
+                    if (abs(v - cv) < .15f * spacing && abs(u - cu) < 1.25f * spacing) white else black
+                })
+                assertTrue("$name: stroke, ${stroke.size} holds", stroke.size in 1..3)
+                if (stroke.size >= 2) strokes++
+            }
+            assertTrue("${board.name}: $strokes of 12 strokes with two holds or more", strokes >= 9)
+        }
+    }
+
+    @Test fun `on black a glow is left out and a faint second tone of the ground stays dark`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            val spacing = board.spacing / board.side
+            fun u(id: Int) = (board.points.getValue(id).x - board.viewport.width / 2) / board.side + .5f
+            fun v(id: Int) = (board.points.getValue(id).y - board.viewport.height / 2) / board.side + .5f
+            // a white bar with a soft pink glow on pure black
+            val bar = mapDetected(board, picture { u, v ->
+                val beside = if (abs(v - .5f) > .05f) abs(v - .5f) - .05f else 0f
+                val off = if (u > .2f && u < .8f) beside else hypot(minOf(abs(u - .2f), abs(u - .8f)), beside)
+                if (off <= 0f) white else {
+                    val glow = .6f * exp(-off / .05f)
+                    (0xff shl 24) or ((255 * glow).toInt() shl 16) or ((60 * glow).toInt() shl 8) or (140 * glow).toInt()
+                }
+            }).keys
+            assertTrue("${board.name}: ${bar.size} holds", bar.size >= 8)
+            assertTrue(board.name, bar.all { abs(v(it) - .5f) < .05f + .6f * spacing && u(it) > .2f - .6f * spacing && u(it) < .8f + .6f * spacing })
+            // a white disc on navy, and beside it a panel only a little lighter than the ground
+            val panel = mapDetected(board, picture { u, v ->
+                if (hypot(u - .3f, v - .5f) < .15f) white
+                else if (u > .55f && u < .9f && v > .25f && v < .75f) 0xff2b3954.toInt() else 0xff0a1a3a.toInt()
+            }).keys
+            assertTrue("${board.name}: ${panel.size} holds", panel.size >= 6 && panel.none { u(it) > .5f })
+        }
+    }
+
+    @Test fun `a photo that fills the frame is fitted to the holds and left there`() {
+        val board = kilterLike()
+        val pixels = picture { u, v ->
+            (0xff shl 24) or ((40 + 180 * v).toInt() shl 16) or ((90 + 100 * u).toInt() shl 8) or (220 - 150 * v).toInt()
+        }
+        val prepared = PaintImageMapping.picture(pixels)
+        assertFalse(prepared.removed)
+        val image = Size(pixels.width.toFloat(), pixels.height.toFloat())
+        val placed = PaintImageMapping.place(prepared, image, board.viewport, board.points)
+        val xs = board.points.values.map { it.x }
+        val ys = board.points.values.map { it.y }
+        assertEquals(0f, placed.degrees)
+        assertEquals((xs.min() + xs.max()) / 2, placed.center.x * board.viewport.width, 1f)
+        assertEquals((ys.min() + ys.max()) / 2, placed.center.y * board.viewport.height, 1f)
+        // It fills the area of the holds in one direction and stays inside it in the other.
+        val side = pixels.width * placed.scale(image, board.viewport)
+        val width = xs.max() - xs.min() + board.spacing
+        val height = ys.max() - ys.min() + board.spacing
+        assertEquals(minOf(width, height), side, 2f)
+    }
+
+    @Test fun `placing a photo takes a moment at most`() {
+        val board = kilterLike()
+        val side = 1024
+        val pixels = PaintPixels(side, side, IntArray(side * side) {
+            val u = (it % side + .5f) / side
+            val v = (it / side + .5f) / side
+            if (disc(u, v, .18f)) red else if (abs(hypot(u - .5f, v - .5f) - .3f) < .02f) green else black
+        })
+        val prepared = PaintImageMapping.picture(pixels, 0x000000)
+        val image = Size(side.toFloat(), side.toFloat())
+        repeat(2) { PaintImageMapping.place(prepared, image, board.viewport, board.points) }
+        val runs = (1..5).map {
+            val start = System.nanoTime()
+            PaintImageMapping.place(prepared, image, board.viewport, board.points)
+            (System.nanoTime() - start) / 1_000_000.0
+        }.sorted()
+        val prepare = (1..5).map {
+            val start = System.nanoTime()
+            PaintImageMapping.picture(pixels, 0x000000)
+            (System.nanoTime() - start) / 1_000_000.0
+        }.sorted()
+        println("PaintBox placement, ${side} px picture, ${board.points.size} holds: median ${"%.0f".format(runs[2])} ms, " +
+            "slowest ${"%.0f".format(runs.last())} ms; preparing the picture: median ${"%.0f".format(prepare[2])} ms")
+        // The printed times are the measurement; the bound is loose so that a busy build machine does not fail it.
+        assertTrue("median ${runs[2]} ms", runs[2] < 5000.0)
+    }
+
     @Test fun `a large picture on some 500 holds maps fast enough for the live preview`() {
         val board = kilterLike()
         val side = 2048
@@ -315,15 +601,19 @@ class PaintImageMappingTest {
             val v = (it / side + .5f) / side
             if (disc(u, v)) red else if (abs(hypot(u - .5f, v - .5f) - .4f) < .02f) green else black
         })
-        val transform = PaintImageTransform(degrees = 12f, zoom = 1.3f)
-        repeat(8) { mapDetected(board, pixels, transform = transform) }
+        // As the editor does it: the picture is prepared once, then mapped for every placement.
+        val detected = PaintImageMapping.background(pixels)
+        val prepared = PaintImageMapping.picture(pixels, detected.color.takeIf { detected.clear }, detected.transparent)
+        val toPixel = PaintImageTransform(degrees = 12f, zoom = 1.3f).pixelMap(Size(side.toFloat(), side.toFloat()), board.viewport, pixels)
+        val palette = PaintPalette.forBoard(BoardBrand.KILTER)
+        repeat(8) { PaintImageMapping.map(prepared, toPixel, board.points, palette) }
         val runs = (1..7).map {
             val start = System.nanoTime()
-            mapDetected(board, pixels, transform = transform)
+            PaintImageMapping.map(prepared, toPixel, board.points, palette)
             (System.nanoTime() - start) / 1_000_000.0
         }.sorted()
         println("PaintBox mapping, ${side} px picture, ${board.points.size} holds: median ${"%.1f".format(runs[3])} ms, " +
-            "fastest ${"%.1f".format(runs.first())} ms, slowest ${"%.1f".format(runs.last())} ms (with border detection)")
+            "fastest ${"%.1f".format(runs.first())} ms, slowest ${"%.1f".format(runs.last())} ms per placement")
         // The printed time is the measurement. The bound is loose on purpose, so that a busy build machine
         // does not fail it; it catches a mapping whose cost grows out of proportion.
         assertTrue("median ${runs[3]} ms", runs[3] < 1000.0)

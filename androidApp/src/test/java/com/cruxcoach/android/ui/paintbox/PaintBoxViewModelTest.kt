@@ -235,6 +235,58 @@ class PaintBoxViewModelTest {
         assertFalse(vm.state.value.imageImport!!.backgroundOff)
         assertNull(vm.state.value.imageImport!!.darkBackground)
     }
+    @Test fun `a new photo is put in place once and Align asks again`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.startImage(mockk())
+        val loaded = vm.state.value.imageImport!!
+        assertFalse(loaded.placed)
+        vm.imageAlign()
+        assertFalse("nothing to align before the first placement", vm.state.value.imageImport!!.aligning)
+        // The size of the view becoming known is not the user moving the photo.
+        vm.imageResized()
+        vm.imageTransform(loaded.transform)
+        assertFalse(vm.state.value.imageImport!!.placed)
+        assertFalse(vm.state.value.imageImport!!.moved)
+        val fitted = PaintImageTransform(center = androidx.compose.ui.geometry.Offset(.4f, .6f), zoom = 1.5f)
+        vm.imagePlaced(vm.state.value.imageImport!!, fitted)
+        val placed = vm.state.value.imageImport!!
+        assertTrue(placed.placed)
+        assertEquals(fitted, placed.transform)
+        assertFalse(placed.ready)
+        vm.imageAlign()
+        val aligning = vm.state.value.imageImport!!
+        assertTrue(aligning.aligning)
+        // A result for a photo that has changed meanwhile is dropped ...
+        vm.imagePlaced(placed, PaintImageTransform(zoom = 3f))
+        assertEquals(fitted, vm.state.value.imageImport!!.transform)
+        assertTrue(vm.state.value.imageImport!!.aligning)
+        // ... the one for the current photo applies and ends the request.
+        val settled = fitted.copy(zoom = 1.45f)
+        vm.imagePlaced(aligning, settled)
+        assertEquals(settled, vm.state.value.imageImport!!.transform)
+        assertFalse(vm.state.value.imageImport!!.aligning)
+        // Another background before the user has moved the photo: it is fitted again.
+        vm.imageBackground(0xff112233.toInt())
+        assertFalse(vm.state.value.imageImport!!.placed)
+        vm.imagePlaced(vm.state.value.imageImport!!, fitted)
+        // Moving the photo while a request to settle it runs ends the request: the hand wins.
+        vm.imageAlign()
+        assertTrue(vm.state.value.imageImport!!.aligning)
+        val byHand = fitted.copy(zoom = 2f)
+        vm.imageTransform(byHand)
+        assertFalse(vm.state.value.imageImport!!.aligning)
+        assertTrue(vm.state.value.imageImport!!.moved)
+        // A photo the user has moved stays where it is when the background changes.
+        vm.imageBackgroundOff(false)
+        assertTrue(vm.state.value.imageImport!!.placed)
+        assertEquals(byHand, vm.state.value.imageImport!!.transform)
+        // Moving a photo by hand before its first placement is done keeps it where the user put it.
+        vm.startImage(mockk())
+        val moved = PaintImageTransform(center = androidx.compose.ui.geometry.Offset(.3f, .3f))
+        vm.imageTransform(moved)
+        assertTrue(vm.state.value.imageImport!!.placed)
+        assertEquals(moved, vm.state.value.imageImport!!.transform)
+    }
     @Test fun `background tool selects resets and rearms`() = runTest(dispatcher) {
         vm.state.first { !it.loading }
         vm.startImage(mockk())

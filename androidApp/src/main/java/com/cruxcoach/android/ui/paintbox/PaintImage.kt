@@ -60,9 +60,35 @@ data class PaintImageSession(
     val detected: PaintBackground = PaintBackground(),
     /** The background lights no LEDs: [background] if the user picked one, else the detected colour. */
     val backgroundOff: Boolean = detected.clear,
+    /** The photo has its place. A newly loaded photo is put in place once by the editor, then only by the user. */
+    val placed: Boolean = true,
+    /** The user asked to settle the photo on the holds where it lies. */
+    val aligning: Boolean = false,
+    /** The user has moved the photo by hand: it is not fitted again when the background changes. */
+    val moved: Boolean = false,
+    /** The prepared picture; it is made again only when the background changes. */
+    internal val pictures: PaintPictures = PaintPictures(),
 ) {
     /** The colour that stays dark, or null when the whole picture is lit. */
     val darkBackground: Int? get() = if (backgroundOff) background ?: detected.color else null
+}
+
+/** A Quantum board lights this many holds of one color at most. */
+internal const val PAINT_QUANTUM_MOST = 92
+
+/** Keeps the prepared picture of a photo for the background it was prepared with. */
+class PaintPictures {
+    private var pixels: PaintPixels? = null
+    private var background: Int? = null
+    private var transparent = false
+    private var picture: PaintPicture? = null
+
+    @Synchronized internal fun of(pixels: PaintPixels, background: Int?, transparent: Boolean): PaintPicture {
+        picture?.takeIf { this.pixels === pixels && this.background == background && this.transparent == transparent }?.let { return it }
+        return PaintImageMapping.picture(pixels, background, transparent).also {
+            this.pixels = pixels; this.background = background; this.transparent = transparent; picture = it
+        }
+    }
 }
 
 /** A copy of at most [side] pixels a side: plenty for any board, and four megabytes at most. */
@@ -82,11 +108,24 @@ internal object PaintImageSampling {
         if (point.x >= 0 && point.y >= 0 && point.x < bitmap.width && point.y < bitmap.height)
             bitmap.getPixel(floor(point.x).toInt(), floor(point.y).toInt()) else null
 
+    private fun picture(session: PaintImageSession): PaintPicture =
+        session.pictures.of(session.pixels ?: session.bitmap.toPaintPixels(), session.darkBackground, session.detected.transparent)
+
     fun sample(session: PaintImageSession, viewport: Size, points: Map<Int, Offset>, brand: BoardBrand): Map<Int, Int> {
-        val pixels = session.pixels ?: session.bitmap.toPaintPixels()
+        val picture = picture(session)
         val image = Size(session.bitmap.width.toFloat(), session.bitmap.height.toFloat())
-        return PaintImageMapping.map(pixels, session.transform.pixelMap(image, viewport, pixels), points,
-            PaintPalette.forBoard(brand), session.darkBackground, session.detected.transparent)
+        return PaintImageMapping.map(picture, session.transform.pixelMap(image, viewport, picture.pixels), points,
+            PaintPalette.forBoard(brand))
+    }
+
+    /**
+     * Where the photo falls most cleanly on the holds: a new photo anywhere on the board, a placed one close to
+     * where it lies. On a Quantum board a new photo is made small enough to be sent.
+     */
+    fun place(session: PaintImageSession, viewport: Size, points: Map<Int, Offset>, brand: BoardBrand): PaintImageTransform {
+        val image = Size(session.bitmap.width.toFloat(), session.bitmap.height.toFloat())
+        return PaintImageMapping.place(picture(session), image, viewport, points, session.transform.takeIf { session.placed },
+            PaintPalette.forBoard(brand), if (brand == BoardBrand.QUANTUM) PAINT_QUANTUM_MOST else Int.MAX_VALUE)
     }
 }
 

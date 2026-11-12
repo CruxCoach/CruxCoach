@@ -253,17 +253,40 @@ class PaintBoxViewModel @Inject constructor(
         generation++
         pending = false
         // A border that is clearly one color, or transparent, starts with the background dark.
-        val session = PaintImageSession(bitmap, pixels = pixels, detected = detected)
+        val session = PaintImageSession(bitmap, pixels = pixels, detected = detected, placed = false)
         mutable.update { it.copy(imageImport = session, imageLoading = false) }
     }
     fun imageTransform(transform: PaintImageTransform) {
-        mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(transform = transform, ready = false)) }
+        // Once the user moves the photo it has its place, also if the first placement is still being worked out,
+        // and a request to settle it is over: the hand wins.
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
+            val byHand = transform != it.transform
+            it.copy(transform = transform, ready = false, placed = it.placed || byHand, moved = it.moved || byHand,
+                aligning = it.aligning && !byHand)
+        }) }
+    }
+    /** The view has another size: the photo is mapped again where it lies. */
+    fun imageResized() {
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(ready = false)) }
+    }
+    /** The editor has worked out where the photo falls best. It applies unless the photo changed meanwhile. */
+    fun imagePlaced(source: PaintImageSession, transform: PaintImageTransform) {
+        mutable.update { s ->
+            if (s.imageImport !== source) s
+            else s.copy(imageImport = source.copy(transform = transform, placed = true, aligning = false, ready = false))
+        }
+    }
+    /** Settles the photo on the holds close to where it lies. */
+    fun imageAlign() {
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
+            if (!it.placed || it.aligning) it else it.copy(aligning = true, pickingBackground = false, ready = false)
+        }) }
     }
     fun imageBackgroundTool() {
         mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
             // Taking a picked color back also takes back the switch it turned on: the photo is as it was loaded.
             if (it.background != null) it.copy(background = null, backgroundOff = it.detected.clear,
-                pickingBackground = false, ready = false)
+                pickingBackground = false, ready = false).refitted()
             else if (it.pickingBackground) it.copy(pickingBackground = false, ready = false)
             else it.copy(pickingBackground = true)
         }) }
@@ -272,14 +295,16 @@ class PaintBoxViewModel @Inject constructor(
         if ((color ushr 24) < 128) return
         // A picked color replaces the detected one and turns the background off.
         mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(background = color and 0xffffff,
-            backgroundOff = true, pickingBackground = false, ready = false)) }
+            backgroundOff = true, pickingBackground = false, ready = false)?.refitted()) }
     }
     /** Whether the photo's background lights no LEDs; a picked color is kept for the next time it is on. */
     fun imageBackgroundOff(off: Boolean) {
         mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
-            if (it.backgroundOff == off) it else it.copy(backgroundOff = off, pickingBackground = false, ready = false)
+            if (it.backgroundOff == off) it else it.copy(backgroundOff = off, pickingBackground = false, ready = false).refitted()
         }) }
     }
+    /** With another background the photo has another content: unless the user has moved it, it is fitted again. */
+    private fun PaintImageSession.refitted() = if (moved) this else copy(placed = false, aligning = false)
     fun imagePreview(source: PaintImageSession, colors: Map<Int, Int>) {
         if (state.value.imageImport !== source) return
         mutable.update { it.copy(imageImport = source.copy(colors = colors, ready = true)) }

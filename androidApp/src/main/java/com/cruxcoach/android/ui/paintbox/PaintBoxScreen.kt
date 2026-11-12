@@ -35,6 +35,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -360,7 +361,8 @@ private fun PaintTools(state: PaintBoxState, viewModel: PaintBoxViewModel, onCol
     }
 }
 
-/** While a photo is placed: whether its background stays dark, which color that is, and what to tap to pick it. */
+/** While a photo is placed: whether its background stays dark, which color that is, what to tap to pick it, and Align. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PhotoTools(state: PaintBoxState, viewModel: PaintBoxViewModel) {
     val image = state.imageImport
@@ -381,19 +383,34 @@ private fun PhotoTools(state: PaintBoxState, viewModel: PaintBoxViewModel) {
                 modifier = Modifier.weight(1f))
             Switch(checked = off, onCheckedChange = null, enabled = enabled && !fixed)
         }
-        FilterChip(
-            selected = image?.let { it.pickingBackground || it.background != null } == true,
-            onClick = viewModel::imageBackgroundTool, enabled = enabled,
-            label = { Text(stringResource(R.string.paintbox_image_bg)) },
-            leadingIcon = {
-                // The color that stays dark: the picked one, else the one found at the photo's border.
-                val background = image?.darkBackground
-                if (background != null) Box(Modifier.size(FilterChipDefaults.IconSize).clip(CircleShape)
-                    .background(Color(0xff000000.toInt() or background))
-                    .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), CircleShape))
-                else Icon(Icons.Outlined.FormatColorReset, null, Modifier.size(FilterChipDefaults.IconSize))
-            },
-        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = image?.let { it.pickingBackground || it.background != null } == true,
+                onClick = viewModel::imageBackgroundTool, enabled = enabled,
+                label = { Text(stringResource(R.string.paintbox_image_bg)) },
+                leadingIcon = {
+                    // The color that stays dark: the picked one, else the one found at the photo's border.
+                    val background = image?.darkBackground
+                    if (background != null) Box(Modifier.size(FilterChipDefaults.IconSize).clip(CircleShape)
+                        .background(Color(0xff000000.toInt() or background))
+                        .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), CircleShape))
+                    else Icon(Icons.Outlined.FormatColorReset, null, Modifier.size(FilterChipDefaults.IconSize))
+                },
+            )
+            // Settles the photo on the holds close to where the user put it. While a photo is being placed,
+            // new or on request, the chip shows it.
+            val placing = image != null && (!image.placed || image.aligning)
+            val placingLabel = stringResource(R.string.paintbox_image_placing)
+            AssistChip(
+                onClick = viewModel::imageAlign, enabled = enabled && !placing,
+                label = { Text(stringResource(R.string.paintbox_image_align)) },
+                leadingIcon = {
+                    if (placing) CircularProgressIndicator(Modifier.size(AssistChipDefaults.IconSize), strokeWidth = 2.dp)
+                    else Icon(Icons.Outlined.AutoFixHigh, null, Modifier.size(AssistChipDefaults.IconSize))
+                },
+                modifier = Modifier.testTag("paintbox_image_align").semantics { if (placing) stateDescription = placingLabel },
+            )
+        }
         if (image?.pickingBackground == true) {
             Text(stringResource(R.string.paintbox_image_pick_bg), style = MaterialTheme.typography.bodyMedium)
         }

@@ -82,10 +82,24 @@ internal fun PaintImageEditor(state: PaintBoxState, vm: PaintBoxViewModel) {
     var trailing by remember(session.bitmap) { mutableStateOf<Map<Int, Int>?>(null) }
     LaunchedEffect(session.bitmap, brand) {
         snapshotFlow { request }.conflate().collect { (placed, size, holds) ->
-            if (!placed.ready && size.width > 0 && holds.isNotEmpty()) {
-                val colors = withContext(Dispatchers.Default) { PaintImageSampling.sample(placed, size, holds, brand) }
-                trailing = colors
-                vm.imagePreview(placed, colors)
+            if (size.width > 0 && holds.isNotEmpty()) {
+                if (!placed.placed || placed.aligning) {
+                    // A new photo is put in place before it is mapped; so is one the user asked to align.
+                    // If that fails, the photo stays where it is and is mapped there.
+                    val transform = try {
+                        withContext(Dispatchers.Default) { PaintImageSampling.place(placed, size, holds, brand) }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.util.Log.w("PaintBox", "placing the photo failed", e)
+                        placed.transform
+                    }
+                    vm.imagePlaced(placed, transform)
+                } else if (!placed.ready) {
+                    val colors = withContext(Dispatchers.Default) { PaintImageSampling.sample(placed, size, holds, brand) }
+                    trailing = colors
+                    vm.imagePreview(placed, colors)
+                }
             }
         }
     }
@@ -95,7 +109,8 @@ internal fun PaintImageEditor(state: PaintBoxState, vm: PaintBoxViewModel) {
     Canvas(Modifier.aspectRatio(aspect).clipToBounds().testTag("paintbox_image_canvas")
         .onSizeChanged {
             val next = Size(it.width.toFloat(), it.height.toFloat())
-            if (next != viewport) { viewport = next; vm.imageTransform(current.transform) }
+            // Not the user moving the photo: only the mapping has to be done again.
+            if (next != viewport) { viewport = next; vm.imageResized() }
         }
         .pointerInput(session.bitmap, session.pickingBackground) {
             if (current.pickingBackground) detectTapGestures { point ->
