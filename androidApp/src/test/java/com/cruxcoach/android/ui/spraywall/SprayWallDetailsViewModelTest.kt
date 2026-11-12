@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.spraywall
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import app.cash.turbine.test
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -19,8 +20,11 @@ import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -41,6 +45,7 @@ class SprayWallDetailsViewModelTest {
     private val publisher = mockk<SprayWallPublisher>(relaxed = true)
     private val photo = SprayWallPhotoStore.StoredPhoto("0b1c2d3e-photo.jpg", 3000, 2000)
     private val withdrawing = MutableStateFlow<Set<String>>(emptySet())
+    private val viewModels = mutableListOf<SprayWallDetailsViewModel>()
 
     @BeforeTest
     fun setUp() {
@@ -54,10 +59,14 @@ class SprayWallDetailsViewModelTest {
 
     @AfterTest
     fun tearDown() {
-        // The view model's last database call resumes on Main after the observed state: let it land first.
-        Thread.sleep(200)
-        Dispatchers.resetMain()
-        driver.close()
+        try {
+            // A view model may still be reading the wall after the state a test waited for. Cancelling waits for
+            // that read and for its return to Main, so neither meets a closed database or a Main that is gone.
+            runBlocking { viewModels.forEach { it.viewModelScope.coroutineContext.job.cancelAndJoin() } }
+        } finally {
+            Dispatchers.resetMain()
+            driver.close()
+        }
     }
 
     /**
@@ -81,8 +90,13 @@ class SprayWallDetailsViewModelTest {
         return id
     }
 
+    /** The screen's view model for [id], reading from [walls]; [tearDown] ends its work. */
+    private fun viewModel(id: String, walls: SprayWallRepository = repository): SprayWallDetailsViewModel =
+        SprayWallDetailsViewModel(SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to id)), walls, publisher, mockk(relaxed = true))
+            .also { viewModels += it }
+
     private suspend fun detailsOf(id: String): SprayWallDetailsViewModel {
-        val vm = SprayWallDetailsViewModel(SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to id)), repository, publisher, mockk(relaxed = true))
+        val vm = viewModel(id)
         assertTrue(vm.state.first { !it.loading }.published)
         return vm
     }
@@ -163,7 +177,7 @@ class SprayWallDetailsViewModelTest {
     @Test
     fun `a rename sends the head of a wall whose first publish ended while the screen was open`() = runTest {
         val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
-        val vm = SprayWallDetailsViewModel(SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to id)), repository, publisher, mockk(relaxed = true))
+        val vm = viewModel(id)
         vm.state.first { !it.loading }
         repository.markPublished(id, 1)
 
@@ -244,7 +258,7 @@ class SprayWallDetailsViewModelTest {
             reads.toList().asReversed().also { reads.clear() }.forEach { (wall, read) -> read.complete(wall) }
         }
 
-        val vm = SprayWallDetailsViewModel(SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to id)), slow, publisher, mockk(relaxed = true))
+        val vm = viewModel(id, slow)
         while (reads.isNotEmpty()) land()
         vm.setName("Wall B")
         vm.chooseVisibility(SprayWallVisibility.PRIVATE)
