@@ -8,6 +8,13 @@ the board button above the picture switches to another one.
 
 - Pick the brush or the eraser and a color, then tap or swipe holds with one
   finger. Two fingers zoom and move the board.
+- The **pipette** next to the eraser takes a color from the picture: tap it, then
+  tap a hold that has a color. That color becomes the brush color and the brush
+  is the tool again. A hold without a color picks nothing and says so. This is
+  how you reuse a color a photo brought along: an Aurora board has 255 colors,
+  the color sheet names 42. Such colors also appear in the color sheet under
+  **In this picture**. On MoonBoard and Quantum the pipette picks one of the
+  board's few colors.
 - One stroke is one step for undo and redo. **Clear picture** in the ⋮ menu
   removes all colors and can be undone too.
 - **Save** and **Save as** in the ⋮ menu keep the picture on your phone under a
@@ -48,11 +55,22 @@ the board button above the picture switches to another one.
 the board photo while the holds stay in place:
 
 - Drag it with one finger; zoom and turn it with two.
-- Each hold takes the board color nearest to the photo at its centre.
-  Transparent parts and holds outside the photo stay off.
-- **Background** leaves one color of the photo off, for photos without
-  transparency: tap it, then tap that color in the photo. Tap **Background**
-  again to undo the choice.
+- Each hold looks at the area around it and takes the color that covers most
+  of it, as the nearest board color. A hold is lit when the picture covers
+  about half of it; along a line thinner than the hold spacing less is enough,
+  so the line stays connected. Shapes on a background that is left off shine
+  at full brightness; a photo that fills the frame keeps its light and dark.
+- Transparent parts, black parts and holds outside the photo stay off: an LED
+  cannot show black. A black shape on a background that is left off lights
+  white instead.
+- **Keep background dark** leaves the photo's background off. PaintBox finds
+  the background at the edge of the photo, whether black, white or another
+  flat color, and the switch starts on when the edge is clearly one color.
+  For a photo without such an edge it starts off. Slight noise and soft
+  gradients in the background are covered.
+- **Background** picks that color yourself: tap it, then tap the color in the
+  photo. A picked color replaces the one PaintBox found and turns the switch
+  on. Tap **Background** again to undo the choice.
 - **Apply** applies the photo as one undo step. ✕ or Back brings back the
   previous picture, on the board too if it showed the photo live.
 

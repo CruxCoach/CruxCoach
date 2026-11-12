@@ -20,6 +20,19 @@ data class PaintImageTransform(val center: Offset = Offset(.5f, .5f), val zoom: 
         ((point - Offset(center.x * viewport.width, center.y * viewport.height)).rotate(-degrees) /
             scale(image, viewport)) + Offset(image.width / 2, image.height / 2)
 
+    /** [imagePoint] as one affine map, into the mapping's copy of the picture (which may be smaller). */
+    fun pixelMap(image: Size, viewport: Size, pixels: PaintPixels): PaintAffine {
+        val origin = imagePoint(Offset.Zero, image, viewport)
+        val right = imagePoint(Offset(viewport.width, 0f), image, viewport)
+        val down = imagePoint(Offset(0f, viewport.height), image, viewport)
+        val sx = pixels.width / image.width
+        val sy = pixels.height / image.height
+        return PaintAffine(
+            (right.x - origin.x) / viewport.width * sx, (down.x - origin.x) / viewport.height * sx, origin.x * sx,
+            (right.y - origin.y) / viewport.width * sy, (down.y - origin.y) / viewport.height * sy, origin.y * sy,
+        )
+    }
+
     fun gesture(centroid: Offset, pan: Offset, factor: Float, rotation: Float, viewport: Size): PaintImageTransform {
         val nextZoom = (zoom * factor).coerceIn(.1f, 20f)
         val oldCenter = Offset(center.x * viewport.width, center.y * viewport.height)
@@ -41,30 +54,39 @@ data class PaintImageSession(
     val pickingBackground: Boolean = false,
     val colors: Map<Int, Int> = emptyMap(),
     val ready: Boolean = false,
-)
+    /** The copy of the picture the mapping reads; made once when the photo is loaded. */
+    val pixels: PaintPixels? = null,
+    /** What the border of the picture says about its background. */
+    val detected: PaintBackground = PaintBackground(),
+    /** The background lights no LEDs: [background] if the user picked one, else the detected colour. */
+    val backgroundOff: Boolean = detected.clear,
+) {
+    /** The colour that stays dark, or null when the whole picture is lit. */
+    val darkBackground: Int? get() = if (backgroundOff) background ?: detected.color else null
+}
+
+/** A copy of at most [side] pixels a side: plenty for any board, and four megabytes at most. */
+internal fun Bitmap.toPaintPixels(side: Int = 1024): PaintPixels {
+    val ratio = min(1f, side.toFloat() / max(width, height))
+    val w = max(1, (width * ratio).roundToInt())
+    val h = max(1, (height * ratio).roundToInt())
+    val source = if (ratio < 1f) Bitmap.createScaledBitmap(this, w, h, true) else this
+    val argb = IntArray(w * h)
+    source.getPixels(argb, 0, w, 0, 0, w, h)
+    if (source !== this) source.recycle()
+    return PaintPixels(w, h, argb)
+}
 
 internal object PaintImageSampling {
-    fun distance(a: Int, b: Int): Int = (0..2).sumOf { channel ->
-        val delta = ((a shr (channel * 8)) and 255) - ((b shr (channel * 8)) and 255)
-        delta * delta
-    }
-    fun color(pixel: Int, background: Int?, palette: List<Int>): Int? {
-        if ((pixel ushr 24) < 128 || (background != null && distance(pixel, background) <= 24 * 24)) return null
-        return palette.minByOrNull { distance(pixel, PaintPalette.rgb(it)) }
-    }
     fun pixel(bitmap: Bitmap, point: Offset): Int? =
         if (point.x >= 0 && point.y >= 0 && point.x < bitmap.width && point.y < bitmap.height)
             bitmap.getPixel(floor(point.x).toInt(), floor(point.y).toInt()) else null
 
     fun sample(session: PaintImageSession, viewport: Size, points: Map<Int, Offset>, brand: BoardBrand): Map<Int, Int> {
+        val pixels = session.pixels ?: session.bitmap.toPaintPixels()
         val image = Size(session.bitmap.width.toFloat(), session.bitmap.height.toFloat())
-        val palette = PaintPalette.forBoard(brand)
-        return buildMap {
-            points.forEach { (id, point) ->
-                pixel(session.bitmap, session.transform.imagePoint(point, image, viewport))
-                    ?.let { color(it, session.background, palette) }?.let { put(id, it) }
-            }
-        }
+        return PaintImageMapping.map(pixels, session.transform.pixelMap(image, viewport, pixels), points,
+            PaintPalette.forBoard(brand), session.darkBackground, session.detected.transparent)
     }
 }
 

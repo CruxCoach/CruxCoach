@@ -32,6 +32,8 @@ data class PaintBoxState(
     val dirty: Boolean = false,
     val brush: Int = 0x1c,
     val eraser: Boolean = false,
+    /** The next tap takes the color of a hold as the brush color. */
+    val pipette: Boolean = false,
     val live: Boolean = false,
     val sending: Boolean = false,
     val canUndo: Boolean = false,
@@ -64,6 +66,9 @@ class PaintBoxViewModel @Inject constructor(
     private var loadJob: Job? = null
     private var imageJob: Job? = null
     private var previewAddress: String? = null
+    /** What the pipette did in the current stroke. */
+    private var pipetteStroke = PipetteStroke.IDLE
+    private enum class PipetteStroke { IDLE, EMPTY, PICKED }
     val connection = ble.connectionState
 
     /** The board of the open picture, or of the one being opened. */
@@ -225,37 +230,55 @@ class PaintBoxViewModel @Inject constructor(
         if (app?.brand == board.brand && app.layoutId == board.layoutId) preferences.setMoonBoardHoldSets(variant, sets)
         else preferences.setMoonBoardSelection(board.layoutId, sets)
     }
-    fun brush(color: Int) { mutable.update { it.copy(brush = color, eraser = false) } }
+    fun brush(color: Int) { mutable.update { it.copy(brush = color, eraser = false, pipette = false) } }
     fun importImage(context: android.content.Context, uri: android.net.Uri) {
         imageJob?.cancel()
         mutable.update { it.copy(imageLoading = true) }
         imageJob = viewModelScope.launch {
             try {
                 val bitmap = loadPaintImage(context.applicationContext, uri)
-                startImage(bitmap)
+                val pixels = withContext(Dispatchers.Default) { bitmap.toPaintPixels() }
+                val detected = withContext(Dispatchers.Default) { PaintImageMapping.background(pixels) }
+                startImage(bitmap, pixels, detected)
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { mutable.update { it.copy(imageLoading = false, message = R.string.paintbox_image_error) } }
         }
     }
-    internal fun startImage(bitmap: android.graphics.Bitmap) {
+    internal fun startImage(
+        bitmap: android.graphics.Bitmap,
+        pixels: PaintPixels? = null,
+        detected: PaintBackground = PaintBackground(),
+    ) {
         endStroke()
         generation++
         pending = false
-        mutable.update { it.copy(imageImport = PaintImageSession(bitmap), imageLoading = false) }
+        // A border that is clearly one color, or transparent, starts with the background dark.
+        val session = PaintImageSession(bitmap, pixels = pixels, detected = detected)
+        mutable.update { it.copy(imageImport = session, imageLoading = false) }
     }
     fun imageTransform(transform: PaintImageTransform) {
         mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(transform = transform, ready = false)) }
     }
     fun imageBackgroundTool() {
         mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
-            if (it.background != null || it.pickingBackground) it.copy(background = null, pickingBackground = false, ready = false)
+            // Taking a picked color back also takes back the switch it turned on: the photo is as it was loaded.
+            if (it.background != null) it.copy(background = null, backgroundOff = it.detected.clear,
+                pickingBackground = false, ready = false)
+            else if (it.pickingBackground) it.copy(pickingBackground = false, ready = false)
             else it.copy(pickingBackground = true)
         }) }
     }
     fun imageBackground(color: Int) {
         if ((color ushr 24) < 128) return
+        // A picked color replaces the detected one and turns the background off.
         mutable.update { s -> s.copy(imageImport = s.imageImport?.copy(background = color and 0xffffff,
-            pickingBackground = false, ready = false)) }
+            backgroundOff = true, pickingBackground = false, ready = false)) }
+    }
+    /** Whether the photo's background lights no LEDs; a picked color is kept for the next time it is on. */
+    fun imageBackgroundOff(off: Boolean) {
+        mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
+            if (it.backgroundOff == off) it else it.copy(backgroundOff = off, pickingBackground = false, ready = false)
+        }) }
     }
     fun imagePreview(source: PaintImageSession, colors: Map<Int, Int>) {
         if (state.value.imageImport !== source) return
@@ -283,14 +306,30 @@ class PaintBoxViewModel @Inject constructor(
         previewAddress = null
         if (restore && connection.value in setOf(ConnectionState.CONNECTED, ConnectionState.SENDING)) queueSend()
     }
-    fun eraser() { mutable.update { it.copy(eraser = true) } }
-    fun beginStroke() { state.value.document?.let { history.begin(it.colors) } }
-    fun endStroke() { state.value.document?.let { history.end(it.colors) }; updateHistory() }
+    fun eraser() { mutable.update { it.copy(eraser = true, pipette = false) } }
+    /** The next tap on a colored hold makes its color the brush color; then the brush is the tool again. */
+    fun pipette() { mutable.update { it.copy(pipette = true) } }
+    fun beginStroke() { pipetteStroke = PipetteStroke.IDLE; state.value.document?.let { history.begin(it.colors) } }
+    fun endStroke() {
+        // The pipette only met holds without a color: say so and keep it for the next tap.
+        if (pipetteStroke == PipetteStroke.EMPTY && state.value.pipette) message(R.string.paintbox_pipette_empty)
+        pipetteStroke = PipetteStroke.IDLE
+        state.value.document?.let { history.end(it.colors) }
+        updateHistory()
+    }
     fun paint(ids: Set<Int>) {
         val s = state.value
         val document = s.document ?: return
         if (s.loading || !s.boardReady) return
         val valid = ids.filter { if (document.board.brand == "moonboard") it in document.board.moonHoldIds() else it in s.placements }
+        // The rest of a stroke that picked a color paints nothing.
+        if (pipetteStroke == PipetteStroke.PICKED) return
+        if (s.pipette) {
+            val picked = valid.firstNotNullOfOrNull { document.colors[it] }
+            if (picked != null) { pipetteStroke = PipetteStroke.PICKED; brush(picked) }
+            else if (valid.isNotEmpty()) pipetteStroke = PipetteStroke.EMPTY
+            return
+        }
         val colors = document.colors.toMutableMap()
         valid.forEach { if (s.eraser) colors.remove(it) else colors[it] = s.brush }
         change(colors)

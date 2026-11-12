@@ -8,6 +8,14 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 
 - Wähle Pinsel oder Radierer und eine Farbe und tippe oder streiche mit einem
   Finger über die Holds. Zwei Finger zoomen und verschieben das Board.
+- Die **Pipette** neben dem Radierer nimmt eine Farbe aus dem Bild auf: Tippe
+  darauf und dann auf einen Hold, der eine Farbe hat. Diese Farbe wird zur
+  Pinselfarbe, und der Pinsel ist wieder das Werkzeug. Ein Hold ohne Farbe
+  nimmt nichts auf und sagt das. So verwendest du eine Farbe weiter, die ein
+  Foto mitgebracht hat: Ein Aurora-Board hat 255 Farben, die Farbauswahl nennt
+  42. Solche Farben stehen in der Farbauswahl außerdem unter **In diesem
+  Bild**. Auf MoonBoard und Quantum nimmt die Pipette eine der wenigen Farben
+  des Boards auf.
 - Ein Strich ist ein Schritt für Rückgängig und Wiederholen. **Bild leeren** im
   ⋮-Menü entfernt alle Farben und lässt sich ebenfalls rückgängig machen.
 - **Speichern** und **Speichern unter** im ⋮-Menü legen das Bild unter einem Namen
@@ -50,11 +58,23 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 das Boardfoto, die Holds bleiben an ihrem Platz:
 
 - Ein Finger verschiebt es, zwei Finger zoomen und drehen es.
-- Jeder Hold bekommt die Board-Farbe, die dem Foto an seiner Mitte am nächsten
-  kommt. Transparente Stellen und Holds außerhalb des Fotos bleiben aus.
-- **Hintergrund** lässt eine Farbe des Fotos aus, für Fotos ohne Transparenz:
-  Tippe darauf und dann im Foto auf diese Farbe. Ein weiterer Tipp auf
-  **Hintergrund** nimmt die Wahl zurück.
+- Jeder Hold betrachtet die Fläche um sich herum und bekommt die Farbe, die
+  ihn überwiegend bedeckt, in der ähnlichsten Board-Farbe. Ein Hold leuchtet, wenn
+  das Bild ihn etwa zur Hälfte bedeckt; entlang einer Linie, die dünner ist
+  als der Hold-Abstand, genügt weniger, damit sie durchgehend bleibt. Formen
+  auf einem Hintergrund, der aus bleibt, leuchten in voller Helligkeit; ein
+  Foto, das den Rahmen füllt, behält hell und dunkel.
+- Transparente Stellen, schwarze Stellen und Holds außerhalb des Fotos bleiben
+  aus: Eine LED kann kein Schwarz zeigen. Eine schwarze Form auf einem
+  Hintergrund, der aus bleibt, leuchtet stattdessen weiß.
+- **Hintergrund nicht leuchten lassen** lässt den Hintergrund des Fotos aus.
+  PaintBox erkennt ihn am Rand des Fotos, ob schwarz, weiß oder eine andere
+  einheitliche Farbe, und der Schalter ist zu Beginn an, wenn der Rand klar
+  eine Farbe hat. Bei einem Foto ohne solchen Rand ist er zu Beginn aus.
+  Leichtes Rauschen und weiche Verläufe im Hintergrund sind abgedeckt.
+- **Hintergrund** wählt diese Farbe selbst: Tippe darauf und dann im Foto auf
+  die Farbe. Eine gewählte Farbe ersetzt die erkannte und schaltet den
+  Schalter ein. Ein weiterer Tipp auf **Hintergrund** nimmt die Wahl zurück.
 - **Übernehmen** übernimmt das Foto als einen Schritt zum Rückgängigmachen. ✕
   oder Zurück holt das vorige Bild zurück, auch auf dem Board, wenn es das Foto
   live gezeigt hat.

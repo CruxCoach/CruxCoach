@@ -13,6 +13,7 @@ tags:
 - tapOn: "PaintBox"
 - assertVisible: "Pinsel"
 - assertVisible: "Radierer"
+- assertVisible: "Farbe eines Holds aufnehmen"
 - assertVisible: "Board verbinden"
 - tapOn: "Farbe"
 - assertVisible: "Grün"

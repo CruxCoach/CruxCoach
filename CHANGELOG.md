@@ -557,8 +557,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   swipe holds on and off, undo and redo, and save named pictures on the phone.
   Send a picture once, or turn on live painting and the board follows every
   stroke; it pauses when the connection drops, in the background and on a
-  board change. A photo from the phone can become hold colors (drag, zoom and
-  turn it, leave a background color off). Kilter and the other Aurora boards
+  board change. A photo from the phone can become hold colors: drag, zoom and
+  turn it. Each hold takes the color that covers most of it, thin lines stay
+  connected, and the photo's background stays dark, found at its edge or
+  tapped by you. The pipette takes the color of a painted hold as the brush
+  color, also a color a photo brought that the color sheet does not name.
+  Kilter and the other Aurora boards
   take every color within their power limits, MoonBoard green, blue and red,
   Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
 

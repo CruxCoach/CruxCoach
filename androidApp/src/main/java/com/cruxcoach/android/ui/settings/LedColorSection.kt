@@ -32,6 +32,7 @@ import com.cruxcoach.android.data.LedHoldColors
 import androidx.compose.ui.platform.LocalContext
 import com.cruxcoach.android.ui.theme.ColorFamily
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.RGB332_PALETTE
 import com.cruxcoach.android.ui.theme.RGB332_PALETTE_BY_FAMILY
 import com.cruxcoach.android.ui.theme.rgb332ColorName
 import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
@@ -144,9 +145,59 @@ internal fun ColorPickerBottomSheet(
     onColorSelected: (Int) -> Unit,
     onDismiss: () -> Unit,
     allowedColors: Set<Int>? = null,
+    extraColors: List<Int> = emptyList(),
+    extraLabel: String? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        LedColorPalette(roleLabel, currentByte, onColorSelected, allowedColors)
+        LedColorPalette(roleLabel, currentByte, onColorSelected, allowedColors, extraColors, extraLabel)
+    }
+}
+
+/** One color circle: named for screen readers, with a check mark while it is the current color. */
+@Composable
+private fun ColorSwatch(color: Color, name: String, isSelected: Boolean, onClick: () -> Unit) {
+    val checkTint = if (color.luminance() > 0.5f) Color.Black else Color.White
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(color)
+            .then(
+                if (isSelected) {
+                    Modifier.border(
+                        3.dp,
+                        MaterialTheme.colorScheme.primary,
+                        CircleShape
+                    )
+                } else {
+                    Modifier.border(
+                        1.dp,
+                        Color.White.copy(alpha = 0.3f),
+                        CircleShape
+                    )
+                }
+            )
+            .clickable(onClick = onClick)
+            // A bare colour circle announces nothing. Merge, so the name and
+            // the selected state land on the clickable node itself instead of
+            // a sibling the reader never focuses.
+            .semantics(mergeDescendants = true) {
+                contentDescription = name
+                this.selected = isSelected
+                role = Role.Button
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        if (isSelected) {
+            Icon(
+                Icons.Default.Check,
+                // The merged parent already announces the colour and that it
+                // is selected; a second description would split the node.
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = checkTint
+            )
+        }
     }
 }
 
@@ -158,6 +209,9 @@ internal fun LedColorPalette(
     currentByte: Int,
     onColorSelected: (Int) -> Unit,
     allowedColors: Set<Int>? = null,
+    /** Colors without a named swatch (e.g. from a PaintBox photo), shown first under [extraLabel]. */
+    extraColors: List<Int> = emptyList(),
+    extraLabel: String? = null,
 ) {
     Box {
         Column(
@@ -173,6 +227,35 @@ internal fun LedColorPalette(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
+
+            if (extraColors.isNotEmpty() && extraLabel != null) {
+                Text(
+                    extraLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    extraColors.forEachIndexed { index, byte ->
+                        val display = rgb332ToComposeColor(byte)
+                        // No name of its own: number it and say which named color it resembles.
+                        val similar = RGB332_PALETTE.minBy {
+                            val r = it.displayColor.red - display.red
+                            val g = it.displayColor.green - display.green
+                            val b = it.displayColor.blue - display.blue
+                            r * r + g * g + b * b
+                        }
+                        ColorSwatch(
+                            display,
+                            stringResource(R.string.paintbox_color_picture, index + 1, stringResource(similar.nameResId)),
+                            byte == currentByte,
+                        ) { onColorSelected(byte) }
+                    }
+                }
+            }
 
             ColorFamily.entries.forEach { family ->
                 val colors = RGB332_PALETTE_BY_FAMILY[family]
@@ -191,56 +274,11 @@ internal fun LedColorPalette(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     colors.forEach { color ->
-                        val isSelected = color.byte == currentByte
-                        val colorName = rgb332ColorName(LocalContext.current, color.byte)
-                        val checkTint = if (color.displayColor.luminance() > 0.5f) {
-                            Color.Black
-                        } else {
-                            Color.White
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(color.displayColor)
-                                .then(
-                                    if (isSelected) {
-                                        Modifier.border(
-                                            3.dp,
-                                            MaterialTheme.colorScheme.primary,
-                                            CircleShape
-                                        )
-                                    } else {
-                                        Modifier.border(
-                                            1.dp,
-                                            Color.White.copy(alpha = 0.3f),
-                                            CircleShape
-                                        )
-                                    }
-                                )
-                                .clickable { onColorSelected(color.byte) }
-                                // A bare colour circle announces nothing. Merge, so the name and
-                                // the selected state land on the clickable node itself instead of
-                                // a sibling the reader never focuses.
-                                .semantics(mergeDescendants = true) {
-                                    contentDescription = colorName
-                                    this.selected = isSelected
-                                    role = Role.Button
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isSelected) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    // The merged parent already announces the colour and that it
-                                    // is selected; a second description would split the node.
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = checkTint
-                                )
-                            }
-                        }
+                        ColorSwatch(
+                            color.displayColor,
+                            rgb332ColorName(LocalContext.current, color.byte),
+                            color.byte == currentByte,
+                        ) { onColorSelected(color.byte) }
                     }
                 }
             }
