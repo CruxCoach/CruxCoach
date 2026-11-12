@@ -163,7 +163,8 @@ class SprayWallDetailsViewModelTest {
 
         assertEditsKept(id, state)
         assertTrue(headPending(id))
-        verify { publisher.publishSoon() }
+        // The view model asks for it after the state this waited for.
+        verify(timeout = 5_000) { publisher.publishSoon() }
     }
 
     @Test
