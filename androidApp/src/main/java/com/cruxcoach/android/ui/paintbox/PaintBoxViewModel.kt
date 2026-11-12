@@ -261,7 +261,10 @@ class PaintBoxViewModel @Inject constructor(
     }
     fun imageBackgroundTool() {
         mutable.update { s -> s.copy(imageImport = s.imageImport?.let {
-            if (it.background != null || it.pickingBackground) it.copy(background = null, pickingBackground = false, ready = false)
+            // Taking a picked color back also takes back the switch it turned on: the photo is as it was loaded.
+            if (it.background != null) it.copy(background = null, backgroundOff = it.detected.clear,
+                pickingBackground = false, ready = false)
+            else if (it.pickingBackground) it.copy(pickingBackground = false, ready = false)
             else it.copy(pickingBackground = true)
         }) }
     }

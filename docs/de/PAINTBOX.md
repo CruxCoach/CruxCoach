@@ -59,11 +59,11 @@ das Boardfoto, die Holds bleiben an ihrem Platz:
 
 - Ein Finger verschiebt es, zwei Finger zoomen und drehen es.
 - Jeder Hold betrachtet die Fläche um sich herum und bekommt die Farbe, die
-  ihn überwiegend bedeckt, als nächste Board-Farbe. Ein Hold leuchtet, wenn
+  ihn überwiegend bedeckt, in der ähnlichsten Board-Farbe. Ein Hold leuchtet, wenn
   das Bild ihn etwa zur Hälfte bedeckt; entlang einer Linie, die dünner ist
   als der Hold-Abstand, genügt weniger, damit sie durchgehend bleibt. Formen
-  auf dunklem Hintergrund leuchten in voller Helligkeit; ein Foto, das den
-  Rahmen füllt, behält hell und dunkel.
+  auf einem Hintergrund, der aus bleibt, leuchten in voller Helligkeit; ein
+  Foto, das den Rahmen füllt, behält hell und dunkel.
 - Transparente Stellen, schwarze Stellen und Holds außerhalb des Fotos bleiben
   aus: Eine LED kann kein Schwarz zeigen. Eine schwarze Form auf einem
   Hintergrund, der aus bleibt, leuchtet stattdessen weiß.

@@ -61,6 +61,22 @@ class PaintBoxUiTest {
         verify { vm.imageBackgroundTool(); vm.acceptImage(); vm.cancelImage() }
     }
 
+    @Test fun `a transparent photo shows the background switch on and fixed`() {
+        val vm = mockk<PaintBoxViewModel>(relaxed = true)
+        val bitmap = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888)
+        val state = MutableStateFlow(PaintBoxState(
+            document = PaintDocument(board = PaintBoard("kilter", 1, 10)), loading = false,
+            imageImport = PaintImageSession(bitmap, ready = true,
+                detected = PaintBackground(transparent = true, clear = true)),
+            boardSize = BoardSize(10, 1, "Test board", 0, 100, 0, 100, null),
+            placements = mapOf(1 to BoardPlacement(1, 1, 1, 30, 30)),
+        ))
+        every { vm.state } returns state
+        every { vm.connection } returns MutableStateFlow(ConnectionState.CONNECTED)
+        compose.setContent { MaterialTheme { PaintBoxScreen({}, {}, vm) } }
+        compose.onNodeWithTag("paintbox_image_bg_off").assertIsOn().assertIsNotEnabled()
+    }
+
     @Test fun `import canvas responds to one finger pan and two finger zoom`() {
         val vm = mockk<PaintBoxViewModel>(relaxed = true)
         val bitmap = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888)

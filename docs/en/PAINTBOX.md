@@ -58,8 +58,8 @@ the board photo while the holds stay in place:
 - Each hold looks at the area around it and takes the color that covers most
   of it, as the nearest board color. A hold is lit when the picture covers
   about half of it; along a line thinner than the hold spacing less is enough,
-  so the line stays connected. Shapes on a dark background shine at full
-  brightness; a photo that fills the frame keeps its light and dark.
+  so the line stays connected. Shapes on a background that is left off shine
+  at full brightness; a photo that fills the frame keeps its light and dark.
 - Transparent parts, black parts and holds outside the photo stay off: an LED
   cannot show black. A black shape on a background that is left off lights
   white instead.

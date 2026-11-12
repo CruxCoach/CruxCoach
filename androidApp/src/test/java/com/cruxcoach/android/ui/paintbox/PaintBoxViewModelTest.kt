@@ -228,6 +228,12 @@ class PaintBoxViewModelTest {
         assertNull(vm.state.value.imageImport!!.darkBackground)
         vm.imageBackgroundOff(true)
         assertEquals(0x808080, vm.state.value.imageImport!!.darkBackground)
+        // Taking a picked color back leaves such a photo fully lit again, as it was loaded.
+        vm.imageBackground(0xff112233.toInt())
+        assertEquals(0x112233, vm.state.value.imageImport!!.darkBackground)
+        vm.imageBackgroundTool()
+        assertFalse(vm.state.value.imageImport!!.backgroundOff)
+        assertNull(vm.state.value.imageImport!!.darkBackground)
     }
     @Test fun `background tool selects resets and rearms`() = runTest(dispatcher) {
         vm.state.first { !it.loading }

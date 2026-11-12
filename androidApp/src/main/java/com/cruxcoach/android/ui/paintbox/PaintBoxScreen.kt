@@ -365,10 +365,13 @@ private fun PaintTools(state: PaintBoxState, viewModel: PaintBoxViewModel, onCol
 private fun PhotoTools(state: PaintBoxState, viewModel: PaintBoxViewModel) {
     val image = state.imageImport
     val enabled = image != null && !state.imageLoading
+    // A transparent background never lights. Until a color is picked there is nothing to switch.
+    val fixed = image != null && image.detected.transparent && image.background == null
+    val off = image?.backgroundOff == true || fixed
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                .toggleable(value = image?.backgroundOff == true, enabled = enabled, role = Role.Switch,
+                .toggleable(value = off, enabled = enabled && !fixed, role = Role.Switch,
                     onValueChange = viewModel::imageBackgroundOff)
                 .testTag("paintbox_image_bg_off"),
             verticalAlignment = Alignment.CenterVertically,
@@ -376,7 +379,7 @@ private fun PhotoTools(state: PaintBoxState, viewModel: PaintBoxViewModel) {
         ) {
             Text(stringResource(R.string.paintbox_image_bg_off), style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f))
-            Switch(checked = image?.backgroundOff == true, onCheckedChange = null, enabled = enabled)
+            Switch(checked = off, onCheckedChange = null, enabled = enabled && !fixed)
         }
         FilterChip(
             selected = image?.let { it.pickingBackground || it.background != null } == true,
