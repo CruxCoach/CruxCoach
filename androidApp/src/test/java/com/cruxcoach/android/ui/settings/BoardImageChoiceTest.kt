@@ -1,10 +1,19 @@
 package com.cruxcoach.android.ui.settings
 
 import android.app.Application
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
+import com.cruxcoach.android.ui.board.BoardPreviewImage
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
@@ -44,6 +53,20 @@ class BoardImageChoiceTest {
         compose.onNode(isDialog()).assertDoesNotExist()
         compose.onNodeWithText(label).performClick()
         assertEquals(1, selections)
+    }
+    @Test fun `a tap that is down when the image arrives still opens it`() {
+        // The picture decodes in the background and may arrive at any moment of a tap, also between
+        // finger down and finger up: then the click of the test above opened nothing (CI publish
+        // run 43232847474).
+        var loaded by mutableStateOf<List<ImageBitmap>?>(null)
+        var taps = 0
+        compose.setContent {
+            BoardPreviewImage(loaded, Modifier.size(104.dp, 144.dp).testTag("preview"), onClick = { taps++ })
+        }
+        compose.onNodeWithTag("preview").performTouchInput { down(center) }
+        loaded = listOf(ImageBitmap(8, 8))
+        compose.onNodeWithTag("preview").performTouchInput { up() }
+        assertEquals(1, taps)
     }
     @Test fun `previewing another variant keeps the confirmed board unchanged`() {
         val initial = MoonBoardVariant.MOONBOARD_2016

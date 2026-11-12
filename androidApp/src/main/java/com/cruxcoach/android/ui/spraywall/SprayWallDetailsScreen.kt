@@ -68,6 +68,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
 /** A wall's details: name, angle, who sees it and its gym. [first] = the last step of adding the wall. */
@@ -131,6 +133,13 @@ class SprayWallDetailsViewModel @Inject constructor(
     /** The climber chose who sees the wall on this screen; until then it shows (and saves) what is stored. */
     private var visibilityChosen = false
 
+    /**
+     * One read of the wall at a time, and it is on the screen before the next one is taken. Every change, the start
+     * and end of a withdrawal and a failed withdrawal each read the wall on their own; unordered, a read from before a
+     * write could land after a newer one and put back what the wall was (the mark of a withdrawal, say).
+     */
+    private val wallRead = Mutex()
+
     init {
         // Also every later change: a withdrawal the wall page finished while this screen is open, a first publish that
         // ended. The name, angle and gym are read once; they are what the climber edits here.
@@ -143,7 +152,7 @@ class SprayWallDetailsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun refresh() {
+    private suspend fun refresh() = wallRead.withLock {
         val wall = repository.wall(wallId)
         _state.update { s ->
             when {
@@ -272,9 +281,11 @@ class SprayWallDetailsViewModel @Inject constructor(
                 failed(result, deleting = false, keptEdits = false)
                 return@launch
             }
-            visibilityChosen = false
-            _state.update {
-                it.copy(saving = false, visibility = SprayWallVisibility.PRIVATE, published = false, withdrawStarted = false)
+            wallRead.withLock {
+                visibilityChosen = false
+                _state.update {
+                    it.copy(saving = false, visibility = SprayWallVisibility.PRIVATE, published = false, withdrawStarted = false)
+                }
             }
         }
     }
@@ -292,7 +303,7 @@ class SprayWallDetailsViewModel @Inject constructor(
      * The screen says why the withdrawal did not work; the wall stays public (and may now be withdrawn in part, the
      * result). Who sees the wall shows what is stored again.
      */
-    private suspend fun failed(result: SprayWithdrawal, deleting: Boolean, keptEdits: Boolean): Boolean {
+    private suspend fun failed(result: SprayWithdrawal, deleting: Boolean, keptEdits: Boolean): Boolean = wallRead.withLock {
         val started = repository.wall(wallId)?.withdrawStarted != null
         visibilityChosen = false
         _state.update {
@@ -303,7 +314,7 @@ class SprayWallDetailsViewModel @Inject constructor(
                 withdrawFailed = SprayWallDetailsState.WithdrawFailure(result, deleting, keptEdits, started),
             )
         }
-        return started
+        started
     }
 
     private fun SprayWall.hasDetails(s: SprayWallDetailsState) = name == s.name.trim() && angle == s.angle && gym == s.gym

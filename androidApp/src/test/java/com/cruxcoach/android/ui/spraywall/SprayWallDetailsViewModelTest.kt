@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.spraywall
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import app.cash.turbine.test
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -10,15 +11,20 @@ import com.cruxcoach.android.spraywall.SprayWallRepository
 import com.cruxcoach.android.spraywall.SprayWithdrawal
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.spraywall.EditableHold
+import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -39,6 +45,7 @@ class SprayWallDetailsViewModelTest {
     private val publisher = mockk<SprayWallPublisher>(relaxed = true)
     private val photo = SprayWallPhotoStore.StoredPhoto("0b1c2d3e-photo.jpg", 3000, 2000)
     private val withdrawing = MutableStateFlow<Set<String>>(emptySet())
+    private val viewModels = mutableListOf<SprayWallDetailsViewModel>()
 
     @BeforeTest
     fun setUp() {
@@ -52,10 +59,14 @@ class SprayWallDetailsViewModelTest {
 
     @AfterTest
     fun tearDown() {
-        // The view model's last database call resumes on Main after the observed state: let it land first.
-        Thread.sleep(200)
-        Dispatchers.resetMain()
-        driver.close()
+        try {
+            // A view model may still be reading the wall after the state a test waited for. Cancelling waits for
+            // that read and for its return to Main, so neither meets a closed database or a Main that is gone.
+            runBlocking { viewModels.forEach { it.viewModelScope.coroutineContext.job.cancelAndJoin() } }
+        } finally {
+            Dispatchers.resetMain()
+            driver.close()
+        }
     }
 
     /**
@@ -79,8 +90,13 @@ class SprayWallDetailsViewModelTest {
         return id
     }
 
+    /** The screen's view model for [id], reading from [walls]; [tearDown] ends its work. */
+    private fun viewModel(id: String, walls: SprayWallRepository = repository): SprayWallDetailsViewModel =
+        SprayWallDetailsViewModel(SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to id)), walls, publisher, mockk(relaxed = true))
+            .also { viewModels += it }
+
     private suspend fun detailsOf(id: String): SprayWallDetailsViewModel {
-        val vm = SprayWallDetailsViewModel(SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to id)), repository, publisher, mockk(relaxed = true))
+        val vm = viewModel(id)
         assertTrue(vm.state.first { !it.loading }.published)
         return vm
     }
@@ -147,7 +163,8 @@ class SprayWallDetailsViewModelTest {
 
         assertEditsKept(id, state)
         assertTrue(headPending(id))
-        verify { publisher.publishSoon() }
+        // The view model asks for it after the state this waited for.
+        verify(timeout = 5_000) { publisher.publishSoon() }
     }
 
     @Test
@@ -161,7 +178,7 @@ class SprayWallDetailsViewModelTest {
     @Test
     fun `a rename sends the head of a wall whose first publish ended while the screen was open`() = runTest {
         val id = repository.createWall("Wall", 40, SprayWallVisibility.PUBLIC, null, photo, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
-        val vm = SprayWallDetailsViewModel(SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to id)), repository, publisher, mockk(relaxed = true))
+        val vm = viewModel(id)
         vm.state.first { !it.loading }
         repository.markPublished(id, 1)
 
@@ -212,6 +229,54 @@ class SprayWallDetailsViewModelTest {
         val (_, state) = renameAndWithdraw(SprayWithdrawal.SIGNING_FAILED, tombstonesTaken = true)
 
         assertTrue(state.withdrawFailed!!.started)
+    }
+
+    @Test
+    fun `a read of the wall from before a relay took a tombstone does not hide the unfinished withdrawal when it lands late`() = runTest {
+        // The database answers each read when the test lets it, the newest first: the read the saved details asked
+        // for, taken before the withdrawal marked the wall, is ready only after the one the failure asked for.
+        val id = publishedWall()
+        var stored = repository.wall(id)!!
+        val changes = MutableStateFlow(0L)
+        val reads = ArrayDeque<Pair<SprayWall, CompletableDeferred<SprayWall?>>>()
+        val tombstoneTaken = CompletableDeferred<Unit>()
+        val slow = mockk<SprayWallRepository>(relaxed = true)
+        every { slow.changes } returns changes
+        coEvery { slow.wall(id) } coAnswers { CompletableDeferred<SprayWall?>().also { reads.addLast(stored to it) }.await() }
+        coEvery { slow.updateWallDetails(id, any(), any(), any(), any(), any()) } coAnswers {
+            stored = stored.copy(name = secondArg())
+            changes.value++
+        }
+        coEvery { publisher.withdrawWall(id, any(), any()) } coAnswers {
+            secondArg<suspend () -> Unit>().invoke()
+            tombstoneTaken.await()
+            stored = stored.copy(withdrawStarted = 1L)
+            changes.value++
+            SprayWithdrawal.SIGNING_FAILED
+        }
+        fun land() {
+            check(reads.isNotEmpty()) { "the view model waits for something else than a read of the wall" }
+            reads.toList().asReversed().also { reads.clear() }.forEach { (wall, read) -> read.complete(wall) }
+        }
+
+        val vm = viewModel(id, slow)
+        while (reads.isNotEmpty()) land()
+        vm.setName("Wall B")
+        vm.chooseVisibility(SprayWallVisibility.PRIVATE)
+        vm.confirmDialog()
+        vm.save()
+        // The wall as it was stored, then the details are saved with the withdrawal: the screen reads the wall.
+        land()
+        assertEquals("Wall B", reads.single().first.name)
+        assertNull(reads.single().first.withdrawStarted)
+        tombstoneTaken.complete(Unit)
+        while (vm.state.value.withdrawFailed == null) land()
+
+        assertTrue(vm.state.value.withdrawFailed!!.started)
+        assertTrue(vm.state.value.withdrawStarted)
+        // And it stays once every read is in.
+        while (reads.isNotEmpty()) land()
+        assertTrue(vm.state.value.withdrawStarted)
     }
 
     @Test
