@@ -647,6 +647,23 @@ class PaintImageMappingTest {
         }
     }
 
+    @Test fun `a small faint element beside a large faint panel at about the same distance still lights`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            fun u(id: Int) = (board.points.getValue(id).x - board.viewport.width / 2) / board.side + .5f
+            fun v(id: Int) = (board.points.getValue(id).y - board.viewport.height / 2) / board.side + .5f
+            // on navy, a white disc, a large faint navy panel and a wine-red element under a twentieth of its size
+            val lit = mapDetected(board, picture { u, v ->
+                if (hypot(u - .8f, v - .78f) < .1f) white
+                else if (u > .1f && u < .9f && v > .1f && v < .5f) 0xff2b3954.toInt()
+                else if (abs(u - .44f) < .06f && abs(v - .7f) < .06f) 0xff4c0434.toInt()
+                else 0xff0a1a3a.toInt()
+            }).keys
+            assertEquals("${board.name}: panel", emptySet<Int>(), lit.filter { v(it) < .5f }.toSet())
+            val element = board.points.keys.filter { abs(u(it) - .44f) < .04f && abs(v(it) - .7f) < .04f }
+            assertTrue("${board.name}: element ${element.size}", element.isNotEmpty() && lit.containsAll(element))
+        }
+    }
+
     @Test fun `shapes one hold spacing apart stay apart in a JPEG`() {
         val board = kilterLike()
         val spacing = board.spacing / board.side

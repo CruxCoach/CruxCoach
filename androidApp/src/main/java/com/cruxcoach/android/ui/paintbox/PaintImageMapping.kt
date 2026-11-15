@@ -488,9 +488,10 @@ internal object PaintImageMapping {
      * The pixels of the flat tones that count. Within a band of flat levels ([flat], by [values]) the pixels of
      * [use] are grouped by colour ([colors], 4 bits per channel): neighbouring colours that many pixels share are one
      * tone, so noise keeps a tone together, while two tones at about the same distance from the ground stay apart.
-     * A colour that few pixels share joins the tone beside it. Each tone counts or not as a whole, judged at its own
-     * mean distance: noise spreads a tone close to the bar over both sides of it, and its holds would light here and
-     * there.
+     * A colour that few pixels share joins the common tone beside it; without one, the rare colours beside each
+     * other form a tone of their own (a small element beside a large panel). Each tone counts or not as a whole,
+     * judged at its own mean distance: noise spreads a tone close to the bar over both sides of it, and its holds
+     * would light here and there.
      */
     private fun tones(values: FloatArray, use: BooleanArray, flat: BooleanArray, colors: IntArray, counts: (Float) -> Boolean): BooleanArray {
         val run = IntArray(HISTOGRAM) { -1 }
@@ -538,6 +539,16 @@ internal object PaintImageMapping {
                 var best = -1
                 neighbours(c) { n -> if (core(n) && (best < 0 || size[label[n]] > size[best])) best = label[n] }
                 label[c] = best
+            }
+            // The others: rare colours beside each other are a tone of their own.
+            for (c in 0 until COLORS) {
+                if (pixels[at + c] == 0 || label[c] >= 0) continue
+                label[c] = tones
+                stack.addLast(c)
+                while (stack.isNotEmpty()) neighbours(stack.removeLast()) { n ->
+                    if (pixels[at + n] > 0 && !core(n) && label[n] < 0) { label[n] = tones; stack.addLast(n) }
+                }
+                tones++
             }
             val count = IntArray(tones)
             val sum = DoubleArray(tones)
