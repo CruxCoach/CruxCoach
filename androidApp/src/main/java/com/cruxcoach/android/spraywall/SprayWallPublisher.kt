@@ -140,7 +140,7 @@ class SprayWallPublisher @Inject constructor(
      * Takes a public wall back, photos included ([SprayWallWithdrawal]); the wall stays public when that fails. It runs
      * in the publisher's own scope: leaving the screen that asked for it does not cut it off. [before] runs first,
      * where no publish run comes between it and the withdrawal's mark (the details saved with it). [delete]: the wall
-     * is deleted once it is private; [withdrawing] says so while it runs.
+     * is deleted once it is private ([SprayWallPublishing.withdrawWall]); [withdrawing] says so while it runs.
      */
     suspend fun withdrawWall(
         wallId: String,
@@ -150,17 +150,7 @@ class SprayWallPublisher @Inject constructor(
         running.started(wallId, delete)
         return scope.async {
             try {
-                mutex.withLock {
-                    before()
-                    val result = withdrawal.run(myPubkey(), wallId)
-                    // Declined at the first tombstone: nothing of the wall asks the signer to publish it at once.
-                    val wall = repository.wall(wallId)
-                    if (result == SprayWithdrawal.SIGNING_FAILED && wall != null && wall.withdrawStarted == null) {
-                        publishing.holdWall(wall)
-                    }
-                    if (result == SprayWithdrawal.DONE && delete) repository.deleteWall(wallId)
-                    result
-                }
+                mutex.withLock { publishing.withdrawWall(::myPubkey, wallId, before, delete) }
             } finally {
                 running.ended(wallId, delete)
             }
