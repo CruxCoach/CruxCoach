@@ -22,8 +22,12 @@ pre-0.2.2 automatic/explicit detail-send preference unchanged.
 Removing an unsent preview is local-only. Removing a physically active layer
 always sends `TURN_OFF_USER` for that installation-owned UUID, also when the
 route list does not name it: a played route can be lit without being listed.
-Removal is done when the write is acknowledged, the controller reports no
-exception for it, and the route list read afterwards does not name the UUID. Normal switching never sends
+Removal is done when the route list read afterwards does not name the UUID,
+even if the controller refused the command: an identity without a route (a
+PaintBox picture past its play time) has nothing to turn off. Without a list
+(the link is then retired), it is done when the write is acknowledged and not
+refused; if it did not take effect, the route stays lit until the controller's
+auto-off time. Normal switching never sends
 `TURN_OFF_ALL` and therefore cannot erase another climber's projection. `TURN_OFF_ALL` remains confined to the separate, explicitly
 named clear-entire-wall API, whose global effect is intentionally not a rack
 management operation. Generic clear and Kilter animation cleanup refuse to run
@@ -148,7 +152,9 @@ The encoder can split a route across several 92-diode frames, but whether a
 second frame for the same route adds to the first or replaces it is not known
 from a real board. Routes above that bound are therefore refused.
 
-A timeout or exception becomes `FAILED`; it is never presented as sent. The separate clear-entire-wall action likewise requires controller
+A write that times out, or a refusal, becomes `FAILED`; it is never presented
+as sent. A send whose route list does not come afterwards counts as sent (the
+link is retired, see above). The separate clear-entire-wall action likewise requires controller
 readback (an authoritative empty snapshot); successful BLE transport alone no
 longer clears local truth optimistically.
 
@@ -286,12 +292,19 @@ through the scoped layer controls on detail instead.
 Since 0.2.5 CruxCoach plays routes with `BOARD_SWIPE` and the controller's own
 auto-off time, the controller's everyday player path. That path, removal of an
 unlisted route and PaintBox with several colours are covered by tests against a
-fake GATT controller, not yet by a real board. The paragraphs below describe the
-earlier `ACTIVATE_WALL` evidence.
+fake GATT controller, not yet by a real board. The paragraph after the known
+limits describes the earlier `ACTIVATE_WALL` evidence.
 
-Known limits: an S Fitness is handled like the other models (four layers, one
-colour per route). Single-player play with the start, middle and finish holds in
-their own colours is not implemented.
+Known limits:
+- An S Fitness is handled like the other models (four layers, one colour per
+  route). Single-player play with the start, middle and finish holds in their
+  own colours is not implemented.
+- Routes the controller does not list, and the PaintBox colours this phone lit,
+  are known only while the app runs. After a restart such a route cannot be
+  turned off from the app; it goes off at the controller's auto-off time.
+- A replacement on a layer that already has a route sends no `TURN_OFF_USER`
+  first. A controller that refuses it (`USER_ID_IN_USE`) needs the layer
+  removed before a new route.
 
 The packet layouts, ordered `fff5` model read, `fff1` subscription, `fff4` read
 path and parser match the clean-room eWalls 2.0.14 analysis and BoardSimulator.
@@ -299,15 +312,13 @@ A real Quantum XL HCI capture additionally verifies the five-byte route-list
 write and the controller's complete `0x47` state response through `fff4`
 without an `fff1` notification. The capture for build 1000032 additionally
 confirms that a zero-duration activation lights the LEDs but remains absent
-from the active-player list; CruxCoach therefore uses eWalls' five-minute
-active-player duration and waits for the roster mutation before readback. Full
-Quantum multi-layer behaviour remains `hardware_verified: false` until the
-same four-user, conflict, reconnect, CCCD/readback and multi-chunk suite is
-captured against each controller generation. The implementation therefore
-accepts only strict known broadcast shapes and fails closed when a requested
-`fff4` snapshot or notification setup cannot be confirmed. In particular,
-`BOARD_SWIPE` remains unused until its atomic
-semantics are hardware-verified.
+from the active-player list, and a 300-second `ACTIVATE_WALL` was absent too.
+That is why 0.2.5 plays with `BOARD_SWIPE` instead. Full Quantum multi-layer
+behaviour remains `hardware_verified: false` until the same four-user,
+conflict, reconnect, CCCD/readback and multi-chunk suite is captured against
+each controller generation. The parser accepts known broadcast shapes with a
+minimum length, and the link fails closed when a requested route list or the
+notification setup cannot be confirmed.
 
 The remaining hardware matrix includes notify-versus-indicate behavior across
 controller generations, `TURN_OFF_USER` to activation timing, atomic append/failure

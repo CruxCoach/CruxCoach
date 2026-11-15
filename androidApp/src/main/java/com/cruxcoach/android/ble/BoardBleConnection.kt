@@ -2127,14 +2127,16 @@ class BoardBleConnection(
                     minutes = quantumPlayMinutes,
                 )
                 _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
+                // A stale partial notification must not swallow a notified refusal.
+                quantumNotificationAccumulator.reset()
                 if (!writeQuantumFrames(listOf(frame), expectedQuantumBoard)) return false
                 // The board's answer comes before anything else is sent, so a
                 // refusal (colour or hold taken, board full) reaches the user.
                 if (readQuantumAnswerLocked(QuantumCommand.BOARD_SWIPE) != null) return false
                 // Acknowledged and not refused: the route is sent. The route
                 // list only adds whether the controller names it.
-                val listAnswered = requestQuantumRouteListLocked(expectedQuantumBoard)
-                // A refusal notified late, while the list was read, still counts.
+                val listAnswered = requestQuantumRouteListLocked(expectedQuantumBoard, answering = QuantumCommand.BOARD_SWIPE)
+                // A refusal that came late, in fff4 or fff1 while the list was read, still counts.
                 if (quantumRefusalOf(QuantumCommand.BOARD_SWIPE) != null) return false
                 val play = QuantumPlay(
                     routeId = routeId ?: QuantumBoardPacketEncoder.ZERO_UUID,
@@ -2262,11 +2264,15 @@ class BoardBleConnection(
         return result.value
     }
 
+    /** [refusalOf]: the command written just before this read's route list
+     * request; a refusal of it found in fff4 still counts as its answer. */
     private suspend fun readQuantumStateLocked(
         explicitRouteListResponse: Boolean = false,
+        refusalOf: QuantumCommand? = null,
     ): QuantumControllerEvidence {
         val value = readQuantumFff4Locked() ?: return QuantumControllerEvidence.UNSUPPORTED
         val broadcast = QuantumBoardBroadcastParser.parse(value)
+        if (refusalOf != null) recordQuantumRefusal(refusalOf, broadcast)
         val evidence = classifyQuantumFff4Evidence(broadcast)
         if (quantumFff4PublishesSnapshot(broadcast)) {
             // An fff4 route list may be used for periodic observation, but it
@@ -2300,8 +2306,7 @@ class BoardBleConnection(
             if (before != null && value.contentEquals(before)) continue
             return recordQuantumRefusal(command, QuantumBoardBroadcastParser.parse(value))
         }
-        // fff4 kept its value: it may already have been this command's refusal.
-        return recordQuantumRefusal(command, lastQuantumFff4?.let(QuantumBoardBroadcastParser::parse))
+        return null
     }
 
     private fun recordQuantumRefusal(command: QuantumCommand, answer: QuantumBroadcast?): QuantumCommandFailure? {
@@ -2322,10 +2327,14 @@ class BoardBleConnection(
      * Ask for the controller's route list and wait for the answer, read from
      * fff4 every [QUANTUM_ROUTE_LIST_READ_INTERVAL_MS] or notified on fff1,
      * for up to [QUANTUM_CONFIRM_TIMEOUT_MS]. Without an answer the link is
-     * retired, so a late one cannot confirm a later request.
+     * retired, so a late one cannot confirm a later request. [answering]: the
+     * command written just before, whose refusal may still reach fff4 while the
+     * list is read; never set for a precondition list, where an old refusal
+     * would block the next send.
      */
     private suspend fun requestQuantumRouteListLocked(
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
+        answering: QuantumCommand? = null,
     ): Boolean {
         if (expectedQuantumBoard != null &&
             !quantumBoardWriteFenceMatches(
@@ -2356,7 +2365,7 @@ class BoardBleConnection(
                 waitedMs += QUANTUM_ROUTE_LIST_READ_INTERVAL_MS
                 if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) return true
                 if (_quantumControllerState.value.lastFailure != null) return false
-                readQuantumStateLocked(explicitRouteListResponse = true)
+                readQuantumStateLocked(explicitRouteListResponse = true, refusalOf = answering)
                 if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) return true
             }
             // Neither fff4 nor fff1 produced the requested 0x47 snapshot.
@@ -2444,8 +2453,10 @@ class BoardBleConnection(
      * Turn off exactly one installation-owned Quantum identity, never all
      * users. TURN_OFF_USER always goes out, also when the route list does not
      * name the identity: a played route can be lit without being listed.
-     * Done means acknowledged, not refused, and not named by the route list
-     * read afterwards.
+     * Done when the route list read afterwards does not name the identity,
+     * even if the controller refused: an identity without a route (a picture
+     * past its play time) has nothing to turn off. Without a list, done when
+     * acknowledged and not refused.
      */
     suspend fun removeQuantumLayer(
         userId: String,
@@ -2467,17 +2478,28 @@ class BoardBleConnection(
         disconnectJob?.cancel()
         try {
             _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
+            quantumNotificationAccumulator.reset()
             if (!writeQuantumFrames(
                     listOf(QuantumBoardPacketEncoder.turnOffUser(userId)),
                     expectedQuantumBoard,
                 )
             ) return false
-            if (readQuantumAnswerLocked(QuantumCommand.TURN_OFF_BY_USER) != null) return false
-            val listAnswered = requestQuantumRouteListLocked(expectedQuantumBoard)
-            if (quantumRefusalOf(QuantumCommand.TURN_OFF_BY_USER) != null) return false
-            return !listAnswered || _quantumControllerState.value.players.none {
-                it.userId.equals(userId, ignoreCase = true)
+            val refused = readQuantumAnswerLocked(QuantumCommand.TURN_OFF_BY_USER)
+            val listAnswered = requestQuantumRouteListLocked(expectedQuantumBoard, answering = QuantumCommand.TURN_OFF_BY_USER)
+            val refusal = refused ?: quantumRefusalOf(QuantumCommand.TURN_OFF_BY_USER)
+            val off = if (listAnswered) {
+                _quantumControllerState.value.players.none { it.userId.equals(userId, ignoreCase = true) }
+            } else {
+                refusal == null
             }
+            if (!off && refusal != null) {
+                // The list request cleared it; the user should see the board's reason.
+                _quantumControllerState.value = _quantumControllerState.value.copy(
+                    lastFailure = refusal,
+                    lastFailedCommand = QuantumCommand.TURN_OFF_BY_USER,
+                )
+            }
+            return off
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED

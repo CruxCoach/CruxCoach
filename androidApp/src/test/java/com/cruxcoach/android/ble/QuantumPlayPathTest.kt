@@ -79,6 +79,8 @@ class QuantumPlayPathTest {
         private var previousFff4 = byteArrayOf(1, 0x47, 0, 0)
         /** TURN_OFF_USER is acknowledged but the route stays on. */
         var ignoresTurnOff = false
+        /** TURN_OFF_USER for a user without a route is refused (code 3). */
+        var refusesTurnOffWithoutRoute = false
         private var fff4 = byteArrayOf(1, 0x47, 0, 0)
 
         private val gatt = mockk<BluetoothGatt>(relaxed = true)
@@ -138,7 +140,9 @@ class QuantumPlayPathTest {
                     if (!listsPlayedRoutes) unlisted += user
                     routeList(0x44)
                 }
-                0x43 -> {
+                0x43 -> if (refusesTurnOffWithoutRoute && players.none { it.userId == uuid(frame, 2) }) {
+                    byteArrayOf(1, 0xc3.toByte(), 3)
+                } else {
                     val user = uuid(frame, 2)
                     if (!ignoresTurnOff) {
                         players.removeAll { it.userId == user }
@@ -273,6 +277,41 @@ class QuantumPlayPathTest {
         assertEquals(listOf(0x47, 0x44), board.commands())
         val afterPlay = board.operations.drop(board.operations.indexOf("write 44") + 1)
         assertEquals(listOf("read fff4", "read fff4", "read fff4"), afterPlay)
+    }
+
+    @Test fun `a refusal that reaches fff4 only while the route list is read still fails the send`() = runTest {
+        val board = FakeController(context).apply {
+            refusePlayWithCode = 7
+            staleReadsAfterWrite = 5
+        }
+        assertFalse(board.play(slot = 0, route = route))
+        assertEquals(QuantumCommandFailure.COLOR_TAKEN, board.connection.quantumControllerState.value.lastFailure)
+        assertEquals(listOf(0x47, 0x44, 0x47), board.commands())
+    }
+
+    @Test fun `PaintBox colours past their play time do not block the next climb`() = runTest {
+        val board = FakeController(context).apply {
+            listsPlayedRoutes = false
+            refusesTurnOffWithoutRoute = true
+        }
+        val paint = (0..2).map { board.layers.paintIdentity(it) }
+        paint.forEachIndexed { index, user ->
+            board.layers.markPaintLit(user)
+            assertTrue(board.connection.sendClimb(
+                holds = listOf(BoardHold(1001 + index, HoldRole.HAND)), placementToLed = mapOf(1001 + index to 1001 + index),
+                routeId = "abababab-cdcd-4fef-8101-23232323232$index", quantumUserId = user, quantumColor = 0x00ff00 shl index,
+                expectedQuantumPlayers = emptyList(), expectedQuantumBoard = board.identity, expectedBrand = BoardBrand.QUANTUM,
+            ))
+        }
+        // A colour marked lit whose write never happened.
+        board.layers.markPaintLit(board.layers.paintIdentity(3))
+        // The board turned the picture off by itself; TURN_OFF_USER for those users is now refused.
+        board.players.clear()
+
+        assertEquals(4, board.connection.removePaintBoxLayers(board.layers, board.identity))
+        assertTrue(board.layers.state.value.litPaintUsers.isEmpty())
+        assertEquals(4, board.writes.count { (it[1].toInt() and 0xff) == 0x43 })
+        assertTrue(board.play(slot = 0, route = route))
     }
 
     @Test fun `an answer that never comes is no refusal`() = runTest {

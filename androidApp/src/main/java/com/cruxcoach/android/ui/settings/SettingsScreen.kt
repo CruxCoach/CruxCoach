@@ -205,7 +205,7 @@ internal fun SettingsScreen(
                                 }
                                 else -> state.boardProductSizeName
                             }
-                            boardSelectionLabel(brand, state.boardLayoutId, detail)
+                            boardSelectionTitle(brand, state.boardLayoutId, detail)
                         },
                         onChangeModel = {
                             boardPickerWire = null

@@ -496,7 +496,11 @@ private fun BoardOptionCard(option: GymWallOption, onClick: () -> Unit) {
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    option.label,
+                    if (option.boardBrand == BoardBrand.QUANTUM) {
+                        stringResource(R.string.board_quantum_experimental_label, option.label)
+                    } else {
+                        option.label
+                    },
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
