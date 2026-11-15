@@ -3380,7 +3380,7 @@
     <string name="board_cleaning_description">Markiert die Griffe der Probleme, die du heute für dieses Board geloggt hast (Versuch oder Top). In Gruppen putzt jeder nacheinander seine eigenen.</string>
     <string name="board_cleaning_connect_hint">Verbinde dich mit dem Board, das du putzen möchtest.</string>
     <string name="board_cleaning_connect">Board verbinden</string>
-    <string name="board_cleaning_unsupported">Der Putzmodus benötigt eine direkte Verbindung zu Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone oder MoonBoard.</string>
+    <string name="board_cleaning_unsupported">Der Putzmodus benötigt eine direkte Verbindung zu Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone, MoonBoard oder Shiny Wall.</string>
     <string name="board_cleaning_empty">Heute hast du für dieses Board noch nichts geloggt.</string>
     <string name="board_cleaning_all_clean">Alles geputzt. Was du ab jetzt loggst, kommt neu dazu.</string>
     <string name="board_cleaning_relay">Beende die Board-Freigabe, bevor du den Putzmodus startest.</string>

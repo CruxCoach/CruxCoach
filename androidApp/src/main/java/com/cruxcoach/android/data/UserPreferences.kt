@@ -1613,8 +1613,11 @@ class UserPreferences(
         // upgrading users discover and enable this prerequisite manually.
         it[PreferenceKeys.NEARBY_CLIMB_SHARING] ?: true
     }
+    /** Whether nearby users may ask this phone to release the board. Until it is
+     * set, it follows [nearbyClimbSharing], whose text promises that they can ask;
+     * the sharing switch sets both. A request is always a question, never a disconnect. */
     val allowRemoteDisconnect: Flow<Boolean> = dataStore.data.map {
-        it[PreferenceKeys.ALLOW_REMOTE_DISCONNECT] ?: false
+        it[PreferenceKeys.ALLOW_REMOTE_DISCONNECT] ?: it[PreferenceKeys.NEARBY_CLIMB_SHARING] ?: true
     }
 
     suspend fun setNearbyClimbSharing(enabled: Boolean) {
