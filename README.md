@@ -81,7 +81,7 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 - **680,000+ catalogue climbs** across Kilter, MoonBoard, Tension, Grasshopper, Decoy, So iLL and Touchstone, with filters for grade, angle, quality, moves and setter — plus a combinable status filter (*Neu / Versucht / Geschafft*), an *ungraded-only (projects)* mode, ignored climbs and board-fit filtering
 - **Variable climb angle** *(0.2.0+)* — pick the angle to browse, send, or log a climb at across every angle the board physically supports, not only the angles that already have community stats; the original setter's angle is shown as info
 - **MoonBoard support** *(0.2.0+)* — browse and light MoonBoard 2010, 2016, Masters 2017, Masters 2019, Mini 2020, 2024 and Mini 2025; choose mounted hold sets and LED position, and import the official Moon logbook directly from the installed app or from CSV
-- **Quantum Board support** *(0.2.2+)* — browse and control Quantum walls, inspect controller-reported live layers and filter for climbs with zero or at most one overlap with occupied layers
+- **Quantum Board support** *(0.2.2+, experimental)* — browse and control Quantum walls, inspect controller-reported live layers and filter for climbs with zero or at most one overlap with occupied layers. Not yet tested on a real Quantum board; a lit route may not show as confirmed
 - **More boards** *(0.2.0+)* — Tension, Grasshopper, Decoy, So iLL and Touchstone work like Kilter: browse the catalogue, render climbs, read the hold heatmap, send to the board over Bluetooth, and set your own climbs. Pick one in Settings
 - **Board-Locations Map** *(0.2.0+)* — interactive world map of every known Kilter **and MoonBoard** installation, with filters for board brand, layout, country, public-vs-private, adjustability and size; tap a marker for contact details and a direct link into the climbs that fit that exact board
 - **Find-your-gym board picker** *(0.2.0+)* — set the right board configuration in Settings by searching for your gym, no product-size codes to memorise; always-on board-fit filter then narrows the catalog to climbs your board can actually do
@@ -177,7 +177,7 @@ Currently supported:
 - **Kilter Board** — all sizes and angles (catalogue, BLE send, logbook, climb authoring).
 - **MoonBoard** — 2010, 2016, Masters 2017, Masters 2019, Mini 2020, 2024 and Mini 2025 (catalogue, BLE send, logbook import and CruxCoach-community climb authoring). The 2024 set carries BoardSesh-community problems only for now — no official catalogue yet.
 - **Tension, Grasshopper, Decoy, So iLL, Touchstone** — catalogue browse, render, hold heatmap, BLE send, and CruxCoach-community climb authoring (these share the Aurora protocol with Kilter).
-- **Quantum Board** — catalogue browse, BLE send, authoritative live-layer readback and overlap-aware filtering. Controller capabilities and the selected model are checked before sending.
+- **Quantum Board** *(experimental)* — catalogue browse, BLE send, live-layer readback and overlap-aware filtering. Controller capabilities and the selected model are checked before sending. Not yet tested on a real Quantum board: a lit route may not show as confirmed.
 
 > Primarily tested on the Kilter 12x12 Original layout and MoonBoard 2016. Other sizes/variants should work but are less tested — feedback welcome!
 

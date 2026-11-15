@@ -1,5 +1,9 @@
 # Board layers and Quantum multi-climb
 
+> **Experimental.** Quantum support is not yet tested on a real Quantum board.
+> The app marks it experimental where a board is picked or connected. A lit
+> route may not show as confirmed (see "Projection" below).
+
 ## Product contract
 
 CruxCoach models simultaneous board projections as **board layers**, not as a
@@ -16,11 +20,11 @@ always starts at an explicit lamp action. Other board families keep their
 pre-0.2.2 automatic/explicit detail-send preference unchanged.
 
 Removing an unsent preview is local-only. Removing a physically active layer
-sends `TURN_OFF_USER` for that installation-owned UUID. Normal switching never
-sends `TURN_OFF_ALL` and therefore cannot erase another climber's projection.
-Before the scoped removal, CruxCoach refreshes controller truth; it writes
-nothing when that UUID is already absent, and confirms removal only from a new
-complete snapshot. `TURN_OFF_ALL` remains confined to the separate, explicitly
+always sends `TURN_OFF_USER` for that installation-owned UUID, also when the
+route list does not name it: a played route can be lit without being listed.
+Removal is done when the write is acknowledged, the controller reports no
+exception for it, and the route list read afterwards does not name the UUID. Normal switching never sends
+`TURN_OFF_ALL` and therefore cannot erase another climber's projection. `TURN_OFF_ALL` remains confined to the separate, explicitly
 named clear-entire-wall API, whose global effect is intentionally not a rack
 management operation. Generic clear and Kilter animation cleanup refuse to run
 on Quantum; every animation frame and its final clear are also fenced to the
@@ -48,7 +52,8 @@ the low 24 bits; Compose keeps the ordinary ARGB representation.
 
 Quantum setup is ordered as one GATT transaction: service discovery and MTU
 negotiation finish first, the 41-byte `fff5` controller record must identify a
-known type whose declared rows and columns match that model, local `fff1`
+known type (its rows and columns are logged when they differ from the
+model's product data, never a reason to refuse the link), local `fff1`
 notification routing must enable, and the `fff1` CCCD write must complete
 successfully before the connection becomes writable. CruxCoach then queries
 controller state with `REQUEST_USER_ROUTE_LIST` and reads the resulting state
@@ -75,27 +80,55 @@ If the link drops, the reconciled rack remains visible only as the last known
 state. Returning the app to the foreground triggers an immediate refresh when
 the last snapshot is ten seconds old (or no live snapshot exists).
 
-`fff1` notifications are reassembled and decoded with strict device address,
-exact payload length and maximum-player checks. Unlike fff2 commands, the
+`fff1` notifications are decoded with device address, minimum payload length
+and maximum-player checks. A notification that holds a complete frame is one
+answer, also when it carries bytes after the frame (a CRC or padding); only an
+incomplete one is reassembled with the next callbacks. Unlike fff2 commands, the
 eWalls 2.0.14 fff1/fff4 broadcast contract carries no CRC. Responses to
 `ACTIVATE_WALL`, `BOARD_SWIPE` and `REQUEST_USER_ROUTE_LIST` carry zero to four
 37-byte player records (route UUID, user UUID, remaining seconds, RGB).
 Controller exception codes 5–11 and 254 map to distinct UI errors. Delta
 acknowledgements advance the event revision but never satisfy a fresh,
-authoritative-read precondition. The fixed reserved header byte is validated.
+authoritative-read precondition. The reserved fourth header byte must be zero;
+it also keeps an echo of the route-list request from reading as an empty board.
 A frame recovered across notification callbacks is trusted only inside the
 freshly reset explicit-request generation; a timed-out read/request retires the
 uncorrelatable GATT so its late callback cannot confirm a later operation.
 
-Projection is a conservative transaction:
+### Projection
 
-1. `TURN_OFF_USER(ownSlotUuid)`
-2. `ACTIVATE_WALL(route, ownSlotUuid, colour, 65535 seconds, diodes)` for at most 92 diodes,
-   sent atomically as one GATT write-with-response after MTU negotiation
-3. `REQUEST_USER_ROUTE_LIST`
-4. success only after an authoritative snapshot contains the exact
-   route/user/colour tuple and every non-target player from the pre-write
-   snapshot is still present with the same route/user/colour tuple
+A climb is played as the controller's ordinary player route:
+
+1. `REQUEST_USER_ROUTE_LIST`, and the write is refused unless every player is
+   unchanged since the caller's capacity, colour and overlap preflight
+2. one `BOARD_SWIPE(route, ownSlotUuid, colour, minutes, diodes)` for at most 92
+   diodes, sent as one GATT write-with-response after MTU negotiation. `minutes`
+   is the controller's auto-off time from `fff5` (bytes 39–40, seconds, rounded
+   up to whole minutes), or 31 when it names none. No `TURN_OFF_USER` comes
+   first: a new route for the same user takes the place of the old one.
+3. the controller's answer to it, before anything else is sent: `fff4` is read
+   every 250 ms until it changes, for up to 1 s, and `fff1` notifications count
+   too. An exception for `BOARD_SWIPE` fails the send with its own message
+   (colour or hold taken, board full, …); silence is no refusal.
+4. `REQUEST_USER_ROUTE_LIST` again, as information only. Its answer is read from
+   `fff4` every 250 ms for up to 3 s. A list that does not come does not fail
+   the send; as for every route list request, the link is then retired so a late
+   answer cannot confirm a later request. A `BOARD_SWIPE` refusal notified while
+   the list is read still fails the send.
+
+The send succeeds when the write is acknowledged and the controller reports no
+exception. If the list names the exact route/user/colour tuple, the rack shows
+the layer as confirmed. If it does not, the rack shows "sent; the board does not
+list it" and keeps the layer, its holds and its place until its play time is
+over, so it can still be removed and still blocks overlapping projections.
+`ACTIVATE_WALL` with the open-ended 65535 duration is not used for playing: it
+is the controller's route-building path, and the real XL left `ACTIVATE_WALL`
+routes out of its route list.
+
+PaintBox sends one such route per colour under its own four identities. Before
+a new picture, and before a climb replaces a picture, it turns off every PaintBox
+identity the controller lists or this phone lit on that board (in memory; a
+colour counts as lit from the moment its write starts).
 
 Every climb hold must resolve to a diode before the first Quantum command.
 Unlike route/user/colour, diode membership is absent from controller readback;
@@ -111,14 +144,11 @@ its write mutex. A disconnect/reconnect to another Quantum controller therefore
 cannot receive the previous board's plan even when both controller snapshots
 happen to be empty.
 
-Although the recovered encoder can split a route across multiple 92-diode
-activation commands, route-list readback proves only route/user/colour, not that
-every diode chunk appended atomically. Routes above that bound therefore fail
-closed until the multi-frame behavior is captured on hardware.
+The encoder can split a route across several 92-diode frames, but whether a
+second frame for the same route adds to the first or replaces it is not known
+from a real board. Routes above that bound are therefore refused.
 
-The intermediate off snapshot preserves the local `SENDING` placeholder. A
-timeout or exception becomes `FAILED`; it is never presented as controller-
-confirmed. The separate clear-entire-wall action likewise requires controller
+A timeout or exception becomes `FAILED`; it is never presented as sent. The separate clear-entire-wall action likewise requires controller
 readback (an authoritative empty snapshot); successful BLE transport alone no
 longer clears local truth optimistically.
 
@@ -252,6 +282,16 @@ replace another client's projection. A saved Quantum climb is staged and sent
 through the scoped layer controls on detail instead.
 
 ## Verification status
+
+Since 0.2.5 CruxCoach plays routes with `BOARD_SWIPE` and the controller's own
+auto-off time, the controller's everyday player path. That path, removal of an
+unlisted route and PaintBox with several colours are covered by tests against a
+fake GATT controller, not yet by a real board. The paragraphs below describe the
+earlier `ACTIVATE_WALL` evidence.
+
+Known limits: an S Fitness is handled like the other models (four layers, one
+colour per route). Single-player play with the start, middle and finish holds in
+their own colours is not implemented.
 
 The packet layouts, ordered `fff5` model read, `fff1` subscription, `fff4` read
 path and parser match the clean-room eWalls 2.0.14 analysis and BoardSimulator.

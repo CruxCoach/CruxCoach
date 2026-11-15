@@ -1081,7 +1081,11 @@ class SessionQueueManager(
             expectedQuantumPlayers = expectedPlayers,
             expectedQuantumBoard = expectedBoard,
         )
-        if (sent) layers.confirmProjection(expectedPlan) else layers.failProjection(expectedPlan)
+        if (sent) {
+            layers.confirmProjection(expectedPlan, bleConnection.quantumUnlistedUntil(routeUuid, layer.userUuid, color))
+        } else {
+            layers.failProjection(expectedPlan)
+        }
         return sent
     }
 

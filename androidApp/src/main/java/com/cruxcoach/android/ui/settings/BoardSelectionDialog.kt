@@ -387,7 +387,7 @@ internal fun BoardSelectionDialog(
                 val kilterOriginalLabel = stringResource(R.string.board_category_kilter_original)
                 val kilterHomewallLabel = stringResource(R.string.board_category_kilter_homewall)
                 val moonBoardLabel = stringResource(R.string.board_category_moonboard)
-                val quantumLabel = BoardBrand.QUANTUM.displayName
+                val quantumLabel = stringResource(R.string.board_quantum_experimental_label, BoardBrand.QUANTUM.displayName)
                 val shinyWallLabel = BoardBrand.SHINYWALL.displayName
                 val chooseBoardLabel = stringResource(R.string.board_mismatch_choose_detail)
                 val boardOptions = buildList {
@@ -596,6 +596,11 @@ internal fun BoardSelectionDialog(
                         )
                     }
                 } else if (isQuantum) {
+                    Text(
+                        stringResource(R.string.board_quantum_experimental_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Text(
                         stringResource(R.string.board_selection_quantum_model_label),
                         style = MaterialTheme.typography.bodyMedium,

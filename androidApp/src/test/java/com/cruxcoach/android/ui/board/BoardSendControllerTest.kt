@@ -605,7 +605,7 @@ class BoardSendControllerTest {
                     null,
                 )
                 layerManager.beginProjection(match<BoardLayerPlanKey> { it.slot == 1 })
-                layerManager.confirmProjection(match<BoardLayerPlanKey> { it.slot == 1 })
+                layerManager.confirmProjection(match<BoardLayerPlanKey> { it.slot == 1 }, any())
             }
         }
 
@@ -661,7 +661,7 @@ class BoardSendControllerTest {
             every { connectedBoardBrand } returns MutableStateFlow(null)
             every { connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
             every { quantumControllerState } returns controllerState
-            coEvery { removeQuantumLayer(paintUser, paintRoute, paintBoard) } coAnswers {
+            coEvery { removeQuantumLayer(paintUser, paintBoard) } coAnswers {
                 controllerState.value = QuantumControllerState(authoritative = true, authoritativeRevision = 2)
                 true
             }
@@ -753,7 +753,7 @@ class BoardSendControllerTest {
                 )
             }
             coVerifyOrder {
-                ble.removeQuantumLayer(paintUser, paintRoute, paintBoard)
+                ble.removeQuantumLayer(paintUser, paintBoard)
                 ble.sendClimb(paintClimbHolds, any(), any(), paintClimbRoute, paintClimbUser, BoardLayerManager.LAYER_COLORS[1], any(), paintBoard, BoardBrand.QUANTUM)
             }
             // Read again after the picture is gone, before the climb's own write.
@@ -767,7 +767,7 @@ class BoardSendControllerTest {
                     null,
                 )
                 run.layers.beginProjection(match<BoardLayerPlanKey> { it.slot == 1 })
-                run.layers.confirmProjection(match<BoardLayerPlanKey> { it.slot == 1 })
+                run.layers.confirmProjection(match<BoardLayerPlanKey> { it.slot == 1 }, any())
             }
         }
 
@@ -788,7 +788,7 @@ class BoardSendControllerTest {
 
             assertFalse(run.state.value.ble.success)
             assertTrue(run.state.value.ble.error != null)
-            coVerify(exactly = 0) { run.ble.removeQuantumLayer(any(), any(), any()) }
+            coVerify(exactly = 0) { run.ble.removeQuantumLayer(any(), any()) }
             coVerify(exactly = 0) {
                 run.ble.sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
             }
@@ -803,7 +803,7 @@ class BoardSendControllerTest {
             advanceUntilIdle()
 
             assertFalse(run.state.value.ble.success)
-            coVerify(exactly = 0) { run.ble.removeQuantumLayer(any(), any(), any()) }
+            coVerify(exactly = 0) { run.ble.removeQuantumLayer(any(), any()) }
             coVerify(exactly = 0) {
                 run.ble.sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
             }
@@ -1028,7 +1028,7 @@ class BoardSendControllerTest {
             assertFalse(detailState.value.ble.isSending)
             assertEquals(R.string.board_send_error_generic, detailState.value.ble.error)
             coVerify(exactly = 0) {
-                ble.removeQuantumLayer(any(), any(), any())
+                ble.removeQuantumLayer(any(), any())
             }
         }
 

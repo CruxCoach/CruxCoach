@@ -15,6 +15,16 @@ a size, mounted hold sets and supported angles. Selecting a gym helps choose
 that configuration; the board-fit filter excludes climbs that cannot fit it.
 A Bluetooth connection identifies the controller you can actually light.
 
+**Quantum is experimental.** It is not yet tested on a real Quantum board, and
+the app says so where you pick or connect one. A climb lights as an ordinary
+player route: one route in one colour for the board's own auto-off time (31
+minutes if the board names none). A route counts as sent when the board takes
+it without an error; a refusal shows its reason. If the board's route list does
+not name a route it took, the layer rack shows it as "sent; the board does not
+list it" and keeps it until its time is over, so you can still turn it off.
+Known limits: an S Fitness is handled like the other models (four layers, one
+colour per route), and routes with more than 92 holds are not sent.
+
 A **problem** (called a climb in code) has an identity and hold frames. Its
 **angle** is the incline used to browse, project or log it. The setter's angle
 is context; community grade/quality statistics can differ by angle, and an

@@ -885,8 +885,14 @@ internal class BoardSendController(
             expectedQuantumBoard = expectedBoard,
             expectedBrand = BoardBrand.QUANTUM,
         )
-        if (written) boardLayerManager.confirmProjection(expectedPlan)
-        else boardLayerManager.failProjection(expectedPlan)
+        if (written) {
+            boardLayerManager.confirmProjection(
+                expectedPlan,
+                bleConnection.quantumUnlistedUntil(layer.routeUuid, layer.userUuid, layer.color),
+            )
+        } else {
+            boardLayerManager.failProjection(expectedPlan)
+        }
         val onScreen = state.value
         if (written &&
             onScreen.climb?.uuid == layer.climbUuid &&
@@ -1210,7 +1216,6 @@ internal class BoardSendController(
                 return@launch
             }
             val refreshed = currentSlotLayer
-            val expectedRoute = layer.confirmedRouteUuid
             if (refreshed?.confirmedRouteUuid == null) {
                 boardLayerManager.removeOwned(expectedPlan)
                 updateForVariant(variant) { current -> current.copy(
@@ -1218,9 +1223,9 @@ internal class BoardSendController(
                 ) }
                 return@launch
             }
-            if (refreshed.userUuid != layer.userUuid ||
-                !refreshed.confirmedRouteUuid.equals(expectedRoute, ignoreCase = true)
-            ) {
+            // The identity is ours alone, so TURN_OFF_USER turns off what it
+            // lights now, whichever route the controller names for it.
+            if (refreshed.userUuid != layer.userUuid) {
                 updateForVariant(variant) { current -> current.copy(
                     ble = current.ble.copy(
                         isSending = false,
@@ -1232,7 +1237,6 @@ internal class BoardSendController(
             val success = runCatching {
                 bleConnection.removeQuantumLayer(
                     refreshed.userUuid,
-                    expectedRouteId = expectedRoute,
                     expectedQuantumBoard = expectedBoard,
                 )
             }.getOrDefault(false)

@@ -118,21 +118,24 @@ class PaintProjector @Inject constructor(
         if (groups.values.any { it.size > PAINT_QUANTUM_MOST }) throw PaintProjectionException(R.string.paintbox_quantum_limit)
         if (!ble.refreshQuantumState() || !current()) return false
         // Unknown foreign geometry cannot prove non-overlap. Fail before making any change.
-        if (ble.quantumControllerState.value.players.any { !layers.ownsPaintIdentity(it.userId) }) {
+        // This phone's own climbs count too, also one the controller accepted but does not list.
+        if (ble.quantumControllerState.value.players.any { !layers.ownsPaintIdentity(it.userId) } ||
+            (layers.isBoundTo(fence) && layers.state.value.layers.any { it.confirmedRouteUuid != null })
+        ) {
             throw PaintProjectionException(R.string.paintbox_quantum_occupied)
         }
-        val existing = ble.quantumControllerState.value.players.toList()
-        // Remove old PaintBox geometry first, so moving a diode between colors never overlaps.
-        for (player in existing) {
-            requireBoardFree()
-            if (!current()) return false
-            if (!ble.removeQuantumLayer(player.userId, player.routeId, fence)) return false
-        }
+        requireBoardFree()
+        if (!current()) return false
+        // Remove the old picture first, so moving a diode between colors never overlaps.
+        if (ble.removePaintBoxLayers(layers, fence) == null) return false
         for ((color, ids) in groups.toSortedMap()) {
             requireBoardFree()
             if (!current()) return false
             if (ble.quantumControllerState.value.players.any { !layers.ownsPaintIdentity(it.userId) }) return false
             val user = layers.paintIdentity(PaintPalette.quantum.indexOf(color))
+            // Before the write: a colour the board took without an answer must
+            // still be turned off later, and turning off an unlit one is harmless.
+            layers.markPaintLit(user)
             if (!ble.sendClimb(
                     holds = ids.map { BoardHold(it, HoldRole.HAND) },
                     placementToLed = ledMap,

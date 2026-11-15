@@ -25,6 +25,10 @@ class PaintBoxProjectionTest {
     private val relay = mockk<CruxRelayManager> { every { state } returns relayState }
     private val projector = PaintProjector(ble, layers, prefs, sessions, relay)
 
+    init {
+        every { layers.state } returns MutableStateFlow(BoardLayerState())
+    }
+
     private fun kilter(apiLevel: Int = 3) {
         every { ble.connectedBoardBrand } returns MutableStateFlow(BoardBrand.KILTER)
         every { ble.connectedBoard } returns DiscoveredBoard("Kilter", "1", apiLevel, "AA:BB", -40, BoardBrand.KILTER)
@@ -130,7 +134,7 @@ class PaintBoxProjectionTest {
         assertTrue(runCatching { projector.send(doc, (1..93).associateWith { it }) { true } }.isFailure)
         coVerify(exactly = 0) { ble.refreshQuantumState() }
         assertTrue(runCatching { projector.send(doc.copy(colors = mapOf(1 to 28)), mapOf(1 to 1)) { true } }.isFailure)
-        coVerify(exactly = 0) { ble.removeQuantumLayer(any(), any(), any()) }
+        coVerify(exactly = 0) { ble.removeQuantumLayer(any(), any()) }
         coVerify(exactly = 0) { ble.sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
     @Test fun `Quantum stops on partial failure and never uses the anonymous identity`() = runTest {

@@ -2918,6 +2918,8 @@
     <string name="fips_mesh_join_mode_title">Board access</string>
     <string name="fips_mesh_join_mode_description">Applies to this board for as long as anyone is on it. Anyone on the board can change it.</string>
     <string name="board_selection_quantum_model_label">Quantum model</string>
+    <string name="board_quantum_experimental_label">%1$s (experimental)</string>
+    <string name="board_quantum_experimental_hint">Experimental: not yet tested on a real Quantum board. A lit route may not show as confirmed.</string>
     <string name="board_selection_quantum_schematic_hint">The original board image for the selected Quantum model is included.</string>
     <string name="board_selection_shinywall_variant_label">Shiny Wall variant</string>
     <string name="board_selection_shinywall_variant_hint">Pick the variant your wall is set up as. Full walls add the small holds between the rows.</string>
@@ -2991,6 +2993,7 @@
     <string name="quantum_layer_status_planned">planned locally</string>
     <string name="quantum_layer_status_sending">transmitting</string>
     <string name="quantum_layer_status_on_board">confirmed on the board</string>
+    <string name="quantum_layer_status_sent">sent; the board does not list it</string>
     <string name="quantum_layer_status_replacing">replacement planned; previous climb is still on the board</string>
     <string name="quantum_layer_status_failed">not confirmed</string>
     <string name="quantum_layer_status_unknown">on the board; route details unknown</string>
@@ -2999,6 +3002,7 @@
     <string name="quantum_layer_status_short_planned">plan</string>
     <string name="quantum_layer_status_short_sending">send</string>
     <string name="quantum_layer_status_short_on_board">live</string>
+    <string name="quantum_layer_status_short_sent">sent</string>
     <string name="quantum_layer_status_short_replacing">swap</string>
     <string name="quantum_layer_status_short_failed">failed</string>
     <string name="quantum_layer_status_short_unknown">?</string>
