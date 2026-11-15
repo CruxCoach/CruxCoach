@@ -27,6 +27,7 @@ import com.cruxcoach.android.athlete.ClimbingDaysReader
 import com.cruxcoach.android.athlete.ExerciseCatalogStore
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.ui.common.LocalBoardSessionManager
+import com.cruxcoach.android.ui.common.effectsOnTestThread
 import com.cruxcoach.athlete.data.AthleteRepository
 import com.cruxcoach.db.athlete.AthleteDatabase
 import com.cruxcoach.db.secure.SecureDatabase
@@ -62,10 +63,15 @@ import org.junit.Rule
  *   return as soon as the node exists.
  * - Clicks use [SemanticsActions.OnClick] (no touch injection), and items of
  *   lazy lists are scrolled into view first ([scrollTo]).
+ * - The screens' coroutines run on the test's thread ([effectsOnTestThread]).
+ *   Their view models answer on IO threads; with the rule's default
+ *   dispatcher the screen took the answer there, and on a busy runner it
+ *   sometimes never showed it (CI 2026-11-10: the Undo after taking over a
+ *   logbook grade, a food search's results).
  */
 abstract class AthleteScreenTest {
 
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createComposeRule(effectsOnTestThread())
 
     protected val context: Application get() = ApplicationProvider.getApplicationContext()
     protected lateinit var athleteDriver: AndroidSqliteDriver

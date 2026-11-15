@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.ui.board.BoardPreviewImage
+import com.cruxcoach.android.ui.common.effectsOnTestThread
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
@@ -30,7 +31,8 @@ import org.robolectric.annotation.GraphicsMode
 @Config(application = Application::class, qualifiers = "de-w320dp-h640dp")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BoardImageChoiceTest {
-    @get:Rule val compose = createComposeRule()
+    // The pictures decode on Dispatchers.IO; they arrive on the test's thread like on the main thread in the app.
+    @get:Rule val compose = createComposeRule(effectsOnTestThread())
 
     @Test fun `image opens fullscreen without selecting and text selects independently`() {
         var selections = 0
