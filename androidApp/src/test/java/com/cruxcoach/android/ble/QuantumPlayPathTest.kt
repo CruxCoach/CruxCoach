@@ -289,10 +289,17 @@ class QuantumPlayPathTest {
         assertEquals(listOf(0x47, 0x44, 0x47), board.commands())
     }
 
-    @Test fun `PaintBox colours past their play time do not block the next climb`() = runTest {
+    @Test fun `PaintBox colours past their play time do not block the next climb`() =
+        paintPastPlayTime(staleReads = 0)
+
+    @Test fun `PaintBox colours past their play time do not block the next climb when fff4 updates late`() =
+        paintPastPlayTime(staleReads = 2)
+
+    private fun paintPastPlayTime(staleReads: Int) = runTest {
         val board = FakeController(context).apply {
             listsPlayedRoutes = false
             refusesTurnOffWithoutRoute = true
+            staleReadsAfterWrite = staleReads
         }
         val paint = (0..2).map { board.layers.paintIdentity(it) }
         paint.forEachIndexed { index, user ->

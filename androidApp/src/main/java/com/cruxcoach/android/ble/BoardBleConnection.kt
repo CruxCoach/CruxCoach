@@ -2364,7 +2364,14 @@ class BoardBleConnection(
                 delay(QUANTUM_ROUTE_LIST_READ_INTERVAL_MS)
                 waitedMs += QUANTUM_ROUTE_LIST_READ_INTERVAL_MS
                 if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) return true
-                if (_quantumControllerState.value.lastFailure != null) return false
+                // Stop on a refusal of the list itself, or of [answering]: that
+                // send has failed and needs no list. Any other refusal (a late
+                // TURN_OFF_USER answer) must not cost the list a removal decides by.
+                val state = _quantumControllerState.value
+                if (state.lastFailure != null && (state.lastFailedCommand == null ||
+                        state.lastFailedCommand == QuantumCommand.REQUEST_USER_ROUTE_LIST ||
+                        state.lastFailedCommand == answering)
+                ) return false
                 readQuantumStateLocked(explicitRouteListResponse = true, refusalOf = answering)
                 if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) return true
             }
@@ -2485,7 +2492,9 @@ class BoardBleConnection(
                 )
             ) return false
             val refused = readQuantumAnswerLocked(QuantumCommand.TURN_OFF_BY_USER)
-            val listAnswered = requestQuantumRouteListLocked(expectedQuantumBoard, answering = QuantumCommand.TURN_OFF_BY_USER)
+            // The list decides, so a refusal still in fff4 while it is read (the
+            // XL publishes the list a moment later) is no reason to stop reading.
+            val listAnswered = requestQuantumRouteListLocked(expectedQuantumBoard)
             val refusal = refused ?: quantumRefusalOf(QuantumCommand.TURN_OFF_BY_USER)
             val off = if (listAnswered) {
                 _quantumControllerState.value.players.none { it.userId.equals(userId, ignoreCase = true) }
