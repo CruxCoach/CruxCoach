@@ -33,7 +33,8 @@
     <string name="paintbox_save_error">Could not save or delete the picture. Please retry.</string>
     <string name="paintbox_connect_error">Connect to a matching board first.</string>
     <string name="paintbox_missing_led">Some painted holds have no LED mapping for this board. Nothing was sent.</string>
-    <string name="paintbox_send_error">Transmission failed or was only partially completed. Live painting is paused; check the board and retry.</string>
+    <string name="paintbox_send_error">Transmission failed or was only partially completed. Live is off; check the board and retry.</string>
+    <string name="paintbox_live_lost">Live is off: the board is no longer connected.</string>
     <string name="paintbox_quantum_limit">Quantum currently supports up to 92 LEDs per color.</string>
     <string name="paintbox_quantum_occupied">Other layers are lit on this Quantum board, so PaintBox can’t check which holds are free. Turn them off first. Your own climbs can be turned off on their climb page.</string>
     <string name="paintbox_image_import">Use a photo</string>
@@ -45,7 +46,7 @@
     <string name="paintbox_image_pick_bg">Tap the background color in the image.</string>
     <string name="paintbox_image_error">Could not load this image. Please choose another image.</string>
     <string name="paintbox_photo_title">Photo</string>
-    <string name="paintbox_info">Paint\nPick brush or eraser and a color, then tap or swipe holds with one finger. The pipette takes the color of the hold you tap as the brush color. Two fingers zoom and move the board. One stroke is one step for Undo.\n\nOn the board\nSend shows the picture on the board once. With Live on, the board follows every stroke. Live pauses when the connection drops, when you leave PaintBox and when you change boards. Large bright pictures are shown dimmer, within the board’s power limit.\n\nPictures\nSave keeps the picture on this phone. Pictures are never shared.</string>
+    <string name="paintbox_info">Paint\nPick brush or eraser and a color, then tap or swipe holds with one finger. The pipette takes the color of the hold you tap as the brush color. Two fingers zoom and move the board. One stroke is one step for Undo.\n\nOn the board\nSend shows the picture on the board once. With Live on, the board follows every stroke. Live ends when the connection drops, when you leave PaintBox and when you change boards; another app only pauses it. Large bright pictures are shown dimmer, within the board’s power limit.\n\nPictures\nSave keeps the picture on this phone. Pictures are never shared.</string>
     <string name="paintbox_info_quantum">Quantum\nFour colors, up to 92 LEDs each. Other layers must be off before you paint. Lighting a climb replaces the picture.</string>
     <string name="paintbox_info_photo">Drag the photo with one finger; zoom and turn it with two. Each hold takes the color that covers most of it, as the nearest board color. With “Keep background dark” the photo’s background lights no LEDs: PaintBox finds it at the edge of the photo, and Background lets you tap another color. A new photo is fitted so that its subject fills the board and sits cleanly on the holds; Snap to holds settles it again after you moved it. Black and transparent parts stay off; a black shape on a background that is left off lights white instead. Only the hold colors are saved.</string>
     <string name="paintbox_live">Live</string>

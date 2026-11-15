@@ -39,9 +39,12 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
   Verbindungsdialog. Verbinden allein sendet kein Bild.
 - **Senden** sendet das Bild einmal. Mit **Live** folgt das Board jedem Strich.
   Ausschalten beendet das Senden; das Board behält, was es zeigt.
-- Live-Malen pausiert, wenn die Verbindung abbricht, wenn du den Bildschirm oder
-  die App verlässt und wenn du das Board wechselst. Wieder einschalten tust du
-  es selbst.
+- Solange Live an ist, bleibt der Bildschirm an. Wechselst du in eine andere
+  App oder geht der Bildschirm trotzdem aus, pausiert Live und geht wieder an,
+  wenn du zurückkommst, solange das Board noch verbunden ist.
+- Live endet, wenn du PaintBox verlässt, wenn du das Board wechselst und wenn
+  die Verbindung abbricht (eine Meldung sagt es). Wieder einschalten tust du es
+  selbst.
 - Solange eine Sitzung, eine Playlist oder die Board-Freigabe das Board hält,
   sendet PaintBox nichts und Live bleibt aus.
 

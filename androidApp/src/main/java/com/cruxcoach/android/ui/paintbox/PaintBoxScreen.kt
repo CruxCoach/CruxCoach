@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.paintbox
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
@@ -30,6 +32,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -85,25 +88,37 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
     var name by rememberSaveable { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
     val lifecycle = LocalLifecycleOwner.current
+    val activity = LocalActivity.current
     DisposableEffect(lifecycle) {
         viewModel.enter()
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> viewModel.enter()
-                Lifecycle.Event.ON_STOP -> viewModel.leave()
+                // Another app or the screen turning off only pauses Live; leaving PaintBox ends it.
+                Lifecycle.Event.ON_STOP -> viewModel.stop()
                 else -> Unit
             }
         }
         lifecycle.lifecycle.addObserver(observer)
-        onDispose { lifecycle.lifecycle.removeObserver(observer); viewModel.leave() }
+        onDispose {
+            lifecycle.lifecycle.removeObserver(observer)
+            // A new theme, font size or language rebuilds the screen: that only pauses Live too.
+            if (activity?.isChangingConfigurations == true) viewModel.stop() else viewModel.leave()
+        }
+    }
+    // While Live is on the screen stays on, so a look at the wall doesn't pause it.
+    val view = LocalView.current
+    DisposableEffect(view, state.live) {
+        view.keepScreenOn = state.live
+        onDispose { view.keepScreenOn = false }
     }
     LaunchedEffect(Unit) { PerfLogger.milestone("PAINTBOX composable entered") }
     val message = state.message?.let { stringResource(it) }
     LaunchedEffect(message) {
         if (message != null) { snackbar.showSnackbar(message); viewModel.message(null) }
     }
+    // Live goes on while the question is open: Cancel keeps it, and each action ends it once it runs.
     fun navigate(action: () -> Unit) {
-        viewModel.pause()
         if (state.dirty) { pendingAction = action; askUnsaved = true } else action()
     }
     fun cancelPending() { pendingAction = null; cancelAction?.invoke(); cancelAction = null }
@@ -216,7 +231,10 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
             }
             if (importing) PhotoTools(state, viewModel) else if (ready) PaintTools(state, viewModel) { colorPicker = true }
             val boardShown = !state.imageLoading && !state.loading && state.boardReady && document != null
-            Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp),
+            Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp)
+                // A stroke or photo drag from the screen edge paints instead of going back. Android keeps
+                // only the lowest 200 dp of each edge's exclusion, so higher up the edge still goes back.
+                .then(if (boardShown || state.imageImport != null) Modifier.systemGestureExclusion() else Modifier),
                 contentAlignment = if (boardShown) Alignment.TopCenter else Alignment.Center) {
                 when {
                     state.imageLoading -> CircularProgressIndicator()

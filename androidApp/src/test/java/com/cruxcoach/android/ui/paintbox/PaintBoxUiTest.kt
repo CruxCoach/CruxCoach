@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -224,6 +225,38 @@ class PaintBoxUiTest {
         compose.onNodeWithTag("paintbox_connect").assertIsDisplayed().assertTextContains("Connect board")
         compose.onNodeWithTag("paintbox_live").assertDoesNotExist()
         compose.onNodeWithTag("paintbox_send").assertDoesNotExist()
+    }
+
+    @Test fun `back with unsaved changes asks and Cancel keeps live on`() {
+        val vm = mockk<PaintBoxViewModel>(relaxed = true)
+        val state = MutableStateFlow(PaintBoxState(
+            document = PaintDocument(board = PaintBoard("kilter", 1, 10), colors = mapOf(1 to 28)), loading = false,
+            dirty = true, live = true,
+            boardSize = BoardSize(10, 1, "Test board", 0, 100, 0, 100, null),
+            placements = mapOf(1 to BoardPlacement(1, 1, 1, 30, 30)),
+        ))
+        every { vm.state } returns state
+        every { vm.connection } returns MutableStateFlow(ConnectionState.CONNECTED)
+        var left = false
+        lateinit var view: android.view.View
+        compose.setContent {
+            view = LocalView.current
+            MaterialTheme { PaintBoxScreen({ left = true }, {}, vm) }
+        }
+        compose.waitForIdle()
+        // Live keeps the screen on.
+        assertTrue(view.keepScreenOn)
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Save changes?").assertIsDisplayed()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Save changes?").assertDoesNotExist()
+        assertFalse(left)
+        verify(exactly = 0) { vm.pause() }
+        verify(exactly = 0) { vm.leave() }
+        compose.onNodeWithTag("paintbox_live").assertIsOn()
+        state.value = state.value.copy(live = false)
+        compose.waitForIdle()
+        assertFalse(view.keepScreenOn)
     }
 
     @Test fun `rarer actions sit in the menu`() {

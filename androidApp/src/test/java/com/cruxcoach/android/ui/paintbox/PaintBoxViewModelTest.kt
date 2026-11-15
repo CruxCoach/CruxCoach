@@ -91,6 +91,98 @@ class PaintBoxViewModelTest {
         advanceUntilIdle()
         assertFalse(vm.state.value.live)
         coVerify(exactly = 0) { projector.send(any(), any(), any()) }
+        // Live was already off: the drop has nothing to report.
+        assertNull(vm.state.value.message)
+    }
+    @Test fun `a lost connection ends live and says so`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.toggleLive()
+        advanceUntilIdle()
+        connection.value = ConnectionState.DISCONNECTED
+        runCurrent()
+        assertFalse(vm.state.value.live)
+        assertEquals(R.string.paintbox_live_lost, vm.state.value.message)
+        verify { ble.releaseKeepAlive("paintbox") }
+    }
+    @Test fun `another app pauses live and coming back turns it on and sends the picture`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.paint(setOf(1))
+        vm.toggleLive()
+        advanceUntilIdle()
+        coVerify(exactly = 1) { projector.send(any(), any(), any()) }
+        vm.stop()
+        assertFalse(vm.state.value.live)
+        verify { ble.releaseKeepAlive("paintbox"); ble.resumeAutomaticProjection("paintbox") }
+        // The screen can stop twice in a row (e.g. the screen turns off in another app).
+        vm.stop()
+        vm.enter()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.live)
+        assertNull(vm.state.value.message)
+        coVerify(exactly = 2) { projector.send(match { it.colors == mapOf(1 to 28) }, any(), any()) }
+        // Back again with Live off: it stays off.
+        vm.toggleLive()
+        vm.stop()
+        vm.enter()
+        advanceUntilIdle()
+        assertFalse(vm.state.value.live)
+        coVerify(exactly = 2) { projector.send(any(), any(), any()) }
+    }
+    @Test fun `live that cannot come back says why`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.toggleLive()
+        advanceUntilIdle()
+        vm.stop()
+        connection.value = ConnectionState.DISCONNECTED
+        runCurrent()
+        connection.value = ConnectionState.CONNECTED
+        runCurrent()
+        vm.message(null)
+        vm.enter()
+        advanceUntilIdle()
+        assertFalse(vm.state.value.live)
+        // The drop ended Live for good: reconnecting meanwhile doesn't bring it back.
+        assertNull(vm.state.value.message)
+        vm.toggleLive()
+        advanceUntilIdle()
+        vm.stop()
+        busy.value = R.string.paintbox_session_active
+        runCurrent()
+        vm.enter()
+        advanceUntilIdle()
+        assertFalse(vm.state.value.live)
+        assertEquals(R.string.paintbox_session_active, vm.state.value.message)
+    }
+    @Test fun `a connection lost while away is reported on return`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.toggleLive()
+        advanceUntilIdle()
+        vm.stop()
+        connection.value = ConnectionState.DISCONNECTED
+        runCurrent()
+        vm.enter()
+        advanceUntilIdle()
+        assertFalse(vm.state.value.live)
+        assertEquals(R.string.paintbox_live_lost, vm.state.value.message)
+    }
+    @Test fun `leaving PaintBox ends live for good`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.toggleLive()
+        advanceUntilIdle()
+        vm.stop()
+        vm.leave()
+        vm.enter()
+        advanceUntilIdle()
+        assertFalse(vm.state.value.live)
+        coVerify(exactly = 1) { projector.send(any(), any(), any()) }
+    }
+    @Test fun `live starts while a single send is still on its way`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        connection.value = ConnectionState.SENDING
+        runCurrent()
+        vm.toggleLive()
+        assertTrue(vm.state.value.live)
+        assertNull(vm.state.value.message)
     }
     @Test fun `pointer samples coalesce and erasing transmits the complete resulting frame`() = runTest(dispatcher) {
         vm.state.first { !it.loading }

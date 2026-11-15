@@ -77,6 +77,8 @@ class PaintBoxViewModel @Inject constructor(
     private var appBoard: PaintBoard? = null
     /** The user already agreed to leave the picture as it is (the board picker asks first). */
     private var leaveAgreed = false
+    /** Live was on when the screen stopped (another app, the screen turned off): it comes back with the screen. */
+    private var resumeLive = false
 
     init {
         viewModelScope.launch {
@@ -95,7 +97,14 @@ class PaintBoxViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            connection.collect { if (it != ConnectionState.CONNECTED && it != ConnectionState.SENDING) pause() }
+            connection.collect {
+                if (it != ConnectionState.CONNECTED && it != ConnectionState.SENDING) {
+                    // Live ends without the user's doing: say so, also when it was only paused for another app.
+                    val wasLive = state.value.live || resumeLive
+                    pause()
+                    if (wasLive) message(R.string.paintbox_live_lost)
+                }
+            }
         }
         viewModelScope.launch {
             // A session or board sharing takes the board: Live stops instead of fighting it.
@@ -371,9 +380,11 @@ class PaintBoxViewModel @Inject constructor(
     fun undo() { state.value.document?.let { change(history.undo(it.colors)) }; updateHistory() }
     fun redo() { state.value.document?.let { change(history.redo(it.colors)) }; updateHistory() }
     fun clear() { beginStroke(); change(emptyMap()); endStroke() }
+    /** Ends Live; it stays off until the user turns it on again. */
     fun pause() {
         generation++
         pending = false
+        resumeLive = false
         mutable.update { it.copy(live = false) }
         ble.releaseKeepAlive("paintbox")
     }
@@ -381,6 +392,13 @@ class PaintBoxViewModel @Inject constructor(
         ble.pauseAutomaticProjection("paintbox")
         // Back from the catalogue settings: try the board again by itself.
         if (state.value.missingBoard) retryBoard()
+        if (resumeLive) { resumeLive = false; startLive(offline = R.string.paintbox_live_lost) }
+    }
+    /** The screen stopped (another app, the screen turned off): Live pauses and comes back with [enter]. */
+    fun stop() {
+        val wasLive = state.value.live || resumeLive
+        leave()
+        resumeLive = wasLive
     }
     /** Opens the current picture's board again, e.g. once its catalogue is downloaded. */
     private fun retryBoard() {
@@ -393,16 +411,17 @@ class PaintBoxViewModel @Inject constructor(
         }
     }
     fun leave() { pause(); ble.resumeAutomaticProjection("paintbox") }
-    fun toggleLive() {
-        if (state.value.live) pause() else {
-            if (connection.value != ConnectionState.CONNECTED) { message(R.string.paintbox_connect_error); return }
-            projector.boardBusy()?.let { message(it); return }
-            val document = state.value.document
-            if (document != null && !onAppBoard(document)) { mutable.update { it.copy(otherBoard = true) }; return }
-            mutable.update { it.copy(live = true) }
-            ble.acquireKeepAlive("paintbox")
-            queueSend()
-        }
+    fun toggleLive() { if (state.value.live) pause() else startLive(offline = R.string.paintbox_connect_error) }
+    /** Turns Live on and sends the whole picture, so the board shows what the screen shows; [offline] says why not without a board. */
+    private fun startLive(offline: Int) {
+        // A single send still in flight is a connected board too.
+        if (connection.value != ConnectionState.CONNECTED && connection.value != ConnectionState.SENDING) { message(offline); return }
+        projector.boardBusy()?.let { message(it); return }
+        val document = state.value.document
+        if (document != null && !onAppBoard(document)) { mutable.update { it.copy(otherBoard = true) }; return }
+        mutable.update { it.copy(live = true) }
+        ble.acquireKeepAlive("paintbox")
+        queueSend()
     }
     fun sendOnce() { queueSend() }
     private fun queueSend() {
