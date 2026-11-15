@@ -23,10 +23,6 @@ class PaintProjector @Inject constructor(
     private val sessions: SessionQueueManager,
     private val relay: CruxRelayManager,
 ) {
-    /** The last picture went out dimmer than painted, to stay within the box's power. */
-    var lastSendDimmed: Boolean = false
-        private set
-
     /**
      * Why PaintBox must leave the board alone right now, or null. A shared session
      * owns what the wall shows, and board sharing forwards other phones' writes,
@@ -50,8 +46,41 @@ class PaintProjector @Inject constructor(
         boardBusy()?.let { throw PaintProjectionException(it) }
     }
 
+    /**
+     * Whether the connected board would show [document] dimmer than painted, to stay within
+     * its power limit. False without a matching Aurora board, or for a picture it refuses.
+     */
+    fun dims(document: PaintDocument, ledMap: Map<Int, Int>): Boolean {
+        val brand = BoardBrand.fromWire(document.board.brand)
+        if (!brand.usesAuroraProtocol || ble.connectedBoardBrand.value != brand) return false
+        val apiLevel = ble.connectedBoard?.apiLevel ?: return false
+        if (document.colors.keys.any { it !in ledMap }) return false
+        return try { auroraFrame(document, ledMap, brand, apiLevel).dimmed }
+        catch (_: PaintProjectionException) { false }
+    }
+
+    /** The LEDs an Aurora box gets for [document], and whether they are dimmed. Refuses what the box can't show. */
+    private fun auroraFrame(document: PaintDocument, ledMap: Map<Int, Int>, brand: BoardBrand, apiLevel: Int): AuroraFrame {
+        val ledsPerHold = BoardPacketEncoder.ledsPerHoldFor(brand)
+        val painted = document.colors.map { (id, color) -> ledMap.getValue(id) to color }
+        if (apiLevel >= 3) {
+            // No budget in the protocol: stay within about what the maker's LED test draws (see fitV3PictureBudget).
+            // Layouts that share a size map their own placements to the same LEDs.
+            val fitted = BoardPacketEncoder.fitV3PictureBudget(painted.map { it.second }, ledMap.values.toSet().size)
+            val leds = painted.zip(fitted) { (position, _), color -> position to color }
+            return AuroraFrame(leds, dimmed = leds != painted)
+        }
+        // An API-2 box takes one packet, like hold cleaning (see cleaningHoldLimit).
+        if (painted.size > BoardPacketEncoder.cleaningHoldLimit(apiLevel, ledsPerHold)) {
+            throw PaintProjectionException(R.string.paintbox_api2_limit)
+        }
+        val encoder = BoardPacketEncoder(apiLevel, ledsPerHold, BoardPacketEncoder.V2_PICTURE_MAX_POWER)
+        if (encoder.litNothing(painted)) throw PaintProjectionException(R.string.paintbox_too_bright)
+        return AuroraFrame(painted, dimmed = encoder.dims(painted))
+    }
+    private class AuroraFrame(val leds: List<Pair<Int, Int>>, val dimmed: Boolean)
+
     suspend fun send(document: PaintDocument, ledMap: Map<Int, Int>, current: () -> Boolean): Boolean {
-        lastSendDimmed = false
         requireBoardFree()
         val brand = BoardBrand.fromWire(document.board.brand)
         if (!current() || ble.connectedBoardBrand.value != brand) throw PaintProjectionException(R.string.paintbox_connect_error)
@@ -60,36 +89,21 @@ class PaintProjector @Inject constructor(
             val variant = MoonBoardVariant.fromLayoutId(document.board.layoutId.toLong())
                 ?: throw PaintProjectionException(R.string.paintbox_missing_board)
             val mode = preferences.moonBoardLedMode.first()
+            val frames = PaintPalette.moonFrames(document.colors)
+            // The box takes a frame of so many LEDs; with LEDs above and below, a hold needs two.
+            if (!MoonBoardFrameEncoder.fitsController(MoonBoardFrameEncoder.encode(frames, variant, mode))) {
+                throw PaintProjectionException(
+                    if (mode == MoonBoardLedMode.BOTH) R.string.paintbox_moon_limit_both else R.string.paintbox_moon_limit)
+            }
             requireBoardFree()
-            return current() && ble.sendMoonBoardClimb(PaintPalette.moonFrames(document.colors), variant, mode)
+            return current() && ble.sendMoonBoardClimb(frames, variant, mode)
         }
         if (document.colors.keys.any { it !in ledMap }) throw PaintProjectionException(R.string.paintbox_missing_led)
         if (brand.usesAuroraProtocol) {
             val apiLevel = ble.connectedBoard?.apiLevel ?: throw PaintProjectionException(R.string.paintbox_connect_error)
-            val ledsPerHold = BoardPacketEncoder.ledsPerHoldFor(brand)
-            val painted = document.colors.map { (id, color) -> ledMap.getValue(id) to color }
-            val leds: List<Pair<Int, Int>>
-            val dimmed: Boolean
-            if (apiLevel >= 3) {
-                // No budget in the protocol: stay within about what the maker's LED test draws (see fitV3PictureBudget).
-                // Layouts that share a size map their own placements to the same LEDs.
-                val fitted = BoardPacketEncoder.fitV3PictureBudget(painted.map { it.second }, ledMap.values.toSet().size)
-                leds = painted.zip(fitted) { (position, _), color -> position to color }
-                dimmed = leds != painted
-            } else {
-                // An API-2 box takes one packet, like hold cleaning (see cleaningHoldLimit).
-                if (painted.size > BoardPacketEncoder.cleaningHoldLimit(apiLevel, ledsPerHold)) {
-                    throw PaintProjectionException(R.string.paintbox_api2_limit)
-                }
-                val encoder = BoardPacketEncoder(apiLevel, ledsPerHold, BoardPacketEncoder.V2_PICTURE_MAX_POWER)
-                if (encoder.litNothing(painted)) throw PaintProjectionException(R.string.paintbox_too_bright)
-                leds = painted
-                dimmed = encoder.dims(painted)
-            }
+            val frame = auroraFrame(document, ledMap, brand, apiLevel)
             requireBoardFree()
-            val sent = current() && ble.sendRawLeds(leds, expectedBrand = brand, maxPowerW = BoardPacketEncoder.V2_PICTURE_MAX_POWER)
-            lastSendDimmed = sent && dimmed
-            return sent
+            return current() && ble.sendRawLeds(frame.leds, expectedBrand = brand, maxPowerW = BoardPacketEncoder.V2_PICTURE_MAX_POWER)
         }
         if (brand != BoardBrand.QUANTUM) throw PaintProjectionException(R.string.paintbox_missing_board)
         val connected = ble.connectedBoard ?: throw PaintProjectionException(R.string.paintbox_connect_error)

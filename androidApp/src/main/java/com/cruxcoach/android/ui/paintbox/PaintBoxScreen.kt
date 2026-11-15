@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.systemGestureExclusion
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
@@ -31,11 +33,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -270,6 +274,10 @@ fun PaintBoxScreen(onBack: () -> Unit, onDownloadBoards: () -> Unit, viewModel: 
                         )
                     }
                 }
+                // Over the board, so the board keeps its size when the card comes and goes.
+                if (connected && state.dimmed && !state.dimHintSeen && !importing && boardShown) {
+                    DimHintCard(viewModel::dimHintSeen, Modifier.align(Alignment.BottomCenter))
+                }
             }
         }
     }
@@ -498,6 +506,45 @@ private fun PaintBoxActions(
                         }
                     }
                 }
+            }
+            // What goes out is dimmed to the board's power limit. The line keeps its place while a board
+            // is connected, so the board doesn't move under a stroke when it comes and goes; while the
+            // card explains it the first time, the line waits.
+            if (connected && !importing) {
+                val shown = state.dimmed && state.dimHintSeen
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp).alpha(if (shown) 1f else 0f)
+                        .then(if (shown) Modifier.testTag("paintbox_dimmed") else Modifier.clearAndSetSemantics {}),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(Icons.Outlined.BrightnessMedium, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.paintbox_dimmed), style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+/** Shown the first time a picture is dimmed; afterwards the same words are behind the info button. */
+@Composable
+private fun DimHintCard(onGotIt: () -> Unit, modifier: Modifier = Modifier) {
+    // At large font sizes the text scrolls, so the card leaves most of the board in view.
+    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.4f).dp
+    Card(modifier.fillMaxWidth().heightIn(max = maxHeight).testTag("paintbox_dim_hint"),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.BrightnessMedium, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.paintbox_dim_hint_title), style = MaterialTheme.typography.titleMedium)
+            }
+            Text(stringResource(R.string.paintbox_dim_hint), style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
+                    .padding(top = 6.dp, end = 8.dp))
+            TextButton(onClick = onGotIt, modifier = Modifier.align(Alignment.End).testTag("paintbox_dim_hint_ok")) {
+                Text(stringResource(R.string.paintbox_got_it))
             }
         }
     }

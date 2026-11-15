@@ -298,6 +298,24 @@ class PaintBoxUiReviewTest {
     }
 
     @Test
+    fun dimmed() {
+        val vm = screen(kilterState().copy(dimmed = true))
+        shoot("dimmed") { PaintBox(vm) }
+    }
+
+    @Test
+    fun dimmedLive() {
+        val vm = screen(kilterState().copy(dimmed = true, live = true))
+        shoot("dimmed-live") { PaintBox(vm) }
+    }
+
+    @Test
+    fun dimHint() {
+        val vm = screen(kilterState().copy(dimmed = true, dimHintSeen = false))
+        shoot("dim-hint") { PaintBox(vm) }
+    }
+
+    @Test
     fun emptyNotConnected() {
         val vm = screen(kilterState(emptyMap()), ConnectionState.DISCONNECTED)
         shoot("empty-not-connected") { PaintBox(vm) }

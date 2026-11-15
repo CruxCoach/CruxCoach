@@ -9,6 +9,7 @@ import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
@@ -80,6 +81,24 @@ internal object WallGameHolds {
             else -> HoldRole.ROUTE_HAND
         }
         "p${hold.placementId}r$role"
+    }
+
+    /**
+     * The newest of [holds] (the end of the list) that one MoonBoard frame can carry
+     * ([MoonBoardFrameEncoder.fitsController]): rising lava keeps its top rows lit
+     * instead of the box refusing the whole wall.
+     */
+    fun moonBoardFit(holds: List<BoardHold>, variant: MoonBoardVariant, ledMode: MoonBoardLedMode): List<BoardHold> {
+        fun fits(from: Int) = MoonBoardFrameEncoder.fitsController(
+            MoonBoardFrameEncoder.encode(moonBoardFrames(holds.subList(from, holds.size)), variant, ledMode))
+        // A shorter tail always fits when a longer one does: find the longest that fits.
+        var low = 0
+        var high = holds.size
+        while (low < high) {
+            val middle = (low + high) / 2
+            if (fits(middle)) high = middle else low = middle + 1
+        }
+        return holds.subList(low, holds.size)
     }
 
     private const val MOON_COLUMNS = 11

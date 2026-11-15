@@ -53,7 +53,7 @@ class PaintBoxViewModelTest {
         coEvery { projector.send(any(), any(), any()) } returns true
         every { projector.busy } returns busy
         every { projector.boardBusy() } answers { busy.value }
-        every { projector.lastSendDimmed } returns false
+        every { projector.dims(any(), any()) } answers { firstArg<PaintDocument>().colors.size > 1 }
         vm = PaintBoxViewModel(pictures, boards, prefs, ble, projector)
     }
     @After fun teardown() {
@@ -601,5 +601,38 @@ class PaintBoxViewModelTest {
             projector.send(match { it.colors == mapOf(1 to 224) }, any(), any())
             projector.send(match { it.colors.isEmpty() }, any(), any())
         }
+    }
+    @Test fun `the dimmed line follows the picture and the connection, in Live too`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        assertFalse(vm.state.value.dimmed)
+        vm.paint(setOf(1, 2))
+        runCurrent()
+        assertTrue(vm.state.value.dimmed)
+        vm.toggleLive()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.dimmed)
+        connection.value = ConnectionState.DISCONNECTED
+        runCurrent()
+        assertFalse(vm.state.value.dimmed)
+        connection.value = ConnectionState.CONNECTED
+        runCurrent()
+        assertTrue(vm.state.value.dimmed)
+        vm.eraser(); vm.paint(setOf(2))
+        runCurrent()
+        assertFalse(vm.state.value.dimmed)
+    }
+    @Test fun `a sent picture says sent, the dimmed line says the rest`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.paint(setOf(1, 2))
+        vm.sendOnce()
+        advanceUntilIdle()
+        assertEquals(R.string.paintbox_sent, vm.state.value.message)
+        assertTrue(vm.state.value.dimmed)
+    }
+    @Test fun `the dim hint is kept once seen`() = runTest(dispatcher) {
+        vm.state.first { !it.loading }
+        vm.dimHintSeen()
+        advanceUntilIdle()
+        coVerify { prefs.setPaintBoxDimHintSeen() }
     }
 }

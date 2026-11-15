@@ -358,6 +358,8 @@ object PreferenceKeys {
     val LED_ANIMATION_IN_BACKGROUND = booleanPreferencesKey("led_animation_in_background")
     /** The flashing-light notice was confirmed once; it is not asked again. */
     val LED_STROBE_NOTICE_SEEN = booleanPreferencesKey("led_strobe_notice_seen")
+    /** PaintBox explained once why a picture is shown dimmer. */
+    val PAINTBOX_DIM_HINT_SEEN = booleanPreferencesKey("paintbox_dim_hint_seen")
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
     // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
     // by bleAutoDisconnectSeconds, which transparently migrates the
@@ -1230,6 +1232,14 @@ class UserPreferences(
 
     suspend fun setLedStrobeNoticeSeen() {
         dataStore.edit { prefs -> prefs[PreferenceKeys.LED_STROBE_NOTICE_SEEN] = true }
+    }
+
+    val paintBoxDimHintSeen: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.PAINTBOX_DIM_HINT_SEEN] ?: false
+    }
+
+    suspend fun setPaintBoxDimHintSeen() {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.PAINTBOX_DIM_HINT_SEEN] = true }
     }
 
     /**

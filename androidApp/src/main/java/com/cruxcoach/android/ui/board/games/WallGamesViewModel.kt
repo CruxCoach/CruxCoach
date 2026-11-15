@@ -401,8 +401,10 @@ internal suspend fun sendToBoard(ble: BoardBleConnection, board: WallGameBoard, 
     return when (board.brand) {
         // Only the holds that change go out, so the wall does not flash dark per step.
         BoardBrand.SHINYWALL -> board.shinyVariant?.let { ble.updateShinyWallHolds(holds, it) } ?: false
+        // The box shows so many LEDs at once: rising lava keeps its newest rows lit.
         BoardBrand.MOONBOARD -> board.moonVariant?.let {
-            ble.sendMoonBoardClimb(WallGameHolds.moonBoardFrames(holds), it, board.moonLedMode)
+            val shown = WallGameHolds.moonBoardFit(holds, it, board.moonLedMode)
+            ble.sendMoonBoardClimb(WallGameHolds.moonBoardFrames(shown), it, board.moonLedMode)
         } ?: false
         BoardBrand.QUANTUM -> false
         else -> ble.sendClimb(holds, board.ledMap, board.roleColors, expectedBrand = board.brand)

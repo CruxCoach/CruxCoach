@@ -47,8 +47,8 @@ the board button above the picture switches to another one.
 
 | Board | Colors |
 | --- | --- |
-| Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Every board color. Large bright pictures are shown dimmer, so the LED box draws about what it draws in the LED test of the maker's set-up guide (every LED in one full color), not more. The limit depends on the exact board size, so choose the size of your wall. An older LED box (API 2) lights up to 127 holds at once and has a tighter power limit. |
-| MoonBoard | Green, blue and red. |
+| Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Every board color. Large bright areas (white, mixed colors) are shown dimmer, so the LED box draws about what it draws in the LED test of the maker's set-up guide (every LED in one full color), not more. The limit depends on the exact board size, so choose the size of your wall. Pictures in strong red, green or blue stay brighter: these colors need a third of the power of white. While the picture is dimmed, a line under **Send** says so, in Live too. An older LED box (API 2) lights up to 127 holds at once and has a tighter power limit. |
+| MoonBoard | Green, blue and red. Its LED box lights about 40 to 52 LEDs at once, fewer on the right side of the wall. With the LED position set to both, most holds need two. A bigger picture is not sent. |
 | Quantum | Four colors, up to 92 LEDs each. A picture uses its own layers, so other layers must be off before you paint. Lighting a climb replaces the picture, as on the other boards. |
 | Shiny Wall | Not supported yet. |
 

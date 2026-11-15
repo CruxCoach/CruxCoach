@@ -2419,6 +2419,7 @@
     <string name="board_send_error_connected_board_mismatch">Dieser Climb gehört zu einem anderen Board-Typ als das verbundene Board. Verbinde dich mit dem passenden Board.</string>
     <string name="board_send_error_no_led_data">Keine LED-Daten. Bitte Board-Daten neu synchronisieren.</string>
     <string name="board_send_error_send_failed">Senden fehlgeschlagen.</string>
+    <string name="board_send_error_moonboard_too_big">Dieser Climb braucht mehr LEDs, als das MoonBoard auf einmal leuchtet (etwa 40 bis 52). Es wurde nichts gesendet.</string>
     <string name="board_send_error_generic">Fehler beim Senden.</string>
     <string name="board_send_error_active_not_moonboard">Dein aktives Board ist kein MoonBoard — wechsle es in den Einstellungen, um diesen Climb zu senden.</string>
     <string name="board_send_error_moonboard_variant_mismatch">Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board.</string>
@@ -3394,6 +3395,7 @@
         <item quantity="other">%d Griffe zu putzen</item>
     </plurals>
     <string name="board_cleaning_sections">Dieser ältere Controller markiert bis zu %d Griffe pro Abschnitt. Bestätige jeden Abschnitt als geputzt, um den nächsten anzuzeigen.</string>
+    <string name="board_cleaning_sections_moonboard">Das MoonBoard markiert nur einen Teil dieser Griffe auf einmal. Bestätige jeden Abschnitt als geputzt, um den nächsten anzuzeigen.</string>
     <string name="board_cleaning_section_count">%1$d von %2$d verbleibenden Griffen in diesem Abschnitt</string>
     <string name="board_cleaning_next">Diese Griffe geputzt · weiter</string>
     <plurals name="board_cleaning_remaining">

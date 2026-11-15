@@ -1010,7 +1010,14 @@ internal class BoardSendController(
      * detail screen's send-status row behaves identically across brands.
      */
     private fun sendMoonBoardToBoard(privatePlaylistOverride: Boolean = false) =
-        sendFramesToBoard("moonboard", privatePlaylistOverride) { climb, frames ->
+        sendFramesToBoard("moonboard", privatePlaylistOverride, refusal = { climb, frames ->
+            // The box takes a frame of so many LEDs; a bigger climb is refused, with this reason.
+            val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
+                ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
+            val frame = com.cruxcoach.domain.board.MoonBoardFrameEncoder.encode(frames, variant, userPreferences.moonBoardLedMode.first())
+            if (com.cruxcoach.domain.board.MoonBoardFrameEncoder.fitsController(frame)) null
+            else R.string.board_send_error_moonboard_too_big
+        }) { climb, frames ->
             // Resolve the MoonBoard variant from the CLIMB being sent,
             // not the active-board pref — the encoder's per-column-height
             // serpentine differs (18 for standard 11×18 boards, 12 for
@@ -1049,6 +1056,8 @@ internal class BoardSendController(
     private fun sendFramesToBoard(
         kind: String,
         privatePlaylistOverride: Boolean,
+        /** Why the board can't show this climb at all, before anything is written; null to send. */
+        refusal: suspend (climb: ClimbWithStats, frames: String) -> Int? = { _, _ -> null },
         transmit: suspend (climb: ClimbWithStats, frames: String) -> Boolean,
     ) {
         val s = state.value
@@ -1091,6 +1100,11 @@ internal class BoardSendController(
                 // Refuse with a clear message.
                 resolveBoardConfigurationMismatch(identity)?.let {
                     updateMismatch(sendVariant, it)
+                    return@launch
+                }
+                refusal(climb, frames)?.let { reason ->
+                    Log.i(TAG, "send $kind: refused before writing")
+                    updateForVariant(sendVariant) { it.copy(ble = it.ble.copy(isSending = false, success = false, error = reason)) }
                     return@launch
                 }
                 val success = transmit(climb, frames)

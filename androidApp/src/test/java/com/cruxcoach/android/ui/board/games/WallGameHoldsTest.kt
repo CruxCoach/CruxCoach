@@ -7,6 +7,7 @@ import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardHoldSets
+import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.ShinyWallFrameEncoder
 import com.cruxcoach.domain.board.ShinyWallVariant
@@ -110,5 +111,25 @@ class WallGameFormatTest {
         assertEquals("1:05,3", WallGameFormat.clock(65_300, Locale.GERMAN))
         assertEquals("12:00.0", WallGameFormat.clock(720_000, Locale.ENGLISH))
         assertEquals("0:00.0", WallGameFormat.clock(-5, Locale.ENGLISH))
+    }
+
+    @Test
+    fun lavaOnAMoonBoardKeepsItsNewestRowsWithinOneFrame() {
+        val variant = MoonBoardVariant.MOONBOARD_2016
+        // The lava over the whole grid, bottom row first.
+        val lava = (1..198).map { BoardHold(it, HoldRole.START) }
+        for (mode in MoonBoardLedMode.entries) {
+            val shown = WallGameHolds.moonBoardFit(lava, variant, mode)
+            assertEquals(lava.takeLast(shown.size), shown)
+            assertTrue(MoonBoardFrameEncoder.fitsController(
+                MoonBoardFrameEncoder.encode(WallGameHolds.moonBoardFrames(shown), variant, mode)))
+            // One hold more would not fit.
+            val more = lava.takeLast(shown.size + 1)
+            assertTrue(!MoonBoardFrameEncoder.fitsController(
+                MoonBoardFrameEncoder.encode(WallGameHolds.moonBoardFrames(more), variant, mode)))
+        }
+        // Low lava fits whole.
+        val low = lava.take(20)
+        assertEquals(low, WallGameHolds.moonBoardFit(low, variant, MoonBoardLedMode.BELOW))
     }
 }

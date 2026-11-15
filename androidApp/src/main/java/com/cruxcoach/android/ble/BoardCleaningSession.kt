@@ -21,6 +21,10 @@ data class BoardCleaningState(
     val active: Boolean = false,
     val busy: Boolean = false,
     val holdLimit: Int = Int.MAX_VALUE,
+    /** The holds don't fit on the board at once: they come in sections. */
+    val sectioned: Boolean = false,
+    /** Sections follow the length of a MoonBoard frame, not a fixed hold count. */
+    val frameLimited: Boolean = false,
     val displayedHoldCount: Int = 0,
     /** Today's logbook has not been read for this connection yet. */
     val loading: Boolean = false,
@@ -59,12 +63,14 @@ internal class BoardCleaningSession(
     private var logged = emptyList<LoggedHolds>()
     private var round: Round? = null
     private var encodeCleaning: ((Set<Int>) -> List<ByteArray>)? = null
+    private var frameFits: ((Set<Int>) -> Boolean)? = null
     private val mutableState = MutableStateFlow(BoardCleaningState())
     val state = mutableState.asStateFlow()
 
     private fun today() = now().toLocalDate().toString()
 
-    @Synchronized fun attach(key: String?, holdLimit: Int = Int.MAX_VALUE) {
+    /** [frameFits] says whether the board takes a section's frame whole (MoonBoard). */
+    @Synchronized fun attach(key: String?, holdLimit: Int = Int.MAX_VALUE, frameFits: ((Set<Int>) -> Boolean)? = null) {
         generation++
         target = key
         previous = null
@@ -72,9 +78,21 @@ internal class BoardCleaningSession(
         logged = emptyList()
         round = null
         encodeCleaning = null
+        this.frameFits = frameFits
         mutableState.value = BoardCleaningState(
-            available = key != null, holdLimit = holdLimit.coerceAtLeast(1), loading = key != null,
+            available = key != null, holdLimit = holdLimit.coerceAtLeast(1), frameLimited = frameFits != null,
+            loading = key != null,
         )
+    }
+
+    /** The next section: the lowest LED positions, as many as the board takes at once.
+     *  Positions run along the LED strip, so a section is one stretch of the wall. */
+    private fun section(holds: Set<Int>): Set<Int> {
+        val first = holds.sorted().take(state.value.holdLimit)
+        val fits = frameFits ?: return first.toSet()
+        var size = first.size
+        while (size > 1 && !fits(first.take(size).toSet())) size--
+        return first.take(size).toSet()
     }
 
     @Synchronized fun ticket(): Long = generation
@@ -94,6 +112,7 @@ internal class BoardCleaningSession(
         val holds = collection()
         mutableState.value = state.value.copy(
             holdCount = holds.size,
+            sectioned = section(holds).size < holds.size,
             allCleaned = holds.isEmpty() && logDate == today() && logged.isNotEmpty(),
         )
     }
@@ -140,7 +159,7 @@ internal class BoardCleaningSession(
             }
             val remaining = active.remaining
             if (remaining.isEmpty()) return false
-            val batch = remaining.sorted().take(current.holdLimit).toSet()
+            val batch = section(remaining)
             val chunks = encode(batch)
             encodeCleaning = encode
             round = active
@@ -149,6 +168,7 @@ internal class BoardCleaningSession(
             // failed send. Stop/retry stays available until restoration succeeds.
             mutableState.value = current.copy(
                 active = true, busy = true, holdCount = remaining.size, displayedHoldCount = batch.size,
+                sectioned = batch.size < remaining.size,
             )
             generation to chunks
         }
@@ -172,7 +192,7 @@ internal class BoardCleaningSession(
             if (active == null || !state.value.active || state.value.busy) return false
             val confirmed = if (markCleaned) active.confirmed + active.displayed else active.confirmed
             val nextBatch = if (markCleaned) {
-                (active.holds - confirmed).sorted().take(state.value.holdLimit).toSet()
+                section(active.holds - confirmed)
             } else emptySet()
             val chunks = if (nextBatch.isNotEmpty()) {
                 encodeCleaning?.invoke(nextBatch) ?: return false
@@ -193,6 +213,7 @@ internal class BoardCleaningSession(
                 if (operation.nextBatch.isNotEmpty()) {
                     mutableState.value = state.value.copy(
                         holdCount = active.remaining.size, displayedHoldCount = operation.nextBatch.size,
+                        sectioned = operation.nextBatch.size < active.remaining.size,
                     )
                 } else {
                     round = null
