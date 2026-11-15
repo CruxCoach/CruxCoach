@@ -63,7 +63,7 @@ class PaintPicture internal constructor(
  * and transparent parts do not; a glow around a shape only where it is strong.
  *
  * For every placement ([map]):
- * 1. Every hold takes [SAMPLES] samples from a disc half as wide as the hold spacing, and again
+ * 1. Every hold takes [SAMPLES] samples from a disc as wide as the hold spacing, and again
  *    from a disc twice that size. The share that belongs to the picture is the hold's coverage.
  * 2. Areas: a hold is lit when it is half covered, judged together with the holds around it, so
  *    an outline comes out even and single holes close.
@@ -114,7 +114,10 @@ internal object PaintImageMapping {
      */
     private const val FLAT_SHARE = 0.02f
     private const val FLAT_OVER = 3f
-    /** A flat tone counts from this distance on. Closer to the background it may be a second tone of the ground. */
+    /**
+     * A flat tone counts from this distance on, unless black is the picture. Closer to the background it may be a
+     * second tone of the ground.
+     */
     private const val FLAT_FROM = 0.13f
     /**
      * A flat tone closer to the background still counts when it is this strong against the picture's own clear
@@ -336,10 +339,14 @@ internal object PaintImageMapping {
             val smooth = smoothed(away, w, h)
             val bins = IntArray(HISTOGRAM)
             val smoothBins = IntArray(HISTOGRAM)
+            val sums = DoubleArray(HISTOGRAM)
+            val smoothSums = DoubleArray(HISTOGRAM)
             var size = 0
             for (o in 0 until count) if (weight[o] > 0f && (ink || !dark[o])) {
                 bins[bin(away[o])]++
                 smoothBins[bin(smooth[o])]++
+                sums[bin(away[o])] += away[o].toDouble()
+                smoothSums[bin(smooth[o])] += smooth[o].toDouble()
                 size++
             }
             if (size > 0) {
@@ -353,9 +360,9 @@ internal object PaintImageMapping {
                 // parts. When black is the picture, its soft edge is measured against black itself: only the
                 // strong tones count, a light grey beside it does not.
                 fun counts(distance: Float) = (!ink && distance >= FLAT_FROM) || (distance - TOLERANCE) / (full - TOLERANCE) >= FLAT_STRENGTH
-                val flat = BooleanArray(count) { o ->
-                    weight[o] > 0f && ((level[bin(away[o])] && counts(away[o])) || (smoothLevel[bin(smooth[o])] && counts(smooth[o])))
-                }
+                val tone = counted(bins, sums, level, ::counts)
+                val smoothTone = counted(smoothBins, smoothSums, smoothLevel, ::counts)
+                val flat = BooleanArray(count) { o -> weight[o] > 0f && (tone[bin(away[o])] || smoothTone[bin(smooth[o])]) }
                 if (!ink) {
                     if (backgroundLab[0] >= LIGHT) {
                         // A glow needs a dark background. On a light one, what differs by more than a halo is the
@@ -439,6 +446,26 @@ internal object PaintImageMapping {
             if (band / 7f >= FLAT_OVER * beside) for (k in max(0, bin - 3)..min(n - 1, bin + 3)) flat[k] = true
         }
         return flat
+    }
+
+    /**
+     * The bins of the flat tones that count. A tone counts or not as a whole, judged at the mean distance of its
+     * band of levels ([sums] per bin): noise spreads a tone close to the bar over both sides of it, and its holds
+     * would light here and there.
+     */
+    private fun counted(bins: IntArray, sums: DoubleArray, flat: BooleanArray, counts: (Float) -> Boolean): BooleanArray {
+        val out = BooleanArray(bins.size)
+        var from = 0
+        while (from < bins.size) {
+            if (!flat[from]) { from++; continue }
+            var to = from
+            var pixels = 0
+            var sum = 0.0
+            while (to < bins.size && flat[to]) { pixels += bins[to]; sum += sums[to]; to++ }
+            if (pixels > 0 && counts((sum / pixels).toFloat())) for (k in from until to) out[k] = true
+            from = to
+        }
+        return out
     }
 
     /** First and one past the last index that hold all but the outer 0.03 % of [total]. */
@@ -585,7 +612,7 @@ internal object PaintImageMapping {
         // farther apart than they do: holds on either side of the gap between two lines see different lines.
         fun linked(i: Int, j: Int) = (area[i] && area[j]) ||
             hypot(footX[i] - footX[j], footY[i] - footY[j]) <= SAME * hypot(x[i] - x[j], y[i] - y[j])
-        // A dot on a hold, smaller than an area, or a ring around it: the hold lights, whatever lies around it.
+        // A dot on a hold, smaller than an area, or a ring around it: the hold lights, and no line beside it thins it away.
         val own = BooleanArray(n) {
             !area[it] && cover[it] >= OWN && (middle[it] >= OWN_MIDDLE ||
                 (hypot(ownX[it] - x[it], ownY[it] - y[it]) <= RING_MIDDLE * graph.radius(it) && around[it] <= DOT_AROUND))
@@ -656,9 +683,9 @@ internal object PaintImageMapping {
                 }
             }
             if (!alone) continue
-            var spread = 0f
-            for (a in group) for (b in group) spread = max(spread, hypot(footX[a] - footX[b], footY[a] - footY[b]))
-            if (spread > COMPACT * graph.spacing) continue
+            // Squared distances, and no further than needed: this runs for every placement that is judged.
+            val reach = COMPACT * graph.spacing
+            if (group.any { a -> group.any { b -> squared(footX[a] - footX[b], footY[a] - footY[b]) > reach * reach } }) continue
             var sx = 0f
             var sy = 0f
             var sum = 0f
@@ -669,7 +696,11 @@ internal object PaintImageMapping {
             sx /= sum
             sy /= sum
             var nearest = 0
-            for (k in 1 until n) if (hypot(x[k] - sx, y[k] - sy) < hypot(x[nearest] - sx, y[nearest] - sy)) nearest = k
+            var closest = Float.MAX_VALUE
+            for (k in 0 until n) {
+                val distance = squared(x[k] - sx, y[k] - sy)
+                if (distance < closest) { closest = distance; nearest = k }
+            }
             val (onSpot, beyond) = spot(sx, sy, nearest).let { it[0] to it[1] }
             if (beyond > DOT_AROUND) {
                 // A lone hold stays when the picture covers a good part of it: a piece of a line, not a speck.
@@ -683,6 +714,8 @@ internal object PaintImageMapping {
         }
         return lit
     }
+
+    private fun squared(dx: Float, dy: Float) = dx * dx + dy * dy
 
     /** The lit holds that [i] belongs with stay connected to each other without it. */
     private fun spare(i: Int, lit: BooleanArray, near: Array<IntArray>, linked: (Int, Int) -> Boolean): Boolean {

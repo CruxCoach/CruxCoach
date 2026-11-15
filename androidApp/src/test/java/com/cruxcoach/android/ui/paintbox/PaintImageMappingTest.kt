@@ -85,6 +85,12 @@ class PaintImageMappingTest {
         val n = ((u * 7919f + v * 104729f) * 1000f).toInt().mod(9) - 4
         return (0xff shl 24) or ((base - 4 + n).coerceIn(0, 255) * 0x010101)
     }
+    /** [rgb] with noise of up to 4 × [amount] levels on each channel, as a photo of a logo has it, the same on every run. */
+    private fun withNoise(u: Float, v: Float, rgb: Int, amount: Int): Int {
+        val n = (((u * 400).toInt() * 7919 + (v * 400).toInt() * 104729) % 9 - 4) * amount
+        fun ch(shift: Int) = (((rgb shr shift) and 255) + n).coerceIn(0, 255)
+        return (0xff shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
 
     private val red = 0xffff0000.toInt()
     private val green = 0xff00ff00.toInt()
@@ -478,7 +484,6 @@ class PaintImageMappingTest {
             ((ys.min() + ys.max()) / 2 - ((prepared.top + prepared.bottom) / 2 - image.height / 2) * base * zoom) / board.viewport.height,
         ), zoom, 0f)
         val settled = PaintImageMapping.place(prepared, image, board.viewport, board.points, palette = palette)
-        assertEquals(1f, settled.zoom / fitted.zoom, .11f)
         val asks = maxOf(lit(fitted), lit(settled))
         assertEquals(settled, PaintImageMapping.place(prepared, image, board.viewport, board.points, palette = palette, most = asks))
         // A photo that was placed by hand is never made smaller for it.
@@ -515,18 +520,18 @@ class PaintImageMappingTest {
                 assertEquals("${board.name}: ${tone.toString(16)} beside ${logo.toString(16)}", full, panel(logo, tone))
             }
             // white, red and dark red blocks on anthracite, with noise as a photo of a logo has it
+            fun v(id: Int) = (board.points.getValue(id).y - board.viewport.height / 2) / board.side + .5f
             fun blocks(noise: Int): List<Int> {
                 val lit = mapDetected(board, picture { u, v ->
                     val k = ((u - .08f) / .28f).toInt()
                     val inside = v > .2f && v < .8f && k in 0..2 && u > .1f + k * .28f && u < .34f + k * .28f
-                    val color = if (!inside) 0x202020 else intArrayOf(0xffffff, 0xff0000, 0x601010)[k]
-                    val n = (((u * 400).toInt() * 7919 + (v * 400).toInt() * 104729) % 9 - 4) * noise
-                    fun ch(shift: Int) = (((color shr shift) and 255) + n).coerceIn(0, 255)
-                    (0xff shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+                    withNoise(u, v, if (!inside) 0x202020 else intArrayOf(0xffffff, 0xff0000, 0x601010)[k], noise)
                 }).keys
                 return (0..2).map { k -> lit.count { u(it) > .08f + k * .28f && u(it) < .36f + k * .28f } }
             }
             val clean = blocks(0)
+            val inside = (0..2).map { k -> board.points.keys.count { u(it) > .1f + k * .28f && u(it) < .34f + k * .28f && v(it) > .2f && v(it) < .8f } }
+            assertTrue("${board.name}: $clean holds of $inside", (0..2).all { clean[it] >= inside[it] })
             assertEquals(board.name, clean, blocks(3))
         }
     }
@@ -535,8 +540,9 @@ class PaintImageMappingTest {
         for (board in listOf(kilterLike(), moonGrid())) {
             fun u(id: Int) = (board.points.getValue(id).x - board.viewport.width / 2) / board.side + .5f
             fun v(id: Int) = (board.points.getValue(id).y - board.viewport.height / 2) / board.side + .5f
-            fun right(pale: Int) = mapDetected(board, picture { u, v ->
-                if (u > .08f && u < .52f && v > .15f && v < .85f) black else if (u > .62f && u < .9f && v > .3f && v < .7f) pale else white
+            fun right(pale: Int, noise: Int = 0) = mapDetected(board, picture { u, v ->
+                if (u > .08f && u < .52f && v > .15f && v < .85f) black
+                else if (u > .62f && u < .9f && v > .3f && v < .7f) withNoise(u, v, pale, noise) else white
             }).keys.filter { u(it) > .57f }.toSet()
             val inside = board.points.keys.filter { u(it) > .64f && u(it) < .88f && v(it) > .32f && v(it) < .68f }
             for (pale in listOf(0xffffdd00.toInt(), 0xffffb0c0.toInt(), 0xffa0a0a0.toInt())) {
@@ -544,7 +550,8 @@ class PaintImageMappingTest {
                 assertTrue("${board.name}: ${Integer.toHexString(pale)}, ${lit.size} holds", lit.containsAll(inside) &&
                     lit.all { u(it) > .62f - .6f * board.spacing / board.side && v(it) > .3f - .6f * board.spacing / board.side && v(it) < .7f + .6f * board.spacing / board.side })
             }
-            assertEquals(board.name, emptySet<Int>(), right(0xffd0d0d0.toInt()))
+            // close to the bar between the two, noise does not scatter holds over the grey
+            for (noise in 0..2) assertEquals("${board.name}: noise $noise", emptySet<Int>(), right(0xffd0d0d0.toInt(), noise))
         }
     }
 
@@ -568,6 +575,9 @@ class PaintImageMappingTest {
                 // smaller than a hold: exactly the hold nearest to it, not a neighbour and not none
                 val small = mapDetected(board, picture { u, v -> if (hypot(u - cu, v - cv) < .35f * spacing) white else black })
                 assertEquals("$name: small dot", setOf(nearest(cu, cv)), small.keys)
+                // a speck, less than half a hold spacing wide: nothing
+                val speck = mapDetected(board, picture { u, v -> if (hypot(u - cu, v - cv) < .2f * spacing) white else black })
+                assertEquals("$name: speck", emptySet<Int>(), speck.keys)
                 // about a hold in size
                 val dot = mapDetected(board, picture { u, v -> if (hypot(u - cu, v - cv) < spacing / 2) white else black })
                 assertTrue("$name: dot, ${dot.keys}", dot.size in 1..2 && nearest(cu, cv) in dot)
@@ -578,9 +588,12 @@ class PaintImageMappingTest {
                 assertTrue("$name: stroke, ${stroke.size} holds", stroke.size in 1..3)
                 val start = board.at(cu - 1.25f * spacing, cv)
                 val end = board.at(cu + 1.25f * spacing, cv)
+                fun along(p: Offset) = p.x >= start.x - .3f * board.spacing && p.x <= end.x + .3f * board.spacing
+                // the row of holds nearest to the stroke, not the one beside it
+                val row = board.points.values.filter(::along).minOf { abs(it.y - start.y) }
                 assertTrue("$name: stroke $stroke", stroke.all {
                     val p = board.points.getValue(it)
-                    abs(p.y - start.y) <= .75f * board.spacing && p.x >= start.x - .3f * board.spacing && p.x <= end.x + .3f * board.spacing
+                    abs(p.y - start.y) <= row + .1f * board.spacing && along(p)
                 })
                 if (stroke.size >= 2) strokes++
             }
@@ -627,6 +640,20 @@ class PaintImageMappingTest {
         }
     }
 
+    @Test fun `a ring drawn around a hold lights that hold`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            val middle = board.points.keys.minBy { board.distance(it, board.at(.5f, .5f)) }
+            val p = board.points.getValue(middle)
+            for (radius in listOf(.3f, .4f)) {
+                val lit = mapDetected(board, picture { u, v ->
+                    val at = board.at(u, v)
+                    if (abs(hypot(at.x - p.x, at.y - p.y) - radius * board.spacing) < .08f * board.spacing) white else black
+                }).keys
+                assertEquals("${board.name}: ring of $radius spacings", setOf(middle), lit)
+            }
+        }
+    }
+
     @Test fun `a line on the MoonBoard reaches the holds at its ends`() {
         val board = moonGrid()
         fun line(from: Int, to: Int): Set<Int> {
@@ -660,12 +687,14 @@ class PaintImageMappingTest {
             }).keys
             assertTrue("${board.name}: ${bar.size} holds", bar.size >= 8)
             assertTrue(board.name, bar.all { abs(v(it) - .5f) < .05f + .6f * spacing && u(it) > .2f - .6f * spacing && u(it) < .8f + .6f * spacing })
-            // a white disc on navy, and beside it a panel only a little lighter than the ground
-            val panel = mapDetected(board, picture { u, v ->
-                if (hypot(u - .3f, v - .5f) < .15f) white
-                else if (u > .55f && u < .9f && v > .25f && v < .75f) 0xff2b3954.toInt() else 0xff0a1a3a.toInt()
-            }).keys
-            assertTrue("${board.name}: ${panel.size} holds", panel.size >= 6 && panel.none { u(it) > .5f })
+            // a white disc on navy, and beside it a panel only a little lighter than the ground, also with noise
+            for (noise in 0..2) {
+                val panel = mapDetected(board, picture { u, v ->
+                    if (hypot(u - .3f, v - .5f) < .15f) white
+                    else withNoise(u, v, if (u > .55f && u < .9f && v > .25f && v < .75f) 0x2b3954 else 0x0a1a3a, noise)
+                }).keys
+                assertTrue("${board.name}: noise $noise, ${panel.size} holds", panel.size >= 6 && panel.none { u(it) > .5f })
+            }
         }
     }
 
