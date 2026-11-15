@@ -1,7 +1,9 @@
 package com.cruxcoach.android.ui.settings
 
 import android.app.Application
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -11,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.cruxcoach.android.data.BoardGymShares
 import com.cruxcoach.android.data.DarkModeSetting
+import com.cruxcoach.android.ui.common.effectsOnTestThread
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
@@ -27,7 +30,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(application = Application::class, qualifiers = "de-w320dp-h640dp")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BoardGymShareDialogTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createComposeRule(effectsOnTestThread())
 
     // MoonBoard: the procedural previews need no image loading (Kilter's loading spinner never
     // lets Compose idle under Robolectric). 2016 and Masters 2017 common; Mini 2020 rare; Masters
@@ -55,13 +58,12 @@ class BoardGymShareDialogTest {
                 )
             }
         }
-        compose.mainClock.advanceTimeBy(FRAME_MS)
-        // The previews decode on Dispatchers.IO, and under the test's unconfined composition
-        // dispatcher their result is written from that thread. Composing meanwhile corrupts the
-        // composition (CI 2026-11-07: CalledFromWrongThreadException, SlotTable out of bounds),
-        // so the main thread waits until they are in.
-        Thread.sleep(PREVIEW_DECODE_MS)
-        compose.mainClock.advanceTimeBy(FRAME_MS)
+        // The previews decode on Dispatchers.IO and arrive on this thread ([effectsOnTestThread]): the test starts
+        // once every one is in, so each run taps the same screen.
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodes(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate), useUnmergedTree = true)
+                .fetchSemanticsNodes().isEmpty()
+        }
     }
 
     private fun shown(tag: String) = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
@@ -109,6 +111,7 @@ class BoardGymShareDialogTest {
 
     private companion object {
         const val FRAME_MS = 16L
-        const val PREVIEW_DECODE_MS = 1_500L
+        /** Generous like the other Compose tests: the previews decode slowly on a busy CI runner. */
+        const val WAIT_MS = 60_000L
     }
 }

@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.spraywall
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
@@ -20,8 +21,11 @@ import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -42,6 +46,7 @@ class SprayClimbEditorViewModelTest {
     private val photo = SprayWallPhotoStore.StoredPhoto("0b1c2d3e-photo.jpg", 3000, 2000)
     private val photos = mockk<SprayWallPhotoStore>(relaxed = true)
     private val preferences = mockk<UserPreferences>(relaxed = true)
+    private val viewModels = mutableListOf<SprayClimbEditorViewModel>()
 
     @BeforeTest
     fun setUp() {
@@ -55,18 +60,24 @@ class SprayClimbEditorViewModelTest {
 
     @AfterTest
     fun tearDown() {
-        // The view model's last database call resumes on Main after the observed state: let it land first.
-        Thread.sleep(200)
-        Dispatchers.resetMain()
-        driver.close()
+        try {
+            // The editor goes on loading after the state a test waited for (the photo comes last). Cancelling waits
+            // for that work, so none of it meets a closed database or a Main that is gone.
+            runBlocking { viewModels.forEach { it.viewModelScope.coroutineContext.job.cancelAndJoin() } }
+        } finally {
+            Dispatchers.resetMain()
+            driver.close()
+        }
     }
+
+    /** The editor's view model for [arguments]; [tearDown] ends its work. */
+    private fun editor(arguments: Map<String, String>, publisher: SprayWallPublisher = mockk(relaxed = true)) =
+        SprayClimbEditorViewModel(SavedStateHandle(arguments), repository, photos, preferences, publisher).also { viewModels += it }
 
     @Test
     fun `saving a climb with something to fix shows the problems and says so to the screen`() = runTest {
         val wall = repository.createWall("Wall", 40, SprayWallVisibility.PRIVATE, null, photo, listOf(EditableHold(-1, 0.5f, 0.5f, 0.02f)))
-        val vm = SprayClimbEditorViewModel(
-            SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to wall)), repository, photos, preferences, mockk(relaxed = true),
-        )
+        val vm = editor(mapOf(SprayWallRoutes.ARG_WALL to wall))
         vm.state.first { !it.loading }
 
         vm.events.test {
@@ -87,9 +98,7 @@ class SprayClimbEditorViewModelTest {
         val publisher = mockk<SprayWallPublisher>()
         val answer = CompletableDeferred<SprayWithdrawal>()
         coEvery { publisher.deleteClimb(climb) } coAnswers { answer.await() }
-        val vm = SprayClimbEditorViewModel(
-            SavedStateHandle(mapOf(SprayWallRoutes.ARG_WALL to wall, SprayWallRoutes.ARG_CLIMB to climb)), repository, photos, preferences, publisher,
-        )
+        val vm = editor(mapOf(SprayWallRoutes.ARG_WALL to wall, SprayWallRoutes.ARG_CLIMB to climb), publisher)
         vm.state.first { !it.loading }
 
         vm.delete()

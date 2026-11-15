@@ -1,11 +1,15 @@
 package com.cruxcoach.android.ui.settings
 
 import android.app.Application
+import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.athlete.model.UnitSystem
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.job
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -35,8 +39,11 @@ class SettingsWithoutTrainingDatabaseTest {
             val vm = UnitsSettingsViewModel(service)
             vm.select(UnitSystem.IMPERIAL)
 
-            coVerify(timeout = 5_000, exactly = 2) { service.ensureReady() }
-            Thread.sleep(300) // an uncaught failure would reach the handler right after
+            // Both coroutines, the one loading the units and the one choosing them, stop where the database fails. A
+            // failure nobody caught reaches the handler before its coroutine counts as finished: once both are joined,
+            // there is nothing left to wait for.
+            runBlocking { vm.viewModelScope.coroutineContext.job.children.toList().joinAll() }
+            coVerify(exactly = 2) { service.ensureReady() }
             assertNull(vm.units.value)
             assertTrue(crashes.isEmpty(), "uncaught: $crashes")
         } finally {
