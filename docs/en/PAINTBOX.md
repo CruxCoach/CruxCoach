@@ -37,8 +37,11 @@ the board button above the picture switches to another one.
   the usual connection sheet. Connecting never sends a picture.
 - **Send** sends the picture once. **Live** makes the board follow every stroke.
   Turning it off stops sending; the board keeps what it shows.
-- Live painting pauses when the connection drops, when you leave the screen or
-  the app, and when you change boards. You turn it on again yourself.
+- While Live is on, the screen stays on. If you switch to another app or the
+  screen turns off anyway, Live pauses and comes back when you return, as long
+  as the board is still connected.
+- Live ends when you leave PaintBox, when you change boards and when the
+  connection drops (a message says so). You turn it on again yourself.
 - While a session, a playlist or board sharing holds the board, PaintBox
   sends nothing and Live stays off.
 
