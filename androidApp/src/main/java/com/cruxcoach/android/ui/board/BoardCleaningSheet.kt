@@ -111,8 +111,9 @@ internal fun BoardCleaningContent(
                     ))
                 }
                 if (relayEnabled) Text(stringResource(R.string.board_cleaning_relay))
-                if (state.holdCount > state.holdLimit) {
-                    Text(stringResource(R.string.board_cleaning_sections, state.holdLimit))
+                if (state.sectioned) {
+                    Text(if (state.frameLimited) stringResource(R.string.board_cleaning_sections_moonboard)
+                        else stringResource(R.string.board_cleaning_sections, state.holdLimit))
                 }
                 if (state.active) {
                     if (state.holdCount > state.displayedHoldCount) {

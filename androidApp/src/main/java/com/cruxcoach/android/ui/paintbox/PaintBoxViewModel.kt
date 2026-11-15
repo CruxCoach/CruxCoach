@@ -44,6 +44,12 @@ data class PaintBoxState(
     val boardChange: PaintBoard? = null,
     /** Send or Live was refused: the picture is for another board than the app's (kept after [boardChange]). */
     val otherBoard: Boolean = false,
+    /** The connected board can dim the picture ([PaintProjector.mayDim]); its dimmed line keeps a place then. */
+    val dimmable: Boolean = false,
+    /** The connected board would show what goes out dimmer than painted ([PaintProjector.dims]). */
+    val dimmed: Boolean = false,
+    /** Why a picture is dimmed was explained once; true until the setting is read. */
+    val dimHintSeen: Boolean = true,
 ) {
     val boardReady: Boolean get() = !missingBoard && !unsupportedBoard
 }
@@ -106,6 +112,17 @@ class PaintBoxViewModel @Inject constructor(
                 }
             }
         }
+        viewModelScope.launch {
+            // The picture against the connected board, in Live too. A photo being placed is left out:
+            // its line would change the space the photo is fitted to.
+            val outgoing = mutable.map { it.document to it.ledMap }.distinctUntilChanged()
+            val linked = connection.map { it == ConnectionState.CONNECTED || it == ConnectionState.SENDING }.distinctUntilChanged()
+            combine(outgoing, linked) { (document, ledMap), connected ->
+                if (document == null || !connected || !projector.mayDim(document)) false to false
+                else true to projector.dims(document, ledMap)
+            }.collect { (dimmable, dimmed) -> mutable.update { it.copy(dimmable = dimmable, dimmed = dimmed) } }
+        }
+        viewModelScope.launch { preferences.paintBoxDimHintSeen.collect { seen -> mutable.update { it.copy(dimHintSeen = seen) } } }
         viewModelScope.launch {
             // A session or board sharing takes the board: Live stops instead of fighting it.
             projector.busy.collect { reason -> if (reason != null && state.value.live) { pause(); message(reason) } }
@@ -206,7 +223,7 @@ class PaintBoxViewModel @Inject constructor(
             unsupportedBoard = !supported,
             // A board chosen elsewhere while this one opened still waits for its answer.
             boardChange = previous.boardChange?.takeUnless { it.sameBoardAs(board) },
-            library = mutable.value.library)
+            library = mutable.value.library, dimmable = previous.dimmable, dimmed = previous.dimmed, dimHintSeen = previous.dimHintSeen)
     }
     /** Opens a saved picture and makes its board the app's board (the screen asks first, see [switchesBoard]). */
     fun load(document: PaintDocument) {
@@ -450,7 +467,8 @@ class PaintBoxViewModel @Inject constructor(
                     }
                     if (ticket == generation) {
                         if (!sent) { pause(); message(R.string.paintbox_send_error) }
-                        else if (!state.value.live) message(if (projector.lastSendDimmed) R.string.paintbox_sent_dimmed else R.string.paintbox_sent)
+                        // A dimmed picture says so in its own line next to Send.
+                        else if (!state.value.live) message(R.string.paintbox_sent)
                     }
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) {
@@ -501,6 +519,7 @@ class PaintBoxViewModel @Inject constructor(
         catch (_: Exception) { message(R.string.paintbox_save_error) }
     }
     fun message(value: Int?) { mutable.update { it.copy(message = value) } }
+    fun dimHintSeen() { viewModelScope.launch { preferences.setPaintBoxDimHintSeen() } }
     suspend fun preview(document: PaintDocument): PaintBoxState? = withContext(Dispatchers.IO) {
         try {
             val b = document.board

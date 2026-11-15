@@ -213,6 +213,55 @@ class BoardSendControllerTest {
     }
 
     @Test
+    fun `a MoonBoard climb the box cannot take whole is refused with its reason`() = runTest(UnconfinedTestDispatcher()) {
+        // 27 hand holds of rows 2 to 4: 54 LEDs with LEDs above and below, 27 below them.
+        val big = moonClimb.copy(frames = (12..38).joinToString("") { "p${it}r43" })
+        val state = MutableStateFlow(
+            ClimbDetailState(
+                isLoading = false,
+                climb = big,
+                angle = 40,
+                ble = BoardSendState(connectionState = ConnectionState.CONNECTED),
+            )
+        )
+        val bleConnection = mockk<BoardBleConnection>(relaxed = true) {
+            every { connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
+            coEvery { sendMoonBoardClimb(any(), any(), any()) } returns true
+        }
+        val ledMode = MutableStateFlow(MoonBoardLedMode.BOTH)
+        val preferences = mockk<UserPreferences>(relaxed = true) {
+            every { boardBrand } returns flowOf(BoardBrand.MOONBOARD.wireValue)
+            every { boardLayoutId } returns flowOf(MoonBoardVariant.MOONBOARD_2016.layoutId.toInt())
+            every { moonBoardLedMode } returns ledMode
+        }
+        val queueManager = mockk<SessionQueueManager>(relaxed = true)
+        every { queueManager.state } returns MutableStateFlow(SessionQueueState())
+        val controller = BoardSendController(
+            scope = this,
+            state = state,
+            boardRepository = mockk<BoardRepository>(relaxed = true),
+            personalBoardRepo = mockk<PersonalBoardRepository>(relaxed = true),
+            bleConnection = bleConnection,
+            userPreferences = preferences,
+            climbAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true),
+            sessionQueueManager = queueManager,
+            isSharingEnabled = { true },
+            boardLayerManager = mockk<BoardLayerManager>(relaxed = true),
+        )
+
+        controller.sendToBoard()
+        advanceUntilIdle()
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertEquals(R.string.board_send_error_moonboard_too_big, state.value.ble.error)
+        assertFalse(state.value.ble.isSending)
+
+        ledMode.value = MoonBoardLedMode.BELOW
+        controller.sendToBoard()
+        advanceUntilIdle()
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), MoonBoardLedMode.BELOW) }
+    }
+
+    @Test
     fun `assigning a Quantum layer changes only the local rack`() =
         runTest(UnconfinedTestDispatcher()) {
             val climb = moonClimb.copy(

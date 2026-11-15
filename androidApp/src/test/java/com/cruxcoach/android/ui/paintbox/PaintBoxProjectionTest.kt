@@ -44,11 +44,11 @@ class PaintBoxProjectionTest {
         val ledMap = (1..90).associateWith { it }
         val third = PaintDocument(board = PaintBoard("kilter", 1, 10), colors = (1..30).associateWith { 0xff })
         assertTrue(projector.send(third, ledMap) { true })
-        assertFalse(projector.lastSendDimmed)
+        assertFalse(projector.dims(third, ledMap))
         coVerify { ble.sendRawLeds(match { leds -> leds.size == 30 && leds.all { it.second == 0xff } }, BoardBrand.KILTER, any()) }
         val wall = third.copy(colors = (1..90).associateWith { 0xff })
         assertTrue(projector.send(wall, ledMap) { true })
-        assertTrue(projector.lastSendDimmed)
+        assertTrue(projector.dims(wall, ledMap))
         coVerify { ble.sendRawLeds(match { leds -> leds.size == 90 && leds.all { it.second != 0xff } &&
             leds.sumOf { BoardPacketEncoder.v3ChannelLoad(it.second) } <= 90.0 }, BoardBrand.KILTER, any()) }
     }
@@ -59,7 +59,7 @@ class PaintBoxProjectionTest {
         val white = PaintDocument(board = PaintBoard("kilter", 1, 10), colors = (1..15).associateWith { 0xff })
         assertTrue(projector.send(white, ledMap) { true })
         // 15 white holds draw 45: above 30 LEDs, below the 60 placements.
-        assertTrue(projector.lastSendDimmed)
+        assertTrue(projector.dims(white, ledMap))
     }
     @Test fun `an API-2 picture that its power limit would show dark is refused`() = runTest {
         kilter(apiLevel = 2)
@@ -69,10 +69,12 @@ class PaintBoxProjectionTest {
         assertEquals(R.string.paintbox_too_bright, refused?.messageRes)
         coVerify(exactly = 0) { ble.sendRawLeds(any(), any(), any()) }
         assertTrue(projector.send(white.copy(colors = (1..20).associateWith { 0xff }), ledMap) { true })
-        assertFalse("20 white holds fit the picture budget", projector.lastSendDimmed)
+        assertFalse("20 white holds fit the picture budget", projector.dims(white.copy(colors = (1..20).associateWith { 0xff }), ledMap))
         // 30 white holds draw 18 W: the board budget would take them, a picture is dimmed.
         assertTrue(projector.send(white.copy(colors = (1..30).associateWith { 0xff }), ledMap) { true })
-        assertTrue(projector.lastSendDimmed)
+        assertTrue(projector.dims(white.copy(colors = (1..30).associateWith { 0xff }), ledMap))
+        // A picture the box refuses is not "dimmed".
+        assertFalse(projector.dims(white, ledMap))
     }
     @Test fun `a session or board sharing refuses every frame`() = runTest {
         kilter()
@@ -156,5 +158,45 @@ class PaintBoxProjectionTest {
         val refused = runCatching { projector.send(doc, mapOf(1 to 1, 2 to 2)) { true } }.exceptionOrNull() as? PaintProjectionException
         assertEquals(R.string.paintbox_session_active, refused?.messageRes)
         coVerify(exactly = 1) { ble.sendClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test fun `dimming is only said for the connected board's own pictures`() = runTest {
+        kilter()
+        val ledMap = (1..90).associateWith { it }
+        val wall = PaintDocument(board = PaintBoard("kilter", 1, 10), colors = (1..90).associateWith { 0xff })
+        assertTrue(projector.dims(wall, ledMap))
+        assertFalse("a hold without an LED", projector.dims(wall.copy(colors = wall.colors + (91 to 0xff)), ledMap))
+        every { ble.connectedBoardBrand } returns MutableStateFlow(BoardBrand.TENSION)
+        assertFalse(projector.dims(wall, ledMap))
+        every { ble.connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
+        assertFalse(projector.dims(PaintDocument(board = PaintBoard("moonboard", 2, 0), colors = mapOf(1 to 0x1c)), emptyMap()))
+    }
+
+    @Test fun `a MoonBoard picture over the box's limit is refused, counted after the LED position`() = runTest {
+        every { ble.connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
+        coEvery { ble.sendMoonBoardClimb(any(), any(), any()) } returns true
+        val ledMode = MutableStateFlow(MoonBoardLedMode.BELOW)
+        every { prefs.moonBoardLedMode } returns ledMode
+        val variant = MoonBoardVariant.MOONBOARD_2016
+        val board = PaintBoard("moonboard", variant.layoutId.toInt(), 0)
+        val holds = board.moonHoldIds().sorted()
+        val blue = PaintPalette.moon[1]
+        fun picture(count: Int) = holds.take(count).associateWith { blue }
+        fun fits(count: Int, mode: MoonBoardLedMode) = MoonBoardFrameEncoder.fitsController(
+            MoonBoardFrameEncoder.encode(PaintPalette.moonFrames(picture(count)), variant, mode))
+        suspend fun refusal(colors: Map<Int, Int>) = (runCatching {
+            projector.send(PaintDocument(board = board, colors = colors), emptyMap()) { true }
+        }.exceptionOrNull() as? PaintProjectionException)?.messageRes
+        // A picture that fits with one LED per hold, but not with LEDs above and below.
+        val pair = (1..holds.size).first { fits(it, MoonBoardLedMode.BELOW) && !fits(it, MoonBoardLedMode.BOTH) }
+        assertNull(refusal(picture(pair)))
+        coVerify(exactly = 1) { ble.sendMoonBoardClimb(any(), any(), MoonBoardLedMode.BELOW) }
+        ledMode.value = MoonBoardLedMode.BOTH
+        assertEquals(R.string.paintbox_moon_limit_both, refusal(picture(pair)))
+        ledMode.value = MoonBoardLedMode.BELOW
+        val over = (1..holds.size).first { !fits(it, MoonBoardLedMode.BELOW) }
+        assertTrue(over <= MoonBoardFrameEncoder.MAX_FRAME_LEDS + 1)
+        assertEquals(R.string.paintbox_moon_limit, refusal(picture(over)))
+        coVerify(exactly = 1) { ble.sendMoonBoardClimb(any(), any(), any()) }
     }
 }

@@ -140,7 +140,7 @@ class PaintBoxUiReviewTest {
 
     private fun kilterState(colors: Map<Int, Int> = smiley) = PaintBoxState(
         document = kilterDocument(colors), boardSize = kilterSize, placements = kilterPlacements, loading = false,
-        canUndo = colors.isNotEmpty(),
+        canUndo = colors.isNotEmpty(), dimmable = true,
     )
 
     private fun smileyBitmap(background: Int = 0): Bitmap {
@@ -295,6 +295,24 @@ class PaintBoxUiReviewTest {
     fun sending() {
         val vm = screen(kilterState().copy(sending = true))
         shoot("sending") { PaintBox(vm) }
+    }
+
+    @Test
+    fun dimmed() {
+        val vm = screen(kilterState().copy(dimmed = true))
+        shoot("dimmed") { PaintBox(vm) }
+    }
+
+    @Test
+    fun dimmedLive() {
+        val vm = screen(kilterState().copy(dimmed = true, live = true))
+        shoot("dimmed-live") { PaintBox(vm) }
+    }
+
+    @Test
+    fun dimHint() {
+        val vm = screen(kilterState().copy(dimmed = true, dimHintSeen = false))
+        shoot("dim-hint") { PaintBox(vm) }
     }
 
     @Test

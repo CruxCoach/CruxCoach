@@ -137,7 +137,7 @@ class WallGameSenderTest {
         val sent = mutableListOf<List<BoardHold>>()
         val gate = CompletableDeferred<Unit>()
         var first = true
-        val sender = WallGameSender(backgroundScope, transmit = { h ->
+        val sender = WallGameSender<List<BoardHold>>(backgroundScope, transmit = { h ->
             sent += h
             if (first) {
                 first = false
@@ -162,7 +162,7 @@ class WallGameSenderTest {
         val sent = mutableListOf<List<BoardHold>>()
         var ok = true
         val results = mutableListOf<Boolean>()
-        val sender = WallGameSender(backgroundScope, transmit = { h -> sent += h; ok }, onResult = { results += it })
+        val sender = WallGameSender<List<BoardHold>>(backgroundScope, transmit = { h -> sent += h; ok }, onResult = { results += it })
         sender.show(holds(1))
         runCurrent()
         sender.show(holds(1))
@@ -186,7 +186,7 @@ class WallGameSenderTest {
     fun aThrowingSendCountsAsFailedAndTheSenderKeepsGoing() = runTest {
         val results = mutableListOf<Boolean>()
         var calls = 0
-        val sender = WallGameSender(backgroundScope, transmit = {
+        val sender = WallGameSender<List<BoardHold>>(backgroundScope, transmit = {
             calls++
             if (calls == 1) error("gatt gone") else true
         }, onResult = { results += it })

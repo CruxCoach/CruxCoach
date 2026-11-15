@@ -1474,6 +1474,7 @@
     <string name="playlist_connect_board_confirm">Connect board</string>
     <string name="playlist_connect_board_skip">Play without board</string>
     <string name="ble_board_shows_instead">On the board: %1$s</string>
+    <string name="ble_queue_too_big">Not on the board: more LEDs than the MoonBoard lights at once</string>
     <!-- Session name a participant takes on when it is promoted to host after the
          previous host disappeared. -->
     <string name="ble_session_name_promoted">Queue</string>
@@ -2420,6 +2421,7 @@
     <string name="board_send_error_connected_board_mismatch">This climb belongs to a different board type than the connected board. Reconnect to the matching board.</string>
     <string name="board_send_error_no_led_data">No LED data. Please re-sync the board data.</string>
     <string name="board_send_error_send_failed">Send failed.</string>
+    <string name="board_send_error_moonboard_too_big">This climb needs more LEDs than the MoonBoard lights at once (about 40 to 52). Nothing was sent.</string>
     <string name="board_send_error_generic">Error while sending.</string>
     <string name="board_send_error_active_not_moonboard">Your active board is not a MoonBoard — switch it in Settings to send this climb.</string>
     <string name="board_send_error_moonboard_variant_mismatch">This climb belongs to a different MoonBoard variant than your active board.</string>
@@ -3395,6 +3397,7 @@
         <item quantity="other">%d holds to clean</item>
     </plurals>
     <string name="board_cleaning_sections">This older controller lights up to %d holds per section. Mark each section as cleaned to show the next one.</string>
+    <string name="board_cleaning_sections_moonboard">The MoonBoard lights only part of these holds at once. Mark each section as cleaned to show the next one.</string>
     <string name="board_cleaning_section_count">%1$d of %2$d remaining holds in this section</string>
     <string name="board_cleaning_next">These holds are clean · next section</string>
     <plurals name="board_cleaning_remaining">
@@ -3469,6 +3472,8 @@
     <string name="wall_games_session">A shared session controls the board: screen only.</string>
     <string name="wall_games_cleaning">Hold cleaning is running on the board. Finish it to light the game.</string>
     <string name="wall_games_send_failed">The board did not respond. The game goes on on the screen.</string>
+    <string name="wall_games_too_many">Too many holds for the MoonBoard: the wall stays as it was.</string>
+    <string name="wall_games_too_many_thief">Too many holds for the MoonBoard. Choose a lower share or steal holds.</string>
     <string name="wall_games_unsupported">Wall games are not available for this board.</string>
     <string name="wall_games_no_holds">The hold positions of this board are not on the device yet. Download its catalogue first.</string>
     <string name="wall_games_sound_turn_off">Turn countdown sound off</string>

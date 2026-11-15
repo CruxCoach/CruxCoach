@@ -6,6 +6,8 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Unit tests for [MoonBoardFrameEncoder] — the FEAT-027 MoonBoard BLE
@@ -279,5 +281,30 @@ class MoonBoardFrameEncoderTest {
             listOf(5 to 43),
             MoonBoardFrameEncoder.parseHolds("pXr1p5r43prp"),
         )
+    }
+
+    @Test
+    fun `a frame fits the box with at most 52 LEDs and 200 bytes`() {
+        // 52 LEDs on the lowest positions are exactly 200 bytes: the shortest 52-LED frame.
+        val lowest = MoonBoardFrameEncoder.encodeCleaning((0 until 52).toSet())
+        assertEquals(200, lowest.size)
+        assertEquals(52, MoonBoardFrameEncoder.ledCount(lowest))
+        assertTrue(MoonBoardFrameEncoder.fitsController(lowest))
+        assertFalse(MoonBoardFrameEncoder.fitsController(MoonBoardFrameEncoder.encodeCleaning((0 until 53).toSet())))
+        // Three-digit positions (the right side of the wall) fill 200 bytes with 39 LEDs.
+        assertTrue(MoonBoardFrameEncoder.fitsController(MoonBoardFrameEncoder.encodeCleaning((100 until 139).toSet())))
+        assertFalse(MoonBoardFrameEncoder.fitsController(MoonBoardFrameEncoder.encodeCleaning((100 until 140).toSet())))
+        assertEquals(0, MoonBoardFrameEncoder.ledCount("l##".encodeToByteArray()))
+        assertTrue(MoonBoardFrameEncoder.fitsController("l##".encodeToByteArray()))
+    }
+
+    @Test
+    fun `LEDs above and below count twice`() {
+        // Hand holds on every other row of column A, away from its ends: two LEDs each with both.
+        val frames = (2..16 step 2).joinToString("") { row -> "p${(row - 1) * 11 + 1}r43" }
+        val below = MoonBoardFrameEncoder.encode(frames, standard, MoonBoardLedMode.BELOW)
+        val both = MoonBoardFrameEncoder.encode(frames, standard, MoonBoardLedMode.BOTH)
+        assertEquals(8, MoonBoardFrameEncoder.ledCount(below))
+        assertEquals(16, MoonBoardFrameEncoder.ledCount(both))
     }
 }

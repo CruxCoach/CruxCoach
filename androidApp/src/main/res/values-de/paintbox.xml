@@ -46,7 +46,7 @@
     <string name="paintbox_image_pick_bg">Tippe im Bild auf die Hintergrundfarbe.</string>
     <string name="paintbox_image_error">Das Bild konnte nicht geladen werden. Bitte wähle ein anderes Bild.</string>
     <string name="paintbox_photo_title">Foto</string>
-    <string name="paintbox_info">Malen\nWähle Pinsel oder Radierer und eine Farbe und tippe oder streiche mit einem Finger über die Holds. Die Pipette übernimmt die Farbe des angetippten Holds als Pinselfarbe. Zwei Finger zoomen und verschieben das Board. Ein Strich ist ein Schritt für Rückgängig.\n\nAuf dem Board\nSenden zeigt das Bild einmal auf dem Board. Mit Live folgt das Board jedem Strich. Live endet, wenn die Verbindung abbricht, wenn du PaintBox verlässt und wenn du das Board wechselst; eine andere App pausiert es nur. Große helle Bilder leuchten gedimmt, innerhalb der Leistungsgrenze des Boards.\n\nBilder\nSpeichern legt das Bild auf diesem Handy ab. Bilder werden nie geteilt.</string>
+    <string name="paintbox_info">Malen\nWähle Pinsel oder Radierer und eine Farbe und tippe oder streiche mit einem Finger über die Holds. Die Pipette übernimmt die Farbe des angetippten Holds als Pinselfarbe. Zwei Finger zoomen und verschieben das Board. Ein Strich ist ein Schritt für Rückgängig.\n\nAuf dem Board\nSenden zeigt das Bild einmal auf dem Board. Mit Live folgt das Board jedem Strich. Live endet, wenn die Verbindung abbricht, wenn du PaintBox verlässt und wenn du das Board wechselst; eine andere App pausiert es nur. Große helle Flächen, etwa Weiß oder Mischfarben, leuchten gedimmt, innerhalb der Leistungsgrenze des Boards; Bilder in kräftigem Rot, Grün oder Blau bleiben heller.\n\nBilder\nSpeichern legt das Bild auf diesem Handy ab. Bilder werden nie geteilt.</string>
     <string name="paintbox_info_quantum">Quantum\nVier Farben, bis zu 92 LEDs je Farbe. Andere Layer müssen vor dem Malen aus sein. Ein beleuchteter Climb ersetzt das Bild.</string>
     <string name="paintbox_info_photo">Ein Finger verschiebt das Foto, zwei Finger zoomen und drehen es. Jeder Hold bekommt die Farbe, die ihn überwiegend bedeckt, in der ähnlichsten Board-Farbe. Mit „Hintergrund nicht leuchten lassen“ bleibt der Hintergrund des Fotos aus: PaintBox erkennt ihn am Rand des Fotos, und mit Hintergrund tippst du eine andere Farbe an. Ein neues Foto wird so eingepasst, dass sein Motiv das Board füllt und sauber auf den Holds liegt; „Auf Holds setzen“ rückt es nach dem Verschieben wieder zurecht. Schwarze und transparente Stellen bleiben aus; eine schwarze Form auf einem Hintergrund, der aus bleibt, leuchtet stattdessen weiß. Gespeichert werden nur die Farben der Holds.</string>
     <string name="paintbox_live">Live</string>
@@ -58,12 +58,17 @@
     <string name="paintbox_session_active">Eine Sitzung oder Playlist steuert das Board, deshalb zeigt PaintBox nichts darauf. Beende sie zuerst.</string>
     <string name="paintbox_relay_active">Die Board-Freigabe ist an, deshalb zeigt PaintBox nichts auf dem Board. Beende zuerst die Freigabe.</string>
     <string name="paintbox_api2_limit">Die LED-Box dieses Boards leuchtet bis zu 127 Holds auf einmal. Es wurde nichts gesendet.</string>
+    <string name="paintbox_moon_limit">Zu viele Holds für das MoonBoard: Es lässt etwa 40 bis 52 LEDs auf einmal leuchten, auf seiner rechten Seite weniger. Es wurde nichts gesendet.</string>
+    <string name="paintbox_moon_limit_both">Zu viele Holds für das MoonBoard: Es lässt etwa 40 bis 52 LEDs auf einmal leuchten, auf seiner rechten Seite weniger, und mit LEDs über und unter dem Hold brauchen die meisten Holds zwei. Es wurde nichts gesendet.</string>
+    <string name="paintbox_dimmed">Gedimmt wegen der Leistungsgrenze</string>
+    <string name="paintbox_dim_hint_title">Warum gedimmt?</string>
+    <string name="paintbox_dim_hint">Helle Flächen wie Weiß oder Mischfarben werden gedimmt, damit das Board in seiner Leistungsgrenze bleibt. Kräftiges Rot, Grün oder Blau braucht ein Drittel der Leistung und bleibt heller.</string>
+    <string name="paintbox_got_it">Verstanden</string>
     <string name="paintbox_local_only">Bilder bleiben auf diesem Handy und sind nicht Teil des Backups.</string>
     <string name="paintbox_board_changed">Die App nutzt jetzt ein anderes Board. PaintBox öffnet es mit einem leeren Bild.</string>
     <string name="paintbox_switch_board">Board wechseln?</string>
     <string name="paintbox_switch_board_text">Dieses Bild ist für %1$s. Beim Öffnen wechselt die App auf dieses Board.</string>
     <string name="paintbox_switch">Wechseln</string>
-    <string name="paintbox_sent_dimmed">Bild übertragen, gedimmt, damit das Board in seiner Leistungsgrenze bleibt.</string>
     <string name="paintbox_too_bright">Zu viele helle Holds für die LED-Box dieses Boards. Male weniger Holds oder dunklere Farben. Es wurde nichts gesendet.</string>
     <string name="paintbox_other_board">Dieses Bild ist für %1$s, die App nutzt aber jetzt ein anderes Board. Es wurde nichts gesendet. „Wechseln“ öffnet das Board der App mit einem leeren Bild.</string>
     <plurals name="paintbox_unreadable">

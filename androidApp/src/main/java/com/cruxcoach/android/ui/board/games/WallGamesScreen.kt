@@ -599,20 +599,23 @@ private fun ProgressLine(state: WallGamesState) {
 }
 
 @Composable
-private fun WallStatus(problem: WallSendProblem?, connected: Boolean, onConnect: () -> Unit) {
+private fun WallStatus(problem: WallSendProblem?, game: WallGame, connected: Boolean, onConnect: () -> Unit) {
     val text = when {
         !connected || problem == WallSendProblem.NOT_CONNECTED -> R.string.wall_games_not_connected
         problem == WallSendProblem.OTHER_BOARD -> R.string.wall_games_other_board
         problem == WallSendProblem.SESSION -> R.string.wall_games_session
         problem == WallSendProblem.CLEANING -> R.string.wall_games_cleaning
         problem == WallSendProblem.FAILED -> R.string.wall_games_send_failed
+        // The hold thief can lower its share or steal holds until the climb fits.
+        problem == WallSendProblem.TOO_MANY_HOLDS ->
+            if (game == WallGame.THIEF) R.string.wall_games_too_many_thief else R.string.wall_games_too_many
         else -> return
     }
     val message: @Composable (Modifier) -> Unit = { modifier ->
         Text(
             stringResource(text),
             style = MaterialTheme.typography.bodyMedium,
-            color = if (problem == WallSendProblem.FAILED) MaterialTheme.colorScheme.error
+            color = if (problem == WallSendProblem.FAILED || problem == WallSendProblem.TOO_MANY_HOLDS) MaterialTheme.colorScheme.error
             else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = modifier,
         )
@@ -685,7 +688,7 @@ private fun GameActionBar(
 ) {
     Surface(tonalElevation = 3.dp) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-            WallStatus(state.sendProblem, connected, onConnect = onConnect)
+            WallStatus(state.sendProblem, state.game, connected, onConnect = onConnect)
             // Two actions side by side; at the largest font above each other, so no label breaks.
             val buttons: @Composable (Modifier) -> Unit = { slot ->
                 when (state.run.phase) {

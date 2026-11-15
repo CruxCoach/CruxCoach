@@ -1720,12 +1720,7 @@ class BoardBleConnection(
         // Fresh attempt — drop any failure reason from the previous one.
         _connectFailureReason.value = null
         currentBoard = board
-        cleaning.attach(
-            BoardCleaningStorage.key(board),
-            if (board.boardBrand.usesAuroraProtocol)
-                BoardPacketEncoder.cleaningHoldLimit(board.apiLevel, BoardPacketEncoder.ledsPerHoldFor(board.boardBrand))
-            else Int.MAX_VALUE,
-        )
+        attachCleaning(board)
         _connectedBoardDescriptor.value = board
         connectAttempt = 1
         // FEAT-031: ledsPerHold (Kilter = 2, other Aurora boards = 1) feeds the
@@ -2398,6 +2393,21 @@ class BoardBleConnection(
         quantumControllerState.first { it.revision > afterRevision && predicate(it) }
     }
 
+    /** Cleaning for [board], with as many holds per section as its controller takes at once. */
+    internal fun attachCleaning(board: DiscoveredBoard) {
+        if (board.boardBrand == BoardBrand.MOONBOARD) {
+            // One cleaning frame carries one LED per hold; sections fill it up to the box's limit.
+            cleaning.attach(BoardCleaningStorage.key(board), MoonBoardFrameEncoder.MAX_FRAME_LEDS) {
+                MoonBoardFrameEncoder.fitsController(MoonBoardFrameEncoder.encodeCleaning(it))
+            }
+        } else cleaning.attach(
+            BoardCleaningStorage.key(board),
+            if (board.boardBrand.usesAuroraProtocol)
+                BoardPacketEncoder.cleaningHoldLimit(board.apiLevel, BoardPacketEncoder.ledsPerHoldFor(board.boardBrand))
+            else Int.MAX_VALUE,
+        )
+    }
+
     /** Cleaning owns the projection until explicitly finished. Both operations
      * share the ordinary send mutex and are fenced to the UI's physical board.
      * They never enter projection history; the holds come from today's logbook
@@ -2450,13 +2460,26 @@ class BoardBleConnection(
 
     // Aurora keeps the link's pacing: a cleaning frame is the longest write a
     // write-only Kilter-built box gets.
-    private suspend fun writeCleaningChunks(chunks: List<ByteArray>): Boolean = writeChunks(
-        chunks,
-        interChunkDelayMs = when (_connectedBoardBrand.value) {
-            BoardBrand.MOONBOARD -> MOONBOARD_UART_INTER_CHUNK_DELAY_MS
-            else -> writePacingMs
-        },
-    )
+    private suspend fun writeCleaningChunks(chunks: List<ByteArray>): Boolean {
+        if (_connectedBoardBrand.value == BoardBrand.MOONBOARD &&
+            moonBoardFrameRefused(chunks.fold(ByteArray(0)) { frame, chunk -> frame + chunk })
+        ) return false
+        return writeChunks(
+            chunks,
+            interChunkDelayMs = when (_connectedBoardBrand.value) {
+                BoardBrand.MOONBOARD -> MOONBOARD_UART_INTER_CHUNK_DELAY_MS
+                else -> writePacingMs
+            },
+        )
+    }
+
+    /** The one check before every MoonBoard frame this phone builds: a frame the box
+     *  can't take whole is not sent ([MoonBoardFrameEncoder.fitsController]). */
+    private fun moonBoardFrameRefused(frame: ByteArray): Boolean {
+        if (MoonBoardFrameEncoder.fitsController(frame)) return false
+        Log.w(TAG, "Refusing a MoonBoard frame of ${MoonBoardFrameEncoder.ledCount(frame)} LEDs and ${frame.size} bytes")
+        return true
+    }
 
     suspend fun resendWithColors(roleColors: Map<Int, Int>): Boolean {
         val holds = lastHolds ?: return false
@@ -2622,13 +2645,14 @@ class BoardBleConnection(
         if (_connectionState.value != ConnectionState.CONNECTED ||
             !moonBoardCommandAllowed(_connectedBoardBrand.value)
         ) return false
+        val payload = MoonBoardFrameEncoder.encode(frames, variant, ledMode)
+        if (moonBoardFrameRefused(payload)) return false
 
         _connectionState.value = ConnectionState.SENDING
         // Park any pending idle-disconnect so it can't fire mid-send.
         // Re-armed from the finally below once we flip back to CONNECTED.
         disconnectJob?.cancel()
         try {
-            val payload = MoonBoardFrameEncoder.encode(frames, variant, ledMode)
             val chunks = payload.toList()
                 .chunked(BoardPacketEncoder.BLE_MTU)
                 .map { it.toByteArray() }

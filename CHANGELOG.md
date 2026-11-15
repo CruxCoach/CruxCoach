@@ -572,6 +572,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
 
 ### Fixed
+- MoonBoard: hold cleaning with many holds shows them in sections, as many as the
+  LED box takes at once (about 40 to 52). A MoonBoard box showed a single LED for a
+  frame of more than 52; the app no longer sends a frame that big to it, and a climb
+  that needs more LEDs says so instead.
 - After a catalogue import the app frees the temporary database file at once. A Tension
   import left about 180 MB in it until the next write, on a phone with little space left.
 - Encrypted backups have more than one storage server again. `cdn.hzrd149.com`, one of

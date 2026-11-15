@@ -40,6 +40,8 @@ data class PlaylistPlaybackState(
     val visibilityRequested: SessionVisibility = SessionVisibility.LOCAL_ONLY,
     /** The current climb is waiting for an explicit send — see the send mode. */
     val awaitingExplicitSend: Boolean = false,
+    /** The board refused the current climb: more LEDs than it lights at once. */
+    val currentClimbTooBig: Boolean = false,
     /**
      * A board is connected right now.
      *
@@ -175,6 +177,7 @@ class PlaylistPlaybackCoordinator(
         visibility = queue.visibility,
         visibilityRequested = queue.visibilityRequested,
         awaitingExplicitSend = queue.awaitingExplicitSend,
+        currentClimbTooBig = queue.currentClimbTooBig,
         boardConnected = connection == ConnectionState.CONNECTED,
         queue = queue.queue,
         currentIndex = queue.currentIndex,

@@ -259,6 +259,56 @@ class PaintBoxUiTest {
         assertFalse(view.keepScreenOn)
     }
 
+    @Test fun `a dimmed picture says so by Send and explains it once`() {
+        val vm = mockk<PaintBoxViewModel>(relaxed = true)
+        val state = MutableStateFlow(PaintBoxState(
+            document = PaintDocument(board = PaintBoard("kilter", 1, 10), colors = mapOf(1 to 0xff)), loading = false,
+            dimmable = true, dimmed = true, dimHintSeen = false,
+            boardSize = BoardSize(10, 1, "Test board", 0, 100, 0, 100, null),
+            placements = mapOf(1 to BoardPlacement(1, 1, 1, 30, 30)),
+        ))
+        val connection = MutableStateFlow(ConnectionState.CONNECTED)
+        every { vm.state } returns state
+        every { vm.connection } returns connection
+        compose.setContent { MaterialTheme { PaintBoxScreen({}, {}, vm) } }
+        compose.onNodeWithText("Why dimmed?").assertIsDisplayed()
+        // While the card explains it the first time, the line waits.
+        compose.onNodeWithTag("paintbox_dimmed").assertDoesNotExist()
+        compose.onNodeWithText("Got it").performClick()
+        verify { vm.dimHintSeen() }
+        state.value = state.value.copy(dimHintSeen = true, live = true)
+        compose.onNodeWithTag("paintbox_dim_hint").assertDoesNotExist()
+        compose.onNodeWithTag("paintbox_dimmed").assertIsDisplayed()
+        compose.onNodeWithText("Dimmed to stay within the power limit").assertIsDisplayed()
+        // The line keeps its place: the board doesn't move under a stroke when it comes and goes.
+        val top = compose.onNodeWithTag("paintbox_live").getUnclippedBoundsInRoot().top
+        state.value = state.value.copy(dimmed = false)
+        compose.onNodeWithTag("paintbox_dimmed").assertDoesNotExist()
+        assertEquals(top, compose.onNodeWithTag("paintbox_live").getUnclippedBoundsInRoot().top)
+        state.value = state.value.copy(dimmed = true)
+        // Without a board nothing is dimmed: the line goes with the connection.
+        connection.value = ConnectionState.DISCONNECTED
+        compose.onNodeWithTag("paintbox_dimmed").assertDoesNotExist()
+    }
+
+    @Test fun `a board that never dims keeps no room for the dimmed line`() {
+        val vm = mockk<PaintBoxViewModel>(relaxed = true)
+        val state = MutableStateFlow(PaintBoxState(
+            document = PaintDocument(board = PaintBoard("kilter", 1, 10), colors = mapOf(1 to 0xff)), loading = false,
+            boardSize = BoardSize(10, 1, "Test board", 0, 100, 0, 100, null),
+            placements = mapOf(1 to BoardPlacement(1, 1, 1, 30, 30)),
+        ))
+        every { vm.state } returns state
+        every { vm.connection } returns MutableStateFlow(ConnectionState.CONNECTED)
+        compose.setContent { MaterialTheme { PaintBoxScreen({}, {}, vm) } }
+        // MoonBoard and Quantum never dim: Send and Live sit right at the bottom.
+        val bottom = compose.onNodeWithTag("paintbox_live").getUnclippedBoundsInRoot().top
+        state.value = state.value.copy(dimmable = true)
+        // A board that dims keeps the line's place, also while nothing is dimmed.
+        compose.onNodeWithTag("paintbox_dimmed").assertDoesNotExist()
+        assertTrue(compose.onNodeWithTag("paintbox_live").getUnclippedBoundsInRoot().top < bottom)
+    }
+
     @Test fun `rarer actions sit in the menu`() {
         editor(ConnectionState.CONNECTED)
         compose.onNodeWithTag("paintbox_menu").performClick()

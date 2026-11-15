@@ -13,6 +13,9 @@ import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardFrameEncoder
+import com.cruxcoach.domain.board.MoonBoardLedMode
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.domain.board.games.HoldsThief
 import com.cruxcoach.domain.board.games.WallHold
@@ -22,6 +25,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -195,6 +199,63 @@ class WallGamesViewModelTest {
         assertEquals(ClimbProblem.OTHER_BOARD, refused.climbProblem)
         assertNull(refused.climb)
         assertTrue(!refused.canStart)
+    }
+
+    /** Seven rows of a MoonBoard 2016: at the default share more holds than one frame carries. */
+    private val moon = MoonBoardVariant.MOONBOARD_2016
+    private val moonBoard = WallGameBoard(
+        brand = BoardBrand.MOONBOARD,
+        layoutId = moon.layoutId,
+        rows = WallRows.of(WallGameHolds.moonBoard(moon, emptySet()).filter { it.y < 7 }),
+        moonVariant = moon,
+    )
+
+    private fun moonViewModel(): WallGamesViewModel {
+        connectedBrand.value = BoardBrand.MOONBOARD
+        return viewModel(loader = mockk { coEvery { load() } returns WallGameBoardLoad.Ready(moonBoard) })
+    }
+
+    @Test
+    fun theHoldThiefOnAMoonBoardIsRefusedWholeWhenTheBoxCannotShowIt() {
+        coEvery { ble.sendMoonBoardClimb(any(), any(), any()) } returns true
+        val vm = moonViewModel()
+        vm.selectGame(WallGame.THIEF)
+        // The first share is the highest whose climb fits, so the first climb lights whole.
+        val first = vm.state.value
+        assertTrue(first.thiefDensity < HoldsThief.DEFAULT_DENSITY)
+        vm.start()
+        assertNull(vm.state.value.sendProblem)
+        coVerify(exactly = 1) { ble.sendMoonBoardClimb(WallGameHolds.moonBoardFrames(first.thiefRoute), moon, MoonBoardLedMode.BELOW) }
+
+        // More than 52 holds: nothing goes out, not even the part that would fit (without its start holds).
+        vm.setThiefDensity(HoldsThief.DEFAULT_DENSITY)
+        assertTrue(vm.state.value.thiefRoute.size > MoonBoardFrameEncoder.MAX_FRAME_LEDS)
+        assertEquals(WallSendProblem.TOO_MANY_HOLDS, vm.state.value.sendProblem)
+        coVerify(exactly = 1) { ble.sendMoonBoardClimb(any(), any(), any()) }
+
+        // A lower share fits: the whole climb goes up, start holds included, and the message goes.
+        vm.setThiefDensity(10)
+        val fewer = vm.state.value.thiefRoute
+        assertEquals(2, fewer.count { it.roleId == HoldRole.START })
+        assertNull(vm.state.value.sendProblem)
+        coVerify(exactly = 1) { ble.sendMoonBoardClimb(WallGameHolds.moonBoardFrames(fewer), moon, MoonBoardLedMode.BELOW) }
+    }
+
+    @Test
+    fun aWallStateWrittenLateKeepsTheRulesOfItsGame() {
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0
+        coEvery { ble.sendMoonBoardClimb(any(), any(), any()) } coAnswers { if (++calls == 1) gate.await(); true }
+        val vm = moonViewModel()
+        vm.selectGame(WallGame.THIEF)
+        vm.start()
+        // While the first climb is still being written, a too-big one waits and the user switches to the lava.
+        vm.setThiefDensity(HoldsThief.DEFAULT_DENSITY)
+        vm.selectGame(WallGame.LAVA)
+        gate.complete(Unit)
+        // The waiting hold-thief climb is refused whole, not cut down like lava; the lava screen shows no message.
+        coVerify(exactly = 1) { ble.sendMoonBoardClimb(any(), any(), any()) }
+        assertNull(awaitState(vm) { it.game == WallGame.LAVA }.sendProblem)
     }
 
     private fun climb(uuid: String, layoutId: Long, frames: String): ClimbWithStats = mockk(relaxed = true) {

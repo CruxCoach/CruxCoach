@@ -293,6 +293,12 @@ class WallGamesUiReviewTest {
     fun session() = shoot("session") { Screen(idle.copy(sendProblem = WallSendProblem.SESSION)) }
 
     @Test
+    fun thiefTooMany() = shoot("thief-too-many") {
+        Screen(idle.copy(game = WallGame.THIEF, thiefRoute = holdsBetween(0.05, 0.95, 13, step = 9), thiefLive = true,
+            sendProblem = WallSendProblem.TOO_MANY_HOLDS))
+    }
+
+    @Test
     fun noHolds() = shoot("no-holds") {
         Screen(WallGamesState(loading = false, unavailable = WallGameBoardLoad.NoHolds))
     }

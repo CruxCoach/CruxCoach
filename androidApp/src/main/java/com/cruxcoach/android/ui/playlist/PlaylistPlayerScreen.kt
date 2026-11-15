@@ -360,6 +360,21 @@ fun PlaylistPlayerScreen(
                         )
                     }
                 }
+                // The board refused this climb as a whole, so the wall still shows the one before.
+                if (playback.currentClimbTooBig) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.fillMaxWidth().testTag("player_too_big"),
+                    ) {
+                        Text(
+                            stringResource(R.string.board_send_error_moonboard_too_big),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                }
                 RestTimerBannerSlot()
             }
         },

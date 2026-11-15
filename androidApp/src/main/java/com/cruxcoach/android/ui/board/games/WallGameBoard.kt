@@ -9,6 +9,7 @@ import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
@@ -80,6 +81,29 @@ internal object WallGameHolds {
             else -> HoldRole.ROUTE_HAND
         }
         "p${hold.placementId}r$role"
+    }
+
+    /** Whether one MoonBoard frame of the box carries [holds] ([MoonBoardFrameEncoder.fits]). */
+    fun moonBoardFits(holds: List<BoardHold>, variant: MoonBoardVariant, ledMode: MoonBoardLedMode): Boolean =
+        MoonBoardFrameEncoder.fits(moonBoardFrames(holds), variant, ledMode)
+
+    /**
+     * The newest whole rows of [lava] (the end of the list, which runs row by row from the
+     * bottom) that one MoonBoard frame can carry ([MoonBoardFrameEncoder.fits]): rising lava
+     * keeps its top rows lit instead of the box refusing the whole wall, and no row is half lit.
+     * Only for lava: any other game's holds are refused whole when they don't fit.
+     */
+    fun moonBoardLavaFit(lava: List<BoardHold>, rows: WallRows, variant: MoonBoardVariant, ledMode: MoonBoardLedMode): List<BoardHold> {
+        val rowStarts = lava.indices.filter { it == 0 || rows.rowOf(lava[it].placementId) != rows.rowOf(lava[it - 1].placementId) }
+        fun fits(start: Int) = moonBoardFits(lava.subList(rowStarts[start], lava.size), variant, ledMode)
+        // Fewer rows always fit when more do: find the most that fit (empty if not even the top row does).
+        var low = 0
+        var high = rowStarts.size
+        while (low < high) {
+            val middle = (low + high) / 2
+            if (fits(middle)) high = middle else low = middle + 1
+        }
+        return if (low == rowStarts.size) emptyList() else lava.subList(rowStarts[low], lava.size)
     }
 
     private const val MOON_COLUMNS = 11

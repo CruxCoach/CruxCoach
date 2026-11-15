@@ -669,6 +669,29 @@ class SessionQueueManagerTest {
     }
 
     @Test
+    fun `a MoonBoard climb the box cannot show is refused and the player says so`() {
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        // More holds than one frame carries: nothing goes out, the wall keeps the climb before.
+        val big = moonBoardClimb("big").copy(frames = (1..60).joinToString("") { "p${it}r43" })
+        every { boardRepository.getClimbByUuid("big", any()) } returns big
+        queueManager.addClimb("big", 40)
+        queueManager.nextClimb()
+
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertTrue(queueManager.state.value.currentClimbTooBig)
+        assertFalse(queueManager.isCurrentClimbOnBoard())
+        // A rest time set for it (a logged send) keeps the message: the wall still shows the climb before.
+        queueManager.setRestAfter(queueManager.state.value.currentIndex, 90)
+        assertTrue(queueManager.state.value.currentClimbTooBig)
+
+        // Back to a climb that fits: it goes up and the message is cleared.
+        queueManager.previousClimb()
+        coVerify(exactly = 2) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertNull(queueManager.state.value.tooBigForBoard)
+    }
+
+    @Test
     fun `remote resend respects explicit mode while local lamp remains authorized`() {
         every { userPreferences.singleConnectionBoardSendMode } returns
             flowOf(BoardSendMode.EXPLICIT)
