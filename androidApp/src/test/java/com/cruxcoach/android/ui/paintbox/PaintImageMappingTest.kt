@@ -467,6 +467,20 @@ class PaintImageMappingTest {
         assertTrue("$free holds without a limit", free > 60)
         val limited = lit(PaintImageMapping.place(prepared, image, board.viewport, board.points, palette = palette, most = 40))
         assertTrue("$limited holds with at most 40 of a color", limited in 20..40)
+        // A photo that asks for no more than the board lights, fitted and settled, keeps its size.
+        val xs = board.points.values.map { it.x }
+        val ys = board.points.values.map { it.y }
+        val base = min(board.viewport.width / image.width, board.viewport.height / image.height)
+        val zoom = min((xs.max() - xs.min() + board.spacing) / (prepared.right - prepared.left),
+            (ys.max() - ys.min() + board.spacing) / (prepared.bottom - prepared.top)) / base
+        val fitted = PaintImageTransform(Offset(
+            ((xs.min() + xs.max()) / 2 - ((prepared.left + prepared.right) / 2 - image.width / 2) * base * zoom) / board.viewport.width,
+            ((ys.min() + ys.max()) / 2 - ((prepared.top + prepared.bottom) / 2 - image.height / 2) * base * zoom) / board.viewport.height,
+        ), zoom, 0f)
+        val settled = PaintImageMapping.place(prepared, image, board.viewport, board.points, palette = palette)
+        assertEquals(1f, settled.zoom / fitted.zoom, .11f)
+        val asks = maxOf(lit(fitted), lit(settled))
+        assertEquals(settled, PaintImageMapping.place(prepared, image, board.viewport, board.points, palette = palette, most = asks))
         // A photo that was placed by hand is never made smaller for it.
         val byHand = PaintImageTransform(zoom = 1.2f)
         assertEquals(1.2f, PaintImageMapping.place(prepared, image, board.viewport, board.points, byHand, palette, 40).zoom, .13f)
@@ -487,37 +501,147 @@ class PaintImageMappingTest {
         }
     }
 
+    @Test fun `a flat tone close to the ground keeps its holds beside a logo of any color, also with noise`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            fun u(id: Int) = (board.points.getValue(id).x - board.viewport.width / 2) / board.side + .5f
+            // a disc as the logo, beside it a panel of a darker tone, on anthracite
+            fun panel(logo: Long, tone: Long) = mapDetected(board, picture { u, v ->
+                if (hypot(u - .3f, v - .5f) < .15f) logo.toInt()
+                else if (u > .55f && u < .9f && v > .25f && v < .75f) tone.toInt() else 0xff202020.toInt()
+            }).keys.filter { u(it) > .5f }.toSet()
+            val full = panel(0xffc03030, 0xffa02020)
+            assertTrue("${board.name}: ${full.size} holds", full.size >= 20)
+            for ((logo, tone) in listOf(0xffc03030 to 0xff501414, 0xffc03030 to 0xff581212, 0xffc03030 to 0xff5c1111, 0xffffffff to 0xff5c1111)) {
+                assertEquals("${board.name}: ${tone.toString(16)} beside ${logo.toString(16)}", full, panel(logo, tone))
+            }
+            // white, red and dark red blocks on anthracite, with noise as a photo of a logo has it
+            fun blocks(noise: Int): List<Int> {
+                val lit = mapDetected(board, picture { u, v ->
+                    val k = ((u - .08f) / .28f).toInt()
+                    val inside = v > .2f && v < .8f && k in 0..2 && u > .1f + k * .28f && u < .34f + k * .28f
+                    val color = if (!inside) 0x202020 else intArrayOf(0xffffff, 0xff0000, 0x601010)[k]
+                    val n = (((u * 400).toInt() * 7919 + (v * 400).toInt() * 104729) % 9 - 4) * noise
+                    fun ch(shift: Int) = (((color shr shift) and 255) + n).coerceIn(0, 255)
+                    (0xff shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+                }).keys
+                return (0..2).map { k -> lit.count { u(it) > .08f + k * .28f && u(it) < .36f + k * .28f } }
+            }
+            val clean = blocks(0)
+            assertEquals(board.name, clean, blocks(3))
+        }
+    }
+
+    @Test fun `a pale part beside a black picture lights, a light grey one does not`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            fun u(id: Int) = (board.points.getValue(id).x - board.viewport.width / 2) / board.side + .5f
+            fun v(id: Int) = (board.points.getValue(id).y - board.viewport.height / 2) / board.side + .5f
+            fun right(pale: Int) = mapDetected(board, picture { u, v ->
+                if (u > .08f && u < .52f && v > .15f && v < .85f) black else if (u > .62f && u < .9f && v > .3f && v < .7f) pale else white
+            }).keys.filter { u(it) > .57f }.toSet()
+            val inside = board.points.keys.filter { u(it) > .64f && u(it) < .88f && v(it) > .32f && v(it) < .68f }
+            for (pale in listOf(0xffffdd00.toInt(), 0xffffb0c0.toInt(), 0xffa0a0a0.toInt())) {
+                val lit = right(pale)
+                assertTrue("${board.name}: ${Integer.toHexString(pale)}, ${lit.size} holds", lit.containsAll(inside) &&
+                    lit.all { u(it) > .62f - .6f * board.spacing / board.side && v(it) > .3f - .6f * board.spacing / board.side && v(it) < .7f + .6f * board.spacing / board.side })
+            }
+            assertEquals(board.name, emptySet<Int>(), right(0xffd0d0d0.toInt()))
+        }
+    }
+
     @Test fun `a photo that fills the frame keeps its bands of color on a board with three colors`() {
-        // muted bands, alike enough that a shape on a removed background would become one color
+        // muted bands, alike enough that a shape on a removed background would lose one of them
         val colors = map(moonGrid(), picture { _, v ->
             if (v < 1f / 3) 0xff96aabe.toInt() else if (v < 2f / 3) 0xff6e8c5a.toInt() else 0xff8c6e5a.toInt()
         }, BoardBrand.MOONBOARD)
         assertEquals(PaintPalette.forBoard(BoardBrand.MOONBOARD).toSet(), colors.values.toSet())
     }
 
-    @Test fun `a dot lights one hold, a short stroke two, wherever they fall`() {
+    @Test fun `a dot lights the hold nearest to it, a short stroke the holds under it, wherever they fall`() {
         for (board in listOf(kilterLike(), moonGrid())) {
             val spacing = board.spacing / board.side
+            fun nearest(u: Float, v: Float) = board.points.keys.minBy { board.distance(it, board.at(u, v)) }
             var strokes = 0
             for (step in 0 until 12) {
                 val cu = .5f + (step % 4 - 1.5f) * .3f * spacing
                 val cv = .5f + (step / 4 - 1f) * .4f * spacing
                 val name = "${board.name} at $cu, $cv"
-                // smaller than a hold: exactly one, not two and not none
+                // smaller than a hold: exactly the hold nearest to it, not a neighbour and not none
                 val small = mapDetected(board, picture { u, v -> if (hypot(u - cu, v - cv) < .35f * spacing) white else black })
-                assertEquals("$name: small dot", 1, small.size)
+                assertEquals("$name: small dot", setOf(nearest(cu, cv)), small.keys)
                 // about a hold in size
                 val dot = mapDetected(board, picture { u, v -> if (hypot(u - cu, v - cv) < spacing / 2) white else black })
-                assertTrue("$name: dot, ${dot.size} holds", dot.size in 1..2)
-                // a thin stroke two and a half hold spacings long is not taken for a dot
+                assertTrue("$name: dot, ${dot.keys}", dot.size in 1..2 && nearest(cu, cv) in dot)
+                // a thin stroke two and a half hold spacings long is not taken for a dot, and lights only holds under it
                 val stroke = mapDetected(board, picture { u, v ->
                     if (abs(v - cv) < .15f * spacing && abs(u - cu) < 1.25f * spacing) white else black
-                })
+                }).keys
                 assertTrue("$name: stroke, ${stroke.size} holds", stroke.size in 1..3)
+                val start = board.at(cu - 1.25f * spacing, cv)
+                val end = board.at(cu + 1.25f * spacing, cv)
+                assertTrue("$name: stroke $stroke", stroke.all {
+                    val p = board.points.getValue(it)
+                    abs(p.y - start.y) <= .75f * board.spacing && p.x >= start.x - .3f * board.spacing && p.x <= end.x + .3f * board.spacing
+                })
                 if (stroke.size >= 2) strokes++
             }
             assertTrue("${board.name}: $strokes of 12 strokes with two holds or more", strokes >= 9)
         }
+    }
+
+    @Test fun `a dot on a hold lights that hold, also beside other dots`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            fun dots(vararg holds: Int, width: Float = .7f) = mapDetected(board, picture(side = 400) { u, v ->
+                val at = board.at(u, v)
+                if (holds.any { board.distance(it, at) < width / 2 * board.spacing }) white else black
+            }).keys
+            val middle = board.points.keys.minBy { board.distance(it, board.at(.5f, .5f)) }
+            // exactly on a hold and a little beside it: that hold, not a neighbour
+            for ((du, dv) in listOf(0f to 0f, .05f to 0f, 0f to .05f, -.05f to 0f, 0f to -.05f)) {
+                val p = board.points.getValue(middle)
+                val shifted = mapDetected(board, picture { u, v ->
+                    val at = board.at(u, v)
+                    if (hypot(at.x - p.x - du * board.spacing, at.y - p.y - dv * board.spacing) < .35f * board.spacing) white else black
+                }).keys
+                assertEquals("${board.name}: dot moved by $du, $dv", setOf(middle), shifted)
+            }
+            // two dots on neighbouring holds, also diagonal ones on a square grid
+            for (next in board.points.keys.filter { board.linked(middle, it, 1.5f) }) {
+                assertEquals("${board.name}: dots on $middle and $next", setOf(middle, next), dots(middle, next))
+            }
+        }
+        // patterns of dots drawn on the holds of a MoonBoard grid
+        val board = moonGrid()
+        fun id(row: Int, col: Int) = row * 11 + col + 1
+        val patterns = mapOf(
+            "a diagonal" to (0 until 5).map { id(6 + it, 3 + it) },
+            "a block of three by three" to (-1..1).flatMap { r -> (-1..1).map { c -> id(8 + r, 4 + c) } },
+            "every second hold of a row" to (1 until 10 step 2).map { id(8, it) },
+            "every second hold of a block" to listOf(-2, 0, 2).flatMap { r -> listOf(-2, 0, 2).map { c -> id(8 + r, 5 + c) } },
+        )
+        for ((name, holds) in patterns) {
+            val lit = mapDetected(board, picture { u, v ->
+                val at = board.at(u, v)
+                if (holds.any { board.distance(it, at) < .35f * board.spacing }) white else black
+            }).keys
+            assertEquals(name, holds.toSet(), lit)
+        }
+    }
+
+    @Test fun `a line on the MoonBoard reaches the holds at its ends`() {
+        val board = moonGrid()
+        fun line(from: Int, to: Int): Set<Int> {
+            val a = board.points.getValue(from)
+            val b = board.points.getValue(to)
+            return mapDetected(board, picture { u, v ->
+                val p = board.at(u, v)
+                val dx = b.x - a.x
+                val dy = b.y - a.y
+                val t = (((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)).coerceIn(0f, 1f)
+                if (hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < .15f * board.spacing) white else black
+            }).keys
+        }
+        assertEquals((0 until 10).map { 45 + 12 * it }.toSet(), line(45, 153))
+        assertEquals((101..109).toSet(), line(101, 109))
     }
 
     @Test fun `on black a glow is left out and a faint second tone of the ground stays dark`() {
