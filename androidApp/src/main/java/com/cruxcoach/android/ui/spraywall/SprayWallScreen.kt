@@ -120,6 +120,8 @@ data class SprayWallUiState(
     val publishing: Boolean = false,
     /** Taking the wall back, from here or its details (also one started there before that screen was left). */
     val withdrawing: Boolean = false,
+    /** That withdrawal deletes the wall once it is done (Delete in its details). */
+    val deleting: Boolean = false,
     /** Why the last try did not finish it (null = no try, or it worked). */
     val withdrawFailed: SprayWithdrawal? = null,
     /** Removing someone else's wall: my climbs on it are being taken back first. */
@@ -169,7 +171,9 @@ class SprayWallViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            publisher.withdrawing.collect { walls -> _state.update { it.copy(withdrawing = wallId in walls) } }
+            publisher.withdrawing.collect { walls ->
+                _state.update { it.copy(withdrawing = wallId in walls, deleting = walls[wallId] == true) }
+            }
         }
         // A public wall: climbs others set on it, new versions, withdrawals.
         viewModelScope.launch { fetcher.refresh(wallId) }
@@ -374,7 +378,7 @@ fun SprayWallScreen(
             if (wall.isMine && wall.withdrawStarted != null) {
                 item {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        WithdrawUnfinishedCard(withdrawing = state.withdrawing, enabled = true, onRetry = viewModel::withdrawAgain)
+                        WithdrawUnfinishedCard(withdrawing = state.withdrawing, deleting = state.deleting, enabled = true, onRetry = viewModel::withdrawAgain)
                         state.withdrawFailed?.let {
                             Text(withdrawFailureReason(it, started = true), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         }

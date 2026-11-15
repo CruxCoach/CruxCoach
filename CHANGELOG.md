@@ -25,7 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   find it under "Spray walls here" at its gym on the map and set problems on
   it. The photos of a public wall must not show people. Withdrawing a wall
   also deletes its photos from the Blossom servers; if that does not work, the
-  wall stays public (and is not deleted) so you can try again. Your logbook is
+  wall stays public (and is not deleted) so you can try again. Deleting a
+  public wall withdraws it first and says "Withdrawing the wall, then
+  deleting it …" until the wall is gone. Your logbook is
   never published, and spray walls are not in Android backups.
 - Board size check: not sure which size your Kilter or other Aurora-family board is,
   or other holds light up than the app shows? The board picker and the climb's ⋯ menu

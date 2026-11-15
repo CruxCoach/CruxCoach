@@ -196,6 +196,7 @@
     <string name="spray_withdraw_text">The wall, its versions, your climbs on it and its photos are deleted from the servers. Others may keep copies they already have. The wall stays on this phone as a private wall.</string>
     <string name="spray_withdraw_confirm">Withdraw</string>
     <string name="spray_wall_withdrawing">Withdrawing the wall …</string>
+    <string name="spray_wall_withdrawing_then_deleting">Withdrawing the wall, then deleting it …</string>
     <string name="spray_withdraw_failed_title">Wall not withdrawn</string>
     <string name="spray_delete_failed_title">Wall not deleted</string>
     <string name="spray_withdraw_failed_relays">The servers did not confirm the withdrawal, so the wall is still public. Check the connection and try again.</string>

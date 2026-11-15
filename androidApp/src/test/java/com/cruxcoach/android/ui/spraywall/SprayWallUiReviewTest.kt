@@ -102,9 +102,11 @@ abstract class SprayWallUiReview(private val variant: String) {
     private lateinit var photos: SprayWallPhotoStore
     private val preferences by lazy { createTestUserPreferences(scope) }
     private val lastOutcome = MutableStateFlow<SprayWallPublisher.Outcome?>(null)
+    /** The walls being withdrawn (true: deleted afterwards), as the publisher reports them. */
+    private val withdrawing = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     private val publisher = mockk<SprayWallPublisher>(relaxed = true).also {
         every { it.last } returns lastOutcome
-        every { it.withdrawing } returns MutableStateFlow(emptySet())
+        every { it.withdrawing } returns withdrawing
         every { it.hasIdentity() } returns true
     }
     private val fetcher = mockk<SprayWallFetcher>(relaxed = true)
@@ -382,6 +384,14 @@ abstract class SprayWallUiReview(private val variant: String) {
         wallShot("wall-withdraw-unfinished", id)
     }
 
+    @Test fun wallDeletingUnfinished() {
+        // Delete in the details, then back to the wall page while the withdrawal runs.
+        val id = mainWall()
+        runBlocking { repository.markWithdrawStarted(id) }
+        withdrawing.value = mapOf(id to true)
+        wallShot("wall-deleting-unfinished", id)
+    }
+
     @Test fun wallUnfinishedReset() {
         val id = mainWall()
         runBlocking { repository.resetWall(id, wallPhoto(paintedHolds(seed = 21, count = 35), tint = 0xFFBCAAA4.toInt()), emptyList()) }
@@ -487,6 +497,19 @@ abstract class SprayWallUiReview(private val variant: String) {
         val id = mainWall()
         runBlocking { repository.markWithdrawStarted(id) }
         detailsShot("details-withdraw-unfinished", detailsVm(id))
+    }
+
+    @Test fun detailsDeleting() {
+        val id = mainWall()
+        withdrawing.value = mapOf(id to true)
+        detailsShot("details-deleting", detailsVm(id))
+    }
+
+    @Test fun detailsDeletingUnfinished() {
+        val id = mainWall()
+        runBlocking { repository.markWithdrawStarted(id) }
+        withdrawing.value = mapOf(id to true)
+        detailsShot("details-deleting-unfinished", detailsVm(id))
     }
 
     @Test fun detailsGymPicker() {
