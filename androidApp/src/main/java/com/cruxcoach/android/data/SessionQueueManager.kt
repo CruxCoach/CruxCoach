@@ -108,9 +108,17 @@ data class SessionQueueState(
     val externalBoardClimb: QueueItem? = null,
     /** Recoverable board identity/configuration failure from playlist delivery. */
     val boardMismatch: BoardConfigurationMismatch? = null,
+    /** The last climb the board refused for more LEDs than it lights at once; the wall kept what it showed. */
+    val tooBigForBoard: QueueItem? = null,
 ) {
     val isActive: Boolean get() = role != SessionRole.NONE
     val currentClimb: QueueItem? get() = queue.getOrNull(currentIndex)
+    /** The current climb is not on the wall because the board can't show that many holds at once
+     *  (the same climb and angle; a changed rest time keeps it). */
+    val currentClimbTooBig: Boolean
+        get() = tooBigForBoard != null && currentClimb?.let {
+            it.climbUuid == tooBigForBoard.climbUuid && it.angle == tooBigForBoard.angle
+        } == true
     /** What is physically projected, including an identified external write. */
     val projectedClimb: QueueItem?
         get() = if (externalBoardOverride) externalBoardClimb else currentClimb
@@ -884,11 +892,14 @@ class SessionQueueManager(
                     if (climb.frames.isBlank()) return@withLock
                     val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
                         ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                    val sent = bleConnection.sendMoonBoardClimb(
-                        climb.frames,
-                        variant,
-                        userPreferences.moonBoardLedMode.first(),
-                    )
+                    val ledMode = userPreferences.moonBoardLedMode.first()
+                    // The box shows so many LEDs at once: a bigger climb is refused, and the player says so.
+                    if (!com.cruxcoach.domain.board.MoonBoardFrameEncoder.fits(climb.frames, variant, ledMode)) {
+                        _state.update { it.copy(tooBigForBoard = item) }
+                        Log.w(TAG, "sendCurrentClimbToBoard: MoonBoard climb ${item.climbUuid.take(8)} too big for one frame")
+                        return@withLock
+                    }
+                    val sent = bleConnection.sendMoonBoardClimb(climb.frames, variant, ledMode)
                     if (sent) {
                         advertisePrivatePlaylistProjection(climb, item)
                         markCurrentClimbProjected(key)
@@ -1179,7 +1190,7 @@ class SessionQueueManager(
     private fun markCurrentClimbProjected(key: String) {
         lastSentClimbKey = key
         val changed = _state.value.awaitingExplicitSend
-        _state.update { it.copy(awaitingExplicitSend = false, boardMismatch = null) }
+        _state.update { it.copy(awaitingExplicitSend = false, boardMismatch = null, tooBigForBoard = null) }
         if (changed) onSessionInfoChanged?.invoke()
         val hadExternalOverride = _state.value.externalBoardOverride
         if (hadExternalOverride) {

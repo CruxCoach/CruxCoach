@@ -58,8 +58,8 @@
     <string name="paintbox_session_active">Eine Sitzung oder Playlist steuert das Board, deshalb zeigt PaintBox nichts darauf. Beende sie zuerst.</string>
     <string name="paintbox_relay_active">Die Board-Freigabe ist an, deshalb zeigt PaintBox nichts auf dem Board. Beende zuerst die Freigabe.</string>
     <string name="paintbox_api2_limit">Die LED-Box dieses Boards leuchtet bis zu 127 Holds auf einmal. Es wurde nichts gesendet.</string>
-    <string name="paintbox_moon_limit">Zu viele Holds für das MoonBoard: Es leuchtet etwa 40 bis 52 LEDs auf einmal, auf seiner rechten Seite weniger. Es wurde nichts gesendet.</string>
-    <string name="paintbox_moon_limit_both">Zu viele Holds für das MoonBoard: Es leuchtet etwa 40 bis 52 LEDs auf einmal, auf seiner rechten Seite weniger, und mit LEDs über und unter dem Hold brauchen die meisten Holds zwei. Es wurde nichts gesendet.</string>
+    <string name="paintbox_moon_limit">Zu viele Holds für das MoonBoard: Es lässt etwa 40 bis 52 LEDs auf einmal leuchten, auf seiner rechten Seite weniger. Es wurde nichts gesendet.</string>
+    <string name="paintbox_moon_limit_both">Zu viele Holds für das MoonBoard: Es lässt etwa 40 bis 52 LEDs auf einmal leuchten, auf seiner rechten Seite weniger, und mit LEDs über und unter dem Hold brauchen die meisten Holds zwei. Es wurde nichts gesendet.</string>
     <string name="paintbox_dimmed">Gedimmt wegen der Leistungsgrenze</string>
     <string name="paintbox_dim_hint_title">Warum gedimmt?</string>
     <string name="paintbox_dim_hint">Helle Flächen wie Weiß oder Mischfarben werden gedimmt, damit das Board in seiner Leistungsgrenze bleibt. Kräftiges Rot, Grün oder Blau braucht ein Drittel der Leistung und bleibt heller.</string>

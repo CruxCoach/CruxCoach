@@ -508,9 +508,9 @@ private fun PaintBoxActions(
                 }
             }
             // What goes out is dimmed to the board's power limit. The line keeps its place while a board
-            // is connected, so the board doesn't move under a stroke when it comes and goes; while the
-            // card explains it the first time, the line waits.
-            if (connected && !importing) {
+            // that dims is connected, so the board doesn't move under a stroke when it comes and goes;
+            // while the card explains it the first time, the line waits. Boards that never dim get no line.
+            if (connected && state.dimmable && !importing) {
                 val shown = state.dimmed && state.dimHintSeen
                 Row(
                     Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp).alpha(if (shown) 1f else 0f)

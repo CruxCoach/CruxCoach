@@ -1519,6 +1519,7 @@
     <string name="playlist_connect_board_confirm">Board verbinden</string>
     <string name="playlist_connect_board_skip">Ohne Board abspielen</string>
     <string name="ble_board_shows_instead">Am Board hängt: %1$s</string>
+    <string name="ble_queue_too_big">Nicht am Board: mehr LEDs, als das MoonBoard auf einmal zeigen kann</string>
     <string name="ble_session_name_promoted">Warteschlange</string>
     <string name="ble_participant_label">Teilnehmer %1$d</string>
     <!-- Joinbare BoardCell-Playlist: kanonischer Mesh-Zustand aller Mitglieder. -->
@@ -2419,7 +2420,7 @@
     <string name="board_send_error_connected_board_mismatch">Dieser Climb gehört zu einem anderen Board-Typ als das verbundene Board. Verbinde dich mit dem passenden Board.</string>
     <string name="board_send_error_no_led_data">Keine LED-Daten. Bitte Board-Daten neu synchronisieren.</string>
     <string name="board_send_error_send_failed">Senden fehlgeschlagen.</string>
-    <string name="board_send_error_moonboard_too_big">Dieser Climb braucht mehr LEDs, als das MoonBoard auf einmal leuchtet (etwa 40 bis 52). Es wurde nichts gesendet.</string>
+    <string name="board_send_error_moonboard_too_big">Dieser Climb braucht mehr LEDs, als das MoonBoard auf einmal zeigen kann (etwa 40 bis 52). Es wurde nichts gesendet.</string>
     <string name="board_send_error_generic">Fehler beim Senden.</string>
     <string name="board_send_error_active_not_moonboard">Dein aktives Board ist kein MoonBoard — wechsle es in den Einstellungen, um diesen Climb zu senden.</string>
     <string name="board_send_error_moonboard_variant_mismatch">Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board.</string>
@@ -3470,6 +3471,8 @@
     <string name="wall_games_session">Eine gemeinsame Sitzung steuert das Board: nur am Bildschirm.</string>
     <string name="wall_games_cleaning">Am Board läuft das Griffeputzen. Beende es, um das Spiel anzuzeigen.</string>
     <string name="wall_games_send_failed">Das Board hat nicht reagiert. Das Spiel läuft am Bildschirm weiter.</string>
+    <string name="wall_games_too_many">Zu viele Griffe für das MoonBoard: Die Wand bleibt, wie sie war.</string>
+    <string name="wall_games_too_many_thief">Zu viele Griffe für das MoonBoard. Wähle einen kleineren Anteil oder stiehl Griffe.</string>
     <string name="wall_games_unsupported">Für dieses Board gibt es keine Wand-Spiele.</string>
     <string name="wall_games_no_holds">Die Griffpositionen dieses Boards sind noch nicht auf dem Gerät. Lade zuerst seinen Katalog.</string>
     <string name="wall_games_sound_turn_off">Countdown-Ton ausschalten</string>

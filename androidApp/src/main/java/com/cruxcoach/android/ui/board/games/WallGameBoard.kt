@@ -83,22 +83,27 @@ internal object WallGameHolds {
         "p${hold.placementId}r$role"
     }
 
+    /** Whether one MoonBoard frame of the box carries [holds] ([MoonBoardFrameEncoder.fits]). */
+    fun moonBoardFits(holds: List<BoardHold>, variant: MoonBoardVariant, ledMode: MoonBoardLedMode): Boolean =
+        MoonBoardFrameEncoder.fits(moonBoardFrames(holds), variant, ledMode)
+
     /**
-     * The newest of [holds] (the end of the list) that one MoonBoard frame can carry
-     * ([MoonBoardFrameEncoder.fitsController]): rising lava keeps its top rows lit
-     * instead of the box refusing the whole wall.
+     * The newest whole rows of [lava] (the end of the list, which runs row by row from the
+     * bottom) that one MoonBoard frame can carry ([MoonBoardFrameEncoder.fits]): rising lava
+     * keeps its top rows lit instead of the box refusing the whole wall, and no row is half lit.
+     * Only for lava: any other game's holds are refused whole when they don't fit.
      */
-    fun moonBoardFit(holds: List<BoardHold>, variant: MoonBoardVariant, ledMode: MoonBoardLedMode): List<BoardHold> {
-        fun fits(from: Int) = MoonBoardFrameEncoder.fitsController(
-            MoonBoardFrameEncoder.encode(moonBoardFrames(holds.subList(from, holds.size)), variant, ledMode))
-        // A shorter tail always fits when a longer one does: find the longest that fits.
+    fun moonBoardLavaFit(lava: List<BoardHold>, rows: WallRows, variant: MoonBoardVariant, ledMode: MoonBoardLedMode): List<BoardHold> {
+        val rowStarts = lava.indices.filter { it == 0 || rows.rowOf(lava[it].placementId) != rows.rowOf(lava[it - 1].placementId) }
+        fun fits(start: Int) = moonBoardFits(lava.subList(rowStarts[start], lava.size), variant, ledMode)
+        // Fewer rows always fit when more do: find the most that fit (empty if not even the top row does).
         var low = 0
-        var high = holds.size
+        var high = rowStarts.size
         while (low < high) {
             val middle = (low + high) / 2
             if (fits(middle)) high = middle else low = middle + 1
         }
-        return holds.subList(low, holds.size)
+        return if (low == rowStarts.size) emptyList() else lava.subList(rowStarts[low], lava.size)
     }
 
     private const val MOON_COLUMNS = 11

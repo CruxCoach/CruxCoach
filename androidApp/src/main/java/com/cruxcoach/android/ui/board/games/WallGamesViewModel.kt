@@ -47,7 +47,11 @@ enum class WallGame {
 }
 
 /** Why the wall does not show what the screen shows. */
-enum class WallSendProblem { NOT_CONNECTED, OTHER_BOARD, SESSION, CLEANING, FAILED }
+enum class WallSendProblem {
+    NOT_CONNECTED, OTHER_BOARD, SESSION, CLEANING, FAILED,
+    /** More holds than the MoonBoard lights at once ([WallGameHolds.moonBoardFits]): nothing was sent. */
+    TOO_MANY_HOLDS,
+}
 
 /** Why a chosen climb cannot be played. */
 enum class ClimbProblem { NOT_FOUND, OTHER_BOARD, NO_HOLDS }
@@ -139,7 +143,7 @@ class WallGamesViewModel @Inject constructor(
     private val runner = WallGameRunner(
         scope = viewModelScope,
         now = SystemClock::elapsedRealtime,
-        onFrame = sender::show,
+        onFrame = ::show,
         onBeep = { if (mutableState.value.soundOn) sounds.play(it) },
     )
 
@@ -162,8 +166,8 @@ class WallGamesViewModel @Inject constructor(
                     sender.forget()
                     val s = mutableState.value
                     when {
-                        s.running && s.run.phase == GamePhase.RUNNING -> sender.show(s.run.lit)
-                        s.game == WallGame.THIEF && s.thiefLive -> sender.show(s.thiefRoute)
+                        s.running && s.run.phase == GamePhase.RUNNING -> show(s.run.lit)
+                        s.game == WallGame.THIEF && s.thiefLive -> show(s.thiefRoute)
                     }
                 }
                 if (now == ConnectionState.DISCONNECTED) {
@@ -196,11 +200,13 @@ class WallGamesViewModel @Inject constructor(
             }
             val board = (load as? WallGameBoardLoad.Ready)?.board
             mutableState.update {
+                val density = board?.let { b -> thiefStartDensity(b, it.thiefDensity) } ?: it.thiefDensity
                 it.copy(
                     loading = false,
                     board = board,
                     unavailable = load.takeIf { board == null },
-                    thiefRoute = board?.let { b -> HoldsThief.route(b.rows, it.thiefDensity, thiefSeed) }.orEmpty(),
+                    thiefDensity = density,
+                    thiefRoute = board?.let { b -> HoldsThief.route(b.rows, density, thiefSeed) }.orEmpty(),
                 )
             }
             if (board != null) {
@@ -229,7 +235,7 @@ class WallGamesViewModel @Inject constructor(
     override fun selectGame(game: WallGame) {
         if (mutableState.value.running) return
         // A finished game's last state (all the lava) should not linger.
-        if (mutableState.value.run.phase == GamePhase.FINISHED) sender.show(emptyList())
+        if (mutableState.value.run.phase == GamePhase.FINISHED) show(emptyList())
         runner.reset()
         mutableState.update { it.copy(game = game, thiefLive = false, sendProblem = null) }
     }
@@ -279,6 +285,17 @@ class WallGamesViewModel @Inject constructor(
 
     // ── Hold thief ─────────────────────────────────────────────────────
 
+    /**
+     * The hold thief's first share: on a MoonBoard the highest whose climb one frame of the box
+     * carries, so the first climb lights (the default share never fits there); else [current].
+     */
+    private fun thiefStartDensity(board: WallGameBoard, current: Int): Int {
+        val variant = board.moonVariant ?: return current
+        return HoldsThief.DENSITIES.firstOrNull { density ->
+            WallGameHolds.moonBoardFits(HoldsThief.route(board.rows, density, thiefSeed), variant, board.moonLedMode)
+        } ?: HoldsThief.DENSITIES.last()
+    }
+
     override fun setThiefDensity(density: Int) {
         val board = mutableState.value.board ?: return
         mutableState.update { it.copy(thiefDensity = density, thiefRoute = HoldsThief.route(board.rows, density, thiefSeed)) }
@@ -305,12 +322,12 @@ class WallGamesViewModel @Inject constructor(
     fun lightThiefClimb() {
         mutableState.update { it.copy(thiefLive = true) }
         sender.forget()
-        sender.show(mutableState.value.thiefRoute)
+        show(mutableState.value.thiefRoute)
     }
 
     private fun followThief() {
         val s = mutableState.value
-        if (s.game == WallGame.THIEF && s.thiefLive) sender.show(s.thiefRoute)
+        if (s.game == WallGame.THIEF && s.thiefLive) show(s.thiefRoute)
     }
 
     // ── Timed games ────────────────────────────────────────────────────
@@ -326,7 +343,7 @@ class WallGamesViewModel @Inject constructor(
         if (timeline.frames.isEmpty()) return
         // The wall goes dark for the countdown, then follows the game.
         sender.forget()
-        sender.show(emptyList())
+        show(emptyList())
         runner.start(timeline, GAME_COUNTDOWN_SECONDS, finishWithTimeline = s.game == WallGame.LAVA)
     }
 
@@ -344,18 +361,24 @@ class WallGamesViewModel @Inject constructor(
     override fun stop() {
         if (!mutableState.value.running) return
         runner.stop()
-        sender.show(emptyList())
+        show(emptyList())
     }
 
     /** From the result back to the game's settings; clears the wall. */
     override fun reset() {
         runner.reset()
-        sender.show(emptyList())
+        show(emptyList())
     }
 
     // ── Sending ────────────────────────────────────────────────────────
 
-    private suspend fun transmit(holds: List<BoardHold>): Boolean {
+    /** A wall state and the game it belongs to, so a write that runs late follows that game's rules. */
+    private data class WallState(val game: WallGame, val holds: List<BoardHold>)
+
+    private fun show(holds: List<BoardHold>) = sender.show(WallState(mutableState.value.game, holds))
+
+    private suspend fun transmit(state: WallState): Boolean {
+        val holds = state.holds
         val board = mutableState.value.board ?: return false
         val session = sessionQueueManager.state.value
         val problem = when {
@@ -370,9 +393,10 @@ class WallGamesViewModel @Inject constructor(
             mutableState.update { it.copy(sendProblem = problem) }
             return false
         }
-        val ok = sendToBoard(ble, board, holds)
-        mutableState.update { it.copy(sendProblem = if (ok) null else WallSendProblem.FAILED) }
-        return ok
+        val sendProblem = sendToBoard(ble, board, holds, state.game)
+        // The answer for a game the user has left since doesn't speak for the one on screen.
+        mutableState.update { if (it.game == state.game) it.copy(sendProblem = sendProblem) else it }
+        return sendProblem == null
     }
 
     override fun onCleared() {
@@ -395,18 +419,24 @@ class WallGamesViewModel @Inject constructor(
     }
 }
 
-/** One wall state through the board's own send path. Empty clears the wall. */
-internal suspend fun sendToBoard(ble: BoardBleConnection, board: WallGameBoard, holds: List<BoardHold>): Boolean {
-    if (holds.isEmpty()) return ble.clearBoard(expectedBrand = board.brand)
-    return when (board.brand) {
+/** One wall state of [game] through the board's own send path. Empty clears the wall. Null when it went up. */
+internal suspend fun sendToBoard(ble: BoardBleConnection, board: WallGameBoard, holds: List<BoardHold>, game: WallGame): WallSendProblem? {
+    if (holds.isEmpty()) return if (ble.clearBoard(expectedBrand = board.brand)) null else WallSendProblem.FAILED
+    val sent = when (board.brand) {
         // Only the holds that change go out, so the wall does not flash dark per step.
         BoardBrand.SHINYWALL -> board.shinyVariant?.let { ble.updateShinyWallHolds(holds, it) } ?: false
-        // The box shows so many LEDs at once: rising lava keeps its newest rows lit.
-        BoardBrand.MOONBOARD -> board.moonVariant?.let {
-            val shown = WallGameHolds.moonBoardFit(holds, it, board.moonLedMode)
-            ble.sendMoonBoardClimb(WallGameHolds.moonBoardFrames(shown), it, board.moonLedMode)
+        BoardBrand.MOONBOARD -> board.moonVariant?.let { variant ->
+            // The box shows so many LEDs at once. Rising lava keeps its newest whole rows lit; any other
+            // game's wall is refused whole, with a message, since a part of it (no start holds) misleads.
+            val shown = if (game == WallGame.LAVA) WallGameHolds.moonBoardLavaFit(holds, board.rows, variant, board.moonLedMode)
+            else holds
+            if (shown.isEmpty() || !WallGameHolds.moonBoardFits(shown, variant, board.moonLedMode)) {
+                return WallSendProblem.TOO_MANY_HOLDS
+            }
+            ble.sendMoonBoardClimb(WallGameHolds.moonBoardFrames(shown), variant, board.moonLedMode)
         } ?: false
         BoardBrand.QUANTUM -> false
         else -> ble.sendClimb(holds, board.ledMap, board.roleColors, expectedBrand = board.brand)
     }
+    return if (sent) null else WallSendProblem.FAILED
 }

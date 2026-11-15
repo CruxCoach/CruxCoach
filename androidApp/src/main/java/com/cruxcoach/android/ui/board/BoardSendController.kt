@@ -1014,8 +1014,7 @@ internal class BoardSendController(
             // The box takes a frame of so many LEDs; a bigger climb is refused, with this reason.
             val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
                 ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-            val frame = com.cruxcoach.domain.board.MoonBoardFrameEncoder.encode(frames, variant, userPreferences.moonBoardLedMode.first())
-            if (com.cruxcoach.domain.board.MoonBoardFrameEncoder.fitsController(frame)) null
+            if (com.cruxcoach.domain.board.MoonBoardFrameEncoder.fits(frames, variant, userPreferences.moonBoardLedMode.first())) null
             else R.string.board_send_error_moonboard_too_big
         }) { climb, frames ->
             // Resolve the MoonBoard variant from the CLIMB being sent,

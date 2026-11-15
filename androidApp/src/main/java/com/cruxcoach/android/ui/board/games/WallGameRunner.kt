@@ -138,33 +138,33 @@ internal class WallGameRunner(
  * [transmit] runs non-cancellable: leaving the screen must not cut a
  * multi-chunk write in half.
  */
-internal class WallGameSender(
+internal class WallGameSender<T>(
     scope: CoroutineScope,
-    private val transmit: suspend (List<BoardHold>) -> Boolean,
+    private val transmit: suspend (T) -> Boolean,
     private val onResult: (Boolean) -> Unit = {},
 ) {
-    private val pending = Channel<List<BoardHold>>(Channel.CONFLATED)
-    private var lastSent: List<BoardHold>? = null
+    private val pending = Channel<T>(Channel.CONFLATED)
+    private var lastSent: T? = null
 
     init {
         scope.launch {
-            for (holds in pending) {
-                if (holds == lastSent) continue
+            for (state in pending) {
+                if (state == lastSent) continue
                 val ok = try {
-                    withContext(NonCancellable) { transmit(holds) }
+                    withContext(NonCancellable) { transmit(state) }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
                     false
                 }
-                lastSent = if (ok) holds else null
+                lastSent = if (ok) state else null
                 onResult(ok)
             }
         }
     }
 
-    fun show(holds: List<BoardHold>) {
-        pending.trySend(holds)
+    fun show(state: T) {
+        pending.trySend(state)
     }
 
     /** Forget what the wall shows, e.g. after reconnecting, so the next state is sent again. */

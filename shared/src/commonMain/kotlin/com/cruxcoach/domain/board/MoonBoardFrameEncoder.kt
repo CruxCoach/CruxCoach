@@ -73,6 +73,13 @@ object MoonBoardFrameEncoder {
     fun fitsController(frame: ByteArray): Boolean =
         frame.size <= MAX_FRAME_BYTES && ledCount(frame) <= MAX_FRAME_LEDS
 
+    /** Whether a climb's [frames] fit one frame of the box ([fitsController]), as [encode] builds it. */
+    fun fits(
+        frames: String,
+        variant: MoonBoardVariant,
+        ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
+    ): Boolean = fitsController(encode(frames, variant, ledMode))
+
     // Aurora-aligned role codes as stored in the `frames` column
     // (p{holdId}r{roleCode}). Match HOLD_STATE_CODES in the board-DB
     // MoonBoard importer.

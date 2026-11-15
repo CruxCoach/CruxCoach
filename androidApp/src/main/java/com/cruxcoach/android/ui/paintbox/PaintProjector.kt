@@ -46,13 +46,19 @@ class PaintProjector @Inject constructor(
         boardBusy()?.let { throw PaintProjectionException(it) }
     }
 
+    /** Whether the connected board can dim [document] to its power limit at all: only its own Aurora board does. */
+    fun mayDim(document: PaintDocument): Boolean {
+        val brand = BoardBrand.fromWire(document.board.brand)
+        return brand.usesAuroraProtocol && ble.connectedBoardBrand.value == brand
+    }
+
     /**
      * Whether the connected board would show [document] dimmer than painted, to stay within
-     * its power limit. False without a matching Aurora board, or for a picture it refuses.
+     * its power limit. False without a matching Aurora board ([mayDim]), or for a picture it refuses.
      */
     fun dims(document: PaintDocument, ledMap: Map<Int, Int>): Boolean {
+        if (!mayDim(document)) return false
         val brand = BoardBrand.fromWire(document.board.brand)
-        if (!brand.usesAuroraProtocol || ble.connectedBoardBrand.value != brand) return false
         val apiLevel = ble.connectedBoard?.apiLevel ?: return false
         if (document.colors.keys.any { it !in ledMap }) return false
         return try { auroraFrame(document, ledMap, brand, apiLevel).dimmed }

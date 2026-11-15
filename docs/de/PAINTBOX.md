@@ -51,7 +51,7 @@ aktiven Board; die Board-Taste über dem Bild wechselt zu einem anderen.
 | Board | Farben |
 | --- | --- |
 | Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone | Jede Board-Farbe. Große helle Flächen (Weiß, Mischfarben) leuchten gedimmt, damit die LED-Box etwa so viel Strom zieht wie beim LED-Test aus der Aufbauanleitung des Herstellers (jede LED in einer vollen Farbe), nicht mehr. Die Grenze hängt von der genauen Boardgröße ab; wähle deshalb die Größe deiner Wand. Bilder in kräftigem Rot, Grün oder Blau bleiben heller: Diese Farben brauchen ein Drittel der Leistung von Weiß. Solange das Bild gedimmt ist, sagt es eine Zeile unter **Senden**, auch bei Live. Eine ältere LED-Box (API 2) leuchtet bis zu 127 Holds auf einmal und hat eine engere Leistungsgrenze. |
-| MoonBoard | Grün, Blau und Rot. Seine LED-Box leuchtet etwa 40 bis 52 LEDs auf einmal, auf der rechten Seite der Wand weniger. Steht die LED-Position auf „Beide“, brauchen die meisten Holds zwei. Ein größeres Bild wird nicht gesendet. |
+| MoonBoard | Grün, Blau und Rot. Seine LED-Box lässt etwa 40 bis 52 LEDs auf einmal leuchten, auf der rechten Seite der Wand weniger. Steht die LED-Position auf „Beide“, brauchen die meisten Holds zwei. Ein größeres Bild wird nicht gesendet. |
 | Quantum | Vier Farben, bis zu 92 LEDs je Farbe. Ein Bild nutzt eigene Layer; andere Layer müssen vor dem Malen aus sein. Ein beleuchteter Climb ersetzt das Bild, wie bei den anderen Boards. |
 | Shiny Wall | Noch nicht unterstützt. |
 

@@ -53,6 +53,7 @@ class PaintBoxViewModelTest {
         coEvery { projector.send(any(), any(), any()) } returns true
         every { projector.busy } returns busy
         every { projector.boardBusy() } answers { busy.value }
+        every { projector.mayDim(any()) } answers { firstArg<PaintDocument>().board.brand == "kilter" }
         every { projector.dims(any(), any()) } answers { firstArg<PaintDocument>().colors.size > 1 }
         vm = PaintBoxViewModel(pictures, boards, prefs, ble, projector)
     }
@@ -614,12 +615,15 @@ class PaintBoxViewModelTest {
         connection.value = ConnectionState.DISCONNECTED
         runCurrent()
         assertFalse(vm.state.value.dimmed)
+        assertFalse(vm.state.value.dimmable)
         connection.value = ConnectionState.CONNECTED
         runCurrent()
         assertTrue(vm.state.value.dimmed)
         vm.eraser(); vm.paint(setOf(2))
         runCurrent()
         assertFalse(vm.state.value.dimmed)
+        // The connected board dims, so the line keeps its place.
+        assertTrue(vm.state.value.dimmable)
     }
     @Test fun `a sent picture says sent, the dimmed line says the rest`() = runTest(dispatcher) {
         vm.state.first { !it.loading }

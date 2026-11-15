@@ -114,22 +114,26 @@ class WallGameFormatTest {
     }
 
     @Test
-    fun lavaOnAMoonBoardKeepsItsNewestRowsWithinOneFrame() {
+    fun lavaOnAMoonBoardKeepsItsNewestWholeRowsWithinOneFrame() {
         val variant = MoonBoardVariant.MOONBOARD_2016
+        val rows = WallRows.of(WallGameHolds.moonBoard(variant, emptySet()))
+        val frames = FloorIsLava.timeline(rows, level = 1).frames
         // The lava over the whole grid, bottom row first.
-        val lava = (1..198).map { BoardHold(it, HoldRole.START) }
+        val lava = frames.last().holds
         for (mode in MoonBoardLedMode.entries) {
-            val shown = WallGameHolds.moonBoardFit(lava, variant, mode)
+            val shown = WallGameHolds.moonBoardLavaFit(lava, rows, variant, mode)
+            assertTrue(shown.isNotEmpty())
             assertEquals(lava.takeLast(shown.size), shown)
-            assertTrue(MoonBoardFrameEncoder.fitsController(
-                MoonBoardFrameEncoder.encode(WallGameHolds.moonBoardFrames(shown), variant, mode)))
-            // One hold more would not fit.
-            val more = lava.takeLast(shown.size + 1)
-            assertTrue(!MoonBoardFrameEncoder.fitsController(
-                MoonBoardFrameEncoder.encode(WallGameHolds.moonBoardFrames(more), variant, mode)))
+            assertTrue(MoonBoardFrameEncoder.fits(WallGameHolds.moonBoardFrames(shown), variant, mode))
+            // Whole rows only: the lowest lit row is complete, and one row more would not fit.
+            val lowest = rows.rowOf(shown.first().placementId)!!
+            assertEquals(rows.rows[lowest].map { it.placementId }.toSet(),
+                shown.filter { rows.rowOf(it.placementId) == lowest }.map { it.placementId }.toSet())
+            val more = lava.filter { rows.rowOf(it.placementId)!! >= lowest - 1 }
+            assertTrue(!MoonBoardFrameEncoder.fits(WallGameHolds.moonBoardFrames(more), variant, mode))
         }
         // Low lava fits whole.
-        val low = lava.take(20)
-        assertEquals(low, WallGameHolds.moonBoardFit(low, variant, MoonBoardLedMode.BELOW))
+        val low = frames[2].holds
+        assertEquals(low, WallGameHolds.moonBoardLavaFit(low, rows, variant, MoonBoardLedMode.BELOW))
     }
 }

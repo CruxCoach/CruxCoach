@@ -140,7 +140,7 @@ class PaintBoxUiReviewTest {
 
     private fun kilterState(colors: Map<Int, Int> = smiley) = PaintBoxState(
         document = kilterDocument(colors), boardSize = kilterSize, placements = kilterPlacements, loading = false,
-        canUndo = colors.isNotEmpty(),
+        canUndo = colors.isNotEmpty(), dimmable = true,
     )
 
     private fun smileyBitmap(background: Int = 0): Bitmap {

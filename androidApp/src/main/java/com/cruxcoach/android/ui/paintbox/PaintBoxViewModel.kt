@@ -44,6 +44,8 @@ data class PaintBoxState(
     val boardChange: PaintBoard? = null,
     /** Send or Live was refused: the picture is for another board than the app's (kept after [boardChange]). */
     val otherBoard: Boolean = false,
+    /** The connected board can dim the picture ([PaintProjector.mayDim]); its dimmed line keeps a place then. */
+    val dimmable: Boolean = false,
     /** The connected board would show what goes out dimmer than painted ([PaintProjector.dims]). */
     val dimmed: Boolean = false,
     /** Why a picture is dimmed was explained once; true until the setting is read. */
@@ -116,8 +118,9 @@ class PaintBoxViewModel @Inject constructor(
             val outgoing = mutable.map { it.document to it.ledMap }.distinctUntilChanged()
             val linked = connection.map { it == ConnectionState.CONNECTED || it == ConnectionState.SENDING }.distinctUntilChanged()
             combine(outgoing, linked) { (document, ledMap), connected ->
-                document != null && connected && projector.dims(document, ledMap)
-            }.collect { dimmed -> mutable.update { it.copy(dimmed = dimmed) } }
+                if (document == null || !connected || !projector.mayDim(document)) false to false
+                else true to projector.dims(document, ledMap)
+            }.collect { (dimmable, dimmed) -> mutable.update { it.copy(dimmable = dimmable, dimmed = dimmed) } }
         }
         viewModelScope.launch { preferences.paintBoxDimHintSeen.collect { seen -> mutable.update { it.copy(dimHintSeen = seen) } } }
         viewModelScope.launch {
@@ -220,7 +223,7 @@ class PaintBoxViewModel @Inject constructor(
             unsupportedBoard = !supported,
             // A board chosen elsewhere while this one opened still waits for its answer.
             boardChange = previous.boardChange?.takeUnless { it.sameBoardAs(board) },
-            library = mutable.value.library, dimmed = previous.dimmed, dimHintSeen = previous.dimHintSeen)
+            library = mutable.value.library, dimmable = previous.dimmable, dimmed = previous.dimmed, dimHintSeen = previous.dimHintSeen)
     }
     /** Opens a saved picture and makes its board the app's board (the screen asks first, see [switchesBoard]). */
     fun load(document: PaintDocument) {
