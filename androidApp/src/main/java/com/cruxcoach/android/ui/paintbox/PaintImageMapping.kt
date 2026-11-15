@@ -124,6 +124,17 @@ internal object PaintImageMapping {
      * parts: then it is part of a logo (a dark red beside a red one), not a faint second tone of the ground.
      */
     private const val FLAT_STRENGTH = 0.16f
+    /**
+     * Noise moves a pixel's distance from the ground by about a tenth around a tone; an edge between a shape and the
+     * ground by far more. Only where the distances around a pixel lie this close together is its smoothed distance a
+     * noisy tone. Across an edge it is a mix of two, and a long straight edge (or the ringing of a JPEG beside it)
+     * would make a band of levels of its own.
+     */
+    private const val CALM = 0.2f
+    /** A colour (4 bits per channel) is part of a tone's core when it holds this share of its most common colour. */
+    private const val TONE_CORE = 0.05f
+    /** The colours of [coarse]: 16 levels per channel. */
+    private const val COLORS = 4096
     /** How much the holds around a hold move its half-coverage bar. */
     private const val SMOOTH = 0.3f
     private const val FILL = 0.15f
@@ -337,16 +348,19 @@ internal object PaintImageMapping {
             // colour elsewhere in the picture would count as its halo.
             // Noise spreads a flat tone over many levels of distance: averaged over a few pixels it is one again.
             val smooth = smoothed(away, w, h)
+            val calm = calm(away, w, h)
             val bins = IntArray(HISTOGRAM)
             val smoothBins = IntArray(HISTOGRAM)
-            val sums = DoubleArray(HISTOGRAM)
-            val smoothSums = DoubleArray(HISTOGRAM)
+            val counted = BooleanArray(count)
+            val smoothCounted = BooleanArray(count)
             var size = 0
             for (o in 0 until count) if (weight[o] > 0f && (ink || !dark[o])) {
+                counted[o] = true
                 bins[bin(away[o])]++
-                smoothBins[bin(smooth[o])]++
-                sums[bin(away[o])] += away[o].toDouble()
-                smoothSums[bin(smooth[o])] += smooth[o].toDouble()
+                if (calm[o]) {
+                    smoothCounted[o] = true
+                    smoothBins[bin(smooth[o])]++
+                }
                 size++
             }
             if (size > 0) {
@@ -360,9 +374,10 @@ internal object PaintImageMapping {
                 // parts. When black is the picture, its soft edge is measured against black itself: only the
                 // strong tones count, a light grey beside it does not.
                 fun counts(distance: Float) = (!ink && distance >= FLAT_FROM) || (distance - TOLERANCE) / (full - TOLERANCE) >= FLAT_STRENGTH
-                val tone = counted(bins, sums, level, ::counts)
-                val smoothTone = counted(smoothBins, smoothSums, smoothLevel, ::counts)
-                val flat = BooleanArray(count) { o -> weight[o] > 0f && (tone[bin(away[o])] || smoothTone[bin(smooth[o])]) }
+                val colors = IntArray(count) { o -> coarse(pixels.argb[o]) }
+                val tone = tones(away, counted, level, colors, ::counts)
+                val smoothTone = tones(smooth, smoothCounted, smoothLevel, colors, ::counts)
+                val flat = BooleanArray(count) { o -> weight[o] > 0f && (tone[o] || (calm[o] && smoothTone[o])) }
                 if (!ink) {
                     if (backgroundLab[0] >= LIGHT) {
                         // A glow needs a dark background. On a light one, what differs by more than a halo is the
@@ -448,24 +463,107 @@ internal object PaintImageMapping {
         return flat
     }
 
+    /** Whether the distances around each pixel lie within [CALM] of each other (the border repeated). */
+    private fun calm(values: FloatArray, w: Int, h: Int): BooleanArray {
+        val low = FloatArray(values.size)
+        val high = FloatArray(values.size)
+        for (y in 0 until h) for (x in 0 until w) {
+            val row = y * w
+            val a = values[row + max(0, x - 1)]
+            val b = values[row + x]
+            val c = values[row + min(w - 1, x + 1)]
+            low[row + x] = min(a, min(b, c))
+            high[row + x] = max(a, max(b, c))
+        }
+        return BooleanArray(values.size) { o ->
+            val x = o % w
+            val y = o / w
+            val up = max(0, y - 1) * w + x
+            val down = min(h - 1, y + 1) * w + x
+            max(high[up], max(high[o], high[down])) - min(low[up], min(low[o], low[down])) <= CALM
+        }
+    }
+
     /**
-     * The bins of the flat tones that count. A tone counts or not as a whole, judged at the mean distance of its
-     * band of levels ([sums] per bin): noise spreads a tone close to the bar over both sides of it, and its holds
-     * would light here and there.
+     * The pixels of the flat tones that count. Within a band of flat levels ([flat], by [values]) the pixels of
+     * [use] are grouped by colour ([colors], 4 bits per channel): neighbouring colours that many pixels share are one
+     * tone, so noise keeps a tone together, while two tones at about the same distance from the ground stay apart.
+     * A colour that few pixels share joins the tone beside it. Each tone counts or not as a whole, judged at its own
+     * mean distance: noise spreads a tone close to the bar over both sides of it, and its holds would light here and
+     * there.
      */
-    private fun counted(bins: IntArray, sums: DoubleArray, flat: BooleanArray, counts: (Float) -> Boolean): BooleanArray {
-        val out = BooleanArray(bins.size)
-        var from = 0
-        while (from < bins.size) {
-            if (!flat[from]) { from++; continue }
-            var to = from
-            var pixels = 0
-            var sum = 0.0
-            while (to < bins.size && flat[to]) { pixels += bins[to]; sum += sums[to]; to++ }
-            if (pixels > 0 && counts((sum / pixels).toFloat())) for (k in from until to) out[k] = true
-            from = to
+    private fun tones(values: FloatArray, use: BooleanArray, flat: BooleanArray, colors: IntArray, counts: (Float) -> Boolean): BooleanArray {
+        val run = IntArray(HISTOGRAM) { -1 }
+        var runs = 0
+        var k = 0
+        while (k < HISTOGRAM) {
+            if (!flat[k]) { k++; continue }
+            while (k < HISTOGRAM && flat[k]) run[k++] = runs
+            runs++
+        }
+        val out = BooleanArray(values.size)
+        if (runs == 0) return out
+        val pixels = IntArray(runs * COLORS)
+        val sums = DoubleArray(runs * COLORS)
+        for (o in values.indices) if (use[o]) {
+            val r = run[bin(values[o])]
+            if (r < 0) continue
+            pixels[r * COLORS + colors[o]]++
+            sums[r * COLORS + colors[o]] += values[o].toDouble()
+        }
+        val ok = BooleanArray(runs * COLORS)
+        val label = IntArray(COLORS)
+        for (r in 0 until runs) {
+            val at = r * COLORS
+            var most = 0
+            for (c in 0 until COLORS) most = max(most, pixels[at + c])
+            if (most == 0) continue
+            fun core(c: Int) = pixels[at + c] >= TONE_CORE * most
+            // The cores: neighbouring common colours, one tone each.
+            label.fill(-1)
+            var tones = 0
+            val stack = ArrayDeque<Int>()
+            for (c in 0 until COLORS) {
+                if (!core(c) || label[c] >= 0) continue
+                label[c] = tones
+                stack.addLast(c)
+                while (stack.isNotEmpty()) neighbours(stack.removeLast()) { n -> if (core(n) && label[n] < 0) { label[n] = tones; stack.addLast(n) } }
+                tones++
+            }
+            val size = IntArray(tones)
+            for (c in 0 until COLORS) if (label[c] >= 0) size[label[c]] += pixels[at + c]
+            // A rarer colour joins the largest tone beside it.
+            for (c in 0 until COLORS) {
+                if (pixels[at + c] == 0 || core(c)) continue
+                var best = -1
+                neighbours(c) { n -> if (core(n) && (best < 0 || size[label[n]] > size[best])) best = label[n] }
+                label[c] = best
+            }
+            val count = IntArray(tones)
+            val sum = DoubleArray(tones)
+            for (c in 0 until COLORS) if (label[c] >= 0) { count[label[c]] += pixels[at + c]; sum[label[c]] += sums[at + c] }
+            val counting = BooleanArray(tones) { t -> counts((sum[t] / count[t]).toFloat()) }
+            for (c in 0 until COLORS) if (label[c] >= 0 && counting[label[c]]) ok[at + c] = true
+        }
+        for (o in values.indices) {
+            val r = run[bin(values[o])]
+            if (r >= 0 && ok[r * COLORS + colors[o]]) out[o] = true
         }
         return out
+    }
+
+    /** The colours next to [color] in the 16 × 16 × 16 grid of [coarse], diagonals included. */
+    private inline fun neighbours(color: Int, each: (Int) -> Unit) {
+        val r = color shr 8
+        val g = (color shr 4) and 15
+        val b = color and 15
+        for (dr in -1..1) for (dg in -1..1) for (db in -1..1) {
+            if (dr == 0 && dg == 0 && db == 0) continue
+            val nr = r + dr
+            val ng = g + dg
+            val nb = b + db
+            if (nr in 0..15 && ng in 0..15 && nb in 0..15) each((nr shl 8) or (ng shl 4) or nb)
+        }
     }
 
     /** First and one past the last index that hold all but the outer 0.03 % of [total]. */

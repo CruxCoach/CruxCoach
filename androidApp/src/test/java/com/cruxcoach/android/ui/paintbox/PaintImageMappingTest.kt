@@ -8,11 +8,14 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.round
 import kotlin.math.sqrt
 
 /** The picture mapping on drawn test pictures: plain pixel arrays, no Android. */
@@ -90,6 +93,71 @@ class PaintImageMappingTest {
         val n = (((u * 400).toInt() * 7919 + (v * 400).toInt() * 104729) % 9 - 4) * amount
         fun ch(shift: Int) = (((rgb shr shift) and 255) + n).coerceIn(0, 255)
         return (0xff shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
+
+    /**
+     * [pixels] as a baseline JPEG of [quality] (1..100) leaves them: YCbCr, colour at half size, each 8 × 8 block
+     * of the standard tables' cosines rounded, colour back to full size as libjpeg does it. Edges ring as in a file.
+     */
+    private fun jpeg(pixels: PaintPixels, quality: Int): PaintPixels {
+        val w = pixels.width
+        val h = pixels.height
+        val luma = intArrayOf(16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55, 14, 13, 16, 24, 40, 57, 69, 56,
+            14, 17, 22, 29, 51, 87, 80, 62, 18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92,
+            49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99)
+        val chroma = IntArray(64) { if (it < 32) intArrayOf(17, 18, 24, 47, 99, 99, 99, 99, 18, 21, 26, 66, 99, 99, 99, 99,
+            24, 26, 56, 99, 99, 99, 99, 99, 47, 66, 99, 99, 99, 99, 99, 99)[it] else 99 }
+        val scale = if (quality < 50) 5000.0 / quality else 200.0 - 2 * quality
+        fun table(base: IntArray) = DoubleArray(64) { ((base[it] * scale + 50) / 100).toInt().coerceIn(1, 255).toDouble() }
+        val cosine = Array(8) { u -> DoubleArray(8) { x -> (if (u == 0) sqrt(1.0 / 8) else sqrt(2.0 / 8)) * cos((2 * x + 1) * u * PI / 16) } }
+        fun blocks(a: Array<DoubleArray>, q: DoubleArray): Array<DoubleArray> {
+            val rows = a.size
+            val cols = a[0].size
+            val out = Array(rows) { DoubleArray(cols) }
+            val block = Array(8) { DoubleArray(8) }
+            val t = Array(8) { DoubleArray(8) }
+            for (by in 0 until rows step 8) for (bx in 0 until cols step 8) {
+                for (y in 0 until 8) for (x in 0 until 8) block[y][x] = a[min(rows - 1, by + y)][min(cols - 1, bx + x)] - 128
+                for (u in 0 until 8) for (x in 0 until 8) t[u][x] = (0 until 8).sumOf { cosine[u][it] * block[it][x] }
+                for (u in 0 until 8) for (v in 0 until 8) block[u][v] = (0 until 8).sumOf { t[u][it] * cosine[v][it] }
+                for (u in 0 until 8) for (v in 0 until 8) block[u][v] = round(block[u][v] / q[u * 8 + v]) * q[u * 8 + v]
+                for (y in 0 until 8) for (v in 0 until 8) t[y][v] = (0 until 8).sumOf { cosine[it][y] * block[it][v] }
+                for (y in 0 until 8) for (x in 0 until 8) {
+                    if (by + y < rows && bx + x < cols) out[by + y][bx + x] = (0 until 8).sumOf { t[y][it] * cosine[it][x] } + 128
+                }
+            }
+            return out
+        }
+        fun channel(f: (Int, Int, Int) -> Double) = Array(h) { y -> DoubleArray(w) { x ->
+            val c = pixels.argb[y * w + x]
+            f((c shr 16) and 255, (c shr 8) and 255, c and 255)
+        } }
+        val luminance = blocks(channel { r, g, b -> .299 * r + .587 * g + .114 * b }, table(luma))
+        fun half(full: Array<DoubleArray>): Array<DoubleArray> {
+            val small = Array((h + 1) / 2) { y -> DoubleArray((w + 1) / 2) { x ->
+                fun at(dy: Int, dx: Int) = full[min(h - 1, 2 * y + dy)][min(w - 1, 2 * x + dx)]
+                (at(0, 0) + at(1, 0) + at(0, 1) + at(1, 1)) / 4
+            } }
+            val c = blocks(small, table(chroma))
+            fun at(y: Int, x: Int) = c[y.coerceIn(0, c.size - 1)][x.coerceIn(0, c[0].size - 1)]
+            // libjpeg's upsampling: each pixel 9 : 3 : 3 : 1 from the four colour samples around it
+            return Array(h) { y -> DoubleArray(w) { x ->
+                val sy = y / 2
+                val sx = x / 2
+                val ny = if (y % 2 == 0) -1 else 1
+                val nx = if (x % 2 == 0) -1 else 1
+                (9 * at(sy, sx) + 3 * at(sy + ny, sx) + 3 * at(sy, sx + nx) + at(sy + ny, sx + nx)) / 16
+            } }
+        }
+        val chromaBlue = half(channel { r, g, b -> 128 - .168736 * r - .331264 * g + .5 * b })
+        val chromaRed = half(channel { r, g, b -> 128 + .5 * r - .418688 * g - .081312 * b })
+        return PaintPixels(w, h, IntArray(w * h) { o ->
+            val y = luminance[o / w][o % w]
+            val cb = chromaBlue[o / w][o % w] - 128
+            val cr = chromaRed[o / w][o % w] - 128
+            fun ch(v: Double) = round(v).coerceIn(0.0, 255.0).toInt()
+            (0xff shl 24) or (ch(y + 1.402 * cr) shl 16) or (ch(y - .344136 * cb - .714136 * cr) shl 8) or ch(y + 1.772 * cb)
+        })
     }
 
     private val red = 0xffff0000.toInt()
@@ -521,17 +589,18 @@ class PaintImageMappingTest {
             }
             // white, red and dark red blocks on anthracite, with noise as a photo of a logo has it
             fun v(id: Int) = (board.points.getValue(id).y - board.viewport.height / 2) / board.side + .5f
-            fun blocks(noise: Int): List<Int> {
+            fun blocks(noise: Int): List<Set<Int>> {
                 val lit = mapDetected(board, picture { u, v ->
                     val k = ((u - .08f) / .28f).toInt()
                     val inside = v > .2f && v < .8f && k in 0..2 && u > .1f + k * .28f && u < .34f + k * .28f
                     withNoise(u, v, if (!inside) 0x202020 else intArrayOf(0xffffff, 0xff0000, 0x601010)[k], noise)
                 }).keys
-                return (0..2).map { k -> lit.count { u(it) > .08f + k * .28f && u(it) < .36f + k * .28f } }
+                return (0..2).map { k -> lit.filter { u(it) > .08f + k * .28f && u(it) < .36f + k * .28f }.toSet() }
             }
             val clean = blocks(0)
-            val inside = (0..2).map { k -> board.points.keys.count { u(it) > .1f + k * .28f && u(it) < .34f + k * .28f && v(it) > .2f && v(it) < .8f } }
-            assertTrue("${board.name}: $clean holds of $inside", (0..2).all { clean[it] >= inside[it] })
+            val inside = (0..2).map { k -> board.points.keys.filter { u(it) > .1f + k * .28f && u(it) < .34f + k * .28f && v(it) > .2f && v(it) < .8f } }
+            assertTrue("${board.name}: ${clean.map { it.size }} holds of ${inside.map { it.size }}", (0..2).all { clean[it].containsAll(inside[it]) })
+            // the same holds, not only as many
             assertEquals(board.name, clean, blocks(3))
         }
     }
@@ -550,8 +619,49 @@ class PaintImageMappingTest {
                 assertTrue("${board.name}: ${Integer.toHexString(pale)}, ${lit.size} holds", lit.containsAll(inside) &&
                     lit.all { u(it) > .62f - .6f * board.spacing / board.side && v(it) > .3f - .6f * board.spacing / board.side && v(it) < .7f + .6f * board.spacing / board.side })
             }
-            // close to the bar between the two, noise does not scatter holds over the grey
-            for (noise in 0..2) assertEquals("${board.name}: noise $noise", emptySet<Int>(), right(0xffd0d0d0.toInt(), noise))
+            for (noise in 0..2) assertEquals("${board.name}: light grey, noise $noise", emptySet<Int>(), right(0xffe0e0e0.toInt(), noise))
+            // right at the bar between the two the grey lights in full or not at all: noise does not scatter holds over it
+            val atBar = right(0xffd0d0d0.toInt())
+            assertTrue("${board.name}: ${atBar.size} holds", atBar.isEmpty() || atBar.containsAll(inside))
+            for (noise in 1..2) assertEquals("${board.name}: grey at the bar, noise $noise", atBar, right(0xffd0d0d0.toInt(), noise))
+        }
+    }
+
+    @Test fun `two faint tones at about the same distance from the ground are judged each on its own`() {
+        for (board in listOf(kilterLike(), moonGrid())) {
+            fun u(id: Int) = (board.points.getValue(id).x - board.viewport.width / 2) / board.side + .5f
+            fun v(id: Int) = (board.points.getValue(id).y - board.viewport.height / 2) / board.side + .5f
+            for (bottom in listOf(.68f, .75f, .9f)) {
+                // on navy, a white disc, a faint navy panel and a wine-red element: the two are about as far from the ground
+                val lit = mapDetected(board, picture { u, v ->
+                    if (hypot(u - .25f, v - .3f) < .12f) white
+                    else if (u > .55f && u < .9f && v > .1f && v < .45f) 0xff2b3954.toInt()
+                    else if (u > .55f && u < .9f && v > .55f && v < bottom) 0xff4c0434.toInt()
+                    else 0xff0a1a3a.toInt()
+                }).keys
+                val name = "${board.name}, element to $bottom"
+                assertEquals("$name: panel", emptySet<Int>(), lit.filter { u(it) > .5f && v(it) < .5f }.toSet())
+                val element = board.points.keys.filter { u(it) > .58f && u(it) < .87f && v(it) > .58f && v(it) < bottom - .03f }
+                assertTrue("$name: element", element.isNotEmpty() && lit.containsAll(element))
+            }
+        }
+    }
+
+    @Test fun `shapes one hold spacing apart stay apart in a JPEG`() {
+        val board = kilterLike()
+        val spacing = board.spacing / board.side
+        // four bars, red and white, one hold spacing apart on anthracite
+        val bars = picture { u, v ->
+            val x = u - .1f
+            val k = (x / (.12f + spacing)).toInt()
+            if (x >= 0f && k in 0..3 && v > .2f && v < .8f && x - k * (.12f + spacing) < .12f) {
+                if (k % 2 == 0) 0xffff3030.toInt() else white
+            } else 0xff202020.toInt()
+        }
+        val clean = mapDetected(board, bars).keys
+        for (quality in listOf(95, 85, 70)) {
+            // the ringing beside the edges does not fill the gaps between the bars
+            assertEquals("quality $quality", clean, mapDetected(board, jpeg(bars, quality)).keys)
         }
     }
 
