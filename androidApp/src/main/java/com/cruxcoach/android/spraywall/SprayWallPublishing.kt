@@ -56,6 +56,20 @@ class SprayWallPublishing(
         decline(climbsKey(wall))
     }
 
+    /**
+     * Takes my wall [wallId] back ([SprayWallWithdrawal]) after [before]. [delete]: the wall is deleted here once it is
+     * withdrawn, and never when that did not finish (it stays public then, so it can be withdrawn again).
+     */
+    suspend fun withdrawWall(identity: () -> String?, wallId: String, before: suspend () -> Unit, delete: Boolean): SprayWithdrawal {
+        before()
+        val result = withdrawal.run(identity(), wallId)
+        // Declined at the first tombstone: nothing of the wall asks the signer to publish it at once.
+        val wall = repository.wall(wallId)
+        if (result == SprayWithdrawal.SIGNING_FAILED && wall != null && wall.withdrawStarted == null) holdWall(wall)
+        if (result == SprayWithdrawal.DONE && delete) repository.deleteWall(wallId)
+        return result
+    }
+
     /** [identity]: my public key, or null without an identity (asked only when something is to go out). */
     suspend fun run(identity: () -> String?): SprayWallPublisher.Outcome {
         // A wall without holds yet (a reset still being marked) waits: published, it could no longer be corrected in place.

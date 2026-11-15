@@ -14,6 +14,7 @@ import com.cruxcoach.domain.spraywall.EditableHold
 import com.cruxcoach.domain.spraywall.SprayWall
 import com.cruxcoach.domain.spraywall.SprayWallVisibility
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -44,7 +45,7 @@ class SprayWallDetailsViewModelTest {
     private lateinit var repository: SprayWallRepository
     private val publisher = mockk<SprayWallPublisher>(relaxed = true)
     private val photo = SprayWallPhotoStore.StoredPhoto("0b1c2d3e-photo.jpg", 3000, 2000)
-    private val withdrawing = MutableStateFlow<Set<String>>(emptySet())
+    private val withdrawing = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     private val viewModels = mutableListOf<SprayWallDetailsViewModel>()
 
     @BeforeTest
@@ -71,13 +72,13 @@ class SprayWallDetailsViewModelTest {
 
     /**
      * The publisher's withdrawal of [id] ends with [result]: it runs the screen's step before it, then [during] (what
-     * the withdrawal itself does to the wall), and the step after it once the wall is private.
+     * the withdrawal itself does to the wall), and deletes the wall once it is private when asked to.
      */
     private fun withdrawalEnds(id: String, result: SprayWithdrawal, during: suspend () -> Unit = {}) {
         coEvery { publisher.withdrawWall(id, any(), any()) } coAnswers {
             secondArg<suspend () -> Unit>().invoke()
             during()
-            if (result == SprayWithdrawal.DONE) thirdArg<suspend () -> Unit>().invoke()
+            if (result == SprayWithdrawal.DONE && thirdArg<Boolean>()) repository.deleteWall(id)
             result
         }
     }
@@ -356,6 +357,65 @@ class SprayWallDetailsViewModelTest {
         }
 
         assertNull(repository.wall(id))
+        coVerify { publisher.withdrawWall(id, any(), delete = true) }
+    }
+
+    @Test
+    fun `a delete the relays did not confirm keeps the wall here and public, and says it is not deleted`() = runTest {
+        val id = publishedWall()
+        withdrawalEnds(id, SprayWithdrawal.NOT_CONFIRMED)
+        val vm = detailsOf(id)
+        vm.events.test {
+            vm.delete()
+            val state = vm.state.first { it.withdrawFailed != null }
+            expectNoEvents()
+
+            assertEquals(SprayWallDetailsState.WithdrawFailure(SprayWithdrawal.NOT_CONFIRMED, deleting = true), state.withdrawFailed)
+            assertEquals(SprayWallVisibility.PUBLIC, state.visibility)
+            assertFalse(state.saving)
+        }
+        val wall = repository.wall(id)!!
+        assertEquals(SprayWallVisibility.PUBLIC, wall.visibility)
+        assertEquals(1, wall.publishedVersion)
+    }
+
+    @Test
+    fun `making a public wall private does not ask to delete it`() = runTest {
+        val id = publishedWall()
+        withdrawalEnds(id, SprayWithdrawal.DONE) { repository.updateWallDetails(id, "Wall", 40, SprayWallVisibility.PRIVATE, null) }
+        val vm = detailsOf(id)
+        vm.chooseVisibility(SprayWallVisibility.PRIVATE)
+        vm.confirmDialog()
+        vm.events.test {
+            vm.save()
+            assertEquals(SprayWallDetailsEvent.Saved, awaitItem())
+        }
+
+        coVerify { publisher.withdrawWall(id, any(), delete = false) }
+        assertEquals(SprayWallVisibility.PRIVATE, repository.wall(id)!!.visibility)
+    }
+
+    @Test
+    fun `a withdrawal that deletes the wall shows as deleting, also on details opened while it runs`() = runTest {
+        // Delete tapped on this screen, which was then left and opened again: the publisher still says what it does.
+        val id = publishedWall()
+        withdrawing.value = mapOf(id to true)
+        val vm = detailsOf(id)
+        assertTrue(vm.state.value.withdrawing)
+        assertTrue(vm.state.value.deleting)
+
+        withdrawing.value = emptyMap()
+        val ended = vm.state.first { !it.withdrawing }
+        assertFalse(ended.deleting)
+    }
+
+    @Test
+    fun `a withdrawal that only makes the wall private does not show as deleting`() = runTest {
+        val id = publishedWall()
+        val vm = detailsOf(id)
+        withdrawing.value = mapOf(id to false)
+
+        assertFalse(vm.state.first { it.withdrawing }.deleting)
     }
 
     @Test
@@ -363,14 +423,14 @@ class SprayWallDetailsViewModelTest {
         // The withdrawal marks the wall when it starts; the card for an unfinished one is not for a running one.
         val id = publishedWall()
         val vm = detailsOf(id)
-        withdrawing.value = setOf(id)
+        withdrawing.value = mapOf(id to false)
         vm.state.first { it.withdrawing }
         repository.markWithdrawStarted(id)
         Thread.sleep(100)
         assertFalse(vm.state.value.withdrawStarted)
 
         // It ends with the relays holding part of it: now the card shows.
-        withdrawing.value = emptySet()
+        withdrawing.value = emptyMap()
         assertTrue(vm.state.first { !it.withdrawing && it.withdrawStarted }.withdrawStarted)
     }
 
@@ -378,11 +438,11 @@ class SprayWallDetailsViewModelTest {
     fun `saving waits while the wall is being withdrawn`() = runTest {
         val id = publishedWall()
         val vm = detailsOf(id)
-        withdrawing.value = setOf(id)
+        withdrawing.value = mapOf(id to false)
         vm.state.first { it.withdrawing }
 
         assertFalse(vm.state.value.canSave)
-        withdrawing.value = emptySet()
+        withdrawing.value = emptyMap()
         assertTrue(vm.state.first { !it.withdrawing }.canSave)
     }
 

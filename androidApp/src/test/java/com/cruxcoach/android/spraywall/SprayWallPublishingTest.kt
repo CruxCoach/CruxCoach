@@ -34,6 +34,8 @@ class SprayWallPublishingTest {
     /** How many relays take an event. */
     private var relaysFor: (SprayNostrEvent) -> Int = { 1 }
     private var uploadDeclined: (String) -> Boolean = { false }
+    /** What deleting a photo from Blossom does in a withdrawal. */
+    private var photoDeletion = SprayWallWithdrawal.PhotoDeletion.DELETED
     private var clock = 1_800_000_000L
     private lateinit var publishing: SprayWallPublishing
 
@@ -59,7 +61,7 @@ class SprayWallPublishingTest {
         val withdrawal = SprayWallWithdrawal(
             repository = repository,
             send = send,
-            deletePhoto = { _, _ -> SprayWallWithdrawal.PhotoDeletion.DELETED },
+            deletePhoto = { _, _ -> photoDeletion },
             stamp = { clock++ },
             now = { clock++ },
             defaultServers = listOf("https://default.example.org"),
@@ -487,6 +489,39 @@ class SprayWallPublishingTest {
         assertEquals(1, repository.wall(wall)!!.publishedVersion)
         assertEquals(2, repository.wall(wall)!!.current.number)
         assertTrue(repository.wall(wall)!!.publishPending)
+    }
+
+    @Test
+    fun `a finished withdrawal deletes the wall only when that was asked for`() = runTest {
+        val goingPrivate = publishedWall("A")
+        val deleting = publishedWall("B")
+
+        assertEquals(SprayWithdrawal.DONE, publishing.withdrawWall({ ME }, goingPrivate, before = {}, delete = false))
+        assertEquals(SprayWallVisibility.PRIVATE, repository.wall(goingPrivate)!!.visibility)
+
+        assertEquals(SprayWithdrawal.DONE, publishing.withdrawWall({ ME }, deleting, before = {}, delete = true))
+        assertNull(repository.wall(deleting))
+    }
+
+    @Test
+    fun `a withdrawal that did not finish never deletes the wall`() = runTest {
+        val wall = publishedWall("A")
+        suspend fun deleteEndsWith(expected: SprayWithdrawal, identity: String? = ME) {
+            assertEquals(expected, publishing.withdrawWall({ identity }, wall, before = {}, delete = true))
+            assertEquals(SprayWallVisibility.PUBLIC, assertNotNull(repository.wall(wall), "deleted after $expected").visibility)
+        }
+
+        deleteEndsWith(SprayWithdrawal.NO_IDENTITY, identity = null)
+        relaysFor = { 0 }
+        deleteEndsWith(SprayWithdrawal.NOT_CONFIRMED)
+        relaysFor = { 1 }
+        declines = { true }
+        deleteEndsWith(SprayWithdrawal.SIGNING_FAILED)
+        // The relays took the tombstones, but a photo stayed on its server.
+        declines = { false }
+        photoDeletion = SprayWallWithdrawal.PhotoDeletion.LEFT
+        deleteEndsWith(SprayWithdrawal.PHOTOS_LEFT)
+        assertNotNull(repository.wall(wall)!!.withdrawStarted)
     }
 
     private companion object {

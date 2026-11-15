@@ -196,6 +196,7 @@
     <string name="spray_withdraw_text">Die Wand, ihre Versionen, deine Boulder darauf und ihre Fotos werden von den Servern gelöscht. Kopien, die andere schon haben, können bleiben. Die Wand bleibt als private Wand auf diesem Handy.</string>
     <string name="spray_withdraw_confirm">Zurückziehen</string>
     <string name="spray_wall_withdrawing">Wand wird zurückgezogen …</string>
+    <string name="spray_wall_withdrawing_then_deleting">Wand wird zurückgezogen und danach gelöscht …</string>
     <string name="spray_withdraw_failed_title">Wand nicht zurückgezogen</string>
     <string name="spray_delete_failed_title">Wand nicht gelöscht</string>
     <string name="spray_withdraw_failed_relays">Die Server haben das Zurückziehen nicht bestätigt, die Wand ist also noch öffentlich. Prüfe die Verbindung und versuch es noch einmal.</string>

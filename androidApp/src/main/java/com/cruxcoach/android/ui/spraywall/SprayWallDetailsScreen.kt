@@ -88,6 +88,8 @@ data class SprayWallDetailsState(
     val saving: Boolean = false,
     /** Taking the wall off the relays and Blossom, from here or the wall page: that waits for them, up to half a minute. */
     val withdrawing: Boolean = false,
+    /** The withdrawal running deletes the wall once it is done (Delete on a public wall, also from a screen left since). */
+    val deleting: Boolean = false,
     /** The map's venues while the gym picker is open (null = still loading). */
     val venues: List<MapVenue>? = null,
     val pickingGym: Boolean = false,
@@ -146,7 +148,7 @@ class SprayWallDetailsViewModel @Inject constructor(
         viewModelScope.launch { repository.changes.collect { refresh() } }
         viewModelScope.launch {
             publisher.withdrawing.collect { walls ->
-                _state.update { it.copy(withdrawing = wallId in walls) }
+                _state.update { it.copy(withdrawing = wallId in walls, deleting = walls[wallId] == true) }
                 refresh()
             }
         }
@@ -259,7 +261,7 @@ class SprayWallDetailsViewModel @Inject constructor(
             // A public wall is taken back first (also when a publish failed partway); afterwards nothing here could
             // withdraw it, so it stays until that worked. The withdrawal deletes it, also when this screen was left.
             if (repository.wall(wallId)?.visibility == SprayWallVisibility.PUBLIC) {
-                val result = withdraw(whenDone = { repository.deleteWall(wallId) })
+                val result = withdraw(delete = true)
                 if (result != SprayWithdrawal.DONE) {
                     failed(result, deleting = true, keptEdits = false)
                     return@launch
@@ -296,8 +298,8 @@ class SprayWallDetailsViewModel @Inject constructor(
      */
     private suspend fun withdraw(
         before: suspend () -> Unit = {},
-        whenDone: suspend () -> Unit = {},
-    ): SprayWithdrawal = publisher.withdrawWall(wallId, before, whenDone)
+        delete: Boolean = false,
+    ): SprayWithdrawal = publisher.withdrawWall(wallId, before, delete)
 
     /**
      * The screen says why the withdrawal did not work; the wall stays public (and may now be withdrawn in part, the
@@ -381,7 +383,7 @@ fun SprayWallDetailsScreen(
                 )
             }
             if (state.withdrawStarted) {
-                WithdrawUnfinishedCard(withdrawing = state.withdrawing, enabled = !state.saving, onRetry = viewModel::withdrawAgain)
+                WithdrawUnfinishedCard(withdrawing = state.withdrawing, deleting = state.deleting, enabled = !state.saving, onRetry = viewModel::withdrawAgain)
             } else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 SprayFieldLabel(stringResource(R.string.spray_visibility_title), stringResource(R.string.spray_visibility_info))
                 // The app's two-way choice: the selected side carries the check and the fill.
@@ -422,7 +424,7 @@ fun SprayWallDetailsScreen(
                 // Withdrawing waits for the relays and the photo servers, up to half a minute: show that it is working.
                 if (state.withdrawing) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text(stringResource(R.string.spray_wall_withdrawing), modifier = Modifier.padding(start = 8.dp))
+                    Text(withdrawingText(state.deleting), modifier = Modifier.padding(start = 8.dp))
                 } else {
                     Text(stringResource(if (state.first) R.string.action_done else R.string.action_save))
                 }
@@ -511,13 +513,24 @@ internal fun withdrawFailureReason(reason: SprayWithdrawal, started: Boolean): S
     },
 )
 
+/** What a running withdrawal is doing; [deleting]: the wall is deleted once it is withdrawn, so both steps are named. */
+@Composable
+private fun withdrawingText(deleting: Boolean): String =
+    stringResource(if (deleting) R.string.spray_wall_withdrawing_then_deleting else R.string.spray_wall_withdrawing)
+
 /**
  * A withdrawal the relays took part of (a photo left on its server, a declined signature): nothing of the wall is
  * published until it is finished, so trying again is the one thing offered. While one runs (also one started on
- * another screen, which marks the wall from its start) only its progress shows.
+ * another screen, which marks the wall from its start) only its progress shows; [deleting]: that one deletes the wall.
  */
 @Composable
-internal fun WithdrawUnfinishedCard(withdrawing: Boolean, enabled: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+internal fun WithdrawUnfinishedCard(
+    withdrawing: Boolean,
+    deleting: Boolean,
+    enabled: Boolean,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         modifier = modifier.fillMaxWidth().testTag("spray_withdraw_unfinished"),
@@ -527,7 +540,7 @@ internal fun WithdrawUnfinishedCard(withdrawing: Boolean, enabled: Boolean, onRe
             Button(onClick = onRetry, enabled = enabled && !withdrawing, modifier = Modifier.testTag("spray_withdraw_again")) {
                 if (withdrawing) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text(stringResource(R.string.spray_wall_withdrawing), modifier = Modifier.padding(start = 8.dp))
+                    Text(withdrawingText(deleting), modifier = Modifier.padding(start = 8.dp))
                 } else {
                     Text(stringResource(R.string.spray_withdraw_again))
                 }

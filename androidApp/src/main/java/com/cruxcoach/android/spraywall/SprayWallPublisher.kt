@@ -128,46 +128,31 @@ class SprayWallPublisher @Inject constructor(
         now = ::now,
     )
 
-    /** Withdrawals running per wall (a second try may start before the first ends). */
-    private val running = HashMap<String, Int>()
-    private val _withdrawing = MutableStateFlow<Set<String>>(emptySet())
+    private val running = SprayRunningWithdrawals()
 
-    /** The walls being withdrawn right now, for the screens' progress; also after the screen that asked was left. */
-    val withdrawing: StateFlow<Set<String>> = _withdrawing.asStateFlow()
-
-    private fun running(wallId: String, by: Int) = synchronized(running) {
-        val n = (running[wallId] ?: 0) + by
-        if (n > 0) running[wallId] = n else running.remove(wallId)
-        _withdrawing.value = running.keys.toSet()
-    }
+    /**
+     * The walls being withdrawn right now, for the screens' progress; also after the screen that asked was left. True
+     * for a wall that is deleted once withdrawn: the screens say so, as "withdrawing" alone reads as if that deleted it.
+     */
+    val withdrawing: StateFlow<Map<String, Boolean>> = running.walls
 
     /**
      * Takes a public wall back, photos included ([SprayWallWithdrawal]); the wall stays public when that fails. It runs
      * in the publisher's own scope: leaving the screen that asked for it does not cut it off. [before] runs first,
-     * where no publish run comes between it and the withdrawal's mark (the details saved with it); [whenDone] once the
-     * wall is private (deleting it).
+     * where no publish run comes between it and the withdrawal's mark (the details saved with it). [delete]: the wall
+     * is deleted once it is private ([SprayWallPublishing.withdrawWall]); [withdrawing] says so while it runs.
      */
     suspend fun withdrawWall(
         wallId: String,
         before: suspend () -> Unit = {},
-        whenDone: suspend () -> Unit = {},
+        delete: Boolean = false,
     ): SprayWithdrawal {
-        running(wallId, +1)
+        running.started(wallId, delete)
         return scope.async {
             try {
-                mutex.withLock {
-                    before()
-                    val result = withdrawal.run(myPubkey(), wallId)
-                    // Declined at the first tombstone: nothing of the wall asks the signer to publish it at once.
-                    val wall = repository.wall(wallId)
-                    if (result == SprayWithdrawal.SIGNING_FAILED && wall != null && wall.withdrawStarted == null) {
-                        publishing.holdWall(wall)
-                    }
-                    if (result == SprayWithdrawal.DONE) whenDone()
-                    result
-                }
+                mutex.withLock { publishing.withdrawWall(::myPubkey, wallId, before, delete) }
             } finally {
-                running(wallId, -1)
+                running.ended(wallId, delete)
             }
         }.await()
     }
