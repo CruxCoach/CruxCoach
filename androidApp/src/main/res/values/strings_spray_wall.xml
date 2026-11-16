@@ -4,7 +4,7 @@
     <string name="spray_walls_title">Spray walls</string>
     <string name="spray_walls_empty">Photograph your own wall, mark its holds and set climbs on it.</string>
     <string name="spray_walls_private_note">Walls stay on this phone unless you make them public.</string>
-    <string name="spray_walls_info">A spray wall is your own wall: you photograph it, mark its holds and set climbs on them. Every change of the holds and every reset with a new photo is kept as a version.\n\nPrivate or public\nA wall stays on this phone unless you make it public. Then its photos, holds and climbs are published over Nostr with your CruxCoach account, and others can add it and set climbs on it. Your logbook is never published.\n\nBackups\nSpray walls are not included in Android backups.</string>
+    <string name="spray_walls_info">A spray wall is your own wall: you photograph it, mark its holds and set climbs on them. Every change of the holds and every reset with a new photo is kept as a version.\n\nPrivate or public\nA wall stays on this phone unless you make it public. Then its photos, holds and climbs are published over Nostr with your CruxCoach account, and others can add it and set climbs on it. Your logbook is never published.\n\nBackups\nSpray walls are not in your CruxCoach backup, the data export or Android backups. A private wall exists only on this phone and is lost with it.</string>
     <string name="spray_wall_add">Add a wall</string>
     <string name="spray_wall_counts">%1$s · %2$s · %3$d°</string>
     <string name="spray_cd_photo">Photo of the wall with its holds</string>

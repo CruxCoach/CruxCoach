@@ -28,7 +28,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   wall stays public (and is not deleted) so you can try again. Deleting a
   public wall withdraws it first; while the wall is withdrawn and then
   deleted, the app says "Withdrawing the wall, then deleting it …". Your
-  logbook is never published, and spray walls are not in Android backups.
+  logbook is never published. Spray walls are not in the CruxCoach backup, the
+  data export or Android backups, so a private wall is lost with the phone.
 - Board size check: not sure which size your Kilter or other Aurora-family board is,
   or other holds light up than the app shows? The board picker and the climb's ⋯ menu
   now light a few marked holds for a size, so you can compare with the board and switch
@@ -576,6 +577,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   LED box takes at once (about 40 to 52). A MoonBoard box showed a single LED for a
   frame of more than 52; the app no longer sends a frame that big to it, and a climb
   that needs more LEDs says so instead.
+- A phone that never touched nearby sharing now asks "Release connection?" when
+  someone nearby wants the board, instead of rejecting every request. The sharing
+  text already said that nearby users can ask.
 - After a catalogue import the app frees the temporary database file at once. A Tension
   import left about 180 MB in it until the next write, on a phone with little space left.
 - Encrypted backups have more than one storage server again. `cdn.hzrd149.com`, one of

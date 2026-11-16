@@ -3381,7 +3381,7 @@
     <string name="board_cleaning_description">Highlights the holds of the problems you logged today for this board (attempt or top). In a group, everyone cleans their own in turn.</string>
     <string name="board_cleaning_connect_hint">Connect to the board you want to clean.</string>
     <string name="board_cleaning_connect">Connect board</string>
-    <string name="board_cleaning_unsupported">Cleaning mode requires a direct connection to Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone or MoonBoard.</string>
+    <string name="board_cleaning_unsupported">Cleaning mode requires a direct connection to Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone, MoonBoard or Shiny Wall.</string>
     <string name="board_cleaning_empty">You haven’t logged anything for this board today.</string>
     <string name="board_cleaning_all_clean">All clean. What you log from now on is added.</string>
     <string name="board_cleaning_relay">Stop board sharing before starting cleaning mode.</string>
