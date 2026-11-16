@@ -579,6 +579,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   LED box takes at once (about 40 to 52). A MoonBoard box showed a single LED for a
   frame of more than 52; the app no longer sends a frame that big to it, and a climb
   that needs more LEDs says so instead.
+- Training: "Why this suggestion?" no longer says fingers have the most left to do
+  this week when their week is already met (for example during an injury that
+  pauses climbing); it names the area that is behind, or says the fingers have
+  had their sessions.
 - A phone that never touched nearby sharing now asks "Release connection?" when
   someone nearby wants the board, instead of rejecting every request. The sharing
   text already said that nearby users can ask.
