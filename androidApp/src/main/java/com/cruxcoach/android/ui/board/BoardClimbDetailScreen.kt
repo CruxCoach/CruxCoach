@@ -1663,7 +1663,8 @@ private fun BoardLayerRack(
                                                 statusLabel,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = when (slotUi.visualState) {
-                                                    QuantumLayerVisualState.ON_BOARD -> SuccessGreen
+                                                    QuantumLayerVisualState.ON_BOARD,
+                                                    QuantumLayerVisualState.SENT -> SuccessGreen
                                                     QuantumLayerVisualState.FAILED -> ErrorRed
                                                     QuantumLayerVisualState.UNKNOWN -> WarningYellow
                                                     else -> if (selected) {

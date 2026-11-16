@@ -580,6 +580,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A phone that never touched nearby sharing now asks "Release connection?" when
   someone nearby wants the board, instead of rejecting every request. The sharing
   text already said that nearby users can ask.
+- Quantum boards are marked experimental where you pick or connect one: they
+  are not yet tested on a real Quantum board. A climb now lights as an ordinary
+  player route, one route in one colour for as long as the board's own auto-off
+  time (31 minutes if it names none), instead of a route that stays on until
+  removed. The board's answer counts: a route it takes is sent, a refusal (colour
+  or hold taken, board full) shows its reason. A route the board takes but does
+  not list stays in the layer rack as "sent; the board does not list it" until
+  its time is over, and removing it always turns it off. PaintBox lights every
+  colour of a picture. A board whose grid size or answers differ slightly from
+  what the app expects is no longer refused.
 - After a catalogue import the app frees the temporary database file at once. A Tension
   import left about 180 MB in it until the next write, on a phone with little space left.
 - Encrypted backups have more than one storage server again. `cdn.hzrd149.com`, one of

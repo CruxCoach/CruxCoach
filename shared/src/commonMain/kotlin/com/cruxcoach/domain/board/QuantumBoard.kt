@@ -71,18 +71,22 @@ sealed interface QuantumBroadcast {
     }
 }
 
-/** Strict, side-effect-free decoder for eWalls 2.0.14 controller broadcasts.
+/** Side-effect-free decoder for Quantum controller broadcasts.
  *
  * Commands written to fff2 carry CRC16/MODBUS. Broadcasts received through
- * fff1/fff4 do not: eWalls' parseBroadcast contract uses their exact payload
- * shape, and the controller/simulator response vectors end after the final
- * player/reserved byte. Structural validation is therefore the integrity
- * boundary on this receive-only channel.
+ * fff1/fff4 do not, so structure is the integrity boundary on this
+ * receive-only channel: the frame marker, a known command, a player count
+ * the controller can hold and the zero reserved byte. Length is a minimum, not
+ * an exact size: firmware that appends bytes (a CRC, padding) must not make
+ * every answer unreadable.
  */
 object QuantumBoardBroadcastParser {
     const val PLAYER_BYTES = 37
 
-    /** Expected complete frame size once enough header bytes are available. */
+    /** Most players one route list can name: the controller holds four. */
+    const val MAX_PLAYERS = 4
+
+    /** Smallest complete frame once enough header bytes are available. */
     fun expectedFrameSize(bytes: ByteArray): Int? {
         if (bytes.size < 2 || bytes[0].toInt() and 0xff != 1) return null
         val rawCommand = bytes[1].toInt() and 0xff
@@ -100,7 +104,7 @@ object QuantumBoardBroadcastParser {
 
     fun parse(frame: ByteArray): QuantumBroadcast? {
         val expected = expectedFrameSize(frame) ?: return null
-        if (frame.size != expected) return null
+        if (frame.size < expected) return null
         val rawCommand = frame[1].toInt() and 0xff
         if (rawCommand and 0x80 != 0) {
             val failed = QuantumCommand.entries.firstOrNull { it.byte == rawCommand and 0x7f }
@@ -112,10 +116,11 @@ object QuantumBoardBroadcastParser {
             QuantumCommand.BOARD_SWIPE,
             QuantumCommand.REQUEST_USER_ROUTE_LIST -> {
                 val count = frame[2].toInt() and 0xff
-                // eWalls/BoardSimulator reserve the fourth header byte as
-                // zero. It is our only fixed structural invariant beyond
-                // length on this CRC-less notification channel.
-                if (count > 4 || frame[3].toInt() != 0) return null
+                // The fourth header byte is reserved as zero. It is the one
+                // fixed invariant beyond length on this CRC-less channel, and
+                // it keeps an echo of our own 0x47 request (01 47 00 f0 13)
+                // from reading as an empty board.
+                if (count > MAX_PLAYERS || frame[3].toInt() != 0) return null
                 val players = List(count) { index ->
                     val offset = 4 + index * PLAYER_BYTES
                     QuantumActivePlayer(
@@ -154,12 +159,21 @@ object QuantumBoardBroadcastParser {
 /** Clean-room encoder for the Quantum binary controller protocol. */
 object QuantumBoardPacketEncoder {
     const val ACTIVATE_CHUNK_LIMIT = 92
-    /** eWalls 2.0.14's normal route-play duration. Real XL firmware lights
-     * finite-duration routes but omits both 0 and 300 seconds from
-     * REQUEST_USER_ROUTE_LIST; the original app uses 0xffff for its tracked
-     * active-player slots. */
-    const val DEFAULT_ROUTE_DURATION_SECONDS = 0xffff
+    /** Minutes a played route stays lit when the controller names no
+     * auto-off time of its own. */
+    const val DEFAULT_PLAY_MINUTES = 31
+    /** ACTIVATE_WALL's "until removed" duration. Playing never uses it: the
+     * controller treats such an activation as a route being built, and the
+     * real XL left ACTIVATE_WALL routes out of its route list. */
+    const val UNTIL_REMOVED = 0xffff
     const val ZERO_UUID = "00000000-0000-0000-0000-000000000000"
+
+    /** How long a played route stays lit: the controller's auto-off time
+     * (seconds, from its fff5 record) in whole minutes, rounded up, or
+     * [DEFAULT_PLAY_MINUTES] when it names none. */
+    fun playMinutes(autoOffSeconds: Int?): Int =
+        if (autoOffSeconds != null && autoOffSeconds > 0) (autoOffSeconds + 59) / 60
+        else DEFAULT_PLAY_MINUTES
 
     fun crc16Modbus(bytes: ByteArray): Int {
         var crc = 0xffff
@@ -177,7 +191,7 @@ object QuantumBoardPacketEncoder {
         userId: String,
         diodes: List<Int>,
         color: Int = 0x00ffff,
-        duration: Int = DEFAULT_ROUTE_DURATION_SECONDS,
+        duration: Int = UNTIL_REMOVED,
         animation: Int = 0,
         swipe: Boolean = false,
     ): List<ByteArray> {
@@ -197,22 +211,22 @@ object QuantumBoardPacketEncoder {
         }
     }
 
-    /** Complete eWalls route transition, ordered for sequential transport. */
-    fun replaceUserRoute(
+    /**
+     * Play one route for [userId]: a single BOARD_SWIPE in one colour that
+     * stays lit for [minutes]. It needs no TURN_OFF_USER first; a new route
+     * for the same user takes the place of the old one. One frame holds at
+     * most [ACTIVATE_CHUNK_LIMIT] diodes.
+     */
+    fun play(
         routeId: String,
         userId: String,
         diodes: List<Int>,
-        color: Int = 0x00ffff,
-        duration: Int = DEFAULT_ROUTE_DURATION_SECONDS,
-        animation: Int = 0,
-    ): List<ByteArray> = listOf(turnOffUser(userId)) + activate(
-        routeId = routeId,
-        userId = userId,
-        diodes = diodes,
-        color = color,
-        duration = duration,
-        animation = animation,
-    )
+        color: Int,
+        minutes: Int = DEFAULT_PLAY_MINUTES,
+    ): ByteArray {
+        require(diodes.size <= ACTIVATE_CHUNK_LIMIT) { "One Quantum play frame holds at most $ACTIVATE_CHUNK_LIMIT diodes" }
+        return activate(routeId, userId, diodes, color, minutes, swipe = true).single()
+    }
 
     fun turnOffAll(): ByteArray = frame(
         QuantumCommand.TURN_OFF_ALL,
@@ -222,11 +236,7 @@ object QuantumBoardPacketEncoder {
     fun turnOffRoute(routeId: String): ByteArray =
         frame(QuantumCommand.TURN_OFF_BY_ROUTE, uuidBytes(routeId) + byteArrayOf(0))
 
-    /**
-     * Release the route currently owned by [userId]. eWalls performs this
-     * before every new activation; without it the controller accepts the
-     * first climb and rejects later climbs as "user already on route".
-     */
+    /** Turn off the route [userId] lights. Only removing a route sends it. */
     fun turnOffUser(userId: String): ByteArray =
         frame(QuantumCommand.TURN_OFF_BY_USER, uuidBytes(userId) + byteArrayOf(0))
 

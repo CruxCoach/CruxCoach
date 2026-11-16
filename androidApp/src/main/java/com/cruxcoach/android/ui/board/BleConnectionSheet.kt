@@ -840,6 +840,13 @@ private fun ConnectedContent(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (board?.boardBrand == BoardBrand.QUANTUM) {
+                Text(
+                    stringResource(R.string.board_quantum_experimental_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 
@@ -1317,5 +1324,6 @@ private fun rssiColor(rssi: Int) = when {
 private fun brandLabel(brand: BoardBrand): String = when (brand) {
     BoardBrand.KILTER -> stringResource(R.string.board_ble_brand_kilter)
     BoardBrand.MOONBOARD -> stringResource(R.string.board_ble_brand_moonboard)
+    BoardBrand.QUANTUM -> stringResource(R.string.board_quantum_experimental_label, brand.displayName)
     else -> brand.displayName
 }

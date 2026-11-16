@@ -1,7 +1,17 @@
 package com.cruxcoach.android.ui.settings
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardBrand
+
+/** [boardSelectionLabel] where the board is chosen: an untested family says so. */
+@Composable
+internal fun boardSelectionTitle(brand: BoardBrand, layoutId: Int, detail: String?): String {
+    val label = boardSelectionLabel(brand, layoutId, detail)
+    return if (brand == BoardBrand.QUANTUM) stringResource(R.string.board_quantum_experimental_label, label) else label
+}
 
 /**
  * Human-readable active-board label used beside every shared board picker.

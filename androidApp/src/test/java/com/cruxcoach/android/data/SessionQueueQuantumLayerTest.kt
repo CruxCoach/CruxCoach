@@ -226,7 +226,7 @@ class SessionQueueQuantumLayerTest {
                 }
             }
         }
-        coVerify(exactly = 0) { ble.removeQuantumLayer(any(), any(), any()) }
+        coVerify(exactly = 0) { ble.removeQuantumLayer(any(), any()) }
         coVerify(exactly = 0) {
             ble.sendClimb(any(), any(), any(), any(), any(), any())
         }

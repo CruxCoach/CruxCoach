@@ -5,6 +5,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +23,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -49,6 +53,8 @@ internal enum class QuantumLayerVisualState {
     PLANNED,
     SENDING,
     ON_BOARD,
+    /** Accepted by the controller but not in its route list. */
+    SENT,
     REPLACING,
     FAILED,
     UNKNOWN,
@@ -285,6 +291,9 @@ internal object QuantumLayerUiPolicy {
             QuantumLayerVisualState.REPLACING
         layer.confirmedRouteUuid != null && !layer.controllerDetailsKnown ->
             QuantumLayerVisualState.UNKNOWN
+        layer.confirmedRouteUuid != null && layer.unlistedUntilElapsedMs != null &&
+            layer.status == BoardLayerStatus.CONFIRMED ->
+            QuantumLayerVisualState.SENT
         layer.confirmedRouteUuid != null && layer.status == BoardLayerStatus.CONFIRMED ->
             QuantumLayerVisualState.ON_BOARD
         else -> QuantumLayerVisualState.PLANNED
@@ -309,6 +318,7 @@ internal fun quantumLayerStatusResource(state: QuantumLayerVisualState): Int = w
     QuantumLayerVisualState.PLANNED -> R.string.quantum_layer_status_planned
     QuantumLayerVisualState.SENDING -> R.string.quantum_layer_status_sending
     QuantumLayerVisualState.ON_BOARD -> R.string.quantum_layer_status_on_board
+    QuantumLayerVisualState.SENT -> R.string.quantum_layer_status_sent
     QuantumLayerVisualState.REPLACING -> R.string.quantum_layer_status_replacing
     QuantumLayerVisualState.FAILED -> R.string.quantum_layer_status_failed
     QuantumLayerVisualState.UNKNOWN -> R.string.quantum_layer_status_unknown
@@ -321,6 +331,7 @@ internal fun quantumLayerShortStatusResource(state: QuantumLayerVisualState): In
     QuantumLayerVisualState.PLANNED -> R.string.quantum_layer_status_short_planned
     QuantumLayerVisualState.SENDING -> R.string.quantum_layer_status_short_sending
     QuantumLayerVisualState.ON_BOARD -> R.string.quantum_layer_status_short_on_board
+    QuantumLayerVisualState.SENT -> R.string.quantum_layer_status_short_sent
     QuantumLayerVisualState.REPLACING -> R.string.quantum_layer_status_short_replacing
     QuantumLayerVisualState.FAILED -> R.string.quantum_layer_status_short_failed
     QuantumLayerVisualState.UNKNOWN -> R.string.quantum_layer_status_short_unknown
@@ -328,6 +339,7 @@ internal fun quantumLayerShortStatusResource(state: QuantumLayerVisualState): In
 }
 
 /** Compact rack used above the wall, in the playlist player and in its banner. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun QuantumLayerStatusStrip(
     state: BoardLayerState,
@@ -367,52 +379,72 @@ internal fun QuantumLayerStatusStrip(
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             if (showHeader) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Title left, wall state right; at a large font or on a narrow
+                // screen each part takes its own line instead of breaking into letters.
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
                     Text(
                         stringResource(R.string.quantum_wall_title),
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                     )
-                    Spacer(Modifier.weight(1f))
-                    if (summary.foreignCount > 0) {
-                        Text(
-                            if (summary.foreignUnknownCount > 0) {
-                                stringResource(
-                                    R.string.quantum_wall_foreign_unknown_short,
-                                    summary.foreignCount,
-                                    summary.foreignUnknownCount,
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        itemVerticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (summary.foreignCount > 0) {
+                            Text(
+                                if (summary.foreignUnknownCount > 0) {
+                                    stringResource(
+                                        R.string.quantum_wall_foreign_unknown_short,
+                                        summary.foreignCount,
+                                        summary.foreignUnknownCount,
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.quantum_wall_foreign_known_short,
+                                        summary.foreignCount,
+                                    )
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (state.quantumSyncStatus == QuantumControllerSyncStatus.SYNCING) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    strokeWidth = 1.5.dp,
                                 )
-                            } else {
-                                stringResource(
-                                    R.string.quantum_wall_foreign_known_short,
-                                    summary.foreignCount,
-                                )
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.width(7.dp))
+                                Spacer(Modifier.width(5.dp))
+                            }
+                            Text(
+                                wallStatus,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                    if (state.quantumSyncStatus == QuantumControllerSyncStatus.SYNCING) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(12.dp),
-                            strokeWidth = 1.5.dp,
-                        )
-                        Spacer(Modifier.width(5.dp))
-                    }
-                    Text(
-                        wallStatus,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                summary.slots.forEach { slot ->
-                    QuantumLayerSlotChip(slot, Modifier.weight(1f))
+            // Four chips side by side leave no room for their status at a large
+            // font on a narrow screen: two per row then.
+            val chipsPerRow = if (LocalDensity.current.fontScale >= 1.3f &&
+                LocalConfiguration.current.screenWidthDp < 400
+            ) 2 else summary.slots.size
+            summary.slots.chunked(chipsPerRow).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    row.forEach { slot ->
+                        QuantumLayerSlotChip(slot, Modifier.weight(1f))
+                    }
                 }
             }
             if (summary.unplacedExternalLayers.isNotEmpty()) {
@@ -447,8 +479,8 @@ private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
     val shortStatusLabel = stringResource(quantumLayerShortStatusResource(slot.visualState))
     val description = quantumLayerSlotDescription(slot)
     val displayColor = when (slot.visualState) {
-        QuantumLayerVisualState.ON_BOARD, QuantumLayerVisualState.UNKNOWN,
-        QuantumLayerVisualState.FOREIGN ->
+        QuantumLayerVisualState.ON_BOARD, QuantumLayerVisualState.SENT,
+        QuantumLayerVisualState.UNKNOWN, QuantumLayerVisualState.FOREIGN ->
             slot.confirmedColor ?: slot.plannedColor
         else -> slot.plannedColor ?: slot.confirmedColor
     }
@@ -456,7 +488,7 @@ private fun QuantumLayerSlotChip(slot: QuantumLayerSlotUi, modifier: Modifier) {
         slot.layer?.confirmedRouteUuid != null &&
         slot.visualState in setOf(QuantumLayerVisualState.REPLACING, QuantumLayerVisualState.FAILED)
     val borderColor = when (slot.visualState) {
-        QuantumLayerVisualState.ON_BOARD -> SuccessGreen
+        QuantumLayerVisualState.ON_BOARD, QuantumLayerVisualState.SENT -> SuccessGreen
         QuantumLayerVisualState.PLANNED, QuantumLayerVisualState.REPLACING,
         QuantumLayerVisualState.SENDING -> OrangeAccent
         QuantumLayerVisualState.FAILED -> ErrorRed

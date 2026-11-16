@@ -17,6 +17,18 @@ Winkel. Die Gym-Auswahl hilft bei dieser Konfiguration; der Board-Fit-Filter
 schließt Probleme aus, die darauf nicht passen. Die Bluetooth-Verbindung
 bestimmt, welchen Controller das Handy tatsächlich ansteuern kann.
 
+**Quantum ist experimentell.** Es ist noch nicht an einem echten Quantum-Board
+getestet, und die App sagt das dort, wo du ein Quantum-Board wählst oder
+verbindest. Ein Climb leuchtet als gewöhnliche Spieler-Route: eine Route in einer
+Farbe, so lange wie die Abschaltzeit des Boards (31 Minuten, wenn das Board keine
+nennt). Eine Route gilt als gesendet, wenn das Board sie ohne Fehler annimmt; eine
+Ablehnung zeigt ihren Grund. Nennt die Routenliste des Boards eine angenommene
+Route nicht, zeigt das Layer-Regal den Climb als „gesendet; das Board listet ihn nicht“
+und behält ihn bis zum Ende seiner Zeit, damit du ihn weiter ausschalten kannst.
+Bekannte Grenzen: Ein S Fitness wird wie die anderen Modelle behandelt (vier
+Layer, eine Farbe je Route), und Routen mit mehr als 92 Griffen werden nicht
+gesendet.
+
 Ein **Problem** (im Code `climb`) hat eine Identität und Griff-Frames. Der
 **Winkel** ist die Neigung beim Suchen, Beleuchten oder Loggen. Der Setter-Winkel
 ist Kontext; Community-Bewertungen können je nach Winkel abweichen. Fehlende

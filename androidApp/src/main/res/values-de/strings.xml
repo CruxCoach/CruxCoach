@@ -2917,6 +2917,8 @@
     <string name="fips_mesh_join_mode_title">Board-Beitritt</string>
     <string name="fips_mesh_join_mode_description">Gilt für dieses Board, solange jemand daran ist. Alle am Board dürfen es ändern.</string>
     <string name="board_selection_quantum_model_label">Quantum-Modell</string>
+    <string name="board_quantum_experimental_label">%1$s (experimentell)</string>
+    <string name="board_quantum_experimental_hint">Experimentell: noch nicht an einem echten Quantum-Board getestet. Eine leuchtende Route wird eventuell nicht als bestätigt angezeigt.</string>
     <string name="board_selection_quantum_schematic_hint">Das Originalbild des ausgewählten Quantum-Modells ist enthalten.</string>
     <string name="board_selection_shinywall_variant_label">Shiny-Wall-Variante</string>
     <string name="board_selection_shinywall_variant_hint">Wähle die Variante, als die deine Wand eingerichtet ist. Full-Wände haben zusätzlich die kleinen Griffe zwischen den Reihen.</string>
@@ -2990,6 +2992,7 @@
     <string name="quantum_layer_status_planned">lokal geplant</string>
     <string name="quantum_layer_status_sending">wird übertragen</string>
     <string name="quantum_layer_status_on_board">vom Board bestätigt</string>
+    <string name="quantum_layer_status_sent">gesendet; das Board listet ihn nicht</string>
     <string name="quantum_layer_status_replacing">Ersatz geplant; bisheriger Climb ist noch am Board</string>
     <string name="quantum_layer_status_failed">nicht bestätigt</string>
     <string name="quantum_layer_status_unknown">am Board; Routendetails unbekannt</string>
@@ -2998,6 +3001,7 @@
     <string name="quantum_layer_status_short_planned">Plan</string>
     <string name="quantum_layer_status_short_sending">senden</string>
     <string name="quantum_layer_status_short_on_board">aktiv</string>
+    <string name="quantum_layer_status_short_sent">an</string>
     <string name="quantum_layer_status_short_replacing">Tausch</string>
     <string name="quantum_layer_status_short_failed">Fehler</string>
     <string name="quantum_layer_status_short_unknown">?</string>

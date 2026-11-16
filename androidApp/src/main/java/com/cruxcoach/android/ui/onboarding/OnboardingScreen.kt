@@ -510,7 +510,7 @@ private fun BoardSetupStep(
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text(com.cruxcoach.android.ui.settings.boardSelectionLabel(
+                    Text(com.cruxcoach.android.ui.settings.boardSelectionTitle(
                         brand = BoardBrand.fromWire(state.boardBrand), layoutId = state.boardLayoutId,
                         detail = state.boardProductSizeName,
                     ), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)

@@ -25,6 +25,7 @@ import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.board.QuantumBoardBroadcastParser
 import com.cruxcoach.domain.board.QuantumBroadcast
 import com.cruxcoach.domain.board.QuantumActivePlayer
+import com.cruxcoach.domain.board.QuantumCommand
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -36,7 +37,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -74,6 +74,8 @@ data class QuantumControllerState(
      * confirm the freshness of a mutation precondition. */
     val routeListRevision: Long = 0,
     val lastFailure: QuantumCommandFailure? = null,
+    /** Command the controller refused with [lastFailure], when it named one. */
+    val lastFailedCommand: QuantumCommand? = null,
     /** True only after a controller broadcast supplied real state. */
     val authoritative: Boolean = false,
     val syncStatus: QuantumControllerSyncStatus = QuantumControllerSyncStatus.UNSYNCED,
@@ -211,11 +213,22 @@ internal data class QuantumControllerMetadata(
     val model: QuantumBoardModel,
     val columns: Int,
     val rows: Int,
-)
+    /** Seconds after which the controller turns a played route off; 0 = none named. */
+    val autoOffSeconds: Int = 0,
+) {
+    /** Whether the reported grid is the one this app knows for [model]. The
+     * sizes come from product data and only the XL's was seen on a board, so
+     * a difference is logged, never a reason to refuse the link: the type
+     * byte names the model. */
+    val sizeMatchesModel: Boolean get() = columns == model.columns && rows == model.rows
 
-/** Strict decoder for eWalls' 41-byte fff5 controller record. The controller
- * type byte and dimensions must agree before they can fence model-scoped
- * writes; unknown firmware records deliberately leave the link non-writable. */
+    /** Minutes a route played on this controller stays lit. */
+    val playMinutes: Int get() = QuantumBoardPacketEncoder.playMinutes(autoOffSeconds)
+}
+
+/** Decoder for the controller's 41-byte fff5 record. The type byte must name
+ * a known model before it can fence model-scoped writes; an unknown type
+ * deliberately leaves the link non-writable. */
 internal fun parseQuantumControllerMetadata(bytes: ByteArray): QuantumControllerMetadata? {
     if (bytes.size != 41) return null
     val model = when (bytes[34].toInt() and 0xff) {
@@ -226,10 +239,8 @@ internal fun parseQuantumControllerMetadata(bytes: ByteArray): QuantumController
         4 -> QuantumBoardModel.L
         else -> return null
     }
-    val columns = ((bytes[35].toInt() and 0xff) shl 8) or (bytes[36].toInt() and 0xff)
-    val rows = ((bytes[37].toInt() and 0xff) shl 8) or (bytes[38].toInt() and 0xff)
-    if (columns != model.columns || rows != model.rows) return null
-    return QuantumControllerMetadata(model, columns, rows)
+    fun u16(offset: Int) = ((bytes[offset].toInt() and 0xff) shl 8) or (bytes[offset + 1].toInt() and 0xff)
+    return QuantumControllerMetadata(model, columns = u16(35), rows = u16(37), autoOffSeconds = u16(39))
 }
 
 internal fun isScopedQuantumUserId(
@@ -255,7 +266,7 @@ internal fun quantumNotificationFrameSize(bytes: ByteArray): Int {
             if (bytes.size < 4) QUANTUM_NOTIFICATION_NEED_MORE
             else {
                 val players = bytes[2].toInt() and 0xff
-                if (players > BoardLayerManager.MAX_LAYER_IDENTITIES || bytes[3].toInt() != 0) {
+                if (players > QuantumBoardBroadcastParser.MAX_PLAYERS || bytes[3].toInt() != 0) {
                     QUANTUM_NOTIFICATION_INVALID
                 }
                 else 4 + players * QuantumBoardBroadcastParser.PLAYER_BYTES
@@ -287,6 +298,15 @@ internal class QuantumNotificationAccumulator {
 
     fun consume(bytes: ByteArray): List<RecoveredQuantumNotification> = synchronized(buffer) {
         val crossedBoundary = buffer.isNotEmpty()
+        if (!crossedBoundary) {
+            // One notification is one answer. A complete one may carry bytes
+            // past the frame (a CRC, padding): they belong to it, not to the
+            // next frame.
+            val size = QuantumBoardBroadcastParser.expectedFrameSize(bytes)
+            if (size != null && bytes.size >= size) {
+                return@synchronized listOf(RecoveredQuantumNotification(bytes.copyOf(), crossedCallbackBoundary = false))
+            }
+        }
         buffer += bytes.toList()
         buildList {
             while (buffer.isNotEmpty()) {
@@ -313,6 +333,28 @@ internal class QuantumNotificationAccumulator {
         }
     }
 }
+
+internal fun quantumCommandFailure(code: Int): QuantumCommandFailure = when (code) {
+    5 -> QuantumCommandFailure.ROUTE_IN_USE
+    6 -> QuantumCommandFailure.SPOT_UNAVAILABLE
+    7 -> QuantumCommandFailure.COLOR_TAKEN
+    8 -> QuantumCommandFailure.USER_ID_IN_USE
+    9 -> QuantumCommandFailure.BOARD_FULL
+    10 -> QuantumCommandFailure.ROUTESETTER_MODE
+    11 -> QuantumCommandFailure.DIODE_MISSING
+    254 -> QuantumCommandFailure.ACK_TIMEOUT
+    else -> QuantumCommandFailure.REFUSED
+}
+
+/** The refusal in the controller's answer to [command], or null. fff4 keeps
+ * the last answer, so another command's refusal is no answer to this one. */
+internal fun quantumAnswerFailure(
+    answer: QuantumBroadcast?,
+    command: QuantumCommand,
+): QuantumCommandFailure? =
+    (answer as? QuantumBroadcast.Exception)
+        ?.takeIf { it.failedCommand == command }
+        ?.let { quantumCommandFailure(it.code) }
 
 internal fun quantumPlayersMatch(
     expected: List<QuantumActivePlayer>,
@@ -445,34 +487,6 @@ internal fun auroraWritePacingMs(
         0L
     }
 
-internal fun isQuantumProjectionConfirmed(
-    state: QuantumControllerState,
-    playersBefore: List<QuantumActivePlayer>,
-    routeId: String,
-    userId: String,
-    color: Int,
-): Boolean {
-    if (!state.authoritative || state.lastFailure != null) return false
-    val nonTargetBefore = playersBefore.filterNot { it.userId.equals(userId, ignoreCase = true) }
-    val nonTargetAfter = state.players.filterNot { it.userId.equals(userId, ignoreCase = true) }
-    return quantumPlayersMatch(nonTargetBefore, nonTargetAfter) && state.players.any {
-        it.userId.equals(userId, ignoreCase = true) &&
-            it.routeId.equals(routeId, ignoreCase = true) &&
-            it.color == (color and 0xffffff)
-    }
-}
-
-internal fun isQuantumScopedRemovalConfirmed(
-    state: QuantumControllerState,
-    playersBefore: List<QuantumActivePlayer>,
-    userId: String,
-): Boolean {
-    if (!state.authoritative || state.lastFailure != null) return false
-    val nonTargetBefore = playersBefore.filterNot { it.userId.equals(userId, ignoreCase = true) }
-    return state.players.none { it.userId.equals(userId, ignoreCase = true) } &&
-        quantumPlayersMatch(nonTargetBefore, state.players)
-}
-
 /**
  * Outcome of one attempt to push a frame nobody asked for — an LED animation
  * frame, see [BoardBleConnection.sendAnimationLeds].
@@ -552,7 +566,12 @@ class BoardBleConnection(
         const val DELAY_SCAN_SETTLE_MS = 500L
         const val DELAY_PRE_DISCOVERY_LEGACY_MS = 300L
         const val QUANTUM_MTU_TIMEOUT_MS = 3_000L
-        const val QUANTUM_MUTATION_SETTLE_MS = 250L
+        /** Pause between fff4 reads while a Quantum command waits for its answer. */
+        const val QUANTUM_ANSWER_SETTLE_MS = 250L
+        /** How long a Quantum command waits for its answer; silence is no refusal. */
+        const val QUANTUM_ANSWER_TIMEOUT_MS = 1_000L
+        /** Pause between fff4 reads while a route list request waits for its answer. */
+        const val QUANTUM_ROUTE_LIST_READ_INTERVAL_MS = 250L
         const val DEFAULT_ATT_MTU = 23
         const val SERVICE_DISCOVERY_CALLBACK_FALLBACK_MS = 3_500L
         /**
@@ -589,6 +608,22 @@ class BoardBleConnection(
     private val _connectedQuantumModel = MutableStateFlow<QuantumBoardModel?>(null)
     val connectedQuantumModel: StateFlow<QuantumBoardModel?> =
         _connectedQuantumModel.asStateFlow()
+
+    /** The last route played on Quantum, and whether the route list read
+     * right after it named it. */
+    private data class QuantumPlay(val routeId: String, val userId: String, val color: Int, val listed: Boolean)
+
+    @Volatile
+    private var lastQuantumPlay: QuantumPlay? = null
+
+    /** Last value read from fff4, to tell a new answer from the one before. */
+    private var lastQuantumFff4: ByteArray? = null
+
+    /** Minutes a route played on the connected Quantum controller stays lit,
+     * from its fff5 auto-off time. */
+    @Volatile
+    var quantumPlayMinutes: Int = QuantumBoardPacketEncoder.DEFAULT_PLAY_MINUTES
+        private set
 
     // Localized reason (string-res id) why the last connect attempt was torn
     // down at service discovery — currently only the unsupported RedBear-UART
@@ -914,6 +949,7 @@ class BoardBleConnection(
         quantumMetadataReadDeferred = null
         quantumRouteListRequestActive = false
         quantumNotificationAccumulator.reset()
+        lastQuantumFff4 = null
     }
 
     private val _litFrame = MutableStateFlow<LitFrame?>(null)
@@ -1061,6 +1097,15 @@ class BoardBleConnection(
                 if (gatt !== currentGatt || isGattClosed(currentGatt)) {
                     return@quantumGattSetupSucceeded false
                 }
+                if (!metadata.sizeMatchesModel) {
+                    Log.w(
+                        TAG,
+                        "Quantum fff5 reports ${metadata.columns}x${metadata.rows} for ${metadata.model}, " +
+                            "expected ${metadata.model.columns}x${metadata.model.rows}; using the type byte",
+                    )
+                }
+                Log.i(TAG, "Quantum ${metadata.model}: auto-off ${metadata.autoOffSeconds} s, play ${metadata.playMinutes} min")
+                quantumPlayMinutes = metadata.playMinutes
                 _connectedQuantumModel.value = metadata.model
                 val notificationsReady = enableQuantumNotifications(currentGatt)
                 notificationsReady && gatt === currentGatt && !isGattClosed(currentGatt)
@@ -1595,23 +1640,14 @@ class BoardBleConnection(
                 current.copy(
                     revision = revision,
                     lastFailure = quantumFailure(broadcast.code),
+                    lastFailedCommand = broadcast.failedCommand,
                 )
             is QuantumBroadcast.BoardLit, null -> Unit
         }
         return evidence
     }
 
-    private fun quantumFailure(code: Int): QuantumCommandFailure = when (code) {
-        5 -> QuantumCommandFailure.ROUTE_IN_USE
-        6 -> QuantumCommandFailure.SPOT_UNAVAILABLE
-        7 -> QuantumCommandFailure.COLOR_TAKEN
-        8 -> QuantumCommandFailure.USER_ID_IN_USE
-        9 -> QuantumCommandFailure.BOARD_FULL
-        10 -> QuantumCommandFailure.ROUTESETTER_MODE
-        11 -> QuantumCommandFailure.DIODE_MISSING
-        254 -> QuantumCommandFailure.ACK_TIMEOUT
-        else -> QuantumCommandFailure.REFUSED
-    }
+    private fun quantumFailure(code: Int): QuantumCommandFailure = quantumCommandFailure(code)
 
     /** Finalize state after disconnect callback (or error). */
     private fun finalizeDisconnect(status: Int) {
@@ -2048,9 +2084,9 @@ class BoardBleConnection(
         if (_connectedBoardBrand.value == BoardBrand.QUANTUM &&
             !hasConfirmableQuantumDiodeCount(holds)
         ) {
-            // Route-list readback cannot prove append/atomicity across multiple
-            // ACTIVATE_WALL frames. Fail closed until captured hardware evidence
-            // establishes that contract.
+            // One play frame holds 92 diodes. Whether a second frame for the
+            // same route adds to the first or replaces it is not known from a
+            // real board, so larger routes are refused.
             Log.w(TAG, "Refusing unverified multi-frame Quantum activation")
             return false
         }
@@ -2077,34 +2113,41 @@ class BoardBleConnection(
             }
             if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
                 val mapped = holds.mapNotNull { placementToLed[it.placementId] }
-                // Mirror eWalls 2.0.14's route transition: a Quantum
-                // controller keeps per-user route ownership and rejects a
-                // second ACTIVATE_WALL until that user's previous route is
-                // released. This is deliberately TURN_OFF_USER (not ALL), so
-                // other climbers sharing a capable controller are untouched.
-                val transition = QuantumBoardPacketEncoder.replaceUserRoute(
+                // A player's route is one BOARD_SWIPE in one colour that stays
+                // lit for the controller's own auto-off time. It needs no
+                // TURN_OFF_USER first: a new route for the same user takes the
+                // old one's place, and other users keep theirs. ACTIVATE_WALL
+                // with an open-ended duration is the route-building path; the
+                // real XL left such routes out of its route list.
+                val frame = QuantumBoardPacketEncoder.play(
                     routeId = routeId ?: QuantumBoardPacketEncoder.ZERO_UUID,
                     userId = quantumUserId,
                     diodes = mapped,
                     color = quantumColor and 0xffffff,
+                    minutes = quantumPlayMinutes,
                 )
                 _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
-                if (!writeQuantumFrames(transition.take(1), expectedQuantumBoard)) return false
-                delay(50)
-                if (!writeQuantumFrames(transition.drop(1), expectedQuantumBoard)) return false
-                // The acknowledged ATT write only proves transport delivery.
-                // Real XL firmware updates its active-player roster shortly
-                // afterwards, so do not snapshot the old list immediately.
-                delay(QUANTUM_MUTATION_SETTLE_MS)
-                if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
-                val snapshot = _quantumControllerState.value
-                return isQuantumProjectionConfirmed(
-                    state = snapshot,
-                    playersBefore = quantumPlayersBefore,
+                // A stale partial notification must not swallow a notified refusal.
+                quantumNotificationAccumulator.reset()
+                if (!writeQuantumFrames(listOf(frame), expectedQuantumBoard)) return false
+                // The board's answer comes before anything else is sent, so a
+                // refusal (colour or hold taken, board full) reaches the user.
+                if (readQuantumAnswerLocked(QuantumCommand.BOARD_SWIPE) != null) return false
+                // Acknowledged and not refused: the route is sent. The route
+                // list only adds whether the controller names it.
+                val listAnswered = requestQuantumRouteListLocked(expectedQuantumBoard, answering = QuantumCommand.BOARD_SWIPE)
+                // A refusal that came late, in fff4 or fff1 while the list was read, still counts.
+                if (quantumRefusalOf(QuantumCommand.BOARD_SWIPE) != null) return false
+                val play = QuantumPlay(
                     routeId = routeId ?: QuantumBoardPacketEncoder.ZERO_UUID,
                     userId = quantumUserId,
-                    color = quantumColor,
+                    color = quantumColor and 0xffffff,
+                    listed = false,
                 )
+                lastQuantumPlay = play.copy(
+                    listed = listAnswered && _quantumControllerState.value.players.any { play.matches(it) },
+                )
+                return true
             }
             // Resolve each hold's colour by canonical role CLASS, not raw
             // code. A climb authored on an Aurora board carries the editor's
@@ -2182,24 +2225,24 @@ class BoardBleConnection(
         return true
     }
 
+    /** One fff4 read, or null when fff4 is unusable on this link. A read
+     * that times out or fails retires fff4 for the rest of the link. */
     @SuppressLint("MissingPermission")
-    private suspend fun readQuantumStateLocked(
-        explicitRouteListResponse: Boolean = false,
-    ): QuantumControllerEvidence {
-        if (!quantumStateReadUsable) return QuantumControllerEvidence.UNSUPPORTED
-        val currentGatt = gatt ?: return QuantumControllerEvidence.UNSUPPORTED
+    private suspend fun readQuantumFff4Locked(): ByteArray? {
+        if (!quantumStateReadUsable) return null
+        val currentGatt = gatt ?: return null
         val service = currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE)
             ?: currentGatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD)
-            ?: return QuantumControllerEvidence.UNSUPPORTED
+            ?: return null
         val stateCharacteristic = service.getCharacteristic(BoardBleUuids.QUANTUM_STATE_CHAR)
-            ?: return QuantumControllerEvidence.UNSUPPORTED
+            ?: return null
         val deferred = CompletableDeferred<QuantumGattRead>()
         quantumReadDeferred = deferred
         val queued = currentGatt.readCharacteristic(stateCharacteristic)
         if (!queued) {
             quantumReadDeferred = null
             quantumStateReadUsable = false
-            return QuantumControllerEvidence.UNSUPPORTED
+            return null
         }
         val result = withTimeoutOrNull(WRITE_TIMEOUT_MS) { deferred.await() }
         if (quantumReadDeferred === deferred) quantumReadDeferred = null
@@ -2210,14 +2253,26 @@ class BoardBleConnection(
             // separate callback and remains safe to use on the current link.
             quantumStateReadUsable = false
             Log.w(TAG, "Quantum fff4 read timed out; using explicit route-list requests")
-            return QuantumControllerEvidence.UNSUPPORTED
+            return null
         }
         if (result.status != BluetoothGatt.GATT_SUCCESS) {
             quantumStateReadUsable = false
             Log.w(TAG, "Quantum fff4 read failed with status=${result.status}; using explicit route-list requests")
-            return QuantumControllerEvidence.UNSUPPORTED
+            return null
         }
-        val broadcast = result.value?.let(QuantumBoardBroadcastParser::parse)
+        result.value?.let { lastQuantumFff4 = it.copyOf() }
+        return result.value
+    }
+
+    /** [refusalOf]: the command written just before this read's route list
+     * request; a refusal of it found in fff4 still counts as its answer. */
+    private suspend fun readQuantumStateLocked(
+        explicitRouteListResponse: Boolean = false,
+        refusalOf: QuantumCommand? = null,
+    ): QuantumControllerEvidence {
+        val value = readQuantumFff4Locked() ?: return QuantumControllerEvidence.UNSUPPORTED
+        val broadcast = QuantumBoardBroadcastParser.parse(value)
+        if (refusalOf != null) recordQuantumRefusal(refusalOf, broadcast)
         val evidence = classifyQuantumFff4Evidence(broadcast)
         if (quantumFff4PublishesSnapshot(broadcast)) {
             // An fff4 route list may be used for periodic observation, but it
@@ -2233,8 +2288,53 @@ class BoardBleConnection(
         return evidence
     }
 
+    /**
+     * The controller's answer to the [command] just written, read before
+     * anything else is sent: the real XL leaves it in fff4, so fff4 is read
+     * until it changes, for up to [QUANTUM_ANSWER_TIMEOUT_MS]; other firmware
+     * may notify it on fff1. Returns the refusal it reports, which also stays
+     * in [QuantumControllerState.lastFailure], or null. Silence is no refusal.
+     */
+    private suspend fun readQuantumAnswerLocked(command: QuantumCommand): QuantumCommandFailure? {
+        val before = lastQuantumFff4
+        var waitedMs = 0L
+        while (waitedMs < QUANTUM_ANSWER_TIMEOUT_MS) {
+            delay(QUANTUM_ANSWER_SETTLE_MS)
+            waitedMs += QUANTUM_ANSWER_SETTLE_MS
+            quantumRefusalOf(command)?.let { return it }
+            val value = readQuantumFff4Locked() ?: continue
+            if (before != null && value.contentEquals(before)) continue
+            return recordQuantumRefusal(command, QuantumBoardBroadcastParser.parse(value))
+        }
+        return null
+    }
+
+    private fun recordQuantumRefusal(command: QuantumCommand, answer: QuantumBroadcast?): QuantumCommandFailure? {
+        val failure = quantumAnswerFailure(answer, command) ?: return null
+        _quantumControllerState.value = _quantumControllerState.value.copy(
+            lastFailure = failure,
+            lastFailedCommand = command,
+        )
+        Log.w(TAG, "Quantum controller refused ${command.name}: $failure")
+        return failure
+    }
+
+    /** A refusal of [command] the controller notified on fff1. */
+    private fun quantumRefusalOf(command: QuantumCommand): QuantumCommandFailure? =
+        _quantumControllerState.value.takeIf { it.lastFailedCommand == command }?.lastFailure
+
+    /**
+     * Ask for the controller's route list and wait for the answer, read from
+     * fff4 every [QUANTUM_ROUTE_LIST_READ_INTERVAL_MS] or notified on fff1,
+     * for up to [QUANTUM_CONFIRM_TIMEOUT_MS]. Without an answer the link is
+     * retired, so a late one cannot confirm a later request. [answering]: the
+     * command written just before, whose refusal may still reach fff4 while the
+     * list is read; never set for a precondition list, where an old refusal
+     * would block the next send.
+     */
     private suspend fun requestQuantumRouteListLocked(
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
+        answering: QuantumCommand? = null,
     ): Boolean {
         if (expectedQuantumBoard != null &&
             !quantumBoardWriteFenceMatches(
@@ -2256,28 +2356,28 @@ class BoardBleConnection(
             // Real Quantum XL controllers acknowledge the write transport but
             // do not emit an fff1 notification for REQUEST_USER_ROUTE_LIST.
             // They publish the requested complete 0x47 snapshot through fff4
-            // instead. Read it under the same GATT/write mutex and generation;
-            // notification-only controllers remain supported by the wait
-            // below (including a notification arriving during this read).
-            delay(50)
-            if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) {
-                return true
+            // instead, a moment later: read it again until it is the list,
+            // under the same GATT/write mutex and generation. Notification-only
+            // controllers answer through fff1 in the meantime.
+            var waitedMs = 0L
+            while (waitedMs < QUANTUM_CONFIRM_TIMEOUT_MS) {
+                delay(QUANTUM_ROUTE_LIST_READ_INTERVAL_MS)
+                waitedMs += QUANTUM_ROUTE_LIST_READ_INTERVAL_MS
+                if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) return true
+                // Stop on a refusal of the list itself, or of [answering]: that
+                // send has failed and needs no list. Any other refusal (a late
+                // TURN_OFF_USER answer) must not cost the list a removal decides by.
+                val state = _quantumControllerState.value
+                if (state.lastFailure != null && (state.lastFailedCommand == null ||
+                        state.lastFailedCommand == QuantumCommand.REQUEST_USER_ROUTE_LIST ||
+                        state.lastFailedCommand == answering)
+                ) return false
+                readQuantumStateLocked(explicitRouteListResponse = true, refusalOf = answering)
+                if (hasFreshExplicitQuantumRouteList(before, _quantumControllerState.value)) return true
             }
-            readQuantumStateLocked(explicitRouteListResponse = true)
-            val afterRead = _quantumControllerState.value
-            if (hasFreshExplicitQuantumRouteList(before, afterRead)) return true
-            val state = awaitQuantumState(before.revision) { snapshot ->
-                snapshot.lastFailure != null ||
-                    snapshot.routeListRevision > before.routeListRevision
-            }
-            if (state == null) {
-                // Neither the serialized fff4 read nor fff1 produced the
-                // requested 0x47 snapshot. Retire the GATT so a late response
-                // can never confirm a later request.
-                disconnect()
-                return false
-            }
-            return hasFreshExplicitQuantumRouteList(before, state)
+            // Neither fff4 nor fff1 produced the requested 0x47 snapshot.
+            disconnect()
+            return false
         } finally {
             quantumRouteListRequestActive = false
             quantumNotificationAccumulator.reset()
@@ -2316,6 +2416,28 @@ class BoardBleConnection(
         return refreshed
     }
 
+    /**
+     * For a route the controller just accepted: null when the route list read
+     * right after it named it, else until when it is taken to be lit without
+     * being listed (now + [quantumPlayMinutes]). See [BoardClimbLayer.unlistedUntilElapsedMs].
+     */
+    fun quantumUnlistedUntil(
+        routeId: String,
+        userId: String,
+        color: Int,
+        nowElapsedMs: Long = SystemClock.elapsedRealtime(),
+    ): Long? {
+        val play = lastQuantumPlay
+        val listed = play != null && play.listed &&
+            play.matches(QuantumActivePlayer(routeId, userId, 0, color and 0xffffff))
+        return if (listed) null else nowElapsedMs + quantumPlayMinutes * 60_000L
+    }
+
+    private fun QuantumPlay.matches(player: QuantumActivePlayer): Boolean =
+        player.userId.equals(userId, ignoreCase = true) &&
+            player.routeId.equals(routeId, ignoreCase = true) &&
+            (player.color and 0xffffff) == color
+
     /** Refresh immediately when a connected app returns after its snapshot aged out. */
     fun refreshQuantumStateOnForeground(
         nowElapsedMs: Long = SystemClock.elapsedRealtime(),
@@ -2334,10 +2456,17 @@ class BoardBleConnection(
         scope.launch { refreshQuantumState() }
     }
 
-    /** Remove exactly one installation-owned Quantum layer, never all users. */
+    /**
+     * Turn off exactly one installation-owned Quantum identity, never all
+     * users. TURN_OFF_USER always goes out, also when the route list does not
+     * name the identity: a played route can be lit without being listed.
+     * Done when the route list read afterwards does not name the identity,
+     * even if the controller refused: an identity without a route (a picture
+     * past its play time) has nothing to turn off. Without a list, done when
+     * acknowledged and not refused.
+     */
     suspend fun removeQuantumLayer(
         userId: String,
-        expectedRouteId: String? = null,
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
     ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED ||
@@ -2351,46 +2480,41 @@ class BoardBleConnection(
         ) return false
         // Never allow the protocol's anonymous sentinel to become a deletion
         // target. Installation layer identities are stable, non-zero UUIDs.
-        if (!isScopedQuantumUserId(userId, ownsQuantumUserId) || expectedRouteId == null) return false
-        // A retained wall can change through another eWalls client while our
-        // rack is open. Refresh immediately before the scoped command; absence
-        // is already the desired result and must not produce a speculative write.
-        if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
-        val currentPlayer = _quantumControllerState.value.players.firstOrNull {
-            it.userId.equals(userId, ignoreCase = true)
-        } ?: return true
-        val playersBefore = _quantumControllerState.value.players
-        if (!currentPlayer.routeId.equals(expectedRouteId, ignoreCase = true)) return false
+        if (!isScopedQuantumUserId(userId, ownsQuantumUserId)) return false
         _connectionState.value = ConnectionState.SENDING
         disconnectJob?.cancel()
         try {
             _quantumControllerState.value = _quantumControllerState.value.copy(lastFailure = null)
+            quantumNotificationAccumulator.reset()
             if (!writeQuantumFrames(
                     listOf(QuantumBoardPacketEncoder.turnOffUser(userId)),
                     expectedQuantumBoard,
                 )
             ) return false
-            // Confirmation is a fresh complete snapshot, not an optimistic
-            // local deletion or a delta copied over an older player list.
-            if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
-            return isQuantumScopedRemovalConfirmed(
-                state = _quantumControllerState.value,
-                playersBefore = playersBefore,
-                userId = userId,
-            )
+            val refused = readQuantumAnswerLocked(QuantumCommand.TURN_OFF_BY_USER)
+            // The list decides, so a refusal still in fff4 while it is read (the
+            // XL publishes the list a moment later) is no reason to stop reading.
+            val listAnswered = requestQuantumRouteListLocked(expectedQuantumBoard)
+            val refusal = refused ?: quantumRefusalOf(QuantumCommand.TURN_OFF_BY_USER)
+            val off = if (listAnswered) {
+                _quantumControllerState.value.players.none { it.userId.equals(userId, ignoreCase = true) }
+            } else {
+                refusal == null
+            }
+            if (!off && refusal != null) {
+                // The list request cleared it; the user should see the board's reason.
+                _quantumControllerState.value = _quantumControllerState.value.copy(
+                    lastFailure = refusal,
+                    lastFailedCommand = QuantumCommand.TURN_OFF_BY_USER,
+                )
+            }
+            return off
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
             }
             resetIdleTimer()
         }
-    }
-
-    private suspend fun awaitQuantumState(
-        afterRevision: Long,
-        predicate: (QuantumControllerState) -> Boolean,
-    ): QuantumControllerState? = withTimeoutOrNull(QUANTUM_CONFIRM_TIMEOUT_MS) {
-        quantumControllerState.first { it.revision > afterRevision && predicate(it) }
     }
 
     /** Cleaning for [board], with as many holds per section as its controller takes at once. */
