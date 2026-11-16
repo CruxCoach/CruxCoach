@@ -7,6 +7,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.BoardSyncState
 import com.cruxcoach.domain.board.BoardBrand
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -30,6 +33,33 @@ class BoardCatalogueStatusTest {
                 )
             }
         }
+    }
+
+    @Test fun `catalogues still being counted show no warning and no download button`() {
+        // The grouped count over a large catalogue takes seconds on a phone. Until it is in,
+        // the active board must not read as "not loaded" and offer a download it already has.
+        val counts = MutableStateFlow<Map<String, Long>?>(null)
+        val vm = mockk<BoardSyncViewModel>(relaxed = true)
+        every { vm.state } returns MutableStateFlow(BoardSyncState(alreadyImported = true))
+        every { vm.modelState } returns MutableStateFlow(BoardModelSelectionState())
+        every { vm.boardCounts } returns counts
+        every { vm.downloadBrands } returns MutableStateFlow(setOf(BoardBrand.KILTER, BoardBrand.MOONBOARD))
+        every { vm.activeBrand } returns MutableStateFlow(BoardBrand.KILTER)
+        compose.setContent { MaterialTheme { BoardSyncInlineCard(viewModel = vm) } }
+
+        compose.onNodeWithTag("board_status_counting_kilter").assertExists()
+        compose.onNodeWithTag("board_status_counting_moonboard").assertExists()
+        compose.onNodeWithText("not loaded").assertDoesNotExist()
+        compose.onNodeWithTag("board_status_load_kilter").assertDoesNotExist()
+        compose.onNodeWithTag("board_status_load_moonboard").assertDoesNotExist()
+
+        counts.value = mapOf("kilter" to 246_096L)
+        compose.onNodeWithText("246,096").assertExists()
+        compose.onNodeWithTag("board_status_counting_kilter").assertDoesNotExist()
+        compose.onNodeWithTag("board_status_load_kilter").assertExists()
+        // Counted and empty: now really not loaded, with its download button.
+        compose.onNodeWithTag("board_status_counting_moonboard").assertDoesNotExist()
+        compose.onNodeWithTag("board_status_load_moonboard").assertExists()
     }
 
     @Test fun `one available catalogue does not mark all selected boards ready`() {

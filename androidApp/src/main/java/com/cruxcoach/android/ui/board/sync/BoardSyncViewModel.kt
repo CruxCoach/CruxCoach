@@ -53,9 +53,11 @@ class BoardSyncViewModel @Inject constructor(
     val modelState: StateFlow<BoardModelSelectionState> = _modelState.asStateFlow()
 
     /** Per-brand catalogue sizes (FEAT-031), keyed by wire value. Drives the
-     *  idle board-status list. Refreshed on demand + after each sync. */
-    private val _boardCounts = MutableStateFlow<Map<String, Long>>(emptyMap())
-    val boardCounts: StateFlow<Map<String, Long>> = _boardCounts.asStateFlow()
+     *  idle board-status list. Refreshed on demand + after each sync. Null until
+     *  the first count is in: the grouped count over a large catalogue takes
+     *  seconds, and an empty map would read as "nothing loaded" meanwhile. */
+    private val _boardCounts = MutableStateFlow<Map<String, Long>?>(null)
+    val boardCounts: StateFlow<Map<String, Long>?> = _boardCounts.asStateFlow()
 
     /** Active board brand — the status list highlights it and flags it as the
      *  one whose missing catalogue is auto-loaded. */

@@ -573,6 +573,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
 
 ### Fixed
+- Settings → Board catalogues no longer shows loaded catalogues as "not loaded"
+  with a download button for the first seconds after opening; the boards show a
+  small loading sign until their counts are read.
 - The Kilter Homewall 10x12 picture shows the real holds; it showed grey
   placeholder discs at 24 positions on the lower rows.
 - MoonBoard: hold cleaning with many holds shows them in sections, as many as the
