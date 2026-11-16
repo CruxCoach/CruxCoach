@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.cruxcoach.domain.board.HoldHeatmapComputer
 import com.cruxcoach.domain.board.HoldRole
@@ -260,6 +262,16 @@ class BoardLogbookViewModel @Inject constructor(
     private var holdTypesKey: HoldTypesKey? = null
     private var holdTypesJob: Job? = null
     private val boardMixCache = ConcurrentHashMap<BoardMixKey, HoldMix>()
+
+    // Hold heatmap. Every mode but "Meine Sends" reads the frames of every
+    // climb of the board (Kilter: about 250,000). The heat depends only on the
+    // mode, the heatmap's board and, for your sends, the logbook; a period or
+    // board change in the statistics does not read again, and one read runs
+    // at a time (RC1 walk 2026-11-16: reads started by each period tap ran side
+    // by side until the app ran out of memory).
+    private var heatmapKey: HeatmapKey? = null
+    private var heatmapJob: Job? = null
+    private val heatmapReadLock = Mutex()
 
     companion object {
         private const val PAGE_SIZE = 50
@@ -964,25 +976,25 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     private fun recomputeHeatmap() {
-        viewModelScope.safeLaunch(TAG) {
+        val mode = _state.value.heatmapMode
+        // Heatmap is always single-grid (FEAT-039): brand AND layout come
+        // from the user's explicit board selection — the SAME resolution
+        // as the canvas, so the heat values always match the rendered
+        // grid. null (= "Alle") blanks the heat: disjoint placement-id
+        // spaces can't be overlaid into one aggregate grid.
+        val resolved = if (mode == HeatmapMode.OFF) null else resolveHeatmapBoard()
+        val key = HeatmapKey(mode, resolved, if (mode == HeatmapMode.PERSONAL) logbookVersion else 0)
+        if (key == heatmapKey) return
+        heatmapKey = key
+        heatmapJob?.cancel()
+        heatmapJob = viewModelScope.safeLaunch(TAG) {
             try {
-                val mode = _state.value.heatmapMode
-                if (mode == HeatmapMode.OFF) {
-                    _state.update { it.copy(heatmapData = emptyMap()) }
-                    return@safeLaunch
-                }
-                // Heatmap is always single-grid (FEAT-039): brand AND layout come
-                // from the user's explicit board selection — the SAME resolution
-                // as the canvas, so the heat values always match the rendered
-                // grid. null (= "Alle") blanks the heat: disjoint placement-id
-                // spaces can't be overlaid into one aggregate grid.
-                val resolved = resolveHeatmapBoard()
                 if (resolved == null) {
                     _state.update { it.copy(heatmapData = emptyMap()) }
                     return@safeLaunch
                 }
                 val (activeBrand, layoutId, _) = resolved
-                val data = withContext(Dispatchers.IO) {
+                val data = heatmapReadLock.withLock { withContext(Dispatchers.IO) {
                     val frameRows: List<String> = when (mode) {
                         // allAscents comes from getUserLogbookAllLight() which
                         // strips climb_frames to save memory for the list UI —
@@ -1019,14 +1031,16 @@ class BoardLogbookViewModel @Inject constructor(
                         else -> HoldHeatmapComputer.computeGlobalHeatmap(frameRows)
                     }
                     HoldHeatmapComputer.normalizeHeatmap(raw)
-                }
-                if (_state.value.heatmapMode == mode) {
+                } }
+                if (heatmapKey == key) {
                     _state.update { it.copy(heatmapData = data) }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "recomputeHeatmap failed; keeping previous overlay", e)
+                // The next change of the statistics tries again.
+                if (heatmapKey == key) heatmapKey = null
             }
         }
     }
@@ -1234,6 +1248,9 @@ private data class HoldTypesKey(
 
 /** A board's problems on one layout within a grade range, whose hold mix [BoardLogbookViewModel] keeps. */
 private data class BoardMixKey(val board: String, val layoutId: Int, val grades: ClosedFloatingPointRange<Double>)
+
+/** What the hold heat is computed for: mode, heatmap board (brand, layout, size) and, for your sends, the logbook. */
+private data class HeatmapKey(val mode: HeatmapMode, val board: Triple<String, Int, Int>?, val logbook: Int)
 
 /** Everything [BoardLogbookViewModel] computes for the statistics in one pass. */
 private class ComputedStats(

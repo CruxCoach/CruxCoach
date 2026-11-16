@@ -582,6 +582,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A phone that never touched nearby sharing now asks "Release connection?" when
   someone nearby wants the board, instead of rejecting every request. The sharing
   text already said that nearby users can ask.
+- Logbook statistics: with the hold heatmap on "All Climbs" (or start, hand, foot
+  or finish holds), every period or board tap read every climb of the board again,
+  several reads at a time, until the app ran out of memory and closed. The heat is
+  now read once per mode and board, one read at a time.
 - Quantum boards are marked experimental where you pick or connect one: they
   are not yet tested on a real Quantum board. A climb now lights as an ordinary
   player route, one route in one colour for as long as the board's own auto-off
