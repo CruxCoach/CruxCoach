@@ -5,13 +5,18 @@ import com.cruxcoach.android.ui.training.exercises.ExerciseCatalogScreen
 import com.cruxcoach.android.ui.training.exercises.ExerciseCatalogViewModel
 import com.cruxcoach.android.ui.training.exercises.ExerciseDetailScreen
 import com.cruxcoach.android.ui.training.exercises.ExerciseDetailViewModel
+import com.cruxcoach.android.ui.training.player.PlayerPhase
+import com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen
+import com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel
 import com.cruxcoach.android.ui.training.workout.RoutinesScreen
 import com.cruxcoach.android.ui.training.workout.RoutinesViewModel
+import com.cruxcoach.athlete.logic.WorkoutTextParser
 import com.cruxcoach.athlete.model.Injury
 import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.InjurySide
 import com.cruxcoach.athlete.model.Routine
 import com.cruxcoach.athlete.model.RoutineItem
+import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -104,5 +109,41 @@ class AddDespiteInjuryTest : AthleteScreenTest() {
 
         clickText("Add anyway")
         compose.waitUntil(WAIT_MS) { repo.setsFor(id).any { it.exerciseSlug == maxHang } }
+    }
+
+    @Test
+    fun `typed exercises the injury rules out are left out, and added anyway on request`() {
+        val id = service.startWorkout(null, "Free")
+        val typed = WorkoutTextParser.parse("max hangs 3x10 s, pull-ups 3x5", service.catalog)
+        assertEquals(listOf(maxHang, pullUp), typed.lines.map { it.item.slug })
+
+        val skipped = runBlocking { service.addTyped(id, typed.lines) }
+        assertEquals(listOf(maxHang), skipped.map { it.slug })
+        assertEquals(setOf(pullUp), slugsOfOpenTraining())
+
+        service.addTypedDespiteInjury(id, skipped)
+        assertEquals(setOf(maxHang, pullUp), slugsOfOpenTraining())
+        // As typed: three sets, after the pull-ups.
+        val sets = repo.setsFor(id)
+        assertEquals(3, sets.filter { it.exerciseSlug == maxHang }.map { it.setIndex }.distinct().size)
+        assertTrue(sets.filter { it.exerciseSlug == maxHang }.all { h -> sets.filter { it.exerciseSlug == pullUp }.all { it.blockIndex < h.blockIndex } })
+    }
+
+    @Test
+    fun `typing one into the running training warns and adds anyway`() {
+        service.startWorkout(Routine("r", "Pull", items = listOf(RoutineItem(pullUp, sets = 3, repsMin = 5, repsMax = 5))), null)
+        val vm = WorkoutPlayerViewModel(service).tracked()
+        until { vm.state.value.phase == PlayerPhase.SET }
+        render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        val id = vm.state.value.workout!!.id
+        vm.addTyped(WorkoutTextParser.parse("max hangs 3x10 s", service.catalog))
+
+        clickText("Add anyway")
+        until { repo.setsFor(id).any { it.exerciseSlug == maxHang } }
+    }
+
+    private fun until(condition: () -> Boolean) = compose.waitUntil(WAIT_MS) {
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        condition()
     }
 }

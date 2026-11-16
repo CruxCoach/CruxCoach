@@ -1447,19 +1447,33 @@ class AthleteService @Inject constructor(
 
     /**
      * Typed exercises appended to the open training, each with what the text said. Returns
-     * the slugs an open injury ruled out, so the screen can say so instead of dropping them silently.
+     * the items an open injury ruled out, so the screen can say so and offer "add anyway"
+     * ([addTypedDespiteInjury]) instead of dropping them silently.
      */
-    suspend fun addTyped(workoutId: String, lines: List<com.cruxcoach.athlete.logic.WorkoutTextParser.Line>): List<String> {
-        val typed = resolveTyped(lines)
-        val skipped = mutableListOf<String>()
+    suspend fun addTyped(workoutId: String, lines: List<com.cruxcoach.athlete.logic.WorkoutTextParser.Line>): List<RoutineItem> =
+        appendTyped(workoutId, resolveTyped(lines), despiteInjury = false)
+
+    /** "Add anyway" for typed items the open injury left out (owner 2026-10-25: warn, never block). */
+    fun addTypedDespiteInjury(workoutId: String, items: List<RoutineItem>) {
+        appendTyped(workoutId, items, despiteInjury = true)
+    }
+
+    private fun appendTyped(workoutId: String, typed: List<RoutineItem>, despiteInjury: Boolean): List<RoutineItem> {
+        val skipped = mutableListOf<RoutineItem>()
         synchronized(structureLock) {
             val modifier = todaysModifier()
             val existing = repo.setsFor(workoutId)
             // Typed circuits get keys the open training does not use yet, so they stay circuits of their own.
             val offset = existing.mapNotNull { it.circuit }.maxOrNull() ?: 0
-            val items = Circuits.normalize(typed, catalog).map { it.copy(circuit = it.circuit?.plus(offset)) }
+            val normalized = Circuits.normalize(typed, catalog)
             var next = (existing.maxOfOrNull { it.blockIndex } ?: -1) + 1
-            repo.transaction { items.forEach { item -> if (addItem(workoutId, next, item, modifier)) next++ else skipped += item.slug } }
+            repo.transaction {
+                normalized.forEach { item ->
+                    val placed = item.copy(circuit = item.circuit?.plus(offset))
+                    // Left out without the training's circuit key: added anyway later, it is normalized again.
+                    if (addItem(workoutId, next, placed, modifier, despiteInjury = despiteInjury)) next++ else skipped += item
+                }
+            }
         }
         return skipped
     }

@@ -575,6 +575,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - The Kilter Homewall 10x12 picture shows the real holds; it showed grey
   placeholder discs at 24 positions on the lower rows.
+- Training: exercises you type into a training that an injury rules out are no
+  longer only reported as left out; the message offers "Add anyway", as when you
+  pick such an exercise from the catalogue.
 - MoonBoard: hold cleaning with many holds shows them in sections, as many as the
   LED box takes at once (about 40 to 52). A MoonBoard box showed a single LED for a
   frame of more than 52; the app no longer sends a frame that big to it, and a climb
