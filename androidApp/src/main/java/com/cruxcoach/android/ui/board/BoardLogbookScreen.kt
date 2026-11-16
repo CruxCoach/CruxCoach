@@ -154,6 +154,7 @@ fun BoardLogbookScreen(
                 customDateTo = state.customDateTo,
                 heatmapMode = state.heatmapMode,
                 heatmapData = state.heatmapData,
+                heatmapLoading = state.heatmapLoading,
                 placements = state.placements,
                 boardSize = state.boardSize,
                 boardImages = state.boardImages,

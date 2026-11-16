@@ -355,4 +355,27 @@ class HoldHeatmapComputerTest {
             "Expected ~$expected but got $actual"
         )
     }
+
+    // ═══ HoldCounter: the same counts, one climb at a time ═══
+
+    @Test
+    fun holdCounter_streamedClimbsCountLikeTheList() {
+        val climbs = listOf(climb1, climb2, climb3)
+        val all = HoldHeatmapComputer.HoldCounter()
+        val starts = HoldHeatmapComputer.HoldCounter(HoldRole.START)
+        climbs.forEach { all.add(it); starts.add(it) }
+
+        assertEquals(mapOf(100 to 2, 101 to 1, 102 to 1, 103 to 1, 104 to 1), starts.counts())
+        assertEquals(climbs.flatMap { BoardClimbParser.parseFrames(it) }.groupingBy { it.placementId }.eachCount(), all.counts())
+    }
+
+    @Test
+    fun holdCounter_countsLargePlacementIds() {
+        val counter = HoldHeatmapComputer.HoldCounter()
+        counter.add(frames(5 to HoldRole.HAND, 70_000 to HoldRole.HAND, 2_000_000_000 to HoldRole.FOOT))
+        counter.add(frames(70_000 to HoldRole.START, 65_535 to HoldRole.HAND))
+
+        assertEquals(mapOf(5 to 1, 65_535 to 1, 70_000 to 2, 2_000_000_000 to 1), counter.counts())
+    }
 }
+

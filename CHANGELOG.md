@@ -586,6 +586,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   or finish holds), every period or board tap read every climb of the board again,
   several reads at a time, until the app ran out of memory and closed. The heat is
   now read once per mode and board, one read at a time.
+- Logbook statistics: the "All Climbs" heatmap (and start, hand, foot and finish
+  holds) took minutes on a phone and said "No data" meanwhile. The climbs are now
+  read one by one and their holds counted without holding them all in memory, and
+  the card shows "Counting the holds…" until the heat is there.
 - Quantum boards are marked experimental where you pick or connect one: they
   are not yet tested on a real Quantum board. A climb now lights as an ordinary
   player route, one route in one colour for as long as the board's own auto-off

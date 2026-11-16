@@ -148,6 +148,9 @@ data class BoardLogbookState(
     val boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     val heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
     val heatmapData: Map<Int, Float> = emptyMap(),
+    // True while the heat of the current mode and board is read; the sheet shows a
+    // loading sign then, not the "no data" text (a catalogue mode reads every climb).
+    val heatmapLoading: Boolean = false,
     // Heatmap board selector (FEAT-039): the EXPLICIT board the hold-heatmap
     // renders on. The hold-id spaces are disjoint across brands/layouts, so a
     // single grid can never aggregate boards — the user picks exactly which
@@ -990,12 +993,22 @@ class BoardLogbookViewModel @Inject constructor(
         heatmapJob = viewModelScope.safeLaunch(TAG) {
             try {
                 if (resolved == null) {
-                    _state.update { it.copy(heatmapData = emptyMap()) }
+                    _state.update { it.copy(heatmapData = emptyMap(), heatmapLoading = false) }
                     return@safeLaunch
                 }
                 val (activeBrand, layoutId, _) = resolved
+                _state.update { it.copy(heatmapLoading = true) }
                 val data = heatmapReadLock.withLock { withContext(Dispatchers.IO) {
-                    val frameRows: List<String> = when (mode) {
+                    val counter = HoldHeatmapComputer.HoldCounter(
+                        when (mode) {
+                            HeatmapMode.START -> HoldRole.START
+                            HeatmapMode.HAND -> HoldRole.HAND
+                            HeatmapMode.FOOT -> HoldRole.FOOT
+                            HeatmapMode.FINISH -> HoldRole.FINISH
+                            else -> null
+                        }
+                    )
+                    when (mode) {
                         // allAscents comes from getUserLogbookAllLight() which
                         // strips climb_frames to save memory for the list UI —
                         // the heavy SELECT * variant is the only one that carries
@@ -1009,38 +1022,42 @@ class BoardLogbookViewModel @Inject constructor(
                         // fixes that without dropping legacy NULL-layout rows.
                         HeatmapMode.PERSONAL -> personalBoardRepo.getUserAscentsAll()
                             .filter { it.brand == BoardBrand.fromWire(activeBrand) }
-                            .map { it.climbFrames }
-                            .filter { it.isNotBlank() }
+                            .forEach { if (it.climbFrames.isNotBlank()) counter.add(it.climbFrames) }
                         // Angle-agnostic: hold usage doesn't depend on the
                         // angle, and the previous hardcoded 40° rendered an
                         // empty map for boards/layouts logged at other angles.
-                        else -> boardRepository.getAllFramesForHeatmapAllAngles(
-                            layoutId = layoutId,
-                            boardBrand = activeBrand,
-                            minDifficulty = 0.0,
-                            maxDifficulty = Double.MAX_VALUE,
-                            minAscensionists = 0,
-                            climbType = ClimbTypeFilter.ALL
-                        ).map { it.frames }
+                        // Streamed row by row: the whole catalogue (Kilter:
+                        // about 250,000 climbs) is never in memory at once,
+                        // and a newer mode or board stops this read between rows.
+                        else -> {
+                            val reading = coroutineContext
+                            boardRepository.forEachFramesForHeatmapAllAngles(
+                                layoutId = layoutId,
+                                boardBrand = activeBrand,
+                                minDifficulty = 0.0,
+                                maxDifficulty = Double.MAX_VALUE,
+                                minAscensionists = 0,
+                                climbType = ClimbTypeFilter.ALL
+                            ) { frames ->
+                                reading.ensureActive()
+                                counter.add(frames)
+                            }
+                        }
                     }
-                    val raw = when (mode) {
-                        HeatmapMode.START -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.START)
-                        HeatmapMode.HAND -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.HAND)
-                        HeatmapMode.FOOT -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.FOOT)
-                        HeatmapMode.FINISH -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.FINISH)
-                        else -> HoldHeatmapComputer.computeGlobalHeatmap(frameRows)
-                    }
-                    HoldHeatmapComputer.normalizeHeatmap(raw)
+                    HoldHeatmapComputer.normalizeHeatmap(counter.counts())
                 } }
                 if (heatmapKey == key) {
-                    _state.update { it.copy(heatmapData = data) }
+                    _state.update { it.copy(heatmapData = data, heatmapLoading = false) }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "recomputeHeatmap failed; keeping previous overlay", e)
                 // The next change of the statistics tries again.
-                if (heatmapKey == key) heatmapKey = null
+                if (heatmapKey == key) {
+                    heatmapKey = null
+                    _state.update { it.copy(heatmapLoading = false) }
+                }
             }
         }
     }

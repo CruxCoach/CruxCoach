@@ -1,5 +1,6 @@
 package com.cruxcoach.data.repository
 
+import app.cash.sqldelight.db.QueryResult
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.ClimbUuid
@@ -594,6 +595,26 @@ class BoardRepositoryImpl(
             maxDiff = maxDifficulty,
             minAsc = minAscensionists.toLong()
         ).executeAsList().map { ClimbFrameRow(it.uuid, it.frames) }
+    }
+
+    override fun forEachFramesForHeatmapAllAngles(
+        layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, onFrames: (String) -> Unit
+    ) {
+        val query = q.getAllFramesForHeatmapAllAngles(
+            boardBrand = boardBrand,
+            minFrames = climbType.minFrames(),
+            maxFrames = climbType.maxFrames(),
+            layoutId = layoutId.toLong(),
+            minDiff = minDifficulty,
+            maxDiff = maxDifficulty,
+            minAsc = minAscensionists.toLong()
+        )
+        // The query's own mapper decodes the stored frames; the cursor walks the rows without listing them.
+        query.execute { cursor ->
+            while (cursor.next().value) onFrames(query.mapper(cursor).frames)
+            QueryResult.Unit
+        }
     }
 
     // ── Board Layout Queries ───────────────────────────────────

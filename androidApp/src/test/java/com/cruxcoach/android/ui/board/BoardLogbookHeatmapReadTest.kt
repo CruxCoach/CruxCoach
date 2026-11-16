@@ -7,7 +7,6 @@ import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.BoardRepository
-import com.cruxcoach.data.repository.ClimbFrameRow
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.domain.board.IntensityZones
 import io.mockk.every
@@ -23,6 +22,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -56,6 +56,7 @@ class BoardLogbookHeatmapReadTest {
     private val reads = AtomicInteger()
     private val reading = AtomicInteger()
     private val mostAtOnce = AtomicInteger()
+    private val rowsRead = AtomicInteger()
 
     @Before
     fun setUp() {
@@ -70,14 +71,20 @@ class BoardLogbookHeatmapReadTest {
         every { personalBoardRepo.countUserLogbook() } returns logbook.size.toLong()
         every { personalBoardRepo.getUserLogbookAllLight() } returns logbook
         every { ownClimbPublisher.getOwnAuthoredClimbs() } returns emptyList()
-        every { boardRepository.getAllFramesForHeatmapAllAngles(any(), any(), any(), any(), any(), any()) } answers {
+        every {
+            boardRepository.forEachFramesForHeatmapAllAngles(any(), any(), any(), any(), any(), any(), any())
+        } answers {
+            val onFrames = lastArg<(String) -> Unit>()
             val now = reading.incrementAndGet()
             mostAtOnce.accumulateAndGet(now) { a, b -> maxOf(a, b) }
             reads.incrementAndGet()
             try {
-                // A slow catalogue read, so taps can come while it runs.
-                Thread.sleep(300)
-                listOf(ClimbFrameRow("c1", "p1145r12p1146r13p1200r14"), ClimbFrameRow("c2", "p1145r12p1300r15"))
+                // A slow catalogue read, row by row, so taps can come while it runs.
+                repeat(CATALOGUE_ROWS) { row ->
+                    Thread.sleep(300L / CATALOGUE_ROWS)
+                    onFrames(if (row % 2 == 0) "p1145r12p1146r13p1200r14" else "p1145r12p1300r15")
+                    rowsRead.incrementAndGet()
+                }
             } finally {
                 reading.decrementAndGet()
             }
@@ -108,10 +115,21 @@ class BoardLogbookHeatmapReadTest {
         holdTypeAssets = mockk(relaxed = true),
     )
 
+    /**
+     * The statistics and the first heat ("My sends") are computed when the model starts. With the test's
+     * main dispatcher that runs on an IO thread, so a mode switch right after `statsReady` could cross the
+     * first heat's start; give it a moment.
+     */
+    private suspend fun awaitFirstHeat(vm: BoardLogbookViewModel) {
+        vm.state.first { it.statsReady && it.heatmapBoardSelection != null }
+        Thread.sleep(200)
+        vm.state.first { !it.heatmapLoading }
+    }
+
     @Test
     fun allClimbsIsReadOncePerBoardAndNeverTwiceAtATime() = runTest {
         val vm = buildViewModel()
-        vm.state.first { it.statsReady && it.heatmapBoardSelection != null }
+        awaitFirstHeat(vm)
 
         vm.setHeatmapMode(HeatmapMode.GLOBAL)
         // Period and board taps while the read runs, and after it.
@@ -131,7 +149,7 @@ class BoardLogbookHeatmapReadTest {
     @Test
     fun switchingModesReadsAgainButOneReadAtATime() = runTest {
         val vm = buildViewModel()
-        vm.state.first { it.statsReady && it.heatmapBoardSelection != null }
+        awaitFirstHeat(vm)
 
         vm.setHeatmapMode(HeatmapMode.GLOBAL)
         vm.setHeatmapMode(HeatmapMode.START)
@@ -143,4 +161,40 @@ class BoardLogbookHeatmapReadTest {
         assertEquals(HeatmapMode.HAND, vm.state.value.heatmapMode)
         assertTrue(vm.state.value.heatmapData.isNotEmpty())
     }
+
+    @Test
+    fun theSheetShowsLoadingWhileTheHeatIsRead() = runTest {
+        val vm = buildViewModel()
+        awaitFirstHeat(vm)
+
+        vm.setHeatmapMode(HeatmapMode.GLOBAL)
+        assertTrue(vm.state.value.heatmapLoading)
+        val done = vm.state.first { it.heatmapData.isNotEmpty() }
+
+        assertFalse(done.heatmapLoading)
+        assertEquals(1f, done.heatmapData[1145])
+    }
+
+    @Test
+    fun aNewModeStopsTheRunningReadBetweenRows() = runTest {
+        val vm = buildViewModel()
+        awaitFirstHeat(vm)
+
+        vm.setHeatmapMode(HeatmapMode.GLOBAL)
+        val deadline = System.currentTimeMillis() + 5_000
+        while (rowsRead.get() == 0 && System.currentTimeMillis() < deadline) Thread.sleep(5)
+        vm.setHeatmapMode(HeatmapMode.START)
+        vm.state.first { it.heatmapData.isNotEmpty() && !it.heatmapLoading }
+        Thread.sleep(400)
+
+        // The second read ran in full; the first stopped soon after the switch, well before its last row.
+        assertEquals(2, reads.get())
+        assertTrue("rows read: ${rowsRead.get()}", rowsRead.get() < 2 * CATALOGUE_ROWS)
+        assertEquals(setOf(1145), vm.state.value.heatmapData.keys)
+    }
+
+    private companion object {
+        const val CATALOGUE_ROWS = 100
+    }
 }
+

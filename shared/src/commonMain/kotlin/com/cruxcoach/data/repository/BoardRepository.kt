@@ -586,6 +586,13 @@ interface BoardClimbQueries {
      *  with stats at ANY angle of (layout, brand). Hold usage doesn't depend
      *  on the angle, so the stats sheet must not pin one. */
     fun getAllFramesForHeatmapAllAngles(layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
+    /** The frames of [getAllFramesForHeatmapAllAngles], handed to [onFrames] row by row, so a whole
+     *  catalogue (Kilter: about 250,000 climbs) is never held in memory at once. [onFrames] runs on
+     *  the calling thread; an exception from it ends the read. */
+    fun forEachFramesForHeatmapAllAngles(layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, onFrames: (String) -> Unit) {
+        getAllFramesForHeatmapAllAngles(layoutId, boardBrand, minDifficulty, maxDifficulty, minAscensionists, climbType)
+            .forEach { onFrames(it.frames) }
+    }
 }
 
 /** Board layout, placement, LED, and product-size queries. */
