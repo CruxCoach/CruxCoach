@@ -125,6 +125,8 @@ data class SettingsState(
     val restTimer: RestTimerSettings = RestTimerSettings(),
     val climbSharing: ClimbSharingSettings = ClimbSharingSettings(),
     val relayManualStart: Boolean = false,
+    /** True until read, so the first-share hint never flashes for users who have shared. */
+    val relayDisclosureSeen: Boolean = true,
     val keepScreenOn: Boolean = false,
     val easterAnimationsUnlocked: Boolean = false,
     val isAnimating: Boolean = false,
@@ -188,6 +190,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.safeLaunch("SettingsViewModel") {
             userPreferences.relayManualStart.collect { manual ->
                 _state.update { it.copy(relayManualStart = manual) }
+            }
+        }
+        viewModelScope.safeLaunch("SettingsViewModel") {
+            userPreferences.relayDisclosureSeen.collect { seen ->
+                _state.update { it.copy(relayDisclosureSeen = seen) }
             }
         }
         viewModelScope.safeLaunch("SettingsViewModel") {
@@ -357,6 +364,7 @@ class SettingsViewModel @Inject constructor(
             _state.update {
                 initialState.copy(
                     relayManualStart = it.relayManualStart,
+                    relayDisclosureSeen = it.relayDisclosureSeen,
                     boardSizeFrequency = it.boardSizeFrequency,
                     boardSearchEnabled = it.boardSearchEnabled,
                 )

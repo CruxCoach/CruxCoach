@@ -704,7 +704,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   hold or one climb is no longer counted in the plural ("1 hold → 12 climbs").
 - "Share with board apps" in the connection sheet is off until you share for the first time.
   It showed on with "Starts as soon as a board is connected." although sharing starts by
-  itself only after that first time.
+  itself only after that first time. Until then, Settings → Sharing nearby says so under
+  "Share the board with other apps".
 
 ## [0.2.4] - 2026-10-25
 
