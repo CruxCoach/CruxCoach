@@ -18,6 +18,7 @@ import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.ExerciseSet
 import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.InjurySide
+import com.cruxcoach.athlete.model.RoutineItem
 import com.cruxcoach.athlete.model.SetType
 import com.cruxcoach.athlete.model.SuggestionEventKind
 import com.cruxcoach.athlete.model.Workout
@@ -147,8 +148,8 @@ data class PlayerState(
 sealed interface PlayerEvent {
     data class Finished(val workoutId: String) : PlayerEvent
     data object Discarded : PlayerEvent
-    /** Typed exercises an open injury ruled out. */
-    data class SkippedForInjury(val slugs: List<String>) : PlayerEvent
+    /** Typed exercises an open injury ruled out; "add anyway" adds [items] ([WorkoutPlayerViewModel.addTypedAnyway]). */
+    data class SkippedForInjury(val items: List<RoutineItem>) : PlayerEvent
 }
 
 /**
@@ -806,6 +807,13 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             val skipped = service.addTyped(id, result.lines)
             if (skipped.isNotEmpty()) _events.emit(PlayerEvent.SkippedForInjury(skipped))
         }
+    }
+
+    /** "Add anyway" on the typed exercises the injury left out (owner 2026-10-25: warn, never block). */
+    fun addTypedAnyway(items: List<RoutineItem>) {
+        val id = _state.value.workout?.id ?: return
+        if (items.isEmpty()) return
+        enqueue { service.addTypedDespiteInjury(id, items) }
     }
 
     // ── It hurts ─────────────────────────────────────────────────────

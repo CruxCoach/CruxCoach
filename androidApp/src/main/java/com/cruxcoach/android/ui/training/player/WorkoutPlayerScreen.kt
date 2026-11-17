@@ -157,8 +157,14 @@ fun WorkoutPlayerScreen(
             when (event) {
                 is PlayerEvent.Finished -> onFinished(event.workoutId)
                 PlayerEvent.Discarded -> onBack()
-                is PlayerEvent.SkippedForInjury -> snackbar.showSnackbar(resources.getString(R.string.trw_typed_skipped,
-                    event.slugs.joinToString(", ") { viewModel.catalog().fallbackFor(it).name(language) }))
+                // Warn, never block (owner 2026-10-25): "Add anyway" as for an exercise picked from the catalogue.
+                // Its own scope, so a "finished" event is not held up while the snackbar shows.
+                is PlayerEvent.SkippedForInjury -> snackScope.launch {
+                    val text = resources.getString(R.string.trw_typed_skipped,
+                        event.items.joinToString(", ") { viewModel.catalog().fallbackFor(it.slug).name(language) })
+                    val result = snackbar.showSnackbar(text, resources.getString(R.string.trwo_add_anyway), duration = SnackbarDuration.Long)
+                    if (result == SnackbarResult.ActionPerformed) viewModel.addTypedAnyway(event.items)
+                }
             }
         }
     }
