@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import android.os.SystemClock
+import com.cruxcoach.android.ble.ActiveBoardSelection
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardWrite
@@ -53,6 +54,12 @@ internal class BoardSizeCheckConnection(
         awaySince = null
         connection.releaseKeepAlive(BoardConnectionOwner.SIZE_CHECK)
     }
+
+    /**
+     * The user confirmed [selection] on the connected board. Saving it keeps the link also after
+     * the check has closed, as the board picker does ([com.cruxcoach.android.ble.BoardSwitchLinkPolicy]).
+     */
+    fun confirmed(selection: ActiveBoardSelection) = connection.noteSizeConfirmed(selection)
 
     /**
      * The app went to the background: the link is let go, and the check's board is disconnected

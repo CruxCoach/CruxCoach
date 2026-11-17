@@ -842,6 +842,31 @@ class BoardBleConnection(
         synchronized(keepAliveLock) { keepAliveOwners.isNotEmpty() }
 
     /**
+     * The board, layout and size the board-size check confirmed on this link: the user saw the
+     * connected board light that size's holds. [BoardSwitchLinkPolicy] keeps the link when it is
+     * saved, also after the check has closed: the board picker saves it on its own Confirm. Only
+     * while that board is connected, as the next link may be to another board.
+     */
+    internal val sizeConfirmedOnBoard: ActiveBoardSelection?
+        get() {
+            val noted = sizeConfirmation ?: return null
+            return noted.selection.takeIf { isLinkUp() && noted.address == currentBoard?.address }
+        }
+
+    private class SizeConfirmation(val address: String?, val selection: ActiveBoardSelection)
+
+    @Volatile
+    private var sizeConfirmation: SizeConfirmation? = null
+
+    internal fun noteSizeConfirmed(selection: ActiveBoardSelection) {
+        // A link that dropped meanwhile must not hand it to the next one.
+        sizeConfirmation = if (isLinkUp()) SizeConfirmation(currentBoard?.address, selection) else null
+    }
+
+    private fun isLinkUp(): Boolean =
+        _connectionState.value.let { it == ConnectionState.CONNECTED || it == ConnectionState.SENDING }
+
+    /**
      * Records what a completed advertising probe saw while we hold GATT.
      *
      * [advertises] true means the controller was seen advertising connectably

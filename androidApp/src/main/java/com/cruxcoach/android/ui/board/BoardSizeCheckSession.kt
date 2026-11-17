@@ -122,6 +122,12 @@ class BoardSizeCheckSession(private val source: Source) {
          */
         suspend fun clear(brand: BoardBrand): Boolean
 
+        /**
+         * The connected board lit [sizeId]'s holds and the user said "Yes". Called before
+         * [apply], and also when the host saves the size later or it is the current one.
+         */
+        suspend fun confirmed(brand: BoardBrand, layoutId: Int?, sizeId: Int) {}
+
         /** Makes [sizeId] the user's board. */
         suspend fun apply(brand: BoardBrand, layoutId: Int?, sizeId: Int)
     }
@@ -253,6 +259,7 @@ class BoardSizeCheckSession(private val source: Source) {
         val id = current.size?.id?.toInt() ?: return null
         if (current.step != BoardSizeCheckStep.ASK || !current.lit || !current.canConfirm) return null
         mutableState.update { it.copy(step = BoardSizeCheckStep.CONFIRMED, confirmedSizeId = id) }
+        source.confirmed(brand, current.layoutId, id)
         if (applyChange && id != current.currentSizeId) source.apply(brand, current.layoutId, id)
         return id
     }

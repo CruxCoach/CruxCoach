@@ -16,7 +16,6 @@ import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.ble.ActiveBoardSelection
 import com.cruxcoach.android.ble.BoardBleConnection
-import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.BoardSwitchLinkPolicy
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.domain.board.BoardBrand
@@ -117,7 +116,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 !up && linkWasUp -> policy.onLinkDown()
                 up && policy.onSelectionChanged(
                     board, connectedBrand, userPreferences.isOnboardingCompleted(),
-                    sizeConfirmedOnBoard = connection.isKeptAliveBy(BoardConnectionOwner.SIZE_CHECK),
+                    sizeConfirmedOnBoard = connection.sizeConfirmedOnBoard,
                 ) -> {
                     Log.i("CruxCoachApp", "Active board switched to $board while connected — releasing the link")
                     connection.disconnect()
