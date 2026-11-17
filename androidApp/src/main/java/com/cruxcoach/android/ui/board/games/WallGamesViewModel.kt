@@ -421,13 +421,17 @@ class WallGamesViewModel @Inject constructor(
         val playable = KnotSpacing.entries.filter { Knot.layout(board.rows, atWall, colours, unit, big, it) != null }.toSet()
         val chosen = spacing.takeIf { it in playable } ?: KnotSpacing.CLOSE
         val draw = knotHandGrades.takeIf { it.isNotEmpty() }?.let { KnotDraw(knotSeed, it, knotLastSpots) }
+        val started = SystemClock.elapsedRealtime()
+        val layout = Knot.layout(board.rows, atWall, colours, unit, big, chosen, draw)
+        // How long a field takes, and whether it was drawn, to check on a phone with a real catalogue.
+        Log.i(TAG, "Knot field: ${layout?.spots?.size ?: 0} spots for $atWall, $chosen, ${if (draw != null) "drawn" else "nearest"} in ${SystemClock.elapsedRealtime() - started} ms")
         return knot.copy(
             colours = colours,
             maxClimbers = max,
             players = count,
             spacing = chosen,
             spacings = playable,
-            layout = Knot.layout(board.rows, atWall, colours, unit, big, chosen, draw),
+            layout = layout,
         )
     }
 
@@ -443,8 +447,10 @@ class WallGamesViewModel @Inject constructor(
         knotBigHolds = emptySet()
         viewModelScope.launch {
             val (big, grades) = withContext(Dispatchers.IO) {
-                runCatching { loader.knotBigHolds(board) }.getOrDefault(emptySet()) to
-                    runCatching { loader.knotHandGrades(board) }.getOrDefault(emptyMap())
+                val started = SystemClock.elapsedRealtime()
+                val grades = runCatching { loader.knotHandGrades(board) }.getOrDefault(emptyMap())
+                Log.i(TAG, "Knot grades: ${grades.size} hand holds rated from the catalogue in ${SystemClock.elapsedRealtime() - started} ms")
+                runCatching { loader.knotBigHolds(board) }.getOrDefault(emptySet()) to grades
             }
             if (big.isEmpty() && grades.isEmpty()) return@launch
             knotBigHolds = big
@@ -494,6 +500,7 @@ class WallGamesViewModel @Inject constructor(
         val colours = s.knot.colours ?: return
         sender.forget()
         knotRunner.light(layout.field(Knot.colourOrder(colours, knotSeeds.nextLong())), s.knot.players)
+        Log.i(TAG, "Knot game: ${layout.spots.size} spots, ${(layout.spots intersect knotLastSpots).size} of them also in the last game")
         // The next game gets a fresh field, away from this one's holds.
         knotLastSpots = layout.spots
         knotSeed = knotSeeds.nextLong()

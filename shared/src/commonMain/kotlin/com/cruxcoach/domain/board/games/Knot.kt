@@ -258,9 +258,10 @@ object Knot {
      * Without a [draw], each spot takes the nearest free hold to its place in the stripe, a big hold ([bigHolds],
      * from the hold types once a board's are confirmed) when one is about as near: the same wall, climbers and
      * spacing always give the same field. With a [draw], each spot is drawn among the stripe's free holds at about its
-     * height, a big hold more often, never one of the hardest fifth of the rated hand holds and away from last game's
-     * spots where the wall allows; of [DRAWS] such fields the one whose colours and climbers' parts come closest to
-     * equally good wins.
+     * height, a big hold more often, not one of the hardest fifth of the rated hand holds and away from last game's
+     * spots where the wall allows; the spacing goes before all of that, and where no hold keeps it the spot takes the
+     * hold farthest from the others. Of [DRAWS] such fields the one with the fewest spots too close to another wins,
+     * then the one whose colours and climbers' parts come closest to equally good.
      *
      * Null when [climbers] don't fit ([maxClimbers]), a colour gets no hand or no foot spot, or the field has fewer
      * than [MIN_SPOTS_PER_LIMB] spots per hand or per foot on the wall.
@@ -330,24 +331,42 @@ object Knot {
         val hardest = rated.take(ceil(rated.size * HARDEST_SHARE).toInt()).mapTo(mutableSetOf()) { it.placementId }
         val usual = rated.map { grades.getValue(it.placementId) }.let { if (it.isEmpty()) 0.0 else it[it.size / 2] }
 
-        /** A free hold about at the target's height, drawn with [random]; each condition gives way when nothing meets it. */
+        /** How far [hold] is from the nearest spot placed so far. */
+        fun gap(hold: WallHold) = taken.minOfOrNull { hypot((hold.x - it.x) * metresPerUnit, (hold.y - it.y) * metresPerUnit) } ?: Double.MAX_VALUE
+
+        /**
+         * A free hold about at the target's height, drawn with [random]; each condition gives way when nothing meets it,
+         * the spacing last. When no free hold keeps the spacing, the one farthest from the spots so far.
+         */
         fun drawn(target: Target, random: Random, avoid: Set<Int>): WallHold? {
             val free = zone(target).filter { it.placementId !in takenIds }
-            val easy = free.filter { !target.hand || it.placementId !in hardest }
-            val good = easy.filter(::apart)
+            if (free.isEmpty()) return null
+            val spaced = free.filter(::apart)
+            val good = spaced.filter { !target.hand || it.placementId !in hardest }
             fun near(hold: WallHold) = abs(heightM(hold) - target.heightM) <= target.bandM / 2 + HEIGHT_SLACK_M
             val pool = listOf(
                 good.filter { near(it) && it.placementId !in avoid },
                 good.filter { it.placementId !in avoid },
                 good.filter(::near),
                 good,
-                easy,
-                free,
-            ).firstOrNull { it.isNotEmpty() } ?: return null
+                // Rather a hard hold than two spots side by side.
+                spaced,
+            ).firstOrNull { it.isNotEmpty() } ?: return free.maxWith(compareBy<WallHold> { gap(it) }.thenBy { -it.placementId })
             // A big hold counts as several tickets.
             val tickets = pool.flatMap { hold -> List(if (hold.placementId in bigHolds) BIG_HOLD_TICKETS else 1) { hold } }
             return tickets[random.nextInt(tickets.size)]
         }
+
+        /** Every spot's distance to the nearest other spot. */
+        fun gaps(stripes: List<Pair<List<Int>, List<Int>>>): List<Double> {
+            val spots = stripes.flatMap { it.first + it.second }.map { rows.holdOf(it)!! }
+            return spots.map { a ->
+                spots.filter { it !== a }.minOfOrNull { b -> hypot((a.x - b.x) * metresPerUnit, (a.y - b.y) * metresPerUnit) } ?: Double.MAX_VALUE
+            }
+        }
+
+        /** Spots closer than [SPOT_SPACING_M] to another spot. */
+        fun crowded(stripes: List<Pair<List<Int>, List<Int>>>): Int = gaps(stripes).count { it < SPOT_SPACING_M - SPACING_SLACK_M }
 
         fun build(choose: (Target) -> WallHold?): List<Pair<List<Int>, List<Int>>> {
             taken.clear()
@@ -379,11 +398,19 @@ object Knot {
             return spread(byColour) + spread(byPart)
         }
 
-        val chosen = if (draw == null) {
-            build(::nearest).takeIf(::playable)
+        val plain = build(::nearest).takeIf(::playable)
+        val chosen = if (draw == null || plain == null) {
+            plain
         } else {
             val random = Random(draw.seed)
-            List(DRAWS) { build { drawn(it, random, draw.avoid) } }.filter(::playable).minByOrNull(::unfairness)
+            // The spacing comes first: no draw may put two spots closer together than the nearest holds do (where those
+            // keep the spacing, it keeps it too). Of the rest, those with the fewest spots too close to another, then
+            // the fairest. Should no draw keep it, the nearest holds light instead.
+            val floor = minOf(gaps(plain).min(), SPOT_SPACING_M - SPACING_SLACK_M)
+            List(DRAWS) { build { drawn(it, random, draw.avoid) } }
+                .filter { playable(it) && gaps(it).min() >= floor }
+                .minWithOrNull(compareBy<List<Pair<List<Int>, List<Int>>>>({ crowded(it) }, { unfairness(it) }))
+                ?: plain
         }
         return chosen?.let { KnotLayout(climbers, it, pattern) }
     }

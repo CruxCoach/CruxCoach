@@ -350,6 +350,33 @@ class KnotTest {
         }
     }
 
+    /** The smallest distance between two spots of [layout] on [board]. */
+    private fun closestGap(board: Board, layout: KnotLayout): Double {
+        val spots = layout.spots.map { board.rows.holdOf(it)!! }
+        return spots.flatMapIndexed { i, a -> spots.drop(i + 1).map { b -> hypot(a.x - b.x, a.y - b.y) * board.metresPerUnit } }.min()
+    }
+
+    @Test
+    fun aDrawNeverPutsSpotsCloserTogetherThanTheNearestHolds() {
+        for ((board, climbers) in playable) {
+            val grades = kotlin.random.Random(climbers).let { random -> board.rows.holds.associate { it.placementId to 10.0 + random.nextDouble() * 20 } }
+            for (spacing in KnotSpacing.entries) {
+                // Where the nearest holds keep the spacing, a draw keeps it too; where they can't, a draw comes no closer.
+                val nearest = minOf(closestGap(board, layout(board, climbers, spacing)!!), Knot.SPOT_SPACING_M - 0.02)
+                for (seed in 0L until 4L) {
+                    // A first game, and the next one, which keeps away from the first one's holds.
+                    val name = "${board.name}, $climbers, $spacing, seed $seed"
+                    val first = assertNotNull(layout(board, climbers, spacing, KnotDraw(seed, grades)), name)
+                    val next = assertNotNull(layout(board, climbers, spacing, KnotDraw(seed + 100, grades, avoid = first.spots)), name)
+                    for (drawn in listOf(first, next)) {
+                        val gap = closestGap(board, drawn)
+                        assertTrue(gap >= nearest - 1e-9, "$name: spots ${(gap * 100).toInt()} cm apart, the nearest holds ${(nearest * 100).toInt()} cm")
+                    }
+                }
+            }
+        }
+    }
+
     @Test
     fun handGradesAverageTheClimbsThatUseAHoldAsAHandHold() {
         val grades = KnotHandGrades(minClimbs = 2)
