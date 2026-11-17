@@ -263,8 +263,9 @@ object Knot {
      * hold farthest from the others. Of [DRAWS] such fields the one with the fewest spots too close to another wins,
      * then the one whose colours and climbers' parts come closest to equally good.
      *
-     * Null when [climbers] don't fit ([maxClimbers]), a colour gets no hand or no foot spot, or the field has fewer
-     * than [MIN_SPOTS_PER_LIMB] spots per hand or per foot on the wall.
+     * Null when [climbers] don't fit ([maxClimbers]), when from the middle of a climber's part a colour has no hand or
+     * no foot spot within the spacing's reach ([REACH_SLACK_M] beyond it at most; a stripe without free holds leaves
+     * its colour only farther away), or the field has fewer than [MIN_SPOTS_PER_LIMB] spots per hand or per foot.
      */
     fun layout(
         rows: WallRows,
@@ -383,9 +384,13 @@ object Knot {
         }
 
         val limbs = 2 * climbers
+        /** From the middle of every climber's part, each colour's nearest hand or foot spot is within the spacing's reach. */
+        fun inReach(stripes: List<Pair<List<Int>, List<Int>>>, hands: Boolean): Boolean {
+            val spots = stripes.indices.flatMap { i -> (if (hands) stripes[i].first else stripes[i].second).map { xM(rows.holdOf(it)!!) to pattern[i] } }
+            return reach(start, width, climbers, spots, colours.size).first <= spacing.reachM + REACH_SLACK_M
+        }
         fun playable(stripes: List<Pair<List<Int>, List<Int>>>) =
-            colours.indices.all { colour -> stripes.indices.any { pattern[it] == colour && stripes[it].first.isNotEmpty() } } &&
-                colours.indices.all { colour -> stripes.indices.any { pattern[it] == colour && stripes[it].second.isNotEmpty() } } &&
+            inReach(stripes, hands = true) && inReach(stripes, hands = false) &&
                 stripes.sumOf { it.first.size } >= MIN_SPOTS_PER_LIMB * limbs &&
                 stripes.sumOf { it.second.size } >= MIN_SPOTS_PER_LIMB * limbs
 
@@ -415,8 +420,26 @@ object Knot {
         return chosen?.let { KnotLayout(climbers, it, pattern) }
     }
 
+    /**
+     * How far the colours really are in [layout] on [rows]: from the middle of each climber's part, the farthest of
+     * the colours' nearest hand spots ([reach] over the field as [layout] lays it out).
+     */
+    fun handReach(rows: WallRows, layout: KnotLayout, metresPerUnit: Double): Double {
+        val left = rows.holds.minOf { it.x } * metresPerUnit
+        val right = rows.holds.maxOf { it.x } * metresPerUnit
+        val width = minOf(fieldWidthM(layout.climbers), right - left + EDGE_M)
+        val spots = layout.stripes.indices.flatMap { i -> layout.stripes[i].first.map { rows.holdOf(it)!!.x * metresPerUnit to layout.pattern[i] } }
+        return reach((left + right) / 2 - width / 2, width, layout.climbers, spots, layout.pattern.maxOrNull()?.plus(1) ?: 0).first
+    }
+
     /** At least this many spots per hand and per foot on the wall, so a call always has somewhere to go. */
     const val MIN_SPOTS_PER_LIMB = 1.5
+
+    /**
+     * How far beyond its spacing's reach a colour may sit from the middle of a climber's part before the field doesn't
+     * count as playable: the spots lie anywhere in their stripes, not at the stripes' middles.
+     */
+    const val REACH_SLACK_M = 0.15
 
     /** Fields drawn for one game, of which the fairest lights. */
     const val DRAWS = 24

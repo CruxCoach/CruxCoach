@@ -78,7 +78,7 @@ internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
     // Without named colours, or without room for a field, there is nothing to set.
     val unavailable = when {
         knot.colours == null -> if (state.board?.brand == BoardBrand.SHINYWALL) R.string.knot_unsupported_shinywall else R.string.knot_unsupported
-        knot.layout == null -> R.string.knot_no_field
+        knot.layout == null && !knot.pending -> R.string.knot_no_field
         else -> null
     }
     if (unavailable != null) {
@@ -201,12 +201,28 @@ private fun KnotSpacingPicker(knot: KnotState, actions: WallGamesActions) {
                 )
             }
         }
+        // The reach the field really has, to the nearest 5 cm.
+        val reachCm = ((knot.reachM ?: knot.spacing.reachM) * 20).roundToInt() * 5
         Text(
-            stringResource(R.string.knot_spacing_cm, (knot.spacing.reachM * 100).roundToInt()),
+            stringResource(R.string.knot_spacing_cm, reachCm),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        val greyed = KnotSpacing.entries.filter { it !in knot.spacings }
+        // Two reasons a spacing is greyed out: no room for it, or no further reach than a closer one.
+        if (knot.sameReach.isNotEmpty()) {
+            Text(
+                pluralStringResource(
+                    R.plurals.knot_spacing_same,
+                    knot.atWall,
+                    knot.sameReach.sorted().map { stringResource(it.labelRes) }.joinToString(", "),
+                    knot.atWall,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("knot_spacing_same"),
+            )
+        }
+        val greyed = KnotSpacing.entries.filter { it !in knot.spacings && it !in knot.sameReach }
         if (greyed.isNotEmpty()) {
             Text(
                 pluralStringResource(
@@ -616,7 +632,8 @@ internal fun KnotButtons(state: WallGamesState, actions: WallGamesActions, slot:
             }
             Button(
                 onClick = actions::knotNextCall,
-                enabled = state.knot.run.phase == KnotPhase.RUNNING,
+                // Only once the call has blinked: a double tap mustn't skip the next call.
+                enabled = state.knot.run.phase == KnotPhase.RUNNING && state.knot.run.tapReady,
                 modifier = slot.heightIn(min = 48.dp).testTag("knot_next"),
             ) { ButtonLabel(R.string.knot_next_call) }
         } else {

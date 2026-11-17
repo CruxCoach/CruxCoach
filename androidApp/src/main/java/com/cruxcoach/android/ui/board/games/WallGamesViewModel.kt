@@ -30,6 +30,7 @@ import com.cruxcoach.domain.board.games.KnotColour
 import com.cruxcoach.domain.board.games.KnotDraw
 import com.cruxcoach.domain.board.games.KnotLayout
 import com.cruxcoach.domain.board.games.KnotSpacing
+import com.cruxcoach.domain.board.games.WallRows
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.android.data.UserPreferences
@@ -85,8 +86,14 @@ data class KnotState(
     /** The next call comes when someone below taps, without a timer. */
     val byTap: Boolean = false,
     val spacing: KnotSpacing = KnotSpacing.CLOSE,
-    /** The spacings that keep the game playable on this wall for [atWall] climbers ([Knot.layout] not null). */
+    /** The spacings to choose from: playable on this wall for [atWall] climbers ([Knot.layout] not null) and reaching further than a closer one. */
     val spacings: Set<KnotSpacing> = emptySet(),
+    /** Playable spacings that reach no further than a closer one here (solo, or the MoonBoard's three colours). */
+    val sameReach: Set<KnotSpacing> = emptySet(),
+    /** How far the colours really are in [layout], from the middle of a climber's part. */
+    val reachM: Double? = null,
+    /** The field is being worked out for the settings shown. */
+    val pending: Boolean = false,
     /** The colours the board lights for Knot; null when it can't name them. */
     val colours: List<KnotColour>? = null,
     /** Climbers this board fits at once; 0 without colours. */
@@ -142,7 +149,7 @@ data class WallGamesState(
             WallGame.LAVA -> !board.rows.isEmpty()
             WallGame.THIEF -> thiefRoute.isNotEmpty()
             WallGame.ENDURANCE, WallGame.TRAVERSE -> climb != null && climb.holds.size > climb.offBoard
-            WallGame.KNOT -> knot.layout != null
+            WallGame.KNOT -> knot.layout != null && !knot.pending
         }
 
     companion object {
@@ -200,6 +207,8 @@ class WallGamesViewModel @Inject constructor(
     /** The draw of the next game's field, which the preview shows, and the spots of the last one, which it avoids. */
     private var knotSeed = knotSeeds.nextLong()
     private var knotLastSpots: Set<Int> = emptySet()
+    /** Works out Knot's field for the settings shown; a newer change cancels it. */
+    private var knotJob: Job? = null
     private val runner = WallGameRunner(
         scope = viewModelScope,
         now = SystemClock::elapsedRealtime,
@@ -272,9 +281,9 @@ class WallGamesViewModel @Inject constructor(
                     unavailable = load.takeIf { board == null },
                     thiefDensity = density,
                     thiefRoute = board?.let { b -> HoldsThief.route(b.rows, density, thiefSeed) }.orEmpty(),
-                    knot = knotFor(board, it.knot.players, it.knot),
                 )
             }
+            refreshKnot()
             if (board != null && mutableState.value.game == WallGame.KNOT) prepareKnot()
             if (board != null) {
                 if (startClimbUuid != null) {
@@ -403,41 +412,35 @@ class WallGamesViewModel @Inject constructor(
     // ── Knot ───────────────────────────────────────────────────────────
 
     /**
-     * Knot's colours, width and field for [players] at [spacing] on [board]: as many as fit climb, the others wait in
-     * line. A spacing the wall can't keep playable for that many at the wall is offered greyed out, and the field
-     * falls back to close.
+     * Knot's colours and climbers for [players] on [board] at once, and its field off the main thread: the settings show
+     * the tap straight away, the field and the preview follow. A newer change cancels the older one.
      */
-    private fun knotFor(board: WallGameBoard?, players: Int, knot: KnotState, spacing: KnotSpacing = knot.spacing): KnotState {
+    private fun refreshKnot(players: Int = mutableState.value.knot.players, spacing: KnotSpacing = mutableState.value.knot.spacing) {
+        val board = mutableState.value.board
         val colours = board?.let { Knot.colours(it.brand) }
         val unit = board?.let { Knot.metresPerUnit(it.brand) }
+        knotJob?.cancel()
         if (board == null || colours == null || unit == null) {
-            return knot.copy(colours = null, maxClimbers = 0, layout = null, spacings = emptySet())
+            mutableState.update { it.copy(knot = it.knot.copy(colours = null, maxClimbers = 0, layout = null, spacings = emptySet(), pending = false)) }
+            return
         }
         val max = Knot.maxClimbers(board.rows, unit)
         val count = players.coerceIn(Knot.PLAYERS)
-        val atWall = minOf(count, max.coerceAtLeast(1))
-        val big = knotBigHolds.orEmpty()
-        // Whether a spacing fits doesn't depend on the draw: the plain field tells.
-        val playable = KnotSpacing.entries.filter { Knot.layout(board.rows, atWall, colours, unit, big, it) != null }.toSet()
-        val chosen = spacing.takeIf { it in playable } ?: KnotSpacing.CLOSE
-        val draw = knotHandGrades.takeIf { it.isNotEmpty() }?.let { KnotDraw(knotSeed, it, knotLastSpots) }
-        val started = SystemClock.elapsedRealtime()
-        val layout = Knot.layout(board.rows, atWall, colours, unit, big, chosen, draw)
-        // How long a field takes, and whether it was drawn, to check on a phone with a real catalogue.
-        Log.i(TAG, "Knot field: ${layout?.spots?.size ?: 0} spots for $atWall, $chosen, ${if (draw != null) "drawn" else "nearest"} in ${SystemClock.elapsedRealtime() - started} ms")
-        return knot.copy(
-            colours = colours,
-            maxClimbers = max,
-            players = count,
-            spacing = chosen,
-            spacings = playable,
-            layout = layout,
-        )
+        mutableState.update { it.copy(knot = it.knot.copy(colours = colours, maxClimbers = max, players = count, spacing = spacing, pending = true)) }
+        val input = KnotInput(board.rows, minOf(count, max.coerceAtLeast(1)), colours, unit, spacing, knotBigHolds.orEmpty(),
+            knotHandGrades.takeIf { it.isNotEmpty() }?.let { KnotDraw(knotSeed, it, knotLastSpots) })
+        knotJob = viewModelScope.launch {
+            val field = withContext(Dispatchers.Default) { knotField(input) }
+            mutableState.update {
+                it.copy(knot = it.knot.copy(spacing = field.spacing, spacings = field.spacings, sameReach = field.sameReach,
+                    layout = field.layout, reachM = field.reachM, pending = false))
+            }
+        }
     }
 
     override fun setKnotSpacing(spacing: KnotSpacing) {
         if (mutableState.value.running) return
-        mutableState.update { it.copy(knot = knotFor(it.board, it.knot.players, it.knot, spacing)) }
+        refreshKnot(spacing = spacing)
     }
 
     /** Looks once for the board's big holds. */
@@ -455,13 +458,13 @@ class WallGamesViewModel @Inject constructor(
             if (big.isEmpty() && grades.isEmpty()) return@launch
             knotBigHolds = big
             knotHandGrades = grades
-            mutableState.update { it.copy(knot = knotFor(it.board, it.knot.players, it.knot)) }
+            refreshKnot()
         }
     }
 
     override fun setKnotPlayers(players: Int) {
         if (mutableState.value.running) return
-        mutableState.update { it.copy(knot = knotFor(it.board, players, it.knot)) }
+        refreshKnot(players = players)
     }
 
     override fun setKnotName(climber: Int, name: String) {
@@ -504,7 +507,7 @@ class WallGamesViewModel @Inject constructor(
         // The next game gets a fresh field, away from this one's holds.
         knotLastSpots = layout.spots
         knotSeed = knotSeeds.nextLong()
-        mutableState.update { it.copy(knot = knotFor(it.board, it.knot.players, it.knot)) }
+        refreshKnot()
     }
 
     /** A short beep, so the climbers listen, then the call. The sound switch silences both. */
@@ -531,7 +534,11 @@ class WallGamesViewModel @Inject constructor(
             return
         }
         if (s.game == WallGame.KNOT) {
-            lightKnot(s)
+            // The field for the settings shown, once it's worked out.
+            viewModelScope.launch {
+                knotJob?.join()
+                lightKnot(mutableState.value)
+            }
             return
         }
         val timeline = timelineFor(s) ?: return
@@ -691,4 +698,45 @@ internal suspend fun sendKnotToBoard(ble: BoardBleConnection, board: WallGameBoa
         else -> false
     }
     return if (sent) null else WallSendProblem.FAILED
+}
+
+/** What Knot's field depends on, taken on the main thread. */
+internal class KnotInput(
+    val rows: WallRows,
+    val atWall: Int,
+    val colours: List<KnotColour>,
+    val unit: Double,
+    val spacing: KnotSpacing,
+    val bigHolds: Set<Int>,
+    val draw: KnotDraw?,
+)
+
+/** Knot's field worked out from a [KnotInput]: the spacing it ended up with and the ones on offer. */
+internal class KnotFieldResult(
+    val spacing: KnotSpacing,
+    val spacings: Set<KnotSpacing>,
+    val sameReach: Set<KnotSpacing>,
+    val layout: KnotLayout?,
+    val reachM: Double?,
+)
+
+/**
+ * Knot's field for [input], pure and slow enough to keep off the main thread. A spacing the wall can't keep playable
+ * for that many climbers is offered greyed out, as is one that reaches no further than a closer one (the same stripes);
+ * the field then falls back to the closest that fits.
+ */
+internal fun knotField(input: KnotInput): KnotFieldResult {
+    // Whether a spacing fits and what it changes don't depend on the draw: the plain fields tell.
+    val plain = KnotSpacing.entries.associateWith { Knot.layout(input.rows, input.atWall, input.colours, input.unit, input.bigHolds, it) }
+    val playable = plain.filterValues { it != null }.keys
+    val sameReach = playable.filterTo(mutableSetOf()) { spacing ->
+        KnotSpacing.entries.any { closer -> closer < spacing && closer in playable && plain[closer]!!.stripes.size == plain[spacing]!!.stripes.size }
+    }
+    val offered = playable - sameReach
+    val chosen = input.spacing.takeIf { it in offered } ?: offered.minOrNull() ?: KnotSpacing.CLOSE
+    val started = SystemClock.elapsedRealtime()
+    val layout = if (input.draw == null) plain[chosen] else Knot.layout(input.rows, input.atWall, input.colours, input.unit, input.bigHolds, chosen, input.draw)
+    // How long a field takes, and whether it was drawn, to check on a phone with a real catalogue.
+    Log.i("WallGames", "Knot field: ${layout?.spots?.size ?: 0} spots for ${input.atWall}, $chosen, ${if (input.draw != null) "drawn" else "nearest"} in ${SystemClock.elapsedRealtime() - started} ms")
+    return KnotFieldResult(chosen, offered, sameReach, layout, layout?.let { Knot.handReach(input.rows, it, input.unit) })
 }

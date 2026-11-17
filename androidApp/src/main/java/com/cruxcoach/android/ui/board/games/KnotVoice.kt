@@ -41,7 +41,7 @@ class KnotVoice @Inject constructor(@ApplicationContext private val context: Con
         queue.removeAll { !it.toWall }
         if (current?.toWall != true) {
             handler.removeCallbacksAndMessages(null)
-            runCatching { player?.stop() }
+            silence()
             current = null
         }
         enqueue(false, clipNames(call, solo), afterMs, cue)
@@ -63,7 +63,15 @@ class KnotVoice @Inject constructor(@ApplicationContext private val context: Con
         handler.removeCallbacksAndMessages(null)
         queue.clear()
         current = null
-        runCatching { player?.stop() }
+        silence()
+    }
+
+    /**
+     * Cuts off the clip playing now. `reset()`, not `stop()`: a clip still preparing can't be stopped (the error was
+     * swallowed and the clip started anyway once prepared); after a reset it never starts.
+     */
+    private fun silence() {
+        runCatching { player?.reset() }
     }
 
     fun release() {

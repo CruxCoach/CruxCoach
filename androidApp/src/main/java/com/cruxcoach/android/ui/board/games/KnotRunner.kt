@@ -42,6 +42,8 @@ data class KnotRun(
     val callLeftMs: Long = 0,
     /** The player called to the wall from the line, until their first call. */
     val stepIn: Int? = null,
+    /** By tap: the call has blinked, so a tap now calls the next one. */
+    val tapReady: Boolean = false,
     /** Whoever won: the last one on the wall, or with a line the most calls held; null on a tie or when stopped. */
     val winner: Int? = null,
     /** Ended with Stop before anyone won. */
@@ -148,9 +150,7 @@ internal class KnotRunner(
                     wait(TICK_MS)
                     continue
                 }
-                mutableRun.update { r -> r.copy(call = call, callLeftMs = callMs, stepIn = r.stepIn.takeUnless { it == call.climber }) }
-                // A tap before this call was up doesn't skip it.
-                while (taps.tryReceive().isSuccess) Unit
+                mutableRun.update { r -> r.copy(call = call, callLeftMs = callMs, tapReady = false, stepIn = r.stepIn.takeUnless { it == call.climber }) }
                 onCall(call)
                 // The call's own work on the phone (screen, beep, voice) comes first: a blink that started with it lost
                 // its first dark phase on a slow phone (30 ms instead of 250). The first call also follows the switch
@@ -168,7 +168,12 @@ internal class KnotRunner(
                     spent += 2 * BLINK_MS
                     mutableRun.update { it.copy(callLeftMs = (callMs - spent).coerceAtLeast(0)) }
                 }
-                if (callMs <= 0) taps.receive()
+                if (callMs <= 0) {
+                    // Taps before the call has blinked don't count: a double tap must not skip a call.
+                    while (taps.tryReceive().isSuccess) Unit
+                    mutableRun.update { it.copy(tapReady = true) }
+                    taps.receive()
+                }
                 while (spent < callMs) {
                     val step = minOf(TICK_MS, callMs - spent)
                     wait(step)
@@ -187,7 +192,7 @@ internal class KnotRunner(
     /** Someone below calls the next one (when the calls come by tap). */
     fun next() {
         val run = mutableRun.value
-        if (run.phase == KnotPhase.RUNNING && run.byTap) taps.trySend(Unit)
+        if (run.phase == KnotPhase.RUNNING && run.byTap && run.tapReady) taps.trySend(Unit)
     }
 
     /**

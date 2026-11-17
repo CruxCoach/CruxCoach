@@ -591,6 +591,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Quantum four colors with up to 92 LEDs each; Shiny Wall is not supported yet.
 
 ### Fixed
+- The hang timer's spoken countdown can find the phone's text-to-speech engine
+  on Android 11 and newer: the app now declares that it looks for one. Without
+  an engine the timer still beeps and vibrates; no engine is required.
 - Settings → Board catalogues no longer shows loaded catalogues as "not loaded"
   with a download button for the first seconds after opening; the boards show a
   small loading sign until their counts are read.

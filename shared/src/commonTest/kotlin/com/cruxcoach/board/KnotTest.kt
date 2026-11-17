@@ -272,6 +272,30 @@ class KnotTest {
     }
 
     @Test
+    fun aStripeWithoutHoldsMustNotLeaveAColourOutOfReach() {
+        // Two climbers at Wide on the 12x12: five stripes of 40 cm from about 33 inches on, the colours 0 1 2 3 0. The
+        // last stripe loses its hand holds, so the right climber's nearest hand spot of colour 0 lies in the first
+        // stripe, more than a metre away.
+        val gap = WallRows.of(kilter12x12.rows.holds.filterNot { it.x in 95.0..112.0 && it.y in 37.0..86.0 })
+        val board = Board("12x12 without hand holds in the last stripe", gap, INCH_M, aurora)
+        assertNotNull(layout(kilter12x12, 2, KnotSpacing.WIDE))
+        assertNull(layout(board, 2, KnotSpacing.WIDE))
+        assertNull(layout(board, 2, KnotSpacing.WIDE, KnotDraw(1, randomGrades)))
+        // Every field that does light keeps each colour's hand and foot spots within reach of every climber.
+        for ((b, climbers) in playable + (board to 1)) for (spacing in KnotSpacing.entries) {
+            val field = layout(b, climbers, spacing) ?: continue
+            val left = b.rows.holds.minOf { it.x } * b.metresPerUnit
+            val right = b.rows.holds.maxOf { it.x } * b.metresPerUnit
+            val width = minOf(Knot.fieldWidthM(climbers), right - left + 0.2)
+            for (hands in listOf(true, false)) {
+                val spots = field.stripes.indices.flatMap { i -> (if (hands) field.stripes[i].first else field.stripes[i].second).map { xM(b, it) to field.pattern[i] } }
+                val (farthest, _) = Knot.reach((left + right) / 2 - width / 2, width, climbers, spots, b.colours.size)
+                assertTrue(farthest <= spacing.reachM + Knot.REACH_SLACK_M, "${b.name}, $climbers, $spacing: ${if (hands) "hand" else "foot"} $farthest m")
+            }
+        }
+    }
+
+    @Test
     fun theStripeCountFollowsTheReachAtTheStripesMiddles() {
         // Two climbers on 2.0 m: close needs the colours almost twice, wide not quite twice.
         assertEquals(7, Knot.stripeCount(2.0, 2, aurora, KnotSpacing.CLOSE))
