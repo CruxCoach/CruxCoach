@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import android.util.Log
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.devcontact.MessageText
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import kotlinx.coroutines.launch
 
@@ -139,7 +140,7 @@ private fun CrashReportViewerDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.crash_viewer_title)) },
         text = {
-            Text(
+            MessageText(
                 text = reportText,
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,

@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -152,14 +153,14 @@ private fun OriginalMessageCard(message: UiMessage) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             message.subject?.let { subject ->
-                Text(
+                MessageText(
                     text = subject,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            Text(
+            MessageText(
                 text = message.content,
                 style = MaterialTheme.typography.bodyMedium
             )
@@ -215,10 +216,11 @@ private fun ThreadBubble(message: UiMessage) {
                     .background(bubbleColor)
                     .padding(12.dp)
             ) {
-                Text(
+                MessageText(
                     text = message.content,
                     color = textColor,
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodyMedium,
+                    selectionColors = if (isSent) onAccentSelectionColors(textColor) else LocalTextSelectionColors.current
                 )
             }
 
