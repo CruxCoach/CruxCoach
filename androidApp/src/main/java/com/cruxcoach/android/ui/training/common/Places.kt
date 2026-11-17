@@ -88,6 +88,13 @@ fun placeTemplate(kind: PlaceKind): Set<EquipmentV2> = when (kind) {
 } + ALWAYS_THERE
 
 /**
+ * The kind of a first place, from the "Where do you usually train?" preset still
+ * ticked in its equipment: "Climbing gym" makes a gym, not a home. Anything else is a home.
+ */
+fun placeKindOf(equipment: Set<EquipmentV2>): PlaceKind =
+    listOf(PlaceKind.GYM, PlaceKind.TRAVEL).firstOrNull { placeTemplate(it) == equipment + ALWAYS_THERE } ?: PlaceKind.HOME
+
+/**
  * The places for the settings: a card per place with the default marked;
  * tapping a card opens its name and equipment. Every change is kept at once.
  */

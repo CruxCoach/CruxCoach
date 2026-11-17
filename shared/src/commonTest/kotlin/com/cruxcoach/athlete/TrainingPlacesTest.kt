@@ -33,6 +33,18 @@ class TrainingPlacesTest {
     }
 
     @Test
+    fun aFirstPlaceTakesItsKindAndLaterEditsKeepIt() {
+        // Someone who mostly trains in a gym gets a gym, not a home (RC1 walk, 17 Nov).
+        val first = TrainingPlaces.withEquipment(AthleteProfile(), null, gym, today, PlaceKind.GYM)
+        assertEquals(PlaceKind.GYM, TrainingPlaces.default(first)?.kind)
+        val edited = TrainingPlaces.withEquipment(first, null, gym + EquipmentV2.RINGS, today, PlaceKind.HOME)
+        assertEquals(1, TrainingPlaces.of(edited).size)
+        assertEquals(PlaceKind.GYM, TrainingPlaces.default(edited)?.kind)
+        // Without a kind the first place is a home, as before.
+        assertEquals(PlaceKind.HOME, TrainingPlaces.default(TrainingPlaces.withEquipment(AthleteProfile(), null, home, today))?.kind)
+    }
+
+    @Test
     fun aPlacePickedForTodayIsBackToTheDefaultTomorrow() {
         val (withGym, gymId) = TrainingPlaces.add(TrainingPlaces.withEquipment(AthleteProfile(), null, home, today), PlaceKind.GYM, gym, today)
         assertEquals(home, withGym.equipment) // the first place stays the default

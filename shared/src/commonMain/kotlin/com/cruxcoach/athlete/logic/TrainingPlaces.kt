@@ -57,14 +57,16 @@ object TrainingPlaces {
 
     /**
      * New equipment for a place, the place in use when [placeId] is null. The
-     * first edit of a profile without places creates its first place.
+     * first edit of a profile without places creates its first place, of [newKind].
      */
-    fun withEquipment(p: AthleteProfile, placeId: String?, equipment: Set<EquipmentV2>, day: String): AthleteProfile {
+    fun withEquipment(
+        p: AthleteProfile, placeId: String?, equipment: Set<EquipmentV2>, day: String, newKind: PlaceKind = PlaceKind.HOME,
+    ): AthleteProfile {
         val list = of(p)
         // A day without equipment has none to edit: the change goes to the default place.
         val id = placeId ?: current(p, day)?.id?.takeIf { it != NO_GEAR_ID } ?: default(p)?.id
         val places = if (id != null && list.any { it.id == id }) list.map { if (it.id == id) it.copy(equipment = equipment) else it }
-            else list + TrainingPlace(id ?: nextId(list), PlaceKind.HOME, null, equipment)
+            else list + TrainingPlace(id ?: nextId(list), newKind, null, equipment)
         return inUse(p.copy(places = places, equipmentConfigured = true), day)
     }
 

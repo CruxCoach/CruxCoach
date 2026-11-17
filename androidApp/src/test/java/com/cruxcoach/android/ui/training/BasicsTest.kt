@@ -12,8 +12,10 @@ import com.cruxcoach.android.ui.training.basics.BasicsGateViewModel
 import com.cruxcoach.android.ui.training.basics.BasicsScreen
 import com.cruxcoach.android.ui.training.basics.BasicsViewModel
 import com.cruxcoach.athlete.catalog.EquipmentV2
+import com.cruxcoach.athlete.logic.TrainingPlaces
 import com.cruxcoach.athlete.model.BodyMetric
 import com.cruxcoach.athlete.model.ExperienceBand
+import com.cruxcoach.athlete.model.PlaceKind
 import com.cruxcoach.athlete.model.Sex
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -66,6 +68,21 @@ class BasicsTest : AthleteScreenTest() {
         assertEquals(BasicsViewModel.ageBandFor(service.today().year - 1990), p.coach.ageBand)
         assertTrue(p.equipmentConfigured && EquipmentV2.HANGBOARD in p.equipment)
         assertTrue(p.basicsAsked)
+    }
+
+    @Test
+    fun `mostly training in a gym makes the first place a gym`() {
+        val vm = loaded(BasicsViewModel(service))
+        render { BasicsScreen(onDone = {}, viewModel = vm) }
+        waitForTag("basics_page_0")
+        click("basics_next")
+        waitForTag("basics_page_1")
+        click("preset_gym")
+        click("basics_done")
+        compose.waitUntil(WAIT_MS) { repo.profile().basicsAsked }
+        val place = TrainingPlaces.default(repo.profile())!!
+        assertEquals(PlaceKind.GYM, place.kind)
+        assertTrue(EquipmentV2.CAMPUS_BOARD in place.equipment)
     }
 
     @Test

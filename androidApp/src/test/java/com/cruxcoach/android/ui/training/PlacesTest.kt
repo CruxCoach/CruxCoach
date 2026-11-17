@@ -9,6 +9,8 @@ import com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen
 import com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel
 import com.cruxcoach.android.ui.training.athlete.SettingsSection
 import com.cruxcoach.android.ui.training.common.PlacePicker
+import com.cruxcoach.android.ui.training.common.placeKindOf
+import com.cruxcoach.android.ui.training.common.placeTemplate
 import com.cruxcoach.android.ui.training.today.TodayViewModel
 import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.logic.TrainingPlaces
@@ -56,6 +58,22 @@ class PlacesTest : AthleteScreenTest() {
         click("place_default_${gym.id}")
         compose.waitUntil(WAIT_MS) { repo.profile().defaultPlaceId == gym.id }
         assertTrue(EquipmentV2.HANGBOARD in repo.profile().equipment)
+    }
+
+    @Test
+    fun `a first place takes the kind of the preset it was filled with`() {
+        assertEquals(PlaceKind.GYM, placeKindOf(placeTemplate(PlaceKind.GYM)))
+        assertEquals(PlaceKind.TRAVEL, placeKindOf(placeTemplate(PlaceKind.TRAVEL) - EquipmentV2.MAT))
+        assertEquals(PlaceKind.HOME, placeKindOf(placeTemplate(PlaceKind.HOME)))
+        // A preset changed by hand is no longer that preset.
+        assertEquals(PlaceKind.HOME, placeKindOf(placeTemplate(PlaceKind.GYM) - EquipmentV2.CABLE))
+        // The equipment sheets on Today, the exercises and the coach setup save through the service.
+        service.savePlaceEquipment(null, placeTemplate(PlaceKind.GYM))
+        assertEquals(PlaceKind.GYM, TrainingPlaces.default(repo.profile())?.kind)
+        // Later edits change the equipment, not the kind.
+        service.savePlaceEquipment(null, home)
+        assertEquals(PlaceKind.GYM, TrainingPlaces.default(repo.profile())?.kind)
+        assertEquals(home, repo.profile().equipment)
     }
 
     @Test

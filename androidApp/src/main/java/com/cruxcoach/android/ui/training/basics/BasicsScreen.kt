@@ -90,9 +90,10 @@ class BasicsViewModel @Inject constructor(private val service: AthleteService) :
             repo.saveMeasurement(BodyMeasurement(today.toString(), BodyMetric.HEIGHT.key, heightCm, "cm", now))
         }
         repo.updateProfile { p ->
-            // The equipment asked here is the default place's (usually at home).
+            // The equipment asked here is the default place's; a first place is where the athlete said they train.
             val placed = equipment?.let {
-                com.cruxcoach.athlete.logic.TrainingPlaces.withEquipment(p, com.cruxcoach.athlete.logic.TrainingPlaces.default(p)?.id, it, today.toString())
+                com.cruxcoach.athlete.logic.TrainingPlaces.withEquipment(p, com.cruxcoach.athlete.logic.TrainingPlaces.default(p)?.id, it, today.toString(),
+                    com.cruxcoach.android.ui.training.common.placeKindOf(it))
             } ?: p
             placed.copy(
                 birthYear = birthYear ?: p.birthYear,
