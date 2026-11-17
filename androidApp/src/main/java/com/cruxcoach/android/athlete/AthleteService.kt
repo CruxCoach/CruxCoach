@@ -1515,9 +1515,12 @@ class AthleteService @Inject constructor(
 
     fun pickPlace(placeId: String) = repo.updateProfile { TrainingPlaces.pick(it, placeId, today().toString()) }
 
-    /** New equipment for a place; null is where the athlete trains today. */
+    /** New equipment for a place; null is where the athlete trains today. A first place takes the kind of its preset. */
     fun savePlaceEquipment(placeId: String?, equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) =
-        repo.updateProfile { TrainingPlaces.withEquipment(it, placeId, equipment, today().toString()) }
+        repo.updateProfile {
+            TrainingPlaces.withEquipment(it, placeId, equipment, today().toString(),
+                com.cruxcoach.android.ui.training.common.placeKindOf(equipment))
+        }
 
     /** Adds a place filled with [equipment] and returns its id. */
     fun addPlace(kind: PlaceKind, equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>): String {
