@@ -588,7 +588,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Training: "Why this suggestion?" no longer says fingers have the most left to do
   this week when their week is already met (for example during an injury that
   pauses climbing); it names the area that is behind, or says the fingers have
-  had their sessions.
+  had their sessions, or that the week plans no finger training.
 - A phone that never touched nearby sharing now asks "Release connection?" when
   someone nearby wants the board, instead of rejecting every request. The sharing
   text already said that nearby users can ask.

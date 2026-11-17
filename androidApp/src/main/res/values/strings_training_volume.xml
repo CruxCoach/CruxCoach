@@ -28,6 +28,7 @@
     <string name="trv_reason_weekly">Your weekly plan: this area has the most left to do this week.</string>
     <string name="trv_reason_weekly_area">Your weekly plan: %1$s has the most left to do this week.</string>
     <string name="trv_reason_finger_week_met">Your weekly plan: your fingers have had their sessions this week, so there is no finger training today.</string>
+    <string name="trv_reason_no_finger_week">Your weekly plan has no finger training this week, so there is none today.</string>
     <string name="trv_reason_week_full">This week already has most of these sets, so today plans fewer of them.</string>
     <string name="trv_reason_week_climbing_ahead">The climbing you still plan this week adds pulling and core work, so today plans fewer of these sets.</string>
     <string name="trv_reason_week_done">This week already has its sets for this kind of training, so today is an easy mobility session. Pick a kind of training to train anyway.</string>

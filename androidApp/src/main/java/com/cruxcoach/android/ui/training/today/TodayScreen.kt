@@ -1276,6 +1276,16 @@ internal fun weeklyTargetMeant(basedOn: List<com.cruxcoach.athlete.logic.Evidenc
     return weekly.firstOrNull { it.done < it.target } ?: weekly.firstOrNull { it.isFingerWeekMet } ?: weekly.firstOrNull()
 }
 
+/**
+ * The sentence for that line. A finger target of 0 (climbing paused, both hands hurt) counts as met, but the fingers
+ * had no sessions: the week has none planned (owner 2026-11-17, after #140).
+ */
+internal fun weeklyReasonRes(w: com.cruxcoach.athlete.logic.Evidence.WeeklyTarget): Int = when {
+    w.isFingerWeekMet && w.target == 0 -> R.string.trv_reason_no_finger_week
+    w.isFingerWeekMet -> R.string.trv_reason_finger_week_met
+    else -> R.string.trv_reason_weekly_area
+}
+
 /** A reason with today's details where it has them ("Heute geschont: Schulter …", "Wie meist am Montag: …"). */
 @Composable
 private fun suggestionReasonText(reason: SuggestionReason, state: TodayState): String {
@@ -1304,8 +1314,7 @@ private fun suggestionReasonText(reason: SuggestionReason, state: TodayState): S
     // The weekly plan names the area it means (device test 2026-10-17: "this area" on a finger day meant pull).
     if (reason == SuggestionReason.WEEKLY_TARGET) {
         weeklyTargetMeant(state.suggestion?.basedOn.orEmpty())?.let { w ->
-            return if (w.isFingerWeekMet) stringResource(R.string.trv_reason_finger_week_met)
-            else stringResource(R.string.trv_reason_weekly_area, com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(w.area))
+            return stringResource(weeklyReasonRes(w), com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(w.area))
         }
     }
     // A comeback stage says how to climb (owner 2026-10-20): its own words, and why lighter.

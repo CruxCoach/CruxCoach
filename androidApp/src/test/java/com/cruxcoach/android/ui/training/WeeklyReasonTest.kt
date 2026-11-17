@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.training
 
+import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.training.today.weeklyReasonRes
 import com.cruxcoach.android.ui.training.today.weeklyTargetMeant
 import com.cruxcoach.athlete.logic.Evidence
 import com.cruxcoach.athlete.logic.VolumeArea
@@ -31,6 +33,15 @@ class WeeklyReasonTest {
     fun `fingers behind are named like any area`() {
         val fingersBehind = Evidence.WeeklyTarget(VolumeArea.FINGER, 1, 2)
         assertEquals(fingersBehind, weeklyTargetMeant(listOf(fingersBehind, pullBehind)))
+    }
+
+    @Test
+    fun `each weekly line gets the sentence that fits it`() {
+        // Climbing paused, nothing else behind (owner 2026-11-17): the week has no finger sessions, none were had.
+        assertEquals(R.string.trv_reason_no_finger_week, weeklyReasonRes(weeklyTargetMeant(listOf(fingersMet))!!))
+        assertEquals(R.string.trv_reason_finger_week_met, weeklyReasonRes(Evidence.WeeklyTarget(VolumeArea.FINGER, 2, 2)))
+        assertEquals(R.string.trv_reason_weekly_area, weeklyReasonRes(Evidence.WeeklyTarget(VolumeArea.FINGER, 1, 2)))
+        assertEquals(R.string.trv_reason_weekly_area, weeklyReasonRes(pullBehind))
     }
 
     @Test
