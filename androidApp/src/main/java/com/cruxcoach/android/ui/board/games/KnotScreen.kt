@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
+import com.cruxcoach.android.ui.training.workouts.EditorStepper
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -89,18 +90,16 @@ internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.knot_climbers), style = MaterialTheme.typography.titleSmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Knot.PLAYERS.forEach { count ->
-                FilterChip(
-                    selected = count == knot.players,
-                    onClick = { actions.setKnotPlayers(count) },
-                    label = { Text(count.toString()) },
-                    colors = chipColors(),
-                    modifier = Modifier.testTag("knot_climbers_$count"),
-                )
-            }
-        }
+        // Eight in one row: a stepper, as eight chips would take two rows.
+        EditorStepper(
+            label = stringResource(R.string.knot_climbers),
+            value = knot.players,
+            step = 1,
+            min = Knot.PLAYERS.first,
+            max = Knot.PLAYERS.last,
+            tag = "knot_players",
+            onChange = actions::setKnotPlayers,
+        )
         // More players than the wall takes: the others wait in line.
         if (knot.players > knot.atWall) {
             Text(
@@ -265,6 +264,24 @@ internal fun KnotRunContent(state: WallGamesState, actions: WallGamesActions, mo
         modifier = modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // The next in line, called to the wall: a notice of its own above the call, where everyone looks after the beep.
+        val stepIn = run.stepIn
+        if (stepIn != null && run.active) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().testTag("knot_step_in"),
+                color = CruxCoachDesign.colors.brandAccentContainer,
+                contentColor = CruxCoachDesign.colors.onBrandAccentContainer,
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Text(
+                    stringResource(R.string.knot_to_wall, shownName(state.knot, stepIn)),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+        }
         Surface(
             modifier = Modifier.fillMaxWidth().testTag("knot_run"),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
@@ -348,17 +365,6 @@ private fun KnotLine(knot: KnotState) {
 @Composable
 private fun KnotCallPanel(knot: KnotState) {
     val run = knot.run
-    // The next in line, called to the wall: on top, where everyone looks after the beep.
-    run.stepIn?.let { stepIn ->
-        Text(
-            stringResource(R.string.knot_to_wall, shownName(knot, stepIn)),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = CruxCoachDesign.colors.brandAccent,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.testTag("knot_step_in"),
-        )
-    }
     val call = run.call ?: return
     Text(
         stringResource(R.string.knot_call_number, call.number),
@@ -436,9 +442,11 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
             val name = if (playing) shownName(knot, index) else climberName(LocalContext.current, knot.names, index, numbered = false)
             // Until the next call, a fresh Out can be undone: the row says so.
             val undo = playing && climber.out && climber.outAtCall == run.call?.number
+            // After a game with a line everyone came off: a ranking by calls held, nobody struck out.
+            val struck = climber.out && (playing || !run.withLine)
             val status = when {
                 undo -> stringResource(R.string.knot_undo)
-                climber.out -> pluralStringResource(R.plurals.knot_out_after, climber.held, climber.held)
+                struck -> pluralStringResource(R.plurals.knot_out_after, climber.held, climber.held)
                 else -> pluralStringResource(R.plurals.knot_held_short, climber.held, climber.held)
             }
             val called = playing && run.call?.climber == index && !climber.out
@@ -450,7 +458,7 @@ private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
                         name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = if (run.winner == index || called) FontWeight.Bold else FontWeight.Normal,
-                        textDecoration = if (climber.out) TextDecoration.LineThrough else null,
+                        textDecoration = if (struck) TextDecoration.LineThrough else null,
                         maxLines = if (compact) 2 else 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = modifier,
