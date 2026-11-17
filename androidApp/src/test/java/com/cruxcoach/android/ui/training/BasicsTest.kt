@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToNode
@@ -83,6 +85,23 @@ class BasicsTest : AthleteScreenTest() {
         val place = TrainingPlaces.default(repo.profile())!!
         assertEquals(PlaceKind.GYM, place.kind)
         assertTrue(EquipmentV2.CAMPUS_BOARD in place.equipment)
+    }
+
+    @Test
+    fun `no answer saves no sex, not the settings' diverse`() {
+        // An earlier answer (here from the settings) is cleared too.
+        repo.updateProfile { it.copy(sex = Sex.FEMALE) }
+        val vm = loaded(BasicsViewModel(service))
+        render { BasicsScreen(onDone = {}, viewModel = vm) }
+        waitForTag("basics_page_0")
+        click("basics_sex_none")
+        compose.onNodeWithTag("basics_sex_none").assertIsSelected()
+        compose.onNodeWithTag("basics_sex_female").assertIsNotSelected()
+        click("basics_next")
+        waitForTag("basics_page_1")
+        click("basics_done")
+        compose.waitUntil(WAIT_MS) { repo.profile().basicsAsked }
+        assertNull(repo.profile().sex)
     }
 
     @Test

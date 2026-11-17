@@ -74,10 +74,11 @@ class BasicsViewModel @Inject constructor(private val service: AthleteService) :
         }
     }
 
-    /** Saves what was entered; values left empty stay as they were. */
+    /** Saves what was entered; values left empty stay as they were. [sexNoAnswer] ("No answer") clears the sex. */
     fun save(
         weightKg: Double?, heightCm: Double?, birthYear: Int?, sex: Sex?,
         grade: String?, experience: ExperienceBand?, equipment: Set<EquipmentV2>?,
+        sexNoAnswer: Boolean = false,
     ) = viewModelScope.launch(Dispatchers.IO) {
         service.ensureReady()
         val repo = service.repo
@@ -97,7 +98,7 @@ class BasicsViewModel @Inject constructor(private val service: AthleteService) :
             } ?: p
             placed.copy(
                 birthYear = birthYear ?: p.birthYear,
-                sex = sex ?: p.sex,
+                sex = if (sexNoAnswer) null else sex ?: p.sex,
                 basicsAsked = true,
                 coach = p.coach.copy(
                     currentGrade = grade ?: p.coach.currentGrade,
@@ -166,6 +167,8 @@ fun BasicsScreen(onDone: () -> Unit, viewModel: BasicsViewModel = hiltViewModel(
     var height by rememberSaveable { mutableStateOf(state.heightCm?.let { formatNumber(Units.lengthToDisplay(it, units)) } ?: "") }
     var year by rememberSaveable { mutableStateOf(p.birthYear?.toString() ?: "") }
     var sex by rememberSaveable { mutableStateOf(p.sex) }
+    // "No answer" saves no sex; it is not the settings' "Diverse".
+    var sexNoAnswer by rememberSaveable { mutableStateOf(false) }
     // The board logbook's working grade is the suggestion when no grade was given yet.
     var grade by rememberSaveable { mutableStateOf(p.coach.currentGrade ?: state.logbookGrade) }
     var experience by rememberSaveable { mutableStateOf(p.coach.experience) }
@@ -181,6 +184,7 @@ fun BasicsScreen(onDone: () -> Unit, viewModel: BasicsViewModel = hiltViewModel(
     fun finish() = viewModel.save(
         weightKg, heightCm, birthYear, sex, grade, experience,
         equipment.mapNotNull { n -> EquipmentV2.entries.firstOrNull { it.name == n } }.toSet().takeIf { it.isNotEmpty() }?.plus(com.cruxcoach.android.ui.training.common.ALWAYS_THERE),
+        sexNoAnswer = sexNoAnswer,
     )
 
     Scaffold(
@@ -234,12 +238,17 @@ fun BasicsScreen(onDone: () -> Unit, viewModel: BasicsViewModel = hiltViewModel(
                     invalid = year.isNotBlank() && birthYear == null, decimal = false)
                 Label(stringResource(R.string.trq_sex))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(Sex.FEMALE to R.string.tra_sex_female, Sex.MALE to R.string.tra_sex_male, Sex.OTHER to R.string.trq_sex_none)
+                    listOf(Sex.FEMALE to R.string.tra_sex_female, Sex.MALE to R.string.tra_sex_male)
                         .forEach { (s, label) ->
-                            FilterChip(selected = sex == s, onClick = { sex = if (sex == s) null else s }, label = { Text(stringResource(label)) },
+                            FilterChip(selected = sex == s, onClick = { sex = if (sex == s) null else s; sexNoAnswer = false },
+                                label = { Text(stringResource(label)) },
                                 leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(sex == s),
                                 modifier = Modifier.testTag("basics_sex_${s.name.lowercase()}"))
                         }
+                    FilterChip(selected = sexNoAnswer, onClick = { sexNoAnswer = !sexNoAnswer; if (sexNoAnswer) sex = null },
+                        label = { Text(stringResource(R.string.trq_sex_none)) },
+                        leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(sexNoAnswer),
+                        modifier = Modifier.testTag("basics_sex_none"))
                 }
                 Spacer(Modifier.height(16.dp))
             } else {
