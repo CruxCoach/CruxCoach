@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.paintbox
 
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.*
+import com.cruxcoach.android.data.BoardStateManager
 import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.CruxRelayState
 import com.cruxcoach.android.data.SessionQueueManager
@@ -11,6 +12,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.*
 import io.mockk.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -23,7 +25,10 @@ class PaintBoxProjectionTest {
     private val sessions = mockk<SessionQueueManager> { every { state } returns sessionState }
     private val relayState = MutableStateFlow(CruxRelayState())
     private val relay = mockk<CruxRelayManager> { every { state } returns relayState }
-    private val projector = PaintProjector(ble, layers, prefs, sessions, relay)
+    private val advertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
+    private val savedClimb = MutableStateFlow<BoardStateManager.LastBoardClimb?>(null)
+    private val boardState = mockk<BoardStateManager>(relaxed = true) { every { lastClimb } returns savedClimb }
+    private val projector = PaintProjector(ble, layers, prefs, sessions, relay, advertiser, boardState)
 
     init {
         every { layers.state } returns MutableStateFlow(BoardLayerState())
@@ -97,6 +102,39 @@ class PaintBoxProjectionTest {
         relayState.value = CruxRelayState()
         assertNull(projector.boardBusy())
         assertTrue(projector.send(doc, mapOf(10 to 3)) { true })
+    }
+    @Test fun `a picture on the board takes the replaced climb out of nearby sharing`() = runTest {
+        kilter()
+        var active = true
+        every { advertiser.hasActiveClimb() } answers { active }
+        every { advertiser.clearClimb() } answers { active = false }
+        every { prefs.nearbyClimbSharing } returns flowOf(true)
+        coEvery { boardState.clearLastClimb() } answers { savedClimb.value = null }
+        savedClimb.value = BoardStateManager.LastBoardClimb("kickboard", 40, "12x12 Kickboard Full")
+        val doc = PaintDocument(board = PaintBoard("kilter", 1, 10), colors = mapOf(10 to 224))
+        // Only a picture that went up replaces the climb.
+        coEvery { ble.sendRawLeds(any(), any(), any()) } returns false
+        assertFalse(projector.send(doc, mapOf(10 to 3)) { true })
+        verify(exactly = 0) { advertiser.clearClimb() }
+        coVerify(exactly = 0) { boardState.clearLastClimb() }
+        coEvery { ble.sendRawLeds(any(), any(), any()) } returns true
+        assertTrue(projector.send(doc, mapOf(10 to 3)) { true })
+        // The phones around see a connected board without a climb, and the chip forgets it.
+        verify(exactly = 1) { advertiser.clearClimb() }
+        coVerify(exactly = 1) { boardState.clearLastClimb() }
+        // Live's next frames find nothing left to clear.
+        assertTrue(projector.send(doc.copy(colors = mapOf(10 to 28)), mapOf(10 to 3)) { true })
+        verify(exactly = 1) { advertiser.clearClimb() }
+        coVerify(exactly = 1) { boardState.clearLastClimb() }
+    }
+    @Test fun `with sharing off a replaced climb is dropped without advertising the board`() = runTest {
+        kilter()
+        every { advertiser.hasActiveClimb() } returns true
+        every { prefs.nearbyClimbSharing } returns flowOf(false)
+        val doc = PaintDocument(board = PaintBoard("kilter", 1, 10), colors = mapOf(10 to 224))
+        assertTrue(projector.send(doc, mapOf(10 to 3)) { true })
+        verify(exactly = 1) { advertiser.clearActiveClimb() }
+        verify(exactly = 0) { advertiser.clearClimb() }
     }
     @Test fun `an API-2 box gets at most one packet of holds`() = runTest {
         kilter(apiLevel = 2)

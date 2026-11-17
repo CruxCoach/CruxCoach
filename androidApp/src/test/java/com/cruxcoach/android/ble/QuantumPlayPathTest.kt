@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattService
 import android.content.Context
+import com.cruxcoach.android.data.BoardStateManager
 import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.CruxRelayState
 import com.cruxcoach.android.data.SessionQueueManager
@@ -338,7 +339,9 @@ class QuantumPlayPathTest {
         val board = FakeController(context).apply { listsPlayedRoutes = false }
         val sessions = mockk<SessionQueueManager> { every { state } returns MutableStateFlow(SessionQueueState()) }
         val relay = mockk<CruxRelayManager> { every { state } returns MutableStateFlow(CruxRelayState()) }
-        val projector = PaintProjector(board.connection, board.layers, mockk<UserPreferences>(relaxed = true), sessions, relay)
+        val boardState = mockk<BoardStateManager>(relaxed = true) { every { lastClimb } returns MutableStateFlow(null) }
+        val projector = PaintProjector(board.connection, board.layers, mockk<UserPreferences>(relaxed = true), sessions, relay,
+            mockk<ClimbBleAdvertiser>(relaxed = true), boardState)
         val colors = PaintPalette.quantum.take(3)
         val picture = PaintDocument(
             board = PaintBoard("quantum", QuantumBoardModel.XL.layoutId.toInt(), QuantumBoardModel.XL.productSizeId.toInt()),

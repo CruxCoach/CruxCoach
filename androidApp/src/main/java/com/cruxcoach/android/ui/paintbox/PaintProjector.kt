@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.paintbox
 
 import com.cruxcoach.android.ble.*
+import com.cruxcoach.android.data.BoardStateManager
 import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.UserPreferences
@@ -22,6 +23,8 @@ class PaintProjector @Inject constructor(
     private val preferences: UserPreferences,
     private val sessions: SessionQueueManager,
     private val relay: CruxRelayManager,
+    private val advertiser: ClimbBleAdvertiser,
+    private val boardState: BoardStateManager,
 ) {
     /**
      * Why PaintBox must leave the board alone right now, or null. A shared session
@@ -86,7 +89,23 @@ class PaintProjector @Inject constructor(
     }
     private class AuroraFrame(val leds: List<Pair<Int, Int>>, val dimmed: Boolean)
 
-    suspend fun send(document: PaintDocument, ledMap: Map<Int, Int>, current: () -> Boolean): Boolean {
+    suspend fun send(document: PaintDocument, ledMap: Map<Int, Int>, current: () -> Boolean): Boolean =
+        write(document, ledMap, current).also { if (it) forgetReplacedClimb() }
+
+    /**
+     * The picture took the place of the climb on the board, so nearby sharing must stop
+     * calling that climb the one on the board, here and to the phones around.
+     */
+    private suspend fun forgetReplacedClimb() {
+        if (advertiser.hasActiveClimb()) {
+            // With sharing off nothing went out, and clearClimb could start advertising the link.
+            if (preferences.nearbyClimbSharing.first()) advertiser.clearClimb() else advertiser.clearActiveClimb()
+        }
+        // Live sends many frames: the saved climb is cleared once.
+        if (boardState.lastClimb.value != null) boardState.clearLastClimb()
+    }
+
+    private suspend fun write(document: PaintDocument, ledMap: Map<Int, Int>, current: () -> Boolean): Boolean {
         requireBoardFree()
         val brand = BoardBrand.fromWire(document.board.brand)
         if (!current() || ble.connectedBoardBrand.value != brand) throw PaintProjectionException(R.string.paintbox_connect_error)
