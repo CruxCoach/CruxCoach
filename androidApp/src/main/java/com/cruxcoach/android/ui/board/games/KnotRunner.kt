@@ -153,9 +153,11 @@ internal class KnotRunner(
                 while (taps.tryReceive().isSuccess) Unit
                 onCall(call)
                 // The call's own work on the phone (screen, beep, voice) comes first: a blink that started with it lost
-                // its first dark phase on a slow phone (30 ms instead of 250).
-                wait(BLINK_LEAD_MS)
-                var spent = BLINK_LEAD_MS
+                // its first dark phase on a slow phone (30 ms instead of 250). The first call also follows the switch
+                // from the countdown to the call screen, which takes longer.
+                val lead = if (call.number == 1) 2 * BLINK_LEAD_MS else BLINK_LEAD_MS
+                wait(lead)
+                var spent = lead
                 // The called spots blink: dark, lit, dark, lit … then stay lit.
                 val dark = field.without(call.colour, hands = call.limb.isHand)
                 repeat(BLINKS) {

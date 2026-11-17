@@ -349,7 +349,7 @@ class KnotRunnerTest {
         runner.out(0)
         // By tap there is no wait: whoever taps "Next call" waits until everyone is ready.
         runner.next()
-        advanceTimeBy(1_750)
+        advanceTimeBy(2_000)
         runCurrent()
         runner.next()
         advanceTimeBy(1_750)
