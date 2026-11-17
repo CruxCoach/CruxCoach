@@ -372,10 +372,12 @@ class WallGamesUiReviewTest {
     fun knotTwoEnd() = shoot("knot-two-end", before = toWall) { Screen(knotIdle(2)) }
 
     @Test
-    fun knotThreeByTap() = shoot("knot-three-by-tap") { Screen(knotIdle(3, byTap = true)) }
+    fun knotThreeByTap() = shoot("knot-three-by-tap", before = toByTap) { Screen(knotIdle(3, byTap = true)) }
+
+    private val toByTap: () -> Unit = { compose.onNodeWithTag("knot_by_tap").performScrollTo() }
 
     @Test
-    fun knotWideGreyedOut() = shoot("knot-spacing-greyed") {
+    fun knotWideGreyedOut() = shoot("knot-spacing-greyed", before = toByTap) {
         val state = knotIdle(3)
         Screen(state.copy(knot = state.knot.copy(spacing = KnotSpacing.MEDIUM, spacings = setOf(KnotSpacing.CLOSE, KnotSpacing.MEDIUM))))
     }

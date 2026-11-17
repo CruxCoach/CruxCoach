@@ -36,6 +36,7 @@ class KnotRunnerTest {
 
     private fun TestScope.runner(log: Log) = KnotRunner(
         scope = backgroundScope,
+        now = { testScheduler.currentTime },
         onWall = { log.walls += it },
         onCall = { log.calls += it },
         onBeep = { log.beeps += it },
@@ -109,7 +110,14 @@ class KnotRunnerTest {
         runner.out(1)
         assertEquals(KnotPhase.RUNNING, runner.run.value.phase)
         assertEquals(setOf(0, 2), runner.run.value.stillIn)
-        // Out twice changes nothing.
+        // A double tap is one tap.
+        advanceTimeBy(300)
+        runner.out(1)
+        assertEquals(setOf(0, 2), runner.run.value.stillIn)
+        // A later tap undoes a wrong one, and a tap after that puts the climber out again.
+        advanceTimeBy(2_000)
+        runner.out(1)
+        assertEquals(setOf(0, 1, 2), runner.run.value.stillIn)
         runner.out(1)
         assertEquals(setOf(0, 2), runner.run.value.stillIn)
         val before = log.walls.size

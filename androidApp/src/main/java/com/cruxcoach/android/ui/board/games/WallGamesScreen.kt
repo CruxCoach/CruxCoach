@@ -587,7 +587,7 @@ private fun RunPanel(state: WallGamesState) {
  * In dp, so the largest font does not push the wall off the screen; the clock is large already.
  */
 @Composable
-internal fun BigText(text: String, maxSize: Dp, modifier: Modifier = Modifier, color: Color = Color.Unspecified) {
+internal fun BigText(text: String, maxSize: Dp, modifier: Modifier = Modifier, color: Color = Color.Unspecified, fill: Boolean = true) {
     val max = with(LocalDensity.current) { maxSize.toSp() }
     BasicText(
         text,
@@ -599,7 +599,7 @@ internal fun BigText(text: String, maxSize: Dp, modifier: Modifier = Modifier, c
             color = color.takeOrElse { MaterialTheme.colorScheme.onSurface },
         ),
         autoSize = TextAutoSize.StepBased(minFontSize = 24.sp, maxFontSize = max),
-        modifier = modifier.fillMaxWidth(),
+        modifier = if (fill) modifier.fillMaxWidth() else modifier,
     )
 }
 

@@ -180,6 +180,7 @@ class WallGamesViewModel @Inject constructor(
     private val sender = WallGameSender(viewModelScope, ::transmit)
     private val knotRunner = KnotRunner(
         scope = viewModelScope,
+        now = SystemClock::elapsedRealtime,
         onWall = ::showKnot,
         onCall = ::announce,
         onBeep = { if (mutableState.value.soundOn) sounds.play(it) },

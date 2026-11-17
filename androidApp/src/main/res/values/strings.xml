@@ -3487,29 +3487,27 @@
     <!-- Knot (#154) -->
     <string name="wall_games_knot">Knot</string>
     <string name="wall_games_knot_desc">A field of colour stripes lights up low on the wall. After a beep the phone calls a player, a hand or a foot and a colour, and those holds blink: move it to a free hold of that colour. One hand or foot per hold; if none of that colour is free, stay where you are.\n\nWhoever comes off, touches the floor, uses an unlit hold or isn’t there in time is out and taps their name. The last one on the wall wins; solo, count the calls you hold.\n\nWith “Tap for the next call”, someone below the wall calls the next one when everyone is ready, without a timer.</string>
-    <string name="knot_climbers">At the wall</string>
+    <string name="knot_climbers">Players at the wall</string>
     <plurals name="knot_board_fits">
         <item quantity="one">This board fits one climber at a time.</item>
         <item quantity="other">This board fits %d climbers at a time.</item>
     </plurals>
     <string name="knot_rounds">More players? Play in rounds: the winner stays and the next one challenges.</string>
-    <string name="knot_player">Player %1$d</string>
-    <string name="knot_name_label">Name of player %1$d</string>
+    <string name="knot_player">Player\u00A0%1$d</string>
     <string name="knot_call_time">%1$s s per call</string>
     <string name="knot_steep">Steep wall (%1$d°): start very easy or set the wall flatter.</string>
     <string name="knot_safety_title">Before you play</string>
-    <string name="knot_safety_text">Knot is played low and close together. Mats under the whole field, nothing on the floor below the wall, and at most three climbers on the wall at once.</string>
+    <string name="knot_safety_text">Knot is played low and close together. Mats under the whole field, nothing on the floor below the wall, and at most three players on the wall at once.</string>
     <string name="knot_unsupported_shinywall">Knot needs holds that light in named colours. The app doesn’t know which colours a Shiny Wall shows, so Knot isn’t available here yet.</string>
     <string name="knot_unsupported">Knot isn’t available for this board.</string>
     <string name="knot_no_field">This wall has too few low holds for a Knot field.</string>
     <string name="knot_light">Light the field</string>
-    <string name="knot_positions">Take your start</string>
+    <string name="knot_positions">Get into position</string>
     <string name="knot_positions_solo">Two hands and two feet on lit holds.</string>
     <string name="knot_part">%1$s: %2$s</string>
     <string name="knot_part_left">left</string>
     <string name="knot_part_middle">middle</string>
     <string name="knot_part_right">right</string>
-    <string name="knot_is_out">out</string>
     <plurals name="knot_held">
         <item quantity="one">%d call held</item>
         <item quantity="other">%d calls held</item>
@@ -3525,13 +3523,22 @@
     <string name="knot_spacing_close">Close</string>
     <string name="knot_spacing_medium">Medium</string>
     <string name="knot_spacing_wide">Wide</string>
-    <string name="knot_spacing_cm">Spots about %1$d\u00A0cm apart</string>
-    <string name="knot_spacing_unavailable">Greyed out: this wall has too few holds for that spacing with this many climbers.</string>
+    <string name="knot_spacing_cm">Holds about %1$d\u00A0cm apart</string>
+    <plurals name="knot_spacing_unavailable">
+        <item quantity="one">%1$s: too few holds here for %2$d player.</item>
+        <item quantity="other">%1$s: too few holds here for %2$d players.</item>
+    </plurals>
     <string name="knot_by_tap">Tap for the next call</string>
     <string name="knot_next_call">Next call</string>
     <string name="knot_tap_name">Off the wall? Tap your name.</string>
     <string name="knot_numbered">%1$d · %2$s</string>
-    <string name="knot_call_who">Call %1$d · %2$s</string>
+    <string name="knot_by_tap_on">No timer: someone below taps “Next call”.</string>
+    <string name="knot_fell">Off the wall</string>
+    <string name="knot_steep_action">Switch to very easy</string>
+    <plurals name="knot_out_after">
+        <item quantity="one">out after %d call</item>
+        <item quantity="other">out after %d calls</item>
+    </plurals>
     <string name="knot_left_hand">left hand</string>
     <string name="knot_right_hand">right hand</string>
     <string name="knot_left_foot">left foot</string>

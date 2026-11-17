@@ -3486,18 +3486,17 @@
     <!-- Knoten (#154) -->
     <string name="wall_games_knot">Knoten</string>
     <string name="wall_games_knot_desc">Unten an der Wand leuchtet ein Feld aus Farbstreifen. Nach einem Piepton ruft das Handy einen Spieler, eine Hand oder einen Fuß und eine Farbe auf, und diese Griffe blinken: Setz sie auf einen freien Griff dieser Farbe. Pro Griff eine Hand oder ein Fuß; ist keiner dieser Farbe frei, bleib, wo du bist.\n\nWer abfällt, den Boden berührt, einen dunklen Griff nimmt oder nicht rechtzeitig da ist, ist raus und tippt auf seinen Namen. Wer zuletzt an der Wand ist, gewinnt; allein zählst du die Ansagen, die du hältst.\n\nMit „Nächste Ansage per Tipp“ ruft jemand unter der Wand die nächste Ansage auf, wenn alle bereit sind, ohne Zeitlimit.</string>
-    <string name="knot_climbers">An der Wand</string>
+    <string name="knot_climbers">Spieler an der Wand</string>
     <plurals name="knot_board_fits">
         <item quantity="one">An dieses Board passt eine Person auf einmal.</item>
         <item quantity="other">An dieses Board passen %d Personen auf einmal.</item>
     </plurals>
-    <string name="knot_rounds">Mehr Leute? Spielt in Runden: Wer gewinnt, bleibt, und die nächste Person fordert heraus.</string>
-    <string name="knot_player">Spieler %1$d</string>
-    <string name="knot_name_label">Name von Spieler %1$d</string>
+    <string name="knot_rounds">Mehr Spieler? Spielt in Runden: Wer gewinnt, bleibt, und der Nächste fordert heraus.</string>
+    <string name="knot_player">Spieler\u00A0%1$d</string>
     <string name="knot_call_time">%1$s s pro Ansage</string>
     <string name="knot_steep">Steile Wand (%1$d°): Fang sehr leicht an oder stell die Wand flacher.</string>
     <string name="knot_safety_title">Bevor ihr spielt</string>
-    <string name="knot_safety_text">Knoten wird tief und eng gespielt. Matten unter das ganze Feld, nichts auf dem Boden unter der Wand und höchstens drei Leute gleichzeitig an der Wand.</string>
+    <string name="knot_safety_text">Knoten wird tief und eng gespielt. Matten unter das ganze Feld, nichts auf dem Boden unter der Wand und höchstens drei Spieler gleichzeitig an der Wand.</string>
     <string name="knot_unsupported_shinywall">Knoten braucht Griffe, die in benannten Farben leuchten. Welche Farben eine Shiny Wall zeigt, weiß die App nicht, deshalb gibt es Knoten hier noch nicht.</string>
     <string name="knot_unsupported">Für dieses Board gibt es Knoten nicht.</string>
     <string name="knot_no_field">An dieser Wand sind zu wenige tiefe Griffe für ein Knoten-Feld.</string>
@@ -3508,7 +3507,6 @@
     <string name="knot_part_left">links</string>
     <string name="knot_part_middle">Mitte</string>
     <string name="knot_part_right">rechts</string>
-    <string name="knot_is_out">raus</string>
     <plurals name="knot_held">
         <item quantity="one">%d Ansage gehalten</item>
         <item quantity="other">%d Ansagen gehalten</item>
@@ -3519,18 +3517,27 @@
     </plurals>
     <string name="knot_call_number">Ansage %1$d</string>
     <string name="knot_wins">%1$s gewinnt</string>
-    <string name="knot_stopped">Abgebrochen</string>
+    <string name="knot_stopped">Gestoppt</string>
     <string name="knot_spacing">Abstand</string>
     <string name="knot_spacing_close">Eng</string>
     <string name="knot_spacing_medium">Mittel</string>
     <string name="knot_spacing_wide">Weit</string>
     <string name="knot_spacing_cm">Griffe etwa %1$d\u00A0cm auseinander</string>
-    <string name="knot_spacing_unavailable">Ausgegraut: Für diesen Abstand hat die Wand zu wenige Griffe bei so vielen Leuten.</string>
+    <plurals name="knot_spacing_unavailable">
+        <item quantity="one">%1$s: zu wenige Griffe hier für %2$d Spieler.</item>
+        <item quantity="other">%1$s: zu wenige Griffe hier für %2$d Spieler.</item>
+    </plurals>
     <string name="knot_by_tap">Nächste Ansage per Tipp</string>
-    <string name="knot_next_call">Nächste Ansage</string>
+    <string name="knot_next_call">Weiter</string>
     <string name="knot_tap_name">Abgefallen? Tipp auf deinen Namen.</string>
     <string name="knot_numbered">%1$d · %2$s</string>
-    <string name="knot_call_who">Ansage %1$d · %2$s</string>
+    <string name="knot_by_tap_on">Ohne Zeitlimit: Jemand unter der Wand tippt „Weiter“.</string>
+    <string name="knot_fell">Abgefallen</string>
+    <string name="knot_steep_action">Auf sehr leicht</string>
+    <plurals name="knot_out_after">
+        <item quantity="one">raus nach %d Ansage</item>
+        <item quantity="other">raus nach %d Ansagen</item>
+    </plurals>
     <string name="knot_left_hand">linke Hand</string>
     <string name="knot_right_hand">rechte Hand</string>
     <string name="knot_left_foot">linker Fuß</string>

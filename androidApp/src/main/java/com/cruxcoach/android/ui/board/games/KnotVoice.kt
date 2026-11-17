@@ -58,12 +58,13 @@ class KnotVoice @Inject constructor(@ApplicationContext private val context: Con
                         .build(),
                 )
                 created.setOnCompletionListener { handler.postDelayed(::playNext, GAP_MS) }
+                created.setOnPreparedListener { it.start() }
                 player = created
             }
             media.reset()
             context.assets.openFd(path).use { media.setDataSource(it.fileDescriptor, it.startOffset, it.length) }
-            media.prepare()
-            media.start()
+            // Off the main thread: a game's screen keeps its frames.
+            media.prepareAsync()
         } catch (e: IOException) {
             skip(path, e)
         } catch (e: RuntimeException) {

@@ -56,6 +56,8 @@ data class KnotRun(
  */
 internal class KnotRunner(
     private val scope: CoroutineScope,
+    /** Monotonic milliseconds, for telling a second tap on a name from a double tap. */
+    private val now: () -> Long,
     private val onWall: (Map<Int, KnotColour>) -> Unit,
     private val onCall: (KnotCall) -> Unit = {},
     private val onBeep: (GameBeep) -> Unit = {},
@@ -65,10 +67,12 @@ internal class KnotRunner(
 
     private var job: Job? = null
     private val taps = Channel<Unit>(Channel.CONFLATED)
+    private val outAt = mutableMapOf<Int, Long>()
 
     /** Lights [field] for [climbers] to take their start positions. */
     fun light(field: KnotField, climbers: Int) {
         job?.cancel()
+        outAt.clear()
         mutableRun.value = KnotRun(phase = KnotPhase.POSITIONS, field = field, climbers = List(climbers) { KnotClimber() })
         onWall(field.spots)
     }
@@ -127,11 +131,21 @@ internal class KnotRunner(
         if (run.phase == KnotPhase.RUNNING && run.byTap) taps.trySend(Unit)
     }
 
-    /** [climber] came off. The last one left wins; solo, the round ends. */
+    /**
+     * [climber] came off. The last one left wins; solo, the round ends. A climber who is out and taps their name
+     * again, not as part of a double tap, is back in: a wrong tap is undone.
+     */
     fun out(climber: Int) {
         val run = mutableRun.value
         if (run.phase != KnotPhase.COUNTDOWN && run.phase != KnotPhase.RUNNING) return
-        if (climber !in run.climbers.indices || run.climbers[climber].out) return
+        if (climber !in run.climbers.indices) return
+        if (run.climbers[climber].out) {
+            if (now() - (outAt[climber] ?: 0L) < DOUBLE_TAP_MS) return
+            outAt.remove(climber)
+            mutableRun.update { r -> r.copy(climbers = r.climbers.mapIndexed { i, c -> if (i == climber) c.copy(out = false) else c }) }
+            return
+        }
+        outAt[climber] = now()
         val climbers = run.climbers.mapIndexed { i, c -> if (i == climber) c.copy(out = true) else c }
         val left = climbers.indices.filter { !climbers[it].out }
         mutableRun.update { it.copy(climbers = climbers) }
@@ -181,5 +195,7 @@ internal class KnotRunner(
         const val TICK_MS = 100L
         const val BLINKS = 3
         const val BLINK_MS = 250L
+        /** A second tap on a name within this time is the same tap. */
+        const val DOUBLE_TAP_MS = 1_000L
     }
 }
