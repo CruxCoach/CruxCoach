@@ -7,6 +7,7 @@ import com.cruxcoach.domain.board.games.KnotColour
 import com.cruxcoach.domain.board.games.KnotField
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +29,7 @@ data class KnotRun(
     val climbers: List<KnotClimber> = emptyList(),
     /** The call on now; it stays on the result as the last one. */
     val call: KnotCall? = null,
+    /** Time per call; 0 when the next call comes by tap ([KnotRunner.next]). */
     val callMs: Long = 0,
     /** Time left for [call]. */
     val callLeftMs: Long = 0,
@@ -36,13 +38,15 @@ data class KnotRun(
 ) {
     val active: Boolean get() = phase == KnotPhase.POSITIONS || phase == KnotPhase.COUNTDOWN || phase == KnotPhase.RUNNING
     val stillIn: Set<Int> get() = climbers.indices.filterTo(mutableSetOf()) { !climbers[it].out }
+    val byTap: Boolean get() = callMs <= 0
 }
 
 /**
  * Plays a round of Knot: the field goes up for the start positions, then the
- * usual countdown, then a call every [KnotRun.callMs] from a [KnotCaller].
- * The called colour blinks on the wall ([BLINKS] times), and a climber who
- * comes off is marked [out]. With more than one climber the round ends when
+ * usual countdown, then a call every [KnotRun.callMs] from a [KnotCaller], or
+ * each time someone below taps [next]. The called colour's hand or foot spots
+ * blink on the wall ([BLINKS] times), and a climber who comes off is marked
+ * [out]. With more than one climber the round ends when
  * one is left (the winner); solo, when the climber is out. The field blinks
  * as a whole at the end, then the wall clears.
  *
@@ -60,6 +64,7 @@ internal class KnotRunner(
     val run: StateFlow<KnotRun> = mutableRun.asStateFlow()
 
     private var job: Job? = null
+    private val taps = Channel<Unit>(Channel.CONFLATED)
 
     /** Lights [field] for [climbers] to take their start positions. */
     fun light(field: KnotField, climbers: Int) {
@@ -68,7 +73,7 @@ internal class KnotRunner(
         onWall(field.spots)
     }
 
-    /** Everyone is in place: the countdown, then the calls, [callMs] apart, from [seed]. */
+    /** Everyone is in place: the countdown, then the calls, [callMs] apart (0: by tap), from [seed]. */
     fun start(callMs: Long, seed: Long) {
         val run = mutableRun.value
         val field = run.field ?: return
@@ -86,17 +91,21 @@ internal class KnotRunner(
             while (true) {
                 val call = caller.next(mutableRun.value.stillIn) ?: break
                 mutableRun.update { it.copy(call = call, callLeftMs = callMs) }
+                // A tap before this call was up doesn't skip it.
+                while (taps.tryReceive().isSuccess) Unit
                 onCall(call)
                 var spent = 0L
-                // The called colour blinks: dark, lit, dark, lit … then stays lit.
+                // The called spots blink: dark, lit, dark, lit … then stay lit.
+                val dark = field.without(call.colour, hands = call.limb.isHand)
                 repeat(BLINKS) {
-                    onWall(field.without(call.colour))
+                    onWall(dark)
                     delay(BLINK_MS)
                     onWall(field.spots)
                     delay(BLINK_MS)
                     spent += 2 * BLINK_MS
                     mutableRun.update { it.copy(callLeftMs = (callMs - spent).coerceAtLeast(0)) }
                 }
+                if (callMs <= 0) taps.receive()
                 while (spent < callMs) {
                     val step = minOf(TICK_MS, callMs - spent)
                     delay(step)
@@ -110,6 +119,12 @@ internal class KnotRunner(
                 }
             }
         }
+    }
+
+    /** Someone below calls the next one (when the calls come by tap). */
+    fun next() {
+        val run = mutableRun.value
+        if (run.phase == KnotPhase.RUNNING && run.byTap) taps.trySend(Unit)
     }
 
     /** [climber] came off. The last one left wins; solo, the round ends. */

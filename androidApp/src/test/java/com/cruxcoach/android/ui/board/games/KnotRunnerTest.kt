@@ -84,16 +84,18 @@ class KnotRunnerTest {
         runner.start(callMs = 3_000, seed = 2)
         advanceTimeBy(5_000)
         runCurrent()
-        val colour = log.calls.single().colour
+        val call = log.calls.single()
         advanceTimeBy(2_000)
         runCurrent()
-        // Field, then dark/lit three times for the called colour.
+        // Field, then dark/lit three times for the called colour's hand or foot spots only.
         val blink = log.walls.drop(1)
         assertEquals(6, blink.size)
+        val dark = field.without(call.colour, hands = call.limb.isHand)
         blink.forEachIndexed { i, wall ->
-            if (i % 2 == 0) assertEquals(field.without(colour), wall) else assertEquals(field.spots, wall)
+            if (i % 2 == 0) assertEquals(dark, wall) else assertEquals(field.spots, wall)
         }
-        assertTrue(blink.first().values.none { it == colour })
+        val stripe = field.stripes.single { it.colour == call.colour }
+        assertEquals((if (call.limb.isHand) stripe.hands else stripe.feet).toSet(), field.spots.keys - dark.keys)
     }
 
     @Test
@@ -184,6 +186,38 @@ class KnotRunnerTest {
 
         runner.reset()
         assertEquals(KnotRun(), runner.run.value)
+    }
+
+    @Test
+    fun byTapTheNextCallComesOnlyWhenSomeoneTaps() = runTest {
+        val log = Log()
+        val runner = runner(log)
+        runner.light(field, climbers = 2)
+        runner.start(callMs = 0, seed = 8)
+        // A tap during the countdown is not a call.
+        runner.next()
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertTrue(runner.run.value.byTap)
+        assertEquals(1, log.calls.size)
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals(1, log.calls.size)
+        assertEquals(0, runner.run.value.climbers[0].held)
+
+        runner.next()
+        runCurrent()
+        assertEquals(2, log.calls.size)
+        assertEquals(1, runner.run.value.climbers[0].held)
+        // A tap during the next call's blink calls the one after once it has blinked; two taps count once.
+        runner.next()
+        runner.next()
+        advanceTimeBy(1_500)
+        runCurrent()
+        assertEquals(3, log.calls.size)
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertEquals(3, log.calls.size)
     }
 
     @Test

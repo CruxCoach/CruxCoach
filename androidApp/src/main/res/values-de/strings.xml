@@ -3485,7 +3485,7 @@
     <string name="wall_games_sound_turn_on">Countdown-Ton einschalten</string>
     <!-- Knoten (#154) -->
     <string name="wall_games_knot">Knoten</string>
-    <string name="wall_games_knot_desc">Unten an der Wand leuchtet ein Feld aus Farbstreifen. Das Handy ruft reihum eine Hand oder einen Fuß und eine Farbe auf: Setz sie auf einen freien Griff dieser Farbe. Pro Griff eine Hand oder ein Fuß; ist keiner dieser Farbe frei, bleib, wo du bist.\n\nRaus ist, wer abfällt, den Boden berührt, einen dunklen Griff nimmt oder nicht rechtzeitig da ist. Wer zuletzt an der Wand ist, gewinnt; allein zählst du die Ansagen, die du hältst.</string>
+    <string name="wall_games_knot_desc">Unten an der Wand leuchtet ein Feld aus Farbstreifen. Nach einem Piepton ruft das Handy einen Spieler, eine Hand oder einen Fuß und eine Farbe auf, und diese Griffe blinken: Setz sie auf einen freien Griff dieser Farbe. Pro Griff eine Hand oder ein Fuß; ist keiner dieser Farbe frei, bleib, wo du bist.\n\nWer abfällt, den Boden berührt, einen dunklen Griff nimmt oder nicht rechtzeitig da ist, ist raus und tippt auf seinen Namen. Wer zuletzt an der Wand ist, gewinnt; allein zählst du die Ansagen, die du hältst.\n\nMit „Nächste Ansage per Tipp“ ruft jemand unter der Wand die nächste Ansage auf, wenn alle bereit sind, ohne Zeitlimit.</string>
     <string name="knot_climbers">An der Wand</string>
     <plurals name="knot_board_fits">
         <item quantity="one">An dieses Board passt eine Person auf einmal.</item>
@@ -3495,14 +3495,7 @@
     <string name="knot_player">Spieler %1$d</string>
     <string name="knot_name_label">Name von Spieler %1$d</string>
     <string name="knot_call_time">%1$s s pro Ansage</string>
-    <string name="knot_calls">Ansagen</string>
-    <string name="knot_spoken">Gesprochen</string>
-    <string name="knot_read_out">Vorgelesen</string>
-    <string name="knot_voice_checking">Suche die Sprachausgabe des Handys …</string>
-    <string name="knot_voice_no_engine">Dieses Handy hat keine Sprachausgabe: Jemand neben der Wand liest die Ansagen vor.</string>
-    <string name="knot_voice_no_language">Die Sprachausgabe des Handys hat keine deutsche Stimme: Jemand neben der Wand liest die Ansagen vor.</string>
-    <string name="knot_reader">Jemand neben der Wand liest die Ansagen vom Bildschirm vor.</string>
-    <string name="knot_steep">Steile Wand (%1$d°): Fang mit Stufe 1 an oder stell die Wand flacher.</string>
+    <string name="knot_steep">Steile Wand (%1$d°): Fang sehr leicht an oder stell die Wand flacher.</string>
     <string name="knot_safety_title">Bevor ihr spielt</string>
     <string name="knot_safety_text">Knoten wird tief und eng gespielt. Matten unter das ganze Feld, nichts auf dem Boden unter der Wand und höchstens drei Leute gleichzeitig an der Wand.</string>
     <string name="knot_unsupported_shinywall">Knoten braucht Griffe, die in benannten Farben leuchten. Welche Farben eine Shiny Wall zeigt, weiß die App nicht, deshalb gibt es Knoten hier noch nicht.</string>
@@ -3511,13 +3504,10 @@
     <string name="knot_light">Feld einschalten</string>
     <string name="knot_positions">Startposition einnehmen</string>
     <string name="knot_positions_solo">Zwei Hände und zwei Füße auf leuchtende Griffe.</string>
-    <string name="knot_positions_parts">Zwei Hände und zwei Füße auf leuchtende Griffe in deinem Teil des Felds:</string>
     <string name="knot_part">%1$s: %2$s</string>
     <string name="knot_part_left">links</string>
     <string name="knot_part_middle">Mitte</string>
     <string name="knot_part_right">rechts</string>
-    <string name="knot_out">Raus</string>
-    <string name="knot_out_named">%1$s ist raus</string>
     <string name="knot_is_out">raus</string>
     <plurals name="knot_held">
         <item quantity="one">%d Ansage gehalten</item>
@@ -3530,8 +3520,11 @@
     <string name="knot_call_number">Ansage %1$d</string>
     <string name="knot_wins">%1$s gewinnt</string>
     <string name="knot_stopped">Abgebrochen</string>
-    <string name="knot_call">%1$s: %2$s auf %3$s</string>
-    <string name="knot_call_solo">%1$s auf %2$s</string>
+    <string name="knot_by_tap">Nächste Ansage per Tipp</string>
+    <string name="knot_next_call">Nächste Ansage</string>
+    <string name="knot_tap_name">Abgefallen? Tipp auf deinen Namen.</string>
+    <string name="knot_numbered">%1$d · %2$s</string>
+    <string name="knot_call_who">Ansage %1$d · %2$s</string>
     <string name="knot_left_hand">linke Hand</string>
     <string name="knot_right_hand">rechte Hand</string>
     <string name="knot_left_foot">linker Fuß</string>

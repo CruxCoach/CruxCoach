@@ -69,7 +69,6 @@ class WallGamesViewModelTest {
     private val session = MutableStateFlow(SessionQueueState())
     private lateinit var ble: BoardBleConnection
     private lateinit var repository: BoardRepository
-    private val voiceStatus = MutableStateFlow(KnotVoiceStatus.NO_ENGINE)
     private lateinit var voice: KnotVoice
 
     @Before
@@ -83,7 +82,7 @@ class WallGamesViewModelTest {
             coEvery { clearBoard(any()) } returns true
         }
         repository = mockk(relaxed = true)
-        voice = mockk(relaxed = true) { every { status } returns voiceStatus }
+        voice = mockk(relaxed = true)
     }
 
     @After
@@ -321,18 +320,20 @@ class WallGamesViewModelTest {
     }
 
     @Test
-    fun knotSpeaksOnlyWhenThePhoneCanAndOtherwiseSaysWhoReads() {
+    fun knotByTapHasNoTimerAndTheSoundSwitchSilencesTheCalls() {
         val vm = kilterViewModel()
         vm.selectGame(WallGame.KNOT)
-        verify { voice.prepare() }
-        assertEquals(KnotVoiceStatus.NO_ENGINE, vm.state.value.knot.voice)
-        assertTrue(!vm.state.value.knot.spoken)
-        voiceStatus.value = KnotVoiceStatus.READY
-        assertTrue(awaitState(vm) { it.knot.voice == KnotVoiceStatus.READY }.knot.spoken)
-        vm.setKnotSpoken(false)
-        assertTrue(!vm.state.value.knot.spoken)
-        vm.setKnotSpoken(true)
-        assertTrue(vm.state.value.knot.spoken)
+        vm.setKnotByTap(true)
+        vm.start()
+        vm.startKnotCalls()
+        val run = vm.state.value.knot.run
+        assertEquals(KnotPhase.COUNTDOWN, run.phase)
+        assertTrue(run.byTap)
+        // While a round runs, the switch stays as it was.
+        vm.setKnotByTap(false)
+        assertTrue(vm.state.value.knot.byTap)
+        vm.setSoundOn(false)
+        verify { voice.stop() }
     }
 
     @Test

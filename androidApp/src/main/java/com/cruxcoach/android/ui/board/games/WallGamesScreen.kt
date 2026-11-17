@@ -90,6 +90,8 @@ import com.cruxcoach.domain.board.games.FloorIsLava
 import com.cruxcoach.domain.board.games.GAME_LEVELS
 import com.cruxcoach.domain.board.games.HoldsThief
 import com.cruxcoach.domain.board.games.Knot
+import com.cruxcoach.domain.board.games.KnotColour
+import androidx.compose.ui.graphics.luminance
 import com.cruxcoach.domain.board.games.TraverseGame
 
 /** What the wall games screen asks for: the view model, or a stand-in in the review renders. */
@@ -107,7 +109,8 @@ interface WallGamesActions {
     fun reset()
     fun setKnotClimbers(climbers: Int) {}
     fun setKnotName(climber: Int, name: String) {}
-    fun setKnotSpoken(spoken: Boolean) {}
+    fun setKnotByTap(byTap: Boolean) {}
+    fun knotNextCall() {}
     fun knotSafetySeen() {}
     fun startKnotCalls() {}
     fun knotOut(climber: Int) {}
@@ -668,6 +671,7 @@ internal fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifi
     val holds = state.shownHolds
     // Knot lights spots in colours: the round's field, or before it where the field will be.
     val paint = if (state.game == WallGame.KNOT) state.knot.run.field?.spots ?: state.knot.previewSpots() else null
+    val lightScreen = MaterialTheme.colorScheme.surface.luminance() > 0.5f
     // A tall wall at full width would push everything else off screen.
     val screenCap = (LocalConfiguration.current.screenHeightDp * BOARD_MAX_HEIGHT_FRACTION).dp
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
@@ -693,7 +697,10 @@ internal fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifi
                     boardSize = board.boardSize,
                     boardImages = board.boardImages,
                     ledColors = board.ledColors,
-                    paintColors = paint?.mapValues { it.value.rgb332 }.orEmpty(),
+                    // White on a light screen would vanish: it shows light grey there, like a lit white LED in a photo.
+                    paintColors = paint?.mapValues { (_, colour) ->
+                        if (colour == KnotColour.WHITE && lightScreen) LIGHT_SCREEN_WHITE else colour.rgb332
+                    }.orEmpty(),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -832,3 +839,5 @@ private const val GO_SHOWN_MS = 800L
 private const val TEMPO_STEP = 0.5
 private const val BOARD_MAX_HEIGHT_FRACTION = 0.6f
 private const val MOONBOARD_ASPECT = 0.72f
+/** RGB332 light grey (#B6B6AA). */
+private const val LIGHT_SCREEN_WHITE = 0xB6

@@ -210,9 +210,13 @@ class KnotTest {
         assertEquals(order, field.colours)
         assertEquals(20, field.spots.size)
         field.stripes.forEachIndexed { i, stripe -> stripe.spots.forEach { assertEquals(order[i], field.spots[it]) } }
-        val dark = field.without(order[0])
-        assertEquals(15, dark.size)
-        assertTrue(dark.values.none { it == order[0] })
+        // A hand call blinks only that colour's hand spots, a foot call only its foot spots.
+        val hands = field.without(order[0], hands = true)
+        assertEquals(17, hands.size)
+        assertEquals(field.stripes[0].feet.toSet(), hands.filterValues { it == order[0] }.keys)
+        val feet = field.without(order[0], hands = false)
+        assertEquals(18, feet.size)
+        assertEquals(field.stripes[0].hands.toSet(), feet.filterValues { it == order[0] }.keys)
     }
 
     @Test

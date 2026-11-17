@@ -48,8 +48,11 @@ data class KnotField(val climbers: Int, val stripes: List<KnotStripe>) {
 
     val colours: List<KnotColour> get() = stripes.map { it.colour }
 
-    /** The field without [colour]'s spots: the dark half of a blink. */
-    fun without(colour: KnotColour): Map<Int, KnotColour> = spots.filterValues { it != colour }
+    /** The field without the spots [call] goes to, [colour]'s hand or foot spots: the dark half of its blink. */
+    fun without(colour: KnotColour, hands: Boolean): Map<Int, KnotColour> {
+        val called = stripes.filter { it.colour == colour }.flatMapTo(mutableSetOf()) { if (hands) it.hands else it.feet }
+        return spots.filterKeys { it !in called }
+    }
 }
 
 /**

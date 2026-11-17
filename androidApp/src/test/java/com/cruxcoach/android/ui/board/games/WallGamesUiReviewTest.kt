@@ -336,7 +336,7 @@ class WallGamesUiReviewTest {
     private val kilter: WallGameBoard by lazy { loadKilter(sizeId = 10).copy(angle = 40) }
 
     /** Knot set up on the Kilter 12x12 for [climbers], as the view model leaves it. */
-    private fun knotIdle(climbers: Int, voice: KnotVoiceStatus = KnotVoiceStatus.READY, safetySeen: Boolean = true): WallGamesState {
+    private fun knotIdle(climbers: Int, safetySeen: Boolean = true, byTap: Boolean = false): WallGamesState {
         val colours = Knot.colours(BoardBrand.KILTER)!!
         return WallGamesState(
             loading = false,
@@ -345,7 +345,7 @@ class WallGamesUiReviewTest {
             knot = KnotState(
                 climbers = climbers,
                 names = listOf("Anna", "Benedikt", "").take(Knot.MAX_CLIMBERS),
-                voice = voice,
+                byTap = byTap,
                 colours = colours,
                 maxClimbers = Knot.maxClimbers(kilter.rows, 0.0254),
                 layout = Knot.layout(kilter.rows, climbers, colours.size, 0.0254),
@@ -354,14 +354,14 @@ class WallGamesUiReviewTest {
         )
     }
 
-    private fun knotRun(climbers: Int, run: (KnotField) -> KnotRun): WallGamesState {
-        val idle = knotIdle(climbers)
+    private fun knotRun(climbers: Int, byTap: Boolean = false, run: (KnotField) -> KnotRun): WallGamesState {
+        val idle = knotIdle(climbers, byTap = byTap)
         val field = idle.knot.layout!!.field(Knot.colourOrder(idle.knot.colours!!, 3))
         return idle.copy(knot = idle.knot.copy(run = run(field)))
     }
 
     @Test
-    fun knotFirstVisit() = shoot("knot-first") { Screen(knotIdle(1, voice = KnotVoiceStatus.NO_ENGINE, safetySeen = false)) }
+    fun knotFirstVisit() = shoot("knot-first") { Screen(knotIdle(1, safetySeen = false)) }
 
     @Test
     fun knotTwo() = shoot("knot-two") { Screen(knotIdle(2)) }
@@ -370,10 +370,7 @@ class WallGamesUiReviewTest {
     fun knotTwoEnd() = shoot("knot-two-end", before = toWall) { Screen(knotIdle(2)) }
 
     @Test
-    fun knotThreeReadOut() = shoot("knot-three-read-out") {
-        val state = knotIdle(3)
-        Screen(state.copy(level = 1, knot = state.knot.copy(spokenChoice = false)))
-    }
+    fun knotThreeByTap() = shoot("knot-three-by-tap") { Screen(knotIdle(3, byTap = true)) }
 
     @Test
     fun knotShinyWall() = shoot("knot-shiny") { Screen(idle.copy(game = WallGame.KNOT)) }
@@ -397,6 +394,18 @@ class WallGamesUiReviewTest {
                     climbers = listOf(KnotClimber(held = 6), KnotClimber(out = true, held = 4), KnotClimber(held = 5)),
                     call = KnotCall(17, climber = 2, limb = KnotLimb.RIGHT_FOOT, colour = KnotColour.MAGENTA),
                     callMs = 6_000, callLeftMs = 3_900,
+                )
+            },
+        )
+    }
+
+    @Test
+    fun knotRunningByTap() = shoot("knot-running-by-tap") {
+        Screen(
+            knotRun(2, byTap = true) {
+                KnotRun(
+                    KnotPhase.RUNNING, field = it, climbers = listOf(KnotClimber(held = 3), KnotClimber(held = 2)),
+                    call = KnotCall(6, climber = 1, limb = KnotLimb.LEFT_HAND, colour = KnotColour.YELLOW),
                 )
             },
         )

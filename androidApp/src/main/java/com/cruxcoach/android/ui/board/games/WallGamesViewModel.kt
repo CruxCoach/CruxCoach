@@ -79,9 +79,8 @@ data class KnotState(
     val climbers: Int = 1,
     /** Names as typed; an empty one shows as "Player n". */
     val names: List<String> = List(Knot.MAX_CLIMBERS) { "" },
-    /** Null until chosen: spoken when the phone can speak the calls. */
-    val spokenChoice: Boolean? = null,
-    val voice: KnotVoiceStatus = KnotVoiceStatus.CHECKING,
+    /** The next call comes when someone below taps, without a timer. */
+    val byTap: Boolean = false,
     /** The colours the board lights for Knot; null when it can't name them. */
     val colours: List<KnotColour>? = null,
     /** Climbers this board fits at once; 0 without colours. */
@@ -91,8 +90,6 @@ data class KnotState(
     val safetySeen: Boolean = true,
     val run: KnotRun = KnotRun(),
 ) {
-    val spoken: Boolean get() = voice == KnotVoiceStatus.READY && spokenChoice != false
-
     /** The board's angle when it is steep enough for the hint. */
     fun steepAngle(board: WallGameBoard?): Int? = board?.angle?.takeIf { it > Knot.STEEP_DEGREES }
 
@@ -206,7 +203,6 @@ class WallGamesViewModel @Inject constructor(
         loadBoard()
         viewModelScope.launch { runner.run.collect { run -> mutableState.update { it.copy(run = run) } } }
         viewModelScope.launch { knotRunner.run.collect { run -> mutableState.update { it.copy(knot = it.knot.copy(run = run)) } } }
-        viewModelScope.launch { voice.status.collect { status -> mutableState.update { it.copy(knot = it.knot.copy(voice = status)) } } }
         viewModelScope.launch {
             userPreferences.knotSafetySeen.collect { seen -> mutableState.update { it.copy(knot = it.knot.copy(safetySeen = seen)) } }
         }
@@ -309,6 +305,7 @@ class WallGamesViewModel @Inject constructor(
 
     override fun setSoundOn(on: Boolean) {
         mutableState.update { it.copy(soundOn = on) }
+        if (!on) voice.stop()
     }
 
     fun chooseClimb(uuid: String, angle: Int) {
@@ -404,9 +401,8 @@ class WallGamesViewModel @Inject constructor(
         )
     }
 
-    /** Looks for a speech engine and, once, for the board's big holds. */
+    /** Looks once for the board's big holds. */
     private fun prepareKnot() {
-        voice.prepare()
         val board = mutableState.value.board ?: return
         if (knotBigHolds != null) return
         knotBigHolds = emptySet()
@@ -430,10 +426,12 @@ class WallGamesViewModel @Inject constructor(
         }
     }
 
-    override fun setKnotSpoken(spoken: Boolean) {
-        mutableState.update { it.copy(knot = it.knot.copy(spokenChoice = spoken)) }
-        if (!spoken) voice.stop()
+    override fun setKnotByTap(byTap: Boolean) {
+        if (mutableState.value.running) return
+        mutableState.update { it.copy(knot = it.knot.copy(byTap = byTap)) }
     }
+
+    override fun knotNextCall() = knotRunner.next()
 
     override fun knotSafetySeen() {
         viewModelScope.launch { runCatching { userPreferences.setKnotSafetySeen() } }
@@ -442,7 +440,8 @@ class WallGamesViewModel @Inject constructor(
 
     /** Everyone has taken their start: the countdown, then the calls. */
     override fun startKnotCalls() {
-        knotRunner.start(Knot.callMs(mutableState.value.level), knotSeeds.nextLong())
+        val s = mutableState.value
+        knotRunner.start(if (s.knot.byTap) 0 else Knot.callMs(s.level), knotSeeds.nextLong())
     }
 
     override fun knotOut(climber: Int) {
@@ -458,14 +457,11 @@ class WallGamesViewModel @Inject constructor(
         knotRunner.light(layout.field(Knot.colourOrder(colours, knotSeeds.nextLong())), s.knot.climbers)
     }
 
+    /** A short beep, so the climbers listen, then the call. The sound switch silences both. */
     private fun announce(call: KnotCall) {
-        val knot = mutableState.value.knot
-        if (knot.spoken) {
-            voice.say(call, knot.names.take(knot.climbers))
-        } else if (mutableState.value.soundOn) {
-            // The reader hears that a new call is up.
-            sounds.play(GameBeep.GO)
-        }
+        if (!mutableState.value.soundOn) return
+        sounds.play(GameBeep.COUNTDOWN)
+        voice.say(call, solo = mutableState.value.knot.run.climbers.size <= 1, afterMs = CALL_AFTER_BEEP_MS)
     }
 
     // ── Timed games ────────────────────────────────────────────────────
@@ -553,7 +549,15 @@ class WallGamesViewModel @Inject constructor(
             mutableState.update { it.copy(sendProblem = problem) }
             return false
         }
-        val sendProblem = state.paint?.let { sendKnotToBoard(ble, board, it) } ?: sendToBoard(ble, board, holds, state.game)
+        val sendProblem = if (state.paint != null) {
+            sendKnotToBoard(ble, board, state.paint).also { problem ->
+                // Which colours went to the wall, to check them against the calls.
+                val colours = state.paint.values.groupingBy { it }.eachCount().entries.joinToString(" ") { "${it.key}×${it.value}" }
+                Log.i(TAG, "Knot wall: ${colours.ifEmpty { "dark" }} → ${problem ?: "sent"}")
+            }
+        } else {
+            sendToBoard(ble, board, holds, state.game)
+        }
         // The answer for a game the user has left since doesn't speak for the one on screen.
         mutableState.update { if (it.game == state.game) it.copy(sendProblem = sendProblem) else it }
         return sendProblem == null
@@ -578,6 +582,8 @@ class WallGamesViewModel @Inject constructor(
     private companion object {
         const val TAG = "WallGames"
         const val NAME_LIMIT = 24
+        /** The call starts this long after its beep. */
+        const val CALL_AFTER_BEEP_MS = 300L
     }
 }
 
