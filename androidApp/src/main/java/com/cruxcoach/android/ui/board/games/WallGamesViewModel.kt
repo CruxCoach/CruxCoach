@@ -24,6 +24,13 @@ import com.cruxcoach.domain.board.games.GAME_LEVELS
 import com.cruxcoach.domain.board.games.GameTimeline
 import com.cruxcoach.domain.board.games.HoldsThief
 import com.cruxcoach.domain.board.games.TraverseGame
+import com.cruxcoach.domain.board.games.Knot
+import com.cruxcoach.domain.board.games.KnotCall
+import com.cruxcoach.domain.board.games.KnotColour
+import com.cruxcoach.domain.board.games.KnotLayout
+import com.cruxcoach.domain.board.BoardPacketEncoder
+import com.cruxcoach.domain.board.MoonBoardFrameEncoder
+import com.cruxcoach.android.data.UserPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.random.Random
@@ -40,7 +47,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 enum class WallGame {
-    LAVA, ENDURANCE, THIEF, TRAVERSE;
+    LAVA, ENDURANCE, THIEF, TRAVERSE, KNOT;
 
     /** Endurance and traverse play a chosen climb; the others use the whole wall. */
     val needsClimb: Boolean get() = this == ENDURANCE || this == TRAVERSE
@@ -67,6 +74,32 @@ data class GameClimb(
 
 data class RecentClimb(val uuid: String, val name: String, val angle: Int)
 
+/** Knot's settings and its round. */
+data class KnotState(
+    val climbers: Int = 1,
+    /** Names as typed; an empty one shows as "Player n". */
+    val names: List<String> = List(Knot.MAX_CLIMBERS) { "" },
+    /** Null until chosen: spoken when the phone can speak the calls. */
+    val spokenChoice: Boolean? = null,
+    val voice: KnotVoiceStatus = KnotVoiceStatus.CHECKING,
+    /** The colours the board lights for Knot; null when it can't name them. */
+    val colours: List<KnotColour>? = null,
+    /** Climbers this board fits at once; 0 without colours. */
+    val maxClimbers: Int = 0,
+    /** Where the field's spots sit for [climbers]; null when the wall has no field for them. */
+    val layout: KnotLayout? = null,
+    val safetySeen: Boolean = true,
+    val run: KnotRun = KnotRun(),
+) {
+    val spoken: Boolean get() = voice == KnotVoiceStatus.READY && spokenChoice != false
+
+    /** The board's angle when it is steep enough for the hint. */
+    fun steepAngle(board: WallGameBoard?): Int? = board?.angle?.takeIf { it > Knot.STEEP_DEGREES }
+
+    /** Where the field will light, in the colours' own order, before a round shuffles them. */
+    fun previewSpots(): Map<Int, KnotColour>? = layout?.let { l -> colours?.let { l.field(it).spots } }
+}
+
 data class WallGamesState(
     val loading: Boolean = true,
     val board: WallGameBoard? = null,
@@ -85,8 +118,9 @@ data class WallGamesState(
     val run: GameRun = GameRun(),
     val sendProblem: WallSendProblem? = null,
     val soundOn: Boolean = true,
+    val knot: KnotState = KnotState(),
 ) {
-    val running: Boolean get() = run.phase == GamePhase.COUNTDOWN || run.phase == GamePhase.RUNNING
+    val running: Boolean get() = run.phase == GamePhase.COUNTDOWN || run.phase == GamePhase.RUNNING || knot.run.active
 
     /** What the board preview shows. */
     val shownHolds: List<BoardHold>
@@ -102,6 +136,7 @@ data class WallGamesState(
             WallGame.LAVA -> !board.rows.isEmpty()
             WallGame.THIEF -> thiefRoute.isNotEmpty()
             WallGame.ENDURANCE, WallGame.TRAVERSE -> climb != null && climb.holds.size > climb.offBoard
+            WallGame.KNOT -> knot.layout != null
         }
 
     companion object {
@@ -128,6 +163,8 @@ class WallGamesViewModel @Inject constructor(
     private val ble: BoardBleConnection,
     private val sessionQueueManager: SessionQueueManager,
     private val ledEffects: LedAnimationEngine,
+    private val userPreferences: UserPreferences,
+    private val voice: KnotVoice,
 ) : ViewModel(), WallGamesActions {
 
     private val mutableState = MutableStateFlow(WallGamesState())
@@ -140,6 +177,16 @@ class WallGamesViewModel @Inject constructor(
     private val stealRandom = Random(Random.nextLong())
 
     private val sender = WallGameSender(viewModelScope, ::transmit)
+    private val knotRunner = KnotRunner(
+        scope = viewModelScope,
+        onWall = ::showKnot,
+        onCall = ::announce,
+        onBeep = { if (mutableState.value.soundOn) sounds.play(it) },
+    )
+    /** What Knot last put on the wall, to put back after a reconnect. */
+    private var knotWall: Map<Int, KnotColour> = emptyMap()
+    private var knotBigHolds: Set<Int>? = null
+    private val knotSeeds = Random(Random.nextLong())
     private val runner = WallGameRunner(
         scope = viewModelScope,
         now = SystemClock::elapsedRealtime,
@@ -158,6 +205,11 @@ class WallGamesViewModel @Inject constructor(
         ledEffects.pause(AnimationPauseOwner.WALL_GAME)
         loadBoard()
         viewModelScope.launch { runner.run.collect { run -> mutableState.update { it.copy(run = run) } } }
+        viewModelScope.launch { knotRunner.run.collect { run -> mutableState.update { it.copy(knot = it.knot.copy(run = run)) } } }
+        viewModelScope.launch { voice.status.collect { status -> mutableState.update { it.copy(knot = it.knot.copy(voice = status)) } } }
+        viewModelScope.launch {
+            userPreferences.knotSafetySeen.collect { seen -> mutableState.update { it.copy(knot = it.knot.copy(safetySeen = seen)) } }
+        }
         viewModelScope.launch {
             // After a reconnect the wall shows nothing of ours: put the current frame back.
             var previous = ble.connectionState.value
@@ -168,6 +220,7 @@ class WallGamesViewModel @Inject constructor(
                     when {
                         s.running && s.run.phase == GamePhase.RUNNING -> show(s.run.lit)
                         s.game == WallGame.THIEF && s.thiefLive -> show(s.thiefRoute)
+                        s.game == WallGame.KNOT && s.knot.run.active -> showKnot(knotWall)
                     }
                 }
                 if (now == ConnectionState.DISCONNECTED) {
@@ -207,8 +260,10 @@ class WallGamesViewModel @Inject constructor(
                     unavailable = load.takeIf { board == null },
                     thiefDensity = density,
                     thiefRoute = board?.let { b -> HoldsThief.route(b.rows, density, thiefSeed) }.orEmpty(),
+                    knot = knotFor(board, it.knot.climbers, it.knot),
                 )
             }
+            if (board != null && mutableState.value.game == WallGame.KNOT) prepareKnot()
             if (board != null) {
                 if (startClimbUuid != null) {
                     mutableState.update { it.copy(game = WallGame.ENDURANCE) }
@@ -237,7 +292,9 @@ class WallGamesViewModel @Inject constructor(
         // A finished game's last state (all the lava) should not linger.
         if (mutableState.value.run.phase == GamePhase.FINISHED) show(emptyList())
         runner.reset()
+        knotRunner.reset()
         mutableState.update { it.copy(game = game, thiefLive = false, sendProblem = null) }
+        if (game == WallGame.KNOT) prepareKnot()
     }
 
     override fun setLevel(level: Int) {
@@ -330,6 +387,87 @@ class WallGamesViewModel @Inject constructor(
         if (s.game == WallGame.THIEF && s.thiefLive) show(s.thiefRoute)
     }
 
+    // ── Knot ───────────────────────────────────────────────────────────
+
+    /** Knot's colours, width and field for [climbers] on [board]. */
+    private fun knotFor(board: WallGameBoard?, climbers: Int, knot: KnotState): KnotState {
+        val colours = board?.let { Knot.colours(it.brand) }
+        val unit = board?.let { Knot.metresPerUnit(it.brand) }
+        if (board == null || colours == null || unit == null) return knot.copy(colours = null, maxClimbers = 0, layout = null)
+        val max = Knot.maxClimbers(board.rows, unit)
+        val count = climbers.coerceIn(1, max.coerceAtLeast(1))
+        return knot.copy(
+            colours = colours,
+            maxClimbers = max,
+            climbers = count,
+            layout = Knot.layout(board.rows, count, colours.size, unit, knotBigHolds.orEmpty()),
+        )
+    }
+
+    /** Looks for a speech engine and, once, for the board's big holds. */
+    private fun prepareKnot() {
+        voice.prepare()
+        val board = mutableState.value.board ?: return
+        if (knotBigHolds != null) return
+        knotBigHolds = emptySet()
+        viewModelScope.launch {
+            val big = withContext(Dispatchers.IO) { runCatching { loader.knotBigHolds(board) }.getOrDefault(emptySet()) }
+            if (big.isEmpty()) return@launch
+            knotBigHolds = big
+            mutableState.update { it.copy(knot = knotFor(it.board, it.knot.climbers, it.knot)) }
+        }
+    }
+
+    override fun setKnotClimbers(climbers: Int) {
+        if (mutableState.value.running) return
+        mutableState.update { it.copy(knot = knotFor(it.board, climbers, it.knot)) }
+    }
+
+    override fun setKnotName(climber: Int, name: String) {
+        if (climber !in 0 until Knot.MAX_CLIMBERS) return
+        mutableState.update { s ->
+            s.copy(knot = s.knot.copy(names = s.knot.names.mapIndexed { i, n -> if (i == climber) name.take(NAME_LIMIT) else n }))
+        }
+    }
+
+    override fun setKnotSpoken(spoken: Boolean) {
+        mutableState.update { it.copy(knot = it.knot.copy(spokenChoice = spoken)) }
+        if (!spoken) voice.stop()
+    }
+
+    override fun knotSafetySeen() {
+        viewModelScope.launch { runCatching { userPreferences.setKnotSafetySeen() } }
+        mutableState.update { it.copy(knot = it.knot.copy(safetySeen = true)) }
+    }
+
+    /** Everyone has taken their start: the countdown, then the calls. */
+    override fun startKnotCalls() {
+        knotRunner.start(Knot.callMs(mutableState.value.level), knotSeeds.nextLong())
+    }
+
+    override fun knotOut(climber: Int) {
+        knotRunner.out(climber)
+        // The call of a climber who is out is no longer worth hearing.
+        if (mutableState.value.knot.run.phase == KnotPhase.FINISHED) voice.stop()
+    }
+
+    private fun lightKnot(s: WallGamesState) {
+        val layout = s.knot.layout ?: return
+        val colours = s.knot.colours ?: return
+        sender.forget()
+        knotRunner.light(layout.field(Knot.colourOrder(colours, knotSeeds.nextLong())), s.knot.climbers)
+    }
+
+    private fun announce(call: KnotCall) {
+        val knot = mutableState.value.knot
+        if (knot.spoken) {
+            voice.say(call, knot.names.take(knot.climbers))
+        } else if (mutableState.value.soundOn) {
+            // The reader hears that a new call is up.
+            sounds.play(GameBeep.GO)
+        }
+    }
+
     // ── Timed games ────────────────────────────────────────────────────
 
     override fun start() {
@@ -337,6 +475,10 @@ class WallGamesViewModel @Inject constructor(
         if (!s.canStart) return
         if (s.game == WallGame.THIEF) {
             lightThiefClimb()
+            return
+        }
+        if (s.game == WallGame.KNOT) {
+            lightKnot(s)
             return
         }
         val timeline = timelineFor(s) ?: return
@@ -353,29 +495,47 @@ class WallGamesViewModel @Inject constructor(
             WallGame.LAVA -> FloorIsLava.timeline(board.rows, s.level)
             WallGame.ENDURANCE -> s.climb?.let { EnduranceChallenge.timeline(it.holds, board.rows, s.level) }
             WallGame.TRAVERSE -> s.climb?.let { TraverseGame.timeline(it.holds, board.rows, s.traverseDifficulty) }
-            WallGame.THIEF -> null
+            WallGame.THIEF, WallGame.KNOT -> null
         }
     }
 
     /** Ends a running game and clears the wall. */
     override fun stop() {
         if (!mutableState.value.running) return
+        if (mutableState.value.game == WallGame.KNOT) {
+            voice.stop()
+            knotRunner.stop()
+            return
+        }
         runner.stop()
         show(emptyList())
     }
 
     /** From the result back to the game's settings; clears the wall. */
     override fun reset() {
+        if (mutableState.value.game == WallGame.KNOT) {
+            voice.stop()
+            knotRunner.reset()
+            return
+        }
         runner.reset()
         show(emptyList())
     }
 
     // ── Sending ────────────────────────────────────────────────────────
 
-    /** A wall state and the game it belongs to, so a write that runs late follows that game's rules. */
-    private data class WallState(val game: WallGame, val holds: List<BoardHold>)
+    /**
+     * A wall state and the game it belongs to, so a write that runs late follows that game's rules.
+     * Knot's [paint] lights its spots in their colours instead of [holds]' roles.
+     */
+    private data class WallState(val game: WallGame, val holds: List<BoardHold>, val paint: Map<Int, KnotColour>? = null)
 
     private fun show(holds: List<BoardHold>) = sender.show(WallState(mutableState.value.game, holds))
+
+    private fun showKnot(spots: Map<Int, KnotColour>) {
+        knotWall = spots
+        sender.show(WallState(WallGame.KNOT, emptyList(), spots))
+    }
 
     private suspend fun transmit(state: WallState): Boolean {
         val holds = state.holds
@@ -393,7 +553,7 @@ class WallGamesViewModel @Inject constructor(
             mutableState.update { it.copy(sendProblem = problem) }
             return false
         }
-        val sendProblem = sendToBoard(ble, board, holds, state.game)
+        val sendProblem = state.paint?.let { sendKnotToBoard(ble, board, it) } ?: sendToBoard(ble, board, holds, state.game)
         // The answer for a game the user has left since doesn't speak for the one on screen.
         mutableState.update { if (it.game == state.game) it.copy(sendProblem = sendProblem) else it }
         return sendProblem == null
@@ -403,19 +563,21 @@ class WallGamesViewModel @Inject constructor(
         // Leaving a running game ends it: the wall should not keep rising lava.
         // viewModelScope is already cancelled here, so the clear gets its own
         // short-lived scope.
-        if (mutableState.value.running) {
+        if (mutableState.value.running || mutableState.value.knot.run.phase == KnotPhase.FINISHED) {
             val brand = mutableState.value.board?.brand
             CoroutineScope(Dispatchers.Main.immediate + NonCancellable).launch {
                 runCatching { ble.clearBoard(expectedBrand = brand) }
             }
         }
         sounds.release()
+        voice.release()
         ledEffects.resume(AnimationPauseOwner.WALL_GAME)
         super.onCleared()
     }
 
     private companion object {
         const val TAG = "WallGames"
+        const val NAME_LIMIT = 24
     }
 }
 
@@ -437,6 +599,33 @@ internal suspend fun sendToBoard(ble: BoardBleConnection, board: WallGameBoard, 
         } ?: false
         BoardBrand.QUANTUM -> false
         else -> ble.sendClimb(holds, board.ledMap, board.roleColors, expectedBrand = board.brand)
+    }
+    return if (sent) null else WallSendProblem.FAILED
+}
+
+/**
+ * Knot's field through the board's own send path: [spots] in their colours. Aurora boards take the colours as LED
+ * colours, within the power limits PaintBox keeps; the MoonBoard shows each colour as a role. Empty clears the wall.
+ */
+internal suspend fun sendKnotToBoard(ble: BoardBleConnection, board: WallGameBoard, spots: Map<Int, KnotColour>): WallSendProblem? {
+    if (spots.isEmpty()) return if (ble.clearBoard(expectedBrand = board.brand)) null else WallSendProblem.FAILED
+    val sent = when {
+        board.brand.usesAuroraProtocol -> {
+            val leds = spots.entries.sortedBy { it.key }.mapNotNull { (id, colour) -> board.ledMap[id]?.let { it to colour.rgb332 } }
+            val apiLevel = ble.connectedBoard?.apiLevel ?: return WallSendProblem.FAILED
+            // API 3 has no power budget in the protocol: stay within what PaintBox sends (fitV3PictureBudget).
+            val shown = if (apiLevel >= 3) {
+                val fitted = BoardPacketEncoder.fitV3PictureBudget(leds.map { it.second }, board.ledMap.values.toSet().size)
+                leds.zip(fitted) { (position, _), colour -> position to colour }
+            } else leds
+            ble.sendRawLeds(shown, expectedBrand = board.brand, maxPowerW = BoardPacketEncoder.V2_PICTURE_MAX_POWER)
+        }
+        board.brand == BoardBrand.MOONBOARD -> board.moonVariant?.let { variant ->
+            val frames = Knot.moonBoardFrames(spots)
+            if (!MoonBoardFrameEncoder.fits(frames, variant, board.moonLedMode)) return WallSendProblem.TOO_MANY_HOLDS
+            ble.sendMoonBoardClimb(frames, variant, board.moonLedMode)
+        } ?: false
+        else -> false
     }
     return if (sent) null else WallSendProblem.FAILED
 }

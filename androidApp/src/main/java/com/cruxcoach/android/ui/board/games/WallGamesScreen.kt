@@ -89,6 +89,7 @@ import com.cruxcoach.domain.board.games.EnduranceChallenge
 import com.cruxcoach.domain.board.games.FloorIsLava
 import com.cruxcoach.domain.board.games.GAME_LEVELS
 import com.cruxcoach.domain.board.games.HoldsThief
+import com.cruxcoach.domain.board.games.Knot
 import com.cruxcoach.domain.board.games.TraverseGame
 
 /** What the wall games screen asks for: the view model, or a stand-in in the review renders. */
@@ -104,6 +105,12 @@ interface WallGamesActions {
     fun start()
     fun stop()
     fun reset()
+    fun setKnotClimbers(climbers: Int) {}
+    fun setKnotName(climber: Int, name: String) {}
+    fun setKnotSpoken(spoken: Boolean) {}
+    fun knotSafetySeen() {}
+    fun startKnotCalls() {}
+    fun knotOut(climber: Int) {}
 }
 
 /** Wall games on the active board. */
@@ -222,6 +229,12 @@ internal fun WallGamesContent(
                     }
                 }
             }
+            // Knot shows the call, the climbers and the field.
+            state.game == WallGame.KNOT && state.knot.run.phase != KnotPhase.IDLE -> KnotRunContent(
+                state = state,
+                actions = actions,
+                modifier = Modifier.fillMaxSize().padding(padding),
+            )
             // A game in progress shows only its clock and the wall: the phone lies on the floor.
             state.run.phase != GamePhase.IDLE -> Column(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -253,6 +266,7 @@ private val WallGame.titleRes: Int
         WallGame.ENDURANCE -> R.string.wall_games_endurance
         WallGame.THIEF -> R.string.wall_games_thief
         WallGame.TRAVERSE -> R.string.wall_games_traverse
+        WallGame.KNOT -> R.string.wall_games_knot
     }
 
 private val WallGame.descriptionRes: Int
@@ -261,10 +275,11 @@ private val WallGame.descriptionRes: Int
         WallGame.ENDURANCE -> R.string.wall_games_endurance_desc
         WallGame.THIEF -> R.string.wall_games_thief_desc
         WallGame.TRAVERSE -> R.string.wall_games_traverse_desc
+        WallGame.KNOT -> R.string.wall_games_knot_desc
     }
 
 @StringRes
-private fun levelRes(level: Int): Int = when (level) {
+internal fun levelRes(level: Int): Int = when (level) {
     1 -> R.string.wall_games_level_1
     2 -> R.string.wall_games_level_2
     3 -> R.string.wall_games_level_3
@@ -274,7 +289,7 @@ private fun levelRes(level: Int): Int = when (level) {
 
 /** The app's own selected-chip look (filter screen): the quiet orange container with its label. */
 @Composable
-private fun chipColors() = FilterChipDefaults.filterChipColors(
+internal fun chipColors() = FilterChipDefaults.filterChipColors(
     selectedContainerColor = CruxCoachDesign.colors.brandAccentContainer,
     selectedLabelColor = CruxCoachDesign.colors.onBrandAccentContainer,
 )
@@ -286,7 +301,12 @@ private fun GamePicker(selected: WallGame, onSelect: (WallGame) -> Unit) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.wall_games_game), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            InfoButton(stringResource(selected.titleRes), stringResource(selected.descriptionRes))
+            // Knot's rules come with its safety hint, which stays here once its card is gone.
+            val rules = stringResource(selected.descriptionRes)
+            InfoButton(
+                stringResource(selected.titleRes),
+                if (selected == WallGame.KNOT) rules + "\n\n" + stringResource(R.string.knot_safety_text) else rules,
+            )
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             WallGame.entries.forEach { game ->
@@ -326,12 +346,13 @@ private fun GameSettings(state: WallGamesState, actions: WallGamesActions, onCho
             TraverseTempo(state.traverseDifficulty, actions::setTraverseDifficulty)
         }
         WallGame.THIEF -> ThiefControls(state, actions)
+        WallGame.KNOT -> KnotSettings(state, actions)
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LevelPicker(level: Int, interval: String, onLevel: (Int) -> Unit) {
+internal fun LevelPicker(level: Int, interval: String, onLevel: (Int) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.wall_games_level), style = MaterialTheme.typography.titleSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -501,7 +522,7 @@ private fun ThiefControls(state: WallGamesState, actions: WallGamesActions) {
 
 /** The largest fonts put a row's action under its text, and the bar's buttons above each other. */
 @Composable
-private fun compactLayout(): Boolean = LocalDensity.current.fontScale > 1.3f
+internal fun compactLayout(): Boolean = LocalDensity.current.fontScale > 1.3f
 
 @Composable
 private fun RunPanel(state: WallGamesState) {
@@ -561,7 +582,7 @@ private fun RunPanel(state: WallGamesState) {
  * In dp, so the largest font does not push the wall off the screen; the clock is large already.
  */
 @Composable
-private fun BigText(text: String, maxSize: Dp, modifier: Modifier = Modifier, color: Color = Color.Unspecified) {
+internal fun BigText(text: String, maxSize: Dp, modifier: Modifier = Modifier, color: Color = Color.Unspecified) {
     val max = with(LocalDensity.current) { maxSize.toSp() }
     BasicText(
         text,
@@ -642,9 +663,11 @@ private fun WallStatus(problem: WallSendProblem?, game: WallGame, connected: Boo
 
 /** The wall with the shown holds; [modifier] with a weight lets it fill the height left. */
 @Composable
-private fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifier) {
+internal fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifier) {
     val board = state.board ?: return
     val holds = state.shownHolds
+    // Knot lights spots in colours: the round's field, or before it where the field will be.
+    val paint = if (state.game == WallGame.KNOT) state.knot.run.field?.spots ?: state.knot.previewSpots() else null
     // A tall wall at full width would push everything else off screen.
     val screenCap = (LocalConfiguration.current.screenHeightDp * BOARD_MAX_HEIGHT_FRACTION).dp
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
@@ -658,18 +681,19 @@ private fun GameBoardPreview(state: WallGamesState, modifier: Modifier = Modifie
         Box(Modifier.width(width).testTag("wall_games_board")) {
             if (board.brand == BoardBrand.MOONBOARD) {
                 MoonBoardVisualization(
-                    frames = WallGameHolds.moonBoardFrames(holds),
+                    frames = paint?.let(Knot::moonBoardFrames) ?: WallGameHolds.moonBoardFrames(holds),
                     assetState = rememberMoonBoardAsset(board.layoutId),
                     variant = board.moonVariant,
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else {
                 KilterBoardVisualization(
-                    holds = holds,
+                    holds = if (paint != null) emptyList() else holds,
                     placements = board.placements,
                     boardSize = board.boardSize,
                     boardImages = board.boardImages,
                     ledColors = board.ledColors,
+                    paintColors = paint?.mapValues { it.value.rgb332 }.orEmpty(),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -691,7 +715,7 @@ private fun GameActionBar(
             WallStatus(state.sendProblem, state.game, connected, onConnect = onConnect)
             // Two actions side by side; at the largest font above each other, so no label breaks.
             val buttons: @Composable (Modifier) -> Unit = { slot ->
-                when (state.run.phase) {
+                if (state.game == WallGame.KNOT) KnotButtons(state, actions, slot) else when (state.run.phase) {
                     GamePhase.COUNTDOWN, GamePhase.RUNNING -> Button(
                         onClick = actions::stop,
                         modifier = slot.heightIn(min = 48.dp).testTag("wall_games_stop"),
@@ -747,7 +771,7 @@ private fun GameActionBar(
 }
 
 @Composable
-private fun ButtonLabel(res: Int) = Text(stringResource(res), textAlign = TextAlign.Center)
+internal fun ButtonLabel(res: Int) = Text(stringResource(res), textAlign = TextAlign.Center)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

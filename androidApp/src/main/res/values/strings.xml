@@ -3058,7 +3058,7 @@
     <string name="whatsnew_024_hint">Also: a board switch shows at once during a catalogue download, and a session resumes after a rest.</string>
     <!-- 0.2.5: one line per feature, the smaller ones in the hint; the release preparation registers the dialog. -->
     <string name="whatsnew_025_title">New in 0.2.5</string>
-    <string name="whatsnew_025_body">• Training &amp; nutrition&#160;– a coach for today’s training, 200+ exercises and food targets.\n• Statistics&#160;– a logbook overview, tries until the send, your boards compared, session recaps.\n• Year in review&#160;– your climbing year as pages to share, in the statistics.\n• Shiny Wall&#160;– choose your Shiny Wall in the board picker, browse its climbs and light them over Bluetooth. Import your Shiny Wall logbook under Settings → Board accounts &amp; imports.\n• Spray walls&#160;– photograph your own wall, and the phone suggests the holds.\n• Wall games&#160;– Floor is lava, Endurance, Hold thief and Traverse, from the main menu or a climb’s menu (“Play as a game”).\n• Community on Buzz&#160;– talk to the developers and test new builds first (Settings → Community).</string>
+    <string name="whatsnew_025_body">• Training &amp; nutrition&#160;– a coach for today’s training, 200+ exercises and food targets.\n• Statistics&#160;– a logbook overview, tries until the send, your boards compared, session recaps.\n• Year in review&#160;– your climbing year as pages to share, in the statistics.\n• Shiny Wall&#160;– choose your Shiny Wall in the board picker, browse its climbs and light them over Bluetooth. Import your Shiny Wall logbook under Settings → Board accounts &amp; imports.\n• Spray walls&#160;– photograph your own wall, and the phone suggests the holds.\n• Wall games&#160;– Floor is lava, Endurance, Hold thief, Traverse and the party game Knot, from the main menu or a climb’s menu (“Play as a game”).\n• Community on Buzz&#160;– talk to the developers and test new builds first (Settings → Community).</string>
     <string name="whatsnew_025_hint">Also: LED effects for Kilter, PaintBox (Settings → Extras), a board size check, your own Bluetooth name back after sharing, and Quantum boards marked experimental.</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
@@ -3484,6 +3484,65 @@
     <string name="wall_games_no_holds">The hold positions of this board are not on the device yet. Download its catalogue first.</string>
     <string name="wall_games_sound_turn_off">Turn countdown sound off</string>
     <string name="wall_games_sound_turn_on">Turn countdown sound on</string>
+    <!-- Knot (#154) -->
+    <string name="wall_games_knot">Knot</string>
+    <string name="wall_games_knot_desc">A field of colour stripes lights up low on the wall. The phone calls a hand or a foot and a colour, climber by climber: move it to a free hold of that colour. One hand or foot per hold; if none of that colour is free, stay where you are.\n\nOut is whoever comes off, touches the floor, uses an unlit hold or isn’t there in time. The last one on the wall wins; solo, count the calls you hold.</string>
+    <string name="knot_climbers">At the wall</string>
+    <plurals name="knot_board_fits">
+        <item quantity="one">This board fits one climber at a time.</item>
+        <item quantity="other">This board fits %d climbers at a time.</item>
+    </plurals>
+    <string name="knot_rounds">More players? Play in rounds: the winner stays and the next one challenges.</string>
+    <string name="knot_player">Player %1$d</string>
+    <string name="knot_name_label">Name of player %1$d</string>
+    <string name="knot_call_time">%1$s s per call</string>
+    <string name="knot_calls">Calls</string>
+    <string name="knot_spoken">Spoken</string>
+    <string name="knot_read_out">Read out</string>
+    <string name="knot_voice_checking">Looking for the phone’s speech output…</string>
+    <string name="knot_voice_no_engine">This phone has no speech output: someone off the wall reads the calls out.</string>
+    <string name="knot_voice_no_language">The phone’s speech output has no English voice: someone off the wall reads the calls out.</string>
+    <string name="knot_reader">Someone off the wall reads the calls from the screen.</string>
+    <string name="knot_steep">Steep wall (%1$d°): start at level 1 or set the wall flatter.</string>
+    <string name="knot_safety_title">Before you play</string>
+    <string name="knot_safety_text">Knot is played low and close together. Mats under the whole field, nothing on the floor below the wall, and at most three climbers on the wall at once.</string>
+    <string name="knot_unsupported_shinywall">Knot needs holds that light in named colours. The app doesn’t know which colours a Shiny Wall shows, so Knot isn’t available here yet.</string>
+    <string name="knot_unsupported">Knot isn’t available for this board.</string>
+    <string name="knot_no_field">This wall has too few low holds for a Knot field.</string>
+    <string name="knot_light">Light the field</string>
+    <string name="knot_positions">Take your start</string>
+    <string name="knot_positions_solo">Two hands and two feet on lit holds.</string>
+    <string name="knot_positions_parts">Two hands and two feet on lit holds in your part of the field:</string>
+    <string name="knot_part">%1$s: %2$s</string>
+    <string name="knot_part_left">left</string>
+    <string name="knot_part_middle">middle</string>
+    <string name="knot_part_right">right</string>
+    <string name="knot_out">Out</string>
+    <string name="knot_out_named">%1$s is out</string>
+    <string name="knot_is_out">out</string>
+    <plurals name="knot_held">
+        <item quantity="one">%d call held</item>
+        <item quantity="other">%d calls held</item>
+    </plurals>
+    <plurals name="knot_held_label">
+        <item quantity="one">call held</item>
+        <item quantity="other">calls held</item>
+    </plurals>
+    <string name="knot_call_number">Call %1$d</string>
+    <string name="knot_wins">%1$s wins</string>
+    <string name="knot_stopped">Stopped</string>
+    <string name="knot_call">%1$s: %2$s on %3$s</string>
+    <string name="knot_call_solo">%1$s on %2$s</string>
+    <string name="knot_left_hand">left hand</string>
+    <string name="knot_right_hand">right hand</string>
+    <string name="knot_left_foot">left foot</string>
+    <string name="knot_right_foot">right foot</string>
+    <string name="knot_blue">blue</string>
+    <string name="knot_yellow">yellow</string>
+    <string name="knot_magenta">magenta</string>
+    <string name="knot_white">white</string>
+    <string name="knot_green">green</string>
+    <string name="knot_red">red</string>
     <!-- Shiny Wall account (read-only logbook import) -->
     <string name="shinywall_section_title">Shiny Wall account</string>
     <string name="shinywall_connect_desc">Imports your Shiny Wall logbook (ascents and projects), favorites, lists and your own routes into CruxCoach. Star ratings and comments stay in Shiny Wall.\n\nRead-only: CruxCoach never changes anything in your Shiny Wall account. Standard walls only.\n\nWhat you delete in CruxCoach stays deleted, entries and lists alike. To import everything again, delete your Shiny Wall logbook data under Settings → Delete local data.</string>

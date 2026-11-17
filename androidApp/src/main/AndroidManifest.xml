@@ -97,6 +97,12 @@
         <package android:name="com.oneplus.security" />
         <!-- FEAT-071: Health Connect provider (Android 9–13; built into 14+). -->
         <package android:name="com.google.android.apps.healthdata" />
+        <!-- Text-to-speech engines (Knot's calls, the hang timer's voice): Android 11+
+             hides them from TextToSpeech unless the service is declared here. Whatever
+             engine the phone has; none is required. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application

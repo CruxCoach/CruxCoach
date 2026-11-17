@@ -1,0 +1,445 @@
+package com.cruxcoach.android.ui.board.games
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
+import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.games.Knot
+import com.cruxcoach.domain.board.games.KnotColour
+import java.util.Locale
+
+/** A climber's name as the screen shows it: as typed, or "Player n". */
+@Composable
+private fun shownName(knot: KnotState, climber: Int): String = climberName(LocalContext.current, knot.names, climber)
+
+/** Sentence case for a limb or colour shown on its own ("Right hand", "Blue"). */
+private fun String.capitalised(): String = replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+
+// ── Settings ───────────────────────────────────────────────────────────
+
+/** Knot before a round: safety first, then who plays, how fast and how the calls come. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun KnotSettings(state: WallGamesState, actions: WallGamesActions) {
+    val knot = state.knot
+    if (!knot.safetySeen) KnotSafetyCard(onGotIt = actions::knotSafetySeen)
+    // Without named colours, or without room for a field, there is nothing to set.
+    val unavailable = when {
+        knot.colours == null -> if (state.board?.brand == BoardBrand.SHINYWALL) R.string.knot_unsupported_shinywall else R.string.knot_unsupported
+        knot.layout == null -> R.string.knot_no_field
+        else -> null
+    }
+    if (unavailable != null) {
+        Text(
+            stringResource(unavailable),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("knot_unavailable"),
+        )
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(stringResource(R.string.knot_climbers), style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Knot.CLIMBERS.forEach { count ->
+                FilterChip(
+                    selected = count == knot.climbers,
+                    onClick = { actions.setKnotClimbers(count) },
+                    enabled = count <= knot.maxClimbers,
+                    label = { Text(count.toString()) },
+                    colors = chipColors(),
+                    modifier = Modifier.testTag("knot_climbers_$count"),
+                )
+            }
+        }
+        if (knot.maxClimbers < Knot.MAX_CLIMBERS) {
+            Text(
+                pluralStringResource(R.plurals.knot_board_fits, knot.maxClimbers, knot.maxClimbers),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            stringResource(R.string.knot_rounds),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("knot_rounds"),
+        )
+    }
+    // Solo needs no name: the calls go to the one climber.
+    if (knot.climbers > 1) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            (0 until knot.climbers).forEach { climber ->
+                OutlinedTextField(
+                    value = knot.names[climber],
+                    onValueChange = { actions.setKnotName(climber, it) },
+                    label = { Text(stringResource(R.string.knot_player, climber + 1)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = if (climber < knot.climbers - 1) ImeAction.Next else ImeAction.Done,
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("knot_name_$climber"),
+                )
+            }
+        }
+    }
+    LevelPicker(
+        level = state.level,
+        interval = stringResource(R.string.knot_call_time, WallGameFormat.seconds(Knot.callMs(state.level))),
+        onLevel = actions::setLevel,
+    )
+    // A warning with its number and the way out at hand: level 1.
+    val steep = knot.steepAngle(state.board)
+    if (steep != null && state.level > 1) {
+        val text: @Composable (Modifier) -> Unit = { modifier ->
+            Text(stringResource(R.string.knot_steep, steep), style = MaterialTheme.typography.bodyMedium, modifier = modifier)
+        }
+        val action: @Composable () -> Unit = {
+            TextButton(onClick = { actions.setLevel(1) }, modifier = Modifier.heightIn(min = 48.dp).testTag("knot_level_1")) {
+                Text(stringResource(R.string.wall_games_level_1))
+            }
+        }
+        if (compactLayout()) {
+            Column(Modifier.fillMaxWidth().testTag("knot_steep")) {
+                text(Modifier)
+                action()
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().testTag("knot_steep")) {
+                text(Modifier.weight(1f))
+                action()
+            }
+        }
+    }
+    KnotCalls(knot, actions)
+}
+
+@Composable
+private fun KnotSafetyCard(onGotIt: () -> Unit) {
+    Card(Modifier.fillMaxWidth().testTag("knot_safety")) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+            Text(
+                stringResource(R.string.knot_safety_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                stringResource(R.string.knot_safety_text),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 6.dp, end = 8.dp),
+            )
+            TextButton(
+                onClick = onGotIt,
+                modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp).testTag("knot_safety_ok"),
+            ) { Text(stringResource(R.string.action_understood)) }
+        }
+    }
+}
+
+/** Spoken or read out; without a voice on the phone, read out is the way, and the line says why. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KnotCalls(knot: KnotState, actions: WallGamesActions) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(stringResource(R.string.knot_calls), style = MaterialTheme.typography.titleSmall)
+        val canSpeak = knot.voice == KnotVoiceStatus.READY
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = knot.spoken,
+                onClick = { actions.setKnotSpoken(true) },
+                enabled = canSpeak,
+                label = { Text(stringResource(R.string.knot_spoken)) },
+                colors = chipColors(),
+                modifier = Modifier.testTag("knot_spoken"),
+            )
+            FilterChip(
+                selected = !knot.spoken,
+                onClick = { actions.setKnotSpoken(false) },
+                label = { Text(stringResource(R.string.knot_read_out)) },
+                colors = chipColors(),
+                modifier = Modifier.testTag("knot_read_out"),
+            )
+        }
+        val line = when (knot.voice) {
+            KnotVoiceStatus.CHECKING -> R.string.knot_voice_checking
+            KnotVoiceStatus.NO_ENGINE -> R.string.knot_voice_no_engine
+            KnotVoiceStatus.NO_LANGUAGE -> R.string.knot_voice_no_language
+            KnotVoiceStatus.READY -> if (knot.spoken) null else R.string.knot_reader
+        }
+        if (line != null) {
+            Text(
+                stringResource(line),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("knot_voice"),
+            )
+        }
+    }
+}
+
+// ── A round ────────────────────────────────────────────────────────────
+
+/** Knot from the start positions to the result: what to do now, who is still in, and the field. */
+@Composable
+internal fun KnotRunContent(state: WallGamesState, actions: WallGamesActions, modifier: Modifier = Modifier) {
+    val run = state.knot.run
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().testTag("knot_run"),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            shape = MaterialTheme.shapes.medium,
+        ) {
+            Column(
+                Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                when (run.phase) {
+                    KnotPhase.POSITIONS -> KnotPositions(state.knot)
+                    KnotPhase.COUNTDOWN -> BigText(
+                        run.countdown.toString(),
+                        maxSize = 112.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.testTag("knot_countdown"),
+                    )
+                    KnotPhase.RUNNING -> KnotCallPanel(state.knot)
+                    KnotPhase.FINISHED -> KnotResult(state.knot)
+                    KnotPhase.IDLE -> Unit
+                }
+            }
+        }
+        if (run.phase == KnotPhase.COUNTDOWN || run.phase == KnotPhase.RUNNING ||
+            (run.phase == KnotPhase.FINISHED && run.climbers.size > 1)
+        ) {
+            KnotClimbers(state.knot, actions)
+        }
+        GameBoardPreview(state)
+    }
+}
+
+@Composable
+private fun KnotPositions(knot: KnotState) {
+    Text(
+        stringResource(R.string.knot_positions),
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
+    )
+    val field = knot.run.field
+    if (knot.run.climbers.size <= 1 || field == null) {
+        Text(stringResource(R.string.knot_positions_solo), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+        return
+    }
+    Text(stringResource(R.string.knot_positions_parts), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+    val parts = if (knot.run.climbers.size == 2) listOf(R.string.knot_part_left, R.string.knot_part_right)
+    else listOf(R.string.knot_part_left, R.string.knot_part_middle, R.string.knot_part_right)
+    knot.run.climbers.indices.forEach { climber ->
+        Text(
+            stringResource(R.string.knot_part, shownName(knot, climber), stringResource(parts[climber])),
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.testTag("knot_part_$climber"),
+        )
+    }
+}
+
+/** The call in large type, readable from the wall: who, which hand or foot, which colour, and the time left. */
+@Composable
+private fun KnotCallPanel(knot: KnotState) {
+    val run = knot.run
+    val call = run.call ?: return
+    val solo = run.climbers.size <= 1
+    Text(
+        if (solo) stringResource(R.string.knot_call_number, call.number)
+        else stringResource(R.string.knot_part, stringResource(R.string.knot_call_number, call.number), shownName(knot, call.climber)),
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.testTag("knot_call_who"),
+    )
+    BigText(stringResource(call.limb.labelRes).capitalised(), maxSize = 72.dp, modifier = Modifier.testTag("knot_call_limb"))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        ColourDot(call.colour, 40)
+        Box(Modifier.weight(1f, fill = false)) {
+            BigText(stringResource(call.colour.labelRes).capitalised(), maxSize = 72.dp, modifier = Modifier.testTag("knot_call_colour"))
+        }
+    }
+    LinearProgressIndicator(
+        progress = { if (run.callMs > 0) run.callLeftMs.toFloat() / run.callMs else 0f },
+        color = OrangeAccent,
+        modifier = Modifier.fillMaxWidth().testTag("knot_call_time"),
+    )
+}
+
+/** The colour as the wall shows it; white gets a rim so it shows on a light screen. */
+@Composable
+private fun ColourDot(colour: KnotColour, sizeDp: Int) {
+    Box(
+        Modifier
+            .size(sizeDp.dp)
+            .background(rgb332ToComposeColor(colour.rgb332), CircleShape)
+            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
+    )
+}
+
+/** Who is still in, with an "Out" button each; out climbers keep their count. */
+@Composable
+private fun KnotClimbers(knot: KnotState, actions: WallGamesActions) {
+    val run = knot.run
+    val playing = run.phase == KnotPhase.COUNTDOWN || run.phase == KnotPhase.RUNNING
+    Column(Modifier.fillMaxWidth().testTag("knot_climbers"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        run.climbers.forEachIndexed { index, climber ->
+            val name = shownName(knot, index)
+            val label: @Composable (Modifier) -> Unit = { modifier ->
+                Column(modifier) {
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (run.winner == index) FontWeight.Bold else FontWeight.Normal,
+                        textDecoration = if (climber.out) TextDecoration.LineThrough else null,
+                        color = if (climber.out) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        pluralStringResource(R.plurals.knot_held, climber.held, climber.held) +
+                            if (climber.out) " · " + stringResource(R.string.knot_is_out) else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            val out: @Composable () -> Unit = {
+                if (playing && !climber.out) {
+                    val description = stringResource(R.string.knot_out_named, name)
+                    OutlinedButton(
+                        onClick = { actions.knotOut(index) },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .semantics { contentDescription = description }
+                            .testTag("knot_out_$index"),
+                    ) { Text(stringResource(R.string.knot_out)) }
+                }
+            }
+            if (compactLayout()) {
+                Column(Modifier.fillMaxWidth().testTag("knot_climber_$index")) {
+                    label(Modifier)
+                    out()
+                }
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("knot_climber_$index"),
+                ) {
+                    label(Modifier.weight(1f))
+                    out()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KnotResult(knot: KnotState) {
+    val run = knot.run
+    val solo = run.climbers.size <= 1
+    val winner = run.winner
+    when {
+        solo -> {
+            val held = run.climbers.firstOrNull()?.held ?: 0
+            BigText(held.toString(), maxSize = 96.dp, modifier = Modifier.testTag("knot_result"))
+            Text(
+                pluralStringResource(R.plurals.knot_held_label, held),
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+            )
+        }
+        winner != null -> BigText(
+            stringResource(R.string.knot_wins, shownName(knot, winner)),
+            maxSize = 64.dp,
+            modifier = Modifier.testTag("knot_result"),
+        )
+        else -> BigText(stringResource(R.string.knot_stopped), maxSize = 64.dp, modifier = Modifier.testTag("knot_result"))
+    }
+}
+
+// ── Bottom bar ─────────────────────────────────────────────────────────
+
+/** Knot's actions in the bottom bar, in [slot]s side by side or above each other. */
+@Composable
+internal fun KnotButtons(state: WallGamesState, actions: WallGamesActions, slot: Modifier) {
+    when (state.knot.run.phase) {
+        KnotPhase.IDLE -> Button(
+            onClick = actions::start,
+            enabled = state.canStart,
+            modifier = slot.heightIn(min = 48.dp).testTag("wall_games_start"),
+        ) { ButtonLabel(R.string.knot_light) }
+        KnotPhase.POSITIONS -> {
+            OutlinedButton(onClick = actions::stop, modifier = slot.heightIn(min = 48.dp).testTag("knot_cancel")) {
+                ButtonLabel(R.string.action_cancel)
+            }
+            Button(onClick = actions::startKnotCalls, modifier = slot.heightIn(min = 48.dp).testTag("knot_go")) {
+                ButtonLabel(R.string.wall_games_start)
+            }
+        }
+        KnotPhase.COUNTDOWN, KnotPhase.RUNNING -> Button(
+            onClick = actions::stop,
+            modifier = slot.heightIn(min = 48.dp).testTag("wall_games_stop"),
+        ) { ButtonLabel(R.string.wall_games_stop) }
+        KnotPhase.FINISHED -> {
+            OutlinedButton(onClick = actions::reset, modifier = slot.heightIn(min = 48.dp).testTag("wall_games_done")) {
+                ButtonLabel(R.string.action_done)
+            }
+            Button(
+                onClick = actions::start,
+                enabled = state.canStart,
+                modifier = slot.heightIn(min = 48.dp).testTag("wall_games_again"),
+            ) { ButtonLabel(R.string.wall_games_play_again) }
+        }
+    }
+}

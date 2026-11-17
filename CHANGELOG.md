@@ -133,6 +133,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Countdown with beeps and a stopwatch; for Shiny Wall, Kilter, the other
   Aurora boards and MoonBoard (not Quantum). Without a connected board the
   game runs on the screen; games are never logged.
+- Knot, a new wall game for 1 to 3 climbers: a low field of colour stripes
+  lights up (four colours, three on the MoonBoard), and the phone calls a hand
+  or a foot and a colour, climber by climber ("Anna: right hand on blue"). The
+  calls are spoken by the phone's own text-to-speech when it has a voice for
+  the app's language; otherwise someone reads them from the screen. The field
+  grows with the number of climbers, so they get in each other's way, and
+  stays low. Tap "Out" for whoever comes off: the last one on the wall wins,
+  solo you count the calls you hold. Five levels (10 to 3 seconds per call),
+  optional names, a safety hint before the first game and a hint on steep
+  walls. For Kilter, the other Aurora boards and MoonBoard (not Shiny Wall or
+  Quantum).
 - Community: Settings → Community explains the CruxCoach community on Buzz
   (talk to the developers, test new builds first, help shape what comes next)
   and "Join on Buzz" opens community.cruxcoach.org/join in the browser. After a

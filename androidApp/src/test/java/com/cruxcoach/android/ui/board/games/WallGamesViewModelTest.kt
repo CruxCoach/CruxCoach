@@ -6,6 +6,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardCleaningState
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.SessionQueueManager
+import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.data.repository.BoardRepository
@@ -18,6 +19,8 @@ import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.domain.board.games.HoldsThief
+import com.cruxcoach.domain.board.games.Knot
+import com.cruxcoach.domain.board.games.KnotColour
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
 import com.cruxcoach.android.led.LedAnimationEngine
@@ -25,6 +28,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -65,6 +69,8 @@ class WallGamesViewModelTest {
     private val session = MutableStateFlow(SessionQueueState())
     private lateinit var ble: BoardBleConnection
     private lateinit var repository: BoardRepository
+    private val voiceStatus = MutableStateFlow(KnotVoiceStatus.NO_ENGINE)
+    private lateinit var voice: KnotVoice
 
     @Before
     fun setUp() {
@@ -77,6 +83,7 @@ class WallGamesViewModelTest {
             coEvery { clearBoard(any()) } returns true
         }
         repository = mockk(relaxed = true)
+        voice = mockk(relaxed = true) { every { status } returns voiceStatus }
     }
 
     @After
@@ -93,7 +100,8 @@ class WallGamesViewModelTest {
         }
         val queue = mockk<SessionQueueManager>(relaxed = true) { every { state } returns session }
         val ledEffects = mockk<LedAnimationEngine>(relaxed = true)
-        val vm = WallGamesViewModel(SavedStateHandle(args), loader, repository, personal, ble, queue, ledEffects)
+        val prefs = mockk<UserPreferences>(relaxed = true) { every { knotSafetySeen } returns flowOf(true) }
+        val vm = WallGamesViewModel(SavedStateHandle(args), loader, repository, personal, ble, queue, ledEffects, prefs, voice)
         runBlocking { withTimeout(5_000) { vm.state.first { !it.loading } } }
         return vm
     }
@@ -256,6 +264,117 @@ class WallGamesViewModelTest {
         // The waiting hold-thief climb is refused whole, not cut down like lava; the lava screen shows no message.
         coVerify(exactly = 1) { ble.sendMoonBoardClimb(any(), any(), any()) }
         assertNull(awaitState(vm) { it.game == WallGame.LAVA }.sendProblem)
+    }
+
+    // ── Knot ───────────────────────────────────────────────────────────
+
+    /** A Kilter-like 12x12 in inches: 18 columns 8" apart, rows 8" apart from 4" up; LED position = placement id. */
+    private val kilter = WallGameBoard(
+        brand = BoardBrand.KILTER,
+        layoutId = 1,
+        rows = WallRows.of((0 until 18 * 19).map { WallHold(it + 1, 4.0 + (it % 18) * 8.0, 4.0 + (it / 18) * 8.0) }),
+        ledMap = (1..18 * 19).associateWith { it },
+        angle = 40,
+    )
+
+    private fun kilterViewModel(): WallGamesViewModel {
+        connectedBrand.value = BoardBrand.KILTER
+        every { ble.connectedBoard } returns mockk(relaxed = true) { every { apiLevel } returns 3 }
+        coEvery { ble.sendRawLeds(any(), any(), any()) } returns true
+        return viewModel(loader = mockk(relaxed = true) { coEvery { load() } returns WallGameBoardLoad.Ready(kilter) })
+    }
+
+    @Test
+    fun knotLightsTheFieldInItsColoursThenCallsAndTheLastOneWins() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        val setup = vm.state.value.knot
+        assertEquals(3, setup.maxClimbers)
+        assertEquals(1, setup.climbers)
+        assertTrue(vm.state.value.canStart)
+        // A 40° wall gets the steep hint.
+        assertEquals(40, setup.steepAngle(vm.state.value.board))
+
+        vm.setKnotClimbers(2)
+        vm.setKnotName(0, "Anna")
+        assertEquals(20, vm.state.value.knot.previewSpots()!!.size)
+        vm.start()
+        val lit = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }
+        val field = lit.knot.run.field!!
+        assertEquals(20, field.spots.size)
+        assertTrue(lit.running)
+        // Each spot goes up in its own colour.
+        val sent = field.spots.entries.sortedBy { it.key }.map { (id, colour) -> id to colour.rgb332 }
+        coVerify(timeout = 5_000) { ble.sendRawLeds(sent, BoardBrand.KILTER, any()) }
+
+        vm.startKnotCalls()
+        assertEquals(KnotPhase.COUNTDOWN, vm.state.value.knot.run.phase)
+        vm.knotOut(0)
+        val over = awaitState(vm) { it.knot.run.phase == KnotPhase.FINISHED }
+        assertEquals(1, over.knot.run.winner)
+        assertTrue(!over.running)
+
+        // Done clears the wall.
+        vm.reset()
+        assertEquals(KnotPhase.IDLE, vm.state.value.knot.run.phase)
+        coVerify(timeout = 5_000) { ble.clearBoard(BoardBrand.KILTER) }
+    }
+
+    @Test
+    fun knotSpeaksOnlyWhenThePhoneCanAndOtherwiseSaysWhoReads() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        verify { voice.prepare() }
+        assertEquals(KnotVoiceStatus.NO_ENGINE, vm.state.value.knot.voice)
+        assertTrue(!vm.state.value.knot.spoken)
+        voiceStatus.value = KnotVoiceStatus.READY
+        assertTrue(awaitState(vm) { it.knot.voice == KnotVoiceStatus.READY }.knot.spoken)
+        vm.setKnotSpoken(false)
+        assertTrue(!vm.state.value.knot.spoken)
+        vm.setKnotSpoken(true)
+        assertTrue(vm.state.value.knot.spoken)
+    }
+
+    @Test
+    fun knotIsNotOfferedOnAShinyWallAndStopsAtThreeOnWideBoards() {
+        val vm = viewModel()
+        vm.selectGame(WallGame.KNOT)
+        val shiny = vm.state.value
+        assertNull(shiny.knot.colours)
+        assertNull(shiny.knot.layout)
+        assertTrue(!shiny.canStart)
+
+        val kilterVm = kilterViewModel()
+        kilterVm.selectGame(WallGame.KNOT)
+        kilterVm.setKnotClimbers(5)
+        assertEquals(3, kilterVm.state.value.knot.climbers)
+    }
+
+    @Test
+    fun knotOnAMoonBoardSendsItsThreeColoursAsRoles() {
+        coEvery { ble.sendMoonBoardClimb(any(), any(), any()) } returns true
+        connectedBrand.value = BoardBrand.MOONBOARD
+        val full = moonBoard.copy(rows = WallRows.of(WallGameHolds.moonBoard(moon, emptySet())))
+        val vm = viewModel(loader = mockk(relaxed = true) { coEvery { load() } returns WallGameBoardLoad.Ready(full) })
+        vm.selectGame(WallGame.KNOT)
+        assertEquals(2, vm.state.value.knot.maxClimbers)
+        vm.start()
+        val field = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
+        assertEquals(KnotColour.BLUE, field.colours[1])
+        coVerify(timeout = 5_000) { ble.sendMoonBoardClimb(Knot.moonBoardFrames(field.spots), moon, MoonBoardLedMode.BELOW) }
+    }
+
+    @Test
+    fun afterAReconnectTheKnotFieldGoesUpAgain() {
+        val vm = kilterViewModel()
+        vm.selectGame(WallGame.KNOT)
+        vm.start()
+        val field = awaitState(vm) { it.knot.run.phase == KnotPhase.POSITIONS }.knot.run.field!!
+        val sent = field.spots.entries.sortedBy { it.key }.map { (id, colour) -> id to colour.rgb332 }
+        coVerify(timeout = 5_000, exactly = 1) { ble.sendRawLeds(sent, BoardBrand.KILTER, any()) }
+        connection.value = ConnectionState.CONNECTING
+        connection.value = ConnectionState.CONNECTED
+        coVerify(timeout = 5_000, exactly = 2) { ble.sendRawLeds(sent, BoardBrand.KILTER, any()) }
     }
 
     private fun climb(uuid: String, layoutId: Long, frames: String): ClimbWithStats = mockk(relaxed = true) {

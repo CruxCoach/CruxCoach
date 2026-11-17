@@ -428,6 +428,8 @@ object PreferenceKeys {
     val BOARD_MIN_ASCENSIONISTS = intPreferencesKey("board_min_ascensionists")
     val BOARD_SORT_FIELD = stringPreferencesKey("board_sort_field")
     val BOARD_SORT_DIRECTION = stringPreferencesKey("board_sort_direction")
+    /** Knot (#154): the safety hint was shown before a first game. */
+    val KNOT_SAFETY_SEEN = booleanPreferencesKey("knot_safety_seen")
     val BOARD_STATUS_FILTER = stringPreferencesKey("board_status_filter")
     val BOARD_CLIMB_TYPE = stringPreferencesKey("board_climb_type")
     val BOARD_BENCHMARK_ONLY = booleanPreferencesKey("board_benchmark_only")
@@ -1520,6 +1522,11 @@ class UserPreferences(
 
     // Board browser filter persistence
     val boardAngle: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_ANGLE] ?: 40 }
+    val knotSafetySeen: Flow<Boolean> = dataStore.data.map { it[PreferenceKeys.KNOT_SAFETY_SEEN] ?: false }
+
+    suspend fun setKnotSafetySeen() {
+        dataStore.edit { it[PreferenceKeys.KNOT_SAFETY_SEEN] = true }
+    }
     val boardMinGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_GRADE] ?: 0 }
     val boardMaxGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MAX_GRADE] ?: 16 }
     val boardMinAscensionists: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_ASCENSIONISTS] ?: 0 }

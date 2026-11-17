@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.board.games
 
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.data.holdtypes.HoldTypeAssets
 import com.cruxcoach.data.repository.BoardImage
 import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardRepository
@@ -16,6 +17,7 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.ShinyWallVariant
 import com.cruxcoach.domain.board.games.WallHold
 import com.cruxcoach.domain.board.games.WallRows
+import com.cruxcoach.domain.holdtypes.HoldType
 import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 
@@ -35,6 +37,8 @@ data class WallGameBoard(
     val shinyVariant: ShinyWallVariant? = null,
     val moonVariant: MoonBoardVariant? = null,
     val moonLedMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
+    /** The wall angle the user set, for Knot's hint on steep walls; null when unknown. */
+    val angle: Int? = null,
 )
 
 sealed interface WallGameBoardLoad {
@@ -113,17 +117,33 @@ internal object WallGameHolds {
 class WallGameBoardLoader @Inject constructor(
     private val boardRepository: BoardRepository,
     private val userPreferences: UserPreferences,
+    private val holdTypes: HoldTypeAssets,
 ) {
     suspend fun load(): WallGameBoardLoad {
         val brand = BoardBrand.fromWire(userPreferences.boardBrand.first())
         val layoutId = userPreferences.boardLayoutId.first()
         val sizeId = userPreferences.boardProductSizeId.first()
-        return when (brand) {
+        val load = when (brand) {
             BoardBrand.QUANTUM -> WallGameBoardLoad.Unsupported
             BoardBrand.MOONBOARD -> loadMoonBoard(layoutId.toLong())
             BoardBrand.SHINYWALL -> loadShinyWall(layoutId, sizeId)
             else -> loadAurora(brand, layoutId, sizeId)
         }
+        return if (load is WallGameBoardLoad.Ready) {
+            WallGameBoardLoad.Ready(load.board.copy(angle = userPreferences.boardAngle.first()))
+        } else load
+    }
+
+    /**
+     * Big holds of [board] for Knot's hand spots: jugs and large holds, from the hold types, only once the board's
+     * types passed their blind round (the same unlock as the statistics). Empty otherwise. Call on IO.
+     */
+    fun knotBigHolds(board: WallGameBoard): Set<Int> {
+        val dataset = holdTypes.dataset(board.brand.wireValue)?.takeIf { it.statsReady } ?: return emptySet()
+        return dataset.holds
+            .filter { it.holdType == HoldType.JUG || it.size == LARGE }
+            .filter { board.brand != BoardBrand.MOONBOARD || it.layoutId.toLong() == board.layoutId }
+            .mapTo(mutableSetOf()) { it.placement }
     }
 
     private suspend fun loadMoonBoard(layoutId: Long): WallGameBoardLoad {
@@ -190,5 +210,9 @@ class WallGameBoardLoader @Inject constructor(
                 roleColors = roleColors,
             ),
         )
+    }
+
+    private companion object {
+        const val LARGE = "large"
     }
 }
